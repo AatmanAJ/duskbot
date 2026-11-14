@@ -87,6 +87,8 @@ export function auditLayout(options: AuditOptions = {}): LayoutIssue[] {
         if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0 || folded(child)) continue;
         // a drawing surface (the bot's mark) keeps transparent room around what it draws: its box is not its paint
         if (child.tagName === "CANVAS") continue;
+        // an open menu or popover floats over the rows on purpose: it is an overlay, not the row's own paint
+        if (child.matches('[role="menu"], [role="listbox"], .popover-surface, .menu-surface, [role="dialog"]:not([aria-modal="true"])')) continue;
         // a resize grip straddles its pane's edge on purpose, a transparent strip to drag
         if (style.cursor.endsWith("resize") && (parse(style.backgroundColor)?.a ?? 0) === 0) continue;
         const box = child.getBoundingClientRect();
