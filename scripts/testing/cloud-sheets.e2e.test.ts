@@ -3,7 +3,7 @@
 // the page (cloud-move-preview.tsx, cloud-welcome-preview.tsx), light and dark, desktop and the smallest window. Each
 // open modal also gets the cover check. Screenshots go to DUSK_GALLERY_DIR beside the other galleries'.
 //
-//   DUSK_UI_E2E=1 pnpm exec vitest run scripts/testing/cloud-sheets.e2e.test.ts
+//   DUSK_UI_E2E=1 pnpm exec vitest run scripts/testing/cloud-sheets.e2e.test.ts   (DUSK_CLOUD_SKIP=move=done leaves states out)
 import { spawn, type ChildProcess } from "node:child_process";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -22,7 +22,8 @@ const VIEWPORTS = [
   { id: "min", width: 768, height: 520 },
 ] as const;
 const SKINS = (process.env.DUSK_SURFACES_SKINS ?? "grok,grok-dark").split(",");
-const MOVE = ["offer=prompt", "offer=banner", "offer=settings", "move=copy", "move=failing", "move=done"];
+const SKIP = process.env.DUSK_CLOUD_SKIP?.split(",") ?? [];
+const MOVE = ["offer=prompt", "offer=banner", "offer=settings", "move=copy", "move=failing", "move=done"].filter((query) => !SKIP.includes(query));
 const WELCOME = ["", "desktop=1&move=copy", "desktop=1&move=done"];
 
 (enabled ? it : it.skip)("draws the cloud and server sheets, each modal covering the whole window", async () => {

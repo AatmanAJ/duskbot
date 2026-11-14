@@ -18,7 +18,7 @@ import { decodePng, encodePng } from "./png.ts";
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
 const BASELINE = join(import.meta.dirname, "visual-baseline");
 
-/** The surfaces that carry the look: chat with its cards, the composer, settings, the bot panel, dialogs, first run. */
+/** The surfaces that carry the look: chat with its cards, the composer, settings, the bot panel, dialogs, first run (the cloud sheets run whole). */
 export const KEY_SURFACES = [
   "settings:general", "settings:appearance", "settings:engines", "settings:import", "settings:apps", "settings:usage",
   "panel:overview", "panel:routines", "panel:voice", "panel:model",
@@ -26,6 +26,13 @@ export const KEY_SURFACES = [
   "onboarding:welcome", "onboarding:account", "onboarding:ai",
   "chat:empty", "chat:typing", "chat:error", "chat:notice", "card:cloud-ready",
 ];
+/** the small surfaces a person meets daily: menus, pickers, inline states, a tooltip and toasts (not yet the avatar
+ * editor, whose open card the overlap check still counts as its header's own paint) */
+export const KEY_SMALL = [
+  "bot-actions", "bot-context", "plus-menu", "mention-menu", "slash-menu", "message-actions", "account-menu", "sidebar-search",
+  "panel-share", "panel-computer", "panel-advanced", "panel-rename", "settings-select", "settings-sending", "place-add",
+  "tooltip-mic", "toast-done", "toast-error",
+].map((id) => `small:${id}`);
 export const KEY_CHATS = ["cards-pending", "cards-settled", "text"];
 const SKINS = "grok,grok-dark";
 const VIEWPORTS = "desktop,min";
@@ -45,7 +52,9 @@ function capture() {
   mkdirSync(dir, { recursive: true });
   const env = { ...process.env, DUSK_UI_E2E: "1", DUSK_GALLERY_DIR: dir, DUSK_GALLERY_STEADY: "1" };
   const runs = [
-    { test: "scripts/testing/surface-gallery.e2e.test.ts", env: { DUSK_SURFACES_ONLY: KEY_SURFACES.join(","), DUSK_SURFACES_SKINS: SKINS, DUSK_SURFACES_VIEWPORTS: VIEWPORTS } },
+    { test: "scripts/testing/surface-gallery.e2e.test.ts", env: { DUSK_SURFACES_ONLY: [...KEY_SURFACES, ...KEY_SMALL].join(","), DUSK_SURFACES_SKINS: SKINS, DUSK_SURFACES_VIEWPORTS: VIEWPORTS } },
+    // the move done sheet is left out until its preview gets past "Connecting to your bots"
+    { test: "scripts/testing/cloud-sheets.e2e.test.ts", env: { DUSK_SURFACES_SKINS: SKINS, DUSK_CLOUD_SKIP: "move=done" } },
     { test: "scripts/testing/chat-gallery.e2e.test.ts", env: { DUSK_GALLERY_ONLY: KEY_CHATS.join(","), DUSK_GALLERY_SKINS: SKINS, DUSK_GALLERY_VIEWPORTS: VIEWPORTS, DUSK_GALLERY_MODES: "still" } },
   ];
   const failed: string[] = [];
