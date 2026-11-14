@@ -1844,7 +1844,7 @@
   "composer.mention.everyoneOne": "1 bot en este chat",
   "composer.mention.everyoneMany": "{count} bots en este chat",
   "composer.mention.devs": "Desarrolladores",
-  "composer.mention.devsDesc": "Informar de un error a Dusk",
+  "composer.mention.devsDesc": "Informar de un error al equipo de dusk bot",
   "devs.report.received": "Informe de error enviado · Recibido, lo estamos revisando",
   "devs.report.fixedSoon": "Informe de error · Corregido, llega con una actualización",
   "devs.report.fixedComing": "Informe de error · Corregido en {version}, llega con tu próxima actualización",

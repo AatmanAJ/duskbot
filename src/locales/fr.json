@@ -901,7 +901,7 @@
   "composer.mention.agent": "Agent",
   "composer.mention.person": "Personne",
   "composer.mention.devs": "Développeurs",
-  "composer.mention.devsDesc": "Signaler un bug à Dusk",
+  "composer.mention.devsDesc": "Signaler un bug à l’équipe dusk bot",
   "devs.report.received": "Rapport de bug envoyé · Bien reçu, nous regardons",
   "devs.report.fixedSoon": "Rapport de bug · Corrigé, arrive avec une mise à jour",
   "devs.report.fixedComing": "Rapport de bug · Corrigé dans {version}, arrive avec votre prochaine mise à jour",
