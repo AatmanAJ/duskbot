@@ -1,0 +1,27 @@
+/* the lab token set as css. the speed control already slows every css animation and transition, so use these as is. */
+:root {
+  --lab-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --lab-ease-quint: cubic-bezier(0.23, 1, 0.32, 1);
+  --lab-ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --lab-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --lab-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --lab-dur-75: 75ms;
+  --lab-dur-120: 120ms;
+  --lab-dur-150: 150ms;
+  --lab-dur-200: 200ms;
+  --lab-dur-250: 250ms;
+  --lab-dur-320: 320ms;
+  --lab-dur-420: 420ms;
+  --lab-dur-500: 500ms;
+  --lab-stagger-in: 45ms;
+  --lab-stagger-out: 25ms;
+}
+/* the lab's reduced-motion toggle; prefer this over @media so the toggle drives it */
+:root[data-reduced-motion="true"] {
+  --lab-dur-250: 0ms;
+  --lab-dur-320: 0ms;
+  --lab-dur-420: 0ms;
+  --lab-dur-500: 0ms;
+  --lab-stagger-in: 0ms;
+  --lab-stagger-out: 0ms;
+}
