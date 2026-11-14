@@ -1,0 +1,46 @@
+/* the app's own reduced-motion rules for the shipped classes (chat.css, styles.css), driven by the lab's toggle */
+:root[data-reduced-motion="true"] :is(.turn-status-in, .turn-status-in .turn-status-mark, .turn-status-in .turn-label-slot, .turn-label-in) { animation-name: chat-row-fade; }
+:root[data-reduced-motion="true"] .turn-status-out { animation-name: dusk-fade-out; }
+:root[data-reduced-motion="true"] .status-shimmer { animation: none; background-image: none; color: var(--color-ink-secondary); }
+:root[data-reduced-motion="true"] .chat-jump { animation-name: chat-row-fade; }
+:root[data-reduced-motion="true"] :is(.reply-bubble-in, .turn-stopped) { animation: none; }
+:root[data-reduced-motion="true"] .animate-status-pulse { animation: none; opacity: 0.6; }
+
+/* variants */
+
+/* a smooth shimmer for the A/B lines: one band, 2s linear, no steps (AI Elements Shimmer behaviour, Apache-2.0, rebuilt) */
+.lab-shimmer {
+  color: transparent;
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-ink) 40%, transparent) 0 35%, var(--color-ink) 50%, color-mix(in srgb, var(--color-ink) 40%, transparent) 65% 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: lab-shimmer 2s linear infinite;
+  white-space: nowrap;
+}
+@keyframes lab-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0% 0; }
+}
+:root[data-reduced-motion="true"] .lab-shimmer { animation: none; background-image: none; color: var(--color-ink-secondary); }
+
+/* streamed words: A fades, B condenses (opacity + 4px blur + 4px rise) */
+.lab-word-fade { animation: lab-word-fade 150ms ease both; }
+@keyframes lab-word-fade { from { opacity: 0; } }
+.lab-word-blur { display: inline; animation: lab-word-blur 220ms var(--lab-ease-out) both; }
+@keyframes lab-word-blur { from { opacity: 0; filter: blur(4px); } }
+:root[data-reduced-motion="true"] :is(.lab-word-fade, .lab-word-blur) { animation: none; }
+
+/* typing dots: a soft opacity wave, 160ms apart (prompt-kit Loader timing, MIT, rebuilt) */
+.lab-dot { animation: lab-dot 1.2s ease-in-out infinite; }
+@keyframes lab-dot { 0%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+:root[data-reduced-motion="true"] .lab-dot { animation: none; opacity: 0.55; }
+
+/* the stream's caret: a breathing bar in the bot's colour */
+.lab-caret { animation: lab-caret 1s ease-in-out infinite; }
+@keyframes lab-caret { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+:root[data-reduced-motion="true"] .lab-caret { animation: none; }
+
+.lab-spin { animation: lab-spin 0.8s linear infinite; }
+@keyframes lab-spin { to { transform: rotate(360deg); } }
+:root[data-reduced-motion="true"] .lab-spin { animation: none; }
