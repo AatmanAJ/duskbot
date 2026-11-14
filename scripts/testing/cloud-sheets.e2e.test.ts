@@ -84,9 +84,12 @@ const WELCOME = ["", "desktop=1&move=copy", "desktop=1&move=done"];
       await evaluate(`try { localStorage.clear(); sessionStorage.clear(); } catch {} true`).catch(() => undefined);
       await request("Page.navigate", { url: `${shot.url}${shot.url.includes("?") ? "&" : "?"}skin=${skin}` });
       // settled: the boot cover gone, fonts in
-      await expect.poll(() => evaluate(`!document.querySelector("[data-boot-cover]:not([data-boot-cover=closing])") && document.readyState === "complete"`), { timeout: 30_000 }).toBe(true).catch(() => undefined);
-      await evaluate(`document.fonts.ready.then(() => new Promise((done) => setTimeout(done, 1200)))`);
+      // and the app itself in: the bot list loaded, neither the connecting screen nor the first-run welcome showing
       const name = `cloud-${shot.id}-${viewport.id}${skin === "grok" ? "" : `-${skin}`}`;
+      await expect.poll(() => evaluate(`!document.querySelector("[data-boot-cover]:not([data-boot-cover=closing])") && document.readyState === "complete"
+        && document.body.textContent.includes("Pepper") && !/Connecting to your bots|Meet dusk bot/.test(document.body.innerText)`), { timeout: 30_000 }).toBe(true)
+        .catch(() => { problems.push(`${name}: the app never finished loading (still connecting, or the first-run welcome)`); });
+      await evaluate(`document.fonts.ready.then(() => new Promise((done) => setTimeout(done, 1200)))`);
       writeFileSync(join(evidence, `${name}.png`), Buffer.from((await request("Page.captureScreenshot", { format: "png" })).data, "base64"));
       // any open modal's scrim covers the whole window (the same check as the surfaces gallery)
       const uncovered: string[] = await evaluate(`(() => {

@@ -5,11 +5,14 @@ import { createRoot } from "react-dom/client";
 import type { CloudSendNotice } from "../../electron/cloud-send.mjs";
 import type { OneHomeView } from "../../electron/one-home.mjs";
 import App from "../../src/App";
+import { setEmailGateDone } from "../../src/lib/analytics";
 import { initialDesktopCapabilities } from "../../src/lib/desktop";
 import { applySkin, type SkinId } from "../../src/lib/skins";
 import "../../src/styles.css";
 
 const params = new URLSearchParams(location.search);
+// a set-up install, as the surfaces gallery has: past the first-run welcome
+setEmailGateDone("skipped");
 const BASE: CloudSendNotice = { ready: false, bots: [], updatedBots: [], skills: 0, logins: 0, onePassword: false, settings: 0, signature: "", dismissed: false, running: false, last: null };
 const MOVES: Record<string, OneHomeView> = {
   copy: { phase: "copy", chats: { done: 70, total: 142 } },
