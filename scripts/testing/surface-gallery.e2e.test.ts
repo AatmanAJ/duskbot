@@ -87,13 +87,47 @@ const COVER_CHECK = `(() => {
   return issues;
 })()`;
 
-type Surface = { id: string; open: string | null; onboarding?: string; scope: string; run?: string; query?: string };
+/** Clicks the first visible match, the way a pointer does (pointerdown, mousedown, click), and reports whether it found one. */
+const CLICK = (selector: string, nth = 0) => `(() => { const all = [...document.querySelectorAll(${JSON.stringify(selector)})].filter((one) => one.getClientRects().length);
+  const el = all[${nth}]; if (!el) return false; el.scrollIntoView({ block: "nearest" });
+  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) el.dispatchEvent(new (type.startsWith("pointer") ? PointerEvent : MouseEvent)(type, { bubbles: true, button: 0 }));
+  el.click(); return true; })()`;
+const CONTEXT = (selector: string, nth = 0) => `(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].filter((one) => one.getClientRects().length)[${nth}];
+  if (!el) return false; const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 12, button: 2 })); return true; })()`;
+const SELECT = `{ type: "select", id: window.__surfaceGallery.botId }`;
+const POPOVER = `[role=menu], [role=listbox], [role=dialog]:not([aria-modal=true]), .popover-surface, .menu-surface, [data-mention-menu], [data-slash-menu]`;
+/** The small surfaces: every popover, menu, picker, tooltip, toast, panel tab and inline state a person meets. */
+const SMALL: Record<string, { open: string | null; run?: string; hover?: string; query?: string; scope?: string }> = {
+  "bot-actions": { open: SELECT, run: CLICK("[data-bot-actions]", 1), scope: POPOVER },
+  "bot-context": { open: SELECT, run: CONTEXT("[data-sidebar-bot-row]", 1), scope: POPOVER },
+  "plus-menu": { open: SELECT, run: CLICK("[data-composer-plus]"), scope: POPOVER },
+  "mention-menu": { open: SELECT, run: TYPE("@"), scope: POPOVER },
+  "slash-menu": { open: SELECT, run: TYPE("/"), scope: POPOVER },
+  "reaction-picker": { open: SELECT, run: CLICK('[aria-label="Add reaction"]'), scope: POPOVER },
+  "message-actions": { open: SELECT, run: CLICK('[aria-label="Message actions"]'), scope: POPOVER },
+  "account-menu": { open: SELECT, run: CLICK('[data-sidebar-footer] button'), scope: POPOVER },
+  "sidebar-search": { open: SELECT, run: CLICK("[data-sidebar-search-toggle]"), scope: "#root" },
+  "panel-share": { open: `{ type: "toggleSettings", open: true, section: "overview", botId: window.__surfaceGallery.botId }`, run: CLICK("[data-panel-share]"), scope: POPOVER },
+  "panel-computer": { open: `{ type: "toggleSettings", open: true, section: "overview", botId: window.__surfaceGallery.botId }`, run: CLICK('[data-panel-tab]', 1), scope: "#root" },
+  "panel-advanced": { open: `{ type: "toggleSettings", open: true, section: "overview", botId: window.__surfaceGallery.botId }`, run: CLICK('[data-panel-tab]', 2), scope: "#root" },
+  "panel-rename": { open: `{ type: "toggleSettings", open: true, section: "overview", botId: window.__surfaceGallery.botId }`, run: CLICK("[data-panel-rename]"), scope: "#root" },
+  "panel-avatar": { open: `{ type: "toggleSettings", open: true, section: "overview", botId: window.__surfaceGallery.botId }`, run: CLICK("[data-panel-avatar]"), scope: "#root" },
+  "settings-select": { open: `{ type: "toggleAppSettings", open: true, section: "general" }`, run: CLICK('[data-settings-select="theme"]'), scope: POPOVER },
+  "settings-sending": { open: `{ type: "toggleAppSettings", open: true, section: "general" }`, run: CLICK('[data-settings-select][aria-label="Sending while a bot works"]'), scope: POPOVER },
+  "place-add": { open: `{ type: "toggleAppSettings", open: true, section: "computer" }`, run: CLICK('[data-settings-dialog] button, .settings-dialog button:not([data-settings-page])', 2), scope: "[role=dialog]" },
+  "tooltip-mic": { open: SELECT, hover: "[data-voice-mic]", scope: ".ui-tooltip" },
+  "toast-done": { open: SELECT, query: "card=toast-done", scope: ".ui-toast" },
+  "toast-error": { open: SELECT, query: "card=toast-error", scope: ".ui-toast" },
+};
+
+type Surface = { id: string; open: string | null; onboarding?: string; scope: string; run?: string; query?: string; hover?: string };
 const SURFACES: Surface[] = [
   ...SETTINGS.map((section) => ({ id: `settings:${section}`, open: `{ type: "toggleAppSettings", open: true, section: "${section}" }`, scope: DIALOG_SCOPE })),
   ...PANEL.map((section) => ({ id: `panel:${section}`, open: `{ type: "toggleSettings", open: true, section: "${section}", botId: window.__surfaceGallery.botId }`, scope: DIALOG_SCOPE })),
   ...Object.entries(DIALOGS).map(([id, action]) => ({ id: `dialog:${id}`, open: action, scope: id === "computer" ? "#root" : DIALOG_SCOPE })),
   ...ONBOARDING.map((step) => ({ id: `onboarding:${step}`, open: null, onboarding: step, scope: "[data-welcome]" })),
   ...Object.entries(CHAT).map(([id, chat]) => ({ id: `chat:${id}`, open: chat.open, run: chat.run, scope: "#root" })),
+  ...Object.entries(SMALL).map(([id, small]) => ({ id: `small:${id}`, open: small.open, run: small.run, hover: small.hover, query: small.query, scope: small.scope ?? "#root" })),
   { id: "card:cloud-ready", open: null, query: "card=cloud-ready", scope: "[data-cloud-setup-ready]" },
   { id: "dialog:connect-ai-from-chat", open: `{ type: "select", id: window.__surfaceGallery.botId }`, query: "card=connect-ai", scope: "[data-connect-ai]" },
 ].filter((surface) => !ONLY || ONLY.includes(surface.id));
@@ -177,6 +211,17 @@ const SURFACES: Surface[] = [
         if (surface.run) {
           await evaluate(`new Promise((done) => setTimeout(done, 300))`);
           opened = Boolean(await evaluate(surface.run));
+          if (opened && surface.scope !== "#root") opened = await expect.poll(() => evaluate(`[...document.querySelectorAll(${JSON.stringify(surface.scope)})].some((one) => one.getClientRects().length)`), { timeout: 5_000 }).toBe(true).then(() => true, () => false);
+        }
+        if (surface.hover) {
+          await evaluate(`new Promise((done) => setTimeout(done, 300))`);
+          const spot = await evaluate(`(() => { const el = [...document.querySelectorAll(${JSON.stringify(surface.hover)})].find((one) => one.getClientRects().length); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+          opened = Boolean(spot);
+          if (spot) {
+            for (const step of [40, 20, 8, 0]) await request("Input.dispatchMouseEvent", { type: "mouseMoved", x: spot.x - step, y: spot.y, pointerType: "mouse" });
+            opened = await expect.poll(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(surface.scope)}))`), { timeout: 4_000 }).toBe(true).then(() => true, () => false);
+            await evaluate(`new Promise((done) => setTimeout(done, 300))`);
+          }
         }
         await evaluate(`document.fonts.ready.then(() => new Promise((done) => setTimeout(done, 700)))`);
         // the starter question card lands after the transcript does; wait for it, so every capture shows the same chat

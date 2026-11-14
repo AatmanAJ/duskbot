@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ConnectAiDialog } from "../../src/components/onboarding/ConnectAi";
+import { Toast } from "../../src/components/ui/Toast";
 import { createRoot } from "react-dom/client";
 import App from "../../src/App";
 import { setEmailGateDone } from "../../src/lib/analytics";
@@ -47,6 +48,9 @@ function Cards() {
     return () => clearInterval(timer);
   }, []);
   if (params.get("card") === "cloud-ready") return <CloudReady slot={slot} onDone={() => undefined} />;
+  // ?card=toast-done / toast-error: a passing toast, held on screen
+  if (params.get("card") === "toast-done") return <Toast text="Pepper is ready to use" action={{ label: "Undo", onClick: () => undefined }} timeoutMs={600_000} onDone={() => undefined} />;
+  if (params.get("card") === "toast-error") return <Toast tone="error" text="Couldn't save Pepper's name. Try again." timeoutMs={600_000} onDone={() => undefined} />;
   if (params.get("card") === "connect-ai" && dock) return createPortal(<ConnectAiDialog tested={null} onClose={() => undefined} />, dock);
   return null;
 }
