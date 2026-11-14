@@ -70,8 +70,8 @@ describe("the move's words on the account", () => {
     expect(tag).not.toContain("aria-disabled");
     expect(html).toMatch(/data-move-retry[^>]*>Try again<\/button>/);
     expect(html.indexOf("Your move to dusk cloud needs you")).toBeLessThan(html.indexOf(">Try again<"));
-    // The words shorten before Try again does.
-    expect(html).toContain('<span class="truncate">Your move to dusk cloud needs you</span>');
+    // Beside Try again the words wrap to a second line, never cut short; Try again keeps its size.
+    expect(html).toContain('<span class="line-clamp-2">Your move to dusk cloud needs you</span>');
     expect(tag).toMatch(/class="[^"]*\bshrink-0\b/);
     const row = (status.props as { children: ReturnType<typeof createElement>[] }).children[0]!;
     const tryAgain = (row.props as { children: ReturnType<typeof createElement>[] }).children[1]!;

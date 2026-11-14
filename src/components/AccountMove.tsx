@@ -138,15 +138,17 @@ export function useAccountMoveLine(cloudHome: boolean): { kind: AccountMoveKind 
 
 /** The account's line for the move: amber while it needs the person, quiet while it goes, nothing otherwise. With
  * `onOpen` its words are a button that opens the account menu, followed by Try again when `retry` allows one, and why it
- * failed written out under them; without, words inside a trigger. The words shorten before Try again does. */
+ * failed written out under them; without, words inside a trigger. Beside Try again the words wrap to a second line, never
+ * cut short: "needs you" is the point of the line. */
 export function AccountMoveStatus({ kind, place, retry = null, onOpen, className }: { kind: AccountMoveKind | null; place?: string; retry?: AccountMoveRetry | null; onOpen?: () => void; className?: string }) {
   const words = accountMoveWords(kind, place);
   if (!words) return null;
   const Icon = kind === "failed" ? CloudAlert : CloudUpload;
-  const look = cn("flex min-w-0 items-center gap-1.5 text-start text-[12px] leading-4", kind === "failed" ? "font-medium text-warning" : "text-ink-secondary");
+  const wraps = kind === "failed" && Boolean(onOpen && retry);
+  const look = cn("flex min-w-0 gap-1.5 text-start text-[12px] leading-4", wraps ? "items-start" : "items-center", kind === "failed" ? "font-medium text-warning" : "text-ink-secondary");
   const body = <>
-    <Icon size={13} aria-hidden="true" className="shrink-0" />
-    <span className="truncate">{words}</span>
+    <Icon size={13} aria-hidden="true" className={cn("shrink-0", wraps && "mt-px")} />
+    <span className={wraps ? "line-clamp-2" : "truncate"}>{words}</span>
   </>;
   if (!onOpen) return <span data-account-move={kind} className={cn(look, className)}>{body}</span>;
   return (
