@@ -2498,7 +2498,7 @@
   "composer.mention.allOne": "The only bot here",
   "composer.mention.allMany": "All {count} bots",
   "composer.mention.devs": "Developers",
-  "composer.mention.devsDesc": "Report a bug to dusk",
+  "composer.mention.devsDesc": "Report a bug to the dusk bot team",
   "devs.report.received": "Bug report sent · got it, we're looking",
   "devs.report.fixedSoon": "Bug report · fixed, coming in an update",
   "devs.report.fixedComing": "Bug report · fixed in {version}, coming in your next update",

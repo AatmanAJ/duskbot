@@ -43,7 +43,7 @@ export function ThemeSwatch({ id }: { id: string }) {
 /** Grok's three themes, then the other looks, each with its swatch. */
 export const themeOptions = () => [
   ...THEMES.map((theme) => ({ value: theme.choice, label: t(theme.label), preview: <ThemeSwatch id={theme.choice} /> })),
-  ...LOOKS.map((skin) => ({ value: skin.id, label: skin.name.toLowerCase(), preview: <ThemeSwatch id={skin.id} /> })),
+  ...LOOKS.map((skin) => ({ value: skin.id, label: skin.name, preview: <ThemeSwatch id={skin.id} /> })),
 ];
 
 export function ThemeRow() {
