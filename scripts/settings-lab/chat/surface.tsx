@@ -34,6 +34,8 @@ export type Spec = {
   gap: number;
   /** the status line says Typing while a reply is written (the app) or keeps only the mascot */
   lineWhileWriting: "typing" | "mascot";
+  /** the reply's words arrive all at once when it is written, instead of streaming in */
+  instant?: boolean;
 };
 
 const BOT = { name: "Nova", color: "blue" as const };
@@ -283,8 +285,9 @@ function StreamReply({ msg, bot }: { msg: Msg | null; bot: FakeBot }) {
   const text = msg?.text ?? "";
   const { shown, total } = useSteadyWords(text, { minWordMs: spec.stream === "smooth" ? 22 : 40 });
   const finished = Boolean(msg && msg.state !== "streaming");
-  const caughtUp = finished && (shown >= total || msg?.state === "stopped");
-  const words = text.split(/(?<=\s)/).filter(Boolean).slice(0, msg?.state === "stopped" ? total : shown);
+  const caughtUp = finished && (spec.instant || shown >= total || msg?.state === "stopped");
+  const all = text.split(/(?<=\s)/).filter(Boolean);
+  const words = spec.instant ? (finished ? all : []) : all.slice(0, msg?.state === "stopped" ? total : shown);
   const placeholder = !msg || (!words.length && !finished);
   const after = useLabDelay(caughtUp && msg?.state === "done", 140);
   const rowKey = msg?.key ?? bot.nextReplyKey;
@@ -317,11 +320,13 @@ function StreamReply({ msg, bot }: { msg: Msg | null; bot: FakeBot }) {
           </AnimatePresence>
           {!placeholder && (
             <span className="chatlab-words">
-              {spec.stream === "smooth" ? words.join("") : words.map((word, i) => (
+              {spec.instant ? (
+                <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2, ease: EASE_OUT, delay: 0.09 }}>{words.join("")}</motion.span>
+              ) : spec.stream === "smooth" ? words.join("") : words.map((word, i) => (
                 <motion.span key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                   transition={{ duration: 0.2, ease: EASE_OUT, delay: 0.09 }}>{word}</motion.span>
               ))}
-              {spec.stream === "caret" && <AnimatePresence>{!caughtUp && (
+              {spec.stream === "caret" && !spec.instant && <AnimatePresence>{!caughtUp && (
                 <motion.span key="caret" className="chatlab-caret" aria-hidden="true" exit={{ opacity: 0, transition: { duration: 0.12 } }} />
               )}</AnimatePresence>}
             </span>
