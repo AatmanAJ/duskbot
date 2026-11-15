@@ -1,0 +1,7 @@
+/* the app's real styles, fonts and skins, plus tailwind sources for the app and the lab */
+@import "../../../src/font-faces.css";
+@import "../../../src/styles.css";
+@import "../../../src/styles/overlays.css";
+@import "../../../src/styles/motion.css";
+@source "../../../src";
+@source "..";

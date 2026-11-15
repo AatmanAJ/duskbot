@@ -1,0 +1,72 @@
+/* the lab's own chrome: the app's skin tokens, borderless tonal surfaces */
+html, body { margin: 0; height: 100%; background: var(--color-frame, var(--color-panel)); color: var(--color-ink); font-family: var(--font-sans); }
+body { font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+#root { height: 100%; }
+.lab-root { display: flex; flex-direction: column; height: 100dvh; min-height: 0; overflow: hidden; }
+
+.lab-bar { flex: 0 0 auto; padding: 10px 16px 8px; display: flex; flex-direction: column; gap: 6px; }
+.lab-bar-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lab-brand { font-weight: 600; font-size: 14px; letter-spacing: -0.01em; }
+.lab-variants { display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: color-mix(in srgb, var(--color-ink) 5%, transparent); }
+.lab-variant { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 6px; border: 0; border-radius: 8px; background: transparent; color: var(--color-ink-secondary); font: inherit; font-size: 13px; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
+.lab-variant:hover { color: var(--color-ink); }
+.lab-variant[aria-selected="true"] { background: var(--color-app); color: var(--color-ink); font-weight: 500; }
+.lab-variant-n { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; background: color-mix(in srgb, var(--color-ink) 8%, transparent); font-size: 11px; font-variant-numeric: tabular-nums; }
+.lab-variant[aria-selected="true"] .lab-variant-n { background: var(--color-ink); color: var(--color-app); }
+.lab-bar-tools { display: flex; align-items: center; gap: 6px; margin-inline-start: auto; flex-wrap: wrap; }
+.lab-idea { margin: 0; color: var(--color-ink-secondary); font-size: 12.5px; }
+.lab-idea b { color: var(--color-ink); font-weight: 500; margin-inline-end: 4px; }
+.lab-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: color-mix(in srgb, var(--color-ink) 6%, transparent); color: var(--color-ink); font: inherit; font-size: 12.5px; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
+.lab-btn:hover { background: color-mix(in srgb, var(--color-ink) 10%, transparent); }
+.lab-btn[aria-pressed="true"] { background: var(--color-ink); color: var(--color-app); }
+.lab-btn-icon { width: 28px; padding: 0; justify-content: center; }
+.lab-seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 9px; background: color-mix(in srgb, var(--color-ink) 6%, transparent); }
+.lab-seg-btn { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--color-ink-secondary); font: inherit; font-size: 12px; cursor: pointer; }
+.lab-seg-btn:hover { color: var(--color-ink); }
+.lab-seg-btn[aria-checked="true"] { background: var(--color-app); color: var(--color-ink); font-weight: 500; }
+:is(.lab-btn, .lab-seg-btn, .lab-variant, .lab-code-file, .lab-dialog-close):focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+
+.lab-stage { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; overflow: hidden; }
+.lab-window { position: relative; flex: none; overflow: hidden; border-radius: 12px; transform-origin: center; background: var(--color-app); isolation: isolate; }
+.lab-scrim { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; }
+.lab-backdrop { position: absolute; inset: 0; background: rgb(0 0 0 / 0.5); }
+:root[data-skin="grok-dark"] .lab-backdrop { background: rgb(0 0 0 / 0.7); }
+.lab-dialog { position: relative; overflow: hidden; border-radius: 14px; background: var(--color-app); color: var(--color-ink); font-size: 13px; outline: none; --color-focus: #1e86fc; }
+.lab-dialog-close { position: absolute; top: 10px; inset-inline-end: 10px; z-index: 40; display: inline-grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 999px; background: transparent; color: color-mix(in srgb, var(--color-ink) 56%, transparent); cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
+.lab-dialog-close:hover { background: color-mix(in srgb, var(--color-ink) 11%, transparent); color: var(--color-ink-secondary); }
+
+/* the app behind */
+.replica { position: absolute; inset: 0; display: flex; font-size: 13px; }
+.replica-side { width: 252px; flex: none; display: flex; flex-direction: column; gap: 1px; padding: 12px 10px; box-sizing: border-box; background: var(--color-panel); }
+.replica-traffic { display: flex; gap: 8px; padding: 4px 6px 16px; }
+.replica-traffic span { width: 12px; height: 12px; border-radius: 99px; background: color-mix(in srgb, var(--color-ink) 14%, transparent); }
+.replica-row, .replica-bot { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--color-ink); font: inherit; text-align: start; cursor: pointer; }
+.replica-row:hover, .replica-bot:hover { background: var(--color-menu-hover); }
+.replica-bot[aria-current] { background: var(--color-raised); }
+.replica-bot-text { display: flex; flex-direction: column; min-width: 0; line-height: 17px; }
+.replica-bot-text > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replica-quiet { color: var(--color-ink-secondary); font-size: 12px; }
+.replica-label { margin: 14px 8px 4px; font-size: 12px; color: var(--color-ink-secondary); }
+.replica-settings { margin-top: auto; }
+.replica-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--color-app); }
+.replica-chat-head { display: flex; align-items: center; gap: 8px; padding: 14px 20px; font-weight: 500; }
+.replica-thread { flex: 1; display: flex; flex-direction: column; gap: 14px; max-width: 680px; width: 100%; margin: 0 auto; padding: 24px; box-sizing: border-box; font-size: 15px; line-height: 1.55; }
+.replica-msg { max-width: 82%; }
+.replica-msg-user { align-self: flex-end; padding: 8px 14px; border-radius: 18px; background: var(--color-bubble-user); color: var(--color-bubble-user-ink); }
+.replica-composer { margin: 0 auto 22px; width: min(680px, 100% - 48px); box-sizing: border-box; padding: 16px 18px; border-radius: 24px; background: var(--color-composer); box-shadow: 0 0 0 1px var(--color-composer-ring); color: var(--color-ink-tertiary); font-size: 15px; }
+
+/* the source drawer */
+.lab-code { position: fixed; top: 0; right: 0; bottom: 0; z-index: 100; width: min(640px, 92vw); display: flex; flex-direction: column; background: var(--color-app); }
+.lab-code-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+.lab-code-files { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; }
+.lab-code-file { height: 26px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: var(--color-ink-secondary); font: inherit; font-family: var(--font-mono); font-size: 11.5px; cursor: pointer; }
+.lab-code-file:hover { color: var(--color-ink); }
+.lab-code-file[aria-selected="true"] { background: color-mix(in srgb, var(--color-ink) 7%, transparent); color: var(--color-ink); }
+.lab-code-path { margin: 0; padding: 0 14px 8px; font-family: var(--font-mono); font-size: 11.5px; color: var(--color-ink-tertiary); }
+.lab-code-body { flex: 1; margin: 0; overflow: auto; padding: 8px 0 24px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; background: color-mix(in srgb, var(--color-ink) 2.5%, transparent); }
+.lab-code-line { display: block; padding-inline-end: 16px; white-space: pre; }
+.lab-code-n { display: inline-block; width: 44px; padding-inline-end: 12px; text-align: end; color: var(--color-ink-tertiary); user-select: none; }
+
+.lab-tab { height: 28px; padding: 0 12px; font-size: 13px; }
+.lab-slow[aria-pressed="true"] { background: var(--identity-orange); color: #fff; }
+.lab-slow-note { margin-inline-start: 10px; padding: 1px 8px; border-radius: 99px; background: color-mix(in srgb, var(--identity-orange) 16%, transparent); color: var(--identity-orange); font-weight: 500; }

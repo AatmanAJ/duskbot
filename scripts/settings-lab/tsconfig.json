@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["../../src/*"], "@lab/*": ["./lib/*"], "@kit/*": ["./kit/*"] }
+  },
+  "include": ["./**/*.ts", "./**/*.tsx", "../../src/types/duskDesktop.d.ts"]
+}
