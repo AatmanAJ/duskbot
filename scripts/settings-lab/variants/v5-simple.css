@@ -1,2 +1,26 @@
 /* 5. simple */
 .v5 { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.v5 .kit-header { max-width: 700px; width: 100%; margin: 0 auto; padding-inline: 20px 56px; }
+.v5-column { max-width: 660px; margin: 0 auto; }
+.v5-home { padding-top: 34px; gap: 20px; }
+.v5-hello { display: flex; align-items: center; gap: 14px; padding: 0 4px 6px; }
+.v5-hi { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -0.02em; line-height: 30px; }
+.v5-ask { margin: 2px 0 0; font-size: 15px; line-height: 22px; color: var(--color-ink-secondary); }
+.v5-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.v5-tile { display: flex; flex-direction: column; justify-content: space-between; gap: 20px; width: 100%; height: 136px; padding: 16px; box-sizing: border-box; border: 0; border-radius: 20px; background: color-mix(in srgb, var(--v5-hue) 7%, transparent); color: var(--color-ink); font: inherit; text-align: start; cursor: pointer; transition: background-color 140ms ease, scale 200ms var(--dusk-ease-release); }
+.v5-tile:hover { background: color-mix(in srgb, var(--v5-hue) 12%, transparent); }
+.v5-tile:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.v5-tile .kit-cat-icon { border-radius: 12px; }
+.v5-tile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.v5-tile-title { font-size: 15px; font-weight: 550; line-height: 20px; }
+.v5-tile-value { font-size: 12.5px; line-height: 17px; color: var(--color-ink-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v5-more { border-radius: 18px; background: var(--kit-group); overflow: hidden; }
+.v5-more-head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 12px 16px; border: 0; background: transparent; color: var(--color-ink); font: inherit; text-align: start; cursor: pointer; transition: background-color 120ms ease; }
+.v5-more-head:hover { background: var(--kit-hover); }
+.v5-more-dots { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: color-mix(in srgb, var(--color-ink) 7%, transparent); color: var(--color-ink-secondary); }
+.v5-more-chevron { display: inline-grid; }
+.v5-more-body { overflow: hidden; }
+.v5-more-rows { display: flex; flex-direction: column; padding: 0 0 6px; }
+.v5-small { padding-inline: 16px; }
+.v5-intro { display: flex; align-items: center; gap: 12px; padding: 10px 32px 0; margin-bottom: 6px; }
+.v5-intro p { margin: 0; font-size: 14px; color: var(--color-ink-secondary); }
