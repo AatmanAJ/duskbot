@@ -1,18 +1,28 @@
 import type { FC } from "react";
+import type { ChatLabProps } from "./surface";
+import FixedCurrent from "./variants/v1-fixed";
+import GrowFromMascot from "./variants/v2-grow";
+import RiseAndAppend from "./variants/v3-rise";
+import TypingBubble from "./variants/v4-typing-bubble";
+import ThinkingInBubble from "./variants/v5-in-bubble";
+import CalmFollow from "./variants/v6-calm";
 
-export type ChatLabProps = { speed: number; reduced: boolean; skin: "grok" | "grok-dark"; replayKey: number };
+export type { ChatLabProps };
 export type ChatVariant = { id: string; name: string; idea: string; file: string; Component: FC<ChatLabProps> };
-
-function Placeholder({ replayKey, speed, reduced, skin }: ChatLabProps) {
-  return (
-    <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--color-ink-secondary)" }}>
-      chat lab placeholder · replay {replayKey} · {speed}x · {reduced ? "reduced" : "full"} motion · {skin}
-    </div>
-  );
-}
 
 export default {
   variants: [
-    { id: "placeholder", name: "Placeholder", idea: "the chat lab's variants land here.", file: "chat/index.tsx", Component: Placeholder },
+    { id: "fixed-current", name: "Fixed current", file: "chat/variants/v1-fixed.tsx", Component: FixedCurrent,
+      idea: "the app on main after today's fix: rows land whole while the view glides up 240ms, Typing until the reply lands whole." },
+    { id: "grow", name: "Grow from the mascot", file: "chat/variants/v2-grow.tsx", Component: GrowFromMascot,
+      idea: "the words leave the composer into your bubble; the reply grows out of the mascot and streams word by word." },
+    { id: "rise", name: "Rise and append", file: "chat/variants/v3-rise.tsx", Component: RiseAndAppend,
+      idea: "your bubble rises in, the reply fades up 8px and its text appends smoothly with no per-word fade." },
+    { id: "typing-bubble", name: "Typing bubble that grows", file: "chat/variants/v4-typing-bubble.tsx", Component: TypingBubble,
+      idea: "the reply's bubble shows three dots from the first beat, then the dots crossfade into words in the same bubble." },
+    { id: "in-bubble", name: "Thinking inside the bubble", file: "chat/variants/v5-in-bubble.tsx", Component: ThinkingInBubble,
+      idea: "the thinking or tool line sits inside the reply bubble and crossfades into the words; a caret rides the end." },
+    { id: "calm", name: "Calm follow", file: "chat/variants/v6-calm.tsx", Component: CalmFollow,
+      idea: "a soft spring follows every growth as one move, the reply opens at the mascot, Typing stays until the end." },
   ] satisfies ChatVariant[],
 };
