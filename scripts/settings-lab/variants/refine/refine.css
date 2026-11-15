@@ -1,0 +1,59 @@
+/* the real sheet sits inside the lab's dialog: the lab already draws the scrim, the motion and the close button */
+.refine-host { position: absolute; inset: 0; display: flex; }
+.refine-host .settings-scrim { position: absolute; inset: 0; z-index: auto; }
+.refine-host .settings-backdrop { display: none; }
+.refine-host .settings-dialog { width: 100%; max-width: none; height: 100%; max-height: none; border: 0; border-radius: 0; }
+.refine-host .settings-layout { height: 100%; }
+.refine-host .settings-close { display: none; }
+
+/* the refinements: today's sheet, drawn by RefinedSettings, filling the lab's dialog */
+.refine-host > .settings-dialog { width: 100%; max-width: none; height: 100%; max-height: none; border: 0; border-radius: 0; }
+.refine-pane { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.refine-host .settings-nav-item[aria-current="page"] { background: transparent; }
+.refine-host .settings-nav-item > :not(.refine-highlight) { position: relative; z-index: 1; }
+.refine-highlight { position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: var(--settings-selected); }
+.refine-tile { display: inline-grid; flex: none; place-items: center; border-radius: 7px; background: color-mix(in srgb, var(--tile-hue) 15%, transparent); color: var(--tile-hue); }
+.refine-blurb { margin: 1px 0 0; padding-inline-start: 10px; color: color-mix(in srgb, var(--color-ink) 56%, transparent); font-size: 12.5px; line-height: 17px; }
+.refine-nav-icon { flex: none; transition: color 0.15s ease; }
+
+/* 1 calm: a tonal rail, more air, a bigger pane name with one line under it; the chosen pane's icon takes its hue */
+[data-refine="calm"] .settings-nav { width: 210px; padding: 20px 12px; gap: 3px; background: color-mix(in srgb, var(--color-ink) 2.5%, transparent); }
+[data-refine="calm"] .settings-nav-list { gap: 3px; }
+[data-refine="calm"] .settings-nav-item { padding: 8px 10px; }
+[data-refine="calm"] .settings-nav-item .refine-nav-icon { color: color-mix(in srgb, var(--color-ink) 56%, transparent); }
+[data-refine="calm"] .settings-nav-item[aria-current="page"] .refine-nav-icon { color: var(--pane-hue); }
+[data-refine="calm"] .refine-highlight { background: var(--color-app); }
+[data-refine="calm"] .settings-pane-header { padding: 30px 52px 4px 28px; }
+[data-refine="calm"] [data-refine-head="pane"] .settings-pane-title { font-size: 18px; line-height: 24px; letter-spacing: -0.012em; }
+:root [data-refine="calm"] .settings-dialog .settings-pane { padding: 22px 28px 48px; gap: 40px; }
+:root [data-refine="calm"] .settings-dialog .settings-pane [data-settings-heading] { font-weight: 500; color: color-mix(in srgb, var(--color-ink) 62%, transparent); }
+
+/* 2 colour: every pane on a soft tile of its hue, the chosen one's highlight tinted with it, its tile beside the name */
+[data-refine="colour"] .settings-nav { width: 206px; }
+[data-refine="colour"] .settings-nav-item { gap: 10px; padding: 5px 8px; }
+[data-refine="colour"] .refine-highlight { background: color-mix(in srgb, var(--pane-hue) 11%, transparent); }
+[data-refine="colour"] .settings-pane-header { padding-top: 24px; }
+[data-refine="colour"] [data-refine-head="pane"] .settings-pane-title { padding-inline-start: 8px; font-size: 16px; }
+[data-refine="colour"] [data-refine-head="pane"] .refine-blurb { padding-inline-start: 8px; }
+[data-refine="colour"] [data-refine-head="pane"] > div:first-child { gap: 2px; padding-inline-start: 8px; }
+
+/* 3 grouped: the rail in three named groups, and each group of rows on one soft tonal surface */
+[data-refine="grouped"] .settings-nav { width: 204px; padding-top: 6px; }
+[data-refine="grouped"] .refine-nav-group { display: flex; flex-direction: column; }
+[data-refine="grouped"] .settings-nav-label { padding: 14px 9px 5px; color: color-mix(in srgb, var(--color-ink) 50%, transparent); }
+[data-refine="grouped"] .settings-nav-item .refine-nav-icon { color: color-mix(in srgb, var(--pane-hue) 85%, var(--color-ink)); }
+:root [data-refine="grouped"] .settings-dialog .settings-pane { gap: 28px; }
+:root [data-refine="grouped"] .settings-dialog .settings-pane [data-settings-rows]:not([data-settings-rows] [data-settings-rows]) {
+  padding: 4px; border-radius: 14px; background-color: color-mix(in srgb, var(--color-ink) 2.75%, transparent);
+}
+:root [data-refine="grouped"] .settings-dialog .settings-pane [data-settings-rows] > :is(button, a, div, label):not(.contents, [hidden], [data-settings-rows]) { border-radius: 10px; }
+:root [data-refine="grouped"] .settings-dialog .settings-pane [data-settings-group-head] { margin-bottom: 8px; }
+
+/* 4 quiet: no filled highlight, an accent bar that glides beside the chosen pane, a larger name and a soft crossfade */
+[data-refine="quiet"] .settings-nav { width: 200px; padding: 22px 12px; }
+[data-refine="quiet"] .settings-nav-item { padding: 7px 10px 7px 14px; color: color-mix(in srgb, var(--color-ink) 68%, transparent); }
+[data-refine="quiet"] .settings-nav-item[aria-current="page"] { color: var(--color-ink); font-weight: 500; }
+[data-refine="quiet"] .refine-highlight { inset: 8px auto 8px 2px; width: 3px; border-radius: 3px; background: var(--color-accent); }
+[data-refine="quiet"] .settings-pane-header { padding: 32px 52px 6px 24px; }
+[data-refine="quiet"] [data-refine-head="pane"] .settings-pane-title { font-size: 20px; line-height: 26px; letter-spacing: -0.016em; font-weight: 550; }
+[data-refine="quiet"] .refine-blurb { margin-top: 3px; font-size: 13px; line-height: 18px; }
