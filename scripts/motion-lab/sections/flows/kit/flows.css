@@ -1,0 +1,5 @@
+/* the flows section's own keyframes; the lab's reduced toggle swaps the turn for a breathe in the components */
+.flows-turn { animation: flows-turn 0.75s linear infinite; transform-origin: center; }
+.flows-breathe { animation: flows-breathe 1.6s ease-in-out infinite; }
+@keyframes flows-turn { to { transform: rotate(360deg); } }
+@keyframes flows-breathe { 50% { opacity: .45; } }
