@@ -45,7 +45,9 @@ const lab = {
   configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
       const html = req.method === "GET" && (req.headers.accept ?? "").includes("text/html");
-      if (!html || /(?:^|;\s*)dusk_dash=/.test(req.headers.cookie ?? "")) return next();
+      if (!html) return next();
+      // cookies are per host, not per port: another local dashboard on 127.0.0.1 may have left a session this fixture never issued
+      if (req.headers.cookie && (await fetch(api + "/v1/me", { headers: { cookie: req.headers.cookie } })).ok) return next();
       try {
         res.writeHead(302, { "set-cookie": await signIn(), location: req.url });
         res.end();
