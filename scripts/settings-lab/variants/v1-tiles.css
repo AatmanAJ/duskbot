@@ -1,0 +1,15 @@
+/* 1. tiles */
+.v1 { position: absolute; inset: 0; display: flex; flex-direction: column; }
+
+/* 1. tiles */
+.v1 .kit-layer { background: var(--color-app); }
+.v1-column { max-width: 600px; margin: 0 auto; }
+.v1 .kit-header { max-width: 640px; width: 100%; margin: 0 auto; padding-inline: 20px 56px; }
+.v1-big { margin: 18px 4px -6px; font-size: 26px; font-weight: 650; letter-spacing: -0.02em; line-height: 32px; }
+.v1-me { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; border: 0; border-radius: var(--kit-radius); background: var(--kit-group); color: var(--color-ink); font: inherit; text-align: start; cursor: pointer; }
+.v1-me:hover { background: color-mix(in srgb, var(--color-ink) 5.5%, transparent); }
+.v1-me .kit-avatar { width: 48px; height: 48px; font-size: 20px; }
+.v1-me-name { font-size: 16px; font-weight: 550; line-height: 22px; }
+.v1-row { min-height: 50px; padding: 9px 14px; }
+.v1-hero { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0 0; text-align: center; }
+.v1-hero p { margin: 0 0 -8px; color: var(--color-ink-secondary); font-size: 13.5px; }

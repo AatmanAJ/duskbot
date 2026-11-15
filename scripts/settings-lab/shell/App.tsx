@@ -101,7 +101,7 @@ export function App() {
   return (
     <LabContext.Provider value={{ reduced, speed, dark }}>
       <MotionConfig reducedMotion={reduced ? "always" : "never"}>
-        <SettingsProvider>
+        <SettingsProvider onTheme={setDark}>
           <div className="lab-root" data-slow={slow ? "" : undefined}>
             <header className="lab-bar">
               <div className="lab-bar-row">

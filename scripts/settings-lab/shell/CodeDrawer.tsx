@@ -4,7 +4,7 @@ import { Icon } from "@/components/Icon";
 import { spring } from "@lab/tokens";
 import { useLab } from "./prefs";
 
-const SOURCES = import.meta.glob(["../variants/*.tsx", "../kit/*.{ts,tsx,css}", "../chat/**/*.{ts,tsx,css}"], { query: "?raw", import: "default" });
+const SOURCES = import.meta.glob(["../variants/*.{tsx,css}", "../kit/*.{ts,tsx,css}", "../chat/**/*.{ts,tsx,css}"], { query: "?raw", import: "default" });
 
 const pathOf = (key: string) => `scripts/settings-lab/${key.replace(/^\.\.\//, "")}`;
 
