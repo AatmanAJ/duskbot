@@ -107,7 +107,7 @@ export const dashChips: Item = {
   id: "ops-chips",
   title: "ops sort and filter chips",
   surface: "admin ops",
-  height: 320,
+  height: 344,
   loopMs: 4200,
   notes: {
     original: "OpsAccounts.tsx: sort pill layoutId on SPRING 0.26s/0.08; arrow turns on the same spring; 'most first' and the flag icon swap instantly; rows re-sort instantly.",
