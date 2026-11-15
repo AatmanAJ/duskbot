@@ -1,2 +1,20 @@
 /* 4. sidebar */
-.v4 { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.v4 { position: absolute; inset: 0; display: flex; }
+.v4-rail { display: flex; flex-direction: column; flex: none; width: 236px; padding: 18px 12px 14px; box-sizing: border-box; background: color-mix(in srgb, var(--color-ink) 2.5%, var(--color-app)); overflow-y: auto; scrollbar-width: none; }
+.v4-rail-title { margin: 4px 10px 14px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.v4-rail-list { position: relative; display: flex; flex: 1; flex-direction: column; gap: 12px; isolation: isolate; }
+.v4-rail-group { display: flex; flex-direction: column; gap: 1px; }
+.v4-rail-group[data-last] { margin-top: auto; }
+.v4-highlight { position: absolute; left: 0; right: 0; top: 0; z-index: -1; border-radius: 10px; transition: background-color 200ms ease; }
+.v4-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--color-ink); font: inherit; text-align: start; cursor: pointer; transition: background-color 120ms ease; }
+.v4-item:not([aria-current]):hover { background: color-mix(in srgb, var(--color-ink) 4%, transparent); }
+.v4-item-text { display: flex; flex-direction: column; min-width: 0; }
+.v4-item-title { font-size: 13px; line-height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v4-item-value { font-size: 11.5px; line-height: 15px; color: var(--color-ink-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v4-item[aria-current] .v4-item-title { font-weight: 550; }
+.v4-content { position: relative; display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.v4-pane { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.v4 .kit-header { padding-inline-start: 24px; min-height: 62px; padding-top: 20px; }
+.v4 .kit-title { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; }
+.v4-blurb { margin: -2px 0 0; padding: 0 28px; color: var(--color-ink-secondary); font-size: 13px; }
+.v4 .kit-page { padding-top: 18px; }

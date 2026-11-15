@@ -26,6 +26,15 @@ const isEditable = (el: EventTarget | null) =>
 
 const CHAT: Entry[] = chat.variants.map((variant, index) => ({ ...variant, n: index + 1, files: [variant.file] }));
 
+// a deep link (#settings/3, #chat/2) seeds the stored choice before the first render
+{
+  const [where, n] = location.hash.replace("#", "").split("/");
+  const list = where === "settings" ? VARIANTS : where === "chat" ? CHAT : null;
+  const hit = list?.find((entry) => entry.n === Number(n));
+  if (list) localStorage.setItem("settings-lab-tab", JSON.stringify(where));
+  if (hit) localStorage.setItem(where === "settings" ? "settings-lab-variant" : "settings-lab-chat-variant", JSON.stringify(hit.id));
+}
+
 export function App() {
   const [tab, setTab] = useStored<Tab>("settings-lab-tab", "settings");
   const [settingsId, setSettingsId] = useStored<string>("settings-lab-variant", VARIANTS[0]!.id);
@@ -48,20 +57,6 @@ export function App() {
   const chatVariant = chat.variants.find((entry) => entry.id === chatId) ?? chat.variants[0]!;
   const win = WINDOWS.find((entry) => entry.id === windowId) ?? WINDOWS[0];
 
-  // deep links: #settings/3, #chat/2
-  useEffect(() => {
-    const fromHash = () => {
-      const [where, n] = location.hash.replace("#", "").split("/");
-      if (where !== "settings" && where !== "chat") return;
-      setTab(where);
-      const list = where === "settings" ? VARIANTS : CHAT;
-      const hit = list.find((entry) => entry.n === Number(n));
-      if (hit) (where === "settings" ? setSettingsId : setChatId)(hit.id);
-    };
-    fromHash();
-    addEventListener("hashchange", fromHash);
-    return () => removeEventListener("hashchange", fromHash);
-  }, [setTab, setSettingsId, setChatId]);
   useEffect(() => { history.replaceState(null, "", `#${tab}/${current.n}`); }, [tab, current.n]);
 
   useEffect(() => {
