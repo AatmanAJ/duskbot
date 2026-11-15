@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { Icon } from "@/components/Icon";
-import { dialogMotion } from "@/lib/motion-presets";
+import { BENCHO, DURATION, EASE_OUT, REDUCED } from "@/lib/motion-presets";
 import { VARIANTS } from "../variants";
 import chat from "../chat";
 import { SettingsProvider } from "@kit/store";
@@ -90,13 +90,27 @@ export function App() {
 
   const dialogW = Math.min(900, win.w - 32);
   const dialogH = Math.min(700, win.h - 96);
-  const motionSet = dialogMotion(reduced);
+  // the app's one dialog motion (motion-presets dialogMotion) with a numeric scale, so flipping reduced motion while the
+  // sheet is open can't interpolate a transform string to "none"
+  const leave = { duration: DURATION.fast, ease: EASE_OUT };
+  const motionSet = {
+    sheet: {
+      initial: { opacity: 0, scale: reduced ? 1 : 0.96 },
+      animate: { opacity: 1, scale: 1, transition: reduced ? REDUCED : { duration: DURATION.base, ease: EASE_OUT } },
+      exit: { opacity: 0, scale: reduced ? 1 : 0.98, transition: reduced ? REDUCED : leave },
+    },
+    scrim: {
+      initial: { opacity: 0 },
+      animate: { opacity: 1, transition: reduced ? REDUCED : { duration: BENCHO.dur.fast, ease: EASE_OUT } },
+      exit: { opacity: 0, transition: reduced ? REDUCED : leave },
+    },
+  };
   const slow = speed <= SLOW;
 
   return (
     <LabContext.Provider value={{ reduced, speed, dark }}>
       <MotionConfig reducedMotion={reduced ? "always" : "never"}>
-        <SettingsProvider onTheme={setDark}>
+        <SettingsProvider onTheme={setDark} dark={dark}>
           <div className="lab-root" data-slow={slow ? "" : undefined}>
             <header className="lab-bar">
               <div className="lab-bar-row">

@@ -1,2 +1,23 @@
 /* 6. scroll */
 .v6 { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.v6-top { flex: none; padding: 20px 0 8px; }
+.v6-big { margin: 0 56px 12px 28px; font-size: 26px; font-weight: 650; letter-spacing: -0.02em; line-height: 32px; }
+.v6-index { position: relative; display: flex; gap: 2px; padding: 0 24px; overflow-x: auto; scrollbar-width: none; isolation: isolate; }
+.v6-index::-webkit-scrollbar { display: none; }
+.v6-pill { position: absolute; top: 0; bottom: 0; left: 0; z-index: -1; border-radius: 99px; background: color-mix(in srgb, var(--v6-hue) 14%, transparent); transition: background-color 200ms ease; }
+.v6-chip { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 9px; border: 0; border-radius: 99px; background: transparent; color: var(--color-ink-secondary); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; transition: color 150ms ease; }
+.v6-chip:hover { color: var(--color-ink); }
+.v6-chip[aria-current] { color: var(--color-ink); font-weight: 500; }
+.v6-chip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+
+.v6-block { position: relative; }
+.v6-block + .v6-block { margin-top: 6px; }
+.v6-head { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px; margin: 0; padding: 10px 28px; background: color-mix(in srgb, var(--v6-hue) 7%, var(--color-app)); font-size: 14px; font-weight: 600; line-height: 20px; letter-spacing: -0.005em; }
+.v6-head-blurb { margin-inline-start: 4px; font-size: 12.5px; font-weight: 425; color: var(--color-ink-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.v6 .kit-page { padding-top: 14px; padding-bottom: 28px; }
+.v6 .kit-row-icon { color: var(--v6-hue, var(--color-ink-secondary)); }
+.v6-end { padding: 28px 28px 120px; text-align: center; color: var(--color-ink-tertiary); font-size: 12.5px; }
+.v6-index { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 40px), transparent); }
+.v6-chip-icon { margin-inline: -4px -2px; }
+/* kit pages put a Segmented straight in a column, which stretches its track */
+.v6 .kit-page > [data-segmented] { align-self: flex-start; }

@@ -55,7 +55,7 @@
 .kit-cat-icon[data-look="bare"] { background: transparent; }
 
 .kit-pill { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 13px; border: 0; border-radius: 99px; background: color-mix(in srgb, var(--color-ink) 7%, transparent); color: var(--color-ink); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; flex: none; overflow: hidden; }
-.kit-pill:hover:enabled { background: color-mix(in srgb, var(--color-ink) 11%, transparent); }
+.kit-pill:not([data-tone="primary"], [data-tone="success"]):hover:enabled { background: color-mix(in srgb, var(--color-ink) 11%, transparent); }
 .kit-pill:disabled { cursor: default; opacity: 0.55; }
 .kit-pill[aria-busy] { opacity: 1; }
 .kit-pill[data-tone="primary"] { height: 36px; padding: 0 18px; background: var(--kit-primary); color: var(--kit-primary-ink); }
@@ -160,3 +160,4 @@
 @media (prefers-reduced-motion: reduce) {
   .kit-spinner, .kit-pulse { animation-duration: 2s; }
 }
+.kit-page > [data-segmented], .kit-stack-gap > [data-segmented] { align-self: flex-start; }

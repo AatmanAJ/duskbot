@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DEFAULTS, type Values } from "./model";
 
 export type ConnectState = "off" | "connecting" | "on";
@@ -16,8 +16,6 @@ type Store = {
   addTemplate: (id: string) => void;
   profile: { name: string; email: string; about: string };
   setProfile: (patch: Partial<Store["profile"]>) => void;
-  /** the lab's skin follows the Theme row's light and dark */
-  onTheme?: (dark: boolean) => void;
 };
 
 const Context = createContext<Store | null>(null);
@@ -25,13 +23,18 @@ const Context = createContext<Store | null>(null);
 /** how long a sign-in "takes" in the lab; a spinner always shows at least 800ms (motion brief) */
 const CONNECT_MS = 1400;
 
-export function SettingsProvider({ children, onTheme }: { children: ReactNode; onTheme?: (dark: boolean) => void }) {
+export function SettingsProvider({ children, onTheme, dark }: { children: ReactNode; onTheme?: (dark: boolean) => void; dark?: boolean }) {
   const [values, setValues] = useState<Values>(DEFAULTS);
   const [providers, setProviders] = useState<Record<string, ConnectState>>({ claude: "on" });
   const [apps, setApps] = useState<Record<string, ConnectState>>({ gmail: "on", github: "on", googlecalendar: "on" });
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [profile, setProfileState] = useState({ name: "Sidd", email: "sidd@dusk.bot", about: "Based in Bengaluru. Prefers short answers, window seats and dark mode." });
   const timers = useRef(new Map<string, number>());
+  // the lab's light and dark switch moves the Theme row too
+  useEffect(() => {
+    if (dark === undefined) return;
+    setValues((current) => (current.theme === "light" || current.theme === "dark" ? { ...current, theme: dark ? "dark" : "light" } : current));
+  }, [dark]);
   const theme = useRef(onTheme);
   theme.current = onTheme;
 

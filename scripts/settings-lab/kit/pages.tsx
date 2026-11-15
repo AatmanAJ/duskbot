@@ -13,7 +13,7 @@ import { ease, spring } from "@lab/tokens";
 import { useLab } from "../shell/prefs";
 import { APP_GROUPS, APPS, CATEGORIES, PROVIDERS, TEMPLATES, category, type App, type CustomId, type PageId, type Provider, type Template } from "./model";
 import { useSettings, type ConnectState } from "./store";
-import { useEnterStagger, useNav, type Route } from "./nav";
+import { useEnterStagger, useNav, useSettled, type Route } from "./nav";
 import { BusyButton, RowShell, SectionView } from "./rows";
 
 const LOGOS = import.meta.glob("../../../src/assets/app-logos/*.svg", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
@@ -119,6 +119,7 @@ export function ProviderGrid({ columns = 4 }: { columns?: number }) {
   const stagger = useEnterStagger();
   const picked = PROVIDERS.find((entry) => entry.id === open);
   const state = (id: string) => providers[id] ?? "off";
+  const settled = useSettled();
   return (
     <LayoutGroup id="providers">
       <div ref={anchor} className="kit-provider-grid" role="list" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
@@ -126,7 +127,7 @@ export function ProviderGrid({ columns = 4 }: { columns?: number }) {
           <motion.div key={provider.id} role="listitem" {...stagger(index)}>
             <motion.button
               type="button"
-              layoutId={`provider-${provider.id}`}
+              layoutId={settled ? `provider-${provider.id}` : undefined}
               transition={spring.layout}
               className="kit-provider dusk-press-soft"
               data-state={state(provider.id)}
@@ -134,7 +135,7 @@ export function ProviderGrid({ columns = 4 }: { columns?: number }) {
               style={{ borderRadius: 16 }}
               onClick={() => setOpen(provider.id)}
             >
-              <motion.span layoutId={`provider-mark-${provider.id}`} transition={spring.layout} className="kit-provider-mark"><ProviderLogo provider={provider} /></motion.span>
+              <motion.span layoutId={settled ? `provider-mark-${provider.id}` : undefined} transition={spring.layout} className="kit-provider-mark"><ProviderLogo provider={provider} /></motion.span>
               <span className="kit-provider-name">{provider.name}</span>
               <span className="kit-provider-state">
                 {state(provider.id) === "off" ? <span className="kit-quiet">{provider.how === "key" ? "API key" : provider.how === "local" ? "On this computer" : "Sign in"}</span> : <StateLabel state={state(provider.id)} />}
@@ -265,6 +266,7 @@ function AppsPage() {
   const [open, setOpen] = useState<string | null>(null);
   const { anchor, host } = useHost();
   const picked = APPS.find((entry) => entry.id === open);
+  const settled = useSettled();
   const shown = APPS.filter((app) => (group === "All" || app.group === group) && `${app.name} ${app.blurb}`.toLowerCase().includes(query.toLowerCase()));
   const state = (id: string) => apps[id] ?? "off";
   return (
@@ -282,12 +284,13 @@ function AppsPage() {
         </button>
         <SearchField value={query} onChange={setQuery} label="Search across apps and skills" />
         <Chips options={APP_GROUPS as unknown as string[]} value={group} onChange={setGroup} />
-        <motion.div layout="position" className="kit-group" transition={spring.layout}>
+        <motion.div layout={settled ? "position" : false} className="kit-group" transition={spring.layout}>
           <AnimatePresence initial={false} mode="popLayout">
             {shown.map((app) => (
               <motion.button
                 key={app.id}
-                layout="position"
+                layout={settled ? "position" : false}
+                layoutId={settled ? `app-row-${app.id}` : undefined}
                 type="button"
                 className="kit-row kit-row-button"
                 data-nav={`app:${app.id}`}
@@ -297,7 +300,7 @@ function AppsPage() {
                 exit={{ opacity: 0, transition: { duration: 0.08 } }}
                 transition={spring.layout}
               >
-                <motion.span layoutId={`app-logo-${app.id}`} transition={spring.layout}><AppLogo app={app} /></motion.span>
+                <motion.span layoutId={settled ? `app-logo-${app.id}` : undefined} transition={spring.layout}><AppLogo app={app} /></motion.span>
                 <span className="kit-row-text">
                   <span className="kit-row-title">{app.name}</span>
                   <span className="kit-row-hint">{app.blurb}</span>
@@ -310,7 +313,7 @@ function AppsPage() {
           {!shown.length && <Empty icon="search" title={`No apps match “${query}”`} hint="Try Gmail, Slack or GitHub. Over 1,700 apps connect through dusk bot." />}
         </motion.div>
       </div>
-      <MorphSheet layoutId={`app-logo-${open}`} open={Boolean(picked)} onClose={() => setOpen(null)} host={host} label={picked?.name ?? ""}>
+      <MorphSheet layoutId={`app-row-${open}`} open={Boolean(picked)} onClose={() => setOpen(null)} host={host} label={picked?.name ?? ""}>
         {picked && (
           <div className="kit-detail">
             <motion.span layoutId={`app-logo-${picked.id}`} transition={spring.layout} className="kit-detail-mark"><AppLogo app={picked} size={52} /></motion.span>
@@ -366,6 +369,7 @@ function TemplatesPage() {
   const { anchor, host } = useHost();
   const stagger = useEnterStagger();
   const picked = TEMPLATES.find((entry) => entry.id === open);
+  const settled = useSettled();
   return (
     <LayoutGroup id="templates">
       <div ref={anchor}>
@@ -375,14 +379,14 @@ function TemplatesPage() {
             <motion.div key={template.id} role="listitem" {...stagger(index)}>
               <motion.button
                 type="button"
-                layoutId={`template-${template.id}`}
+                layoutId={settled ? `template-${template.id}` : undefined}
                 transition={spring.layout}
                 className="kit-template dusk-press-soft"
                 data-nav={`template:${template.id}`}
                 style={{ borderRadius: 16 }}
                 onClick={() => setOpen(template.id)}
               >
-                <motion.span layoutId={`template-mascot-${template.id}`} transition={spring.layout}><Mascot color={template.color} body={template.body} size={40} /></motion.span>
+                <motion.span layoutId={settled ? `template-mascot-${template.id}` : undefined} transition={spring.layout}><Mascot color={template.color} body={template.body} size={40} /></motion.span>
                 <span className="kit-template-name">{template.name}</span>
                 <span className="kit-row-hint">{template.title}</span>
                 {added[template.id] && <span className="kit-state" data-on=""><Icon name="check" size={12} />Added</span>}

@@ -68,6 +68,10 @@ export function useNavState(home: Route): Nav {
 }
 
 const NavContext = createContext<Nav | null>(null);
+const SettledContext = createContext(true);
+/** false while the page is still sliding in: shared-element and layout animations wait for it, or they would measure
+ * a moving page and fly in from the wrong place */
+export const useSettled = () => useContext(SettledContext);
 export const NavProvider = NavContext.Provider;
 export function useNav(): Nav {
   const nav = useContext(NavContext);
@@ -150,21 +154,26 @@ export function Stack({ nav, look, render, className }: {
     prev.current = nav.stack;
   }
   const withOpener = useMemo(() => ({ ...nav, lastOpener: lastOpener.current }), [nav]);
+  const key = `${nav.depth}:${routeKey(nav.top)}`;
+  const [settled, setSettled] = useState(key);
   return (
     <div className={className ?? "kit-stack"}>
       <AnimatePresence initial={false} custom={nav.dir}>
         <motion.div
-          key={`${nav.depth}:${routeKey(nav.top)}`}
+          key={key}
           className="kit-layer"
           custom={nav.dir}
           variants={variants}
           initial="enter"
           animate="center"
           exit="exit"
+          onAnimationComplete={(definition) => definition === "center" && setSettled(key)}
         >
-          <NavProvider value={withOpener}>
-            {render(nav.top, nav.depth)}
-          </NavProvider>
+          <SettledContext.Provider value={settled === key || reduced || nav.keyed}>
+            <NavProvider value={withOpener}>
+              {render(nav.top, nav.depth)}
+            </NavProvider>
+          </SettledContext.Provider>
         </motion.div>
       </AnimatePresence>
     </div>
