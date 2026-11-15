@@ -21,7 +21,7 @@ const own = (slug: string) => [`variants/${slug}.tsx`, `variants/${slug}.css`, .
 export const VARIANTS: Variant[] = [
   { id: "tiles", n: 1, name: "Tiles", idea: "Grouped rows with solid colour tiles, like iOS. Pages push in over the last one, which drifts back.", files: own("v1-tiles"), Component: Tiles },
   { id: "search", n: 2, name: "Search", idea: "Search first. Type anything and the real switches and pickers show up right there.", files: own("v2-search"), Component: Search },
-  { id: "cards", n: 3, name: "Cards", idea: "A grid of coloured cards. A card zooms open into its section and closes back into itself.", files: own("v3-cards"), Component: Cards },
+  { id: "cards", n: 3, name: "Cards", idea: "The app's real settings as coloured cards. A card zooms open into the real pane, with working switches, pickers and sign-ins, and closes back into itself.", files: ["variants/v3-cards.tsx", "variants/v3-cards.css"], Component: Cards },
   { id: "sidebar", n: 4, name: "Sidebar", idea: "A short coloured sidebar with a stretchy highlight; pages push inside the right side only.", files: own("v4-sidebar"), Component: Sidebar },
   { id: "simple", n: 5, name: "Simple", idea: "Six big friendly choices. Everything else waits under one More.", files: own("v5-simple"), Component: Simple },
   { id: "scroll", n: 6, name: "Scroll", idea: "One long page with sticky coloured headers and an index that follows your scroll.", files: own("v6-scroll"), Component: Scroll },
