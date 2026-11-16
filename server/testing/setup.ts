@@ -27,10 +27,14 @@ Object.defineProperty(globalThis.navigator, "language", { value: "en", configura
 
 // Windows will not remove a directory holding an open SQLite database: close it before the reset.
 const { closeMessageDb } = await import("../message-db.ts");
-afterEach(closeMessageDb);
+const { closeRegistryDbs } = await import("../registry-rows.ts");
+const { flushDeferredSaves } = await import("../save-batch.ts");
+// A save a test left waiting lands in its own folder now, as at shutdown, not in the next test's.
+afterEach(() => { flushDeferredSaves(); closeMessageDb(); closeRegistryDbs(); });
 
 // Windows holds a live process's cwd, and a just-killed CLI lets go a beat after the kill returns.
 afterAll(async () => {
   closeMessageDb();
+  closeRegistryDbs();
   await removeTempDir(home);
 });

@@ -92,7 +92,7 @@ export function sourceFingerprint(dataDir: string, config: Omit<DetectorConfig, 
       parts.push(`${label}:-`);
     }
   };
-  for (const name of ["messages.db", "messages.db-wal", "runtime.db", "runtime.db-wal", "bots.json"]) add(join(dataDir, name), name);
+  for (const name of ["messages.db", "messages.db-wal", "runtime.db", "runtime.db-wal", "bots.json", "registry.db", "registry.db-wal"]) add(join(dataDir, name), name);
   let logs: string[] = [];
   try {
     logs = readdirSync(join(dataDir, "events")).filter((name) => name.endsWith(".ndjson")).sort();

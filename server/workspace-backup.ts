@@ -1,5 +1,6 @@
 // Encrypted filesystem snapshot: quiesce writers before create/commit; restore runs before config/store load.
 import { flushDeferredSaves } from "./save-batch.ts";
+import { REGISTRY_DB_FILES } from "./registry-rows.ts";
 import { SERVER_CHILD_DIR, SERVER_LEASE_NAME } from "../electron/legacy-names.mjs";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scrypt } from "node:crypto";
 import {
@@ -37,6 +38,8 @@ const EXCLUDED = new Set([
   "team-computers.json",
   SERVER_LEASE_NAME, "run-marker.json", "box-create-requests.lock", "messages.db-wal", "messages.db-shm",
   "runtime.db-wal", "runtime.db-shm",
+  // bots.json carries the registry into a backup; a restore that finds no matching rows reads it.
+  ...REGISTRY_DB_FILES,
   "decider-log",
   "cloud-owner.json",
   "sync",
