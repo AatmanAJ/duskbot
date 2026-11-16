@@ -18,6 +18,7 @@ import { DirectLinkRow } from "./DirectLinkRow";
 import { RouteTrafficRow } from "./RouteTrafficRow";
 import { MacControlRow } from "./MacControlRow";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 type Action = "pull" | "run" | "start" | "stop" | "remove" | "recreate";
 
@@ -282,7 +283,7 @@ export function LocalVmInventoryCard({
         ) : unavailableReason ? (
           <NoteRow tone="warn">{unavailableReason}</NoteRow>
         ) : instances.length === 0 ? (
-          <NoteRow>{t("vm.perBot.none")}</NoteRow>
+          <ArtState data-art-state="desktops" art="computer" title={t("empty.desktops.title")} className="py-6">{t("empty.desktops.hint")}</ArtState>
         ) : instances.map((instance) => {
           const state = localVmInventoryState(instance);
           const deleting = deletingBotId === instance.botId;

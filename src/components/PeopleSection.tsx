@@ -12,6 +12,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { CopyRow, FormDialog, FormField, ItemRow, NoteRow } from "./ListRows";
 import { textFieldCls } from "./ui/GrokDialog";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 export type Role = "admin" | "member";
 
@@ -75,7 +76,7 @@ export function PeopleTable({ people, busy, onRole, onRemove, onLink }: {
   onRemove: (person: Person) => void;
   onLink: (person: Person) => void;
 }) {
-  if (people.length === 0) return <NoteRow>{t("people.empty")}</NoteRow>;
+  if (people.length === 0) return <ArtState data-art-state="people" art="mailbox" title={t("empty.people.title")} className="py-6">{t("empty.people.hint")}</ArtState>;
   return (
     <>
       {people.map((person) => {

@@ -14,6 +14,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { textFieldCls } from "./ui/GrokDialog";
 import { PROFILE_PAGE } from "./settings-page-ids";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 /** Security: the server owns session routing and erasure; this UI never handles cookies or partitions. */
 export function BrowserProfilesManager({ bot, onProfileChanged, disabled = false, folded = false }: {
@@ -218,7 +219,7 @@ export function BrowserProfilesManager({ bot, onProfileChanged, disabled = false
         <RowsCard data-settings-block="browser-profiles"
           footnote={profiles.length >= 20 ? t("settings.profiles.limit")
             : !myChrome && profiles.length > 0 ? t("settings.profiles.myChromeUnavailable") : undefined}>
-          {!profiles.length && <NoteRow>{t("settings.profiles.sharedEmpty")}</NoteRow>}
+          {!profiles.length && <ArtState data-art-state="profiles" art="binoculars" title={t("empty.profiles.title")} className="py-6">{t("empty.profiles.hint")}</ArtState>}
           {profiles.map((profile) => {
             const users = usersOf(profile.id);
             return (

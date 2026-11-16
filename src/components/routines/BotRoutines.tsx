@@ -73,7 +73,7 @@ export function BotRoutines({ bot, defaultRunOn, label = true }: { bot: Bot; def
 
   if (automations.length === 0 && editing !== "new") {
     return (
-      <PanelEmpty data-panel-empty="routines">{t("botPanel.routines.empty")}</PanelEmpty>
+      <PanelEmpty data-panel-empty="routines" art="clock" title={t("empty.routines.title")}>{t("botPanel.routines.empty")}</PanelEmpty>
     );
   }
   return (
