@@ -360,13 +360,13 @@ describe("on the desktop app", () => {
     return bridge;
   };
 
-  it("dusk cloud's tile says the trial and the price before anything is asked for", async () => {
+  it("dusk cloud's tile says only the free days while there is a trial", async () => {
     desktop({ cloudAccount: cloudBridge({ status: "connected", clouds: [] }) });
     await show();
     await toPlace();
     const tile = document.body.querySelector("[data-funnel-place=cloud]")!;
     expect(tile.textContent).toContain("7 days free");
-    expect(tile.querySelector("[data-funnel-place-note]")?.textContent).toBe("Then from $15/month + tax where applicable.");
+    expect(tile.querySelector("[data-funnel-place-note]")).toBeNull();
   });
 
   it("dusk cloud goes straight to the browser with its intent and waits calmly; back and this Mac are one press away", async () => {

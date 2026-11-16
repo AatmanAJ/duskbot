@@ -3129,7 +3129,6 @@
   "funnel.place.hello": "A team of bots that does real work for you. You can move them any time.",
   "funnel.place.cloudTrialTag": "{days} days free",
   "funnel.place.cloudPriceTag": "From {price}/month",
-  "funnel.place.cloudThen": "Then from {price}/month + tax where applicable.",
   "funnel.checkout.title": "Continue in your browser",
   "funnel.checkout.subSignIn": "Create your account, pick a plan and check out on the page that opened. This screen moves on by itself.",
   "funnel.checkout.sub": "Pick a plan and check out on the page that opened. This screen moves on by itself.",
