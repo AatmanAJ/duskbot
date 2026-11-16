@@ -12,6 +12,10 @@ export const DEMO_MARK = "data-dusk-demo";
 const GLOBAL = "__duskDemo";
 const STASH = "__dusk_demo_queue";
 const MAX_QUEUE = 800;
+/** One read answers at most this many events, so the answer stays under the browser's 64 KB evaluation result. */
+const DRAIN_MAX = 60;
+/** A document that started to leave and is still here this much later is staying: a download, or a cancelled navigation. */
+const LEAVING_MS = 10_000;
 export const DEMO_TEXT_MAX = 200;
 export const DEMO_VALUE_MAX = 2_000;
 
@@ -24,6 +28,7 @@ const SOURCE = String.raw`(() => {
   let formCount = 0;
   let lastUrl = location.href;
   let lastScroll = 0;
+  let leavingAt = 0;
 
   const clean = (text, max) => String(text == null ? "" : text).replace(/\s+/g, " ").trim().slice(0, max || TEXT_MAX);
   const textOf = (el) => clean(el.innerText != null ? el.innerText : el.textContent);
@@ -196,8 +201,8 @@ const SOURCE = String.raw`(() => {
     if (type) target.inputType = type;
     if (role === "radio") { const group = groupOf(el); if (group) target.within = group; }
     else if (interactive && (name || label)) {
-      const twins = Array.from(document.querySelectorAll(INTERACTIVE)).filter((other) => other !== el && visible(other) && sameWords(other, el));
-      if (twins.length) { const section = sectionOf(el); if (section && section !== name) target.within = section; }
+      const alike = Array.from(document.querySelectorAll(INTERACTIVE)).filter((other) => visible(other) && sameWords(other, el));
+      if (alike.length > 1) { const section = sectionOf(el); if (section && section !== name) target.within = section; }
     }
     const form = formOf(el);
     if (form) target.form = form;
@@ -234,7 +239,8 @@ const SOURCE = String.raw`(() => {
     const kind = typeOf(el);
     if (tag === "select") {
       if (type !== "change") return;
-      const chosen = Array.from(el.selectedOptions || []).map((option) => clean(option.label || option.textContent));
+      const picked = el.multiple ? Array.from(el.options || []).filter((option) => option.selected) : [el.options && el.options[el.selectedIndex]];
+      const chosen = picked.filter(Boolean).map((option) => clean(option.label || option.textContent));
       push("change", el, { option: chosen.join(", "), value: clean0(el.value) });
       return;
     }
@@ -291,6 +297,8 @@ const SOURCE = String.raw`(() => {
   addEventListener("pagehide", () => {
     try { if (queue.length) sessionStorage.setItem(STASH, JSON.stringify(queue)); } catch (error) {}
   });
+  // Between a click and the next page there is a moment when this document still answers: it says it is on its way out.
+  addEventListener("beforeunload", () => { leavingAt = Date.now(); });
   push("open", null);
 
   // Finding an element again by its words.
@@ -416,14 +424,15 @@ const SOURCE = String.raw`(() => {
   const state = () => JSON.stringify({
     url: location.href,
     title: clean(document.title),
-    ready: document.readyState !== "loading",
+    ready: document.readyState !== "loading" && Date.now() - leavingAt > LEAVING_MS,
     passwordField: Array.from(document.querySelectorAll('input[type="password"]')).some((el) => visible(el) && !el.disabled && !el.readOnly),
   });
 
   const drain = () => {
     if (location.href !== lastUrl) push("open", null);
     lastUrl = location.href;
-    return JSON.stringify({ installed: true, url: location.href, title: clean(document.title), events: queue.splice(0) });
+    const events = queue.splice(0, DRAIN_MAX);
+    return JSON.stringify({ installed: true, url: location.href, title: clean(document.title), events, more: queue.length > 0 });
   };
 
   Object.defineProperty(window, GLOBAL, { value: { drain, find, act, unmark, state }, enumerable: false, configurable: true });
@@ -437,6 +446,8 @@ export const DEMO_PAGE_SCRIPT = SOURCE
   .replaceAll("GLOBAL", JSON.stringify(GLOBAL))
   .replaceAll("STASH", JSON.stringify(STASH))
   .replaceAll("MAX_QUEUE", String(MAX_QUEUE))
+  .replaceAll("DRAIN_MAX", String(DRAIN_MAX))
+  .replaceAll("LEAVING_MS", String(LEAVING_MS))
   .replaceAll("TEXT_MAX", String(DEMO_TEXT_MAX))
   .replaceAll("VALUE_MAX", String(DEMO_VALUE_MAX))
   .replaceAll("MARK", JSON.stringify(DEMO_MARK));

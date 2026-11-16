@@ -39,6 +39,8 @@ export interface DemoDrain {
   url: string;
   title: string;
   events: RawDemoEvent[];
+  /** The page holds more than one read answers: read again. */
+  more?: boolean;
 }
 
 export const DEMO_WORDS_MAX = 200;

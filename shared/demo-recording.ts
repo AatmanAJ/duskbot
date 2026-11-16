@@ -96,6 +96,8 @@ export interface DemoDraft {
 export const DEMO_BLANK_NAME = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/u;
 export const DEMO_BLANK_NAME_MAX = 40;
 export const DEMO_TITLE_MAX = 80;
+/** The longest value a step may hold. */
+export const DEMO_VALUE_MAX_WIRE = 2_000;
 /** A saved recording's steps must fit one 32 KB reference file of a skill. */
 export const DEMO_MAX_STEPS = 100;
 

@@ -4,6 +4,8 @@ import type { DemoPagePort } from "./ports.ts";
 
 export const DEMO_POLL_MS = 300;
 const MAX_EVENTS = 20_000;
+/** A page's whole queue, at the most it keeps, in reads of the size the script answers. */
+const MAX_READS = 20;
 
 export interface DemoCaptureOptions {
   /** How often the page is read while recording. */
@@ -16,14 +18,14 @@ export interface DemoCaptureOptions {
 }
 
 /** What a read of the page answered, whether the browser handed back the JSON text or the value it parses to. */
-function drained(answer: unknown): { installed: boolean; events: unknown[] } | null {
+function drained(answer: unknown): { installed: boolean; events: unknown[]; more: boolean } | null {
   let value = answer;
   for (let depth = 0; depth < 2 && typeof value === "string"; depth++) {
     try { value = JSON.parse(value); } catch { return null; }
   }
   if (!value || typeof value !== "object") return null;
-  const drain = value as { installed?: unknown; events?: unknown };
-  return { installed: drain.installed === true, events: Array.isArray(drain.events) ? drain.events : [] };
+  const drain = value as { installed?: unknown; events?: unknown; more?: unknown };
+  return { installed: drain.installed === true, events: Array.isArray(drain.events) ? drain.events : [], more: drain.more === true };
 }
 
 /** Records what a person does on the page in front, by reading the recorder script's queue. */
@@ -63,20 +65,24 @@ export class DemoCapture {
   }
 
   async #read(): Promise<RawDemoEvent[]> {
-    let answer: ReturnType<typeof drained>;
+    const read: unknown[] = [];
     try {
-      answer = drained(await this.#port.evaluate(demoDrainExpression()));
+      let answer = drained(await this.#port.evaluate(demoDrainExpression()));
       if (answer && !answer.installed) {
         await this.#port.evaluate(DEMO_PAGE_SCRIPT);
         answer = drained(await this.#port.evaluate(demoDrainExpression()));
+      }
+      read.push(...(answer?.events ?? []));
+      for (let again = 0; answer?.more && again < MAX_READS; again++) {
+        answer = drained(await this.#port.evaluate(demoDrainExpression()));
+        read.push(...(answer?.events ?? []));
       }
       this.#failed = false;
     } catch (error) {
       if (!this.#failed) this.#options.log?.(`show it once: the page could not be read (${error instanceof Error ? error.name : "error"})`);
       this.#failed = true;
-      return [];
     }
-    const fresh = (answer?.events ?? []).map((event) => sanitiseDemoEvent(event, this.#options.scrub)).filter((event): event is RawDemoEvent => event !== null);
+    const fresh = read.map((event) => sanitiseDemoEvent(event, this.#options.scrub)).filter((event): event is RawDemoEvent => event !== null);
     if (!fresh.length) return [];
     this.#events.push(...fresh.slice(0, Math.max(0, MAX_EVENTS - this.#events.length)));
     try { this.#options.onEvents?.(fresh); } catch {}
