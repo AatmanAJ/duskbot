@@ -314,11 +314,13 @@ export function ComputerTab({ bot, derived, cloudFor }: {
   const detail = report?.detail ?? null;
   // with a dusk cloud already, this computer's bot shows this computer's screen and the way to the cloud's own, never the offer
   const cloudOwned = local && hasDuskCloud(stage);
+  const cloudOffer = local && !cloudOwned && cloudBots.length > 0 && <CloudCtaCard bot={cloudBots[0]!} group={cloudBots} stage={stage} cloudDesktop={cloudDesktop} />;
+  const ownScreen = !local || cloudOwned || current === "vm";
 
   return (
     <div data-panel-tabpanel="computer">
-      {local && !cloudOwned ? !storeApp() && <>
-        <LocalBrowserSection bot={bot} after={cloudBots.length > 0 && <CloudCtaCard bot={cloudBots[0]!} group={cloudBots} stage={stage} cloudDesktop={cloudDesktop} />} />
+      {!ownScreen ? !storeApp() && <>
+        <LocalBrowserSection bot={bot} after={cloudOffer} />
       </> : <>
         <div ref={setScreenBox}>
           <Suspense fallback={<AsleepScreen bot={bot} off={current === "off"} />}>
@@ -331,6 +333,7 @@ export function ComputerTab({ bot, derived, cloudFor }: {
         {detail && <Card><NoteRow data-sheet-row="problem-detail">{detail}</NoteRow></Card>}
         {cloudOwned && <CloudSwitchLine cloudDesktop={cloudDesktop} />}
         {toCloud && <CloudDesktopCta bots={cloudBots} stage={stage} label={cloudLabel} />}
+        {cloudOffer}
       </>}
       {cloudDesktop && stage === "manage" && <Card><CloudDesktopListRow cloudDesktop={cloudDesktop} /></Card>}
       {warning}

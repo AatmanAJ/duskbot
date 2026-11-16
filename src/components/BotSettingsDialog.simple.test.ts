@@ -769,6 +769,17 @@ describe("the Computer tab", () => {
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "openCloudAdd", source: "app_bot_panel" });
   });
 
+  it("on this computer still shows a Private desktop bot's own screen, with the dusk cloud offer under it", () => {
+    fixture.otherServer = null;
+    const rendered = computer(makeBot({ computer: "vm" }));
+    expect(rendered.nodes.find((node) => node.props.inline === true)?.props.bot).toMatchObject({ id: "scout" });
+    expect(rendered.html).toContain('data-asleep-mascot=""');
+    expect(rendered.html).toContain(">Scout&#x27;s screen<");
+    const screen = rendered.html.indexOf('data-asleep-mascot=""'), card = rendered.html.indexOf('data-panel-card="dusk-cloud"');
+    expect(card).toBeGreaterThan(screen);
+    expect(has(rendered, "data-local-browser-first")).toBe(false);
+  });
+
   it("in a group chat is one card for all of its bots, in the group's words", () => {
     fixture.otherServer = null;
     const group = [cloudBot(), { ...cloudBot(), id: "nova", name: "Nova" }];
