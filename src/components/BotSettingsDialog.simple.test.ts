@@ -131,7 +131,6 @@ const { AdvancedTab } = await import("./bot-panel/AdvancedTab");
 const { SettingsPage } = await import("./bot-panel/SettingsPage");
 const { LibraryPage, LibrarySection } = await import("./bot-panel/LibraryTab");
 const { CloudCtaCard, CloudSwitchLine, ComputerTab, WherePage, cloudCtaStep, hasDuskCloud } = await import("./bot-panel/ComputerTab");
-const { LocalBrowserOpen } = await import("./bot-panel/LocalBrowser");
 const { PageBody, AppsPage, RoutinesPage, MemoryPage, SkillsPage, FolderPage, BrowserPage } = await import("./bot-panel/pages");
 const { BrowserLogins } = await import("./bot-panel/browser-logins");
 const { PAGES, sectionTarget } = await import("./bot-panel/page-registry");
@@ -804,17 +803,14 @@ describe("the Computer tab with a dusk cloud already", () => {
     for (const stage of [null, "buy", "resume", "elsewhere"] as const) expect(hasDuskCloud(stage), String(stage)).toBe(false);
   });
 
-  it("on this computer leads with the bot's own browser, then this computer's screen and the way to the cloud", () => {
+  it("shows only the screen and the way to the cloud, never a browser above it", () => {
     fixture.otherServer = null;
     fixture.cloudDesktop = { view: { step: "move" }, keep: null, openHome: () => Promise.resolve(), dialog: null };
     try {
       const rendered = computer(makeBot());
-      const browser = rendered.nodes.findIndex((node) => node.type === LocalBrowserOpen);
-      const screen = rendered.nodes.findIndex((node) => node.props.inline === true);
-      expect(browser).toBeGreaterThan(-1);
-      expect(screen).toBeGreaterThan(browser);
+      expect(rendered.html).not.toContain("data-local-browser-first");
+      expect(rendered.nodes.findIndex((node) => node.props.inline === true)).toBeGreaterThan(-1);
       expect(rendered.html).toContain('data-panel-cloud-switch=""');
-      expect(rendered.html).not.toContain('data-panel-card="dusk-cloud"');
     } finally {
       fixture.cloudDesktop = undefined;
     }

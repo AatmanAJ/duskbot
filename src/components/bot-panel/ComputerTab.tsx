@@ -25,7 +25,7 @@ import { mdPrimaryCls } from "../ui/GrokDialog";
 import { CloudDesktopListRow, useCloudDesktop, type CloudDesktopRow } from "./CloudDesktop";
 import { AsleepMascot, COMPUTER_FRAME_CLASS, COMPUTER_SCREEN_ASPECT, COMPUTER_WAKE_BUTTON_CLASS, ComputerWaking } from "./ComputerScreenMascot";
 import { queueComputerWake } from "./computer-wake-queue";
-import { LocalBrowserOpen, LocalBrowserSection } from "./LocalBrowser";
+import { LocalBrowserSection } from "./LocalBrowser";
 import "./computer-tab.css";
 
 const ComputerPanel = lazy(() => import("../ComputerPanel").then((module) => ({ default: module.ComputerPanel })));
@@ -320,7 +320,6 @@ export function ComputerTab({ bot, derived, cloudFor }: {
       {local && !cloudOwned ? !storeApp() && <>
         <LocalBrowserSection bot={bot} after={cloudBots.length > 0 && <CloudCtaCard bot={cloudBots[0]!} group={cloudBots} stage={stage} cloudDesktop={cloudDesktop} />} />
       </> : <>
-        {cloudOwned && !storeApp() && <LocalBrowserOpen bot={bot} />}
         <div ref={setScreenBox}>
           <Suspense fallback={<AsleepScreen bot={bot} off={current === "off"} />}>
             <ComputerPanel bot={bot} inline visible={onScreen} onReport={setReport} />
