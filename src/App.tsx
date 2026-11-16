@@ -1,8 +1,9 @@
 import { useProductScreen } from "@/lib/product-analytics-app";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, Menu } from "./icons";
 import { AnimatePresence } from "motion/react";
-import { CLOUD_LINK_SETTINGS, openBot, StoreProvider, useStore } from "@/state/store";
+import { CLOUD_LINK_SETTINGS, openBot, StoreProvider, useDispatch, useStore, useStoreSelector, type AppState, type Bot, type Group } from "@/state/store";
+import { botById, groupById } from "@/state/store-index";
 import { SignInSheetHost } from "./components/SignInSheet";
 import { openSignIn } from "@/lib/sign-in-sheet";
 
@@ -90,7 +91,9 @@ import { SESSION_ENDED_REASON, useSessionEnded } from "@/lib/session-ended";
 import { PairPage } from "./pair/PairPage";
 import { FeedbackHost } from "./components/FeedbackDialog";
 
-function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
+/** What follows the whole state (unread badge, loaders, links, shortcuts) and draws nothing, so the shell around the chat
+ * does not render again on every change. */
+function ShellEffects() {
   const { state, dispatch } = useStore();
   useCloudLastSeen(state);
   useHeldSend(state, dispatch);
@@ -98,16 +101,124 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const needsYou = needsYouVersion(state.bots, state.groups, state.notifications);
   useTeamPeopleLoader(state.config, needsYou);
   useInboxLoader(`${inboxVersion(state.bots) ?? ""}|${needsYou}`);
-  const inboxReady = useInboxReady();
-  const inboxShown = useInboxPanel().open && inboxReady;
   // A Switch AI pick lands once its stopped turn's chat is idle, wherever the person is by then.
   useAiSwitchKeeper({ bots: state.bots, dispatch });
   useWarmChatImages(state.bots);
-  const { capabilities } = useDesktopCapabilities();
-  const captionChrome = useCaptionChrome();
   const unreadCount =
     state.bots.filter((bot) => !bot.hidden).reduce((sum, bot) => sum + botUnreadCount(bot), 0) +
     state.groups.filter((group) => group.unread).length;
+  useEffect(() => { // every way into the old Plugins screen opens Connect Apps
+    if (!state.pluginsOpen) return;
+    openConnectApps(connectAppsPageFor(state.pluginsSurface));
+    dispatch({ type: "togglePlugins", open: false });
+  }, [state.pluginsOpen, state.pluginsSurface, dispatch]);
+  useExternalChatLinks(state, dispatch); useDesktopNotificationOpens(state, dispatch);
+  usePresence(state, dispatch);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || state.shortcutsOpen) return;
+      if (shouldOpenKeyboardShortcuts(e)) {
+        e.preventDefault();
+        dispatch({ type: "toggleShortcuts", open: true });
+        return;
+      }
+
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const bots = shortcutBots(state.bots.filter((b) => !b.hidden), shownBotIds(document.querySelector("[data-sidebar-root]")));
+      const step = e.shiftKey ? botCycleStep(e) : null;
+      if (e.key === "n" && !e.shiftKey) {
+        e.preventDefault();
+        openCreateBot();
+      } else if (/^[1-9]$/.test(e.key)) {
+        const target = bots[Number(e.key) - 1];
+        if (target) {
+          e.preventDefault();
+          openBot(dispatch, target);
+        }
+      } else if (step !== null) {
+        const next = nextShortcutBot(bots, state.selectedId, step);
+        if (next) {
+          e.preventDefault();
+          openBot(dispatch, next);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.bots, state.selectedId, state.shortcutsOpen, dispatch]);
+  useEffect(() => {
+    if (window.duskDesktop?.setUnreadCount) window.duskDesktop.setUnreadCount(unreadCount);
+    else showBrowserUnread(unreadCount);
+  }, [unreadCount]);
+  return null;
+}
+
+const selectConnected = (state: AppState) => state.connected;
+const selectHydrated = (state: AppState) => state.hydrated === true;
+const selectInstances = (state: AppState) => state.instances;
+const selectActiveView = (state: AppState) => state.activeView;
+const selectSettingsOpen = (state: AppState) => state.settingsOpen;
+const selectAppSettingsOpen = (state: AppState) => state.appSettingsOpen;
+const selectPluginsOpen = (state: AppState) => state.pluginsOpen;
+const selectShortcutsOpen = (state: AppState) => state.shortcutsOpen;
+const selectCloudAdd = (state: AppState) => Boolean(state.cloudAdd);
+const selectNotice = (state: AppState) => state.notice;
+const selectSelectedId = (state: AppState) => state.selectedId;
+const selectLanguage = (state: AppState) => state.config?.language;
+const selectOnboarding = (state: AppState) => state.config?.onboarding;
+const selectCloudHome = (state: AppState) => state.config?.cloudHome === true;
+const selectGroupId = (state: AppState) => groupById(state, state.selectedId)?.id;
+const selectGroupThread = (state: AppState) => groupById(state, state.selectedId)?.threadId;
+/** The bot the chat shows: the selected one, or the first when nothing (or a room) is selected and no room matches. */
+const shownBot = (state: AppState): Bot | undefined => groupById(state, state.selectedId) ? undefined : (botById(state, state.selectedId) ?? state.bots[0]);
+const selectBotId = (state: AppState) => shownBot(state)?.id;
+const selectBotThread = (state: AppState) => shownBot(state)?.threadId;
+
+function ShownBot({ botId, children }: { botId: string; children: (bot: Bot) => ReactNode }) {
+  const bot = useStoreSelector((state) => botById(state, botId));
+  return bot ? children(bot) : null;
+}
+
+function ShownGroup({ groupId, children }: { groupId: string; children: (group: Group) => ReactNode }) {
+  const group = useStoreSelector((state) => groupById(state, groupId));
+  return group ? children(group) : null;
+}
+
+function ComputerPanelActivity({ botId, active, settingsOpen }: { botId: string | undefined; active: boolean; settingsOpen: boolean }) {
+  const dispatch = useDispatch();
+  const bot = useStoreSelector((state) => botById(state, botId));
+  const vps = useStoreSelector((state) => `${state.config?.vps?.sshAlias}:${state.config?.vps?.mode}:${state.config?.vps?.independentScreens}`);
+  useComputerPanelActivity({ bot, active, settingsOpen, targetKey: `${bot?.vpsAlias}:${bot?.section}:${vps}`, dispatch });
+  return null;
+}
+
+const MemoSidebar = memo(Sidebar);
+
+function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
+  const dispatch = useDispatch();
+  const connected = useStoreSelector(selectConnected);
+  const hydrated = useStoreSelector(selectHydrated);
+  const instances = useStoreSelector(selectInstances);
+  const activeView = useStoreSelector(selectActiveView);
+  const settingsOpen = useStoreSelector(selectSettingsOpen);
+  const appSettingsOpen = useStoreSelector(selectAppSettingsOpen);
+  const pluginsOpen = useStoreSelector(selectPluginsOpen);
+  const shortcutsOpen = useStoreSelector(selectShortcutsOpen);
+  const cloudAddRequested = useStoreSelector(selectCloudAdd);
+  const notice = useStoreSelector(selectNotice);
+  const selectedId = useStoreSelector(selectSelectedId);
+  const configLanguage = useStoreSelector(selectLanguage);
+  const onboarding = useStoreSelector(selectOnboarding);
+  const cloudHome = useStoreSelector(selectCloudHome);
+  const groupId = useStoreSelector(selectGroupId);
+  const groupThreadId = useStoreSelector(selectGroupThread);
+  const botId = useStoreSelector(selectBotId);
+  const botThreadId = useStoreSelector(selectBotThread);
+  const inboxReady = useInboxReady();
+  const inboxShown = useInboxPanel().open && inboxReady;
+  const { capabilities } = useDesktopCapabilities();
+  const captionChrome = useCaptionChrome();
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
   // the bot's panel docks beside the sidebar only while the chat keeps its minimum width beside it
   const botPanelDocks = useMediaQuery(`(min-width: ${PANEL_DOCKS_AT}px)`, true);
@@ -145,110 +256,64 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
     window.history.replaceState(null, "", request.rest);
     dispatch("section" in request ? { type: "toggleAppSettings", open: true, section: request.section } : { type: "togglePlugins", open: true, surface: request.surface });
   }, [dispatch]);
-  useEffect(() => { // every way into the old Plugins screen opens Connect Apps
-    if (!state.pluginsOpen) return;
-    openConnectApps(connectAppsPageFor(state.pluginsSurface));
-    dispatch({ type: "togglePlugins", open: false });
-  }, [state.pluginsOpen, state.pluginsSurface, dispatch]);
-  useExternalChatLinks(state, dispatch); useDesktopNotificationOpens(state, dispatch); useSlackOAuthLinks();
+  useSlackOAuthLinks();
   useNotesReminder();
   useNotesFromDownloads();
-  usePresence(state, dispatch);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language));
+  usePageLanguage(effectiveLanguage(useLanguageChoice(), configLanguage));
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Stays mounted once opened: a Cloud bought in it can arrive after the sheet is closed.
   const cloudAddOpened = useRef(false);
-  cloudAddOpened.current ||= Boolean(state.cloudAdd);
+  cloudAddOpened.current ||= cloudAddRequested;
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const loading = loadingLine({ connected: state.connected, hydrated: state.hydrated === true, developer: import.meta.env.DEV });
-  const group = state.groups.find((g) => g.id === state.selectedId);
-  const bot = group ? undefined : (state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0]);
+  const loading = loadingLine({ connected, hydrated, developer: import.meta.env.DEV });
   const macFrom = useMacEmpty();
   const [macPrompt, dismissMacPrompt] = useMacEmptyPrompt(macFrom);
-  useProductScreen(state.appSettingsOpen ? "/settings" : state.pluginsOpen ? "/apps" : group ? "/rooms/:id" : bot ? (state.activeView === "files" ? "/bots/:id/files" : "/bots/:id") : "/", group?.id ?? bot?.id);
-  useComputerPanelActivity({ bot, active: state.activeView === "chat", settingsOpen: state.settingsOpen, targetKey: `${bot?.vpsAlias}:${bot?.section}:${state.config?.vps?.sshAlias}:${state.config?.vps?.mode}:${state.config?.vps?.independentScreens}`, dispatch });
-  const roomPanelOpen = useRoomPanelShown({ group, state, simple: !remoteClient });
+  useProductScreen(appSettingsOpen ? "/settings" : pluginsOpen ? "/apps" : groupId ? "/rooms/:id" : botId ? (activeView === "files" ? "/bots/:id/files" : "/bots/:id") : "/", groupId ?? botId);
+  const roomPanelOpen = useRoomPanelShown({ group: groupId ? { id: groupId } : undefined, state: { selectedId, activeView, settingsOpen }, simple: !remoteClient });
   // The sidebar only folds when the person folds it: a side panel opening beside it never collapses it, as in Grok Bot.
   const phoneLayout = useMediaQuery(PHONE_LAYOUT, false);
   useEdgeSwipeOpen(phoneLayout && !drawerOpen, () => setDrawerOpen(true));
   usePhoneViewport(phoneLayout);
 
   const noEngines =
-    state.connected &&
-    state.instances.length > 0 &&
-    !state.instances.some((i) => i.snapshot.state === "available");
-  const cloudSignIn = cloudSignInDue(viewer, state, engineReady);
+    connected &&
+    instances.length > 0 &&
+    !instances.some((i) => i.snapshot.state === "available");
+  const cloudSignIn = cloudSignInDue(viewer, { connected, instances }, engineReady);
   const cloudIntent = useCloudIntent();
   const cloudAsk = cloudIntentShown(cloudIntentDue({
-    viewer, connected: state.connected, enginesKnown: state.instances.length > 0,
-    onboarding: state.config?.onboarding, reopened: false,
+    viewer, connected, enginesKnown: instances.length > 0,
+    onboarding, reopened: false,
   }), cloudIntent);
   const cloudJobWaiting = Boolean(viewer?.cloudHome && viewer.canSave && cloudIntent.pending);
   const welcome = useCloudWelcome();
-  const welcomeOnScreen = cloudWelcomeVisible({ viewer, connected: state.connected, enginesKnown: state.instances.length > 0, onboarding: state.config?.onboarding }, welcome)
-    && state.activeView === "chat";
+  const welcomeOnScreen = cloudWelcomeVisible({ viewer, connected, enginesKnown: instances.length > 0, onboarding }, welcome)
+    && activeView === "chat";
   const firstRun = cloudFirstRun({ welcome: welcomeOnScreen, intent: cloudAsk, signIn: cloudSignIn || cloudJobWaiting });
   useAmbientAway("cloud-first-run", Boolean(firstRun));
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing || state.shortcutsOpen) return;
-      if (shouldOpenKeyboardShortcuts(e)) {
-        e.preventDefault();
-        dispatch({ type: "toggleShortcuts", open: true });
-        return;
-      }
-
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      const bots = shortcutBots(state.bots.filter((b) => !b.hidden), shownBotIds(document.querySelector("[data-sidebar-root]")));
-      const step = e.shiftKey ? botCycleStep(e) : null;
-      if (e.key === "n" && !e.shiftKey) {
-        e.preventDefault();
-        openCreateBot();
-      } else if (/^[1-9]$/.test(e.key)) {
-        const target = bots[Number(e.key) - 1];
-        if (target) {
-          e.preventDefault();
-          openBot(dispatch, target);
-        }
-      } else if (step !== null) {
-        const next = nextShortcutBot(bots, state.selectedId, step);
-        if (next) {
-          e.preventDefault();
-          openBot(dispatch, next);
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [state.bots, state.selectedId, state.shortcutsOpen, dispatch]);
 
   useReadShownChatOnFocus();
   // Grok Bot widens its window for the panel rather than squeezing the chat; a browser tab can't, so there it overlays.
-  const settingsOpened = useRef(state.settingsOpen);
+  const settingsOpened = useRef(settingsOpen);
   useEffect(() => {
-    const opened = state.settingsOpen && !settingsOpened.current;
-    settingsOpened.current = state.settingsOpen;
+    const opened = settingsOpen && !settingsOpened.current;
+    settingsOpened.current = settingsOpen;
     const grow = PANEL_DOCKS_AT - window.innerWidth;
     if (opened && grow > 0) void window.duskDesktop?.windowControls?.resizeWidthBy?.(grow).catch(() => {});
-  }, [state.settingsOpen]);
-  useEffect(() => {
-    if (window.duskDesktop?.setUnreadCount) window.duskDesktop.setUnreadCount(unreadCount);
-    else showBrowserUnread(unreadCount);
-  }, [unreadCount]);
+  }, [settingsOpen]);
 
   useEffect(() => {
-    if (!state.connected) return;
+    if (!connected) return;
     void preloadConnectedApps(false, true).catch(() => {}); // a background read: a reconnect is nobody using a Cloud home
-  }, [state.connected]);
+  }, [connected]);
 
   useEffect(() => preloadScreens(), []);
 
   useEffect(() => {
     setDrawerOpen(false);
-  }, [state.selectedId, bot?.threadId, group?.threadId, state.activeView, state.pluginsOpen, state.settingsOpen]);
+  }, [selectedId, botThreadId, groupThreadId, activeView, pluginsOpen, settingsOpen]);
 
   useEffect(() => {
     return window.duskDesktop?.onOpenAppSettings?.(section => {
@@ -295,20 +360,26 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
 
   const settingsOverlay = !botPanelDocks;
   // a reload with the panel open keeps its column from the first frame, not only once the bots arrive
-  const panelLoading = state.settingsOpen && !bot && !group && state.hydrated !== true && !remoteClient && !settingsOverlay;
+  const panelLoading = settingsOpen && !botId && !groupId && !hydrated && !remoteClient && !settingsOverlay;
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    menuButtonRef.current?.focus();
+  }, []);
   const framed = windowFramed(capabilities);
   const strips = <>
     <CloudAsleepStrip />
-    <LiveConnectionStrip connected={state.connected} hydrated={state.hydrated === true} />
-    <CloudSendStrip cloudHome={state.config?.cloudHome === true} />
+    <LiveConnectionStrip connected={connected} hydrated={hydrated} />
+    <CloudSendStrip cloudHome={cloudHome} />
     <HomeLine />
-    <CloudMoveOffer cloudHome={state.config?.cloudHome === true} />
+    <CloudMoveOffer cloudHome={cloudHome} />
     <AppNotices quiet={paletteOpen || drawerOpen} viewer={viewer} />
     <RoutineCloudUpsell quiet={paletteOpen || drawerOpen || Boolean(firstRun)} />
     <EgressFallbackNotice />
   </>;
   return (
     <div className={cn("flex h-full flex-col", framed && "bg-frame")}>
+      <ShellEffects />
+      <ComputerPanelActivity botId={botId} active={activeView === "chat"} settingsOpen={settingsOpen} />
       <WindowFrameBar />
       <BotLimitPopup />
       {!framed && strips}
@@ -331,13 +402,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
         className={framed ? "relative flex min-w-0 flex-1 flex-col overflow-hidden bg-app" : "contents"}>
       {framed && strips}
       <div className={framed ? "relative flex min-h-0 flex-1" : "contents"}>
-      <Sidebar
-        open={drawerOpen}
-        onClose={() => {
-          setDrawerOpen(false);
-          menuButtonRef.current?.focus();
-        }}
-      />
+      <MemoSidebar open={drawerOpen} onClose={closeDrawer} />
       {firstRun === "welcome" ? (
         <CloudWelcome />
       ) : firstRun === "intent" ? (
@@ -346,28 +411,29 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
         <CloudEngineSignIn />
       ) : noEngines ? (
         <NoEngines />
-      ) : group ? (
-        <GroupView key={group.id} group={group} />
-      ) : bot ? (
-        <ChatView bot={bot} />
+      ) : groupId ? (
+        <ShownGroup key={groupId} groupId={groupId}>{(group) => <GroupView group={group} />}</ShownGroup>
+      ) : botId ? (
+        <ShownBot botId={botId}>{(bot) => <ChatView bot={bot} />}</ShownBot>
       ) : (
-        <AppEmptyMain loading={loading} notice={state.notice} />
+        <AppEmptyMain loading={loading} notice={notice} />
       )}
       {macPrompt && macFrom && !firstRun && !noEngines && <MacEmptyMain from={macFrom} onClose={dismissMacPrompt} />}
       {/* Sibling panels need distinct keys: two keyed `bot.id` collide in React's keyed reconciliation. */}
-      {state.settingsOpen && bot && remoteClient && <RemoteAgentSettingsPanel bot={bot} />}
-      {state.settingsOpen && bot && !remoteClient && settingsOverlay && <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} overlay />}
+      {settingsOpen && botId && remoteClient && <ShownBot botId={botId}>{(bot) => <RemoteAgentSettingsPanel bot={bot} />}</ShownBot>}
+      {settingsOpen && botId && !remoteClient && settingsOverlay && <ShownBot key={`settings:${botId}`} botId={botId}>{(bot) => <BotSettingsDialog bot={bot} overlay />}</ShownBot>}
       {/* bot and room panels share one slot, so moving between a bot and a room swaps the content without the column closing */}
-      <PanelSlot open={Boolean(state.settingsOpen && bot && !remoteClient && !settingsOverlay) || Boolean(roomPanelOpen && group) || panelLoading}>
-        {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} />
+      <PanelSlot open={Boolean(settingsOpen && botId && !remoteClient && !settingsOverlay) || Boolean(roomPanelOpen && groupId) || panelLoading}>
+        {botId ? <ShownBot key={`settings:${botId}`} botId={botId}>{(bot) => <BotSettingsDialog bot={bot} />}</ShownBot>
+          : groupId ? <ShownGroup key={`room:${groupId}`} groupId={groupId}>{(group) => <RoomPanel group={group} />}</ShownGroup>
           : panelLoading ? <PanelPlaceholder onClose={() => dispatch({ type: "toggleSettings", open: false })} /> : null}
       </PanelSlot>
       {inboxShown && <InboxPanel />}
       </div>
       </div>
-      <AnimatePresence>{state.appSettingsOpen && <SettingsModal key="settings" />}</AnimatePresence>
+      <AnimatePresence>{appSettingsOpen && <SettingsModal key="settings" />}</AnimatePresence>
       {cloudAddOpened.current && <CloudAddDialog />}
-      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} text={t(loading.text)} />
+      <BootCover busy={loading.busy && !botId && !groupId && !firstRun && !noEngines} text={t(loading.text)} />
       <CloudHowTo />
       <CloudSetup viewer={viewer} welcomeShown={welcomeOnScreen} />
       <WelcomeKeeper viewer={viewer} />
@@ -377,9 +443,9 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       <SignInSheetHost />
       <FeedbackHost />
       <CloudMoveHost />
-      {state.shortcutsOpen && (
+      {shortcutsOpen && (
         <KeyboardShortcutsModal
-          open={state.shortcutsOpen}
+          open={shortcutsOpen}
           onClose={() => dispatch({ type: "toggleShortcuts", open: false })}
         />
       )}

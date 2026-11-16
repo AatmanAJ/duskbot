@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { peerLine } from "@/lib/peer-message";
 import { UNREAD_DIVIDER_FADE_MS, UNREAD_DIVIDER_LINGER_MS } from "@/lib/unread-divider";
-import { useStore, type Message } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState, type Message } from "@/state/store";
+
+const selectUnreadDivider = (state: AppState) => state.unreadDivider;
 
 export function useUnreadDivider({ threadId, messages, following }: {
   threadId: string;
   messages: readonly Message[];
   following: boolean;
 }): { messageId: string | null; fading: boolean } {
-  const { state, dispatch } = useStore();
-  const divider = state.unreadDivider;
+  const dispatch = useDispatch();
+  const divider = useStoreSelector(selectUnreadDivider);
   const messageId = divider && divider.threadId === threadId ? divider.messageId : null;
   const newestOwnId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {

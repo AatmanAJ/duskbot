@@ -1,5 +1,7 @@
 import { ChevronRight, MessagesSquare } from "../icons";
-import { openThread, useStore, type Message } from "@/state/store";
+import { openThread, useDispatch, useStoreSelector, type Message } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
+import { botById } from "@/state/store-index";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { BotAvatar } from "./Avatar";
@@ -7,11 +9,12 @@ import { HandoffReply } from "./HandoffReply";
 import { HandoffRow } from "./HandoffRow";
 
 export function ThreadChip({ message }: { message: Message }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
   const ref = message.threadRef;
+  const bot = useStoreSelector((state) => botById(state, ref?.botId));
   const tool = message.tool;
   if (!ref || !tool) return null;
-  const bot = state.bots.find((candidate) => candidate.id === ref.botId);
   const direct = message.sentDirectly;
   if (message.handoff && tool.ok !== false && !direct) {
     return <HandoffRow message={message} />;
@@ -23,7 +26,7 @@ export function ThreadChip({ message }: { message: Message }) {
       <button
         type="button"
         data-thread-chip={ref.threadId}
-        onClick={() => openThread(dispatch, ref, state)}
+        onClick={() => openThread(dispatch, ref, store.state())}
         title={t("chat.openThread", { title: ref.title })}
         className={cn("ui-pill", tool.ok === false && "text-danger")}
       >

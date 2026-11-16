@@ -72,8 +72,11 @@ function groupThreads(groups: readonly Group[]): Map<string, Group> {
   return byThread;
 }
 
+const NONE: readonly never[] = [];
+
 export function storeIndex(state: { bots: readonly Bot[]; groups: readonly Group[] }): StoreIndex {
-  const { bots, groups } = state;
+  // a test's partial state can leave either list out
+  const bots = state.bots ?? NONE, groups = state.groups ?? NONE;
   if (lastIndex && bots === lastBots && groups === lastGroups) return lastIndex;
   const previous = lastIndex;
   let botsById = previous?.botsById as Map<string, Bot> | undefined;
