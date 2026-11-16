@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { GROK_HOVER_TINT } from "./SidebarSimpleTop";
 import { Check } from "lucide-react";
 
 import { openExternalLink } from "@/lib/app-links";
@@ -94,7 +95,8 @@ export function useSidebarSpot(bridge: AppUpdateBridge | undefined = ownBridge()
 
 const FOCUS = "outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 const PRESS = "transition-[background-color,transform] duration-150 ease-[ease] active:scale-[0.98] motion-reduce:active:scale-100";
-const TONAL = "bg-[light-dark(var(--color-composer),var(--color-raised))] hover:bg-[light-dark(color-mix(in_srgb,var(--color-composer),var(--color-ink)_1.5%),var(--color-raised-hover))]";
+// the same pill as Connect apps below it: a hairline, the composer fill, and a tint laid over it on hover
+const TONAL = `border border-ink/[0.08] bg-composer ${GROK_HOVER_TINT}`;
 const BLUE = "bg-accent text-accent-ink hover:bg-[color-mix(in_srgb,var(--color-accent)_90%,black)] disabled:cursor-progress";
 
 function spotWords(spot: Exclude<SpotState, { kind: "feedback" }>): { title: string; end: ReactNode; hint?: string } {
