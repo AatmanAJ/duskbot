@@ -42,6 +42,11 @@ export interface PhoneParts {
 
 type Way = "qr" | "code";
 
+/** a live code is swapped for a new one this long before it ends, so the screen never shows a dead code */
+export const RENEW_BEFORE_MS = 60_000;
+/** silent swaps after the one the person asked for: about an hour with the step open, then it ends and says so */
+export const AUTO_RENEWALS = 5;
+
 export function MobilePairingCard({ remote, cloudHome = false, email, children }: {
   remote: boolean;
   /** a dusk cloud refuses phone codes (server/index.ts createMobileLink refusal): the iPhone app reaches it by signing in */
@@ -65,6 +70,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const generation = useRef(0);
+  const renewals = useRef(0);
   const baseline = useRef<string[] | null>(null);
   const linkId = useId();
   const stepId = useId();
@@ -130,6 +136,30 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     return () => { cancelled = true; clearTimeout(timer); clearInterval(clock); };
   }, [loadDevices, offer]);
 
+  // while its step is open, a code is replaced before it ends; the old one keeps working until its own end
+  useEffect(() => {
+    if (!offer || !view || pairedName !== null || renewals.current >= AUTO_RENEWALS) return;
+    const epoch = generation.current;
+    const timer = setTimeout(() => {
+      renewals.current += 1;
+      void mint().then((body) => {
+        if (generation.current === epoch && viewRef.current) { setOffer(body); setNow(Date.now()); }
+      }).catch(() => {});
+    }, Math.max(0, offer.expiresAt - RENEW_BEFORE_MS - Date.now()));
+    return () => clearTimeout(timer);
+  }, [offer, view, pairedName]);
+
+  async function mint(): Promise<MobilePairingResponse> {
+    const request: MobilePairingRequest = {};
+    const companion = remote ? null : companionBridge();
+    if (companion) {
+      try {
+        request.companion = (await companion.start()).endpoints;
+      } catch {}
+    }
+    return api<MobilePairingResponse>("/api/mobile/pairing", { method: "POST", body: JSON.stringify(request) });
+  }
+
   /** Opens a way's own step; a live offer is reused, since it carries both the qr's link and the typed code. */
   async function create(way: Way, fresh = false) {
     if (busy || !devices) return;
@@ -144,17 +174,10 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     setPairedName(null);
     setOffer(null);
     baseline.current = null;
+    renewals.current = 0;
     try {
       if (!(await requireUserPresence()) || generation.current !== epoch) return;
-      const request: MobilePairingRequest = {};
-      const companion = remote ? null : companionBridge();
-      if (companion) {
-        try {
-          request.companion = (await companion.start()).endpoints;
-        } catch {}
-      }
-      if (generation.current !== epoch) return;
-      const body = await api<MobilePairingResponse>("/api/mobile/pairing", { method: "POST", body: JSON.stringify(request) });
+      const body = await mint();
       if (generation.current !== epoch) return;
       baseline.current = devices.map((device) => device.id);
       setOffer(body);
@@ -243,10 +266,25 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     );
   };
 
+  // the app first, then this computer's ways in: only one qr is ever on screen, the store's here and the pairing one in its step
+  const storeStep = (
+    <div data-phone-store-step="" className="flex items-center gap-4 rounded-[16px] border-[0.5px] border-transparent bg-composer p-4">
+      <div role="img" aria-label={t("mobile.cloud.storeQr")} className="flex size-[112px] shrink-0 items-center justify-center rounded-[12px] bg-white p-2">
+        <QRCodeSVG value={storeUrl("ios")} size={96} level="M" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
+      </div>
+      <div className="flex min-w-0 flex-col gap-1">
+        <h3 className="m-0 text-[14px] font-medium leading-5 text-ink">{t("mobile.cloud.getApp")}</h3>
+        <p className="m-0 text-[13px] leading-[18px] text-ink-secondary">{t("settings.mobile.storeStep")}</p>
+      </div>
+    </div>
+  );
+
   const overview = (
     <div className="flex flex-col gap-5">
       {hero}
-      <div className="@container">
+      {storeStep}
+      <div className="@container flex flex-col gap-2">
+        <h3 className="m-0 px-1 text-[13px] font-medium leading-[18px] text-ink-secondary">{t("settings.mobile.thenLink")}</h3>
         <div data-pairing-ways="" className="grid gap-3 @min-[480px]:grid-cols-2">{tile("qr")}{tile("code")}</div>
       </div>
       {error && <p role="alert" className="m-0 px-3 text-[13px] leading-[18px] text-danger">{error}</p>}
@@ -283,7 +321,10 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
                 : <span className="size-[208px] animate-pulse rounded-[8px] bg-[#1b1b1f]/[0.06] motion-reduce:animate-none" />}
             </div>
           ) : offer && offer.code === null ? (
-            <p className="m-0 max-w-[320px] text-[13px] leading-[18px] text-ink-secondary">{t("settings.mobile.scanOnly")}</p>
+            <div data-pairing-scan-only="" className="flex flex-col items-center gap-3">
+              <p className="m-0 max-w-[320px] text-[14px] leading-5 text-ink-secondary">{t("settings.mobile.scanOnly")}</p>
+              <button type="button" onClick={() => { haptic("selection"); setView("qr"); }} className={cn("ui-button mobile-press min-h-11 rounded-full", GROK_FOCUS)}>{t("settings.mobile.scanInstead")}</button>
+            </div>
           ) : (
             <div className="flex min-h-12 items-center justify-center">
               {offer ? <code aria-label={t("settings.mobile.code")} className="select-all whitespace-nowrap font-mono text-[30px] leading-10 tracking-[0.12em] text-ink">{groupedCode}</code>
@@ -296,7 +337,9 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
           {offer && (
             <p role="status" className="m-0 flex items-center gap-2 text-[13px] leading-[18px] text-ink-tertiary">
               <span aria-hidden="true" className="phone-link-wait inline-block size-1.5 rounded-full bg-ink-secondary" />
-              {t("mobile.desktop.waiting")} · {t("settings.mobile.expires", { minutes: minutesLeft(offer.expiresAt, now) })}
+              {t("mobile.desktop.waiting")} · {renewals.current < AUTO_RENEWALS
+                ? t("settings.mobile.renews", { minutes: minutesLeft(offer.expiresAt - RENEW_BEFORE_MS, now) })
+                : t("settings.mobile.expires", { minutes: minutesLeft(offer.expiresAt, now) })}
             </p>
           )}
           <div className="flex flex-wrap items-center justify-center gap-1">

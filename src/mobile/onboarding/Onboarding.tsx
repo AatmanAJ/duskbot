@@ -36,10 +36,16 @@ export function firstStep({ incoming, signedIn, adding, startAt = "welcome" }: {
   return "welcome";
 }
 
-function Failed({ failure }: { failure: Failure }) {
+function Failed({ failure, onSignIn }: { failure: Failure; onSignIn?: () => void }) {
   const key = failure.code === "unreachable" && failure.companion ? "network" : failure.code;
+  // a cloud never takes a code, and a code nobody knows is often a cloud's or a browser's: logging in is the way there
+  const signIn = onSignIn && (failure.code === "sign-in" || failure.code === "unknown");
   return (
-    <ErrorLine>
+    <ErrorLine action={signIn ? (
+      <button type="button" data-failure-sign-in="" onClick={onSignIn} className="mobile-press -ms-2 mt-1 flex min-h-11 items-center rounded-full px-2 text-[15px] font-semibold text-ink underline underline-offset-2">
+        {t("mobile.onboarding.err.signInAction")}
+      </button>
+    ) : null}>
       <span className="block font-semibold">{t(`mobile.onboarding.err.${key}.title` as Parameters<typeof t>[0])}</span>
       <span className="block text-ink-secondary">{t(`mobile.onboarding.err.${key}.body` as Parameters<typeof t>[0], { name: failure.name })}</span>
     </ErrorLine>
@@ -136,8 +142,8 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
           <StepPane id="welcome">
             <Screen top={close} art={<MascotTrio scale={1.4} />} actions={<>
               <button type="button" data-entry="scan" className={PRIMARY} onClick={() => void openScanner()}><QrCode size={20} />{t("mobile.entry.scan")}</button>
-              <button type="button" data-entry="code" className={TONAL} onClick={() => go("code")}><Keyboard size={20} />{t("mobile.entry.code")}</button>
-              <button type="button" data-entry="signin" className={`${QUIET} gap-2`} onClick={() => go(signedIn ? "clouds" : "signin")}><UserRound size={18} />{t("mobile.entry.signInCloud")}</button>
+              <button type="button" data-entry="signin" className={TONAL} onClick={() => go(signedIn ? "clouds" : "signin")}><UserRound size={20} />{t("mobile.entry.signInCloud")}</button>
+              <button type="button" data-entry="code" className={`${QUIET} gap-2`} onClick={() => go("code")}><Keyboard size={18} />{t("mobile.entry.code")}</button>
             </>}>
               {reason === "revoked" && <ErrorLine>{t("mobile.pair.revoked")}</ErrorLine>}
               <h1 className={`${HEADLINE} ${reason === "revoked" ? "mt-5" : ""}`}>{t(startAtLink ? "mobile.entry.addTitle" : "mobile.entry.title")}</h1>
@@ -178,7 +184,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
             </>}>
               <h1 className={HEADLINE}>{t("mobile.pair.confirm", { name: installationName(confirm) })}</h1>
               <p className={LINE}>{t("mobile.onboarding.confirmBody")}</p>
-              {failure && <Failed failure={failure} />}
+              {failure && <Failed failure={failure} onSignIn={() => go(signedIn ? "clouds" : "signin")} />}
             </Screen>
           </StepPane>
         )}
@@ -221,7 +227,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
                       {platform.readClipboard && <button type="button" onClick={() => void paste()} aria-label={t("mobile.onboarding.pasteFromClipboard")} className="mobile-press flex size-[52px] shrink-0 items-center justify-center rounded-[16px] bg-ink/[0.06] text-ink"><ClipboardPaste size={20} /></button>}
                     </div>
                   )}
-                  {failure && <Failed failure={failure} />}
+                  {failure && <Failed failure={failure} onSignIn={() => go(signedIn ? "clouds" : "signin")} />}
                 </div>
               </div>
               <div className="flex shrink-0 flex-col items-center gap-1 px-6 pb-[calc(var(--m-safe-bottom)+16px)] pt-4">

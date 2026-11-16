@@ -82,16 +82,36 @@ it("picks the first screen from what the phone already has", () => {
   expect(firstStep({ incoming: true, signedIn: false, adding: true, startAt: "signin" })).toBe("confirm");
 });
 
-it("leads with pairing your own computer; logging in is the quiet way, for a dusk cloud", async () => {
+it("leads with scanning your own computer, logging in to a dusk cloud next to it, and typing a code as the quiet way", async () => {
   await mount(onboarding());
-  const [scan, code, signIn] = entries();
+  const [scan, signIn, code] = entries();
   expect(scan?.dataset.entry).toBe("scan");
-  expect(code?.dataset.entry).toBe("code");
   expect(signIn?.dataset.entry).toBe("signin");
+  expect(code?.dataset.entry).toBe("code");
   expect(scan?.className).toContain("bg-ink ");
-  expect(signIn?.className).not.toContain("bg-ink");
-  expect(entries().map((button) => button.textContent)).toEqual(["Scan a QR code", "Enter a code", "Have a dusk cloud? Log in"]);
+  expect(signIn?.className, "a real choice, never outranking the scan").toContain("bg-ink/[0.05]");
+  expect(code?.className).not.toContain("bg-ink");
+  expect(entries().map((button) => button.textContent)).toEqual(["Scan a QR code", "Log in to dusk cloud", "Enter a code"]);
   expect(host.textContent).not.toContain("demo");
+});
+
+it("a typed code the relay never had says so, not expired, and offers logging in", async () => {
+  // a browser's /pair code from a cloud's settings was typed here and read as "That code expired"
+  fetcher.mockImplementation(async (input) => String(input).includes("/v1/lookups/") ? response({ error: "not found", code: "not_found" }, 404) : response({ v: 1, providers: [], signupOpen: true }));
+  await mount(onboarding());
+  await press("[data-entry=code]");
+  const field = host.querySelector<HTMLInputElement>("input")!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "ABCD-EFGH-2345");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => { host.querySelector<HTMLFormElement>("form")!.requestSubmit(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const alert = host.querySelector("[role=alert]")?.textContent ?? "";
+  expect(alert).toContain("We couldn't find that code");
+  expect(alert).not.toMatch(/expired/i);
+  await press("[data-failure-sign-in]");
+  expect(host.querySelector("[data-step]")?.getAttribute("data-step")).toBe("signin");
 });
 
 it("a signed-in phone pairs with its only cloud by itself, never saying it is asleep", async () => {

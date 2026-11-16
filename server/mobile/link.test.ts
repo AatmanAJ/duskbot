@@ -82,7 +82,7 @@ describe("mobile link", () => {
     expect(sessions.authenticate(phone.token)?.label).toBe("Sid's iPhone");
     // a lost answer is fetched again with the same attempt, never a second device
     expect((await redeem(mobile, { secret: payload.grant.secret, attemptId: "attempt-0001", device: { name: "x", platform: "ios" } })).body.token).toBe(phone.token);
-    expect((await redeem(mobile, { secret: payload.grant.secret, attemptId: "attempt-0002", device: { name: "x", platform: "ios" } })).status).toBe(401);
+    expect((await redeem(mobile, { secret: payload.grant.secret, attemptId: "attempt-0002", device: { name: "x", platform: "ios" } })).status).toBe(410);
 
     const listed = await call(mobile, owner, "GET", "/api/mobile/devices");
     expect(listed.body.devices).toHaveLength(1);
@@ -99,6 +99,16 @@ describe("mobile link", () => {
     const auth: RequestAuth = { kind: "session", session: sessions.authenticate(client.token)!, via: "bearer", scopes: ["client"] };
     expect((await call(mobile, auth, "POST", "/api/mobile/pairing")).status).toBe(403);
     expect((await call(link({ refusal: () => "no" }), owner, "POST", "/api/mobile/pairing")).status).toBe(403);
+  });
+
+  it("tells a phone a used or expired grant expired, and a cloud's phone to sign in, so the app never says refused", async () => {
+    const mobile = link();
+    const answer = (await call(mobile, owner, "POST", "/api/mobile/pairing")).body as MobilePairingResponse;
+    const wrong = await redeem(mobile, { secret: `${answer.payload.grant.secret.slice(0, -1)}x`, attemptId: "attempt-0101", device: { name: "p", platform: "ios" } });
+    expect(wrong).toMatchObject({ status: 410, body: { code: "expired" } });
+    const cloud = link({ refusal: () => "Phones sign in to this workspace through its own sign-in." });
+    expect(await call(cloud, owner, "POST", "/api/mobile/pairing")).toMatchObject({ status: 403, body: { code: "sign_in_instead" } });
+    expect(await redeem(cloud, { secret: answer.payload.grant.secret, attemptId: "attempt-0102", device: { name: "p", platform: "ios" } })).toMatchObject({ status: 403, body: { code: "sign_in_instead" } });
   });
 
   it("refuses a grant nothing could reach", async () => {
@@ -248,6 +258,9 @@ describe("mobile link", () => {
 
   it("reads the typed-code relay from the environment", () => {
     expect(mobileLookupRelay({})).toBeNull();
+    // the desktop app types codes through the public relay unless told not to
+    expect(mobileLookupRelay({}, true)).toBe("https://link.dusk.bot");
+    expect(mobileLookupRelay({ DUSK_MOBILE_RELAY: "none" }, true)).toBeNull();
     expect(mobileLookupRelay({ DUSK_MOBILE_RELAY: "default" })).toBe("https://link.dusk.bot");
     expect(mobileLookupRelay({ DUSK_MOBILE_RELAY: "http://127.0.0.1:9" })).toBe("http://127.0.0.1:9");
   });

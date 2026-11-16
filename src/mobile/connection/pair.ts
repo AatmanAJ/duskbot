@@ -7,7 +7,11 @@ import { open as openRelay } from "../transport/relay";
 
 export type TypedPairing = MobilePairingPayload;
 export type TypedCode = { kind: "code"; code: string };
-type PairErrorCode = "expired" | "used" | "unreachable" | "mismatch" | "refused" | "relay-unavailable" | "invalid" | "unsupported";
+type PairErrorCode = "expired" | "unknown" | "used" | "sign-in" | "limited" | "unreachable" | "mismatch" | "refused" | "relay-unavailable" | "invalid" | "unsupported";
+
+// the desktop's clock stamps a grant's end; a phone a little ahead of it still tries, and the desktop decides
+const CLOCK_SKEW_MS = 2 * 60_000;
+const lapsed = (expiresAt: number | undefined) => Boolean(expiresAt && expiresAt + CLOCK_SKEW_MS <= Date.now());
 
 export class PairError extends Error {
   readonly code: PairErrorCode;
@@ -71,8 +75,11 @@ async function answerOf(response: Response): Promise<PairAnswer> {
 }
 
 function responseError(status: number, answer: PairAnswer): PairError {
-  if (status === 410 || status === 400 && /expired/i.test(`${answer.code ?? ""} ${answer.error ?? ""}`)) return new PairError("expired");
+  const said = `${answer.code ?? ""} ${answer.error ?? ""}`;
+  if (status === 410 || (status === 400 || status === 401) && /expired/i.test(said)) return new PairError("expired");
+  if (status === 403 && /sign_in_instead/.test(said)) return new PairError("sign-in");
   if (status === 409) return new PairError("used");
+  if (status === 429) return new PairError("limited");
   if (status === 401 || status === 403) return new PairError("refused");
   return new PairError(status >= 500 ? "unreachable" : "invalid");
 }
@@ -85,7 +92,7 @@ async function redeemLegacyPairing(payload: MobilePairingPayload, platform: Mobi
     if (!(["https:", ...(payload.transport === "companion" ? ["http:"] : [])].includes(origin.protocol)) || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) throw new PairError("invalid");
   } catch { throw new PairError("invalid"); }
   if (payload.credential ? !/^(?:dusk|omb)_pair_[A-Za-z0-9_-]{43}$/.test(payload.credential) : !(payload.transport === "companion" ? /^\d{6}$/ : /^[A-Za-z0-9]{12}$/).test(payload.code ?? "")) throw new PairError("invalid");
-  if (payload.expiresAt && payload.expiresAt <= Date.now()) throw new PairError("expired");
+  if (lapsed(payload.expiresAt)) throw new PairError("expired");
   try {
     const pairRequestId = await attemptId(payload, platform, origin.origin);
     const response = await fetch(`${origin.origin}/api/pair`, {
@@ -137,7 +144,8 @@ async function resolveTypedCodeResult(code: string, relayBase = DEFAULT_MOBILE_R
     const id = hex(await hkdf(utf8(normalized), MOBILE_LOOKUP_SALT, "lookup", 16));
     const key = await hkdf(utf8(normalized), MOBILE_LOOKUP_SALT, "seal", 32);
     const response = await fetch(`${relayBase.replace(/\/$/, "")}/v1/lookups/${id}`, { credentials: "omit", redirect: "error", signal: AbortSignal.timeout(15_000) });
-    if (response.status === 404) throw new PairError("expired");
+    // the relay forgets a lookup when its code ends, and never had one for a code made elsewhere (a browser's /pair code)
+    if (response.status === 404) throw new PairError("unknown");
     if (!response.ok) throw responseError(response.status, await answerOf(response));
     let payload;
     try {
@@ -145,7 +153,7 @@ async function resolveTypedCodeResult(code: string, relayBase = DEFAULT_MOBILE_R
       payload = parseMobilePayload(JSON.parse(new TextDecoder().decode(await unseal(key, id, answer.sealed))));
     } catch { throw new PairError("invalid"); }
     if (!payload) throw new PairError("invalid");
-    if (payload.grant.expiresAt <= Date.now()) throw new PairError("expired");
+    if (lapsed(payload.grant.expiresAt)) throw new PairError("expired");
     return pairingFromPayload(payload);
   } catch (error) { throw pairError(error); }
 }
@@ -171,7 +179,7 @@ async function relaySecrets(platform: MobilePlatform, id: string): Promise<Relay
 async function redeemPairingResult(payload: MobilePairingPayload, platform: MobilePlatform): Promise<{ record: MobileConnectionRecord; token: string }> {
   if (!payload.via) return redeemLegacyPairing(payload, platform);
   if (!payload.grantId || !payload.credential || !payload.via.length) throw new PairError("invalid");
-  if (payload.expiresAt && payload.expiresAt <= Date.now()) throw new PairError("expired");
+  if (lapsed(payload.expiresAt)) throw new PairError("expired");
   try {
     const id = await attemptId(payload, platform, payload.origin ?? "");
     const grantRelay = payload.via.find((route) => route.kind === "relay");

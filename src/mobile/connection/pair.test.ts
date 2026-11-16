@@ -42,6 +42,8 @@ describe("pairing exchange", () => {
   it.each([
     [400, {}, "invalid"], [400, { error: "pairing expired" }, "expired"], [410, {}, "expired"],
     [409, {}, "used"], [401, {}, "refused"], [403, {}, "refused"], [503, {}, "unreachable"],
+    [401, { error: "pairing code is wrong or has expired; create a new one on the server" }, "expired"],
+    [403, { error: "Phones sign in to this workspace through its own sign-in.", code: "sign_in_instead" }, "sign-in"], [429, {}, "limited"],
   ])("maps HTTP %s to %s", async (status, body, code) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(body, status)));
     await expect(redeemPairing(payload, fakePlatform().platform)).rejects.toMatchObject({ name: "PairError", code, message: `mobile.pair.${code}` });
@@ -104,10 +106,17 @@ describe("pairing exchange", () => {
     vi.stubGlobal("fetch", fetcher);
     const { platform } = fakePlatform();
     await expect(redeemPairing({ ...payload, transport: "relay" }, platform)).rejects.toEqual(new PairError("relay-unavailable"));
-    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 1 }, platform)).rejects.toMatchObject({ code: "expired" });
+    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 3 * 60_000 }, platform)).rejects.toMatchObject({ code: "expired" });
     await expect(redeemPairing({ ...payload, origin: "https://workspace.test/path" }, platform)).rejects.toMatchObject({ code: "invalid" });
     await expect(redeemPairing({ ...payload, credential: "placeholder" }, platform)).rejects.toMatchObject({ code: "invalid" });
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("leaves a grant that only just ended by the phone's clock for the desktop to judge", async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({}, 410));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 30_000 }, fakePlatform().platform)).rejects.toMatchObject({ code: "expired" });
+    expect(fetcher).toHaveBeenCalled();
   });
 });
 
@@ -172,9 +181,10 @@ describe("v2 pairing", () => {
     expect(fetcher.mock.calls[0][0]).toBe(`https://relay.test/v1/lookups/${id}`);
   });
 
-  it("maps missing lookups to expired and unsupported crypto to a clear error", async () => {
+  it("maps missing lookups to an unknown code, not an expired one, and unsupported crypto to a clear error", async () => {
+    // a /pair code made for a browser has no lookup at all: "expired" sent people to make the same wrong code again
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 404)));
-    await expect(resolveTypedCode("ABCDEFGH2345")).rejects.toMatchObject({ code: "expired" });
+    await expect(resolveTypedCode("ABCDEFGH2345")).rejects.toMatchObject({ code: "unknown" });
     vi.stubGlobal("crypto", {});
     await expect(resolveTypedCode("ABCDEFGH2345")).rejects.toMatchObject({ code: "unsupported" });
   });

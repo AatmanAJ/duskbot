@@ -26,7 +26,7 @@ export const MOBILE_LINK_VERSION = 2;
 export const MOBILE_LOOKUP_SALT = "omb-mobile-v1";
 export const DEFAULT_MOBILE_RELAY = "https://link.dusk.bot";
 /** A grant lives this long; the QR, the deep link and the typed code die together. */
-export const MOBILE_GRANT_TTL_MS = 5 * 60_000;
+export const MOBILE_GRANT_TTL_MS = 10 * 60_000;
 export const MOBILE_PLATFORMS = ["ios", "android", "other"] as const;
 export type MobilePlatform = (typeof MOBILE_PLATFORMS)[number];
 export const PUSH_SERVICES = ["apns", "fcm"] as const;

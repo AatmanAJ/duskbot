@@ -93,10 +93,11 @@ export function notifyPhones(notification: unknown, options: { adminOnly?: boole
   if (activeNotify && entry && typeof entry.id === "string" && typeof entry.threadId === "string") activeNotify(entry, options);
 }
 
-/** DUSK_MOBILE_RELAY: the relay that holds typed-code lookups when no link agent names one ("default" for the public one); unset, none */
-export function mobileLookupRelay(env: NodeJS.ProcessEnv = process.env): string | null {
+/** DUSK_MOBILE_RELAY: the relay that holds typed-code lookups when no link agent names one ("default" for the public one,
+ * "none" for no typed codes); unset, the desktop app uses the public one and a server none */
+export function mobileLookupRelay(env: NodeJS.ProcessEnv = process.env, desktop = false): string | null {
   const value = env.DUSK_MOBILE_RELAY?.trim();
-  if (value === "default") return DEFAULT_MOBILE_RELAY;
+  if (value === "default" || (!value && desktop)) return DEFAULT_MOBILE_RELAY;
   return value && /^https?:\/\/[^/\s]+$/.test(value) ? value : null;
 }
 
@@ -223,7 +224,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
   async function pairing(auth: RequestAuth, body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
     if (!ownerOrAdmin(auth) || (auth.kind === "loopback" && auth.companionDevice)) return { status: 403, body: { error: "Only the owner or an admin can pair a phone." } };
     const refusal = deps.refusal();
-    if (refusal) return { status: 403, body: { error: refusal } };
+    if (refusal) return { status: 403, body: { error: refusal, code: "sign_in_instead" } };
     prune();
     if (devices.length >= MAX_DEVICES) return { status: 409, body: { error: `This workspace already has ${MAX_DEVICES} phones. Remove one first.` } };
     const allowed: Scope[] = auth.kind === "loopback" ? ["admin", "client"] : auth.scopes.filter((scope): scope is Scope => scope === "admin" || scope === "client");
@@ -264,7 +265,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
 
   async function redeem(req: IncomingMessage, body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
     const refusal = deps.refusal();
-    if (refusal) return { status: 403, body: { error: refusal } };
+    if (refusal) return { status: 403, body: { error: refusal, code: "sign_in_instead" } };
     const secret = typeof body.secret === "string" ? body.secret.slice(0, 200) : "";
     const attemptId = typeof body.attemptId === "string" ? body.attemptId : undefined;
     const device = body.device as Record<string, unknown> | undefined;
@@ -277,7 +278,9 @@ export function createMobileLink(deps: MobileLinkDeps) {
     }
     if (!secret) return { status: 400, body: { error: "secret is required" } };
     const exchanged = deps.sessions.exchange({ code: secret, label: name, attemptId, source: requestSource(req), fallbackLabel: labelFromUserAgent(req.headers["user-agent"]) });
-    if (!exchanged.ok) return { status: exchanged.status, body: { error: exchanged.error } };
+    // a wrong secret here is an expired or already used grant (the phone only has what the desktop made): 410 reads as
+    // expired on every app version, where 401 read as "refused"
+    if (!exchanged.ok) return exchanged.status === 401 ? { status: 410, body: { error: exchanged.error, code: "expired" } } : { status: exchanged.status, body: { error: exchanged.error } };
     // a retried attempt gets the device it already opened
     let record = devices.find((one) => one.sessionId === exchanged.session.id);
     if (!record) {

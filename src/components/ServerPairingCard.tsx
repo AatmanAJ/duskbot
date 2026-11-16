@@ -97,10 +97,11 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
     if (!focusRequest) revealed.current = 0;
     else if (revealed.current !== focusRequest && revealPhonePairing(root.current)) {
       revealed.current = focusRequest;
-      // asked for this server's own code: open it
-      setComputerOpen(true);
+      // asked for this server's own code: open it, unless the phone's own ways are on this page. That code is for /pair
+      // in a browser, and the phone app reads it as unknown
+      if (!phone) setComputerOpen(true);
     }
-  }, [focusRequest, session]);
+  }, [focusRequest, session, phone]);
 
   useEffect(() => {
     if (!offer) return;
@@ -321,8 +322,9 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
         </div>
       </div>
     );
-    // who a computer's code lets in, and who is signed in, below
-    return phonePage(computerPair, <>
+    // who a computer's code lets in, and who is signed in, below. A cloud's phone page leads to signing in only: a
+    // code there was what people typed into the phone app
+    return phonePage(cloudHome && phone ? null : computerPair, <>
       {!cloudHome && computerName !== null && (
         <RowsCard label={t("settings.mobile.thisComputer")} data-settings-block="pair-code">
           <ComputerNameRow saved={computerName} onSaved={setComputerName} />
