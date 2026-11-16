@@ -1,6 +1,8 @@
-import type { DemoAccessibility, DemoFrame, DemoRect } from "../../shared/demo-recording.ts";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-const todo = (): never => { throw new Error("not built"); };
+import type { DemoAccessibility, DemoFrame, DemoRect } from "../../shared/demo-recording.ts";
 
 export interface ScreenFrame {
   data: Buffer;
@@ -32,4 +34,76 @@ export interface FrameStoreOptions {
   maxBytes?: number;
 }
 
-export function createFrameStore(_options: FrameStoreOptions): FrameStore { return todo(); }
+export const FRAME_ID = /^f[a-f0-9]{20}$/;
+const MAX_BYTES = 150 * 1024 * 1024;
+const MAX_FRAME_BYTES = 12 * 1024 * 1024;
+const EXTENSION: Record<DemoFrame["type"], string> = { "image/png": "png", "image/jpeg": "jpg" };
+
+export function frameFile(dir: string, frame: Pick<DemoFrame, "id" | "type">): string {
+  return join(dir, `${frame.id}.${EXTENSION[frame.type]}`);
+}
+
+/** A kept picture's bytes, from the folder a frame store wrote. */
+export function readFrameFile(dir: string, frame: Pick<DemoFrame, "id" | "type">): Buffer | null {
+  if (!FRAME_ID.test(frame.id) || !(frame.type in EXTENSION)) return null;
+  const path = frameFile(dir, frame);
+  try {
+    return existsSync(path) ? readFileSync(path) : null;
+  } catch {
+    return null;
+  }
+}
+
+function onPicture(rect: DemoRect, frame: ScreenFrame): boolean {
+  return [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) && rect.width > 0 && rect.height > 0
+    && rect.x < frame.width && rect.y < frame.height && rect.x + rect.width > 0 && rect.y + rect.height > 0;
+}
+
+export function createFrameStore(options: FrameStoreOptions): FrameStore {
+  const kept = new Map<string, DemoFrame>();
+  const maxBytes = options.maxBytes ?? MAX_BYTES;
+  let bytes = 0;
+  let skipped = 0;
+  const skip = (): null => {
+    skipped++;
+    return null;
+  };
+  return {
+    async put(frame, secure, accessibility) {
+      if (!frame.data.length || frame.data.length > MAX_FRAME_BYTES || !(frame.width > 0 && frame.height > 0)) return skip();
+      if (secure === null && accessibility !== "none") return skip();
+      const boxes = (secure ?? []).filter((rect) => onPicture(rect, frame));
+      let data = frame.data;
+      let type = frame.type;
+      if (boxes.length) {
+        if (!options.masker) return skip();
+        try {
+          data = await options.masker.mask(frame, boxes);
+        } catch {
+          return skip();
+        }
+        if (!data.length) return skip();
+        type = "image/png";
+      }
+      const id = `f${createHash("sha256").update(data).digest("hex").slice(0, 20)}`;
+      const known = kept.get(id);
+      if (known) return known;
+      if (bytes + data.length > maxBytes) return skip();
+      const record: DemoFrame = { id, width: frame.width, height: frame.height, type, masked: boxes.length > 0 };
+      mkdirSync(options.dir, { recursive: true, mode: 0o700 });
+      writeFileSync(frameFile(options.dir, record), data, { mode: 0o600 });
+      bytes += data.length;
+      kept.set(id, record);
+      return record;
+    },
+    read(id) {
+      const frame = kept.get(id);
+      const data = frame ? readFrameFile(options.dir, frame) : null;
+      return frame && data ? { data, type: frame.type } : null;
+    },
+    list: () => [...kept.values()],
+    get skipped() {
+      return skipped;
+    },
+  };
+}
