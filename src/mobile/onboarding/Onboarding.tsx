@@ -222,7 +222,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
                       onChange={(event) => { setValue(formatCode(event.target.value)); setFailure(null); }}
                       inputMode="text" autoCapitalize="characters" autoCorrect="off" spellCheck={false} autoComplete="one-time-code" placeholder="XXXX-XXXX-XXXX" maxLength={14}
                       aria-invalid={Boolean(failure) || undefined}
-                      className={`${FIELD} h-16 text-center font-mono text-[21px] tracking-[0.12em] placeholder:text-ink/[0.3]`} />
+                      className={`${FIELD} text-center font-mono text-[19px] tracking-[0.1em] placeholder:text-ink/[0.3]`} />
                   ) : (
                     <div className="flex w-full gap-2">
                       <input id={fieldId} autoFocus value={value} disabled={busy} onChange={(event) => { setValue(event.target.value); setFailure(null); }}

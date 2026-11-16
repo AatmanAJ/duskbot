@@ -118,7 +118,7 @@ export function MobileSignIn({ onSignedIn }: { onSignedIn: () => void }) {
               setProblem(null);
               if (next.length === CODE_LENGTH) void verify(next);
             }}
-            className={`${FIELD} h-16 text-center font-mono text-[26px] tracking-[0.3em] tabular-nums placeholder:text-ink/[0.18]`} />
+            className={`${FIELD} text-center font-mono text-[21px] tracking-[0.16em] tabular-nums placeholder:text-ink/[0.18]`} />
           {problemText && <ErrorLine id={problemId}>{problemText}</ErrorLine>}
         </div>
       )}
