@@ -13,7 +13,7 @@ export interface PickerPlacement extends PickerSide {
 
 export const PICKER_GAP = 6;
 export const PICKER_MARGIN = 8;
-export const PICKER_MAX_HEIGHT = 640;
+export const PICKER_MAX_HEIGHT = 520;
 
 export function pickerPlacement(anchor: Box, menu: Size, viewport: Size, locked?: PickerSide, tallest = PICKER_MAX_HEIGHT): PickerPlacement {
   const edge = locked?.edge ?? ((anchor.left + anchor.right) / 2 > viewport.width / 2 ? "right" : "left");

@@ -209,7 +209,8 @@ describe("choosing a model with the keyboard", () => {
 
   it("closes when Tab leaves its last stop, and hands focus back to the chip", async () => {
     await openWith("click");
-    document.querySelector<HTMLElement>("[data-picker-more]")!.focus();
+    const stops = [...menu()!.querySelectorAll<HTMLElement>("button:not([disabled]), input, [tabindex=\"0\"]")];
+    stops.at(-1)!.focus();
     expect(press("Tab").defaultPrevented).toBe(true);
     await settle();
     expect(menu()).toBeNull();

@@ -362,10 +362,18 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
           {props.notConnected && props.notConnected.rows.length > 0 && (
             <NotConnected rows={props.notConnected.rows} onConnect={props.notConnected.onConnect} labelId={`${idPrefix}-not-connected`} />
           )}
+          {/* the way to more providers is the list's last row, so it scrolls with the rest instead of pinning the foot */}
+          {props.onMore && (
+            <button type="button" data-menu-row data-picker-more onClick={props.onMore} className={cn(MENU_ROW, "mt-1")}>
+              <Gutter><Plus size={16} strokeWidth={MENU_STROKE} className={MENU_ICON} aria-hidden="true" /></Gutter>
+              <span className="min-w-0 flex-1 truncate">{t("connectAi.more")}</span>
+              <Forward />
+            </button>
+          )}
         </div>
       </div>
 
-      {(props.thinking || props.onResetVariant || props.scope || props.onMore) && (
+      {(props.thinking || props.onResetVariant || props.scope) && (
         <div data-simple-effort-band className="flex shrink-0 flex-col gap-0.5 border-t-[0.5px] border-transparent p-1.5">
           {props.thinking && <Thinking thinking={props.thinking} labelId={`${idPrefix}-thinking`} />}
           {props.scope && <Scope scope={props.scope} labelId={`${idPrefix}-scope`} />}
@@ -374,16 +382,6 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
               <Gutter />
               <span className="min-w-0 flex-1 truncate">{t("model.variant.session")}</span>
             </button>
-          )}
-          {props.onMore && (
-            <>
-              {(props.thinking || props.scope || props.onResetVariant) && <div role="separator" className={MENU_SEPARATOR} />}
-              <button type="button" data-menu-row data-picker-more onClick={props.onMore} className={MENU_ROW}>
-                <Gutter><Plus size={16} strokeWidth={MENU_STROKE} className={MENU_ICON} aria-hidden="true" /></Gutter>
-                <span className="min-w-0 flex-1 truncate">{t("connectAi.more")}</span>
-                <Forward />
-              </button>
-            </>
           )}
         </div>
       )}
