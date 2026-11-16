@@ -168,7 +168,13 @@ const CONNECTED_APP_FIRST =
 
 /** Reading the web is quicker through search and fetch; acting on a site belongs where the person can watch and take over. */
 const BROWSER_FIRST =
-  " Find and read information with web search and page fetches: lookups, prices, summaries and comparisons need no browser. Use your built-in browser for anything interactive: filling in forms, signing in, clicking through a site, pages that need JavaScript or a login, and anything the person may want to watch or take over. Never do interactive work in another browser, with curl scripts or with a Playwright, Puppeteer or Selenium script of your own, and never make local files or drafts in place of work the person asked for on a website you can reach. Do as much of the task as you can; ask the person only for what only they can do: a sign-in, approving a payment, or a real decision. dusk bot keeps this conversation's pages in a tab of its own and closes it a couple of minutes after the task is done; open a second tab only to keep two pages side by side, and never close the whole browser: other conversations' tabs live in it. Show what you did with pictures, not long descriptions: every agent_browser_screenshot you take is also posted in the chat for the person (up to four a turn), so take one at the moments that matter: a form filled in, just before you send or submit, the result, and when you stop at a sign-in. The person sees your browser in the Computer tab of your panel, with your tabs and the live page, where they can take control or open it big; name only that place, never another panel or menu. To have them sign in, call request_sign_in, which posts a sign-in card, instead of giving directions.";
+  " Find and read information with web search and page fetches: lookups, prices, summaries and comparisons need no browser. Use your built-in browser for anything interactive: filling in forms, signing in, clicking through a site, pages that need JavaScript or a login, and anything the person may want to watch or take over. Never do interactive work in another browser, with curl scripts or with a Playwright, Puppeteer or Selenium script of your own, and never make local files or drafts in place of work the person asked for on a website you can reach. Do as much of the task as you can; ask the person only for what only they can do: a sign-in, approving a payment, or a real decision. dusk bot keeps this conversation's pages in a tab of its own and closes it a couple of minutes after the task is done; open a second tab only to keep two pages side by side, and never close the whole browser: other conversations' tabs live in it. Show what you did with pictures, not long descriptions: every agent_browser_screenshot you take is also posted in the chat for the person (up to four a turn), so take one at the moments that matter: a form filled in, just before you send or submit, the result, and when you stop at a sign-in. To have them sign in, call request_sign_in, which posts a sign-in card, instead of giving directions.";
+
+/** Where the person watches the built-in browser: the Computer tab shows it only in the app on the computer it runs on. */
+const BROWSER_IN_COMPUTER_TAB =
+  " The person sees your browser in the Computer tab of your panel in the dusk bot app on this computer, with your tabs and the live page, where they can take control or open it big; name only that place, never another panel or menu. The iPhone app has no view of your browser: there, the screenshots you post are what they see.";
+const BROWSER_NOT_SHOWN =
+  " The person cannot watch this browser live: the screenshots you post in the chat are what they see of it, so never tell them it is open in a tab or panel of theirs.";
 
 const RESTATE_SENTENCE =
   " Before your first action on a screen or page in a task, say in one short sentence where you are working, using that same name.";
@@ -197,7 +203,9 @@ const CLOUD_HOME_WORDING: ReadonlyArray<readonly [string, string]> = [
  */
 export function surfacePrompt(
   mounted: MountedSurfaces,
-  opts: { pinned?: Surface | null; note?: string; canSelect?: boolean; cloudHome?: boolean; botOpened?: boolean } = {},
+  opts: { pinned?: Surface | null; note?: string; canSelect?: boolean; cloudHome?: boolean; botOpened?: boolean;
+    /** The panel's Computer tab shows this host's built-in browser: the desktop app on this computer, never a server's or a cloud's. */
+    browserInComputerTab?: boolean } = {},
 ): string {
   const reportBack = opts.botOpened && !opts.canSelect;
   const computer = mounted.computer ? surfaceLabel(mounted.computer) : null;
@@ -229,7 +237,7 @@ export function surfacePrompt(
   if (opts.canSelect) text += " If no suitable computer is running but its provider is configured, select_computer can provision one for this computer task; reuse existing resources first. Do not provision merely for ordinary chat or inspection.";
   if (opts.canSelect && !computer && !mounted.browser) text += " No computer or browser tools are mounted yet; select_computer is the way to connect them before screen work, not a reason to claim you already performed it.";
   if (computer || mounted.browser) text += CONNECTED_APP_FIRST;
-  if (mounted.browser) text += BROWSER_FIRST;
+  if (mounted.browser) text += BROWSER_FIRST + (opts.browserInComputerTab === false || opts.cloudHome ? BROWSER_NOT_SHOWN : BROWSER_IN_COMPUTER_TAB);
   if (computer || mounted.browser) text += " For online research, use the selected dusk bot browser when a search service is unavailable. A failed tool proves only that this attempt failed, not that every browser is unavailable. Inspect the current page after navigation; report a sign-in page, redirect or error as such. A completed model turn is not proof that the user's task succeeded.";
   if (opts.cloudHome) for (const [desktop, cloudHome] of CLOUD_HOME_WORDING) text = text.replace(desktop, cloudHome);
   return text + (opts.note ?? "");

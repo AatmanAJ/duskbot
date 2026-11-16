@@ -332,6 +332,19 @@ describe("surface parsing", () => {
   });
 });
 
+it("says the browser is in the Computer tab only where that tab shows it, and never on a server or a cloud", () => {
+  const desktop = surfacePrompt({ computer: null, browser: true }, { browserInComputerTab: true });
+  expect(desktop).toContain("the Computer tab of your panel");
+  expect(desktop).toContain("The iPhone app has no view of your browser");
+  for (const opts of [{ browserInComputerTab: false }, { cloudHome: true }] as const) {
+    const text = surfacePrompt({ computer: null, browser: true }, opts);
+    expect(text).not.toContain("Computer tab");
+    expect(text).toContain("cannot watch this browser live");
+    expect(text).toContain("call request_sign_in");
+  }
+  expect(surfacePrompt({ computer: "cloud", browser: false }, { browserInComputerTab: true })).not.toContain("Computer tab");
+});
+
 it("does not instruct use of a selected browser when no surface is mounted", () => {
   expect(surfacePrompt({ computer: null, browser: false }, { canSelect: true })).not.toContain("For online research");
   expect(surfacePrompt({ computer: null, browser: true })).toContain("For online research");
