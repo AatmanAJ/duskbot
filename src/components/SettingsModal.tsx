@@ -23,6 +23,7 @@ import { CloudAccountSettings } from "./CloudAccountSettings";
 import { TransferSettings } from "./vps-link/TransferSettings";
 import { vpsLinkAvailable } from "@/lib/vps-link";
 import { Icon } from "./Icon";
+import { SettingGlyph, type SettingGlyphName } from "./ui/SettingGlyph";
 import { SIMPLE_BUTTONS } from "./SettingsPrimitives";
 import { PaneHeader, PanelSections, SubPageContext, WipeStack, type SubPage } from "./ListRows";
 import {
@@ -40,6 +41,11 @@ import "../styles/settings.css";
 export { openBotSettings, openSettings, settingsLocation, SETTINGS_PANES, type SettingsLocation, type SettingsPane } from "@/lib/open-settings";
 
 const REMOTE_SECTIONS: readonly AppSettingsSection[] = ["appearance", "companion", "desktopWorkspaces", "looks", "voice"];
+
+const RAIL_GLYPH: Record<SettingsPane, SettingGlyphName> = {
+  general: "gear", voice: "mic", texting: "bubble", computer: "laptop", permissions: "shield", vault: "key",
+  models: "sparkle", bots: "team", usage: "chart", updates: "download", advanced: "sliders",
+};
 
 const RAIL_GROUPS: ReadonlyArray<{ id: string; labelKey: LocaleKey; panes: readonly SettingsPane[] }> = [
   { id: "you", labelKey: "settings.rail.you", panes: ["general", "voice"] },
@@ -341,7 +347,7 @@ export function SettingsModal() {
                     onClick={() => go(entry.sections.find(has)!)}
                     className="settings-nav-item"
                   >
-                    <Icon name={entry.icon} size={phone ? 20 : 15} />
+                    <SettingGlyph name={RAIL_GLYPH[entry.id]} size={phone ? 24 : 18} className="-mx-px" />
                     <span>{t(entry.labelKey)}</span>
                     <Icon name="chevron-right" size={14} className="settings-nav-chevron" />
                   </button>

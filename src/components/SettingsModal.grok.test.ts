@@ -81,10 +81,10 @@ describe("Settings, drawn as Grok Bot's", () => {
   it("rails Grok's panes with Models, then Advanced features last, and no Bots pane beside the bot panel", () => {
     const html = open("general");
     expect(panes(html)).toEqual(["general", "voice", "computer", "texting", "vault", "models", "usage", "updates", "advanced"]);
-    expect(html).toContain('data-icon-name="vault"');
-    expect(html).toContain('data-icon-name="chart-bars"');
-    expect(html).toContain('data-icon-name="settings-gear"');
-    expect(html).toContain('data-icon-name="cloud-download"');
+    expect(html).toContain('data-setting-glyph="key"');
+    expect(html).toContain('data-setting-glyph="chart"');
+    expect(html).toContain('data-setting-glyph="gear"');
+    expect(html).toContain('data-setting-glyph="download"');
     expect(current(html)).toBe("general");
     expect(title(html)).toBe("General");
   });
