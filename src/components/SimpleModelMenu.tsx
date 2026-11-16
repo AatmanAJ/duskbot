@@ -239,7 +239,7 @@ function Scope({ scope, labelId }: { scope: NonNullable<SimpleModelMenuProps["sc
   return (
     <div className="flex flex-col">
       <span id={labelId} className="flex h-6 items-end px-2 pb-0.5 text-[12px] font-medium leading-4 text-ink-tertiary">{t("model.picker.scope")}</span>
-      <SlidingPills aria-labelledby={labelId} data-picker-scope value={scope.value} onPick={scope.onChange}
+      <SlidingPills aria-labelledby={labelId} data-picker-scope value={scope.value} onPick={scope.onChange} pillClassName="h-8 px-3 text-[13px] leading-5"
         options={choices.map((choice) => ({ value: choice.value, label: choice.label, title: choice.hint, attrs: { "data-scope-pill": choice.value } }))} />
     </div>
   );
