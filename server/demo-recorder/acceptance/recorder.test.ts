@@ -136,7 +136,7 @@ describe("recording a demonstration", () => {
     await on.recorder.input("bot-3", { type: "text", text: "nobody is recording this" });
     const one = await on.recorder.stop("bot-1");
     const two = await on.recorder.stop("bot-2");
-    if ("error" in one || "error" in two) throw new Error("stop failed");
+    if (!("id" in one) || !("id" in two)) throw new Error("stop was refused");
 
     expect(one.eventCount).toBe(1);
     expect(two.eventCount).toBe(0);

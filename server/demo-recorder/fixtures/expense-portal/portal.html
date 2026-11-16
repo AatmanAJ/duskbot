@@ -70,6 +70,7 @@
     expenses: Array.isArray(kept.expenses) ? kept.expenses : [],
     notice: "",
     error: "",
+    draft: {},
     surveyOpen: renamed || params.get("survey") === "1",
   };
   const keep = () => { try { sessionStorage.setItem("harbor", JSON.stringify({ signedIn: state.signedIn, expenses: state.expenses })); } catch {} };
@@ -141,6 +142,12 @@
     app.innerHTML = !state.signedIn ? signIn() : shell(state.view === "form" ? form() : list());
     document.title = !state.signedIn ? "Sign in · Harbor Expenses" : state.view === "form" ? `${words.create} · Harbor Expenses` : "Expenses · Harbor Expenses";
     bind();
+    if (state.view === "form") {
+      for (const [name, kept] of Object.entries(state.draft)) {
+        const control = app.querySelector(`#${CSS.escape(id(name))}`);
+        if (control && kept) control.value = kept;
+      }
+    }
   }
 
   function bind() {
@@ -152,7 +159,7 @@
       else state.error = "That email and password do not match.";
       render();
     });
-    on("#create", "click", () => { state.view = "form"; state.notice = ""; state.error = ""; render(); });
+    on("#create", "click", () => { state.view = "form"; state.notice = ""; state.error = ""; state.draft = {}; render(); });
     on("#cancel", "click", () => { state.view = "list"; state.error = ""; render(); });
     on("#signout", "click", () => { state.signedIn = false; state.view = "list"; render(); });
     on("#dismiss", "click", () => { state.surveyOpen = false; render(); });
@@ -160,6 +167,7 @@
       event.preventDefault();
       if (state.surveyOpen) return;
       const value = (name) => (app.querySelector(`#${CSS.escape(id(name))}`).value || "").trim();
+      state.draft = Object.fromEntries(["merchant", "amount", "date", "category", "notes"].map((name) => [name, value(name)]));
       const amount = Number(value("amount").replace(/[$,\s]/g, ""));
       if (!value("merchant")) state.error = `${words.merchant} is required.`;
       else if (!Number.isFinite(amount) || amount <= 0) state.error = `${words.amount} must be a number above zero.`;

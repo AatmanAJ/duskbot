@@ -69,7 +69,8 @@ function botFor(page: PortalPage, options: { lazy?: boolean; agrees?: boolean } 
   const person = page.person();
   const requests: StepRequest[] = [];
   const confirmed: string[] = [];
-  const name = (action: DemoAction) => ("name" in action ? RENAMED[action.name] ?? action.name : "");
+  const renamed = page.window.eval("window.harbor.layout") === "renamed";
+  const name = (action: DemoAction) => ("name" in action ? (renamed ? RENAMED[action.name] ?? action.name : action.name) : "");
   return {
     requests,
     confirmed,
