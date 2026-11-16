@@ -5,12 +5,12 @@ import { accountsView, createAccountLeave, createDesktopRing, installAccounts } 
 
 const signedIn = { status: "connected", account: { id: "a", email: "a@example.test" }, deviceId: "d" };
 
-function harness({ state = signedIn, others = [], placePage = () => true, ownPage = () => true } = {}) {
+function harness({ state = signedIn, others = [], placePage = () => true, ownPage = () => true, ownPlace = () => false } = {}) {
   const handlers = new Map(), calls = [];
   const client = { state: () => state, signOut: async () => { calls.push("client-sign-out"); return { status: "signed-out" }; } };
   const ring = { others: () => others, switchTo: async (id) => { calls.push(`switch:${id}`); return { outcome: "switched" }; }, signOut: async (id) => { calls.push(`sign-out:${id}`); return { outcome: "signed-out" }; },
     addStart: async (email) => { calls.push(`add:${email}`); return { outcome: "sent", email }; }, addVerify: async () => ({ outcome: "switched", email: "b@example.test" }) };
-  const accounts = installAccounts({ ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) }, ownPage, placePage, account: () => client, client: () => client, ring: () => ring,
+  const accounts = installAccounts({ ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) }, ownPage, placePage, ownPlace, account: () => client, client: () => client, ring: () => ring,
     holdSheet: (open) => calls.push(`hold:${open}`), tellSheet: () => calls.push("tell-sheet"), tell: () => calls.push("tell") });
   return { handlers, calls, accounts, call: (channel, ...args) => handlers.get(channel)({}, ...args) };
 }
@@ -233,4 +233,14 @@ test("a My Cloud saved by hand is the account's only while the sign-in names it;
   assert.deepEqual(withoutPlaces(changed, [byHand]).environments.map((entry) => entry.id), ["by-hand", "new"]);
   assert.equal(withoutPlaces(changed, [byHand]).activeId, "local");
   assert.equal(withoutPlaces(changed, []), changed, "nothing to remove: the same list");
+});
+
+test("a Cloud of the person's own reads the face and plan of the account in use, never its address; any other page reads nothing", async () => {
+  const state = { status: "connected", account: { id: "a", email: "a@example.test", name: "Ada", avatarUrl: "https://photos.example.test/ada.png" }, entitlement: { plan: "free", status: "inactive", expiresAt: null, version: 1 } };
+  const own = harness({ state, ownPage: () => false, ownPlace: () => true });
+  const face = await own.call("accounts:face");
+  assert.deepEqual(face, { id: "a", name: "Ada", avatarUrl: "https://photos.example.test/ada.png", plan: { status: "free" } });
+  assert.equal(JSON.stringify(face).includes("@"), false);
+  assert.equal(await harness({ state, ownPage: () => false, placePage: () => true }).call("accounts:face"), null, "a team's or a server's page");
+  assert.equal(await harness({ state: { status: "signed-out" }, ownPlace: () => true }).call("accounts:face"), null);
 });

@@ -20,7 +20,7 @@ import {
   UserRound,
 } from "../icons";
 
-import { accountMenuItems, AccountsSheet, cloudRowLabel, useAccounts, type AccountsAccess } from "./AccountMenu";
+import { accountMenuItems, accountPlanText, AccountsSheet, cloudRowLabel, useAccounts, type AccountsAccess } from "./AccountMenu";
 import { openSignIn } from "@/lib/sign-in-sheet";
 import { Icon, type IconName } from "./Icon";
 import { exportUsageLog, trailAvailable } from "@/lib/trail";
@@ -44,7 +44,8 @@ import { useSidebarPhoneStatus } from "./SidebarPhoneButton";
 import { api, useStore, type Action, type ConfigStatus } from "@/state/store";
 import { localDesktopPage } from "./onboarding/WelcomeGate";
 import { serverCheckPhase, serverUpdateRow, type ServerUpdateCheck, type ServerUpdatePhase } from "@/lib/server-update";
-import type { CloudAccountBridge, CloudAccountState } from "../../electron/cloud-account.mjs";
+import type { AccountFace, CloudAccountBridge, CloudAccountState } from "../../electron/cloud-account.mjs";
+import { cloudPlanLabel, trialRunning } from "@/lib/cloud-plan";
 import { cloudColor } from "@/lib/cloud-look";
 import { cn } from "@/lib/cn";
 import { meterPercent, resetLine } from "@/lib/usage-meter";
@@ -76,7 +77,9 @@ export function withAccountFace(profile: { name?: string; email?: string; avatar
   const own = profile?.email?.trim().toLowerCase();
   if (own && own !== account.email.trim().toLowerCase()) return profile;
   // the avatar the person picked on their account shows over this place's own photo; without a pick, the place's photo stays
-  const face = account.id && (account.avatar || !profile?.avatarUrl) ? { face: { id: account.id, ...(account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}), ...(account.avatar ? { avatar: account.avatar } : {}) } } : {};
+  // a real photo, the account's or else this place's, stands in for a drawn head unless the person picked a drawing
+  const photo = account.avatarUrl || profile?.avatarUrl;
+  const face = account.id && (account.avatar || !profile?.avatarUrl) ? { face: { id: account.id, ...(photo ? { avatarUrl: photo } : {}), ...(account.avatar ? { avatar: account.avatar } : {}) } } : {};
   return { ...profile, ...(!own ? { email: account.email } : {}), ...(!profile?.name?.trim() && account.name ? { name: account.name } : {}), ...(!profile?.avatarUrl && account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}), ...face };
 }
 
@@ -123,6 +126,21 @@ export function personFace(profile: { name?: string; email?: string; avatarUrl?:
   if (lent?.face) return lent.face;
   const seed = profile?.email?.trim().toLowerCase() || profile?.name?.trim();
   return seed ? { id: seed, ...(profile?.avatarUrl ? { avatarUrl: profile.avatarUrl, avatar: "photo" } : {}) } : null;
+}
+
+/** A Cloud of the person's own, in this app's window: the address is the Cloud's owner (its session says so) and main lends
+ * the account's face and plan (accounts:face). Null on this app's own page, a team's Cloud, or where either is missing. */
+export function placeAccount(profile: { name?: string; email?: string; avatarUrl?: string } | undefined, { face, owner }: { face: AccountFace | null; owner: string | null }): { profile: { name?: string; email?: string; avatarUrl?: string }; account: AccountFace & { email: string } } | null {
+  const email = profile?.email?.trim() || owner?.trim();
+  if (!face || !email) return null;
+  return { profile: { ...profile, email }, account: { ...face, email } };
+}
+
+/** The plan line from this window's Cloud plan, where no account card says it. */
+export function snapshotPlanText(plan: CloudPlanSnapshot | null): string | null {
+  if (plan?.status === "paid") return t(trialRunning(plan.trial) ? "accounts.card.trial" : "accounts.card.plan", { plan: cloudPlanLabel(plan.tier) });
+  if (plan?.status === "attention") return t("accounts.card.inactive", { plan: cloudPlanLabel(plan.tier) });
+  return null;
 }
 
 /** The person's face in the sidebar: their photo or drawn head; initials only for a computer's name, an icon for nobody. */
@@ -498,9 +516,18 @@ function devItems(icon: ReactNode): SidebarMenuItem[] {
   return devToolsShown() ? [{ key: "dev-fresh-install", label: t("startFresh.devMenu"), icon, separatorBefore: true, onSelect: openStartFresh }] : [];
 }
 
-/** Grok's profile menu, word for word: the phone app, Support (help, shortcuts, feedback, about) and Settings, then the
- * account's Add account and Log out. Everything else the menu once held is in Settings. */
-export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback, onAbout, onSettings, onAddAccount, onNeedsYou, onDashboard, accounts }: {
+/** The account's own block at the top of the menu: who is signed in, by address, with the plan below. */
+export interface MenuAccountHeader {
+  email: string;
+  plan: string | null;
+  face: ReactNode;
+}
+
+/** Grok's profile menu: the account (address and plan) first, then the phone app, the account dashboard, Support (help,
+ * shortcuts, feedback, about) and Settings, and Sign out on its own last row. Everything else the menu once held is in Settings. */
+export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback, onAbout, onSettings, onAddAccount, onNeedsYou, onDashboard, accounts, header = null }: {
+  /** the account block; this app's own page draws it from the account in use when none is given */
+  header?: MenuAccountHeader | null;
   onAddAccount: () => void;
   /** opens the hosted account dashboard for this workspace */
   onDashboard?: () => void;
@@ -517,16 +544,17 @@ export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback
 }): SidebarMenuItem[] {
   const icon = (name: IconName) => <Icon name={name} size={14} />;
   const active = accounts.view?.active;
-  const account: SidebarMenuItem[] = active
-    ? [
-      // who is signed in, first: the account's name and address, opening the account dashboard (Settings without one)
-      { key: "who", label: active.name?.trim() || active.email, ...(active.name?.trim() ? { subtitle: active.email } : {}), icon: <UserFace account={active} size={16} />, onSelect: onDashboard ?? onSettings },
-      { key: "log-out", label: t("accounts.signOut"), icon: icon("arrow-bracket-from-left"), onSelect: () => accounts.signOut(active.id) },
-    ]
-    : accounts.openSheet ? [{ key: "accounts-sheet", label: t("accounts.manage"), icon: icon("person"), onSelect: accounts.openSheet }]
-      // nobody signed in here: Sign in, at the account button where a person looks for it; it continues in the browser for its
-      // context (the account context redirect), where this app can; otherwise the sheet that signs in right there
-      : [{ key: "sign-in", label: t("accounts.signIn"), icon: icon("person"), onSelect: typeof window !== "undefined" && window.duskDesktop?.cloudAccount?.continueInBrowser ? () => openSignIn() : accounts.view ? () => accounts.add() : onAddAccount }];
+  // signing out works here on this app's own page; anywhere else the sheet on the rail's page does it
+  const signOut = active ? () => accounts.signOut(active.id) : accounts.openSheet;
+  const who = header ?? (active ? { email: active.email, plan: accountPlanText(active.plan), face: <UserFace account={active} size={32} /> } : null);
+  const top: SidebarMenuItem[] = who && signOut
+    ? [{ key: "who", label: who.email, title: who.email, ...(who.plan ? { subtitle: who.plan } : {}), icon: who.face, large: true, onSelect: onDashboard ?? accounts.openSheet ?? onSettings }]
+    : [];
+  const last: SidebarMenuItem = signOut
+    ? { key: "log-out", label: t("accounts.signOut"), icon: icon("arrow-bracket-from-left"), onSelect: signOut }
+    // nobody signed in here: Sign in, at the account button where a person looks for it; it continues in the browser for its
+    // context (the account context redirect), where this app can; otherwise the sheet that signs in right there
+    : { key: "sign-in", label: t("accounts.signIn"), icon: icon("person"), onSelect: typeof window !== "undefined" && window.duskDesktop?.cloudAccount?.continueInBrowser ? () => openSignIn() : accounts.view ? () => accounts.add() : onAddAccount };
   const menu: SidebarMenuItem[] = [
     ...(onGetApp ? [{ key: "mobile", label: t("sidebar.menu.connectPhone"), icon: icon("device-mobile"), onSelect: onGetApp } satisfies SidebarMenuItem] : []),
     ...(onDashboard ? [{ key: "dashboard", label: t("sidebar.menu.accountDashboard"), icon: icon("chart-bars"), onSelect: onDashboard } satisfies SidebarMenuItem] : []),
@@ -540,11 +568,10 @@ export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback
     ] },
     { key: "settings", label: t("sidebar.menu.settings"), icon: icon("gear"), onSelect: onSettings },
   ];
-  return [
-    ...(onNeedsYou ? [{ key: "needs-you", label: t("sidebar.account.automationsNeedYou"), icon: icon("alarm-clock"), attention: true, attentionTone: "danger", onSelect: onNeedsYou } satisfies SidebarMenuItem] : []),
-    ...menu.map((item, index) => (index === 0 && onNeedsYou ? { ...item, separatorBefore: true } : item)),
-    ...account.map((item, index) => (index === 0 ? { ...item, separatorBefore: true } : item)),
-  ];
+  const needsYou: SidebarMenuItem[] = onNeedsYou ? [{ key: "needs-you", label: t("sidebar.account.automationsNeedYou"), icon: icon("alarm-clock"), attention: true, attentionTone: "danger", onSelect: onNeedsYou }] : [];
+  return [needsYou, top, menu, [last]]
+    .filter((group) => group.length > 0)
+    .flatMap((group, at) => group.map((item, index) => (at > 0 && index === 0 ? { ...item, separatorBefore: true } : item)));
 }
 
 export interface ArchivedBots {
@@ -576,7 +603,8 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
   const { state, dispatch } = useStore();
   const simple = account !== undefined;
   const [menuOpen, setMenuOpen] = useState(false);
-  const cloudUsage = cloudUsageSummary(useCloudPlanSnapshot(simple ? usageBridge(state.config?.cloudHome === true) : undefined));
+  const cloudPlan = useCloudPlanSnapshot(simple ? usageBridge(state.config?.cloudHome === true) : undefined);
+  const cloudUsage = cloudUsageSummary(cloudPlan);
   const engineUsage = usePlanUsageSummary(simple && menuOpen && cloudUsage === null && window.duskDesktop?.remoteClient?.active !== true);
   const phone = useSidebarPhoneStatus();
   const connectPhone = useConnectPhoneEntry(state.config?.cloudHome === true);
@@ -597,11 +625,14 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
   }, []);
 
   const accounts = useAccounts();
-  const ownProfile = profileForSession(state.config?.profile, session);
+  const sessionProfile = profileForSession(state.config?.profile, session);
   useAccountName(localDesktopPage() && window.duskDesktop?.remoteClient?.active !== true && !state.config?.cloudHome && !state.config?.team,
     state.config?.profile, accounts.view?.active ?? null, dispatch);
-  const profile = withAccountFace(ownProfile, accounts.view?.active ?? null);
-  const face = personFace(ownProfile, accounts.view?.active ?? null);
+  const place = placeAccount(sessionProfile, { face: accounts.face ?? null, owner: state.config?.team ? null : account?.owner ?? null });
+  const ownProfile = place?.profile ?? sessionProfile;
+  const signedIn = accounts.view?.active ?? place?.account ?? null;
+  const profile = withAccountFace(ownProfile, signedIn);
+  const face = personFace(ownProfile, signedIn);
   // grok's footer falls back to the computer's account: its initial in the grey circle, its name beside it
   const computer = useComputerName(simple && !profile?.name?.trim() && !profile?.email?.trim());
   const name = computer ?? profileLabel(profile);
@@ -618,7 +649,14 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
     else if (destinations[0]) connectTo(destinations[0]);
     else dispatch(phonePairingSettingsAction());
   };
+  const headerEmail = accounts.view?.active?.email ?? place?.account?.email ?? null;
+  const header: MenuAccountHeader | null = headerEmail ? {
+    email: headerEmail,
+    plan: accountPlanText(signedIn?.plan) ?? snapshotPlanText(cloudPlan),
+    face: <ProfileFace face={face} initials={profileInitials(profile)} size={32} fontSize={13} />,
+  } : null;
   const grokItems = simple ? grokProfileMenuItems({
+    header,
     onGetApp: phoneApp ? getApp : undefined,
     onHelp: () => void openExternalLink(HELP_CENTER_URL),
     onShortcuts: () => {

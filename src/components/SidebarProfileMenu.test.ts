@@ -561,20 +561,36 @@ describe("grok's profile menu", () => {
     expect(onAddAccount).not.toHaveBeenCalled();
   });
 
-  it("signed in, says who (the account's name and address) and Sign out, nothing more", () => {
-    const signOut = vi.fn(), onSettings = vi.fn();
-    const active = { id: "acc-1", email: "ada@qa.dusk.test", name: "Ada Lovelace" };
-    const items = grokProfileMenuItems({ ...base, onSettings, accounts: { view: { active }, openSheet: null, signOut, add: vi.fn(), editAvatar: vi.fn() } as never });
-    expect(items.map((item) => item.key).slice(-2), "no Change avatar or Add account rows").toEqual(["who", "log-out"]);
-    expect(items.find((item) => item.key === "who")).toMatchObject({ label: "Ada Lovelace", subtitle: "ada@qa.dusk.test", separatorBefore: true });
-    expect(items.at(-1)).toMatchObject({ label: "Sign out" });
-    items.find((item) => item.key === "who")!.onSelect();
-    expect(onSettings).toHaveBeenCalledOnce();
+  it("signed in, leads with the account block (address, plan below) and ends with Sign out on its own row", () => {
+    const signOut = vi.fn(), onSettings = vi.fn(), onDashboard = vi.fn();
+    const active = { id: "acc-1", email: "ada@qa.dusk.test", name: "Ada Lovelace", plan: { status: "active", tier: "starter" } };
+    const items = grokProfileMenuItems({ ...base, onSettings, onDashboard, accounts: { view: { active }, openSheet: null, signOut, add: vi.fn(), editAvatar: vi.fn() } as never });
+    expect(items.map((item) => item.key)).toEqual(["who", "mobile", "dashboard", "support", "settings", "log-out"]);
+    expect(items[0]).toMatchObject({ label: "ada@qa.dusk.test", subtitle: "dusk cloud · Plus", large: true });
+    expect(items[1]).toMatchObject({ key: "mobile", separatorBefore: true });
+    expect(items.at(-1)).toMatchObject({ label: "Sign out", separatorBefore: true });
+    expect(items.some((item) => item.label === "Account and sign out")).toBe(false);
+    items[0]!.onSelect();
+    expect(onDashboard).toHaveBeenCalledOnce();
     items.at(-1)!.onSelect();
     expect(signOut).toHaveBeenCalledWith("acc-1");
-    const nameless = grokProfileMenuItems({ ...base, accounts: { view: { active: { id: "acc-2", email: "bo@qa.dusk.test" } }, openSheet: null, signOut, add: vi.fn() } as never });
-    expect(nameless.find((item) => item.key === "who")).toMatchObject({ label: "bo@qa.dusk.test" });
-    expect(nameless.find((item) => item.key === "who")?.subtitle).toBeUndefined();
+    const free = grokProfileMenuItems({ ...base, accounts: { view: { active: { id: "acc-2", email: "bo@qa.dusk.test", plan: { status: "free" } } }, openSheet: null, signOut, add: vi.fn() } as never });
+    expect(free[0]).toMatchObject({ key: "who", label: "bo@qa.dusk.test", subtitle: "Free" });
+    const unknown = grokProfileMenuItems({ ...base, accounts: { view: { active: { id: "acc-3", email: "cy@qa.dusk.test" } }, openSheet: null, signOut, add: vi.fn() } as never });
+    expect(unknown[0]?.subtitle).toBeUndefined();
+  });
+
+  it("on a Cloud's page shows the block it is given and a Sign out that opens the sheet, never one combined row", () => {
+    const openSheet = vi.fn();
+    const header = { email: "ada@qa.dusk.test", plan: "dusk cloud · Pro", face: null };
+    const items = grokProfileMenuItems({ ...base, header, accounts: { view: null, openSheet, signOut: vi.fn(), add: vi.fn() } as never });
+    expect(items.map((item) => item.key)).toEqual(["who", "mobile", "support", "settings", "log-out"]);
+    expect(items[0]).toMatchObject({ label: "ada@qa.dusk.test", subtitle: "dusk cloud · Pro" });
+    items.at(-1)!.onSelect();
+    expect(openSheet).toHaveBeenCalledOnce();
+    const nobody = grokProfileMenuItems({ ...base, accounts: { view: null, openSheet, signOut: vi.fn(), add: vi.fn() } as never });
+    expect(nobody.map((item) => item.key)).toEqual(["mobile", "support", "settings", "log-out"]);
+    expect(nobody.at(-1)).toMatchObject({ label: "Sign out" });
   });
 
   it("puts the account dashboard right under the phone row when the menu can open it", () => {
@@ -610,6 +626,30 @@ describe("withAccountFace", () => {
     // a profile with no address of its own (this computer's) takes the account's, so the computer's initial never stands in
     expect(withAccountFace({}, { ...account, id: "acc_1" })).toMatchObject({ email: "ada@example.test", face: { id: "acc_1" } });
     expect(withAccountFace({ name: "Siddharth" }, account)).toMatchObject({ email: "ada@example.test", name: "Siddharth" });
+  });
+
+  it("shows a real photo over a drawn head unless the person picked a drawing", async () => {
+    const { personFace } = await import("./SidebarProfileMenu");
+    const { userAvatarFace } = await import("../../shared/user-avatar");
+    const own = { email: "ada@example.test", avatarUrl: "https://photos.example.test/own.png" };
+    const photo = (account: { id: string; email: string; avatarUrl?: string; avatar?: string }) => userAvatarFace(personFace(own, account)!);
+    expect(photo({ id: "acc_1", email: "ada@example.test", avatar: "photo" })).toEqual({ kind: "photo", url: own.avatarUrl });
+    expect(photo({ id: "acc_1", email: "ada@example.test", avatarUrl: "https://photos.example.test/google.png" })).toEqual({ kind: "photo", url: own.avatarUrl });
+    expect(userAvatarFace(personFace({ email: "ada@example.test" }, { id: "acc_1", email: "ada@example.test", avatarUrl: "https://photos.example.test/google.png" })!)).toEqual({ kind: "photo", url: "https://photos.example.test/google.png" });
+    expect(photo({ id: "acc_1", email: "ada@example.test", avatar: "g:abc123" })).toEqual({ kind: "drawn", seed: "abc123" });
+  });
+});
+
+describe("the account on a Cloud's page", () => {
+  it("takes the Cloud owner's address and the face main lends, and nothing without either", async () => {
+    const { placeAccount, snapshotPlanText } = await import("./SidebarProfileMenu");
+    const face = { id: "acc_1", avatarUrl: "https://photos.example.test/ada.png", plan: { status: "active" as const, tier: "pro" } };
+    expect(placeAccount(undefined, { face, owner: "ada@example.test" })).toEqual({ profile: { email: "ada@example.test" }, account: { ...face, email: "ada@example.test" } });
+    expect(placeAccount({ email: "own@example.test", name: "Ada" }, { face, owner: "ada@example.test" })?.account.email).toBe("own@example.test");
+    expect(placeAccount(undefined, { face: null, owner: "ada@example.test" })).toBeNull();
+    expect(placeAccount(undefined, { face, owner: null })).toBeNull();
+    expect(snapshotPlanText({ status: "paid", tier: "starter" })).toBe("dusk cloud · Plus");
+    expect(snapshotPlanText({ status: "none" })).toBeNull();
   });
 });
 

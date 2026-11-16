@@ -783,6 +783,7 @@ const bridge = {
   // Any place's page: opens the accounts sheet on the rail's page, from the person's click. The page learns nothing of them.
   accountSheet: process.argv.includes("--dusk-company-desktop=1") ? {
     offered: () => ipcRenderer.invoke("accounts:offered"),
+    face: () => ipcRenderer.invoke("accounts:face"),
     open: () => isLocalPage || navigator.userActivation?.isActive === true
       ? ipcRenderer.invoke("accounts:open") : Promise.reject(new Error("Choose your account to open it.")),
   } : undefined,
