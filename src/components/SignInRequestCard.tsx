@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { cardSaveTarget, saveLoginFromCard } from "@/lib/logins";
 import { answerSignIn, signInHostIsHere } from "@/lib/sign-in";
-import { useStore, type Bot, type Message } from "@/state/store";
+import { useDispatch, type Bot, type Message } from "@/state/store";
 import { ASK_QUIET_BUTTON, AskCard, CardSettledRow, cardPrimary, cardSecondary, cardTertiary, returnFocusToComposer } from "./AskCard";
 import { Icon } from "./Icon";
 import { SignInScreen, signInScreenPath } from "./SignInScreen";
@@ -76,7 +76,7 @@ function useSettleMotion(settled: boolean) {
 }
 
 export function SignInRequestCard({ botId, botName, threadId, message }: CardProps) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const card = message.signIn!;
   const [pending, setPending] = useState<"done" | "cancel" | null>(null);
   const [explained, setExplained] = useState(false);

@@ -16,7 +16,7 @@ import {
   upgradeConfirmBody, upgradeLabel, upgradePath, usageCardView, type MeterBand,
 } from "@/lib/usage-meter";
 import type { LocaleKey } from "@/locales";
-import { useStore } from "@/state/store";
+import { useStore, useDispatch } from "@/state/store";
 
 const TEAM_TIERS: readonly string[] = ["team", "business"];
 export type UpgradeSource = "app_usage" | "app_settings" | "app_room";
@@ -175,7 +175,7 @@ export function CloudUsageCardView({ usage, meters, band, upgrade, onHide, onSee
 }
 
 export function CloudUsageCard() {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const { usage, bridge, teamHome } = useCloudUsage();
   const [dismissed, setDismissed] = useState(readUsageCardDismissed);
   const upgrade = useUpgrade(bridge, usage, "app_usage");

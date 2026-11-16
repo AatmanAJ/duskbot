@@ -11,7 +11,7 @@ import { t } from "@/lib/i18n";
 import type { Place } from "@/lib/place";
 import { desktopShowsOtherServer, useOtherServerName } from "@/lib/other-server";
 import { placeHasIssue } from "@/lib/place-view";
-import { useStore, type Bot } from "@/state/store";
+import { useStore, useDispatch, type Bot } from "@/state/store";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { LocalComputerAutoWarning } from "../LocalComputerAutoWarning";
 import { usePlaceViews } from "../PlaceChip";
@@ -48,7 +48,7 @@ const EXTRA_PLACE_LABEL: Record<Exclude<PlaceChoice, "auto" | "local" | "cloud" 
 };
 
 export function useOpenComputer(bot: Pick<Bot, "id">) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   return (view: ComputerPanelView = "computer") => {
     writeComputerPanelView(bot.id, view);
     dispatch({ type: "toggleComputer", open: true });
@@ -87,7 +87,7 @@ export function usePlaceChoices(bot: Bot) {
  * computer for a bot that decides alone asks first, through `warning`. `cloudDesktop`: the cloud desktop row beside the choices, in
  * the desktop app only; choosing it runs its own step and never changes the bot's place (its confirm is in `warning`). */
 export function usePlacePicker(bot: Bot, derived: Derived) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const choices = usePlaceChoices(bot);
   const { current } = choices;
   const [localAutoWarning, setLocalAutoWarning] = useState<{ botId: string; patch: BotPatch } | null>(null);
@@ -240,7 +240,7 @@ export function cloudCtaStep(stage: CloudMoveStage | null): CloudCtaStep {
 
 /** dusk cloud for a bot on this computer, and the one next step. `group`: a group chat's bots, one card for all of them. */
 export function CloudCtaCard({ bot, group, stage, cloudDesktop }: { bot: Bot; group?: readonly Bot[]; stage: CloudMoveStage | null; cloudDesktop: CloudDesktopRow | null }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [hopping, setHopping] = useState(false);
   const step = cloudCtaStep(stage);
   const device = deviceWord();

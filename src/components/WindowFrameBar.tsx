@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { sayFrameDrawn } from "@/lib/chrome-rail";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useDispatch } from "@/state/store";
 import { captionChrome, useDesktopCapabilities, windowFrameable, windowFramed } from "./DesktopCapabilities";
 import { WindowPlaceTitle } from "./WindowPlaceTitle";
 
@@ -18,7 +18,7 @@ export const FRAME_BAR_BUTTON = "flex size-[22px] shrink-0 items-center justify-
  * rail (the page starts --rail-beside in), so its middle is the window's middle. */
 export function WindowFrameBar() {
   const { capabilities } = useDesktopCapabilities();
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const frameable = windowFrameable(capabilities), framed = windowFramed(capabilities);
   useEffect(() => { if (frameable) sayFrameDrawn(framed); }, [frameable, framed]);
   if (!framed) return null;

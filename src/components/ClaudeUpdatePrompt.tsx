@@ -3,7 +3,7 @@ import { Check, Copy, Download, Loader2, RefreshCw, X } from "../icons";
 
 import { t } from "@/lib/i18n";
 import { useCopyFeedback } from "@/lib/copy-text";
-import { api, useStore, type InstanceInfo } from "@/state/store";
+import { api, useStoreActions, type InstanceInfo } from "@/state/store";
 import { friendlyError } from "@/lib/plain-error";
 
 const UPDATE_COMMAND = "claude update";
@@ -22,7 +22,7 @@ export function ClaudeUpdatePrompt({
   instance: InstanceInfo;
   onRetry?: () => void;
 }) {
-  const { refreshInstances } = useStore();
+  const { refreshInstances } = useStoreActions();
   const [phase, setPhase] = useState<Phase>({ kind: "ask" });
   const { state: copyState, copy: copyCommand } = useCopyFeedback(UPDATE_COMMAND);
   const copyLabel = t(copyState === "failed" ? "common.copyFailed" : "chat.claudeUpdate.copy");

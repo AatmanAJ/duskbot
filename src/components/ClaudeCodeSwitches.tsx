@@ -2,13 +2,13 @@ import { useState } from "react";
 import { claudeUserMcpEnabled, claudeUserSkillsEnabled } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useStore, useDispatch, type ConfigStatus } from "@/state/store";
 import { Switch } from "./SettingsPrimitives";
 
 type Feature = "claudeUserMcp" | "claudeUserSkills";
 
 function ClaudeConfigSwitch({ feature, enabled, prefix }: { feature: Feature; enabled: boolean; prefix: "mcp.claude" | "mcp.claudeSkills" }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
 

@@ -9,7 +9,7 @@ import { useModalDialog } from "@/hooks/use-modal-dialog";
 import { appTriggerApi, type AppEventCatalog, type AppTrigger, type AppTriggerFilter } from "@/lib/app-triggers";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, type Bot } from "@/state/store";
 import { Select } from "../Select";
 import { suggestedName } from "../WebhookTrigger";
 import { Icon } from "../Icon";
@@ -20,7 +20,7 @@ const FIELD = textFieldCls;
 const LABEL = cn(fieldLabelCls, "mb-1 block");
 
 export function AppEventEditor({ trigger, bots, initialBotId, onClose, onSaved }: { trigger?: AppTrigger; bots: Bot[]; initialBotId?: string; onClose: () => void; onSaved?: (trigger: AppTrigger) => void }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [botId, setBotId] = useState(trigger?.botId ?? (initialBotId && bots.some((bot) => bot.id === initialBotId) ? initialBotId : bots[0]?.id) ?? "");
   const [catalog, setCatalog] = useState<AppEventCatalog | null>(null);
   const [app, setApp] = useState(trigger?.app ?? "");

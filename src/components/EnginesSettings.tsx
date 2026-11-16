@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Loader2 } from "../icons";
 
-import { api, useStore, type InstanceInfo } from "@/state/store";
+import { api, useStore, useStoreActions, type InstanceInfo } from "@/state/store";
 import { EngineCard, EngineSections, RefreshEngines, engineReady } from "./EngineLibrary";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -152,7 +152,7 @@ function CustomPicker({ instance, cliDefault, onClose, onSaved }: {
 
 /** The executable behind an engine: its path, Claude's self-update, and a reset to the default. */
 function EngineAdvanced({ instance }: { instance: InstanceInfo }) {
-  const { refreshInstances } = useStore();
+  const { refreshInstances } = useStoreActions();
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [updating, setUpdating] = useState(false);

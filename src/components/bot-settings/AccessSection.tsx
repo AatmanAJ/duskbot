@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { browserUnavailableReason, phoneAppEnabled } from "@/lib/feature-flags";
 import { ChevronDown, ChevronRight, FolderOpen, Plus } from "../../icons";
 
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useStore, useDispatch, type Bot } from "@/state/store";
 import { useBotEditor } from "./BotEditorContext";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -127,7 +127,7 @@ export function WorkingFolder({ bot }: { bot: Bot }) {
  * bot.
  */
 export function McpServersCard({ bot, patch }: { bot: Bot; patch: (patch: { mcpServers: string[] | null }) => void }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const { servers: all, error, refresh } = useMcpServers();
   const servers = all ? mcpServersOfBot(all, bot.id) : null;
   const mounted = new Set((servers ? mcpServersForBot(servers, bot.mcpServers, bot.id) : []).map((server) => server.name));

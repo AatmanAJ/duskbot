@@ -7,11 +7,12 @@ type MockedUseStore = () => Partial<StoreValue> & { state?: Partial<AppState> };
  * so a component that moved from useStore() to useStoreSelector() sees the test's state.
  */
 export function withStoreHooks<Module extends object>(mocked: Module): Module {
-  const useStore = (mocked as { useStore?: MockedUseStore }).useStore;
-  if (typeof useStore !== "function") return mocked;
+  if (typeof (mocked as { useStore?: MockedUseStore }).useStore !== "function") return mocked;
+  // read on every call: a test may vi.spyOn(store, "useStore") after the mock is built
+  const useStore = () => (hooked as unknown as { useStore: MockedUseStore }).useStore();
   const state = () => useStore().state as AppState;
   const select = <T,>(selector: (state: AppState) => T) => selector(state());
-  return {
+  const hooked = {
     ...mocked,
     useStoreSelector: select,
     useStoreShallow: select,
@@ -22,4 +23,5 @@ export function withStoreHooks<Module extends object>(mocked: Module): Module {
     useStoreHandle: () => ({ ...useStore(), getState: state, subscribe: () => () => {} }),
     useOptionalStore: () => useStore(),
   };
+  return hooked;
 }

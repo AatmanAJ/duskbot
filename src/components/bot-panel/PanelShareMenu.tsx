@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, type Bot } from "@/state/store";
 import { BotAvatar } from "../Avatar";
 import { useChatMoreItems } from "../ChatMoreMenu";
 import { Icon, type IconName } from "../Icon";
@@ -47,7 +47,7 @@ export function PanelShareMenu({ bot }: { bot: Bot }) {
 }
 
 function ShareMenu({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const team = useTeamName();
   const { items } = useChatMoreItems(bot);
   const [open, setOpen] = useState(false);

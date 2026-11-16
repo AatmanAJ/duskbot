@@ -3,13 +3,13 @@ import { useState } from "react";
 import { browserAvailable, browserUnavailableReason, builtInBrowserEnabled } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useStore, useDispatch, type ConfigStatus } from "@/state/store";
 import { SettingRow, Switch } from "./SettingsPrimitives";
 import { friendlyError } from "@/lib/plain-error";
 
 /** Saves one config change through PATCH /api/config, one at a time, and shows the server's answer or its error. */
 function useConfigSave() {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const save = async (patch: Record<string, unknown>) => {

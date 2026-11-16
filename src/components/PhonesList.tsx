@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { t } from "@/lib/i18n";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch } from "@/state/store";
 import { phoneAppChips, phonePlatformLabel, phoneRemovePath, usePhones } from "../lib/phones";
 import { relative } from "./CompanionSection";
 import { SettingRow, SettingsGroup, SettingsRows } from "./SettingsPrimitives";
@@ -9,7 +9,7 @@ import { friendlyError } from "@/lib/plain-error";
 
 export function PhonesList() {
   const { phase, phones, refresh } = usePhones();
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [removing, setRemoving] = useState<string | null>(null);
   if (phase === "loading") return null;
 

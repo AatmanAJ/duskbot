@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type MutableRefObject } from "react";
 import { appVersion, openExternalLink } from "@/lib/app-links";
-import { useStore } from "@/state/store";
+import { useStoreActions } from "@/state/store";
 import type { AppBlockedReason, AppDocument } from "../../../shared/app";
 import { RPC_HOST_REFUSED, type JsonRpcError } from "../../../shared/app-frame/bridge";
 import { callAppRpc, newAppSendId, postAppContext, sendAppMessage } from "./app-api";
@@ -39,7 +39,7 @@ const refusal = (message: string): JsonRpcError => ({ code: RPC_HOST_REFUSED, me
 
 export function AppFrame(props: AppFrameProps) {
   const box = useRef<HTMLDivElement | null>(null);
-  const { flushBotPatches } = useStore();
+  const { flushBotPatches } = useStoreActions();
   // Callbacks change every render; the frame lives across renders.
   const latest = useRef({ ...props, flushBotPatches });
   latest.current = { ...props, flushBotPatches };

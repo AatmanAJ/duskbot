@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Loader2, MoreHorizontal, Plus } from "../icons";
-import { api, useStore, type InstanceInfo } from "@/state/store";
+import { api, useStore, useDispatch, type InstanceInfo } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import type { LocaleKey } from "@/locales";
@@ -154,7 +154,7 @@ function AccountMenu({ group, instance, onRename }: { group: AccountGroup; insta
 }
 
 function RenameForm({ instance, onDone }: { instance: InstanceInfo; onDone: () => void }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [name, setName] = useState(instance.displayName);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -244,7 +244,7 @@ export function AddAccount({ label, endpoint, extra, folder: offerFolder = false
   folder?: boolean;
   onAdded: (instanceId: string) => void;
 }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [folder, setFolder] = useState("");

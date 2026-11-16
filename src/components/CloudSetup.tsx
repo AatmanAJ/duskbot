@@ -17,7 +17,7 @@ import { hintSeen, type WelcomeViewer } from "@/lib/onboarding";
 import type { LocaleKey } from "@/locales";
 import type { Routine } from "@/lib/routines";
 import { useSidebarFooterSlot } from "@/lib/sidebar-footer-slot";
-import { openBot, useStore } from "@/state/store";
+import { openBot, useStore, useDispatch } from "@/state/store";
 
 const TITLE: Record<CloudSetupStep, LocaleKey> = {
   cloud: "cloudSetup.cloud.title", job: "cloudSetup.job.title", engine: "cloudSetup.engine.title", plan: "cloudSetup.plan.title", move: "cloudWelcome.step.bring",
@@ -84,7 +84,7 @@ function nextRunLabel(at: number | null, now = Date.now()): string | null {
 export function CloudReady({ routine, onDone, slot, from = null }: { routine?: Routine; onDone: () => void; slot: HTMLElement | null;
   /** the setup card's height: the ready card grows out of it rather than popping in */
   from?: number | null }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [cheer, setCheer] = useState<{ kind: MausMotion; key: number }>({ kind: "none", key: 0 });
   const [leaving, setLeaving] = useState(false);
   const [run, setRun] = useState<"idle" | "starting" | "started" | "failed">("idle");

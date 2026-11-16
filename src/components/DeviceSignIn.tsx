@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy, ExternalLink, Loader2, LogIn, X } from "../icons";
-import { api, ApiError, useStore } from "@/state/store";
+import { api, ApiError, useStoreActions } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { openExternalLink } from "@/lib/app-links";
 import { useCopyFeedback } from "@/lib/copy-text";
@@ -156,7 +156,7 @@ export function DeviceSignIn({ instanceId, browserPkce = false, provider = "code
   autoStart?: boolean;
   onDone?: (signedIn: boolean) => void;
 }) {
-  const { refreshInstances, refreshModels } = useStore();
+  const { refreshInstances, refreshModels } = useStoreActions();
   const [auth, setAuth] = useState<DeviceSignInStatus | null>(null);
   const [busy, setBusy] = useState(autoStart);
   const started = useRef(false);

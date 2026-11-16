@@ -1,7 +1,7 @@
 import { memo, useState, type ReactNode } from "react";
 import { lowerFirst } from "../lib/lower-first";
 import { ChevronDown, Send, ShieldCheck, TriangleAlert } from "../icons";
-import { useStore, type Bot, type Message } from "@/state/store";
+import { useDispatch, type Bot, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t, tFromServer } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
@@ -273,7 +273,7 @@ export function PendingApprovalActions({
   /** Marks each answer for the surface that shows it, as data-<tag>-action. */
   tag?: string;
 }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const ownerOrAdmin = useOwnerOrAdmin();
   const isRoutineRequest = isRoutineApproval(pending);
   const isSkillRequest = isSkillApproval(pending);

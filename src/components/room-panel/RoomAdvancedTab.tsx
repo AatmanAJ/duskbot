@@ -4,7 +4,7 @@ import { requestChatFind } from "@/lib/chat-find";
 import { copyTranscriptToClipboard, downloadMarkdownTranscript, formatTranscriptMarkdown, slugifyTranscriptFilename } from "@/lib/export-transcript";
 import { t } from "@/lib/i18n";
 import { openSettings } from "@/lib/open-settings";
-import { useStore } from "@/state/store";
+import { useDispatch } from "@/state/store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { PRESET_TURN_LIMITS, useConversationTurnLimit } from "../ConversationTurnLimit";
 import { roomDeleteCopy } from "../room-delete-copy";
@@ -21,7 +21,7 @@ function turnLimitLabel(minutes: number): string {
 /** The room's controls in the bot panel's Advanced anatomy: the room itself, its chat, apps, then deleting it. */
 export function RoomAdvancedTab(props: RoomRowsProps) {
   const { group } = props;
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const limit = useConversationTurnLimit(group);
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState<"copied" | "failed" | null>(null);

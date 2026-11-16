@@ -8,14 +8,14 @@ import {
   type EngineLimit, type UsageTone,
 } from "@/lib/limit-resets";
 import type { Routine } from "@/lib/routines";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch } from "@/state/store";
 import { openBotSettings } from "./bot-panel/panel-link";
 import { friendlyError } from "@/lib/plain-error";
 
 /** The stopped turn's "Continue at 3:40 PM when your limit resets": one click sets up a one-time automation in this
  * conversation that picks up where it stopped. Undefined when there is nothing to offer. */
 export function useLimitResetContinue(botId: string | undefined, threadId: string | undefined, resetsAt: number | undefined) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [state, setState] = useState<"idle" | "working" | "set">("idle");
   if (!botId || !threadId || !resetsAt || resetsAt <= Date.now() || state === "set") return undefined;
   return {
@@ -159,7 +159,7 @@ export function UsageBars({ engine, compact = false, hover = true, className }: 
 
 /** A phone's header has no model button: near or at the limit, the bars stand alone and open the bot's model. */
 export function UsageAlert({ engine }: { engine: string | undefined }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const limit = useEngineUsage(engine);
   if (!limit || usageTone(limit) === "fine") return null;
   const line = limitLine(limit, Date.now(), ", ");

@@ -4,7 +4,7 @@ import { EyeOff } from "../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { DEFAULT_BOT_NAME, myDefaultBot, useViewerEmail } from "@/lib/default-bot";
-import { useStore, type Action, type Bot } from "@/state/store";
+import { useStore, useDispatch, type Action, type Bot } from "@/state/store";
 import { Card, NavRow } from "./bot-panel/rows";
 import { SettingRow, Switch } from "./SettingsPrimitives";
 
@@ -15,7 +15,7 @@ export function showDefaultBot(dispatch: (action: Action) => void, bot: Pick<Bot
 }
 
 export function HideDefaultBotItem({ bot, onDone, className = "flex w-full items-center gap-3 px-3.5 py-2 text-left text-[14px]", icon, labelClassName }: { bot: Bot; onDone: () => void; className?: string; icon?: ReactNode; labelClassName?: string }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   return (
     <button
       type="button"
@@ -51,7 +51,7 @@ export function DefaultBotSidebarRow({ simple = false }: { simple?: boolean }) {
 
 /** Bot settings: Dusk is never deleted, only taken off the sidebar. */
 export function DefaultBotHideRow({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   if (!bot.defaultBot || bot.sidebarHidden) return null;
   return (
     <Card anchor="default-bot">

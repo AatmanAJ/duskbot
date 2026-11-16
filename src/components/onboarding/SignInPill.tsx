@@ -6,7 +6,7 @@ import { useCopyFeedback } from "@/lib/copy-text";
 import { t } from "@/lib/i18n";
 import { engineSignedIn, tileSignInEngine } from "@/lib/product-events";
 import { trail } from "@/lib/trail";
-import { api, useStore, type InstanceInfo } from "@/state/store";
+import { api, useStoreActions, type InstanceInfo } from "@/state/store";
 import { StageSwap } from "./ConnectMotion";
 import { ConnectFlow, measured, type ConnectInstance, type ConnectState, type ConnectTarget, type InstallProgress } from "./connect-flow";
 
@@ -29,7 +29,7 @@ export function siteName(driverKind: string): string {
 
 /** One connect at a time for a whole grid: a new one cancels the running one, and leaving the grid cancels it too. */
 export function useConnectFlow() {
-  const { dispatch, refreshModels } = useStore();
+  const { dispatch, refreshModels } = useStoreActions();
   const flow = useMemo(() => new ConnectFlow({
     api: (path, init) => api(path, init),
     refresh: async () => {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { t } from "@/lib/i18n";
 import { openSettings } from "@/lib/open-settings";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, type Bot } from "@/state/store";
 import { Card, FormField, ItemRow, NavRow, NoteRow, pillCls, pillPrimaryCls, rowCls } from "../ListRows";
 import { textFieldCls } from "../ui/GrokDialog";
 import { useSlackBot, useSlackWorkspace } from "./use-slack";
@@ -16,7 +16,7 @@ export function SlackBotPage({ bot }: { bot: Bot }) {
 }
 
 function SlackBotContent({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const workspace = useSlackWorkspace();
   const slack = useSlackBot(bot.id);
   const [link, setLink] = useState("");

@@ -14,7 +14,7 @@ import { formatCost } from "@/lib/usage-trace";
 import { isRoutineProblemRun, type Routine, type RoutineRunOn } from "@/lib/routines";
 import { hoursLine, liveStrip, probeLine } from "@/lib/routine-display";
 import { saveWebhookCredential, webhookCredentialStore } from "@/lib/webhook-credentials";
-import { useStore, type Bot } from "@/state/store";
+import { useStore, useDispatch, type Bot } from "@/state/store";
 import { useAllAutomationActions } from "../automations/app-actions";
 import { AppEventEditor } from "../automations/AppEventEditor";
 import { WebhookEditor } from "../WebhookTrigger";
@@ -106,7 +106,7 @@ function AutomationRow({ bot, automation, routine, open, editing, onOpen, onClos
   onClose: () => void;
   onEdit: (on: boolean) => void;
 }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const actions = useAllAutomationActions();
   const status = automationStatus(automation);
   const done = status.state === "done";

@@ -2,7 +2,7 @@ import { xResearchAction } from "@/lib/cloud-plan";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { mcpServersForBot, mcpServersOfBot, useMcpServers } from "@/lib/mcp-servers";
-import { useStore, type Bot } from "@/state/store";
+import { useStore, useDispatch, type Bot } from "@/state/store";
 import type { ConnectorScope } from "../../../../shared/connector-scopes";
 import { ConnectorGrantPage, ConnectorGrantRows, GRANT_PAGE } from "../../bot-settings/ConnectorGrantRows";
 import { useToolSelection } from "../../bot-settings/ToolSelectionCard";
@@ -45,7 +45,7 @@ type Apps = ReturnType<typeof useBotApps>;
 type Selection = ReturnType<typeof useToolSelection>;
 
 function AppsCard({ bot, derived, apps }: { bot: Bot; derived: Derived; apps: Apps }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const { open } = useSubPage();
   const { patch, canUseConnectedApps, connectedAppsConfigured, connectedAppsEnabled, connectorGrantState } = derived;
   const shown = connectedAppsEnabled && apps.phase === "ready";
@@ -244,7 +244,7 @@ function SelectionPage({ bot, selection }: { bot: Bot; selection: Selection }) {
 }
 
 function ServersPage({ bot, patch }: { bot: Bot; patch: Derived["patch"] }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const { servers: all, error, refresh } = useMcpServers();
   const servers = all ? mcpServersOfBot(all, bot.id) : null;
   const mounted = new Set((servers ? mcpServersForBot(servers, bot.mcpServers, bot.id) : []).map((server) => server.name));

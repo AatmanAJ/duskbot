@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useStore, type Message } from "@/state/store";
+import { useStore, useDispatch, type Message } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import type { AppDocument, AppPayload } from "../../../shared/app";
@@ -74,7 +74,7 @@ function AppRow({ botId, botName, threadId, message, payload, pool }: {
   payload: AppPayload;
   pool?: AppPool;
 }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const uid = useId();
   const page = payload.source === "html";
   const version = usePageVersion(payload);

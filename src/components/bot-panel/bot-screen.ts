@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listenLiveFrames } from "@/lib/live-events";
 import { effectivePlace, type EffectivePlace, type Place } from "@/lib/place";
 import { usePageVisible } from "@/lib/page-visible";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useStoreActions, type Bot } from "@/state/store";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { screenFramePreview } from "../ScreenFrame";
 import { LIVE_FPS, liveScreenPossible, useLiveScreen } from "./local-screen-stream";
@@ -31,7 +31,7 @@ const AUTO_SURFACES: ReadonlySet<string> = new Set(["cloud", "vm", "local", "bro
 /** The screen the bot's Computer tab shows: this computer's own screen through the desktop app, a cloud desktop's live
  * frames, or else the last screen the bot posted in its conversation. */
 export function useBotScreen(bot: Bot, { visible = true }: { visible?: boolean } = {}): BotScreen {
-  const { flushBotPatches } = useStore();
+  const { flushBotPatches } = useStoreActions();
   const { capabilities } = useDesktopCapabilities();
   const pageVisible = usePageVisible();
   const liveTask = bot.tasks?.find((task) => task.threadId === bot.threadId);

@@ -2,7 +2,7 @@
 // answers in the chat, in the inbox's copy of it and in the inbox panel.
 import { useMemo, useState } from "react";
 import { Check } from "../icons";
-import { useStore, type Message } from "@/state/store";
+import { useDispatch, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import {
@@ -102,7 +102,7 @@ export function QuestionCard({
   /** The person has written in the chat since: the choices recede, and still answer. */
   typedPast?: boolean;
 }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const origin = useInboxOrigin(message);
   const card = message.card;
   const questions = useMemo(() => (card ? cardQuestions(card) : []), [card]);
@@ -241,7 +241,7 @@ export const decidedByBot = (card: NonNullable<Message["card"]>): boolean =>
   card.answeredBy?.kind === "bot" && card.answered === "answer" && !card.dismissed && !card.expired && !card.stopped;
 
 function DecidedQuestion({ threadId, asker, card, questions }: { threadId: string; asker?: Asker; card: NonNullable<Message["card"]>; questions: readonly AskQuestion[] }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "failed">("idle");

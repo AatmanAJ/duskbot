@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ArrowUpRight, Check, ChevronDown, RefreshCw } from "../icons";
-import { useStore, type InstanceInfo } from "@/state/store";
+import { useStoreActions, type InstanceInfo } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { InstanceProviderMark } from "./ProviderIcons";
@@ -99,7 +99,7 @@ export function EngineSections({ instances, renderEngine, isReady = engineReady 
 }
 
 export function RefreshEngines({ onChecked }: { onChecked?: () => void } = {}) {
-  const { refreshInstances } = useStore();
+  const { refreshInstances } = useStoreActions();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);

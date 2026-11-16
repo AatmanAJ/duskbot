@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, type Bot } from "@/state/store";
 import { OrgSkillsCard } from "../../bot-settings/OrgSkillsCard";
 import { SkillReviewDialog } from "../../bot-settings/SkillsSection";
 import { Card, FormDialog, FormField, NavRow, NoteRow, rowCls, RowText, SheetPane, useSubPage } from "../../ListRows";
@@ -21,7 +21,7 @@ export function SkillsModal({ bot }: { bot: Bot; onClose: () => void }) {
 }
 
 function SkillRows({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const actions = useSkillActions(bot);
   const { skills, remove, browse } = actions;
   const { at, open } = useSubPage();

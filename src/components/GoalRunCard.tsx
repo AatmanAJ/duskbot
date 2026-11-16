@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import { useStore, type Message } from "@/state/store";
+import { useDispatch, type Message } from "@/state/store";
 import type { GroupGoalRunCardData } from "../../shared/group-goal-run";
 
 const DETAIL_LIMIT = 280;
@@ -111,7 +111,7 @@ export function GoalRunCard({ message, solo = false, onStop }: { message: Messag
 }
 
 export function GoalRunRow({ botId, threadId, message }: { botId: string; threadId?: string; message: Message }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   return (
     <div className="flex justify-start">
       <GoalRunCard message={message} solo onStop={() => dispatch({ type: "interrupt", botId, threadId })} />

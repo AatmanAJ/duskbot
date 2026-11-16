@@ -5,7 +5,7 @@ import { FolderOpen, Plus } from "../../icons";
 import { appSwitchPatch } from "@/lib/bot-app-access";
 import { t } from "@/lib/i18n";
 import { shortPath } from "@/lib/short-path";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, type Bot } from "@/state/store";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { ServiceIcon } from "../ServiceIcon";
 import { useWorkingFolder } from "../bot-settings/AccessSection";
@@ -33,7 +33,7 @@ export interface PageContext {
 export const pageSurfaceCls = "flex flex-col gap-3";
 
 export function AppsPage({ bot, derived }: PageContext) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const apps = useBotApps(bot);
   const { patch, canUseConnectedApps } = derived;
 
