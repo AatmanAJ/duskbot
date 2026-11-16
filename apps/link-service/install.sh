@@ -1163,7 +1163,7 @@ install_build() { # sha256:<hex> root's verified file
 # its own file and the account's write lands wherever the account may write anyway. prints that copy's path
 hand_over() { # root's file
   _dest="$SVC_HOME/.cache/duskbot-link/${1##*/}"
-  as_user sh -c 'umask 077; mkdir -p "$1" && find "$1" -maxdepth 1 -name "duskbot-*.tgz*" ! -name "${2##*/}" -exec rm -f {} + && cat > "$2.tmp" && mv -f "$2.tmp" "$2"' sh "${_dest%/*}" "$_dest" < "$1" || return 1
+  as_user sh -c 'cd / && umask 077; mkdir -p "$1" && find "$1" -maxdepth 1 -name "duskbot-*.tgz*" ! -name "${2##*/}" -exec rm -f {} + && cat > "$2.tmp" && mv -f "$2.tmp" "$2"' sh "${_dest%/*}" "$_dest" < "$1" || return 1
   echo "$_dest"
 }
 # root's own verified copy of build <sha256> in $PKGS; one only in the server account's cache (an install from before
