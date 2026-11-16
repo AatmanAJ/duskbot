@@ -36,8 +36,8 @@ function StatTile({ label, value, foot, mini, i }: { label: string; value: numbe
     <li className="surface enter flex min-w-0 flex-col rounded-card bg-card p-5 max-sm:p-4" style={{ ["--i" as string]: i }}>
       <span className="text-13 text-ink-3">{label}</span>
       <span className="mt-1"><Figure value={value.toLocaleString("en-US")} className={value ? undefined : "!text-ink-4"} /></span>
-      <span className="mt-4 block">{mini}</span>
-      <span className="mt-2 truncate text-13 text-ink-4">{foot}</span>
+      <span className="mt-auto block pt-4">{mini}</span>
+      <span className="mt-2 pt-px text-13 leading-[1.35] text-ink-4 [overflow-wrap:anywhere]">{foot}</span>
     </li>
   );
 }
@@ -57,23 +57,23 @@ export function StatTiles({ stats }: { stats: HomeStats }) {
       <h2 id="glance-title" className="sr-only">at a glance</h2>
       <ul className="grid grid-cols-4 gap-4 max-lg:grid-cols-2 max-sm:gap-3">
         <StatTile i={2} label="replies this week" value={stats.turns}
-          foot={stats.turns ? (today ? `${plural(today, "reply", "replies")} today` : "none yet today") : "your week shows up here"}
+          foot={stats.turns ? (today ? `${plural(today, "reply", "replies")} today` : "none yet today") : "fills in as bots reply"}
           mini={stats.turns ? <Spark values={stats.days.map((d) => d.turns)} height={MINI_H} /> : <GhostSpark shape={SHAPES.turns} />} />
         <StatTile i={2.5} label="bots" value={stats.bots}
           foot={stats.bots ? (stats.working ? `${stats.working} working now` : "all quiet") : "make one in the app"}
           mini={stats.bots ? <Pips items={Array.from({ length: stats.bots }, (_, n) => n < stats.working ? "bg-good" : "bg-ink-4/50")} /> : <GhostSpark shape={SHAPES.bots} />} />
         <StatTile i={3} label="routines" value={stats.routines}
-          foot={stats.routines ? (stats.pausedRoutines ? `${stats.pausedRoutines} paused` : "all on") : "jobs your bots run on a schedule"}
+          foot={stats.routines ? (stats.pausedRoutines ? `${stats.pausedRoutines} paused` : "all on") : "scheduled bot jobs"}
           mini={stats.routines ? <Pips items={Array.from({ length: stats.routines }, (_, n) => n < stats.routines - stats.pausedRoutines ? "bg-accent" : "bg-track")} /> : <GhostSpark shape={SHAPES.routines} />} />
         <StatTile i={3.5} label="apps connected" value={stats.apps}
-          foot={stats.apps ? "your bots can use these" : "link one and your bots can use it"}
+          foot={stats.apps ? "your bots can use these" : "gmail, slack and more"}
           mini={stats.apps ? <Pips items={Array.from({ length: stats.apps }, () => "bg-accent")} /> : <GhostSpark shape={SHAPES.apps} />} />
       </ul>
     </section>
   );
 }
 
-const GHOST = [22, 38, 30, 55, 46, 70, 40];
+const GHOST = [30, 48, 38, 64, 52, 80, 44];
 
 function Day({ day, top, ghost, n }: { day: WeekDay; top: number; ghost: boolean; n: number }) {
   const level = day.turns && top ? Math.max(2, Math.ceil((day.turns / top) * 4)) : 0;
