@@ -68,6 +68,8 @@ export interface MobilePlatform {
   camera?: CameraScanner;
   readClipboard?(): Promise<string | null>;
   openExternal(url: string): Promise<void>;
+  /** Closes the in-app browser sheet openExternal showed, if one is up. */
+  closeBrowser?(): void;
   share?(data: { title?: string; text?: string; url?: string }): Promise<void>;
   /** Sign in with Apple through the system sheet (iPhone): Apple binds `nonceHash` (sha-256 hex) into the identity token.
    * Null when the person closed the sheet; throws when it failed. */

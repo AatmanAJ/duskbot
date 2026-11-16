@@ -96,6 +96,8 @@ export function AccountGate({ children }: { children: ReactNode }) {
     if (pendingAuth.current) { ++revision; follow(pendingAuth.current); }
     const stop = platform.onAppUrl?.(url => {
       if (!isAccountAuthUrl(url)) return false;
+      // the browser sheet the sign-in ran in would otherwise stay up over the app on the page it ended at
+      platform.closeBrowser?.();
       ++revision;
       const task = client.handleAuthUrl(url);
       pendingAuth.current = task;

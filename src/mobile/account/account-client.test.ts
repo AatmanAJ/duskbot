@@ -125,7 +125,7 @@ describe("browser sign-in", () => {
     const pending = JSON.parse(secrets.get("dusk.account.pending")!);
     const url = new URL(vi.mocked(platform.openExternal).mock.calls[0][0]);
     expect(url.origin + url.pathname).toBe(`${origin}/v1/auth/app/start`);
-    expect(Object.fromEntries(url.searchParams)).toMatchObject({ provider: "google", code_challenge_method: "S256", redirect_uri: "duskbot://auth", state: pending.state,
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({ provider: "google", code_challenge_method: "S256", redirect_uri: "duskbot://auth", landing: "page", state: pending.state,
       code_challenge: createHash("sha256").update(pending.verifier).digest("base64url") });
     expect(pending.verifier).toHaveLength(43); expect(pending.state).toHaveLength(32);
   });

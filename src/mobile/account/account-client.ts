@@ -209,7 +209,7 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
       const challenge = base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
       await platform.secrets.set(PENDING, JSON.stringify({ verifier, state, provider, at: Date.now(), origin }));
       try {
-        await platform.openExternal(`${origin}${ACCOUNT_ROUTES.appStart}?${new URLSearchParams({ provider, code_challenge: challenge, code_challenge_method: "S256", state, redirect_uri: APP_AUTH_REDIRECT })}`);
+        await platform.openExternal(`${origin}${ACCOUNT_ROUTES.appStart}?${new URLSearchParams({ provider, code_challenge: challenge, code_challenge_method: "S256", state, redirect_uri: APP_AUTH_REDIRECT, landing: "page" })}`);
       } catch (error) { await platform.secrets.remove(PENDING); throw error; }
     },
     /** Sign in with Apple in the system sheet, then the account service's native sign-in; the session is kept as the

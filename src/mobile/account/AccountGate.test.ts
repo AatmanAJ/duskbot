@@ -95,8 +95,10 @@ it("signs out back to signed-out", async () => {
 });
 it("handles auth links, leaves pairing links to ConnectionGate and says why a sign-in failed", async () => {
   fetcher.mockResolvedValue(response({ v: 1, providers: [], signupOpen: true }));
-  await mount(); heading(); expect(listener?.("duskbot://pair?code=abc")).toBe(false);
+  const closeBrowser = vi.fn(); platform.closeBrowser = closeBrowser;
+  await mount(); heading(); expect(listener?.("duskbot://pair?code=abc")).toBe(false); expect(closeBrowser).not.toHaveBeenCalled();
   await act(async () => { expect(listener?.("duskbot://auth?code=abc&state=bad")).toBe(true); });
+  expect(closeBrowser).toHaveBeenCalledOnce();
   expect(host.querySelector("[role=alert]")?.textContent).toContain("This sign-in expired. Please start again.");
 });
 it("signs in with an emailed code typed into one field", async () => {
@@ -180,9 +182,10 @@ it("finishes a cold-launch auth link through StrictMode effect replay", async ()
   secrets.set("dusk.account.pending", JSON.stringify({ verifier: "v".repeat(43), state: "state", provider: "google", at: Date.now(), origin }));
   let launch: string | null = "duskbot://auth?code=abc&state=state";
   platform.onAppUrl = cb => { if (launch && cb(launch)) launch = null; return () => {}; };
+  const closeBrowser = vi.fn(); platform.closeBrowser = closeBrowser;
   fetcher.mockResolvedValue(response({ cloudContractVersion: 1, accessToken: token, expiresAt: Date.now() + 60_000, device: { id: "phone" }, account }));
   await mount(createElement(function Child() { return createElement("p", null, useMobileAccount()?.account?.email ?? "none"); }), true);
-  expect(host.textContent).toBe(account.email); expect(fetcher).toHaveBeenCalledOnce();
+  expect(host.textContent).toBe(account.email); expect(fetcher).toHaveBeenCalledOnce(); expect(closeBrowser).toHaveBeenCalled();
 });
 
 it("says every Sign in with Apple problem in its own words", async () => {

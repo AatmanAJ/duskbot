@@ -407,6 +407,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     // Capacitor 8 hands a top-level navigation off the app's own origin to the system (Mail for mailto:); the in-app
     // browser view takes web pages only
     openExternal: async (url) => { if (/^https?:/i.test(url)) await Browser.open({ url, presentationStyle: "popover" }); else window.location.href = url; },
+    closeBrowser() { void Browser.close().catch(() => {}); },
     share: async (data) => { await Share.share(data); },
     appleSignIn: kind === "ios" && Capacitor.isPluginAvailable("AppleSignIn") ? async (nonceHash) => {
       try { return await AppleSignIn.signIn({ nonce: nonceHash }); } catch (error) {
