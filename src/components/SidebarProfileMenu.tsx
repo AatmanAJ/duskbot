@@ -519,6 +519,8 @@ function devItems(icon: ReactNode): SidebarMenuItem[] {
 
 /** The account's own block at the top of the menu: who is signed in, by address, with the plan below. */
 export interface MenuAccountHeader {
+  /** the person's own name when known: it leads the block, so a long address never has to */
+  name?: string | null;
   email: string;
   plan: string | null;
   face: ReactNode;
@@ -547,9 +549,10 @@ export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback
   const active = accounts.view?.active;
   // signing out works here on this app's own page; anywhere else the sheet on the rail's page does it
   const signOut = active ? () => accounts.signOut(active.id) : accounts.openSheet;
-  const who = header ?? (active ? { email: active.email, plan: accountPlanText(active.plan), face: <UserFace account={active} size={32} /> } : null);
+  const who: MenuAccountHeader | null = header ?? (active ? { name: active.name, email: active.email, plan: accountPlanText(active.plan), face: <UserFace account={active} size={32} /> } : null);
+  const named = who?.name?.trim();
   const top: SidebarMenuItem[] = who
-    ? [{ key: "who", label: who.email, title: who.email, ...(who.plan ? { subtitle: who.plan } : {}), icon: who.face, large: true, onSelect: onDashboard ?? accounts.openSheet ?? onSettings }]
+    ? [{ key: "who", label: named || who.email, title: who.email, subtitle: [named ? who.email : "", who.plan ?? ""].filter(Boolean).join(" · ") || undefined, icon: who.face, large: true, onSelect: onDashboard ?? accounts.openSheet ?? onSettings }]
     // nobody signed in here: Sign in, first, where the account would be; it continues in the browser for its context (the
     // account context redirect), where this app can; otherwise the sheet that signs in right there
     : signOut ? [] : [{ key: "sign-in", label: t("accounts.signIn"), icon: icon("person"), onSelect: typeof window !== "undefined" && window.duskDesktop?.cloudAccount?.continueInBrowser ? () => openSignIn() : accounts.view ? () => accounts.add() : onAddAccount }];
@@ -650,6 +653,7 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
   };
   const headerEmail = accounts.view?.active?.email ?? place?.account?.email ?? null;
   const header: MenuAccountHeader | null = headerEmail ? {
+    name: profile?.name ?? null,
     email: headerEmail,
     plan: accountPlanText(signedIn?.plan) ?? snapshotPlanText(cloudPlan),
     face: <ProfileFace face={face} initials={profileInitials(profile)} size={32} fontSize={13} />,

@@ -567,7 +567,7 @@ describe("grok's profile menu", () => {
     const active = { id: "acc-1", email: "ada@qa.dusk.test", name: "Ada Lovelace", plan: { status: "active", tier: "starter" } };
     const items = grokProfileMenuItems({ ...base, onSettings, onDashboard, accounts: { view: { active }, openSheet: null, signOut, add: vi.fn(), editAvatar: vi.fn() } as never });
     expect(items.map((item) => item.key)).toEqual(["who", "mobile", "dashboard", "support", "settings", "log-out"]);
-    expect(items[0]).toMatchObject({ label: "ada@qa.dusk.test", subtitle: "dusk cloud · Plus", large: true });
+    expect(items[0]).toMatchObject({ label: "Ada Lovelace", subtitle: "ada@qa.dusk.test · dusk cloud · Plus", title: "ada@qa.dusk.test", large: true });
     expect(items[1]).toMatchObject({ key: "mobile", separatorBefore: true });
     expect(items.at(-1)).toMatchObject({ label: "Sign out", separatorBefore: true });
     expect(items.some((item) => item.label === "Account and sign out")).toBe(false);
