@@ -305,18 +305,19 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     </p>
   );
 
-  // the qr's white tile, the same size whatever it holds, so nothing jumps while a code is made or renewed
+  // the qr's white tile, the same size whatever it holds, so nothing jumps while a code is made or renewed. level L: a
+  // screen does not smudge, and the long link gets bigger modules that a camera reads from further away
   const qrTile = (value: string | null, label: string) => (
     <div role="img" aria-label={label} aria-busy={!value} data-phone-qr={value ?? ""} className="flex size-[180px] shrink-0 items-center justify-center rounded-[14px] bg-white p-2.5">
-      {value ? <QRCodeSVG value={value} size={160} level="M" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
+      {value ? <QRCodeSVG value={value} size={160} level="L" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
         : <span className="size-[160px] animate-pulse rounded-[8px] bg-[#1b1b1f]/[0.06] motion-reduce:animate-none" />}
     </div>
   );
 
-  const ended = (art: PlaceArtName, line: string, action: string, tone: "status" | "alert") => (
+  const ended = (art: PlaceArtName, line: string, action: string) => (
     <div className="flex size-[180px] shrink-0 flex-col items-center justify-center gap-3 rounded-[14px] bg-ink/[0.04] p-3 text-center">
       <PlaceArt name={art} size={40} />
-      <p role={tone} className="m-0 text-[13px] leading-[18px] text-ink-secondary">{line}</p>
+      <p role="status" className="m-0 text-[13px] leading-[18px] text-ink-secondary">{line}</p>
       <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className="ui-button ui-button-pill min-h-11">{action}</button>
     </div>
   );
@@ -361,18 +362,23 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const localLink = (
     <div data-phone-link="" className="flex flex-col items-center gap-5">
       {heading(t("mobile.desktop.title"))}
-      {slab(
-        failed ? ended("error", error ?? "", t("settings.phone.tryAgain"), "alert")
-          : expired ? ended("expired", t("settings.mobile.expired"), t("settings.mobile.newCode"), "status")
+      {failed ? (
+        <div data-pairing-failed="" className="flex w-full flex-col items-center gap-3 rounded-[20px] bg-ink/[0.035] px-6 py-8 text-center">
+          <PlaceArt name="error" size={44} />
+          <p role="alert" className="m-0 max-w-[380px] text-pretty text-[14px] leading-5 text-ink-secondary">{error}</p>
+          <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className="ui-button ui-button-pill min-h-11">{t("settings.phone.tryAgain")}</button>
+        </div>
+      ) : slab(
+        expired ? ended("expired", t("settings.mobile.expired"), t("settings.mobile.newCode"))
           : qrTile(offer ? universalPairLink(offer.link, offer.code) : null, t("settings.mobile.qr")),
         offer && !offer.code ? (
           <p data-pairing-scan-only="" className="m-0 max-w-[260px] text-[14px] leading-5 text-ink-secondary">{t("settings.mobile.scanOnly")}</p>
         ) : <>
           <span id={codeId} className="text-[12px] leading-4 text-ink-tertiary">{t("settings.phone.typeCode")}</span>
-          {offer && !expired && !failed ? (
+          {offer && !expired ? (
             <code aria-labelledby={codeId} data-phone-code="" className="select-all whitespace-nowrap font-mono text-[24px] leading-8 tracking-[0.08em] text-ink">{groupedCode}</code>
           ) : (
-            <span aria-hidden="true" className={cn("block h-8 w-[200px] max-w-full rounded-[8px] bg-ink/[0.06]", !failed && !expired && "animate-pulse motion-reduce:animate-none")} />
+            <span aria-hidden="true" className={cn("block h-8 w-[200px] max-w-full rounded-[8px] bg-ink/[0.06]", !expired && "animate-pulse motion-reduce:animate-none")} />
           )}
           <div className="-ms-3 flex flex-wrap items-center gap-1 @max-[439px]:ms-0 @max-[439px]:justify-center">
             <button type="button" data-phone-copy="" onClick={() => void copyCode()} disabled={!offer || expired} className={quietButton} aria-live="polite">
@@ -382,7 +388,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
           </div>
         </>,
       )}
-      <p className="m-0 max-w-[400px] text-center text-[13px] leading-[18px] text-ink-secondary">{t("settings.phone.oneHint")}</p>
+      {!failed && <p className="m-0 max-w-[400px] text-balance text-center text-[13px] leading-[18px] text-ink-secondary">{t("settings.phone.oneHint")}</p>}
       {countdown && waiting(<>{t("mobile.desktop.waiting")} · {countdown}</>)}
       {stores}
     </div>

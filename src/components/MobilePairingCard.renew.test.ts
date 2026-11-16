@@ -135,6 +135,25 @@ it("stops renewing after an hour or so and then says the code ended, with a new 
   expect(host.querySelector("[data-phone-code]")).not.toBeNull();
 });
 
+it("when no code can be made, says why with one way to try again, and shows no empty code to copy", async () => {
+  const base = api.getMockImplementation()!;
+  let refuse = true;
+  api.mockImplementation(async (path: string, init?: unknown) => {
+    if (path === "/api/mobile/pairing" && refuse) throw new Error("A phone cannot reach this workspace yet");
+    return base(path, init);
+  });
+  await mount({ remote: false });
+  await flush();
+  expect(host.querySelector("[data-pairing-failed] [role=alert]")?.textContent).toContain("cannot reach");
+  expect(host.querySelector("[data-phone-slab]")).toBeNull();
+  expect(host.querySelector("[data-phone-copy]")).toBeNull();
+  expect(host.textContent).not.toContain("Scan with your phone's camera");
+  refuse = false;
+  await click("[data-pairing-failed] [data-phone-new-code]");
+  await flush();
+  expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGH 0001");
+});
+
 it("a cloud's phone page has no browser code to type into the app, and Connect your phone never opens one", async () => {
   const phone = { top: createElement("div", { "data-phone-top": "" }), stepping: false, phones: null };
   await act(async () => { root = createRoot(host); root.render(createElement(ServerPairingCard, { initialSession: { kind: "loopback" }, cloudHome: true, simple: true, phone, focusRequest: 2 })); });
