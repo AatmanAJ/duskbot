@@ -2,7 +2,7 @@
 
 <h1>dusk bot</h1>
 
-<p><b>The free Grok bot alternative that runs on your own models.</b><br>
+<p><b>The free Grok bot alternative that runs on your own models.</b><br><br>
 Use the ChatGPT, Claude or Grok subscription you already pay for,<br>
 and get a team of bots, each with its own memory and computer.</p>
 
