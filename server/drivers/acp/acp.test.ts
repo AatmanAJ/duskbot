@@ -1969,11 +1969,18 @@ describe("ACP turns (fake CLI)", () => {
     await recorder.until((e) => e.type === "turn.completed");
   });
 
-  it("grok accepts the grok.com authentication method offered by current CLI versions", async () => {
+  // grok 1.0.44 offers only "grok.com" when ~/.grok/auth.json holds no usable token (old Grok bot data), and
+  // authenticating with it runs the interactive OAuth that opens the browser at auth.x.ai: a turn (the first run's test
+  // message) must never start that, only the person's own Sign in to Grok
+  it("grok never starts its browser sign-in from a turn when no cached token is offered", async () => {
     process.env.FAKE_ACP_AUTH_METHOD = "grok.com";
+    const rpc = join(scratch, "grok-auth-rpc.json");
+    process.env.FAKE_ACP_RPC_DUMP = rpc;
     await create(GrokAgentDriver);
-    await instance.adapter.sendTurn({ threadId: "t-grok-current-auth", text: "go" });
-    expect(await recorder.until((e) => e.type === "turn.completed")).toMatchObject({ ok: true });
+    await instance.adapter.sendTurn({ threadId: "t-grok-no-cached-token", text: "go" });
+    expect(await recorder.until((e) => e.type === "turn.completed")).toMatchObject({ ok: false, stopReason: "auth_required" });
+    expect(JSON.parse(readFileSync(rpc, "utf8"))).not.toContain("authenticate");
+    expect(recorder.events.find((e) => e.type === "runtime.error")?.message).toMatch(/not signed in/);
   });
 
   it("grok fails closed when the CLI advertises no supported authentication method", async () => {

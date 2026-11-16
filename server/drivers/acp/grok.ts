@@ -489,7 +489,10 @@ const support: AcpSupport = {
     }
   },
 
-  pickAuthMethod: (methods) => ["cached_token", "grok.com"].find((id) => methods.some((m) => m.id === id)) ?? null,
+  // grok 1.0.44: "grok.com" is the interactive OAuth that opens the browser at auth.x.ai, and it is the only method
+  // offered when auth.json holds no usable token. Security invariant: a turn never starts a sign-in; only the person's
+  // own Sign in to Grok does (GROK_DEVICE_SIGN_IN).
+  pickAuthMethod: (methods) => methods.some((m) => m.id === "cached_token") ? "cached_token" : null,
   authFailure: "fail",
   isAuthenticated: (env) => grokSignedIn(env),
 

@@ -41,6 +41,14 @@ export function geminiIsAuthenticated(env: Record<string, string | undefined>): 
   );
 }
 
+/** Security invariant: "oauth-personal" without a live credential is Gemini CLI's browser sign-in, never started by a turn. */
+export function geminiAuthMethod(methods: Array<{ id?: string }>, env: Record<string, string | undefined>): string | null {
+  const ids = methods.map((m) => m.id).filter((id): id is string => typeof id === "string"
+    && (id !== "oauth-personal" || liveOauthCredential(env)));
+  for (const pref of AUTH_PREFERENCE) if (ids.includes(pref)) return pref;
+  return ids[0] ?? null;
+}
+
 /** `--approval-mode auto_edit` approves edits, `--yolo` everything; Gemini has no automatic reviewer, so Auto stays Ask. */
 export function geminiApprovalArgs(fullAuto: boolean, approvalMode: string | undefined): string[] {
   if (fullAuto) return ["--yolo"];
@@ -72,11 +80,7 @@ const support: AcpSupport = {
   spawnArgs: (config, turn) => ["--acp", ...geminiApprovalArgs(config.fullAuto, turn.approvalMode), ...(turn.model ? ["-m", turn.model] : [])],
   credentialEnv: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
 
-  pickAuthMethod: (methods) => {
-    const ids = methods.map((m) => m.id).filter((id): id is string => typeof id === "string");
-    for (const pref of AUTH_PREFERENCE) if (ids.includes(pref)) return pref;
-    return ids[0] ?? null;
-  },
+  pickAuthMethod: geminiAuthMethod,
   authFailure: "continue",
 
   isAuthenticated: geminiIsAuthenticated,

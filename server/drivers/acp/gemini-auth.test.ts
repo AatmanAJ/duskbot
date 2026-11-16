@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { geminiIsAuthenticated } from "./gemini.ts";
+import { geminiAuthMethod, geminiIsAuthenticated } from "./gemini.ts";
 
 const geminiDir = join(homedir(), ".gemini");
 const credsPath = join(geminiDir, "oauth_creds.json");
@@ -69,5 +69,13 @@ describe("gemini auth detection (#28)", () => {
     expect(geminiIsAuthenticated({})).toBe(false);
     writeCreds({ access_token: "at", expiry_date: Number.POSITIVE_INFINITY });
     expect(geminiIsAuthenticated({})).toBe(false);
+  });
+
+  it("never picks the browser sign-in for a turn without a live Google login", () => {
+    const methods = [{ id: "oauth-personal" }, { id: "vertex-ai" }];
+    expect(geminiAuthMethod([{ id: "oauth-personal" }], {})).toBeNull();
+    expect(geminiAuthMethod(methods, {})).toBe("vertex-ai");
+    writeCreds({ access_token: "ya29.x", expiry_date: Date.now() + 60_000 });
+    expect(geminiAuthMethod(methods, {})).toBe("oauth-personal");
   });
 });
