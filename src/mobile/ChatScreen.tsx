@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import { ChevronLeft, Monitor } from "../icons";
 import { useStore, type Bot, type Group } from "@/state/store";
 import { ChatView } from "@/components/ChatView";
@@ -6,9 +5,8 @@ import { GroupView } from "@/components/GroupView";
 import { BotAvatar } from "@/components/Avatar";
 import { GroupAvatar } from "@/components/GroupAvatar";
 import { t } from "@/lib/i18n";
-import { cloudWaking, onCloudWaking } from "@/lib/cloud-power";
-import { WorkingDots } from "@/components/WorkingIndicator";
 import { RoundButton } from "./RoundButton";
+import { ConnectionPill, useLiveConnection } from "./connection/ConnectionProblem";
 
 /** The shared chat, with floating glass nav in place of its header row: back, the bot's pill (its profile) centred,
  * and the computer. The shared header keeps its height under the nav, so the transcript starts where it always does. */
@@ -23,7 +21,7 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
   const { state } = useStore();
   const name = group?.name ?? bot?.name ?? "";
   const live = Boolean(bot && (bot.busy || state.computerControl[bot.id]?.held));
-  const waking = useSyncExternalStore(onCloudWaking, cloudWaking, () => false);
+  const link = useLiveConnection();
   return (
     <div data-mobile-chat className="relative flex h-full flex-col">
       {group ? <GroupView key={group.id} group={group} /> : bot ? <ChatView bot={bot} /> : null}
@@ -47,11 +45,7 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
               : bot && <BotAvatar bot={bot} size={30} state="idle" animated={false} />}
             <span className="min-w-0 truncate text-[15px] font-semibold">{name}</span>
           </button>
-          {waking && (
-            <span role="status" data-testid="mobile-chat-cloud-status" className="m-glass m-pop absolute top-[calc(100%+8px)] flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[13px] font-medium text-ink-secondary">
-              <WorkingDots size={3} />{t("cloudAsleep.waking")}
-            </span>
-          )}
+          <ConnectionPill notice={link.notice === "reconnecting" ? null : link.notice} trying={link.trying} onRetry={link.retry} testId="mobile-chat-cloud-status" className="absolute top-[calc(100%+8px)] h-8 px-3" />
         </div>
         <div className="flex justify-end">
           {onComputer && (

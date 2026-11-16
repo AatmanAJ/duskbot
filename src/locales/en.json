@@ -9301,5 +9301,13 @@
   "empty.files.title": "Nothing shared yet",
   "empty.files.hint": "Add a folder and your bots can open it from anywhere.",
   "empty.desktops.title": "No desktops yet",
-  "empty.desktops.hint": "Private desktops your bots make show up here."
+  "empty.desktops.hint": "Private desktops your bots make show up here.",
+  "mobile.connection.yourCloud": "your dusk cloud",
+  "mobile.connection.yourComputer": "your computer",
+  "mobile.connection.stuckCloud": "Your dusk cloud isn't answering, so new messages won't show up here yet.",
+  "mobile.connection.stuckComputer": "Check that it's on and online. New messages won't show up here until it answers.",
+  "mobile.connection.wakeSlowTitle": "{name} is taking a while to wake",
+  "mobile.connection.wakeSlowBody": "It usually wakes in under a minute. Try again, or check back in a moment.",
+  "mobile.connection.notConnected": "Not connected",
+  "mobile.connection.trying": "Trying"
 }

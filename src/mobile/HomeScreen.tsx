@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, useTransform, type MotionValue } from "motion/react";
 import { BellDot, Check, MonitorSmartphone, Pin, PinOff, Plus, RotateCcw, Search, Star, UserRound } from "../icons";
 import { api, retryLoad, useStore, type Bot, type Group } from "@/state/store";
@@ -12,7 +12,6 @@ import { partitionSidebarBots, withPrimaryTile } from "@/lib/sidebar-layout";
 import { botShowsUnread } from "@/lib/bot-unread";
 import { botUnreadThreadIds, markBotRead } from "@/lib/folder-read";
 import { stateForBot } from "@/lib/mascot";
-import { cloudWaking, onCloudWaking } from "@/lib/cloud-power";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { threadRefUrl } from "@/lib/thread-refs";
@@ -21,7 +20,7 @@ import { ContextMenu, useLongPress, type ContextAction } from "./ContextMenu";
 import { PullToRefresh } from "./PullToRefresh";
 import { refreshSnapshot } from "./refresh";
 import { usePlatform } from "./platform";
-import { useQuietResume } from "./connection/quiet-resume";
+import { ConnectionPill, ConnectionProblemCard, useLiveConnection } from "./connection/ConnectionProblem";
 import { listTime } from "./time";
 import { EmptyState } from "./Illustration";
 import { useOffline } from "./network";
@@ -52,9 +51,8 @@ function lastAt(owner: Bot | Group): number {
 export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: string) => void; onOpenSheet: OpenSheet }) {
   const { state, dispatch } = useStore();
   const platform = usePlatform();
-  const resuming = useQuietResume(platform);
   const offline = useOffline();
-  const waking = useSyncExternalStore(onCloudWaking, cloudWaking, () => false);
+  const live = useLiveConnection();
   const you = useGroupYou();
   const phone = useMobileAccount()?.account ?? null;
   // the phone's own account first: its photo, else its drawn head; the desktop's profile otherwise
@@ -115,6 +113,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
           indicator={(progress, refreshing) => <RefreshMark bot={primary} progress={progress} refreshing={refreshing} />}
         >
           <div style={{ paddingTop: LIST_TOP }} className="pb-[calc(var(--m-safe-bottom)+24px)]">
+            {state.hydrated && <ConnectionProblemCard notice={live.notice} place={live.place} trying={live.trying} onRetry={live.retry} />}
             {!state.hydrated ? (state.loadFailed ? (
               <EmptyState tone="error" art="signpost" className="pt-16" title={t("mobile.home.loadFailedTitle")} body={t(offline ? "mobile.home.loadFailedOffline" : "mobile.home.loadFailedBody")}
                 action={{ label: t("mobile.home.retry"), icon: <RotateCcw size={17} aria-hidden />, onClick: retryLoad }} />
@@ -166,11 +165,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
           {unreadNotes > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold tabular-nums text-app ring-2 ring-app">{unreadNotes > 9 ? "9+" : unreadNotes}</span>}
         </RoundButton>
         <div className="flex-1" />
-        {state.hydrated && (!state.connected || waking || offline) && !resuming && (
-          <span role="status" data-testid="mobile-connection-status" className="m-glass m-pop pointer-events-auto flex h-11 min-w-0 items-center gap-2 whitespace-nowrap rounded-full px-4 text-[13px] font-medium text-ink-secondary">
-            {offline ? t("mobile.home.offline") : <><WorkingDots size={3} />{t(waking ? "cloudAsleep.waking" : "mobile.home.reconnecting")}</>}
-          </span>
-        )}
+        <ConnectionPill notice={live.notice} trying={live.trying} onRetry={live.retry} testId="mobile-connection-status" />
         <RoundButton floating label={t("mobile.home.search")} onClick={() => onOpenSheet({ kind: "search" })} className="pointer-events-auto"><Search size={19} strokeWidth={1.9} /></RoundButton>
         <RoundButton floating label={t("mobile.home.newBot")} onClick={() => onOpenSheet({ kind: "create" })} className="pointer-events-auto"><Plus size={21} strokeWidth={1.9} /></RoundButton>
       </header>

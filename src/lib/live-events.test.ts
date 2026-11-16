@@ -6,6 +6,7 @@ import {
   listenLiveFrames,
   liveEventsUrl,
   openLiveEvents,
+  retryLiveEventsNow,
   shouldReconnectLiveEvents,
   CLOUD_AWAKE_CHECK_MS,
   type LiveEventSourceLike,
@@ -270,6 +271,25 @@ describe("live events supervisor", () => {
     expect(attempts).toEqual([0, 100, 300, 700, 1_100]);
     expect(onError).toHaveBeenCalledTimes(5);
     stop();
+  });
+
+  it("tries again at once when the person asks, from the shortest wait, and leaves a working stream alone", () => {
+    const { sources, platform } = harness();
+    const stop = openLiveEvents({ onFrame: vi.fn(), onSnapshotRequired: async () => true, retryMinMs: 1_000, retryMaxMs: 60_000, staleMs: 120_000 }, platform);
+    for (let failed = 0; failed < 5; failed++) { sources.at(-1)!.error(); vi.advanceTimersByTime(2 ** failed * 1_000); }
+    sources.at(-1)!.error();
+    const before = sources.length;
+    retryLiveEventsNow();
+    expect(sources).toHaveLength(before + 1);
+    sources.at(-1)!.error();
+    vi.advanceTimersByTime(1_000);
+    expect(sources).toHaveLength(before + 2);
+    sources.at(-1)!.open();
+    retryLiveEventsNow();
+    expect(sources).toHaveLength(before + 2);
+    stop();
+    retryLiveEventsNow();
+    expect(sources).toHaveLength(before + 2);
   });
 
   it("backs off an open/error flap until the stream survives a heartbeat", () => {
