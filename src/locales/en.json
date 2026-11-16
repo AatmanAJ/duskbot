@@ -3604,7 +3604,6 @@
   "settings.logins.onePassword.changeVault": "Change who can use {vault}",
   "settings.logins.onePassword.error": "Couldn't reach 1Password. Check your internet connection and the token, then try again.",
   "settings.logins.onePassword.note": "The token is encrypted on the computer {app} runs on and never shown again. 1Password logins appear in the list above, filled the same way, and are changed in 1Password. A vault is for every bot unless you choose bots for it.",
-  "settings.logins.cloudOwn": "These are the cloud's own logins. Your computer's logins come along when you move your bots here from the {app} app on that computer.",
   "settings.sites.loading": "Checking…",
   "settings.sites.none": "Not signed in to any site.",
   "settings.sites.shared": "{names} share this browser: signing out here signs all of them out.",

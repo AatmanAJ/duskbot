@@ -2793,7 +2793,6 @@
   "settings.logins.onePassword.changeVault": "{vault} 사용 대상 변경",
   "settings.logins.onePassword.error": "1Password에 연결할 수 없어요.",
   "settings.logins.onePassword.note": "토큰은 {app}이 실행되는 컴퓨터에 암호화되어 저장되고 다시는 표시되지 않아요. 1Password 로그인 정보는 위 목록에 표시되고 같은 방식으로 입력되며, 변경은 1Password에서 해요. 보관함은 봇을 따로 지정하지 않으면 모든 봇이 써요.",
-  "settings.logins.cloudOwn": "클라우드 자체의 로그인 정보예요. 해당 컴퓨터의 {app} 앱에서 봇을 여기로 옮기면 그 컴퓨터의 로그인 정보도 함께 옮겨져요.",
   "settings.sites.loading": "확인 중…",
   "settings.sites.none": "로그인된 사이트가 없어요.",
   "settings.sites.shared": "{names}이(가) 이 브라우저를 함께 써요: 여기서 로그아웃하면 모두 로그아웃돼요.",

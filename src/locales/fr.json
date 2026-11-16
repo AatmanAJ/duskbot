@@ -1204,7 +1204,6 @@
   "settings.profiles.busyMany": "{names} sont encore en cours. Arrêtez ces bots avant de supprimer ce profil de navigateur.",
   "settings.profiles.temporaryHint": "Les sessions temporaires gardent les identifiants seulement tant que l'app tourne. Elles ne sont pas enregistrées sur le disque.",
   "settings.profiles.myChromeUnavailable": "Mon Chrome est destiné à l’app de bureau, où les bots tournent sur votre propre ordinateur. Partout ailleurs, comme dans le Cloud, il n’y a pas de Chrome à vous à utiliser, donc chaque profil utilise le navigateur intégré.",
-  "settings.logins.cloudOwn": "Ce sont les identifiants propres au cloud. Ceux de votre ordinateur sont transférés avec vos bots lorsque vous les déplacez ici depuis l'application {app} sur cet ordinateur.",
   "settings.connections.title": "Clés API",
   "settings.connections.ready": "Le service d'applications connectées est prêt",
   "keys.composio.label": "Clé de projet Composio",

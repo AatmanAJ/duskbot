@@ -2558,7 +2558,6 @@
   "settings.logins.onePassword.vaultUse": "{count} logins · {who}",
   "settings.logins.onePassword.changeVault": "Alterar quem pode usar {vault}",
   "settings.logins.onePassword.note": "O token é criptografado no computador onde o {app} roda e nunca mais é mostrado. Os logins do 1Password aparecem na lista acima, são preenchidos do mesmo jeito e são alterados no 1Password. Um cofre vale para todos os bots, a menos que você escolha bots para ele.",
-  "settings.logins.cloudOwn": "Estes são os logins próprios da nuvem. Os logins do seu computador vêm junto quando você move seus bots para cá pelo app {app} nesse computador.",
   "settings.sites.loading": "Verificando…",
   "settings.sites.none": "Sem login em nenhum site.",
   "settings.sites.shared": "{names} compartilham este navegador: sair aqui desconecta todos eles.",

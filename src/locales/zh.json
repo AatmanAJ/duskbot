@@ -2884,7 +2884,6 @@
   "settings.logins.onePassword.changeVault": "更改谁能使用 {vault}",
   "settings.logins.onePassword.error": "无法连接 1Password。请检查网络连接和令牌后重试。",
   "settings.logins.onePassword.note": "令牌会加密保存在运行 {app} 的电脑上，之后不会再显示。1Password 中的登录信息会出现在上面的列表中，以同样的方式填入，并在 1Password 中修改。除非你为密码库指定了机器人，否则所有机器人都能使用。",
-  "settings.logins.cloudOwn": "这些是云端自身的登录信息。当你通过那台电脑上的 {app} 应用将机器人迁移到这里时，电脑上的登录信息也会一并迁移。",
   "settings.sites.loading": "正在检查…",
   "settings.sites.none": "未登录任何站点。",
   "settings.sites.shared": "{names} 共享此浏览器：在这里退出登录会让它们全部退出。",

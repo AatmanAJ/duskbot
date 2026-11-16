@@ -2414,7 +2414,6 @@
   "settings.logins.onePassword.vaultUse": "{count} inicios de sesión · {who}",
   "settings.logins.onePassword.changeVault": "Cambiar quién puede usar {vault}",
   "settings.logins.onePassword.note": "El token se cifra en el equipo donde se ejecuta {app} y no se vuelve a mostrar. Los inicios de sesión de 1Password aparecen en la lista de arriba, se rellenan igual y se cambian en 1Password. Una bóveda es para todos los bots, salvo que elijas bots para ella.",
-  "settings.logins.cloudOwn": "Estos son los inicios de sesión propios de la nube. Los de tu equipo se transfieren cuando trasladas tus bots aquí desde la app {app} de ese equipo.",
   "settings.sites.loading": "Comprobando…",
   "settings.sites.none": "No hay sesión iniciada en ningún sitio.",
   "settings.sites.shared": "{names} comparten este navegador: cerrar sesión aquí la cierra para todos.",

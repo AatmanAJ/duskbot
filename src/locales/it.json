@@ -2528,7 +2528,6 @@
   "settings.logins.onePassword.vaultUse": "{count} accessi · {who}",
   "settings.logins.onePassword.changeVault": "Cambia chi può usare {vault}",
   "settings.logins.onePassword.note": "Il token è cifrato sul computer su cui gira {app} e non viene più mostrato. Gli accessi di 1Password compaiono nell'elenco sopra, compilati allo stesso modo, e si modificano in 1Password. Una cassaforte vale per ogni bot, a meno che tu non scelga dei bot per lei.",
-  "settings.logins.cloudOwn": "Questi sono gli accessi del cloud. Gli accessi del tuo computer vengono trasferiti quando sposti qui i tuoi bot dall'app {app} su quel computer.",
   "settings.sites.loading": "Controllo…",
   "settings.sites.none": "Accesso non effettuato ad alcun sito.",
   "settings.sites.shared": "{names} condividono questo browser: se esci qui, li disconnetti tutti.",

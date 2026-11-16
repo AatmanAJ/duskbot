@@ -2600,7 +2600,6 @@
   "settings.logins.onePassword.vaultUse": "Logowania: {count} · {who}",
   "settings.logins.onePassword.changeVault": "Zmień, kto może używać {vault}",
   "settings.logins.onePassword.note": "Token jest zaszyfrowany na komputerze, na którym działa {app}, i nigdy nie jest pokazywany ponownie. Logowania z 1Password pojawiają się na powyższej liście, uzupełniane w ten sam sposób, i są zmieniane w 1Password. Sejf jest dla każdego bota, chyba że wybierzesz boty dla niego.",
-  "settings.logins.cloudOwn": "To dane logowania samej chmury. Dane logowania z twojego komputera trafią tutaj, gdy przeniesiesz tu boty z aplikacji {app} na tym komputerze.",
   "settings.sites.loading": "Sprawdzanie…",
   "settings.sites.none": "Nie zalogowano się do żadnej witryny.",
   "settings.sites.shared": "{names} współdzielą tę przeglądarkę: wylogowanie tutaj wyloguje je wszystkie.",

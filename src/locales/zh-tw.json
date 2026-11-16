@@ -1826,7 +1826,6 @@
   "settings.profiles.removed": "此設定檔已移除。請選擇其他瀏覽器設定檔。",
   "settings.profiles.deleteUsers": "這些機器人將改用自己的瀏覽器：{names}。",
   "settings.profiles.myChromeUnavailable": "「我的 Chrome」適用於桌面應用程式，機器人會在你自己的電腦上執行。在其他任何地方（例如 Cloud）都沒有你自己的 Chrome 可用，因此所有設定檔都會使用內建瀏覽器。",
-  "settings.logins.cloudOwn": "這些是雲端自己的登入資訊。當你透過那台電腦上的 {app} 應用程式將機器人移到這裡時，電腦上的登入資訊也會一併移過來。",
   "settings.connections.title": "API 金鑰",
   "settings.connections.ready": "「已連線的應用程式」服務已就緒",
   "settings.engines.title": "模型供應商與帳戶",

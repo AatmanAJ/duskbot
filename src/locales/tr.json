@@ -2132,7 +2132,6 @@
   "settings.logins.onePassword.vaultUse": "{count} giriş bilgisi · {who}",
   "settings.logins.onePassword.changeVault": "{vault} kasasını kimlerin kullanabileceğini değiştir",
   "settings.logins.onePassword.note": "Belirteç, {app}'un çalıştığı bilgisayarda şifrelenir ve bir daha gösterilmez. 1Password giriş bilgileri yukarıdaki listede görünür, aynı şekilde doldurulur ve 1Password'de değiştirilir. Bir kasa, siz onun için bot seçmedikçe tüm botlar içindir.",
-  "settings.logins.cloudOwn": "Bunlar bulutun kendi oturum bilgileridir. Botlarınızı bilgisayarınızdaki {app} uygulamasından buraya taşıdığınızda bilgisayarınızın oturum bilgileri de onlarla birlikte gelir.",
   "settings.sites.loading": "Kontrol ediliyor…",
   "settings.sites.none": "Hiçbir siteye giriş yapılmamış.",
   "settings.sites.shared": "{names} bu tarayıcıyı paylaşıyor: burada oturumu kapatmak hepsinin oturumunu kapatır.",
