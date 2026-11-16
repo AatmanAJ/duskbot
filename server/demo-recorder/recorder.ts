@@ -1,10 +1,16 @@
-import type { DemoRecording, DemoReplayReport, DemoSurface } from "../../shared/demo-recording.ts";
-import type { AccessibilityProbe, RawInput, ScreenSource } from "./capture.ts";
-import type { DemoEngine } from "./compiler.ts";
-import type { ImageMasker } from "./frames.ts";
-import type { ReplayOptions } from "./replay.ts";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 
-const todo = (): never => { throw new Error("not built"); };
+import { validatePlan } from "../../shared/demo-plan.ts";
+import type { DemoPlan, DemoRecording, DemoReplayReport, DemoSurface, DemoTrace } from "../../shared/demo-recording.ts";
+import { redactSecretsInText } from "../../shared/redact.ts";
+import { writeFileAtomic } from "../atomic.ts";
+import { createDemoCapture, type AccessibilityProbe, type DemoCapture, type RawInput, type ScreenSource } from "./capture.ts";
+import { compileDemo, type DemoEngine } from "./compiler.ts";
+import { createFrameStore, readFrameFile, FRAME_ID, type ImageMasker } from "./frames.ts";
+import { runReplay, type ReplayOptions } from "./replay.ts";
+import { demoRoutinePrompt, renderDemoSkill } from "./skill.ts";
 
 export interface DemoRecorderDeps {
   /** Where recordings are kept: a folder of this computer's data, never a backup. */
@@ -45,4 +51,226 @@ export interface DemoRecorder {
   replay(id: string, request: Omit<ReplayOptions, "plan">): Promise<DemoReplayReport | { error: string }>;
 }
 
-export function createDemoRecorder(_deps: DemoRecorderDeps): DemoRecorder { return todo(); }
+const RECORDING_ID = /^demo-[a-f0-9-]{36}$/;
+const RECORD_FILE = "recording.json";
+const TRACE_FILE = "trace.json";
+const FRAMES_DIR = "frames";
+const PRIVATE_FILE = { mode: 0o600 } as const;
+const NOT_FOUND = "That recording is gone.";
+const NOT_READY = "That recording has no steps yet.";
+
+function readRecording(path: string): DemoRecording | null {
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8")) as Partial<DemoRecording> | null;
+    if (!value || typeof value !== "object" || typeof value.id !== "string" || !RECORDING_ID.test(value.id) || typeof value.botId !== "string") return null;
+    if (value.surface !== "browser" && value.surface !== "computer") return null;
+    const plan = value.plan === undefined ? undefined : validatePlan(value.plan);
+    return {
+      id: value.id,
+      botId: value.botId,
+      ...(typeof value.threadId === "string" ? { threadId: value.threadId } : {}),
+      surface: value.surface,
+      accessibility: value.accessibility === "dom" || value.accessibility === "os" ? value.accessibility : "none",
+      status: value.status === "ready" || value.status === "recording" || value.status === "compiling" ? value.status : "failed",
+      createdAt: typeof value.createdAt === "number" ? value.createdAt : 0,
+      durationMs: typeof value.durationMs === "number" ? value.durationMs : 0,
+      eventCount: typeof value.eventCount === "number" ? value.eventCount : 0,
+      frames: Array.isArray(value.frames) ? value.frames.filter((frame) => frame && typeof frame.id === "string" && FRAME_ID.test(frame.id) && (frame.type === "image/png" || frame.type === "image/jpeg")) : [],
+      framesSkipped: typeof value.framesSkipped === "number" ? value.framesSkipped : 0,
+      ...(plan && "plan" in plan ? { plan: plan.plan } : {}),
+      ...(typeof value.skillName === "string" ? { skillName: value.skillName } : {}),
+      ...(typeof value.routineId === "string" ? { routineId: value.routineId } : {}),
+      ...(typeof value.error === "string" ? { error: value.error } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
+  const now = deps.now ?? Date.now;
+  const scrub = deps.scrub ?? redactSecretsInText;
+  const recordings = new Map<string, DemoRecording>();
+  const active = new Map<string, { recording: DemoRecording; capture: DemoCapture }>();
+  const folderOf = (id: string) => join(deps.dir, id);
+  const copy = (recording: DemoRecording) => structuredClone(recording);
+
+  function save(recording: DemoRecording): void {
+    mkdirSync(folderOf(recording.id), { recursive: true, mode: 0o700 });
+    writeFileAtomic(join(folderOf(recording.id), RECORD_FILE), `${JSON.stringify(recording, null, 2)}\n`, PRIVATE_FILE);
+  }
+
+  function changed(recording: DemoRecording): DemoRecording {
+    recordings.set(recording.id, recording);
+    save(recording);
+    const sent = copy(recording);
+    try { deps.onChange?.(sent); } catch {}
+    return copy(recording);
+  }
+
+  function discard(id: string): void {
+    recordings.delete(id);
+    rmSync(folderOf(id), { recursive: true, force: true });
+  }
+
+  if (existsSync(deps.dir)) {
+    for (const name of readdirSync(deps.dir)) {
+      if (!RECORDING_ID.test(name)) continue;
+      const recording = readRecording(join(deps.dir, name, RECORD_FILE));
+      if (!recording || recording.id !== name) continue;
+      if (recording.status === "recording" || recording.status === "compiling") {
+        recording.status = "failed";
+        recording.error = "The recording was cut off before it was finished.";
+        save(recording);
+      }
+      recordings.set(recording.id, recording);
+    }
+  }
+
+  /** The recording with its steps, or why it cannot be used. A failed recording carries an error of its own, so the two are told apart by `refused`. */
+  const ready = (id: string): { recording: DemoRecording; plan: DemoPlan; refused?: undefined } | { refused: { error: string } } => {
+    const recording = recordings.get(id);
+    if (!recording) return { refused: { error: NOT_FOUND } };
+    return recording.status === "ready" && recording.plan ? { recording, plan: recording.plan } : { refused: { error: NOT_READY } };
+  };
+
+  const recorder: DemoRecorder = {
+    start(request) {
+      if (active.has(request.botId)) return { error: "This bot is already being recorded." };
+      const id = `demo-${randomUUID()}`;
+      const frames = createFrameStore({ dir: join(folderOf(id), FRAMES_DIR), ...(deps.masker ? { masker: deps.masker } : {}) });
+      const capture = createDemoCapture({ surface: request.surface, probe: request.probe, screen: request.screen, frames, now, scrub, ...(deps.log ? { log: deps.log } : {}) });
+      const recording: DemoRecording = {
+        id,
+        botId: request.botId,
+        ...(request.threadId ? { threadId: request.threadId } : {}),
+        surface: request.surface,
+        accessibility: request.probe.kind,
+        status: "recording",
+        createdAt: now(),
+        durationMs: 0,
+        eventCount: 0,
+        frames: [],
+        framesSkipped: 0,
+      };
+      active.set(request.botId, { recording, capture });
+      return changed(recording);
+    },
+
+    async input(botId, raw) {
+      const entry = active.get(botId);
+      if (!entry) return;
+      await entry.capture.input(raw);
+      if (active.get(botId) === entry && entry.capture.eventCount !== entry.recording.eventCount) {
+        entry.recording.eventCount = entry.capture.eventCount;
+        changed(entry.recording);
+      }
+    },
+
+    recording: (botId) => active.has(botId),
+
+    async stop(botId) {
+      const entry = active.get(botId);
+      if (!entry) return { error: "This bot is not being recorded." };
+      active.delete(botId);
+      const { recording, capture } = entry;
+      let trace: DemoTrace;
+      try {
+        trace = await capture.finish();
+      } catch {
+        return changed({ ...recording, status: "failed", error: "The recording could not be read back." });
+      }
+      Object.assign(recording, { durationMs: trace.durationMs, eventCount: trace.events.length, frames: trace.frames, framesSkipped: trace.framesSkipped });
+      if (trace.events.length === 0) return changed(Object.assign(recording, { status: "failed" as const, error: "Nothing was recorded." }));
+      writeFileAtomic(join(folderOf(recording.id), TRACE_FILE), `${JSON.stringify(trace)}\n`, PRIVATE_FILE);
+      changed(Object.assign(recording, { status: "compiling" as const }));
+      try {
+        const plan = await compileDemo(trace, { engine: deps.engine?.(botId) ?? null, ...(deps.log ? { log: deps.log } : {}) });
+        return changed(Object.assign(recording, { status: "ready" as const, plan }));
+      } catch {
+        return changed(Object.assign(recording, { status: "failed" as const, error: "The steps could not be worked out from the recording." }));
+      }
+    },
+
+    async cancel(botId) {
+      const entry = active.get(botId);
+      if (!entry) return;
+      active.delete(botId);
+      await entry.capture.finish().catch(() => {});
+      discard(entry.recording.id);
+    },
+
+    get(id) {
+      const recording = recordings.get(id);
+      return recording ? copy(recording) : null;
+    },
+
+    list(botId) {
+      return [...recordings.values()].filter((recording) => botId === undefined || recording.botId === botId).sort((a, b) => b.createdAt - a.createdAt).map(copy);
+    },
+
+    updatePlan(id, plan) {
+      const found = ready(id);
+      if (found.refused) return found.refused;
+      const { recording } = found;
+      const checked = validatePlan(plan);
+      if ("error" in checked) return checked;
+      return changed(Object.assign(recording, { plan: checked.plan }));
+    },
+
+    saveSkill(id, options) {
+      const found = ready(id);
+      if (found.refused) return found.refused;
+      const { recording, plan } = found;
+      const skill = renderDemoSkill(plan, options?.name ? { name: options.name } : {});
+      const installed = deps.skills.install(recording.botId, `demo:${recording.id}`, [{ path: "SKILL.md", content: skill.content }]);
+      if ("error" in installed) return installed;
+      return changed(Object.assign(recording, { skillName: installed.name }));
+    },
+
+    saveRoutine(id, options) {
+      const found = ready(id);
+      if (found.refused) return found.refused;
+      const { recording, plan } = found;
+      if (!deps.routines) return { error: "Routines are not available here." };
+      const source = options.source.trim();
+      if (!source) return { error: "Say what the routine should run on: a folder, a file, or a list." };
+      if (!recording.skillName) {
+        const skilled = recorder.saveSkill(id);
+        if (!("id" in skilled)) return skilled;
+      }
+      const skillName = recording.skillName;
+      if (!skillName) return { error: "The skill could not be saved." };
+      const created = deps.routines.create({ name: options.name?.trim() || plan.title, prompt: demoRoutinePrompt(plan, skillName, source), botId: recording.botId });
+      if ("error" in created) return created;
+      return changed(Object.assign(recording, { routineId: created.id }));
+    },
+
+    frame(id, frameId) {
+      const recording = RECORDING_ID.test(id) ? recordings.get(id) : undefined;
+      const frame = recording?.frames.find((each) => each.id === frameId);
+      const data = frame ? readFrameFile(join(folderOf(id), FRAMES_DIR), frame) : null;
+      return frame && data ? { data, type: frame.type } : null;
+    },
+
+    remove(id) {
+      const recording = recordings.get(id);
+      if (!recording) return false;
+      const entry = active.get(recording.botId);
+      if (entry?.recording.id === id) {
+        active.delete(recording.botId);
+        void entry.capture.finish().catch(() => {});
+      }
+      discard(id);
+      return true;
+    },
+
+    async replay(id, request) {
+      const found = ready(id);
+      if (found.refused) return found.refused;
+      const log = request.log ?? deps.log;
+      return runReplay({ ...request, plan: found.plan, ...(log ? { log } : {}) });
+    },
+  };
+  return recorder;
+}

@@ -1,7 +1,7 @@
 // A page run in happy-dom 21 for tests, with a person who uses it the way the live view's input arrives: each press
 // and key is told to the capture first, then reaches the page. happy-dom lays nothing out, so every element gets a row
 // of its own and hit-testing reads the rows. It hands out a <select> as a proxy, so a row is kept on the element, not
-// found by identity.
+// found by identity; and it refuses to say what is selected in an email field, so select() is noted on the field.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,6 +39,14 @@ const LAYOUT = `(() => {
   Element.prototype.getBoundingClientRect = function () { return rectOf(this); };
   Element.prototype.getClientRects = function () { return [rectOf(this)]; };
   Element.prototype.scrollIntoView = function () {};
+  for (const kind of window.demoSelectNoted ? [] : [HTMLInputElement, HTMLTextAreaElement]) {
+    const select = kind.prototype.select;
+    kind.prototype.select = function () {
+      this.demoSelected = true;
+      try { select.call(this); } catch (error) {}
+    };
+  }
+  window.demoSelectNoted = true;
   document.elementFromPoint = (x, y) => {
     const element = all()[Math.floor(y / ${ROW})] || null;
     if (!element || x < ${LEFT} || x > ${LEFT + WIDTH}) return null;
@@ -65,9 +73,9 @@ const FIND = `((name) => {
 const APPLY_TEXT = `((text) => {
   const field = document.activeElement;
   if (!field || !("value" in field) || field.tagName === "SELECT") return false;
-  const whole = field.value.length > 0 && field.selectionStart === 0 && field.selectionEnd === field.value.length;
+  const whole = field.value.length > 0 && field.demoSelected === true;
+  field.demoSelected = false;
   field.value = (whole ? "" : field.value) + text;
-  field.selectionStart = field.selectionEnd = field.value.length;
   field.dispatchEvent(new Event("input", { bubbles: true }));
   return true;
 })`;
