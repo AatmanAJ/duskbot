@@ -5698,7 +5698,6 @@
   "failedReply.retryRepeats": "Reintentar empieza la tarea de nuevo, así que lo que ya hizo, como un correo o un pago, podría repetirse.",
   "failedReply.retryAnyway": "Reintentar de todos modos",
   "failedReply.retryCancel": "No reintentar",
-  "mobile.desktop.noStoreApp": "Aún no está en App Store ni en Google Play: escanea el código y añade la página a tu pantalla de inicio.",
   "mobile.unreachable.title": "No se puede conectar con {name}",
   "mobile.unreachable.body": "Puede que esté reiniciándose o sin conexión. Este teléfono sigue vinculado, así que no hace falta volver a emparejarlo.",
   "mobile.unreachable.trying": "Reintentando...",

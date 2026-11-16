@@ -3380,7 +3380,6 @@
   "failedReply.retryRepeats": "Réessayer relance la tâche depuis le début : ce qu'elle a déjà fait, comme un e-mail ou un paiement, pourrait se produire deux fois.",
   "failedReply.retryAnyway": "Réessayer quand même",
   "failedReply.retryCancel": "Ne pas réessayer",
-  "mobile.desktop.noStoreApp": "Pas encore disponible sur l’App Store ni sur Google Play : scannez le code, puis ajoutez la page à votre écran d’accueil.",
   "mobile.unreachable.title": "Impossible de joindre {name}",
   "mobile.unreachable.body": "L’ordinateur est peut-être en cours de redémarrage ou hors ligne. Ce téléphone reste associé, inutile de l’associer à nouveau.",
   "mobile.unreachable.trying": "Nouvelle tentative...",

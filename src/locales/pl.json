@@ -6250,7 +6250,6 @@
   "failedReply.retryRepeats": "Ponowna próba zaczyna zadanie od nowa, więc to, co już zrobiło, na przykład e-mail lub płatność, może wydarzyć się dwa razy.",
   "failedReply.retryAnyway": "Spróbuj mimo to",
   "failedReply.retryCancel": "Nie ponawiaj",
-  "mobile.desktop.noStoreApp": "Aplikacji nie ma jeszcze w App Store ani w Google Play: zeskanuj kod, a następnie dodaj stronę do ekranu głównego.",
   "mobile.unreachable.title": "Nie można połączyć się z {name}",
   "mobile.unreachable.body": "Komputer może się ponownie uruchamiać lub być offline. Ten telefon nadal jest połączony, więc nie trzeba go ponownie parować.",
   "mobile.unreachable.trying": "Ponawiam próbę...",

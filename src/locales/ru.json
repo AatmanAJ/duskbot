@@ -6257,7 +6257,6 @@
   "failedReply.retryRepeats": "Повтор запустит задачу заново, и то, что уже сделано, например письмо или платёж, может произойти дважды.",
   "failedReply.retryAnyway": "Всё равно повторить",
   "failedReply.retryCancel": "Не повторять",
-  "mobile.desktop.noStoreApp": "Пока нет в App Store и Google Play: отсканируйте код, затем добавьте страницу на экран «Домой».",
   "mobile.unreachable.title": "Не удаётся связаться с {name}",
   "mobile.unreachable.body": "Возможно, компьютер перезапускается или не в сети. Этот телефон по-прежнему привязан, повторная привязка не нужна.",
   "mobile.unreachable.trying": "Пробуем снова...",

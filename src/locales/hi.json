@@ -3378,7 +3378,6 @@
   "failedReply.retryRepeats": "फिर से कोशिश करने पर काम शुरू से चलेगा, इसलिए जो पहले हो चुका है, जैसे ईमेल या भुगतान, वह दो बार हो सकता है।",
   "failedReply.retryAnyway": "फिर भी कोशिश करें",
   "failedReply.retryCancel": "दोबारा न करें",
-  "mobile.desktop.noStoreApp": "अभी App Store या Google Play पर उपलब्ध नहीं है: कोड स्कैन करें, फिर पेज को अपनी होम स्क्रीन पर जोड़ें।",
   "mobile.unreachable.title": "{name} से संपर्क नहीं हो पा रहा",
   "mobile.unreachable.body": "यह शायद रीस्टार्ट हो रहा है या ऑफ़लाइन है। यह फ़ोन अब भी लिंक है, इसलिए दोबारा पेयर करने की ज़रूरत नहीं है।",
   "mobile.unreachable.trying": "फिर से कोशिश हो रही है...",

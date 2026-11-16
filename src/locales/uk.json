@@ -3682,7 +3682,6 @@
   "failedReply.retryRepeats": "Повтор запустить завдання знову, тож уже зроблене, наприклад лист чи платіж, може статися двічі.",
   "failedReply.retryAnyway": "Усе одно повторити",
   "failedReply.retryCancel": "Не повторювати",
-  "mobile.desktop.noStoreApp": "Ще немає в App Store чи Google Play: відскануйте код, а потім додайте сторінку на початковий екран.",
   "mobile.unreachable.title": "Не вдається з'єднатися з {name}",
   "mobile.unreachable.body": "Можливо, комп’ютер перезапускається або не в мережі. Цей телефон досі прив’язаний, тож повторне сполучення не потрібне.",
   "mobile.unreachable.trying": "Пробуємо знову...",

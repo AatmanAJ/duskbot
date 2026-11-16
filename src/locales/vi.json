@@ -5235,7 +5235,6 @@
   "failedReply.retryRepeats": "Thử lại sẽ chạy lại việc từ đầu, nên những gì đã làm, như gửi email hay thanh toán, có thể xảy ra hai lần.",
   "failedReply.retryAnyway": "Vẫn thử lại",
   "failedReply.retryCancel": "Không thử lại",
-  "mobile.desktop.noStoreApp": "Chưa có trên App Store hay Google Play: hãy quét mã, rồi thêm trang vào Màn hình chính.",
   "mobile.unreachable.title": "Không kết nối được với {name}",
   "mobile.unreachable.body": "Có thể máy đang khởi động lại hoặc ngoại tuyến. Điện thoại này vẫn được liên kết, nên không cần ghép nối lại.",
   "mobile.unreachable.trying": "Đang thử lại...",

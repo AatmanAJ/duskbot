@@ -3492,7 +3492,6 @@
   "failedReply.retryRepeats": "Ein neuer Versuch startet die Aufgabe von vorn. Was schon passiert ist, etwa eine E-Mail oder eine Zahlung, könnte doppelt passieren.",
   "failedReply.retryAnyway": "Trotzdem neu versuchen",
   "failedReply.retryCancel": "Nicht wiederholen",
-  "mobile.desktop.noStoreApp": "Noch nicht im App Store oder bei Google Play: Scanne den Code und füge die Seite dann zu deinem Home-Bildschirm hinzu.",
   "mobile.unreachable.title": "{name} ist nicht erreichbar",
   "mobile.unreachable.body": "Der Computer startet vielleicht gerade neu oder ist offline. Dieses Handy ist weiterhin verknüpft, du musst es also nicht erneut koppeln.",
   "mobile.unreachable.trying": "Neuer Versuch...",

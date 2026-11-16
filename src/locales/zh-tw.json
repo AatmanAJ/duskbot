@@ -4813,7 +4813,6 @@
   "failedReply.retryRepeats": "重試會從頭開始這項工作，已經做過的事（例如寄出郵件或付款）可能會重複發生。",
   "failedReply.retryAnyway": "仍要重試",
   "failedReply.retryCancel": "不要重試",
-  "mobile.desktop.noStoreApp": "尚未在 App Store 或 Google Play 上架：請掃描 QR 碼，再將頁面加入主畫面。",
   "mobile.unreachable.title": "無法連線到 {name}",
   "mobile.unreachable.body": "電腦可能正在重新啟動或已離線。這支手機仍保持連結，不需要重新配對。",
   "mobile.unreachable.trying": "正在重試...",

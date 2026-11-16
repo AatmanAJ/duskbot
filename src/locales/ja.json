@@ -6276,7 +6276,6 @@
   "failedReply.retryRepeats": "再試行するとタスクを最初からやり直すため、メールや支払いなど、すでに実行したことが二重に行われる可能性があります。",
   "failedReply.retryAnyway": "それでも再試行",
   "failedReply.retryCancel": "再試行しない",
-  "mobile.desktop.noStoreApp": "App Store と Google Play ではまだ公開されていません。コードを読み取り、ページをホーム画面に追加してください。",
   "mobile.unreachable.title": "{name}に接続できません",
   "mobile.unreachable.body": "再起動中かオフラインの可能性があります。このスマートフォンは連携されたままなので、もう一度ペアリングする必要はありません。",
   "mobile.unreachable.trying": "再試行しています...",

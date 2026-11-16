@@ -6827,7 +6827,6 @@
   "failedReply.retryRepeats": "重试会从头开始这项任务，已经做过的事（例如发送邮件或付款）可能会重复发生。",
   "failedReply.retryAnyway": "仍要重试",
   "failedReply.retryCancel": "不要重试",
-  "mobile.desktop.noStoreApp": "尚未在 App Store 或 Google Play 上架：请扫描二维码，然后将页面添加到主屏幕。",
   "mobile.unreachable.title": "无法连接到 {name}",
   "mobile.unreachable.body": "它可能正在重启或已离线。这部手机仍然保持关联，无需重新配对。",
   "mobile.unreachable.trying": "正在重试...",

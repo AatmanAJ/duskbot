@@ -5235,7 +5235,6 @@
   "failedReply.retryRepeats": "Yeniden denemek görevi baştan başlatır; e-posta ya da ödeme gibi zaten yapılanlar iki kez olabilir.",
   "failedReply.retryAnyway": "Yine de dene",
   "failedReply.retryCancel": "Yeniden deneme",
-  "mobile.desktop.noStoreApp": "Henüz App Store veya Google Play'de yok: kodu tara, ardından sayfayı ana ekranına ekle.",
   "mobile.unreachable.title": "{name} adresine ulaşılamıyor",
   "mobile.unreachable.body": "Yeniden başlıyor ya da çevrimdışı olabilir. Bu telefon hâlâ bağlı, yeniden eşleştirmen gerekmiyor.",
   "mobile.unreachable.trying": "Yeniden deneniyor...",

@@ -6090,7 +6090,6 @@
   "failedReply.retryRepeats": "Riprovare ricomincia l'attività da capo, quindi ciò che ha già fatto, come un'email o un pagamento, potrebbe ripetersi.",
   "failedReply.retryAnyway": "Riprova comunque",
   "failedReply.retryCancel": "Non riprovare",
-  "mobile.desktop.noStoreApp": "Non è ancora disponibile su App Store o Google Play: scansiona il codice, poi aggiungi la pagina alla schermata Home.",
   "mobile.unreachable.title": "Impossibile raggiungere {name}",
   "mobile.unreachable.body": "Potrebbe essere in riavvio o offline. Questo telefono è ancora collegato, quindi non serve abbinarlo di nuovo.",
   "mobile.unreachable.trying": "Nuovo tentativo...",

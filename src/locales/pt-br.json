@@ -6125,7 +6125,6 @@
   "failedReply.retryRepeats": "Tentar de novo recomeça a tarefa, então o que ela já fez, como um e-mail ou um pagamento, pode acontecer duas vezes.",
   "failedReply.retryAnyway": "Tentar mesmo assim",
   "failedReply.retryCancel": "Não tentar de novo",
-  "mobile.desktop.noStoreApp": "Ainda não está na App Store nem no Google Play: leia o código e adicione a página à tela de início.",
   "mobile.unreachable.title": "Não foi possível acessar {name}",
   "mobile.unreachable.body": "Pode estar reiniciando ou offline. Este celular continua vinculado, então não é preciso parear de novo.",
   "mobile.unreachable.trying": "Tentando de novo...",
