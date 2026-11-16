@@ -26,9 +26,9 @@ vi.mock("react", async (original) => ({ ...await original<typeof import("react")
   useEffect: (effect: EffectCallback) => { fixture.effects.push(effect); },
 }));
 // The connected panel reads bots and engines for its Company models section.
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(),
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ state: { bots: fixture.store.bots, instances: fixture.store.instances }, dispatch: fixture.store.dispatch, flushBotPatches: fixture.store.flushBotPatches }),
-}));
+}))(importOriginal)));
 // the dialogs draw as plain forms here: no portal on the server renderer
 vi.mock("./ListRows", async (original) => {
   const { createElement: h } = await import("react");

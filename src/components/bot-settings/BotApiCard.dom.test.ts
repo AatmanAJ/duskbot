@@ -15,7 +15,7 @@ vi.mock("../CloudUsageMeter", () => ({
   useUpgrade: () => ({ busy: null, note: null, dialog: null, start: () => { fixture.upgrades += 1; } }),
 }));
 vi.mock("@/lib/copy-text", () => ({ copyText: async (text: string) => { fixture.copied.push(text); return "copied"; } }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
@@ -28,7 +28,7 @@ vi.mock("@/state/store", async (importOriginal) => {
       return wants ? { ...fixture.view, key: `bak_key${++fixture.minted}` } : fixture.view;
     },
   };
-});
+})(importOriginal)));
 
 const { BotApiCard, callWords } = await import("./BotApiCard");
 

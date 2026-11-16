@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({ requests: [] as string[], failImport: "" }));
 
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: vi.fn(async (path: string, init: { method?: string; body?: string } = {}) => {
     fixture.requests.push(path);
     const body = JSON.parse(init.body ?? "{}");
@@ -14,7 +14,7 @@ vi.mock("@/state/store", () => ({
     if (path.startsWith("/api/sidebar-sections?")) return { sections: [] };
     return {};
   }),
-}));
+}))()));
 
 import type { GrokBot } from "../../shared/grok-import";
 import { GROK_EXPORT_FORMAT } from "../../shared/grok-import";

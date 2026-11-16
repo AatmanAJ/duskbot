@@ -8,10 +8,10 @@ vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof imp
 vi.mock("react-dom", async (importOriginal) => ({ ...await importOriginal<typeof import("react-dom")>(), createPortal: (node: ReactNode) => node }));
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({}) }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.admin }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, bots: [chief, scout] }, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 
 const { BotContextMenu } = await import("./Sidebar");
 const base = { threadId: "thread", title: "", description: "", notifications: true, color: "green", unread: false, messages: [], modelSelection: { instanceId: "test", model: "test" } } as const;

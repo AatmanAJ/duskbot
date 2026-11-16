@@ -77,7 +77,7 @@ const store = vi.hoisted(() => ({
   },
   dispatch: (() => {}) as (action: unknown) => void,
 }));
-vi.mock("@/state/store", () => ({ useStore: () => store }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => store }))()));
 // Scrolling a hit into view needs the real DOM; this suite checks the window around it.
 vi.mock("@/lib/focus-message", () => ({ useFocusMessage: () => {} }));
 // arrival motion reads real layout and runs Web Animations; it has its own test

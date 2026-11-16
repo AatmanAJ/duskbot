@@ -10,7 +10,7 @@ import type { Bot } from "@/state/store";
 import type { SlackBotStatus, SlackWorkspaceStatus } from "../../../shared/slack.ts";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), dispatch: vi.fn() }));
-vi.mock("@/state/store", () => ({ api: fixture.api, useStore: () => ({ dispatch: fixture.dispatch }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api, useStore: () => ({ dispatch: fixture.dispatch }) }))()));
 vi.mock("@/state/api", async (original) => ({ ...await original<typeof import("@/state/api")>(), api: fixture.api }));
 const { SlackBotPage } = await import("./SlackBotPage");
 const { useSlackAvailable, useSlackBot, useSlackBotState } = await import("./use-slack");

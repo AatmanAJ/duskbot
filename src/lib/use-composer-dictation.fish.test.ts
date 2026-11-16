@@ -20,7 +20,7 @@ const fish = vi.hoisted(() => {
   };
 });
 vi.mock("./fish-speech", () => ({ fishSpeech: fish }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: { config: fixture.config } }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: { config: fixture.config } }) }))()));
 vi.mock("@/components/DesktopCapabilities", async () => {
   const { initialDesktopCapabilities } = await import("./desktop");
   const capabilities = { ...initialDesktopCapabilities(), dictation: { available: true, engine: "fish-audio", onDevice: false } };

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { initialState } from "@/state/store";
 
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: initialState, dispatch: vi.fn() }) }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: initialState, dispatch: vi.fn() }) }))(importOriginal)));
 
 import { APP_FACES, POPULAR_APPS, SidebarConnectApps, appFaces } from "./SidebarConnectApps";
 

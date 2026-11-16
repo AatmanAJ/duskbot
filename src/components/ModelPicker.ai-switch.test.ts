@@ -12,7 +12,7 @@ vi.mock("@/state/api", () => ({ api, ApiError: Error }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 // The store's refresh callbacks keep one identity across renders, as the real store's do.
 const refresh = { instances: () => fixture.refreshInstances(), models: (id: string) => fixture.refreshModels(id) };
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   useStore: () => ({
     state: { instances: fixture.instances, bots: [], modelVariantSessions: {}, config: {} },
@@ -20,7 +20,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     refreshInstances: refresh.instances,
     refreshModels: refresh.models,
   }),
-}));
+}))(importOriginal)));
 
 const { ModelPicker } = await import("./ModelPicker");
 const { resetAiSwitch, requestAiSwitch } = await import("@/lib/ai-switch");

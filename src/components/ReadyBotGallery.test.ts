@@ -9,10 +9,10 @@ vi.mock("./LocalComputerAutoWarning", () => ({
   LocalComputerAutoWarning: (props: NonNullable<typeof opened.props>) => { opened.props = props.open ? props : null; return null; },
 }));
 const made = vi.hoisted(() => ({ defaults: { profile: {}, memory: {}, skills: [], routines: [] } as { profile: Record<string, unknown>; memory: object; skills: unknown[]; routines: unknown[] }, create: vi.fn() }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   useStore: () => ({ dispatch: opened.dispatch, state: opened.state }),
   api: vi.fn(async () => ({ defaults: made.defaults, suggestedName: "Nova", modelSelection: { instanceId: "", model: "" } })),
-}));
+}))()));
 vi.mock("@/lib/create-configured-bot", () => ({ createConfiguredBot: made.create }));
 vi.mock("@/lib/new-bot", async (actual) => ({ ...await actual<typeof import("@/lib/new-bot")>(), announceNewBot: vi.fn() }));
 

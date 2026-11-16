@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const f = vi.hoisted(() => ({ api: vi.fn(), runBotMove: vi.fn() }));
-vi.mock("@/state/store", () => ({ api: f.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: f.api }))()));
 vi.mock("./bot-move", () => ({
   movable: (plan: { apps: Array<{ preview: { plans: unknown[] } }> }) => plan.apps.reduce((n, app) => n + app.preview.plans.length, 0),
   runBotMove: f.runBotMove,

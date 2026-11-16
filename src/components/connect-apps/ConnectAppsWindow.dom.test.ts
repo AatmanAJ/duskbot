@@ -24,10 +24,10 @@ const fixture = vi.hoisted(() => ({
   actions: { attio: { actions: ["Create record", "Find person"] } } as Record<string, { actions: string[]; triggers?: string[] }>,
 }));
 
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const store = await original<typeof import("@/state/store")>();
   return { ...store, api: fixture.api, useStore: () => ({ state: store.initialState, dispatch: fixture.dispatch }) };
-});
+})(importOriginal)));
 vi.mock("./composio-snapshot", async (original) => ({
   ...await original<typeof import("./composio-snapshot")>(),
   loadComposioSnapshot: async () => fixture.bundled,

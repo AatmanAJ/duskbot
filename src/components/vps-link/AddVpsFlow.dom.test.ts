@@ -9,10 +9,10 @@ vi.mock("@/components/Avatar", () => ({
   MausAvatar: (props: { state?: string }) => createElement("span", { "data-mascot": props.state ?? "idle" }),
   BotAvatar: () => createElement("span", { "data-bot-avatar": "" }),
 }));
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ state: { bots: [], config: {} }, dispatch: vi.fn() }),
-}));
+}))(importOriginal)));
 import { closeAddVps, openAddVps, EMPTY_VIEW, useAddVpsOpen, useVpsLink, VPS_STEP_IDS, type VpsEngine, type VpsLinkBridge, type VpsLinkView, type VpsMovePreview, type VpsSignIn } from "@/lib/vps-link";
 import { AddVpsFlow } from "./AddVpsFlow";
 import { MoveScreen, retryClock } from "./MoveStage";

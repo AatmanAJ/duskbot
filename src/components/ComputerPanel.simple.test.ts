@@ -74,7 +74,7 @@ vi.mock("./LinuxLocalControl", () => ({ LinuxLocalControl: () => null }));
 vi.mock("./MacLocalControl", () => ({ MacLocalControl: () => null }));
 vi.mock("./LocalComputerAutoWarning", () => ({ LocalComputerAutoWarning: () => null }));
 vi.mock("./bot-settings/RoutinesSection", () => ({ RoutinesSection: () => null }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: (...args: unknown[]) => fixture.api(...args),
   useStore: () => ({
@@ -88,7 +88,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     dispatch: fixture.dispatch,
     flushBotPatches: () => Promise.resolve(null),
   }),
-}));
+}))(importOriginal)));
 
 const { ComputerPanel } = await import("./ComputerPanel");
 

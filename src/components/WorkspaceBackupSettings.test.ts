@@ -12,7 +12,7 @@ vi.mock("react", async (original) => ({ ...await original<typeof import("react")
   },
   useEffect: (effect: EffectCallback) => { fixture.effects.push(effect); },
 }));
-vi.mock("@/state/store", () => ({ api: fixture.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api }))()));
 // the dialogs draw as plain forms here: no portal on the server renderer
 vi.mock("./ListRows", async (original) => {
   const { createElement: h } = await import("react");

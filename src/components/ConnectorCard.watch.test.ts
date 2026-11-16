@@ -7,7 +7,7 @@ import type { Message } from "@/state/store";
 import { setLocale, t } from "@/lib/i18n";
 
 const api = vi.hoisted(() => vi.fn());
-vi.mock("@/state/store", () => ({ api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api }))()));
 const { ConnectorCard } = await import("./ConnectorCard");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

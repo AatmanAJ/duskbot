@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VpsCloudMoveView } from "@/lib/vps-cloud-move";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), bots: 3 }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
@@ -15,7 +15,7 @@ vi.mock("@/state/store", async (importOriginal) => {
       dispatch: fixture.dispatch,
     }),
   };
-});
+})(importOriginal)));
 
 const { CloudMoveSheet } = await import("./CloudMoveSheet");
 

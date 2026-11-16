@@ -7,7 +7,7 @@ import type { DataPage } from "../../../shared/data-surface";
 import { setLocale } from "@/lib/i18n";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), embed: vi.fn() }));
-vi.mock("@/state/store", () => ({ api: fixture.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api }))()));
 vi.mock("vega-embed", () => ({ default: fixture.embed }));
 import { DataChart } from "./DataChart";
 

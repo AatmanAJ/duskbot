@@ -29,11 +29,11 @@ const fixture = vi.hoisted(() => ({
 // The Cloud account card reads the host platform (what a saved sign-in still locked asks for).
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({ capabilities: { host: { platform: "darwin" } } }) }));
 
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: fixture.api,
   useStore: () => ({ state: { appSettingsSection: fixture.section, instances: [], bots: [] }, dispatch: fixture.dispatch }),
-}));
+}))(importOriginal)));
 vi.mock("@/lib/run-card-preferences", () => ({
   useShowRunCard: () => fixture.showRunCard,
   setShowRunCard: fixture.setShowRunCard,

@@ -15,7 +15,7 @@ const fixture = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/chrome-rail", () => ({ sayFrameDrawn: fixture.frameDrawn }));
 vi.mock("@/lib/place-look", () => ({ usePlaceLook: () => fixture.look }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: { config: fixture.config }, dispatch: fixture.dispatch }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: { config: fixture.config }, dispatch: fixture.dispatch }) }))()));
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   ...await importOriginal<typeof import("./DesktopCapabilities")>(),
   useDesktopCapabilities: () => ({ capabilities: { windowChrome: fixture.windowChrome, windowFrame: fixture.windowFrame }, ready: true }),

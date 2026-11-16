@@ -12,7 +12,7 @@ const fixture = vi.hoisted(() => {
   vi.stubGlobal("fetch", () => new Promise(() => {}));
   return { dispatch: vi.fn() };
 });
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({
     state: { ...original.initialState, bots: [bot], instances: [{
@@ -20,7 +20,7 @@ vi.mock("@/state/store", async (importOriginal) => {
     }] },
     dispatch: fixture.dispatch,
   }) };
-});
+})(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/lib/use-slash-skills", () => ({ useSlashSkills: () => [] }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => false }));

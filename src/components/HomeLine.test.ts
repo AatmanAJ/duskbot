@@ -11,7 +11,7 @@ let root: Root;
 const place = vi.hoisted(() => ({ set: [] as Array<string | null> }));
 const ais = vi.hoisted(() => ({ instances: [] as unknown[] }));
 vi.mock("@/lib/notify", () => ({ setNotificationPlace: (name: string | null) => place.set.push(name) }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: { instances: ais.instances } }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: { instances: ais.instances } }) }))()));
 vi.mock("@/components/onboarding/ConnectAi", () => ({ ConnectAiDialog: () => createElement("div", { "data-connect-ai": "" }) }));
 vi.mock("@/components/EngineLibrary", () => ({ engineReady: (instance: { ready?: boolean }) => instance.ready === true }));
 const mount = async (line: ReturnType<typeof vi.fn>, remote = false, state: Record<string, unknown> = { local: false, name: "My Cloud" }) => {

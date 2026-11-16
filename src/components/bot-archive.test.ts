@@ -7,11 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppState, Bot } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), dispatch: vi.fn(), state: {} as AppState }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: fixture.api,
   useStore: () => ({ state: fixture.state, dispatch: fixture.dispatch }),
-}));
+}))(importOriginal)));
 
 const { initialState } = await import("@/state/store");
 const { announceArchiveNotice, archivableChief, archiveBotWithNotice, onArchiveNotice } = await import("./bot-archive");

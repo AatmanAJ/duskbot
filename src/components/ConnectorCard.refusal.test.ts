@@ -9,10 +9,10 @@ import { ApiError } from "@/state/api";
 import type { Message } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), openExternal: vi.fn(async (_url: string) => {}) }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: fixture.api,
   useStore: () => { throw new Error("outside the app"); },
-}));
+}))()));
 import { ConnectorCard } from "./ConnectorCard";
 
 const SENTENCE = "Finish this sign-in in apps → MCP servers.";

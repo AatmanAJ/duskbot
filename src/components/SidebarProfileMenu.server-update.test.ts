@@ -10,7 +10,7 @@ vi.mock("react", async (original) => ({
   useState: (initial: unknown) => { const index = f.index++; if (!(index in f.values)) f.values[index] = initial; return [f.values[index], (next: unknown) => { f.values[index] = next; }]; },
   useEffect: (effect: EffectCallback) => { f.effects.push(effect); },
 }));
-vi.mock("@/state/store", () => ({ api: vi.fn(async () => f.check), useStore: () => ({ state: { config: {} }, dispatch: vi.fn() }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: vi.fn(async () => f.check), useStore: () => ({ state: { config: {} }, dispatch: vi.fn() }) }))()));
 import { useServerUpdateItem } from "./SidebarProfileMenu";
 
 // The server the window shows, on 0.1.116 from npm, while 0.1.127 is out.

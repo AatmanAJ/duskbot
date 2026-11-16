@@ -9,10 +9,10 @@ const fixture = vi.hoisted(() => ({ advanced: false, admin: true as boolean | nu
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.admin }));
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({}) }));
 vi.mock("react-dom", () => ({ createPortal: (node: ReactNode) => node }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, ...fixture.state }, dispatch: fixture.dispatch }) };
-});
+})(importOriginal)));
 
 import { BotContextMenu, BotListItem, botRowProps, GroupListItem, PinnedBotCircle, type BotRowProps } from "./Sidebar";
 import { sidebarBotActivityTasks } from "./SidebarBotActivity";

@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { initialState, type Action, type AppState, type Bot } from "@/state/store";
 
 const store = vi.hoisted(() => ({ state: null as unknown as AppState, dispatch: (_action: unknown) => {} }));
-vi.mock("@/state/store", async (original) => ({ ...(await original<typeof import("@/state/store")>()), useStore: () => store }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...(await original<typeof import("@/state/store")>()), useStore: () => store }))(importOriginal)));
 const { useReadShownChatOnFocus } = await import("./use-read-shown-chat");
 
 const bot = (unread: boolean): Bot => ({

@@ -19,7 +19,7 @@ const fixture = vi.hoisted(() => {
   };
   return value;
 });
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const actual = await original<typeof import("@/state/store")>();
   const { useSyncExternalStore } = await import("react");
   const subscribe = (listener: () => void) => { fixture.listeners.add(listener); return () => { fixture.listeners.delete(listener); }; };
@@ -28,7 +28,7 @@ vi.mock("@/state/store", async (original) => {
     api: (...args: unknown[]) => fixture.api(...args),
     useStore: () => ({ state: useSyncExternalStore(subscribe, () => fixture.state), dispatch: fixture.dispatch, refreshInstances: vi.fn() }),
   };
-});
+})(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/components/CloudTrialNotice", () => ({ useCloudPlanSnapshot: () => null }));
 vi.mock("@/components/EngineSetup", () => ({ EngineSetup: () => null }));

@@ -17,7 +17,7 @@ vi.mock("react", async (original) => ({
   useEffect: (effect: EffectCallback) => { fixture.effects.push(effect); },
 }));
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const store = await importOriginal<typeof import("@/state/store")>();
   return {
     ...store,
@@ -26,7 +26,7 @@ vi.mock("@/state/store", async (importOriginal) => {
       dispatch: fixture.dispatch,
     }),
   };
-});
+})(importOriginal)));
 vi.mock("./VoiceSettings", () => ({
   VoiceSettings: (props: { bot: { id: string }; onPatch: (patch: Record<string, unknown>) => void }) => {
     fixture.voiceSettings.push(props);

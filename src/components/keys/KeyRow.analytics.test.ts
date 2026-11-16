@@ -24,10 +24,10 @@ vi.mock("react", async (original) => ({
     return fixture.refs[index];
   },
 }));
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const store = await original<typeof import("@/state/store")>();
   return { ...store, api: fixture.api, useStore: () => ({ state: { ...store.initialState, config: fixture.config, instances: [] }, dispatch: fixture.dispatch }) };
-});
+})(importOriginal)));
 // sealing has its own tests (src/lib/sealed-send.test.ts): here the patch the row asked to save is what the server gets
 vi.mock("@/lib/sealed-send", () => ({ putConfig: (patch: unknown) => fixture.api("/api/config", { method: "PUT", body: JSON.stringify(patch) }) }));
 vi.mock("@/lib/analytics", () => ({ track: fixture.track }));

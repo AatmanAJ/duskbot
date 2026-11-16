@@ -17,11 +17,11 @@ vi.mock("react", async (original) => {
     },
   };
 });
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   api: fixture.api,
   useStore: () => ({ dispatch }),
-}));
+}))(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
 vi.mock("@/lib/card-seal", () => ({ SealTrustError: class SealTrustError extends Error {}, sealCardSecret: vi.fn(async (_value: string, key: { keyId: string }, context: { remember: boolean }) => ({ keyId: key.keyId, encapsulatedKey: "E", ciphertext: `sealed-${context.remember ? "save" : "once"}` })) }));
 

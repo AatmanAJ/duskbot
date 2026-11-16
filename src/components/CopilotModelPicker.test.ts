@@ -29,11 +29,11 @@ vi.mock("react", async (original) => ({
 }));
 vi.mock("./MenuMotion", () => ({ useMenuMotion: (open: boolean) => ({ shown: open, closing: false, className: "" }) }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ state: { instances: fixture.instances, bots: [], modelVariantSessions: fixture.modelVariantSessions }, dispatch: fixture.dispatch,
     refreshInstances: vi.fn(() => Promise.resolve()), refreshModels: vi.fn(() => Promise.resolve()) }),
-}));
+}))(importOriginal)));
 const { ModelPicker, ModelVariantRow, modelSelectionForPick } = await import("./ModelPicker");
 const { SimpleModelMenu } = await import("./SimpleModelMenu");
 

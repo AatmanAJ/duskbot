@@ -33,10 +33,10 @@ vi.mock("./DesktopCapabilities", async () => {
   const { initialDesktopCapabilities } = await import("@/lib/desktop");
   return { useDesktopCapabilities: () => ({ capabilities: initialDesktopCapabilities() }), windowFramed: () => false };
 });
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, api: fixture.api, useStore: () => ({ state: fixture.state, dispatch: fixture.dispatch }) };
-});
+})(importOriginal)));
 
 import { initialState } from "@/state/store";
 import { ConfirmDialog } from "./ConfirmDialog";

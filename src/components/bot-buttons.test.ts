@@ -11,10 +11,10 @@ const fixture = vi.hoisted(() => {
   return { dispatch: vi.fn() };
 });
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   useStore: () => ({ state: { computerControl: {} }, dispatch: fixture.dispatch }),
-}));
+}))(importOriginal)));
 
 const { BOT_BUTTON } = await import("@/lib/bot-button");
 const { t } = await import("@/lib/i18n");

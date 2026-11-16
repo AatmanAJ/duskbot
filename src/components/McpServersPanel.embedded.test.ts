@@ -18,10 +18,10 @@ vi.mock("react", async (original) => {
     },
   };
 });
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: vi.fn(() => new Promise(() => {})),
   useStore: () => ({ state: { config: null }, dispatch: vi.fn() }),
-}));
+}))()));
 import { HOSTED_MCP_APPS } from "@/lib/hosted-mcp-apps";
 import { McpServersPanel } from "./McpServersPanel";
 

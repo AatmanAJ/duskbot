@@ -8,13 +8,13 @@ const fixture = vi.hoisted(() => ({
   instances: [] as unknown[],
   config: null as unknown,
 }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
     useStore: () => ({ state: { ...original.initialState, instances: fixture.instances, config: fixture.config }, dispatch: vi.fn() }),
   };
-});
+})(importOriginal)));
 vi.mock("../DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({ capabilities: { host: { packaged: false } } }) }));
 
 const { useBotSettingsDerived } = await import("./useBotSettingsDerived");

@@ -30,7 +30,7 @@ vi.mock("react", async (original) => ({
 }));
 // This hook fixture does not emulate React's render-time state retries.
 vi.mock("./MenuMotion", () => ({ useMenuMotion: (open: boolean) => ({ shown: open, closing: false, className: "" }) }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   useStore: () => ({
     state: { instances: fixture.instances, bots: [], modelVariantSessions: {} },
@@ -38,7 +38,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     refreshInstances: fixture.refreshInstances,
     refreshModels: fixture.refreshModels,
   }),
-}));
+}))(importOriginal)));
 
 // These cases cover the full picker; Simple mode has its own file.
 

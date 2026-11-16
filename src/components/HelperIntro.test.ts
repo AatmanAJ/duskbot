@@ -14,7 +14,7 @@ const f = vi.hoisted(() => ({
   services: {} as Record<string, { connected: boolean }>, phones: [] as unknown[], found: null as unknown, detect: vi.fn(),
   followups: [] as unknown[], saves: true, bots: 0, routines: 0, improve: true as boolean | undefined, improveSaves: [] as unknown[],
 }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   useStore: () => ({ state: f.state, dispatch: f.dispatch }),
   api: async (path: string, init?: { body?: string }) => {
     if (path === "/api/phones") return { phones: f.phones };
@@ -26,7 +26,7 @@ vi.mock("@/state/store", () => ({
     }
     return {};
   },
-}));
+}))()));
 // the help-improve switch reads and saves through the plain api
 vi.mock("@/state/api", () => ({
   api: async (path: string, init?: { body?: string }) => {

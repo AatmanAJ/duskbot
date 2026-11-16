@@ -8,14 +8,14 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Bot } from "@/state/store";
 
 const server = vi.hoisted(() => ({ calls: [] as Array<{ path: string; body: unknown }>, bots: [] as unknown[], answer: {} as unknown }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: vi.fn(async (path: string, init?: RequestInit) => {
     server.calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     return server.answer;
   }),
   useStore: () => ({ state: { config: { team: { id: "team-acme", name: "Acme" } }, bots: server.bots }, dispatch: vi.fn() }),
-}));
+}))(importOriginal)));
 vi.mock("../Avatar", () => ({ BotAvatar: () => null }));
 
 const { setTeamPeople } = await import("@/state/team-people");

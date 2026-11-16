@@ -14,10 +14,10 @@ const fixture = vi.hoisted(() => ({
 }));
 const owner = vi.hoisted(() => ({ value: true as boolean | null }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => owner.value }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: fixture.api,
   useStore: () => ({ state: { config: fixture.config }, dispatch: fixture.dispatch }),
-}));
+}))()));
 
 let host: HTMLDivElement;
 let root: Root;

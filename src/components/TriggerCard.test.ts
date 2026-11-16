@@ -12,11 +12,11 @@ const fixture = vi.hoisted(() => ({
   dispatch: vi.fn(),
   api: vi.fn(async (..._args: unknown[]) => ({}) as unknown),
 }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   useStore: () => ({ state: fixture.state, dispatch: fixture.dispatch }),
   api: (...args: unknown[]) => fixture.api(...args),
-}));
+}))(importOriginal)));
 
 const { ApprovalCard } = await import("./ApprovalCard");
 

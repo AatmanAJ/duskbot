@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "@/lib/i18n";
 
 const f = vi.hoisted(() => ({ config: {} as Record<string, unknown>, api: vi.fn(), dispatch: vi.fn() }));
-vi.mock("@/state/store", () => ({ api: f.api, useStore: () => ({ state: { config: f.config }, dispatch: f.dispatch }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: f.api, useStore: () => ({ state: { config: f.config }, dispatch: f.dispatch }) }))()));
 vi.mock("./SettingsSelect", async () => {
   const { createElement: h } = await import("react");
   return {

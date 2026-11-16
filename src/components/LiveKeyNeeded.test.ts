@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const f = vi.hoisted(() => ({ dispatch: vi.fn(), dismiss: vi.fn(), cloudHome: false, live: undefined as Record<string, unknown> | undefined }));
 vi.mock("react", async (original) => ({ ...await original<typeof import("react")>(), useId: () => "live-key-title" }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: { config: { cloudHome: f.cloudHome, live: f.live } }, dispatch: f.dispatch }), api: vi.fn() }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: { config: { cloudHome: f.cloudHome, live: f.live } }, dispatch: f.dispatch }), api: vi.fn() }))()));
 vi.mock("@/lib/live-call-media", () => ({ dismissLiveNotice: f.dismiss }));
 import { LiveKeyNeeded } from "./LiveKeyNeeded";
 import { finishKeyFocus, useKeyFocus } from "./keys/key-focus";

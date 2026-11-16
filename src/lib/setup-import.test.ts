@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/state/store", () => ({ api: vi.fn() }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: vi.fn() }))()));
 import { setLocale } from "@/lib/i18n";
 import type { SetupDetection } from "../../shared/setup-import";
 import { detectSetupWithin, importOutcome, localSetupImport, skillsSummary, toolsSummary, type SetupImportClient } from "./setup-import";

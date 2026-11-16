@@ -7,11 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), platform: "darwin" as string, flush: () => Promise.resolve(null) }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: (...args: unknown[]) => fixture.api(...args),
   useStore: () => ({ flushBotPatches: fixture.flush }),
-}));
+}))(importOriginal)));
 vi.mock("@/lib/live-events", () => ({ listenLiveFrames: () => () => {} }));
 vi.mock("../DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({ capabilities: { host: { platform: fixture.platform } }, ready: true }) }));
 

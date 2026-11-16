@@ -5,10 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), pending: false }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, botCreationPending: fixture.pending }, dispatch: fixture.dispatch }) };
-});
+})(importOriginal)));
 vi.mock("./Avatar", () => ({ MausAvatar: () => null }));
 
 import { CreateBotDialog, openCreateBot } from "./CreateBotDialog";

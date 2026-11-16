@@ -16,10 +16,10 @@ const fixture = vi.hoisted(() => ({
   personalKeys: {} as Record<string, string>,
   test: { ok: true, tools: [{ name: "a" }, { name: "b" }], total: 12 } as Record<string, unknown>,
 }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: fixture.api,
   useStore: () => ({ state: { config: fixture.config, bots: [] }, dispatch: vi.fn() }),
-}));
+}))()));
 vi.mock("@/lib/app-links", () => ({ openExternalLink: vi.fn(async () => {}) }));
 vi.mock("@/lib/mcp-servers", () => ({ updateMcpServers: vi.fn() }));
 

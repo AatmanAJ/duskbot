@@ -46,7 +46,7 @@ vi.mock("./onboarding/ConnectAi", () => ({
 vi.mock("./ui/Toast", () => ({ Toast: (props: { text: string; tone?: string }) => createElement("div", { "data-toast": props.tone ?? "done" }, props.text) }));
 vi.mock("./MenuMotion", () => ({ useMenuMotion: (open: boolean) => ({ shown: open, closing: false, className: "", exitProps: {} }) }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.ownerOrAdmin }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   api: (path: string, init?: unknown) => fixture.api(path, init),
   useStore: () => ({
@@ -55,7 +55,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     refreshInstances: fixture.refreshInstances,
     refreshModels: fixture.refreshModels,
   }),
-}));
+}))(importOriginal)));
 
 const { ModelPicker, ModelVariantRow, SIMPLE_POPOVER_WIDTH } = await import("./ModelPicker");
 const { ConnectAiDialog } = await import("./onboarding/ConnectAi");

@@ -10,7 +10,7 @@ vi.mock("react", async (original) => ({
   useEffect: (effect: EffectCallback) => { f.effects.push(effect); },
 }));
 vi.mock("../lib/phone-pairing", () => ({ revealPhonePairing: (root: unknown) => { if (!root) return false; f.revealed.push(root); return true; } }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: { config: {} } }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: { config: {} } }) }))()));
 vi.mock("./PhoneSetupFlow", () => ({
   companionBridge: () => ({}),
   usePhoneSetupController: () => ({ state: f.state, busy: false, accountBusy: false, account: null, accountError: null, error: null, localFallback: false, tailscaleFallback: false, tailscaleAvailable: false, hostedReady: false }),

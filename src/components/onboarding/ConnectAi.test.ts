@@ -10,7 +10,7 @@ const f = vi.hoisted(() => ({
   instances: [] as InstanceInfo[], dispatch: vi.fn(), row: null as null | { bridge: unknown; onOpenSettings: () => void },
   check: (): Promise<object> => Promise.resolve({ ok: true }), checks: [] as string[], fail: false,
 }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: async (path: string) => {
     if (f.fail) { f.fail = false; throw new Error("503"); }
     if (!path.endsWith("/check")) return { instances: f.instances };
@@ -18,7 +18,7 @@ vi.mock("@/state/store", () => ({
     return f.check();
   },
   useStore: () => ({ state: { instances: f.instances }, dispatch: f.dispatch }),
-}));
+}))()));
 vi.mock("@/components/EngineSetup", async () => {
   const { createElement: h } = await import("react");
   return { EngineSetup: ({ instance, intent, description }: { instance: InstanceInfo; intent: string; description?: string }) =>

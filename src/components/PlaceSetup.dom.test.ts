@@ -6,10 +6,10 @@ import { setLocale } from "@/lib/i18n";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn() }));
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => createElement("span", { "data-mascot": "" }) }));
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ state: { bots: [], config: {} }, dispatch: fixture.dispatch }),
-}));
+}))(importOriginal)));
 vi.mock("./CreateBotDialog", () => ({ openCreateBot: vi.fn() }));
 import { EMPTY_VIEW, closeAddVps, VPS_STEP_IDS, type VpsLinkBridge, type VpsLinkView } from "@/lib/vps-link";
 import { PlaceSetup, wayLine, wayOf } from "./PlaceSetup";

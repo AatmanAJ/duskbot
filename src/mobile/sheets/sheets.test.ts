@@ -3,7 +3,7 @@ import type { NotificationLogEntry } from "../../../shared/notification";
 import { groupNotifications } from "./NotificationsSheet";
 import { normalizeSearch, searchSnippetParts } from "./SearchSheet";
 
-vi.mock("@/state/store", () => ({ api: vi.fn(), useStore: vi.fn(), openBotThread: vi.fn(), openRoomThread: vi.fn() }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: vi.fn(), useStore: vi.fn(), openBotThread: vi.fn(), openRoomThread: vi.fn() }))()));
 vi.mock("@/components/Avatar", () => ({ BotAvatar: vi.fn(), MausAvatar: vi.fn() }));
 vi.mock("@/components/GroupAvatar", () => ({ GroupAvatar: vi.fn(), useGroupYou: vi.fn() }));
 vi.mock("@/components/sidebar-preview", () => ({ lastPreviewable: vi.fn(), sidebarPreviewMessages: vi.fn() }));

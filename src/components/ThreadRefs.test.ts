@@ -19,13 +19,13 @@ const room: Group = {
 };
 const dm: Group = { ...room, id: "dm", threadId: "dm-1", name: "Scout ⇄ Ada", dm: true, tasks: [{ threadId: "dm-1", title: "Private", createdAt: 5 }] };
 
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({
     state: { ...original.initialState, bots: [scout, ada], groups: [room, dm], selectedId: fixture.selectedId },
     dispatch: fixture.dispatch,
   }) };
-});
+})(importOriginal)));
 import { ThreadLink, ThreadRefText, ThreadRefsProvider, collectThreadRefs, openChatLink, threadLinkFromProps, useThreadRefs } from "./ThreadRefs";
 
 type ElementProps = { children?: ReactNode; onClick?: () => void; [key: string]: unknown };

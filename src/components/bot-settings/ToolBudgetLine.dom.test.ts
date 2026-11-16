@@ -8,10 +8,10 @@ import { setLocale } from "@/lib/i18n";
 import type { ToolBudget } from "../../../shared/tool-budget";
 
 const fixture = vi.hoisted(() => ({ budget: null as ToolBudget | null, asked: [] as string[] }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, api: (path: string) => { fixture.asked.push(path); return Promise.resolve({ budget: fixture.budget }); } };
-});
+})(importOriginal)));
 
 const { ToolBudgetLine } = await import("./ToolBudgetLine");
 

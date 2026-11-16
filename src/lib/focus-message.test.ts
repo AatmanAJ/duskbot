@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({ effect: null as EffectCallback | null, text: "", dispatch: vi.fn() }));
 vi.mock("react", () => ({ useEffect: (effect: EffectCallback) => { fixture.effect = effect; } }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: vi.fn(),
   useStore: () => ({ state: { focusMessage: { threadId: "thread", messageId: "message", matchText: fixture.text, nonce: 1, consumed: false } }, dispatch: fixture.dispatch }),
-}));
+}))()));
 
 import { useFocusMessage } from "./focus-message";
 

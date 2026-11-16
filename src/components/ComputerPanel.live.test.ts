@@ -26,7 +26,7 @@ vi.mock("./CloudScreenPreview", () => ({
 vi.mock("./BrowserPanel", () => ({ BrowserPanel: () => null }));
 vi.mock("./LiveDesktop", () => ({ LiveDesktop: ({ onUnreachable }: { onUnreachable: () => void }) => { useEffect(onUnreachable, []); return null; } }));
 vi.mock("./bot-settings/RoutinesSection", () => ({ RoutinesSection: () => null }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: async (path: string, init?: RequestInit) => {
     if (path.startsWith("/api/bots/bot/computer/screenshot")) {
@@ -37,7 +37,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     if (path.startsWith("/api/bots/bot/computer?")) return { configured: true, ready: true, managed: true, imageMatches: true, container: "running" };
     return {};
   },
-}));
+}))(importOriginal)));
 
 const { ComputerPanel } = await import("./ComputerPanel");
 const { BotEditorStore, initialState } = await import("@/state/store");

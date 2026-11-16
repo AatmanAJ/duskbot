@@ -6,11 +6,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ConfigStatus } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ config: null as Partial<ConfigStatus> | null, dispatch: vi.fn(), api: vi.fn() }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   api: fixture.api,
   useStore: () => ({ state: { config: fixture.config }, dispatch: fixture.dispatch }),
-}));
+}))(importOriginal)));
 vi.mock("@/lib/own-profile", () => ({ saveTeamProfile: (patch: unknown) => fixture.api("/api/me", { method: "PUT", body: JSON.stringify(patch) }) }));
 
 const { AboutMeSettings } = await import("./AboutMeSettings");

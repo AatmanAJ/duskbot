@@ -7,10 +7,10 @@ const local = vi.hoisted(() => ({ openPlaceSetup: vi.fn() }));
 vi.mock("@/lib/place-setup", () => ({ openPlaceSetup: local.openPlaceSetup }));
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({ ready: true, capabilities: { host: { platform: "darwin" }, localComputer: { available: true } } }) }));
 
-vi.mock("@/state/store", async importOriginal => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async importOriginal => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: original.initialState, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 
 const { LocalComputerSection } = await import("./LocalComputerSection");
 

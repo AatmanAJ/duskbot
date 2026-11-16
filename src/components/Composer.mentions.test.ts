@@ -10,7 +10,7 @@ import { restoreComposerDraft } from "@/lib/drafts";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn() }));
 const ENGINE = "claude-3f0c2b1e-9d1a-4c55-8a51-0a3a6f1e2b7c";
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({
     state: { ...original.initialState, bots: [scout, analyst, chief], instances: [{
@@ -18,7 +18,7 @@ vi.mock("@/state/store", async (importOriginal) => {
     }] },
     dispatch: fixture.dispatch,
   }) };
-});
+})(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 vi.mock("./CallView", () => ({ CallButton: () => null }));

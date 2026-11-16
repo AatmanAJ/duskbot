@@ -15,9 +15,9 @@ vi.mock("react", async (original) => ({ ...await original<typeof import("react")
   },
   useEffect: () => {},
 }));
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(),
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ state: { bots: fixture.bots, instances: fixture.instances }, dispatch: fixture.dispatch, flushBotPatches: fixture.flushBotPatches, refreshInstances: vi.fn(), refreshModels: vi.fn() }),
-}));
+}))(importOriginal)));
 import { CompanyModels } from "./CompanyModels";
 
 type Node = ReactElement<{ children?: ReactNode; onClick?: () => void }>;

@@ -8,10 +8,10 @@ const atlas: Bot = {
   color: "green", unread: false, messages: [], modelSelection: { instanceId: "claude", model: "test" },
 };
 const fixture = vi.hoisted(() => ({ bots: [] as Bot[] }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, bots: fixture.bots }, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 
 import { endCall } from "@/lib/call";
 import { configureLiveMedia, liveMedia, resetLiveMedia, startLiveCall } from "@/lib/live-call-media";

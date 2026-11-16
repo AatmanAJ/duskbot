@@ -5,10 +5,10 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   useStore: () => ({ state: { instances: [] } }),
   api: () => new Promise(() => {}),
-}));
+}))()));
 
 import { CommandAllowlistDialog } from "./CommandAllowlistDialog";
 

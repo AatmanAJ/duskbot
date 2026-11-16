@@ -4,10 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { TraceDetail, TraceTurn } from "../../shared/usage-trace";
 import { formatDuration, groupLabel, timeAxis, toolLabel, traceBadges, traceRows, usagePeriodRange } from "./usage-trace";
 
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const actual = await original<typeof import("@/state/store")>();
   return { ...actual, useStore: () => ({ state: actual.initialState, dispatch: vi.fn() }), api: vi.fn(() => new Promise(() => {})) };
-});
+})(importOriginal)));
 const { TraceWaterfall } = await import("../components/usage/TraceWaterfall");
 const { GroupBars, usageGroupLabel } = await import("../components/UsageSection");
 

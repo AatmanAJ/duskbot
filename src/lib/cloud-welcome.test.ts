@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(), api: vi.fn() }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(), api: vi.fn() }))(importOriginal)));
 import { api } from "@/state/store";
 import { CLOUD_SETUP_HIDDEN, CLOUD_WELCOME_DONE, welcomeStepHint } from "./cloud-setup";
 import {

@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
 // The store reaches server-only modules; this test only needs the bubble's own DOM.
-vi.mock("@/state/store", () => ({ api: vi.fn(), ApiError: class ApiError extends Error {}, useStore: () => ({ state: {}, dispatch: vi.fn() }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: vi.fn(), ApiError: class ApiError extends Error {}, useStore: () => ({ state: {}, dispatch: vi.fn() }) }))()));
 import { VoiceNoteBubble } from "./VoiceNoteBubble";
 
 const note = {

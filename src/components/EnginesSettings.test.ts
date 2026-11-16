@@ -7,10 +7,10 @@ import { accountActions } from "./EngineAccounts";
 import { AntigravityFreeSpace, formatDiskSize } from "./AntigravityFreeSpace";
 
 const fixture = vi.hoisted(() => ({ instances: [] as InstanceInfo[], bots: [] as Bot[], config: undefined as Record<string, unknown> | undefined }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   useStore: () => ({ state: fixture, refreshInstances: async () => {}, refreshModels: async () => {} }),
-}));
+}))(importOriginal)));
 afterEach(() => vi.unstubAllGlobals());
 
 function render(authenticated: boolean, options: { email?: string; signOut?: boolean; assigned?: boolean } = {}): string {

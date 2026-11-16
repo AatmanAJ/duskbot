@@ -6,14 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({ landOnSearchHit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/focus-message", () => ({ landOnSearchHit: fixture.landOnSearchHit }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
     api: vi.fn(async () => ({ hits: [] })),
     useStore: () => ({ state: original.initialState, dispatch: vi.fn() }),
   };
-});
+})(importOriginal)));
 
 import { ChatFindBar } from "./ChatFindBar";
 

@@ -9,7 +9,7 @@ import { GROK_EXPORT_FORMAT } from "../../shared/grok-import";
 import type { SetupDetection } from "../../shared/setup-import";
 
 const f = vi.hoisted(() => ({ state: {} as Record<string, unknown>, dispatch: vi.fn(), api: vi.fn() }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }), api: f.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }), api: f.api }))()));
 vi.mock("@/state/api", () => ({ api: f.api }));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/components/Avatar", () => ({ BotAvatar: () => null, MausAvatar: () => null }));

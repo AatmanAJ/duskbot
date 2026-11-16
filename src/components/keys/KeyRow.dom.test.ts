@@ -7,7 +7,7 @@ import { setLocale } from "@/lib/i18n";
 import type { InstanceInfo } from "@/state/store";
 
 const fx = vi.hoisted(() => ({ refreshInstances: vi.fn() }));
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const actual = await original<typeof import("@/state/store")>();
   const instances = [{ instanceId: "deepseek", driverKind: "deepseekAgent", displayName: "DeepSeek Harness", snapshot: { state: "unavailable" },
     install: { platform: "linux", command: { linux: "npm install -g @deepseek-ai/dsh" }, server: { package: "@deepseek-ai/dsh" } }, models: { default: "m", options: [] } }] as unknown as InstanceInfo[];
@@ -15,7 +15,7 @@ vi.mock("@/state/store", async (original) => {
     ...actual,
     useStore: () => ({ state: { ...actual.initialState, config: { deepseek: { configured: true, last4: "9z9z" } }, instances }, dispatch: vi.fn(), refreshInstances: fx.refreshInstances }),
   };
-});
+})(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 
 const { KeyRow } = await import("./KeyRow");

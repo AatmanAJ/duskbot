@@ -8,8 +8,8 @@ import type { CloudRoom, CloudUsage } from "../../electron/cloud-home.mjs";
 import { setLocale } from "@/lib/i18n";
 
 const store = vi.hoisted(() => ({ bots: [] as Array<{ id: string; busy?: boolean }> }));
-vi.mock("@/state/store", async original => ({ ...await original<typeof import("@/state/store")>(),
-  useStore: () => ({ state: { bots: store.bots, config: { cloudHome: true } }, dispatch: vi.fn() }) }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async original => ({ ...await original<typeof import("@/state/store")>(),
+  useStore: () => ({ state: { bots: store.bots, config: { cloudHome: true } }, dispatch: vi.fn() }) }))(importOriginal)));
 import { CloudRoomCard } from "./CloudRoomCard";
 
 // The room card on the person's own Cloud, rendered as the sidebar renders it, against a bridge that answers as main does.

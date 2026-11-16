@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setLocale } from "@/lib/i18n";
 
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   useStore: () => ({ state: { instances: [] }, dispatch: () => {} }),
-}));
+}))()));
 
 const { UsageSection } = await import("./UsageSection");
 

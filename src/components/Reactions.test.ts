@@ -6,10 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), dispatch: vi.fn() }));
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const store = await original<typeof import("@/state/store")>();
   return { ...store, api: fixture.api, useStore: () => ({ state: store.initialState, dispatch: fixture.dispatch }) };
-});
+})(importOriginal)));
 const { setLocale } = await import("@/lib/i18n");
 const { ReactAction, ReactionChips } = await import("./Reactions");
 

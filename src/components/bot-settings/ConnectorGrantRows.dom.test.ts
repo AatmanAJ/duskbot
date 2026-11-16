@@ -8,7 +8,7 @@ import { SubPageContext } from "../ListRows";
 import { ConnectorGrantPage, ConnectorGrantRows } from "./ConnectorGrantRows";
 
 const api = vi.hoisted(() => vi.fn());
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(), api }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(), api }))(importOriginal)));
 
 let root: Root | null = null;
 afterEach(() => {

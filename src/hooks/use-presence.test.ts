@@ -9,7 +9,7 @@ vi.mock("react", async (original) => ({
   useRef: (initial: unknown) => { const at = fixture.refAt++; fixture.refs[at] ??= { current: initial }; return fixture.refs[at]; },
 }));
 vi.mock("@/lib/language-preference", async (original) => ({ ...await original<typeof import("@/lib/language-preference")>(), useLanguageChoice: () => fixture.choice }));
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(), api: fixture.api }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(), api: fixture.api }))(importOriginal)));
 
 import { usePresence } from "./use-presence";
 

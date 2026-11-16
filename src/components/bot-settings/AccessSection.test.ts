@@ -12,10 +12,10 @@ const fixture = vi.hoisted(() => ({
   config: null as unknown,
   apps: { phase: "loading", apps: [], connectedSlugs: [] } as import("./useBotApps").BotApps,
 }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, config: fixture.config ?? original.initialState.config }, dispatch: fixture.dispatch }) };
-});
+})(importOriginal)));
 // The connected-apps list (Composio accounts plus the native Email connection) is seeded per test.
 vi.mock("./useBotApps", async (importOriginal) => ({
   ...await importOriginal<typeof import("./useBotApps")>(),
