@@ -1,0 +1,10 @@
+{
+  "report_date": "11/05/2026",
+  "merchant": "Figma",
+  "category": "Software",
+  "amount": "45.00",
+  "paid_with": "Company card",
+  "billable": false,
+  "notes": "Extra editor seat, November",
+  "receipt": "receipts/receipt-06.txt"
+}

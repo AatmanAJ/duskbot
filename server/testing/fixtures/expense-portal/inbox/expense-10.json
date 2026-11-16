@@ -1,0 +1,10 @@
+{
+  "Report date": "11/09/2026",
+  "Merchant": "United Airlines",
+  "Category": "Travel",
+  "Amount (USD)": "412.60",
+  "Paid with": "Company card",
+  "Billable to client": "yes",
+  "Notes": "SFO to SEA, kickoff",
+  "Receipt": "receipts/receipt-10.txt"
+}

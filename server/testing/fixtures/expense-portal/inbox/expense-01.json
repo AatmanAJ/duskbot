@@ -1,0 +1,10 @@
+{
+  "Report date": "11/03/2026",
+  "Merchant": "Blue Bottle Coffee",
+  "Category": "Meals",
+  "Amount (USD)": "18.40",
+  "Paid with": "Company card",
+  "Billable to client": "yes",
+  "Notes": "Coffee with the Acme team",
+  "Receipt": "receipts/receipt-01.txt"
+}

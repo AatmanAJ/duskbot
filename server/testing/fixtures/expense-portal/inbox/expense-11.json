@@ -1,0 +1,10 @@
+{
+  "report_date": "11/10/2026",
+  "merchant": "Ace Hotel Seattle",
+  "category": "Lodging",
+  "amount": "236.00",
+  "paid_with": "Company card",
+  "billable": true,
+  "notes": "One night, kickoff",
+  "receipt": "receipts/receipt-11.txt"
+}

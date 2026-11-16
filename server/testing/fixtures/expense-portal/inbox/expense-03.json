@@ -1,0 +1,10 @@
+{
+  "Report date": "11/04/2026",
+  "Merchant": "Hotel Zephyr",
+  "Category": "Lodging",
+  "Amount (USD)": "289.00",
+  "Paid with": "Company card",
+  "Billable to client": "yes",
+  "Notes": "One night, client workshop",
+  "Receipt": "receipts/receipt-03.txt"
+}
