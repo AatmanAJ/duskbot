@@ -78,3 +78,17 @@ window.duskBuild = async () => {
   } catch {}
   return 'mac-arm64';
 };
+
+// plus and pro start free while the account service runs a trial (DUSK_TRIAL_DAYS); without one the cards stay as built
+{
+  const buys = [...document.querySelectorAll('.plan a[href*="/signup?plan="]')];
+  if (buys.length) fetch('/api/public/config').then((r) => (r.ok ? r.json() : null)).then((config) => {
+    const days = config?.plans?.find((plan) => plan.trialDays)?.trialDays;
+    if (!Number.isInteger(days) || days < 1) return;
+    for (const a of buys) {
+      a.textContent = 'start free trial';
+      const price = a.closest('.plan')?.querySelector('.plan-price');
+      if (price && !price.querySelector('.per-trial')) price.prepend(Object.assign(document.createElement('span'), { className: 'per per-trial', textContent: `${days} ${days === 1 ? 'day' : 'days'} free, then` }));
+    }
+  }).catch(() => {});
+}
