@@ -222,8 +222,8 @@ export interface AccountsBridge {
   onOpenSheet(callback: () => void): () => void;
 }
 /** Any place's own page, from the person's click: the accounts sheet opens on the rail's page, and this page learns nothing of them. */
-/** The account in use as a Cloud of the person's own may show it: never its address. */
-export type AccountFace = Omit<AccountRow, "email" | "signIn">;
+/** The account in use as a Cloud of the person's own shows it. `email` is absent from an older app. */
+export type AccountFace = Omit<AccountRow, "email" | "signIn"> & { email?: string };
 /** `face`: null on any page but a Cloud of the person's own, or while nobody is signed in. Absent on an older app. */
 export interface AccountSheetBridge { offered(): Promise<boolean>; open(): Promise<void>; face?(): Promise<AccountFace | null> }
 /** On the person's own Cloud, open in this app's window: the plan, read

@@ -91,7 +91,7 @@ export function createDesktopRing(deps) {
  *   ownPlace?(event: unknown): boolean,
  * }} deps `ownPage`: this app's own page in the window, or the rail's. `placePage`: the page of a place of the person's own
  * or their team's, which may offer the sheet. `ownPlace`: a Cloud of the person's own (not a team's or a server's), which may
- * read the face and plan of the account in use, never its address. `ring`: the accounts kept on this device. `holdSheet`: the rail's page stays up
+ * read the account in use (address, name, face and plan): the app's own session on a Cloud names no owner, so this is how its page knows. `ring`: the accounts kept on this device. `holdSheet`: the rail's page stays up
  * for the sheet, even for someone who hid the rail. `tell`: this app's pages read the list again.
  */
 export function installAccounts({ ipcMain, ownPage, placePage, ownPlace = () => false, account, client, ring, holdSheet, tellSheet, tell }) {
@@ -127,7 +127,7 @@ export function installAccounts({ ipcMain, ownPage, placePage, ownPlace = () => 
     if (ownPlace(event) !== true) return null;
     const active = view().active;
     if (!active) return null;
-    return { id: active.id, ...(active.name ? { name: active.name } : {}), ...(active.avatarUrl ? { avatarUrl: active.avatarUrl } : {}),
+    return { id: active.id, email: active.email, ...(active.name ? { name: active.name } : {}), ...(active.avatarUrl ? { avatarUrl: active.avatarUrl } : {}),
       ...(active.avatar ? { avatar: active.avatar } : {}), ...(active.plan ? { plan: active.plan } : {}) };
   });
   ipcMain.handle("accounts:open", (event) => {

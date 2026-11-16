@@ -128,10 +128,11 @@ export function personFace(profile: { name?: string; email?: string; avatarUrl?:
   return seed ? { id: seed, ...(profile?.avatarUrl ? { avatarUrl: profile.avatarUrl, avatar: "photo" } : {}) } : null;
 }
 
-/** A Cloud of the person's own, in this app's window: the address is the Cloud's owner (its session says so) and main lends
- * the account's face and plan (accounts:face). Null on this app's own page, a team's Cloud, or where either is missing. */
+/** A Cloud of the person's own, in this app's window: main lends the account in use (accounts:face); its address is the
+ * page's own profile's, else the Cloud's owner from a browser's session, else the account's (the app's own session on a Cloud
+ * names nobody). Null on this app's own page, a team's Cloud, or without an account. */
 export function placeAccount(profile: { name?: string; email?: string; avatarUrl?: string } | undefined, { face, owner }: { face: AccountFace | null; owner: string | null }): { profile: { name?: string; email?: string; avatarUrl?: string }; account: AccountFace & { email: string } } | null {
-  const email = profile?.email?.trim() || owner?.trim();
+  const email = profile?.email?.trim() || owner?.trim() || face?.email?.trim();
   if (!face || !email) return null;
   return { profile: { ...profile, email }, account: { ...face, email } };
 }
@@ -547,14 +548,12 @@ export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback
   // signing out works here on this app's own page; anywhere else the sheet on the rail's page does it
   const signOut = active ? () => accounts.signOut(active.id) : accounts.openSheet;
   const who = header ?? (active ? { email: active.email, plan: accountPlanText(active.plan), face: <UserFace account={active} size={32} /> } : null);
-  const top: SidebarMenuItem[] = who && signOut
+  const top: SidebarMenuItem[] = who
     ? [{ key: "who", label: who.email, title: who.email, ...(who.plan ? { subtitle: who.plan } : {}), icon: who.face, large: true, onSelect: onDashboard ?? accounts.openSheet ?? onSettings }]
-    : [];
-  const last: SidebarMenuItem = signOut
-    ? { key: "log-out", label: t("accounts.signOut"), icon: icon("arrow-bracket-from-left"), onSelect: signOut }
-    // nobody signed in here: Sign in, at the account button where a person looks for it; it continues in the browser for its
-    // context (the account context redirect), where this app can; otherwise the sheet that signs in right there
-    : { key: "sign-in", label: t("accounts.signIn"), icon: icon("person"), onSelect: typeof window !== "undefined" && window.duskDesktop?.cloudAccount?.continueInBrowser ? () => openSignIn() : accounts.view ? () => accounts.add() : onAddAccount };
+    // nobody signed in here: Sign in, first, where the account would be; it continues in the browser for its context (the
+    // account context redirect), where this app can; otherwise the sheet that signs in right there
+    : signOut ? [] : [{ key: "sign-in", label: t("accounts.signIn"), icon: icon("person"), onSelect: typeof window !== "undefined" && window.duskDesktop?.cloudAccount?.continueInBrowser ? () => openSignIn() : accounts.view ? () => accounts.add() : onAddAccount }];
+  const last: SidebarMenuItem[] = signOut ? [{ key: "log-out", label: t("accounts.signOut"), icon: icon("arrow-bracket-from-left"), onSelect: signOut }] : [];
   const menu: SidebarMenuItem[] = [
     ...(onGetApp ? [{ key: "mobile", label: t("sidebar.menu.connectPhone"), icon: icon("device-mobile"), onSelect: onGetApp } satisfies SidebarMenuItem] : []),
     ...(onDashboard ? [{ key: "dashboard", label: t("sidebar.menu.accountDashboard"), icon: icon("chart-bars"), onSelect: onDashboard } satisfies SidebarMenuItem] : []),
@@ -569,7 +568,7 @@ export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback
     { key: "settings", label: t("sidebar.menu.settings"), icon: icon("gear"), onSelect: onSettings },
   ];
   const needsYou: SidebarMenuItem[] = onNeedsYou ? [{ key: "needs-you", label: t("sidebar.account.automationsNeedYou"), icon: icon("alarm-clock"), attention: true, attentionTone: "danger", onSelect: onNeedsYou }] : [];
-  return [needsYou, top, menu, [last]]
+  return [needsYou, top, menu, last]
     .filter((group) => group.length > 0)
     .flatMap((group, at) => group.map((item, index) => (at > 0 && index === 0 ? { ...item, separatorBefore: true } : item)));
 }

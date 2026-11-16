@@ -27,7 +27,7 @@ export interface AccountsAccess {
   add(email?: string): void;
   /** Opens the avatar picker for the account in use, where this app can save one. */
   editAvatar?: () => void;
-  /** A Cloud of the person's own: the face and plan of the account in use, never its address. Null anywhere else. */
+  /** A Cloud of the person's own: the account in use (address, face and plan). Null anywhere else. */
   face?: AccountFace | null;
 }
 

@@ -534,29 +534,30 @@ describe("grok's profile menu", () => {
     const onNeedsYou = vi.fn();
     const items = grokProfileMenuItems({ ...base, onNeedsYou });
     expect(items[0]).toMatchObject({ key: "needs-you", label: "Automations need you", attention: true, attentionTone: "danger" });
-    expect(items[1]).toMatchObject({ key: "mobile", separatorBefore: true });
+    expect(items[1]).toMatchObject({ key: "sign-in", separatorBefore: true });
     items[0]!.onSelect();
     expect(onNeedsYou).toHaveBeenCalledOnce();
   });
 
   it("has no phone row while the phone app is hidden, and still sets the needs-you row apart", () => {
     const items = grokProfileMenuItems({ ...base, onGetApp: undefined, onNeedsYou: vi.fn() });
-    expect(items.map((item) => item.key)).toEqual(["needs-you", "support", "settings", "sign-in"]);
-    expect(items[1]).toMatchObject({ key: "support", separatorBefore: true });
+    expect(items.map((item) => item.key)).toEqual(["needs-you", "sign-in", "support", "settings"]);
+    expect(items[1]).toMatchObject({ key: "sign-in", separatorBefore: true });
   });
 
   it("keeps grok's own rows alone while nothing needs the person", () => {
     const items = grokProfileMenuItems(base);
-    expect(items.map((item) => item.key)).toEqual(["mobile", "support", "settings", "sign-in"]);
+    // signed out, the account block's place is the sign-in, by name, and nothing signs out
+    expect(items.map((item) => item.key)).toEqual(["sign-in", "mobile", "support", "settings"]);
+    expect(items[0]).toMatchObject({ label: "Sign in" });
     expect(items[0]!.separatorBefore).toBeUndefined();
-    // signed out, the account button's last row is the sign-in, by name
-    expect(items.at(-1)).toMatchObject({ label: "Sign in", separatorBefore: true });
+    expect(items[1]).toMatchObject({ key: "mobile", separatorBefore: true });
   });
 
   it("signs in right there on this app's own page, not in Settings and not about dusk cloud", () => {
     const add = vi.fn(), onAddAccount = vi.fn();
     const items = grokProfileMenuItems({ ...base, onAddAccount, accounts: { view: { active: null, others: [] }, openSheet: null, signOut: vi.fn(), add } as never });
-    items.at(-1)!.onSelect();
+    items[0]!.onSelect();
     expect(add).toHaveBeenCalledOnce();
     expect(onAddAccount).not.toHaveBeenCalled();
   });
@@ -588,6 +589,8 @@ describe("grok's profile menu", () => {
     expect(items[0]).toMatchObject({ label: "ada@qa.dusk.test", subtitle: "dusk cloud · Pro" });
     items.at(-1)!.onSelect();
     expect(openSheet).toHaveBeenCalledOnce();
+    const lent = grokProfileMenuItems({ ...base, header, accounts: { view: null, openSheet: null, signOut: vi.fn(), add: vi.fn() } as never });
+    expect(lent[0]).toMatchObject({ key: "who", label: "ada@qa.dusk.test" });
     const nobody = grokProfileMenuItems({ ...base, accounts: { view: null, openSheet, signOut: vi.fn(), add: vi.fn() } as never });
     expect(nobody.map((item) => item.key)).toEqual(["mobile", "support", "settings", "log-out"]);
     expect(nobody.at(-1)).toMatchObject({ label: "Sign out" });
@@ -596,9 +599,9 @@ describe("grok's profile menu", () => {
   it("puts the account dashboard right under the phone row when the menu can open it", () => {
     const onDashboard = vi.fn();
     const items = grokProfileMenuItems({ ...base, onDashboard });
-    expect(items.map((item) => item.key)).toEqual(["mobile", "dashboard", "support", "settings", "sign-in"]);
-    expect(items[1]).toMatchObject({ label: "Account dashboard" });
-    items[1]!.onSelect();
+    expect(items.map((item) => item.key)).toEqual(["sign-in", "mobile", "dashboard", "support", "settings"]);
+    expect(items[2]).toMatchObject({ label: "Account dashboard" });
+    items[2]!.onSelect();
     expect(onDashboard).toHaveBeenCalledOnce();
   });
 });
@@ -648,6 +651,10 @@ describe("the account on a Cloud's page", () => {
     expect(placeAccount({ email: "own@example.test", name: "Ada" }, { face, owner: "ada@example.test" })?.account.email).toBe("own@example.test");
     expect(placeAccount(undefined, { face: null, owner: "ada@example.test" })).toBeNull();
     expect(placeAccount(undefined, { face, owner: null })).toBeNull();
+    // the app's own session on a Cloud names no owner: the address main lends is the account's
+    const lent = { ...face, email: "ada@example.test" };
+    expect(placeAccount(undefined, { face: lent, owner: null })).toEqual({ profile: { email: "ada@example.test" }, account: lent });
+    expect(placeAccount({}, { face: lent, owner: null })?.profile.email).toBe("ada@example.test");
     expect(snapshotPlanText({ status: "paid", tier: "starter" })).toBe("dusk cloud · Plus");
     expect(snapshotPlanText({ status: "none" })).toBeNull();
   });

@@ -235,12 +235,11 @@ test("a My Cloud saved by hand is the account's only while the sign-in names it;
   assert.equal(withoutPlaces(changed, []), changed, "nothing to remove: the same list");
 });
 
-test("a Cloud of the person's own reads the face and plan of the account in use, never its address; any other page reads nothing", async () => {
+test("a Cloud of the person's own reads the account in use (its address too: the app's session there names nobody); any other page reads nothing", async () => {
   const state = { status: "connected", account: { id: "a", email: "a@example.test", name: "Ada", avatarUrl: "https://photos.example.test/ada.png" }, entitlement: { plan: "free", status: "inactive", expiresAt: null, version: 1 } };
   const own = harness({ state, ownPage: () => false, ownPlace: () => true });
   const face = await own.call("accounts:face");
-  assert.deepEqual(face, { id: "a", name: "Ada", avatarUrl: "https://photos.example.test/ada.png", plan: { status: "free" } });
-  assert.equal(JSON.stringify(face).includes("@"), false);
+  assert.deepEqual(face, { id: "a", email: "a@example.test", name: "Ada", avatarUrl: "https://photos.example.test/ada.png", plan: { status: "free" } });
   assert.equal(await harness({ state, ownPage: () => false, placePage: () => true }).call("accounts:face"), null, "a team's or a server's page");
   assert.equal(await harness({ state: { status: "signed-out" }, ownPlace: () => true }).call("accounts:face"), null);
 });
