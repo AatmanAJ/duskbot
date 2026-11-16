@@ -27,6 +27,17 @@ export interface DemoPortExtras {
   everyDocument?(script: string): Promise<() => void>;
 }
 
-export function demoPortOf(_input: LoginInput, _extras: DemoPortExtras = {}): DemoPagePort {
-  throw new Error("not built");
+/** The port over the reads and typing a browser already gives fill_login, with what only some browsers can do added. */
+export function demoPortOf(input: LoginInput, extras: DemoPortExtras = {}): DemoPagePort {
+  const evaluate = async (expression: string) => (await input.engine(["eval", expression]))?.result ?? null;
+  return {
+    evaluate,
+    insertText: (text) => input.insertText(text),
+    press: (key) => input.press(key),
+    click: (selector) => input.click(selector),
+    // Answered before the page goes, so the evaluation is not cut off by its own navigation.
+    open: extras.open ?? (async (url) => { await evaluate(`(() => { setTimeout(() => location.assign(${JSON.stringify(url)}), 0); return "going"; })()`); }),
+    ...(extras.upload ? { upload: extras.upload } : {}),
+    ...(extras.everyDocument ? { everyDocument: extras.everyDocument } : {}),
+  };
 }

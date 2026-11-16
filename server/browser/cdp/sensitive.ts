@@ -1,6 +1,9 @@
 const SENSITIVE_FIELD =
   /(password|passwd|passcode|client.?secret|api.?key|secret.?key|private.?key|signing.?key|webhook.?secret|secret.?access.?key|access.?token|auth.?token|refresh.?token|bearer.?token|one.?time|otp|verification.?code|recovery.?code|seed.?phrase|mnemonic|recovery.?phrase|security.?answer|cc-.+|card.?(number|security|cvv|cvc)|cvv|cvc|bank.?(account|routing)|routing.?(number|code)|account.?(number|no)|social.?(security|insurance)|ssn|tax.?id)/i;
 
+/** The same rule as a pattern's source and its flags, for a script that must apply it inside a page. */
+export const SENSITIVE_FIELD_PATTERN = { source: SENSITIVE_FIELD.source, flags: SENSITIVE_FIELD.flags };
+
 /** Fields whose value a snapshot never shows: passwords, codes, card and account numbers, named by type, autocomplete, name, id, placeholder or label. */
 export function isSensitiveInput(type: string, hints: ReadonlyArray<string | null | undefined>): boolean {
   if (type.toLowerCase() === "password") return true;

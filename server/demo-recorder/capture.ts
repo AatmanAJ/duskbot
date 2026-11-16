@@ -1,5 +1,9 @@
-import type { RawDemoEvent } from "./events.ts";
+import { sanitiseDemoEvent, type RawDemoEvent } from "./events.ts";
+import { DEMO_PAGE_SCRIPT, demoDrainExpression } from "./page-script.ts";
 import type { DemoPagePort } from "./ports.ts";
+
+export const DEMO_POLL_MS = 300;
+const MAX_EVENTS = 20_000;
 
 export interface DemoCaptureOptions {
   /** How often the page is read while recording. */
@@ -11,26 +15,94 @@ export interface DemoCaptureOptions {
   onEvents?: (events: RawDemoEvent[]) => void;
 }
 
+/** What a read of the page answered, whether the browser handed back the JSON text or the value it parses to. */
+function drained(answer: unknown): { installed: boolean; events: unknown[] } | null {
+  let value = answer;
+  for (let depth = 0; depth < 2 && typeof value === "string"; depth++) {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  if (!value || typeof value !== "object") return null;
+  const drain = value as { installed?: unknown; events?: unknown };
+  return { installed: drain.installed === true, events: Array.isArray(drain.events) ? drain.events : [] };
+}
+
 /** Records what a person does on the page in front, by reading the recorder script's queue. */
 export class DemoCapture {
-  constructor(_port: Pick<DemoPagePort, "evaluate">, _options: DemoCaptureOptions = {}) {}
+  readonly #port: Pick<DemoPagePort, "evaluate" | "everyDocument">;
+  readonly #options: DemoCaptureOptions;
+  readonly #events: RawDemoEvent[] = [];
+  #timer: ReturnType<typeof setTimeout> | null = null;
+  #running = false;
+  #reading: Promise<RawDemoEvent[]> = Promise.resolve([]);
+  #stopDocuments: (() => void) | null = null;
+  #failed = false;
 
-  /** Installs the script and starts reading. */
-  start(): Promise<void> {
-    throw new Error("not built");
+  constructor(port: Pick<DemoPagePort, "evaluate" | "everyDocument">, options: DemoCaptureOptions = {}) {
+    this.#port = port;
+    this.#options = options;
   }
 
-  /** Reads the page now, returning what is new. */
+  /** Installs the script and starts reading. */
+  async start(): Promise<void> {
+    if (this.#running) return;
+    this.#running = true;
+    if (this.#port.everyDocument) {
+      try { this.#stopDocuments = await this.#port.everyDocument(DEMO_PAGE_SCRIPT); }
+      catch (error) { this.#options.log?.(`show it once: the recorder could not be added to new pages (${error instanceof Error ? error.name : "error"})`); }
+    }
+    await this.drain();
+    this.#schedule();
+  }
+
+  #schedule(): void {
+    if (!this.#running) return;
+    this.#timer = setTimeout(() => {
+      void this.drain().finally(() => this.#schedule());
+    }, this.#options.pollMs ?? DEMO_POLL_MS);
+    this.#timer.unref?.();
+  }
+
+  async #read(): Promise<RawDemoEvent[]> {
+    let answer: ReturnType<typeof drained>;
+    try {
+      answer = drained(await this.#port.evaluate(demoDrainExpression()));
+      if (answer && !answer.installed) {
+        await this.#port.evaluate(DEMO_PAGE_SCRIPT);
+        answer = drained(await this.#port.evaluate(demoDrainExpression()));
+      }
+      this.#failed = false;
+    } catch (error) {
+      if (!this.#failed) this.#options.log?.(`show it once: the page could not be read (${error instanceof Error ? error.name : "error"})`);
+      this.#failed = true;
+      return [];
+    }
+    const fresh = (answer?.events ?? []).map((event) => sanitiseDemoEvent(event, this.#options.scrub)).filter((event): event is RawDemoEvent => event !== null);
+    if (!fresh.length) return [];
+    this.#events.push(...fresh.slice(0, Math.max(0, MAX_EVENTS - this.#events.length)));
+    try { this.#options.onEvents?.(fresh); } catch {}
+    return fresh;
+  }
+
+  /** Reads the page now, returning what is new. One read at a time. */
   drain(): Promise<RawDemoEvent[]> {
-    throw new Error("not built");
+    const next = this.#reading.then(() => this.#read(), () => this.#read());
+    this.#reading = next.catch(() => []);
+    return next;
   }
 
   /** Reads once more and stops; answers everything recorded. */
-  stop(): Promise<RawDemoEvent[]> {
-    throw new Error("not built");
+  async stop(): Promise<RawDemoEvent[]> {
+    if (!this.#running) return this.events();
+    this.#running = false;
+    if (this.#timer) clearTimeout(this.#timer);
+    this.#timer = null;
+    await this.drain();
+    try { this.#stopDocuments?.(); } catch {}
+    this.#stopDocuments = null;
+    return this.events();
   }
 
   events(): RawDemoEvent[] {
-    throw new Error("not built");
+    return [...this.#events];
   }
 }
