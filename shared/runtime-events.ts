@@ -194,7 +194,9 @@ export type RuntimeEvent = RuntimeEventBase &
     // `limit`: a usage limit refused this turn: the account's on this engine ("engine"), one model's own window
     // ("model"), or that model's extra usage credits ("credits"); the engine's other models still work for the last two.
     | { type: "runtime.error"; message: string; partial?: boolean; setup?: boolean; terminal?: boolean; claudeUpdate?: boolean;
-        stalled?: boolean; limitResetsAt?: number; limit?: "engine" | "model" | "credits" }
+        stalled?: boolean; limitResetsAt?: number; limit?: "engine" | "model" | "credits";
+        /** the engine's own error code or class when the driver has one (codex's codexErrorInfo, a free model's failure), for usage reasons only */
+        errorCode?: string }
     /** Something the person should know that did not fail the turn, for
      * example, a saved model the engine no longer offers was replaced. */
     | { type: "runtime.notice"; message: string }

@@ -6975,7 +6975,7 @@ function noteUsageTurn(row: Omit<UsageRow, "costSource"> & { costSource?: unknow
   try {
     // side jobs and keep-warm pings are booked too, but they are not turns: they have no traced turn id
     if (!row.turnId || row.trigger.kind === "helper" || !usageSignals.enabled()) return;
-    const record = turnRecord({ driverKind: row.driverKind, status: row.outcome?.status, reason: row.outcome?.reason, startedAt: row.startedAt ? Date.parse(row.startedAt) : undefined,
+    const record = turnRecord({ driverKind: row.driverKind, status: row.outcome?.status, reason: row.outcome?.reason, failure: row.outcome?.failure, startedAt: row.startedAt ? Date.parse(row.startedAt) : undefined,
       endedAt: row.endedAt ? Date.parse(row.endedAt) : undefined, toolNames, trigger: row.trigger, room: Boolean(store.groupByThread(row.threadId)), failedNames: detail.failedNames,
       firstStepAt: detail.firstStepAt, model: row.model, bot: hashId(usageSignals.salt(), row.botId), chat: hashId(usageSignals.salt(), row.threadId) }, usagePlace, Date.now());
     if (!record) return;

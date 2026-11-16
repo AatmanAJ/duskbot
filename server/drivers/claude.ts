@@ -19,6 +19,7 @@ import { claudeBilling, claudeCallUsage } from "./claude-billing.ts";
 import { claudeAuthFailure, claudeAuthRecovery } from "./claude-auth-recovery.ts";
 import { claudeModelExtras } from "./claude-model-extras.ts";
 import { AGENTS_DEFERRED_NOTE, claudeToolSearchSetting } from "./claude-tool-search.ts"; import { AGENTS_DEFER_ENV } from "./agents-mcp-env.ts"; import { unusableBuiltIns } from "./claude-unusable-tools.ts"; import { EMAIL_READ_TOOL_NAMES } from "../../shared/email.ts";
+import { cliExitCode } from "../../shared/usage-signals.ts";
 import { claudeElicitations } from "./claude-elicitation.ts";
 import { readCostHistory, recordCostState } from "./claude-cost-history.ts";
 import { classifyResumeFailure, mayReplay, rebuiltSessionNotice, recoveryPromptFor } from "../resume-recovery.ts";
@@ -1718,6 +1719,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
               ...base(threadId, currentTurnId()),
               type: "runtime.error",
               message: `claude exited ${code} before result${session.stderr ? `: ${session.stderr.trim().slice(-300)}` : ""}`,
+              errorCode: cliExitCode({ code, output: true, version: cliVersion }),
             });
             settleResult({ ...held, ok: false, stopReason: "exit_before_result" });
           }
@@ -1858,6 +1860,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
             ...base(threadId, currentTurnId()),
             type: "runtime.error",
             message,
+            errorCode: cliExitCode({ code, output: Boolean(session.turn?.sawStreamDelta), version: cliVersion }),
           });
           settle(false, "exit_before_result");
         }

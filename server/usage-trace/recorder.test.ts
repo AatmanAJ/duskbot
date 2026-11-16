@@ -33,6 +33,21 @@ const completed = (thread: string, turn: string, ms: number, ok = true, extra: R
   event(thread, turn, ms, { type: "turn.completed", ok, usage: { input: 900, output: 60, cachedInput: 400 }, ...extra });
 
 describe("trace recorder", () => {
+  it("reads a failed turn's whole error and the driver's code into a usage failure", () => {
+    const recorder = createTraceRecorder({ dataDir: dataDir() });
+    recorder.observe(started("api", "t1", 0));
+    recorder.observe(event("api", "t1", 100, { type: "runtime.error", message: `${"x".repeat(150)} upstream HTTP 429: You exceeded your current quota (insufficient_quota)` }));
+    recorder.observe(completed("api", "t1", 200, false, { stopReason: "error" }));
+    expect(recorder.settle("api")).toMatchObject({ outcome: { status: "error", failure: { reason: "quota", detail: "http_429:insufficient_quota" } } });
+    recorder.observe(started("free", "t2", 0));
+    recorder.observe(event("free", "t2", 100, { type: "runtime.error", message: "Keine kostenlose Antwort", errorCode: "free_busy" }));
+    recorder.observe(completed("free", "t2", 200, false, { stopReason: "no_reply" }));
+    expect(recorder.settle("free")).toMatchObject({ outcome: { failure: { reason: "provider_down", detail: "free_busy" } } });
+    recorder.observe(started("ok", "t3", 0));
+    recorder.observe(completed("ok", "t3", 100));
+    expect((recorder.settle("ok") as { outcome: object }).outcome).not.toHaveProperty("failure");
+  });
+
   it("times each AI step and tool from the engine's own events and hands the turn to its usage row", async () => {
     const dir = dataDir();
     const recorder = createTraceRecorder({ dataDir: dir });

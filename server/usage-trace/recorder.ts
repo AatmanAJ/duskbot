@@ -3,6 +3,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RuntimeEvent } from "../../shared/runtime-events.ts";
 import { TOOL_NAMESPACE } from "../../shared/tool-surface.ts";
+import { failureOf, type UsageFailure } from "../../shared/usage-signals.ts";
 import type { TraceParent, TraceStatus, TraceTokens, TraceUsageStatus } from "../../shared/usage-trace.ts";
 import { onJsonBody, parsedBodyOf } from "../harness/http.ts";
 import { errorLine, pageTitle, toolDetail } from "./detail.ts";
@@ -14,7 +15,7 @@ export interface TurnTraceFields {
   startedAt: string;
   endedAt: string;
   parent?: TraceParent;
-  outcome: { status: TraceStatus; reason?: string };
+  outcome: { status: TraceStatus; reason?: string; failure?: UsageFailure };
   steps: number;
   tools: number;
   toolErrors: number;
@@ -61,6 +62,9 @@ interface Turn {
   status?: TraceStatus;
   reason?: string;
   lastError?: string;
+  /** the last error's whole text (bounded) and the driver's code, read into a usage reason when the turn fails */
+  lastErrorFull?: { text: string; code?: string };
+  failure?: UsageFailure;
   lastEventAt: number;
   steps: StepSpan[];
   openStep: StepSpan | null;
@@ -291,7 +295,10 @@ export function createTraceRecorder(options: { dataDir: string; now?: () => numb
   }
 
   function complete(turn: Turn, event: Extract<RuntimeEvent, { type: "turn.completed" }>): void {
-    if (!event.ok) turn.reason = turn.lastError ?? (event.stopReason ? errorLine(event.stopReason.replace(/_/g, " ")) : undefined);
+    if (!event.ok) {
+      turn.reason = turn.lastError ?? (event.stopReason ? errorLine(event.stopReason.replace(/_/g, " ")) : undefined);
+      turn.failure = failureOf(turn.lastErrorFull?.text ?? event.stopReason ?? "", { code: turn.lastErrorFull?.code, stopReason: event.stopReason });
+    }
     if (event.usage) turn.usage = typeof event.usage.cachedInput === "number" ? { cachedInput: event.usage.cachedInput } : {};
     close(turn, at(event), event.ok ? "ok" : STOPPED.test(`${event.stopReason ?? ""} ${turn.lastError ?? ""}`) ? "interrupted" : "error");
     const previous = ended.get(turn.threadId);
@@ -323,6 +330,7 @@ export function createTraceRecorder(options: { dataDir: string; now?: () => numb
         break;
       case "runtime.error":
         turn.lastError = errorLine(event.message);
+        turn.lastErrorFull = { text: typeof event.message === "string" ? event.message.slice(0, 2000) : "", ...(event.errorCode ? { code: event.errorCode } : {}) };
         break;
       case "turn.completed":
         complete(turn, event);
@@ -383,7 +391,7 @@ export function createTraceRecorder(options: { dataDir: string; now?: () => numb
       startedAt: new Date(turn.startedAt).toISOString(),
       endedAt: new Date(turn.endedAt ?? now()).toISOString(),
       ...(turn.parent ? { parent: turn.parent } : {}),
-      outcome: { status: turn.status ?? "ok", ...(turn.reason ? { reason: turn.reason } : {}) },
+      outcome: { status: turn.status ?? "ok", ...(turn.reason ? { reason: turn.reason } : {}), ...(turn.status === "error" && turn.failure ? { failure: turn.failure } : {}) },
       steps: turn.steps.length,
       tools: tools.length,
       toolErrors: tools.filter((tool) => tool.status === "error").length,
