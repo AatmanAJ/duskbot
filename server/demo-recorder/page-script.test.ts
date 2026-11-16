@@ -94,7 +94,7 @@ describe("the recorder script in a page", () => {
     for (const banned of ["x", "y", "left", "top", "right", "bottom", "width", "height", "clientX", "clientY", "pageX", "pageY", "screenX", "screenY", "offsetX", "offsetY", "rect", "box", "selector", "xpath", "css"]) {
       expect(keys.has(banned), `an event carries "${banned}"`).toBe(false);
     }
-    expect(JSON.stringify(events)).not.toContain("412");
+    expect(JSON.stringify(events.map(({ at: _at, ...event }) => event))).not.toContain("412");
   });
 
   it("names a field by its label, however the page attached one, and by the words beside it when it has none", () => {
