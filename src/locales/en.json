@@ -9273,8 +9273,6 @@
   "funnel.ai.subComputer": "You use {ais} on your computer. Sign in here too, since each computer keeps its own sign-ins.",
   "funnel.ai.onComputer": "On your computer",
   "funnel.cloudBring.title": "Bring your bots along",
-  "empty.routines.title": "No routines yet",
-  "empty.library.title": "Nothing made yet",
   "empty.memory.title": "Nothing remembered yet",
   "empty.memory.hint": "Tell {name} something worth keeping, or add a note below.",
   "empty.apps.title": "No apps connected yet",
