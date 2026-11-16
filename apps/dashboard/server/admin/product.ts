@@ -231,10 +231,10 @@ export function improvements(input: { funnel: FunnelStepIn[]; features: FeatureR
   }
   if (worst && worst.lost > 0) out.push({ area: "funnel", title: `${Math.round(worst.lost * 100)}% stop before "${worst.step.label}"`, detail: `${worst.prev.count - worst.step.count} of ${worst.prev.count} who ${worst.prev.label} never got to the next step. the biggest drop in the funnel.`, weight: worst.lost });
   const isOld = (row: { lastVersion?: string | null; latestVersion?: string | null }) => Boolean(row.lastVersion && row.latestVersion && newer(row.latestVersion, row.lastVersion));
-  const topError = [...input.errors.app, ...input.site.errors.map(row => ({ ...row, key: `site error on ${row.key}` }))]
+  const topError = [...input.errors.app, ...input.site.errors.map(row => ({ ...row, key: `site error on ${row.key}`, lastVersion: null, latestVersion: null }))]
     .sort((a, b) => Number(isOld(a)) - Number(isOld(b)) || b.people - a.people || b.count - a.count)[0];
   if (topError) {
-    const { lastVersion, latestVersion } = topError as { lastVersion?: string | null; latestVersion?: string | null };
+    const { lastVersion, latestVersion } = topError;
     const old = isOld(topError);
     out.push({ area: "errors", title: `"${topError.key}" is the most common error`,
       detail: `${topError.count} times, ${topError.people} ${topError.people === 1 ? "person" : "people"}.${old ? ` last seen on ${lastVersion}, none on ${latestVersion}.` : lastVersion ? ` still seen on ${lastVersion}.` : ""}`,
