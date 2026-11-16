@@ -35,3 +35,8 @@ deploy/bot-desktop/Dockerfile text eol=lf
 deploy/bot-desktop/*.sh text eol=lf
 deploy/bot-desktop/rootfs/usr/local/bin/dusk-* text eol=lf
 deploy/bot-desktop/rootfs/etc/chromium.d/omb text eol=lf
+
+# The expense inbox keeps the line endings and byte order mark a real folder has: two files are CRLF on purpose.
+server/testing/fixtures/expense-portal/inbox/*.txt -text
+server/testing/fixtures/expense-portal/inbox/*.json text eol=lf
+server/testing/fixtures/expense-portal/inbox/receipts/*.txt -text

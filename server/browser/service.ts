@@ -15,6 +15,7 @@ import { BROWSER_CALL_DEFAULTS, PERSON_ACTED, PERSON_TYPED_ON_PAGE, type Browser
 import { SecretHolds, type SecretHold } from "../browser-secret-hold.ts";
 import { scrubBrowserResult } from "../browser-tool-shape.ts";
 import type { FillLoginDeps } from "../login-fill.ts";
+import type { DemoPortExtras } from "../demo-recorder/ports.ts";
 import type { Backend, OpenedBrowser } from "./backends.ts";
 import type { CdpBrowser } from "./cdp/browser.ts";
 import type { Download } from "./cdp/downloads.ts";
@@ -635,6 +636,11 @@ export class BrowserService {
       press: async (key) => { await tab().page.press(key); },
       click: async (selector) => { await tab().page.click({ selector }); },
     };
+  }
+
+  /** Show it once on the tab in front: going to an address, giving a file picker its files, and a script for every new document. */
+  demoExtras(_target: BrowserTarget): DemoPortExtras {
+    throw new Error("not built");
   }
 
   // People.
