@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { motion } from "motion/react";
-import { Bell, CalendarClock, Check, ChevronRight, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, MoreHorizontal, Palette, Plug, Plus, ShieldCheck, Trash2, UserRound, Hand } from "../../icons";
+import { Bell, CalendarClock, Check, ChevronRight, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, MoreHorizontal, Palette, Plug, Plus, ShieldCheck, Trash2, UserRound, Hand, Server } from "../../icons";
 import { accountDashboardUrl } from "@/lib/account-dashboard";
 import { useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
@@ -16,6 +16,8 @@ import { useConnections } from "../connection/connections";
 import { haptic, setHapticsEnabled, useHapticsEnabled } from "../haptics";
 import { spring } from "../motion";
 import { useMobileAccount } from "../account/AccountGate";
+import { chooseAccountOrigin, environmentName, PREVIEW_ORIGIN, PRODUCTION_ORIGIN } from "../account/environment";
+import { placeKind } from "../connection/connection-notice";
 import { LEGAL_LINKS, supportMail } from "../legal";
 import { useAiConsent } from "../consent/AiConsent";
 import { WorkingDots } from "@/components/WorkingIndicator";
@@ -123,6 +125,21 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
   const rows = accountRows({ native: platform.native, signedIn: Boolean(email), offered: account?.offered });
   const consent = useAiConsent();
   const unread = state.notifications.filter((entry) => !entry.read).length;
+  const environment = account ? environmentName(account.origin) : null;
+  // seven taps on the version show the servers row, for testing a store build against the preview stack
+  const taps = useRef<number[]>([]);
+  const [serversShown, setServersShown] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const tapVersion = () => {
+    const now = Date.now();
+    taps.current = [...taps.current.filter((at) => now - at < 3_000), now];
+    if (taps.current.length >= 7) { setServersShown(true); haptic("selection"); }
+  };
+  const switchServers = () => {
+    if (!switching) { setSwitching(true); return; }
+    chooseAccountOrigin(account?.origin === PREVIEW_ORIGIN ? PRODUCTION_ORIGIN : PREVIEW_ORIGIN);
+    void (account?.signOut() ?? Promise.resolve()).finally(() => window.location.reload());
+  };
 
   const changeWorkspace = async (id: string, unlink = false) => {
     if (busy) return;
@@ -159,7 +176,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
 
       <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{t("mobile.settings.workspaceError")}</span> : t("mobile.settings.workspacesHint")}>
         {connections.map((connection) => (
-          <WorkspaceRow key={connection.id} connection={connection} active={connection.id === activeId} confirming={unlinkId === connection.id} busy={busy} onSelect={() => { void changeWorkspace(connection.id); }} onConfirm={() => { setError(false); setUnlinkId(connection.id); }} onCancel={() => { setUnlinkId(null); setError(false); }} onUnlink={() => { void changeWorkspace(connection.id, true); }} />
+          <WorkspaceRow key={connection.id} connection={connection} environment={environment} active={connection.id === activeId} confirming={unlinkId === connection.id} busy={busy} onSelect={() => { void changeWorkspace(connection.id); }} onConfirm={() => { setError(false); setUnlinkId(connection.id); }} onCancel={() => { setUnlinkId(null); setError(false); }} onUnlink={() => { void changeWorkspace(connection.id, true); }} />
         ))}
         <SettingsRow icon={<Plus />} label={t("mobile.settings.link")} onClick={() => { onClose(); window.dispatchEvent(new Event("dusk:link-another")); }} />
       </SettingsSection>
@@ -203,7 +220,15 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
         <SettingsRow icon={<ShieldCheck />} label={t("mobile.settings.privacy")} onClick={() => void platform.openExternal(LEGAL_LINKS.privacy)} />
         <SettingsRow icon={<FileText />} label={t("mobile.settings.terms")} onClick={() => void platform.openExternal(LEGAL_LINKS.terms)} />
       </SettingsSection>
-      <p className="mt-6 text-center text-[13px] text-ink-tertiary">{t("mobile.settings.version", { version: platform.appVersion })}</p>
+      <button type="button" onClick={tapVersion} className="mx-auto mt-6 block min-h-11 px-4 text-center text-[13px] text-ink-tertiary">
+        {environment ? t("mobile.settings.versionOn", { version: platform.appVersion, environment }) : t("mobile.settings.version", { version: platform.appVersion })}
+      </button>
+      {(serversShown || environment) && platform.native && (
+        <SettingsSection card>
+          <SettingsRow icon={<Server />} label={t("mobile.settings.servers")} detail={t(switching ? "mobile.settings.serversConfirm" : "mobile.settings.serversHint")}
+            value={environment ?? "dusk.bot"} onClick={switchServers} />
+        </SettingsSection>
+      )}
       {rows.dashboard && !state.config?.cloudHome && <CloudCard onOpen={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}
     </div>
   );
@@ -267,8 +292,15 @@ function AccountPage({ onDone }: { onDone: () => void }) {
   );
 }
 
-function WorkspaceRow({ connection, active, confirming, busy, onSelect, onConfirm, onCancel, onUnlink }: {
+/** what a linked place is, and which servers it came through when they are not dusk.bot's own */
+export function placeLine(connection: Pick<MobileConnectionRecord, "origin" | "via">, environment: string | null): string {
+  const kind = t(placeKind(connection) === "cloud" ? "mobile.settings.placeCloud" : "mobile.settings.placeComputer");
+  return environment ? `${kind} · ${environment}` : kind;
+}
+
+function WorkspaceRow({ connection, environment, active, confirming, busy, onSelect, onConfirm, onCancel, onUnlink }: {
   connection: MobileConnectionRecord;
+  environment: string | null;
   active: boolean;
   confirming: boolean;
   busy: boolean;
@@ -291,7 +323,10 @@ function WorkspaceRow({ connection, active, confirming, busy, onSelect, onConfir
   return (
     <div className="flex items-center pr-2">
       <button ref={ref} type="button" disabled={busy} aria-current={active ? "true" : undefined} onClick={active ? undefined : onSelect} className="mobile-row flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl px-4 py-2.5 text-left text-ink disabled:opacity-40">
-        <span className="min-w-0 flex-1 truncate text-[16px] font-semibold">{connection.label}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[16px] font-semibold">{connection.label}</span>
+          <span data-testid="mobile-place-kind" className="block truncate text-[13px] text-ink-secondary">{placeLine(connection, environment)}</span>
+        </span>
         {active && <Check size={20} aria-label={t("mobile.settings.active")} />}
       </button>
       <button type="button" disabled={busy} aria-label={t("mobile.settings.workspaceActions", { name: connection.label })} onClick={onConfirm} className="mobile-press flex size-11 shrink-0 items-center justify-center rounded-full text-ink-secondary disabled:opacity-40"><MoreHorizontal aria-hidden size={20} /></button>

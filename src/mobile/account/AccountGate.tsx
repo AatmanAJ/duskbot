@@ -8,6 +8,7 @@ import type { OAuthProvider } from "../../../shared/account-api";
 import { usePlatform, type MobilePlatform } from "../platform";
 import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AuthResult, type CloudPairResult, type MobileAccount, type MobileCloud } from "./account-client";
 import { setTurnSource } from "../transport/direct-rtc";
+import { chosenAccountOrigin } from "./environment";
 
 type AccountContextValue = { account: MobileAccount | null; origin: string;
   /** this app keeps a dusk account (the native app, or the preview's ?account=1) */
@@ -35,7 +36,7 @@ export function mobileAccountOrigin(native: boolean, params: URLSearchParams): s
       if (url.origin === value && !url.username && !url.password && (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))) return value;
     } catch {}
   }
-  return "https://dusk.bot";
+  return chosenAccountOrigin();
 }
 
 /** The sign-in buttons a phone shows, of those the account service says work. App Store guideline 4.8: an iPhone app

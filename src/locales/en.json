@@ -9309,5 +9309,11 @@
   "mobile.connection.wakeSlowTitle": "{name} is taking a while to wake",
   "mobile.connection.wakeSlowBody": "It usually wakes in under a minute. Try again, or check back in a moment.",
   "mobile.connection.notConnected": "Not connected",
-  "mobile.connection.trying": "Trying"
+  "mobile.connection.trying": "Trying",
+  "mobile.settings.placeCloud": "dusk cloud",
+  "mobile.settings.placeComputer": "Computer",
+  "mobile.settings.versionOn": "Version {version} on {environment} servers",
+  "mobile.settings.servers": "Servers",
+  "mobile.settings.serversHint": "Switching signs this phone out of its dusk account",
+  "mobile.settings.serversConfirm": "Tap again to switch and sign out"
 }
