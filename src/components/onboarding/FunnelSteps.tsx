@@ -66,7 +66,7 @@ const DOT = 12, GAP = 6, WIDE = 24;
 
 /** The progress drawn over the dots: the steps behind fill in, and the current one is an ink pill that stretches to its
  * new dot, the edge facing the move quick and the other catching up. Logical offsets, so it runs the right way in RTL. */
-function ProgressInk({ at }: { at: number }) {
+export function ProgressInk({ at }: { at: number }) {
   const reduced = useReducedMotion() === true;
   const start = at * (DOT + GAP);
   const from = useMotionValue(start), to = useMotionValue(start + WIDE), done = useMotionValue(Math.max(0, start - GAP));

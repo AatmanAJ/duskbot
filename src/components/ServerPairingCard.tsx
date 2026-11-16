@@ -103,19 +103,24 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
     }
   }, [focusRequest, session, phone]);
 
+  // a phone that just linked shows up in the sign-ins once the flow folds away
+  const phoneStepping = phone?.stepping === true;
+  useEffect(() => {
+    if (phone && !phoneStepping && canPairDevices(session)) void loadDevices();
+  }, [phoneStepping]);
+
   useEffect(() => {
     if (!offer) return;
     const timer = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(timer);
   }, [offer]);
 
-  // the phone page: what the phone app is, its two ways to pair side by side, pairing another computer under them,
-  // the phones, then the rest
+  // the phone page: the phone flow or the linked phones, pairing another computer under them, then the rest
   const phonePage = (computerPair: ReactNode, rest: ReactNode) => (
     <div ref={root} tabIndex={-1} data-phone-pairing="server" className="flex scroll-mt-4 flex-col gap-5 focus:outline-none">
       {phone?.top}
-      {phone?.stepping ? null : computerPair}
       {phone?.phones}
+      {phone?.stepping ? null : computerPair}
       {rest}
     </div>
   );
@@ -324,6 +329,8 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
     );
     // who a computer's code lets in, and who is signed in, below. A cloud's phone page leads to signing in only: a
     // code there was what people typed into the phone app
+    // while the phone flow is on screen it is the only thing there; the rest waits for the linked phones
+    if (phone?.stepping) return phonePage(null, null);
     return phonePage(cloudHome && phone ? null : computerPair, <>
       {!cloudHome && computerName !== null && (
         <RowsCard label={t("settings.mobile.thisComputer")} data-settings-block="pair-code">

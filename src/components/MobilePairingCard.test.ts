@@ -3,9 +3,7 @@ import en from "../locales/en.json";
 import { describe, expect, it } from "vitest";
 
 import type { MobileDevice } from "../../shared/mobile-link";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { MobilePairingCard, newDeviceSince, platformLabelKey } from "./MobilePairingCard";
+import { newDeviceSince, platformLabelKey } from "./MobilePairingCard";
 
 const device = (id: string, name = id): MobileDevice => ({
   id, name, platform: "ios", createdAt: 0, lastSeenAt: 0, expiresAt: 1, relay: false, push: null,
@@ -68,18 +66,5 @@ describe("mobile workspace pairing", () => {
     const source = readFileSync(new URL("./MobilePairingCard.tsx", import.meta.url), "utf8");
     expect(source).toContain('data-phone-app-store="" href={storeUrl("ios")}');
     expect(words["mobile.desktop.storesSoon"]).toBe("Google Play soon");
-  });
-
-  it("on a dusk cloud offers the App Store and the account sign-in, never a pairing code the cloud refuses", () => {
-    const html = renderToStaticMarkup(createElement(MobilePairingCard, { remote: false, cloudHome: true, email: "owner@example.test" }));
-    expect(html).toContain("data-phone-cloud");
-    expect(html).toContain("Open the app, choose log in to dusk cloud and use owner@example.test. Your cloud opens on its own, no code needed.");
-    expect(html).toContain('href="https://apps.apple.com/app/id6834725640"');
-    expect(html).toContain("QR code for dusk bot on the App Store");
-    expect(html, "no qr or code tiles: createMobileLink refuses them on a cloud").not.toContain("data-pairing-tile");
-    expect(html).not.toMatch(/home screen/i);
-    const plain = renderToStaticMarkup(createElement(MobilePairingCard, { remote: false }));
-    expect(plain).toContain("data-pairing-tile");
-    expect(plain).not.toContain("data-phone-cloud");
   });
 });
