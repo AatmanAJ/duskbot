@@ -26,6 +26,7 @@ const fixture = vi.hoisted(() => {
     api: (() => Promise.resolve({})) as (...args: unknown[]) => Promise<unknown>,
     storeState: {} as Record<string, unknown>,
     otherServer: null as string | null,
+    cloudDesktop: undefined as unknown,
     skills: {
       skills: [] as ManagedSkill[],
       loading: false,
@@ -64,6 +65,10 @@ vi.mock("@/lib/other-server", async (importOriginal) => ({
   useOtherServerName: () => fixture.otherServer,
   desktopShowsOtherServer: () => fixture.otherServer !== null,
 }));
+vi.mock("./bot-panel/CloudDesktop", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./bot-panel/CloudDesktop")>();
+  return { ...original, useCloudDesktop: () => (fixture.cloudDesktop === undefined ? original.useCloudDesktop() : fixture.cloudDesktop) as ReturnType<typeof original.useCloudDesktop> };
+});
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.ownerOrAdmin }));
 vi.mock("@/lib/app-links", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/app-links")>()),
@@ -126,6 +131,7 @@ const { AdvancedTab } = await import("./bot-panel/AdvancedTab");
 const { SettingsPage } = await import("./bot-panel/SettingsPage");
 const { LibraryPage, LibrarySection } = await import("./bot-panel/LibraryTab");
 const { CloudCtaCard, CloudSwitchLine, ComputerTab, WherePage, cloudCtaStep, hasDuskCloud } = await import("./bot-panel/ComputerTab");
+const { LocalBrowserOpen } = await import("./bot-panel/LocalBrowser");
 const { PageBody, AppsPage, RoutinesPage, MemoryPage, SkillsPage, FolderPage, BrowserPage } = await import("./bot-panel/pages");
 const { BrowserLogins } = await import("./bot-panel/browser-logins");
 const { PAGES, sectionTarget } = await import("./bot-panel/page-registry");
@@ -796,6 +802,22 @@ describe("the Computer tab with a dusk cloud already", () => {
   it("never offers dusk cloud again: only an account with no cloud, or one still at checkout, sees the offer", () => {
     for (const stage of ["ready", "preparing", "moving", "moved", "open", "manage", "coming-back"] as const) expect(hasDuskCloud(stage), stage).toBe(true);
     for (const stage of [null, "buy", "resume", "elsewhere"] as const) expect(hasDuskCloud(stage), String(stage)).toBe(false);
+  });
+
+  it("on this computer leads with the bot's own browser, then this computer's screen and the way to the cloud", () => {
+    fixture.otherServer = null;
+    fixture.cloudDesktop = { view: { step: "move" }, keep: null, openHome: () => Promise.resolve(), dialog: null };
+    try {
+      const rendered = computer(makeBot());
+      const browser = rendered.nodes.findIndex((node) => node.type === LocalBrowserOpen);
+      const screen = rendered.nodes.findIndex((node) => node.props.inline === true);
+      expect(browser).toBeGreaterThan(-1);
+      expect(screen).toBeGreaterThan(browser);
+      expect(rendered.html).toContain('data-panel-cloud-switch=""');
+      expect(rendered.html).not.toContain('data-panel-card="dusk-cloud"');
+    } finally {
+      fixture.cloudDesktop = undefined;
+    }
   });
 
   it("says the cloud has its own computer, and Switch to dusk cloud goes there", () => {

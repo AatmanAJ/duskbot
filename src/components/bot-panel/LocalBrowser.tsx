@@ -344,3 +344,9 @@ export function LocalBrowserSection({ bot, after }: { bot: Bot; after?: ReactNod
     </>
   );
 }
+
+/** A bot's browser on this computer while it is open, above this computer's screen; nothing otherwise. */
+export function LocalBrowserOpen({ bot }: { bot: Bot }) {
+  const { open } = useLocalBrowser(bot.id, bot.threadId, bot.browser !== false);
+  return open ? <div data-local-browser-first="" className="mb-3"><LocalBrowserLive key={`${bot.id}\n${bot.threadId ?? ""}`} bot={bot} /></div> : null;
+}
