@@ -8,7 +8,7 @@ import { chatInFront } from "@/lib/chat-in-front";
 import { answerOf, api, ApiError, snapshotArrays } from "./api";
 import { sendOutbox } from "./send-outbox";
 import { chatSnapshotPath, MESSAGE_PAGE_SIZE, takeBootRead } from "./boot-reads";
-import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { BotMovedTo, BotVisibility, CardAnswerer, CloudBackend, ConnectorToolGrant, EffortLevel, InstalledPackageMetadata, LiveCallState, ServerFrame, GroupThreadUsage, SteerQueueReason, WireBot, WireGroup, WireTask, OptionCardData as WireOptionCard } from "../../shared/wire";
 import { movesThreadToTop } from "../../shared/wire"; import type { DefaultBotFields } from "../../shared/default-bot";
@@ -43,6 +43,9 @@ import type { BotBodyId, StoredBodyId } from "../../shared/bot-body";
 import { openCreateBot } from "@/lib/create-bot-request";
 import { publishBotPointer } from "@/lib/bot-pointer";
 import { StoreRefContext } from "./store-ref-context";
+import { createExternalStore } from "./external-store";
+import { AppStoreContext, StoreContext, type StoreHandle, type StoreValue } from "./store-context";
+export { StoreContext, useDispatch, useOptionalStore, useOptionalStoreActions, useOptionalStoreSelector, useStore, useStoreActions, useStoreHandle, useStoreSelector, useStoreShallow, type StoreActions, type StoreHandle, type StoreValue } from "./store-context";
 import type { QuestionRequestCardData } from "../../shared/ask-question";
 import type { ProfileRequestCardData } from "../../shared/profile-request";
 import type { ModelRequestCardData } from "../../shared/model-request";
@@ -2083,14 +2086,6 @@ export function runtimeFrameAction(event: RuntimeEvent): Action | null {
     : null;
 }
 
-export const StoreContext = createContext<{
-  state: AppState;
-  dispatch: React.Dispatch<Action>;
-  flushBotPatches: (botId: string) => Promise<BotAnnouncement | null>;
-  refreshInstances: (options?: { reportErrors?: boolean; cached?: boolean }) => Promise<void>;
-  refreshModels: (instanceId: string) => Promise<void>;
-} | null>(null);
-
 /** Grok Bot keeps its info pane open across reloads (`sand.infoPane.open`): only the person closes it. */
 export const BOT_PANEL_OPEN_KEY = "duskbot.botPanelOpen.v1";
 
@@ -2114,7 +2109,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ...bot,
     tasks: bot.tasks?.map((task) => ({ ...task, ...taskPatchFields(taskWrites.get(task.threadId)?.patch ?? {}) })),
   });
-  const [state, rawDispatch] = useReducer(reducer, initialState, restoreBotSettingsSection);
+  const [store] = useState(() => createExternalStore(reducer, restoreBotSettingsSection(initialState)));
+  const rawDispatch = store.dispatch;
+  // The provider follows every change itself; `stateRef` is the state it last rendered, as the wrapped dispatch expects.
+  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const stateRef = useRef(state), selectionRevision = useRef(0);
   stateRef.current = state;
   const shelfScope = useContext(TranscriptShelfScope);
@@ -3399,21 +3397,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (botId: string) => botPatchQueue.flush(botId),
     [botPatchQueue],
   );
-  const value = useMemo(
-    () => ({ state, dispatch, flushBotPatches, refreshInstances, refreshModels }),
-    [state, dispatch, flushBotPatches, refreshInstances, refreshModels],
+  const handle = useMemo<StoreHandle>(
+    () => ({ getState: store.getState, subscribe: store.subscribe, dispatch, flushBotPatches, refreshInstances, refreshModels }),
+    [store, dispatch, flushBotPatches, refreshInstances, refreshModels],
   );
   const ref = useMemo(() => ({ dispatch, state: () => stateRef.current }), [dispatch]);
-  return <StoreRefContext value={ref}><StoreContext.Provider value={value}>{children}</StoreContext.Provider></StoreRefContext>;
+  return <StoreRefContext value={ref}><AppStoreContext value={handle}>{children}</AppStoreContext></StoreRefContext>;
 }
 
-export function useStore() {
-  const ctx = useContext(StoreContext);
-  if (!ctx) throw new Error("useStore outside provider");
-  return ctx;
-}
-
-export function BotEditorStore({ value, children }: { value: ReturnType<typeof useStore>; children: ReactNode }) {
+/** A store of its own for what it wraps (a bot editor's, a test's): readers inside see `value`, not the app's store. */
+export function BotEditorStore({ value, children }: { value: StoreValue; children: ReactNode }) {
   return <StoreRefContext value={null}><StoreContext.Provider value={value}>{children}</StoreContext.Provider></StoreRefContext>;
 }
 
