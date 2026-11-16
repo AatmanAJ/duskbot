@@ -6,6 +6,7 @@ Notable changes to dusk bot, newest first. Installers and checksums for each ver
 ## 0.2.14
 
 - A fresh install starts clean: nothing from other apps is copied in, and no keychain prompt asks for another app's key.
+- An AI is never signed in to without you pressing its button: an old Grok login no longer opens the browser on first launch.
 - dusk cloud says what moves before you pay, a cloud bot's screen is labelled its cloud computer, and smaller fixes.
 
 ## 0.2.13
