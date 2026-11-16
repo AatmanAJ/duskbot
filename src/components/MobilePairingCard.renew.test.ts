@@ -49,26 +49,23 @@ const mount = async (props: Parameters<typeof MobilePairingCard>[0]) => {
 };
 const qrs = () => host.querySelectorAll("[aria-label*=\"QR code\"]").length;
 
-it("walks a first phone through choosing it, getting the app and linking, one qr on screen at a time", async () => {
+it("shows a first phone one screen: one qr that opens the app or the store page, the typed code beside it, the stores under it", async () => {
   await mount({ remote: false });
-  expect(host.querySelector("[data-phone-progress]")?.getAttribute("data-phone-progress")).toBe("1/3");
-  expect(host.querySelector<HTMLButtonElement>("[data-phone-platform=android]")?.disabled, "Google Play is coming soon").toBe(true);
-  expect(qrs()).toBe(0);
-  await click("[data-phone-platform=ios]");
-  expect(host.querySelector("[data-phone-store-step]")).not.toBeNull();
-  expect(host.querySelector("[data-phone-app-store]")?.getAttribute("href")).toBe("https://apps.apple.com/app/id6834725640");
-  expect(host.querySelector('[aria-label="QR code for dusk bot on the App Store"]')).not.toBeNull();
-  expect(qrs()).toBe(1);
-  await click("[data-phone-installed]");
   await flush();
-  expect(minted, "the link step makes its code on arrival").toBe(1);
-  expect(host.querySelector("[data-pairing-tile=qr]")?.getAttribute("aria-pressed")).toBe("true");
-  expect(host.querySelector('[aria-label="Phone pairing QR code"]')).not.toBeNull();
-  expect(host.querySelector('[aria-label="QR code for dusk bot on the App Store"]')).toBeNull();
+  expect(host.querySelector("[data-phone-progress]"), "no steps").toBeNull();
+  expect(host.querySelector("[data-phone-flow=link]")).not.toBeNull();
+  expect(host.textContent).toContain("Link your phone");
+  expect(minted, "the screen makes its code on arrival").toBe(1);
   expect(qrs()).toBe(1);
+  expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/pair#m=offer1&c=ABCDEFGH0001");
+  expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGH 0001");
+  expect(host.textContent).toContain("Scan with your phone's camera, or type the code in the dusk bot app.");
   expect(host.textContent).toContain("Waiting for your phone");
-  await click("[data-pairing-back]");
-  expect(host.querySelector("[data-phone-store-step]")).not.toBeNull();
+  expect(host.querySelector("[data-phone-app-store]")?.getAttribute("href")).toBe("https://apps.apple.com/app/id6834725640");
+  expect(host.querySelector("[data-phone-app-store] [data-store-mark=apple]")).not.toBeNull();
+  expect(host.querySelector("[data-phone-google-play] [data-store-mark=android]")).not.toBeNull();
+  expect(host.querySelector("[data-phone-google-play]")?.textContent).toContain("Coming soon");
+  expect(host.querySelector("[data-pairing-back]"), "nowhere to go back to without a phone").toBeNull();
 });
 
 it("says when the phone links, then folds into the linked phones with a way to link another", async () => {
@@ -76,7 +73,6 @@ it("says when the phone links, then folds into the linked phones with a way to l
   const base = api.getMockImplementation()!;
   api.mockImplementation(async (path: string, init?: unknown) => path === "/api/mobile/devices" ? { devices: phones, current: null } : base(path, init));
   await mount({ remote: false });
-  await click("[data-phone-have-app]");
   await flush();
   phones = [{ id: "p1", name: "Ada's iPhone", platform: "ios", lastSeenAt: Date.now() }];
   await act(async () => { await vi.advanceTimersByTimeAsync(2_100); });
@@ -86,24 +82,26 @@ it("says when the phone links, then folds into the linked phones with a way to l
   expect(host.textContent).toContain("Linked phones");
   expect(host.textContent).toContain("Ada's iPhone");
   await click("[data-phone-link-another]");
-  expect(host.querySelector("[data-phone-flow=platform]")).not.toBeNull();
+  await flush();
+  expect(host.querySelector("[data-phone-flow=link]")).not.toBeNull();
+  expect(minted, "linking another makes a fresh code").toBe(2);
   expect(host.querySelector("[data-pairing-back]"), "back returns to the linked phones").not.toBeNull();
+  await click("[data-pairing-back]");
+  expect(host.querySelector("[data-phone-flow]")).toBeNull();
 });
 
-it("on a dusk cloud leads to signing in with the account's email, never to a pairing code the cloud refuses", async () => {
+it("on a dusk cloud shows one qr that opens the app's log in with the account's email, never a pairing code the cloud refuses", async () => {
   let sessions: { id: string; label: string; scopes: string[] }[] = [{ id: "me", label: "This window", scopes: ["admin"] }];
   const base = api.getMockImplementation()!;
   api.mockImplementation(async (path: string, init?: unknown) => path === "/api/auth/sessions" ? { sessions, current: "me" } : base(path, init));
   await mount({ remote: false, cloudHome: true, email: "owner@example.test" });
-  expect(host.querySelector("[data-phone-flow=platform]"), "this window's own sign-in is not a phone").not.toBeNull();
-  await click("[data-phone-platform=ios]");
-  await click("[data-phone-installed]");
-  await flush();
-  expect(host.querySelector("[data-phone-cloud]")).not.toBeNull();
+  expect(host.querySelector("[data-phone-cloud]"), "this window's own sign-in is not a phone").not.toBeNull();
+  expect(host.querySelector("[data-phone-cloud-sign-in]")?.textContent).toContain("Log in with");
   expect(host.querySelector("[data-phone-cloud-sign-in]")?.textContent).toContain("owner@example.test");
-  expect(host.querySelector("[data-pairing-tile]")).toBeNull();
+  expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/signin#email=owner%40example.test");
+  expect(host.querySelector("[data-phone-code]")).toBeNull();
   expect(minted).toBe(0);
-  expect(qrs()).toBe(0);
+  expect(qrs()).toBe(1);
   sessions = [...sessions, { id: "phone", label: "iPhone", scopes: ["admin", "client"] }];
   await act(async () => { await vi.advanceTimersByTimeAsync(3_100); });
   expect(host.querySelector("[data-phone-linked]")?.textContent).toContain("Your phone is in");
@@ -113,26 +111,28 @@ it("on a dusk cloud leads to signing in with the account's email, never to a pai
 
 it("swaps the code for a new one a minute before it ends, so the screen never shows a dead code", async () => {
   await mount({ remote: false });
-  await click("[data-phone-have-app]");
   await flush();
-  await click("[data-pairing-tile=code]");
-  expect(host.querySelector("code")?.textContent).toBe("ABCD EFGH 0001");
+  expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGH 0001");
   expect(host.textContent).toContain("A new code appears in 9 min");
   await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000 - RENEW_BEFORE_MS - 1_000); });
   expect(minted).toBe(1);
   await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
   expect(minted).toBe(2);
-  expect(host.querySelector("code")?.textContent).toBe("ABCD EFGH 0002");
+  expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGH 0002");
+  expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toContain("m=offer2&c=ABCDEFGH0002");
   expect(host.textContent).not.toContain("This code expired");
 });
 
 it("stops renewing after an hour or so and then says the code ended, with a new code one press away", async () => {
   await mount({ remote: false });
-  await click("[data-phone-have-app]");
   await flush();
   for (let i = 0; i < AUTO_RENEWALS + 1; i++) await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
   expect(minted).toBe(1 + AUTO_RENEWALS);
   expect(host.textContent).toContain("This code expired");
+  await click("[data-phone-new-code]");
+  await flush();
+  expect(minted).toBe(2 + AUTO_RENEWALS);
+  expect(host.querySelector("[data-phone-code]")).not.toBeNull();
 });
 
 it("a cloud's phone page has no browser code to type into the app, and Connect your phone never opens one", async () => {
