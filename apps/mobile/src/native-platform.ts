@@ -292,6 +292,9 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   const kind = Capacitor.getPlatform() as "ios" | "android";
   if (kind === "android") {
     overlayReady ??= StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+  } else {
+    // WKWebView draws a form bar (previous, next, Done) over the keyboard; a chat has one field and its own send
+    void Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
   }
   // a plugin that never answers must not hold the first paint: each startup read gets two seconds
   const bounded = <T,>(work: Promise<T>, label: string): Promise<T | undefined> => new Promise((resolve) => {

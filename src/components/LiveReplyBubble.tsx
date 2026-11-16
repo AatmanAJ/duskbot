@@ -25,7 +25,7 @@ export function LiveReplyBubble({ threadId, mentionPeers, onGrow }: {
   const [chars, setChars] = useState(0);
   const shown = useRef({ chars: 0, target });
   shown.current.target = target;
-  const behind = !reduced && chars < target.length;
+  const behind = chars < target.length;
 
   useEffect(() => {
     if (!behind) return;
@@ -44,7 +44,7 @@ export function LiveReplyBubble({ threadId, mentionPeers, onGrow }: {
     return () => cancelAnimationFrame(frame);
   }, [behind]);
 
-  const text = reduced ? target : target.slice(0, Math.min(chars, target.length));
+  const text = target.slice(0, Math.min(chars, target.length));
   useEffect(() => { noteRevealed(threadId, wordCount(text)); }, [threadId, text]);
 
   const visible = Boolean(text.trim());
