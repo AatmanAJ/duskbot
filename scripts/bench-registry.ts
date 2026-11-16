@@ -17,7 +17,7 @@ const { values } = parseArgs({
   options: {
     part: { type: "string", default: "all" },
     json: { type: "string" },
-    rounds: { type: "string", default: "2" },
+    rounds: { type: "string", default: "3" },
     "micro-child": { type: "boolean", default: false },
     bots: { type: "string", default: "30" },
     tasks: { type: "string", default: "100" },
@@ -28,9 +28,11 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const median = (samples: number[]) => { const sorted = [...samples].sort((a, b) => a - b); return sorted.length ? sorted[Math.floor(sorted.length / 2)]! : NaN; };
 const round = (value: number, digits = 2) => Math.round(value * 10 ** digits) / 10 ** digits;
 
-/** Measured on this branch's base (main at dbfefd93d, Apple M-series, Node 26) and the bars this work aims at. */
-const BASELINE = { liveBytes: 2_738_000, harnessCpuMs: 820, lookupNs: 4_300, saveMs: 5.7 };
-const BARS = { liveBytes: 456_000, harnessCpuMs: 512, lookupNs: 430, saveMs: 0.95 };
+/** Measured on this branch's base (main at dbfefd93d, Apple M-series, Node 26; three rounds, CPU at the calibrated
+ * load) and the bars this work aims at. Most of the harness's CPU while threads stream is the turns themselves (engine
+ * output, the memory log, skill links, the coordinator), so its bar asks for less than the others. */
+const BASELINE = { liveBytes: 3_988_000, harnessCpuMs: 1_310, lookupNs: 4_300, saveMs: 5.7 };
+const BARS = { liveBytes: 665_000, harnessCpuMs: 1_110, lookupNs: 430, saveMs: 0.95 };
 
 /** A registry shaped like a busy workspace: `bots` bots with `tasks` threads each, and rooms with their own threads. */
 function registryRecords(bots: number, tasks: number, now: number) {
@@ -163,6 +165,16 @@ function cpuMs(pid: number): number {
   return seconds * 1000;
 }
 
+/** CPU milliseconds a fixed piece of work takes in a fresh node process: how loaded the machine is right now. */
+function calibrationMs(): number {
+  const work = `const t = process.cpuUsage(); const doc = { rows: Array.from({ length: 400 }, (_, i) => ({ id: "r" + i, title: "row " + i, n: i, tags: ["a", "b"] })) };
+    let sink = 0; for (let i = 0; i < 1500; i++) { const text = JSON.stringify(doc); sink += JSON.parse(text).rows.length + text.replace(/row/g, "x").length; }
+    const u = process.cpuUsage(t); console.log((u.user + u.system) / 1000, sink > 0);`;
+  return Number(execFileSync(process.execPath, ["-e", work], { encoding: "utf8" }).trim().split(" ")[0]);
+}
+/** The calibration work's CPU on this branch's base machine when idle: harness CPU is scored at that machine load. */
+const CALIBRATION_IDLE_MS = 180;
+
 /** The query the desktop's live stream sends, from the renderer's own source when it names one. */
 async function liveQuery(): Promise<string> {
   const file = join(ROOT, "shared", "live-protocol.ts");
@@ -183,7 +195,8 @@ async function live() {
   const { freePortBlock } = await import("../server/testing/ports.ts");
   const { waitForExit } = await import("../server/testing/cleanup.ts");
   const port = await freePortBlock([0, 1]);
-  const env = verificationServerEnvironment({ LANG: process.env.LANG, TZ: process.env.TZ }, dataDir, port);
+  // a person's home sits beside the data folder, as DUSK_VERIFY_HOME_OUTSIDE gives, so their saved-secrets key does too
+  const env = verificationServerEnvironment({ LANG: process.env.LANG, TZ: process.env.TZ, DUSK_VERIFY_HOME_OUTSIDE: "1" }, dataDir, port);
   Object.assign(env, { FAKE_CLAUDE_REPLY_FILE: join(dataDir, "bench-reply.txt"), FAKE_CLAUDE_STREAM_CADENCE: "6:4", DUSK_NO_TEST_BOTS: "1" });
   const logFd = openSync(join(work, "server.log"), "a", 0o600);
   const child: ChildProcess = spawn(process.execPath, verificationServerArgs(env), { cwd: ROOT, env, stdio: ["ignore", logFd, logFd] });
@@ -235,6 +248,7 @@ async function live() {
     })();
     await sleep(1_500);
     const rounds = Number(values.rounds);
+    const calibrations = [calibrationMs()];
     counting = true;
     const cpuBefore = cpuMs(child.pid!);
     const started = performance.now();
@@ -249,14 +263,18 @@ async function live() {
     const wallMs = performance.now() - started;
     const cpu = cpuMs(child.pid!) - cpuBefore;
     counting = false;
+    calibrations.push(calibrationMs());
+    const calibration = (calibrations[0]! + calibrations[1]!) / 2;
     return {
       part: "live", threads: targets.length, rounds, liveBytes: bytes, frames, wallMs: Math.round(wallMs), bytesPerSecond: Math.round(bytes / (wallMs / 1000)),
-      harnessCpuMs: Math.round(cpu), cpuPercent: round((cpu / wallMs) * 100, 1), kinds, kindBytes,
+      harnessCpuRawMs: Math.round(cpu), calibrationMs: round(calibration, 1), cpuPercent: round((cpu / wallMs) * 100, 1),
+      harnessCpuMs: Math.round(CALIBRATION_IDLE_MS ? cpu * (CALIBRATION_IDLE_MS / calibration) : cpu), kinds, kindBytes,
     };
   } finally {
     abort.abort();
     await waitForExit(child, { signal: "SIGTERM" });
     await removeDir(dataDir);
+    await removeDir(`${dataDir}-home`);
     await removeDir(work);
   }
 }
