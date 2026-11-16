@@ -61,10 +61,16 @@ export function createDodoProvider(options: DodoProviderOptions): BillingProvide
   return {
     name: "dodo",
     async createCheckout(input) {
-      const result = await json("/checkouts", { product_cart: input.cart.map(line => ({ product_id: line.productId, quantity: line.quantity,
+      const name = input.customerId ? null : checkoutName(input.name, input.email);
+      const body = (named: boolean) => ({ product_cart: input.cart.map(line => ({ product_id: line.productId, quantity: line.quantity,
         ...(line.addons.length ? { addons: line.addons.map(addon => ({ addon_id: addon.addonId, quantity: addon.quantity })) } : {}) })),
-        customer: input.customerId ? { customer_id: input.customerId } : { email: input.email }, return_url: input.returnUrl, metadata: { checkoutId: input.checkoutId, accountId: input.accountId },
+        customer: input.customerId ? { customer_id: input.customerId } : { email: input.email, ...(named && name ? { name } : {}) }, return_url: input.returnUrl, metadata: { checkoutId: input.checkoutId, accountId: input.accountId },
         ...(input.trialDays ? { subscription_data: { trial_period_days: input.trialDays } } : {}) });
+      // the name only saves typing: a checkout dodo refuses with it is asked once more without it
+      const result = await json("/checkouts", body(true)).catch((error: unknown) => {
+        if (!name || !(error instanceof BillingProviderError) || error.code !== "refused") throw error;
+        return json("/checkouts", body(false));
+      });
       if (typeof result.session_id !== "string" || !result.session_id) throw new BillingProviderError("refused");
       return { sessionId: result.session_id, url: allowedUrl(result.checkout_url, `${prefix}checkout.dodopayments.com`) };
     },
@@ -100,4 +106,16 @@ export function createDodoProvider(options: DodoProviderOptions): BillingProvide
       } catch { throw new BillingProviderError("refused"); }
     },
   };
+}
+
+/** the name dodo's checkout shows filled in: the account's own, else a guess from the email ("jane.doe+x@" is "Jane Doe");
+ *  nothing when neither reads as a name */
+export function checkoutName(own: string | null | undefined, email: string): string | null {
+  const clean = (value: string) => value.replace(/[\p{C}<>"]/gu, "").replace(/\s+/g, " ").trim().slice(0, 60);
+  const given = own ? clean(own) : "";
+  if (/\p{L}/u.test(given)) return given;
+  const local = (email.split("@")[0] ?? "").split("+")[0]!;
+  const words = local.split(/[._\-\s]+/).map(word => word.replace(/[^\p{L}]/gu, "")).filter(word => word.length > 1);
+  const guess = clean(words.map(word => word[0]!.toUpperCase() + word.slice(1).toLowerCase()).join(" "));
+  return guess.length >= 2 ? guess : null;
 }
