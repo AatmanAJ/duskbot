@@ -429,7 +429,7 @@ test("once My Cloud is home the switcher lists whole places only: My Cloud first
     { id: "l", kind: "local", name: "Lab", dataDir: "/lab" }], activeId: "c" };
   const switched = [], forgot = [];
   const items = env.workspaceMenuTemplate(state, { onSwitch: (id) => switched.push(id), onConnect() {}, onForget: (id) => forgot.push(id), onAddCloud() {}, places: "x", copyToCloud: { label: "Send" }, homeOrigin: home });
-  assert.deepEqual(items.map((item) => [item.label, item.checked]), [["dusk cloud", true], ["Office", false]]);
+  assert.deepEqual(items.map((item) => [item.label, item.checked]), [["dusk cloud", true], ["Office", false], [undefined, undefined], ["Add dusk cloud…", undefined]]);
   items[1].click();
   assert.deepEqual(switched, ["o"]);
   const away = env.workspaceMenuTemplate({ ...state, activeId: "o" }, { onSwitch() {}, onConnect() {}, onForget: (id) => forgot.push(id), homeOrigin: home });

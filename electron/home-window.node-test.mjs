@@ -547,6 +547,21 @@ test("main shows the switcher at home only with somewhere else to go: My Cloud a
   assert.equal(context.homeAlone(), false, "no home: the switcher as before");
 });
 
+test("My Cloud as home with nothing else still opens the list of places, My Cloud ticked: the place button never goes dead", () => {
+  const start = MAIN.indexOf('ipcMain.handle("workspaces:menu"'), end = MAIN.indexOf("}));", start);
+  assert.ok(start > 0 && end > start);
+  assert.equal(MAIN.slice(start, end).includes("homeAlone()"), false, "home alone does not refuse the menu");
+  const cloud = { id: "c", kind: "remote", name: "My Cloud", origin: CLOUD, home: true };
+  const rows = environments.workspaceMenuTemplate({ environments: [cloud], activeId: "c" }, { onSwitch() {}, onConnect() {}, onForget() {}, homeOrigin: CLOUD });
+  assert.deepEqual(rows.map((row) => [row.label, row.checked]), [["dusk cloud", true]]);
+  const added = [];
+  const withAdd = environments.workspaceMenuTemplate({ environments: [cloud], activeId: "c" }, { onSwitch() {}, onConnect() {}, onForget() {}, onAddCloud: () => added.push(1), homeOrigin: CLOUD });
+  assert.deepEqual(withAdd.map((row) => row.label ?? row.type), ["dusk cloud", "separator", "Add dusk cloud…"], "one place still offers the way to add a cloud");
+  withAdd.at(-1).click();
+  assert.deepEqual(added, [1]);
+  assert.ok(MAIN.includes('homeWindow.cloudOrigin() && cloudOffersAllowed() ? { onAddCloud:'), "at home, main wires the add row");
+});
+
 test("the place asked for: My Cloud unless a team is asked or remembered; a team is the session's, one the connected session no longer lists is gone, and one the Admin can't vouch for opens as saved", () => {
   const state = { ...connected(), teams: [ACME] };
   assert.deepEqual(placeOf({ state }), { kind: "cloud" });

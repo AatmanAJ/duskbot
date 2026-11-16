@@ -3182,7 +3182,7 @@ function cleanLine() {
 }
 let workspaceMenuOpen = false;
 ipcMain.handle("workspaces:menu", workspaceOnly(async (_event, from) => {
-  if (workspaceMenuOpen || homeAlone()) return;
+  if (workspaceMenuOpen) return;
   workspaceMenuOpen = true;
   try {
     await cloudOffersReady();
@@ -3192,9 +3192,11 @@ ipcMain.handle("workspaces:menu", workspaceOnly(async (_event, from) => {
       onForget: (id) => void workspaceMenuAction(() => forgetEnvironment(id)),
       ...(serverCanMove(environmentsState.activeId) ? { onCloudMove: (id) => void askServerCloudMove(id).catch(error => slog(`cloud move menu: ${error?.message ?? error}`)) } : {}),
       ...cloudMenuOptions(from === "howto" ? "app_howto" : "app_menu"),
+      ...(homeWindow.cloudOrigin() && cloudOffersAllowed() ? { onAddCloud: () => void ensureCloudAccount().webHandoff({ page: "cloud" }).catch(error => slog(`add cloud: ${error?.message ?? error}`)) } : {}),
       kindIcon: placeKindIcon,
       ...(await placesMenuOptions({ homeOrigin: homeWindow.cloudOrigin(), cloud: cloudHomeEntry(), home: oneHome.away() || ownHome?.away() === true, platform: process.platform, port: SERVER_PORT })),
     });
+    if (!template.length) return;
     // dev runs only (the smoke walkthrough): a native popup can't be clicked headless, so the named row is chosen instead
     const pick = !app.isPackaged ? process.env.DUSK_SMOKE_MENU_PICK : "";
     if (pick) { const row = template.find((item) => item.id === pick); if (row?.click) { row.click(); return; } }

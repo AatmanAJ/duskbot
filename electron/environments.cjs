@@ -145,7 +145,9 @@ function workspaceMenuTemplate(state, { onSwitch, onConnect, onForget, onAddClou
   const move = active && onCloudMove ? [{ id: "workspace-cloud-move", label: `Move “${active.name}” to ${DUSK_CLOUD}…`, click: () => onCloudMove(active.id) }] : [];
   if (homeOrigin) {
     const rows = homeMenuTemplate(state, { onSwitch, onForget, sublabels, iconFor, kindIcon, foldSublabels, homeOrigin });
-    return move.length ? [...rows, { type: "separator" }, ...move] : rows;
+    const add = onAddCloud ? [{ id: "workspace-add-cloud", label: "Add dusk cloud…", click: onAddCloud }] : [];
+    const more = [...move, ...add];
+    return more.length ? [...rows, { type: "separator" }, ...more] : rows;
   }
   const isMine = (entry) => entry.id === myCloudId || entry.home === true;
   const localIcon = kindIcon ? kindIcon("computer") : iconFor && cleanColor(state.localColor) ? iconFor(state.localColor) : null;
