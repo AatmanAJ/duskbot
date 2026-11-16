@@ -3173,7 +3173,6 @@
   "connect.trouble": "Try another way",
   "connect.guide.browser": "Sign in on the {site} page that opened in your browser. This window moves on by itself once you do.",
   "connect.guide.paste": "Sign in on the {site} page that opened in your browser, then copy the code it shows and paste it here.",
-  "connect.guide.code": "Enter the code on the {site} page. This window moves on by itself once you do.",
   "connect.stillWaiting": "Still waiting for your browser, {seconds} s. Take your time.",
   "connect.reopenHint": "Closed the page, or it didn't open? Open it again.",
   "connect.timeout.waking": "Your cloud is taking too long to wake up. Try again in a minute.",
