@@ -5,7 +5,7 @@ import { ClipboardPaste, Keyboard, QrCode, UserRound } from "../../icons";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
 import { THEME_SKINS } from "@/lib/skins";
-import type { MobileConnectionRecord } from "../../../shared/mobile-link";
+import { parseSignInLink, type MobileConnectionRecord } from "../../../shared/mobile-link";
 import { haptic } from "../haptics";
 import { PixelArt, PixelMascot } from "../Illustration";
 import { usePlatform, type CameraPermission } from "../platform";
@@ -55,9 +55,11 @@ function Failed({ failure, onSignIn }: { failure: Failure; onSignIn?: () => void
 /** First launch to linked. Pairing with your own computer needs no account (App Store guideline 5.1.1(v)): scan its QR
  * code first, or type its code. Signing in is only for a dusk cloud (the account finds it and pairs with it). The success moment and the hand-off
  * to Home belong to the connection gate. */
-export function Onboarding({ initial = null, reason = null, startAtLink = false, startAt = "welcome", onLinked, onCancel }: {
+export function Onboarding({ initial = null, reason = null, startAtLink = false, startAt = "welcome", email, onLinked, onCancel }: {
   /** where a sheet opened from inside the app starts */
   startAt?: "welcome" | "signin";
+  /** a dusk cloud's qr named the account to sign in with */
+  email?: string;
   initial?: TypedPairing | null;
   /** Linking another computer from inside the app: a way back out. */
   startAtLink?: boolean;
@@ -77,6 +79,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   const [scanFailed, setScanFailed] = useState(false);
   const [noClouds, setNoClouds] = useState(false);
   const [value, setValue] = useState("");
+  const [signInEmail, setSignInEmail] = useState(email ?? "");
   const locked = useRef(false);
   const fieldId = useId();
 
@@ -95,6 +98,8 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     let payload: TypedPairing | null = typeof text === "string" ? null : text;
     try {
       if (typeof text === "string" && isStoreLink(text)) throw new PairError("store-qr");
+      const cloud = typeof text === "string" ? parseSignInLink(text) : null;
+      if (cloud) { setSignInEmail(cloud.email); go(signedIn ? "clouds" : "signin"); return; }
       if (typeof text === "string") {
         const parsed = parseTypedPairing(text);
         payload = parsed && "kind" in parsed ? await resolveTypedCode(parsed.code) : parsed;
@@ -160,7 +165,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
         {step === "signin" && (
           <StepPane id="signin">
             <Screen top={back("welcome")} align="top" actions={null}>
-              <MobileSignIn onSignedIn={() => go("clouds")} />
+              <MobileSignIn initialEmail={signInEmail} onSignedIn={() => go("clouds")} />
             </Screen>
           </StepPane>
         )}

@@ -1,5 +1,5 @@
 import { observePairing } from "@/lib/product-analytics";
-import { DEFAULT_MOBILE_RELAY, MOBILE_LOOKUP_SALT, pairingFromPayload, parseMobilePayload, parseMobilePairingLink, type MobileRedeemRequest, type MobileRedeemResponse, type MobileCapabilities, type MobileConnectionRecord, type MobilePairingPayload } from "../../../shared/mobile-link";
+import { appLinkFromUniversal, DEFAULT_MOBILE_RELAY, MOBILE_LOOKUP_SALT, pairingFromPayload, parseMobilePayload, parseMobilePairingLink, type MobileRedeemRequest, type MobileRedeemResponse, type MobileCapabilities, type MobileConnectionRecord, type MobilePairingPayload } from "../../../shared/mobile-link";
 import { randomUuid } from "@/lib/random-uuid";
 import type { MobilePlatform } from "../platform";
 import { createRelaySecrets, hex, hkdf, sha256hex, subtle, unbase64, unseal, UnsupportedCryptoError, utf8, type RelaySecrets } from "../transport/link-crypto";
@@ -28,7 +28,8 @@ export function isStoreLink(input: string): boolean {
 }
 
 export function parseTypedPairing(input: string): MobilePairingPayload | TypedCode | null {
-  const value = input.trim();
+  // the desktop's qr is an https link (a camera opens the app with it); the app's own scanner reads it the same way
+  const value = appLinkFromUniversal(input) ?? input.trim();
   if (value.startsWith("duskbot:")) return parseMobilePairingLink(value);
   const code = value.replace(/[-\s]/g, "").toUpperCase();
   if (/^[A-Z0-9]{12}$/.test(code)) return { kind: "code", code };

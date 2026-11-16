@@ -21,12 +21,12 @@ const digits = (value: string) => value.replace(/\D/g, "").slice(0, CODE_LENGTH)
 
 /** The phone's own dusk account sign-in, in the app's look: the providers the service has on, then an emailed code in one
  * field (the system offers it from Messages or Mail), with every problem said next to the field it is about. */
-export function MobileSignIn({ onSignedIn }: { onSignedIn: () => void }) {
+export function MobileSignIn({ onSignedIn, initialEmail = "" }: { onSignedIn: () => void; initialEmail?: string }) {
   const account = useMobileAccount();
   const platform = usePlatform();
   const id = useId();
   const [providers, setProviders] = useState<OAuthProvider[] | null>(null);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [sent, setSent] = useState<Extract<CloudSignInStart, { outcome: "sent" }> | null>(null);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
