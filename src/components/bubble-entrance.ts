@@ -58,13 +58,14 @@ export function morphFromComposer(bubble: HTMLElement, fill: HTMLElement | null,
 
 /** The reply grows out of its top start corner, the mascot's side, so its top edge moves only with the conversation;
  * its words fade in once it is there. Under reduced motion it only fades. */
-export function growFromMascot(bubble: HTMLElement, reduced: boolean): void {
+export function growFromMascot(bubble: HTMLElement, reduced: boolean, wordsRevealed = false): void {
   if (!canAnimate(bubble)) return;
   const rtl = getComputedStyle(bubble).direction === "rtl";
   bubble.style.transformOrigin = rtl ? "100% 0%" : "0% 0%";
   bubble.animate(reduced
     ? [{ opacity: 0 }, { opacity: 1 }]
     : [{ opacity: 0, transform: `scale(${REPLY_GROW_FROM})` }, { opacity: 1, transform: "scale(1)" }], REPLY_GROW);
+  if (wordsRevealed) return;
   for (const part of bubble.children) {
     if (canAnimate(part)) part.animate([{ opacity: 0 }, { opacity: 1 }], { ...REPLY_WORDS, fill: "backwards" });
   }

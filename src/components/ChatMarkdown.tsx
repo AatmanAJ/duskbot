@@ -1,5 +1,5 @@
 // Security: model output never reaches the DOM as raw HTML (no rehype-raw); Shiki's output is generator-escaped.
-import { createContext, memo, use, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, memo, use, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 import Markdown, { defaultUrlTransform, type Components, type ExtraProps, type Options as MarkdownOptions } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -9,6 +9,7 @@ import { useCopyFeedback } from "@/lib/copy-text";
 import { t } from "@/lib/i18n";
 import { remarkMentions, sameMentionPerson, type MentionPeer, type MentionPerson } from "@/lib/mentions";
 import { createMarkdownRenderCache } from "@/lib/markdown-render-cache";
+import { rehypeRevealWords } from "@/lib/text-reveal";
 
 import { parseFenceInfo } from "../lib/code-block";
 import { markdownImageName, markdownImageOpenUrl } from "../lib/markdown-image";
@@ -783,10 +784,12 @@ export function clearChatMarkdownCache(): void {
   markdownCache.clear();
 }
 
-function ChatMarkdownComponent({ text, message, mentionPeers = NO_MENTION_PEERS, everyone = false, mentionPerson, delivered }: {
+function ChatMarkdownComponent({ text, message, mentionPeers = NO_MENTION_PEERS, everyone = false, mentionPerson, delivered, reveal }: {
   text: string; message?: MessageAttachmentContext;
   mentionPeers?: readonly MentionPeer[]; everyone?: boolean; mentionPerson?: MentionPerson;
   delivered?: DeliveredFiles;
+  /** Words from this index on fade in (`.md-rv`), a step apart. */
+  reveal?: { from: number; step: number };
 }) {
   // use() may be called conditionally: only a message that can hold a thread link subscribes to the thread list.
   const { threads, currentBotId } = MAY_LINK_THREAD.test(text) ? use(ThreadRefsContext) : NO_THREAD_REFS;
@@ -812,15 +815,17 @@ function ChatMarkdownComponent({ text, message, mentionPeers = NO_MENTION_PEERS,
   const mentions = source.includes("@"), linksThreads = threads.length > 0;
   const variant = `${mathPlugin ? "math" : ""}\u0003${mentions ? `${peerSignature(mentionPeers)}\u0001${everyone ? 1 : 0}\u0001${mentionPerson?.profileName ?? ""}` : ""}\u0003${linksThreads ? `${threadListId(threads)}\u0001${currentBotId ?? ""}` : ""}`;
   // Markdown is a plain function of its options (no hooks), so its elements can be kept and drawn again.
-  const markdown = markdownCache.render(text, variant, () => {
+  const draw = () => {
     const remarkPlugins = [...BASE_REMARK_PLUGINS];
     if (mentions) remarkPlugins.push([remarkMentions, { peers: mentionPeers, everyone, person: mentionPerson }]);
     if (linksThreads) remarkPlugins.push(remarkThreadRefs(threads, currentBotId));
-    return Markdown({ children: source, remarkPlugins, rehypePlugins: rehypePluginsFor(mathPlugin), urlTransform: chatUrlTransform, components: MARKDOWN_COMPONENTS });
-  });
+    const rehypePlugins = reveal ? [...rehypePluginsFor(mathPlugin), rehypeRevealWords({ from: reveal.from })] : rehypePluginsFor(mathPlugin);
+    return Markdown({ children: source, remarkPlugins, rehypePlugins, urlTransform: chatUrlTransform, components: MARKDOWN_COMPONENTS });
+  };
+  const markdown = reveal ? draw() : markdownCache.render(text, variant, draw);
   return (
     <MessageScopeContext.Provider value={{ message, imageOffsets, threads, currentBotId, delivered }}>
-      <div className="chat-md min-w-0 [&>*+*]:mt-2">{markdown}</div>
+      <div className="chat-md min-w-0 [&>*+*]:mt-2" data-revealing={reveal ? "" : undefined} style={reveal ? { "--rv-step": `${reveal.step}ms` } as CSSProperties : undefined}>{markdown}</div>
     </MessageScopeContext.Provider>
   );
 }
@@ -836,6 +841,7 @@ export function samePeers(previous: readonly MentionPeer[], next: readonly Menti
 
 export const ChatMarkdown = memo(ChatMarkdownComponent, (previous, next) => (
   previous.text === next.text
+  && previous.reveal?.from === next.reveal?.from && previous.reveal?.step === next.reveal?.step
   && samePeers(previous.mentionPeers ?? NO_MENTION_PEERS, next.mentionPeers ?? NO_MENTION_PEERS)
   && previous.everyone === next.everyone && sameMentionPerson(previous.mentionPerson, next.mentionPerson)
   && previous.message?.threadId === next.message?.threadId

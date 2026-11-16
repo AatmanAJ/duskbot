@@ -53,6 +53,22 @@ export function columnGlide(column: HTMLElement, from: number): Animation | null
   );
 }
 
+/** Adds a glide of `px` to whatever the column is already doing (composited, so a line arriving mid-glide extends it),
+ * clipping the column meanwhile so its transform never stretches the scroll range. */
+export function glideColumn(column: HTMLElement | null, clip: HTMLElement | null, px: number): void {
+  if (!column || !canAnimate(column) || px < 0.5 || px > 400 || reducedMotionQuery()) return;
+  if (clip) clip.style.overflowY = "clip";
+  const anim = column.animate(
+    [{ transform: `translateY(${px}px)` }, { transform: "translateY(0px)" }],
+    { duration: FOLLOW.duration, easing: FOLLOW.easing, composite: "add" },
+  );
+  anim.addEventListener("finish", () => {
+    if (clip && column.getAnimations().length === 0) clip.style.overflowY = "";
+  });
+}
+
+const reducedMotionQuery = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 /** How far below its place the column is drawn right now, mid-glide (px). */
 function glideOffset(column: HTMLElement): number {
   const transform = getComputedStyle(column).transform;
