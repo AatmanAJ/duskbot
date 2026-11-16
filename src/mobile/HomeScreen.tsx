@@ -48,7 +48,7 @@ function lastAt(owner: Bot | Group): number {
   return lastPreviewable(sidebarPreviewMessages(owner))?.at ?? owner.tasks?.reduce((max, task) => Math.max(max, task.createdAt ?? 0), 0) ?? 0;
 }
 
-/** Grok's home: a few round buttons floating over the top, the pinned bots big, then every chat as a plain row. */
+/** The home list: a few glass buttons floating over the top, the pinned bots big, then every chat as a plain row. */
 export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: string) => void; onOpenSheet: OpenSheet }) {
   const { state, dispatch } = useStore();
   const platform = usePlatform();
@@ -60,7 +60,6 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   // the phone's own account first: its photo, else its drawn head; the desktop's profile otherwise
   const face = phone ?? you?.face ?? null;
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [scrolled, setScrolled] = useState(false);
   const [menu, setMenu] = useState<{ entry: Entry; rect: DOMRect; pinnedTile: boolean } | null>(null);
 
   const { pinned, entries } = useMemo(() => {
@@ -108,7 +107,6 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
       <div
         ref={scrollRef}
         className="h-full overflow-y-auto overflow-x-hidden overscroll-y-contain"
-        onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 2)}
       >
         <PullToRefresh
           scrollRef={scrollRef}
@@ -159,7 +157,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         </PullToRefresh>
       </div>
 
-      <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-0 z-[5] h-[calc(var(--m-safe-top)+72px)] bg-gradient-to-b from-app from-60% to-transparent transition-opacity duration-150", scrolled ? "opacity-100" : "opacity-0")} />
+      <div aria-hidden className="m-edge-top z-[5] h-[calc(var(--m-safe-top)+68px)]" />
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-3" style={{ paddingTop: BAR_TOP }}>
         <RoundButton floating label={unreadNotes ? t("mobile.home.youWithNotifications", { count: unreadNotes }) : t("mobile.home.you")} onClick={() => onOpenSheet({ kind: "settings" })} className="pointer-events-auto overflow-visible">
           {face
@@ -169,7 +167,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         </RoundButton>
         <div className="flex-1" />
         {state.hydrated && (!state.connected || waking || offline) && !resuming && (
-          <span role="status" data-testid="mobile-connection-status" className="pointer-events-auto flex h-11 min-w-0 items-center gap-2 whitespace-nowrap rounded-full bg-composer px-4 text-[13px] font-medium text-ink-secondary mobile-float">
+          <span role="status" data-testid="mobile-connection-status" className="m-glass m-pop pointer-events-auto flex h-11 min-w-0 items-center gap-2 whitespace-nowrap rounded-full px-4 text-[13px] font-medium text-ink-secondary">
             {offline ? t("mobile.home.offline") : <><WorkingDots size={3} />{t(waking ? "cloudAsleep.waking" : "mobile.home.reconnecting")}</>}
           </span>
         )}

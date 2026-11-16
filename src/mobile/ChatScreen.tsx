@@ -10,8 +10,8 @@ import { cloudWaking, onCloudWaking } from "@/lib/cloud-power";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { RoundButton } from "./RoundButton";
 
-/** The shared chat, with Grok's floating nav in place of its header row: back, the bot's pill (its profile), and the
- * computer. The shared header keeps its height under the nav, so the transcript starts where it always does. */
+/** The shared chat, with floating glass nav in place of its header row: back, the bot's pill (its profile) centred,
+ * and the computer. The shared header keeps its height under the nav, so the transcript starts where it always does. */
 export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer }: {
   bot?: Bot;
   group?: Group;
@@ -27,38 +27,40 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
   return (
     <div data-mobile-chat className="relative flex h-full flex-col">
       {group ? <GroupView key={group.id} group={group} /> : bot ? <ChatView bot={bot} /> : null}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-[29] h-[calc(var(--m-safe-top)+78px)]" style={{ background: "linear-gradient(to bottom, var(--color-app) calc(100% - 24px), transparent)" }} />
+      <div aria-hidden className="m-edge-top z-[29] h-[calc(var(--m-safe-top)+64px)]" />
       <nav
         aria-label={t("mobile.chat.nav", { name })}
-        className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center gap-2 px-3 pt-[calc(var(--m-safe-top)+6px)]"
+        className="pointer-events-none absolute inset-x-0 top-0 z-30 grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 pt-[calc(var(--m-safe-top)+6px)]"
       >
         <RoundButton floating label={t("mobile.chat.back")} onClick={onBack} className="pointer-events-auto">
           <ChevronLeft size={22} strokeWidth={2} />
         </RoundButton>
-        <button
-          type="button"
-          onClick={onProfile}
-          aria-label={t("mobile.chat.openProfile", { name })}
-          className="mobile-press mobile-float pointer-events-auto flex h-11 min-w-0 max-w-[60%] items-center gap-2 rounded-full bg-composer pl-1.5 pr-4 text-ink"
-        >
-          {group
-            ? <GroupAvatar members={members} size={30} />
-            : bot && <BotAvatar bot={bot} size={30} state="idle" animated={false} />}
-          <span className="min-w-0 truncate text-[15px] font-semibold">{name}</span>
-        </button>
-        <div className="flex min-w-0 flex-1 justify-center">
+        <div className="relative flex min-w-0 justify-center">
+          <button
+            type="button"
+            onClick={onProfile}
+            aria-label={t("mobile.chat.openProfile", { name })}
+            className="mobile-press m-glass pointer-events-auto flex h-11 min-w-0 max-w-[calc(100vw-136px)] items-center gap-2 rounded-full pl-1.5 pr-4 text-ink"
+          >
+            {group
+              ? <GroupAvatar members={members} size={30} />
+              : bot && <BotAvatar bot={bot} size={30} state="idle" animated={false} />}
+            <span className="min-w-0 truncate text-[15px] font-semibold">{name}</span>
+          </button>
           {waking && (
-            <span role="status" data-testid="mobile-chat-cloud-status" className="flex h-11 items-center gap-1.5 whitespace-nowrap rounded-full bg-composer px-4 text-[13px] font-medium text-ink-secondary mobile-float">
+            <span role="status" data-testid="mobile-chat-cloud-status" className="m-glass m-pop absolute top-[calc(100%+8px)] flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[13px] font-medium text-ink-secondary">
               <WorkingDots size={3} />{t("cloudAsleep.waking")}
             </span>
           )}
         </div>
-        {onComputer && (
-          <RoundButton floating label={live ? `${t("mobile.chat.computer")}, ${t("place.live")}` : t("mobile.chat.computer")} onClick={onComputer} className="pointer-events-auto">
-            <Monitor size={19} strokeWidth={1.8} />
-            {live && <span aria-hidden className="absolute right-2.5 top-2.5 size-2 rounded-full bg-success ring-2 ring-composer" />}
-          </RoundButton>
-        )}
+        <div className="flex justify-end">
+          {onComputer && (
+            <RoundButton floating label={live ? `${t("mobile.chat.computer")}, ${t("place.live")}` : t("mobile.chat.computer")} onClick={onComputer} className="pointer-events-auto">
+              <Monitor size={19} strokeWidth={1.8} />
+              {live && <span aria-hidden className="absolute right-2.5 top-2.5 size-2 rounded-full bg-success" />}
+            </RoundButton>
+          )}
+        </div>
       </nav>
     </div>
   );

@@ -161,3 +161,170 @@ html[data-mobile-app], html[data-mobile-app] body { overflow: hidden; overscroll
 .dusk-mobile [data-testid="room-setup"] .text-\[13px\] { font-size: 15px; line-height: 20px; }
 .dusk-mobile [data-testid="room-setup"] .text-\[12px\] { font-size: 13px; line-height: 18px; }
 .dusk-mobile [data-testid="room-setup"] .text-\[11px\] { font-size: 12px; line-height: 16px; }
+
+/* liquid glass: one surface for every piece of chrome that floats over content */
+@property --m-rip { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --m-rip-a { syntax: "<number>"; inherits: false; initial-value: 0; }
+
+.dusk-mobile, .dusk-mobile-overlay {
+  --g-blur: 14px;
+  --g-sat: 210%;
+  --g-tint: rgb(255 255 255 / .46);
+  --g-tint-press: rgb(255 255 255 / .74);
+  --g-tint-quiet: rgb(24 24 32 / .055);
+  --g-solid: rgb(250 250 252 / .97);
+  --g-sheen:
+    linear-gradient(180deg, rgb(255 255 255 / .6), rgb(255 255 255 / 0) 48%),
+    radial-gradient(130% 80% at 50% 125%, rgb(255 255 255 / .7), transparent 60%),
+    linear-gradient(105deg, rgb(255 255 255 / .35), transparent 32%);
+  --g-rim-hi: rgb(255 255 255 / 1);
+  --g-rim: rgb(20 20 28 / .09);
+  --g-rim-lo: rgb(255 255 255 / .7);
+  --g-glow: rgb(255 255 255 / .45);
+  --g-shadow: 0 12px 32px -12px rgb(30 32 40 / .3), 0 2px 8px -2px rgb(30 32 40 / .12);
+  --g-edge: var(--color-app);
+  --g-rims: inset 0 1px 0 0 var(--g-rim-hi), inset 0 -1px 0 0 var(--g-rim-lo), inset 0 0 0 .5px var(--g-rim), inset 0 0 14px 0 var(--g-glow);
+  --m-rip-ink: 20 20 28;
+}
+[data-skin="grok-dark"] :is(.dusk-mobile, .dusk-mobile-overlay) {
+  --g-tint: rgb(58 58 64 / .36);
+  --g-tint-press: rgb(88 88 96 / .5);
+  --g-tint-quiet: rgb(255 255 255 / .07);
+  --g-solid: rgb(38 38 42 / .97);
+  --g-sheen:
+    linear-gradient(180deg, rgb(255 255 255 / .13), rgb(255 255 255 / 0) 50%),
+    radial-gradient(130% 80% at 50% 125%, rgb(255 255 255 / .1), transparent 60%),
+    linear-gradient(105deg, rgb(255 255 255 / .06), transparent 30%);
+  --g-rim-hi: rgb(255 255 255 / .34);
+  --g-rim: rgb(255 255 255 / .1);
+  --g-rim-lo: rgb(255 255 255 / .09);
+  --g-glow: rgb(255 255 255 / .05);
+  --g-shadow: 0 14px 34px -12px rgb(0 0 0 / .75), 0 2px 8px -2px rgb(0 0 0 / .45);
+  --m-rip-ink: 255 255 255;
+}
+html[data-os="android"] :is(.dusk-mobile, .dusk-mobile-overlay) { --g-blur: 10px; --g-sat: 180%; }
+
+.dusk-mobile .m-glass, .dusk-mobile-overlay .m-glass,
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] {
+  background-color: var(--g-tint);
+  background-image: var(--m-rip-layer, linear-gradient(transparent, transparent)), var(--g-sheen);
+  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+  backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+  box-shadow: var(--g-rims), var(--g-shadow);
+  transform: translateZ(0);
+}
+/* inside a sheet the glass sits on the sheet itself: the rim and sheen without the lift */
+.dusk-mobile .m-glass-quiet, .dusk-mobile-overlay .m-glass-quiet {
+  background-color: var(--g-tint-quiet);
+  background-image: var(--m-rip-layer, linear-gradient(transparent, transparent)), var(--g-sheen);
+  box-shadow: var(--g-rims);
+}
+.dusk-mobile .m-glass.mobile-press:active:not(:disabled),
+.dusk-mobile .m-glass-quiet.mobile-press:active:not(:disabled),
+.dusk-mobile .m-glass.mobile-press[data-opening] { background-color: var(--g-tint-press); }
+
+/* the scroll edge: content passing under the chrome softens and dims instead of meeting a hard line */
+.dusk-mobile .m-edge-top, .dusk-mobile .m-edge-bottom {
+  pointer-events: none;
+  position: absolute;
+  inset-inline: 0;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.dusk-mobile .m-edge-top {
+  top: 0;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--g-edge) 88%, transparent) 0, color-mix(in srgb, var(--g-edge) 55%, transparent) var(--m-safe-top), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .dusk-mobile .m-glass, .dusk-mobile-overlay .m-glass, .dusk-mobile [data-mobile-chat] [data-tour="composer"] { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .dusk-mobile .m-edge-top, .dusk-mobile .m-edge-bottom { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dusk-mobile .m-glass, .dusk-mobile-overlay .m-glass, .dusk-mobile [data-mobile-chat] [data-tour="composer"] { background-color: var(--g-solid); }
+}
+@media (forced-colors: active) {
+  .dusk-mobile .m-glass, .dusk-mobile-overlay .m-glass { background: Canvas; border: 1px solid CanvasText; }
+}
+
+/* the composer is one glass pill: a quiet +, the field, the mic and the bot's send button inside it */
+.dusk-mobile [data-mobile-chat] [data-composer-backdrop] { display: none; }
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] {
+  align-items: flex-end;
+  gap: 2px;
+  margin-inline: 10px;
+  padding: 7px;
+  border-radius: 26px;
+}
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] > div:has(> [data-composer-row]) {
+  min-height: 34px;
+  padding: 0 0 0 8px;
+  border-radius: 20px;
+  background: transparent;
+  box-shadow: none;
+}
+.dusk-mobile [data-mobile-chat] [data-composer-plus] {
+  width: 34px;
+  height: 34px;
+  color: color-mix(in srgb, var(--color-ink) 82%, transparent);
+  background-color: var(--g-tint-quiet);
+  background-image: var(--g-sheen);
+  box-shadow: var(--g-rims);
+  transition: scale .2s var(--m-ease-release), background-color .15s ease;
+}
+.dusk-mobile [data-mobile-chat] [data-composer-plus] svg { width: 19px; height: 19px; }
+/* the discs inside the capsule draw at 34px; the coarse-pointer hit area keeps each at 44 */
+.dusk-mobile [data-mobile-chat] [data-grok-inset] [data-tour="composer"] button:not([role="menuitem"]):is([data-composer-send], [data-voice-mic], [data-composer-stop], :has(> [data-composer-plus])) {
+  width: 34px; height: 34px; min-width: 34px; min-height: 34px;
+}
+.dusk-mobile [data-mobile-chat] :active > [data-composer-plus] { scale: .92; background-color: var(--g-tint-press); transition-duration: .16s, .15s; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] { gap: 6px; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-voice-mic="start"] {
+  background-color: var(--g-tint-quiet);
+  background-image: var(--g-sheen);
+  box-shadow: var(--g-rims);
+  color: var(--color-ink-secondary);
+}
+
+/* under the composer the transcript dims into the home indicator; it rides the keyboard with the dock */
+.dusk-mobile [data-mobile-chat] [data-grok-inset]::before {
+  content: "";
+  position: absolute;
+  inset: -20px 0 calc(-1 * var(--m-safe-bottom)) 0;
+  pointer-events: none;
+  background: linear-gradient(to top, color-mix(in srgb, var(--g-edge) 80%, transparent) var(--m-safe-bottom), color-mix(in srgb, var(--g-edge) 40%, transparent) 55%, transparent);
+  -webkit-mask-image: linear-gradient(to top, #000 50%, transparent);
+  mask-image: linear-gradient(to top, #000 50%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+/* chrome that appears on its own (a status pill) settles in with the release spring */
+@keyframes m-pop { from { opacity: 0; scale: .9; } }
+@keyframes m-fade { from { opacity: 0; } }
+.dusk-mobile .m-pop { animation: m-pop .32s var(--m-ease-release) both; }
+@media (prefers-reduced-motion: reduce) {
+  .dusk-mobile .m-pop { animation: m-fade .2s ease-out both; }
+}
+
+/* send is tinted glass in the accent: it springs in with the first character and lifts off on send */
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send]:not(:disabled),
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-voice-mic="send"] {
+  background-color: color-mix(in oklab, var(--color-accent) 86%, black) !important;
+  background-image: linear-gradient(180deg, rgb(255 255 255 / .2), rgb(255 255 255 / 0) 55%);
+  color: #fafafa !important;
+  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / .38), inset 0 -1px 0 0 rgb(0 0 0 / .14), inset 0 0 0 .5px rgb(255 255 255 / .12);
+}
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] { animation: m-pop .34s var(--m-ease-release) both; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]) { transition: scale .2s var(--m-ease-release), background-color .15s ease; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active:not(:disabled) { scale: .9; transition-duration: .14s, .15s; }
+@media (prefers-reduced-motion: reduce) {
+  .dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] { animation: m-fade .2s ease-out both; }
+  .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active { scale: 1; }
+}
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic="send"]) svg { width: 18px; height: 18px; stroke-width: 2.5; }
+
+/* a question waiting in the chat edges in one hairline, like the glass around it */
+.dusk-mobile [data-mobile-chat] [data-ask-card="pending"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 9%, transparent); }
