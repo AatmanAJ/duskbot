@@ -138,3 +138,21 @@ html[data-mobile-app], html[data-mobile-app] body { overflow: hidden; overscroll
 @media (prefers-reduced-motion: reduce) {
   .dusk-mobile [data-chat-bubble][data-sending], .dusk-mobile [data-chat-bubble][data-sending]::after { animation-duration: .01s; }
 }
+
+/* a message's actions, brought up by a tap or long press, rise as one raised pill out of the bubble's side */
+.dusk-mobile [data-mobile-chat] [data-testid="message-actions"] {
+  padding: 2px 4px;
+  border-radius: 9999px;
+  background-color: var(--color-composer);
+  box-shadow: 0 6px 18px -4px rgb(28 28 28 / .16), 0 1px 3px rgb(28 28 28 / .08);
+  transform-origin: left center;
+  scale: .9;
+  transition: opacity .16s var(--m-ease-out), scale .26s cubic-bezier(.3, 1.12, .4, 1);
+}
+.dusk-mobile [data-mobile-chat] [data-testid="message-actions"].flex-row-reverse { transform-origin: right center; }
+.dusk-mobile [data-mobile-chat] [data-testid="message-actions"][data-shown] { scale: 1; }
+.dusk-mobile [data-mobile-chat] [data-testid="message-actions"] > button svg { width: 18px; height: 18px; }
+[data-skin="grok-dark"] .dusk-mobile [data-mobile-chat] [data-testid="message-actions"] { box-shadow: 0 6px 18px -4px rgb(0 0 0 / .55); }
+@media (prefers-reduced-motion: reduce) {
+  .dusk-mobile [data-mobile-chat] [data-testid="message-actions"] { scale: 1; }
+}
