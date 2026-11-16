@@ -347,7 +347,7 @@ export function SettingsModal() {
                     onClick={() => go(entry.sections.find(has)!)}
                     className="settings-nav-item"
                   >
-                    <SettingGlyph name={RAIL_GLYPH[entry.id]} size={phone ? 24 : 18} className="-mx-px" />
+                    <SettingGlyph name={RAIL_GLYPH[entry.id]} size={phone ? 24 : 18} className="-mx-px" mono />
                     <span>{t(entry.labelKey)}</span>
                     <Icon name="chevron-right" size={14} className="settings-nav-chevron" />
                   </button>

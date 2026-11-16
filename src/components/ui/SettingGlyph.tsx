@@ -454,8 +454,9 @@ function runs(rows: readonly string[], ink: string) {
 
 const DRAWN = Object.fromEntries(Object.entries(GLYPHS).map(([name, rows]) => [name, { line: runs(rows, "#"), fill: runs(inside(rows), "o") }])) as Record<SettingGlyphName, { line: ReturnType<typeof runs>; fill: ReturnType<typeof runs> }>;
 
-export function SettingGlyph({ name, size = 24, className }: { name: SettingGlyphName; size?: number; className?: string }) {
-  const hue = HUES[HUE[name]];
+/** `mono`: the same pixel shape in the text's own ink, no colour (the Settings rail) */
+export function SettingGlyph({ name, size = 24, className, mono = false }: { name: SettingGlyphName; size?: number; className?: string; mono?: boolean }) {
+  const hue = mono ? { line: "currentColor", fill: "transparent" } : HUES[HUE[name]];
   return (
     <svg aria-hidden="true" data-setting-glyph={name} data-glyph-hue={HUE[name]} width={size} height={size} viewBox="0 0 12 12" shapeRendering="crispEdges" className={cn("setting-glyph shrink-0", className)}>
       {DRAWN[name].fill.map((run) => <rect key={`f${run.x}-${run.y}`} x={run.x} y={run.y} width={run.w} height={1} fill={hue.fill} />)}
