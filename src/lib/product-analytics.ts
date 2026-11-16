@@ -254,7 +254,8 @@ function listen(): void {
     void flush();
   });
   window.addEventListener("pageshow", () => { closed = false; });
-  window.addEventListener("error", () => error("window", "error"));
+  // the browser's ResizeObserver loop notice is not a failure: nothing broke and nothing is lost
+  window.addEventListener("error", event => { if (!/ResizeObserver loop/.test(event.message ?? "")) error("window", "error"); });
   window.addEventListener("unhandledrejection", () => error("window", "rejection"));
   window.addEventListener("storage", event => { if (event.key === "dusk-usage-analytics") usageAnalyticsEnabled(); });
 }
