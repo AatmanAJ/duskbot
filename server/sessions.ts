@@ -10,7 +10,8 @@ import { hasTokenPrefix } from "../electron/legacy-names.mjs";
 export type Scope = "admin" | "client";
 export const SCOPES: readonly Scope[] = ["admin", "client"];
 
-export const PAIRING_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+// letters only (no I or O), so a phone types it on one keyboard without switching to numbers
+export const PAIRING_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 export const PAIRING_CODE_LENGTH = 12;
 export const PAIRING_CODE_TTL_MS = 5 * 60_000;
 /** Not clamped: an invalid value falls back to the default, so a typo never becomes a policy. */
