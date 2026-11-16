@@ -80,7 +80,7 @@ const title = (html: string) => html.match(/<h2 id="[^"]*" class="settings-pane-
 describe("Settings, drawn as Grok Bot's", () => {
   it("rails Grok's panes with Models, then Advanced features last, and no Bots pane beside the bot panel", () => {
     const html = open("general");
-    expect(panes(html)).toEqual(["general", "voice", "computer", "vault", "models", "texting", "usage", "updates", "advanced"]);
+    expect(panes(html)).toEqual(["general", "voice", "computer", "texting", "vault", "models", "usage", "updates", "advanced"]);
     expect(html).toContain('data-icon-name="vault"');
     expect(html).toContain('data-icon-name="chart-bars"');
     expect(html).toContain('data-icon-name="settings-gear"');
@@ -176,7 +176,7 @@ describe("Settings, drawn as Grok Bot's", () => {
     expect(markers(open("companion"))).not.toContain("pairing");
     // a plain build (production sets no flag) keeps Phone, so a browser user on a cloud can reach the code
     vi.stubEnv("VITE_DUSK_PHONE_APP", "");
-    expect(panes(open("general"))).toEqual(["general", "voice", "computer", "vault", "models", "texting", "usage", "updates", "advanced"]);
+    expect(panes(open("general"))).toEqual(["general", "voice", "computer", "texting", "vault", "models", "usage", "updates", "advanced"]);
     expect(current(open("companion"))).toBe("texting");
     const groups = [...open("general").matchAll(/data-settings-rail-group="([^"]+)" class="settings-nav-group"><p aria-hidden="true" class="settings-nav-label">([^<]+)</g)].map((match) => `${match[1]}:${match[2]}`);
     expect(groups).toEqual(["you:You", "bots:Your bots", "app:This app"]);

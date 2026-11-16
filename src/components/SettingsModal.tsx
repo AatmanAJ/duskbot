@@ -43,7 +43,7 @@ const REMOTE_SECTIONS: readonly AppSettingsSection[] = ["appearance", "companion
 
 const RAIL_GROUPS: ReadonlyArray<{ id: string; labelKey: LocaleKey; panes: readonly SettingsPane[] }> = [
   { id: "you", labelKey: "settings.rail.you", panes: ["general", "voice"] },
-  { id: "bots", labelKey: "settings.rail.yourBots", panes: ["computer", "permissions", "vault", "models", "texting", "bots"] },
+  { id: "bots", labelKey: "settings.rail.yourBots", panes: ["computer", "texting", "permissions", "vault", "models", "bots"] },
   { id: "app", labelKey: "settings.rail.thisApp", panes: ["usage", "updates", "advanced"] },
 ];
 
