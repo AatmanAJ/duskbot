@@ -611,14 +611,16 @@ export function Composer({
   // fading ghost of it over Send
   // ...except after Stop: the square fades out over the mic coming back, as Send's arrow does
   // ...and after a held send lets go, the arrow fades out over whatever comes back; the press itself changes no glyph
+  // ...and the mic turns into Stop in place: the round button holds its spot and only its glyph changes
   if (glyphs.shape !== glyphShape) {
     setGlyphs(slotGlyph === glyphs.glyph
       ? { ...glyphs, shape: glyphShape, held }
-      : { shape: glyphShape, swapped: (slotGlyph !== "mic" && glyphs.glyph !== "mic") || glyphs.glyph === "stop" || glyphs.held, glyph: slotGlyph, from: glyphs.glyph, swaps: glyphs.swaps + 1, held, fromHeld: glyphs.held });
+      : { shape: glyphShape, swapped: (slotGlyph !== "mic" && glyphs.glyph !== "mic") || glyphs.glyph === "stop" || slotGlyph === "stop" || glyphs.held, glyph: slotGlyph, from: glyphs.glyph, swaps: glyphs.swaps + 1, held, fromHeld: glyphs.held });
   }
   // the mic at the end of the bar and the small one beside Send are two buttons, so neither slides across when the field
   // fills or empties (only Send or the reserved spot takes a place); focus on the old one carries to the new
-  const micPlace = filled ? "beside" : "end";
+  // beside a working bot's Stop the small mic springs in where the spacer was, so it mounts fresh there too
+  const micPlace = filled ? "beside" : stopInSlot && !singleRow ? "stop" : "end";
   const micFocused = useRef(false);
   useLayoutEffect(() => {
     if (micFocused.current && document.activeElement !== micButtonRef.current) micButtonRef.current?.focus({ preventScroll: true });
@@ -1127,13 +1129,13 @@ export function Composer({
               "flex shrink-0 items-center justify-center rounded-full",
               singleRow ? "size-10 bg-ink text-app"
                 : !simpleDock ? "size-8 text-ink-secondary hover:bg-raised hover:text-ink max-md:size-10"
-                : stopInSlot ? cn("composer-press size-7", slot.button.className)
+                : stopInSlot ? cn("composer-press size-7 order-last", slot.button.className)
                 : SIMPLE_CONTROL,
             )}
             style={stopInSlot ? slot.button.style : undefined}
             title={t("chat.stop")}
           >
-            <span aria-hidden className={cn("block rounded-[2.5px] bg-current", simpleDock ? "size-[10px]" : "size-[12px]", stopInSlot && "composer-glyph")} />
+            <span aria-hidden className={cn("block rounded-[2.5px] bg-current", simpleDock ? "size-[10px]" : "size-[12px]", stopInSlot && "composer-glyph composer-stop-glyph")} />
           </button>
         )}
         {!locked && recording && (
@@ -1168,6 +1170,7 @@ export function Composer({
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
               simpleDock ? "size-7" : "size-8 max-md:size-10",
+              micPlace === "stop" && "composer-mic-in",
               recording
                 ? "composer-press bg-ink text-app hover:bg-[color-mix(in_srgb,var(--color-ink)_88.5%,var(--color-menu))] disabled:opacity-40"
                 : micInSlot ? singleRow ? "composer-press bg-ink text-app hover:opacity-90" : "composer-press hover:brightness-[0.88]"
@@ -1187,6 +1190,11 @@ export function Composer({
             menu={held ? undefined : followUpFor(false) && { choices: followUpChoices(followUpDefault, canSteer), name: busyName, sendKey: sendLabel, alternateKey: alternateSendLabel(sendKey) }} />
           )}
           {ghostGlyph && <SlotGlyphGhost key={glyphs.swaps} glyph={ghostGlyph} ink={slot.ink} />}
+          {ghostGlyph === "stop" && !singleRow && (
+            <span aria-hidden="true" data-composer-mic-ghost key={`mic-${glyphs.swaps}`} className={cn(SIMPLE_CONTROL, "composer-mic-out pointer-events-none absolute bottom-0 right-9 flex items-center justify-center")}>
+              <Icon name="mic" variant="filled" size={16} />
+            </span>
+          )}
           </div>
         </div>
         </div>

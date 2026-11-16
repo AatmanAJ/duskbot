@@ -252,6 +252,9 @@ describe("the Simple composer in a bot chat", () => {
     expect(slot.getAttribute("aria-label")).toBe("Stop this turn");
     expectBotButton(slot, "purple");
     expect(fixture.call).toBeNull();
+    // the round button holds its spot at the end, and the small mic springs in before it
+    expect(slot.className).toContain("order-last");
+    expect(slot.parentElement!.querySelector('[data-voice-mic="start"]')!.className).toContain("composer-mic-in");
     click(slot);
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "interrupt", botId: "atlas", threadId: "atlas-thread" });
 
