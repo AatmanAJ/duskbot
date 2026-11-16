@@ -158,7 +158,8 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     if (!Number.isInteger(tz) || tz < -900 || tz > 900) throw bad();
     const insights = { previousVisitors: aligned(series(visits, p, from - span, from, scoped, identity).visitors, chart.starts.length),
       visitors: newVsReturning(visits, from, to, scoped), hours: peakHours(visits, from, to, tz, scoped) };
-    return { from, to, now: now(), filters, current, previous, surfaces, marks, online: live, series: chart, insights, cards, revenue, notes: await sink.notes(from - span, to),
+    // payments are live when the server takes live money, sold or not; before the first sale the chart says no sales
+    return { from, to, now: now(), filters, current, previous, surfaces, marks, online: live, series: chart, insights, cards, revenue: { ...revenue, live: revenue.live || serverMode() === "live" }, notes: await sink.notes(from - span, to),
       tracked: visits.length > 0, crawlers: { total: crawls.length, bot: count(crawls.map(c => c.bot)), page: count(crawls.map(c => c.path)), kind: count(crawls.map(c => c.kind)) } };
   }
 
