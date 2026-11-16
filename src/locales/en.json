@@ -9223,5 +9223,13 @@
   "models.picker.other": "Other providers",
   "models.picker.searching": "Searching other providers…",
   "models.picker.connectTo": "Connect {name} to use this model",
-  "models.picker.searchAll": "Search all models"
+  "models.picker.searchAll": "Search all models",
+  "helperIntro.helloNamed": "Hey {person}! I'm {name}. I'm new here.",
+  "helperIntro.carried": "I brought over what you told me about yourself on your computer.",
+  "funnel.welcome.cloud": "Welcome to your cloud",
+  "funnel.welcome.cloudNamed": "Welcome to your cloud, {name}",
+  "funnel.welcome.cloudSub": "Your bots keep working here, even while your computer sleeps. A couple of quick things and you're set.",
+  "funnel.ai.subComputer": "You use {ais} on your computer. Sign in here too, since each computer keeps its own sign-ins.",
+  "funnel.ai.onComputer": "On your computer",
+  "funnel.cloudBring.title": "Bring your bots along"
 }

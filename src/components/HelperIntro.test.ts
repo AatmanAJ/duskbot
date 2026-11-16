@@ -122,6 +122,13 @@ describe("what Dusk says first", () => {
     expect(introLines({ name: "Dusk", chief: true, team: "Acme" })[1]).toBe(`${said[1]} On Acme, I'm here for you and look after your own bots.`);
   });
 
+  it("on a cloud set up from the computer: the Chief greets the person by name and says what came along", () => {
+    const lines = introLines({ name: "Dusk", chief: true, person: "Ada", fromComputer: true, carried: true });
+    expect(lines[0]).toBe("Hey Ada! I'm Dusk. I'm new here.");
+    expect(lines[1]).toMatch(/I brought over what you told me about yourself on your computer\.$/);
+    expect(introLines({ name: "Dusk", chief: true, fromComputer: true })[0]).toBe("Hey! I'm Dusk. I'm new here.");
+  });
+
   it("keeps a helper's lines for a Dusk that is not the Chief", () => {
     expect(introLines({ name: "Dusk", chief: false })[0]).toBe("Hi! I'm Dusk, your helper for everything here.");
     expect(introLines({ name: "Dusk", chief: false, person: "Ada" })[0]).toBe("Hi Ada! I'm Dusk, your helper for everything here.");

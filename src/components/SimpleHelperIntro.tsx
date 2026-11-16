@@ -9,6 +9,8 @@ import { api, useStore, type Bot, type InstanceInfo, type Message } from "@/stat
 import { useTeamPeople, type TeamPeople } from "@/state/team-people";
 import { freeFallback } from "../../shared/ai-ranking";
 import { greetingName } from "../../shared/greeting-name";
+import { CLOUD_FROM_COMPUTER } from "../../shared/cloud-hints";
+import { hintSeen } from "@/lib/onboarding";
 import { followupText, type HelperFollowupFacts } from "../../shared/helper-followup";
 import { BotAvatar } from "./Avatar";
 import { joinedCorners, SIMPLE_BOT_BUBBLE, SIMPLE_BUBBLE_MAX } from "./chat-bubble";
@@ -29,12 +31,15 @@ const DELAYS = [INTRO_TIMING.first, INTRO_TIMING.line, INTRO_TIMING.line, INTRO_
 
 /** Dusk's three lines: who it is, what it does here, and that it is looking around. A Dusk that is not the Chief
  * keeps its helper's lines; a Team Cloud member's leaves their day to the team's Chief. */
-export function introLines(input: { name: string; chief: boolean; person?: string; team?: string }): string[] {
+/** `fromComputer`: a cloud the desktop app set up, where the Chief greets the person by the name it brought along;
+ * `carried`: what they told dusk bot there about themselves came too. */
+export function introLines(input: { name: string; chief: boolean; person?: string; team?: string; fromComputer?: boolean; carried?: boolean }): string[] {
   const team = input.team ? t("helperIntro.team", { team: input.team }) : "";
+  const carried = input.carried ? t("helperIntro.carried") : "";
   const lead = input.chief ? t("helperIntro.lead.chiefOfStaff") : input.team ? t("helperIntro.lead.member") : t("helperIntro.lead.helper");
-  const hello = input.chief ? t("helperIntro.hello", { name: input.name })
+  const hello = input.chief ? (input.person && input.fromComputer ? t("helperIntro.helloNamed", { name: input.name, person: input.person }) : t("helperIntro.hello", { name: input.name }))
     : input.person ? t("helperIntro.hi.helperNamed", { name: input.name, person: input.person }) : t("helperIntro.hi.helper", { name: input.name });
-  return [hello, [lead, team].filter(Boolean).join(" "), t("helperIntro.lookingAround")];
+  return [hello, [lead, team, carried].filter(Boolean).join(" "), t("helperIntro.lookingAround")];
 }
 
 /** The follow-up in the viewer's language. */
@@ -124,7 +129,9 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
   const bot = state.bots.find((candidate) => candidate.id === botId);
   const team = bot?.defaultBot?.person ? state.config?.team?.name : undefined;
   const person = greetingName(state.config?.profile?.name) || undefined;
-  const lines = introLines({ name: bot?.name ?? DEFAULT_BOT_NAME, chief: Boolean(bot?.chiefOfStaff), person, team });
+  const fromComputer = hintSeen(state.config?.onboarding, CLOUD_FROM_COMPUTER);
+  const carried = fromComputer && Boolean(state.config?.profile?.aboutMe?.trim());
+  const lines = introLines({ name: bot?.name ?? DEFAULT_BOT_NAME, chief: Boolean(bot?.chiefOfStaff), person, team, fromComputer, carried });
   const look = useLookAround(!answered);
   const ai = thinksWith(bot, state.instances);
   const connects = whoConnectsAi(useTeamPeople());

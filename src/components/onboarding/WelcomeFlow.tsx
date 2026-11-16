@@ -4,9 +4,10 @@ import { openExternalLink } from "@/lib/app-links";
 import { phoneAppEnabled } from "@/lib/feature-flags";
 import { cn } from "@/lib/cn";
 import { chiefFor, chiefStepFits, createChiefPatch, myDefaultBot, stageIntro, useViewerEmail } from "@/lib/default-bot";
-import { completionPatch, DEFAULT_ADMIN_ORIGIN, firstRunPatch, markWelcomeFinished, resumeBeat, showWelcome, type BeatId } from "@/lib/onboarding";
+import { completionPatch, computerAiIds, DEFAULT_ADMIN_ORIGIN, firstRunPatch, markWelcomeFinished, resumeBeat, showWelcome, type BeatId } from "@/lib/onboarding";
 import { clearWelcomeDraft, readWelcomeDraft, saveWelcomeDraft } from "@/lib/welcome-draft";
 import { looksLikeNotes } from "@/lib/assistant-notes";
+import { greetingName } from "../../../shared/greeting-name";
 import { macPermissionsBridge, permissionsMissing, type MacPermissionStatus } from "@/lib/mac-permissions";
 import { openPlaceSetup, usePlaceSetupOpen } from "@/lib/place-setup";
 import { localSetupImport } from "@/lib/setup-import";
@@ -18,6 +19,7 @@ import { AccountStep } from "./AccountStep";
 import { AiStep } from "./AiStep";
 import { BringStatus, BringStep } from "./BringStep";
 import { CheckoutStep, useCloudTile } from "./CheckoutStep";
+import { CloudBringStep, useCloudBringOffered } from "./CloudBringStep";
 import { funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
 import { funnelAccount, type FunnelAccountState } from "./funnel-account";
 import { FunnelBar, PhoneStep, PlaceStep, WelcomeStep } from "./FunnelSteps";
@@ -77,11 +79,14 @@ export function WelcomeFlow({
   replay = false,
   initialBeat,
   embedded = false,
+  cloudHome: onCloud = false,
 }: {
   onDone: (botId: string | null) => void;
   replay?: boolean;
   initialBeat?: BeatId;
   embedded?: boolean;
+  /** the person's own cloud, which runs this first run when the desktop app that set it up opened it */
+  cloudHome?: boolean;
 }) {
   const { state, dispatch } = useStore();
   const maus = myDefaultBot(state.bots, useViewerEmail());
@@ -118,6 +123,8 @@ export function WelcomeFlow({
 
   // the bring step is the prompt for AIs online; Grok bot's bots on this computer are looked for from the welcome on, in
   // the background, so the step can name them. What else this computer holds waits in Settings' import page.
+  const cloudHome = !embedded && onCloud;
+  const cloudBring = useCloudBringOffered(cloudHome && !replay);
   const offersMove = !replay && desktop && localSetupImport(state.config?.cloudHome === true);
   const move = useBotMove({ look: offersMove, downloads: false, ms: FIRST_RUN_LOOK_MS });
   // the Mac's permissions: read once, so the step stays put while the person grants them; offered until that read says
@@ -137,7 +144,7 @@ export function WelcomeFlow({
   // requires one
   const accountStep = Boolean(account) && !firstKnown.current?.signedIn;
   const stepsFor = (picked: FunnelPath | null) => funnelSteps({ account: accountStep, desktop, bring: offersMove,
-    path: picked, hello: window.duskDesktop?.remoteClient?.active !== true, phone: phoneAppEnabled(), permissions });
+    path: picked, hello: window.duskDesktop?.remoteClient?.active !== true, phone: phoneAppEnabled(), permissions, cloudBring });
   const steps = stepsFor(path);
 
   const [at, setAt] = useState<FunnelStep>(() => resumeBeat(steps, saved));
@@ -188,13 +195,13 @@ export function WelcomeFlow({
       if (keepsDraft) clearWelcomeDraft();
       onDone(botId);
       try {
-        const patch = replay ? completionPatch() : firstRunPatch(record.current, new Date());
+        const patch = replay ? completionPatch() : firstRunPatch(record.current, new Date(), { cloudHome });
         const config = await api("/api/config", { method: "PUT", body: JSON.stringify(patch), signal: AbortSignal.timeout(10_000) });
         dispatch({ type: "configStatus", config });
       } catch {
       }
     },
-    [at, path, dispatch, onDone, replay, embedded, keepsDraft],
+    [at, path, dispatch, onDone, replay, embedded, keepsDraft, cloudHome],
   );
 
   // where it fits, Dusk becomes the Chief of Staff and greets in its chat, with no screen to ask
@@ -280,7 +287,7 @@ export function WelcomeFlow({
   let body: ReactNode;
   switch (at) {
     case "welcome":
-      body = <WelcomeStep onStart={next} />;
+      body = <WelcomeStep onStart={next} cloud={cloudHome ? { name: greetingName(state.config?.profile?.name), picture: state.config?.profile?.avatarUrl || undefined } : undefined} />;
       break;
     case "account":
       body = account ? <AccountStep account={account} known={known}
@@ -295,10 +302,10 @@ export function WelcomeFlow({
       body = <CheckoutStep start={checkoutStart} onPaid={cloudPaid} onMac={toMac} />;
       break;
     case "ai":
-      body = <AiStep tested={tested} cloud={cloud} auto={from === "next"} onNext={(how) => { track("onboarding_ai", { action: how }); next(); }} />;
+      body = <AiStep tested={tested} cloud={cloud} auto={from === "next"} computerAis={cloudHome ? computerAiIds(state.config?.onboarding) : []} onNext={(how) => { track("onboarding_ai", { action: how }); next(); }} />;
       break;
     case "bring":
-      body = <BringStep grokWaiting={move.plan?.grokWaiting ?? []} onNext={next} />;
+      body = cloudHome ? <CloudBringStep onNext={next} /> : <BringStep grokWaiting={move.plan?.grokWaiting ?? []} onNext={next} />;
       break;
     case "phone":
       body = <PhoneStep onNext={next} />;

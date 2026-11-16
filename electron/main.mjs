@@ -2090,8 +2090,8 @@ async function connectCloudHome(open = null) {
   void welcomedOnCloud();
   return client.state();
 }
-/** one welcome only: the person met dusk bot here, so My Cloud opens on its chat, not on a second welcome. Once the window
- * shows the cloud (a new one can take minutes to load the first time), its own session marks the record once. */
+/** A new cloud's first run starts from what this computer knows. Once the window shows the cloud (a new one can take
+ * minutes to load the first time), its own session carries it once. */
 const welcomedClouds = new Set();
 async function welcomedOnCloud() {
   const origin = homeWindow.cloudOrigin() ?? cloudAccount?.homeTarget()?.origin ?? null;
@@ -2102,12 +2102,10 @@ async function welcomedOnCloud() {
     if (waited >= 6 * 60_000) { welcomedClouds.delete(origin); return; }
     await new Promise(done => setTimeout(done, 3_000));
   }
-  const changed = await carryWelcomeToCloud({ origin, fetch: (...args) => session.defaultSession.fetch(...args),
-    local: async () => { const response = await localServerRequest("/api/config", { signal: AbortSignal.timeout(10_000) }); return response.ok ? response.json() : null; }, log: slog });
-  // the page itself ends its welcome before it shows (home-window.mjs WELCOMED_ROUTE); this also carries the first run as met,
-  // and loads again a page from an older cloud that still shows the welcome
-  slog(`cloud welcome: ${changed ? "marked done here" : "nothing to mark"}`);
+  const changed = await carryWelcomeToCloud({ origin, fetch: (...args) => session.defaultSession.fetch(...args), localRequest: localServerRequest, log: slog });
+  slog(`cloud welcome: ${changed ? "carried from this computer" : "nothing to carry"}`);
   if (!changed || !showsCloud()) return;
+  // a page from an older cloud still showing its own welcome
   const still = await mainWindow.webContents.executeJavaScript(`Boolean(document.querySelector("[data-welcome-action]"))`).catch(() => false);
   if (still && showsCloud()) mainWindow.webContents.reload();
 }

@@ -21,6 +21,8 @@ export interface FunnelFacts {
   hello?: boolean;
   /** the phone app is offered (phoneAppEnabled) */
   phone?: boolean;
+  /** a cloud the desktop app set up, with that computer's bots or chats to move here */
+  cloudBring?: boolean;
   /** this Mac still lacks a permission a bot needs to use it (Accessibility, Screen Recording, Notifications) */
   permissions?: boolean;
 }
@@ -35,7 +37,7 @@ export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
     if (step === "place") return facts.desktop;
     if (step === "account") return facts.account;
     if (step === "checkout") return cloud;
-    if (step === "bring") return facts.desktop && Boolean(facts.bring) && !cloud;
+    if (step === "bring") return (facts.desktop && Boolean(facts.bring) && !cloud) || Boolean(facts.cloudBring);
     if (step === "phone") return Boolean(facts.phone) && facts.desktop && !cloud;
     if (step === "making") return cloud;
     if (step === "permissions") return facts.desktop && Boolean(facts.permissions) && !cloud;

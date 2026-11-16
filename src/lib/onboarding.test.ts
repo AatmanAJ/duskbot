@@ -3,8 +3,10 @@ import {
   aiChoices,
   aiWorks,
   BEAT_ORDER,
+  cloudFirstRunDue,
   cloudSignInDue,
   companyModelCount,
+  computerAiIds,
   completionPatch,
   EMPTY_ONBOARDING,
   firstRunPatch,
@@ -112,6 +114,33 @@ describe("first run on a dusk bot Cloud home", () => {
       expect(cloudSignInDue(viewer, { connected: true, instances: signedOut }, ready)).toBe(false);
       expect(welcomeDue({ onboarding: EMPTY_ONBOARDING }, { remoteClient: false, legacyDone: false, ...viewer })).toBe(true);
     }
+  });
+});
+
+describe("first run on a cloud the desktop app set up", () => {
+  const cloud = { remoteClient: false, legacyDone: false, canSave: true, cloudHome: true };
+  const record = (hintsSeen: string[], extra: Partial<typeof EMPTY_ONBOARDING> = {}) => ({ ...EMPTY_ONBOARDING, hintsSeen, ...extra });
+
+  it("runs once the app opened it, before and after that computer's record arrives, until it ends there", () => {
+    expect(welcomeDue({ onboarding: EMPTY_ONBOARDING }, { ...cloud, fromApp: true })).toBe(true);
+    expect(welcomeDue({}, { ...cloud, fromApp: true })).toBe(true);
+    expect(welcomeDue({ onboarding: record(["cloud-welcome-done", "cloud-from-computer"]) }, cloud)).toBe(true);
+    expect(welcomeDue({ onboarding: record(["cloud-from-computer", "cloud-first-run-done"]) }, { ...cloud, fromApp: true })).toBe(false);
+  });
+
+  it("leaves a cloud already in use, or opened in a browser, to its own welcome", () => {
+    expect(welcomeDue({ onboarding: EMPTY_ONBOARDING }, cloud)).toBe(false);
+    expect(welcomeDue({ onboarding: record(["cloud-welcome-done"], { completedAt: "2026-11-14T00:00:00.000Z", version: WELCOME_VERSION }) }, { ...cloud, fromApp: true })).toBe(false);
+    expect(cloudFirstRunDue(record(["cloud-setup-hidden"]), true)).toBe(false);
+    expect(cloudFirstRunDue(record([], { firstTurnAt: "2026-11-14T00:00:00.000Z" }), true)).toBe(false);
+    expect(welcomeDue({ onboarding: record(["cloud-from-computer"]) }, { ...cloud, canSave: false })).toBe(false);
+  });
+
+  it("ends with its own mark, and reads the AIs that computer uses", () => {
+    const now = new Date("2026-11-17T00:00:00.000Z");
+    expect(firstRunPatch(record(["cloud-from-computer"]), now, { cloudHome: true }).onboarding.hintsSeen).toEqual(["cloud-from-computer", MET_CHIEF_HINT, "cloud-first-run-done"]);
+    expect(computerAiIds(record(["cloud-from-computer", "computer-ai:claude", "computer-ai:codex"]))).toEqual(["claude", "codex"]);
+    expect(computerAiIds(undefined)).toEqual([]);
   });
 });
 

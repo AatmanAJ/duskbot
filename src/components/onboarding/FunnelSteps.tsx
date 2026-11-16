@@ -140,14 +140,18 @@ export function ImproveSwitch() {
   );
 }
 
-export function WelcomeStep({ onStart }: { onStart: () => void }) {
+/** The hello. On a cloud the desktop app set up it greets the person by the name and picture that computer knows. */
+export function WelcomeStep({ onStart, cloud }: { onStart: () => void; cloud?: { name: string; picture?: string } }) {
   const reduced = usePrefersReducedMotion();
+  const art = cloud?.picture
+    ? <img src={cloud.picture} alt="" data-welcome-picture="" className="size-[72px] rounded-full object-cover" />
+    : <MausAvatar color="purple" gradient={BRAND_LILAC} size={72} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />;
   return (
     <div className="flex min-h-full w-full flex-col">
       <StepFrame
-        art={<MausAvatar color="purple" gradient={BRAND_LILAC} size={72} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />}
-        title={t("funnel.welcome.title")}
-        sub={t("funnel.welcome.sub")}
+        art={art}
+        title={cloud ? (cloud.name ? t("funnel.welcome.cloudNamed", { name: cloud.name }) : t("funnel.welcome.cloud")) : t("funnel.welcome.title")}
+        sub={cloud ? t("funnel.welcome.cloudSub") : t("funnel.welcome.sub")}
         footer={<button type="button" data-primary="" data-funnel-start="" autoFocus onClick={onStart} className={PRIMARY}>{t("funnel.welcome.start")}</button>}
       />
     </div>
