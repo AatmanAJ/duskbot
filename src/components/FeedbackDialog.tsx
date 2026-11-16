@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
+import { friendlyError } from "@/lib/plain-error";
 import { cn } from "@/lib/cn";
 import { closeFeedback, FEEDBACK_IMAGE_ACCEPT, FEEDBACK_MAX_IMAGES, feedbackImage, sendFeedback, useFeedbackOpen, type FeedbackImage } from "@/lib/feedback-sheet";
 import { t } from "@/lib/i18n";
@@ -62,7 +63,7 @@ export function FeedbackDialog({ onClose, onSent, send = sendFeedback }: { onClo
       await send(text.trim(), images);
       onSent();
     } catch (failed) {
-      setError(failed instanceof Error && failed.message ? failed.message : t("giveFeedback.failed"));
+      setError(failed instanceof Error && failed.message ? friendlyError(failed) : t("giveFeedback.failed"));
       setSending(false);
     }
   };
