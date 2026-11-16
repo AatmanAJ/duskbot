@@ -290,7 +290,9 @@ export function funnel(input: FunnelInput) {
   const accountSteps = (account: string | null): Array<number | null> => {
     const signup = account ? input.people.signups.get(account) ?? null : null;
     const onb = account ? onboarding.get(account) : undefined;
-    const steps: Array<number | null> = [...ONBOARDING.map(step => onb?.get(step) ?? null), onb?.get("done") ?? null,
+    // an account made in the desktop app opens the web welcome once and then sets up in the app: pairing it counts as onboarded
+    const inApp = account && !onb?.has("done") ? input.paired.get(account) ?? null : null;
+    const steps: Array<number | null> = [...ONBOARDING.map(step => onb?.get(step) ?? inApp), onb?.get("done") ?? inApp,
       account ? input.cloudChosen.get(account) ?? null : null, account ? input.people.paid.get(account) ?? null : null,
       account ? input.paired.get(account) ?? null : null, account ? input.replied.get(account) ?? null : null];
     const back = (window: readonly [number, number]) => signup !== null && returned(signup, days.get(account!), window) ? signup + window[0] * DAY : null;

@@ -92,7 +92,8 @@ function onboarding(events: StoredEvent[], to: number) {
   const times = new Map<string, number[]>(), reached = new Map<string, Set<string>>();
   for (const event of events) {
     if (!event.accountId) continue;
-    if (event.name === "onboarding_done") { const row = per.get(event.accountId); per.set(event.accountId, { last: row?.last ?? "app", at: event.at, done: true }); continue; }
+    // an account made in the desktop app sees the web welcome once, then sets up in the app: pairing it is finishing
+    if (event.name === "onboarding_done" || event.name === "app_paired") { const row = per.get(event.accountId); per.set(event.accountId, { last: row?.last ?? "app", at: event.at, done: true }); continue; }
     if (event.name !== "onboarding_step" || typeof event.props.step !== "string") continue;
     const step = event.props.step;
     (reached.get(step) ?? reached.set(step, new Set()).get(step)!).add(event.accountId);
@@ -144,6 +145,11 @@ function site(events: StoredEvent[]) {
     if (typeof event.props.ms === "number") row.ms.push(event.props.ms);
   }
   const goals = events.filter(event => event.name === "site_goal");
+  // a section the site no longer shows (the waitlist page before launch) has nothing left to fix: only the last day's sections rank
+  const placeOf = (event: StoredEvent) => `${event.ctx?.page ?? "/"}#${typeof event.props.section === "string" ? event.props.section : ""}`;
+  const latest = events.reduce((max, event) => event.name === "site_goal" || event.name === "site_section" ? Math.max(max, event.at) : max, 0);
+  const current = new Set(events.filter(event => event.at > latest - DAY && (event.name === "site_goal" || event.name === "site_section"))
+    .flatMap(event => event.name === "site_section" ? [`${String(event.props.path ?? "/")}#${String(event.props.section)}`, `${String(event.props.path ?? "/")}#`] : [placeOf(event)]));
   const goalOf = (name: string) => goals.filter(event => event.props.goal === name);
   const label = (event: StoredEvent) => [event.props.label, event.props.section].filter(value => typeof value === "string").join(" in ") || null;
   const starts = goalOf("form_start").length, abandons = goalOf("form_abandon").length;
@@ -152,7 +158,8 @@ function site(events: StoredEvent[]) {
       .sort((a, b) => a.path.localeCompare(b.path) || b.seen - a.seen).slice(0, 40),
     clicks: tally(goals.filter(event => event.props.goal !== "js_error" && event.props.goal !== "form_start" && event.props.goal !== "form_abandon" && event.props.goal !== "rage_click"),
       event => `${words(String(event.props.goal))}${label(event) ? `: ${words(label(event)!)}` : ""}`, 25),
-    rage: tally(goalOf("rage_click"), event => words(label(event) ?? "somewhere")),
+    rage: tally(goalOf("rage_click").filter(event => current.size === 0 || current.has(placeOf(event))),
+      event => `${event.props.label ? words(String(event.props.label)) : "empty space"}${event.props.section ? ` in the ${words(String(event.props.section))} section` : ""} of ${event.ctx?.page ?? "/"}`),
     downloads: tally(goalOf("download_click"), event => typeof event.props.value === "string" ? event.props.value : "unknown"),
     forms: { started: starts, abandoned: abandons, joined: goalOf("waitlist_join").length },
     errors: tally(goalOf("js_error"), event => event.ctx?.page ?? "unknown page"),
@@ -192,10 +199,23 @@ function likes(events: StoredEvent[], from: number, to: number) {
   };
 }
 
+const versionOf = (event: StoredEvent) => (event.ctx as { app?: { version?: unknown } } | undefined)?.app?.version;
+const newer = (a: string, b: string) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0); return false; };
 function errors(events: StoredEvent[]) {
-  const appErrors = tally(events.filter(event => event.name === "app_error"), event => `${event.props.kind ?? "unknown"}: ${event.props.code ?? "unknown"}`);
+  const errorEvents = events.filter(event => event.name === "app_error");
+  const appErrors = tally(errorEvents, event => `${event.props.kind ?? "unknown"}: ${event.props.code ?? "unknown"}`);
+  // the newest app anyone opened in the window, and the newest each error was seen on: an error the current app no longer
+  // throws is history, not a fix
+  let latest: string | null = null;
+  for (const event of events) { const v = versionOf(event); if (event.name === "app_open" && typeof v === "string" && /^\d+\.\d+\.\d+$/.test(v) && (!latest || newer(v, latest))) latest = v; }
+  const lastOn = new Map<string, string>();
+  for (const event of errorEvents) {
+    const v = versionOf(event), key = `${event.props.kind ?? "unknown"}: ${event.props.code ?? "unknown"}`, seen = lastOn.get(key);
+    if (typeof v === "string" && /^\d+\.\d+\.\d+$/.test(v) && (!seen || newer(v, seen))) lastOn.set(key, v);
+  }
+  const app = appErrors.map(row => ({ ...row, lastVersion: lastOn.get(row.key) ?? null, latestVersion: latest }));
   const pairing = tally(events.filter(event => event.name === "app_pair_failed"), event => String(event.props.reason ?? "unknown"));
-  return { app: appErrors, pairing };
+  return { app, pairing };
 }
 
 /** the few things most worth fixing, each with the number behind it; weight orders them and is roughly "share of people affected" */
@@ -210,8 +230,16 @@ export function improvements(input: { funnel: FunnelStepIn[]; features: FeatureR
     if (!worst || lost > worst.lost) worst = { prev, step, lost };
   }
   if (worst && worst.lost > 0) out.push({ area: "funnel", title: `${Math.round(worst.lost * 100)}% stop before "${worst.step.label}"`, detail: `${worst.prev.count - worst.step.count} of ${worst.prev.count} who ${worst.prev.label} never got to the next step. the biggest drop in the funnel.`, weight: worst.lost });
-  const topError = [...input.errors.app, ...input.site.errors.map(row => ({ ...row, key: `site error on ${row.key}` }))].sort((a, b) => b.people - a.people || b.count - a.count)[0];
-  if (topError) out.push({ area: "errors", title: `"${topError.key}" is the most common error`, detail: `${topError.count} times, ${topError.people} ${topError.people === 1 ? "person" : "people"}.`, weight: Math.min(1, topError.people / Math.max(1, input.appPeople)) + 0.2 });
+  const isOld = (row: { lastVersion?: string | null; latestVersion?: string | null }) => Boolean(row.lastVersion && row.latestVersion && newer(row.latestVersion, row.lastVersion));
+  const topError = [...input.errors.app, ...input.site.errors.map(row => ({ ...row, key: `site error on ${row.key}` }))]
+    .sort((a, b) => Number(isOld(a)) - Number(isOld(b)) || b.people - a.people || b.count - a.count)[0];
+  if (topError) {
+    const { lastVersion, latestVersion } = topError as { lastVersion?: string | null; latestVersion?: string | null };
+    const old = isOld(topError);
+    out.push({ area: "errors", title: `"${topError.key}" is the most common error`,
+      detail: `${topError.count} times, ${topError.people} ${topError.people === 1 ? "person" : "people"}.${old ? ` last seen on ${lastVersion}, none on ${latestVersion}.` : lastVersion ? ` still seen on ${lastVersion}.` : ""}`,
+      weight: (Math.min(1, topError.people / Math.max(1, input.appPeople)) + 0.2) * (old ? 0.25 : 1) });
+  }
   const lowest = input.feedback.byMoment.find(row => row.count >= MIN_PEOPLE);
   if (lowest && lowest.average < 4) out.push({ area: "rating", title: `people rate "${words(lowest.moment)}" ${lowest.average} out of 5`, detail: `the lowest rated moment, from ${lowest.count} answers.`, weight: (5 - lowest.average) / 4 });
   const dropped = input.features.filter(row => row.people >= MIN_PEOPLE).map(row => ({ row, share: row.triedOnce / row.people })).sort((a, b) => b.share - a.share)[0];
