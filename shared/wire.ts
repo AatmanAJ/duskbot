@@ -2,6 +2,7 @@
  * here is one the server emits in every response and SSE frame that carries
  * the shape. */
 import type { DataBroadcast } from "./data-surface.ts";
+import type { BotPatchFrame, TaskPatchFrame } from "./live-patch.ts";
 import type { ApprovalMode } from "./approval-mode.ts";
 import type { ToolScope } from "./tool-scope.ts";
 import type { CommandAllowlistCandidate } from "./command-allowlist.ts";
@@ -280,6 +281,9 @@ export const helperModelAllowed = (bot: { helperModel?: unknown }): boolean => b
 export interface WireBot extends DefaultBotFields, BotAccessFields {
   waitingForTeammates?: boolean;
   id: string;
+  /** How many changed frames the stream has sent for this bot since the server started: a live patch names the
+   * revision it applies to (shared/live-patch.ts). */
+  rev?: number;
   /** The task selected in the UI; running turns keep their own thread id. */
   threadId: string;
   /** Where a routine without a thread of its own reports. Absent only for a
@@ -988,6 +992,9 @@ export type ServerFrame =
   | { kind: "message.patch"; threadId: string; message: WireMessage }
   | { kind: "thread"; threadId: string; activeLeafId: string }
   | { kind: "bot"; bot: WireBot }
+  /** Protocol 2 only (shared/live-protocol.ts): what changed in a bot the stream already sent. */
+  | BotPatchFrame
+  | TaskPatchFrame
   | { kind: "group"; group: WireGroup }
   | { kind: "notify"; notification: NotificationLogEntry }
   | { kind: "notifications.read"; threadId: string; ids: string[] }

@@ -311,6 +311,8 @@ import { messagePages, pageMessage, pageSize, slimMessage } from "./host/message
 import { createTeammatePrompts } from "./host/teammate-prompts.ts"; import { createDuskOwnChat } from "./host/dusk-own-chat.ts"; import { moveMemoryLayer } from "./memory-move.ts";
 import { createQueuedReason } from "./host/queued-reason.ts";
 import { ReplayBuffer } from "./host/sse-replay.ts";
+import { BotFrameLog, isPatchableBot } from "./live-bot-frames.ts";
+import { LIVE_PROTOCOL_PARAM, liveProtocolOf } from "../shared/live-protocol.ts";
 import {
   mentionedBots,
   roomResponders,
@@ -3060,6 +3062,7 @@ try {
 if (browserCleanupReferencesReconciled) browserCleanup.startPending();
 
 let threadsAwaitingTeammates = (): ReadonlySet<string> => new Set<string>();
+const botFrames = new BotFrameLog();
 let cacheKeepWarmStatus = (_threadId: string): KeepWarmStatus | undefined => undefined;
 /** The thread's live takeover (limitFailovers, set once it exists): what it left and when it goes back. */
 let threadBackup: (task: TaskRecord, model: ModelSelection) => WireTask["backup"] | undefined = () => undefined;
@@ -3081,7 +3084,7 @@ const wireBot = (bot: BotRecord): WireBot => {
     ? { ...rest, approvalMode: "ask" as const, autoApprove: false }
     : { ...rest, approvalMode: approvalModeFor(rest) };
   const awaiting = threadsAwaitingTeammates();
-  return { ...visible, waitingForTeammates: awaiting.has(bot.threadId) && !threadBusy(bot.id, bot.threadId),
+  return { ...visible, rev: botFrames.rev(bot.id), waitingForTeammates: awaiting.has(bot.threadId) && !threadBusy(bot.id, bot.threadId),
     mainThreadId: botMainThread(bot.id),
     avatarUrl: visible.avatarUrl ?? null, ...(tasks ? { tasks: tasks.map((task) => wireTask(task, bot.modelSelection, awaiting)) } : {}) };
 };
@@ -4758,6 +4761,7 @@ store.onChange((change) => {
       break;
     case "bot.deleted":
       sentThreads.delete(change.botId);
+      botFrames.forget(change.botId);
       try { commandAllowlist.clear(change.botId); mcpServersHost.botDeleted(change.botId); }
       catch { console.error("[command-allowlist] Could not remove deleted bot's saved rules."); }
       broadcast({ kind: "bot.deleted", botId: change.botId });
@@ -4840,6 +4844,8 @@ interface SseClient {
   viewer: Viewer;
   seen: StreamSeen;
   ask: AskViewer;
+  /** shared/live-protocol.ts: 2 takes a bot the stream already sent as a patch. */
+  protocol: 1 | 2;
   /** Stops the heartbeat and leaves `sseClients` before ending the response; every way a stream ends goes through it. */
   close: () => void;
 }
@@ -4955,14 +4961,21 @@ function broadcast(payload: Record<string, unknown>, options: { adminOnly?: bool
   sessions.recheckMembership();
   const seq = ++lastSeq;
   const kind = String(payload.kind ?? "");
+  const stamped = kind === "bot" && isPatchableBot(payload.bot) ? botFrames.next(payload.bot) : null;
+  if (stamped) payload = { ...payload, bot: stamped.bot };
   const frame = `id: ${STREAM_ID}:${seq}\ndata: ${JSON.stringify({ ...payload, seq })}\n\n`;
+  const patchFrame = !stamped || "whole" in stamped.delivery ? null : "unchanged" in stamped.delivery ? "" : `id: ${STREAM_ID}:${seq}\ndata: ${JSON.stringify({ ...stamped.delivery.patch, seq })}\n\n`;
   // Members get config as configured-or-not and every bot without its server alias.
   const clientPayload = options.adminOnly ? null : kind === "config" ? configForAccess(payload as ReturnType<typeof configStatus>, false) : memberFramePayload(payload);
   const clientFrame = clientPayload === null ? null : clientPayload === payload ? frame : `id: ${STREAM_ID}:${seq}\ndata: ${JSON.stringify({ ...clientPayload, seq })}\n\n`;
-  replayBuffer.push({ seq, kind, frame, clientFrame, payload, ...(options.person ? { person: options.person } : {}) });
+  replayBuffer.push({ seq, kind, frame, clientFrame, payload, ...(patchFrame !== null ? { patchFrame } : {}), ...(options.person ? { person: options.person } : {}) });
   const ownGroups: OwnGroupFrames = new Map();
   for (const client of Array.from(sseClients)) {
     if (!wants(client, kind) || !teamOwners.reaches(client.ask, payload) || !streamFor(client, options.person)) continue;
+    if (patchFrame !== null && takesPatches(client)) {
+      if (patchFrame && deliverSseFrame(client, kind, patchFrame) === "disconnected") client.close();
+      continue;
+    }
     // Admin-only frames (clientFrame null) never reach members, and a member never falls back to the admin frame.
     const out = CLOUD_TEAM && kind === "config" && clientFrame !== null ? teamConfigFrame(client, seq, payload)
       : memberFrame(client, seq, payload, client.admin ? frame : clientFrame, ownGroups);
@@ -4976,6 +4989,9 @@ function teamConfigFrame(client: SseClient, seq: number, payload: Record<string,
   const own = configForAccess(payload as ReturnType<typeof configStatus>, client.admin, client.person);
   return `id: ${STREAM_ID}:${seq}\ndata: ${JSON.stringify({ ...own, seq })}\n\n`;
 }
+
+/** Patches are the admin's whole view diffed: only a stream that would get that view unchanged may take them. */
+const takesPatches = (client: SseClient) => client.protocol >= 2 && client.admin && !client.person && client.viewer.kind === "all" && !visibleTo(client.viewer).filtersThreads;
 
 const streamFor = (client: SseClient, person: string | undefined) => !person || (client.person !== undefined && personKey(client.person) === person);
 
@@ -13134,6 +13150,7 @@ ROUTES.push(createThreadRoutes({ attached: (mime, bytes) => usageSignal("attachm
   store, userName: userNameFor, sessions, groupUsageReader,
   sessionCookie: SESSION_COOKIE, loopback: LOOPBACK, defaultPage: DEFAULT_PAGE,
   streamCursor: () => `${STREAM_ID}:${lastSeq}`,
+  snapshotRead: () => botFrames.resync(),
   desktopMutationToken: () => desktopMutationToken,
   companionMutationToken: () => companionMutationToken,
   cliOwnerToken: () => cliOwnerToken,
@@ -15871,6 +15888,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         res: out,
         admin: auth.scopes.includes("admin"),
         screens: url.searchParams.get("screens") !== "off",
+        protocol: liveProtocolOf(url.searchParams.get(LIVE_PROTOCOL_PARAM)),
         backpressured: false,
         viewer, ask: teamOwners.viewer(auth),
         seen: viewer.kind === "all" && !visibleNow.filtersThreads ? { bots: new Set(), groups: new Set() } : {
@@ -15908,6 +15926,10 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
       if (resumed) {
         for (const buffered of replayBuffer) {
           if (buffered.seq <= since || !wants(client, buffered.kind) || (buffered.payload && !teamOwners.reaches(client.ask, buffered.payload)) || !streamFor(client, buffered.person)) continue;
+          if (buffered.patchFrame !== undefined && takesPatches(client)) {
+            if (buffered.patchFrame) out.write(buffered.patchFrame);
+            continue;
+          }
           const frame = CLOUD_TEAM && buffered.kind === "config" && buffered.clientFrame !== null && buffered.payload
             ? teamConfigFrame(client, buffered.seq, buffered.payload)
             : buffered.payload
