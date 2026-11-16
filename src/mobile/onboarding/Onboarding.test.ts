@@ -89,7 +89,7 @@ it("leads with scanning your own computer, logging in to a dusk cloud next to it
   expect(signIn?.dataset.entry).toBe("signin");
   expect(code?.dataset.entry).toBe("code");
   expect(scan?.className).toContain("bg-ink ");
-  expect(signIn?.className, "a real choice, never outranking the scan").toContain("bg-ink/[0.05]");
+  expect(signIn?.className, "a real choice, never outranking the scan").toContain("m-glass");
   expect(code?.className).not.toContain("bg-ink");
   expect(entries().map((button) => button.textContent)).toEqual(["Scan a QR code", "Log in to dusk cloud", "Enter a code"]);
   expect(host.textContent).not.toContain("demo");

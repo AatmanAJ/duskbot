@@ -46,7 +46,7 @@ type SheetProps = {
 /** Inside a stack of pages (Settings), a sheet page is pushed in place instead of opening over it: `back` pops it. */
 export const SheetStack = createContext<{ back: () => void } | null>(null);
 
-/** A bottom sheet with Grok's 28pt top corners. It follows the finger down from anywhere whose scroller is at its top,
+/** A bottom sheet of thick glass: full height with 28pt top corners, or floating inside the screen's edge. It follows the finger down from anywhere whose scroller is at its top,
  * rubber-bands up, and on release dismisses or springs back by where the flick would land. Inside a SheetStack it is a
  * page of that stack instead. */
 export function Sheet(props: SheetProps) {
@@ -174,8 +174,9 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
         aria-modal="true"
         aria-label={label ?? (typeof title === "string" ? title : undefined)}
         tabIndex={-1}
+        data-full={full ? "" : undefined}
         className={cn(
-          "mobile-sheet absolute inset-x-0 bottom-0 flex flex-col overflow-hidden rounded-t-[28px] bg-app outline-none",
+          "mobile-sheet absolute inset-x-0 bottom-0 flex flex-col overflow-hidden rounded-t-[28px] outline-none",
           full ? "top-[calc(var(--m-safe-top)+10px)]" : "max-h-[calc(100%-var(--m-safe-top)-10px)]",
         )}
         style={{ y, willChange: moving ? "transform" : undefined }}

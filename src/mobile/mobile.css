@@ -166,7 +166,7 @@ html[data-mobile-app], html[data-mobile-app] body { overflow: hidden; overscroll
 @property --m-rip { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @property --m-rip-a { syntax: "<number>"; inherits: false; initial-value: 0; }
 
-.dusk-mobile, .dusk-mobile-overlay {
+html[data-mobile-app] {
   --g-blur: 14px;
   --g-sat: 210%;
   --g-tint: rgb(255 255 255 / .46);
@@ -182,15 +182,17 @@ html[data-mobile-app], html[data-mobile-app] body { overflow: hidden; overscroll
   --g-rim-lo: rgb(255 255 255 / .7);
   --g-glow: rgb(255 255 255 / .45);
   --g-shadow: 0 12px 32px -12px rgb(30 32 40 / .3), 0 2px 8px -2px rgb(30 32 40 / .12);
+  --g-thick: rgb(250 250 252 / .8);
   --g-edge: var(--color-app);
   --g-rims: inset 0 1px 0 0 var(--g-rim-hi), inset 0 -1px 0 0 var(--g-rim-lo), inset 0 0 0 .5px var(--g-rim), inset 0 0 14px 0 var(--g-glow);
   --m-rip-ink: 20 20 28;
 }
-[data-skin="grok-dark"] :is(.dusk-mobile, .dusk-mobile-overlay) {
+html[data-mobile-app][data-skin="grok-dark"] {
   --g-tint: rgb(58 58 64 / .36);
   --g-tint-press: rgb(88 88 96 / .5);
   --g-tint-quiet: rgb(255 255 255 / .07);
   --g-solid: rgb(38 38 42 / .97);
+  --g-thick: rgb(30 30 34 / .8);
   --g-sheen:
     linear-gradient(180deg, rgb(255 255 255 / .13), rgb(255 255 255 / 0) 50%),
     radial-gradient(130% 80% at 50% 125%, rgb(255 255 255 / .1), transparent 60%),
@@ -202,9 +204,9 @@ html[data-mobile-app], html[data-mobile-app] body { overflow: hidden; overscroll
   --g-shadow: 0 14px 34px -12px rgb(0 0 0 / .75), 0 2px 8px -2px rgb(0 0 0 / .45);
   --m-rip-ink: 255 255 255;
 }
-html[data-os="android"] :is(.dusk-mobile, .dusk-mobile-overlay) { --g-blur: 10px; --g-sat: 180%; }
+html[data-mobile-app][data-os="android"] { --g-blur: 10px; --g-sat: 180%; }
 
-.dusk-mobile .m-glass, .dusk-mobile-overlay .m-glass,
+html[data-mobile-app] .m-glass,
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
   background-color: var(--g-tint);
   background-image: var(--m-rip-layer, linear-gradient(transparent, transparent)), var(--g-sheen);
@@ -214,7 +216,7 @@ html[data-os="android"] :is(.dusk-mobile, .dusk-mobile-overlay) { --g-blur: 10px
   transform: translateZ(0);
 }
 /* inside a sheet the glass sits on the sheet itself: the rim and sheen without the lift */
-.dusk-mobile .m-glass-quiet, .dusk-mobile-overlay .m-glass-quiet {
+html[data-mobile-app] .m-glass-quiet {
   background-color: var(--g-tint-quiet);
   background-image: var(--m-rip-layer, linear-gradient(transparent, transparent)), var(--g-sheen);
   box-shadow: var(--g-rims);
@@ -239,14 +241,14 @@ html[data-os="android"] :is(.dusk-mobile, .dusk-mobile-overlay) { --g-blur: 10px
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .dusk-mobile .m-glass, .dusk-mobile-overlay .m-glass, .dusk-mobile [data-mobile-chat] [data-tour="composer"] { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  html[data-mobile-app] .m-glass, .dusk-mobile [data-mobile-chat] [data-tour="composer"] { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .dusk-mobile .m-edge-top, .dusk-mobile .m-edge-bottom { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .dusk-mobile .m-glass, .dusk-mobile-overlay .m-glass, .dusk-mobile [data-mobile-chat] [data-tour="composer"] { background-color: var(--g-solid); }
+  html[data-mobile-app] .m-glass, .dusk-mobile [data-mobile-chat] [data-tour="composer"] { background-color: var(--g-solid); }
 }
 @media (forced-colors: active) {
-  .dusk-mobile .m-glass, .dusk-mobile-overlay .m-glass { background: Canvas; border: 1px solid CanvasText; }
+  html[data-mobile-app] .m-glass { background: Canvas; border: 1px solid CanvasText; }
 }
 
 /* the composer is one glass pill: a quiet +, the field, the mic and the bot's send button inside it */
@@ -328,3 +330,54 @@ html[data-os="android"] :is(.dusk-mobile, .dusk-mobile-overlay) { --g-blur: 10px
 
 /* a question waiting in the chat edges in one hairline, like the glass around it */
 .dusk-mobile [data-mobile-chat] [data-ask-card="pending"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 9%, transparent); }
+
+/* thick glass: sheets and menus, which carry text of their own, frost harder over what they cover */
+html[data-mobile-app] :is(.m-glass-thick, .mobile-sheet, [data-sidebar-popover-menu], [data-sidebar-popover-submenu]) {
+  background-color: var(--g-thick);
+  background-image: var(--g-sheen);
+  -webkit-backdrop-filter: blur(30px) saturate(var(--g-sat));
+  backdrop-filter: blur(30px) saturate(var(--g-sat));
+  box-shadow: var(--g-rims), var(--g-shadow);
+}
+html[data-mobile-app] :is([data-sidebar-popover-menu], [data-sidebar-popover-submenu]) { border-radius: 22px; border-color: transparent; }
+.dusk-mobile .mobile-sheet { box-shadow: var(--g-rims), 0 -10px 40px -12px rgb(0 0 0 / .3); }
+/* a sheet that hugs its content floats inside the screen's edge, its corners following the screen's */
+.dusk-mobile .mobile-sheet:not([data-full]) { left: 8px; right: 8px; bottom: 8px; border-radius: 34px; }
+html[data-mobile-app][data-os="android"] .dusk-mobile .mobile-sheet:not([data-full]) { border-radius: 28px; }
+.dusk-mobile [data-mobile-chat] [data-testid="message-actions"] {
+  background-color: var(--g-thick);
+  background-image: var(--g-sheen);
+  -webkit-backdrop-filter: blur(24px) saturate(var(--g-sat));
+  backdrop-filter: blur(24px) saturate(var(--g-sat));
+  box-shadow: var(--g-rims), var(--g-shadow);
+}
+@media (prefers-reduced-transparency: reduce) {
+  html[data-mobile-app] :is(.m-glass-thick, .mobile-sheet, [data-sidebar-popover-menu], [data-sidebar-popover-submenu]),
+  .dusk-mobile [data-mobile-chat] [data-testid="message-actions"] { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* android presses ripple instead of shrinking */
+html[data-os="android"] .dusk-mobile :is(.mobile-press, .mobile-row):active:not(:disabled),
+html[data-os="android"] .dusk-mobile .mobile-press[data-opening] { scale: 1; }
+html[data-os="android"] .dusk-mobile .mobile-row:active { background-color: transparent; }
+html[data-os="android"] [data-ripple] {
+  --m-rip-layer: radial-gradient(circle at var(--m-rx, 50%) var(--m-ry, 50%), rgb(var(--m-rip-ink) / calc(.14 * var(--m-rip-a))) var(--m-rip), transparent calc(var(--m-rip) + 1px));
+}
+html[data-os="android"] [data-ripple]:not(.m-glass, .m-glass-quiet) { background-image: var(--m-rip-layer); }
+html[data-os="android"] [data-ripple="in"] { animation: m-ripple-in .42s cubic-bezier(.2, 0, 0, 1) forwards; }
+html[data-os="android"] [data-ripple="out"] { --m-rip: var(--m-rip-max, 120px); animation: m-ripple-out .32s ease-out forwards; }
+@keyframes m-ripple-in { from { --m-rip: 0px; --m-rip-a: 1; } to { --m-rip: var(--m-rip-max, 120px); --m-rip-a: 1; } }
+@keyframes m-ripple-out { from { --m-rip-a: 1; } to { --m-rip-a: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  html[data-os="android"] [data-ripple="in"] { animation: none; --m-rip: var(--m-rip-max, 120px); --m-rip-a: 1; }
+}
+
+/* every tonal pill in the shell is a glass capsule; every filled one catches the same light */
+.dusk-mobile :is(button, a).rounded-full[class*="bg-ink/[0.0"] {
+  background-image: var(--m-rip-layer, linear-gradient(transparent, transparent)), var(--g-sheen);
+  box-shadow: var(--g-rims);
+}
+.dusk-mobile :is(button, a).rounded-full.bg-ink:not(:disabled) {
+  background-image: var(--m-rip-layer, linear-gradient(transparent, transparent)), linear-gradient(180deg, rgb(255 255 255 / .18), rgb(255 255 255 / 0) 55%);
+  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / .3), inset 0 -1px 0 0 rgb(0 0 0 / .1), inset 0 0 0 .5px rgb(255 255 255 / .08), 0 8px 22px -12px rgb(0 0 0 / .4);
+}
