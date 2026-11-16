@@ -19,6 +19,9 @@ delete process.env.HERMES_HOME;
 // Named explicitly although homedir() already covers it: the device tests delete this directory wholesale.
 process.env.DUSK_COMPANION_DIR = join(home, ".duskbot-companion");
 
+// Every registry lookup is also answered by a front-to-back search, and a difference fails the test.
+process.env.DUSK_REGISTRY_SHADOW = "1";
+
 // Product code follows navigator.language; pin it so English assertions do not depend on the host locale.
 Object.defineProperty(globalThis.navigator, "language", { value: "en", configurable: true });
 

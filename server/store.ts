@@ -1,4 +1,5 @@
 import { UNTITLED_TASK, UNTITLED_THREAD, threadTitleFrom, titleFromMessage } from "./thread-title.ts";
+import { OwnerIndex, type ThreadHit } from "./owner-index.ts";
 import { chmodSync, existsSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path"; import { isDeepStrictEqual } from "node:util";
 
@@ -230,6 +231,10 @@ export function pruneRoomHolds(group: Pick<GroupRecord, "memberIds" | "holds" | 
   }
 }
 
+function listedTask<Task>(hit: ThreadHit<{ id: string; threadId: string; tasks?: Task[] }> | undefined): Task | undefined {
+  return hit && hit.task >= 0 ? hit.owner.tasks![hit.task] : undefined;
+}
+
 function taskCountsAsBotUnread(task: { unread?: boolean; routineRunId?: string }): boolean {
   return Boolean(task.unread) && !task.routineRunId;
 }
@@ -237,6 +242,8 @@ function taskCountsAsBotUnread(task: { unread?: boolean; routineRunId?: string }
 export class Store {
   bots: BotRecord[] = [];
   groups: GroupRecord[] = [];
+  private readonly botIndex = new OwnerIndex<BotRecord>(() => this.bots);
+  private readonly groupIndex = new OwnerIndex<GroupRecord>(() => this.groups);
   private threads = new ThreadCache(() => this.busyThreadIds());
   private defaultSelection: () => ModelSelection;
   private completeNewBotSelection: (selection: ModelSelection) => ModelSelection;
@@ -552,7 +559,7 @@ export class Store {
   /** In memory only: message writes must not rewrite bots.json. */
   private noteThreadActivity(threadId: string, at: number, forOrder = false, orderAt = at): void {
     if (!Number.isFinite(at)) return;
-    for (const task of [...this.bots, ...this.groups].map((owner) => owner.tasks?.find((candidate) => candidate.threadId === threadId))) {
+    for (const task of [listedTask(this.botIndex.thread(threadId)), listedTask(this.groupIndex.thread(threadId))]) {
       if (!task) continue;
       task.updatedAt = Math.max(task.updatedAt ?? 0, at);
       if (forOrder) task.lastThreadOrderAt = Math.max(task.lastThreadOrderAt ?? 0, orderAt);
@@ -765,22 +772,19 @@ export class Store {
   }
 
   group(id: string): GroupRecord | undefined {
-    return this.groups.find((g) => g.id === id);
+    return this.groupIndex.byId(id);
   }
 
   /** A member run's messages and room records are its room conversation's. */
   roomThreadOf(threadId: string): string {
     const run = parseMemberRun(threadId);
     if (!run) return threadId;
-    const owned = this.groups.some((group) => !group.dm && (group.threadId === run.threadId || group.tasks?.some((task) => task.threadId === run.threadId)));
-    return owned ? run.threadId : threadId;
+    const owner = this.groupIndex.byThread(run.threadId);
+    return owner && !owner.dm ? run.threadId : threadId;
   }
 
   groupByThread(threadId: string): GroupRecord | undefined {
-    threadId = this.roomThreadOf(threadId);
-    return this.groups.find(
-      (group) => group.threadId === threadId || group.tasks?.some((task) => task.threadId === threadId),
-    );
+    return this.groupIndex.byThread(this.roomThreadOf(threadId));
   }
 
   createGroup(
@@ -1311,11 +1315,11 @@ export class Store {
   }
 
   bot(id: string) {
-    return this.bots.find((b) => b.id === id) ?? null;
+    return this.botIndex.byId(id) ?? null;
   }
 
   botByThread(threadId: string) {
-    return this.bots.find((b) => b.threadId === threadId || b.tasks?.some((t) => t.threadId === threadId)) ?? null;
+    return this.botIndex.byThread(threadId) ?? null;
   }
 
   private newBotSelection(requested?: ModelSelection): ModelSelection {
@@ -2037,10 +2041,12 @@ export class Store {
 
   activeTask(botId: string): TaskRecord | undefined {
     const bot = this.bot(botId);
-    return bot?.tasks?.find((t) => t.threadId === bot.threadId);
+    return bot ? this.taskByThread(botId, bot.threadId) : undefined;
   }
 
   taskByThread(botId: string, threadId: string): TaskRecord | undefined {
+    const hit = this.botIndex.thread(threadId);
+    if (hit?.owner.id === botId) return listedTask(hit);
     return this.bot(botId)?.tasks?.find((t) => t.threadId === threadId);
   }
 
