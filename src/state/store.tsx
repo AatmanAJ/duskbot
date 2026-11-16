@@ -44,6 +44,7 @@ import { openCreateBot } from "@/lib/create-bot-request";
 import { publishBotPointer } from "@/lib/bot-pointer";
 import { StoreRefContext } from "./store-ref-context";
 import { createExternalStore } from "./external-store";
+import { hasMessage, messageById, messagePosition, storeIndex } from "./store-index";
 import { AppStoreContext, StoreContext, type StoreHandle, type StoreValue } from "./store-context";
 export { StoreContext, useDispatch, useOptionalStore, useOptionalStoreActions, useOptionalStoreSelector, useStore, useStoreActions, useStoreHandle, useStoreSelector, useStoreShallow, type StoreActions, type StoreHandle, type StoreValue } from "./store-context";
 import type { QuestionRequestCardData } from "../../shared/ask-question";
@@ -855,6 +856,11 @@ function bumpTranscriptGeneration(state: AppState, threadId: string | undefined 
   };
 }
 
+/** Every row with the patch's id swapped for it; the same array when the transcript does not hold it. */
+function patchedRows(messages: Message[], patch: Message): Message[] {
+  return hasMessage(messages, patch.id) ? messages.map((message) => (message.id === patch.id ? patch : message)) : messages;
+}
+
 function updateBot(state: AppState, botId: string, fn: (b: Bot) => Bot): AppState {
   return { ...state, bots: state.bots.map((b) => (b.id === botId ? fn(b) : b)) };
 }
@@ -907,7 +913,7 @@ export const CLOUD_LINK_SETTINGS = { type: "toggleAppSettings", open: true, sect
 
 export function reducer(state: AppState, action: Action): AppState {
   if (action.type === "messageAdded" || action.type === "messagePatched" || action.type === "threadActive" || action.type === "optimisticMessageRemoved") {
-    const owner = state.bots.find((bot) => (bot.threadId !== action.threadId || bot.awaitingThreadSnapshot) && bot.tasks?.some((task) => task.threadId === action.threadId));
+    const owner = storeIndex(state).botsByTaskThread.get(action.threadId)?.find((bot) => bot.threadId !== action.threadId || bot.awaitingThreadSnapshot);
     if (owner) {
       const frames = [...(state.backgroundThreadEvents[action.threadId] ?? []), action].slice(-256);
       const buffered = { ...state, backgroundThreadEvents: { ...state.backgroundThreadEvents, [action.threadId]: frames } };
@@ -1270,18 +1276,15 @@ export function reducer(state: AppState, action: Action): AppState {
       return reconcileModelVariantSessions(patched);
     }
     case "messageAdded": {
-      const bot = state.bots.find((b) => b.threadId === action.threadId);
+      const index = storeIndex(state);
+      const bot = index.botByOpenThread.get(action.threadId);
       if (!bot) {
-        const group = state.groups.find((g) => g.threadId === action.threadId || g.tasks?.some((task) => task.threadId === action.threadId));
+        const group = index.groupByThread.get(action.threadId);
         if (!group) return state;
-        if (group.threadId === action.threadId && group.messages.some((m) => m.id === action.message.id)) return state;
+        if (group.threadId === action.threadId && hasMessage(group.messages, action.message.id)) return state;
         const stamped = bumpThreadUpdatedAt(state, action.threadId, action.message.at, movesThreadToTop(action.message), action.message.turnCompletedAt ?? action.message.at);
         if (group.threadId !== action.threadId) return stamped;
-        const optimisticIndex = action.message.sendId
-          ? group.messages.findIndex(
-              (message) => message.id === optimisticMessageId(action.message.sendId!),
-            )
-          : -1;
+        const optimisticIndex = action.message.sendId ? messagePosition(group.messages, optimisticMessageId(action.message.sendId)) : -1;
         return {
           ...stamped,
           groups: stamped.groups.map((g) =>
@@ -1299,14 +1302,12 @@ export function reducer(state: AppState, action: Action): AppState {
         };
       }
       // The POST response and its SSE frame race; moving the leaf back to a repeat can hide a newer reply.
-      if (bot.messages.some((message) => message.id === action.message.id)) return state;
+      if (hasMessage(bot.messages, action.message.id)) return state;
       const stamped = bumpThreadUpdatedAt(state, action.threadId, action.message.at, movesThreadToTop(action.message), action.message.turnCompletedAt ?? action.message.at);
       const optimisticId = action.message.sendId
         ? optimisticMessageId(action.message.sendId)
         : null;
-      const optimisticIndex = optimisticId
-        ? bot.messages.findIndex((message) => message.id === optimisticId)
-        : -1;
+      const optimisticIndex = optimisticId ? messagePosition(bot.messages, optimisticId) : -1;
       if (optimisticIndex >= 0) {
         return updateBot(stamped, bot.id, (current) => ({
           ...current,
@@ -1348,9 +1349,9 @@ export function reducer(state: AppState, action: Action): AppState {
         .map((message) => message.optimisticThreadOrderAt === optimistic.at
           ? { ...message, optimisticThreadOrderAt: optimistic.optimisticThreadOrderAt }
           : message);
-      const bot = state.bots.find((candidate) => candidate.threadId === action.threadId);
+      const bot = storeIndex(state).botByOpenThread.get(action.threadId);
       if (bot) {
-        const optimistic = bot.messages.find((message) => message.id === id);
+        const optimistic = messageById(bot.messages, id);
         if (!optimistic) return state;
         const cleared = updateBot(state, bot.id, (current) => ({
           ...current,
@@ -1364,7 +1365,7 @@ export function reducer(state: AppState, action: Action): AppState {
         return rewindThreadUpdatedAt(cleared, action.threadId, kept, task?.createdAt ?? 0, bot.hasMore ? optimistic.optimisticThreadOrderAt : undefined);
       }
       const group = state.groups.find((candidate) => candidate.threadId === action.threadId);
-      const optimistic = group?.messages.find((message) => message.id === id);
+      const optimistic = group && messageById(group.messages, id);
       if (!group || !optimistic) return state;
       const cleared = {
         ...state,
@@ -1378,7 +1379,7 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case "messagePatched": {
       const stamped = movesThreadToTop(action.message) ? bumpThreadUpdatedAt(state, action.threadId, action.message.at, true, action.message.turnCompletedAt ?? action.message.at) : state;
-      const bot = stamped.bots.find((b) => b.threadId === action.threadId);
+      const bot = storeIndex(stamped).botByOpenThread.get(action.threadId);
       if (!bot) {
         const group = stamped.groups.find((g) => g.threadId === action.threadId);
         if (!group) return stamped;
@@ -1386,7 +1387,7 @@ export function reducer(state: AppState, action: Action): AppState {
           ...stamped,
           groups: stamped.groups.map((g) =>
             g.id === group.id
-              ? { ...g, messages: g.messages.map((m) => (m.id === action.message.id ? action.message : m)), previewMessages: g.previewMessages?.map((m) => m.id === action.message.id ? action.message : m) }
+              ? { ...g, messages: patchedRows(g.messages, action.message), previewMessages: g.previewMessages && patchedRows(g.previewMessages, action.message) }
               : g,
           ),
         };
@@ -1402,8 +1403,8 @@ export function reducer(state: AppState, action: Action): AppState {
       const next = motion ? withMascotMotion(stamped, bot.id, motion) : stamped;
       return updateBot(next, bot.id, (b) => ({
         ...b,
-        messages: b.messages.map((m) => (m.id === action.message.id ? action.message : m)),
-        previewMessages: b.previewMessages?.map((m) => m.id === action.message.id ? action.message : m),
+        messages: patchedRows(b.messages, action.message),
+        previewMessages: b.previewMessages && patchedRows(b.previewMessages, action.message),
       }));
     }
     case "browserPart":
