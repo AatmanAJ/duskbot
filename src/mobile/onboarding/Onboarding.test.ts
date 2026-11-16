@@ -106,7 +106,7 @@ it("a typed code the relay never had says so, not expired, and offers logging in
     field.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await act(async () => { host.querySelector<HTMLFormElement>("form")!.requestSubmit(); });
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  for (let i = 0; i < 100 && !host.querySelector("[role=alert]"); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
   const alert = host.querySelector("[role=alert]")?.textContent ?? "";
   expect(alert).toContain("We couldn't find that code");
   expect(alert).not.toMatch(/expired/i);
@@ -186,7 +186,7 @@ it("a scan of the desktop's App Store qr says so, and the screen after a failed 
   } as unknown as MobilePlatform["camera"] };
   await mount(onboarding());
   await press("[data-entry=scan]");
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  for (let i = 0; i < 100 && !host.querySelector("[role=alert]"); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
   expect(host.querySelector("[data-step]")?.getAttribute("data-step")).toBe("code");
   expect(host.querySelector("[role=alert]")?.textContent).toContain("That's the App Store code");
   const again = host.querySelector<HTMLButtonElement>("[data-scan-again]");

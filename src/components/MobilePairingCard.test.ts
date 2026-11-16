@@ -73,7 +73,7 @@ describe("mobile workspace pairing", () => {
   it("on a dusk cloud offers the App Store and the account sign-in, never a pairing code the cloud refuses", () => {
     const html = renderToStaticMarkup(createElement(MobilePairingCard, { remote: false, cloudHome: true, email: "owner@example.test" }));
     expect(html).toContain("data-phone-cloud");
-    expect(html).toContain("Open the app and sign in with owner@example.test. Your cloud opens on its own, no code needed.");
+    expect(html).toContain("Open the app, choose log in to dusk cloud and use owner@example.test. Your cloud opens on its own, no code needed.");
     expect(html).toContain('href="https://apps.apple.com/app/id6834725640"');
     expect(html).toContain("QR code for dusk bot on the App Store");
     expect(html, "no qr or code tiles: createMobileLink refuses them on a cloud").not.toContain("data-pairing-tile");
