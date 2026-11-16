@@ -17,9 +17,11 @@ export interface DeviceSignInStatus {
   userCode?: string;
   expiresAt: string | null;
   message?: string;
+  /** The CLI's own browser sign-in, which comes back to its listener on the server's machine. */
+  loopback?: { authorizationUrl: string; port: number; path: string };
 }
 
-import { chatgptPlanLink, signInProvider } from "./onboarding/connect-flow";
+import { chatgptPlanLink, loopbackOf, signInProvider } from "./onboarding/connect-flow";
 
 export { chatgptPlanLink };
 export const deviceSignInProvider = signInProvider;
@@ -86,6 +88,30 @@ export function deviceFlowUnavailable(cause: unknown): boolean {
   return cause instanceof ApiError && [401, 403, 404, 410].includes(cause.status);
 }
 
+type StartCall = (path: string, init: { method: "POST"; body?: string }) => Promise<{ auth: DeviceSignInStatus; sameMachine?: boolean }>;
+
+/** The CLI's normal browser sign-in when the browser is on the server's machine, as onboarding does: Codex's device-code
+ * sign-in only works once the person enabled it in ChatGPT's security settings. Anywhere else, the device code. */
+export async function startDeviceSignIn(call: StartCall, base: string): Promise<DeviceSignInStatus> {
+  const device = async () => (await call(`${base}/start`, { method: "POST" })).auth;
+  let answer: Awaited<ReturnType<StartCall>>;
+  try {
+    answer = await call(`${base}/start`, { method: "POST", body: JSON.stringify({ browser: true }) });
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.status === 403) throw cause;
+    return device();
+  }
+  const { auth } = answer;
+  if (auth.phase !== "waiting" || !auth.loopback || answer.sameMachine === true) return auth;
+  // the provider page would send the browser to a localhost nothing here listens on
+  if (auth.flowId) await call(`${base}/cancel`, { method: "POST", body: JSON.stringify({ flowId: auth.flowId }) }).catch(() => {});
+  return device();
+}
+
+function loopbackLink(auth: DeviceSignInStatus): string | null {
+  return auth.loopback ? loopbackOf(auth.loopback.authorizationUrl)?.authorizationUrl ?? null : null;
+}
+
 function endedFlow(phase: "expired" | "failed", browserPkce = false): DeviceSignInStatus {
   return { phase, flowId: null, authorizationUrl: null, expiresAt: null, ...(phase === "failed" ? { message: t(browserPkce ? "engineSetup.chatgpt.flowEnded" : "engineSetup.device.flowEnded") } : {}) };
 }
@@ -101,7 +127,8 @@ const chatgptButton = "flex w-full items-center justify-center gap-2 rounded-lg 
 export function DeviceSignInProgress({ auth, browserPkce = false, provider = "codex" }: { auth: DeviceSignInStatus; browserPkce?: boolean; provider?: DeviceSignInProvider }) {
   const { state: codeCopy, copy: copyCode } = useCopyFeedback(auth.userCode ?? "");
   const copy = DEVICE_SIGN_IN_COPY[provider];
-  const link = browserPkce ? chatgptPlanLink(auth.authorizationUrl) : deviceSignInLink(provider, auth.authorizationUrl, auth.userCode);
+  const viaBrowser = !browserPkce ? loopbackLink(auth) : null;
+  const link = browserPkce ? chatgptPlanLink(auth.authorizationUrl) : viaBrowser ?? deviceSignInLink(provider, auth.authorizationUrl, auth.userCode);
   const copyLabel = t(codeCopy === "failed" ? "common.copyFailed" : "engineSetup.device.copyCode");
 
   if (auth.phase !== "waiting") {
@@ -112,13 +139,13 @@ export function DeviceSignInProgress({ auth, browserPkce = false, provider = "co
     return <p role="status" className={auth.phase === "succeeded" ? "text-[12px] text-success" : "text-[12px] text-ink-secondary"}>{label}</p>;
   }
 
-  if (!link || (!browserPkce && !isDeviceSignInCode(provider, auth.userCode))) {
+  if (!link || (!browserPkce && !viaBrowser && !isDeviceSignInCode(provider, auth.userCode))) {
     return <p role="alert" className="text-[12px] text-danger">{t(browserPkce ? "engineSetup.chatgpt.invalidChallenge" : copy.invalidChallenge)}</p>;
   }
 
   return (
     <div className="space-y-2 rounded-lg border border-transparent bg-app p-3">
-      {!browserPkce && <><p className="text-[12px] text-ink-secondary">{t(copy.enterCode)}</p>
+      {!browserPkce && !viaBrowser && <><p className="text-[12px] text-ink-secondary">{t(copy.enterCode)}</p>
       <div className="flex items-center justify-between gap-2 rounded-lg bg-inset px-3 py-2">
         <code className="select-all font-mono text-lg font-semibold tracking-widest text-ink">{auth.userCode}</code>
         <button
@@ -210,11 +237,11 @@ export function DeviceSignIn({ instanceId, browserPkce = false, provider = "code
     setBusy(true);
     setError(null);
     try {
-      const { auth: next }: { auth: DeviceSignInStatus } = await api(`${base}/start`, { method: "POST" });
+      const next: DeviceSignInStatus = browserPkce ? (await api(`${base}/start`, { method: "POST" })).auth : await startDeviceSignIn(api, base);
       setAuth(next);
       if (next.phase === "succeeded") await refresh();
-      else if (browserPkce && next.phase === "waiting") {
-        const link = chatgptPlanLink(next.authorizationUrl);
+      else if (next.phase === "waiting") {
+        const link = browserPkce ? chatgptPlanLink(next.authorizationUrl) : loopbackLink(next);
         if (link) await openExternalLink(link);
       }
     } catch (cause) {
