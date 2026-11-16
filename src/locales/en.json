@@ -8459,7 +8459,6 @@
   "mobile.entry.codeSentBody": "We sent an 8-digit code to {email}.",
   "mobile.entry.codeLabel": "Code",
   "mobile.entry.emailPlaceholder": "name@example.com",
-  "mobile.entry.emailHelp": "We'll email you a code. No password needed.",
   "mobile.entry.changeEmail": "Change email",
   "mobile.entry.resend": "Resend code",
   "mobile.entry.legalBefore": "By continuing you agree to the",

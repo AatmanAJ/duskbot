@@ -102,10 +102,8 @@ export function MobileSignIn({ onSignedIn }: { onSignedIn: () => void }) {
           <label htmlFor={`${id}-email`} className="mb-1.5 block px-1 text-[15px] font-medium text-ink">{t("cloudBuy.signIn.email")}</label>
           <input id={`${id}-email`} ref={field} type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} disabled={busy}
             placeholder={t("mobile.entry.emailPlaceholder")} value={email} onChange={(event) => { setEmail(event.target.value); setProblem(null); }}
-            aria-invalid={Boolean(problem) || undefined} aria-describedby={problemText ? problemId : `${id}-help`} className={FIELD} />
-          {problemText
-            ? <ErrorLine id={problemId}>{problemText}</ErrorLine>
-            : <p id={`${id}-help`} className="mt-2 px-1 text-[14px] leading-5 text-ink-secondary">{t("mobile.entry.emailHelp")}</p>}
+            aria-invalid={Boolean(problem) || undefined} aria-describedby={problemText ? problemId : undefined} className={FIELD} />
+          {problemText && <ErrorLine id={problemId}>{problemText}</ErrorLine>}
         </div>
       ) : (
         <div className="mt-7 w-full text-left">
