@@ -5,6 +5,7 @@ import { clearWelcomeDraft } from "@/lib/welcome-draft";
 import { LOCAL_VIEWER, welcomeDue, welcomeViewer, type WelcomeViewer } from "@/lib/onboarding";
 import { PHONE_LAYOUT } from "@/lib/use-media-query";
 import { api, useStore } from "@/state/store";
+import { focusComposerWhenShown } from "../AskCard";
 import { PANEL_DOCKS_AT } from "../PanelSlot";
 import { WelcomeFlow } from "./WelcomeFlow";
 
@@ -77,6 +78,7 @@ export function WelcomeGate({ viewer }: { viewer: WelcomeViewer | null }) {
         if (target) dispatch({ type: "select", id: target });
         // the panel opens beside the first chat only where it docks: over it, it would dim and cut the chat's first words
         if (target && !replay && panelDocks()) dispatch({ type: "toggleSettings", open: true });
+        if (target) focusComposerWhenShown();
       }}
     />
   );

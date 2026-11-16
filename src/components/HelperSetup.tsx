@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Cloud, Download, Mail, Smartphone, Sparkles, type GlyphIcon } from "../icons";
+import { Cloud, Download, Eye, Inbox, Mail, Smartphone, Sparkles, type GlyphIcon } from "../icons";
 
 import { track } from "@/lib/analytics";
 import { INTRO_CHIPS, type IntroChip } from "@/lib/default-bot";
@@ -10,6 +10,8 @@ import { useStore, type Action } from "@/state/store";
 import { ConnectAiDialog } from "./onboarding/ConnectAi";
 import { useWelcomeAi } from "./onboarding/welcome-ai";
 
+const CHIP = "inline-flex h-8 items-center gap-2 rounded-full border-[0.5px] border-transparent bg-card px-3 text-[14px] leading-5 text-ink transition-colors hover:bg-raised-hover";
+
 const CHIPS: Record<IntroChip, { label: LocaleKey; icon: GlyphIcon }> = {
   ai: { label: "helperIntro.chip.ai", icon: Sparkles },
   apps: { label: "helperIntro.chip.mail", icon: Mail },
@@ -17,6 +19,12 @@ const CHIPS: Record<IntroChip, { label: LocaleKey; icon: GlyphIcon }> = {
   phone: { label: "helperIntro.chip.phone", icon: Smartphone },
   cloud: { label: "helperIntro.chip.cloud", icon: Cloud },
 };
+
+/** First jobs to hand Dusk in one tap: each is sent as the person's first message. */
+export const INTRO_ASKS: ReadonlyArray<{ label: LocaleKey; icon: GlyphIcon }> = [
+  { label: "helperIntro.ask.day", icon: Eye },
+  { label: "helperIntro.ask.inbox", icon: Inbox },
+];
 
 /** Each chip opens the app's own flow for it; Connect an AI opens its dialog in place (IntroChips). */
 export function chipAction(chip: Exclude<IntroChip, "ai">): Action {
@@ -35,7 +43,7 @@ function IntroConnectAi({ onClose }: { onClose: () => void }) {
 
 /** What is still missing, as chips under Dusk's follow-up (Simple mode): at most INTRO_CHIPS. A tapped chip stays, so it
  * can be tapped again if its flow was closed. */
-export function IntroChips({ chips }: { chips: readonly IntroChip[] }) {
+export function IntroChips({ chips, onAsk }: { chips: readonly IntroChip[]; onAsk?: (text: string) => void }) {
   const { dispatch } = useStore();
   const [connecting, setConnecting] = useState(false);
   const shown = chips.slice(0, INTRO_CHIPS);
@@ -46,13 +54,17 @@ export function IntroChips({ chips }: { chips: readonly IntroChip[] }) {
   };
   return (
     <>
-      {shown.length > 0 && (
+      {(shown.length > 0 || onAsk) && (
         <div role="group" aria-label={t("helperIntro.setup")} data-helper-setup="" className="animate-msg-in mt-1 flex max-w-full flex-wrap gap-2">
+          {onAsk && INTRO_ASKS.map(({ label, icon: Icon }) => (
+            <button key={label} type="button" data-helper-ask={label} onClick={() => onAsk(t(label))} className={CHIP}>
+              <Icon size={16} aria-hidden="true" className="text-ink-secondary" />{t(label)}
+            </button>
+          ))}
           {shown.map((chip) => {
             const { label, icon: Icon } = CHIPS[chip];
             return (
-              <button key={chip} type="button" data-helper-step={chip} onClick={() => tap(chip)}
-                className="inline-flex h-8 items-center gap-2 rounded-full border-[0.5px] border-transparent bg-card px-3 text-[14px] leading-5 text-ink transition-colors hover:bg-raised-hover">
+              <button key={chip} type="button" data-helper-step={chip} onClick={() => tap(chip)} className={CHIP}>
                 <Icon size={16} aria-hidden="true" className="text-ink-secondary" />{t(label)}
               </button>
             );

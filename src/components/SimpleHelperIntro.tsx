@@ -14,6 +14,7 @@ import { BotAvatar } from "./Avatar";
 import { joinedCorners, SIMPLE_BOT_BUBBLE, SIMPLE_BUBBLE_MAX } from "./chat-bubble";
 import { loadAppCards } from "./bot-settings/useBotApps";
 import { engineReady } from "./EngineLibrary";
+import { returnFocusToComposer } from "./AskCard";
 import { IntroChips } from "./HelperSetup";
 import { usePrefersReducedMotion } from "./mascot-clock";
 import { preloadConnectedApps } from "@/lib/connected-apps";
@@ -117,7 +118,7 @@ function useArrival(first: boolean, ai: boolean, ready: boolean): { shown: numbe
 export function SimpleHelperIntro({ botId, threadId, message, answered, followup }: {
   botId: string; threadId: string; message: Message; answered: boolean; followup?: Message;
 }) {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const welcoming = useWelcomingBot();
   const hidden = welcoming === botId;
   const bot = state.bots.find((candidate) => candidate.id === botId);
@@ -171,6 +172,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
     phoneApp: phoneAppEnabled(),
     importFound: look.importFound,
   });
+  const ready = !answered && shown >= ALL && facts !== null && ai === "own";
   const typing = staged && ai !== "none" && shown === 4 && Boolean(bot);
   return (
     <div data-helper-intro={message.id} className="flex w-full flex-col items-start gap-1">
@@ -192,7 +194,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
           <span className="text-[14px] leading-5 text-ink-tertiary">{t("helperIntro.typing")}</span>
         </div>
       )}
-      <IntroChips chips={chips} />
+      <IntroChips chips={chips} onAsk={ready ? (answer) => { dispatch({ type: "answerCard", botId, threadId, messageId: message.id, answer }); returnFocusToComposer(); } : undefined} />
     </div>
   );
 }

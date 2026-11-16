@@ -224,6 +224,33 @@ describe("in the chat (Simple mode)", () => {
     expect(chipAction("import")).toEqual({ type: "toggleAppSettings", open: true, section: "import" });
   });
 
+  it("offers first jobs to tap, each sent as the person's first message, and the message box takes the focus", async () => {
+    const box = document.createElement("div");
+    box.dataset.tour = "composer";
+    const field = document.createElement("textarea");
+    box.append(field);
+    document.body.append(box);
+    await show(false, saved({ ai: "own", apps: [], bots: 0, routines: 0 }));
+    const asks = [...host.querySelectorAll<HTMLElement>("[data-helper-ask]")];
+    expect(asks.map((node) => node.textContent)).toEqual(["Keep an eye on my day", "Set up a bot for my inbox"]);
+    expect(asks[0]!.closest("[data-helper-setup]"), "in the chips' own row, before them").toBe(host.querySelector("[data-helper-setup]"));
+    await act(async () => { asks[0]!.click(); });
+    await act(async () => { await new Promise((done) => requestAnimationFrame(() => done(null))); });
+    expect(f.dispatch).toHaveBeenCalledWith({ type: "answerCard", botId: "maus", threadId: "t", messageId: "intro", answer: "Keep an eye on my day" });
+    expect(document.activeElement).toBe(field);
+    box.remove();
+  });
+
+  it("offers no jobs to tap before there is an AI to do them, or once the person has written", async () => {
+    f.state = { ...f.state, instances: [claude(false)] };
+    await show();
+    expect(host.querySelector("[data-helper-ask]")).toBeNull();
+    expect(chips()[0]).toBe("ai");
+    f.state = { ...f.state, instances: [claude(true)] };
+    await show(true, saved({ ai: "own", apps: [], bots: 0, routines: 0 }));
+    expect(host.querySelector("[data-helper-ask]")).toBeNull();
+  });
+
   it("drops the chips once the person has written, and no longer looks for skills", async () => {
     f.local = true;
     await show(true, saved({ ai: "own", apps: [], bots: 0, routines: 0 }));

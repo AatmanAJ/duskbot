@@ -105,7 +105,8 @@ export function WelcomeFlow({
     }, () => {});
     read();
     const stop = account.onChange(read);
-    return () => { alive = false; stop(); };
+    window.addEventListener("focus", read);
+    return () => { alive = false; stop(); window.removeEventListener("focus", read); };
   }, [account]);
   const desktop = !embedded && localDesktopPage() && window.duskDesktop?.remoteClient?.active !== true;
   const draft = useMemo(() => (keepsDraft ? readWelcomeDraft() : null), [keepsDraft]);

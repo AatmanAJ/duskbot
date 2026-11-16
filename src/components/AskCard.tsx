@@ -450,6 +450,23 @@ export function returnFocusToComposer(): void {
   requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[data-tour="composer"] textarea')?.focus());
 }
 
+/** The composer once it is drawn (the chat behind a closing screen can mount a few frames later), unless the person has
+ * moved on to another field or dialog; never on a touch screen, where focus pops the keyboard over the chat. */
+export function focusComposerWhenShown(frames = 60): void {
+  if (typeof requestAnimationFrame !== "function" || window.matchMedia?.("(hover: none) and (pointer: coarse)").matches) return;
+  const attempt = (left: number) => requestAnimationFrame(() => {
+    const input = document.querySelector<HTMLTextAreaElement>('[data-tour="composer"] textarea');
+    const active = document.activeElement;
+    const elsewhere = active && active !== document.body && active !== document.documentElement && (
+      /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || (active as HTMLElement).isContentEditable || active.closest("[role=dialog], [role=alertdialog], [aria-modal=true]"));
+    const closing = active?.closest("[data-welcome]");
+    if (elsewhere && !closing) return;
+    if (input && !input.disabled && !closing) { input.focus(); return; }
+    if (left > 0) attempt(left - 1);
+  });
+  attempt(frames);
+}
+
 export function moveChoiceFocus(event: KeyboardEvent<HTMLElement>): void {
   const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
   if (!keys.includes(event.key)) return;
