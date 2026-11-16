@@ -60,11 +60,14 @@ that list to see it.
 
 With no OpenCode login or key of the person's own, everything works only
 through Zen's free models: OpenCode's CLI marks those with a `-free` id
-suffix, and the picker lists them first under **OpenCode**, the rest of the
-catalog folded below them. Without a login or credits those answer with
-`Insufficient balance` (HTTP 402), so the folded list is the paid catalog.
-The free models all share one per-IP limit, so picking a different one does
-not buy more free turns.
+suffix. The picker lists **Free model** (whichever free model OpenCode picks
+now) and then those free models by name under **OpenCode**. The rest of the
+catalog is never listed: without a login or credits those answer with
+`Insufficient balance` (HTTP 402). For the same reason a free turn that stalls
+moves on only through models marked free, never through a paid one
+(`openCodeFreeModelOrder`); a catalog that marks none, from an older CLI that
+lists only free models, is all free. The free models all share one per-IP
+limit, so picking a different one does not buy more free turns.
 
 Some models take a limited number of tools per request (OpenCode Zen's free
 models refuse more than 128). When a model refuses a turn for that,

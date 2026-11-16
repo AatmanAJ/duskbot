@@ -455,36 +455,36 @@ describe("OpenCode's free models in the menu", () => {
   const onFree = (model = "opencode/beam-free"): Bot => ({ ...scout(), modelSelection: { instanceId: "opencodeGo", model } });
   const group = () => document.querySelector<HTMLElement>('[data-simple-provider="opencodeGo"]')!;
   const groupRows = () => [...group().querySelectorAll("[data-model-row]")].map((row) => row.textContent);
-  const restToggle = () => group().querySelector<HTMLButtonElement>("[data-simple-show-rest]")!;
+  const starToggles = () => group().querySelectorAll("[data-star-toggle]").length;
 
   beforeEach(() => {
     fixture.instances = [openCode(), claude(three)];
-    render(onFree());
-    expect(chip().textContent).toContain("Beam Free");
   });
 
-  it("says OpenCode, lists the free models by name, and picks one", async () => {
+  it("reads Free model on the default, then lists the free models by name, never a paid one", async () => {
+    render(onFree());
+    expect(chip().textContent).toContain("Free model");
+    expect(chip().textContent).not.toContain("Beam");
     await openWith("click");
     expect(group().textContent).toContain("OpenCode");
     expect(group().textContent).toContain("Free, no account needed.");
     expect(groupRows()).toEqual(["Glm 5.3 Flash Free", "Minimax M3.1 Flash Free", "Longcat 2.5 Free"]);
-    const row = [...group().querySelectorAll<HTMLButtonElement>("[data-model-row] [data-menu-row]")].find((one) => one.textContent === "Glm 5.3 Flash Free")!;
-    flushSync(() => row.click());
-    await settle();
-    expect(fixture.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({
-      type: "setModel", selection: expect.objectContaining({ instanceId: "opencodeGo", model: "opencode/glm-5.3-flash-free" }),
-    }));
+    expect(group().textContent).not.toMatch(/Claude Opus 5|GPT 6 Sol/);
+    expect(group().querySelector("[data-simple-show-rest]")).toBeNull();
   });
 
-  it("folds the models that need a login behind one row, and opens them in place", async () => {
+  it("puts Free model first under a free model picked by name, and picks either", async () => {
+    render(onFree("opencode/glm-5.3-flash-free"));
+    expect(chip().textContent).toContain("Glm 5.3 Flash Free");
     await openWith("click");
-    expect(restToggle().textContent).toContain("Show 2 other models");
-    flushSync(() => restToggle().click());
+    expect(groupRows()).toEqual(["Free model", "Minimax M3.1 Flash Free", "Longcat 2.5 Free"]);
+    // named rows take a star, the Free model row doesn't: it follows whichever free model OpenCode lists now
+    expect(starToggles()).toBe(2);
+    const pick = (name: string) => [...group().querySelectorAll<HTMLButtonElement>("[data-model-row] [data-menu-row]")].find((one) => one.textContent === name)!;
+    flushSync(() => pick("Minimax M3.1 Flash Free").click());
     await settle();
-    expect(group().textContent).toContain("These need an OpenCode login or credits.");
-    expect(groupRows()).toEqual(["Glm 5.3 Flash Free", "Minimax M3.1 Flash Free", "Longcat 2.5 Free", "Claude Opus 5", "GPT 6 Sol"]);
-    flushSync(() => restToggle().click());
-    await settle();
-    expect(groupRows()).not.toContain("Claude Opus 5");
+    expect(fixture.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: "setModel", selection: expect.objectContaining({ instanceId: "opencodeGo", model: "opencode/minimax-m3.1-flash-free" }),
+    }));
   });
 });
