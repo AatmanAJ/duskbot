@@ -41,6 +41,9 @@ const day = 86_400_000;
 export const OPEN_ENDED_AT = Date.UTC(2100, 0, 1);
 /** a second start of the same plan this soon after the first is the same click again: it gets the page already made */
 export const CHECKOUT_REUSE_MS = 60_000;
+/** new checkout pages one account may open in a short while, under the hourly limit: a person comparing plans opens a
+ * few, a script opens one a second */
+export const CHECKOUT_BURST = { count: 5, windowMs: 10 * 60_000 } as const;
 /** a plan the operator gave rather than sold: its own checkout source, and what its one payment records */
 export interface OperatorGrant { source: "ops_grant" | "admin_comp"; amountCents?: number }
 const emailOf = (email: string) => email.trim().toLowerCase();
@@ -666,12 +669,13 @@ export function createBillingService(options: BillingServiceOptions) {
     const cart = parsed(item.cart);
     const amount = (priced: number) => input.operator?.amountCents ?? priced;
     const open = state.checkouts.find(checkout => checkout.accountId === account.id && checkout.kind === "cart" && checkout.status === "open" && checkout.openUntil > now());
-    // the same plan again within a minute (a double click, a click that seemed to do nothing) gets the page just made,
-    // never another provider session
+    // the same plan again within a minute, from any surface (a double click, a click that seemed to do nothing, a
+    // retry loop) gets the page just made, never another provider session
     const name = typeof item.name === "string" ? item.name.trim() : item.name, cloudOf = open?.cloudId ? clouds.get(open.cloudId) : null;
-    const reused = input.operator ? null : open && open.url && open.createdAt > now() - CHECKOUT_REUSE_MS && open.source === source && sameCart(open.cart, cart)
+    const reused = input.operator ? null : open && open.url && open.createdAt > now() - CHECKOUT_REUSE_MS && sameCart(open.cart, cart)
       && (!open.cloudId || ((name === undefined || cloudOf?.name === name) && (item.color === undefined || cloudOf?.color === item.color))) ? open : null;
-    if (!reused && state.checkouts.filter(checkout => checkout.accountId === account.id && checkout.createdAt > now() - 3_600_000).length >= config.checkoutsPerHour) fail(429, "rate_limited");
+    const started = (within: number) => state.checkouts.filter(checkout => checkout.accountId === account.id && checkout.createdAt > now() - within).length;
+    if (!reused && (started(3_600_000) >= config.checkoutsPerHour || started(CHECKOUT_BURST.windowMs) >= CHECKOUT_BURST.count)) fail(429, "rate_limited");
     if (queues.has(account.id) || state.subscriptions.some(sub => sub.accountId === account.id && sub.pendingChange)) fail(409, "plan_change_unavailable");
     purchasable(cart); licenseAvailable(account.id, cart);
     // a request still waiting on the provider holds its place; one that already has a page is replaced below

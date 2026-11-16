@@ -8,7 +8,7 @@ import { BILLING_CONFIG } from "./plans.ts";
 import { quote } from "./pricing.ts";
 import { createFakeBillingProvider } from "./fake-provider.ts";
 import { createBillingStore } from "./store.ts";
-import { CHECKOUT_REUSE_MS, createBillingService } from "./service.ts";
+import { CHECKOUT_BURST, CHECKOUT_REUSE_MS, createBillingService } from "./service.ts";
 
 const owner = { id: "owner", email: "owner@example.com" }, stranger = { id: "stranger", email: "stranger@example.com" };
 const day = 86_400_000;
@@ -565,18 +565,30 @@ describe("repeated starts", () => {
     expect(await service.checkout(other, { kind: "cart", cart: desktopOnly(), name: "Home" })).toEqual(desk);
     expect(clouds.order).toHaveBeenCalledTimes(1); expect(clouds.abandon).not.toHaveBeenCalled();
   });
-  it("makes a fresh page once the minute is over, or for another plan, name or surface", async () => {
-    const first = await service.checkout(owner, { kind: "cart", cart: desktopOnly() }, { source: "dash_billing" });
+  it("hands the page back whichever surface asks again, and makes a fresh one for another plan, name, or once the minute is over", async () => {
+    const first = await service.checkout(owner, { kind: "cart", cart: desktopOnly() }, { source: "app_card" });
+    expect(await service.checkout(owner, { kind: "cart", cart: desktopOnly() }, { source: undefined })).toEqual(first);
     const otherPlan = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" } }, { source: "dash_billing" });
     expect(otherPlan.checkoutId).not.toBe(first.checkoutId);
-    const otherSource = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" } }, { source: "dash_home" });
-    expect(otherSource.checkoutId).not.toBe(otherPlan.checkoutId);
-    const otherName = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_home" });
-    expect(otherName.checkoutId).not.toBe(otherSource.checkoutId);
+    const otherName = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_billing" });
+    expect(otherName.checkoutId).not.toBe(otherPlan.checkoutId);
     time += CHECKOUT_REUSE_MS + 1;
-    const later = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_home" });
+    const later = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_billing" });
     expect(later.checkoutId).not.toBe(otherName.checkoutId);
     expect(store.state.checkouts.filter(checkout => checkout.status === "open").map(checkout => checkout.id)).toEqual([later.checkoutId]);
+  });
+  it("stops a burst of new pages from one account well under the hourly limit, and lets it buy again after a while", async () => {
+    const create = vi.spyOn(provider, "createCheckout");
+    const carts = [preset(1), { ...preset(1), interval: "year" as const }, preset(2), { ...preset(2), interval: "year" as const }, licensedDesktop()];
+    for (const cart of carts) { await service.checkout(owner, { kind: "cart", cart }, { source: "made_up" }); time += 1_000; }
+    expect(create).toHaveBeenCalledTimes(CHECKOUT_BURST.count);
+    // the open one again is still handed back; anything new waits
+    expect((await service.checkout(owner, { kind: "cart", cart: licensedDesktop() })).checkoutId).toBe(store.state.checkouts.at(-1)!.id);
+    await expect(service.checkout(owner, { kind: "cart", cart: preset(1) })).rejects.toMatchObject({ code: "rate_limited" });
+    expect(create).toHaveBeenCalledTimes(CHECKOUT_BURST.count);
+    time += CHECKOUT_BURST.windowMs;
+    await service.checkout(owner, { kind: "cart", cart: preset(1) });
+    expect(create).toHaveBeenCalledTimes(CHECKOUT_BURST.count + 1);
   });
 });
 
