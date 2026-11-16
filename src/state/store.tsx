@@ -1,6 +1,5 @@
 import { feature as productFeature, settingsClosed, settingsOpened, noteMessageSent, noteAcceptedMessage, noteReplyTurn, noteRoutineRun } from "@/lib/product-analytics";
 import { pullSyncedPrefs } from "@/lib/synced-prefs";
-import { storeApp } from "@/lib/store-app";
 import { aiSendAllowed } from "@/lib/ai-consent-gate";
 import { trailAction } from "@/lib/trail-actions";
 import { cloudAsleep, onCloudPower } from "../lib/cloud-power";
@@ -11,20 +10,20 @@ import { chatSnapshotPath, MESSAGE_PAGE_SIZE, takeBootRead } from "./boot-reads"
 import { startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { BotMovedTo, BotVisibility, CardAnswerer, CloudBackend, ConnectorToolGrant, EffortLevel, InstalledPackageMetadata, LiveCallState, ServerFrame, GroupThreadUsage, SteerQueueReason, WireBot, WireGroup, WireTask, OptionCardData as WireOptionCard } from "../../shared/wire";
-import { movesThreadToTop } from "../../shared/wire"; import type { DefaultBotFields } from "../../shared/default-bot";
+import type { DefaultBotFields } from "../../shared/default-bot";
 import { reorderStable } from "../../shared/bot-order";
 import { withOneChief } from "../../shared/bot-owner";
 import { DATA_ROUTES, type DataSheet, type DataTable } from "../../shared/data-surface";
 import type { NotificationLogEntry } from "../../shared/notification";
 import { isNotificationFeedAction, reduceNotificationFeed, type NotificationFeedAction } from "./notification-feed";
-import { bumpThreadUpdatedAt, mergeTaskStamps, rewindThreadUpdatedAt } from "./thread-stamps";
+import { bumpThreadUpdatedAt, mergeTaskStamps } from "./thread-stamps";
 import { botOpensTo, openBot, openThread, visibleNotificationThread } from "./thread-navigation";
 import { patchGroupTask } from "./thread-edits";
 import type { EngineInstall } from "./engine-install";
-import { optimisticMessageId, optimisticUserMessage, sendAnswerLost, sendArrived, sendReconciled } from "./optimistic-send";
+import { optimisticUserMessage, sendAnswerLost, sendArrived, sendReconciled } from "./optimistic-send";
 import { dropSentTurn, followSendReceipt, noteSentTurn } from "./sent-turn";
 import { applySendReceipt } from "./send-receipt";
-import { foldSnapshotOntoStreamed, patchedGroups, roomAnswers, snapshotPatch } from "./room-frames";
+import { patchedGroups, roomAnswers, snapshotPatch } from "./room-frames";
 import { savedStateAction, type SavedOwner, type SavedSnapshot } from "./saved-state";
 import { heldTranscript, keepBotNavigation, keepGroupNavigation, navigatedSince, visibleMessages } from "./snapshot-navigation";
 import { createTranscriptCache, indexedDbShelf, reconcileTranscript, type CachedTranscript } from "./transcript-cache";
@@ -44,7 +43,12 @@ import { openCreateBot } from "@/lib/create-bot-request";
 import { publishBotPointer } from "@/lib/bot-pointer";
 import { StoreRefContext } from "./store-ref-context";
 import { createExternalStore } from "./external-store";
-import { hasMessage, messageById, messagePosition, storeIndex } from "./store-index";
+import { isAutomationAction, reduceAutomations } from "./reducers/automations";
+import { isRuntimeAction, reduceRuntime } from "./reducers/runtime";
+import { isTranscriptAction, reduceTranscripts } from "./reducers/transcripts";
+import { isUiAction, reduceUi } from "./reducers/ui";
+import { bumpTranscriptGeneration, currentTaskBot, dismissOnboardingCard, openOnboardingCard, openedUnreadDivider, patchCard, patchGroupCard, reconcileModelVariantSessions, taskPatchFields, updateBot, withMascotMotion } from "./reducers/helpers";
+export { currentTaskBot } from "./reducers/helpers";
 import { AppStoreContext, StoreContext, type StoreHandle, type StoreValue } from "./store-context";
 export { StoreContext, useDispatch, useOptionalStore, useOptionalStoreActions, useOptionalStoreSelector, useStore, useStoreActions, useStoreHandle, useStoreSelector, useStoreShallow, type StoreActions, type StoreHandle, type StoreValue } from "./store-context";
 import type { QuestionRequestCardData } from "../../shared/ask-question";
@@ -63,7 +67,7 @@ import type { Routine, RoutineInput, RoutineRun } from "@/lib/routines";
 import type { WebhookAttempt, WebhookIngressStatus, WebhookTrigger } from "@/lib/webhooks";
 import { duplicateBotProfile, duplicateCreateRequest } from "@/lib/bot-duplicate";
 import { botShowsUnread } from "@/lib/bot-unread";
-import { firstUnreadMessageId, threadOpensUnread, threadReadCursor } from "@/lib/unread-divider";
+import { threadOpensUnread, threadReadCursor } from "@/lib/unread-divider";
 import type { ComputerStart } from "@/lib/computer-start";
 import { browserPartFromFrame, type BrowserPart } from "@/lib/browser-part";
 import { parseComputerHelp } from "@/lib/computer-control";
@@ -80,7 +84,7 @@ import { liveCallFromFrame, nextLiveCallLookup } from "./live-call";
 import { isNoAiRefusal, useChatErrorClear } from "./chat-error";
 import { openLiveEvents, publishLiveFrame, publishMissedFrames, withoutScreenPixels } from "@/lib/live-events";
 import { unlessRefused } from "@/lib/admin-scope";
-import { olderRunsSince, ROUTINE_RUNS_WINDOW_MS, trimRoutineRuns, withOlderRoutineRuns } from "./routine-runs";
+import { ROUTINE_RUNS_WINDOW_MS } from "./routine-runs";
 import { reconcileSnapshotQueues, rememberConsumedQueueId, replaceBotQueues } from "./queue-receipts";
 import { useSelectedTranscript } from "./use-selected-transcript";
 import { useTranscriptCache } from "./use-transcript-cache";
@@ -375,25 +379,6 @@ export function threadApprovalModes(bot: Pick<Bot, "approvalMode" | "autoApprove
   }));
 }
 
-export function currentTaskBot(bot: Bot, threadId = bot.threadId): Bot {
-  const task = bot.tasks?.find((candidate) => candidate.threadId === threadId);
-  if (!task) return bot;
-  return {
-    ...bot,
-    threadId,
-    modelSelection: task.modelSelection ?? bot.modelSelection,
-    approvalMode: task.approvalMode ?? (task.autoApprove === undefined ? bot.approvalMode : undefined),
-    autoApprove: task.autoApprove ?? bot.autoApprove,
-    alwaysAllow: task.alwaysAllow ?? bot.alwaysAllow,
-    activity: task.activity ?? bot.activity,
-    busy: task.busy ?? (task.activity ? task.activity === "working" || task.activity === "waiting-on-you" : bot.busy),
-    unread: task.unread ?? bot.unread,
-    pinnedMessageId: task.pinnedMessageId,
-    turnStartedAt: task.turnStartedAt ?? null,
-    waitingForTeammates: task.waitingForTeammates ?? false,
-  };
-}
-
 export type TaskUpdatePatch = Partial<Pick<Task, "modelSelection" | "approvalMode" | "autoApprove" | "pinnedMessageId">> & {
   acknowledgeLocalAuto?: boolean;
   updateBotDefault?: boolean;
@@ -407,23 +392,6 @@ export type TaskUpdatePatch = Partial<Pick<Task, "modelSelection" | "approvalMod
   pinned?: boolean;
   link?: string | null;
 };
-
-function taskPatchFields(patch: TaskUpdatePatch): Partial<Task> {
-  const { acknowledgeLocalAuto: _localAck, updateBotDefault: _modelDefault, nextTurn: _nextTurn, resetApprovalToAsk, projectId, archivedAt, snoozedUntil, surface, pinned, link, ...fields } = patch;
-  return { ...fields, ...(resetApprovalToAsk ? { approvalMode: "ask", autoApprove: false, alwaysAllow: [] } : {}),
-    ...(projectId === undefined ? {} : { projectId: projectId ?? undefined }),
-    ...(archivedAt === undefined ? {} : { archivedAt: archivedAt ?? undefined }),
-    ...(snoozedUntil === undefined ? {} : { snoozedUntil: snoozedUntil ?? undefined }),
-    ...(surface === undefined ? {} : { surface: surface ?? undefined, surfaceAuto: undefined }),
-    ...(pinned === undefined ? {} : { pinned: pinned ? true : undefined }),
-    ...(link === undefined ? {} : { link: link ?? undefined }) };
-}
-
-function openedUnreadDivider(state: AppState, threadId: string, unread: boolean, messages: readonly Message[], lastReadMessageId?: string): AppState["unreadDivider"] {
-  if (!unread) return state.unreadDivider?.threadId === threadId ? state.unreadDivider : null;
-  const messageId = firstUnreadMessageId(messages, lastReadMessageId);
-  return messageId ? { threadId, messageId } : null;
-}
 
 import type { BrowserEngineSummary, BrowserProfile, ConfigStatus, ManagedPolicySummary } from "./config-status";
 import { friendlyError } from "@/lib/plain-error";
@@ -826,17 +794,6 @@ export type Action =
       patch: BotUpdatePatch;
     };
 
-function reconcileModelVariantSessions(state: AppState): AppState {
-  const sessions = Object.entries(state.modelVariantSessions);
-  const kept = sessions.filter(([threadId, session]) => {
-    const owner = state.bots.find((bot) => bot.threadId === threadId || bot.tasks?.some((task) => task.threadId === threadId));
-    if (!owner) return false;
-    const selection = currentTaskBot(owner, threadId).modelSelection;
-    return selection.instanceId === session.instanceId && selection.model === session.model;
-  });
-  return kept.length === sessions.length ? state : { ...state, modelVariantSessions: Object.fromEntries(kept) };
-}
-
 export function pinBotThreadAction(action: Action, bots: Bot[]): Action {
   if (!("botId" in action) || ("threadId" in action && action.threadId) ||
       !["send", "interrupt", "editMessage", "switchBranch", "answerCard", "dismissCard", "cancelQueued", "steerQueued"].includes(action.type)) return action;
@@ -845,83 +802,13 @@ export function pinBotThreadAction(action: Action, bots: Bot[]): Action {
   return { ...action, threadId } as Action;
 }
 
-function bumpTranscriptGeneration(state: AppState, threadId: string | undefined | null): AppState {
-  if (!threadId) return state;
-  return {
-    ...state,
-    transcriptGeneration: {
-      ...state.transcriptGeneration,
-      [threadId]: (state.transcriptGeneration[threadId] ?? 0) + 1,
-    },
-  };
-}
-
-/** Every row with the patch's id swapped for it; the same array when the transcript does not hold it. */
-function patchedRows(messages: Message[], patch: Message): Message[] {
-  return hasMessage(messages, patch.id) ? messages.map((message) => (message.id === patch.id ? patch : message)) : messages;
-}
-
-function updateBot(state: AppState, botId: string, fn: (b: Bot) => Bot): AppState {
-  return { ...state, bots: state.bots.map((b) => (b.id === botId ? fn(b) : b)) };
-}
-
-function withMascotMotion(
-  state: AppState,
-  botId: string,
-  kind: Exclude<MausMotion, "none">,
-): AppState {
-  return {
-    ...state,
-    mascotMotion: {
-      botId,
-      nonce: (state.mascotMotion?.nonce ?? 0) + 1,
-      kind,
-    },
-  };
-}
-
-function withPatchedCard(messages: Message[], messageId: string, patch: Partial<OptionCardData>): Message[] {
-  return messages.map((m) => (m.id === messageId && m.card ? { ...m, card: { ...m.card, ...patch } } : m));
-}
-
-function patchCard(state: AppState, botId: string, messageId: string, patch: Partial<OptionCardData>): AppState {
-  return updateBot(state, botId, (b) => ({ ...b, messages: withPatchedCard(b.messages, messageId, patch) }));
-}
-
-function patchGroupCard(state: AppState, groupId: string, messageId: string, patch: Partial<OptionCardData>): AppState {
-  return {
-    ...state,
-    groups: state.groups.map((g) =>
-      g.id === groupId ? { ...g, messages: withPatchedCard(g.messages, messageId, patch) } : g,
-    ),
-  };
-}
-
-function openOnboardingCard(bot: Bot): Message | undefined {
-  return bot.messages.find(
-    (message) => message.kind === "options" && message.card && !message.card.requestId && !message.card.dismissed,
-  );
-}
-
-function dismissOnboardingCard(state: AppState, botId: string): AppState {
-  const bot = state.bots.find((candidate) => candidate.id === botId);
-  const quiz = bot ? openOnboardingCard(bot) : undefined;
-  return quiz ? patchCard(state, botId, quiz.id, { dismissed: true }) : state;
-}
-
 export const CLOUD_LINK_SETTINGS = { type: "toggleAppSettings", open: true, section: "cloudAccount", cloudLink: true } as const satisfies Action;
 
 export function reducer(state: AppState, action: Action): AppState {
-  if (action.type === "messageAdded" || action.type === "messagePatched" || action.type === "threadActive" || action.type === "optimisticMessageRemoved") {
-    const owner = storeIndex(state).botsByTaskThread.get(action.threadId)?.find((bot) => bot.threadId !== action.threadId || bot.awaitingThreadSnapshot);
-    if (owner) {
-      const frames = [...(state.backgroundThreadEvents[action.threadId] ?? []), action].slice(-256);
-      const buffered = { ...state, backgroundThreadEvents: { ...state.backgroundThreadEvents, [action.threadId]: frames } };
-      return (action.type === "messageAdded" || action.type === "messagePatched") && movesThreadToTop(action.message)
-        ? bumpThreadUpdatedAt(buffered, action.threadId, action.message.at, true, action.message.turnCompletedAt ?? action.message.at)
-        : action.type === "messageAdded" ? bumpThreadUpdatedAt(buffered, action.threadId, action.message.at) : buffered;
-    }
-  }
+  if (isTranscriptAction(action)) return reduceTranscripts(state, action);
+  if (isUiAction(action)) return reduceUi(state, action, reducer);
+  if (isAutomationAction(action)) return reduceAutomations(state, action, reducer);
+  if (isRuntimeAction(action)) return reduceRuntime(state, action);
   if (isNotificationFeedAction(action)) return { ...state, notifications: reduceNotificationFeed(state.notifications, action) };
   switch (action.type) {
     case "hydrate": {
@@ -961,74 +848,6 @@ export function reducer(state: AppState, action: Action): AppState {
         [...action.bots, ...action.groups],
       );
     }
-    case "transcriptSnapshot": {
-      if ((state.transcriptGeneration[action.threadId] ?? 0) !== action.generation) return state;
-      const held = new Set(action.heldAtStart);
-      const replace = <T extends { threadId: string; messages: Message[]; hasMore?: boolean; transcriptLoaded?: boolean; transcriptStale?: boolean }>(owner: T): T => {
-        if (owner.threadId !== action.threadId) return owner;
-        if (owner.transcriptLoaded === false) return { ...owner, messages: foldSnapshotOntoStreamed(owner.messages, held, action.messages), hasMore: action.hasMore, transcriptLoaded: true, transcriptStale: undefined };
-        if (!owner.transcriptStale) return owner;
-        return { ...owner, ...reconcileTranscript(owner.messages, held, action.messages, action.hasMore, owner.hasMore), transcriptStale: undefined };
-      };
-      const loaded = {
-        ...state,
-        bots: state.bots.map((bot) => {
-          const loaded = replace(bot);
-          return loaded === bot ? bot : { ...loaded, activeLeafId: bot.activeLeafId === action.leafAtStart ? action.activeLeafId : bot.activeLeafId };
-        }),
-        groups: state.groups.map(replace),
-      };
-      const owner = [...loaded.bots, ...loaded.groups].find((candidate) => candidate.threadId === action.threadId);
-      if (owner && (state.unreadDivider?.threadId === action.threadId || state.unreadDividerPending === action.threadId)) {
-        const cursor = "modelSelection" in owner ? threadReadCursor(owner) : owner.lastReadMessageId;
-        const messageId = firstUnreadMessageId(owner.messages, cursor);
-        loaded.unreadDivider = messageId ? { threadId: action.threadId, messageId } : null;
-        loaded.unreadDividerPending = undefined;
-      }
-      return owner ? reconcileSnapshotQueues(loaded, [owner]) : loaded;
-    }
-    case "transcriptsCached": {
-      const cached = new Map(action.transcripts.map((entry) => [entry.threadId, entry]));
-      const seed = <T extends Bot | Group>(owner: T): T => {
-        const entry = owner.transcriptLoaded === false ? cached.get(owner.threadId) : undefined;
-        if (!entry?.messages.length) return owner;
-        const seeded = { ...owner, messages: entry.messages, hasMore: entry.hasMore, transcriptLoaded: true, transcriptStale: true };
-        return "modelSelection" in seeded ? { ...seeded, activeLeafId: entry.activeLeafId } : seeded;
-      };
-      const bots = state.bots.map(seed), groups = state.groups.map(seed);
-      if (bots.every((bot, index) => bot === state.bots[index]) && groups.every((group, index) => group === state.groups[index])) return state;
-      const opened = [...bots, ...groups].find((owner) => owner.id === state.selectedId);
-      const pendingDivider = opened && state.unreadDividerPending === opened.threadId && opened.transcriptLoaded !== false;
-      return {
-        ...state, bots, groups,
-        ...(pendingDivider ? { unreadDivider: openedUnreadDivider(state, opened.threadId, true, "modelSelection" in opened ? visibleMessages(opened) : opened.messages, "modelSelection" in opened ? threadReadCursor(opened) : opened.lastReadMessageId) } : {}),
-      };
-    }
-    case "loadOlderMessages":
-      return state.loadingOlder[action.threadId]
-        ? state
-        : { ...state, loadingOlder: { ...state.loadingOlder, [action.threadId]: true } };
-    case "olderMessages": {
-      const { [action.threadId]: _done, ...loadingOlder } = state.loadingOlder;
-      if ((state.transcriptGeneration[action.threadId] ?? 0) !== action.generation) {
-        return { ...state, loadingOlder };
-      }
-      const prepend = <T extends { messages: Message[]; threadId: string; hasMore?: boolean }>(owner: T): T => {
-        const held = new Set(owner.messages.map((message) => message.id));
-        return {
-          ...owner,
-          // A page that raced an edit can overlap held rows; the held copy is newer.
-          messages: [...action.messages.filter((message) => !held.has(message.id)), ...owner.messages],
-          hasMore: action.hasMore,
-        };
-      };
-      return {
-        ...state,
-        loadingOlder,
-        bots: state.bots.map((bot) => (bot.threadId === action.threadId ? prepend(bot) : bot)),
-        groups: state.groups.map((group) => (group.threadId === action.threadId ? prepend(group) : group)),
-      };
-    }
     case "sectionDeleted":
       return {
         ...state, sections: action.sections,
@@ -1044,64 +863,6 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case "botQueues":
       return reconcileSnapshotQueues(replaceBotQueues(state, action.queues), [...state.bots, ...state.groups]);
-    case "openRoutine": {
-      // a routine lives in its bot's panel: open it there, on the Details tab
-      const botId = action.botId ?? state.routines.find((routine) => routine.id === action.routineId)?.botId ?? state.webhooks.find((webhook) => webhook.id === action.routineId)?.botId;
-      if (!botId) return state;
-      const focused = { ...state, activeView: "chat" as const, routinesFocus: { routineId: action.routineId, edit: action.edit, nonce: state.routinesFocus.nonce + 1 } };
-      return reducer(focused, { type: "toggleSettings", open: true, section: "routines", botId });
-    }
-    case "showChat":
-      return state.activeView === "chat" ? state : { ...state, activeView: "chat" };
-    case "routinesHydrated":
-      return { ...state, routines: action.routines, routineRuns: trimRoutineRuns(action.runs), routineRunsSince: action.since ?? null, routinesLoadState: "ready" };
-    case "routinesLoadFailed":
-      return { ...state, routinesLoadState: "error" };
-    case "routinePatched": {
-      const existing = state.routines.find((routine) => routine.id === action.routine.id);
-      // A PATCH's answer and the server's broadcast of it can arrive in either order: never step back to an older edit.
-      if (existing && existing.updatedAt > action.routine.updatedAt) return state;
-      return {
-        ...state,
-        routines: existing
-          ? state.routines.map((routine) => (routine.id === action.routine.id ? action.routine : routine))
-          : [action.routine, ...state.routines],
-      };
-    }
-    case "routineDeleted":
-      return { ...state, routines: state.routines.filter((routine) => routine.id !== action.routineId) };
-    case "routineRunPatched": {
-      const exists = state.routineRuns.some((run) => run.id === action.run.id);
-      const runs = exists
-        ? state.routineRuns.map((run) => (run.id === action.run.id ? action.run : run))
-        : [action.run, ...state.routineRuns];
-      return { ...state, routineRuns: trimRoutineRuns(runs) };
-    }
-    case "routineRunsLoaded":
-      return { ...state, routineRuns: withOlderRoutineRuns(state.routineRuns, action.runs), routineRunsSince: olderRunsSince(state.routineRunsSince, action) };
-    case "webhooksHydrated":
-      return { ...state, webhooks: action.webhooks, webhookAttempts: action.attempts, webhookIngress: action.ingress };
-    case "webhookPatched": {
-      const exists = state.webhooks.some((webhook) => webhook.id === action.webhook.id);
-      return {
-        ...state,
-        webhooks: exists
-          ? state.webhooks.map((webhook) => (webhook.id === action.webhook.id ? action.webhook : webhook))
-          : [action.webhook, ...state.webhooks],
-      };
-    }
-    case "webhookDeleted":
-      return {
-        ...state,
-        webhooks: state.webhooks.filter((webhook) => webhook.id !== action.webhookId),
-        webhookAttempts: state.webhookAttempts.filter((attempt) => attempt.webhookId !== action.webhookId),
-      };
-    case "webhookAttempted": {
-      const attempts = state.webhookAttempts.some((attempt) => attempt.id === action.attempt.id)
-        ? state.webhookAttempts.map((attempt) => attempt.id === action.attempt.id ? action.attempt : attempt)
-        : [...state.webhookAttempts, action.attempt];
-      return { ...state, webhookAttempts: attempts.slice(-2_000) };
-    }
     case "groupPatched": {
       const fenced = action.group.messages ? bumpTranscriptGeneration(state, action.group.threadId) : state;
       return { ...fenced, groups: patchedGroups(state.groups, action.group.messages ? { ...action.group, transcriptLoaded: true, transcriptStale: undefined } : action.group) };
@@ -1115,21 +876,6 @@ export function reducer(state: AppState, action: Action): AppState {
       const selectedId = state.selectedId === action.groupId ? (state.bots[0]?.id ?? "") : state.selectedId;
       return { ...state, groups, selectedId };
     }
-    case "instances":
-      return { ...state, instances: action.instances };
-    case "configStatus":
-      return { ...state, config: action.config };
-    case "liveCall":
-      return { ...state, liveCall: action.call, liveCallVersion: state.liveCallVersion + 1 };
-    case "liveCallLookup":
-      return action.since === state.liveCallVersion && action.seq > state.liveCallLookupSeq
-        ? { ...state, liveCall: action.call, liveCallLookupSeq: action.seq }
-        : state;
-    case "profileSaved":
-      return state.config ? {
-        ...state,
-        config: { ...state.config, profile: { name: "", email: "", ...state.config.profile, ...action.profile } },
-      } : state;
     case "select": {
       const room = state.groups.find((g) => g.id === action.id);
       if (room) {
@@ -1275,179 +1021,6 @@ export function reducer(state: AppState, action: Action): AppState {
       }));
       return reconcileModelVariantSessions(patched);
     }
-    case "messageAdded": {
-      const index = storeIndex(state);
-      const bot = index.botByOpenThread.get(action.threadId);
-      if (!bot) {
-        const group = index.groupByThread.get(action.threadId);
-        if (!group) return state;
-        if (group.threadId === action.threadId && hasMessage(group.messages, action.message.id)) return state;
-        const stamped = bumpThreadUpdatedAt(state, action.threadId, action.message.at, movesThreadToTop(action.message), action.message.turnCompletedAt ?? action.message.at);
-        if (group.threadId !== action.threadId) return stamped;
-        const optimisticIndex = action.message.sendId ? messagePosition(group.messages, optimisticMessageId(action.message.sendId)) : -1;
-        return {
-          ...stamped,
-          groups: stamped.groups.map((g) =>
-            g.id === group.id
-              ? {
-                  ...g,
-                  messages: optimisticIndex >= 0
-                    ? g.messages.map((message, index) =>
-                        index === optimisticIndex ? action.message : message
-                      )
-                    : [...g.messages, action.message],
-                }
-              : g,
-          ),
-        };
-      }
-      // The POST response and its SSE frame race; moving the leaf back to a repeat can hide a newer reply.
-      if (hasMessage(bot.messages, action.message.id)) return state;
-      const stamped = bumpThreadUpdatedAt(state, action.threadId, action.message.at, movesThreadToTop(action.message), action.message.turnCompletedAt ?? action.message.at);
-      const optimisticId = action.message.sendId
-        ? optimisticMessageId(action.message.sendId)
-        : null;
-      const optimisticIndex = optimisticId ? messagePosition(bot.messages, optimisticId) : -1;
-      if (optimisticIndex >= 0) {
-        return updateBot(stamped, bot.id, (current) => ({
-          ...current,
-          messages: current.messages.map((message, index) =>
-            index === optimisticIndex ? action.message : message
-          ),
-          // a leaf moved back to the send's parent (a snapshot older than the send) still follows the send
-          activeLeafId: current.activeLeafId === optimisticId || (current.activeLeafId ?? null) === (action.message.parentId ?? null)
-            ? action.message.id
-            : current.activeLeafId,
-        }));
-      }
-      const next = updateBot(stamped, bot.id, (b) => {
-        // A message parented off the leaf is a late chain-insert; the leaf stays put.
-        const adoptsLeaf = (action.message.parentId ?? null) === (b.activeLeafId ?? null);
-        return { ...b, messages: [...b.messages, action.message], activeLeafId: adoptsLeaf ? action.message.id : b.activeLeafId };
-      });
-      const motion =
-        action.message.role === "user" && action.message.kind === "text" && Boolean(action.message.queueId)
-          ? "working"
-          : action.message.kind === "options"
-          ? "thinking"
-          : action.message.kind === "activity"
-            ? action.message.tool?.ok === false
-              ? "failure"
-              : action.message.tool?.ok === true
-                ? "success"
-                : "working"
-            : action.message.role === "bot" && action.message.kind === "text"
-              ? "blink"
-              : null;
-      const animated = motion ? withMascotMotion(next, bot.id, motion) : next;
-      return animated;
-    }
-    case "optimisticMessageRemoved": {
-      const id = optimisticMessageId(action.sendId);
-      const remove = (messages: Message[], optimistic: Message) => messages
-        .filter((message) => message.id !== id)
-        .map((message) => message.optimisticThreadOrderAt === optimistic.at
-          ? { ...message, optimisticThreadOrderAt: optimistic.optimisticThreadOrderAt }
-          : message);
-      const bot = storeIndex(state).botByOpenThread.get(action.threadId);
-      if (bot) {
-        const optimistic = messageById(bot.messages, id);
-        if (!optimistic) return state;
-        const cleared = updateBot(state, bot.id, (current) => ({
-          ...current,
-          messages: remove(current.messages, optimistic),
-          activeLeafId: current.activeLeafId === id
-            ? (action.restoreLeafId !== undefined ? action.restoreLeafId : (optimistic.parentId ?? null))
-            : current.activeLeafId,
-        }));
-        const task = bot.tasks?.find((candidate) => candidate.threadId === action.threadId);
-        const kept = cleared.bots.find((candidate) => candidate.id === bot.id)?.messages ?? [];
-        return rewindThreadUpdatedAt(cleared, action.threadId, kept, task?.createdAt ?? 0, bot.hasMore ? optimistic.optimisticThreadOrderAt : undefined);
-      }
-      const group = state.groups.find((candidate) => candidate.threadId === action.threadId);
-      const optimistic = group && messageById(group.messages, id);
-      if (!group || !optimistic) return state;
-      const cleared = {
-        ...state,
-        groups: state.groups.map((candidate) => candidate.id === group.id
-          ? { ...candidate, messages: remove(candidate.messages, optimistic) }
-          : candidate),
-      };
-      const task = group.tasks?.find((candidate) => candidate.threadId === action.threadId);
-      const kept = cleared.groups.find((candidate) => candidate.id === group.id)?.messages ?? [];
-      return rewindThreadUpdatedAt(cleared, action.threadId, kept, task?.createdAt ?? group.createdAt, group.hasMore ? optimistic.optimisticThreadOrderAt : undefined);
-    }
-    case "messagePatched": {
-      const stamped = movesThreadToTop(action.message) ? bumpThreadUpdatedAt(state, action.threadId, action.message.at, true, action.message.turnCompletedAt ?? action.message.at) : state;
-      const bot = storeIndex(stamped).botByOpenThread.get(action.threadId);
-      if (!bot) {
-        const group = stamped.groups.find((g) => g.threadId === action.threadId);
-        if (!group) return stamped;
-        return {
-          ...stamped,
-          groups: stamped.groups.map((g) =>
-            g.id === group.id
-              ? { ...g, messages: patchedRows(g.messages, action.message), previewMessages: g.previewMessages && patchedRows(g.previewMessages, action.message) }
-              : g,
-          ),
-        };
-      }
-      const motion =
-        action.message.kind === "activity"
-          ? action.message.tool?.ok === false
-            ? "failure"
-            : action.message.tool?.ok === true
-              ? "success"
-              : "working"
-          : null;
-      const next = motion ? withMascotMotion(stamped, bot.id, motion) : stamped;
-      return updateBot(next, bot.id, (b) => ({
-        ...b,
-        messages: patchedRows(b.messages, action.message),
-        previewMessages: b.previewMessages && patchedRows(b.previewMessages, action.message),
-      }));
-    }
-    case "browserPart":
-      return { ...state, browserPart: action.part };
-    case "computerStart": {
-      const { [action.botId]: _ended, ...others } = state.computerStarts;
-      return {
-        ...(action.start ? withMascotMotion(state, action.botId, "launch") : state),
-        computerStarts: action.start ? { ...others, [action.botId]: action.start } : others,
-      };
-    }
-    case "computerControl":
-      return {
-        ...state,
-        computerControl: {
-          ...state.computerControl,
-          [action.botId]: { held: action.held, helpReason: action.helpReason, help: action.help ?? null },
-        },
-      };
-    case "modelVariantRuntime": {
-      const event = action.event;
-      if (!event.turnId) return state;
-      const owner = state.bots.find((bot) => bot.threadId === event.threadId || bot.tasks?.some((task) => task.threadId === event.threadId));
-      if (!owner) return state;
-      const selection = currentTaskBot(owner, event.threadId).modelSelection;
-      if (selection.instanceId !== event.providerInstanceId ||
-          !state.instances.find((instance) => instance.instanceId === selection.instanceId)?.capabilities?.modelVariants) return state;
-      const previous = state.modelVariantSessions[event.threadId];
-      if (event.type === "turn.started") {
-        if (previous && (previous.turnId === event.turnId || Date.parse(previous.startedAt) > Date.parse(event.createdAt))) return state;
-        return { ...state, modelVariantSessions: { ...state.modelVariantSessions, [event.threadId]: {
-          instanceId: selection.instanceId, model: selection.model, turnId: event.turnId, startedAt: event.createdAt, acceptingUpdates: true,
-        } } };
-      }
-      if (!previous?.acceptingUpdates || previous.turnId !== event.turnId || previous.instanceId !== selection.instanceId || previous.model !== selection.model) return state;
-      if (event.type === "session.model-variants" && event.model === selection.model) {
-        return { ...state, modelVariantSessions: { ...state.modelVariantSessions, [event.threadId]: { ...previous, variants: event.variants } } };
-      }
-      if (event.type === "turn.completed") {
-        return { ...state, modelVariantSessions: { ...state.modelVariantSessions, [event.threadId]: { ...previous, acceptingUpdates: false } } };
-      }
-      return state;
-    }
     case "setModel":
       if (action.threadId) {
         const picked = reducer(state, { type: "updateTask", botId: action.botId, threadId: action.threadId,
@@ -1463,116 +1036,6 @@ export function reducer(state: AppState, action: Action): AppState {
         tasks: (bot.tasks ?? [{ threadId: bot.threadId, title: "New thread", createdAt: Date.now() }]).map((task) =>
           task.threadId === action.threadId ? { ...task, ...patch } : task),
       })));
-    }
-    case "connected":
-      return { ...state, connected: action.value };
-    case "loadFailed":
-      return state.hydrated || state.loadFailed ? state : { ...state, loadFailed: true };
-    case "error":
-      return {
-        ...(action.message && state.selectedId
-          ? withMascotMotion(state, state.selectedId, "alert")
-          : state),
-        error: action.message,
-      };
-    case "toggleSettings": {
-      if (action.botId !== undefined && !state.bots.some((bot) => bot.id === action.botId && !bot.hidden)) return state;
-      const selectedId = action.botId ?? state.selectedId;
-      const open = action.open ?? (action.botId !== undefined || !state.settingsOpen);
-      const freshOpen = open && !state.settingsOpen;
-      const named = action.section !== undefined;
-      return {
-        ...state,
-        selectedId,
-        settingsOpen: open,
-        botSettingsSection: action.section ?? state.botSettingsSection,
-        botSettingsExpandAccordion: open ? named || (freshOpen && state.botSettingsSectionStored) : false,
-        botSettingsExpandRemembered: open ? !named && freshOpen && state.botSettingsSectionStored : false,
-        botSettingsSectionStored: named || state.botSettingsSectionStored,
-        appSettingsOpen: open ? false : state.appSettingsOpen,
-      };
-    }
-    case "togglePlugins": {
-      const open = action.open ?? !state.pluginsOpen;
-      return {
-        ...state,
-        pluginsOpen: open,
-        pluginsSurface: action.surface ?? state.pluginsSurface,
-        ...(open ? { appSettingsOpen: false, shortcutsOpen: false } : {}),
-      };
-    }
-    case "botCreationPending":
-      return { ...state, botCreationPending: action.on };
-    case "notice":
-      return { ...state, notice: action.notice };
-    case "revealThread":
-      return { ...state, appSettingsOpen: false, shortcutsOpen: false, pluginsOpen: false, revealThread: { threadId: action.threadId, nonce: (state.revealThread?.nonce ?? 0) + 1 } };
-    case "focusMessage":
-      return {
-        ...state,
-        focusMessage: {
-          threadId: action.threadId,
-          messageId: action.messageId,
-          matchText: action.matchText,
-          nonce: (state.focusMessage?.nonce ?? 0) + 1,
-          consumed: false,
-        },
-      };
-    case "focusMessageConsumed":
-      if (!state.focusMessage || state.focusMessage.nonce !== action.nonce) return state;
-      return { ...state, focusMessage: { ...state.focusMessage, consumed: true } };
-    case "unreadDividerDone":
-      return state.unreadDivider?.threadId === action.threadId ? { ...state, unreadDivider: null } : state;
-    case "openSignIn": {
-      if (!state.bots.some((bot) => bot.id === action.botId)) return state;
-      const selected = reducer(reducer(state, { type: "select", id: action.botId }), { type: "toggleComputer", open: true });
-      const { type: _, ...request } = action;
-      return { ...selected, signInFocus: { ...request, requestId: (state.signInFocus?.requestId ?? 0) + 1, consumed: false } };
-    }
-    case "signInFocusConsumed":
-      return state.signInFocus?.requestId === action.requestId
-        ? { ...state, signInFocus: { ...state.signInFocus, consumed: true } } : state;
-    case "toggleComputer": {
-      // the bot's computer lives on its panel's Computer tab: there is no separate screen panel to open or close
-      if (action.open === false) return state;
-      const shown = reducer(state, { type: "toggleSettings", open: true, section: "computer", ...(action.botId !== undefined ? { botId: action.botId } : {}) });
-      return shown === state ? state : { ...shown, computerTabRequest: state.computerTabRequest + 1 };
-    }
-    case "toggleAppSettings": {
-      const open = action.open ?? !state.appSettingsOpen;
-      return {
-        ...state,
-        // Settings is a modal over the window: whatever side panel was open stays open under it, as in Grok Bot.
-        appSettingsOpen: open,
-        appSettingsSection: action.section ?? state.appSettingsSection,
-        appSettingsCloudLink: action.cloudLink && open ? state.appSettingsCloudLink + 1 : 0,
-        appSettingsPhonePairing: action.phonePairing && open ? state.appSettingsPhonePairing + 1 : 0,
-        appSettingsRequest: open ? state.appSettingsRequest + 1 : state.appSettingsRequest,
-        pluginsOpen: open ? false : state.pluginsOpen,
-      };
-    }
-    case "toggleShortcuts": {
-      const open = action.open ?? !state.shortcutsOpen;
-      return {
-        ...state,
-        shortcutsOpen: open,
-      };
-    }
-    case "openCloudAdd":
-      if (storeApp()) return state;
-      return { ...state, cloudAdd: state.cloudAdd ?? { source: action.source, ...(action.signIn ? { signIn: true as const } : {}) }, cloudHowTo: false };
-    case "closeCloudAdd":
-      return state.cloudAdd ? { ...state, cloudAdd: null } : state;
-    case "cloudHowTo":
-      return state.cloudHowTo === action.open ? state : { ...state, cloudHowTo: action.open };
-    case "toggleWelcome": {
-      const open = action.open ?? !state.welcomeOpen;
-      return {
-        ...state,
-        welcomeOpen: open,
-        appSettingsOpen: open ? false : state.appSettingsOpen,
-        shortcutsOpen: open ? false : state.shortcutsOpen,
-      };
     }
     case "updateBot": {
       const mascotChanged =
@@ -1600,25 +1063,6 @@ export function reducer(state: AppState, action: Action): AppState {
       if (connectorScopes === null) botPatch.connectorScopes = undefined;
       else if (connectorScopes !== undefined) botPatch.connectorScopes = connectorScopes;
       return updateBot(next, action.botId, (b) => ({ ...b, ...botPatch }));
-    }
-    case "threadActive": {
-      const bot = state.bots.find((b) => b.threadId === action.threadId);
-      if (!bot) return state;
-      return updateBot(bumpTranscriptGeneration(state, action.threadId), bot.id, (b) => ({
-        ...b,
-        activeLeafId: action.activeLeafId,
-      }));
-    }
-    case "switchBranch": {
-      const bot = state.bots.find((b) => b.id === action.botId);
-      if (!bot) return state;
-      let cur = action.messageId;
-      for (;;) {
-        const children = bot.messages.filter((m) => m.parentId === cur);
-        if (!children.length) break;
-        cur = children.reduce((a, b) => (b.at >= a.at ? b : a)).id;
-      }
-      return updateBot(bumpTranscriptGeneration(state, bot.threadId), action.botId, (b) => ({ ...b, activeLeafId: cur }));
     }
     case "patchGroup":
       return {
@@ -1814,12 +1258,6 @@ export function reducer(state: AppState, action: Action): AppState {
     case "followBotModel":
     case "loadDataSheet":
       return state;
-    case "dataSheet":
-      return {
-        ...state,
-        dataSheets: { ...state.dataSheets, [action.sheet.botId]: action.sheet },
-        ...(action.tables ? { dataTables: { ...state.dataTables, [action.sheet.botId]: action.tables } } : {}),
-      };
     case "sendGroup": {
       if (!action.sendId) return state;
       const group = state.groups.find((candidate) => candidate.id === action.groupId);
