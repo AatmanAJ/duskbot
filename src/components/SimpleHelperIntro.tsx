@@ -168,7 +168,9 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
   if (hidden) return null;
 
   const bubbles = [...lines.slice(0, Math.min(shown, 3)), ...(shown >= 5 && facts ? [followupLine(facts)] : [])];
-  const chips = answered || shown < ALL || !facts ? [] : introChips({
+  // the chips belong under these bubbles: none while the app connects, reconnects or the transcript is still loading
+  const onScreen = state.connected && bot?.transcriptLoaded !== false && bubbles.length > 0;
+  const chips = answered || !onScreen || shown < ALL || !facts ? [] : introChips({
     aiReady: ai === "own",
     ownBots: state.bots.filter((candidate) => !candidate.hidden && !candidate.defaultBot).length,
     onCloud: state.config?.cloudHome === true,
@@ -179,7 +181,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
     phoneApp: phoneAppEnabled(),
     importFound: look.importFound,
   });
-  const ready = !answered && shown >= ALL && facts !== null && ai === "own";
+  const ready = !answered && onScreen && shown >= ALL && facts !== null && ai === "own";
   const typing = staged && ai !== "none" && shown === 4 && Boolean(bot);
   return (
     <div data-helper-intro={message.id} className="flex w-full flex-col items-start gap-1">

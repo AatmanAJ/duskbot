@@ -96,7 +96,7 @@ beforeEach(() => {
   f.routines = 0;
   f.improve = true;
   f.improveSaves = [];
-  f.state = { bots: [maus()], instances: [claude(true)], config: { profile: { name: "" } } };
+  f.state = { connected: true, bots: [maus()], instances: [claude(true)], config: { profile: { name: "" } } };
   stageIntro(null);
   setWelcomingBot(null);
   host = document.createElement("div");
@@ -163,6 +163,21 @@ describe("in the chat (Simple mode)", () => {
     expect(chips()).toEqual(["apps", "phone", "cloud"]);
     expect([...host.querySelectorAll("[data-helper-step]")].map((node) => node.textContent)).toEqual(["Connect email & calendar", "Connect your phone", "Try cloud"]);
     expect(f.followups, "only a first run asks for a follow-up").toEqual([]);
+  });
+
+  it("shows no chips or asks while the app connects or reconnects, or the transcript is still loading", async () => {
+    f.services = { gmail: { connected: false } };
+    const followup = saved({ ai: "own", apps: [], bots: 0, routines: 0 });
+    f.state = { ...f.state, connected: false };
+    await show(false, followup);
+    expect(chips()).toEqual([]);
+    expect(host.querySelector("[data-helper-setup]")).toBeNull();
+    f.state = { ...f.state, connected: true, bots: [maus({ transcriptLoaded: false })] };
+    await show(false, followup);
+    expect(host.querySelector("[data-helper-setup]")).toBeNull();
+    f.state = { ...f.state, bots: [maus()] };
+    await show(false, followup);
+    expect(chips(), "back under the message once the chat is shown").toEqual(["apps", "phone", "cloud"]);
   });
 
   it("offers no phone while the phone app is hidden", async () => {
