@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { InstanceInfo, ModelSelection } from "@/state/store";
 import { starKey, toggleStar, parseStarred } from "./starred-models";
-import { isAutoFreeModel, modelName, providerName, simpleModelMenu, SIMPLE_SEARCH_AFTER } from "./simple-model-menu";
+import { answeringModelName, isAutoFreeModel, modelName, providerName, simpleModelMenu, SIMPLE_SEARCH_AFTER } from "./simple-model-menu";
 
 vi.hoisted(() => {
   vi.stubGlobal("window", {});
@@ -325,6 +325,18 @@ describe("OpenCode's free models", () => {
       .toEqual([["OpenCode", ["Glm 5.3 Flash Free"]]]);
     expect(menu([claude(), free], { query: "opus", searchAll: true }).groups.map((group) => group.label)).toEqual(["Claude"]);
     expect(menu([claude(), free], { query: "beam", searchAll: true }).groups).toEqual([]);
+  });
+
+  it("names what answers on the phone's Model row: Free model, never a ChatGPT model with no ChatGPT connected", () => {
+    const sol: ModelSelection = { instanceId: "codex", model: "gpt-5.6-sol" };
+    const codexSol = { ...codex, models: { default: "gpt-5.6-sol", options: [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }] } };
+    expect(answeringModelName([free], onFree())).toBe("Free model");
+    expect(answeringModelName([free, { ...codexSol, snapshot: { state: "available", authenticated: false } }], sol)).toBe("Sign-in required");
+    expect(answeringModelName([free, { ...codexSol, snapshot: { state: "unavailable", reason: "codex CLI not found" } }], sol)).toBe("Setup required");
+    expect(answeringModelName([free], sol)).toBe("Unavailable");
+    expect(answeringModelName([free, codexSol], sol)).toBe("GPT-5.6 Sol");
+    expect(answeringModelName([], sol)).toBe("");
+    expect(answeringModelName([free], { instanceId: "", model: "" })).toBe("");
   });
 
   it("is the Free model row alone when the catalog marks no free model, as an older CLI does", () => {

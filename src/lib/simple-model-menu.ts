@@ -155,6 +155,20 @@ export function modelName(instance: InstanceInfo | undefined, model: string, var
   return displayModelLabel(option.label, providerName(instance), option.custom) + variantSuffix(instance, model, variant);
 }
 
+/** A bot's model where only a short value fits (the phone's Model row): the model's name while its AI can answer, else
+ * why it can't. A model on an AI that isn't connected never answers, so its name would only mislead; "" until the AIs
+ * are read. */
+export function answeringModelName(instances: readonly InstanceInfo[], selection: ModelSelection | undefined): string {
+  if (!selection || (!selection.instanceId && !selection.model) || !instances.length) return "";
+  const instance = instances.find((candidate) => candidate.instanceId === selection.instanceId);
+  const option = instance?.models.options.find((candidate) => candidate.id === selection.model);
+  if (!instance) return t("model.simple.unavailable");
+  if (needsCli(instance)) return t("model.setupRequired");
+  if (needsSignIn(instance) && !isCustomOnly(instance) && !option?.custom) return t("model.signInRequired");
+  if (option?.orgBlocked) return t("model.orgBlocked");
+  return modelName(instance, selection.model, selection.variant);
+}
+
 export function repeatedModelLabels(options: readonly ModelOption[]): Set<string> {
   const seen = new Set<string>();
   const repeated = new Set<string>();
