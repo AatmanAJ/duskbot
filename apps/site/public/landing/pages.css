@@ -164,6 +164,7 @@ button.toggle::before { content: ""; position: absolute; inset: -11px -3px; }
 .copy.done { background: var(--ink); color: #fff; }
 html:not(.js) .copy { display: none; }
 html:not(.js) .code pre { padding-right: 18px; }
+.js .code:has(> .copy) pre { cursor: pointer; }
 .keys { display: inline-flex; gap: 4px; vertical-align: 1px; white-space: nowrap; }
 kbd { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 7px; border-radius: 8px; background: var(--wash); box-shadow: inset 0 -1.5px 0 #dcdcd7; font: 500 12.5px/1 var(--sans); color: var(--ink); }
 
@@ -365,6 +366,13 @@ body:has(.p-doc) .bar { max-width: 1440px; padding-left: 32px; padding-right: 32
 .dl-main .btn .os { width: 18px; height: 18px; }
 .dl-note { margin: 16px 0 0; font-size: 15.5px; color: var(--ink-2); font-weight: 500; }
 .dl-main > .code { margin: 18px 0 20px; }
+.dl-cta[hidden], .dl-note[hidden], .dl-phone[hidden], .dl-phone [hidden] { display: none; }
+.dl-phone .dl-note { margin-bottom: 18px; }
+.dl-mail-row { display: flex; gap: 10px; max-width: 520px; }
+.dl-mail-row input { flex: 1; min-width: 0; height: 56px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--wash); font: 450 16px/1 var(--sans); color: var(--ink); appearance: none; outline: none; }
+.dl-mail-row input::placeholder { color: var(--ink-3); font-weight: 500; }
+.dl-mail-row input:focus-visible { background-image: linear-gradient(var(--focus), var(--focus)); }
+.inner .dl-mail-row .btn.light { background: var(--wash); color: var(--ink); }
 .dl-steps { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); }
 .dl-rows .dl-steps li { display: list-item; margin: 2px 0; padding: 0; border-radius: 0; background: none; font-size: 15.5px; }
 .dl-ver { margin: 6px 0 0; font: 500 12.5px/1.6 var(--mono); color: var(--ink-3); }
@@ -649,6 +657,9 @@ body:has(.p-doc) .bar { max-width: 1440px; padding-left: 32px; padding-right: 32
   .dl-type { grid-column: 2; grid-row: 2; font-size: 14px; }
   .dl-size { grid-column: 2; grid-row: 2; justify-self: end; }
   .dl-cta { display: grid; }
+  .dl-phone > .btn:not([hidden]) { display: flex; }
+  .dl-mail-row { flex-direction: column; }
+  .dl-mail-row input { flex: none; }
   .dl-ico { width: 44px; height: 44px; border-radius: 14px; }
   .dl-acts { grid-column: 1 / -1; justify-content: flex-start; }
   .specs div { grid-template-columns: 1fr; gap: 2px; }
