@@ -55,13 +55,20 @@ const STATUS_PREFIX = /^(?:[\w-]+ ){0,2}(?:API Error|HTTP|status(?: code)?)[:\s]
 
 const REASON_PHRASE = /^(?:[A-Z][a-z]+ ?){1,4}\.?$/;
 
+/** The provider's own plain sentence after a status line ("HTTP 400: Invalid model id."), or undefined. */
+export function providerSentence(raw: string): string | undefined {
+  const text = raw.trim();
+  const rest = text.replace(STATUS_PREFIX, "").trim();
+  return rest !== text && /[A-Za-z]+\s+[A-Za-z]+/.test(rest) && !REASON_PHRASE.test(rest) && !isTechnicalError(rest) ? rest : undefined;
+}
+
 export function plainErrorLine(raw: string): string | undefined {
   const tooLargeFor = requestTooLargeModel(raw);
   if (tooLargeFor) return t("chat.error.requestTooLarge", { model: tooLargeFor });
   if (!isTechnicalError(raw)) return undefined;
   const text = raw.trim();
-  const rest = text.replace(STATUS_PREFIX, "").trim();
-  if (rest !== text && /[A-Za-z]+\s+[A-Za-z]+/.test(rest) && !REASON_PHRASE.test(rest) && !isTechnicalError(rest)) return rest;
+  const rest = providerSentence(text);
+  if (rest) return rest;
   const key = KINDS.find(([pattern]) => pattern.test(text))?.[1] ?? "error.plain.generic";
   return t(key);
 }

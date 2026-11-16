@@ -3,7 +3,7 @@ import { offersSignIn } from "@/components/EngineSetup";
 import { statusActivity } from "@/lib/activity-runs";
 import { t } from "@/lib/i18n";
 import { peerLine } from "@/lib/peer-message";
-import { plainErrorKind, plainErrorLine } from "@/lib/plain-error";
+import { isTechnicalError, plainErrorKind, plainErrorLine, providerSentence } from "@/lib/plain-error";
 import { isReceipt } from "@/lib/receipts";
 import type { LocaleKey } from "@/locales";
 import type { InstanceInfo, Message } from "@/state/store";
@@ -85,7 +85,8 @@ const CREDIT_WORDS = /out of credits?|payment required|insufficient (?:funds|bal
  * `ownAi`: an AI the person connected is ready now, so connecting one is no longer the fix. */
 /** What the free backup running out, being rate limited or not answering reads as: with no AI of the person's own none
  * of these is a failure they can fix by trying harder, only by connecting one. */
-const FREE_BACKUP_DOWN: ReadonlySet<FailedReplyKind> = new Set(["credits", "usage_limit", "rate_limit", "overloaded", "timeout", "no_answer", "other"]);
+const FREE_BACKUP_DOWN: ReadonlySet<FailedReplyKind> = new Set(["credits", "usage_limit", "rate_limit", "overloaded", "timeout", "no_answer", "other",
+  "model_not_found", "bad_request", "provider_down", "cli_missing", "cli_exit"]);
 
 export function failedReplyKind(tool: NonNullable<Message["tool"]>, engine: InstanceInfo | undefined, ownAi = false): FailedReplyKind {
   const kind = failedKind(tool, engine, ownAi);
@@ -123,13 +124,26 @@ export function plainFailureWords(cause: string): string | null {
 }
 
 /** Most actionable first: when bots fail for different reasons, the card says the one a person can fix. */
-const PRIORITY: FailedReplyKind[] = ["blocker", "no_ai", "signed_out", "claude_update", "credits", "usage_limit", "place", "restart_interrupted", "rate_limit", "overloaded", "timeout", "no_answer", "other"];
+const PRIORITY: FailedReplyKind[] = ["blocker", "no_ai", "signed_out", "cli_missing", "claude_update", "credits", "usage_limit", "model_not_found", "context", "place",
+  "restart_interrupted", "rate_limit", "overloaded", "provider_down", "timeout", "cli_exit", "bad_request", "no_answer", "other"];
 
 export function mostActionable<T extends { kind: FailedReplyKind }>(items: readonly T[]): T | undefined {
   return [...items].sort((a, b) => PRIORITY.indexOf(a.kind) - PRIORITY.indexOf(b.kind))[0];
 }
 
-const DETAIL: Record<Exclude<FailedReplyKind, "signed_out" | "credits" | "claude_update" | "place" | "blocker">, LocaleKey> = {
+/** the kinds whose line names the engine; a plain sentence from the engine itself says more, so it wins */
+const ENGINE_DETAIL: Record<"model_not_found" | "bad_request" | "context" | "provider_down" | "cli_missing" | "cli_exit", LocaleKey> = {
+  model_not_found: "failedReply.modelNotFound",
+  bad_request: "failedReply.badRequest",
+  context: "failedReply.context",
+  provider_down: "failedReply.providerDown",
+  cli_missing: "failedReply.cliMissing",
+  cli_exit: "failedReply.cliExit",
+};
+
+const hasEngineDetail = (kind: FailedReplyKind): kind is keyof typeof ENGINE_DETAIL => Object.hasOwn(ENGINE_DETAIL, kind);
+
+const DETAIL: Record<Exclude<FailedReplyKind, "signed_out" | "credits" | "claude_update" | "place" | "blocker" | keyof typeof ENGINE_DETAIL>, LocaleKey> = {
   usage_limit: "failedReply.usageLimit",
   rate_limit: "failedReply.rateLimited",
   overloaded: "failedReply.overloaded",
@@ -149,6 +163,11 @@ export function failedReplyDetail(kind: FailedReplyKind, engineName: string, onS
   if (kind === "credits") return t("failedReply.credits", { engine: engineName });
   if (kind === "claude_update") return t("chat.claudeUpdate.offer");
   if (kind === "place" || kind === "blocker") return t("error.plain.generic");
+  if (hasEngineDetail(kind)) {
+    const text = cause.trim();
+    if (text && !isTechnicalError(text)) return currentFailureWords(text);
+    return (text && providerSentence(text)) || t(ENGINE_DETAIL[kind], { engine: engineName });
+  }
   // a turn's own network failure is its AI's server not answering, never the app: "fetch failed" from a model call
   if (kind === "other" && AI_UNREACHABLE.has(plainErrorKind(cause.trim()) ?? "")) return t("failedReply.unreachable", { engine: engineName });
   if (kind === "other" && cause.trim()) return plainErrorLine(cause) ?? currentFailureWords(cause.trim());
