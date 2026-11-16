@@ -128,7 +128,8 @@ export class BearerEventSource extends EventTarget {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       const response = await context.fetch(context.url, {
-        headers: { Authorization: `Bearer ${context.token}`, Accept: "text/event-stream", "Cache-Control": "no-cache" },
+        // only safelisted headers next to Authorization: a workspace's CORS preflight refuses any other one
+        headers: { Authorization: `Bearer ${context.token}`, Accept: "text/event-stream" }, cache: "no-store",
         credentials: "omit", mode: "cors", redirect: "error", signal: this.controller.signal,
       });
       if (this.controller.signal.aborted) return;
