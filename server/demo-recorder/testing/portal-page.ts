@@ -1,6 +1,7 @@
 // A page run in happy-dom 21 for tests, with a person who uses it the way the live view's input arrives: each press
 // and key is told to the capture first, then reaches the page. happy-dom lays nothing out, so every element gets a row
-// of its own and hit-testing reads the rows.
+// of its own and hit-testing reads the rows. It hands out a <select> as a proxy, so a row is kept on the element, not
+// found by identity.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,9 +25,14 @@ const WIDTH = 400;
 export const PAGE_SIZE = { width: 640, height: 960 } as const;
 
 const LAYOUT = `(() => {
-  const all = () => [...document.querySelectorAll("body *")];
+  const all = () => {
+    const elements = [...document.querySelectorAll("body *")];
+    elements.forEach((element, index) => { element.demoRow = index; });
+    return elements;
+  };
   const rectOf = (element) => {
-    const index = all().indexOf(element);
+    all();
+    const index = element.isConnected && typeof element.demoRow === "number" ? element.demoRow : -1;
     const y = index < 0 ? -1000 : index * ${ROW};
     return { x: ${LEFT}, y, left: ${LEFT}, top: y, width: ${WIDTH}, height: ${ROW - 2}, right: ${LEFT + WIDTH}, bottom: y + ${ROW - 2}, toJSON() { return {}; } };
   };
