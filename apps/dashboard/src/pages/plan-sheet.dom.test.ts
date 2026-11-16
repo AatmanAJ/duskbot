@@ -67,3 +67,24 @@ test("a running plan switches in place, and stops on the card to show a charge",
   await act(async () => button(/^pay \$15 and switch$/)!.click());
   expect(changePlan).toHaveBeenCalledWith(expect.objectContaining({ desktop: "shared-m" }), 15);
 });
+
+test("buying a work license on its own: one click asks once, the button holds while the page opens, and says so if it can't", async () => {
+  let fail = (_ok: boolean) => {};
+  const checkout = vi.fn((_req: object) => new Promise<boolean>((done) => { fail = done; }));
+  state.cloud = { catalog: fixtureCatalog, billing: billingFor(null), changeCharge: vi.fn(), changePlan: vi.fn(), checkout };
+  const { LicenseSheet } = await import("./plan-sheet");
+  await mount(createElement(LicenseSheet, { source: "dash_license", start: { license: "starter", members: 1 }, onClose: () => {}, onNothingLeft: () => {} }));
+  const buy = button(/^buy .* license$/)!;
+  // separate clicks, as a browser delivers them: the first one disables the button
+  for (let i = 0; i < 3; i++) await act(async () => buy.click());
+  expect(checkout).toHaveBeenCalledTimes(1);
+  expect(checkout.mock.calls[0]![0]).toMatchObject({ kind: "plan", source: "dash_license", selection: { desktop: "none", license: "starter" } });
+  const busy = button(/opening checkout/)!;
+  expect([busy.disabled, busy.getAttribute("aria-busy")]).toEqual([true, "true"]);
+  await act(async () => busy.click());
+  expect(checkout).toHaveBeenCalledTimes(1);
+  // the payment page didn't open: the button comes back and the sheet says why
+  await act(async () => fail(false));
+  expect(document.querySelector("[role=alert]")?.textContent).toBe("checkout didn't open. try again.");
+  expect(button(/^buy .* license$/)?.disabled).toBe(false);
+});

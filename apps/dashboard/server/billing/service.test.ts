@@ -8,7 +8,7 @@ import { BILLING_CONFIG } from "./plans.ts";
 import { quote } from "./pricing.ts";
 import { createFakeBillingProvider } from "./fake-provider.ts";
 import { createBillingStore } from "./store.ts";
-import { createBillingService } from "./service.ts";
+import { CHECKOUT_REUSE_MS, createBillingService } from "./service.ts";
 
 const owner = { id: "owner", email: "owner@example.com" }, stranger = { id: "stranger", email: "stranger@example.com" };
 const day = 86_400_000;
@@ -550,9 +550,40 @@ describe("paying again after a plan ended", () => {
   });
 });
 
+describe("repeated starts", () => {
+  it("hands the same page back for the same plan started again within a minute, without another provider session", async () => {
+    const create = vi.spyOn(provider, "createCheckout");
+    const license: Cart = { interval: "month", license: { kind: "solo" }, desktop: { kind: "none" } };
+    const first = await service.checkout(owner, { kind: "cart", cart: license }, { source: "dash_license" });
+    for (let i = 0; i < 17; i++) { time += 2_000; expect(await service.checkout(owner, { kind: "cart", cart: license }, { source: "dash_license" })).toEqual(first); }
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(store.state.checkouts.map(checkout => checkout.status)).toEqual(["open"]);
+    expect(store.state.ledger.filter(row => row.type === "checkout.started")).toHaveLength(1);
+    // a desktop plan keeps the cloud it reserved
+    const other = { id: "acct_desk", email: "desk@example.test" };
+    const desk = await service.checkout(other, { kind: "cart", cart: desktopOnly(), name: "Home" });
+    expect(await service.checkout(other, { kind: "cart", cart: desktopOnly(), name: "Home" })).toEqual(desk);
+    expect(clouds.order).toHaveBeenCalledTimes(1); expect(clouds.abandon).not.toHaveBeenCalled();
+  });
+  it("makes a fresh page once the minute is over, or for another plan, name or surface", async () => {
+    const first = await service.checkout(owner, { kind: "cart", cart: desktopOnly() }, { source: "dash_billing" });
+    const otherPlan = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" } }, { source: "dash_billing" });
+    expect(otherPlan.checkoutId).not.toBe(first.checkoutId);
+    const otherSource = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" } }, { source: "dash_home" });
+    expect(otherSource.checkoutId).not.toBe(otherPlan.checkoutId);
+    const otherName = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_home" });
+    expect(otherName.checkoutId).not.toBe(otherSource.checkoutId);
+    time += CHECKOUT_REUSE_MS + 1;
+    const later = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_home" });
+    expect(later.checkoutId).not.toBe(otherName.checkoutId);
+    expect(store.state.checkouts.filter(checkout => checkout.status === "open").map(checkout => checkout.id)).toEqual([later.checkoutId]);
+  });
+});
+
 describe("one subscription per plan", () => {
   it("opens a fresh page instead of the unpaid one, frees what it held, and still takes a late payment on the old one", async () => {
     const first = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    time += CHECKOUT_REUSE_MS + 1;
     const again = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
     expect(again.checkoutId).not.toBe(first.checkoutId); expect(again.checkoutUrl).not.toBe(first.checkoutUrl);
     expect(store.state.checkouts.map(checkout => checkout.status)).toEqual(["expired", "open"]);
@@ -565,6 +596,7 @@ describe("one subscription per plan", () => {
   });
   it("closes the unpaid page when the plan is paid on the new one", async () => {
     await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    time += CHECKOUT_REUSE_MS + 1;
     await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
     deliver(provider.complete(store.state.checkouts[1].providerSessionId!));
     await expect(service.checkout(owner, { kind: "cart", cart: desktopOnly() })).rejects.toMatchObject({ code: "already_subscribed" });

@@ -39,6 +39,8 @@ export type BillingNotice =
 const day = 86_400_000;
 /** an open-ended comp's period end: far enough out that every entitlement check reads it as current */
 export const OPEN_ENDED_AT = Date.UTC(2100, 0, 1);
+/** a second start of the same plan this soon after the first is the same click again: it gets the page already made */
+export const CHECKOUT_REUSE_MS = 60_000;
 /** a plan the operator gave rather than sold: its own checkout source, and what its one payment records */
 export interface OperatorGrant { source: "ops_grant" | "admin_comp"; amountCents?: number }
 const emailOf = (email: string) => email.trim().toLowerCase();
@@ -664,15 +666,21 @@ export function createBillingService(options: BillingServiceOptions) {
     const cart = parsed(item.cart);
     const amount = (priced: number) => input.operator?.amountCents ?? priced;
     const open = state.checkouts.find(checkout => checkout.accountId === account.id && checkout.kind === "cart" && checkout.status === "open" && checkout.openUntil > now());
-    if (state.checkouts.filter(checkout => checkout.accountId === account.id && checkout.createdAt > now() - 3_600_000).length >= config.checkoutsPerHour) fail(429, "rate_limited");
+    // the same plan again within a minute (a double click, a click that seemed to do nothing) gets the page just made,
+    // never another provider session
+    const name = typeof item.name === "string" ? item.name.trim() : item.name, cloudOf = open?.cloudId ? clouds.get(open.cloudId) : null;
+    const reused = input.operator ? null : open && open.url && open.createdAt > now() - CHECKOUT_REUSE_MS && open.source === source && sameCart(open.cart, cart)
+      && (!open.cloudId || ((name === undefined || cloudOf?.name === name) && (item.color === undefined || cloudOf?.color === item.color))) ? open : null;
+    if (!reused && state.checkouts.filter(checkout => checkout.accountId === account.id && checkout.createdAt > now() - 3_600_000).length >= config.checkoutsPerHour) fail(429, "rate_limited");
     if (queues.has(account.id) || state.subscriptions.some(sub => sub.accountId === account.id && sub.pendingChange)) fail(409, "plan_change_unavailable");
     purchasable(cart); licenseAvailable(account.id, cart);
     // a request still waiting on the provider holds its place; one that already has a page is replaced below
     if (state.checkouts.some(checkout => checkout.accountId === account.id && checkout.status === "open" && checkout.openUntil > now() && !checkout.url)) throw new BillingError(409, "checkout_open", null);
     if (duplicateOf(account.id, cart)) fail(409, "already_subscribed");
     if (((item.name !== undefined && (typeof item.name !== "string" || !item.name.trim() || item.name.trim().length > 100)) || (item.color !== undefined && !CLOUD_SWATCHES.includes(item.color)))) fail(400, "invalid_request");
+    if (reused) return { v: 1, checkoutId: reused.id, checkoutUrl: reused.url!, cloudId: reused.cloudId, revives: reused.revive === true };
     const lines = providerCart(cart);
-    // an unpaid checkout is never handed out again: a dodo page someone already tried to pay on sends them straight back
+    // past its first minute an unpaid checkout is never handed out again: a dodo page someone already tried to pay on sends them straight back
     // (status=pending) until it lapses. each try gets a fresh page; a late payment on the old one still lands, and a
     // second plan of the same cart is cancelled and refunded (settleDuplicate)
     if (open) expireCheckouts(account.id, true);

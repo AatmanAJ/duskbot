@@ -204,7 +204,8 @@ it("shows nothing for a checkout left unpaid, lets a new one open, and makes the
   expect(parseCloudList((await f.session()).clouds)).toEqual([]);
   expect(f.client.state().clouds ?? []).toEqual([]);
   expect(f.billing.fakePool?.calls ?? []).toEqual([]);
-  // a new checkout always opens, and retires the old one with its reserved cloud
+  // a new checkout always opens once the first minute is over, and retires the old one with its reserved cloud
+  f.setTime(f.now() + 61_000);
   expect((await f.client.checkout("starter", "app_card")).outcome).toBe("opened");
   expect(f.snapshot().checkouts[0].status).toBe("expired");
   expect(f.billing.clouds.get(first.cloudId!)?.status).toBe("destroyed");
@@ -231,6 +232,8 @@ it("enforces Admin ownership, one-time confirmations, typed bodies, and the desk
   for (const plan of ["personal", "max"]) await refused("upgrade/preview", { plan }, 409, "plan_change_unavailable");
   for (const data of [{ plan: "free" }, { plan: 1 }, { plan: "starter", source: 2 }]) await refused("checkout", data, 400, "invalid_request");
   const checkout = await f.request("checkout", { plan: "starter", source: "app_card", ignored: true, color: 12 }); expect(checkout.status).toBe(200);
+  const twice = await f.request("checkout", { plan: "starter", source: "app_card" }); expect(twice.status).toBe(200); expect(twice.data.url).toBe(checkout.data.url);
+  f.setTime(f.now() + 61_000);
   const again = await f.request("checkout", { plan: "starter", source: "app_card" }); expect(again.status).toBe(200); expect(again.data.url).not.toBe(checkout.data.url);
   const purchase = await f.complete(1), id = purchase.cloudId!;
   await refused("checkout", { plan: "pro", source: "app_card" }, 409, "already_subscribed");
