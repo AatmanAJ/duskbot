@@ -94,7 +94,7 @@ export function useSidebarSpot(bridge: AppUpdateBridge | undefined = ownBridge()
 
 const FOCUS = "outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 const PRESS = "transition-[background-color,transform] duration-150 ease-[ease] active:scale-[0.98] motion-reduce:active:scale-100";
-const TONAL = "bg-[light-dark(var(--color-composer),var(--color-raised))] hover:bg-[light-dark(color-mix(in_srgb,var(--color-composer),var(--color-ink)_4%),var(--color-raised-hover))]";
+const TONAL = "bg-[light-dark(var(--color-composer),var(--color-raised))] hover:bg-[light-dark(color-mix(in_srgb,var(--color-composer),var(--color-ink)_1.5%),var(--color-raised-hover))]";
 const BLUE = "bg-accent text-accent-ink hover:bg-[color-mix(in_srgb,var(--color-accent)_90%,black)] disabled:cursor-progress";
 
 function spotWords(spot: Exclude<SpotState, { kind: "feedback" }>): { title: string; end: ReactNode; hint?: string } {
