@@ -17,6 +17,7 @@ import { Card as RowsCard, CopyRow, ItemRow, NoteRow } from "./ListRows";
 import { PhoneHomeShot, StoreMarks } from "./PhoneHomeShot";
 import { GROK_FOCUS } from "./SidebarSimpleTop";
 import { friendlyError } from "@/lib/plain-error";
+import { storeUrl } from "../mobile/connection/phone-update";
 
 export function platformLabelKey(platform: string) {
   return platform === "ios" ? "settings.mobile.ios" : platform === "android" ? "settings.mobile.android" : "settings.mobile.phone";
@@ -41,8 +42,12 @@ export interface PhoneParts {
 
 type Way = "qr" | "code";
 
-export function MobilePairingCard({ remote, children }: {
+export function MobilePairingCard({ remote, cloudHome = false, email, children }: {
   remote: boolean;
+  /** a dusk cloud refuses phone codes (server/index.ts createMobileLink refusal): the iPhone app reaches it by signing in */
+  cloudHome?: boolean;
+  /** the account's email, named in the sign-in step */
+  email?: string;
   /** lays the pieces out; null when this workspace may not link phones */
   children?: (phone: PhoneParts | null) => ReactNode;
 }) {
@@ -211,7 +216,9 @@ export function MobilePairingCard({ remote, children }: {
         <div className="flex flex-col justify-center gap-2 px-6 pb-2 pt-6 @min-[460px]:py-8">
           <h3 className="m-0 text-[22px] font-semibold leading-7 tracking-[-0.02em] text-ink">{t("mobile.desktop.title")}</h3>
           <p className="m-0 text-[14px] leading-5 text-ink-secondary">{t("mobile.desktop.oneLine")}</p>
-          <p data-phone-platforms="" className="m-0 mt-2 flex items-center gap-2 text-[12px] leading-4 text-ink-tertiary"><StoreMarks />{t("mobile.desktop.storesSoon")}</p>
+          <p data-phone-platforms="" className="m-0 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-4 text-ink-tertiary"><StoreMarks />
+            <a data-phone-app-store="" href={storeUrl("ios")} target="_blank" rel="noreferrer" className={cn("rounded-[4px] text-[13px] font-medium leading-5 text-ink underline-offset-2 hover:underline", GROK_FOCUS)}>{t("mobile.desktop.appStore")}</a>
+            <span>{t("mobile.desktop.storesSoon")}</span></p>
         </div>
         <div className="flex h-[280px] justify-center overflow-hidden px-8 pt-6 @min-[460px]:h-[300px]">
           <PhoneHomeShot size="large" />
@@ -337,7 +344,26 @@ export function MobilePairingCard({ remote, children }: {
     </RowsCard>
   );
 
-  const parts: PhoneParts = { top, stepping: view !== null, phones };
+  // a cloud: no code to make, the app finds the cloud from the account; phones it signs in are listed with the sessions
+  const cloudId = `${stepId}-cloud`;
+  const cloudTop = (
+    <div className="flex flex-col gap-5">
+      {hero}
+      <section aria-labelledby={cloudId} data-phone-cloud="" className="flex flex-col items-center gap-5 rounded-[16px] border-[0.5px] border-transparent bg-composer px-6 pb-7 pt-6 text-center">
+        <h3 id={cloudId} className="m-0 text-[17px] font-semibold leading-6 text-ink">{t("mobile.cloud.getApp")}</h3>
+        <div role="img" aria-label={t("mobile.cloud.storeQr")} className="flex size-[232px] items-center justify-center rounded-[16px] bg-white p-3">
+          <QRCodeSVG value={storeUrl("ios")} size={208} level="M" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
+        </div>
+        <ol className="m-0 flex max-w-[360px] list-decimal flex-col gap-2 ps-5 text-start text-[14px] leading-5 text-ink-secondary">
+          <li>{t("mobile.cloud.scanStore")}</li>
+          <li data-phone-cloud-sign-in="">{email?.trim() ? t("mobile.cloud.signIn", { email: email.trim() }) : t("mobile.cloud.signInAny")}</li>
+        </ol>
+        <p className="m-0 max-w-[360px] text-[13px] leading-[18px] text-ink-tertiary">{t("mobile.cloud.android")}</p>
+      </section>
+    </div>
+  );
+
+  const parts: PhoneParts = cloudHome ? { top: cloudTop, stepping: false, phones: null } : { top, stepping: view !== null, phones };
   return (
     <>
       <style>{`
@@ -346,7 +372,7 @@ export function MobilePairingCard({ remote, children }: {
         @media (prefers-reduced-motion: reduce) { .phone-link-wait { animation-play-state: paused; } }
         [data-reduced-motion="true"] .phone-link-wait { animation-play-state: paused; }
       `}</style>
-      {children ? children(parts) : <div className="flex flex-col gap-5">{top}{phones}</div>}
+      {children ? children(parts) : <div className="flex flex-col gap-5">{parts.top}{parts.phones}</div>}
     </>
   );
 }

@@ -275,6 +275,7 @@ describe("on the desktop app", () => {
   });
 
   it("opens on the hello, then where bots live, the AI, what to bring and the chat, with back and progress", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     desktop({ platform: "linux" });
     await show();
     expect(step(), "Meet dusk bot comes first").toBe("welcome");
@@ -302,8 +303,8 @@ describe("on the desktop app", () => {
     expect(document.body.querySelector(".phone-frame"), "the phone app is hidden").toBeNull();
   });
 
-  it("with the phone app offered, ends on the phone: a code to scan, then the chat", async () => {
-    vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
+  it("with the phone app offered, as every release build now is, ends on the phone: a code to scan, then the chat", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "");
     desktop({ platform: "linux" });
     await show({ initialBeat: "place" });
     expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("2/5");
@@ -544,6 +545,7 @@ describe("on the desktop app", () => {
       signInVerify: vi.fn(async () => { gate.signedIn = true; return { outcome: "signed-in" }; }),
       signInCancel: vi.fn(async () => {}), browser: vi.fn(async () => ({})), cancel: vi.fn(async () => ({})), reopen: vi.fn(), onChange: () => () => {},
     };
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     desktop({ accountGate: gate });
     await show();
     expect(step(), "the hello comes first").toBe("welcome");
@@ -624,6 +626,7 @@ describe("the bring step: one prompt to copy", () => {
   };
 
   it("is the prompt and its three steps, whatever this computer holds: no app rows, no AI to pick, no answer box", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     desktop();
     await show({ initialBeat: "bring" });
     expect(step()).toBe("bring");
@@ -644,6 +647,7 @@ describe("the bring step: one prompt to copy", () => {
   });
 
   it("copies the prompt, says so, and the first bot's chat starts waiting for the answer", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     desktop();
     const writeText = vi.fn(async () => {});
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });

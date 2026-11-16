@@ -130,6 +130,7 @@ describe("what is for sale, as the Admin says", () => {
   });
 
   it("one card per plan on sale, in the Admin's order: name, price, promise, its own button and the money in one line; Most popular is the Admin's recommended plan", () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     expect(planCards(OFFER).map(({ rows: _rows, points: _points, spec: _spec, ...card }) => card)).toEqual([
       { tier: "starter", name: "Plus", price: "$15", popular: false, current: false, promise: "For your own bots",
         action: "Start free trial", terms: "Free for 7 days, then $15/month + tax where applicable", trialDays: 7 },
@@ -148,6 +149,7 @@ describe("what is for sale, as the Admin says", () => {
   });
 
   it("each card says what the plan does in a few points: how it stays on, its machine, the license or seats, backups, then routines and reach", () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     const team: CloudOfferPlan = { tier: "team", label: "Team", amount: 11900, allowances: { ...allowances(4, 60), memoryMb: 8192, seats: 2, snapshotDays: 14 } };
     const cards = planCards({ plans: [SLEEPS, { ...PLANS[1]!, allowances: { ...PLANS[1]!.allowances!, snapshotDays: 14 } }, team], recommended: "pro" });
     expect(cards.map(card => card.points.map(point => point.text))).toEqual([
@@ -296,6 +298,7 @@ describe("what is for sale, as the Admin says", () => {
   });
 
   it("the card after the update needs a trial, and says only the Admin's numbers: never a launch price or a later one", () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     expect(cloudIntroView(OFFER)).toEqual({ badge: "Free for 7 days",
       points: ["Routines run on time, day and night"],
       price: "Then from $15/month + tax where applicable. Cancel any time.", moneyBack: "14-day money-back on every plan." });

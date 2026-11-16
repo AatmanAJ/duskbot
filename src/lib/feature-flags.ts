@@ -5,10 +5,11 @@ export interface FeatureFlagConfig {
   browserEngine?: { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; installing?: boolean; installError?: string };
 }
 
-/** The phone app, off until it ships: the first run's phone step, Settings → phone, "connect your phone" and every pairing
- * prompt in the desktop app follow this one switch. A build with `VITE_DUSK_PHONE_APP=1` brings them all back. */
+/** The phone app, on since the iPhone app is on the App Store: the first run's phone step, Settings → phone, "connect
+ * your phone" and every pairing prompt follow this one switch. Release builds set no flag; `VITE_DUSK_PHONE_APP=0` hides
+ * them all. */
 export function phoneAppEnabled(): boolean {
-  return import.meta.env?.VITE_DUSK_PHONE_APP === "1";
+  return import.meta.env?.VITE_DUSK_PHONE_APP !== "0";
 }
 
 /** Live calls, off: the call button, its mode menu, the live bar and pill, the "live key needed" prompt and the

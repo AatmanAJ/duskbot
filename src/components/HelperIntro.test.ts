@@ -159,7 +159,7 @@ describe("in the chat (Simple mode)", () => {
   });
 
   it("offers no phone while the phone app is hidden", async () => {
-    vi.stubEnv("VITE_DUSK_PHONE_APP", "");
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     f.services = { gmail: { connected: false } };
     await show(false, saved({ ai: "own", apps: [], bots: 0, routines: 0 }));
     expect(chips()).toEqual(["apps", "cloud"]);

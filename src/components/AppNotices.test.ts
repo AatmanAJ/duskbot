@@ -158,6 +158,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); setLocale("en"); })
 
 describe("the card after the update", () => {
   it("offers the free trial to someone signed out who has used the app before, in the Admin's numbers, with Start free trial and Show me how", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     returning();
     const html = await launch();
     const words = [INTRO, "Free for 7 days", "dusk cloud runs your bots for you in the cloud, always available.", "Routines run on time, day and night",
