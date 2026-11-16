@@ -8,7 +8,36 @@ if (menu) {
   // pointerdown, not click: touch browsers send no click for a tap on plain text or empty page
   document.addEventListener('pointerdown', (e) => { if (menu.open && !menu.contains(e.target)) shut(); });
   matchMedia('(min-width: 641px)').addEventListener('change', shut);
+  // one tint in the menu: it slides to the link under the mouse, a finger or keyboard focus, and rests on this page's link
+  const nav = menu.querySelector('nav');
+  const pill = Object.assign(document.createElement('span'), { className: 'menu-pill' });
+  pill.setAttribute('aria-hidden', 'true');
+  nav.prepend(pill);
+  const here = () => nav.querySelector('a[aria-current="page"]:not(.cta), a.is-here');
+  const linkAt = (e) => { const a = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('a'); return a && nav.contains(a) && !a.classList.contains('cta') ? a : null; };
+  const to = (a, focus = false) => {
+    pill.classList.toggle('focus', focus);
+    if (!a) { pill.classList.remove('on'); return; }
+    // from nothing it appears in place; from another link it slides
+    const jump = !pill.classList.contains('on');
+    if (jump) pill.style.transition = 'none';
+    pill.style.height = `${a.offsetHeight}px`;
+    pill.style.transform = `translateY(${a.offsetTop}px)`;
+    if (jump) { void pill.offsetWidth; pill.style.transition = ''; }
+    pill.classList.add('on');
+  };
+  menu.addEventListener('toggle', () => { pill.classList.remove('on'); if (menu.open) to(here()); });
+  nav.addEventListener('pointerdown', (e) => { const a = linkAt(e); if (a) to(a); });
+  nav.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse' && !e.buttons) return; const a = linkAt(e); if (a) to(a); });
+  // a lifted finger also leaves, so only the mouse sends the tint home on leave
+  nav.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'mouse') return; const f = nav.querySelector('a:focus-visible:not(.cta)'); to(f || here(), Boolean(f)); });
+  nav.addEventListener('pointercancel', () => to(here()));
+  nav.addEventListener('focusin', (e) => { if (e.target.matches(':focus-visible:not(.cta)')) to(e.target, true); });
+  nav.addEventListener('focusout', (e) => { if (!nav.contains(e.relatedTarget)) to(here()); });
+  addEventListener('pageshow', (e) => { if (e.persisted && menu.open) to(here()); });
 }
+// ios only shows :active (the faq press) once a page listens for touches
+document.addEventListener('touchstart', () => {}, { passive: true });
 // a page you point at (or press on a phone) starts loading before the click lands, so the next page is already here.
 // where the browser can, it is prerendered whole, images and fonts too, so the change is instant and nothing pops in late
 const prerender = HTMLScriptElement.supports?.('speculationrules');

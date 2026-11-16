@@ -480,6 +480,9 @@ button.toggle::before { content: ""; position: absolute; inset: -11px -3px; }
 .qs details { border-radius: var(--r-xl); background: var(--wash); }
 .qs summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; padding: 14px 16px 14px 28px; border-radius: var(--r-xl); font-size: 19px; line-height: 1.25; font-weight: 550; letter-spacing: -0.02em; cursor: pointer; list-style: none; }
 .qs summary::-webkit-details-marker { display: none; }
+/* a press tints the question inside its own rounded shape, instead of the browser's square grey flash */
+.qs summary { -webkit-tap-highlight-color: transparent; }
+.qs summary:active { background-image: linear-gradient(var(--focus), var(--focus)); }
 .qs summary .i { width: 36px; height: 36px; padding: 10px; border-radius: 50%; background: rgb(255 255 255 / 0.75); transition: rotate 0.16s var(--mk-ease-out); }
 .qs details[open]:not([data-mk-closing]) summary .i { rotate: 45deg; }
 .qs details p { margin: 0; padding: 0 72px 24px 28px; font-size: 16.5px; line-height: 1.5; color: var(--text); max-width: 60ch; }

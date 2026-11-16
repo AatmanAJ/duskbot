@@ -300,7 +300,7 @@ ${css.map((file) => `<link rel="stylesheet" href="${stamped(file)}">`).join('\n'
 </head>
 <body${home ? ' class="is-home"' : ''}>
 <a class="skip" href="#main">skip to the page</a>
-<header class="bar">${brand}<nav aria-label="main">${links(NAV)}<a class="cta" href="${APP_URL}/">sign in</a></nav><details class="menu"><summary><span class="vh">menu</span>${icon('menu')}${icon('x')}</summary><nav aria-label="every page">${links(MENU)}<a class="cta" href="${APP_URL}/">sign in</a></nav></details></header>
+<header class="bar">${brand}<nav aria-label="main">${links(NAV)}<a class="cta" href="${APP_URL}/">sign in</a></nav><details class="menu"><summary><span class="vh">menu</span><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span></summary><nav aria-label="every page">${links(MENU)}<a class="cta" href="${APP_URL}/">sign in</a></nav></details></header>
 <main id="main" class="${home ? 'home' : `inner${kind ? ' ' + kind : ''}`}">
 ${macros(body).replace(/(src=")\/(art\/[\w./-]+)"/g, (_, lead, file) => `${lead}${stamped(file)}"`)}
 </main>
