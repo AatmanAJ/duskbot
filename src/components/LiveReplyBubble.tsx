@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import type { MentionPeer } from "@/lib/mentions";
-import { closeOpenMarks, nextReveal, noteRevealed, wordCount } from "@/lib/text-reveal";
+import { closeOpenMarks, nextReveal, noteRevealed } from "@/lib/text-reveal";
 import { shownReplyText, useLiveReplyText } from "@/state/live-reply";
 import { usePrefersReducedMotion } from "./mascot-clock";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -25,33 +25,39 @@ export function LiveReplyBubble({ threadId, mentionPeers, onGrow }: {
   const [chars, setChars] = useState(0);
   const shown = useRef({ chars: 0, target });
   shown.current.target = target;
-  const behind = chars < target.length;
+  // a reply that landed (the live text empties) or another thread starts the next one from nothing
+  const [paced, setPaced] = useState(threadId);
+  if (paced !== threadId || (!target && chars)) { setPaced(threadId); setChars(0); shown.current.chars = 0; }
+  const streaming = Boolean(target);
 
+  // one frame loop for the whole reply: it idles when caught up, so a delta landing in that same frame never strands it
   useEffect(() => {
-    if (!behind) return;
+    if (!streaming) return;
     let frame = 0;
     let last = performance.now();
     const tick = (now: number) => {
-      if (now - last >= FRAME_MS) {
-        const next = nextReveal(shown.current.target, shown.current.chars, now - last);
+      const target = shown.current.target;
+      // a long reply re-parses its markdown on each step, so it steps less often
+      if (now - last >= (target.length > 1500 ? FRAME_MS * 2 : FRAME_MS)) {
+        const next = nextReveal(target, shown.current.chars, now - last);
         last = now;
         if (next !== shown.current.chars) { shown.current.chars = next; setChars(next); }
-        if (next >= shown.current.target.length) return;
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [behind]);
+  }, [streaming]);
 
   const text = target.slice(0, Math.min(chars, target.length));
-  useEffect(() => { noteRevealed(threadId, wordCount(text)); }, [threadId, text]);
-
   const visible = Boolean(text.trim());
   const bubble = useRef<HTMLDivElement>(null);
   const height = useRef(0);
   const grow = useRef(onGrow);
   grow.current = onGrow;
+  useEffect(() => {
+    if (visible) noteRevealed(threadId, bubble.current?.querySelectorAll(".md-rv").length ?? 0);
+  }, [threadId, text, visible]);
   useLayoutEffect(() => {
     const el = bubble.current;
     if (!el || typeof ResizeObserver === "undefined") return;

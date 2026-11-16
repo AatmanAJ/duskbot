@@ -150,6 +150,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const inset = keyboardInset(window.innerHeight, vv);
+        if (inset && (window.scrollY > 0 || vv.offsetTop > 0)) window.scrollTo(0, 0);
         if (inset === committed) return;
         const list = scroller(root);
         // the newest row stays in view as the keyboard takes its space; opening it goes to the newest row

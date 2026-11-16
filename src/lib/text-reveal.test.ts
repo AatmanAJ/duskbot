@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closeOpenMarks, nextReveal, REVEAL_MIN_CPS, rehypeRevealWords, revealStep, REVEAL_SPAN_MS, wordCount } from "./text-reveal";
+import { closeOpenMarks, nextReveal, noteRevealed, revealedWords, REVEAL_MIN_CPS, rehypeRevealWords, revealStep, REVEAL_SPAN_MS} from "./text-reveal";
 
 type Node = { type: string; value?: string; tagName?: string; properties?: Record<string, unknown>; children?: Node[] };
 const el = (tagName: string, children: Node[], properties: Record<string, unknown> = {}): Node => ({ type: "element", tagName, properties, children });
@@ -53,11 +53,20 @@ describe("rehypeRevealWords", () => {
     expect(plain(tree)).toBe("one two three four five");
   });
 
-  it("never splits code or math, but counts their words so later indices hold", () => {
-    const tree = el("root", [el("p", [txt("run "), el("code", [txt("pnpm test now")]), txt(" then ship")])]);
-    run(tree, 0);
-    expect(spans(tree).map(plain)).toEqual(["run", "then", "ship"]);
-    expect(wordCount("run pnpm test now then ship")).toBe(6);
+  it("never splits code, math or a link, and does not count them, so the live and landed counts agree", () => {
+    const tree = el("root", [el("p", [txt("run "), el("code", [txt("pnpm test now")]), txt(" then "), el("a", [txt("https://dusk.bot/x")]), txt(" ship")])]);
+    run(tree, 1);
+    expect(spans(tree).map(plain)).toEqual(["then", "ship"]);
+    expect(spans(tree).map((span) => span.properties?.style)).toEqual(["--rv:0", "--rv:1"]);
+  });
+});
+
+describe("the handoff", () => {
+  it("carries a live bubble's count to the reply landing just after it, and nothing to one drawn much later", () => {
+    noteRevealed("thread", 12);
+    expect(revealedWords("thread")).toBe(12);
+    expect(revealedWords("thread", Date.now() + 60_000)).toBeNull();
+    expect(revealedWords("other")).toBeNull();
   });
 });
 

@@ -417,12 +417,12 @@ const Bubble = memo(function Bubble({
   const [reveal, setReveal] = useState<{ from: number; step: number } | undefined>(() => {
     if (user || reduced || message.kind !== "text" || !phoneApp()) return undefined;
     const total = wordCount(text);
-    const from = tookOver ? revealedWords(threadId) ?? total : entrance === "grow" ? 0 : total;
+    const from = tookOver && message.at > openedAt ? revealedWords(threadId) ?? total : entrance === "grow" ? 0 : total;
     return from < total ? { from, step: revealStep(total - from) } : undefined;
   });
   useEffect(() => {
     if (!reveal) return;
-    const timer = setTimeout(() => setReveal(undefined), REVEAL_SPAN_MS + 600);
+    const timer = setTimeout(() => setReveal(undefined), Math.max(REVEAL_SPAN_MS, reveal.step * wordCount(text)) + 600);
     return () => clearTimeout(timer);
   }, [reveal]);
   const [filling, setFilling] = useState(entrance === "morph");

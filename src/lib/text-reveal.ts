@@ -55,7 +55,7 @@ interface HastText { type: "text"; value: string }
 interface HastElement { type: "element"; tagName: string; properties?: Record<string, unknown>; children: HastNode[] }
 type HastNode = HastText | HastElement | { type: string; children?: HastNode[] };
 
-const SKIP_TAGS = new Set(["pre", "code", "svg", "math", "annotation", "semantics", "img", "input"]);
+const SKIP_TAGS = new Set(["pre", "code", "svg", "math", "annotation", "semantics", "img", "input", "a"]);
 
 function skipped(node: HastElement): boolean {
   if (SKIP_TAGS.has(node.tagName)) return true;
@@ -64,7 +64,8 @@ function skipped(node: HastElement): boolean {
 }
 
 /** Rehype plugin: every word from index `from` on is wrapped in `<span class="md-rv" style="--rv:n">`, n counting from
- * 0 at `from`; earlier words stay plain text. Code, math and images are never split, so they arrive whole. */
+ * 0 at `from`; earlier words stay plain text. Code, math, links and images are never split and not counted: they
+ * arrive whole, and a link keeps the plain label its renderer shortens. */
 export function rehypeRevealWords({ from }: { from: number }) {
   return () => (tree: HastNode) => {
     let index = 0;
@@ -75,7 +76,6 @@ export function rehypeRevealWords({ from }: { from: number }) {
       for (const child of children) {
         if (child.type === "element") {
           if (!skipped(child as HastElement)) visit(child);
-          else index += wordCount(textOf(child));
           next.push(child);
           continue;
         }
@@ -96,17 +96,17 @@ export function rehypeRevealWords({ from }: { from: number }) {
   };
 }
 
-function textOf(node: HastNode): string {
-  if (node.type === "text") return (node as HastText).value;
-  return ((node as { children?: HastNode[] }).children ?? []).map(textOf).join(" ");
-}
 
-/** What a reply that took over a streamed one had already shown, so the reveal carries on from there. */
-const handoffs = new Map<string, number>();
+/** What the live bubble last showed, per thread, for the reply that lands in its place a moment later. */
+const handoffs = new Map<string, { words: number; at: number }>();
+const HANDOFF_FRESH_MS = 4_000;
 export function noteRevealed(threadId: string, words: number): void {
-  handoffs.set(threadId, words);
+  handoffs.delete(threadId);
+  handoffs.set(threadId, { words, at: Date.now() });
   if (handoffs.size > 50) handoffs.delete(handoffs.keys().next().value!);
 }
-export function revealedWords(threadId: string): number | null {
-  return handoffs.get(threadId) ?? null;
+/** Only a handoff from moments ago counts: an older reply drawn again (the chat reopened) reveals nothing. */
+export function revealedWords(threadId: string, now = Date.now()): number | null {
+  const handoff = handoffs.get(threadId);
+  return handoff && now - handoff.at < HANDOFF_FRESH_MS ? handoff.words : null;
 }
