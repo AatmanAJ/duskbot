@@ -1,5 +1,5 @@
 import { observePairing } from "@/lib/product-analytics";
-import { appLinkFromUniversal, DEFAULT_MOBILE_RELAY, MOBILE_LOOKUP_SALT, pairingFromPayload, parseMobilePayload, parseMobilePairingLink, type MobileRedeemRequest, type MobileRedeemResponse, type MobileCapabilities, type MobileConnectionRecord, type MobilePairingPayload } from "../../../shared/mobile-link";
+import { appLinkFromUniversal, parseSignInLink, DEFAULT_MOBILE_RELAY, MOBILE_LOOKUP_SALT, pairingFromPayload, parseMobilePayload, parseMobilePairingLink, type MobileRedeemRequest, type MobileRedeemResponse, type MobileCapabilities, type MobileConnectionRecord, type MobilePairingPayload } from "../../../shared/mobile-link";
 import { randomUuid } from "@/lib/random-uuid";
 import type { MobilePlatform } from "../platform";
 import { createRelaySecrets, hex, hkdf, sha256hex, subtle, unbase64, unseal, UnsupportedCryptoError, utf8, type RelaySecrets } from "../transport/link-crypto";
@@ -25,6 +25,18 @@ export class PairError extends Error {
 /** the desktop's App Store qr, read by a phone that already has the app */
 export function isStoreLink(input: string): boolean {
   return /^https:\/\/(apps\.apple\.com|play\.google\.com)\//i.test(input.trim()) || /^https:\/\/dusk\.bot\/download\/?$/i.test(input.trim());
+}
+
+/** What a scanned qr is, whichever kind the desktop, the site or an older build drew: the https universal links and their
+ * duskbot:// forms (a pairing, a dusk cloud log in), the old store qr, or a typed code. Null for anything else. */
+export type Scanned = { kind: "store" } | { kind: "signin"; email: string } | { kind: "pair"; payload: TypedPairing } | TypedCode;
+export function readScanned(input: string): Scanned | null {
+  if (isStoreLink(input)) return { kind: "store" };
+  const signIn = parseSignInLink(input);
+  if (signIn) return { kind: "signin", email: signIn.email };
+  const parsed = parseTypedPairing(input);
+  if (!parsed) return null;
+  return "kind" in parsed ? parsed : { kind: "pair", payload: parsed };
 }
 
 export function parseTypedPairing(input: string): MobilePairingPayload | TypedCode | null {

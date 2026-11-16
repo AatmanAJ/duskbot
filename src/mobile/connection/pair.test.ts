@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mobileLinkUrl, pairingFromPayload, type MobileLinkPayload, type MobilePairingPayload, type MobileRedeemResponse } from "../../../shared/mobile-link";
 import type { MobilePlatform } from "../platform";
 import { connectToWorkspace, createConnectionStore } from "./connections";
-import { PairError, parseTypedPairing, redeemPairing, resolveTypedCode } from "./pair";
+import { PairError, parseTypedPairing, readScanned, redeemPairing, resolveTypedCode } from "./pair";
+import { MOBILE_LINK_VERSION, universalPairLink, universalSignInLink } from "../../../shared/mobile-link";
 import * as relay from "../transport/relay";
 import { createRelaySecrets } from "../transport/link-crypto";
 import { registerPushForConnection } from "./push";
@@ -405,5 +406,37 @@ describe("push registration", () => {
     platform.native = false;
     await registerPushForConnection(platform);
     expect(puts(fetcher)).toHaveLength(2);
+  });
+});
+
+describe("the app's own scanner reads every qr the desktop, the site or an older build draws", () => {
+  const v2 = mobileLinkUrl({
+    v: MOBILE_LINK_VERSION, workspace: { name: "Studio", environmentId: "env_1", kind: "mac" },
+    grant: { id: "g1", secret: "s3cret", expiresAt: 1_900_000_000_000 },
+    via: [{ kind: "relay", base: "https://link.dusk.bot", channel: "abcdefghij", token: "tok_1", key: "k".repeat(43) }],
+  });
+
+  it("pairs from this computer's qr, the https link and its duskbot:// form alike", () => {
+    for (const text of [universalPairLink(v2, "QWER-TYPL-KMNB"), universalPairLink(v2, null), v2, ` ${v2} `]) {
+      expect(readScanned(text), text).toMatchObject({ kind: "pair", payload: { v: 2, credential: "s3cret", grantId: "g1" } });
+    }
+  });
+
+  it("pairs from an older server or companion qr", () => {
+    expect(readScanned(`duskbot://pair?address=https%3A%2F%2Fworkspace.test&token=${credential}`)).toMatchObject({ kind: "pair", payload: { origin: "https://workspace.test" } });
+    expect(readScanned(`https://dusk.bot/m/pair#address=https%3A%2F%2Fworkspace.test&token=${credential}`)).toMatchObject({ kind: "pair" });
+  });
+
+  it("opens the dusk cloud log in from a cloud's qr, with its email, the https link and duskbot:// alike", () => {
+    expect(readScanned(universalSignInLink("owner@example.test"))).toEqual({ kind: "signin", email: "owner@example.test" });
+    expect(readScanned("duskbot://signin?email=owner%40example.test")).toEqual({ kind: "signin", email: "owner@example.test" });
+    expect(readScanned(universalSignInLink(null))).toEqual({ kind: "signin", email: "" });
+  });
+
+  it("knows the store qr, takes a typed code, and refuses anything else", () => {
+    expect(readScanned("https://apps.apple.com/app/id6834725640")).toEqual({ kind: "store" });
+    expect(readScanned("https://dusk.bot/download")).toEqual({ kind: "store" });
+    expect(readScanned("qwer-typl-kmnb")).toEqual({ kind: "code", code: "QWERTYPLKMNB" });
+    for (const text of ["https://dusk.bot/m/pair?m=x", "https://evil.example/m/pair#m=x", "https://dusk.bot/pricing", "hello", ""]) expect(readScanned(text), text).toBeNull();
   });
 });

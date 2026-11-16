@@ -5,11 +5,11 @@ import { ClipboardPaste, Keyboard, QrCode, UserRound } from "../../icons";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
 import { THEME_SKINS } from "@/lib/skins";
-import { parseSignInLink, type MobileConnectionRecord } from "../../../shared/mobile-link";
+import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { haptic } from "../haptics";
 import { PixelArt, PixelMascot } from "../Illustration";
 import { usePlatform, type CameraPermission } from "../platform";
-import { isStoreLink, PairError, parseTypedPairing, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
+import { PairError, readScanned, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
 import { Scanner } from "./Scanner";
 import { CloudPicker } from "../account/CloudPicker";
 import { MobileSignIn } from "../account/MobileSignIn";
@@ -97,12 +97,11 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     setScanFailed(false);
     let payload: TypedPairing | null = typeof text === "string" ? null : text;
     try {
-      if (typeof text === "string" && isStoreLink(text)) throw new PairError("store-qr");
-      const cloud = typeof text === "string" ? parseSignInLink(text) : null;
-      if (cloud) { setSignInEmail(cloud.email); go(signedIn ? "clouds" : "signin"); return; }
       if (typeof text === "string") {
-        const parsed = parseTypedPairing(text);
-        payload = parsed && "kind" in parsed ? await resolveTypedCode(parsed.code) : parsed;
+        const scanned = readScanned(text);
+        if (scanned?.kind === "store") throw new PairError("store-qr");
+        if (scanned?.kind === "signin") { setSignInEmail(scanned.email); go(signedIn ? "clouds" : "signin"); return; }
+        payload = scanned?.kind === "code" ? await resolveTypedCode(scanned.code) : scanned?.kind === "pair" ? scanned.payload : null;
       }
       if (!payload) throw new PairError("invalid");
       const result = await redeemPairing(payload, platform);
