@@ -155,18 +155,25 @@ export function modelName(instance: InstanceInfo | undefined, model: string, var
   return displayModelLabel(option.label, providerName(instance), option.custom) + variantSuffix(instance, model, variant);
 }
 
-/** A bot's model where only a short value fits (the phone's Model row): the model's name while its AI can answer, else
- * why it can't. A model on an AI that isn't connected never answers, so its name would only mislead; "" until the AIs
- * are read. */
-export function answeringModelName(instances: readonly InstanceInfo[], selection: ModelSelection | undefined): string {
-  if (!selection || (!selection.instanceId && !selection.model) || !instances.length) return "";
+/** Why a model can't answer now, in a few words (Sign-in required, Unavailable...); null while it can, and until the AIs
+ * are read. A model on an AI that isn't connected never answers, so its name alone would mislead. */
+export function unansweredReason(instances: readonly InstanceInfo[], selection: ModelSelection | undefined): string | null {
+  if (!selection || (!selection.instanceId && !selection.model) || !instances.length) return null;
   const instance = instances.find((candidate) => candidate.instanceId === selection.instanceId);
   const option = instance?.models.options.find((candidate) => candidate.id === selection.model);
   if (!instance) return t("model.simple.unavailable");
   if (needsCli(instance)) return t("model.setupRequired");
   if (needsSignIn(instance) && !isCustomOnly(instance) && !option?.custom) return t("model.signInRequired");
   if (option?.orgBlocked) return t("model.orgBlocked");
-  return modelName(instance, selection.model, selection.variant);
+  return null;
+}
+
+/** A bot's model where only a short value fits: its name while its AI can answer, else why it can't; "" until the AIs
+ * are read. */
+export function answeringModelName(instances: readonly InstanceInfo[], selection: ModelSelection | undefined): string {
+  if (!selection || (!selection.instanceId && !selection.model) || !instances.length) return "";
+  const instance = instances.find((candidate) => candidate.instanceId === selection.instanceId);
+  return unansweredReason(instances, selection) ?? modelName(instance, selection.model, selection.variant);
 }
 
 export function repeatedModelLabels(options: readonly ModelOption[]): Set<string> {

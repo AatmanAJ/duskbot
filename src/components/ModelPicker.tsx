@@ -5,7 +5,7 @@ import { api, useStore, currentTaskBot, type Bot, type InstanceInfo, type ModelS
 import type { EffortLevel } from "../../shared/wire";
 import type { ModelVariantOption } from "../../shared/runtime-events";
 import { configuredModelInstances, isCustomOnly, modelsAwaitEngine } from "@/lib/engine-rail";
-import { isAutoFreeModel, isFreeModel, modelName, notConnectedRows, providerName, simpleModelMenu, variantSuffix, type NotConnectedRow } from "@/lib/simple-model-menu";
+import { isAutoFreeModel, isFreeModel, modelName, notConnectedRows, providerName, simpleModelMenu, unansweredReason, variantSuffix, type NotConnectedRow } from "@/lib/simple-model-menu";
 import { modelSelectionForPick, withTypedModels } from "@/lib/model-choices";
 export { modelSelectionForPick } from "@/lib/model-choices";
 import { pickerPlacement, type PickerPlacement } from "@/lib/picker-placement";
@@ -386,6 +386,7 @@ export function ModelPicker({
   const backup = useThreadBackup(profile, threadId);
   const answering = threadId ? answeringModel(profile, threadId, selection) : selection;
   const shownInstance = instances.find((instance) => instance.instanceId === answering.instanceId);
+  const unanswered = unansweredReason(instances, answering);
   const botModelInstance = state.instances.find((instance) => instance.instanceId === profile.modelSelection.instanceId);
   const botModelName = modelName(botModelInstance, profile.modelSelection.model, profile.modelSelection.variant);
   const botModelTitle = !botModelInstance ? profile.modelSelection.model : isAutoFreeModel(botModelInstance, profile.modelSelection.model) ? t("model.free.hint")
@@ -588,8 +589,8 @@ export function ModelPicker({
           : <span className="size-3.5 rounded-full bg-ink/[0.08]" aria-hidden="true" />}
         {attention && !backup && <span data-model-attention className="absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full bg-warning ring-[1.5px] ring-app" />}
       </span>
-      <span className="min-w-0 max-w-[160px] truncate">{modelName(shownInstance, answering.model)}</span>
-      {answering.variant !== undefined && <span className="shrink-0 whitespace-pre">{variantSuffix(shownInstance, answering.model, answering.variant)}</span>}
+      <span className="min-w-0 max-w-[160px] truncate">{unanswered ?? modelName(shownInstance, answering.model)}</span>
+      {!unanswered && answering.variant !== undefined && <span className="shrink-0 whitespace-pre">{variantSuffix(shownInstance, answering.model, answering.variant)}</span>}
       {backup && !contained && <span data-model-backup="" className="ms-1.5 shrink-0 text-ink-tertiary">{t("model.backup.chip")}</span>}
       <UsageBars engine={answering.instanceId} className="ml-1.5" />
       <ChevronDown size={12} strokeWidth={2} aria-hidden="true" className="ml-1 shrink-0 text-ink-tertiary" />
