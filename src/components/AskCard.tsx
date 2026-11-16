@@ -2,7 +2,6 @@ import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "re
 import { ArrowUp, Check, Clock3, LoaderCircle, Square, X } from "../icons";
 import { botButton, type BotButton } from "@/lib/bot-button";
 import { cn } from "@/lib/cn";
-import { phoneApp } from "@/lib/store-app";
 import { t } from "@/lib/i18n";
 import type { MausColor } from "@/lib/mascot";
 import type { Bot } from "@/state/store";
@@ -235,9 +234,6 @@ export function ChoiceLetter({ letter, quiet = false, fill }: { letter: string |
   );
 }
 
-const DESTRUCTIVE = /^(decline|reject|deny|delete|remove|discard|cancel)\b/i;
-const destructiveOnPhone = (label: string): boolean => phoneApp() && DESTRUCTIVE.test(label.trim());
-
 /** The answers a question offers, one button each, stacked so a long label wraps instead of being cut. */
 export function AskChoices({ choices, label, onPick, sending = null, picked = [], multi = false, disabled = false, quiet = false, tag }: {
   choices: readonly AskChoice[];
@@ -269,7 +265,7 @@ export function AskChoices({ choices, label, onPick, sending = null, picked = []
             aria-busy={sending === choice.label || undefined}
             disabled={disabled || (sending !== null && sending !== choice.label)}
             onClick={() => onPick(choice.label)}
-            className={cn(ASK_CHOICE, on ? "bg-ink/[0.06]" : "enabled:hover:bg-ink/[0.06]", quiet && !on ? "text-ink-secondary" : destructiveOnPhone(choice.label) && "text-danger")}
+            className={cn(ASK_CHOICE, on ? "bg-ink/[0.06]" : "enabled:hover:bg-ink/[0.06]", quiet && !on && "text-ink-secondary")}
           >
             <ChoiceLetter letter={choiceLetter(index)} quiet={quiet && !on} />
             <span className="min-w-0 flex-1">

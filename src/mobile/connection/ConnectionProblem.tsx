@@ -58,7 +58,7 @@ export function problemCopy(notice: ConnectionNotice, place: LivePlace): { title
 /** The floating status: a short word while it reconnects, and once that has gone on too long, a button to try again. */
 export function ConnectionPill({ notice, trying, onRetry, testId, className = "h-11 px-4" }: { notice: ConnectionNotice; trying: boolean; onRetry(): void; testId: string; className?: string }) {
   if (!notice) return null;
-  const base = `m-glass m-pop pointer-events-auto flex min-w-0 items-center gap-2 whitespace-nowrap rounded-full text-[13px] font-medium ${className}`;
+  const base = `mobile-float bg-composer pointer-events-auto flex min-w-0 items-center gap-2 whitespace-nowrap rounded-full text-[13px] font-medium ${className}`;
   if (isConnectionProblem(notice)) {
     return (
       <button type="button" data-testid={testId} data-notice={notice} disabled={trying} onClick={onRetry} className={`${base} mobile-press text-ink`}>

@@ -30,7 +30,6 @@ import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useChatHaptics } from "./use-chat-haptics";
 import { useOutbox } from "./outbox";
 import { usePlatform } from "./platform";
-import { installRipples } from "./ripple";
 import type { MobileSheet } from "./sheets";
 
 function Shell() {
@@ -49,7 +48,6 @@ function Shell() {
   // notifications are asked for when they mean something: once a message is on its way and its reply will follow
   useChatHaptics(state, chatId, useCallback(() => { if (platform.native) void registerPushForConnection(platform, { prompt: true }); }, [platform]));
   useOutbox();
-  useEffect(() => document.documentElement.dataset.os === "android" ? installRipples() : undefined, []);
   // a bot's reply someone finds harmful or wrong goes to a person at dusk bot, with the reply in the mail they send
   useEffect(() => installAiReport(({ text, messageId }) => {
     void platform.openExternal(supportMail(t("mobile.report.subject"), t("mobile.report.body", { text: text.slice(0, 1500), id: messageId })));

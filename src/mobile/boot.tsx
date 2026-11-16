@@ -38,8 +38,6 @@ export function mountMobile(platform: MobilePlatform): void {
   followSystemTextSize(platform);
   setColorUserBubblesDefault(false);
   document.documentElement.dataset.mobileApp = platform.kind;
-  // which glass the chrome draws: android's thinner one with ripples, or iOS's (?os=android previews the first)
-  document.documentElement.dataset.os = platform.kind === "android" || params.get("os") === "android" ? "android" : "ios";
   applySkinChoice(phoneSkin(params));
   applyFont(readFont());
   const dark = document.documentElement.dataset.skin === THEME_SKINS.dark;

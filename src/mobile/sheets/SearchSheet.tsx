@@ -121,8 +121,8 @@ export const SearchSheet: ComponentType<SheetPageProps<"search">> = ({ open, onC
 
   return (
     <Sheet open={open} onClose={onClose} title={t("mobile.search.title")} full flush>
-      <div className="sticky top-0 z-10 flex items-center gap-1 px-4 pb-4 pt-6 [-webkit-backdrop-filter:blur(14px)] [backdrop-filter:blur(14px)] [mask-image:linear-gradient(to_top,transparent,black_14px)]">
-        <div className="m-glass-quiet flex h-11 min-w-0 flex-1 items-center rounded-full pl-3">
+      <div className="sticky top-0 z-10 flex items-center gap-1 bg-app px-4 pb-3 pt-2">
+        <div className="flex h-11 min-w-0 flex-1 items-center rounded-full bg-ink/[0.05] pl-3">
           <Search aria-hidden size={19} className="shrink-0 text-ink-secondary" />
           <label className="sr-only" htmlFor="mobile-search-input">{t("mobile.search.title")}</label>
           <input ref={input} id="mobile-search-input" autoFocus type="search" enterKeyHint="search" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("mobile.search.placeholder")} className="h-11 min-w-0 flex-1 appearance-none rounded-full bg-transparent px-2 text-[16px] text-ink placeholder:text-ink-tertiary [&::-webkit-search-cancel-button]:appearance-none" />

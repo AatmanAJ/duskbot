@@ -166,7 +166,7 @@ export function ContextMenu({ open, anchor, preview, actions, label, onClose }: 
             ref={menuRef}
             role="menu"
             aria-label={label}
-            className="m-glass-thick absolute overflow-hidden rounded-[22px] py-1.5"
+            className="absolute overflow-hidden rounded-[16px] bg-menu py-1.5 shadow-[0_12px_40px_-8px_rgb(10_10_12/0.30)]"
             style={{ left: layout.menuLeft, top: layout.menuTop, width: MENU_W, transformOrigin: layout.above ? "left bottom" : "left top" }}
             initial={{ opacity: 0, scale: 0.9, y: layout.above ? 6 : -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}

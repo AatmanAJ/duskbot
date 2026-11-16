@@ -7,7 +7,7 @@ import { dur, ease } from "../motion";
 /** one filled action per screen; disabled reads as disabled in both looks */
 export const PRIMARY = "mobile-press flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-ink text-[17px] font-semibold text-app disabled:bg-ink/[0.08] disabled:text-ink-tertiary";
 /** an equal-weight choice next to others: tonal, never outranking the primary */
-export const TONAL = "mobile-press m-glass flex h-[52px] w-full items-center justify-center gap-2.5 rounded-full text-[17px] font-semibold text-ink disabled:opacity-50";
+export const TONAL = "mobile-press flex h-[52px] w-full items-center justify-center gap-2.5 rounded-full bg-ink/[0.05] text-[17px] font-semibold text-ink disabled:opacity-50";
 /** a quiet way out or around */
 export const QUIET = "mobile-press flex h-11 w-full items-center justify-center rounded-full text-[15px] font-semibold text-ink-secondary disabled:opacity-50";
 export const FIELD = "h-[52px] w-full min-w-0 rounded-[16px] bg-ink/[0.05] px-4 text-[17px] text-ink placeholder:text-ink-tertiary focus:bg-ink/[0.08] disabled:opacity-60 aria-[invalid=true]:bg-danger/[0.08]";
@@ -42,7 +42,7 @@ export function Screen({ top, art, children, actions, align = "center" }: { top?
 
 export function BackButton({ onClick, close = false }: { onClick: () => void; close?: boolean }) {
   return (
-    <button type="button" onClick={onClick} aria-label={t(close ? "mobile.sheet.close" : "mobile.sheet.back")} className="mobile-press m-glass flex size-11 items-center justify-center rounded-full text-ink">
+    <button type="button" onClick={onClick} aria-label={t(close ? "mobile.sheet.close" : "mobile.sheet.back")} className="mobile-press flex size-11 items-center justify-center rounded-full bg-ink/[0.06] text-ink">
       {close ? <X size={20} /> : <ChevronLeft size={21} />}
     </button>
   );
