@@ -132,8 +132,10 @@ export interface DemoStep {
   goal: string;
   actions: DemoAction[];
   check: DemoCheck;
-  /** The picture that shows it. */
+  /** The picture from just before it: where to act. */
   frame?: string;
+  /** The picture from just after it: what it should lead to. */
+  frameAfter?: string;
   /** Where the person pressed in that picture, when accessibility named nothing. */
   point?: DemoPoint;
   /** The recorded events it came from, by seq. */

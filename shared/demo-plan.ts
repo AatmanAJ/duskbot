@@ -179,6 +179,7 @@ function readStep(value: unknown): DemoStep | null {
   if (actions.some((action) => action === null)) return null;
   const point = record(step.point);
   const frame = filled(step.frame, 120);
+  const frameAfter = filled(step.frameAfter, 120);
   return {
     id,
     title: title.trim(),
@@ -186,6 +187,7 @@ function readStep(value: unknown): DemoStep | null {
     actions: actions as DemoAction[],
     check,
     ...(frame !== null && /^[\w-]+$/.test(frame) ? { frame } : {}),
+    ...(frameAfter !== null && /^[\w-]+$/.test(frameAfter) ? { frameAfter } : {}),
     ...(point && typeof point.x === "number" && typeof point.y === "number" && Number.isFinite(point.x) && Number.isFinite(point.y) ? { point: { x: point.x, y: point.y } } : {}),
     events: Array.isArray(step.events) ? step.events.filter((seq): seq is number => Number.isInteger(seq) && seq > 0).slice(0, 2_000) : [],
   };
