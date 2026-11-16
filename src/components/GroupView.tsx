@@ -519,10 +519,49 @@ export const Transcript = memo(function Transcript({
   );
 });
 
-type RoomResponderMode = "lead" | "everyone" | "mentions" | "auto";
+export type RoomResponderMode = "lead" | "everyone" | "mentions" | "auto";
 
 function setupResponderMode(responder: GroupDefaultResponder): RoomResponderMode {
   return responder.kind === "member" ? "lead" : responder.kind;
+}
+
+/** One Default responder choice: a ring on every row, filled on the chosen one, its title over one plain line. */
+export function SetupResponderRow({ choice, checked, title, hint, disabled, onClick, className }: {
+  choice: RoomResponderMode;
+  checked: boolean;
+  title: string;
+  hint: string;
+  disabled?: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      data-setup-choice={choice}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left outline-none transition-[background-color] duration-[120ms] ease-[ease] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50",
+        checked ? "bg-ink/[0.045]" : "enabled:hover:bg-ink/[0.035]",
+        className,
+      )}
+    >
+      <span
+        aria-hidden="true"
+        data-radio={checked ? "on" : "off"}
+        className={cn("flex size-4 shrink-0 items-center justify-center rounded-full", checked ? "bg-ink" : "border-[1.5px] border-ink/24")}
+      >
+        {checked && <span className="size-1.5 rounded-full bg-app" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] leading-[18px] tracking-[0.015em] text-ink">{title}</span>
+        <span className="block text-[12px] leading-4 text-ink/56">{hint}</span>
+      </span>
+    </button>
+  );
 }
 
 function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
@@ -649,85 +688,59 @@ function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
         <fieldset className="block">
           <legend className="text-[13px] font-medium leading-[18px] text-ink">{t("room.responder.aria")}</legend>
           <p className="mt-0.5 text-[12px] leading-4 text-ink/56">{t("room.setup.responderDetail")}</p>
-          <div role="radiogroup" aria-label={t("room.responder.aria")} className="mt-2 grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={behavior === "auto"}
+          <div role="radiogroup" aria-label={t("room.responder.aria")} data-setup-responder="" className="mt-2 flex flex-col rounded-[12px] border-[0.5px] border-edge bg-composer p-1">
+            <SetupResponderRow
+              choice="auto"
+              checked={behavior === "auto"}
+              title={t("room.responder.autoOptionOff")}
+              hint={jevOn ? t("room.setup.autoDetail") : t("room.setup.autoDetailOff")}
+              disabled={saving}
               onClick={() => {
                 setBehavior("auto");
                 setLeadPickerOpen(false);
               }}
-              disabled={saving}
-              className={cn(
-                "flex min-h-[60px] w-full cursor-pointer flex-col items-start justify-between rounded-[10px] border px-3 py-2.5 text-left transition-[background-color,border-color] duration-[120ms] ease-[ease] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
-                behavior === "auto"
-                  ? "border-transparent bg-ink/4 text-ink"
-                  : "border-transparent text-ink hover:bg-ink/4",
-              )}
-            >
-              <span className="flex items-center gap-2 text-[13px] leading-[18px]">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                    behavior === "auto" ? "border-ink bg-ink" : "border-transparent",
-                  )}
-                >
-                  {behavior === "auto" && <span className="size-1.5 rounded-full bg-app" />}
-                </span>
-                {jevOn ? t("room.responder.autoOption") : t("room.responder.autoOptionOff")}
-              </span>
-              <span className="ml-6 mt-1 text-[12px] leading-4 text-ink/56">
-                {jevOn ? t("room.setup.autoDetail") : t("room.setup.autoDetailOff")}
-              </span>
-            </button>
+            />
 
-            <div ref={leadPickerRef} className="relative min-w-0">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={behavior === "lead"}
-                aria-haspopup="listbox"
-                aria-expanded={behavior === "lead" && leadPickerOpen}
+            <div ref={leadPickerRef} className={cn("relative flex min-w-0 items-center rounded-lg pe-2 transition-[background-color] duration-[120ms] ease-[ease]", behavior === "lead" ? "bg-ink/[0.045]" : "hover:bg-ink/[0.035]")}>
+              <SetupResponderRow
+                choice="lead"
+                checked={behavior === "lead"}
+                title={t("room.behavior.lead")}
+                hint={t("room.setup.leadDetail")}
+                disabled={saving}
                 onClick={() => {
                   setBehavior("lead");
                   setLeadPickerOpen((open) => !open);
                 }}
-                disabled={saving}
-                className={cn(
-                  "flex min-h-[60px] w-full flex-col items-start justify-between rounded-[10px] border px-3 py-2.5 text-left transition-[background-color,border-color] duration-[120ms] ease-[ease] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
-                  behavior === "lead"
-                    ? "border-transparent bg-ink/4 text-ink"
-                    : "border-transparent text-ink hover:bg-ink/4",
-                )}
+                className="min-w-0 flex-1 bg-transparent enabled:hover:bg-transparent"
+              />
+              <button
+                type="button"
+                data-setup-lead-picker=""
+                aria-haspopup="listbox"
+                aria-expanded={behavior === "lead" && leadPickerOpen}
+                disabled={saving || members.length === 0}
+                onClick={() => {
+                  setBehavior("lead");
+                  setLeadPickerOpen((open) => !open);
+                }}
+                className="inline-flex h-8 max-w-[160px] shrink-0 items-center gap-1.5 rounded-full bg-ink/[0.06] ps-1 pe-2 text-[13px] font-medium leading-[18px] text-ink outline-none transition-[background-color] duration-[120ms] ease-[ease] enabled:hover:bg-ink/[0.09] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="flex w-full items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 text-[13px] leading-[18px]">
-                    <span
-                      className={cn(
-                        "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                        behavior === "lead" ? "border-ink bg-ink" : "border-transparent",
-                      )}
-                    >
-                      {behavior === "lead" && <span className="size-1.5 rounded-full bg-app" />}
-                    </span>
-                    {t("room.behavior.lead")}
-                  </span>
-                  <ChevronDown
-                    size={14}
-                    aria-hidden="true"
-                    className={cn("shrink-0 text-ink-secondary transition-transform", leadPickerOpen && "rotate-180")}
-                  />
-                </span>
-                <span className="ml-6 mt-1 truncate text-[12px] leading-4 text-ink/56">
-                  {selectedLead?.name ?? t("room.behavior.chooseTeammate")}
-                </span>
+                {selectedLead && (
+                  <BotAvatar bot={selectedLead} state={normalizeState(selectedLead.mascotExpression) ?? "happy"} size={22} animated={false} />
+                )}
+                <span className={cn("min-w-0 truncate", !selectedLead && "ps-1.5")}>{selectedLead?.name ?? t("room.behavior.chooseTeammate")}</span>
+                <ChevronDown
+                  size={14}
+                  aria-hidden="true"
+                  className={cn("shrink-0 text-ink-secondary transition-transform duration-[120ms] ease-[ease] motion-reduce:transition-none", leadPickerOpen && "rotate-180")}
+                />
               </button>
               {leadMotion.shown && (
                 <div
                   role="listbox"
                   aria-label={t("room.behavior.chooseLead")}
-                  className={cn("absolute left-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-3rem)] overflow-hidden rounded-[12px] border border-transparent bg-menu shadow-[0_8px_24px_rgb(0_0_0/0.12)]", leadMotion.className)} {...leadMotion.exitProps}
+                  className={cn("absolute right-2 top-full z-30 mt-1 w-72 max-w-[calc(100vw-3rem)] origin-top-right overflow-hidden rounded-[12px] border border-transparent bg-menu shadow-[0_8px_24px_rgb(0_0_0/0.12)]", leadMotion.className)} {...leadMotion.exitProps}
                 >
                   <div className="border-b border-transparent px-3 py-2.5">
                     <div className="text-[13px] font-semibold text-ink">{t("room.behavior.chooseLead")}</div>
@@ -770,65 +783,29 @@ function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
               )}
             </div>
 
-            <button
-              type="button"
-              role="radio"
-              aria-checked={behavior === "everyone"}
+            <SetupResponderRow
+              choice="everyone"
+              checked={behavior === "everyone"}
+              title={t("room.responder.everyoneOption")}
+              hint={t("room.setup.allMembers")}
+              disabled={saving}
               onClick={() => {
                 setBehavior("everyone");
                 setLeadPickerOpen(false);
               }}
-              disabled={saving}
-              className={cn(
-                "flex min-h-[60px] w-full flex-col items-start justify-between rounded-[10px] border px-3 py-2.5 text-left transition-[background-color,border-color] duration-[120ms] ease-[ease] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
-                behavior === "everyone"
-                  ? "border-transparent bg-ink/4 text-ink"
-                  : "border-transparent text-ink hover:bg-ink/4",
-              )}
-            >
-              <span className="flex items-center gap-2 text-[13px] leading-[18px]">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                    behavior === "everyone" ? "border-ink bg-ink" : "border-transparent",
-                  )}
-                >
-                  {behavior === "everyone" && <span className="size-1.5 rounded-full bg-app" />}
-                </span>
-                {t("room.responder.everyoneOption")}
-              </span>
-              <span className="ml-6 mt-1 text-[12px] leading-4 text-ink/56">{t("room.setup.allMembers")}</span>
-            </button>
+            />
 
-            <button
-              type="button"
-              role="radio"
-              aria-checked={behavior === "mentions"}
+            <SetupResponderRow
+              choice="mentions"
+              checked={behavior === "mentions"}
+              title={t("room.responder.mentionsOption")}
+              hint={t("room.setup.onlyMentioned")}
+              disabled={saving}
               onClick={() => {
                 setBehavior("mentions");
                 setLeadPickerOpen(false);
               }}
-              disabled={saving}
-              className={cn(
-                "flex min-h-[60px] w-full flex-col items-start justify-between rounded-[10px] border px-3 py-2.5 text-left transition-[background-color,border-color] duration-[120ms] ease-[ease] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
-                behavior === "mentions"
-                  ? "border-transparent bg-ink/4 text-ink"
-                  : "border-transparent text-ink hover:bg-ink/4",
-              )}
-            >
-              <span className="flex items-center gap-2 text-[13px] leading-[18px]">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                    behavior === "mentions" ? "border-ink bg-ink" : "border-transparent",
-                  )}
-                >
-                  {behavior === "mentions" && <span className="size-1.5 rounded-full bg-app" />}
-                </span>
-                {t("room.responder.mentionsOption")}
-              </span>
-              <span className="ml-6 mt-1 text-[12px] leading-4 text-ink/56">{t("room.setup.onlyMentioned")}</span>
-            </button>
+            />
           </div>
         </fieldset>
 

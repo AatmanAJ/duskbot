@@ -1728,8 +1728,6 @@
   "room.bulletin.none": "Keine Gruppen-Anweisungen",
   "room.bulletin.add": "Gruppen-Anweisungen hinzufügen…",
   "room.setup.responderDetail": "Wähl, wer antwortet, wenn niemand erwähnt wird.",
-  "room.setup.allMembers": "Alle Gruppenmitglieder",
-  "room.setup.onlyMentioned": "Nur @erwähnte Mitglieder",
   "room.hint.dm": "Antworte hier, um die Bot-zu-Bot-Unterhaltung fortzusetzen.",
   "room.hint.mentions": "Erwähne einen Bot mit @, um ihn dazuzuholen.",
   "room.hint.lead": "{name} antwortet standardmäßig — @erwähne jemand anderen, um stattdessen diese Person zu wählen.",

@@ -1654,8 +1654,6 @@
   "room.bulletin.none": "कोई समूह निर्देश नहीं",
   "room.bulletin.add": "समूह निर्देश जोड़ें…",
   "room.setup.responderDetail": "चुनें कि जब किसी का उल्लेख न हो तो कौन जवाब दे।",
-  "room.setup.allMembers": "समूह के सभी सदस्य",
-  "room.setup.onlyMentioned": "सिर्फ़ @उल्लेखित सदस्य",
   "room.hint.dm": "बॉट-से-बॉट बातचीत जारी रखने के लिए यहाँ जवाब दें।",
   "room.hint.mentions": "किसी बॉट को @ से बुलाएँ।",
   "room.hint.lead": "डिफ़ॉल्ट रूप से {name} जवाब देता है — किसी और को चुनने के लिए उसका @उल्लेख करें।",

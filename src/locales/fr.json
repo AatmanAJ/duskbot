@@ -1654,8 +1654,6 @@
   "room.bulletin.none": "Aucune instruction de groupe",
   "room.bulletin.add": "Ajouter des instructions de groupe…",
   "room.setup.responderDetail": "Choisissez qui répond quand personne n’est mentionné.",
-  "room.setup.allMembers": "Tous les membres du groupe",
-  "room.setup.onlyMentioned": "Uniquement les membres @mentionnés",
   "room.hint.dm": "Répondez ici pour poursuivre la conversation entre bots.",
   "room.hint.mentions": "Mentionnez un bot avec @ pour le faire venir.",
   "room.hint.lead": "{name} répond par défaut — @mentionnez quelqu’un d’autre pour le choisir à la place.",
