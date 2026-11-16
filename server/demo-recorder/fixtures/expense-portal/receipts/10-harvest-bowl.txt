@@ -1,0 +1,5 @@
+Merchant: Harvest Bowl
+Amount: 22.60
+Date: 2026-11-11
+Category: Meals
+Notes: Working dinner

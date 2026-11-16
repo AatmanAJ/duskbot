@@ -1,0 +1,5 @@
+Merchant: Kestrel Cloud
+Amount: 120.00
+Date: 2026-11-04
+Category: Software
+Notes: Monthly hosting

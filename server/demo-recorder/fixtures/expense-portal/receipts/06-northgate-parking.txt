@@ -1,0 +1,13 @@
+NORTHGATE PARKING
+Receipt
+
+Vendor: Northgate Parking
+Purchased on: 2026-11-05
+Type: Travel
+Memo: Parking at Northgate
+
+Subtotal   $12.88
+Tax        $1.12
+TOTAL      $14.00
+
+Thank you.

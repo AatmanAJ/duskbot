@@ -1,0 +1,13 @@
+PAPERTRAIL SUPPLY
+Receipt
+
+Vendor: Papertrail Supply
+Purchased on: 2026-11-03
+Type: Office supplies
+Memo: Printer paper and pens
+
+Subtotal   $29.58
+Tax        $2.57
+TOTAL      $32.15
+
+Thank you.

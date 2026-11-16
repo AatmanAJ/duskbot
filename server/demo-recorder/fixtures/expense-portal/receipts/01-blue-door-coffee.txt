@@ -1,0 +1,5 @@
+Merchant: Blue Door Coffee
+Amount: 18.40
+Date: 2026-11-02
+Category: Meals
+Notes: Team stand-up coffee
