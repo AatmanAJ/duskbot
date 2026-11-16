@@ -6050,7 +6050,6 @@
   "mobile.onboarding.openSettings": "Открыть Настройки",
   "mobile.onboarding.codeInstead": "Вместо этого ввести код",
   "mobile.onboarding.scanTitle": "Сканируйте код на компьютере",
-  "mobile.onboarding.scanHint": "Настройки, Phone, Pair with a code",
   "mobile.onboarding.noCamera": "Камера недоступна. Введите код или вставьте ссылку.",
   "mobile.onboarding.torch": "Фонарик",
   "mobile.onboarding.linking": "Привязка",

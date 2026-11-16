@@ -3466,7 +3466,6 @@
   "mobile.onboarding.openSettings": "Відкрити Налаштування",
   "mobile.onboarding.codeInstead": "Натомість ввести код",
   "mobile.onboarding.scanTitle": "Скануйте код на комп'ютері",
-  "mobile.onboarding.scanHint": "Налаштування, Phone, Pair with a code",
   "mobile.onboarding.noCamera": "Камера недоступна. Введіть код або вставте посилання.",
   "mobile.onboarding.torch": "Ліхтарик",
   "mobile.onboarding.linking": "Прив'язування",

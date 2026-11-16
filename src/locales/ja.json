@@ -6069,7 +6069,6 @@
   "mobile.onboarding.openSettings": "設定を開く",
   "mobile.onboarding.codeInstead": "代わりにコードを入力",
   "mobile.onboarding.scanTitle": "パソコンのコードを読み取ってください",
-  "mobile.onboarding.scanHint": "設定、Phone、Pair with a code",
   "mobile.onboarding.noCamera": "カメラがありません。コードを入力するか、リンクを貼り付けてください。",
   "mobile.onboarding.torch": "ライト",
   "mobile.onboarding.linking": "連携中",

@@ -5883,7 +5883,6 @@
   "mobile.onboarding.openSettings": "Apri Impostazioni",
   "mobile.onboarding.codeInstead": "Inserisci il codice invece",
   "mobile.onboarding.scanTitle": "Scansiona il codice sul computer",
-  "mobile.onboarding.scanHint": "Impostazioni, Phone, Pair with a code",
   "mobile.onboarding.noCamera": "Nessuna fotocamera disponibile. Inserisci il codice o incolla il link.",
   "mobile.onboarding.torch": "Torcia",
   "mobile.onboarding.linking": "Collegamento in corso",

@@ -5025,7 +5025,6 @@
   "mobile.onboarding.openSettings": "Ayarlar'ı aç",
   "mobile.onboarding.codeInstead": "Bunun yerine kodu gir",
   "mobile.onboarding.scanTitle": "Bilgisayarındaki kodu tara",
-  "mobile.onboarding.scanHint": "Ayarlar, Phone, Pair with a code",
   "mobile.onboarding.noCamera": "Kamera yok. Kodu gir veya bağlantıyı yapıştır.",
   "mobile.onboarding.torch": "El feneri",
   "mobile.onboarding.linking": "Bağlanıyor",

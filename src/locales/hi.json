@@ -3162,7 +3162,6 @@
   "mobile.onboarding.openSettings": "सेटिंग्स खोलें",
   "mobile.onboarding.codeInstead": "इसके बजाय कोड दर्ज करें",
   "mobile.onboarding.scanTitle": "कंप्यूटर पर दिख रहा कोड स्कैन करें",
-  "mobile.onboarding.scanHint": "सेटिंग्स, Phone, Pair with a code",
   "mobile.onboarding.noCamera": "यहाँ कैमरा उपलब्ध नहीं है। कोड दर्ज करें या लिंक पेस्ट करें।",
   "mobile.onboarding.torch": "टॉर्च",
   "mobile.onboarding.linking": "लिंक हो रहा है",

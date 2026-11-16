@@ -3164,7 +3164,6 @@
   "mobile.onboarding.openSettings": "Ouvrir Paramètres",
   "mobile.onboarding.codeInstead": "Saisir le code à la place",
   "mobile.onboarding.scanTitle": "Scannez le code sur votre ordinateur",
-  "mobile.onboarding.scanHint": "Paramètres, Phone, Pair with a code",
   "mobile.onboarding.noCamera": "Aucune caméra disponible. Saisissez le code ou collez le lien.",
   "mobile.onboarding.torch": "Lampe torche",
   "mobile.onboarding.linking": "Association en cours",

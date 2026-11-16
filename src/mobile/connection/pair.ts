@@ -7,7 +7,7 @@ import { open as openRelay } from "../transport/relay";
 
 export type TypedPairing = MobilePairingPayload;
 export type TypedCode = { kind: "code"; code: string };
-type PairErrorCode = "expired" | "unknown" | "used" | "sign-in" | "limited" | "unreachable" | "mismatch" | "refused" | "relay-unavailable" | "invalid" | "unsupported";
+type PairErrorCode = "expired" | "unknown" | "store-qr" | "used" | "sign-in" | "limited" | "unreachable" | "mismatch" | "refused" | "relay-unavailable" | "invalid" | "unsupported";
 
 // the desktop's clock stamps a grant's end; a phone a little ahead of it still tries, and the desktop decides
 const CLOCK_SKEW_MS = 2 * 60_000;
@@ -20,6 +20,11 @@ export class PairError extends Error {
     this.name = "PairError";
     this.code = code;
   }
+}
+
+/** the desktop's App Store qr, read by a phone that already has the app */
+export function isStoreLink(input: string): boolean {
+  return /^https:\/\/(apps\.apple\.com|play\.google\.com)\//i.test(input.trim()) || /^https:\/\/dusk\.bot\/download\/?$/i.test(input.trim());
 }
 
 export function parseTypedPairing(input: string): MobilePairingPayload | TypedCode | null {

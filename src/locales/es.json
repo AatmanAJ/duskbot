@@ -5489,7 +5489,6 @@
   "mobile.onboarding.openSettings": "Abrir Ajustes",
   "mobile.onboarding.codeInstead": "Introducir el código en su lugar",
   "mobile.onboarding.scanTitle": "Escanea el código de tu ordenador",
-  "mobile.onboarding.scanHint": "Ajustes, Phone, Pair with a code",
   "mobile.onboarding.noCamera": "No hay cámara disponible. Introduce el código o pega el enlace.",
   "mobile.onboarding.torch": "Linterna",
   "mobile.onboarding.linking": "Vinculando",

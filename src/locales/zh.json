@@ -6618,7 +6618,6 @@
   "mobile.onboarding.openSettings": "打开设置",
   "mobile.onboarding.codeInstead": "改为输入代码",
   "mobile.onboarding.scanTitle": "扫描电脑上的二维码",
-  "mobile.onboarding.scanHint": "设置、Phone、Pair with a code",
   "mobile.onboarding.noCamera": "没有可用的相机。请改为输入代码或粘贴链接。",
   "mobile.onboarding.torch": "手电筒",
   "mobile.onboarding.linking": "正在关联",

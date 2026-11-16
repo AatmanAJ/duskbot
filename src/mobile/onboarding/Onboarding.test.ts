@@ -178,3 +178,18 @@ it("the sign-in offer opens the sign-in without leaving the app", async () => {
   await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Log in")!.click(); });
   expect(host.querySelector("[role=dialog] h1")?.textContent).toBe("Log in to dusk bot");
 });
+
+it("a scan of the desktop's App Store qr says so, and the screen after a failed scan offers scanning again", async () => {
+  platform = { ...platform, camera: {
+    permission: async () => "granted", request: async () => "granted",
+    start: async ({ onCode }: { onCode: (text: string) => void }) => { setTimeout(() => onCode("https://apps.apple.com/app/id6834725640"), 0); return { stop: async () => {} }; },
+  } as unknown as MobilePlatform["camera"] };
+  await mount(onboarding());
+  await press("[data-entry=scan]");
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  expect(host.querySelector("[data-step]")?.getAttribute("data-step")).toBe("code");
+  expect(host.querySelector("[role=alert]")?.textContent).toContain("That's the App Store code");
+  const again = host.querySelector<HTMLButtonElement>("[data-scan-again]");
+  expect(again?.disabled, "never a disabled Try again over an empty field").toBe(false);
+  expect(host.querySelector("button[type=submit]")).toBeNull();
+});

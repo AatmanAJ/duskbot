@@ -4603,7 +4603,6 @@
   "mobile.onboarding.openSettings": "開啟設定",
   "mobile.onboarding.codeInstead": "改為輸入代碼",
   "mobile.onboarding.scanTitle": "掃描電腦上的 QR 碼",
-  "mobile.onboarding.scanHint": "設定、Phone、Pair with a code",
   "mobile.onboarding.noCamera": "沒有可用的相機。請改為輸入代碼或貼上連結。",
   "mobile.onboarding.torch": "手電筒",
   "mobile.onboarding.linking": "正在連結",

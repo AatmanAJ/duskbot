@@ -5916,7 +5916,6 @@
   "mobile.onboarding.openSettings": "Abrir Configurações",
   "mobile.onboarding.codeInstead": "Inserir o código em vez disso",
   "mobile.onboarding.scanTitle": "Leia o código no computador",
-  "mobile.onboarding.scanHint": "Configurações, Phone, Pair with a code",
   "mobile.onboarding.noCamera": "Nenhuma câmera disponível. Digite o código ou cole o link.",
   "mobile.onboarding.torch": "Lanterna",
   "mobile.onboarding.linking": "Vinculando",

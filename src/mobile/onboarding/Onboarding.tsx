@@ -9,7 +9,7 @@ import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { haptic } from "../haptics";
 import { PixelArt, PixelMascot } from "../Illustration";
 import { usePlatform, type CameraPermission } from "../platform";
-import { PairError, parseTypedPairing, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
+import { isStoreLink, PairError, parseTypedPairing, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
 import { Scanner } from "./Scanner";
 import { CloudPicker } from "../account/CloudPicker";
 import { MobileSignIn } from "../account/MobileSignIn";
@@ -73,6 +73,8 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   const [confirm, setConfirm] = useState<TypedPairing | null>(initial);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
+  // a failed scan lands on the code screen with an empty field: its way forward is scanning again, not a dead submit
+  const [scanFailed, setScanFailed] = useState(false);
   const [noClouds, setNoClouds] = useState(false);
   const [value, setValue] = useState("");
   const locked = useRef(false);
@@ -82,15 +84,17 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     platform.setStatusBar?.(step === "scan" || document.documentElement.dataset.skin === THEME_SKINS.dark ? "light" : "dark");
   }, [platform, step]);
 
-  const go = (next: Step) => { setFailure(null); setValue(""); setStep(next); };
+  const go = (next: Step) => { setFailure(null); setScanFailed(false); setValue(""); setStep(next); };
 
   const redeem = async (text: string | TypedPairing, from: Step) => {
     if (locked.current) return;
     locked.current = true;
     setBusy(true);
     setFailure(null);
+    setScanFailed(false);
     let payload: TypedPairing | null = typeof text === "string" ? null : text;
     try {
+      if (typeof text === "string" && isStoreLink(text)) throw new PairError("store-qr");
       if (typeof text === "string") {
         const parsed = parseTypedPairing(text);
         payload = parsed && "kind" in parsed ? await resolveTypedCode(parsed.code) : parsed;
@@ -101,7 +105,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     } catch (error) {
       haptic("error");
       setFailure({ code: error instanceof PairError ? error.code : "unreachable", name: installationName(payload), companion: payload?.transport === "companion" });
-      if (from === "scan") setStep("code");
+      if (from === "scan") { setStep("code"); setScanFailed(true); }
     } finally {
       locked.current = false;
       setBusy(false);
@@ -231,7 +235,9 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
                 </div>
               </div>
               <div className="flex shrink-0 flex-col items-center gap-1 px-6 pb-[calc(var(--m-safe-bottom)+16px)] pt-4">
-                <button type="submit" disabled={busy || !value.trim() || (step === "code" && value.replace(/-/g, "").length < 12)} className={PRIMARY}>{busy ? <WorkingDots /> : t(failure ? "mobile.onboarding.retry" : "mobile.pair.link")}</button>
+                {scanFailed && !value.trim() && !busy
+                  ? <button type="button" data-scan-again="" className={PRIMARY} onClick={() => void openScanner()}><QrCode size={20} />{t("mobile.onboarding.scanAgain")}</button>
+                  : <button type="submit" disabled={busy || !value.trim() || (step === "code" && value.replace(/-/g, "").length < 12)} className={PRIMARY}>{busy ? <WorkingDots /> : t(failure ? "mobile.onboarding.retry" : "mobile.pair.link")}</button>}
                 {step === "code" && <button type="button" className={QUIET} onClick={() => { setValue(""); setFailure(null); setStep("paste"); }}>{t("mobile.onboarding.pasteInstead")}</button>}
               </div>
             </form>
