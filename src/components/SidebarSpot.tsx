@@ -107,17 +107,14 @@ function spotWords(spot: Exclude<SpotState, { kind: "feedback" }>): { title: str
 /** Give feedback or the update, the same card either way, so the spot only changes state. */
 export function SidebarSpot({ className, bridge, check }: { className?: string; bridge?: AppUpdateBridge; check?: () => Promise<ServerUpdateCheck> }) {
   const { spot, act, updated, seen } = useSidebarSpot(bridge ?? ownBridge(), check);
-  const card = cn("flex w-full items-center gap-3 rounded-[16px] p-3 text-start", PRESS, FOCUS);
+  const card = cn("flex h-10 w-full items-center gap-2.5 rounded-full px-3.5 text-start", PRESS, FOCUS);
   return (
     <div className={className}>
       {updated && spot.kind === "feedback" && <UpdatedNote version={updated} seen={seen} />}
       {spot.kind === "feedback" ? (
         <button type="button" data-sidebar-spot="feedback" data-art-hover="" onClick={act} className={cn(card, TONAL)}>
-          <Art name="bubbles" className="h-9 w-10 object-contain" />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[14px] font-semibold leading-5 text-ink">{t("giveFeedback.card")}</span>
-            <span className="truncate text-[12px] leading-4 text-ink-secondary">{t("giveFeedback.cardLine")}</span>
-          </span>
+          <Art name="bubbles" className="h-5 w-5 shrink-0 object-contain" />
+          <span className="min-w-0 flex-1 truncate text-[14px] font-medium leading-5 text-ink">{t("giveFeedback.card")}</span>
         </button>
       ) : <UpdateCard spot={spot} act={act} className={card} />}
     </div>
@@ -143,10 +140,8 @@ function UpdateCard({ spot, act, className }: { spot: Exclude<SpotState, { kind:
         <span aria-hidden="true" data-app-update-progress="" className="absolute inset-0 -z-10 origin-left bg-[color-mix(in_srgb,var(--color-accent)_80%,black)] transition-transform duration-300 ease-out motion-reduce:transition-none"
           style={{ transform: `scaleX(${spot.percent / 100})` }} />
       )}
-      <span aria-hidden="true" className="flex h-9 w-10 shrink-0 items-center justify-center">
-        <Art name="parcel" className="h-7 object-contain" />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[14px] font-semibold leading-5">{title}</span>
+      <Art name="parcel" className="h-5 w-5 shrink-0 object-contain" />
+      <span className="min-w-0 flex-1 truncate text-[14px] font-medium leading-5">{title}</span>
       {end !== null && <span className="hidden shrink-0 text-[12px] tabular-nums leading-4 text-accent-ink/75 @min-[13.5rem]:inline">{end}</span>}
     </button>
   );
