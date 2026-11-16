@@ -67,6 +67,24 @@ it("restores an account and provides its identity through context", async () => 
   save(); fetcher.mockResolvedValue(response({}));
   await mount(); expect(host.textContent).toBe(signedIn); expect(host.querySelector("h1")).toBeNull();
 });
+it("shows the saved sign-in before the service answers, and stays signed in when the check fails", async () => {
+  save();
+  let answer: (value: Response) => void = () => {};
+  fetcher.mockImplementation(() => new Promise<Response>((resolve) => { answer = resolve; }));
+  await mount(); expect(host.textContent).toBe(signedIn);
+  await act(async () => { answer(response({ error: "failed" }, 503)); });
+  expect(host.textContent).toBe(signedIn);
+});
+it("stays signed in when the app comes back and the service is down", async () => {
+  save(); fetcher.mockResolvedValue(response({}));
+  await mount(); expect(host.textContent).toBe(signedIn);
+  fetcher.mockResolvedValue(response({ error: "failed" }, 500));
+  await act(async () => { resume?.(); });
+  expect(host.textContent).toBe(signedIn);
+  fetcher.mockResolvedValue(response({ error: "invalid_token" }, 401));
+  await act(async () => { resume?.(); });
+  expect(host.textContent).not.toBe(signedIn);
+});
 it("signs out back to signed-out", async () => {
   save(); fetcher.mockResolvedValue(response({}));
   function Child() { const value = useMobileAccount(); return value?.account ? createElement("button", { onClick: () => void value?.signOut() }, "leave") : createElement("p", null, "signed out"); }

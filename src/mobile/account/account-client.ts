@@ -42,6 +42,9 @@ const OAUTH_ERRORS: readonly string[] = ["oauth_denied", "oauth_failed", "oauth_
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const identity = (value: unknown): value is MobileAccount => object(value) && typeof value.id === "string" && Boolean(value.id) && typeof value.email === "string" && Boolean(cleanEmail(value.email));
 const expiry = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+const savedGrant = (value: unknown): StoredGrant | null =>
+  object(value) && typeof value.origin === "string" && typeof value.token === "string" && TOKEN.test(value.token) && expiry(value.expiresAt)
+    && identity(value.account) && typeof value.deviceId === "string" && value.deviceId ? value as StoredGrant : null;
 const parse = (value: string | null): unknown => { try { return value ? JSON.parse(value) : null; } catch { return null; } };
 const CLOUD_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const GRANT_CODE = /^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/;
@@ -133,23 +136,32 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
   };
   return {
     account: () => grant?.account ?? null,
+    /** The saved sign-in as the Keychain has it, at once and without the network, so a launch never waits on it. */
+    async cached(): Promise<MobileAccount | null> {
+      const saved = savedGrant(parse(await platform.secrets.get(SECRET)));
+      if (saved && saved.origin === origin && saved.expiresAt > Date.now()) { grant = saved; analytics(); }
+      return grant?.account ?? null;
+    },
     async restore(): Promise<MobileAccount | null> {
       const stamp = generation;
-      grant = null; analytics();
       const value = parse(await platform.secrets.get(SECRET));
-      if (!object(value) || value.origin !== origin) return null;
-      if (typeof value.token !== "string" || !TOKEN.test(value.token) || !expiry(value.expiresAt) || !identity(value.account) || typeof value.deviceId !== "string" || !value.deviceId) {
-        await platform.secrets.remove(SECRET); return null;
-      }
-      const saved = value as StoredGrant;
+      if (!object(value) || value.origin !== origin) { grant = null; analytics(); return null; }
+      const saved = savedGrant(value);
+      if (!saved) { grant = null; analytics(); await platform.secrets.remove(SECRET); return null; }
       try {
         const session = await request(ACCOUNT_ROUTES.appSession, "GET", undefined, saved.token);
-        // the face may have changed on another device since this grant was kept
-        if (stamp === generation) { const { avatarUrl: _photo, avatar: _choice, ...rest } = saved.account; grant = { ...saved, account: { ...rest, ...mobileFace(object(session) ? session.account : null) } }; }
+        if (stamp !== generation) return null;
+        // the face may have changed on another device, and the service slides the session's end on every check
+        const { avatarUrl: _photo, avatar: _choice, ...rest } = saved.account;
+        const renewed = object(session) && expiry(session.expiresAt) && session.expiresAt > saved.expiresAt ? session.expiresAt : saved.expiresAt;
+        grant = { ...saved, expiresAt: renewed, account: { ...rest, ...mobileFace(object(session) ? session.account : null) } };
+        if (renewed !== saved.expiresAt) await platform.secrets.set(SECRET, JSON.stringify(grant));
       } catch (error) {
         if (stamp !== generation) return null;
-        if (error instanceof AccountRequestError && error.status === 401 && error.code === "invalid_token") await platform.secrets.remove(SECRET);
-        else if (!(error instanceof AccountRequestError) && saved.expiresAt > Date.now()) grant = saved;
+        // only the service saying the session is gone signs the phone out; an outage, a rate limit or a captive
+        // portal's page keeps a session that has not run out
+        if (error instanceof AccountRequestError && error.status === 401 && error.code === "invalid_token") { grant = null; await platform.secrets.remove(SECRET); }
+        else grant = saved.expiresAt > Date.now() ? saved : null;
       }
       analytics();
       return grant?.account ?? null;

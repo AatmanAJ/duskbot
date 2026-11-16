@@ -102,7 +102,11 @@ export function AccountGate({ children }: { children: ReactNode }) {
       follow(task);
       return true;
     });
-    if (wanted && !pendingAuth.current) void client.restore().then(value => { if (active && stamp === revision) setAccount(value); }).catch(() => {}).finally(() => { if (active) setRestoring(false); });
+    // the Keychain's sign-in shows at once; the service's check runs behind it and only a gone session signs out
+    if (wanted && !pendingAuth.current) void client.cached().then(value => {
+      if (active && stamp === revision && value) { setAccount(value); setRestoring(false); }
+      return client.restore();
+    }).then(value => { if (active && stamp === revision) setAccount(value); }).catch(() => {}).finally(() => { if (active) setRestoring(false); });
     else if (!pendingAuth.current) setRestoring(false);
     // signed out or deleted somewhere else (the website, another device): the app finds out when it comes back
     const stopResume = wanted ? platform.onResume?.(() => {
