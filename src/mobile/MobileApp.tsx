@@ -26,7 +26,7 @@ import { HomeScreen, releasePressed } from "./HomeScreen";
 import { SheetHost } from "./SheetHost";
 import { closeTopSheet, Sheet } from "./Sheet";
 import { t } from "@/lib/i18n";
-import { useKeyboardSync } from "./keyboard";
+import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useChatHaptics } from "./use-chat-haptics";
 import { useOutbox } from "./outbox";
 import { usePlatform } from "./platform";
@@ -44,6 +44,7 @@ function Shell() {
   useWarmChatImages(state.bots);
   usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language));
   useKeyboardSync(platform, rootRef);
+  useKeyboardDismiss(platform, rootRef);
   // notifications are asked for when they mean something: once a message is on its way and its reply will follow
   useChatHaptics(state, chatId, useCallback(() => { if (platform.native) void registerPushForConnection(platform, { prompt: true }); }, [platform]));
   useOutbox();

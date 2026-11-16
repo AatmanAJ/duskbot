@@ -13,6 +13,7 @@ import { useMenuMotion } from "./MenuMotion";
 import { ELEVATED_CARD, ELEVATED_FLOAT } from "./elevated";
 import { activeLocale, t } from "@/lib/i18n";
 import { imeComposing, sendKeyLabel, sendsMessage, useSendKey } from "@/lib/send-key";
+import { phoneApp } from "@/lib/store-app";
 import { alternateSend, alternateSendLabel, useFollowUpDefault } from "@/lib/follow-up"; import { followUpChoices, resolveFollowUp, type FollowUp } from "../../shared/follow-up";
 import {
   draftRevision,
@@ -155,7 +156,8 @@ export function Composer({
   const singleRow = useMediaQuery(PHONE_LAYOUT);
   // On a wider screen: one pill holding a round +, the field, the mic and one round button in the bot's colour.
   const simpleDock = !singleRow;
-  const sendKey = useSendKey(); const followUpDefault = useFollowUpDefault();
+  // a phone's return key is its send key: a software keyboard has no modifier to hold
+  const storedSendKey = useSendKey(); const sendKey = phoneApp() ? "enter" : storedSendKey; const followUpDefault = useFollowUpDefault();
   const sendLabel = sendKeyLabel(sendKey);
   const threadId = group?.threadId ?? bot?.threadId ?? "";
   const currentGroupTask = group?.tasks?.find((task) => task.threadId === threadId);
@@ -998,6 +1000,7 @@ export function Composer({
           everyone={Boolean(group && !group.dm)}
           dir="auto"
           rows={1}
+          enterKeyHint={sendKey === "enter" ? "send" : "enter"}
           value={text}
           onChange={(e) => {
             if (bot && !group) cueMascot(bot.id, "watch");
@@ -1163,10 +1166,11 @@ export function Composer({
             type="button"
             onFocus={() => { micFocused.current = true; }}
             onBlur={() => { micFocused.current = false; }}
-            onClick={toggleMic}
-            data-voice-mic={recording ? "done" : "start"}
+            // on a phone the button that ends listening sends what was heard: one tap from speaking to sent
+            onClick={recording && phoneApp() ? () => send(followUpFor(false)) : toggleMic}
+            data-voice-mic={recording ? (phoneApp() ? "send" : "done") : "start"}
             disabled={dictation.phase === "finishing"}
-            aria-label={recording ? t("composer.dictation.stop") : t("composer.dictation.start")}
+            aria-label={recording ? (phoneApp() ? sendNames.label : t("composer.dictation.stop")) : t("composer.dictation.start")}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
               simpleDock ? "size-7" : "size-8 max-md:size-10",
@@ -1179,7 +1183,7 @@ export function Composer({
             style={micInSlot && !singleRow ? { backgroundColor: slot.fill, color: slot.ink } : undefined}
             title={recording ? t("composer.voice.stopHint", { key: voiceShortcutLabel() }) : t("composer.voice.hint", { key: voiceShortcutLabel() })}
           >
-            {recording ? <Icon name="check" size={14} />
+            {recording ? <Icon name={phoneApp() ? "arrow-up" : "check"} size={phoneApp() ? 16 : 14} />
               : simpleDock ? <Icon name="mic" variant="filled" size={16} className={micInSlot ? "composer-glyph" : undefined} /> : <Mic size={16} strokeWidth={1.75} absoluteStrokeWidth className="[&_rect]:fill-current" />}
           </button>
         )}

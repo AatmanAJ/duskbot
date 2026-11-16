@@ -10,6 +10,11 @@ export function storeApp(): boolean {
   return value === "ios" || value === "android";
 }
 
+/** Inside the phone app's own shell (installed, or its web preview), not a narrow desktop window. */
+export function phoneApp(): boolean {
+  return Boolean(kind());
+}
+
 /** The iPhone app has no screen view or take-over of a bot's computer (guideline 4.2.7: a remote view of a computer). */
 export function screenViewAllowed(): boolean {
   return kind() !== "ios";
