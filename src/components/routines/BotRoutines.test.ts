@@ -95,6 +95,35 @@ describe("a bot's routines in its panel", () => {
     expect(fixture.dispatch).toHaveBeenCalled();
   });
 
+  it("says what a waiting run waits on; Answer opens its chat, and says so when nothing there waits on the person", () => {
+    const waiting = { id: "run-w", routineId: "routine-1", routineName: "Morning summary", target: "bot", botId: "bot-a", runOn: "maus", scheduledFor: now - 60_000, startedAt: now - 60_000,
+      status: "waiting", manual: false, attention: "Which inbox should I read?", threadId: "thread-r", createdAt: now - 60_000 };
+    fixture.state.routineRuns = [waiting];
+    mount();
+    open("routine-1");
+    expect(sheet().textContent).toContain("Which inbox should I read?");
+    expect(sheet().textContent).not.toContain("It's waiting for your answer.");
+    flushSync(() => action("routine-1", "fix").click());
+    expect(fixture.dispatch.mock.calls.map(([next]) => next)).toEqual([
+      { type: "switchTask", botId: "bot-a", threadId: "thread-r" },
+      { type: "notice", notice: { kind: "note", botName: "Scout", text: "Nothing in its chat is waiting for your answer now." } },
+    ]);
+    fixture.dispatch.mockClear();
+    fixture.state.bots = [{ ...scout, tasks: [{ threadId: "thread-r", title: "Inbox digests", activity: "waiting-on-you" }] }];
+    render();
+    flushSync(() => action("routine-1", "fix").click());
+    expect(fixture.dispatch.mock.calls.map(([next]) => next)).toEqual([{ type: "switchTask", botId: "bot-a", threadId: "thread-r" }]);
+  });
+
+  it("is not Needs you while a run waits on nothing it names", () => {
+    fixture.state.routineRuns = [{ id: "run-w", routineId: "routine-1", routineName: "Morning summary", target: "bot", botId: "bot-a", runOn: "maus", scheduledFor: now - 60_000,
+      startedAt: now - 60_000, status: "waiting", manual: false, threadId: "thread-r", createdAt: now - 60_000 }];
+    mount();
+    open("routine-1");
+    expect(action("routine-1", "fix")).toBeNull();
+    expect(sheet().textContent).not.toContain("It's waiting for your answer.");
+  });
+
   it("edits name, when and what in its sheet, and keeps a schedule no preset can say", async () => {
     fixture.state.routines = [{ ...routine, schedule: { type: "cron", expression: "0 9 1 * *", timeZone: "UTC" } as Routine["schedule"] }];
     fixture.api.mockImplementation(async (_path: unknown, init: unknown) => ({ routine: { ...(fixture.state.routines as Routine[])[0], ...JSON.parse((init as { body: string }).body), updatedAt: now + 1 } }));

@@ -5037,6 +5037,7 @@
   "automations.source.named": "your {name}",
   "automations.does.default": "does what it's asked",
   "automations.reason.answer": "It's waiting for your answer.",
+  "automations.answer.nothingWaiting": "Nothing in its chat is waiting for your answer now.",
   "automations.reason.signIn": "It's signed out. Sign in again so it can run.",
   "automations.reason.usage": "It's out of credit or hit a usage limit.",
   "automations.reason.timeLimit": "It ran out of time before finishing.",

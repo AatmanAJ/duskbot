@@ -207,6 +207,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   const fix = (kind: AutomationFix) => {
     if (kind === "usage") dispatch({ type: "toggleAppSettings", open: true, section: "usage" });
     else if (kind === "reconnect") dispatch({ type: "togglePlugins", open: true, surface: "apps" });
+    else if (kind === "answer") actions.answerRun(automation);
     else actions.openRun(automation, automation.runs.find((run) => run.status !== "queued"));
   };
 
