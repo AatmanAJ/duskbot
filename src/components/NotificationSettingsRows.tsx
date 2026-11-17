@@ -114,7 +114,11 @@ export function NotificationSoundPickerRow() {
   if (mode === "never") return null;
   const choices: SoundChoice[] = systemSoundAvailable() ? [SYSTEM_SOUND, ...UI_SOUND_NAMES] : [...UI_SOUND_NAMES];
   return (
-    <SettingRow icon="note" title={t("settings.notificationSound.title")}>
+    <SettingRow
+      icon="note"
+      title={t("settings.notificationSound.title")}
+      subtitle={sound === SYSTEM_SOUND ? t("settings.notificationSound.systemSubtitle") : undefined}
+    >
       <SettingsSelect
         value={sound}
         aria-label={t("settings.notificationSound.title")}
