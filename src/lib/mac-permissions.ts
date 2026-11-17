@@ -1,19 +1,19 @@
-export type MacPermission = "accessibility" | "screen" | "notifications";
+export type MacPermission = "accessibility" | "screen";
 
 /** "asked": macOS showed its own prompt already, so only System Settings can grant it now. */
 export type MacPermissionState = "granted" | "asked" | "missing";
 
 export type MacPermissionStatus =
   | { supported: false }
-  | { supported: true; accessibility: MacPermissionState; screen: MacPermissionState; notifications: MacPermissionState };
+  | { supported: true; accessibility: MacPermissionState; screen: MacPermissionState };
 
 export interface MacPermissionsBridge {
   status(): Promise<MacPermissionStatus>;
-  /** Asks for one: macOS's prompt the first time, its System Settings pane after that. `note` is the first notification. */
-  request(kind: MacPermission, note?: { title: string; body: string }): Promise<MacPermissionStatus>;
+  /** Asks for one: macOS's prompt the first time, its System Settings pane after that. */
+  request(kind: MacPermission): Promise<MacPermissionStatus>;
 }
 
-export const MAC_PERMISSIONS: readonly MacPermission[] = ["accessibility", "screen", "notifications"];
+export const MAC_PERMISSIONS: readonly MacPermission[] = ["accessibility", "screen"];
 
 /** This computer's own desktop app on macOS, where bots can use the Mac. */
 export function macPermissionsBridge(): MacPermissionsBridge | null {

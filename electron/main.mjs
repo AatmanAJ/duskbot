@@ -1,5 +1,5 @@
 import { carryLegacySafeStorageKey, DATA_DIR_NAMES, dataDirFor, devAppName, fromLegacyLink, LEGACY } from "./legacy-names.mjs";
-import { app, autoUpdater, BrowserWindow, Tray, WebContentsView, clipboard, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, systemPreferences, utilityProcess, nativeTheme } from "electron";
+import { app, autoUpdater, BrowserWindow, Tray, WebContentsView, clipboard, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification as ElectronNotification, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, systemPreferences, utilityProcess, nativeTheme } from "electron";
 import { createRequire } from "node:module";
 import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -32,7 +32,8 @@ import { createServerSupervisor } from "./server-supervisor.mjs";
 import { serverChildLaunch } from "./server-child-launch.mjs";
 import { savedVpsStartupTarget, startPackagedAlongsideVps, waitForLocalStartup } from "./saved-vps-startup.mjs";
 import { packageUrlFromCommandLine, packageUrlFromDeepLink } from "./package-link.mjs";
-import { chatLinkFrom, chatLinkFromCommandLine } from "./chat-link.mjs"; import { createSlackOAuthLinks } from "./slack-link.mjs"; import { installDesktopNotifications } from "./desktop-notifications.mjs";
+import { chatLinkFrom, chatLinkFromCommandLine } from "./chat-link.mjs"; import { createSlackOAuthLinks } from "./slack-link.mjs"; import { installDesktopNotifications } from "./desktop-notifications.mjs"; import { systemNotification, systemNotificationsAllowed } from "./system-notifications.mjs";
+const Notification = systemNotification(ElectronNotification);
 import { createOrganizationEntry, isOrganizationDeepLink, takeOrganizationDeepLink, organizationRestartIntent, withOrganizationRestartIntent, withoutOrganizationRestartIntent } from "./organization-entry.mjs";
 import { FRAME_BY_DEFAULT, widenedBounds, windowBackground, windowChromeOptions } from "./window-chrome.mjs";
 import { createAllWindowsClosedQuit } from "./window-all-closed.mjs";
@@ -2746,7 +2747,7 @@ ipcMain.handle("perm:status", (event) => ({
 ipcMain.handle("perm:request-mic", localOnly("perm:request-mic", () => askForMicrophone({ available: nativeActions.appleMediaPermissions, systemPreferences })));
 const privacySettings = pane => openPrivacySettings(pane, { available: nativeActions.applePrivacySettings, openExternal: url => shell.openExternal(url) });
 ipcMain.handle("perm:open-settings", localOnly("perm:open-settings", (_event, pane) => privacySettings(pane)));
-installMacPermissions({ ipcMain, guard: localOnly, platform: process.platform, systemPreferences, desktopCapturer, Notification, store: jsonFile(path.join(app.getPath("userData"), "mac-permissions.json")), openSettings: privacySettings, computerUse: () => import("./cua.mjs").then((cua) => cua.requestComputerUse()), log: (line) => console.error(`[mac-permissions] ${line}`) });
+installMacPermissions({ ipcMain, guard: localOnly, platform: process.platform, systemPreferences, desktopCapturer, openSettings: privacySettings, computerUse: () => import("./cua.mjs").then((cua) => cua.requestComputerUse()), log: (line) => console.error(`[mac-permissions] ${line}`) });
 
 ipcMain.handle("desktop:relaunch", localOnly("desktop:relaunch", (event) => {
   requireMainWindowSender(event);
@@ -3490,6 +3491,7 @@ app.whenReady().then(async () => {
     activeRemoteMicrophone: () => activeEnvironment(environmentsState)?.microphone === true,
     askRemoteMicrophone,
     homeOrigin: () => homeWindow.placeOrigin(),
+    systemNotifications: systemNotificationsAllowed(),
   }); startDesktopErrorReporting({ app, prefs: desktopPrefs }); if (!app.isPackaged) startDemoUpdates(); else startAppUpdates(createUpdateNotice({ request: localServerRequest, open: url => void shell.openExternal(url), memory: jsonFile(path.join(app.getPath("userData"), "update-notice.json")), log: slog, notify: ({ title, body, click }) => { if (!Notification.isSupported()) return; const note = new Notification({ title, body }); note.on("click", click); note.show(); } }));
   session.defaultSession.setPermissionRequestHandler(appPermissions.request);
   session.defaultSession.setPermissionCheckHandler(appPermissions.check);

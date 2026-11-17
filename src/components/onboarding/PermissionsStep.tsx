@@ -13,7 +13,6 @@ export const PERMISSIONS_POLL_MS = 1_500;
 const ROWS: Record<MacPermission, { art: ArtName; name: Parameters<typeof t>[0]; why: Parameters<typeof t>[0] }> = {
   accessibility: { art: "click", name: "funnel.permissions.accessibility", why: "funnel.permissions.accessibilityWhy" },
   screen: { art: "computer", name: "funnel.permissions.screen", why: "funnel.permissions.screenWhy" },
-  notifications: { art: "bubbles", name: "funnel.permissions.notifications", why: "funnel.permissions.notificationsWhy" },
 };
 
 export function PermissionsStep({ bridge, onNext, relaunch }: {
@@ -41,8 +40,7 @@ export function PermissionsStep({ bridge, onNext, relaunch }: {
   const ask = async (kind: MacPermission) => {
     setBusy(kind);
     try {
-      const note = kind === "notifications" ? { title: t("funnel.permissions.noteTitle"), body: t("funnel.permissions.noteBody") } : undefined;
-      const next = await bridge.request(kind, note);
+      const next = await bridge.request(kind);
       if (live.current) setStatus(next);
     } catch {
       read();

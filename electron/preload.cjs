@@ -435,10 +435,10 @@ const bridge = {
   permStatus: () => ipcRenderer.invoke("perm:status"),
   permRequestMic: () => ipcRenderer.invoke("perm:request-mic"),
   permOpenSettings: (pane) => ipcRenderer.invoke("perm:open-settings", pane),
-  /** Accessibility, Screen Recording and Notifications on macOS: `status` never prompts, `request` asks for one. */
+  /** Accessibility and Screen Recording on macOS: `status` never prompts, `request` asks for one. */
   macPermissions: {
     status: () => ipcRenderer.invoke("mac-permissions:status"),
-    request: (kind, note) => ipcRenderer.invoke("mac-permissions:request", String(kind), note && typeof note === "object" ? { title: String(note.title ?? ""), body: String(note.body ?? "") } : undefined),
+    request: (kind) => ipcRenderer.invoke("mac-permissions:request", String(kind)),
   },
   relaunch: () => ipcRenderer.invoke("desktop:relaunch"),
 
