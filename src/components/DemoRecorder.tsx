@@ -14,7 +14,7 @@ import { GrokDialog, mdPrimaryCls, mdSecondaryCls, rowHintCls, smallButtonCls, t
 
 const iconButton = "flex size-7 shrink-0 items-center justify-center rounded-md text-ink-secondary hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default disabled:opacity-40";
 const sectionTitle = "m-0 text-[13px] font-medium leading-[18px] text-ink";
-const count = (key: "showOnce.actions" | "showOnce.review.framesSkipped" | "showOnce.run.byBot", n: number, more: Record<string, string | number> = {}) =>
+const count = (key: "showOnce.actions" | "showOnce.review.framesSkipped" | "showOnce.run.byBot" | "showOnce.run.doneWithFailed", n: number, more: Record<string, string | number> = {}) =>
   t(`${key}.${n === 1 ? "one" : "many"}` as LocaleKey, { count: n, ...more });
 
 /** A check as a person reads it. */
@@ -328,7 +328,7 @@ export function DemoRun({ run, botName, onDismiss }: { run: DemoReplayRun; botNa
   const failed = run.failed + run.items.filter((item) => item.status === "skipped" && item.missing.length > 0).length;
   const headline = running ? t("showOnce.run.progress", { done: Math.min(total, settled + (current ? 1 : 0)), total })
     : run.status === "stopped" ? t("showOnce.run.stopped", { done: run.done, total })
-    : failed ? t("showOnce.run.doneWithFailed", { done: run.done, total, failed }) : t("showOnce.run.done", { done: run.done, total });
+    : failed ? count("showOnce.run.doneWithFailed", failed, { done: run.done, total }) : t("showOnce.run.done", { done: run.done, total });
   return (
     <div data-demo-run={run.status} className="flex flex-col">
       <div className="flex min-h-9 items-center gap-2 px-3 py-1">

@@ -305,6 +305,20 @@ describe("doing it again", () => {
     });
 
     expect(strip()!.querySelector("[role=status]")!.textContent).toBe("Done: 1 of 3. 2 need a look");
+    await act(async () => {
+      publishDemoChange({ botId, run: run({ status: "done", done: 1, failed: 1, items: [
+        { id: "a", label: "02-lumen-rail.json", status: "done", values: {}, missing: [], byBot: 2 },
+        { id: "b", label: "bad-date.txt", status: "failed", values: {}, missing: [], byBot: 0, step: "Click Submit expense", note: "The screen says: Date must look like 2026-11-03." },
+      ] }) });
+    });
+    expect(strip()!.querySelector("[role=status]")!.textContent).toBe("Done: 1 of 2. 1 needs a look");
+    await act(async () => {
+      publishDemoChange({ botId, run: run({ status: "done", done: 1, failed: 1, items: [
+        { id: "a", label: "02-lumen-rail.json", status: "done", values: {}, missing: [], byBot: 2 },
+        { id: "b", label: "bad-date.txt", status: "failed", values: {}, missing: [], byBot: 0, step: "Click Submit expense", note: "The screen says: Date must look like 2026-11-03." },
+        { id: "c", label: "scrap.txt", status: "skipped", values: {}, missing: ["merchant", "date"], byBot: 0 },
+      ] }) });
+    });
     await press(button("Show files", host));
     const rows = [...host.querySelectorAll<HTMLElement>("[data-demo-run-item]")].map((row) => [row.dataset.demoRunItem, row.textContent]);
     expect(rows[0]).toEqual(["done", expect.stringContaining("Nova stepped in for 2 steps")]);
