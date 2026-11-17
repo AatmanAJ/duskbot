@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { botById, groupById, hasMessage, messageById, messagePosition, messagesByThread, storeIndex } from "./store-index";
+import { botById, groupById, hasMessage, messageById, messagePosition, messagesByThread, normalize, storeIndex, tasksOfThread } from "./store-index";
+import { initialState, reducer } from "./store";
 import type { Bot, Group, Message, Task } from "./store";
 
 const message = (id: string, extra: Partial<Message> = {}): Message => ({ id, role: "bot", kind: "text", text: id, at: 1, ...extra });
@@ -109,5 +110,43 @@ describe("message positions", () => {
     expect(messagePosition(base, "dup")).toBe(40);
     const appended = [...base, message("dup2")];
     expect(messagePosition(appended, "dup")).toBe(40);
+  });
+});
+
+describe("AppState.normalized", () => {
+  it("holds bots, rooms, tasks and transcripts by id and by thread", () => {
+    const rows = [message("m1"), message("m2")];
+    const a = bot("a", "t-a", [task("t-a"), task("t-shared")], rows);
+    const b = bot("b", "t-b", [task("t-shared")]);
+    const room = group("g", "t-g", [{ threadId: "t-shared" }], [message("r1")]);
+    const normalized = normalize([a, b], [room]);
+    expect(normalized.botsById.get("b")).toBe(b);
+    expect(normalized.groupsById.get("g")).toBe(room);
+    expect(normalized.tasksByThread.get("t-shared")?.map((entry) => `${entry.kind}:${entry.ownerId}`)).toEqual(["bot:a", "bot:b", "group:g"]);
+    expect(normalized.messagesByThread.get("t-a")).toBe(rows);
+    expect(normalized.messagesByThread.get("t-g")?.[0]?.id).toBe("r1");
+    expect(normalized.messageById.get("t-a")?.get("m2")).toBe(rows[1]);
+    expect(normalized.messageById.get("t-a")?.has("nope")).toBe(false);
+  });
+
+  it("is kept current by the reducer and shared while nothing it holds changes", () => {
+    const a = bot("a", "t-a", [task("t-a")], [message("m1")]);
+    const hydrated = reducer(initialState, { type: "hydrate", bots: [a], groups: [], computerControl: {} });
+    expect(hydrated.normalized.bots).toBe(hydrated.bots);
+    expect(hydrated.normalized.botsById.get("a")).toBe(hydrated.bots[0]);
+    const added = reducer(hydrated, { type: "messageAdded", threadId: "t-a", message: message("m2") });
+    expect(added.normalized.bots).toBe(added.bots);
+    expect(added.normalized.messageById.get("t-a")?.get("m2")?.id).toBe("m2");
+    expect(tasksOfThread(added, "t-a").map((entry) => entry.ownerId)).toEqual(["a"]);
+    const unrelated = reducer(added, { type: "connected", value: true });
+    expect(unrelated.normalized).toBe(added.normalized);
+  });
+
+  it("is rebuilt for a state made by hand whose bots it was not built from", () => {
+    const fresh = bot("x", "t-x", [], [message("x1")]);
+    const byHand = { ...initialState, bots: [fresh] };
+    expect(byHand.normalized.botsById.has("x")).toBe(false);
+    expect(storeIndex(byHand).botsById.get("x")).toBe(fresh);
+    expect(messagesByThread(byHand, "t-x")?.[0]?.id).toBe("x1");
   });
 });

@@ -19,7 +19,7 @@ changes.
 | `useOptionalStoreSelector(selector, fallback)` | as above; outside any store it returns `fallback` |
 | `useDispatch()`, `useStoreActions()` | never |
 | `useStoreRef()` (`@/state/store-ref`) | never; `state()` reads the newest state inside a handler or effect |
-| `useStore()` | every change: kept as a compatibility shim for the few readers that need the whole state |
+| `useStore()` | every change: a compatibility shim; no component outside the store module calls it |
 
 Rules for a selector: return a primitive or an object that already exists in
 the state (`s => s.config`, `s => botById(s, id)`); never build a new object
@@ -31,22 +31,32 @@ list equal while only messages change, for avatars and mention lists.
 what the wrapped dispatch reads right after `rawDispatch` (for example the
 settings-opened analytics), so its behaviour did not change.
 
-`BotEditorStore` and tests that render inside `StoreContext.Provider` give a
-fixed value; every hook reads that value instead of the app store. Tests that
+`ScopedStore` derives a store from the one around it: its readers see
+`derive(state)` and follow the outer store, and its actions stand in for the
+outer ones (the bot editor's draft). `BotEditorStore` and tests that render
+inside `StoreContext.Provider` give a fixed value; every hook reads that value
+instead of the app store. Tests that
 mock the store module with their own `useStore` get the selector hooks through
 `withStoreHooks` (`src/testing/store-mock.ts`).
 
-### Normalized lookups
+### Normalized state
 
-`src/state/store-index.ts` derives, once per `bots`/`groups` array pair, the
-lookups the reducer and the views need: `botsById`, `groupsById`,
-`botsByTaskThread` (tasks by thread), `botByOpenThread` and `groupByThread`
-(messages by thread), and per transcript a `messageById` position index. The
-canonical state keeps the wire shape (bots with their messages), so snapshots,
-the transcript cache, optimistic sends and branch logic are untouched; the
-index is structurally shared, so a frame that patches one bot rebinds the maps
-without rescanning every task, and an appended transcript extends its position
-index instead of rebuilding it.
+`AppState.normalized` (`src/state/store-index.ts`) holds the state by id and by
+thread: `botsById`, `groupsById`, `tasksByThread` (every bot or room task that
+names a thread), `messagesByThread` (the transcript open on each thread) and
+`messageById` (each open transcript's rows by id). The root reducer brings it up
+to date after any action that changes `bots` or `groups`, and shares it between
+states otherwise. It is built incrementally: a frame that patches one bot
+rebinds the thread maps without rescanning every task, and an appended or
+patched transcript extends its row-position index after a pointer walk instead
+of building a new map.
+
+Bots and rooms still carry their open transcript in the wire shape, which is
+what snapshots, the IndexedDB transcript cache, optimistic sends and branch
+navigation read and write, so none of them changed. Read the normalized view
+through `storeIndex(state)` (or `botById`, `groupById`, `messagesByThread`,
+`tasksOfThread`): a state built by hand, as many tests do, may carry a stale
+one, and `storeIndex` rebuilds it then.
 
 ### Reducer slices
 

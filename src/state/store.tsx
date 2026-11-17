@@ -43,6 +43,7 @@ import { openCreateBot } from "@/lib/create-bot-request";
 import { publishBotPointer } from "@/lib/bot-pointer";
 import { StoreRefContext } from "./store-ref-context";
 import { createExternalStore } from "./external-store";
+import { normalize, type NormalizedState } from "./store-index";
 import { isAutomationAction, reduceAutomations } from "./reducers/automations";
 import { isRuntimeAction, reduceRuntime } from "./reducers/runtime";
 import { isTranscriptAction, reduceTranscripts } from "./reducers/transcripts";
@@ -609,6 +610,9 @@ export interface AppState {
   loadingOlder: Record<string, true>;
   /** Bumped when a transcript is replaced or its branch moves, never on append; stale scrollback pages are dropped. */
   transcriptGeneration: Record<string, number>;
+  /** Bots, rooms, tasks and transcripts by id and by thread, for `bots` and `groups` as they are; the root reducer
+   * keeps it current. A state built by hand may carry a stale one: read it through `storeIndex`. */
+  normalized: NormalizedState;
 }
 
 export type BotAnnouncement = Omit<Bot, "messages"> & { messages?: Message[] };
@@ -804,7 +808,15 @@ export function pinBotThreadAction(action: Action, bots: Bot[]): Action {
 
 export const CLOUD_LINK_SETTINGS = { type: "toggleAppSettings", open: true, section: "cloudAccount", cloudLink: true } as const satisfies Action;
 
+/** The root reducer: every slice, then the normalized view brought up to date with what changed. */
 export function reducer(state: AppState, action: Action): AppState {
+  const next = reduceState(state, action);
+  return next === state || (next.normalized?.bots === next.bots && next.normalized.groups === next.groups)
+    ? next
+    : { ...next, normalized: normalize(next.bots, next.groups) };
+}
+
+function reduceState(state: AppState, action: Action): AppState {
   if (isTranscriptAction(action)) return reduceTranscripts(state, action);
   if (isUiAction(action)) return reduceUi(state, action, reducer);
   if (isAutomationAction(action)) return reduceAutomations(state, action, reducer);
@@ -1299,6 +1311,7 @@ export function dataSheetFromResponse(body: unknown, botId: string): DataSheet {
 }
 
 export const initialState: AppState = {
+  normalized: normalize([], []),
   modelVariantSessions: {},
   backgroundThreadEvents: {},
   loadingOlder: {},

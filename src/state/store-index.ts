@@ -1,15 +1,39 @@
-import type { Bot, Group, Message } from "./store";
+import type { Bot, Group, GroupTask, Message, Task } from "./store";
 
-/** Normalized lookups over AppState's bots and groups. Built once per bots/groups array pair and reused. */
-export interface StoreIndex {
-  botsById: ReadonlyMap<string, Bot>;
-  groupsById: ReadonlyMap<string, Group>;
+/** One owner of a thread: the bot or room whose task list names it. */
+export type ThreadTask =
+  | { kind: "bot"; ownerId: string; task: Task }
+  | { kind: "group"; ownerId: string; task: GroupTask };
+
+/** A transcript's rows by id, answered from a position index the store extends as rows append. */
+export class ThreadMessages {
+  constructor(readonly messages: readonly Message[]) {}
+  get(id: string): Message | undefined { return messageById(this.messages, id); }
+  has(id: string): boolean { return hasMessage(this.messages, id); }
+}
+
+/**
+ * AppState's normalized view, kept by the root reducer on `AppState.normalized` for the bots and groups it was built
+ * from. Bots and groups keep the wire shape (each with its open transcript); these maps are how the store and its
+ * readers find things, and they are shared from one state to the next wherever nothing they hold changed.
+ */
+export interface NormalizedState {
+  readonly bots: readonly Bot[];
+  readonly groups: readonly Group[];
+  readonly botsById: ReadonlyMap<string, Bot>;
+  readonly groupsById: ReadonlyMap<string, Group>;
+  /** Every task naming the thread, bots first in sidebar order, then rooms. */
+  readonly tasksByThread: ReadonlyMap<string, readonly ThreadTask[]>;
+  /** The transcript open on each thread, a bot's or a room's. */
+  readonly messagesByThread: ReadonlyMap<string, readonly Message[]>;
+  /** Each open transcript's rows by id. */
+  readonly messageById: ReadonlyMap<string, ThreadMessages>;
   /** Every bot whose task list names the thread, in sidebar order. */
-  botsByTaskThread: ReadonlyMap<string, readonly Bot[]>;
+  readonly botsByTaskThread: ReadonlyMap<string, readonly Bot[]>;
   /** The first bot whose open transcript is the thread. */
-  botByOpenThread: ReadonlyMap<string, Bot>;
+  readonly botByOpenThread: ReadonlyMap<string, Bot>;
   /** The first group that has the thread open or among its tasks. */
-  groupByThread: ReadonlyMap<string, Group>;
+  readonly groupByThread: ReadonlyMap<string, Group>;
 }
 
 interface ThreadMaps {
@@ -19,7 +43,7 @@ interface ThreadMaps {
 
 let lastBots: readonly Bot[] | null = null;
 let lastGroups: readonly Group[] | null = null;
-let lastIndex: StoreIndex | null = null;
+let lastIndex: NormalizedState | null = null;
 
 const threadShape = (bot: Bot) => [bot.threadId, bot.tasks] as const;
 
@@ -51,7 +75,7 @@ function botThreadMaps(bots: readonly Bot[]): ThreadMaps {
 }
 
 /** Carry the thread maps over to new bot objects of the same shape: only the changed bots are swapped in. */
-function rebindThreadMaps(previous: StoreIndex, oldBots: readonly Bot[], bots: readonly Bot[]): ThreadMaps {
+function rebindThreadMaps(previous: NormalizedState, oldBots: readonly Bot[], bots: readonly Bot[]): ThreadMaps {
   const swapped = new Map<Bot, Bot>();
   for (let index = 0; index < bots.length; index++) if (oldBots[index] !== bots[index]) swapped.set(oldBots[index]!, bots[index]!);
   const botByOpenThread = new Map<string, Bot>();
@@ -74,9 +98,43 @@ function groupThreads(groups: readonly Group[]): Map<string, Group> {
 
 const NONE: readonly never[] = [];
 
-export function storeIndex(state: { bots: readonly Bot[]; groups: readonly Group[] }): StoreIndex {
+const threadMessages = new WeakMap<readonly Message[], ThreadMessages>();
+const threadMessagesOf = (messages: readonly Message[]) => {
+  let found = threadMessages.get(messages);
+  if (!found) threadMessages.set(messages, found = new ThreadMessages(messages));
+  return found;
+};
+
+function transcripts(botByOpenThread: ReadonlyMap<string, Bot>, groups: readonly Group[]) {
+  const messagesByThread = new Map<string, readonly Message[]>();
+  for (const [threadId, bot] of botByOpenThread) messagesByThread.set(threadId, bot.messages ?? NONE);
+  for (const group of groups) if (!messagesByThread.has(group.threadId)) messagesByThread.set(group.threadId, group.messages ?? NONE);
+  const messageById = new Map<string, ThreadMessages>();
+  for (const [threadId, messages] of messagesByThread) messageById.set(threadId, threadMessagesOf(messages));
+  return { messagesByThread, messageById };
+}
+
+function threadTasks(bots: readonly Bot[], groups: readonly Group[]) {
+  const tasksByThread = new Map<string, ThreadTask[]>();
+  const add = (threadId: string, entry: ThreadTask) => {
+    const entries = tasksByThread.get(threadId);
+    if (entries) entries.push(entry); else tasksByThread.set(threadId, [entry]);
+  };
+  for (const bot of bots) for (const task of bot.tasks ?? []) add(task.threadId, { kind: "bot", ownerId: bot.id, task });
+  for (const group of groups) for (const task of group.tasks ?? []) add(task.threadId, { kind: "group", ownerId: group.id, task });
+  return tasksByThread;
+}
+
+/** The normalized view of a state: its own when it is current, otherwise built (from the last one built, where it can). */
+export function storeIndex(state: { bots: readonly Bot[]; groups: readonly Group[]; normalized?: NormalizedState }): NormalizedState {
   // a test's partial state can leave either list out
   const bots = state.bots ?? NONE, groups = state.groups ?? NONE;
+  const own = state.normalized;
+  if (own && own.bots === bots && own.groups === groups) return own;
+  return normalize(bots, groups);
+}
+
+export function normalize(bots: readonly Bot[], groups: readonly Group[]): NormalizedState {
   if (lastIndex && bots === lastBots && groups === lastGroups) return lastIndex;
   const previous = lastIndex;
   let botsById = previous?.botsById as Map<string, Bot> | undefined;
@@ -86,12 +144,18 @@ export function storeIndex(state: { bots: readonly Bot[]; groups: readonly Group
     threads = previous && lastBots && sameThreadShape(lastBots, bots) ? rebindThreadMaps(previous, lastBots, bots) : botThreadMaps(bots);
   }
   const groupsChanged = !previous || groups !== lastGroups;
-  const index: StoreIndex = {
+  const botByOpenThread = threads?.botByOpenThread ?? previous!.botByOpenThread;
+  const tasksUnchanged = previous && !groupsChanged && lastBots && sameThreadShape(lastBots, bots);
+  const index: NormalizedState = {
+    bots,
+    groups,
     botsById: botsById!,
     botsByTaskThread: threads?.botsByTaskThread ?? previous!.botsByTaskThread,
-    botByOpenThread: threads?.botByOpenThread ?? previous!.botByOpenThread,
+    botByOpenThread,
     groupsById: groupsChanged ? new Map(groups.map((group) => [group.id, group])) : previous!.groupsById,
     groupByThread: groupsChanged ? groupThreads(groups) : previous!.groupByThread,
+    tasksByThread: tasksUnchanged ? previous.tasksByThread : threadTasks(bots, groups),
+    ...transcripts(botByOpenThread, groups),
   };
   lastBots = bots;
   lastGroups = groups;
@@ -105,14 +169,13 @@ export const botById = (state: { bots: readonly Bot[]; groups: readonly Group[] 
 export const groupById = (state: { bots: readonly Bot[]; groups: readonly Group[] }, id: string | null | undefined): Group | undefined =>
   id ? storeIndex(state).groupsById.get(id) : undefined;
 
-/** The open transcript of a thread, a bot's or a group's: what `messagesByThread[threadId]` would hold. */
-export function messagesByThread(state: { bots: readonly Bot[]; groups: readonly Group[] }, threadId: string): readonly Message[] | undefined {
-  const index = storeIndex(state);
-  const bot = index.botByOpenThread.get(threadId);
-  if (bot) return bot.messages;
-  const group = index.groupByThread.get(threadId);
-  return group?.threadId === threadId ? group.messages : undefined;
-}
+/** The open transcript of a thread, a bot's or a room's. */
+export const messagesByThread = (state: { bots: readonly Bot[]; groups: readonly Group[] }, threadId: string): readonly Message[] | undefined =>
+  storeIndex(state).messagesByThread.get(threadId);
+
+/** Every task naming the thread: bots' first, in sidebar order, then rooms'. */
+export const tasksOfThread = (state: { bots: readonly Bot[]; groups: readonly Group[] }, threadId: string): readonly ThreadTask[] =>
+  storeIndex(state).tasksByThread.get(threadId) ?? [];
 
 interface Positions {
   ids: Map<string, number>;
