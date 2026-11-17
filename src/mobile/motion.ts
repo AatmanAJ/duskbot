@@ -17,6 +17,42 @@ export const spring = {
 };
 export const withFade = <T extends object>(s: T) => ({ ...s, opacity: { duration: dur.fast } });
 
+/** The phone's feel, measured off designbookmark.com/motion (omb-ref/designbookmark-motion/NOTES.md): soft springs that
+ * land with a few percent of give, fades on a shorter clock than the travel, and content that swaps through a small
+ * blur instead of cutting. Every interaction on the phone takes its numbers from here. */
+export const feel = {
+  /** a finger down: in on a quick ease, out on a spring that gives a hair past rest (press .952, release 1.008 there) */
+  press: { scale: 0.96, wide: 0.985, inMs: 110, release: { stiffness: 620, damping: 30 } },
+  /** something arriving: from 8px low, 4px soft and transparent; opacity done in 200ms, the travel on `soft` */
+  enter: { y: 8, blur: 4, fade: 0.2 },
+  /** something leaving: faster and smaller than its entrance (130ms, scale .96) */
+  exit: { scale: 0.96, blur: 4, fade: 0.13 },
+  /** a held thing lifting out of the page (a message, a chat row) */
+  lift: { scale: 1.035, spring: { type: "spring", stiffness: 460, damping: 26 } as const },
+  /** morphs and slides between places (a pill, a highlight, a menu's height): t90 ~140ms, ~5% overshoot, ~420ms */
+  soft: { type: "spring", stiffness: 400, damping: 28 } as const,
+  /** surfaces that open from a source (menus, reaction bars): settles ~300ms with barely any give */
+  surface: { type: "spring", stiffness: 380, damping: 30, mass: 0.9 } as const,
+  /** items inside a surface that just opened arrive one after another */
+  stagger: 0.028,
+  /** the dim and blur over the page behind a held thing */
+  scrim: { in: 0.22, out: 0.16, blur: 10 },
+};
+
+/** A spring as a WAAPI/CSS duration and linear() easing, for things that must not wait on React. */
+export function springEasing(stiffness: number, damping: number): { duration: number; easing: string } {
+  const w = Math.sqrt(stiffness);
+  const z = Math.min(1, damping / (2 * w));
+  const wd = w * Math.sqrt(Math.max(1e-6, 1 - z * z));
+  const at = (t: number) => z >= 1 ? 1 - (1 + w * t) * Math.exp(-w * t)
+    : 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t));
+  let end = 0.05;
+  while (Math.abs(1 - at(end)) > 0.001 || Math.abs(1 - at(end + 0.03)) > 0.001) end += 0.01;
+  const steps = 40;
+  const points = Array.from({ length: steps + 1 }, (_, i) => i === steps ? "1" : String(Math.round(at((end * i) / steps) * 10000) / 10000));
+  return { duration: Math.round(end * 1000), easing: `linear(${points.join(", ")})` };
+}
+
 /** The software keyboard's own curve: iOS slides it on a damped spring that this bezier traces within a frame, Android
  * on its emphasized decelerate. */
 export const keyboardCurve = {

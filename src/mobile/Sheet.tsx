@@ -124,6 +124,8 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
       y.set(height.current);
       go(0, 0);
       sheet.focus({ preventScroll: true });
+      // the content arrives a beat behind the sheet that carries it
+      if (!reduced) bodyRef.current?.animate([{ opacity: 0.25, translate: "0 18px" }, { opacity: 1, translate: "0 0" }], { duration: 340, delay: 30, easing: "cubic-bezier(.22,1,.36,1)", fill: "backwards" });
     } else {
       go(height.current + 24, 0, () => {
         setMounted(false);
@@ -154,8 +156,8 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
     },
     onMove: (s) => y.set(s.dy > 0 ? s.dy : rubberband(s.dy, 48)),
     onEnd: (s) => {
-      const landing = projectRelease(Math.max(0, y.get()), s.vy, 0.995);
-      if (y.get() > 0 && (landing > height.current * 0.5 || s.vy > 1100)) {
+      const landing = projectRelease(Math.max(0, y.get()), s.vy);
+      if (y.get() > 0 && (landing > height.current * 0.5 || s.vy > 700)) {
         go(height.current + 24, Math.max(s.vy, 0), () => closeRef.current(), true);
       } else {
         go(0, s.vy);
