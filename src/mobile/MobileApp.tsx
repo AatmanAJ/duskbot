@@ -27,6 +27,7 @@ import { SheetHost } from "./SheetHost";
 import { closeTopSheet, Sheet } from "./Sheet";
 import { t } from "@/lib/i18n";
 import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
+import { useNativeGlass } from "./native-glass";
 import { useChatHaptics } from "./use-chat-haptics";
 import { useOutbox } from "./outbox";
 import { usePlatform } from "./platform";
@@ -142,6 +143,8 @@ function Shell() {
   const bot = chatId && !group ? state.bots.find((b) => b.id === chatId) : undefined;
   const members = useMemo(() => group ? state.bots.filter((b) => group.memberIds.includes(b.id)) : [], [group, state.bots]);
   useEffect(() => { if (chatId && state.hydrated && !group && !bot) setChatId(null); }, [chatId, state.hydrated, group, bot]);
+
+  useNativeGlass(platform, rootRef, Boolean(bot || group));
 
   const page = bot || group ? (
     <ChatScreen

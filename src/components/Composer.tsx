@@ -1145,6 +1145,7 @@ export function Composer({
           <button
             type="button"
             onClick={discardDictation}
+            data-composer-discard=""
             aria-label={t("composer.dictation.discard")}
             title={t("composer.voice.cancelHint")}
             className={cn(

@@ -36,6 +36,7 @@ export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<
     let start: { x: number; y: number } | null = null;
     const inTranscript = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest("[data-mobile-chat] .glass-scroller"));
     const dismiss = () => {
+      if (root.dataset.glassFocused !== undefined) { platform.glass?.blur(); return; }
       const field = composerField(root);
       if (!field) return;
       field.blur();

@@ -271,3 +271,13 @@ html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-u
   .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active { scale: 1; }
 }
 .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic="send"]) svg { width: 18px; height: 18px; stroke-width: 2.5; }
+
+/* the native glass draws the header and composer over the page: the page's own stay in place, unseen, for layout,
+   menus and focus */
+html[data-native-glass-header] .dusk-mobile [data-glass-nav] [data-glass] { opacity: 0; }
+html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
+  visibility: hidden;
+  height: var(--glass-composer-h, auto) !important;
+}
+html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea { visibility: visible; opacity: 0; caret-color: transparent; }
+html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] :is([role="menu"], [role="listbox"], [data-sidebar-popover-menu], [data-composer-menu]) { visibility: visible; }

@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { MobileOpenTarget } from "../../shared/mobile-link";
 import { friendlyError } from "@/lib/plain-error";
+import type { GlassBridge } from "./native-glass";
 
 export type HapticKind = "light" | "soft" | "medium" | "selection" | "error" | "success";
 
@@ -78,6 +79,8 @@ export interface MobilePlatform {
    * the system's question: a phone not yet asked resolves null. */
   registerPush?(options?: { prompt?: boolean }): Promise<{ token: string; platform: "apns" | "fcm" } | null>;
   onNotificationOpen?(listener: (target: MobileOpenTarget) => void): () => void;
+  /** The chat header and composer drawn in the OS's own glass, where the app has it. */
+  glass?: GlassBridge;
   deviceName(): string;
   appVersion: string;
 }
