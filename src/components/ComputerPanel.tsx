@@ -31,6 +31,7 @@ const LiveDesktop = lazy(loadLiveDesktop);
 import { browserAvailable, browserUnavailableReason, builtInBrowserEnabled } from "@/lib/feature-flags";
 import { parseComputerHelp, transitionComputerControlLease, type ComputerControlAction } from "@/lib/computer-control";
 import { useComputerTakeover } from "./computer-takeover";
+import { DemoRecorder } from "./DemoRecorder";
 import { SignInBanner } from "./SignInRequestCard";
 import { LocalScreenPreview } from "./LocalScreenPreview";
 import { LinuxLocalControl } from "./LinuxLocalControl";
@@ -1528,6 +1529,8 @@ export function ComputerPanel({
             </button>
           </div>
         )}
+
+        {cloudPreviewReady && <DemoRecorder botId={bot.id} botName={bot.name} place="computer" canRecord={control.held} variant="card" />}
 
         {(cloudPreviewReady || phase === "vm") && (
           <div className="mt-3 flex gap-2" data-testid="computer-actions">
