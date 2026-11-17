@@ -53,6 +53,34 @@ export function springEasing(stiffness: number, damping: number): { duration: nu
   return { duration: Math.round(end * 1000), easing: `linear(${points.join(", ")})` };
 }
 
+/** A spring from `from` to `to` that leaves at `velocity` (units/s), sampled every frame until it rests within `rest`:
+ * the positions for WAAPI keyframes, which the compositor plays on its own while the page's thread is busy. */
+export function springPath(from: number, to: number, velocity: number, { stiffness, damping, mass = 1 }: { stiffness: number; damping: number; mass?: number }, rest = 0.25): { duration: number; points: number[] } {
+  const step = 1000 / 60;
+  const w = Math.sqrt(stiffness / mass);
+  const z = damping / (2 * Math.sqrt(stiffness * mass));
+  const d0 = from - to;
+  const offset = (t: number): number => {
+    if (Math.abs(z - 1) < 1e-4) return (d0 + (velocity + w * d0) * t) * Math.exp(-w * t);
+    if (z > 1) {
+      const root = w * Math.sqrt(z * z - 1);
+      const r1 = -z * w + root, r2 = -z * w - root;
+      const a = (velocity - r2 * d0) / (r1 - r2);
+      return a * Math.exp(r1 * t) + (d0 - a) * Math.exp(r2 * t);
+    }
+    const wd = w * Math.sqrt(1 - z * z);
+    return Math.exp(-z * w * t) * (d0 * Math.cos(wd * t) + ((velocity + z * w * d0) / wd) * Math.sin(wd * t));
+  };
+  const points = [from];
+  for (let i = 1; i < 120; i += 1) {
+    const d = offset((i * step) / 1000);
+    if (Math.abs(d) < rest && Math.abs(offset(((i + 1) * step) / 1000)) < rest) break;
+    points.push(to + d);
+  }
+  points.push(to);
+  return { duration: Math.round((points.length - 1) * step), points };
+}
+
 /** The software keyboard's own curve: iOS slides it on a damped spring that this bezier traces within a frame, Android
  * on its emphasized decelerate. */
 export const keyboardCurve = {

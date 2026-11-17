@@ -763,10 +763,11 @@ export function useFirstPaintRows(key: string, rows: Message[], hold: boolean, s
   useEffect(() => {
     if (count >= total) {
       whole.current = key;
-      staging.onWhole?.();
       return;
     }
-    startTransition(() => setShown({ key, count: count + MOUNT_STEP_ROWS >= total ? Infinity : count + MOUNT_STEP_ROWS }));
+    const step = () => startTransition(() => setShown({ key, count: count + MOUNT_STEP_ROWS >= total ? Infinity : count + MOUNT_STEP_ROWS }));
+    if (staging.afterSlide) return staging.afterSlide(step);
+    step();
   }, [key, count, total, hold, staging]);
   return useMemo(() => (count >= rows.length ? rows : rows.slice(-count)), [count, rows]);
 }
