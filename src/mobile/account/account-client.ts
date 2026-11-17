@@ -1,7 +1,7 @@
 import { configure as configureAnalytics } from "@/lib/product-analytics";
 import { parseUserAvatarChoice } from "../../../shared/user-avatar";
 import { cleanCode, cleanEmail, parseSignInStart, SIGN_IN_TRIES, startFailure, verifyFailure } from "../../../electron/cloud-signin.mjs";
-import { ACCOUNT_ROUTES, APP_AUTH_REDIRECT, OAUTH_PROVIDERS, type OAuthErrorCode, type OAuthProvider } from "../../../shared/account-api";
+import { ACCOUNT_ROUTES, APP_AUTH_REDIRECT, cleanPhoneSignInCode, OAUTH_PROVIDERS, type OAuthErrorCode, type OAuthProvider } from "../../../shared/account-api";
 import type { CloudSignInStart } from "../../../electron/cloud-account.mjs";
 import type { SignInVerify } from "@/components/account-gate/bridge";
 import type { MobilePlatform } from "../platform";
@@ -23,6 +23,8 @@ export type CloudPairGrant = { origin: string; code: string; expiresAt: number }
 export type CloudPairResult = { outcome: "paired"; grant: CloudPairGrant } | { outcome: "asleep" | "unavailable" | "signed-out" | "failed" };
 type StoredGrant = { origin: string; token: string; expiresAt: number; account: MobileAccount; deviceId: string };
 export type AuthResult = false | SignInVerify | { outcome: OAuthErrorCode | "invalid-state" };
+/** a desktop's phone sign-in code, redeemed: signed in, or why not */
+export type PhoneCodeResult = { outcome: "signed-in" | "wrong-code" | "expired" | "used" | "limited" | "offline" | "failed" };
 export type AppleProblem = "failed" | "unavailable" | "signup-closed" | "taken" | "rate-limited" | "offline";
 export type AppleResult = { outcome: "signed-in" | "canceled" } | { outcome: AppleProblem };
 const APPLE_ERRORS: Record<string, AppleProblem> = { invalid_request: "failed", invalid_grant: "failed", signup_closed: "signup-closed", identity_taken: "taken", provider_unavailable: "unavailable", rate_limited: "rate-limited" };
@@ -194,6 +196,25 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
       }
     },
     cancelEmail() { attempt = null; },
+    /** A code a signed-in desktop showed (typed, or carried by its qr's link) logs this phone in to that account; a
+     * sign-in this phone held before is ended on the service once the new one is kept. */
+    async phoneCode(code: string): Promise<PhoneCodeResult> {
+      const typed = cleanPhoneSignInCode(code);
+      if (!typed) return { outcome: "wrong-code" };
+      const stamp = ++generation, before = grant?.token;
+      try {
+        const value = await request(ACCOUNT_ROUTES.appPhoneSignIn, "POST", { code: typed, ...device() });
+        if (!await adopt(value, stamp)) return { outcome: "failed" };
+        if (before && before !== grant?.token) void request(ACCOUNT_ROUTES.appSession, "DELETE", {}, before).catch(() => {});
+        return { outcome: "signed-in" };
+      } catch (error) {
+        if (!(error instanceof AccountRequestError)) return { outcome: "offline" };
+        if (error.code === "invalid_code") return { outcome: "wrong-code" };
+        if (error.code === "expired" || error.code === "used") return { outcome: error.code };
+        if (error.status === 429) return { outcome: "limited" };
+        return { outcome: "failed" };
+      }
+    },
     /** The sign-in providers the service has switched on; none when it cannot be asked, so no button leads nowhere. */
     async providers(): Promise<OAuthProvider[]> {
       try {

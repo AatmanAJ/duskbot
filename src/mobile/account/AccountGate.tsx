@@ -6,7 +6,7 @@ import { t } from "@/lib/i18n";
 import type { CloudSignInStart } from "../../../electron/cloud-account.mjs";
 import type { OAuthProvider } from "../../../shared/account-api";
 import { usePlatform, type MobilePlatform } from "../platform";
-import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AuthResult, type CloudPairResult, type MobileAccount, type MobileCloud } from "./account-client";
+import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AuthResult, type CloudPairResult, type MobileAccount, type MobileCloud, type PhoneCodeResult } from "./account-client";
 import { setTurnSource } from "../transport/direct-rtc";
 import { chosenAccountOrigin } from "./environment";
 
@@ -20,6 +20,8 @@ type AccountContextValue = { account: MobileAccount | null; origin: string;
   signIn: {
     providers(): Promise<OAuthProvider[]>; emailStart(email: string): Promise<CloudSignInStart>; emailVerify(code: string): Promise<SignInVerify>;
     cancelEmail(): void; browser(provider: OAuthProvider): Promise<void>;
+    /** a code from a signed-in desktop's settings › phone: logs this phone in to that account, no email step */
+    phoneCode(code: string): Promise<PhoneCodeResult>;
     /** a sign-in that came back through duskbot://auth and did not finish */
     problem?: string; signedIn(): void;
   } };
@@ -132,6 +134,11 @@ export function AccountGate({ children }: { children: ReactNode }) {
     signIn: {
       providers: async () => providersFor(platform.kind, await client.providers()),
       emailStart: email => client.emailStart(email), emailVerify: code => client.emailVerify(code), cancelEmail: () => client.cancelEmail(),
+      phoneCode: async code => {
+        const result = await client.phoneCode(code);
+        if (result.outcome === "signed-in") { setAccount(client.account()); setProblem(undefined); }
+        return result;
+      },
       browser: async provider => {
         setProblem(undefined);
         // on the iPhone, Apple signs in in the system's own sheet, not a web page

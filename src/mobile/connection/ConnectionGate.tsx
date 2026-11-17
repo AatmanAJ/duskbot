@@ -37,7 +37,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   // "dusk:sign-in" (Settings, signed out) opens the same sheet at the dusk cloud sign-in
   const [addingStep, setAddingStep] = useState<"welcome" | "signin">("welcome");
   // a dusk cloud's qr opens the app at that sign-in, its email filled in
-  const [signInEmail, setSignInEmail] = useState<{ email: string; sequence: number } | null>(null);
+  const [signInEmail, setSignInEmail] = useState<{ email: string; code?: string; sequence: number } | null>(null);
   useEffect(() => {
     const open = () => { setAddingStep("welcome"); setAdding((n) => n + 1); };
     const signIn = () => { setAddingStep("signin"); setAdding((n) => n + 1); };
@@ -118,7 +118,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
       const signIn = parseSignInLink(url);
       if (signIn) {
         setIncoming(null);
-        setSignInEmail({ email: signIn.email, sequence: ++sequence.current });
+        setSignInEmail({ email: signIn.email, ...(signIn.code ? { code: signIn.code } : {}), sequence: ++sequence.current });
         setAddingStep("signin");
         setAdding((n) => n + 1);
         return true;
@@ -164,11 +164,11 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   if (state.kind === "loading" && !incoming && !forcePair) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MausAvatar color="green" size={56} state="idle" animated={false} personality={false} /></div>;
   if (state.kind === "offline" && !forcePair) {
     if (!incoming && adding === 0) return <>{success}<Unreachable record={state.record} others={state.others} attempts={state.attempts} trying={state.trying} onRetry={retry} onSwitch={switchTo} onLink={() => setAdding((n) => n + 1)} /></>;
-    return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;
+    return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;
   }
   if (onboarding) {
     return <>{success}<Onboarding key={incoming?.sequence ?? signInEmail?.sequence ?? 0} initial={incoming?.payload} reason={state.kind === "pair" ? state.reason : null}
-      startAt={!incoming && signInEmail ? "signin" : undefined} email={signInEmail?.email} onLinked={linked} onCancel={cancel} /></>;
+      startAt={!incoming && signInEmail ? "signin" : undefined} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} onLinked={linked} onCancel={cancel} /></>;
   }
   return (
     <>
@@ -176,7 +176,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
       <PhoneUpdateLine connection={state.kind === "ready" ? state.id : null} />
       {(incoming || adding > 0) && (
         <div className="fixed inset-0 z-50">
-          <Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email}
+          <Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code}
             onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} />
         </div>
       )}

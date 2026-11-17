@@ -322,3 +322,37 @@ describe("mobileFace", () => {
     expect(mobileFace(null)).toEqual({});
   });
 });
+
+describe("phone code", () => {
+  it("logs in with a desktop's code: one request with the code and this phone, no email step", async () => {
+    fetcher.mockResolvedValueOnce(response(grant()));
+    expect(await client.phoneCode(" abcd-efgh ")).toEqual({ outcome: "signed-in" });
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe(`${origin}/api/cloud/app/sign-in/phone`);
+    expect(JSON.parse(String(init?.body))).toMatchObject({ code: "ABCDEFGH", platform: "ios", appVersion: "0.0.0" });
+    expect(client.account()).toEqual(grant().account);
+    expect(secrets.has("dusk.account")).toBe(true);
+  });
+  it("ends the sign-in this phone held before once the new one is kept", async () => {
+    secrets.set("dusk.account", JSON.stringify(stored({ token: `omc_${"o".repeat(43)}` })));
+    await client.cached();
+    fetcher.mockResolvedValueOnce(response(grant())).mockResolvedValueOnce(response({ ok: true }));
+    expect((await client.phoneCode("ABCDEFGH")).outcome).toBe("signed-in");
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(fetcher.mock.calls[1]![1]).toMatchObject({ method: "DELETE", headers: { authorization: `Bearer omc_${"o".repeat(43)}` } });
+  });
+  it.each([
+    [{ error: "invalid_code" }, 400, "wrong-code"], [{ error: "expired" }, 410, "expired"], [{ error: "used" }, 409, "used"],
+    [{ error: "rate_limited" }, 429, "limited"], [{ error: "failed" }, 500, "failed"],
+  ])("says why a code did not log in: %o", async (body, status, outcome) => {
+    fetcher.mockResolvedValueOnce(response(body, status));
+    expect(await client.phoneCode("ABCDEFGH")).toEqual({ outcome });
+    expect(client.account()).toBeNull();
+  });
+  it("offline, and a code of the wrong shape never reaches the service", async () => {
+    fetcher.mockRejectedValueOnce(new TypeError("offline"));
+    expect(await client.phoneCode("ABCDEFGH")).toEqual({ outcome: "offline" });
+    expect(await client.phoneCode("ABCD-EFGH-JKLM")).toEqual({ outcome: "wrong-code" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});

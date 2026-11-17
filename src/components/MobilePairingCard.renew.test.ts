@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, Fragment, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "@/lib/i18n";
 
 const api = vi.hoisted(() => vi.fn());
@@ -196,4 +196,71 @@ it("a cloud's phone page has no browser code to type into the app, and Connect y
   await flush();
   expect(host.querySelector("[data-pair-computer]")).not.toBeNull();
   expect(host.querySelector<HTMLElement>("#server-pairing-code")?.hidden).toBe(true);
+});
+
+describe("a dusk cloud in the desktop app", () => {
+  type Answer = Awaited<ReturnType<NonNullable<NonNullable<NonNullable<Window["duskDesktop"]>["cloudPlan"]>["phoneSignIn"]>>>;
+  let signIns: Array<boolean | undefined>, answer: () => Answer, sessions: { id: string; label: string; scopes: string[] }[];
+  beforeEach(() => {
+    signIns = []; let n = 0;
+    answer = () => ({ outcome: "code", code: `ABCD-EFG${"HJK"[n++ % 3]}`, expiresAt: Date.now() + 10 * 60_000, email: "owner@example.test" });
+    vi.stubGlobal("duskDesktop", { cloudPlan: { phoneSignIn: async (renew?: boolean) => { signIns.push(renew); return answer(); } } });
+    sessions = [{ id: "me", label: "This window", scopes: ["admin"] }];
+    const base = api.getMockImplementation()!;
+    api.mockImplementation(async (path: string, init?: unknown) => path === "/api/auth/sessions" ? { sessions, current: "me" } : base(path, init));
+  });
+
+  it("shows one qr and a letters-only code that log the phone in, with the account it logs into, and sees the phone arrive", async () => {
+    await mount({ remote: false, cloudHome: true });
+    await flush();
+    expect(host.querySelector("[data-phone-cloud-code]")).not.toBeNull();
+    expect(host.textContent).toContain("Log in on your iPhone");
+    expect(signIns, "made once, as a fresh code").toEqual([false]);
+    expect(minted, "never a workspace pairing code").toBe(0);
+    expect(qrs()).toBe(1);
+    expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/signin#c=ABCDEFGH&email=owner%40example.test");
+    expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGH");
+    expect(host.querySelector("[data-phone-steps=ios]")?.textContent).toContain("Open dusk bot and scan the QR code");
+    expect(host.querySelector("[data-phone-steps=ios]")?.textContent).toContain("no email needed");
+    expect(host.querySelector("[data-phone-cloud-as]")?.textContent).toBe("Logs in as owner@example.test");
+    expect(host.textContent).toContain("Waiting for your phone to log in");
+    expect(host.textContent).toContain("A new code appears in 9 min");
+    sessions = [...sessions, { id: "phone", label: "iPhone", scopes: ["admin", "client"] }];
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_100); });
+    expect(host.querySelector("[data-phone-linked]")?.textContent).toContain("Your phone is in");
+    await click("[data-phone-linked] [data-primary]");
+    expect(host.textContent, "the account's email even though the workspace profile has none").toContain("Logs in with owner@example.test");
+  });
+
+  it("renews silently before the code ends, and New code asks for a fresh one", async () => {
+    await mount({ remote: false, cloudHome: true });
+    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000 - RENEW_BEFORE_MS + 1_000); });
+    expect(signIns).toEqual([false, true]);
+    expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGJ");
+    await click("[data-phone-new-code]");
+    await flush();
+    expect(signIns).toEqual([false, true, false]);
+  });
+
+  it("a cancelled presence check shows nothing and says nothing; a signed-out desktop says how to fix it", async () => {
+    answer = () => ({ outcome: "canceled" });
+    await mount({ remote: false, cloudHome: true });
+    await flush();
+    expect(host.querySelector("[data-phone-code]")).toBeNull();
+    expect(host.querySelector("[role=alert]")).toBeNull();
+    answer = () => ({ outcome: "signed-out" });
+    await act(async () => root.unmount());
+    await mount({ remote: false, cloudHome: true });
+    await flush();
+    expect(host.querySelector("[data-pairing-failed] [role=alert]")?.textContent).toBe("Sign in to dusk cloud on this computer first, then try again.");
+  });
+
+  it("the local computer's pairing never asks the account for a phone code", async () => {
+    await mount({ remote: false });
+    await flush();
+    expect(signIns).toEqual([]);
+    expect(minted).toBe(1);
+    expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/pair#m=offer1&c=ABCDEFGH0001");
+  });
 });

@@ -433,6 +433,13 @@ describe("the app's own scanner reads every qr the desktop, the site or an older
     expect(readScanned(universalSignInLink(null))).toEqual({ kind: "signin", email: "" });
   });
 
+  it("a cloud qr with a code, or 8 typed letters, is a dusk cloud log in by code; 12 is still a computer's", () => {
+    expect(readScanned(universalSignInLink("owner@example.test", "ABCD-EFGH"))).toEqual({ kind: "signin", email: "owner@example.test", code: "ABCDEFGH" });
+    expect(readScanned("abcd-efgh")).toEqual({ kind: "account", code: "ABCDEFGH" });
+    expect(readScanned(" ABCD EFGH ")).toEqual({ kind: "account", code: "ABCDEFGH" });
+    expect(readScanned("ABCD-EFGH-JKLM")).toEqual({ kind: "code", code: "ABCDEFGHJKLM" });
+  });
+
   it("knows the store qr, takes a typed code, and refuses anything else", () => {
     expect(readScanned("https://apps.apple.com/app/id6834725640")).toEqual({ kind: "store" });
     expect(readScanned("https://dusk.bot/download")).toEqual({ kind: "store" });
