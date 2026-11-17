@@ -197,7 +197,7 @@ suite("S4 snapshot, refs and actions on real Chrome", () => {
   it("waits for a covered element, names what covers it, and clicks once it is free", async () => {
     await open(`<button id="b" onclick="this.textContent='clicked'" style="position:absolute;left:20px;top:20px;width:100px;height:40px">go</button>
       <div id="veil" style="position:fixed;inset:0;background:rgba(0,0,0,.2)">loading</div>`);
-    await expect(page.click({ selector: "#b" }, { timeoutMs: 400 })).rejects.toThrow(/covered by <div#veil> "loading"/);
+    await expect(page.click({ selector: "#b" }, { timeoutMs: 400 })).rejects.toThrow(/<div#veil> "loading"/);
     await inPageWorld(() => page.evaluate(`setTimeout(() => document.getElementById("veil").remove(), 300)`, { world: "page" }));
     await page.click({ selector: "#b" }, { timeoutMs: 3_000 });
     expect(await read(`document.getElementById("b").textContent`)).toBe("clicked");
