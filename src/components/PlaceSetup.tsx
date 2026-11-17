@@ -128,6 +128,8 @@ export function ServerWays({ onPick }: { onPick: (key: "relay" | WayKey) => void
     ...(relay ? [{ key: "relay" as const, title: t("placeSetup.relay"), sub: t("placeSetup.relaySub"), tag: false }] : []),
     ...ways.filter((row) => row.key !== "cloudflare"),
   ];
+  // a browser on a server's own page has neither the relay nor the address bridge: say where it can be done instead
+  if (!rows.length) return <p data-setup-method="none" className="px-1 text-[13px] leading-[18px] text-ink-secondary">{t("placeSetup.serverDesktopOnly")}</p>;
   return <div className="flex flex-col gap-1.5">
     {rows.map((row, index) => <button key={row.key} type="button" data-autofocus={index === 0 ? "" : undefined} data-setup-method={row.key} className={ROW} onClick={() => onPick(row.key)}>
       <span className="min-w-0 flex-1">

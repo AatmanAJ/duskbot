@@ -9073,6 +9073,7 @@
   "placeSetup.title": "Add a place",
   "placeSetup.cloudSub": "Your bots keep working when this computer is off. Nothing to set up.",
   "placeSetup.server": "Your own server",
+  "placeSetup.serverDesktopOnly": "Add a server of your own from the desktop app on your computer. It makes the setup line and links the server for you.",
   "placeSetup.serverSub": "A server you rent or keep at home.",
   "placeSetup.how": "How should it connect?",
   "placeSetup.relay": "dusk bot relay",
