@@ -308,6 +308,17 @@ describe("workspace reconnect", () => {
     await expect(connectToWorkspace(record, token, platform, new AbortController().signal)).rejects.toMatchObject({ code: "unreachable" });
   });
 
+  it("opens a dusk cloud whose edge says it sleeps instead of calling it unreachable: no read could ever wake it", async () => {
+    const { record, token, platform } = await saved();
+    record.via = [{ kind: "https", url: "https://workspace.test" }];
+    const asleep = () => new Response("asleep", { status: 503, headers: { "x-dusk-cloud-power": "asleep", "retry-after": "5" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(asleep()));
+    expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "bearer", origin: "https://workspace.test", token, asleep: true });
+    // a plain outage is still unreachable
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 503)));
+    await expect(connectToWorkspace(record, token, platform, new AbortController().signal)).rejects.toMatchObject({ code: "unreachable" });
+  });
+
   it("falls back after a server failure and stops after a successful companion check", async () => {
     const { record, token, platform } = await saved();
     record.via = [{ kind: "https", url: "https://workspace.test" }, { kind: "companion", url: "http://mac.test:8810", net: "lan", priority: 1 }];

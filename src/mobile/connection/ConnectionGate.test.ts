@@ -92,3 +92,15 @@ it("a refused request on a session that still answers changes nothing", async ()
   expect(host.textContent).toBe("home");
   expect(prefs.get("dusk.mobile.active.v1")).toBe("mac");
 });
+
+it("a dusk cloud asleep at launch opens on its chats and is woken, never the can't reach screen it could not leave", async () => {
+  // the edge never wakes a cloud for a read, so the launch check only ever hears that it sleeps
+  fetcher.mockImplementation(async (input, init) => {
+    const method = (input instanceof Request ? input.method : init?.method) ?? "GET";
+    return method === "GET" ? new Response("asleep", { status: 503, headers: { "x-dusk-cloud-power": "asleep", "retry-after": "5" } }) : new Response("{}");
+  });
+  await mount(); await settle();
+  expect(host.textContent).toBe("home");
+  const posts = fetcher.mock.calls.filter(([input, init]) => ((input instanceof Request ? input.method : init?.method) ?? "GET") === "POST");
+  expect(posts.map(([input]) => String(input instanceof Request ? input.url : input))).toContain("https://mac.example.test/api/cloud/wake");
+});

@@ -2,6 +2,7 @@ import { RelayGoneError, type RelayChannel } from "./relay";
 import { noteRefusedRequest } from "@/lib/session-ended";
 import { asleepAnswer, BACKGROUND_HEADERS, markCloudAsleep } from "@/lib/cloud-power";
 import { setUploadRoute } from "@/lib/upload-request";
+import { forgetWorkspaceAnswers, noteWorkspaceAnswer, placeAnswered } from "../connection/reachability";
 
 export type PhoneTransport =
   | { kind: "same-origin" | "bearer"; origin: string; token?: string }
@@ -290,7 +291,13 @@ export function installTransport(transport: PhoneTransport, onGone?: () => void)
     if (error instanceof RelayGoneError) onGone?.();
     throw error;
   });
-  const fetchWorkspace = transport.kind === "relay" ? overRelay(relayFetch(transport.channel, transport.token)) : originalFetch.bind(window);
+  const sendWorkspace = transport.kind === "relay" ? overRelay(relayFetch(transport.channel, transport.token)) : originalFetch.bind(window);
+  // every answer from the place proves it is reachable, whatever the live stream is doing
+  const fetchWorkspace: typeof fetch = (input, init) => sendWorkspace(input, init).then((response) => {
+    if (placeAnswered(response)) noteWorkspaceAnswer();
+    return response;
+  });
+  forgetWorkspaceAnswers();
   const context = { transport, streamFetch: inPage(transport) ? fetchWorkspace : streamFetch.bind(window) };
   const probeAsleep = transport.kind === "bearer" ? asleepProbe(fetchWorkspace, origin, transport.token ?? "") : undefined;
   installed = context;

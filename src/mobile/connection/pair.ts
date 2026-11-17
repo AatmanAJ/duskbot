@@ -1,5 +1,5 @@
 import { observePairing } from "@/lib/product-analytics";
-import { appLinkFromUniversal, parseSignInLink, DEFAULT_MOBILE_RELAY, MOBILE_LOOKUP_SALT, pairingFromPayload, parseMobilePayload, parseMobilePairingLink, type MobileRedeemRequest, type MobileRedeemResponse, type MobileCapabilities, type MobileConnectionRecord, type MobilePairingPayload } from "../../../shared/mobile-link";
+import { appLinkFromUniversal, parseSignInLink, DEFAULT_MOBILE_RELAY, MOBILE_LOOKUP_SALT, pairingFromPayload, parseMobilePayload, parseMobilePairingLink, type MobileRedeemRequest, type MobileRedeemResponse, type MobileCapabilities, type MobileConnectionRecord, type MobilePairingPayload, type SignInService } from "../../../shared/mobile-link";
 import { randomUuid } from "@/lib/random-uuid";
 import { cleanPhoneSignInCode } from "../../../shared/account-api";
 import type { MobilePlatform } from "../platform";
@@ -30,13 +30,13 @@ export function isStoreLink(input: string): boolean {
 
 /** What a scanned qr is, whichever kind the desktop, the site or an older build drew: the https universal links and their
  * duskbot:// forms (a pairing, a dusk cloud log in), the old store qr, or a typed code. Null for anything else. */
-export type Scanned = { kind: "store" } | { kind: "signin"; email: string; code?: string } | { kind: "pair"; payload: TypedPairing } | TypedCode
+export type Scanned = { kind: "store" } | { kind: "signin"; email: string; code?: string; service?: SignInService } | { kind: "pair"; payload: TypedPairing } | TypedCode
   /** a desktop's dusk cloud code (8 letters): it logs the phone in to the account */
   | { kind: "account"; code: string };
 export function readScanned(input: string): Scanned | null {
   if (isStoreLink(input)) return { kind: "store" };
   const signIn = parseSignInLink(input);
-  if (signIn) return { kind: "signin", email: signIn.email, ...(signIn.code ? { code: signIn.code } : {}) };
+  if (signIn) return { kind: "signin", email: signIn.email, ...(signIn.code ? { code: signIn.code } : {}), ...(signIn.service ? { service: signIn.service } : {}) };
   const account = cleanPhoneSignInCode(input);
   if (account) return { kind: "account", code: account };
   const parsed = parseTypedPairing(input);

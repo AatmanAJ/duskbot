@@ -1,9 +1,9 @@
-import { useCallback, useContext, useState, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { RotateCcw } from "../../icons";
 import { useStore } from "@/state/store";
 import { WorkingDots } from "@/components/WorkingIndicator";
-import { cloudWaking, markCloudAwake, onCloudWaking } from "@/lib/cloud-power";
+import { cloudAsleep, cloudWaking, markCloudAwake, onCloudPower, onCloudWaking } from "@/lib/cloud-power";
 import { retryLiveEventsNow } from "@/lib/live-events";
 import { t } from "@/lib/i18n";
 import { usePlatform } from "../platform";
@@ -14,6 +14,10 @@ import { spring } from "../motion";
 import { ActiveConnection } from "./active";
 import { useConnections } from "./connections";
 import { useQuietResume } from "./quiet-resume";
+import { onWorkspaceAnswer, workspaceAnsweredAt } from "./reachability";
+
+/** the live stream is asked to reconnect at most this often when the place answers while it is down */
+export const ANSWER_RETRY_GAP_MS = 5_000;
 import { placeKind, useConnectionNotice, type ConnectionNotice, type PlaceKind } from "./connection-notice";
 
 export type LivePlace = { name: string; kind: PlaceKind };
@@ -25,7 +29,17 @@ export function useLiveConnection(): { notice: ConnectionNotice; place: LivePlac
   const resuming = useQuietResume(platform);
   const offline = useOffline();
   const waking = useSyncExternalStore(onCloudWaking, cloudWaking, () => false);
-  const { notice, restart } = useConnectionNotice({ hydrated: state.hydrated === true, connected: state.connected === true, offline, waking, resuming });
+  const asleep = useSyncExternalStore(onCloudPower, cloudAsleep, () => false);
+  const answeredAt = useSyncExternalStore(onWorkspaceAnswer, workspaceAnsweredAt, () => null);
+  const connected = state.connected === true;
+  const { notice, restart } = useConnectionNotice({ hydrated: state.hydrated === true, connected, offline, waking, resuming, asleep, answeredAt });
+  // the place answers but the stream is down: it can connect now, so it tries without waiting out its backoff
+  const kicked = useRef(-Infinity);
+  useEffect(() => {
+    if (connected || answeredAt === null || answeredAt - kicked.current < ANSWER_RETRY_GAP_MS) return;
+    kicked.current = answeredAt;
+    retryLiveEventsNow();
+  }, [connected, answeredAt]);
   const activeId = useContext(ActiveConnection);
   const { connections } = useConnections();
   const record = connections.find((connection) => connection.id === activeId);

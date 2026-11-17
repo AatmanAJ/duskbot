@@ -8,6 +8,7 @@ import { parseMobilePairingLink, parseSignInLink, type MobileConnectionRecord } 
 import { usePlatform } from "../platform";
 import { useMobileAccount } from "../account/AccountGate";
 import { enrollWorkspace } from "../account/enroll-workspace";
+import { followSignInService, takeHeldSignIn } from "../account/environment";
 import { installTransport } from "../transport/transport";
 import { Onboarding } from "../onboarding/Onboarding";
 import { SignInOffer } from "../account/SignInOffer";
@@ -21,6 +22,7 @@ import { reportPresence } from "./presence";
 import { registerPushForConnection } from "./push";
 import { Unreachable } from "./Unreachable";
 import { PhoneUpdateLine } from "./PhoneUpdateLine";
+import { markCloudAsleep, noteCloudPageActivity } from "@/lib/cloud-power";
 
 type GateState = { kind: "loading" } | { kind: "pair"; reason?: "revoked" } | { kind: "ready"; id: string }
   | { kind: "offline"; record: MobileConnectionRecord; others: MobileConnectionRecord[]; attempts: number; trying: boolean };
@@ -28,6 +30,8 @@ type GateState = { kind: "loading" } | { kind: "pair"; reason?: "revoked" } | { 
 export function ConnectionGate({ children, forcePair }: { children: ReactNode; forcePair?: boolean }) {
   const platform = usePlatform();
   const account = useMobileAccount();
+  const accountRef = useRef(account);
+  accountRef.current = account;
   const store = useMemo(() => createConnectionStore(platform), [platform]);
   const [state, setState] = useState<GateState>({ kind: "loading" });
   const [incoming, setIncoming] = useState<{ payload: TypedPairing; sequence: number } | null>(null);
@@ -64,6 +68,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
           const transport = await connectToWorkspace(active.record, active.token, platform, controller.signal);
           if (stopped) { if (transport.kind === "relay") transport.channel.close(); return; }
           uninstall.current = installTransport(transport, retry);
+          if (transport.asleep) markCloudAsleep();
           setState({ kind: "ready", id: active.record.id });
           void store.touch(active.record.id).catch(() => {});
         } catch (error) {
@@ -106,6 +111,8 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   }, [state, platform]);
 
   useEffect(() => (state.kind === "ready" && platform.native ? reportPresence(platform) : undefined), [state, platform]);
+  // the app coming back is the person using it, also when the web view misses its visibilitychange
+  useEffect(() => platform.onResume?.(() => noteCloudPageActivity()), [platform]);
 
   useEffect(() => {
     if (state.kind === "ready" && account?.account) void enrollWorkspace(platform, state.id, account.account.id, account.enrollGrant);
@@ -114,6 +121,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   useEffect(() => {
     const receive = (url: string) => {
       const signIn = parseSignInLink(url);
+      if (signIn && followSignInService(url, signIn.service, accountRef.current)) return true;
       if (signIn) {
         setIncoming(null);
         setSignInEmail({ email: signIn.email, ...(signIn.code ? { code: signIn.code } : {}), sequence: ++sequence.current });
@@ -132,6 +140,8 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
       if (parsed && !("kind" in parsed)) setIncoming({ payload: parsed, sequence: ++sequence.current });
     };
     const stop = platform.onAppUrl?.(receive);
+    const held = takeHeldSignIn();
+    if (held) receive(held);
     window.addEventListener("dusk:pair-link", customLink);
     return () => { stop?.(); window.removeEventListener("dusk:pair-link", customLink); };
   }, [platform]);
@@ -143,6 +153,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
     const transport = await connectToWorkspace(record, token, platform, new AbortController().signal);
     uninstall.current?.();
     uninstall.current = installTransport(transport, retry);
+    if (transport.asleep) markCloudAsleep();
     resetSessionEnded();
     setIncoming(null);
     setAdding(0);
