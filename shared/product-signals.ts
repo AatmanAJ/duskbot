@@ -67,8 +67,9 @@ export const SIGNALS = {
    * with or without a card */
   talk_change: { source: "any", props: { about: oneOf("profile", "model", "skill", "level", "self", "routine") } },
   /** something the person or a bot asked for was refused: by a policy (permission), or a request the workspace answered no
-   * to (busy, a limit, a permission), with its fixed code and status */
-  refused: { source: "any", props: { by: oneOf("policy", "request"), code, status: between(400, 599) } },
+   * to (busy, a limit, a permission), with its fixed code and status; `route` is the request's API path as one word with
+   * its ids folded ("bots_id_messages"), never an id */
+  refused: { source: "any", props: { by: oneOf("policy", "request"), code, status: between(400, 599), route: code } },
   /** the person's next message right after a reply read as confusion or a retry (classified locally, never sent as text) */
   confused: { source: "any", props: { kind: oneOf(...CONFUSION_KINDS), after: oneOf("reply", "failed") } },
   /** an AI engine's sign-in failed */
