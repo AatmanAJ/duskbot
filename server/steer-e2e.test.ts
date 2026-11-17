@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mcpRequest } from "./testing/fake-mcp-client.ts";
 import { splitLaunchNote } from "./testing/launch-note.ts";
 import { withoutTurnClock } from "./testing/turn-clock-text.ts";
 import { workerPort } from "./testing/worker-port.ts";
@@ -332,10 +333,15 @@ posixOnly("mid-turn steering e2e", () => {
         return false;
       }
     }, "the fake's spawn dump");
-    const token = dump.mcpConfig.mcpServers.agents.env.DUSK_COMMS_TOKEN as string;
-    expect(token).toMatch(/^[a-f0-9]{48}$/);
-    const internalTools = async () =>
-      (await fetch(`${BASE}/api/internal/agents`, { headers: { authorization: `Bearer ${token}` } })).status;
+    // The engine holds a mount of the harness's MCP host, never the turn capability behind it; a call through the mount
+    // reaches the harness with that capability, so it answers only while the turn (and its steered continuation) runs.
+    const agents = dump.mcpConfig.mcpServers.agents;
+    expect(agents).toMatchObject({ type: "http", url: `${BASE}/api/internal/mcp-host/agents` });
+    expect(JSON.stringify(dump.mcpConfig)).not.toMatch(/DUSK_COMMS_TOKEN|[a-f0-9]{48}/);
+    const internalTools = async () => {
+      const reply = await mcpRequest(agents, "tools/call", { name: "list_bots", arguments: {} });
+      return reply.error || reply.result?.isError ? 401 : 200;
+    };
     expect(await internalTools()).toBe(200);
 
     const second = await api("POST", `/api/bots/${created.id}/messages`, { text: "and also this" });

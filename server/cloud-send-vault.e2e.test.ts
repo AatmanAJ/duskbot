@@ -3,15 +3,14 @@
 // under its own key. This computer's server and a Cloud home (scripts/testing/cloud-send-fixture.ts) with main's own
 // wiring between them; disposable homes, no network, obvious fakes only.
 import { randomBytes } from "node:crypto";
-import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { createInterface } from "node:readline";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { cardFileKey, vaultSecretKey } from "../electron/cloud-send.mjs";
 import { itemKey } from "../electron/cloud-send-parts.mjs";
 import { launchCloudSendFixture, type CloudSendFixture } from "../scripts/testing/cloud-send-fixture.ts";
+import { openMcp, type McpConnection, type McpEntry } from "./testing/fake-mcp-client.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 
 const hex = (bytes: number) => randomBytes(bytes).toString("hex");
@@ -25,7 +24,7 @@ const SECRETS = [TOKEN, PASSWORD, FILE_SECRET, REF_SECRET];
 let fx: CloudSendFixture;
 let scratch = "";
 let release = "";
-const proxies: ChildProcess[] = [];
+const connections: McpConnection[] = [];
 
 beforeAll(async () => {
   scratch = mkdtempSync(join(tmpdir(), "dusk-vault-move-"));
@@ -34,26 +33,20 @@ beforeAll(async () => {
     desktopEngine: `if (process.argv[2] !== "--version") { process.env.FAKE_CLAUDE_MODE = "hang"; process.env.FAKE_CLAUDE_RELEASE = ${JSON.stringify(release)}; process.env.FAKE_CLAUDE_DUMP = ${JSON.stringify(join(scratch, "spawn.json"))}; }` });
 }, hostTimeout(90_000));
 afterAll(async () => {
-  for (const proxy of proxies) proxy.kill();
+  for (const connection of connections) await connection.close();
   await fx?.close();
   if (scratch) rmSync(scratch, { recursive: true, force: true });
 });
 
-/** The bot's own dusk bot tools, as its turn reaches them: the MCP proxy the turn was started with. */
-async function botTools(home: string) {
-  let agents: { command: string; args: string[]; env: Record<string, string> } | undefined;
+/** The bot's own dusk bot tools, as its turn reaches them: the agents server the turn was started with. */
+async function botTools() {
+  let agents: McpEntry | undefined;
   await expect.poll(() => {
     try { agents = JSON.parse(readFileSync(join(scratch, "spawn.json"), "utf8")).mcpConfig.mcpServers.agents; return true; } catch { return false; }
   }, { timeout: 20_000 }).toBe(true);
-  const proxy = spawn(agents!.command, agents!.args, { env: { PATH: process.env.PATH, HOME: home, ...agents!.env }, stdio: ["pipe", "pipe", "pipe"] });
-  proxies.push(proxy);
-  const replies = new Map<number, (value: any) => void>();
-  createInterface({ input: proxy.stdout! }).on("line", (line) => { const message = JSON.parse(line); replies.get(message.id)?.(message.result); replies.delete(message.id); });
-  let next = 0;
-  const request = (method: string, params: unknown): Promise<any> => new Promise((resolve) => {
-    const id = ++next; replies.set(id, resolve);
-    proxy.stdin!.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
-  });
+  const connection = openMcp(agents!);
+  connections.push(connection);
+  const request = async (method: string, params: unknown): Promise<any> => (await connection.call(method, params)).result;
   await request("initialize", { protocolVersion: "2024-11-05" });
   return { call: async (name: string, args: unknown) => String((await request("tools/call", { name, arguments: args })).content?.[0]?.text ?? "") };
 }
@@ -82,7 +75,7 @@ it("moves every Vault item with its value, sealed, and no value shows anywhere o
 
   // The bot asks on two cards: a file for its own commands, and a ref for dusk bot's tools; the person saves both to the Vault.
   expect((await local("POST", `/api/bots/${bot.id}/messages`, { text: "Set up Stripe test charges and Notion's MCP." })).status).toBe(202);
-  const tools = await botTools(join(fx.root, "desktop"));
+  const tools = await botTools();
   const cards = async () => (await local("GET", `/api/threads/${bot.threadId}/messages`)).body.messages.filter((message: any) => message.kind === "secret");
   await tools.call("request_credential", { label: "Stripe secret key", reason: "To create test charges.", delivery: "file" });
   const fileCard = (await cards()).at(-1);
