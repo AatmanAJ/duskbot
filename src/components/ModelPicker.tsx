@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, X } from "../icons";
+import { ChevronDown, ChevronRight, X } from "../icons";
 import { api, useStore, currentTaskBot, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
 import type { EffortLevel } from "../../shared/wire";
 import type { ModelVariantOption } from "../../shared/runtime-events";
@@ -211,6 +211,7 @@ export function ModelPicker({
   contained = false,
   label,
   size = "md",
+  asRow,
 }: {
   bot: Bot;
   threadId?: string;
@@ -218,6 +219,8 @@ export function ModelPicker({
   contained?: boolean;
   label?: ReactNode;
   size?: "sm" | "md";
+  /** A settings row (label left, model right, a chevron) whose menu the caller presents, in a sheet of its own. */
+  asRow?: { className: string; present: (menu: { open: boolean; close: () => void; content: ReactNode }) => ReactNode };
 }) {
   const { state, dispatch: storeDispatch, refreshInstances, refreshModels: refreshInstanceModels } = useStore();
   const [open, setOpen] = useState(false);
@@ -255,7 +258,7 @@ export function ModelPicker({
 
   const floating = typeof document !== "undefined";
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open || asRow) return;
     const place = (event?: Event) => {
       if (event?.type === "scroll" && event.target instanceof Node && menuRef.current?.contains(event.target)) return;
       const anchor = triggerRef.current?.getBoundingClientRect();
@@ -334,7 +337,7 @@ export function ModelPicker({
     else refreshModels(active?.instanceId);
   }, [open, refreshLocalInstances]);
 
-  usePopoverDismiss(open, inside, () => close(false));
+  usePopoverDismiss(open && !asRow, inside, () => close(false));
 
   function close(refocus: boolean) {
     setOpen(false);
@@ -621,7 +624,40 @@ export function ModelPicker({
     else if (!remote) openDirectory();
   };
 
-  const menu = motion.shown && (
+  const menuBody = (
+    <SimpleModelMenu
+      menu={simpleMenu}
+      query={query}
+      bot={profile}
+      botModel={{ label: botModelName, title: botModelTitle }}
+      thinking={thinking}
+      idPrefix={menuId}
+      onQuery={setQuery}
+      onPick={pick}
+      onPickCurrent={() => close(true)}
+      onToggleStar={toggleStarred}
+      onFollowBot={pickBotModel}
+      onToggle={(instance) => {
+        const opening = !expanded.has(instance.instanceId);
+        setExpanded((current) => {
+          const next = new Set(current);
+          if (opening) next.add(instance.instanceId);
+          else next.delete(instance.instanceId);
+          return next;
+        });
+        if (opening) lookForLocalIn(instance);
+      }}
+      onSetUp={connectInstance}
+      onCheckAgain={(instance) => refreshModels(instance.instanceId)}
+      onMore={mayChangeBot && !remote ? openDirectory : undefined}
+      onResetVariant={resetVariant}
+      scope={mayChangeBot ? { value: scope, onChange: setScope } : undefined}
+      where={state.config?.cloudHome ? t("model.picker.onCloud") : undefined}
+      notConnected={connectRows.length > 0 ? { rows: connectRows, onConnect: connect } : undefined}
+    />
+  );
+
+  const menu = !asRow && motion.shown && (
     <div
       ref={menuRef}
       id={menuId}
@@ -645,42 +681,38 @@ export function ModelPicker({
       } : { width: SIMPLE_POPOVER_WIDTH }}
       className={cn("menu-surface z-[80] flex flex-col overflow-hidden", motion.className)}
     >
-      <SimpleModelMenu
-        menu={simpleMenu}
-        query={query}
-        bot={profile}
-        botModel={{ label: botModelName, title: botModelTitle }}
-        thinking={thinking}
-        idPrefix={menuId}
-        onQuery={setQuery}
-        onPick={pick}
-        onPickCurrent={() => close(true)}
-        onToggleStar={toggleStarred}
-        onFollowBot={pickBotModel}
-        onToggle={(instance) => {
-          const opening = !expanded.has(instance.instanceId);
-          setExpanded((current) => {
-            const next = new Set(current);
-            if (opening) next.add(instance.instanceId);
-            else next.delete(instance.instanceId);
-            return next;
-          });
-          if (opening) lookForLocalIn(instance);
-        }}
-        onSetUp={connectInstance}
-        onCheckAgain={(instance) => refreshModels(instance.instanceId)}
-        onMore={mayChangeBot && !remote ? openDirectory : undefined}
-        onResetVariant={resetVariant}
-        scope={mayChangeBot ? { value: scope, onChange: setScope } : undefined}
-        where={state.config?.cloudHome ? t("model.picker.onCloud") : undefined}
-        notConnected={connectRows.length > 0 ? { rows: connectRows, onConnect: connect } : undefined}
-      />
+      {menuBody}
     </div>
+  );
+
+  const sheetMenu = asRow?.present({
+    open,
+    close: () => close(false),
+    content: (
+      <div ref={menuRef} id={menuId} data-model-picker-content="" data-presented="" onKeyDown={onMenuKey} className="flex flex-col">
+        {menuBody}
+      </div>
+    ),
+  });
+
+  const rowTrigger = asRow && (
+    <button {...triggerProps} className={asRow.className}>
+      <span className="min-w-0 flex-1">
+        {label}
+        {backup && <span data-model-backup="" className="mt-0.5 block text-[13px] leading-[18px] text-ink-secondary">{backupLine(backup)}</span>}
+      </span>
+      <span className="flex min-w-0 max-w-[55%] shrink-0 items-center gap-1.5 text-[15px] text-ink-secondary">
+        {attention && !backup && <span data-model-attention className="size-1.5 shrink-0 rounded-full bg-warning" aria-hidden="true" />}
+        <span className="min-w-0 truncate">{unanswered ?? modelName(shownInstance, answering.model)}</span>
+        {!unanswered && answering.variant !== undefined && <span className="shrink-0 whitespace-pre">{variantSuffix(shownInstance, answering.model, answering.variant)}</span>}
+      </span>
+      <ChevronRight aria-hidden="true" size={18} className="shrink-0 text-ink-tertiary" />
+    </button>
   );
 
   return (
     <div ref={rootRef} className={cn(contained ? "w-full" : "relative", className)}>
-      {contained ? (
+      {rowTrigger ? rowTrigger : contained ? (
         <div className="flex items-center justify-between gap-4">
           {backup ? (
             <span className="flex shrink-0 flex-col">
@@ -694,6 +726,7 @@ export function ModelPicker({
         trigger
       )}
       {menu && floating ? createPortal(menu, document.body) : menu}
+      {sheetMenu}
       {handoff && <ConnectAiDialog tested={null} start={handoff.tile} onClose={() => setHandoff(null)} onConnected={connected} />}
       {toast && <Toast text={toast.text} tone={toast.tone} onDone={() => setToast(null)} data-notice-toast="model" />}
       {!contained && changedBotModel && !open && ownModelThreads > 0 && (

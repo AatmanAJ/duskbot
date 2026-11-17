@@ -41,6 +41,8 @@ type SheetProps = {
   bodyClassName?: string;
   /** No header row: the content draws its own. */
   flush?: boolean;
+  /** False for a sheet over another sheet: the page behind already stepped back for the first one. */
+  recede?: boolean;
 };
 
 /** Inside a stack of pages (Settings), a sheet page is pushed in place instead of opening over it: `back` pops it. */
@@ -74,7 +76,7 @@ export function StackPage({ title, label, children, back, onClose, trailing, bod
   );
 }
 
-function ModalSheet({ open, onClose, title, label, children, full = false, back, trailing, bodyClassName, flush = false }: SheetProps) {
+function ModalSheet({ open, onClose, title, label, children, full = false, back, trailing, bodyClassName, flush = false, recede = true }: SheetProps) {
   const [mounted, setMounted] = useState(open);
   const sheetRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -100,14 +102,14 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
     if (nav.style.transformOrigin !== "50% 0px") nav.style.transformOrigin = "50% 0";
   });
   useLayoutEffect(() => {
-    if (!mounted) return;
+    if (!mounted || !recede) return;
     page.current = sheetRef.current?.closest(".dusk-mobile")?.querySelector<HTMLElement>(":scope > .mobile-nav") ?? null;
     return () => {
       const nav = page.current;
       if (nav) { nav.style.transform = ""; nav.style.borderRadius = ""; }
       page.current = null;
     };
-  }, [mounted]);
+  }, [mounted, recede]);
 
   if (open && !mounted) setMounted(true);
 

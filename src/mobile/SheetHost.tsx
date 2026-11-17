@@ -2,6 +2,8 @@ import { Suspense, useEffect, useRef, type ReactNode } from "react";
 import { useStore, type Action } from "@/state/store";
 import { BotSettingsDialog, RoomPanel } from "@/components/lazy-screens";
 import { t } from "@/lib/i18n";
+import { ModelRowSlot } from "@/components/bot-panel/model-row-slot";
+import { PhoneModelRow } from "./PhoneModelRow";
 import { Sheet } from "./Sheet";
 import type { MobileSheet, OpenSheet } from "./sheets";
 import { SHEET_PAGES } from "./sheets/registry";
@@ -38,9 +40,11 @@ function PanelSheet({ sheet, open, onClose }: { sheet: Extract<MobileSheet, { ki
 
   return (
     <Sheet open={open} onClose={onClose} full flush label={bot?.name ?? group?.name ?? t("mobile.sheet.profile")} bodyClassName="mobile-panel-sheet">
-      <Suspense fallback={null}>
-        {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} initialTab={sheet.kind === "computer" ? "computer" : "details"} /> : null}
-      </Suspense>
+      <ModelRowSlot.Provider value={PhoneModelRow}>
+        <Suspense fallback={null}>
+          {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} initialTab={sheet.kind === "computer" ? "computer" : "details"} /> : null}
+        </Suspense>
+      </ModelRowSlot.Provider>
     </Sheet>
   );
 }
