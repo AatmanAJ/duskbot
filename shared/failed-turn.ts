@@ -41,7 +41,7 @@ export interface FailedTurnTool {
 }
 
 /** What an echoed prompt reads as once it is taken out of an error. */
-export const ECHOED_PROMPT = "[the message it was sent]";
+export const ECHOED_PROMPT = "[…]";
 
 /** A long quoted value of several lines in an error is input the engine or its provider repeated back (a Python
  * KeyError's repr, a validator's "'<value>' is too long"), never a cause; the quote may be cut off at the end. */
