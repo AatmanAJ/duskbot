@@ -4,8 +4,8 @@
 // the hash of the bots.json it last wrote, and is used at start only when that file is still there unchanged; any other
 // bots.json (a restore, a hand edit, an earlier build that ran in between) is read and becomes the rows.
 import { createHash } from "node:crypto";
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
-import { dirname } from "node:path";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
 import type { RegistryRead } from "./registry-file.ts";
@@ -175,32 +175,12 @@ export class RegistryRows<Bot, Task> {
 
   /** The rows, when they last matched the bots.json whose hash is `hash`; with null, whatever they last matched. */
   private readRows(hash: string | null): Bot[] | null {
-    const get = (key: string) => (this.statement("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined)?.value;
-    const mirror = get("mirror");
-    if (mirror === undefined || (hash !== null && mirror !== hash)) return null;
-    const order = JSON.parse(get("order") ?? "[]") as string[];
-    const botRows = new Map((this.statement("SELECT id, json, threads FROM bots").all() as Array<{ id: string; json: string; threads: string }>).map((row) => [row.id, row]));
-    const taskRows = new Map<string, Map<string, string>>();
-    for (const row of this.statement("SELECT bot_id, thread_id, json FROM tasks").all() as Array<{ bot_id: string; thread_id: string; json: string }>) {
-      let list = taskRows.get(row.bot_id);
-      if (!list) taskRows.set(row.bot_id, list = new Map());
-      list.set(row.thread_id, row.json);
-    }
-    const ids = [...order.filter((id) => botRows.has(id)), ...[...botRows.keys()].filter((id) => !order.includes(id))];
-    const bots: Bot[] = [];
-    this.written = new Map();
-    for (const id of ids) {
-      const row = botRows.get(id)!;
-      const threads = JSON.parse(row.threads) as string[] | null;
-      const rows = taskRows.get(id) ?? new Map<string, string>();
-      const bot = JSON.parse(row.json) as Record<string, unknown>;
-      if (threads) bot.tasks = threads.filter((threadId) => rows.has(threadId)).map((threadId) => JSON.parse(rows.get(threadId)!));
-      bots.push(bot as Bot);
-      this.written.set(id, { json: row.json, threads, tasks: rows });
-    }
-    this.order = ids;
+    const read = readRowsMatching(connect(this.file).db, hash);
+    if (!read) return null;
+    this.written = read.written;
+    this.order = read.order;
     this.generation = connect(this.file).generation;
-    return bots;
+    return read.bots as Bot[];
   }
 
   private replace(bots: readonly Bot[], hash: string): void {
@@ -289,6 +269,59 @@ export class RegistryRows<Bot, Task> {
     let prepared = connection.statements.get(sql);
     if (!prepared) connection.statements.set(sql, prepared = connection.db.prepare(sql));
     return prepared;
+  }
+}
+
+/** The rows whose recorded bots.json has this hash (null: whatever file they last matched), as the start reads them. */
+function readRowsMatching(db: DatabaseSync, hash: string | null): { bots: unknown[]; written: Map<string, WrittenBot>; order: string[] } | null {
+  const get = (key: string) => (db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined)?.value;
+  const mirror = get("mirror");
+  if (mirror === undefined || (hash !== null && mirror !== hash)) return null;
+  const order = JSON.parse(get("order") ?? "[]") as string[];
+  const botRows = new Map((db.prepare("SELECT id, json, threads FROM bots").all() as Array<{ id: string; json: string; threads: string }>).map((row) => [row.id, row]));
+  const taskRows = new Map<string, Map<string, string>>();
+  for (const row of db.prepare("SELECT bot_id, thread_id, json FROM tasks").all() as Array<{ bot_id: string; thread_id: string; json: string }>) {
+    let list = taskRows.get(row.bot_id);
+    if (!list) taskRows.set(row.bot_id, list = new Map());
+    list.set(row.thread_id, row.json);
+  }
+  const ids = [...order.filter((id) => botRows.has(id)), ...[...botRows.keys()].filter((id) => !order.includes(id))];
+  const bots: unknown[] = [];
+  const written = new Map<string, WrittenBot>();
+  for (const id of ids) {
+    const row = botRows.get(id)!;
+    const threads = JSON.parse(row.threads) as string[] | null;
+    const rows = taskRows.get(id) ?? new Map<string, string>();
+    const bot = JSON.parse(row.json) as Record<string, unknown>;
+    if (threads) bot.tasks = threads.filter((threadId) => rows.has(threadId)).map((threadId) => JSON.parse(rows.get(threadId)!));
+    bots.push(bot);
+    written.set(id, { json: row.json, threads, tasks: rows });
+  }
+  return { bots, written, order: ids };
+}
+
+/**
+ * The registry a server starting on `dataDir` now would read: the rows while they match its bots.json, otherwise that
+ * file. Read-only, and safe beside a running server; for tools and tests that look at a data folder from outside.
+ */
+export function readSavedBots<Bot = Record<string, unknown>>(dataDir: string): Bot[] {
+  let text: string | null = null;
+  try { text = readFileSync(join(dataDir, "bots.json"), "utf8"); } catch { /* none yet */ }
+  const fromFile = (): Bot[] => {
+    if (text === null) return [];
+    const parsed: unknown = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed as Bot[] : [];
+  };
+  const file = join(dataDir, REGISTRY_DB_NAME);
+  if (!existsSync(file)) return fromFile();
+  let db: DatabaseSync;
+  try { db = new DatabaseSync(file, { readOnly: true }); } catch { return fromFile(); }
+  try {
+    return (readRowsMatching(db, registryFileHash(text))?.bots as Bot[] | undefined) ?? fromFile();
+  } catch {
+    return fromFile();
+  } finally {
+    db.close();
   }
 }
 

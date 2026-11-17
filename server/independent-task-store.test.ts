@@ -7,9 +7,10 @@ import { DATA_DIR } from "./config.ts";
 import type { ModelSelection } from "./contracts.ts";
 import { isProjectEmoji, Store, type BotRecord, type GroupRecord, type TaskPatch } from "./store.ts";
 import { ensureTaskWorkspace } from "./workspace.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 const selection = (): ModelSelection => ({ instanceId: "claude", model: "default" });
-const savedBots = (): BotRecord[] => JSON.parse(readFileSync(join(DATA_DIR, "bots.json"), "utf8"));
+const savedBots = (): BotRecord[] => readSavedBots<BotRecord>(DATA_DIR);
 const savedGroups = (): GroupRecord[] => JSON.parse(readFileSync(join(DATA_DIR, "groups.json"), "utf8"));
 
 describe("independent bot task state", () => {

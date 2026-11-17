@@ -10,6 +10,7 @@ import { writeFileAtomic } from "./atomic.ts";
 import { freePortBlock } from "./testing/ports.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { decodeCuaConnection } from "./local-computer.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -65,10 +66,10 @@ describe("surface pin provenance against the real server", () => {
   const busy = (botId: string, threadId: string) => until(() => threadState(botId, threadId), Boolean);
   const idle = (botId: string, threadId: string) => until(() => threadState(botId, threadId), task => !task?.busy);
   const savedTask = (botId: string, threadId: string) =>
-    (JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[])
+    (readSavedBots<any>(data) as any[])
       .find((bot: any) => bot.id === botId)?.tasks.find((task: any) => task.threadId === threadId);
   const editSavedBot = (botId: string, edit: (bot: any) => void) => {
-    const bots = JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[];
+    const bots = readSavedBots<any>(data) as any[];
     edit(bots.find((bot: any) => bot.id === botId));
     writeFileSync(join(data, "bots.json"), JSON.stringify(bots, null, 2));
   };

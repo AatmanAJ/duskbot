@@ -19,7 +19,7 @@ import type { RequestAuth } from "../request-auth.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
 export interface StatusRouteDeps {
-  store: Pick<Store, "bot" | "bots" | "tasks" | "groupByThread">;
+  store: Pick<Store, "bot" | "bots" | "tasks" | "botByThread" | "groupByThread">;
   cfg: AppConfig;
   outboundCounts: Pick<OutboundCounts, "today">;
   staticDir: string | null;
@@ -102,7 +102,7 @@ export function createStatusRoutes(deps: StatusRouteDeps): RouteHandler {
     if (m && method === "GET") {
       const threadId = m[1];
       const known =
-        store.bots.some((b) => store.tasks(b.id).some((t) => t.threadId === threadId)) ||
+        Boolean(store.botByThread(threadId)?.tasks?.some((t) => t.threadId === threadId)) ||
         Boolean(store.groupByThread(threadId));
       if (!known) return json(res, 404, { error: "no such thread" });
       const rawLimit = url.searchParams.get("limit");

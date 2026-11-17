@@ -125,6 +125,11 @@ export class OwnerIndex<Owner extends IndexedOwner> {
   }
 }
 
+/** The thread record a hit names, when its owner lists it. */
+export function listedTask<Task>(hit: ThreadHit<{ id: string; threadId: string; tasks?: Task[] }> | undefined): Task | undefined {
+  return hit && hit.task >= 0 ? hit.owner.tasks![hit.task] : undefined;
+}
+
 function expectSame<T>(indexed: T | undefined, searched: T | undefined, what: string): void {
   if (indexed !== searched) throw new Error(`registry index disagrees with a search for ${what}`);
 }

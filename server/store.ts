@@ -1,6 +1,6 @@
 import { UNTITLED_TASK, UNTITLED_THREAD, threadTitleFrom, titleFromMessage } from "./thread-title.ts";
-import { REGISTRY_DB_NAME, RegistryRows } from "./registry-rows.ts";
-import { OwnerIndex, type ThreadHit } from "./owner-index.ts";
+import { botRegistryRows, BOTS_FILE_FOLLOWS_MS, persistedPin, persistedTask } from "./store-disk.ts";
+import { listedTask, OwnerIndex } from "./owner-index.ts";
 import { chmodSync, existsSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path"; import { isDeepStrictEqual } from "node:util";
 
@@ -106,21 +106,6 @@ export type GroupTaskPatch = Partial<Pick<GroupTaskRecord, "title" | "pinned">> 
 
 function mirrorActiveGroupTask(group: GroupRecord, task: GroupTaskRecord): void {
   Object.assign(group, { threadId: task.threadId, pinnedCwd: task.pinnedCwd, pinnedMessageId: task.pinnedMessageId });
-}
-
-/** A thread as the disk keeps it: no live turn state, and a pin only when set. */
-function persistedTask({ busy: _busy, activity: _activity, turnStartedAt: _turnStartedAt, ...task }: TaskRecord) {
-  return persistedPin(task);
-}
-
-/** How long after a thread's own row write bots.json is rewritten to match (at most once per this, while changes go on). */
-const BOTS_FILE_FOLLOWS_MS = 2_000;
-
-function persistedPin<T extends { pinned?: boolean }>(task: T): T {
-  if (task.pinned === true) return task;
-  if (!("pinned" in task)) return task;
-  const { pinned: _pinned, ...rest } = task;
-  return rest as T;
 }
 
 export const ACTIVITY_BUSY: ReadonlySet<BotActivity> = new Set(["working", "waiting-on-you", "no-signal"]);
@@ -240,10 +225,6 @@ export function pruneRoomHolds(group: Pick<GroupRecord, "memberIds" | "holds" | 
   }
 }
 
-function listedTask<Task>(hit: ThreadHit<{ id: string; threadId: string; tasks?: Task[] }> | undefined): Task | undefined {
-  return hit && hit.task >= 0 ? hit.owner.tasks![hit.task] : undefined;
-}
-
 function taskCountsAsBotUnread(task: { unread?: boolean; routineRunId?: string }): boolean {
   return Boolean(task.unread) && !task.routineRunId;
 }
@@ -262,13 +243,7 @@ export class Store {
   private listeners = new Set<(change: StoreChange) => void>();
   private registeringInitialSections = true;
   private readonly botsFile = new OwnedFile(BOTS_FILE, { mode: 0o600 });
-  private readonly rows = new RegistryRows<BotRecord, TaskRecord>(join(DATA_DIR, REGISTRY_DB_NAME), {
-    idOf: (bot) => bot.id,
-    tasksOf: (bot) => bot.tasks,
-    threadOf: (task) => task.threadId,
-    botRow: ({ busy: _busy, activity: _activity, tasks: _tasks, ...bot }) => JSON.stringify(bot),
-    taskRow: (task) => JSON.stringify(persistedTask(task)),
-  }); private readonly groupsFile = new OwnedFile(GROUPS_FILE, { mode: 0o600 });
+  private readonly rows = botRegistryRows(DATA_DIR); private readonly groupsFile = new OwnedFile(GROUPS_FILE, { mode: 0o600 });
   /** Clearing this slot must not clear a concurrently running task's activity. */
   private legacyActivities = new Map<string, BotActivity>();
 

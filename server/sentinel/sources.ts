@@ -1,11 +1,12 @@
 // SQLite opens read-only, never `immutable`: both databases run in WAL mode and recent rows live in the -wal file,
 // which immutable skips. Handles close after each short query so a scan never blocks the app's checkpoint.
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { HARNESS_NOTICE, isToolIdentifier } from "./normalize.ts";
 import type { SentinelRecord } from "./types.ts";
+import { readSavedBots } from "../registry-rows.ts";
 
 const MAX_TEXT = 2_000;
 /** A log never read before is read from at most this far from its end. */
@@ -31,7 +32,8 @@ export function readThreadOwners(dataDir: string): ThreadOwners {
   const names: string[] = [];
   let bots: unknown;
   try {
-    bots = JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8"));
+    // the running server's rows, while they match its bots.json, are newer than that file by up to a moment
+    bots = readSavedBots(dataDir);
   } catch {
     return { owners, names };
   }
