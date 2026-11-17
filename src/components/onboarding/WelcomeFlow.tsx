@@ -119,7 +119,7 @@ export function WelcomeFlow({
   const draft = useMemo(() => (keepsDraft ? readWelcomeDraft() : null), [keepsDraft]);
   // where the bots live, once picked; a resumed dusk cloud run past its checkout is paid for (the AI or the Cloud being made)
   const [path, setPath] = useState<FunnelPath | null>(draft?.cloud === true ? "cloud" : null);
-  const [paid, setPaid] = useState(draft?.cloud === true && draft.beat === "making");
+  const [paid, setPaid] = useState(draft?.cloud === true && (draft.beat === "ai" || draft.beat === "making"));
   const [checkoutStart, setCheckoutStart] = useState(false);
   const cloud = path === "cloud";
 
@@ -260,7 +260,7 @@ export function WelcomeFlow({
     track("onboarding_cloud", { action: "bought" });
     setPaid(true);
     setFrom("next");
-    setAt("making");
+    setAt("ai");
   }, []);
   // this Mac, from the place step or from the browser's waiting screen: on to the step after the place
   const toMac = () => {
