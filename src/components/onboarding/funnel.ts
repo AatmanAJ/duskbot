@@ -37,7 +37,8 @@ export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
     if (step === "place") return facts.desktop;
     if (step === "account") return facts.account;
     if (step === "checkout") return cloud;
-    if (step === "bring") return (facts.desktop && Boolean(facts.bring) && !cloud) || Boolean(facts.cloudBring);
+    // the bring step is off: people bring their AIs later from Settings
+    if (step === "bring") return false;
     if (step === "phone") return Boolean(facts.phone) && facts.desktop && !cloud;
     if (step === "making") return cloud;
     if (step === "permissions") return facts.desktop && Boolean(facts.permissions) && !cloud;

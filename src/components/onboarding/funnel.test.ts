@@ -18,15 +18,15 @@ describe("the funnel's steps", () => {
 
   it("on a cloud the desktop app set up: the hello, an AI, and that computer's bots when it has some", () => {
     expect(funnelSteps({ account: false, desktop: false })).toEqual(["welcome", "ai"]);
-    expect(funnelSteps({ account: false, desktop: false, cloudBring: true, phone: true, permissions: true })).toEqual(["welcome", "ai", "bring"]);
+    expect(funnelSteps({ account: false, desktop: false, cloudBring: true, phone: true, permissions: true })).toEqual(["welcome", "ai"]);
   });
 
   it("offers bringing bots in only when another app has some", () => {
-    expect(funnelSteps({ account: false, desktop: true, bring: true })).toEqual(["welcome", "place", "ai", "bring"]);
+    expect(funnelSteps({ account: false, desktop: true, bring: true })).toEqual(["welcome", "place", "ai"]);
   });
 
   it("shows the phone only while the phone app is offered, on this computer's own window", () => {
-    expect(funnelSteps({ account: false, desktop: true, bring: true, phone: true })).toEqual(["welcome", "place", "ai", "bring", "phone"]);
+    expect(funnelSteps({ account: false, desktop: true, bring: true, phone: true })).toEqual(["welcome", "place", "ai", "phone"]);
     expect(funnelSteps({ account: false, desktop: false, phone: true })).toEqual(["welcome", "ai"]);
     expect(funnelSteps({ account: false, desktop: true, path: "cloud", phone: true })).not.toContain("phone");
   });
@@ -43,7 +43,7 @@ describe("the funnel's steps", () => {
 
   it("on this Mac goes from the welcome to the account, the place, the AI and what to bring", () => {
     const steps = funnelSteps({ account: true, desktop: true, bring: true, path: "mac" });
-    expect(steps).toEqual(["welcome", "account", "place", "ai", "bring"]);
+    expect(steps).toEqual(["welcome", "account", "place", "ai"]);
     expect(nextStep(steps, "welcome")).toBe("account");
     expect(nextStep(steps, "account")).toBe("place");
     expect(nextStep(steps, "place")).toBe("ai");
@@ -62,7 +62,7 @@ describe("the funnel's steps", () => {
 describe("the Mac's permissions step", () => {
   it("comes last on this Mac, after what to bring and the phone, only while a permission is missing", () => {
     const steps = funnelSteps({ account: false, desktop: true, bring: true, phone: true, path: "mac", permissions: true });
-    expect(steps).toEqual(["welcome", "place", "ai", "bring", "phone", "permissions"]);
+    expect(steps).toEqual(["welcome", "place", "ai", "phone", "permissions"]);
     expect(nextStep(steps, "phone")).toBe("permissions");
     expect(nextStep(steps, "permissions"), "the app comes after it").toBeNull();
     expect(funnelSteps({ account: false, desktop: true, bring: true, path: "mac", permissions: false })).not.toContain("permissions");
