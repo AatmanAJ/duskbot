@@ -35,6 +35,7 @@ import { CODEX_USAGE_URL, codexUsageLimitReached } from "../../shared/codex-usag
 import { ClaudeUpdatePrompt } from "./ClaudeUpdatePrompt";
 import { MacCuaRecoveryActions } from "./MacCuaRecoveryActions";
 import { ScreenAccessNotice } from "./ScreenAccessNotice";
+import { ComposerNoticeSlot } from "./ComposerNoticeSlot";
 import { macCuaPermissionMessage, missingMacCuaPermissions } from "@/lib/mac-cua-permissions";
 import { claudeUpdateTarget, failedTurnCause, signedOutEngine } from "@/lib/failed-turn";
 import { plainErrorLine } from "@/lib/plain-error";
@@ -1433,21 +1434,25 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           <JumpToLatestButton onClick={jumpToLatest} className="pointer-events-auto bottom-2" />
         </div>
       )}
-      {/* grok's usage warning rides just above the composer, near or at a limit; a failed reply's card already says so, so it wins */}
-      {canWrite !== false && !rescuing && !trailing?.failures.length && !(lastShownRow && codexUsageLimitReached(`${lastShownRow.text ?? ""} ${lastShownRow.tool?.name ?? ""}`)) && (
-        // empty, it takes no room: its padding coming and going with a turn moved the whole chat 8px
-        <div className="pointer-events-auto px-5 pb-2 empty:hidden">
-          <WeeklyLimitLine onSeeUsage={() => dispatch(openSettings("usage"))} error={state.error} clearError={clearLimitError} />
-          <UsageBanner engine={answering.instanceId} onSeeUsage={() => dispatch(openSettings("usage"))} />
-        </div>
-      )}
-      {/* grok says what went wrong, or a passing note, in one quiet line just above the message box; at the top it ran
-          into the transcript's first time stamp */}
-      <div className="pointer-events-auto"><ChatNotice notice={state.notice} /></div>
-      <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
-      <div className="pointer-events-auto"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
-      {canWrite !== false && !trailing?.failures.length && !trailing?.notices.length && <div className="pointer-events-auto"><ComposerSignInNotice bot={bot} /></div>}
-      {!trailing?.failures.length && <div className="pointer-events-auto"><ScreenAccessNotice bot={bot} /></div>}
+      {/* every card above the composer comes and goes through one slot, so the composer and the chat never jump; each row
+          stays mounted and its card decides whether it shows */}
+      <ComposerNoticeSlot>
+        {/* grok's usage warning rides just above the composer, near or at a limit; a failed reply's card already says so, so it wins */}
+        {canWrite !== false && !rescuing && !trailing?.failures.length && !(lastShownRow && codexUsageLimitReached(`${lastShownRow.text ?? ""} ${lastShownRow.tool?.name ?? ""}`)) && (
+          // empty, it takes no room: its padding coming and going with a turn moved the whole chat 8px
+          <div className="pointer-events-auto px-5 pb-2 empty:hidden">
+            <WeeklyLimitLine onSeeUsage={() => dispatch(openSettings("usage"))} error={state.error} clearError={clearLimitError} />
+            <UsageBanner engine={answering.instanceId} onSeeUsage={() => dispatch(openSettings("usage"))} />
+          </div>
+        )}
+        {/* grok says what went wrong, or a passing note, in one quiet line just above the message box; at the top it ran
+            into the transcript's first time stamp */}
+        <div className="pointer-events-auto"><ChatNotice notice={state.notice} /></div>
+        <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
+        <div className="pointer-events-auto"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
+        <div className="pointer-events-auto">{canWrite !== false && !trailing?.failures.length && !trailing?.notices.length && <ComposerSignInNotice bot={bot} />}</div>
+        <div className="pointer-events-auto">{!trailing?.failures.length && <ScreenAccessNotice bot={bot} />}</div>
+      </ComposerNoticeSlot>
       {liveCallEnabled() && <LiveCallBar bot={bot} />}
       {canWrite === false ? (
         <NewConversationInstead bot={bot} onNew={() => dispatch({ type: "newTask", botId: bot.id })} />

@@ -53,7 +53,8 @@ import { localSystemVoiceActive } from "@/lib/local-voice";
 import { isCancelledTranscriptRow } from "../../shared/client-cancel";
 import { botEngine, failedTurnCause } from "@/lib/failed-turn";
 import { RoomComposer } from "./bot-access/RoomComposer";
-import { ChatErrorBanner, ChatNotice } from "./ChatErrorBanner"; import { FailedReplyCard, FoldedNoticesContext, foldedNoticeIds, useTrailingRows } from "./FailedReplyCard";
+import { ChatErrorBanner, ChatNotice } from "./ChatErrorBanner"; import { ComposerNoticeSlot } from "./ComposerNoticeSlot";
+import { FailedReplyCard, FoldedNoticesContext, foldedNoticeIds, useTrailingRows } from "./FailedReplyCard";
 import { RoomContextWarnings } from "./ContextWarning";
 import { ChatFindBar } from "./ChatFindBar";
 import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "../../shared/system-message-guard.ts";
@@ -1129,11 +1130,13 @@ export function GroupView({ group: room }: { group: Group }) {
           <JumpToLatestButton onClick={jumpToLatest} className="pointer-events-auto bottom-2" />
         </div>
       )}
-      <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
-      {/* one card above the composer: what went wrong first, else who the person stopped */}
-      <div className="pointer-events-auto">{trailing?.failures.length || trailing?.notices.length || setupPending || group.dm
-        ? <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />
-        : <RoomHoldsBanner group={group} members={members} />}</div>
+      <ComposerNoticeSlot>
+        <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
+        {/* one card above the composer: what went wrong first, else who the person stopped */}
+        <div className="pointer-events-auto">{trailing?.failures.length || trailing?.notices.length || setupPending || group.dm
+          ? <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />
+          : <RoomHoldsBanner group={group} members={members} />}</div>
+      </ComposerNoticeSlot>
       {!(phone && setupPending) && <RoomComposer
         key={group.threadId}
         group={group}
