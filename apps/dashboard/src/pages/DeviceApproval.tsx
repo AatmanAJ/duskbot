@@ -4,7 +4,6 @@ import { useCloud } from "../data/cloud";
 import { useSession } from "../data/session";
 import { api, ApiError } from "../lib/api";
 import { navigate, useLocation } from "../lib/router";
-import { PRELAUNCH } from "../lib/prelaunch";
 import { Button, ButtonLink, Card } from "../ui/kit";
 import { Mascot } from "../ui/Mascot";
 import { SkyEmpty } from "../ui/Sky";
@@ -70,10 +69,9 @@ export function DeviceApprovalPage() {
           if (cloud.account && !cloud.account.profile.onboarded) await cloud.finishOnboarding().catch(() => {});
           navigate(found.next, { replace: true }); return;
         }
-        // the app notices the sign-in on its own (it polls). a new account goes on with the usual first steps (name, plan)
-        // minus getting the app, which they are in; anyone else gets a clear "you're signed in" with the way back to the app
-        // instead of the dashboard, which they did not come for
-        if (found.created && !PRELAUNCH) { try { sessionStorage.setItem(FROM_APP_KEY, "1"); } catch {} navigate("/", { replace: true }); return; }
+        // the app notices the sign-in on its own (it polls) and runs its own first steps, so a new account never starts a
+        // second setup here: everyone gets "you're signed in" with the way back to the app
+        if (found.created && cloud.account && !cloud.account.profile.onboarded) await cloud.finishOnboarding().catch(() => {});
         setState("approved");
       }
       else { await api.deviceDeny(found.userCode); setState("denied"); }
@@ -92,7 +90,7 @@ export function DeviceApprovalPage() {
         ) : state === "approved" ? (
           <>
             <h1 className="text-20 font-medium text-ink">you're signed in</h1>
-            <p className="mt-1.5 text-14 leading-[1.55] text-ink-3">{found.device.name} signs itself in, there's nothing else to do here. open dusk bot when you like, or close this tab.</p>
+            <p className="mt-1.5 text-14 leading-[1.55] text-ink-3">go back to dusk bot. {found.device.name} signs itself in, there's nothing else to do here.</p>
             <div className="mt-6 flex flex-wrap gap-2">
               <a href={APP_LINK} data-back-to-app="" className="press hover-btn inline-flex h-10 items-center rounded-full bg-ink px-4.5 text-14 font-medium text-bg">open dusk bot</a>
             </div>

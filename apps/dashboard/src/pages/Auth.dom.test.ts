@@ -75,6 +75,16 @@ test("the emailed link with its attempt in the query signs in the same way", asy
   expect(verify).toHaveBeenCalledWith(attempt, "12345678");
 });
 
+test("the desktop app's emailed link says one click finishes it, and its beat points at the app, not the bots", async () => {
+  const attempt = "d".repeat(43);
+  history.replaceState(null, "", `/sign-in?attempt=${attempt}&next=${encodeURIComponent("/cloud/desktop?code=ABCD-1234")}#code=12345678`);
+  const host = await render();
+  expect(host.textContent).toContain("one click signs you in, then dusk bot carries on by itself.");
+  await act(async () => button(host, "sign in")!.click());
+  expect(host.textContent).toContain("finishing in dusk bot.");
+  expect(host.textContent).not.toContain("taking you to your bots.");
+});
+
 test("a malformed link is ignored and the page starts at sign-in", async () => {
   history.replaceState(null, "", "/sign-in#attempt=short&code=12");
   const host = await render();

@@ -118,6 +118,8 @@ export function AuthScreen({ mode, note, forApp = false }: { mode: Mode; note?: 
   // signed out on a page like /cloud/desktop?code= or /claim: come back to it after signing in
   const here = ["/sign-in", "/signin", "/signup", "/welcome"].includes(appPath(window.location.pathname)) ? "/" : `${appPath(window.location.pathname)}${window.location.search}`;
   const home = intent ? `/welcome?${planQuery(intent)}` : next && next.startsWith("/") && !next.startsWith("//") ? next : here;
+  // the desktop app's emailed link: signing in here approves the app, which goes on by itself
+  const desktop = home.startsWith("/cloud/desktop?");
   // the one-time link of a "trouble signing in?" email: its code waits behind a click, so a mail scanner opening it signs nobody in
   const [linked] = useState(() => { const hash = new URLSearchParams(window.location.hash.slice(1)), a = hash.get("attempt") ?? query.get("attempt"), c = hash.get("code"); return a && LINK_ATTEMPT.test(a) && c && /^\d{8}$/.test(c) ? { attempt: a, code: c } : null; });
   const [step, setStep] = useState<Step>(linked ? "code" : "start");
@@ -258,7 +260,7 @@ export function AuthScreen({ mode, note, forApp = false }: { mode: Mode; note?: 
       {step === "done" ? (
         <div key="done" className="step-in" role="status">
           <h1 className="t-title">you're signed in.</h1>
-          <p className="mt-3 text-16 text-ink-2">taking you to your bots.</p>
+          <p className="mt-3 text-16 text-ink-2">{desktop ? "finishing in dusk bot." : "taking you to your bots."}</p>
         </div>
       ) : step === "start" ? (
         <div key="start" className="step-in">
@@ -307,7 +309,7 @@ export function AuthScreen({ mode, note, forApp = false }: { mode: Mode; note?: 
       ) : (
         <form key="code" className="step-in" noValidate onSubmit={(e) => { e.preventDefault(); if (attempt) void verify(); else void send(recovering, true); }}>
           <h1 className="t-title">{linked && !sentTo ? "your link is ready." : "check your email."}</h1>
-          <p className="mt-3 text-16 text-ink-2">{linked && !sentTo ? "it signs you in once, and works for 10 minutes."
+          <p className="mt-3 text-16 text-ink-2">{linked && !sentTo ? desktop ? "one click signs you in, then dusk bot carries on by itself." : "it signs you in once, and works for 10 minutes."
             : recovering ? <>if an account uses <span className="text-ink [overflow-wrap:anywhere]">{sentTo}</span>, we sent a link and {length === 8 ? "an" : "a"} {length}-digit code. it works for 10 minutes.</>
             : <>we sent {length === 8 ? "an" : "a"} {length}-digit code to <span className="text-ink [overflow-wrap:anywhere]">{sentTo}</span>. it works for 10 minutes.</>}</p>
           <label htmlFor="code" className="mb-2 mt-7 block text-14 text-ink-2">code</label>

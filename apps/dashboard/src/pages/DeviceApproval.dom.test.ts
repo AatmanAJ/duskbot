@@ -10,9 +10,11 @@ const state = vi.hoisted(() => ({
   approve: vi.fn(async (_code: string) => ({})),
   deny: vi.fn(async (_code: string) => ({})),
   moved: [] as string[],
+  account: null as { profile: { onboarded: boolean } } | null,
+  finish: vi.fn(async () => {}),
 }));
 vi.mock("../data/session", () => ({ useSession: () => ({ account: { id: "a", email: "person@qa.dusk.test" }, toast: () => {} }) }));
-vi.mock("../data/cloud", () => ({ useCloud: () => ({ account: null, finishOnboarding: async () => {} }) }));
+vi.mock("../data/cloud", () => ({ useCloud: () => ({ account: state.account, finishOnboarding: state.finish }) }));
 vi.mock("../lib/flow-note", () => ({ setFlowNote: () => {} }));
 vi.mock("../lib/router", () => ({ useLocation: () => ({ query: new URLSearchParams("code=ABCD-1234") }), navigate: (path: string) => void state.moved.push(path) }));
 vi.mock("../lib/api", () => ({
@@ -54,10 +56,16 @@ test("deny is a quiet text action after the approve button, not a second button"
   expect(host.textContent).toContain("sign-in denied");
 });
 
-test("a brand new account carries on to its first steps instead", async () => {
+test("a brand new account from the app gets the way back to the app, never a second setup on the website", async () => {
   state.found = { ...state.found, created: true };
+  state.account = { profile: { onboarded: false } };
   const host = await open();
   await act(async () => press(host, "approve").click());
-  expect(state.moved).toEqual(["/"]);
+  expect(state.moved, "no website onboarding").toEqual([]);
+  expect(state.finish, "the app's first run is this account's first run").toHaveBeenCalledOnce();
+  expect(host.textContent).toContain("you're signed in");
+  expect(host.textContent).toContain("go back to dusk bot");
+  expect(host.querySelector("[data-back-to-app]")?.textContent).toBe("open dusk bot");
   state.found = { device: { name: "Siddharth's Mac", platform: "macOS" }, userCode: "ABCD-1234", expiresAt: 0 };
+  state.account = null;
 });
