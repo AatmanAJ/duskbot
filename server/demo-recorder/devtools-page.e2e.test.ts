@@ -1,17 +1,19 @@
 // A task shown in a browser that dusk bot's own driver does not run, reached as the older engine's browser is: over a
 // DevTools socket of its own. The person's input arrives as that engine's view sends it.
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { DemoPlan } from "../../shared/demo-recording.ts";
 import { connectCdp, type Cdp } from "../browser-sites.ts";
+import { chromeEnv } from "../browser/chrome/flags.ts";
 import { sandboxDisabled } from "../browser/chrome/host-setup.ts";
 import { credentialStoreFlags } from "../browser/egress/gate.ts";
 import { FixtureServer } from "../browser/cdp/testing/fixtures.ts";
-import { CHROME, testRoot } from "../browser/cdp/testing/real-chrome.ts";
+import { CHROME, HOST, testRoot } from "../browser/cdp/testing/real-chrome.ts";
 import { until } from "../browser/testing/real-service.ts";
 import { liveDemoInputOf, type DemoTap } from "../browser/viewers/demo-tap.ts";
 import { removeTempDir, waitForExit } from "../testing/cleanup.ts";
@@ -28,6 +30,36 @@ import { decodePng, pixelAt } from "./testing/png.ts";
 import { PORTAL_HTML, receiptFiles } from "./testing/portal-page.ts";
 
 const suite = CHROME ? describe : describe.skip;
+
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
+  const { port } = server.address() as { port: number };
+  await new Promise((closed) => server.close(closed));
+  return port;
+}
+
+/**
+ * Where a Chrome started with a debugging port answers DevTools: asked of the port itself, as the older engine's
+ * browser is found, or read from what Chrome prints. Says what Chrome printed when it ends or never answers.
+ */
+async function devToolsAddress(chrome: ChildProcess, port: number, timeoutMs: number): Promise<string> {
+  let printed = "";
+  let ended: string | null = null;
+  chrome.stderr?.on("data", (chunk: Buffer) => { printed = (printed + chunk.toString("utf8")).slice(-4_000); });
+  chrome.once("exit", (code, signal) => { ended = `exit ${code ?? signal}`; });
+  chrome.once("error", (error) => { ended = error.message; });
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const listening = /DevTools listening on (ws:\/\/\S+)/.exec(printed)?.[1];
+    if (listening) return listening;
+    const answer = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(2_000) }).then((response) => response.json() as Promise<{ webSocketDebuggerUrl?: string }>, () => null);
+    if (answer?.webSocketDebuggerUrl) return answer.webSocketDebuggerUrl;
+    if (ended !== null) throw new Error(`Chrome ended before its DevTools answered (${ended}). It printed: ${printed || "nothing"}`);
+    if (Date.now() > deadline) throw new Error(`Chrome's DevTools did not answer on port ${port} in ${timeoutMs} ms. It printed: ${printed || "nothing"}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
 const PASSWORD = "harbor-demo-pass";
 
 suite("a task shown over a DevTools socket, on real Chrome", () => {
@@ -44,14 +76,12 @@ suite("a task shown over a DevTools socket, on real Chrome", () => {
     fx.page("/portal.html", PORTAL_HTML);
     profile = mkdtempSync(join(testRoot(), "dusk-demo-devtools-"));
     frames = mkdtempSync(join(testRoot(), "dusk-demo-devtools-frames-"));
+    const port = await freePort();
     chrome = spawn(CHROME!, [
-      "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check", "--window-size=1280,800",
+      "--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${join(profile, "profile")}`, "--no-first-run", "--no-default-browser-check", "--window-size=1280,800",
       ...credentialStoreFlags(), ...(sandboxDisabled(process.env) ? ["--no-sandbox"] : []), "about:blank",
-    ], { stdio: "ignore" });
-    const active = join(profile, "DevToolsActivePort");
-    await until(() => existsSync(active) && readFileSync(active, "utf8").trim().split("\n").length >= 2, (ready) => ready, hostTimeout(60_000));
-    const [port, path] = readFileSync(active, "utf8").trim().split("\n");
-    address = `ws://127.0.0.1:${port}${path}`;
+    ], { stdio: ["ignore", "ignore", "pipe"], env: chromeEnv(process.env, { host: HOST }), windowsHide: true });
+    address = await devToolsAddress(chrome, port, hostTimeout(60_000));
     cdp = await connectCdp(address, hostTimeout(20_000));
     page = (await DevToolsPage.open(cdp))!;
     expect(page).toBeTruthy();

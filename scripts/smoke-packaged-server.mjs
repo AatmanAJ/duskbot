@@ -281,7 +281,8 @@ if (listening) {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ password: "packaged-fixture-password-only" }), signal: AbortSignal.timeout(30_000),
     });
-    assert.equal(response.status, 200, "Packaged backup worker did not export successfully");
+    const refused = response.status === 200 ? "" : (await response.text()).slice(0, 600);
+    assert.equal(response.status, 200, `Packaged backup worker did not export successfully: ${refused}`);
     const archive = await response.json();
     assert.equal(archive.summary.format, "dusk.workspace-backup");
     const download = await fetch(`http://127.0.0.1:${port}/api/workspace-backup/download/${archive.id}`);
