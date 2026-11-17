@@ -1,5 +1,5 @@
 // The one MCP host in the harness: its mounts and how each answers. Engines that reach MCP servers by URL get dusk bot's
-// own servers here instead of a relay process per server per warm engine (docs/mcp-host.md).
+// own servers here instead of a relay process per server per warm engine.
 import { agentsMcp } from "../drivers/agents-mcp.ts";
 import { TOOL_BRIDGE_ENV } from "../drivers/agents-bridge.ts";
 import type { Json } from "../drivers/agents-client.ts";
@@ -99,11 +99,11 @@ export class McpHost {
     return { type: "http", url: `${this.origin}${MCP_HOST_PATH}${spec.name}`, headers: { Authorization: `Bearer ${token}`, ...mountIdentity(spec) } };
   }
 
-  /** Drops the state of a thread's mounts of `name`, so their next request starts afresh: a new broker was bound for
-   * the thread, and a connection to the old one would only ever hear that its turn had ended. */
-  restart(threadId: string, name: string): void {
+  /** Drops the state of the permission mounts on `socketPath`, so their next ask connects afresh: a new broker was bound
+   * there, and a connection to the old one would only ever hear that its turn had ended. */
+  restartBroker(socketPath: string): void {
     for (const mount of this.registry.mounts()) {
-      if (mount.threadId !== threadId || mount.name !== name) continue;
+      if (mount.server.kind !== "permission" || mount.server.socketPath !== socketPath) continue;
       const state = mount.state;
       mount.state = undefined;
       this.answers.delete(mount);

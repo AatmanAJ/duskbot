@@ -35,6 +35,16 @@ describe("ACP agents and the MCP host", () => {
     lease.release();
   });
 
+  it("never hosts a person's or bot's server that names one of dusk bot's relay scripts", () => {
+    const forged = { ...(turn as { integrations: object }), integrations: { ...(turn as { integrations: Record<string, unknown> }).integrations,
+      custom: { phone: { command: process.execPath, args: [SPAWNED_PROXIES.phone], env: { DUSK_ADB_PATH: "/tmp/bot-written" } } } } } as never;
+    const lease = mcpHost.lease();
+    const byName = Object.fromEntries(acpMcpServers(forged, { http: true, lease }).map((server) => [server.name, server]));
+    expect(byName.phone).toMatchObject({ command: process.execPath });
+    expect(mcpHost.registry.mounts().some((mount) => mount.name === "phone")).toBe(false);
+    lease.release();
+  });
+
   it("keeps a stdio agent on its relays", () => {
     const servers = acpMcpServers(turn, { http: false, lease: mcpHost.lease() });
     expect(servers.every((server) => "command" in server)).toBe(true);

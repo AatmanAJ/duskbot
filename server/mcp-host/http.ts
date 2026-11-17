@@ -58,7 +58,7 @@ export function createMcpHostRoutes(host: McpHost, options: { keepAliveMs?: numb
     const answer = host.answer(mount);
     const replies = Promise.all((frames as Json[]).map((frame) => answer(frame, stop.signal)))
       .then((all) => all.filter((reply) => reply !== undefined));
-    const settled = replies.then(() => true);
+    const settled = replies.then(() => true, () => true);
     const streams = acceptsEvents(req) && (frames as Json[]).some((frame) => frame.method === "tools/call")
       && !(await Promise.race([settled, new Promise<false>((resolve) => setTimeout(() => resolve(false), options.streamAfterMs ?? host.streamAfterMs).unref?.())]));
     if (!streams) {

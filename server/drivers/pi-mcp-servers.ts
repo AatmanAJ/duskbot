@@ -5,6 +5,7 @@ import type { SendTurnInput } from "../contracts.ts";
 import { appMountFor, customServerGate, gateServer, mcpStdioServer } from "../mcp-gate-config.ts";
 import { remoteMcpSpec } from "../mcp-http.ts";
 import { SPAWNED_PROXIES } from "../proxy-paths.ts";
+import { mcpHost } from "../mcp-host/host.ts";
 import type { MountLease } from "../mcp-host/mounts.ts";
 import { hostMcpServers } from "./engine-mcp-host.ts";
 
@@ -49,5 +50,18 @@ export function buildMcpServers(turn: SendTurnInput, lease?: MountLease): Record
     servers[name] = { ...stdio, ...(original.scope ? { scope: original.scope } : {}), ...(directory ? { directory: true } : {}) };
   }
   if (!Object.keys(servers).length) return null;
-  return lease ? hostMcpServers({ servers, threadId: turn.threadId, lease, keep: ["scope", "directory"] }).servers : servers;
+  if (!lease) return servers;
+  const own = new Set(Object.keys(servers).filter((name) => !Object.hasOwn(turn.integrations?.custom ?? {}, name)));
+  return hostMcpServers({ servers, own, threadId: turn.threadId, lease, keep: ["scope", "directory"] }).servers;
+}
+
+/** buildMcpServers on the host when it is on, with the lease the turn gives back when its pi process is gone. */
+export function hostedPiMcpServers(turn: SendTurnInput, env: Record<string, string | undefined>): { servers: Record<string, unknown> | null; lease?: MountLease } {
+  const lease = mcpHost.enabled(env) ? mcpHost.lease() : undefined;
+  try {
+    return { servers: buildMcpServers(turn, lease), ...(lease ? { lease } : {}) };
+  } catch (err) {
+    lease?.release();
+    throw err;
+  }
 }

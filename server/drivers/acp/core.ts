@@ -3,6 +3,7 @@
 // session/load replays history as ordinary session/update notifications, so nothing emits before
 // the prompt is sent and `_meta.isReplay` updates are dropped. Permissions fail closed: only an
 // `allow`-kind option approves, and option order is never a security contract.
+import { SESSION_BYTES } from "../../engine-memory.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { lstat, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
@@ -71,7 +72,7 @@ import { armIdleClose, engineIdleMs, sessionIdlePolicy, stopIdleClose } from "..
 import { classifyError } from "../retry.ts";
 import { engineFailureKind, engineFailureMessage, stopCause } from "../engine-errors.ts";
 import { narrowsNativeTools, parseToolScope } from "../../../shared/tool-scope.ts";
-import { acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { mcpHost } from "../../mcp-host/host.ts"; import type { MountLease } from "../../mcp-host/mounts.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
+import { acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { mcpHost } from "../../mcp-host/host.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
 import { learnedToolCountLimit, mcpToolBudget, retryUnderToolLimit } from "../../tool-count-limit.ts"; import { instanceEnvNames } from "../../bot-box/env.ts"; import { botBox } from "../../bot-box/box.ts";
 
 /** Failures fixed on the provider account, not by retrying; the reporting process stays pooled. */
@@ -388,8 +389,6 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       }
       const active = new Map<string, Turn>();
       const sessions = new Map<string, AcpSession>();
-      // Each thread's holds on the MCP host's mounts, for the agent session its servers were given to.
-      const hostLeases = new Map<string, MountLease>();
     // Retain every closing Qwen child until its tree is gone: closing drops the pool entry, not its native writer lease.
       const retiring = new Map<string, Set<ReturnType<typeof spawnCli>>>();
       const retireChild = async (threadId: string, child: ReturnType<typeof spawnCli>): Promise<boolean> => {
@@ -409,8 +408,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         const session = sessions.get(threadId);
         if (!session || session.closing) return;
         session.closing = true;
-        hostLeases.get(threadId)?.release();
-        hostLeases.delete(threadId);
+        session.hostLease?.release();
         stopIdleClose(`${instanceId}\0${threadId}`, session.idleTimer);
         appendNative(threadId, { dir: "out", source: SOURCE, msg: { close: why } });
         sessions.delete(threadId);
@@ -480,8 +478,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         if (session.idleTimer) clearTimeout(session.idleTimer);
         session.idleTimer = armIdleClose(`${instanceId}\0${threadId}`, engineIdleMs(threadId, sessionIdle), { close: () => closeSession(threadId, "idle"),
           idle: () => sessions.get(threadId) === session && !session.closing && !session.current,
-          // A process other threads share is no one thread's to measure.
-          pid: () => support.shareProcess ? undefined : session.child.pid });
+          // A process other threads share is no one thread's to measure: a session there costs what one session adds.
+          pid: () => support.shareProcess ? undefined : session.child.pid, ...(support.shareProcess ? { estimate: SESSION_BYTES } : {}) });
       };
     // Session allows the driver keeps when the agent offered no `allow_always`: exact operations per
     // thread, for the native session's life. A generic title with no input is never remembered.
@@ -1093,11 +1091,15 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         const hostLease = support.ownMcpOverHttp === true && mcpHost.enabled(env) ? mcpHost.lease() : undefined;
         const mcpServers = acpMcpServers(turn, { http: support.ownMcpOverHttp === true, engine: support.driverKind, lease: hostLease,
           toolBudget: mcpToolBudget(learnedToolCountLimit(toolLimitKey), support.engineTools ?? 32) });
-        // This turn's holds first, so a mount both turns name keeps its bearer; a session the old ones served is done.
-        const heldBefore = hostLeases.get(threadId);
-        if (hostLease) hostLeases.set(threadId, hostLease);
-        else hostLeases.delete(threadId);
-        heldBefore?.release();
+        // The agent session handed these bearers holds them; one that already holds the same set lets this turn's go.
+        let leaseAdopted = false;
+        const adoptLease = (target: AcpSession) => {
+          leaseAdopted = true;
+          if (!hostLease || target.hostLease === hostLease) return;
+          const previous = target.hostLease;
+          target.hostLease = hostLease;
+          previous?.release();
+        };
         support.applyTurnEnv?.(env, {
           model: resolvedModel, requestedModel: turn.model, fullAuto: turnConfig.fullAuto === true, botId: turn.botId, cwd, toolScope: turn.toolScope,
           threadId, mcpServers,
@@ -1351,6 +1353,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                         loaded = true;
                         session.sessionId = cursor;
                         session.sessionKey = sessionKey;
+                        adoptLease(session);
                         receiveModelVariants(result, true);
                       }
                     },
@@ -1390,10 +1393,12 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
               await request("session/new", { cwd, mcpServers: support.mcpServersFromLaunch ? [] : mcpServers, ...selectionParams }, NEW_SESSION_TIMEOUT, (result) => {
                 session.sessionId = typeof result?.sessionId === "string" ? result.sessionId : null;
                 session.sessionKey = sessionKey;
+                adoptLease(session);
                 receiveModelVariants(result, true);
               });
               break;
             }
+            if (!leaseAdopted) hostLease?.release();
             const sessionId = session.sessionId;
             if (sessionId === null) throw new Error("session/new returned no sessionId");
             let selectedModel: string | null = null;

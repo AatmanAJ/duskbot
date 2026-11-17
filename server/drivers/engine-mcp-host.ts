@@ -33,10 +33,13 @@ export interface HostedMcpServers {
   hosted: string[];
 }
 
-/** `servers` with every hostable entry mounted for `threadId` under `lease`. The same settings get the same bearer while
- * the lease's mounts are held. */
+/** `servers` with every hostable entry of `own` mounted for `threadId` under `lease`. The same settings get the same
+ * bearer while the lease's mounts are held. */
 export function hostMcpServers(input: {
   servers: Readonly<Record<string, unknown>>;
+  /** Security: only the servers the harness itself built for this turn. A bot's or the person's own server that names a
+   * relay script would otherwise run in the harness, outside the bot box, with settings the bot chose. */
+  own: ReadonlySet<string>;
   threadId: string;
   lease: MountLease;
   host?: McpHost;
@@ -50,7 +53,7 @@ export function hostMcpServers(input: {
   const hosted: string[] = [];
   for (const [name, spec] of Object.entries(input.servers)) {
     const gate = input.gated === false ? null : scopeGated(spec, name);
-    const server = hostedRelay(gate ? gate.upstream : spec);
+    const server = input.own.has(name) ? hostedRelay(gate ? gate.upstream : spec) : null;
     if (!server) {
       servers[name] = spec;
       continue;
@@ -64,4 +67,35 @@ export function hostMcpServers(input: {
     hosted.push(name);
   }
   return { servers, hosted };
+}
+
+/** Claude's turn: `servers` (its --mcp-config, changed in place) with dusk bot's own relays on the host; `duskServer` for a
+ * broker that bound another socket than planned; `pingDusk` for a keep-warm fork, listing the same tools and reaching no
+ * broker. Without `enabled` every server keeps its relay. */
+export function hostClaudeMcpServers(input: {
+  servers: Record<string, unknown>;
+  /** The bot's own and its project's servers: never hosted. */
+  botOwned: ReadonlySet<string>;
+  threadId: string;
+  duskRelay: (socketPath: string) => Record<string, unknown>;
+  socketPath: string;
+  enabled: boolean;
+  host?: McpHost;
+}): { lease: MountLease | null; hosted: ReadonlySet<string>; duskServer: (socketPath: string) => unknown; pingDusk?: unknown } {
+  const host = input.host ?? mcpHost;
+  const hosted = new Set<string>();
+  if (!input.enabled) return { lease: null, hosted, duskServer: input.duskRelay };
+  const lease = host.lease();
+  const own = new Set(Object.keys(input.servers).filter((name) => !input.botOwned.has(name)));
+  const result = hostMcpServers({ servers: input.servers, own, threadId: input.threadId, lease, host, keep: ["alwaysLoad"] });
+  for (const name of Object.keys(input.servers)) delete input.servers[name];
+  Object.assign(input.servers, result.servers);
+  for (const name of result.hosted) hosted.add(name);
+  if (!hosted.has("dusk")) return { lease, hosted, duskServer: input.duskRelay };
+  const duskServer = (socketPath: string) =>
+    hostMcpServers({ servers: { dusk: input.duskRelay(socketPath) }, own: new Set(["dusk"]), threadId: input.threadId, lease, host, keep: ["alwaysLoad"] }).servers.dusk;
+  const relay = hostedRelay(input.duskRelay(input.socketPath));
+  const pingDusk = relay?.kind === "permission"
+    ? { ...host.entry(lease, { threadId: input.threadId, name: "dusk", server: { ...relay, socketPath: null } }), alwaysLoad: true } : undefined;
+  return { lease, hosted, duskServer, ...(pingDusk ? { pingDusk } : {}) };
 }

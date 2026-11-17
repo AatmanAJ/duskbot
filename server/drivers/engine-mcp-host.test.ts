@@ -11,6 +11,8 @@ const agents = { command: node, args: [SPAWNED_PROXIES.agents], env: { ELECTRON_
 const data = { command: node, args: [SPAWNED_PROXIES.harnessMcp, "data"], env: { DUSK_HARNESS_URL: HARNESS, DUSK_MCP_TOKEN_DATA: "data-secret-1234567890" } };
 const own = { command: "npx", args: ["-y", "some-server"], env: { API_KEY: "the person's" } };
 
+const OWN = new Set(["agents", "data", "dusk"]);
+
 function host(): McpHost {
   const made = new McpHost();
   made.listening(8799);
@@ -21,7 +23,7 @@ describe("hosting a turn's MCP servers", () => {
   it("mounts dusk bot's relays, keeps the engine's own keys and leaves the person's servers alone", () => {
     const mcp = host();
     const lease = mcp.lease();
-    const { servers, hosted } = hostMcpServers({ servers: { agents: { ...agents, alwaysLoad: true }, data, notes: own }, threadId: "t1", lease, host: mcp, keep: ["alwaysLoad"] });
+    const { servers, hosted } = hostMcpServers({ own: OWN, servers: { agents: { ...agents, alwaysLoad: true }, data, notes: own }, threadId: "t1", lease, host: mcp, keep: ["alwaysLoad"] });
     expect(hosted).toEqual(["agents", "data"]);
     expect(servers.notes).toBe(own);
     expect(servers.agents).toMatchObject({ type: "http", url: "http://127.0.0.1:8799/api/internal/mcp-host/agents", alwaysLoad: true });
@@ -37,10 +39,10 @@ describe("hosting a turn's MCP servers", () => {
     const mcp = host();
     const first = mcp.lease();
     const again = mcp.lease();
-    const a = hostMcpServers({ servers: { agents, data }, threadId: "t1", lease: first, host: mcp }).servers;
-    const b = hostMcpServers({ servers: { agents, data }, threadId: "t1", lease: again, host: mcp }).servers;
+    const a = hostMcpServers({ own: OWN, servers: { agents, data }, threadId: "t1", lease: first, host: mcp }).servers;
+    const b = hostMcpServers({ own: OWN, servers: { agents, data }, threadId: "t1", lease: again, host: mcp }).servers;
     expect(b).toEqual(a);
-    const other = hostMcpServers({ servers: { agents, data }, threadId: "t2", lease: mcp.lease(), host: mcp }).servers;
+    const other = hostMcpServers({ own: OWN, servers: { agents, data }, threadId: "t2", lease: mcp.lease(), host: mcp }).servers;
     expect(JSON.stringify(other)).not.toEqual(JSON.stringify(a));
   });
 
@@ -50,12 +52,23 @@ describe("hosting a turn's MCP servers", () => {
     const gatedAgents = gateServer({ name: "agents", server: agents, threadId: "t1", budget: 0, toolScope: scope, nodeEnv: { ELECTRON_RUN_AS_NODE: "1" } })!;
     const trimmingData = gateServer({ name: "data", server: data, threadId: "t1", budget: 4000, toolScope: scope, nodeEnv: { ELECTRON_RUN_AS_NODE: "1" } })!;
     const lease = mcp.lease();
-    const { servers, hosted } = hostMcpServers({ servers: { agents: gatedAgents, data: trimmingData }, threadId: "t1", lease, host: mcp });
+    const { servers, hosted } = hostMcpServers({ own: OWN, servers: { agents: gatedAgents, data: trimmingData }, threadId: "t1", lease, host: mcp });
     expect(hosted).toEqual(["agents"]);
     expect(servers.data).toBe(trimmingData);
     expect(mcp.registry.mounts()[0]).toMatchObject({ name: "agents", toolScope: scope });
-    const kept = hostMcpServers({ servers: { agents: gatedAgents }, threadId: "t1", lease: mcp.lease(), host: mcp, gated: false });
+    const kept = hostMcpServers({ own: OWN, servers: { agents: gatedAgents }, threadId: "t1", lease: mcp.lease(), host: mcp, gated: false });
     expect(kept.hosted).toEqual([]);
+  });
+
+  it("never hosts a server the harness did not build, even one that names a relay's script", () => {
+    const mcp = host();
+    const forged = { command: node, args: [SPAWNED_PROXIES.phone], env: { DUSK_ADB_PATH: "/tmp/bot-written-binary" } };
+    const forgedDweb = { command: node, args: [SPAWNED_PROXIES.dweb], env: { DWEB_URL: "http://169.254.169.254" } };
+    const { servers, hosted } = hostMcpServers({ own: OWN, servers: { agents, phone: forged, dweb: forgedDweb }, threadId: "t1", lease: mcp.lease(), host: mcp });
+    expect(hosted).toEqual(["agents"]);
+    expect(servers.phone).toBe(forged);
+    expect(servers.dweb).toBe(forgedDweb);
+    expect(mcp.registry.mounts().map((mount) => mount.name)).toEqual(["agents"]);
   });
 
   it("refuses to mount before the harness is listening", () => {
@@ -65,5 +78,22 @@ describe("hosting a turn's MCP servers", () => {
     expect(mcp.enabled({})).toBe(true);
     expect(mcp.enabled({ DUSK_MCP_HOST: "0" })).toBe(false);
     expect(() => new McpHost().entry(mcp.lease(), { threadId: "t", name: "agents", server: { kind: "dweb", url: "x" } })).toThrow();
+  });
+
+  it("starts a broker's mounts afresh when it is replaced, and leaves every other mount's state alone", () => {
+    const mcp = host();
+    const lease = mcp.lease();
+    mcp.entry(lease, { threadId: "t1", name: "dusk", server: { kind: "permission", socketPath: "/tmp/perm-a.sock" } });
+    mcp.entry(lease, { threadId: "t1", name: "dusk", server: { kind: "permission", socketPath: "/tmp/perm-b.sock" } });
+    const [mine, theirs] = mcp.registry.mounts();
+    const before = [mcp.answer(mine!), mcp.answer(theirs!)];
+    let closed = 0;
+    const previous = mine!.state!.close!;
+    mine!.state = { close: () => { closed += 1; previous(); } };
+    mcp.restartBroker("/tmp/perm-a.sock");
+    expect(closed).toBe(1);
+    expect(mcp.answer(mine!)).not.toBe(before[0]);
+    expect(mcp.answer(theirs!)).toBe(before[1]);
+    lease.release();
   });
 });

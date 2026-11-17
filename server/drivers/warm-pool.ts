@@ -27,6 +27,8 @@ export interface PooledEngine {
   close: () => void;
   /** The engine's own process; its tree (the engine and every MCP server it started) is what it costs. */
   pid?: () => number | undefined;
+  /** What it costs when it has no process of its own to measure: a session in a process other threads share. */
+  estimate?: number;
 }
 
 interface Pooled {
@@ -81,7 +83,7 @@ export class WarmPool {
   /** What the idle engines take, measured where they have been. */
   bytes(): number {
     let total = 0;
-    for (const pooled of this.engines.values()) total += pooled.bytes ?? UNMEASURED_ENGINE_BYTES;
+    for (const pooled of this.engines.values()) total += pooled.bytes ?? pooled.engine.estimate ?? UNMEASURED_ENGINE_BYTES;
     return total;
   }
 
@@ -112,7 +114,7 @@ export class WarmPool {
       if (this.engines.size <= 1 || (this.engines.size <= cap && this.bytes() <= budget)) break;
       if (key === newest) continue;
       this.engines.delete(key);
-      this.log(`warm engines: closed the longest idle (${Math.round((pooled.bytes ?? UNMEASURED_ENGINE_BYTES) / MB)} MB) to keep idle engines within ${Math.round(budget / MB)} MB`);
+      this.log(`warm engines: closed the longest idle (${Math.round((pooled.bytes ?? pooled.engine.estimate ?? UNMEASURED_ENGINE_BYTES) / MB)} MB) to keep idle engines within ${Math.round(budget / MB)} MB`);
       pooled.engine.close();
     }
   }

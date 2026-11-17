@@ -50,10 +50,9 @@ import { createOrgModelBlocks, modelSwapNotice, withOrgBlocks } from "./claude-m
 import { engineHomes } from "../engine-homes/engine-homes.ts";
 import { TEAM_TOOLS_FAILED, failedCustomMcp, teamToolsFailed } from "./team-tools.ts";
 import { armIdleClose, engineIdleMs, sessionIdlePolicy, stopIdleClose } from "./session-idle.ts";
-import { hostMcpServers } from "./engine-mcp-host.ts";
+import { hostClaudeMcpServers } from "./engine-mcp-host.ts";
 import { mcpHost } from "../mcp-host/host.ts";
 import type { MountLease } from "../mcp-host/mounts.ts";
-import { hostedRelay } from "../mcp-host/relays.ts";
 import { promptHalves, withVolatileNote } from "./prompt-split.ts"; import { CLAUDE_OWN_MEMORY_OFF } from "./claude-own-memory.ts";
 import { versionAtLeast } from "./acp/version-probe.ts";
 import { CLAUDE_FLAG_FLOORS, claudeCliHttpMcp, claudeCliSupports, parseClaudeCliVersion, type ClaudeCliVersion } from "./claude-cli-version.ts";
@@ -1137,24 +1136,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       allowed.push("mcp__dusk", ...gateQueryTools(mcpServers));
       // A guest pre-allows only harness tools; anything else (the browser can open file:) asks.
       if (turn.guestConfined) allowed.splice(0, allowed.length, ...allowed.filter((name) => name === "mcp__dusk" || name === "mcp__agents"));
-      // dusk bot's own relays become mounts of the harness's MCP host: no relay process per server in this engine.
-      const hostLease = mcpHost.enabled(turnEnvironment) && claudeCliHttpMcp(cliVersion) ? mcpHost.lease() : null;
-      const hostedNames = new Set<string>();
-      if (hostLease) {
-        const hosted = hostMcpServers({ servers: mcpServers, threadId, lease: hostLease, keep: ["alwaysLoad"] });
-        for (const name of Object.keys(mcpServers)) delete mcpServers[name];
-        Object.assign(mcpServers, hosted.servers);
-        for (const name of hosted.hosted) hostedNames.add(name);
-      }
       const duskRelay = (path: string) => ({ command: process.execPath, args: [PERM_PROXY_PATH, path], env: permissionEnv, alwaysLoad: true });
-      const duskServer = (path: string): unknown => hostLease && hostedNames.has("dusk")
-        ? hostMcpServers({ servers: { dusk: duskRelay(path) }, threadId, lease: hostLease, keep: ["alwaysLoad"] }).servers.dusk : duskRelay(path);
-      // A keep-warm fork lists the same dusk tools and reaches no broker.
-      const pingDusk = hostLease && hostedNames.has("dusk") ? (() => {
-        const relay = hostedRelay(duskRelay(socketPath));
-        return relay?.kind === "permission"
-          ? { ...mcpHost.entry(hostLease, { threadId, name: "dusk", server: { ...relay, socketPath: null } }), alwaysLoad: true } : undefined;
-      })() : undefined;
+      const { lease: hostLease, hosted: hostedNames, duskServer, pingDusk } = hostClaudeMcpServers({
+        servers: mcpServers, botOwned, threadId, duskRelay, socketPath, enabled: mcpHost.enabled(turnEnvironment) && claudeCliHttpMcp(cliVersion),
+      });
       // The MCP config carries credentials and argv is readable via `ps`: a 0600 file, removed at settle.
       let mcpConfigPath: string | null = null;
       if (Object.keys(mcpServers).length) {
@@ -1334,7 +1319,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
             throw new Error(serverLine(conversationLanguage(threadId), "server.claude.approvalChannel"), { cause: error });
           });
           if (broker.socketPath !== socketPath && mcpConfigPath) mcpServers.dusk = duskServer(broker.socketPath);
-          if (hostedNames.has("dusk")) mcpHost.restart(threadId, "dusk");
+          if (hostedNames.has("dusk")) mcpHost.restartBroker(broker.socketPath);
         }
 
         // Write once, only after the broker has selected its real endpoint.

@@ -44,8 +44,7 @@ import {
 } from "./local-inject.ts";
 import { appendNative } from "./native.ts";
 import { allowsTool, parseToolScope } from "../../shared/tool-scope.ts";
-import { buildMcpServers } from "./pi-mcp-servers.ts";
-import { mcpHost } from "../mcp-host/host.ts";
+import { hostedPiMcpServers } from "./pi-mcp-servers.ts";
 
 import { decodePiFrame, PiRpcChunks, piLineReader, readPiPromptImages } from "./pi-rpc.ts";
 import { PiRunUsage, type PiUsage, type TurnUsage } from "./pi-usage.ts";
@@ -467,25 +466,19 @@ export const PiDriver: ProviderDriver<PiConfig> = {
 
       // The MCP config carries credentials: a 0600 temp file removed at settle, never argv.
       // Written on every turn: the extension also carries ask_user.
-      const hostLease = mcpHost.enabled({ ...process.env, ...input.environment }) ? mcpHost.lease() : undefined;
-      let mcpServers: ReturnType<typeof buildMcpServers>;
-      try {
-        mcpServers = buildMcpServers(turn, hostLease);
-      } catch (err) {
-        hostLease?.release();
-        throw err;
-      }
+      const { servers: mcpServers, lease: hostLease } = hostedPiMcpServers(turn, { ...process.env, ...input.environment });
       const askUser = toolScope === undefined || allowsTool(toolScope, { kind: "native", name: ASK_USER_TOOL });
       const mcpTempDir = mkdtempSync(join(tmpdir(), "dusk-pi-mcp-"));
       const scopeReadyPath = toolScope !== undefined ? join(mcpTempDir, "scope-ready.json") : undefined;
+      const discardMcpConfig = () => {
+        hostLease?.release();
+        try { rmSync(mcpTempDir, { recursive: true, force: true }); } catch {}
+      };
       try {
         writeFileSync(join(mcpTempDir, "mcp.json"), JSON.stringify({ mcpServers: mcpServers ?? {}, toolScope, scopeReadyPath, approvalMode: turn.approvalMode, askUser }), { mode: 0o600 });
       } catch (err) {
-        hostLease?.release();
         // A partial file could still hold credentials.
-        try {
-          rmSync(mcpTempDir, { recursive: true, force: true });
-        } catch {}
+        discardMcpConfig();
         throw err;
       }
       const childArgs = [...PI_ARGS, "-e", SPAWNED_PROXIES.piMcpExtension];
@@ -503,10 +496,7 @@ export const PiDriver: ProviderDriver<PiConfig> = {
             }),
           }, "bot");
         } catch (err) {
-          hostLease?.release();
-          try {
-            rmSync(mcpTempDir, { recursive: true, force: true });
-          } catch {}
+          discardMcpConfig();
           throw err;
         }
       })();
@@ -567,11 +557,8 @@ export const PiDriver: ProviderDriver<PiConfig> = {
         completion = (async () => {
           // The TERM grace lets Pi end the detached tool processes it started; a CLI that ignores TERM is killed after it.
           if (!await killCliTree(child)) throw new Error("Pi process termination could not be confirmed");
-          hostLease?.release();
           rejectWaiters(new Error("pi turn ended"));
-          try {
-            rmSync(mcpTempDir, { recursive: true, force: true });
-          } catch {}
+          discardMcpConfig();
           active.delete(threadId);
           flushAssistantText();
           emit({

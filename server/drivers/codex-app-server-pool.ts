@@ -1,4 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { SESSION_BYTES } from "../engine-memory.ts";
 import { createHash } from "node:crypto";
 
 import { killCliTree } from "../procs.ts";
@@ -212,6 +213,7 @@ export class CodexAppServerPool {
       idle: () => !server.leased,
       close: () => { if (!server.leased) this.close(server); },
       pid: () => server.threads.size <= 1 ? server.child.pid : undefined,
+      estimate: SESSION_BYTES,
     });
   }
 

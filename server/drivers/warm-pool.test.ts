@@ -114,4 +114,11 @@ describe("the warm engine pool", () => {
     await pool.measure();
     expect(pool.bytes()).toBe(200 * MB);
   });
+
+  it("counts a session in a shared process at what one session adds, not a whole engine", () => {
+    const pool = new WarmPool({ budget: () => Infinity, table: async () => [], log: () => {} });
+    pool.add("a", { idle: () => true, close: () => {}, estimate: 200 * MB });
+    pool.add("b", { idle: () => true, close: () => {} });
+    expect(pool.bytes()).toBe(200 * MB + UNMEASURED_ENGINE_BYTES);
+  });
 });
