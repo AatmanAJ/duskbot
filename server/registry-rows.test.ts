@@ -117,3 +117,22 @@ it("reads the rows a server killed without closing left behind, while bots.json 
   const saved = readSavedBots<{ id: string; tasks: Array<{ threadId: string; title: string }> }>(DATA_DIR);
   expect(saved.find((bot) => bot.id === botId)?.tasks.find((task) => task.threadId === threadId)?.title).toBe("Saved before the kill");
 });
+
+it("waits for a lock another process still holds on the rows, rather than reading the older bots.json", async () => {
+  const store = new Store(selection);
+  const bot = store.createBot({ name: "Locked" }, { seedMessages: false });
+  const task = store.createTask(bot.id, "Saved before the lock", false)!;
+  closeRegistryDbs();
+  expect(readFileSync(join(DATA_DIR, "bots.json"), "utf8")).not.toContain(task.threadId);
+  const { spawn } = await import("node:child_process");
+  const holder = spawn(process.execPath, ["--input-type=module", "-e", `
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(${JSON.stringify(join(DATA_DIR, REGISTRY_DB_NAME))});
+    db.exec("PRAGMA locking_mode = EXCLUSIVE"); db.exec("BEGIN EXCLUSIVE"); db.exec("COMMIT");
+    process.stdout.write("locked");
+    setTimeout(() => db.close(), 700);`], { stdio: ["ignore", "pipe", "inherit"] });
+  await new Promise<void>((resolve) => holder.stdout.once("data", () => resolve()));
+  const saved = readSavedBots<{ id: string; tasks: Array<{ threadId: string; title: string }> }>(DATA_DIR);
+  await new Promise((resolve) => holder.once("close", resolve));
+  expect(saved.find((one) => one.id === bot.id)?.tasks.find((one) => one.threadId === task.threadId)?.title).toBe("Saved before the lock");
+});

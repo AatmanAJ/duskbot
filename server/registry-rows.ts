@@ -30,6 +30,13 @@ interface Connection {
 const connections = new Map<string, Connection>();
 let opened = 0;
 
+// Windows releases a killed process's locks on the database and its -shm file a moment after the process has exited.
+const LOCK_WAIT_MS = 5_000;
+const pause = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+// SQLITE_BUSY, SQLITE_LOCKED, and SQLITE_CANTOPEN, which a Windows sharing violation on those files gives.
+const LOCK_ERRORS = new Set([5, 6, 14]);
+const locked = (error: unknown) => LOCK_ERRORS.has((error as { errcode?: number }).errcode ?? -1);
+
 function connect(file: string): Connection {
   const held = connections.get(file);
   // A folder removed under an open database (a reset, a test) would take later writes into an unlinked file.
@@ -42,7 +49,7 @@ function connect(file: string): Connection {
   // Thread rows hold provider session ids: owner-only, repairing a permissive umask on an existing file too.
   closeSync(openSync(file, "a", 0o600));
   try { chmodSync(file, 0o600); } catch { /* windows has no modes */ }
-  const db = new DatabaseSync(file);
+  const db = new DatabaseSync(file, { timeout: LOCK_WAIT_MS });
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA synchronous = NORMAL");
   db.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -316,15 +323,17 @@ export function readSavedBots<Bot = Record<string, unknown>>(dataDir: string): B
   if (!existsSync(file)) return fromFile();
   const hash = registryFileHash(text);
   const read = (readOnly: boolean) => {
-    const db = new DatabaseSync(file, { readOnly });
+    const db = new DatabaseSync(file, { readOnly, timeout: LOCK_WAIT_MS });
     try { return readRowsMatching(db, hash)?.bots as Bot[] | undefined; } finally { db.close(); }
   };
-  try {
-    return read(true) ?? fromFile();
-  } catch {
-    // SQLite: a read-only connection cannot replay the write-ahead log a writer killed without closing left behind
-    // (SQLITE_READONLY_RECOVERY), as stopping a server on Windows does; a normal connection replays it and writes nothing else.
-    try { return read(false) ?? fromFile(); } catch { return fromFile(); }
+  for (const deadline = Date.now() + LOCK_WAIT_MS; ; pause(100)) {
+    try {
+      return read(true) ?? fromFile();
+    } catch {
+      // SQLite: a read-only connection cannot replay the write-ahead log a writer killed without closing left behind
+      // (SQLITE_READONLY_RECOVERY), as stopping a server on Windows does; a normal connection replays it and writes nothing else.
+      try { return read(false) ?? fromFile(); } catch (error) { if (!locked(error) || Date.now() > deadline) return fromFile(); }
+    }
   }
 }
 
