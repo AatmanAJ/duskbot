@@ -17,7 +17,7 @@ vi.mock("react", async (original) => {
     },
   };
 });
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(), api: fixture.api }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(), api: fixture.api }))(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });

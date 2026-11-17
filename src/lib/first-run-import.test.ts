@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const f = vi.hoisted(() => ({ api: vi.fn(), runBotMove: vi.fn() }));
-vi.mock("@/state/store", () => ({ api: f.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: f.api }))()));
 vi.mock("./bot-move", () => ({
   movable: (plan: { apps: Array<{ preview: { plans: unknown[] } }> }) => plan.apps.reduce((n, app) => n + app.preview.plans.length, 0),
   runBotMove: f.runBotMove,
@@ -106,7 +106,7 @@ describe("bringing the chosen in", () => {
     }));
     f.api.mockResolvedValue({ ok: true });
     f.runBotMove.mockResolvedValue([{ app: {}, report: { bots: [{ id: "a", memories: 0, notes: 0 }, { id: "b", memories: 0, notes: 0 }], moved: [], unreadable: [], failed: [] } }]);
-    const finds = localFinds(plan(app("OpenClaw", ["Atlas", "Juno"])), DETECTION).filter((find) => find.id !== "setup:cursor" && find.id !== "setup:codex");
+    const finds = localFinds(plan(app("OpenClaw", ["Atlas", "Juno"])), DETECTION, { now: NOW }).filter((find) => find.id !== "setup:cursor" && find.id !== "setup:codex");
     const run = bringChosen(finds, { dispatch: vi.fn(), firstBotId: "dusk", client: { detect: vi.fn(), apply }, memory: true });
     expect(bringRunNow()).toEqual({ kind: "working", ids: finds.map((find) => find.id), brought: [] });
     await run;

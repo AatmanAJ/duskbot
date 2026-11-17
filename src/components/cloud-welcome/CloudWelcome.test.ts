@@ -14,11 +14,11 @@ const fixture = vi.hoisted(() => ({
   plan: null as any,
   imported: null as null | (() => void),
 }));
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ state: fixture.state, dispatch: fixture.dispatch, refreshInstances: vi.fn() }),
   api: fixture.api,
-}));
+}))(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => null }));
 vi.mock("@/components/CloudTrialNotice", () => ({ useCloudPlanSnapshot: () => fixture.plan }));

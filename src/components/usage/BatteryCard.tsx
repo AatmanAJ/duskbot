@@ -6,7 +6,7 @@ import { fetchBattery, sharePercent, useLoadedState, type BatteryRow } from "@/l
 import { formatTokens } from "@/lib/usage";
 import { formatCost } from "@/lib/usage-trace";
 import { MASCOT_INK } from "@/lib/mascot";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { BotAvatar } from "../Avatar";
 import { Card as RowsCard, NavRow, NoteRow, rowCls } from "../ListRows";
 import { SpendCap } from "./SpendCap";
@@ -16,7 +16,7 @@ const SHOWN = 6;
 
 /** What used the last seven days, ranked like a phone's Battery screen: each bot with its routines under it. */
 export function BatteryCard({ version }: { version: number }) {
-  const { state } = useStore();
+  const allBots = useStoreSelector((s) => s.bots);
   const [saved, setSaved] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
   const [all, setAll] = useState(false);
@@ -27,7 +27,7 @@ export function BatteryCard({ version }: { version: number }) {
 
   const line = (row: BatteryRow, nested: boolean) => {
     const key = `${row.kind}:${row.id}`;
-    const bot = row.kind === "bot" ? state.bots.find((one) => one.id === row.id) : undefined;
+    const bot = row.kind === "bot" ? allBots.find((one) => one.id === row.id) : undefined;
     return (
       <li key={key}>
         <button type="button" aria-expanded={open === key} onClick={() => setOpen(open === key ? null : key)} data-battery-row={key}

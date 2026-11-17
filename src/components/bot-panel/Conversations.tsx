@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import { llmThreadTitlesEnabled } from "@/lib/feature-flags";
 import { activeLocale, t } from "@/lib/i18n";
 import { SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-media-query";
-import { api, currentTaskBot, openBotThread, useStore, visibleMessages, type Bot, type Message } from "@/state/store";
+import { api, currentTaskBot, openBotThread, useDispatch, useStoreSelector, visibleMessages, type Bot, type Message } from "@/state/store";
 import { lastLine } from "../sidebar-preview";
 import { isArchived, orderedThreadList, SidebarThreadRow, stampClock, threadRecency, threadRowActions, useRelativeNow } from "../SidebarThreadRow";
 import { filterTasks } from "../TaskPicker";
@@ -54,14 +54,16 @@ export function forgetConversationLines(): void {
 }
 
 export function BotConversations({ bot }: { bot: Bot }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const pendingQueued = useStoreSelector((s) => s.pendingQueued);
+  const instances = useStoreSelector((s) => s.instances);
+  const generatedTitles = useStoreSelector((s) => llmThreadTitlesEnabled(s.config));
   const now = useRelativeNow();
   const phone = !useMediaQuery(SIDEBAR_INLINE, true);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const generatedTitles = llmThreadTitlesEnabled(state.config);
   const actions = useMemo(() => {
     const { onRename, onRegenerateTitle, onDelete, onMove, onPin, onArchive } = threadRowActions(bot.id, dispatch, generatedTitles);
     return { onRename, onRegenerateTitle, onDelete, onMove, onPin, onArchive };
@@ -73,7 +75,7 @@ export function BotConversations({ bot }: { bot: Bot }) {
       const thread = currentTaskBot(bot, task.threadId);
       return {
         ...task, busy: thread.busy, activity: thread.activity, waitingForTeammates: thread.waitingForTeammates,
-        turnStartedAt: thread.turnStartedAt ?? undefined, queued: Boolean(state.pendingQueued[task.threadId]?.length),
+        turnStartedAt: thread.turnStartedAt ?? undefined, queued: Boolean(pendingQueued[task.threadId]?.length),
       };
     });
   const conversations = orderedThreadList(threads.filter((task) => !isArchived(task) || task.threadId === bot.threadId));
@@ -83,7 +85,7 @@ export function BotConversations({ bot }: { bot: Bot }) {
   const recent = useRecentMessages(bot, [...(needle || expanded ? conversations : collapsed), ...(showArchived ? archived : [])]);
   const preview = (threadId: string) => {
     const messages = recent(threadId);
-    return messages ? lastLine(currentTaskBot(bot, threadId), messages, state.instances) : undefined;
+    return messages ? lastLine(currentTaskBot(bot, threadId), messages, instances) : undefined;
   };
   const byTitle = filterTasks(conversations, needle);
   const matches = needle

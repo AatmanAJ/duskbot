@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Loader2, TriangleAlert } from "../../icons";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { putConfig } from "@/lib/sealed-send";
@@ -13,8 +13,9 @@ import { friendlyError } from "@/lib/plain-error";
 
 /** Security: write-only; the server returns names, never keys, and hands the keys to OpenCode alone. */
 export function OpenCodeProviderKeys() {
-  const { state, dispatch } = useStore();
-  const names = state.config?.opencodeGo?.providerKeys ?? [];
+  const dispatch = useDispatch();
+  const names = useStoreSelector((s) => s.config?.opencodeGo?.providerKeys) ?? [];
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome);
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [adding, setAdding] = useState(false);
@@ -53,7 +54,7 @@ export function OpenCodeProviderKeys() {
 
   return (
     <div data-opencode-provider-keys className="flex flex-col gap-2">
-      {state.config?.cloudHome !== true && (
+      {cloudHome !== true && (
         <p className="text-[12px] leading-4 text-ink-secondary">
           {t("settings.w6b.opencode.providersHint").split("{command}").flatMap((part, index) =>
             index === 0 ? [part] : [<code key={index} className="font-mono">opencode auth login</code>, part])}
@@ -107,11 +108,12 @@ export function OpenCodeProviderKeys() {
 }
 
 export function AnthropicEveryClaudeBot() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const anthropic = useStoreSelector((s) => s.config?.anthropic);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!state.config?.anthropic?.configured) return null;
-  const on = state.config.anthropic.everyClaudeBot === true;
+  if (!anthropic?.configured) return null;
+  const on = anthropic.everyClaudeBot === true;
   const toggle = () => {
     if (saving) return;
     setSaving(true);
@@ -142,10 +144,10 @@ export function AnthropicEveryClaudeBot() {
 }
 
 export function VpsRow({ entry }: { entry: KeyEntry }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const titleId = useId();
-  const savedAlias = state.config?.vps?.sshAlias ?? "";
-  const configured = state.config?.vps?.configured === true;
+  const savedAlias = useStoreSelector((s) => s.config?.vps?.sshAlias) ?? "";
+  const configured = useStoreSelector((s) => s.config?.vps?.configured) === true;
   const name = t(entry.labelKey);
   const action = configured ? t("keys.row.open") : t("keys.row.setUp");
   return (
@@ -157,8 +159,8 @@ export function VpsRow({ entry }: { entry: KeyEntry }) {
 }
 
 export function OpenAiCompatUrl() {
-  const { state, dispatch } = useStore();
-  const saved = state.config?.openaiCompat?.url ?? "";
+  const dispatch = useDispatch();
+  const saved = useStoreSelector((s) => s.config?.openaiCompat?.url) ?? "";
   const [value, setValue] = useState(saved);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

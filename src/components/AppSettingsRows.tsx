@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { quickUpdatesEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
 import { localeChoices } from "@/locales";
 import { activeLocale, t, tOptional, tPreferred } from "@/lib/i18n";
@@ -16,8 +16,8 @@ import { TALKING_STYLES, talkingStyleOf } from "../../shared/talking-style";
 import { friendlyError } from "@/lib/plain-error";
 
 export function NewBotEffortRow() {
-  const { state, dispatch } = useStore();
-  const current = state.config?.newBots?.effort ?? "";
+  const dispatch = useDispatch();
+  const current = useStoreSelector((state) => state.config?.newBots?.effort) ?? "";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -62,7 +62,8 @@ export function NewBotEffortRow() {
 
 /** How every bot talks, the choice the first run offers: casual, warm (the default) or native. */
 export function TalkingStyleRow() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const talkingStyle = useStoreSelector((state) => state.config?.talkingStyle);
   const [saving, setSaving] = useState(false);
   // the pick shows at once and holds while it saves; the control never dims, so a click is one pill slide with no blink
   const [pending, setPending] = useState<string | null>(null);
@@ -83,7 +84,7 @@ export function TalkingStyleRow() {
     }
   };
   // the pick lets go once the saved config shows it, so the pill never steps back for a render in between
-  const saved = talkingStyleOf(state.config?.talkingStyle);
+  const saved = talkingStyleOf(talkingStyle);
   useEffect(() => { if (pending === saved) setPending(null); }, [pending, saved]);
   return (
     <SettingRow icon="bubble" title={t("settings.talkingStyle.title")} subtitle={tOptional("settings.docs.talkingStyle.hint")} message={error ? <p role="alert" className="text-danger">{error}</p> : null}>
@@ -100,8 +101,8 @@ export function TalkingStyleRow() {
 }
 
 export function QuickUpdatesRow() {
-  const { state, dispatch } = useStore();
-  const enabled = quickUpdatesEnabled(state.config);
+  const dispatch = useDispatch();
+  const enabled = useStoreSelector((state) => quickUpdatesEnabled(state.config));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const save = async (next: boolean) => {
@@ -138,8 +139,8 @@ export function QuickUpdatesRow() {
 }
 
 export function LanguageRow({ simple = false }: { simple?: boolean }) {
-  const { state } = useStore();
-  const current = effectiveLanguage(useLanguageChoice(), state.config?.language);
+  const language = useStoreSelector((state) => state.config?.language);
+  const current = effectiveLanguage(useLanguageChoice(), language);
 
   return (
     <SettingRow
@@ -200,8 +201,8 @@ export function FollowUpRow({ simple = false }: { simple?: boolean }) {
 }
 
 export function ExperimentalFeaturesRow({ lead }: { lead?: ReactNode }) {
-  const { state, dispatch } = useStore();
-  const skillAuthoring = skillAuthoringEnabled(state.config);
+  const dispatch = useDispatch();
+  const skillAuthoring = useStoreSelector((state) => skillAuthoringEnabled(state.config));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 

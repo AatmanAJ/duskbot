@@ -1,16 +1,16 @@
 import { useState, type KeyboardEvent } from "react";
 import { track } from "@/lib/analytics";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreShallow } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { BotPickerList } from "./BotPickerList";
 import { fieldLabelCls, GrokDialog, mdPrimaryCls, mdSecondaryCls, textFieldCls } from "./ui/GrokDialog";
 
 /** Sidebar → New channel: name it, optionally file it under a context, pick its bots. */
 export function NewRoomPanel({ onClose }: { onClose: () => void }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const [name, setName] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const bots = state.bots.filter((b) => !b.hidden);
+  const bots = useStoreShallow((s) => s.bots.filter((b) => !b.hidden));
   const toggle = (id: string) =>
     setPicked((prev) => {
       const next = new Set(prev);

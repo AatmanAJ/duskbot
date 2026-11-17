@@ -8,7 +8,7 @@ import type { Bot } from "@/state/store";
 import { restoreComposerDraft } from "@/lib/drafts";
 
 const ENGINE = "claude-3f0c2b1e-9d1a-4c55-8a51-0a3a6f1e2b7c";
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({
     state: { ...original.initialState, bots: [bot], instances: [{
@@ -16,7 +16,7 @@ vi.mock("@/state/store", async (importOriginal) => {
     }] },
     dispatch: vi.fn(),
   }) };
-});
+})(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 vi.mock("@/lib/use-slash-skills", () => ({

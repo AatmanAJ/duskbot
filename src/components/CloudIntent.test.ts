@@ -5,7 +5,7 @@ import { setLocale } from "@/lib/i18n";
 import { EMPTY_ONBOARDING } from "@/lib/onboarding";
 
 const store = vi.hoisted(() => ({ state: {} as any, dispatch: vi.fn() }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: store.state, dispatch: store.dispatch }), api: vi.fn(async (_path: string, init?: RequestInit) => ({ onboarding: JSON.parse(String(init?.body)).onboarding })) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: store.state, dispatch: store.dispatch }), api: vi.fn(async (_path: string, init?: RequestInit) => ({ onboarding: JSON.parse(String(init?.body)).onboarding })) }))()));
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => null }));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/components/onboarding/view-transition", () => ({ withViewTransition: (update: () => void) => { update(); return null; } }));

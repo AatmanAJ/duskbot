@@ -6,7 +6,7 @@ import { BulkSelectBar, BulkSelectFilters, ThreadListFooter, deleteThreadsInBulk
 import { SidebarThreadRow } from "./SidebarThreadRow";
 
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({}) }));
-vi.mock("@/state/store", () => ({ api: vi.fn() }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: vi.fn() }))()));
 
 const rows = [
   { threadId: "a", title: "Old chat", pinned: true },

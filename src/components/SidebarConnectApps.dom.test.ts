@@ -7,7 +7,7 @@ import { initialState } from "@/state/store";
 
 const inventory = vi.hoisted(() => ({ services: {} as Record<string, { connected: boolean }> }));
 
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: initialState, dispatch: vi.fn() }) }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: initialState, dispatch: vi.fn() }) }))(importOriginal)));
 vi.mock("@/lib/connected-apps", () => ({ preloadConnectedApps: async () => ({ services: inventory.services, authoritative: true }) }));
 vi.mock("./bot-settings/useBotApps", () => ({ loadAppCards: async () => new Map([["github", { slug: "github", label: "GitHub", logo: null, domain: "github.com" }]]) }));
 

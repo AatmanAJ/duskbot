@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { egressRouteState, type EgressStatus } from "../../shared/computer-egress";
-import { useStore } from "@/state/store";
+import { useDispatch } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { serverHas } from "@/lib/server-compat";
 
@@ -9,7 +9,7 @@ const POLL_MS = 60_000;
 
 /** Once ever: a quiet note when "Route traffic through this computer" is on and the person's computer is offline. */
 export function EgressFallbackNotice() {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   useEffect(() => {
     let seen = false;
     try { seen = window.localStorage.getItem(SEEN_KEY) === "1"; } catch { /* storage off: ask every launch */ }

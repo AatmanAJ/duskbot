@@ -6,11 +6,14 @@ import { copyText } from "@/lib/copy-text";
 import type { RoutineRun } from "@/lib/routines";
 import { keptWebhookAddress, loadWebhookCredentials, removeWebhookCredential, saveWebhookCredential, webhookCredentialStore } from "@/lib/webhook-credentials";
 import type { WebhookCredential } from "@/lib/webhooks";
-import { api, openBotThread, useStore } from "@/state/store";
+import { api, openBotThread } from "@/state/store";
+import { botById } from "@/state/store-index";
+import { useStoreRef } from "@/state/store-ref";
 import { friendlyError } from "@/lib/plain-error";
 
 export function useAutomationActions() {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
+  const { dispatch } = store;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   /** What the error is about, e.g. "toggle:<id>", so it shows beside the thing that was clicked. */
@@ -82,7 +85,7 @@ export function useAutomationActions() {
   });
 
   const openRun = (automation: Automation, run: RoutineRun | undefined) => {
-    const bot = state.bots.find((candidate) => candidate.id === automation.botId);
+    const bot = botById(store.state(), automation.botId);
     if (bot && run?.threadId) openBotThread(dispatch, bot, run.threadId);
   };
 

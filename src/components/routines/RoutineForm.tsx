@@ -7,7 +7,7 @@ import { upperFirst } from "@/lib/lower-first";
 import type { Routine, RoutineInput, RoutineProbe, RoutineRunOn } from "@/lib/routines";
 import { autoRoutineName, newWhenDraft, scheduleFromDraft, whenDraftFor, type WhenDraft, type WhenPreset } from "@/lib/routine-when";
 import { imeComposing } from "@/lib/send-key";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, useStoreSelector, type Bot } from "@/state/store";
 import { useBotEditor } from "../bot-settings/BotEditorContext";
 import { buttonCls, fieldCls, Segmented } from "../bot-panel/rows";
 import { SelectPill } from "../ui/SelectPill";
@@ -85,7 +85,8 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
   defaultRunOn?: RoutineRunOn;
   onDone: (saved?: Routine) => void;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
   const { request } = useBotEditor();
   const id = useId();
   const [name, setName] = useState(routine?.name ?? "");
@@ -165,7 +166,7 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
           <div className="mt-1.5">
             <Segmented label={upperFirst(t("routines.timing.label"))} attr="routine-timing" compact value={timing} onChange={setTiming}
               options={[{ value: "exact", label: upperFirst(t("routines.timing.exact")) }, { value: "around", label: upperFirst(t("routines.timing.around")) }]} />
-            {timing === "around" && aroundSavesSleep({ cloudHome: state.config?.cloudHome === true, runOn: routine?.runOn ?? defaultRunOn }) && <p className="m-0 mt-1 text-[12px] leading-4 text-ink-secondary">{t("routines.timing.aroundHint")}</p>}
+            {timing === "around" && aroundSavesSleep({ cloudHome, runOn: routine?.runOn ?? defaultRunOn }) && <p className="m-0 mt-1 text-[12px] leading-4 text-ink-secondary">{t("routines.timing.aroundHint")}</p>}
           </div>
         )}
         {when.preset === "hourly" && (

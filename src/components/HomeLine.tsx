@@ -7,7 +7,7 @@ import { engineReady } from "@/components/EngineLibrary";
 import { ConnectAiDialog } from "@/components/onboarding/ConnectAi";
 import { t } from "@/lib/i18n";
 import { setNotificationPlace } from "@/lib/notify";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 
 type Line = { kind: "left"; name: string } | { kind: "clean"; saved?: boolean; place?: string };
 
@@ -21,9 +21,9 @@ export function homeLineText(line: Line): string {
 /** The clean workspace skips the new-user setup, so connecting an AI is offered here while none is ready. Nothing is sent to
  * test one: nothing starts by itself in this workspace. */
 function ConnectAiLink() {
-  const { state } = useStore();
+  const ownAiReady = useStoreSelector((s) => s.instances.some((instance) => engineReady(instance) && !freeFallback(instance)));
   const [open, setOpen] = useState(false);
-  if (state.instances.some((instance) => engineReady(instance) && !freeFallback(instance))) return null;
+  if (ownAiReady) return null;
   return <>
     <button type="button" data-home-line-ai className="underline underline-offset-2 hover:text-ink" onClick={() => setOpen(true)}>{t("onboarding.meet.connectAi")}</button>
     {open && <ConnectAiDialog tested={null} onClose={() => setOpen(false)} />}

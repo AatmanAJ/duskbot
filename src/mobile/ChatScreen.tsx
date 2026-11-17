@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { ChevronLeft, Monitor } from "../icons";
-import { useStore, type Bot, type Group } from "@/state/store";
+import { useStoreSelector, type Bot, type Group } from "@/state/store";
 import { ChatView } from "@/components/ChatView";
 import { GroupView } from "@/components/GroupView";
 import { BotAvatar } from "@/components/Avatar";
@@ -20,9 +20,9 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
   onProfile: () => void;
   onComputer?: () => void;
 }) {
-  const { state } = useStore();
+  const held = useStoreSelector((s) => bot ? s.computerControl[bot.id]?.held : undefined);
   const name = group?.name ?? bot?.name ?? "";
-  const live = Boolean(bot && (bot.busy || state.computerControl[bot.id]?.held));
+  const live = Boolean(bot && (bot.busy || held));
   const waking = useSyncExternalStore(onCloudWaking, cloudWaking, () => false);
   return (
     <div data-mobile-chat className="relative flex h-full flex-col">

@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, Message } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ admin: true as boolean | null, dispatch: vi.fn() }));
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ dispatch: fixture.dispatch }),
-}));
+}))(importOriginal)));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.admin }));
 
 import { pendingApprovals, PendingApprovalActions, PendingApprovalPanel } from "./PendingApproval";

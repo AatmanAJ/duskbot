@@ -7,10 +7,10 @@ import type { SidebarDensity } from "@/lib/sidebar-preferences";
 const fixture = vi.hoisted(() => ({ state: {} as Partial<AppState>, advanced: true }));
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({}) }));
 vi.mock("react-dom", () => ({ createPortal: (node: ReactNode) => node }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, ...fixture.state }, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 
 import { BotModelBadge, botModel } from "./BotModelBadge";
 import { BotListItem, botRowProps, type BotRowProps } from "./Sidebar";

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 
 import { loadAppCards } from "./bot-settings/useBotApps";
 import { preloadConnectedApps } from "@/lib/connected-apps";
@@ -52,11 +52,11 @@ export interface SidebarApps {
 }
 
 export function useSidebarApps(): SidebarApps {
-  const { state } = useStore();
+  const pluginsOpen = useStoreSelector((s) => s.pluginsOpen);
   const window = useConnectApps().open;
   const [apps, setApps] = useState<SidebarApps>(() => ({ faces: appFaces([], new Map()), connected: false }));
   useEffect(() => {
-    if (state.pluginsOpen || window) return;
+    if (pluginsOpen || window) return;
     let alive = true;
     void preloadConnectedApps()
       .then(async (inventory) => {
@@ -66,7 +66,7 @@ export function useSidebarApps(): SidebarApps {
       })
       .catch(() => {});
     return () => { alive = false; };
-  }, [state.pluginsOpen, window]);
+  }, [pluginsOpen, window]);
   return apps;
 }
 

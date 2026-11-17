@@ -4,7 +4,7 @@ import { parseComputerHelp } from "@/lib/computer-control";
 import { trailHeaders } from "@/lib/trail";
 import { friendlyError } from "@/lib/plain-error";
 import { t } from "@/lib/i18n";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch, useStoreSelector } from "@/state/store";
 import { SCREEN_GROW_MS } from "./ComputerFullscreen";
 import { useComputerTakeover } from "./computer-takeover";
 
@@ -44,8 +44,8 @@ export function useSignInTakeover({ botId, threadId, name, place, poster, onDone
   poster: string | null;
   onDone: () => Promise<void>;
 }) {
-  const { state, dispatch } = useStore();
-  const held = state.computerControl[botId]?.held === true;
+  const dispatch = useDispatch();
+  const held = useStoreSelector((s) => s.computerControl[botId]?.held === true);
   const [target, setTarget] = useState<string | null>(null);
   const [shown, setShown] = useState(false);
   const [ready, setReady] = useState(false);

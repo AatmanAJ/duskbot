@@ -6,10 +6,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const listing = [{ name: "notes", command: "npx", args: [], envKeys: [], enabled: true }];
 const api = vi.hoisted(() => vi.fn());
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api,
   useStore: () => ({ state: { config: null }, dispatch: vi.fn() }),
-}));
+}))()));
 vi.mock("./ConfirmDialog", () => ({ askConfirm: async () => true }));
 import { publishLiveFrame } from "@/lib/live-events";
 import { McpServersPanel } from "./McpServersPanel";

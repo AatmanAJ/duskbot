@@ -1,6 +1,6 @@
 import { FileText, FolderOpen } from "../icons";
 import { useMemo } from "react";
-import { useStore, visibleMessages, type Bot } from "@/state/store";
+import { visibleMessages, useDispatch, type Bot } from "@/state/store";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { collectMessageFiles, fileIdentity, splitMessageAttachments, type GalleryFile } from "./AttachmentGallery";
 import { AttachedFileChip, type MessageAttachmentContext } from "./AttachmentPreview";
@@ -96,7 +96,7 @@ function splitPath(path: string): { name: string; folder: string } {
 }
 
 export function ComputerFilesPane({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const { capabilities } = useDesktopCapabilities();
   const home = capabilities.host.homeDir;
   const task = bot.tasks?.find((candidate) => candidate.threadId === bot.threadId);

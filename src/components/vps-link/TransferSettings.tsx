@@ -2,7 +2,7 @@
 // the backups a move keeps
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 import { openPlaceSetup } from "@/lib/place-setup";
 import { formatBytes, useVpsLink, type VpsBackup, type VpsWhere } from "@/lib/vps-link";
 import { Card, CopyRow, ItemRow, NavRow, NoteRow } from "../ListRows";
@@ -39,9 +39,10 @@ export function TransferSettings() {
   const alive = useRef(true);
   const loadSequence = useRef(0);
   const device = deviceWord();
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome);
   // dusk cloud is the way offered here; a server of one's own stays on the Connect from elsewhere page
-  const cloud = Boolean(window.duskDesktop?.cloudAccount) && window.duskDesktop?.remoteClient?.active !== true && !state.config?.cloudHome;
+  const cloud = Boolean(window.duskDesktop?.cloudAccount) && window.duskDesktop?.remoteClient?.active !== true && !cloudHome;
 
   const load = useCallback(() => {
     if (!bridge) return;

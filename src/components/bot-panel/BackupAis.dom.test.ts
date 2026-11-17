@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, InstanceInfo } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ instances: [] as InstanceInfo[], dispatch: vi.fn() }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
@@ -18,7 +18,7 @@ vi.mock("@/state/store", async (importOriginal) => {
       refreshModels: () => Promise.resolve(),
     }),
   };
-});
+})(importOriginal)));
 vi.mock("../Avatar", () => ({ BotAvatar: () => null, MausAvatar: () => null }));
 
 const { BackupAis, MAX_BACKUPS } = await import("./BackupAis");

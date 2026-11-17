@@ -9,16 +9,27 @@ import { endNudge, nextNudgeAt, noteNudgeSession, nudgeDay, nudgeEligible, nudge
 import { MASCOT_INK } from "@/lib/mascot";
 import { CLOUD_INTRO, dismissNotice, INVESTED_NOTICE, LATE_ROUTINE_NOTICE, launchNotice, noticeSeen, watchLaunchNotice } from "@/lib/notices";
 import { t } from "@/lib/i18n";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch, useStoreSelector, useStoreShallow, type AppState } from "@/state/store";
 import { DuskMark } from "./mascot-view";
 import { localDesktopPage } from "./onboarding/WelcomeGate";
 import { useCloudPlan } from "./ProIntroduction";
 import { deviceWord } from "./vps-link/parts";
 
+const selectConfigLoaded = (state: AppState) => Boolean(state.config);
+const selectCloudHome = (state: AppState) => Boolean(state.config?.cloudHome);
+const selectManagedPolicy = (state: AppState) => Boolean(state.config?.managedPolicy);
+const selectSettled = (state: AppState) => firstReplyPending(state) === false && !firstChatQuiet(state) && !state.welcomeOpen;
+const selectOnboarding = (state: AppState) => state.config?.onboarding;
+const selectInvested = (state: AppState) => isInvested(state);
+const selectReplied = (state: AppState) => firstReplyPending(state) === false;
+
 /** whether this computer's page may offer dusk cloud at all: someone who could buy it (signed out or free), no organization,
  * not already on a cloud or under a managed policy. null while the plan or organization is still loading. */
 export function useCloudUpsell(): { allowed: boolean | null; open: (source: CloudSource) => void } {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const configLoaded = useStoreSelector(selectConfigLoaded);
+  const cloudHome = useStoreSelector(selectCloudHome);
+  const managedPolicy = useStoreSelector(selectManagedPolicy);
   const plan = useCloudPlan();
   const organization = window.duskDesktop?.organization;
   const [managed, setManaged] = useState<boolean | null>(organization ? null : false);
@@ -32,8 +43,8 @@ export function useCloudUpsell(): { allowed: boolean | null; open: (source: Clou
     void organization.state().then(next => { if (!updated) accept(next); }).catch(() => {});
     return () => { active = false; unsubscribe(); };
   }, [organization]);
-  const here = !storeApp() && localDesktopPage() && window.duskDesktop?.remoteClient?.active !== true && Boolean(state.config)
-    && !state.config?.cloudHome && !state.config?.managedPolicy;
+  const here = !storeApp() && localDesktopPage() && window.duskDesktop?.remoteClient?.active !== true && configLoaded
+    && !cloudHome && !managedPolicy;
   const allowed = cloudUpsellAllowed({ here, view: plan?.view ?? null, managed });
   const signedOut = plan?.view.kind === "signed-out";
   const open = (source: CloudSource) => dispatch({ type: "openCloudAdd", source, ...(signedOut ? { signIn: true as const } : {}) });
@@ -57,19 +68,21 @@ let launchInvested: InvestedFacts | null = null;
  * during first run. A launch that already showed a cloud notice in the corner leaves it out, so the pitch is said once.
  * Someone clearly invested (shared/cloud-upsell.ts INVESTED) gets it in their own numbers instead, once per account. */
 export function SidebarCloudCard() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const settled = useStoreSelector(selectSettled);
+  const record = useStoreSelector(selectOnboarding);
+  const investedNow = useStoreSelector(selectInvested);
+  const facts = useStoreShallow(investedFacts);
   const { allowed, open } = useCloudUpsell();
   const [held, setHeld] = useState<InvestedFacts | null>(launchInvested);
   const [, setTick] = useState(0);
   useSyncExternalStore(watchNudge, nudgeVersion, nudgeVersion);
-  const settled = firstReplyPending(state) === false && !firstChatQuiet(state) && !state.welcomeOpen;
   // a corner cloud card claiming this launch hides this one right away: one dusk cloud offer on screen at a time
   const notice = useSyncExternalStore(watchLaunchNotice, launchNotice, () => null);
   const eligible = nudgeEligible({ allowed, settled, cornerCard: Boolean(notice && CLOUD_NOTICES.has(notice)) });
   const showing = nudgeShowing();
   const visible = eligible && showing;
-  const record = state.config?.onboarding;
-  const due = visible && !held && !noticeSeen(record, INVESTED_NOTICE) && isInvested(state) ? investedFacts(state) : null;
+  const due = visible && !held && !noticeSeen(record, INVESTED_NOTICE) && investedNow ? facts : null;
   const invested = held ?? due;
   const by = invested ? investedBy(invested) : null;
   const source: CloudSource = by ? "app_invested" : "app_sidebar";
@@ -135,9 +148,9 @@ export function SidebarCloudNudge({ invested, onDismiss, onStart }: {
  * new-routine dialog, so that dialog does not repeat it. */
 export function AlwaysOnNote({ className }: { className?: string }) {
   const { allowed, open } = useCloudUpsell();
-  const { state } = useStore();
+  const replied = useStoreSelector(selectReplied);
   const shown = useRef(false);
-  const visible = allowed === true && firstReplyPending(state) === false;
+  const visible = allowed === true && replied;
   useEffect(() => {
     if (!visible || shown.current) return;
     shown.current = true;

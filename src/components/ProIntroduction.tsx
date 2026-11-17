@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Cloud, Crown } from "../icons";
 import type { CloudAccountState } from "../../electron/cloud-account.mjs";
-import { useStore } from "@/state/store";
+import { useDispatch } from "@/state/store";
 import { buyOfferAllowed, cloudPlanLine, cloudPlanView, moneyBackLine, offerTrialDays, usd, type CloudPlanView } from "@/lib/cloud-plan";
 import { useCloudOffer } from "@/lib/use-cloud-offer";
 import { t } from "@/lib/i18n";
@@ -27,7 +27,7 @@ export function useCloudPlan(): { view: CloudPlanView; account: CloudAccountStat
 }
 
 export function ProSettingsCard() {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const plan = useCloudPlan();
   const offering = plan !== null && buyOfferAllowed(plan.view);
   const offer = useCloudOffer(offering, plan?.account?.offer);
@@ -69,7 +69,7 @@ export function ProSettingsCard() {
 }
 
 export function CloudPlanRow({ place, usage = null, upgrade }: { place: "account" | "plan"; usage?: CloudUsage | null; upgrade?: UpgradeUi }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const plan = useCloudPlan();
   const offering = plan !== null && buyOfferAllowed(plan.view);
   const offer = useCloudOffer(offering, plan?.account?.offer);

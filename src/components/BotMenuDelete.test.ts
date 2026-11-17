@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { api, type Bot } from "@/state/store";
 import { allThreadRows, deleteAllThreads, deleteAllThreadsCopy } from "./BotMenuDelete";
 
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(), api: vi.fn() }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(), api: vi.fn() }))(importOriginal)));
 
 const bot: Bot = {
   id: "maus", threadId: "open", name: "Maus", title: "", description: "", notifications: true,

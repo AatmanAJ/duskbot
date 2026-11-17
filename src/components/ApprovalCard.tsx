@@ -1,6 +1,6 @@
-import { useContext, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Check, Clock3, ShieldCheck, X } from "../icons";
-import { api, StoreContext, type Bot, type Message, type OptionCardData } from "@/state/store";
+import { api, useOptionalStoreActions, useOptionalStoreSelector, type AppState, type Bot, type Message, type OptionCardData } from "@/state/store";
 import { shareLearnedSkillsMode } from "@/lib/feature-flags";
 import { cn } from "@/lib/cn";
 import { t, tFromServer } from "@/lib/i18n";
@@ -304,13 +304,16 @@ function botChip(bot: { name: string; botId?: string }, known: readonly Bot[] | 
   );
 }
 
+const selectConfig = (state: AppState) => state.config;
+const selectBots = (state: AppState): readonly Bot[] | undefined => state.bots;
+
 function AppliedEventLine({ event, bots }: { event: AppliedEvent; bots: readonly Bot[] | undefined }) {
   return <EventLine><AppliedEventParts event={event} bots={bots} /></EventLine>;
 }
 
 function AppliedEventParts({ event, bots }: { event: AppliedEvent; bots: readonly Bot[] | undefined }) {
   const chip = event.chip;
-  const store = useContext(StoreContext);
+  const store = useOptionalStoreActions();
   const many = event.bots && event.bots.length > 2;
   return (
     <>
@@ -353,8 +356,8 @@ function AppliedChangeLine({
   const [sharing, setSharing] = useState(false);
   // Kept until the card's own patch arrives, so the Share button cannot come back in between.
   const [sharedNow, setSharedNow] = useState<{ requestId: string; shared: SkillShareRecord }>();
-  const store = useContext(StoreContext);
-  const config = store?.state.config ?? null;
+  const config = useOptionalStoreSelector(selectConfig, null);
+  const bots = useOptionalStoreSelector(selectBots, undefined);
   const undone = card.undone === true;
   const skill = card.skillRequest;
   const shared = skill?.shared ?? (sharedNow && sharedNow.requestId === card.requestId ? sharedNow.shared : undefined);
@@ -376,7 +379,6 @@ function AppliedChangeLine({
   const skippedNames = shared?.skipped.map((bot) => bot.name) ?? [];
   const setup = card.teamSetupRequest?.result && !card.teamSetupRequest.deletion ? setupEvents(card.teamSetupRequest.result) : null;
   const events = setup?.length ? setup : [appliedEvent(card)].filter((event) => event !== undefined);
-  const bots = store?.state.bots;
   const last = events.length - 1;
   return (
     <div className="flex w-full flex-col items-center gap-1" data-applied-change="">

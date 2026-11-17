@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { Loader2 } from "../../icons";
 import type { DataCard } from "../../../shared/data-surface";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 import { useColorScheme } from "@/lib/color-scheme";
 import { t } from "@/lib/i18n";
 import { DataChart } from "./DataChart";
@@ -20,8 +20,8 @@ const settle = (botId: string, state: "loading" | "failed") => {
 /** The card a chat receipt names, from its bot's sheet. The sheet loads once per bot, then follows the server's
  * broadcasts. `undefined` while it loads; `null` when there is no such card or the sheet cannot be read. */
 export function useDataCard(botId: string, cardId: string, enabled = true): DataCard | null | undefined {
-  const { state, dispatch } = useStore();
-  const sheet = state.dataSheets?.[botId];
+  const dispatch = useDispatch();
+  const sheet = useStoreSelector((s) => s.dataSheets?.[botId]);
   const load = useSyncExternalStore(subscribe, () => loads.get(botId));
   useEffect(() => {
     if (!enabled || sheet || loads.has(botId)) return;

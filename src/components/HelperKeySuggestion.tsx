@@ -5,13 +5,13 @@ import { Loader2 } from "../icons";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { api, useStore, type Message } from "@/state/store";
+import { api, useDispatch, type Message } from "@/state/store";
 import { ASK_PRIMARY_BUTTON, ASK_QUIET_BUTTON } from "./AskCard";
 import { openKeySettings } from "./keys/key-focus";
 import { friendlyError } from "@/lib/plain-error";
 
 export function HelperKeySuggestion({ threadId, message }: { threadId?: string; message: Message }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const declined = message.setupSuggestion?.answer === "notNow";

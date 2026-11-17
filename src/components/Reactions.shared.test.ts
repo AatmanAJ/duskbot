@@ -5,10 +5,10 @@ import { expect, it, vi } from "vitest";
 
 import type { Message } from "@/state/store";
 
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const store = await original<typeof import("@/state/store")>();
   return { ...store, api: vi.fn(async () => ({})), useStore: () => ({ state: store.initialState, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
   kind: "session", id: "s1", label: "Alice's laptop", scopes: ["client"], expiresAt: 1, reactor: "p_alice",
 }))));

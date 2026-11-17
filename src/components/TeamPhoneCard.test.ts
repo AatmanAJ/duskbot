@@ -8,7 +8,7 @@ import { setLocale } from "@/lib/i18n";
 import { PHONE_ARRIVAL_POLL_MS, TeamPhoneCard, type TeamPhone } from "./TeamPhoneCard";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), phones: [] as TeamPhone[], current: "s-desktop" as string | null }));
-vi.mock("@/state/store", () => ({ api: fixture.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api }))()));
 
 const phone = (id: string, label: string, email: string): TeamPhone => ({ id, label, email, lastSeenAt: Date.now() - 3 * 60_000, expiresAt: Date.now() + 3_600_000 });
 let host: HTMLDivElement;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Copy, Download, ExternalLink, KeyRound, Loader2, LogIn, TerminalSquare, X } from "../icons";
-import { api, type InstanceInfo, useStore } from "@/state/store";
+import { api, useDispatch, useStoreActions, useStoreSelector, type InstanceInfo } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { copyText } from "@/lib/copy-text";
@@ -167,7 +167,7 @@ export function CommandRow({
 }
 
 function ServerEngineInstall({ instance, mode, quiet = false, rows }: { instance: InstanceInfo; mode: "install" | "update"; quiet?: boolean; rows?: { title: string; hint: string } }) {
-  const { dispatch, refreshModels } = useStore();
+  const { dispatch, refreshModels } = useStoreActions();
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -308,7 +308,7 @@ export function EngineWarningNotice({
 }
 
 function ManagedEngineSetup({ instance, signInOnly }: { instance: InstanceInfo; signInOnly: boolean }) {
-  const { refreshInstances, refreshModels } = useStore();
+  const { refreshInstances, refreshModels } = useStoreActions();
   const [busy, setBusy] = useState<"install" | "signin" | "complete" | "check" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flow, setFlow] = useState<{ flowId: string; authorizationUrl: string } | null>(null);
@@ -499,7 +499,7 @@ function GrokKeyInstead({ className, unframed }: { className?: string; unframed:
 }
 
 function ApiKeyEngineSetup({ instance, className, unframed, configured = false }: { instance: InstanceInfo; className?: string; unframed: boolean; configured?: boolean }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const remote = window.duskDesktop?.remoteClient?.active === true;
   const inline = remote ? undefined : inlineKey(instance);
   const copy = configured
@@ -564,9 +564,8 @@ export function EngineSetup({
   /** Settings' engine page: an install drawn as rows of one card */
   rows?: boolean;
 }) {
-  const { state } = useStore();
+  const cloudHome = useStoreSelector((state) => state.config?.cloudHome === true);
   const [checked, setChecked] = useState(false);
-  const cloudHome = state.config?.cloudHome === true;
   const install = instance.install;
   const unavailable = instance.snapshot.state === "unavailable" ? instance.snapshot.reason : undefined;
   const reason = unavailable && (checked || !notInstalledYet(unavailable)) ? unavailable : undefined;
@@ -702,7 +701,7 @@ function EngineSetupRows({ instance, title, description, command, signInOnly, cl
   signInOnly: boolean;
   cloudHome: boolean;
 }) {
-  const { refreshInstances } = useStore();
+  const { refreshInstances } = useStoreActions();
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [opened, setOpened] = useState<boolean | null>(null);

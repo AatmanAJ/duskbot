@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X } from "../icons";
-import { useStore, visibleMessages, type Message } from "@/state/store";
+import { useDispatch, useStoreShallow, visibleMessages, type Message } from "@/state/store";
+import { botById } from "@/state/store-index";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { isPersistentQuestionCard, parseChoices } from "../../shared/ask-question";
@@ -38,17 +39,24 @@ export function OptionCard({
   message: Message;
   groupId?: string;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const [custom, setCustom] = useState("");
   const card = message.card;
-  const bot = state.bots.find((candidate) => candidate.id === botId);
-  const transcript = bot ? visibleMessages(bot) : [];
   // Full thread, not the mounted window: a search-focus slice can omit the later message that hides this quiz.
-  if (!card || shouldHideOnboardingCard(message, transcript) || (card.requestId && card.dismissed && card.answered)) return null;
+  const { color, hidden, typedAfter } = useStoreShallow((state) => {
+    const bot = botById(state, botId);
+    const transcript = bot ? visibleMessages(bot) : [];
+    const index = transcript.findIndex((entry) => entry.id === message.id);
+    return {
+      color: bot?.color,
+      hidden: shouldHideOnboardingCard(message, transcript),
+      typedAfter: index >= 0 && transcript.slice(index + 1).some((later) => later.role === "user" && later.kind === "text"),
+    };
+  });
+  if (!card || hidden || (card.requestId && card.dismissed && card.answered)) return null;
 
   const options = parseChoices(card.options, MAX_CHOICES) ?? [];
-  const index = transcript.findIndex((entry) => entry.id === message.id);
-  const quiet = !card.answered && index >= 0 && transcript.slice(index + 1).some((later) => later.role === "user" && later.kind === "text");
+  const quiet = !card.answered && typedAfter;
 
   const answer = (text: string) => {
     if (!text.trim()) return;
@@ -102,7 +110,7 @@ export function OptionCard({
             letter={options.length ? choiceLetter(options.length) : undefined}
             label={t("onboarding.card.custom")}
             placeholder={t(options.length ? "question.somethingElse" : "onboarding.card.custom")}
-            color={bot?.color}
+            color={color}
             value={custom}
             onChange={setCustom}
             onSend={answer}

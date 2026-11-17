@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { Bell } from "../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { api, useStore, openThread } from "@/state/store";
+import { api, useStoreSelector, openThread } from "@/state/store";
+import { botById } from "@/state/store-index";
+import { useStoreRef } from "@/state/store-ref";
 import { askingWhom, pictureOf, refreshNeedsYou, useTeamPeople, type TeamPerson } from "@/state/team-people";
 import type { NeedsYouItem } from "../../shared/today";
 import { useInboxSupport } from "@/state/inbox";
@@ -41,17 +43,18 @@ export function NeedsYouTitle({ item, title }: { item: NeedsYouItem; title: stri
 
 /** One thing that needs this person, opening its conversation. */
 export function NeedsYouLine({ item, onOpened }: { item: NeedsYouItem; onOpened?: () => void }) {
-  const { state, dispatch } = useStore();
-  const botName = (botId: string) => state.bots.find((bot) => bot.id === botId)?.name ?? t("needsYou.aBot");
+  const store = useStoreRef();
   const botId = "botId" in item ? item.botId : item.botIds[0]!;
+  const botName = useStoreSelector((s) => botById(s, botId)?.name) ?? t("needsYou.aBot");
   const title = item.kind === "message" ? t("needsYou.message", { name: item.from })
-    : item.kind === "question" ? t("needsYou.asking", { bot: botName(botId) }) : t("needsYou.fix", { bot: botName(botId) });
+    : item.kind === "question" ? t("needsYou.asking", { bot: botName }) : t("needsYou.fix", { bot: botName });
   const text = "text" in item ? item.text : "";
   return <button type="button" role="menuitem"
     onClick={() => {
       onOpened?.();
       if (!item.threadId) return;
-      openThread(dispatch, { botId, threadId: item.threadId }, state);
+      const state = store.state();
+      openThread(store.dispatch, { botId, threadId: item.threadId }, state);
       if (item.kind === "message") readConversation(state.groups, botId, item.threadId);
     }}
     className="flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left hover:bg-menu-hover">
@@ -94,8 +97,7 @@ export function NeedsYouButton({ compact = false }: { compact?: boolean }) {
 /** Above an open question or approval in a shared team chat: whose answer it waits for. */
 export function AskingLine({ botId, threadId }: { botId: string; threadId: string }) {
   const team = useTeamPeople();
-  const { state } = useStore();
-  const bot = state.bots.find((candidate) => candidate.id === botId);
+  const bot = useStoreSelector((s) => botById(s, botId));
   if (!team || !bot) return null;
   const person = askingWhom(bot, bot.tasks?.find((task) => task.threadId === threadId), team);
   if (!person) return null;

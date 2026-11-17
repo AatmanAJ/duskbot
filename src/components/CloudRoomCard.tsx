@@ -8,7 +8,7 @@ import { cloudPlanLabel } from "@/lib/cloud-plan";
 import { t } from "@/lib/i18n";
 import { readRoomCardHidden, rememberRoomCardHidden, roomCardBusy, roomCardView, type RoomCardView } from "@/lib/room-card";
 import { readUsageCardDismissed, upgradePath, usageCardView } from "@/lib/usage-meter";
-import { useStore } from "@/state/store";
+import { useStoreSelector, type AppState } from "@/state/store";
 
 type Restart = "asking" | "restarting" | "current" | "failed";
 const RESTART_NOTE: Record<Exclude<Restart, "asking">, string> = {
@@ -62,11 +62,15 @@ export function CloudRoomCardView({ view, upgrade, browser, upgraded, restart, o
   );
 }
 
+const selectCloudHome = (state: AppState) => state.config?.cloudHome === true;
+const selectTeamHome = (state: AppState) => Boolean(state.config?.cloudHome && state.config?.team);
+const selectRoomBusy = (state: AppState) => roomCardBusy(state.bots, state.config?.waitingForRoom);
+
 /** The plan's snapshot as the room card reads it, with the bridge that acts on it. */
 export function useCloudRoom(): { snapshot: CloudPlanSnapshot | null; bridge: CloudPlanBridge | undefined; teamHome: boolean } {
-  const { state } = useStore();
-  const bridge = usageBridge(state.config?.cloudHome === true);
-  return { snapshot: useCloudPlanSnapshot(bridge), bridge, teamHome: Boolean(state.config?.cloudHome && state.config?.team) };
+  const bridge = usageBridge(useStoreSelector(selectCloudHome));
+  const teamHome = useStoreSelector(selectTeamHome);
+  return { snapshot: useCloudPlanSnapshot(bridge), bridge, teamHome };
 }
 
 /**
@@ -74,7 +78,7 @@ export function useCloudRoom(): { snapshot: CloudPlanSnapshot | null; bridge: Cl
  * Upgrade is the usual one (its preview, then the person's confirmation); Not now holds it back (the Admin, for two weeks).
  */
 export function CloudRoomCard() {
-  const { state } = useStore();
+  const busy = useStoreSelector(selectRoomBusy);
   const { snapshot, bridge, teamHome } = useCloudRoom();
   const usage = snapshot?.status === "paid" ? snapshot.usage ?? null : null;
   const [hidden, setHidden] = useState(readRoomCardHidden);
@@ -84,7 +88,7 @@ export function CloudRoomCard() {
   // Restart now acts on the session's own Cloud: once that session ends, an upgrade made in it is no longer this card's.
   const paid = snapshot?.status === "paid";
   useEffect(() => { if (!paid) { setUpgraded(null); setRestart(null); } }, [paid]);
-  const view = roomCardView({ room: snapshot?.status === "paid" ? snapshot.room : null, usage, busy: roomCardBusy(state.bots, state.config?.waitingForRoom), hidden, teamHome,
+  const view = roomCardView({ room: snapshot?.status === "paid" ? snapshot.room : null, usage, busy, hidden, teamHome,
     usageCardShown: Boolean(usageCardView({ usage, teamHome, dismissed: readUsageCardDismissed() })) });
   const notNow = () => {
     if (!view) return;

@@ -10,7 +10,7 @@ const fixture = vi.hoisted(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   return { api: vi.fn(), dispatch: vi.fn(), track: vi.fn(), config: {} as Record<string, unknown> };
 });
-vi.mock("@/state/store", () => ({ api: fixture.api, useStore: () => ({ state: { config: fixture.config }, dispatch: fixture.dispatch }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api, useStore: () => ({ state: { config: fixture.config }, dispatch: fixture.dispatch }) }))()));
 vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
 // sealing has its own tests (src/lib/sealed-send.test.ts): here the patch the card asked to save is what the server gets
 vi.mock("@/lib/sealed-send", () => ({ putConfig: (patch: unknown) => fixture.api("/api/config", { method: "PUT", body: JSON.stringify(patch) }) }));

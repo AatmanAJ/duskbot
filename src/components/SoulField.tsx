@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { BOT_PROFILE_LIMITS } from "../../shared/bot-profile";
 import { cn } from "@/lib/cn";
 import { firstSentence, soulPatchFor, utf8Bytes } from "@/lib/soul";
-import { useStore, type Bot } from "@/state/store";
+import { useStoreActions, type Bot } from "@/state/store";
 import { useBotEditor } from "./bot-settings/BotEditorContext";
 import { inputCls } from "./bot-settings/field";
 import { t } from "@/lib/i18n";
@@ -20,7 +20,7 @@ export function SoulField({
   onPatch: (patch: { soul?: string; description?: string }) => void;
   simple?: { label: string; placeholder: string };
 }) {
-  const { dispatch, flushBotPatches } = useStore();
+  const { dispatch, flushBotPatches } = useStoreActions();
   const { request: api } = useBotEditor();
   const limit = BOT_PROFILE_LIMITS.soul;
   const [draft, setDraft] = useState(bot.soul ?? "");

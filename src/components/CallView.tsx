@@ -5,7 +5,9 @@ import { Icon } from "./Icon";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { AudioLines, Check, ChevronDown, Loader2, Phone, PhoneOff, X } from "../icons";
 
-import { openBot, useStore, visibleMessages, type Bot } from "@/state/store";
+import { openBot, visibleMessages, useDispatch, useStoreSelector, type AppState, type Bot } from "@/state/store";
+import { botById } from "@/state/store-index";
+import { useStoreRef } from "@/state/store-ref";
 import { cn } from "@/lib/cn";
 import { useMenuMotion } from "./MenuMotion";
 import { currentCall, deferCallCleanup, endCall, startCall, useOnCall } from "@/lib/call";
@@ -42,7 +44,7 @@ export type CallButtonPlacement = "header" | "composer" | "panel";
  * call mode. */
 /** `inverse` (phone composer): a round ink-coloured button with an app-coloured glyph: white on Midnight, dark on Meadow. */
 export function CallButton({ bot, placement = "header", fill, ink, inverse }: { bot: Bot; placement?: CallButtonPlacement; fill?: string; ink?: string; inverse?: boolean }) {
-  const { state } = useStore();
+  const store = useStoreRef();
   return (
     <CallTargetButton
       placement={placement}
@@ -56,10 +58,13 @@ export function CallButton({ bot, placement = "header", fill, ink, inverse }: { 
       setupBotId={bot.id}
       requireExplicitVoices={false}
       liveCapable
-      onStart={(mode) => callStarted(state.instances, bot.modelSelection?.instanceId, mode)}
+      onStart={(mode) => callStarted(store.state().instances, bot.modelSelection?.instanceId, mode)}
     />
   );
 }
+
+const selectConfig = (state: AppState) => state.config;
+const selectLiveCall = (state: AppState) => state.liveCall;
 
 export function CallTargetButton({
   targetId,
@@ -88,7 +93,9 @@ export function CallTargetButton({
   liveCapable?: boolean;
   onStart: (mode: CallMode) => void;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector(selectConfig);
+  const liveCall = useStoreSelector(selectLiveCall);
   const { capabilities, ready: capabilitiesReady } = useDesktopCapabilities();
   const media = useLiveMedia();
   const liveThreadId = liveCapable ? threadId : undefined;
@@ -101,29 +108,29 @@ export function CallTargetButton({
   const active = onCall || onLiveCall;
   const remoteClient = globalThis.window?.duskDesktop?.remoteClient?.active === true;
   const capabilityHelp = capabilitiesReady
-    ? callCapabilityHelp(capabilities, Boolean(speechBridge()?.speechStart), serverListeningReady(state.config))
+    ? callCapabilityHelp(capabilities, Boolean(speechBridge()?.speechStart), serverListeningReady(config))
     : null;
   const supported = capabilitiesReady && !capabilityHelp;
   const localVoice = localSystemVoiceActive();
-  const configured = localVoice || Boolean(state.config?.tts?.configured);
+  const configured = localVoice || Boolean(config?.tts?.configured);
   const everyTargetHasVoice = voices.length > 0 && voices.every((voice) => Boolean(voice));
   const voiceReady =
     localVoice ||
-    (configured && (requireExplicitVoices ? everyTargetHasVoice : Boolean(state.config?.tts?.ready || everyTargetHasVoice)));
-  const turnsHere = !capabilitiesReady || listensHere(capabilities, state.config);
+    (configured && (requireExplicitVoices ? everyTargetHasVoice : Boolean(config?.tts?.ready || everyTargetHasVoice)));
+  const turnsHere = !capabilitiesReady || listensHere(capabilities, config);
   const mode = effectiveCallMode(useCallMode(), { turnsHere, canLive });
   const liveMode = canLive && mode === "live";
   const turnsReady = capabilitiesReady && supported && voiceReady;
   const unavailable = !active && !liveElsewhere && !liveMode && !turnsReady;
-  const lineHeldElsewhere = liveMode && !onCall && liveLineHeldElsewhere(media, state.liveCall);
+  const lineHeldElsewhere = liveMode && !onCall && liveLineHeldElsewhere(media, liveCall);
   const voiceSetupRequired = capabilitiesReady && supported && !voiceReady;
-  const cloudHome = state.config?.cloudHome === true;
+  const cloudHome = config?.cloudHome === true;
   const [helpOpen, setHelpOpen] = useState(false);
   const [voiceSetupOpen, setVoiceSetupOpen] = useState(false);
   const [voiceSetupBotId, setVoiceSetupBotId] = useState(setupBotId);
   if (voiceSetupRequired && setupBotId !== voiceSetupBotId) setVoiceSetupBotId(setupBotId);
   const shownSetupBotId = voiceSetupRequired ? setupBotId : voiceSetupBotId;
-  const setupBot = shownSetupBotId ? state.bots.find((candidate) => candidate.id === shownSetupBotId) : undefined;
+  const setupBot = useStoreSelector((state) => shownSetupBotId ? botById(state, shownSetupBotId) : undefined);
   const helpMotion = useMenuMotion(Boolean(unavailable && helpOpen));
   const [menuOpen, setMenuOpen] = useState(false);
   const startPrompt = canLive && !active && media.needsKey && media.botId === targetId;
@@ -134,7 +141,7 @@ export function CallTargetButton({
   const helpId = useId();
   const menuId = useId();
   const keyId = useId();
-  const elsewhereName = liveElsewhere ? state.bots.find((candidate) => candidate.id === media.botId)?.name : undefined;
+  const elsewhereName = useStoreSelector((state) => liveElsewhere ? botById(state, media.botId)?.name : undefined);
   const composer = placement === "composer";
   const round = Boolean(fill) || Boolean(inverse) || placement === "panel";
   const label = active
@@ -461,7 +468,7 @@ export function CallOverlay({ bot }: { bot: Bot }) {
 }
 
 function Call({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const speech = useSpeech();
   const initialPhase: Phase = bot.busy ? "working" : "listening";
   const [phase, setPhase] = useState<Phase>(initialPhase);

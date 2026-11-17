@@ -3,10 +3,10 @@ import { Pin } from "../icons";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore, type Group } from "@/state/store";
+import { useDispatch, type Group } from "@/state/store";
 
 export function useBulletinEditor(group: Group) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(group.bulletin);
   const settled = useRef(false);

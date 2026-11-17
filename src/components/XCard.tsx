@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { activeLocale, t } from "@/lib/i18n";
 import { xResearchAction } from "@/lib/cloud-plan";
 import { keyRemoved, keySaved, keySaveFailure, keyTestResult } from "@/lib/product-events";
@@ -34,7 +34,7 @@ export function XCard({ refreshKey = 0, onConnection }: {
   /** true while bots have the X tools, false otherwise, null until the server has answered */
   onConnection?: (connected: boolean | null) => void;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const [status, setStatus] = useState<XConnectorStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState<"save" | "test" | "remove" | null>(null);
@@ -45,7 +45,8 @@ export function XCard({ refreshKey = 0, onConnection }: {
   const mounted = useRef(true);
   const saveAfterPaste = useRef(false);
   const connecting = xResearchAction(useCloudPlan()?.view ?? null) === "connecting";
-  const ownConfigured = state.config?.treg?.configured === true, includedHeld = state.config?.xResearch?.included === true;
+  const ownConfigured = useStoreSelector((s) => s.config?.treg?.configured === true);
+  const includedHeld = useStoreSelector((s) => s.config?.xResearch?.included === true);
 
   const load = useCallback(async (refresh = false): Promise<void> => {
     try {

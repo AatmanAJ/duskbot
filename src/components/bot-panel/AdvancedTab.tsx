@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, type Bot } from "@/state/store";
 import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerived";
 import { openBotSettings } from "@/lib/open-settings";
 import { VoiceChatCard } from "./DetailsTab";
@@ -21,7 +21,7 @@ export function AdvancedTab({ bot, derived, onOpen }: {
   derived: ReturnType<typeof useBotSettingsDerived>;
   onOpen: (page: SimplePageId) => void;
 }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const request = usePanelModalRequest();
   const link = usePanelLink();
   const openPage = (page: SheetPage) => dispatch(openBotSettings({ kind: "bot", id: bot.id, row: page }));

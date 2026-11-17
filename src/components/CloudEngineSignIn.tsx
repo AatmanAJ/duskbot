@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Check } from "../icons";
 import { MausAvatar } from "@/components/Avatar";
 import { startCloudSetup } from "@/components/CloudIntent";
@@ -13,19 +13,23 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { MausMotion, MausState } from "@/lib/mascot";
 import { withViewTransition } from "@/components/onboarding/view-transition";
-import { useStore, type InstanceInfo } from "@/state/store";
+import { useStoreSelector, type AppState, type InstanceInfo } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 
 /** The AIs a cloud signs in to itself (its own subscription engines), for the check that a new one answers. */
 export function cloudOwnEngines(instances: readonly InstanceInfo[]): InstanceInfo[] {
   return instances.filter((instance) => instance.access !== "custom" && !instance.readOnly);
 }
 
+const selectInstances = (state: AppState) => state.instances;
+const selectEngineReady = (state: AppState) => state.instances.some(engineReady);
+
 /** The Connect an AI grid every machine shows (AiCards), its check that a new one answers, and the limits that apply in
  * the cloud. More providers opens the model directory, the same as on this computer. */
 export function CloudConnectAi({ className }: { className?: string }) {
-  const { state } = useStore();
+  const instances = useStoreSelector(selectInstances);
   const [more, setMore] = useState(false);
-  const engines = cloudOwnEngines(state.instances);
+  const engines = cloudOwnEngines(instances);
   const live = useEngineLiveCheck(engines);
   return <div data-cloud-connect="" className={className}>
     <AiCards tested={null} onMore={() => setMore(true)} />
@@ -38,7 +42,8 @@ export function CloudConnectAi({ className }: { className?: string }) {
 }
 
 export function CloudEngineSignIn() {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
+  const { dispatch } = store;
   const [motion, setMotion] = useState<{ kind: MausMotion; key: number }>({ kind: "none", key: 0 });
   // One frame late: a motion issued in the avatar's mounting commit is lost.
   useEffect(() => {
@@ -46,16 +51,14 @@ export function CloudEngineSignIn() {
     return () => cancelAnimationFrame(frame);
   }, []);
   const { pending } = useCloudIntent();
-  const ready = state.instances.some(engineReady);
-  const latest = useRef(state);
-  latest.current = state;
+  const ready = useStoreSelector(selectEngineReady);
   const [handing, setHanding] = useState(false);
   useEffect(() => {
     if (!pending || !ready) return;
     setHanding(true);
     setMotion({ kind: "success", key: 2 });
     const timer = setTimeout(() => {
-      if (!startCloudSetup(pending, latest.current, dispatch)) setPendingIntent(null);
+      if (!startCloudSetup(pending, store.state(), dispatch)) setPendingIntent(null);
     }, 1200);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -13,7 +13,7 @@ vi.mock("react", async (original) => ({
     return [fixture.values[index], (next: unknown) => { fixture.values[index] = next; }];
   },
 }));
-vi.mock("@/state/store", () => ({ api: fixture.api, useStore: () => ({ state: { bots: fixture.bots, instances: fixture.instances }, dispatch: fixture.dispatch }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api, useStore: () => ({ state: { bots: fixture.bots, instances: fixture.instances }, dispatch: fixture.dispatch }) }))()));
 vi.mock("@/lib/cloud-guest", () => ({ useReactor: () => fixture.reactor, currentReactor: () => fixture.reactor }));
 vi.mock("./AskCard", async (original) => ({ ...await original<typeof import("./AskCard")>(), returnFocusToComposer: fixture.focus }));
 

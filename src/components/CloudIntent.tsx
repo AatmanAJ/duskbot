@@ -15,7 +15,8 @@ import { sendKeyLabel, sendsMessage, useSendKey } from "@/lib/send-key";
 import type { MausMotion, MausState } from "@/lib/mascot";
 import type { OnboardingStatus } from "@/lib/onboarding";
 import type { LocaleKey } from "@/locales";
-import { api, useStore, type Action, type AppState } from "@/state/store";
+import { api, useStoreSelector, type Action, type AppState } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { randomUuid } from "@/lib/random-uuid";
 
 const IDEAS: Array<{ id: string; icon: GlyphIcon; label: LocaleKey; text: LocaleKey }> = [
@@ -56,8 +57,14 @@ export function startCloudSetup(job: string, state: Pick<AppState, "bots" | "sel
   return true;
 }
 
+const selectEngineReady = (state: AppState) => state.instances.some(engineReady);
+const selectOnboarding = (state: AppState) => state.config?.onboarding;
+const selectSelectedId = (state: AppState) => state.selectedId;
+
 export function CloudIntent() {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
+  const { dispatch } = store;
+  const selectedId = useStoreSelector(selectSelectedId);
   const intent = useCloudIntent();
   const [job, setJob] = useState(intent.pending ?? "");
   const [idea, setIdea] = useState<string | null>(null);
@@ -66,8 +73,8 @@ export function CloudIntent() {
   const box = useRef<HTMLTextAreaElement>(null);
   const token = useRef<HTMLSpanElement>(null);
   const [indent, setIndent] = useState(0);
-  const ready = state.instances.some(engineReady);
-  const record = state.config?.onboarding;
+  const ready = useStoreSelector(selectEngineReady);
+  const record = useStoreSelector(selectOnboarding);
   const sendKey = useSendKey();
 
   // One frame late: a motion issued in the avatar's mounting commit is lost.
@@ -90,7 +97,7 @@ export function CloudIntent() {
     if (!text) return;
     track("cloud_intent_submitted", { idea, edited: idea ? text !== t(IDEAS.find((candidate) => candidate.id === idea)!.text) : true });
     rememberIntent(record, [CLOUD_INTENT_ASKED, CLOUD_INTENT_GIVEN], dispatch);
-    if (ready && startCloudSetup(text, state, dispatch)) return;
+    if (ready && startCloudSetup(text, store.state(), dispatch)) return;
     withViewTransition(() => { setPendingIntent(text); reopenCloudIntent(false); });
   };
   const skip = () => {
@@ -111,11 +118,11 @@ export function CloudIntent() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const arrivedOn = useRef(state.selectedId);
+  const arrivedOn = useRef(selectedId);
   useEffect(() => {
-    if (!arrivedOn.current) arrivedOn.current = state.selectedId;
-    else if (state.selectedId !== arrivedOn.current) dismissCloudIntent();
-  }, [state.selectedId]);
+    if (!arrivedOn.current) arrivedOn.current = selectedId;
+    else if (selectedId !== arrivedOn.current) dismissCloudIntent();
+  }, [selectedId]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (sendsMessage(event.nativeEvent, sendKey)) {

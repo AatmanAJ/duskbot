@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { usePageOpener } from "@/lib/page-open";
 import { SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-media-query";
-import { useStore, visibleMessages, type Bot, type Message } from "@/state/store";
+import { visibleMessages, useDispatch, type Bot, type Message } from "@/state/store";
 import { useLocalFileSave } from "../AttachmentPreview";
 import { recentChangedFiles, sharedFileReferences } from "../ComputerFilesPane";
 import { Icon } from "../Icon";
@@ -169,7 +169,7 @@ function Group({ group, entries, now }: { group: GroupKey; entries: Entry[]; now
 
 /** Everything the bot made in this conversation as Library rows, newest first, with when each was made. */
 function useLibraryEntries(bot: Bot): Entry[] {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const openPage = usePageOpener();
   const phone = !useMediaQuery(SIDEBAR_INLINE, true);
   const items = useMemo(() => libraryItems(bot), [bot]);

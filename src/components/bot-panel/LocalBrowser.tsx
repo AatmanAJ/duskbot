@@ -10,7 +10,7 @@ import { blankPage, keepView, keptKey, keptView, localBrowserFixture, minutesSin
 import { usePageVisible } from "@/lib/page-visible";
 import { siteIconUrl } from "@/lib/site-icon";
 import { browserScope, withBrowserScope } from "@/lib/team-browser";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useStoreSelector, type Bot } from "@/state/store";
 import { BROWSER_HELD_ELSEWHERE } from "../../../shared/browser-held";
 import type { BrowserTab } from "../browser/ChromeRow";
 import { StreamSurface, type SurfaceConnect } from "../browser/StreamSurface";
@@ -118,10 +118,11 @@ function snapshot(box: HTMLElement | null): string | null {
  * lays the same view over the window. What it last showed is kept, so coming back paints at once and goes live after.
  */
 export function LocalBrowserLive({ bot }: { bot: Bot }) {
-  const { state } = useStore();
+  const chromeEngine = useStoreSelector((s) => s.config?.browserEngine?.engine === "chrome");
+  const scopedThread = useStoreSelector((s) => browserScope(s.config?.team, bot.threadId).threadId);
+  const help = useStoreSelector((s) => s.computerControl?.[bot.id]?.help);
   const [fallback, setFallback] = useState(false);
-  const stream = state.config?.browserEngine?.engine === "chrome" && !fallback;
-  const scopedThread = browserScope(state.config?.team, bot.threadId).threadId;
+  const stream = chromeEngine && !fallback;
   const key = keptKey(bot.id, bot.threadId);
   const [attempt, setAttempt] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -135,7 +136,6 @@ export function LocalBrowserLive({ bot }: { bot: Bot }) {
   const clientRef = useRef<PreviewStreamClient | null>(null);
   const screenRef = useRef<HTMLDivElement | null>(null);
   const resume = useRef<LiveResume & { key: string }>({ key: "", viewer: "" });
-  const help = state.computerControl?.[bot.id]?.help;
   const fixture = localBrowserFixture() !== null;
   const dot = help ? "waiting" : bot.busy || localBrowserFixture()?.working ? "working" : null;
 

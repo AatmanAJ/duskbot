@@ -11,7 +11,7 @@ import { t } from "@/lib/i18n";
 import type { Place } from "@/lib/place";
 import { desktopShowsOtherServer, useOtherServerName } from "@/lib/other-server";
 import { placeHasIssue } from "@/lib/place-view";
-import { useStore, type Bot } from "@/state/store";
+import { useStoreSelector, useDispatch, type Bot } from "@/state/store";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { LocalComputerAutoWarning } from "../LocalComputerAutoWarning";
 import { usePlaceViews } from "../PlaceChip";
@@ -48,7 +48,7 @@ const EXTRA_PLACE_LABEL: Record<Exclude<PlaceChoice, "auto" | "local" | "cloud" 
 };
 
 export function useOpenComputer(bot: Pick<Bot, "id">) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   return (view: ComputerPanelView = "computer") => {
     writeComputerPanelView(bot.id, view);
     dispatch({ type: "toggleComputer", open: true });
@@ -56,13 +56,12 @@ export function useOpenComputer(bot: Pick<Bot, "id">) {
 }
 
 export function usePlaceChoices(bot: Bot) {
-  const { state } = useStore();
+  const myChrome = useStoreSelector((s) => s.config?.browserEngine?.myChrome === true
+    && (s.config?.browserProfiles ?? []).some((profile) => profile.id === bot.browserProfile && profile.browser === "chrome"));
   const { capabilities } = useDesktopCapabilities();
   const platform = capabilities.host?.platform ?? "other";
   const placeViews = usePlaceViews(bot);
   const current: PlaceChoice = bot.computer ?? "auto";
-  const myChrome = state.config?.browserEngine?.myChrome === true
-    && (state.config?.browserProfiles ?? []).some((profile) => profile.id === bot.browserProfile && profile.browser === "chrome");
   const placeLabel = (place: Place) => (place === "browser" && myChrome ? t("botPanel.ui.settingsProfilesMyChrome")
     : place === "local" ? t(platform === "darwin" ? "botPanel.place.thisMac" : platform === "win32" ? "botPanel.place.thisPc" : "botPanel.place.thisComputer") : t(PANEL_PLACE_LABEL[place]));
   const choice = (place: Place): PlaceOption => {
@@ -87,7 +86,7 @@ export function usePlaceChoices(bot: Bot) {
  * computer for a bot that decides alone asks first, through `warning`. `cloudDesktop`: the cloud desktop row beside the choices, in
  * the desktop app only; choosing it runs its own step and never changes the bot's place (its confirm is in `warning`). */
 export function usePlacePicker(bot: Bot, derived: Derived) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const choices = usePlaceChoices(bot);
   const { current } = choices;
   const [localAutoWarning, setLocalAutoWarning] = useState<{ botId: string; patch: BotPatch } | null>(null);
@@ -240,7 +239,7 @@ export function cloudCtaStep(stage: CloudMoveStage | null): CloudCtaStep {
 
 /** dusk cloud for a bot on this computer, and the one next step. `group`: a group chat's bots, one card for all of them. */
 export function CloudCtaCard({ bot, group, stage, cloudDesktop }: { bot: Bot; group?: readonly Bot[]; stage: CloudMoveStage | null; cloudDesktop: CloudDesktopRow | null }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [hopping, setHopping] = useState(false);
   const step = cloudCtaStep(stage);
   const device = deviceWord();
@@ -293,7 +292,7 @@ export function ComputerTab({ bot, derived, cloudFor }: {
   /** the bots the cloud card speaks for: this bot alone by default, a group chat's bots on one member, none on the rest */
   cloudFor?: readonly Bot[];
 }) {
-  const { state } = useStore();
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
   const { capabilities } = useDesktopCapabilities();
   const picker = usePlacePicker(bot, derived);
   const { current, warning, cloudDesktop } = picker;
@@ -301,7 +300,7 @@ export function ComputerTab({ bot, derived, cloudFor }: {
   const [screenBox, setScreenBox] = useState<HTMLElement | null>(null);
   const onScreen = useOnScreen(screenBox);
   const [report, setReport] = useState<InlineReport | null>(null);
-  const host = runsOnHost({ cloudHome: state.config?.cloudHome === true, otherServer, platform: capabilities.host?.platform ?? "other" });
+  const host = runsOnHost({ cloudHome, otherServer, platform: capabilities.host?.platform ?? "other" });
   const screenOf = t(host.kind === "cloud" ? "computer.screenOfCloud" : "computer.screenOf", { name: bot.name });
   const stage = cloudDesktop ? cloudMoveStage(cloudDesktop.view, cloudDesktop.keep) : desktopShowsOtherServer() ? "elsewhere" : null;
   const cloudBots = (cloudFor ?? [bot]).filter((one) => one.yourAccess !== "view");

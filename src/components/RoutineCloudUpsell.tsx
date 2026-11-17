@@ -3,15 +3,21 @@ import { alwaysOnCooling, markAlwaysOn, trackUpsell, watchUpsell } from "@/lib/c
 import { t } from "@/lib/i18n";
 import { madeSince, newRoutineSinceBaseline } from "@/lib/routine-cloud-upsell";
 import { useAppTriggers } from "@/lib/app-triggers";
-import { useStore } from "@/state/store";
+import { useStoreSelector, type AppState } from "@/state/store";
 import { useCloudUpsell } from "./CloudUpsell";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { deviceWord } from "./vps-link/parts";
 import { GrokDialog, mdPrimaryCls, mdSecondaryCls } from "./ui/GrokDialog";
 import { PlaceArt } from "./ui/PlaceArt";
 
+const upsellMustWait = (s: AppState) => !s.connected || s.appSettingsOpen || s.settingsOpen || s.pluginsOpen
+  || s.shortcutsOpen || s.welcomeOpen || Boolean(s.cloudAdd) || s.cloudHowTo || s.botCreationPending;
+
 export function RoutineCloudUpsell({ quiet = false }: { quiet?: boolean }) {
-  const { state } = useStore();
+  const routines = useStoreSelector((s) => s.routines);
+  const webhooks = useStoreSelector((s) => s.webhooks);
+  const routinesLoadState = useStoreSelector((s) => s.routinesLoadState);
+  const mustWait = useStoreSelector(upsellMustWait);
   const upsell = useCloudUpsell();
   const { capabilities } = useDesktopCapabilities();
   const appTriggers = useAppTriggers();
@@ -22,19 +28,18 @@ export function RoutineCloudUpsell({ quiet = false }: { quiet?: boolean }) {
   const [shown, setShown] = useState<string | null>(null);
   // a schedule, or something another app starts (its events or its messages), made on this computer
   const made = useMemo(() => [
-    ...madeSince(state.routines, opened.current).map(entry => ({ id: entry.id, name: entry.name, enabled: entry.enabled, heldFor: entry.heldFor, event: false })),
-    ...madeSince(state.webhooks, opened.current).filter(entry => entry.runOn === "maus").map(entry => ({ id: entry.id, name: entry.name, enabled: entry.enabled !== false, heldFor: undefined, event: true })),
+    ...madeSince(routines, opened.current).map(entry => ({ id: entry.id, name: entry.name, enabled: entry.enabled, heldFor: entry.heldFor, event: false })),
+    ...madeSince(webhooks, opened.current).filter(entry => entry.runOn === "maus").map(entry => ({ id: entry.id, name: entry.name, enabled: entry.enabled !== false, heldFor: undefined, event: true })),
     ...madeSince(appTriggers.triggers, opened.current).filter(entry => entry.runOn === "maus").map(entry => ({ id: entry.id, name: entry.name, enabled: entry.enabled, heldFor: undefined, event: true })),
-  ], [state.routines, state.webhooks, appTriggers.triggers]);
+  ], [routines, webhooks, appTriggers.triggers]);
   useEffect(() => {
-    if (state.routinesLoadState !== "ready") return;
+    if (routinesLoadState !== "ready") return;
     const next = newRoutineSinceBaseline(seen.current, made);
     seen.current = next.seen ?? seen.current;
     if (next.created) setPending(next.created.id);
-  }, [made, state.routinesLoadState]);
+  }, [made, routinesLoadState]);
   const allowed = upsell.allowed === true;
-  const waits = quiet || !state.connected || state.appSettingsOpen || state.settingsOpen || state.pluginsOpen
-    || state.shortcutsOpen || state.welcomeOpen || Boolean(state.cloudAdd) || state.cloudHowTo || state.botCreationPending;
+  const waits = quiet || mustWait;
   useEffect(() => {
     if (!pending || shown || !allowed || waits) return;
     const routine = made.find(entry => entry.id === pending);

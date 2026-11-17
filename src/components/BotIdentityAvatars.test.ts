@@ -30,10 +30,10 @@ const avatarGroup: Group = {
 };
 
 
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const actual = await original<typeof import("@/state/store")>();
   return { ...actual, useStore: () => ({ state: { ...actual.initialState, bots: avatarBots, groups: [avatarGroup] }, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 // Replaced whole rather than spread over: its context default reads window.duskDesktop at import time, and there is no DOM.
 vi.mock("./DesktopCapabilities", () => ({
   useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false } } }),

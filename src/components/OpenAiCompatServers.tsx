@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Loader2, Plus, RotateCw, Trash2 } from "../icons";
-import { api, useStore, type InstanceInfo } from "@/state/store";
+import { api, useStoreActions, useStoreSelector, type InstanceInfo } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { keySaved } from "@/lib/product-events";
 import { addedServers } from "@/lib/openai-compat-endpoints";
@@ -44,11 +44,12 @@ function ReplyWaitSelect({ server, disabled, onPick }: { server: InstanceInfo; d
 
 /** The built-in server whose base URL is set above, often a local Ollama: the same wait as an added server. */
 export function BuiltInReplyWait() {
-  const { state, dispatch, refreshInstances } = useStore();
+  const { dispatch, refreshInstances } = useStoreActions();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const server = state.instances.find((instance) => instance.instanceId === "openaiCompat" && instance.driverKind === "openai-compat");
-  if (!server || !state.config?.openaiCompat?.url) return null;
+  const server = useStoreSelector((s) => s.instances.find((instance) => instance.instanceId === "openaiCompat" && instance.driverKind === "openai-compat"));
+  const url = useStoreSelector((s) => s.config?.openaiCompat?.url);
+  if (!server || !url) return null;
   const pick = (minutes: number | null) => {
     if (busy) return;
     setBusy(true);
@@ -71,12 +72,12 @@ export function BuiltInReplyWait() {
 }
 
 export function OtherOpenAiCompatServers() {
-  const { state } = useStore();
-  return <AddedServers servers={addedServers(state.instances)} />;
+  const instances = useStoreSelector((s) => s.instances);
+  return <AddedServers servers={addedServers(instances)} />;
 }
 
 function AddedServers({ servers }: { servers: Array<InstanceInfo & { url?: string }> }) {
-  const { dispatch, refreshInstances } = useStore();
+  const { dispatch, refreshInstances } = useStoreActions();
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [key, setKey] = useState("");
@@ -194,8 +195,8 @@ export function lmStudioBaseUrl(port: string): string | null {
 }
 
 export function LmStudioServer({ heading = true }: { heading?: boolean } = {}) {
-  const { state, dispatch, refreshInstances } = useStore();
-  const added = addedServers(state.instances);
+  const { dispatch, refreshInstances } = useStoreActions();
+  const added = addedServers(useStoreSelector((s) => s.instances));
   const [port, setPort] = useState("1234");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);

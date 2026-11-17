@@ -10,7 +10,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
   useEffect: (effect: EffectCallback) => { f.effects.push(effect); },
 }));
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({ capabilities: { host: { platform: f.platform } }, ready: true }) }));
-vi.mock("@/state/store", async original => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: { bots: [{ name: "Ember" }] }, dispatch: vi.fn() }) }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async original => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: { bots: [{ name: "Ember" }] }, dispatch: vi.fn() }) }))(importOriginal)));
 // the sign-out ask is the app's ConfirmDialog, a portal: here only its props are read
 vi.mock("./AccountMenu", async original => ({ ...await original<typeof import("./AccountMenu")>(), CloudSignOutConfirm: () => null }));
 const signIn = vi.hoisted(() => ({ open: vi.fn() }));

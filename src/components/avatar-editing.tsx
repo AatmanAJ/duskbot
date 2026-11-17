@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 
-import { useStore, type Bot } from "@/state/store";
+import { useStoreActions, type Bot } from "@/state/store";
 import { imageAttachmentFromFile } from "@/lib/composer-attachments";
 import { useOrganizationBranding } from "@/lib/use-organization-branding";
 import { AVATAR_FOCUS_CENTER, AVATAR_ZOOM_MAX, AVATAR_ZOOM_MIN, botAvatarUrlFromStoredPath, clampAvatarFocus, clampAvatarZoom } from "../../shared/bot-avatar";
@@ -117,7 +117,7 @@ export function OrganizationAvatarIcons({ busy, onUpload }: { busy: boolean; onU
 }
 
 export function useAvatarImage(bot: Bot, onPatch: (patch: AvatarPatch) => void) {
-  const { flushBotPatches } = useStore();
+  const { flushBotPatches } = useStoreActions();
   const { request: api, uploadAvatar } = useBotEditor();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);

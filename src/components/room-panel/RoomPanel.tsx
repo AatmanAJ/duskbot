@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
@@ -7,7 +7,8 @@ import { PANEL_PUSH, SWAP } from "@/lib/motion-presets";
 import { MotionDiv } from "../ui/SheetMotion";
 import { closeRoomPanel } from "@/lib/room-panel";
 import type { LocaleKey } from "@/locales";
-import { useStore, type Bot, type Group } from "@/state/store";
+import { useDispatch, useStoreShallow, type Bot, type Group } from "@/state/store";
+import { botById } from "@/state/store-index";
 import { BotFaces } from "../BotFaces";
 import { roomWorkingIds } from "../RoomWorkingLines";
 import { useCaptionChrome } from "../DesktopCapabilities";
@@ -47,7 +48,7 @@ function RoomHero({ group, members }: { group: Group; members: Bot[] }) {
 }
 
 export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: boolean }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const { dragProps } = useCaptionChrome();
   // the side panel stays shut for every chat until the person opens it again, as the bot panel does
   const close = () => {
@@ -61,10 +62,7 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const membersRowRef = useRef<HTMLButtonElement>(null);
   const leftPage = useRef<RoomPage | null>(null);
-  const members = useMemo(
-    () => group.memberIds.map((id) => state.bots.find((bot) => bot.id === id)).filter((bot): bot is Bot => Boolean(bot)),
-    [group.memberIds, state.bots],
-  );
+  const members = useStoreShallow((s) => group.memberIds.map((id) => botById(s, id)).filter((bot): bot is Bot => Boolean(bot)));
   const closeMembers = useCallback(() => setMembersOpen(false), []);
 
   // only a tab picked from the tabs swaps in; coming back from a page, the list is simply there under the wipe

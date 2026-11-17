@@ -11,7 +11,7 @@ import { t } from "@/lib/i18n";
 import { phoneAppEnabled } from "@/lib/feature-flags";
 import { hintSeen } from "@/lib/onboarding";
 import type { CloudSendNotice } from "../../../electron/cloud-send.mjs";
-import { openBot, useStore } from "@/state/store";
+import { openBot, useDispatch, useStoreSelector, type AppState } from "@/state/store";
 import { BringMyCloud } from "./BringMyCloud";
 import { QUIET_BUTTON } from "@/components/CloudMoveOffer";
 import { PRIMARY, useCloudName } from "./parts";
@@ -33,6 +33,15 @@ export function sentHere(notice: CloudSendNotice | null | undefined): { state: "
   return null;
 }
 
+const selectOnboarding = (s: AppState) => s.config?.onboarding;
+const selectTeam = (s: AppState) => Boolean(s.config?.team);
+const selectAiReady = (s: AppState) => s.instances.some(engineReady);
+const selectSelectedId = (s: AppState) => s.selectedId;
+function selectFirstBot(s: AppState) {
+  const visible = s.bots.filter((bot) => !bot.hidden);
+  return visible.find((candidate) => candidate.chiefOfStaff) ?? visible[0] ?? null;
+}
+
 const ALL_LINES: Array<{ icon: GlyphIcon; key: "cloudWelcome.v2.always" | "cloudWelcome.v2.phone" | "cloudWelcome.v2.routines" }> = [
   { icon: Moon, key: "cloudWelcome.v2.always" },
   { icon: Smartphone, key: "cloudWelcome.v2.phone" },
@@ -42,20 +51,21 @@ const ALL_LINES: Array<{ icon: GlyphIcon; key: "cloudWelcome.v2.always" | "cloud
 /** A fresh dusk cloud, or one this computer's bots just moved to, in one screen: the bots landing on the cloud, what is
  * different now, and one thing to do: connect an AI when none works yet, else start chatting. */
 export function CloudWelcome() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const onboarding = useStoreSelector(selectOnboarding);
   const welcome = useCloudWelcome();
-  const record = withEarlyHints(state.config?.onboarding, welcome.early);
+  const record = withEarlyHints(onboarding, welcome.early);
   const name = useCloudName();
-  const team = Boolean(state.config?.team);
+  const team = useStoreSelector(selectTeam);
   const [connecting, setConnecting] = useState(() => takeWelcomeRequest() === "engine");
   const [landed, setLanded] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
-  const visible = state.bots.filter((bot) => !bot.hidden);
-  const bot = visible.find((candidate) => candidate.chiefOfStaff) ?? visible[0] ?? null;
+  const bot = useStoreSelector(selectFirstBot);
   const sendBridge = window.duskDesktop?.remoteClient?.active ? undefined : window.duskDesktop?.cloudSendPage;
   const [notice] = useCloudSendNotice(sendBridge);
   const sent = sentHere(notice);
-  const aiReady = state.instances.some(engineReady);
+  const aiReady = useStoreSelector(selectAiReady);
+  const selectedId = useStoreSelector(selectSelectedId);
 
   useEffect(() => {
     markWelcomeSeen();
@@ -69,12 +79,12 @@ export function CloudWelcome() {
 
   const anchor = useRef<string | null>(null);
   useEffect(() => {
-    if (!state.selectedId) return;
-    if (anchor.current === null) anchor.current = state.selectedId;
-    else if (state.selectedId !== anchor.current) stepAsideWelcome();
-  }, [state.selectedId]);
+    if (!selectedId) return;
+    if (anchor.current === null) anchor.current = selectedId;
+    else if (selectedId !== anchor.current) stepAsideWelcome();
+  }, [selectedId]);
 
-  const remember = (ids: string[]) => { void saveWelcomeHints(state.config?.onboarding, ids, dispatch); };
+  const remember = (ids: string[]) => { void saveWelcomeHints(onboarding, ids, dispatch); };
   // The sidebar's Set up card reads each step as handled once the welcome ends here, the AI as connected or skipped.
   const end = (reason: "done" | "skipped") => {
     track("cloud_welcome_ended", { reason, at: connecting ? "engine" : "welcome" });

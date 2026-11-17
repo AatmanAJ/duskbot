@@ -7,10 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppState, Bot, Group } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ state: null as Partial<AppState> | null, dispatch: vi.fn(), chrome: undefined as unknown }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, ...fixture.state }, dispatch: fixture.dispatch }) };
-});
+})(importOriginal)));
 vi.mock("./DesktopCapabilities", async (importOriginal) => {
   const original = await importOriginal<typeof import("./DesktopCapabilities")>();
   return {

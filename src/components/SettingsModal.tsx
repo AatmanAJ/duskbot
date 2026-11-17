@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { AnimatePresence, useIsPresent } from "motion/react";
-import { useStore, type AppSettingsSection } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppSettingsSection } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { trailNavigation } from "@/lib/trail";
 import { cn } from "@/lib/cn";
@@ -104,11 +104,16 @@ function useScrollThumb(scroller: RefObject<HTMLDivElement | null>, key: string)
 }
 
 export function SettingsModal() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector((s) => s.config);
+  const appSettingsRequest = useStoreSelector((s) => s.appSettingsRequest);
+  const appSettingsSection = useStoreSelector((s) => s.appSettingsSection);
+  const phoneFocus = useStoreSelector((s) => s.appSettingsPhonePairing);
+  const appSettingsCloudLink = useStoreSelector((s) => s.appSettingsCloudLink);
   const present = useIsPresent();
   const remoteActive = window.duskDesktop?.remoteClient?.active === true;
   const ownerOrAdmin = useOwnerOrAdmin();
-  const cloudHome = state.config?.cloudHome === true;
+  const cloudHome = config?.cloudHome === true;
 
   const offered: Record<AppSettingsSection, boolean> = {
     general: true, appearance: true, texting: true, companion: true, remote: true, computer: true, logins: true, updates: true,
@@ -119,7 +124,7 @@ export function SettingsModal() {
     cloudAccount: Boolean(window.duskDesktop?.cloudAccount || (window.duskDesktop?.cloudPlan && cloudHome)),
     people: !window.duskDesktop && !cloudHome,
     activity: !window.duskDesktop && ownerOrAdmin === true,
-    botAccess: Boolean(state.config?.team) && ownerOrAdmin === true,
+    botAccess: Boolean(config?.team) && ownerOrAdmin === true,
     permissions: false,
   };
   offered.permissions = offered.botAccess || offered.activity;
@@ -132,7 +137,7 @@ export function SettingsModal() {
   // moving between panes and pages stays inside Settings: a store update would re-render the whole app under the sheet
   // on every click. The next request from outside (a link, a menu) wins again.
   const [localNav, setLocalNav] = useState<{ request: number; section: AppSettingsSection } | null>(null);
-  const requested = localNav && localNav.request === state.appSettingsRequest ? localNav.section : state.appSettingsSection;
+  const requested = localNav && localNav.request === appSettingsRequest ? localNav.section : appSettingsSection;
   const at = settingsLocation(has(requested) ? requested : remoteActive && requested === "remote" ? "companion" : "general");
   const pane = panes.some((entry) => entry.id === at.pane) ? at.pane : "general";
   // the Bots pane has no rail row of its own, but a bot's page opened from its panel shows it, selected, so the rail
@@ -151,9 +156,9 @@ export function SettingsModal() {
   // a pane's own pages (and Advanced features' pages) slide in over its list with Grok's wipe; another pane swaps at once
   const paneKey = `${pane}:${page ?? ""}`;
   const botTarget = useBotTarget();
+  const targetBot = useStoreSelector((s) => botTarget?.kind === "bot" ? s.bots.find((entry) => entry.id === botTarget.id) : undefined);
   const botPages = (): SubPage[] => {
-    const bot = botTarget?.kind === "bot" ? state.bots.find((entry) => entry.id === botTarget.id) : undefined;
-    const top = targetPage(botTarget, bot);
+    const top = targetPage(botTarget, targetBot);
     return top ? [top] : [];
   };
   const linkedPage = (section: AppSettingsSection): SubPage[] => {
@@ -206,7 +211,7 @@ export function SettingsModal() {
   const close = () => dispatch({ type: "toggleAppSettings", open: false });
   const go = (section: AppSettingsSection) => {
     setPhoneList(false);
-    setLocalNav({ request: state.appSettingsRequest, section });
+    setLocalNav({ request: appSettingsRequest, section });
   };
   const reduced = useMotionReduced();
 
@@ -244,18 +249,17 @@ export function SettingsModal() {
     };
   }, [dispatch]);
 
-  const phoneFocus = state.appSettingsPhonePairing;
   const computerPairs = currentPhonePairingTarget(cloudHome) === "computer";
   const remoteAccess: RemoteAccessCards = {
     client: <RemoteComputerSection hideWhenUnavailable />,
     // Security: the server decides who may pair (an owner or admin session), not this gate.
-    pairing: <PhoneLinking remote={remoteActive}>{(phone) => <ServerPairingCard phone={phone} cloudHome={cloudHome} focusRequest={computerPairs ? 0 : phoneFocus} team={state.config?.team?.name} teamPhoneBlocked={state.config?.managedPolicy?.remoteAccess === false ? t("policy.teamRemoteBlocked", { organization: state.config.managedPolicy.organizationName }) : null} simple />}</PhoneLinking>,
-    desktopPairing: phoneAppEnabled() || state.config?.team ? null : <ServerPairingCard phone={null} cloudHome={cloudHome} simple />,
+    pairing: <PhoneLinking remote={remoteActive}>{(phone) => <ServerPairingCard phone={phone} cloudHome={cloudHome} focusRequest={computerPairs ? 0 : phoneFocus} team={config?.team?.name} teamPhoneBlocked={config?.managedPolicy?.remoteAccess === false ? t("policy.teamRemoteBlocked", { organization: config.managedPolicy.organizationName }) : null} simple />}</PhoneLinking>,
+    desktopPairing: phoneAppEnabled() || config?.team ? null : <ServerPairingCard phone={null} cloudHome={cloudHome} simple />,
     elsewhere: <ServerPairingCard phone={null} cloudHome={cloudHome} elsewhere={{ connect: <RemoteComputerSection hideWhenUnavailable simple /> }} />,
-    companion: remoteActive ? null : <CompanionSection profileEmail={state.config?.profile?.email} focusRequest={computerPairs ? phoneFocus : 0} />,
+    companion: remoteActive ? null : <CompanionSection profileEmail={config?.profile?.email} focusRequest={computerPairs ? phoneFocus : 0} />,
   };
   const cloudAccount = has("cloudAccount") && !remoteActive
-    ? <CloudAccountSettings linkRequest={state.appSettingsCloudLink} cloudHome={cloudHome} teamHome={state.config?.team}
+    ? <CloudAccountSettings linkRequest={appSettingsCloudLink} cloudHome={cloudHome} teamHome={config?.team}
       onConnectPhone={phoneAppEnabled() ? () => dispatch(phonePairingSettingsAction()) : undefined}
       onSignIn={() => dispatch({ type: "openCloudAdd", source: "app_settings", signIn: true })} />
     : null;

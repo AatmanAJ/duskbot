@@ -3,7 +3,7 @@ import { track } from "@/lib/analytics";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { footnoteCls, GrokDialog, mdPrimaryCls, mdSecondaryCls } from "./ui/GrokDialog";
-import { useStore, type Group } from "@/state/store";
+import { useDispatch, useStoreSelector, type Group } from "@/state/store";
 import { BotPickerList } from "./BotPickerList";
 import { nextMemberIds } from "@/lib/room-members";
 
@@ -17,15 +17,16 @@ export function ManageMembersPanel({
   onClose: () => void;
   triggerRef?: RefObject<HTMLButtonElement | null>;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const allBots = useStoreSelector((s) => s.bots);
   const [picked, setPicked] = useState<Set<string>>(() => new Set(group.memberIds));
   const [saveError, setSaveError] = useState<string | null>(null);
   const openedMemberIds = useRef([...group.memberIds]);
 
   // Archived bots stay listed while still members, or a room could keep a member you cannot remove.
   const bots = useMemo(
-    () => state.bots.filter((b) => !b.hidden || group.memberIds.includes(b.id)),
-    [state.bots, group.memberIds],
+    () => allBots.filter((b) => !b.hidden || group.memberIds.includes(b.id)),
+    [allBots, group.memberIds],
   );
 
   const toggle = (id: string) =>

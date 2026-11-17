@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { t } from "@/lib/i18n";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, type Bot } from "@/state/store";
 import { BOT_PROFILE_LIMITS } from "../../../../shared/bot-profile";
 import { PackageProvenance } from "../../bot-settings/PackageProvenance";
 import type { useBotSettingsDerived } from "../../bot-settings/useBotSettingsDerived";
@@ -33,7 +33,7 @@ export function PermissionsModal({ bot, derived }: { bot: Bot; derived: Derived;
 type ProfileField = "name" | "title" | "description";
 
 export function IdentityModal({ bot, derived }: { bot: Bot; derived: Derived; onClose: () => void }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [editing, setEditing] = useState<ProfileField | null>(null);
   const editable = bot.yourAccess !== "view";
   const rows: { field: ProfileField; title: string; value: string }[] = [

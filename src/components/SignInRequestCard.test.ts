@@ -14,11 +14,11 @@ vi.mock("react", async (importOriginal) => {
 });
 const dispatch = vi.fn();
 const storeApi = vi.fn();
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ dispatch, state: { computerControl: {} } }),
   api: (...args: unknown[]) => storeApi(...args),
-}));
+}))(importOriginal)));
 const answerSignIn = vi.fn();
 const here = { value: true };
 vi.mock("@/lib/sign-in", () => ({ answerSignIn: (...args: unknown[]) => answerSignIn(...args), signInHostIsHere: () => here.value }));

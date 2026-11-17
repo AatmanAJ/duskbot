@@ -13,7 +13,7 @@ const fixture = vi.hoisted(() => {
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   return { instances: [] as InstanceInfo[], modelVariantSessions: {} as AppState["modelVariantSessions"], dispatch: vi.fn() };
 });
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   useStore: () => ({
     state: { instances: fixture.instances, bots: [], modelVariantSessions: fixture.modelVariantSessions },
@@ -21,7 +21,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     refreshInstances: vi.fn(),
     refreshModels: vi.fn(),
   }),
-}));
+}))(importOriginal)));
 
 // The effort and variant rows, and the picker's chip; the menu has its own files.
 

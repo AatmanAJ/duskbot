@@ -13,14 +13,14 @@ const fixture = vi.hoisted(() => {
   return { config: {} as FeatureFlagConfig & { cloudHome?: boolean }, view };
 });
 // These cover the Advanced panel; ComputerPanel.simple.test.ts covers Simple.
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   useStore: () => ({
     state: { config: { vps: { configured: false }, ...fixture.config }, instances: [], computerControl: {}, routines: [], routineRuns: [] },
     dispatch: vi.fn(),
     flushBotPatches: vi.fn(),
   }),
-}));
+}))(importOriginal)));
 import { ComputerPanel } from "./ComputerPanel";
 
 afterAll(() => vi.unstubAllGlobals());

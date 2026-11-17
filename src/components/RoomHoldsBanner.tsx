@@ -1,10 +1,10 @@
 import { t } from "@/lib/i18n";
-import { useStore, type Bot, type Group } from "@/state/store";
+import { useDispatch, type Bot, type Group } from "@/state/store";
 import { CARD_ACTION, ChatErrorCard } from "./ChatErrorBanner";
 
 /** Members the person stopped, said in the card above the composer with a way to bring each back. */
 export function RoomHoldsBanner({ group, members }: { group: Group; members: Bot[] }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const held = members.filter((member) => group.holds?.[member.id]);
   if (!held.length) return null;
   return (

@@ -5,7 +5,7 @@ import { blockerDetail, canOfferSignIn, currentFailureWords, failedReplyDetail, 
 import { statusActivity } from "@/lib/activity-runs";
 import { lowerFirst } from "@/lib/lower-first";
 import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
-import { useStore, type Message } from "@/state/store";
+import { useDispatch, useStoreSelector, type Message } from "@/state/store";
 import { failedTurnCause } from "../../shared/failed-turn";
 import { freeFallback } from "../../shared/ai-ranking";
 import { engineReady } from "./EngineLibrary";
@@ -54,23 +54,26 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   /** retries the last turn, when it can be retried */
   onRetry?: () => void;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector((s) => s.config);
+  const instances = useStoreSelector((s) => s.instances);
+  const bots = useStoreSelector((s) => s.bots);
   const { capabilities } = useDesktopCapabilities();
   // a test or an older desktop may hand over no host facts
   const platform = capabilities.host?.platform;
-  const seat = usePlaceSeat(state.config, platform);
+  const seat = usePlaceSeat(config, platform);
   const [, setClosed] = useState(0);
   // a retry that may repeat what a cut turn already did asks once more first; keyed by the row it is for
   const [confirming, setConfirming] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<boolean | AiTileId>(false);
   // an AI the person connected is ready: the free backup's failure is then an ordinary one
-  const ownAi = state.instances.some((instance) => !freeFallback(instance) && engineReady(instance));
+  const ownAi = instances.some((instance) => !freeFallback(instance) && engineReady(instance));
   const failures = rows?.failures ?? [];
   const notices = (rows?.notices ?? []).filter((m) => !dismissed.has(m.id));
   const items = failures.filter((m) => !dismissed.has(m.id)).map((message) => {
     const id = message.from?.botId ?? ownBotId;
-    const bot = state.bots.find((candidate) => candidate.id === id);
-    const engine = botEngine(bot, state.instances);
+    const bot = bots.find((candidate) => candidate.id === id);
+    const engine = botEngine(bot, instances);
     return { message, bot, engine, kind: failedReplyKind(message.tool!, engine, ownAi) };
   });
   const lead = mostActionable(items);
@@ -115,7 +118,7 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
     );
   }
 
-  const onServer = aiRunsOnServer(state.config, capabilities);
+  const onServer = aiRunsOnServer(config, capabilities);
   const engineName = lead.engine?.displayName ?? t("failedReply.yourAi");
   const cause = failedTurnCause(tool.name) ?? "";
   let detail: string | null = failedReplyDetail(lead.kind, engineName, onServer, cause);
@@ -155,7 +158,7 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   } else if (lead.kind === "no_answer" && !group && tool.rescue) {
     // the first reply never came: what the person can change is the AI, or whose subscription it runs on
     const { rescue } = tool;
-    const ai = state.instances.find((instance) => instance.instanceId === rescue.instanceId)?.displayName || rescue.ai;
+    const ai = instances.find((instance) => instance.instanceId === rescue.instanceId)?.displayName || rescue.ai;
     detail = t("chat.rescue.over", { bot: lead.bot?.name ?? "", ai });
     actions.push({ label: t("chat.rescue.switchAi"), onClick: () => openBotSettings(dispatch, "model", { botId: rescue.botId }) });
     actions.push({ label: t("chat.rescue.connect"), onClick: () => dispatch(openEngines) });

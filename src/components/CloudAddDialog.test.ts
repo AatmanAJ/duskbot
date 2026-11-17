@@ -14,7 +14,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
     return [f.values[index], (next: unknown) => { f.values[index] = next; }]; },
   useEffect: (effect: EffectCallback, deps?: readonly unknown[]) => { f.effects.push({ effect, deps }); },
 }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }) }))()));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("./cloud-buy/AddCloudFlow", () => ({ AddCloudFlow: ({ source }: { source?: string }) => createElement("div", { "data-add-cloud-flow": source ?? "" }) }));
 import { CloudAddDialog, CloudAddPanel, CloudAddSheet, type CloudAddActions, type CloudAddUi } from "./CloudAddDialog";

@@ -8,11 +8,11 @@ import { refreshPlaces } from "@/lib/places";
 
 const store = vi.hoisted(() => ({ state: {} as Record<string, unknown> }));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   useStore: () => ({ state: store.state, dispatch: vi.fn() }),
   api: vi.fn(async () => ({ hits: [] })),
-}));
+}))(importOriginal)));
 const { SidebarPlaceButton, placeKind, switchPlaceCommand } = await import("./SidebarPlaceButton");
 const { CommandPalette } = await import("./CommandPalette");
 

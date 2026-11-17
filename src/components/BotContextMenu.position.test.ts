@@ -20,10 +20,10 @@ vi.mock("react-dom", async (importOriginal) => {
   } };
 });
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({}) }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, bots: [bot, { ...bot, id: "other" }] }, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 
 const { BotContextMenu } = await import("./Sidebar");
 const { setTeamPeople } = await import("@/state/team-people");

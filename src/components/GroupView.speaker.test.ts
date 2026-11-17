@@ -3,10 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, Group, Message } from "@/state/store";
 
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: original.initialState, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 vi.mock("./DesktopCapabilities", () => ({
   useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false } } }),
   useCaptionChrome: () => ({}),

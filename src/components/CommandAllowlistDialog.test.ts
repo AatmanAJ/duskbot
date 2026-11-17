@@ -6,10 +6,10 @@ const portal = vi.hoisted(() => vi.fn((children: ReactNode, _container: unknown)
 vi.mock("react-dom", () => ({
   createPortal: (children: ReactNode, target: unknown) => portal(children, target),
 }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   useStore: () => ({ state: { instances: [] } }),
   api: vi.fn(),
-}));
+}))()));
 
 import { CommandAllowlistDialog } from "./CommandAllowlistDialog";
 

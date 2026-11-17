@@ -5,10 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CloudSendNotice } from "../../electron/cloud-send.mjs";
 
 const fixture = vi.hoisted(() => ({ state: {} as Record<string, unknown>, tracked: [] as Array<[string, unknown]> }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   useStore: () => ({ state: fixture.state, dispatch: vi.fn() }),
-}));
+}))(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: (name: string, props: unknown) => { fixture.tracked.push([name, props]); } }));
 vi.mock("./Avatar", () => ({ MausAvatar: () => null }));
 

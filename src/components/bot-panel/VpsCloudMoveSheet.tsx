@@ -6,7 +6,7 @@ import { arrivedList, ipcErrorText, listOf } from "@/lib/cloud-send";
 import { t } from "@/lib/i18n";
 import { useOtherServerName } from "@/lib/other-server";
 import { cheapestPlan, SIGN_IN_FIRST, useVpsCloudMove, useVpsCloudOffer, type VpsCloudMoveView, type VpsMoveCounts } from "@/lib/vps-cloud-move";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 import { GrokDialog, mdPrimaryCls, mdSecondaryCls } from "../ui/GrokDialog";
 import { PlaceArt } from "../ui/PlaceArt";
 import { deviceWord } from "../vps-link/parts";
@@ -41,7 +41,8 @@ function doneList(counts: VpsMoveCounts | undefined): string[] {
 
 /** The move sheet on a VPS's own page: its bots go straight to dusk cloud, one state at a time as main tells it. */
 export function VpsCloudMoveSheet({ onClose }: { onClose: () => void }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const bots = useStoreSelector((s) => s.bots.filter((bot) => !bot.hidden && !bot.movedTo).length);
   const { bridge, view, set } = useVpsCloudMove(true);
   const serverName = useOtherServerName();
   const device = deviceWord();
@@ -52,7 +53,6 @@ export function VpsCloudMoveSheet({ onClose }: { onClose: () => void }) {
 
   if (!bridge || !view || !step) return null;
   const place = "place" in view ? view.place : (serverName ?? "");
-  const bots = state.bots.filter((bot) => !bot.hidden && !bot.movedTo).length;
   // Get dusk cloud buys the cheapest plan, named with its price before the browser opens
   const plan = cheapestPlan(offer);
   const planName = plan ? plan.label ?? cloudPlanLabel(plan.tier) : null;

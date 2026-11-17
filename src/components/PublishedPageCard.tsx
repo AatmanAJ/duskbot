@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { useCopyFeedback } from "@/lib/copy-text";
 import { usePageOpener } from "@/lib/page-open";
 import { t } from "@/lib/i18n";
-import { api, useStore, type Message } from "@/state/store";
+import { api, useDispatch, type Message } from "@/state/store";
 import { ASK_CHIP, ASK_CHIP_IDLE, ASK_PRIMARY_BUTTON } from "./AskCard";
 
 const usageLine = (card: Card) => card.usage ? t("chat.page.usage", { pages: card.usage.pages, limit: card.usage.limit }) : null;
@@ -22,7 +22,7 @@ function limitLine(card: Card): string {
 /** A page a bot published: its link, Copy link, Open and Unpublish; or, at the plan's limit, why not and where to get more.
  * The link and Open both open the page (usePageOpener): never a message, a turn or a chat. */
 export function PublishedPageCard({ message }: { message: Message }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const card = message.publishedPage;
   const { state: copied, copy } = useCopyFeedback(card?.url ?? "");
   const [busy, setBusy] = useState(false);

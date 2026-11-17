@@ -59,7 +59,7 @@ vi.mock("./LiveDesktop", () => ({
 }));
 vi.mock("./BrowserPanel", () => ({ BrowserPanel: () => null }));
 vi.mock("./bot-settings/RoutinesSection", () => ({ RoutinesSection: () => null }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: async (path: string, init?: RequestInit) => {
     const route = path.split("?")[0]!;
@@ -98,7 +98,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     if (route === "/api/bots/scout/computer/join") return { joinUrl: "https://desktop.invalid/scout" };
     return {};
   },
-}));
+}))(importOriginal)));
 
 const { ComputerPanel } = await import("./ComputerPanel");
 const { BotEditorStore, initialState } = await import("@/state/store");

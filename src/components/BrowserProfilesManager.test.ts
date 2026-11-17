@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, BrowserProfile } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ profiles: [] as BrowserProfile[], bots: [] as Bot[], myChrome: true, engine: undefined as Record<string, unknown> | undefined }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: vi.fn(),
   ApiError: class extends Error {},
   useStore: () => ({
@@ -12,7 +12,7 @@ vi.mock("@/state/store", () => ({
     dispatch: vi.fn(),
     flushBotPatches: vi.fn(),
   }),
-}));
+}))()));
 import { BrowserProfilesManager } from "./BrowserProfilesManager";
 import { SubPageContext } from "./ListRows";
 

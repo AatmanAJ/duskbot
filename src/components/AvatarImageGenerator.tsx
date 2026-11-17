@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "../icons";
 
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { normalizeImageGenerationUrl, type AvatarImageProvider } from "../../shared/image-generation";
 import { Select } from "./Select";
 import { t } from "@/lib/i18n";
@@ -33,8 +33,10 @@ export function AvatarImageGenerator({
   onGenerate: (direction: string) => Promise<void>;
   onSavingChange: (saving: boolean) => void;
 }) {
-  const { state, dispatch } = useStore();
-  const imageGen = state.config?.imageGen;
+  const dispatch = useDispatch();
+  const imageGen = useStoreSelector((state) => state.config?.imageGen);
+  const xaiConfigured = useStoreSelector((state) => state.config?.xai?.configured);
+  const configLoaded = useStoreSelector((state) => Boolean(state.config));
   const savedProvider = imageGen?.provider ?? "openai";
   const [providerDraft, setProviderDraft] = useState<AvatarImageProvider | null>(null);
   const [urlDraft, setUrlDraft] = useState<string | null>(null);
@@ -51,7 +53,7 @@ export function AvatarImageGenerator({
   const keyConfigured = provider === "custom"
     ? imageGen?.customKeyConfigured === true
     : provider === "xai"
-      ? (imageGen?.xaiConfigured ?? state.config?.xai?.configured) === true
+      ? (imageGen?.xaiConfigured ?? xaiConfigured) === true
       : (imageGen?.openaiConfigured ?? (savedProvider === "openai" && imageGen?.configured)) === true;
   const settingsDirty = provider !== savedProvider || (provider === "custom" && (
     customUrl.trim() !== (imageGen?.customUrl ?? "") ||
@@ -228,7 +230,7 @@ export function AvatarImageGenerator({
     <>
       <label className={LABEL}>
         {t("botIdentity.ai.provider")}
-        <Select variant="ghost" value={provider} onChange={(event) => void chooseProvider(event.target.value as AvatarImageProvider)} disabled={busy || !state.config} className="w-fit">
+        <Select variant="ghost" value={provider} onChange={(event) => void chooseProvider(event.target.value as AvatarImageProvider)} disabled={busy || !configLoaded} className="w-fit">
           {Object.entries(PROVIDERS).map(([value, info]) => <option key={value} value={value}>{info.label}</option>)}
         </Select>
       </label>

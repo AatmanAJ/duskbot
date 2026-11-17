@@ -7,14 +7,14 @@ import type { Bot, Group } from "@/state/store";
 import "@/testing/quiet-canceled-animations";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn() }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
     api: vi.fn(async () => ({ hits: [] })),
     useStore: () => ({ state: { ...original.initialState, bots: [bot], groups: [room] }, dispatch: fixture.dispatch }),
   };
-});
+})(importOriginal)));
 
 import { CommandPalette, openCommandPalette } from "./CommandPalette";
 

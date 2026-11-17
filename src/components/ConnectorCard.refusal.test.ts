@@ -9,10 +9,8 @@ import { ApiError } from "@/state/api";
 import type { Message } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), openExternal: vi.fn(async (_url: string) => {}) }));
-vi.mock("@/state/store", () => ({
-  api: fixture.api,
-  useStore: () => { throw new Error("outside the app"); },
-}));
+// drawn outside the app: the real store hooks find no store
+vi.mock("@/state/store", async (importOriginal) => ({ ...await importOriginal<typeof import("@/state/store")>(), api: fixture.api }));
 import { ConnectorCard } from "./ConnectorCard";
 
 const SENTENCE = "Finish this sign-in in apps → MCP servers.";

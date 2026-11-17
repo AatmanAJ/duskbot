@@ -6,7 +6,7 @@ import { credentialProvider } from "@/lib/analytics-allowlist";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { keySaved, keySaveFailure, savedKeyResult } from "@/lib/product-events";
-import { api, ApiError, useStore, type Bot, type ConfigStatus, type Message } from "@/state/store";
+import { api, ApiError, useDispatch, type Bot, type ConfigStatus, type Message } from "@/state/store";
 import { friendlyError, plainErrorLine } from "@/lib/plain-error";
 import { ASK_QUIET_BUTTON, AskCard, CARD_FIELD, CardSettledRow, cardPrimary, returnFocusToComposer } from "./AskCard";
 import { EmailServerInputs } from "./EmailCard";
@@ -52,7 +52,7 @@ export function SecretRequestCard({
   threadId: string;
   message: Message;
 }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const secret = message.secret!;
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);

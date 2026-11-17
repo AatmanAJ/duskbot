@@ -4,11 +4,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), admin: true as boolean | null, config: null as { cloudHome?: boolean } | null }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: fixture.api,
   useStore: () => ({ state: { bots: [{ id: "pepper", name: "Pepper" }, { id: "quill", name: "Quill" }], config: fixture.config }, dispatch: vi.fn() }),
-}));
+}))(importOriginal)));
 // every password, 2FA key and token leaves sealed (src/lib/sealed-send.ts has its own tests): the fake names what it sealed, never the value
 vi.mock("@/lib/sealed-send", () => ({
   sendSealed: async (purpose: string, target: string[], values: Record<string, string>, send: (sealed: unknown) => Promise<unknown>) => {

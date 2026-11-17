@@ -10,14 +10,14 @@ const fixture = vi.hoisted(() => ({
   wide: true,
   api: vi.fn(),
 }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
     api: (...args: unknown[]) => fixture.api(...args),
     useStore: () => ({ state: original.initialState, dispatch: fixture.dispatch }),
   };
-});
+})(importOriginal)));
 vi.mock("@/lib/use-media-query", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/use-media-query")>(),
   useMediaQuery: () => fixture.wide,

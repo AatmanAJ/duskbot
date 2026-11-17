@@ -9,7 +9,7 @@ import { t } from "@/lib/i18n";
 import { DEFAULT_VOICE_PREFS, setVoicePrefs, voicePrefs } from "@/lib/voice-input/prefs";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), settings: { appSettingsOpen: false, appSettingsSection: "general" } }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({
     state: { ...original.initialState, bots: [bot], instances: [{
@@ -17,7 +17,7 @@ vi.mock("@/state/store", async (importOriginal) => {
     }], ...fixture.settings },
     dispatch: fixture.dispatch,
   }) };
-});
+})(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/lib/use-slash-skills", () => ({ useSlashSkills: () => [] }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => false }));

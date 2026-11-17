@@ -20,7 +20,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
   },
   useEffect: (effect: EffectCallback) => { fixture.effects.push(effect); },
 }));
-vi.mock("@/state/store", () => ({ api: vi.fn() }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: vi.fn() }))()));
 import { CompanyBackupSettings, ConnectedCompanyBackupSettings, SavedCompanyBackupSchedule } from "./CompanyBackupSettings";
 
 type BackupBridge = NonNullable<NonNullable<Window["duskDesktop"]>["companyBackups"]>;

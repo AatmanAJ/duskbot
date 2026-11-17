@@ -18,7 +18,8 @@ import { hostTimeout } from "../../server/testing/host-timeout.ts";
 const view = vi.hoisted(() => ({ config: {} as Record<string, unknown> }));
 vi.mock("@/state/store", async (original) => {
   const store = await original<typeof import("@/state/store")>();
-  return { ...store, useStore: () => ({ state: { ...store.initialState, config: view.config, instances: [] }, dispatch: () => {} }) };
+  const { withStoreHooks } = await import("@/testing/store-mock");
+  return withStoreHooks({ ...store, useStore: () => ({ state: { ...store.initialState, config: view.config, instances: [] }, dispatch: () => {} }) });
 });
 const { KEY_CATALOG, savedState } = await import("@/components/keys/key-catalog");
 const { KeyCatalogRow } = await import("@/components/keys/KeysPage");

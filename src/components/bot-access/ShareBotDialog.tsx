@@ -6,7 +6,7 @@ import type { BotAccess, BotAccessLevel, GrantedLevel } from "../../../shared/bo
 import { botOwner } from "../../../shared/bot-owner";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, type Bot } from "@/state/store";
 import { mayChangeOwner, ownerChanged, ownerOf, useTeamPeople, type TeamPeople, type TeamPerson } from "@/state/team-people";
 import { MENU_SHEET } from "../menu-recipe";
 import { accessOfBot, addablePeople, canShare, levelWhenAdded, nameOf, personOf, saveAccess, saveOwner, withPerson } from "./access";
@@ -26,7 +26,7 @@ export function ShareBotDialog({ bot, teamName, onClose, onChanged, headerMenu }
   headerMenu?: ReactNode;
 }) {
   const team = useTeamPeople();
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);

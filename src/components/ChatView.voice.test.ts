@@ -9,13 +9,13 @@ const fixture = vi.hoisted(() => {
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   return { dispatch: vi.fn() };
 });
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({
     state: { ...original.initialState, instances: [{ instanceId: "test", driverKind: "codex", displayName: "Test", snapshot: { state: "available" } } as InstanceInfo] },
     dispatch: fixture.dispatch,
   }) };
-});
+})(importOriginal)));
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   ...await importOriginal<typeof import("./DesktopCapabilities")>(),
   useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false } }, ready: true }),

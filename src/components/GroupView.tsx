@@ -7,7 +7,9 @@ import { otherSpeaker } from "@/lib/own-profile";
 import { Check, ChevronDown, FolderOpen, Loader2, Pin, X } from "../icons";
 import {
   api,
-  useStore,
+  useDispatch,
+  useStoreSelector,
+  useStoreShallow,
   formatTime,
   openRoomThread,
   openThread,
@@ -17,6 +19,9 @@ import {
   type GroupDefaultResponder,
   type Message,
 } from "@/state/store";
+import { botById } from "@/state/store-index";
+import { useStoreRef } from "@/state/store-ref";
+import { botsOf, sameDrawnBots, selectBots, selectConfig, selectError, selectFocusMessage, selectGroups, selectInstances, selectNotice } from "@/state/store-selectors";
 import { BotAvatar } from "./Avatar";
 import { ScreenFrame } from "./ScreenFrame";
 import { noteMediaSizes } from "@/lib/image-cache";
@@ -84,6 +89,7 @@ import { useLandedReply } from "@/hooks/use-landed-reply";
 import { useTurnLive } from "@/state/turn-status";
 import { splitTranscriptAttachments } from "@/lib/composer-attachments";
 import { useTranscriptViewport } from "@/hooks/use-transcript-viewport";
+import { estimateRowHeight, TranscriptRows, TranscriptViewportContext, type TranscriptRow } from "./TranscriptRows";
 import { useUnreadDivider } from "@/hooks/use-unread-divider";
 import { unreadMessageIds } from "@/lib/unread-divider";
 import { NewMessagesDivider } from "./NewMessagesDivider";
@@ -108,21 +114,25 @@ import { simpleRoomHeader } from "@/lib/room-panel";
 import { friendlyError } from "@/lib/plain-error";
 
 export function RoomToolChip({ message, roomId, threadId, live = false }: { message: Message; roomId?: string; threadId?: string; live?: boolean }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const bots = useStoreSelector(selectBots, sameDrawnBots);
+  const instances = useStoreSelector(selectInstances);
+  const groups = useStoreSelector(selectGroups);
+  const sender = useStoreSelector((state) => botById(state, message.from?.botId));
   const tool = message.tool;
   if (!tool) return null;
   if (message.threadRef) return <ThreadChip message={message} />; if (message.relay) return <TeammateChip message={message} />;
   if (failedTurnCause(tool.name) !== null) {
     // a reply that never came is said once, in the card above the composer
     if (!tool.partial) return null;
-    return <FailedTurnRow tool={tool} engine={botEngine(state.bots.find((b) => b.id === message.from?.botId), state.instances)} botId={message.from?.botId} />;
+    return <FailedTurnRow tool={tool} engine={botEngine(sender, instances)} botId={message.from?.botId} />;
   }
   const comm = message.comm;
   if (comm && message.handoff && (tool.ok !== false || message.handoff.phase === "result")) {
     return <HandoffRow message={message} />;
   }
   if (comm && comm.groupId !== roomId) {
-    return <HandoffChip message={message} bots={state.bots} title={t("room.openBot", { name: comm.withName })} onClick={() => openRoomThread(dispatch, comm, state.groups)} />;
+    return <HandoffChip message={message} bots={bots} title={t("room.openBot", { name: comm.withName })} onClick={() => openRoomThread(dispatch, comm, groups)} />;
   }
   if (!comm) return <ToolActivity tool={tool} live={live} source={threadId ? { threadId, messageId: message.id } : undefined} />;
   return (
@@ -133,7 +143,7 @@ export function RoomToolChip({ message, roomId, threadId, live = false }: { mess
           tool.ok === false && "text-danger",
         )}
       >
-        {comm && <BotAvatar bot={state.bots.find(b => b.id === comm.withBotId) ?? { name: comm.withName, color: comm.withColor }} state="happy" size={16} animated={false} />}
+        {comm && <BotAvatar bot={bots.find(b => b.id === comm.withBotId) ?? { name: comm.withName, color: comm.withColor }} state="happy" size={16} animated={false} />}
         <span className={cn("max-w-[480px] truncate", !comm && "font-mono")}>{tool.name}</span>
       </div>
     </div>
@@ -168,17 +178,18 @@ function RoomTextMessage({
   /** The row arrived while the room was open, so it rises into place. */
   fresh?: boolean;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector(selectConfig);
+  const focus = useStoreSelector((state) => state.focusMessage?.messageId === m.id ? state.focusMessage : null);
   const user = m.role === "user";
   const reactor = useReactor();
-  const speaker = otherSpeaker(m, state.config?.team && reactor !== "user" ? reactor : null);
+  const speaker = otherSpeaker(m, config?.team && reactor !== "user" ? reactor : null);
   const rawText = user ? (m.text ?? "") : stripLeakedSystemHarnessMessages(m.text ?? "");
   const attachments = user && m.text ? splitTranscriptAttachments(withoutCitationMarkers(m.text)) : null;
   const display = attachments?.display ?? rawText;
   const [expanded, setExpanded] = useState(false);
   const speech = useSpeech();
   const speaking = speech.messageId === m.id && speech.status !== "idle";
-  const focus = state.focusMessage;
   const focusedSearch = focus?.messageId === m.id && Boolean(focus.matchText) && focus.threadId === group.threadId;
   const collapsible = user && !expanded && (display.length > USER_COLLAPSE_CHARS || display.split("\n").length > USER_COLLAPSE_LINES);
   useEffect(() => { if (focusedSearch && collapsible) setExpanded(true); }, [focusedSearch, collapsible, focus?.nonce]);
@@ -192,7 +203,7 @@ function RoomTextMessage({
     botId: speakerBot?.id,
     messageId: m.id,
     voiceId: speakerBot?.voice,
-    tts: state.config?.tts,
+    tts: config?.tts,
     localVoice: localSystemVoiceActive(),
     canSpeak: true,
     pin,
@@ -206,7 +217,7 @@ function RoomTextMessage({
       <ReplyAction onReply={() => onReply(m)} />
       {canReact && m.from && <ReactAction threadId={group.threadId} message={m} />}
       {botText && <CopyButton text={botText} className={messageActionClass} />}
-      {botText && speaking && <SpeakButton text={botText} botId={speakerBot?.id} messageId={m.id} voiceId={speakerBot?.voice} tts={state.config?.tts} localVoice={localSystemVoiceActive()} className={cn(messageActionClass, "text-accent")} />}
+      {botText && speaking && <SpeakButton text={botText} botId={speakerBot?.id} messageId={m.id} voiceId={speakerBot?.voice} tts={config?.tts} localVoice={localSystemVoiceActive()} className={cn(messageActionClass, "text-accent")} />}
     </MessageActions>
   );
   return (
@@ -284,9 +295,9 @@ function RoomTextMessage({
               {!botText.trim() && <MessageAttachmentGallery media={m.media} text={botText} attachments={m.attachments} message={{ threadId: group.threadId, messageId: m.id }} className={m.text ? undefined : "mb-0"} eager={eager} />}
               {tabled && blocks ? (
                 <ReplyBlocks blocks={blocks} tray={botActions}
-                  render={(block) => <ChatMarkdown text={block} mentionPeers={peers} everyone={!group.dm} mentionPerson={{ profileName: state.config?.profile?.name }} message={{ threadId: group.threadId, messageId: m.id }} delivered={replyGroup?.delivered} />} />
+                  render={(block) => <ChatMarkdown text={block} mentionPeers={peers} everyone={!group.dm} mentionPerson={{ profileName: config?.profile?.name }} message={{ threadId: group.threadId, messageId: m.id }} delivered={replyGroup?.delivered} />} />
               ) : botText ? (
-                <ChatMarkdown text={botText} mentionPeers={peers} everyone={!group.dm} mentionPerson={{ profileName: state.config?.profile?.name }} message={{ threadId: group.threadId, messageId: m.id }} delivered={replyGroup?.delivered} />
+                <ChatMarkdown text={botText} mentionPeers={peers} everyone={!group.dm} mentionPerson={{ profileName: config?.profile?.name }} message={{ threadId: group.threadId, messageId: m.id }} delivered={replyGroup?.delivered} />
               ) : null}
               {replyGroup && <AttachmentGallery media={m.media} images={replyGroup.images} files={replyGroup.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} beneath />}
             </MessageBoundary>
@@ -331,8 +342,12 @@ export const Transcript = memo(function Transcript({
   /** The bubble the working line hangs under: its bottom corner pinches as if another bubble followed. */
   seamId?: string | null;
 }) {
-  const { state, dispatch } = useStore();
-  const showToolCalls = showToolCallsEnabled(state.config);
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const config = useStoreSelector(selectConfig);
+  const drawnBots = useStoreSelector(selectBots, sameDrawnBots);
+  const focus = useStoreSelector(selectFocusMessage);
+  const showToolCalls = showToolCallsEnabled(config);
   const openedAt = useThreadOpenedAt(group.threadId);
   const today = localDay(Date.now());
   const canReact = useCanReact(group.threadId);
@@ -344,7 +359,6 @@ export const Transcript = memo(function Transcript({
   const newestUserMessageId = [...messages].reverse().find((message) => message.role === "user")?.id;
   const roomBusy = roomThreadWorking(group, group.threadId);
   const liveTools = useLiveToolIds(transcript, { busy: roomBusy, turnStartedAt: group.turnStartedAt });
-  const focus = state.focusMessage;
   const focusedId = focus && !focus.consumed && focus.threadId === group.threadId ? focus.messageId : null;
   const unreadIds = useMemo(() => unreadMessageIds(messages, unreadDividerId), [messages, unreadDividerId]);
   const exchanges = useExchangeRows(messages, items, roomItemRows, showToolCalls ? noneTransparent : hiddenRuns);
@@ -400,7 +414,7 @@ export const Transcript = memo(function Transcript({
         <RoutineRunCard
           message={m}
           onOpen={routineTarget
-            ? () => openThread(dispatch, routineTarget, state)
+            ? () => openThread(dispatch, routineTarget, store.state())
             : undefined}
         />
       </div>
@@ -463,60 +477,62 @@ export const Transcript = memo(function Transcript({
     if (at >= 0) places[at] = { ...places[at]!, join: { ...places[at]!.join, below: true } };
   }
 
-  return (
-    <>
-      {rows.map(({ item, prev, first, newDay, divider: own, slot }, i) => {
-        const place = places[i]!;
-        const run = exchanges.runAt.get(i);
-        const collapsed = run !== undefined && !exchanges.isOpen(run);
-        if (run && i !== run.start && collapsed) return null;
-        let lead: ReactNode = null;
-        if (run && i === run.start) {
-          lead = (
-            <>
-              {run.items.map((_, offset) => rows[run.start + offset]!.divider).find(Boolean)}
-              {newDay && <DaySeparator at={first.at} today={today} prev={prev} next={first} />}
-              <PeerExchangeLine summary={run.summary} bots={state.bots} expanded={!collapsed} onToggle={() => exchanges.toggle(run)} />
-            </>
-          );
-          if (collapsed) return <div key={run.id} className="contents" data-mid={first.id}>{lead}</div>;
-        }
-        const divider = run ? null : own;
-        const stamp = lead ?? (newDay && <DaySeparator at={first.at} today={today} prev={prev} next={first} />);
-        const label = place.label && first.from && <ClusterLabel bot={memberOf(first.from.botId)} name={first.from.name} color={first.from.color} />;
-        const labelled = (row: ReactNode) => label ? <div className="flex w-full flex-col gap-1">{label}{row}</div> : row;
-        if (item.kind === "run") {
-          if (!slot) return (stamp || divider) && <div key={item.id} className="contents">{lead}{divider}</div>;
-          return (
-            <div key={item.id} className="contents" data-tuck={place.tuck ? "" : undefined}>
-              {divider}
-              {stamp}
-              {labelled(
-                <ActivityRun messages={item.messages} forceOpen={item.messages.some((step) => step.id === focusedId)}>
-                  {item.messages.map((step) => (
-                    <div key={step.id} className="contents" data-mid={step.id}>
-                      <RoomToolChip message={step} threadId={group.threadId} live={liveTools.has(step.id)} />
-                    </div>
-                  ))}
-                </ActivityRun>,
-              )}
-            </div>
-          );
-        }
-        const m = item.message;
-        const row = slot ? messageRow(m, place.join) : null;
-        if (!row) return (lead || divider) && <div key={m.id} className="contents">{lead}{divider}</div>;
-        return (
-          // a send keeps its row when the server's copy replaces the optimistic one, so it never mounts or rises twice
-          <div key={m.sendId ? `send:${m.sendId}` : m.id} className="contents" data-mid={m.id} data-tuck={place.tuck ? "" : undefined} data-handoff-next={handoffRun.has(i) ? "" : undefined}>
-            {divider}
-            {stamp}
-            {labelled(row)}
-          </div>
-        );
-      })}
-    </>
-  );
+  const drawRow = ({ item, prev, first, newDay, divider: own, slot }: (typeof rows)[number], i: number): ReactNode => {
+    const place = places[i]!;
+    const run = exchanges.runAt.get(i);
+    const collapsed = run !== undefined && !exchanges.isOpen(run);
+    if (run && i !== run.start && collapsed) return null;
+    let lead: ReactNode = null;
+    if (run && i === run.start) {
+      lead = (
+        <>
+          {run.items.map((_, offset) => rows[run.start + offset]!.divider).find(Boolean)}
+          {newDay && <DaySeparator at={first.at} today={today} prev={prev} next={first} />}
+          <PeerExchangeLine summary={run.summary} bots={drawnBots} expanded={!collapsed} onToggle={() => exchanges.toggle(run)} />
+        </>
+      );
+      if (collapsed) return <div key={run.id} className="contents" data-mid={first.id}>{lead}</div>;
+    }
+    const divider = run ? null : own;
+    const stamp = lead ?? (newDay && <DaySeparator at={first.at} today={today} prev={prev} next={first} />);
+    const label = place.label && first.from && <ClusterLabel bot={memberOf(first.from.botId)} name={first.from.name} color={first.from.color} />;
+    const labelled = (row: ReactNode) => label ? <div className="flex w-full flex-col gap-1">{label}{row}</div> : row;
+    if (item.kind === "run") {
+      if (!slot) return (stamp || divider) && <div key={item.id} className="contents">{lead}{divider}</div>;
+      return (
+        <div key={item.id} className="contents" data-tuck={place.tuck ? "" : undefined}>
+          {divider}
+          {stamp}
+          {labelled(
+            <ActivityRun messages={item.messages} forceOpen={item.messages.some((step) => step.id === focusedId)}>
+              {item.messages.map((step) => (
+                <div key={step.id} className="contents" data-mid={step.id}>
+                  <RoomToolChip message={step} threadId={group.threadId} live={liveTools.has(step.id)} />
+                </div>
+              ))}
+            </ActivityRun>,
+          )}
+        </div>
+      );
+    }
+    const m = item.message;
+    const row = slot ? messageRow(m, place.join) : null;
+    if (!row) return (lead || divider) && <div key={m.id} className="contents">{lead}{divider}</div>;
+    return (
+      // a send keeps its row when the server's copy replaces the optimistic one, so it never mounts or rises twice
+      <div key={m.sendId ? `send:${m.sendId}` : m.id} className="contents" data-mid={m.id} data-tuck={place.tuck ? "" : undefined} data-handoff-next={handoffRun.has(i) ? "" : undefined}>
+        {divider}
+        {stamp}
+        {labelled(row)}
+      </div>
+    );
+  };
+  const drawn: TranscriptRow[] = rows.map((row, i) => {
+    const run = exchanges.runAt.get(i);
+    const shown = run && i === run.start ? run.items.flatMap(roomItemRows) : roomItemRows(row.item);
+    return { element: drawRow(row, i), messageIds: shown.map((message) => message.id), estimate: estimateRowHeight(shown) };
+  });
+  return <TranscriptRows rows={drawn} />;
 });
 
 type RoomResponderMode = "lead" | "everyone" | "mentions" | "auto";
@@ -526,8 +542,8 @@ function setupResponderMode(responder: GroupDefaultResponder): RoomResponderMode
 }
 
 function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
-  const { state, dispatch } = useStore();
-  const jevOn = jevRoomRoutingOn(state.config);
+  const dispatch = useDispatch();
+  const jevOn = jevRoomRoutingOn(useStoreSelector(selectConfig));
   const [folder, setFolder] = useState(group.cwd ?? "");
   const [behavior, setBehavior] = useState<RoomResponderMode>(setupResponderMode(group.defaultResponder));
   const [leadId, setLeadId] = useState(
@@ -874,7 +890,10 @@ const USAGE_ROW_GAP = 8 + 12;
 
 export function GroupView({ group: room }: { group: Group }) {
   const group = useMemo(() => shownTranscript(room), [room]);
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector(selectConfig);
+  const notice = useStoreSelector(selectNotice);
+  const chatError = useStoreSelector(selectError);
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerDock = useComposerDockPad(composerDockRef, () => scrollRef.current);
@@ -901,10 +920,7 @@ export function GroupView({ group: room }: { group: Group }) {
     return () => window.removeEventListener("keydown", onFind);
   }, []);
 
-  const members = useMemo(
-    () => group.memberIds.map((id) => state.bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b)),
-    [group.memberIds, state.bots],
-  );
+  const members = useStoreShallow((state) => botsOf(state, group.memberIds));
   const speaker = members.find((b) => b.id === group.busyBotId);
   const threadWorking = roomThreadWorking(group, group.threadId);
   const setupPending = !remoteClient && roomNeedsSetup(group);
@@ -969,11 +985,8 @@ export function GroupView({ group: room }: { group: Group }) {
     topSentinelRef,
     transcriptKey,
     following,
-    windowedMessages,
-    hiddenCount,
-    laterCount,
+    viewport,
     olderPending,
-    showLater,
     jumpToLatest,
     scrollHandlers,
   } = useTranscriptViewport({
@@ -986,7 +999,7 @@ export function GroupView({ group: room }: { group: Group }) {
   });
   useTimestampPeek(scrollRef);
   // the status line keeps its slot at the end of the room whether it shows or not, so it never moves a row
-  const statusSlot = windowedMessages.length > 0 || threadWorking;
+  const statusSlot = group.messages.length > 0 || threadWorking;
   const unreadDivider = useUnreadDivider({ threadId: group.threadId, messages: group.messages, following });
 
   useEffect(() => setFolderOpen(false), [group.id]);
@@ -1014,7 +1027,7 @@ export function GroupView({ group: room }: { group: Group }) {
       />
 
       {findOpen && <ChatFindBar threadId={group.threadId} onClose={() => setFindOpen(false)} />}
-      <ChatNotice notice={state.notice} />
+      <ChatNotice notice={notice} />
       {!setupPending && <RoomContextWarnings group={group} members={members} />}
 
 
@@ -1098,7 +1111,7 @@ export function GroupView({ group: room }: { group: Group }) {
               </div>
               <div className="text-[17px] font-semibold text-ink">{group.name}</div>
               <div className="max-w-[380px] text-[14px] text-ink-secondary">
-                {groupResponseHint(group, members, { jevOn: jevRoomRoutingOn(state.config) })}
+                {groupResponseHint(group, members, { jevOn: jevRoomRoutingOn(config) })}
               </div>
             </div>
           )}
@@ -1107,29 +1120,19 @@ export function GroupView({ group: room }: { group: Group }) {
               <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
               <span>{t("chat.loadingEarlier")}</span>
             </div>
-          ) : hiddenCount > 0 || group.hasMore ? (
+          ) : group.hasMore ? (
             <div ref={topSentinelRef} className="h-2 w-full pointer-events-none" aria-hidden="true" />
           ) : null}
-          <FoldedNoticesContext value={folded}><Transcript
+          <TranscriptViewportContext value={viewport}><FoldedNoticesContext value={folded}><Transcript
             group={group}
             members={members}
             locale={activeLocale()}
-            messages={windowedMessages}
+            messages={group.messages}
             transcript={group.messages}
             unreadDividerId={unreadDivider.messageId}
             unreadDividerFading={unreadDivider.fading}
             onReply={selectReply}
-          /></FoldedNoticesContext>
-          {laterCount > 0 && (
-            <div className="flex justify-center">
-              <button
-                onClick={showLater}
-                className="rounded-full border border-transparent bg-panel px-3 py-1 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink"
-              >
-                {t("chat.showLater", { count: laterCount })}
-              </button>
-            </div>
-          )}
+          /></FoldedNoticesContext></TranscriptViewportContext>
           <RoomWorkingLines
             group={group}
             members={members}
@@ -1152,7 +1155,7 @@ export function GroupView({ group: room }: { group: Group }) {
           <JumpToLatestButton onClick={jumpToLatest} className="pointer-events-auto bottom-2" />
         </div>
       )}
-      <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
+      <div className="pointer-events-auto"><ChatErrorBanner message={chatError} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
       {/* one card above the composer: what went wrong first, else who the person stopped */}
       <div className="pointer-events-auto">{trailing?.failures.length || trailing?.notices.length || setupPending || group.dm
         ? <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />

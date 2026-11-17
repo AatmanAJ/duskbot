@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({ requests: [] as Array<[string, string | undefined, unknown]>, failImport: "", failSkill: "" }));
 
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: vi.fn(async (path: string, init: { method?: string; body?: string }) => {
     const body = JSON.parse(init.body ?? "{}");
     fixture.requests.push([path, init.method, body]);
@@ -13,7 +13,7 @@ vi.mock("@/state/store", () => ({
     if (fixture.failSkill && path.endsWith(`/skills/${fixture.failSkill}`)) throw new Error("no");
     return {};
   }),
-}));
+}))()));
 
 import { GROK_EXPORT_FORMAT, parseGrokExport } from "../../shared/grok-import";
 import { foundExports, previewGrokMove, runGrokMove, type GrokPreviewFacts } from "./grok-move";

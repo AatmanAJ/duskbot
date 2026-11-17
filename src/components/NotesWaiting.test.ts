@@ -7,7 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const f = vi.hoisted(() => ({ state: {} as Record<string, unknown>, api: vi.fn(), copy: vi.fn() }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: vi.fn() }), api: f.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: f.state, dispatch: vi.fn() }), api: f.api }))()));
 vi.mock("@/lib/copy-text", () => ({ copyText: f.copy }));
 vi.mock("@/lib/default-bot", async (original) => ({ ...(await original<typeof import("@/lib/default-bot")>()), useViewerEmail: () => null }));
 

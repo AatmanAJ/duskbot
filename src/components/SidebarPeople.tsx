@@ -8,7 +8,8 @@ import { openAsksOf } from "@/lib/bot-unread";
 import { cn } from "@/lib/cn";
 import { leadComposerDraft } from "@/lib/drafts";
 import { t } from "@/lib/i18n";
-import { openBot, openThread, useStore, type AppState, type Bot } from "@/state/store";
+import { openBot, openThread, useStoreSelector, type AppState, type Bot } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { openInbox } from "@/state/inbox";
 import { useTeamPeople, type TeamPerson } from "@/state/team-people";
 import { PersonFace } from "./TeamOwner";
@@ -38,13 +39,14 @@ const focusComposer = () => requestAnimationFrame(() => document.querySelector<H
 
 export function SidebarPeople({ compact }: { compact: boolean }) {
   const team = useTeamPeople();
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
+  const { dispatch } = store;
+  const teamConfig = useStoreSelector((s) => s.config?.team);
+  const inbox = useStoreSelector((s) => inboxBotOf(s.bots, team?.me?.email));
   if (!team) return null;
-  const invite = team.admin ? teamPeoplePage(state.config?.team) : null;
+  const invite = team.admin ? teamPeoplePage(teamConfig) : null;
   if (team.people.length < 2 && !invite) return null;
-  const me = team.me;
   const people = [...team.people].sort((a, b) => Number(Boolean(b.you)) - Number(Boolean(a.you)) || a.name.localeCompare(b.name));
-  const inbox = inboxBotOf(state.bots, me?.email);
   const inboxThread = inbox?.tasks?.find((task) => task.inbox)?.threadId;
   const waiting = inbox ? openAsksOf(inbox) : 0;
   const open = (person: TeamPerson) => {
@@ -54,11 +56,11 @@ export function SidebarPeople({ compact }: { compact: boolean }) {
       return;
     }
     const tag = `@${person.name} `;
-    const draft = openComposer(state);
+    const draft = openComposer(store.state());
     if (draft) leadComposerDraft(draft, tag);
     else if (inbox && inboxThread) {
       leadComposerDraft(`bot:${inbox.id}:${inboxThread}`, tag);
-      openThread(dispatch, { botId: inbox.id, threadId: inboxThread }, state);
+      openThread(dispatch, { botId: inbox.id, threadId: inboxThread }, store.state());
     } else if (inbox) openBot(dispatch, inbox);
     focusComposer();
   };

@@ -11,7 +11,7 @@ const fixture = vi.hoisted(() => ({
   api: vi.fn(),
   state: { config: { browserProfiles: [], browserEngine: { kind: "engine", engine: "chrome" } }, computerControl: {} } as Record<string, any>,
 }));
-vi.mock("@/state/store", async (importOriginal) => ({ ...await importOriginal<typeof import("@/state/store")>(), api: fixture.api, useStore: () => ({ state: fixture.state }) }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({ ...await importOriginal<typeof import("@/state/store")>(), api: fixture.api, useStore: () => ({ state: fixture.state }) }))(importOriginal)));
 vi.mock("./BrowserProfilesManager", () => ({ BrowserProfilesManager: () => null }));
 const { BrowserPanel, LiveBrowser } = await import("./BrowserPanel");
 

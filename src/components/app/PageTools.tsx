@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpRight, Check, ChevronLeft, ChevronRight, Copy, Crosshair, Globe, Loader2, Maximize2, Share2, Trash2, X } from "../../icons";
-import { useStore } from "@/state/store";
+import { useDispatch } from "@/state/store";
 import { openExternalLink } from "@/lib/app-links";
 import { cn } from "@/lib/cn";
 import { useCopyFeedback } from "@/lib/copy-text";
@@ -165,7 +165,7 @@ export function PageToolbar({ version, point, share, ready, fullScreen, classNam
 /** Under the toolbar: the public link with Copy, Update link and Unpublish once shared, or why sharing failed; the Point
  * hint. */
 export function PageNotes({ version, point, share, className }: Pick<PageToolsProps, "version" | "point" | "share"> & { className?: string }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const { state: copied, copy } = useCopyFeedback(share.url ?? "");
   const state = share.share;
   const rows: ReactNode[] = [];

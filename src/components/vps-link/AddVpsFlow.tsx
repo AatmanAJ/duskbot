@@ -9,7 +9,7 @@ import type { MausState } from "@/lib/mascot";
 import { EASE, REDUCED } from "@/lib/motion-presets";
 import { useVpsLink, vpsStage, type VpsLinkBridge, type VpsLinkView, type VpsMovePreview } from "@/lib/vps-link";
 import { emptyHere } from "@/lib/bots-elsewhere";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { useDialogKeys } from "../ui/GrokDialog";
 import { MotionDiv, useMotionReduced } from "../ui/SheetMotion";
 import { CommandScreen, InstallScreen } from "./CommandStage";
@@ -51,7 +51,7 @@ function ConnectedScreen({ view, onNext, onOpen }: { view: VpsLinkView; onNext: 
 
 export function AddVpsFlow({ onClose }: { onClose: () => void }) {
   const { view, bridge, ready, update } = useVpsLink();
-  const { state } = useStore();
+  const storeBots = useStoreSelector((s) => s.bots);
   const serverKey = view.server ? `${view.server.id}:${view.server.origin}` : null;
   const [, journeyChanged] = useState(0);
   const savedJourney = bridge ? journeys.get(bridge) : undefined;
@@ -153,7 +153,7 @@ export function AddVpsFlow({ onClose }: { onClose: () => void }) {
   };
   const move = () => void run(() => bridge.move());
 
-  const bots: SceneBot[] = preview?.bots ?? state.bots?.map((bot) => ({ id: bot.id, name: bot.name })) ?? [];
+  const bots: SceneBot[] = preview?.bots ?? storeBots?.map((bot) => ({ id: bot.id, name: bot.name })) ?? [];
   const { arrived } = moveProgress(shown.move, bots.length);
   const stuck = screen === "install" && (shown.steps.some((step) => step.status === "failed") || Boolean(shown.error));
   const scene = stuck ? SCENE.paused : SCENE[screen];
@@ -176,7 +176,7 @@ export function AddVpsFlow({ onClose }: { onClose: () => void }) {
           {screen === "command" && <CommandScreen view={shown} starting={starting} onRetry={retry} onCopied={copied} />}
           {screen === "install" && <InstallScreen view={shown} onRetry={retry} />}
           {screen === "connected" && <ConnectedScreen view={shown} onNext={() => setCheered(true)}
-            onOpen={emptyHere(state.bots) ? () => void bridge.open().then(onClose, (cause) => setError(message(cause))) : undefined} />}
+            onOpen={emptyHere(storeBots) ? () => void bridge.open().then(onClose, (cause) => setError(message(cause))) : undefined} />}
           {screen === "signin" && <SignInScreen bridge={bridge} server={shown.server} autoSkip={first.current === "signin" && autoSkip.current}
             onDone={() => { autoSkip.current = false; setSignedIn(true); }} />}
           {at === 4 && <MoveScreen view={shown} preview={preview} previewError={previewError} onReload={loadPreview} bridge={bridge} onMove={move}

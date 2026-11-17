@@ -7,7 +7,7 @@ vi.mock("react", async (original) => ({
   ...await original<typeof import("react")>(),
   useState: (initial: unknown) => [initial === null ? fixture.report : initial === true ? false : typeof initial === "function" ? (initial as () => unknown)() : initial, () => {}],
 }));
-vi.mock("@/state/store", () => ({ api: vi.fn() }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: vi.fn() }))()));
 import { PlanUsage } from "./PlanUsage";
 
 describe("Plan usage presentation", () => {

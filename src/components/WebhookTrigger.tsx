@@ -11,7 +11,7 @@ import { t } from "@/lib/i18n";
 import { computerCapableEngine } from "@/lib/remote-desktop";
 import type { RoutineRunOn } from "@/lib/routines";
 import { WEBHOOK_DEFAULT_MAX_PENDING_RUNS, WEBHOOK_MAX_PENDING_RUNS_LIMIT, webhookActivationDefaults, webhookMaxPendingRunsInput, type WebhookCredential, type WebhookTrigger, type WebhookTriggerInput } from "@/lib/webhooks";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type Bot } from "@/state/store";
 import { Icon } from "./Icon";
 import { fieldLabelCls, formBodyCls, formCloseCls, formFooterCls, formHeaderCls, formSheetCls, formTitleCls, mdPrimaryCls, mdSecondaryCls, textAreaCls, textFieldCls } from "./ui/GrokDialog";
 import { friendlyError } from "@/lib/plain-error";
@@ -25,7 +25,7 @@ export function suggestedName(prompt: string, bot?: Bot) {
 const FIELD = textFieldCls;
 
 export function WebhookEditor({ webhook, bots, initialBotId, onClose, onCredential }: { webhook?: WebhookTrigger; bots: Bot[]; initialBotId?: string; onClose: () => void; onCredential: (credential: WebhookCredential, webhookId: string) => void }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const [botId, setBotId] = useState(webhook?.botId ?? (initialBotId && bots.some((bot) => bot.id === initialBotId) ? initialBotId : bots[0]?.id) ?? "");
   const [name, setName] = useState(webhook?.name ?? "");
   const [prompt, setPrompt] = useState(webhook?.prompt ?? "");
@@ -36,7 +36,7 @@ export function WebhookEditor({ webhook, bots, initialBotId, onClose, onCredenti
   const [error, setError] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
   useModalDialog(dialogRef, onClose);
-  const cloudReady = Boolean(state.config?.vps?.configured && computerCapableEngine(state.instances, bots.find((bot) => bot.id === botId)?.modelSelection.instanceId)?.snapshot.state === "available");
+  const cloudReady = useStoreSelector((s) => Boolean(s.config?.vps?.configured && computerCapableEngine(s.instances, bots.find((bot) => bot.id === botId)?.modelSelection.instanceId)?.snapshot.state === "available"));
 
   const save = async () => {
     const bot = bots.find((candidate) => candidate.id === botId);

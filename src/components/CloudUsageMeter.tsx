@@ -16,7 +16,7 @@ import {
   upgradeConfirmBody, upgradeLabel, upgradePath, usageCardView, type MeterBand,
 } from "@/lib/usage-meter";
 import type { LocaleKey } from "@/locales";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState } from "@/state/store";
 
 const TEAM_TIERS: readonly string[] = ["team", "business"];
 export type UpgradeSource = "app_usage" | "app_settings" | "app_room";
@@ -26,11 +26,14 @@ export function usageBridge(cloudHome: boolean): CloudPlanBridge | undefined {
   return localDesktopPage() ? (window.duskDesktop?.cloudAccount ? window.duskDesktop?.cloudPlan : undefined) : cloudHome ? window.duskDesktop?.cloudPlan : undefined;
 }
 
+const selectCloudHome = (state: AppState) => state.config?.cloudHome === true;
+const selectTeamHome = (state: AppState) => Boolean(state.config?.cloudHome && state.config?.team);
+
 export function useCloudUsage(): { usage: CloudUsage | null; bridge: CloudPlanBridge | undefined; teamHome: boolean } {
-  const { state } = useStore();
-  const bridge = usageBridge(state.config?.cloudHome === true);
+  const bridge = usageBridge(useStoreSelector(selectCloudHome));
+  const teamHome = useStoreSelector(selectTeamHome);
   const plan: CloudPlanSnapshot | null = useCloudPlanSnapshot(bridge);
-  return { usage: plan?.status === "paid" ? plan.usage ?? null : null, bridge, teamHome: Boolean(state.config?.cloudHome && state.config?.team) };
+  return { usage: plan?.status === "paid" ? plan.usage ?? null : null, bridge, teamHome };
 }
 
 export function MeterBar({ meter, label, compact = false }: { meter: CloudUsageMeter; label: string; compact?: boolean }) {
@@ -175,7 +178,7 @@ export function CloudUsageCardView({ usage, meters, band, upgrade, onHide, onSee
 }
 
 export function CloudUsageCard() {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const { usage, bridge, teamHome } = useCloudUsage();
   const [dismissed, setDismissed] = useState(readUsageCardDismissed);
   const upgrade = useUpgrade(bridge, usage, "app_usage");

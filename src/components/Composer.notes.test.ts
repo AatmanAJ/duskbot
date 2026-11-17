@@ -19,7 +19,7 @@ const fixture = vi.hoisted(() => ({
   api: vi.fn(async () => ({})),
 }));
 const ENGINE = "claude-3f0c2b1e-9d1a-4c55-8a51-0a3a6f1e2b7c";
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({
     state: { ...original.initialState, selectedId: "atlas", config: fixture.config ?? original.initialState.config, bots: [bot, { ...peer, defaultBot: {} }], liveCall: fixture.liveCall, instances: [{
@@ -27,7 +27,7 @@ vi.mock("@/state/store", async (importOriginal) => {
     }] },
     dispatch: fixture.dispatch,
   }), api: fixture.api };
-});
+})(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/lib/cloud-guest", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/cloud-guest")>(), useReactor: () => "user" }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));

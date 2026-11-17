@@ -9,7 +9,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Bot } from "@/state/store";
 
 const server = vi.hoisted(() => ({ calls: [] as Array<{ path: string; body: unknown }>, team: true, refuse: "" }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: vi.fn(async (path: string, init?: RequestInit) => {
     server.calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
@@ -17,7 +17,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     return { bot: {} };
   }),
   useStore: () => ({ state: { config: server.team ? { team: { id: "team-acme", name: "Acme" } } : {} }, dispatch: vi.fn() }),
-}));
+}))(importOriginal)));
 
 const { setTeamPeople } = await import("@/state/team-people");
 const { ShareBotButton } = await import("./ShareBotButton");

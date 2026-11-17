@@ -11,8 +11,8 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
     return [f.values[index], (next: unknown) => { f.values[index] = next; }]; },
   useEffect: (effect: EffectCallback) => { f.effects.push(effect); },
 }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ dispatch: f.dispatch }),
-  CLOUD_LINK_SETTINGS: { type: "toggleAppSettings", open: true, section: "cloudAccount", cloudLink: true } }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ dispatch: f.dispatch }),
+  CLOUD_LINK_SETTINGS: { type: "toggleAppSettings", open: true, section: "cloudAccount", cloudLink: true } }))()));
 import { ProSettingsCard, proOfferAvailable } from "./ProIntroduction";
 
 const PLANS = [{ tier: "starter", label: "Starter", amount: 1500, trialDays: 7 }, { tier: "pro", label: "Pro", amount: 4900, trialDays: 7 }];

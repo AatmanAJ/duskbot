@@ -1,9 +1,10 @@
 // The app window's side of electron/desktop-bots.mjs: it tells main which bots are working, so one ⌘Q waits for a
 // hold while they do, shows the pill that press brings up, and carries out the menu's Stop Bot and Stop All Bots. It
 // also tells main which bots wait on the person, so an ask's banner closes once it is answered anywhere.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useStore, type AppState, type Bot, type Group } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState, type Bot, type Group } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { workingThreadId } from "@/components/SidebarWorkingStep";
 import { activeLocale, t } from "@/lib/i18n";
 import { isMacPlatform } from "@/lib/keyboard-shortcuts";
@@ -63,17 +64,19 @@ export function askReport(bots: readonly Bot[]): { waiting: string[]; settled: s
   return { waiting, settled };
 }
 
+const selectBusy = (state: AppState) => busyBotNames(state.bots).join("\n");
+const selectAsks = (state: AppState) => JSON.stringify(askReport(state.bots));
+
 export function DesktopBots() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
   const bridge = typeof window === "undefined" ? undefined : window.duskDesktop?.desktopBots;
-  const busy = busyBotNames(state.bots).join("\n");
+  const busy = useStoreSelector(selectBusy);
   useEffect(() => { bridge?.busy(busy ? busy.split("\n") : []); }, [bridge, busy]);
-  const latest = useRef(state);
-  latest.current = state;
-  useEffect(() => bridge?.onStop(({ all }) => { for (const action of stopActions(latest.current, all)) dispatch(action); }), [bridge, dispatch]);
+  useEffect(() => bridge?.onStop(({ all }) => { for (const action of stopActions(store.state(), all)) dispatch(action); }), [bridge, dispatch, store]);
 
   const notifications = typeof window === "undefined" ? undefined : window.duskDesktop?.desktopNotifications;
-  const asks = JSON.stringify(askReport(state.bots));
+  const asks = useStoreSelector(selectAsks);
   useEffect(() => { notifications?.asks?.(JSON.parse(asks)); }, [notifications, asks]);
 
   const [hint, setHint] = useState<{ names: string[]; at: number } | null>(null);

@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({ hidden: [] as Array<{ instanceId: string; displayName: string }>, calls: [] as Array<{ path: string; body?: unknown }>, refresh: vi.fn() }));
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ state: { instances: [] }, refreshInstances: fixture.refresh }),
   api: async (path: string, init?: RequestInit) => {
@@ -14,7 +14,7 @@ vi.mock("@/state/store", async (original) => ({
     fixture.hidden = [];
     return { instances: [] };
   },
-}));
+}))(importOriginal)));
 
 const { HiddenEngines } = await import("./EnginesSettings");
 

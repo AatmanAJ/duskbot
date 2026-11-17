@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { setLocale } from "@/lib/i18n";
 
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: { config: {} }, dispatch: () => {} }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: { config: {} }, dispatch: () => {} }) }))()));
 const { DesktopWorkspaceSwitcher } = await import("../DesktopWorkspaceSwitcher");
 const { ConnectedWorkspacesSettings } = await import("../ConnectedWorkspacesSettings");
 

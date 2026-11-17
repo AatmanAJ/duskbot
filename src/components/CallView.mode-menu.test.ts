@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppState, Bot } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ liveConfigured: true, liveCall: null as AppState["liveCall"], cloudHome: false }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
@@ -23,7 +23,7 @@ vi.mock("@/state/store", async (importOriginal) => {
       dispatch: vi.fn(),
     }),
   };
-});
+})(importOriginal)));
 vi.mock("./DesktopCapabilities", () => ({
   useDesktopCapabilities: () => ({ capabilities: { dictation: { available: true, engine: "apple-speech", onDevice: true } }, ready: true }),
 }));

@@ -13,7 +13,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
   useEffect: (effect: EffectCallback) => { f.effects.push(effect); },
   useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read(),
 }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }), api: vi.fn() }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }), api: vi.fn() }))()));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("./mascot-view", () => ({ DuskMark: () => null }));
 vi.mock("./ProIntroduction", () => ({ useCloudPlan: () => ({ view: { kind: "signed-out" }, account: null }) }));

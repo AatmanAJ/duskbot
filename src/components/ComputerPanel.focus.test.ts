@@ -28,14 +28,14 @@ vi.mock("./CloudScreenPreview", () => ({ CloudScreenPreview: () => null }));
 vi.mock("./BrowserPanel", () => ({ BrowserPanel: () => null }));
 vi.mock("./LiveDesktop", () => ({ LiveDesktop: () => null }));
 vi.mock("./bot-settings/RoutinesSection", () => ({ RoutinesSection: () => null }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: async (path: string) => {
     if (path.startsWith("/api/bots/scout/computer/control")) return { held: false, helpReason: null };
     if (path.startsWith("/api/bots/scout/computer?")) return { surface: "cloud", backend: "vps", configured: true, ready: true, container: "running", managed: true, imageMatches: true };
     return {};
   },
-}));
+}))(importOriginal)));
 
 const { ComputerPanel } = await import("./ComputerPanel");
 const { BotEditorStore, initialState } = await import("@/state/store");

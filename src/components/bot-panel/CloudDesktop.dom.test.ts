@@ -8,13 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudAccountState } from "../../../electron/cloud-account.mjs";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), cloudHome: false }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
     useStore: () => ({ state: { ...original.initialState, config: fixture.cloudHome ? { cloudHome: true } : null }, dispatch: fixture.dispatch }),
   };
-});
+})(importOriginal)));
 
 const { CloudDesktopListRow, useCloudDesktop } = await import("./CloudDesktop");
 

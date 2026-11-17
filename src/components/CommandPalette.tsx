@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { api, openBot, useStore, visibleMessages, type Action, type AppSettingsSection, type Bot, type Group } from "@/state/store";
+import { api, openBot, useStoreSelector, visibleMessages, type Action, type AppSettingsSection, type AppState, type Bot, type Group } from "@/state/store";
+import { botById } from "@/state/store-index";
+import { useStoreRef } from "@/state/store-ref";
 import { cn } from "@/lib/cn";
 import type { SearchHit } from "@/lib/search-hit";
 import { landOnSearchHit } from "@/lib/focus-message";
@@ -64,10 +66,19 @@ function Marked({ text, query }: { text: string; query: string }) {
   return <>{text.slice(0, at)}<span className="font-semibold">{text.slice(at, at + query.length)}</span>{text.slice(at + query.length)}</>;
 }
 
+const NO_BOTS: AppState["bots"] = [];
+const NO_GROUPS: AppState["groups"] = [];
+const NO_INSTANCES: AppState["instances"] = [];
+
 export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean) => void }) {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
+  const { dispatch } = store;
   const you = useGroupYou();
   const [open, setOpen] = useState(false);
+  const allBots = useStoreSelector((state) => (open ? state.bots : NO_BOTS));
+  const groups = useStoreSelector((state) => (open ? state.groups : NO_GROUPS));
+  const instances = useStoreSelector((state) => (open ? state.instances : NO_INSTANCES));
+  const currentBot = useStoreSelector((state) => (open ? botById(state, state.selectedId) : undefined));
   const [query, setQuery] = useState("");
   const [messageHits, setMessageHits] = useState<SearchHit[]>([]);
   const [searchFailed, setSearchFailed] = useState(false);
@@ -152,7 +163,6 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   // Settings stays its own lazy chunk: its pane map is read once the command is picked.
   const settingsPane = (pane: "models" | "usage" | "advanced") => () =>
     void import("./SettingsModal").then(({ openSettings }) => dispatch(openSettings(pane))).catch(() => dispatch(settings("general")));
-  const currentBot = state.bots.find((entry) => entry.id === state.selectedId);
   const switchPlace = switchPlaceCommand();
   const commands: Command[] = [
     { id: "new-bot", name: "New bot", icon: "plus", run: () => openCreateBot() },
@@ -176,10 +186,10 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   // With nothing typed: the bots, those with news first, then grok's short list; the rest wait for a query.
   const shownCommands = q ? ranked(commands, (command) => (command.also ? `${command.name} ${command.also}` : command.name), q) : commands.filter((command) => IDLE_COMMANDS.has(command.id));
   // The sidebar's order, as ⌘1 to ⌘9 count it, so each row names the shortcut that opens it from anywhere.
-  const liveBots = shortcutBots(state.bots.filter((b) => !b.hidden), shownBotIds(document.querySelector("[data-sidebar-root]")));
+  const liveBots = shortcutBots(allBots.filter((b) => !b.hidden), shownBotIds(document.querySelector("[data-sidebar-root]")));
   const slot = new Map(liveBots.slice(0, 9).map((bot, index) => [bot.id, index + 1]));
   const bots = q ? ranked(liveBots, (bot) => bot.name, q) : liveBots;
-  const rooms = ranked(state.groups, (group) => group.name, q);
+  const rooms = ranked(groups, (group) => group.name, q);
   const entries: PaletteEntry[] = [
     ...bots.map((bot): PaletteEntry => ({ kind: "bot", bot })),
     ...rooms.map((group): PaletteEntry => ({ kind: "room", group })),
@@ -193,7 +203,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
     setOpen(false);
     if (entry.kind === "message") {
       try {
-        await landOnSearchHit(entry.hit, state, dispatch);
+        await landOnSearchHit(entry.hit, store.state(), dispatch);
       } catch (error) {
         dispatch({ type: "error", message: friendlyError(error) });
       }
@@ -308,7 +318,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
                   const unread = botUnreadCount(bot) > 0;
                   const key = slot.get(bot.id);
                   return row(`bot:${bot.id}`, index, entry, <BotAvatar bot={bot} size={24} animated={false} trackPointer={false} />,
-                    <Marked text={bot.name} query={q} />, botPreview(bot, visibleMessages(bot), state.instances), "Bot",
+                    <Marked text={bot.name} query={q} />, botPreview(bot, visibleMessages(bot), instances), "Bot",
                     <>
                       {unread && <span role="img" aria-label={t("sidebar.grok.unreadActivity")} className="flex size-2 shrink-0 items-center"><span className="size-2 rounded-full bg-accent-text" /></span>}
                       {/* grok's rows carry no keycap; the shortcut stays, read out only */}
@@ -317,9 +327,9 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
                 }
                 if (entry.kind === "room") {
                   const { group } = entry;
-                  const members = group.memberIds.map((id) => state.bots.find((bot) => bot.id === id)).filter((bot): bot is Bot => Boolean(bot));
+                  const members = group.memberIds.map((id) => allBots.find((bot) => bot.id === id)).filter((bot): bot is Bot => Boolean(bot));
                   return row(`room:${group.id}`, index, entry, <GroupAvatar members={members} you={you} size={24} />, <Marked text={group.name} query={q} />,
-                    group.description || groupPreview(group, state.bots, state.instances), "Group chat",
+                    group.description || groupPreview(group, allBots, instances), "Group chat",
                     group.unread ? <span role="img" aria-label={t("sidebar.grok.unreadActivity")} className="flex size-2 shrink-0 items-center"><span className="size-2 rounded-full bg-accent-text" /></span> : undefined);
                 }
                 if (entry.kind === "message") {

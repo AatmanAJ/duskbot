@@ -12,7 +12,7 @@ const fixture = vi.hoisted(() => ({
   dispatch: vi.fn(),
   state: { routineRunsSince: 1_000 as number | null, routineRuns: [] as unknown[], bots: [] as unknown[] },
 }));
-vi.mock("./store", () => ({ api: fixture.api, useStore: () => ({ state: fixture.state, dispatch: fixture.dispatch }) }));
+vi.mock("./store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api, useStore: () => ({ state: fixture.state, dispatch: fixture.dispatch }) }))()));
 
 const settle = () => new Promise((resolve) => setTimeout(resolve));
 const mount = (hook: () => void) => {

@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type Dispatch 
 import { motion, type MotionStyle } from "motion/react";
 import { createPortal } from "react-dom";
 import { Bot as BotIcon, Check, ClipboardCopy, Crown, FolderPlus, Library, Loader2, MoreHorizontal, Pencil, Phone, Pin, Plus, TextQuote, Trash2, Users, X } from "../icons";
-import { api, useStore, formatTime, visibleMessages, botOpensTo, openBot, openThread, type Action, type AppState, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
+import { api, useDispatch, useStoreSelector, useStoreShallow, formatTime, visibleMessages, botOpensTo, openBot, openThread, type Action, type AppState, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
 import { SidebarWorkingStep, useWorkingLabel } from "./SidebarWorkingStep";
 import { openBotRow } from "@/state/thread-navigation";
 import { liveCallEnabled, llmThreadTitlesEnabled } from "@/lib/feature-flags";
@@ -113,6 +113,17 @@ export function openBotContextMenu(onMenu: (menu: MenuState) => void, botId: str
   onMenu({ botId, x: event.clientX, y: event.clientY + 4 });
 }
 
+const selectGroupRowState = (state: AppState) => ({ activeView: state.activeView, selectedId: state.selectedId, bots: state.bots, instances: state.instances });
+const selectGroups = (state: AppState) => state.groups;
+
+/** What the sidebar draws from the store; it renders again only when one of these changes. */
+type SidebarState = Pick<AppState, "bots" | "groups" | "sections" | "instances" | "pendingQueued" | "config" | "activeView" | "selectedId" | "deletingBots" | "mascotMotion" | "revealThread" | "liveCall">;
+const selectSidebarState = (state: AppState): SidebarState => ({
+  bots: state.bots, groups: state.groups, sections: state.sections, instances: state.instances, pendingQueued: state.pendingQueued,
+  config: state.config, activeView: state.activeView, selectedId: state.selectedId, deletingBots: state.deletingBots,
+  mascotMotion: state.mascotMotion, revealThread: state.revealThread, liveCall: state.liveCall,
+});
+
 export function GroupListItem({
   group,
   density,
@@ -123,7 +134,8 @@ export function GroupListItem({
   query?: string;
   onMenu: (menu: { groupId: string; x: number; y: number }) => void;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const state = useStoreShallow(selectGroupRowState);
   const selected = state.activeView === "chat" && state.selectedId === group.id;
   const simpleRow = density === "comfortable";
   const railTile = density === "icons";
@@ -190,9 +202,10 @@ function RoomContextMenu({
 }) {
   const motion = useHeldMenuMotion(menu);
   const shown = motion.value;
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const groups = useStoreSelector(selectGroups);
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
-  const group = shown ? state.groups.find((g) => g.id === shown.groupId) : undefined;
+  const group = shown ? groups.find((g) => g.id === shown.groupId) : undefined;
   const [renaming, setRenaming] = useState(false);
   const [describing, setDescribing] = useState(false);
   const [draft, setDraft] = useState(group?.name ?? "");
@@ -200,8 +213,8 @@ function RoomContextMenu({
 
   useEffect(() => {
     if (!menu) return;
-    setDraft(state.groups.find((g) => g.id === menu.groupId)?.name ?? "");
-    setDescriptionDraft(state.groups.find((g) => g.id === menu.groupId)?.description ?? "");
+    setDraft(groups.find((g) => g.id === menu.groupId)?.name ?? "");
+    setDescriptionDraft(groups.find((g) => g.id === menu.groupId)?.description ?? "");
     setRenaming(false);
     setDescribing(false);
   }, [menu]);
@@ -426,7 +439,7 @@ export interface BotRowProps {
 }
 
 export function botRowProps(
-  state: AppState,
+  state: SidebarState,
   dispatch: Dispatch<Action>,
   bot: Bot,
   layout: Pick<BotRowProps, "density" | "query" | "onMenu" | "renameRequest" | "botDrag" | "botDragging" | "main" | "tabStop">,
@@ -730,7 +743,8 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
   onClose: () => void;
   collapseToIcons?: boolean;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const state = useStoreShallow(selectSidebarState);
   const cloudOwner = useCloudOwner(state.config?.cloudHome === true);
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
   const { capabilities } = useDesktopCapabilities();

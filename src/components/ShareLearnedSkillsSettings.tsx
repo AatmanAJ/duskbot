@@ -3,7 +3,7 @@ import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { shareLearnedSkillsMode, skillAuthoringEnabled, skillsLibraryEnabled } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { SkillReviewSettings } from "./SkillReviewSettings";
 import { friendlyError } from "@/lib/plain-error";
 
@@ -14,12 +14,13 @@ const MODES = [
 ] as const;
 
 export function ShareLearnedSkillsSettings() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector((s) => s.config);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  if (!skillsLibraryEnabled(state.config)) return null;
-  const authoring = skillAuthoringEnabled(state.config);
-  const mode = shareLearnedSkillsMode(state.config);
+  if (!skillsLibraryEnabled(config)) return null;
+  const authoring = skillAuthoringEnabled(config);
+  const mode = shareLearnedSkillsMode(config);
 
   const choose = async (next: (typeof MODES)[number]["value"]) => {
     if (saving || next === mode) return;

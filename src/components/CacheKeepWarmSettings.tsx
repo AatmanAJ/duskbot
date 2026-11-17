@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { Card, Switch } from "./SettingsPrimitives";
 import { Select } from "./Select";
@@ -11,11 +11,11 @@ type KeepWarm = NonNullable<ConfigStatus["cacheKeepWarm"]>;
 export const KEEP_WARM_WINDOWS = [60, 120, 180, 360, 720] as const;
 
 export function CacheKeepWarmSettings() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const current = useStoreSelector((state) => state.config?.cacheKeepWarm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const inFlight = useRef(false);
-  const current = state.config?.cacheKeepWarm;
   if (!current) return null;
   const save = async (next: KeepWarm) => {
     if (inFlight.current) return;

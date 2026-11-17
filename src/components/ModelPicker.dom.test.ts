@@ -14,7 +14,7 @@ const fixture = vi.hoisted(() => ({
   refreshModels: vi.fn(() => Promise.resolve()),
   refreshInstances: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   useStore: () => ({
     state: { instances: fixture.instances, bots: fixture.bots, modelVariantSessions: {}, config: {} },
@@ -22,7 +22,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     refreshInstances: fixture.refreshInstances,
     refreshModels: fixture.refreshModels,
   }),
-}));
+}))(importOriginal)));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 // the connect itself (connect-flow) has its own tests; here only that the picker starts it and shows its stages in place
 const connect = vi.hoisted(() => ({ start: vi.fn(), cancel: vi.fn() }));

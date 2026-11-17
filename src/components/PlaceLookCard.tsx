@@ -4,7 +4,7 @@ import type { PlaceColorOutcome } from "../../electron/place-look.mjs";
 import { t } from "@/lib/i18n";
 import { choosePlaceColor, usePlaceLook } from "@/lib/place-look";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { PlacePicture } from "./PlacePicture";
 import { SettingRow } from "./SettingsPrimitives";
 import { SwatchRadios } from "./SwatchRadios";
@@ -15,7 +15,7 @@ import { SwatchRadios } from "./SwatchRadios";
  * browser knows no colour, only the picture. */
 export function PlaceLookRows() {
   const look = usePlaceLook();
-  const { state } = useStore();
+  const banner = useStoreSelector((s) => s.config?.workspaceBanner);
   const admin = useOwnerOrAdmin() === true;
   const computer = window.duskDesktop?.app?.ownPage === true;
   const [pending, setPending] = useState<CloudSwatch | null>(null);
@@ -36,6 +36,6 @@ export function PlaceLookRows() {
           disabled={locked} offset="menu" none />
       </SettingRow>
     </div>}
-    <PlacePicture banner={state.config?.workspaceBanner ?? null} canChange={admin} />
+    <PlacePicture banner={banner ?? null} canChange={admin} />
   </>;
 }

@@ -7,7 +7,7 @@ import { t } from "@/lib/i18n";
 import { addLogin, changeLogin, connectOnePassword, deleteLogin, disconnectOnePassword, grantVault, listLogins, refreshOnePassword } from "@/lib/logins";
 import { relativeTime } from "@/lib/memory";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
-import { useStore } from "@/state/store";
+import { useStoreSelector, type AppState } from "@/state/store";
 import { LoginBotPicker, LoginForm } from "./LoginForm";
 import { SavedSecretDialog, useSavedSecrets } from "./SavedSecretsSettings";
 import type { SavedSecretSummary } from "../../shared/saved-secrets";
@@ -126,10 +126,16 @@ function SiteTile({ site }: { site: string }) {
   );
 }
 
+type BotChoice = { id: string; name: string };
+
+const botChoices = (s: AppState): BotChoice[] => s.bots.map((bot) => ({ id: bot.id, name: bot.name }));
+const sameBotChoices = (a: readonly BotChoice[], b: readonly BotChoice[]) =>
+  a.length === b.length && a.every((bot, index) => bot.id === b[index]!.id && bot.name === b[index]!.name);
+
 export function LoginsSettings() {
-  const { state } = useStore();
   const ownerOrAdmin = useOwnerOrAdmin();
-  const bots = state.bots.map((bot) => ({ id: bot.id, name: bot.name }));
+  const bots = useStoreSelector(botChoices, sameBotChoices);
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
   const [logins, setLogins] = useState<LoginSummary[] | null>(null);
   const [onePassword, setOnePassword] = useState<OnePasswordStatus>({ connected: false });
   const [error, setError] = useState<string | null>(null);
@@ -243,7 +249,7 @@ export function LoginsSettings() {
               className="h-full min-w-0 flex-1 border-0! bg-transparent p-0 text-[13px] leading-[18px] text-ink outline-none placeholder:text-ink-secondary [&::-webkit-search-cancel-button]:hidden" />
           </label>
         </div>
-        {state.config?.cloudHome === true && <p className="px-3 text-[12px] leading-4 text-ink-tertiary" data-logins-cloud-own>{t("settings.logins.cloudOwn")}</p>}
+        {cloudHome && <p className="px-3 text-[12px] leading-4 text-ink-tertiary" data-logins-cloud-own>{t("settings.logins.cloudOwn")}</p>}
         {nothing ? <ArtState data-art-state="vault" art="key" title={t("settings.docs.vault.empty")}>{t("settings.docs.vault.emptyBody")}</ArtState> : <>
           <div aria-busy={!ready || busy} className="flex flex-col rounded-xl border border-transparent bg-app p-1.5">
             {ready && logins !== null && shown.length + shownSecrets.length === 0 && <NoteRow>{words ? t("settings.vault.noMatch") : t("settings.vault.noneHere")}</NoteRow>}

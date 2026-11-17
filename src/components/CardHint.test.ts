@@ -8,7 +8,7 @@ import { EMPTY_ONBOARDING, WELCOME_VERSION } from "@/lib/onboarding";
 
 const f = vi.hoisted(() => ({ api: vi.fn(), dispatch: vi.fn() }));
 const StoreContext = vi.hoisted(() => ({ current: null as null | import("react").Context<unknown> }));
-vi.mock("@/state/store", async () => {
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (async () => {
   const { createContext, useContext } = await import("react");
   StoreContext.current = createContext<unknown>(null);
   return { api: f.api, useStore: () => {
@@ -16,7 +16,7 @@ vi.mock("@/state/store", async () => {
     if (!value) throw new Error("useStore outside provider");
     return value;
   } };
-});
+})()));
 const { CardHint } = await import("./CardHint");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

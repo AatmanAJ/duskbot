@@ -1,6 +1,8 @@
 // Rows are `display: contents` wrappers with no box, so their last child is what gets scrolled and highlighted.
 import { useEffect } from "react";
-import { api, MESSAGE_PAGE_SIZE, useStore, type Action, type AppState, type Message } from "@/state/store";
+import { api, MESSAGE_PAGE_SIZE, useDispatch, useStoreSelector, type Action, type AppState, type Message } from "@/state/store";
+
+const selectFocusMessage = (state: AppState) => state.focusMessage;
 import type { SearchHit } from "@/lib/search-hit";
 
 const FLASH_CLASSES = ["ring-2", "ring-accent/70", "rounded-2xl", "transition-shadow"];
@@ -99,8 +101,8 @@ function matchRange(root: HTMLElement, text: string): Range | null {
 }
 
 export function useFocusMessage(threadId: string, ready: boolean) {
-  const { state, dispatch } = useStore();
-  const focus = state.focusMessage;
+  const dispatch = useDispatch();
+  const focus = useStoreSelector(selectFocusMessage);
   useEffect(() => {
     if (!focus || focus.consumed || focus.threadId !== threadId || !ready) return;
     let tries = 0;

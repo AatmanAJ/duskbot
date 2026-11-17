@@ -77,8 +77,8 @@ const store = vi.hoisted(() => ({
   },
   dispatch: (() => {}) as (action: unknown) => void,
 }));
-vi.mock("@/state/store", () => ({ useStore: () => store }));
-// Scrolling a hit into view needs the real DOM; this suite checks the window around it.
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => store }))()));
+// Scrolling a hit into view needs the real DOM; this suite checks what the viewport is told.
 vi.mock("@/lib/focus-message", () => ({ useFocusMessage: () => {} }));
 // arrival motion reads real layout and runs Web Animations; it has its own test
 vi.mock("@/hooks/use-arrival-flow", () => ({ useArrivalFlow: () => {} }));
@@ -125,7 +125,7 @@ function mount(initial: Partial<Props> = {}) {
   const commit = () => {
     result.scrollRef.current = scroller as unknown as HTMLDivElement;
     result.transcriptRef.current = {} as HTMLDivElement;
-    scroller.rows = result.windowedMessages.length;
+    scroller.rows = props.messages.length;
     scroller.scrollTop = Math.min(scroller.scrollTop, scroller.bottom);
   };
   const flushFrames = () => {
@@ -236,147 +236,42 @@ describe("transcript viewport", () => {
     expect(view.current.following).toBe(false);
   });
 
-  it("mounts only the last window of a long thread and re-tails it when another thread opens", () => {
+  it("hands every row of a long thread on and names its transcript for the virtual rows", () => {
     const view = mount({ messages: rows(300) });
-    expect(view.current.windowedMessages).toHaveLength(120);
-    expect(view.current.hiddenCount).toBe(180);
+    expect(view.current.viewport.transcriptKey).toBe("bot:thread");
+    expect(view.current.viewport.startAtEnd).toBe(true);
+    expect(view.current.viewport.focusMessageId).toBeNull();
+    expect(scroller.scrollTop).toBe(scroller.bottom);
 
-    view.act(() => view.current.showEarlier());
-    expect(view.current.hiddenCount).toBe(60);
-
-    view.rerender({ threadId: "other", messages: [{ id: "ask", role: "user" }, ...rows(299, 1_001)] });
-    expect(view.current.transcriptKey).toBe("bot:other");
-    expect(view.current.hiddenCount).toBe(180);
-    expect(view.current.windowedMessages[0]?.id).toBe("m1180");
-  });
-
-  it("keeps the window bounded while the reader follows new rows", () => {
-    const view = mount({ messages: rows(300) });
-    for (let total = 301; total <= 900; total++) {
-      view.rerender({ messages: rows(total) });
-      expect(view.current.windowedMessages.length).toBeLessThanOrEqual(120);
-      expect(scroller.scrollTop).toBe(scroller.bottom);
-    }
-    expect(view.current.windowedMessages[0]?.id).toBe("m780");
-    expect(view.current.windowedMessages.at(-1)?.id).toBe("m899");
-    expect(view.current.hiddenCount).toBe(780);
-  });
-
-  it("keeps the person's newest message mounted while a long turn follows it", () => {
-    let thread: Row[] = [...rows(30), { id: "ask", role: "user" }];
-    const view = mount({ messages: thread });
-    for (let step = 0; step < 150; step++) {
-      thread = [...thread, { id: `step${step}`, role: "bot" }];
-      view.rerender({ messages: thread });
-      expect(view.current.windowedMessages.map((row) => row.id)).toContain("ask");
-      expect(scroller.scrollTop).toBe(scroller.bottom);
-    }
-    expect(view.current.windowedMessages[0]?.id).toBe("ask");
-    expect(view.current.windowedMessages).toHaveLength(151);
-
-    view.rerender({ messages: [...thread, { id: "ask2", role: "user" }] });
-    expect(view.current.windowedMessages).toHaveLength(120);
-    expect(view.current.windowedMessages.at(-1)?.id).toBe("ask2");
-  });
-
-  it("keeps the person's newest message mounted when many steps arrive at once", () => {
-    const asked: Row[] = [...rows(30), { id: "ask", role: "user" }];
-    const view = mount({ messages: asked });
-    view.rerender({ messages: [...asked, ...rows(150, 100)] });
-    expect(view.current.windowedMessages[0]?.id).toBe("ask");
+    view.rerender({ threadId: "other", messages: rows(299, 1_001) });
+    expect(view.current.viewport.transcriptKey).toBe("bot:other");
     expect(scroller.scrollTop).toBe(scroller.bottom);
   });
 
-  it("keeps the window to two windows while one long stretch follows a single message", () => {
-    let thread: Row[] = [{ id: "ask", role: "user" }];
+  it("follows a long turn to the bottom however many rows it adds", () => {
+    let thread: Row[] = [...rows(30), { id: "ask", role: "user" }];
     const view = mount({ messages: thread });
     for (let step = 0; step < 600; step++) {
       thread = [...thread, { id: `step${step}`, role: "bot" }];
       view.rerender({ messages: thread });
-      expect(view.current.windowedMessages.length).toBeLessThanOrEqual(2 * 120);
       expect(view.current.following).toBe(true);
       expect(scroller.scrollTop).toBe(scroller.bottom);
-      if (thread.length <= 2 * 120) expect(view.current.windowedMessages[0]?.id).toBe("ask");
     }
-    expect(view.current.windowedMessages).toHaveLength(120);
-    expect(view.current.windowedMessages.at(-1)?.id).toBe("step599");
   });
 
-  it("does not hold for a message that is already above the window", () => {
-    let thread: Row[] = [...rows(30), { id: "ask", role: "user" }, ...rows(200, 1_000)];
-    const view = mount({ messages: thread });
-    expect(view.current.hiddenCount).toBe(111);
-    for (let step = 0; step < 300; step++) {
-      thread = [...thread, { id: `step${step}`, role: "bot" }];
-      view.rerender({ messages: thread });
-      expect(view.current.windowedMessages.length).toBeLessThanOrEqual(120);
-      expect(scroller.scrollTop).toBe(scroller.bottom);
-    }
-    expect(view.current.windowedMessages.at(-1)?.id).toBe("step299");
-  });
-
-  it("holds the reader's rows and grows the window once they have scrolled away", () => {
+  it("holds a scrolled-up reader's place while rows arrive below", () => {
     const view = mount({ messages: rows(300) });
     view.act(() => view.current.scrollHandlers.onWheel({ deltaY: -40 } as never));
     scroller.scrollTop = 2_000;
     for (let total = 301; total <= 900; total++) view.rerender({ messages: rows(total) });
-    expect(view.current.hiddenCount).toBe(180);
-    expect(view.current.windowedMessages).toHaveLength(720);
+    expect(view.current.following).toBe(false);
     expect(scroller.scrollTop).toBe(2_000);
   });
 
-  it("slides back to the latest window when the reader returns to the bottom", () => {
-    const view = mount({ messages: rows(300) });
-    view.act(() => view.current.showEarlier());
-    view.rerender({ messages: rows(301) });
-    expect(view.current.hiddenCount).toBe(60);
-
-    view.act(() => {
-      scroller.scrollTop = scroller.bottom;
-      view.current.scrollHandlers.onScroll();
-    });
-    expect(view.current.following).toBe(true);
-    expect(view.current.hiddenCount).toBe(181);
-    expect(scroller.scrollTop).toBe(scroller.bottom);
-  });
-
-  it("shows the tail of a thread that shrinks under the window, following or not", () => {
-    const view = mount({ messages: rows(300) });
-    view.rerender({ messages: rows(400) });
-    view.rerender({ messages: rows(150) });
-    expect(view.current.hiddenCount).toBe(30);
-    expect(view.current.windowedMessages).toHaveLength(120);
-
-    view.act(() => press("PageUp"));
-    view.rerender({ messages: rows(20) });
-    expect(view.current.hiddenCount).toBe(0);
-    expect(view.current.windowedMessages).toHaveLength(20);
-  });
-
-  it("re-tails a following window when the thread shrinks but still reaches past its start", () => {
-    const view = mount({ messages: rows(300) });
-    view.rerender({ messages: rows(620) });
-    expect(view.current.hiddenCount).toBe(500);
-
-    const branch: Row[] = [...rows(450), { id: "ask", role: "user" }, ...rows(109, 2_000)];
-    view.rerender({ messages: branch });
-    expect(view.current.hiddenCount).toBe(440);
-    expect(view.current.windowedMessages).toHaveLength(120);
-    expect(view.current.windowedMessages.map((row) => row.id)).toContain("ask");
-    expect(scroller.scrollTop).toBe(scroller.bottom);
-
-    view.act(() => press("PageUp"));
-    view.rerender({ messages: rows(500) });
-    expect(view.current.hiddenCount).toBe(440);
-  });
-
-  it("shows earlier rows without moving the row under the reader", () => {
-    const view = mount({ messages: rows(300) });
-    scroller.scrollTop = 1_000;
-    view.act(() => view.current.showEarlier());
-    expect(view.current.windowedMessages[0]?.id).toBe("m60");
-    expect(scroller.scrollTop).toBe(1_000 + 120 * ROW);
-    expect(view.current.following).toBe(false);
+  it("keeps the rows it is asked to keep mounted", () => {
+    const keep = ["m5"];
+    const view = mount({ messages: rows(300), keepMounted: keep });
+    expect(view.current.viewport.keepMounted).toBe(keep);
   });
 
   it("keeps the reader's row in place when an older page arrives from the server", () => {
@@ -418,45 +313,31 @@ describe("transcript viewport", () => {
     expect(scroller.scrollTop).toBe(scroller.bottom);
   });
 
-  it("opens a bounded window around a search result and pages forward from it", () => {
+  it("stops following for a search result and names its row, so the virtual rows bring it into view", () => {
     store.state.focusMessage = { threadId: "thread", messageId: "m10", nonce: 1, consumed: false };
     const view = mount({ messages: rows(300) });
-    expect(view.current.windowedMessages.map((row) => row.id)).toContain("m10");
-    expect(view.current.windowedMessages).toHaveLength(120);
-    expect(view.current.laterCount).toBe(180);
     expect(view.current.following).toBe(false);
+    expect(view.current.viewport.focusMessageId).toBe("m10");
+    expect(view.current.viewport.startAtEnd).toBe(false);
 
-    view.act(() => view.current.showLater());
-    expect(view.current.laterCount).toBe(60);
+    store.state.focusMessage = { ...store.state.focusMessage, consumed: true };
+    view.rerender({});
+    expect(view.current.viewport.focusMessageId).toBeNull();
   });
 
-  it("keeps a search result's window when the reader scrolls to its end", () => {
+  it("brings the person's own new message into view from a search result", () => {
     store.state.focusMessage = { threadId: "thread", messageId: "m10", nonce: 1, consumed: false };
     const view = mount({ messages: rows(300) });
-    view.act(() => {
-      scroller.scrollTop = scroller.bottom;
-      view.current.scrollHandlers.onScroll();
-    });
-    expect(view.current.following).toBe(true);
-    view.rerender({ messages: rows(301) });
-    expect(view.current.windowedMessages[0]?.id).toBe("m0");
-    expect(view.current.laterCount).toBe(181);
-  });
-
-  it("brings the person's own new message into view from a search result's window", () => {
-    store.state.focusMessage = { threadId: "thread", messageId: "m10", nonce: 1, consumed: false };
-    const view = mount({ messages: rows(300) });
-    expect(view.current.laterCount).toBe(180);
+    expect(view.current.following).toBe(false);
     view.rerender({ messages: [...rows(300), { id: "sent", role: "user" }] });
     view.act(() => {});
     expect(view.current.following).toBe(true);
-    expect(view.current.laterCount).toBe(0);
-    expect(view.current.windowedMessages.at(-1)?.id).toBe("sent");
+    expect(scroller.calls.at(-1)).toEqual({ top: scroller.scrollHeight, behavior: "smooth" });
   });
 
   it("leaves a scrolled-up reader where they are when only the bot writes", () => {
     const view = mount({ messages: rows(300) });
-    view.act(() => view.current.showEarlier());
+    view.act(() => press("PageUp"));
     view.rerender({ messages: [...rows(300), { id: "reply", role: "bot" }] });
     view.act(() => {});
     expect(view.current.following).toBe(false);
@@ -464,18 +345,17 @@ describe("transcript viewport", () => {
 
   it("jumps back to the latest rows and resumes following", () => {
     const view = mount({ messages: rows(300) });
-    view.act(() => view.current.showEarlier());
+    view.act(() => press("PageUp"));
     expect(view.current.following).toBe(false);
 
     view.act(() => view.current.jumpToLatest());
     expect(view.current.following).toBe(true);
-    expect(view.current.hiddenCount).toBe(180);
-    expect(scroller.calls.at(-1)).toEqual({ top: 120 * ROW, behavior: "smooth" });
+    expect(scroller.calls.at(-1)).toEqual({ top: 300 * ROW, behavior: "smooth" });
   });
 
   it("jumps without the smooth animation when motion is reduced", () => {
     const view = mount({ messages: rows(300) });
-    view.act(() => view.current.showEarlier());
+    view.act(() => press("PageUp"));
     vi.stubGlobal("window", {
       addEventListener: () => {},
       removeEventListener: () => {},
@@ -483,7 +363,7 @@ describe("transcript viewport", () => {
     });
     view.act(() => view.current.jumpToLatest());
     expect(view.current.following).toBe(true);
-    expect(scroller.calls.at(-1)).toEqual({ top: 120 * ROW, behavior: "auto" });
+    expect(scroller.calls.at(-1)).toEqual({ top: 300 * ROW, behavior: "auto" });
   });
 
   it("keeps following a transcript too short to scroll, so Jump to latest never shows over nothing", () => {
@@ -495,18 +375,6 @@ describe("transcript viewport", () => {
     view.act(() => view.current.scrollHandlers.onTouchStart({ touches: [{ clientY: 100 }] } as never));
     view.act(() => view.current.scrollHandlers.onTouchMove({ touches: [{ clientY: 200 }] } as never));
     expect(view.current.following).toBe(true);
-  });
-
-  it("reveals earlier rows on an upward scroll when the shown rows are too short to scroll (#4365)", () => {
-    // Hidden tool steps can leave a whole window shorter than the screen: no scrollbar, so no scroll events.
-    scroller.clientHeight = 20_000;
-    const view = mount({ messages: rows(300) });
-    expect(view.current.hiddenCount).toBe(180);
-    view.act(() => view.current.scrollHandlers.onWheel({ deltaY: -40 } as never));
-    expect(view.current.hiddenCount).toBe(60);
-    view.act(() => view.current.scrollHandlers.onTouchStart({ touches: [{ clientY: 100 }] } as never));
-    view.act(() => view.current.scrollHandlers.onTouchMove({ touches: [{ clientY: 200 }] } as never));
-    expect(view.current.hiddenCount).toBe(0);
   });
 
   it("loads an older page on an upward scroll when the whole thread so far is too short to scroll (#4365)", () => {
@@ -555,7 +423,7 @@ describe("transcript viewport", () => {
     store.state.focusMessage = { threadId: "other", messageId: "m10", nonce: 1, consumed: false };
     view.rerender({ threadId: "other", messages: rows(300) });
     expect(view.current.following).toBe(false);
-    expect(view.current.windowedMessages.map((row) => row.id)).toContain("m10");
+    expect(view.current.viewport.focusMessageId).toBe("m10");
     expect(scroller.calls).toHaveLength(0);
   });
 
@@ -566,22 +434,8 @@ describe("transcript viewport", () => {
     expect(observers).toBe(1);
   });
 
-  it("automatically expands earlier windowed messages when user scrolls near the top", () => {
-    const view = mount({ messages: rows(300) });
-    expect(view.current.hiddenCount).toBe(180);
-
-    view.act(() => {
-      scroller.scrollTop = 200;
-      view.current.scrollHandlers.onWheel({ deltaY: -40 } as never);
-      view.current.scrollHandlers.onScroll();
-    });
-
-    expect(view.current.hiddenCount).toBe(60);
-  });
-
-  it("automatically loads older messages from server when at top of window and hasMore is true", () => {
+  it("automatically loads older messages from the server near the top when hasMore is true", () => {
     const view = mount({ messages: rows(50), hasMore: true });
-    expect(view.current.hiddenCount).toBe(0);
 
     view.act(() => {
       scroller.scrollTop = 150;

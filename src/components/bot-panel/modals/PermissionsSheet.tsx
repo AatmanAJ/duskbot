@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { approvalModeOptionsFor, approvalModeSelectionRequiresLocalDesktop, shownApprovalMode } from "@/lib/approval-mode-options";
 import { t } from "@/lib/i18n";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, useStoreShallow, type Bot } from "@/state/store";
 import { useTeamPeople } from "@/state/team-people";
 import type { ApprovalMode } from "../../../../shared/approval-mode";
 import { effectiveOutboundPolicy, type OutboundPolicy } from "../../../../shared/outbound";
@@ -18,7 +18,8 @@ type Derived = ReturnType<typeof useBotSettingsDerived>;
 /** Chief of Staff, contact with other bots, the approval level and sending, as rows. */
 export function PermissionsSheet({ bot, derived }: { bot: Bot; derived: Derived }) {
   const { patch, engine, canCoordinate, approvalMode, trustedModesAvailable, currentChief } = derived;
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const peerNames = useStoreShallow((s) => Array.isArray(bot.peers) ? bot.peers.flatMap((id) => s.bots.find((other) => other.id === id && !other.hidden)?.name ?? []) : null);
   const team = useTeamPeople();
   const ownerOrAdmin = useOwnerOrAdmin();
   const [localAutoWarning, setLocalAutoWarning] = useState<string | null>(null);
@@ -31,7 +32,6 @@ export function PermissionsSheet({ bot, derived }: { bot: Bot; derived: Derived 
     else if (mode === "auto" && bot.computer === "local") setLocalAutoWarning(bot.id);
     else patch({ approvalMode: mode });
   };
-  const peerNames = Array.isArray(bot.peers) ? bot.peers.flatMap((id) => state.bots.find((other) => other.id === id && !other.hidden)?.name ?? []) : null;
   const otherChief = currentChief && currentChief.id !== bot.id ? currentChief : null;
 
   return (

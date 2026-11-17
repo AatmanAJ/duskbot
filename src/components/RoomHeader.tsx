@@ -10,7 +10,7 @@ import { effectivePlace, placeLabelKey } from "@/lib/place";
 import { closeRoomPanel, openRoomPanel, useRoomPanel } from "@/lib/room-panel";
 import { chosenResponder, responderChoice, responderTitle } from "@/lib/room-responder";
 import { roomSpeakerIds } from "@/lib/room-threads";
-import { useStore, type Bot, type Group } from "@/state/store";
+import { useDispatch, useStoreSelector, type Bot, type Group } from "@/state/store";
 import { BotAvatar } from "./Avatar";
 import { RoomContextBadge } from "./ContextWarning";
 import { ConversationTurnLimit } from "./ConversationTurnLimit";
@@ -25,8 +25,8 @@ import { GroupAvatar, useGroupYou } from "./GroupAvatar";
 import { Select } from "./Select";
 
 export function DefaultResponderSelect({ group, members }: { group: Group; members: Bot[] }) {
-  const { state, dispatch } = useStore();
-  const jevOn = jevRoomRoutingOn(state.config);
+  const dispatch = useDispatch();
+  const jevOn = useStoreSelector((s) => jevRoomRoutingOn(s.config));
   const responder = effectiveDefaultResponder(group, members);
 
   const change = (nextValue: string) => {
@@ -128,9 +128,10 @@ function RoomHeadPill({ group, members, dragProps, noDragStyle }: {
   dragProps: ReturnType<typeof useCaptionChrome>["dragProps"];
   noDragStyle: ReturnType<typeof useCaptionChrome>["noDragStyle"];
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const settingsOpen = useStoreSelector((s) => s.settingsOpen);
   const openRoom = useRoomPanel();
-  const expanded = state.settingsOpen || openRoom === group.id;
+  const expanded = settingsOpen || openRoom === group.id;
   const you = useGroupYou();
   return (
     <div {...dragProps} className="px-5 pt-2.5 pb-2.5 max-md:pl-14 max-md:pr-3">

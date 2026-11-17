@@ -13,7 +13,7 @@ const fixture = vi.hoisted(() => ({
   advanced: false,
   api: vi.fn(async (..._args: unknown[]) => ({}) as unknown),
 }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   useStore: () => ({
     state: { instances: [claude], bots: [], modelVariantSessions: {}, config: {} },
@@ -22,7 +22,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     refreshModels: () => Promise.resolve(),
   }),
   api: (...args: unknown[]) => fixture.api(...args),
-}));
+}))(importOriginal)));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 vi.mock("./Avatar", () => ({ BotAvatar: () => null }));
 

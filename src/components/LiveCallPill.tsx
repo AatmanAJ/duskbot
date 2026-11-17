@@ -3,7 +3,8 @@ import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { isMacPlatform } from "@/lib/keyboard-shortcuts";
 import { hangUpLiveCall, isLiveCallRunning, liveCallChord, setLiveMuted, useLiveMedia, type LiveMediaState } from "@/lib/live-call-media";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
+import { botById } from "@/state/store-index";
 import type { LiveCallState } from "../../shared/wire";
 
 export function liveBadgeFor(botId: string, media: LiveMediaState, server: LiveCallState | null): boolean {
@@ -12,10 +13,9 @@ export function liveBadgeFor(botId: string, media: LiveMediaState, server: LiveC
 }
 
 function useCallElsewhere(currentBotId: string | null) {
-  const { state } = useStore();
   const media = useLiveMedia();
   const active = isLiveCallRunning(media.phase);
-  const bot = active ? state.bots.find((candidate) => candidate.id === media.botId) : undefined;
+  const bot = useStoreSelector((s) => active ? botById(s, media.botId) : undefined);
   const onScreen = Boolean(bot && bot.id === currentBotId && bot.threadId === media.threadId);
   return { media, bot: onScreen ? undefined : bot, threadId: media.threadId };
 }

@@ -5,7 +5,8 @@ import { activeLocale, documentLanguage, t } from "@/lib/i18n";
 import { listenLiveFrames } from "@/lib/live-events";
 import { formatTokens, hasFiniteCost, headlineTokens } from "@/lib/usage";
 import { fetchTraces, formatCost, formatDuration, USAGE_PERIODS, usageExportHref, usagePeriodRange, type UsagePeriod } from "@/lib/usage-trace";
-import { api, useStore } from "@/state/store";
+import { api, useStoreSelector, useStoreShallow } from "@/state/store";
+import { botById } from "@/state/store-index";
 import type { LocaleKey } from "@/locales";
 import type { TraceList, TraceRootSummary } from "../../shared/usage-trace";
 import { BotAvatar } from "./Avatar";
@@ -77,19 +78,20 @@ function useUsageGroups(range: { from: string; to: string }, groupBy: UsageGroup
 }
 
 export function GroupBars({ groupBy, groups }: { groupBy: UsageGroupBy; groups: readonly UsageGroup[] }) {
-  const { state } = useStore();
+  const instances = useStoreSelector((s) => s.instances);
   const top = [...groups].sort((a, b) => headlineTokens(b) - headlineTokens(a)).slice(0, 6);
+  const bots = useStoreShallow((s) => (groupBy === "bot" ? top.map((group) => s.bots.find((item) => `bot:${item.id}` === group.key)) : []));
   const max = Math.max(...top.map(headlineTokens), 0);
   if (!top.length || max <= 0) return <NoteRow>{t("usage.page.whereEmpty")}</NoteRow>;
   return (
     <ul className="contents">
-      {top.map((group) => {
-        const bot = groupBy === "bot" ? state.bots.find((item) => `bot:${item.id}` === group.key) : undefined;
+      {top.map((group, index) => {
+        const bot = bots[index];
         return (
           <li key={group.key} className={cn(rowCls, "grid grid-cols-[minmax(0,9rem)_1fr_auto] text-[13px] leading-[18px]")} title={t("usage.page.turns", { count: String(group.turns) })}>
             <span className="flex min-w-0 items-center gap-2 text-ink">
               {bot && <BotAvatar bot={bot} state="idle" size={18} animated={false} />}
-              <span className="truncate">{groupBy === "model" ? modelName(group.label, state.instances) : usageGroupLabel(groupBy, group)}</span>
+              <span className="truncate">{groupBy === "model" ? modelName(group.label, instances) : usageGroupLabel(groupBy, group)}</span>
             </span>
             <span className="h-1 overflow-hidden rounded-full bg-ink/[0.06]">
               <span className="block h-full rounded-full bg-ink/40" style={{ width: `${Math.max(2, (headlineTokens(group) / max) * 100)}%` }} />
@@ -135,14 +137,14 @@ function startedLabel(at: number): string {
 }
 
 export function RunRow({ root, onOpen }: { root: TraceRootSummary; onOpen: () => void }) {
-  const { state } = useStore();
+  const bots = useStoreShallow((s) => root.bots.slice(0, 4).map((entry) => botById(s, entry.id)));
   const title = root.title || t(`trace.source.${root.source}`, { bot: root.bots[0]?.name ?? "" });
   return (
     <li>
       <button type="button" onClick={onOpen} className={cn(rowCls, "grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] text-start hover:bg-ink/[0.035] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus")} data-testid="usage-run">
         <span className="flex w-[38px] shrink-0 -space-x-1.5 sm:w-[74px]">
           {root.bots.slice(0, 4).map((entry, index) => {
-            const bot = state.bots.find((item) => item.id === entry.id);
+            const bot = bots[index];
             return bot
               ? <span key={entry.id} className={cn("rounded-full ring-2 ring-card", index > 1 && "hidden sm:block")}><BotAvatar bot={bot} state="idle" size={20} animated={false} /></span>
               : <span key={entry.id} className={cn("flex size-5 items-center justify-center rounded-full bg-raised text-[10px] font-semibold text-ink-secondary ring-2 ring-card", index > 1 && "hidden sm:flex")}>{entry.name.slice(0, 1).toUpperCase()}</span>;

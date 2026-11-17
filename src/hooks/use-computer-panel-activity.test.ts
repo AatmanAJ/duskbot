@@ -8,7 +8,7 @@ import { publishLiveFrame } from "@/lib/live-events";
 import { useComputerPanelActivity } from "./use-computer-panel-activity";
 
 const remote = vi.hoisted(() => ({ status: {} as Record<string, unknown> }));
-vi.mock("@/state/store", () => ({ api: vi.fn(async () => remote.status) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: vi.fn(async () => remote.status) }))()));
 const dispatch = vi.fn();
 const bot = { id: "one", threadId: "thread", computer: "cloud", tasks: [] } as unknown as Bot;
 const host = document.createElement("div");

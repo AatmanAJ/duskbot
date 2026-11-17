@@ -3,7 +3,8 @@ import { Loader2, Trash2 } from "../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { isTickable, summarizeDelete } from "@/lib/bulk-select";
-import { currentTaskBot, useStore, type Action, type Bot } from "@/state/store";
+import { currentTaskBot, useDispatch, useStoreSelector, type Action, type Bot } from "@/state/store";
+import { botById } from "@/state/store-index";
 import { bulkDeleteBody, bulkDeleteOutcome, deleteThreadsInBulk } from "./BulkSelectBar";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -55,10 +56,10 @@ export function deleteAllThreadsCopy(rows: ReturnType<typeof allThreadRows>, sim
 }
 
 export function useDeleteAllThreads(simple = false) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const [botId, setBotId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const bot = botId === null ? undefined : state.bots.find((candidate) => candidate.id === botId);
+  const bot = useStoreSelector((state) => botId === null ? undefined : botById(state, botId));
   const run = () => {
     if (!bot || pending) return;
     setPending(true);

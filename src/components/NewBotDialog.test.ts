@@ -26,10 +26,10 @@ vi.mock("react", async importOriginal => {
 vi.mock("@/lib/create-configured-bot", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/create-configured-bot")>(), createConfiguredBot: fixture.create,
 }));
-vi.mock("@/state/store", async importOriginal => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async importOriginal => {
   const store = await importOriginal<typeof import("@/state/store")>();
-  return { ...store, api: fixture.api, BotEditorStore: () => null, useStore: () => ({ state: { ...store.initialState, appSettingsOpen: fixture.appSettingsOpen }, dispatch: fixture.dispatch }) };
-});
+  return { ...store, api: fixture.api, BotEditorStore: () => null, ScopedStore: () => null, useStore: () => ({ state: { ...store.initialState, appSettingsOpen: fixture.appSettingsOpen }, dispatch: fixture.dispatch }) };
+})(importOriginal)));
 import { BotDefaultsDialog } from "./NewBotDialog";
 import { Select } from "./Select";
 import { BOT_ROLES } from "@/lib/bot-roles";

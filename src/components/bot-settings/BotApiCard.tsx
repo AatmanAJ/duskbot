@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { copyText } from "@/lib/copy-text";
 import { t } from "@/lib/i18n";
 import { relativeTime } from "@/lib/memory";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type Bot } from "@/state/store";
 import { BOT_API_KEY_PLACEHOLDER, BOT_API_UPGRADE, botApiCurl } from "../../../shared/bot-api";
 import { NoteLine, useCloudUsage, useUpgrade } from "../CloudUsageMeter";
 import { Switch } from "../SettingsPrimitives";
@@ -84,13 +84,14 @@ function BotApiStarter({ className }: { className?: string }) {
 
 /** The Bot API, the same in the bot panel and in Bot settings: a switch, the key once, the command to paste. */
 export function BotApiCard(props: { bot: Bot; webhooksLink?: boolean; className?: string }) {
-  const { state } = useStore();
-  if (state.config?.cloudStarter === true) return storeApp() ? null : <BotApiStarter className={props.className} />;
+  const cloudStarter = useStoreSelector((s) => s.config?.cloudStarter === true);
+  if (cloudStarter) return storeApp() ? null : <BotApiStarter className={props.className} />;
   return <BotApiSection {...props} />;
 }
 
 function BotApiSection({ bot, webhooksLink = false, className }: { bot: Bot; webhooksLink?: boolean; className?: string }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const webhookCount = useStoreSelector((s) => s.webhooks.filter((webhook) => webhook.botId === bot.id).length);
   const [view, setView] = useState<BotApiView | null>(null);
   const [freshKey, setFreshKey] = useState<string | null>(null);
   const [confirmingNewKey, setConfirmingNewKey] = useState(false);
@@ -130,7 +131,6 @@ function BotApiSection({ bot, webhooksLink = false, className }: { bot: Bot; web
     window.setTimeout(() => setCopied(null), 1500);
   };
   const refreshCalls = () => { api<BotApiView>(path).then(setView).catch(() => undefined); };
-  const webhookCount = state.webhooks.filter((webhook) => webhook.botId === bot.id).length;
   const canManage = view?.canManage ?? false;
 
   return (

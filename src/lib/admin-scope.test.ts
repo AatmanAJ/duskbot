@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => vi.fn());
-vi.mock("@/state/store", async (importOriginal) => ({ ...await importOriginal<typeof import("@/state/store")>(), api }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({ ...await importOriginal<typeof import("@/state/store")>(), api }))(importOriginal)));
 
 const refusal = () => Object.assign(new Error("forbidden: this session lacks the admin scope"), { status: 403 });
 

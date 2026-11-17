@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Loader2, Trash2, X } from "../icons";
 
 import { t } from "@/lib/i18n";
-import { api, openBot, useStore, type Bot } from "@/state/store";
+import { api, openBot, useDispatch, useStoreSelector, type AppState, type Bot } from "@/state/store";
 
 import { BotAvatar } from "./Avatar";
 import { archivableChief } from "./bot-archive";
@@ -14,6 +14,7 @@ import { footnoteCls, formBodyCls, formCloseCls, formHeaderCls, formSheetCls, fo
 import { friendlyError } from "@/lib/plain-error";
 
 const dangerSmallCls = "dusk-press inline-flex h-6 shrink-0 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-full px-2 text-[12px] leading-4 tracking-[0.01em] text-danger outline-none hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default disabled:opacity-40";
+const selectDeletingBots = (state: AppState) => state.deletingBots;
 
 export type BotConfirmKind = "archive" | "delete";
 
@@ -121,13 +122,14 @@ export function ArchivedBotsPanel({
   onClose: () => void;
   onRestored: (message: string) => void;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const deletingBots = useStoreSelector(selectDeletingBots);
   const dialogRef = useRef<HTMLDivElement>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [restoringAll, setRestoringAll] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Bot | "all" | null>(null);
   const [error, setError] = useState("");
-  const deleting = bots.some((bot) => Boolean(state.deletingBots[bot.id]));
+  const deleting = bots.some((bot) => Boolean(deletingBots[bot.id]));
   const locked = restoringAll || Boolean(busyId) || deleting || Boolean(pendingDelete);
 
   useEffect(() => {
@@ -251,7 +253,7 @@ export function ArchivedBotsPanel({
                 key={bot.id}
                 bot={bot}
                 restoring={busyId === bot.id}
-                deleting={Boolean(state.deletingBots[bot.id])}
+                deleting={Boolean(deletingBots[bot.id])}
                 disabled={locked}
                 onRestore={() => void restore(bot)}
                 onDelete={() => setPendingDelete(bot)}

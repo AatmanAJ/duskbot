@@ -11,7 +11,7 @@ import { CursorMark, PresetProviderMark, ProviderMark } from "@/components/Provi
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { plainSignIn } from "@/lib/onboarding";
-import { useStore, type InstanceInfo } from "@/state/store";
+import { useStoreActions, useStoreSelector, type InstanceInfo } from "@/state/store";
 import { aiName, aiTiles, type AiTile, type AiTileId } from "./funnel";
 import { TILE } from "./FunnelSteps";
 import { connectsInApp, type ConnectInstance } from "./connect-flow";
@@ -110,10 +110,11 @@ export function connectedAiCards(instances: readonly InstanceInfo[]): AiTileId[]
  * here becomes connected. */
 export function AiCards({ onMore, className, onConnected }: { tested: WelcomeAiNow | null; onMore?: () => void; className?: string;
   onConnected?: (tile: AiTileId) => void }) {
-  const { state, refreshInstances } = useStore();
+  const { refreshInstances } = useStoreActions();
+  const instances = useStoreSelector((s) => s.instances);
   const [picked, setPicked] = useState<AiTileId | null>(null);
   const flow = useConnectFlow();
-  const tiles = aiTiles(state.instances, ready, inApp);
+  const tiles = aiTiles(instances, ready, inApp);
   const [cached] = useState(readConnectedCache);
   const { shown, next } = connectedCards(tiles, (tile) => ready(tile.instance), cached);
   const nextKey = [...next].sort().join(",");

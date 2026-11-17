@@ -6,7 +6,7 @@ import { createElement, useCallback, useEffect, useRef, useState, useSyncExterna
 import { useDesktopCapabilities } from "@/components/DesktopCapabilities";
 import { withOpenSettings } from "@/components/OpenSystemSettings";
 import { withVoiceSettings } from "@/components/OpenVoiceSettings";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { VOICE_PROVIDER_INFO } from "../../electron/voice-catalog.mjs";
 import { appendDictatedText } from "./drafts";
 import { t } from "./i18n";
@@ -105,7 +105,9 @@ export function useComposerDictation({ draftId, text, onText }: {
   // capabilities load after the first paint: re-read the device when they do, and when the phone registers itself
   useDesktopCapabilities();
   useSyncExternalStore(onPhoneVoice, phoneVoice, () => null);
-  const { state: { config, appSettingsOpen, appSettingsSection } } = useStore();
+  const config = useStoreSelector((s) => s.config);
+  const appSettingsOpen = useStoreSelector((s) => s.appSettingsOpen);
+  const appSettingsSection = useStoreSelector((s) => s.appSettingsSection);
   const prefs = useVoicePrefs();
   const keys = useVoiceKeys();
   const engine = currentEngine(prefs, keys, serverListeningReady(config));

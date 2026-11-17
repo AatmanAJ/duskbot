@@ -9,7 +9,7 @@ import type { CloudAccountState } from "../../../electron/cloud-account.mjs";
 import { MOVE_INTENT_KEY } from "@/lib/cloud-move";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), bots: 3 }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
@@ -18,7 +18,7 @@ vi.mock("@/state/store", async (importOriginal) => {
       dispatch: fixture.dispatch,
     }),
   };
-});
+})(importOriginal)));
 
 const { CloudMoveSheet, CloudMoveWatcher } = await import("./CloudMoveSheet");
 

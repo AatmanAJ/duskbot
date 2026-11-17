@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { CircleAlert, X } from "../../icons";
-import { useStore, type Message } from "@/state/store";
+import { useStoreActions, useStoreSelector, type Message } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { usePageOpener } from "@/lib/page-open";
 import { phonePairingSettingsAction, withoutPhonePairing } from "@/lib/phone-pairing";
 import { phoneAppEnabled } from "@/lib/feature-flags";
@@ -50,8 +51,9 @@ export function WidgetMessage({ botId, threadId, message }: { botId: string; thr
 
 function WidgetCard({ botId, threadId, messageId, payload }: { botId: string; threadId?: string; messageId: string; payload: WidgetPayload }) {
   const root = useMemo(() => (phoneAppEnabled() ? payload.root : withoutPhonePairing(payload.root)), [payload.root]);
-  const { state, dispatch, flushBotPatches } = useStore();
-  const botColor = state.bots?.find((candidate) => candidate.id === botId)?.color;
+  const { dispatch, flushBotPatches } = useStoreActions();
+  const store = useStoreRef();
+  const botColor = useStoreSelector((s) => s.bots?.find((candidate) => candidate.id === botId)?.color);
   const openPage = usePageOpener();
   const [settledHere, setSettledHere] = useState<WidgetSettled>();
   /**
@@ -121,6 +123,7 @@ function WidgetCard({ botId, threadId, messageId, payload }: { botId: string; th
       if (entry.action.type === PHONE_PAIRING_ACTION) dispatch(phonePairingSettingsAction());
       const url = widgetActionUrl(entry);
       if (url) openPage(url);
+      const state = store.state();
       const target = resolvedThreadTarget(widgetThreadTarget(entry), state);
       if (target) openThread(dispatch, target, state);
       return;

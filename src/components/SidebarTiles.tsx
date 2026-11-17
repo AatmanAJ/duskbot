@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { useLiveMedia } from "@/lib/live-call-media";
 import { stateForBot } from "@/lib/mascot";
-import { api, openBotRow, useStore, type Bot } from "@/state/store";
+import { api, openBotRow, useStoreSelector, type Bot } from "@/state/store";
 import { useChiefStepOpen } from "@/lib/default-bot";
 
 import { BotAvatar } from "./Avatar";
@@ -127,9 +127,9 @@ export const SidebarBotTile = memo(function SidebarBotTile({ primary = false, dr
 
 /** The sidebar while the first run's Chief step is open over an app with no bots of the person's own yet. */
 export function SidebarNoBots() {
-  const { state } = useStore();
+  const hasOwnBot = useStoreSelector((s) => s.bots.some((bot) => !bot.hidden && !bot.defaultBot));
   const chiefStep = useChiefStepOpen();
-  if (!chiefStep || state.bots.some((bot) => !bot.hidden && !bot.defaultBot)) return null;
+  if (!chiefStep || hasOwnBot) return null;
   return <p data-sidebar-empty="" className="px-5 pt-4 text-[13px] leading-[18px] text-ink-tertiary">{t("onboarding.shell.noBots")}</p>;
 }
 

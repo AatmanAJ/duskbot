@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useDispatch, useStoreSelector, useStoreShallow, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { Icon, type IconName } from "./Icon";
 import { useHeldMenuMotion } from "./MenuMotion";
@@ -68,12 +68,15 @@ export function BotContextMenu({
   const rowFlyout = (row: Element | null): Flyout | null => (row && row === moreRef.current ? "more" : row && row === moveRef.current ? "move" : null);
   const more = moreIntent.current;
   const shown = motion.value;
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const admin = useOwnerOrAdmin();
   const member = admin === false;
   const mayMove = useMayMoveBots();
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
-  const bot = shown ? state.bots.find((b) => b.id === shown.botId) : undefined;
+  const bot = useStoreSelector((s) => shown ? s.bots.find((b) => b.id === shown.botId) : undefined);
+  const deleting = useStoreSelector((s) => bot ? s.deletingBots[bot.id] === true : false);
+  const visibleBotCount = useStoreSelector((s) => s.bots.filter((candidate) => !candidate.hidden).length);
+  const departments = useStoreShallow(departmentNames);
   const menuRef = useRef<HTMLDivElement>(null);
   const latestMenu = useRef(menu);
   useLayoutEffect(() => { latestMenu.current = menu; }, [menu]);
@@ -149,8 +152,6 @@ export function BotContextMenu({
   });
 
   if (!motion.shown || !bot || !shown) return null;
-  const deleting = state.deletingBots[bot.id] === true;
-  const visibleBotCount = state.bots.filter((candidate) => !candidate.hidden).length;
   const archiveBlocked = Boolean(bot.chiefOfStaff) || visibleBotCount <= 1;
   const archiveHint = bot.chiefOfStaff
     ? t("sidebar.bot.archiveBlockedChief")
@@ -184,7 +185,6 @@ export function BotContextMenu({
     </button>
   );
   const current = bot.section?.trim() ?? "";
-  const departments = departmentNames(state);
   const moveItems = [
     ...departments.map((name) => grokItem(name === current ? "check" : "folder", name, () => moveBotsToSection(dispatch, [bot.id], name), { checked: name === current })),
     grokItem(current === "" ? "check" : "folder", t("sidebar.grok.unassigned"), () => moveBotsToSection(dispatch, [bot.id], ""), { checked: current === "" }),

@@ -6,7 +6,7 @@ import type { LocaleKey } from "@/locales";
 import { normalizeState } from "@/lib/mascot";
 import { chosenResponder, responderChoice, responderLeadId, type ResponderChoice } from "@/lib/room-responder";
 import { shortPath } from "@/lib/short-path";
-import { api, useStore, type Bot, type Group, type GroupDefaultResponder } from "@/state/store";
+import { api, useDispatch, type Bot, type Group, type GroupDefaultResponder } from "@/state/store";
 import { BotAvatar } from "../Avatar";
 import { FolderPathDialog } from "../bot-panel/modals/FolderModal";
 import { InstructionsCard } from "../bot-panel/modals/InstructionsModal";
@@ -24,7 +24,7 @@ const drafts = new Map<string, string>();
 
 /** The room's instructions in the bot Instructions card: a draft until Save, kept for the session when it closes. */
 export function RoomInstructionsModal({ group }: { group: Group; onClose: () => void }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const saved = group.bulletin;
   const [draft, setDraftState] = useState(() => drafts.get(group.id) ?? saved);
   const [justSaved, setJustSaved] = useState(false);
@@ -120,7 +120,7 @@ export function RoomFolderModal({ group }: { group: Group; onClose: () => void }
 /** Who answers a message that @mentions nobody: a leader who hands out the work, everyone, Dusk deciding or Jev
  * deciding (with Jev set up right under it). A leader picks who leads in the rows under it; arrow keys move between rows. */
 export function RoomResponderModal({ group, members }: { group: Group; members: Bot[]; onClose: () => void }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const responder = effectiveDefaultResponder(group, members);
   const current = responderChoice(responder);
   const leading = current.startsWith("leader:") || current.startsWith("member:");
@@ -184,7 +184,7 @@ export function RoomAboutModal({ group }: { group: Group; onClose: () => void })
 }
 
 function RoomAboutDialog({ group, onClose }: { group: Group; onClose: () => void }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description ?? "");
   const trimmed = { name: name.trim(), description: description.trim() };

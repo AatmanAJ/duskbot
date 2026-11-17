@@ -46,7 +46,7 @@ vi.mock("./CloudScreenPreview", () => ({
 vi.mock("./BrowserPanel", () => ({ BrowserPanel: () => null }));
 vi.mock("./LiveDesktop", () => ({ LiveDesktop: (props: { expanded: boolean; wake?: boolean }) => createElement("div", { "data-live-screen": "", "data-expanded": String(props.expanded), "data-wake": String(Boolean(props.wake)) }) }));
 vi.mock("./bot-settings/RoutinesSection", () => ({ RoutinesSection: () => null }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: async (path: string, init?: RequestInit) => {
     if (init?.method === "POST") fixture.posts.push(path.split("?")[0]!);
@@ -68,7 +68,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
     }
     return {};
   },
-}));
+}))(importOriginal)));
 
 const { ComputerPanel } = await import("./ComputerPanel");
 const { BotEditorStore, initialState } = await import("@/state/store");

@@ -16,11 +16,11 @@ const fixture = vi.hoisted(() => ({
   dispatch: vi.fn(),
   api: vi.fn(async (..._args: unknown[]) => ({}) as unknown),
 }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   useStore: () => ({ state: fixture.state, dispatch: fixture.dispatch, refreshInstances: vi.fn(), refreshModels: vi.fn() }),
   api: (...args: unknown[]) => fixture.api(...args),
-}));
+}))(importOriginal)));
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   ...await importOriginal<typeof import("./DesktopCapabilities")>(),
   useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false }, host: { packaged: true, platform: "darwin" }, localComputer: { available: true } }, ready: true }),

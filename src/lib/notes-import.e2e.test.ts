@@ -18,7 +18,7 @@ const planters = () => serverSide<{ plantHermes(home: string): string[]; plantOp
 
 const server = vi.hoisted(() => ({ url: "", owner: "", answers: [] as Array<{ path: string; status: number; body: Record<string, unknown> }> }));
 // the renderer's request helper, pointed at the fixture: same paths, same bodies, errors thrown the same way
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const real = await original<typeof import("@/state/store")>();
   const api = async (path: string, init: RequestInit & { timeoutMs?: number } = {}) => {
     const { timeoutMs: _timeout, ...rest } = init;
@@ -31,7 +31,7 @@ vi.mock("@/state/store", async (original) => {
     return body;
   };
   return { ...real, api };
-});
+})(importOriginal)));
 vi.mock("@/lib/copy-text", () => ({ copyText: async () => "copied" }));
 
 import { copyNotesPrompt, importNotes, notesOutcomeLine, takeNotesFromDownloads, type NotesContext } from "@/lib/assistant-notes";

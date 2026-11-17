@@ -1,13 +1,13 @@
 import { ChevronRight } from "../../icons";
 import { cn } from "@/lib/cn";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, useStoreSelector, type Bot } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { botUsage, costCaption, formatTokens, formatUsd, hasFiniteCost, headlineTokens, tokensColumnLabel, usageDetail } from "@/lib/usage";
 
 export function UsageSection({ bot, bare = false }: { bot: Bot; bare?: boolean }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const usage = botUsage(bot);
-  const instance = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId);
+  const instance = useStoreSelector((s) => s.instances.find((i) => i.instanceId === bot.modelSelection.instanceId));
 
   if (usage.turns === 0) {
     return (

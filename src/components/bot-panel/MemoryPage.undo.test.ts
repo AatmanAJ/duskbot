@@ -5,10 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { Bot } from "@/state/store";
 
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, config: {} }, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 
 const { MemoryPage } = await import("./pages");
 

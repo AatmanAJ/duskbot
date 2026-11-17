@@ -7,14 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppState, Bot, ConfigStatus, Group } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), find: vi.fn(), api: vi.fn(), config: null as ConfigStatus | null }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
     api: (...args: unknown[]) => fixture.api(...args),
     useStore: () => ({ state: { ...original.initialState, bots: fixtureBots, config: fixture.config } as AppState, dispatch: fixture.dispatch }),
   };
-});
+})(importOriginal)));
 vi.mock("../DesktopCapabilities", async (importOriginal) => ({
   ...await importOriginal<typeof import("../DesktopCapabilities")>(),
   useCaptionChrome: () => ({ dragProps: {}, padClass: "" }),

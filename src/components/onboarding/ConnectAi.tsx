@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { prefetchProviders } from "@/lib/model-providers";
 import { aiWorks, organisationSignIn } from "@/lib/onboarding";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch, useStoreSelector } from "@/state/store";
 import { freeFallback } from "../../../shared/ai-ranking";
 import { AiCards } from "./AiCards";
 import { StageSwap } from "./ConnectMotion";
@@ -21,7 +21,8 @@ import type { AiTileId } from "./funnel";
  * how that went: one that didn't answer says why, with Check again; OpenCode's free model is only ever a backup. */
 export function ConnectAi({ tested, onMore, onConnected }: { tested: WelcomeAiNow | null; onMore?: () => void;
   onConnected?: (tile: AiTileId) => void }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const instances = useStoreSelector((s) => s.instances);
   const organisation = organisationSignIn(window.duskDesktop);
   const [failed, setFailed] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -53,7 +54,7 @@ export function ConnectAi({ tested, onMore, onConnected }: { tested: WelcomeAiNo
   }, [refresh]);
 
   const connected = tested && aiWorks(tested) ? tested.instance : undefined;
-  const backup = state.instances.find((instance) => engineReady(instance) && freeFallback(instance));
+  const backup = instances.find((instance) => engineReady(instance) && freeFallback(instance));
 
   return (
     <div className="flex w-full flex-col">
@@ -90,7 +91,7 @@ export function ConnectAi({ tested, onMore, onConnected }: { tested: WelcomeAiNo
               {t("onboarding.engines.freeBackup", { name: backup.displayName })}
             </p>
           )}
-          {!tested && !backup && !failed && state.instances.length === 0 && (
+          {!tested && !backup && !failed && instances.length === 0 && (
             <p className="mb-3 text-[13px] text-ink-secondary" aria-live="polite">{t("common.checking")}</p>
           )}
         </>

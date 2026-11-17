@@ -3,7 +3,7 @@ import { Users } from "../icons";
 
 import { cn } from "@/lib/cn";
 import { profileForSession, readSessionState, type SessionState } from "@/lib/session";
-import { useStore, type Bot } from "@/state/store";
+import { useStoreSelector, type Bot } from "@/state/store";
 import { BotAvatar } from "./Avatar";
 import { personFace, profileInitials, type PersonFace } from "./SidebarProfileMenu";
 import { useActiveAccount } from "./AccountMenu";
@@ -103,7 +103,7 @@ let knownComputer: string | null | undefined;
 
 /** The person as a group's first face: the sidebar's own "you", else this computer's name, else nobody. */
 export function useGroupYou(): GroupYou | null {
-  const { state } = useStore();
+  const configProfile = useStoreSelector((s) => s.config?.profile);
   const [session, setSession] = useState<SessionState | null>(knownSession);
   const [computer, setComputer] = useState<string | null | undefined>(knownComputer);
   useEffect(() => {
@@ -116,7 +116,7 @@ export function useGroupYou(): GroupYou | null {
     return () => { active = false; };
   }, []);
   const account = useActiveAccount();
-  const profile = profileForSession(state.config?.profile, session);
+  const profile = profileForSession(configProfile, session);
   const nameless = !profile?.name?.trim() && !profile?.email?.trim();
   useEffect(() => {
     const bridge = window.duskDesktop?.desktopProfile;

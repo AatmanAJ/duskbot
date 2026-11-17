@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { Globe, Plus, Trash2 } from "../icons";
-import { api, ApiError, useStore, type Bot, type BotAnnouncement, type BrowserProfile, type ConfigStatus } from "@/state/store";
+import { api, ApiError, useStoreActions, useStoreSelector, type AppState, type Bot, type BotAnnouncement, type BrowserProfile, type ConfigStatus } from "@/state/store";
 import { browserProfileDeletionBlockReason, browserProfilesMutation, newBrowserProfileId } from "@/lib/browser-profiles";
 import { isOwnerOrAdmin, readSessionState } from "@/lib/session";
 import { t } from "@/lib/i18n";
@@ -15,6 +15,11 @@ import { textFieldCls } from "./ui/GrokDialog";
 import { PROFILE_PAGE } from "./settings-page-ids";
 import { friendlyError } from "@/lib/plain-error";
 
+const selectProfiles = (state: AppState) => state.config?.browserProfiles;
+const selectMyChrome = (state: AppState) => state.config?.browserEngine?.myChrome === true;
+const selectTeam = (state: AppState) => state.config?.team;
+const selectBots = (state: AppState) => state.bots;
+
 /** Security: the server owns session routing and erasure; this UI never handles cookies or partitions. */
 export function BrowserProfilesManager({ bot, onProfileChanged, disabled = false, folded = false }: {
   bot?: Bot;
@@ -22,10 +27,11 @@ export function BrowserProfilesManager({ bot, onProfileChanged, disabled = false
   disabled?: boolean;
   folded?: boolean;
 }) {
-  const { state, dispatch, flushBotPatches } = useStore();
-  const profiles = state.config?.browserProfiles ?? [];
-  const myChrome = state.config?.browserEngine?.myChrome === true;
-  const bots = state.bots ?? [];
+  const { dispatch, flushBotPatches } = useStoreActions();
+  const profiles = useStoreSelector(selectProfiles) ?? [];
+  const myChrome = useStoreSelector(selectMyChrome);
+  const team = useStoreSelector(selectTeam);
+  const bots = useStoreSelector(selectBots) ?? [];
   const currentBot = bot ? bots.find((candidate) => candidate.id === bot.id) ?? bot : undefined;
   const [canManage, setCanManage] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -266,7 +272,7 @@ export function BrowserProfilesManager({ bot, onProfileChanged, disabled = false
           </p>
           {usesMyChrome(selectedProfile) ? chromeNote
             : (selected === "" || selectedProfile) && (
-              <SignedInSites key={`${currentBot.id}:${selected}`} target={{ bot: currentBot.id }} scope={browserScope(state.config?.team, bot?.threadId)} sharedBy={selected ? usersOf(selected) : [currentBot.name]} disabled={locked} />
+              <SignedInSites key={`${currentBot.id}:${selected}`} target={{ bot: currentBot.id }} scope={browserScope(team, bot?.threadId)} sharedBy={selected ? usersOf(selected) : [currentBot.name]} disabled={locked} />
             )}
         </div>
       )}

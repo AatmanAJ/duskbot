@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState, type Bot } from "@/state/store";
 import { useBotSettingsDerived } from "./bot-settings/useBotSettingsDerived";
 import { BotPanel } from "./bot-panel/PanelShell";
 import { BOT_PANEL_ID, sidePanelCls } from "./bot-panel/side-panel";
@@ -9,16 +9,24 @@ import { escapeIsUnclaimed } from "@/lib/composer-focus";
 /** What the panel that just unmounted would have handed focus back to, taken by the next bot's panel when it mounts. */
 let focusHandoff: HTMLElement | null = null;
 
+const selectSection = (state: AppState) => state.botSettingsSection;
+const selectExpandAccordion = (state: AppState) => state.botSettingsExpandAccordion;
+const selectExpandRemembered = (state: AppState) => state.botSettingsExpandRemembered;
+const selectComputerTabRequest = (state: AppState) => state.computerTabRequest;
+
 export function BotSettingsDialog({ bot, overlay = false }: {
   bot: Bot;
   overlay?: boolean;
 }) {
-  const { state, dispatch } = useStore();
-  const section = state.botSettingsSection;
+  const dispatch = useDispatch();
+  const section = useStoreSelector(selectSection);
+  const expandAccordion = useStoreSelector(selectExpandAccordion);
+  const expandRemembered = useStoreSelector(selectExpandRemembered);
+  const computerTabRequest = useStoreSelector(selectComputerTabRequest);
   const derived = useBotSettingsDerived(bot);
   const dialogRef = useRef<HTMLElement | null>(null);
-  const collapsed = !state.botSettingsExpandAccordion;
-  const linkedSection = !collapsed && !state.botSettingsExpandRemembered ? section : null;
+  const collapsed = !expandAccordion;
+  const linkedSection = !collapsed && !expandRemembered ? section : null;
 
   useEffect(() => {
     if (collapsed) return;
@@ -82,7 +90,7 @@ export function BotSettingsDialog({ bot, overlay = false }: {
         bot={bot}
         derived={derived}
         linkedSection={linkedSection}
-        computerRequest={state.computerTabRequest}
+        computerRequest={computerTabRequest}
         onClose={() => dispatch({ type: "toggleSettings", open: false })}
       />
     </aside>

@@ -3,7 +3,7 @@ import { t } from "@/lib/i18n";
 import { buyOfferAllowed, usd } from "@/lib/cloud-plan";
 import { usePlaces } from "@/lib/places";
 import { useCloudOffer } from "@/lib/use-cloud-offer";
-import { useStore } from "@/state/store";
+import { useDispatch } from "@/state/store";
 import { NavRow, useSubPage } from "./ListRows";
 import { InstallSetup, ServerWays, WaySetup, wayOf } from "./PlaceSetup";
 import { useCloudPlan } from "./ProIntroduction";
@@ -18,7 +18,7 @@ export const isAddPlacePage = (at: string | undefined) => at === ADD_PLACE_PAGE 
  * setup on the pages after it. */
 export function AddPlacePage() {
   const sub = useSubPage();
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const close = () => dispatch({ type: "toggleAppSettings", open: false });
   const way = sub.at?.startsWith(PLACE_WAY_PAGE) ? wayOf(sub.at.slice(PLACE_WAY_PAGE.length)) : undefined;
   if (sub.at === PLACE_INSTALL_PAGE) return <div data-settings-block="add-place-install" className="contents"><InstallSetup onClose={close} /></div>;
@@ -43,7 +43,7 @@ export function AddPlacePage() {
 
 /** dusk cloud: what it gives, what it costs from, and the buying sheet; or the person's own cloud, one click away. */
 function CloudWay() {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const rail = usePlaces();
   const plan = useCloudPlan();
   const offer = useCloudOffer(plan !== null && buyOfferAllowed(plan.view), plan?.account?.offer);

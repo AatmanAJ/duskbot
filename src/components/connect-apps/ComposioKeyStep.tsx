@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 
-import { useStore } from "@/state/store";
+import { useDispatch } from "@/state/store";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import { reserveConnectionPage } from "@/lib/connector-oauth";
@@ -46,7 +46,7 @@ export function viaLine(flow: ViaFlow | undefined, name: string): { text: string
  * The key path is a short numbered guide: the server verifies the key on save, it is kept the way Settings keeps it, and
  * the app's connect goes on the same way. */
 export function ComposioKeyStep({ slug, name, connectors, primary }: { slug: string; name: string; connectors: Connectors; primary: Primary | null }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<LocaleKey | null>(null);

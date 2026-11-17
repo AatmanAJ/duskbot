@@ -12,10 +12,10 @@ const scout: Bot = {
     { threadId: "qa-245", title: "QA PR 245", createdAt: 2, openedBy: { botId: "ada", name: "Ada", at: 2 } },
   ],
 };
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, bots: [scout] }, dispatch: fixture.dispatch }) };
-});
+})(importOriginal)));
 import { ThreadChip } from "./ThreadChip";
 
 const receipt = (threadId = "qa-245"): Message => ({

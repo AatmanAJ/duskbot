@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { t } from "@/lib/i18n";
 import { botEngine, signedOutWithoutBackup } from "@/lib/failed-turn";
-import { useStore, type Bot, type ConfigStatus, type InstanceInfo } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState, type Bot, type ConfigStatus, type InstanceInfo } from "@/state/store";
 import { freeFallback } from "../../shared/ai-ranking";
 import { engineReady } from "./EngineLibrary";
 import { ConnectAiDialog } from "./onboarding/ConnectAi";
@@ -18,14 +18,19 @@ export function freeBackupAnswering(bot: Bot, instances: readonly InstanceInfo[]
   return engine && freeFallback(engine) && engineReady(engine) ? engine : undefined;
 }
 
+const selectInstances = (state: AppState) => state.instances;
+const selectConfig = (state: AppState) => state.config;
+
 /** grok's prompt notice before a send that could only fail: the bot's AI is signed out and no backup would answer. Once
  * the person has written, it also says when a free backup model is the one answering, with a way to connect their own. */
 export function ComposerSignInNotice({ bot }: { bot: Bot }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const instances = useStoreSelector(selectInstances);
+  const config = useStoreSelector(selectConfig);
   const { capabilities } = useDesktopCapabilities();
   const [connecting, setConnecting] = useState(false);
-  const engine = signedOutWithoutBackup(bot, state.instances, state.config?.automaticRecovery);
-  const backup = !engine && bot.messages?.some((message) => message.role === "user") ? freeBackupAnswering(bot, state.instances) : undefined;
+  const engine = signedOutWithoutBackup(bot, instances, config?.automaticRecovery);
+  const backup = !engine && bot.messages?.some((message) => message.role === "user") ? freeBackupAnswering(bot, instances) : undefined;
   if (backup) {
     return (
       <div className="w-full px-5" data-free-backup-notice="">
@@ -42,7 +47,7 @@ export function ComposerSignInNotice({ bot }: { bot: Bot }) {
     );
   }
   if (!engine) return null;
-  const line = t(aiRunsOnServer(state.config, capabilities) ? "failedReply.signedOutServer" : "failedReply.signedOutHere", { engine: engine.displayName });
+  const line = t(aiRunsOnServer(config, capabilities) ? "failedReply.signedOutServer" : "failedReply.signedOutHere", { engine: engine.displayName });
   return (
     <div className="w-full px-5" data-sign-in-notice="">
       <div role="status" className={`mb-2 ${NOTICE_LINE} text-ink-secondary`}>

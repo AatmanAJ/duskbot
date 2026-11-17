@@ -13,7 +13,7 @@ const fixture = vi.hoisted(() => {
 
 vi.mock("@/lib/analytics", () => ({ analyticsEnabled: () => false, setAnalyticsEnabled: vi.fn() }));
 
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return {
     ...original,
@@ -32,7 +32,7 @@ vi.mock("@/state/store", async (importOriginal) => {
       flushBotPatches: vi.fn(),
     }),
   };
-});
+})(importOriginal)));
 
 import { SettingsModal } from "./SettingsModal";
 import { ComputerPanel } from "./ComputerPanel";

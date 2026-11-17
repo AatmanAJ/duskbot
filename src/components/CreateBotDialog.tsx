@@ -2,7 +2,8 @@ import { ModalLayer } from "./ui/ModalLayer";
 import { useEffect, useId, useRef, useState, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { DUSK_BODY_IDS, type DuskBodyId } from "../../shared/body-migration";
 import { MAUS_COLOR_LABEL, PICKER_COLORS, colorSwatch, rowsOfFive, type MausColor } from "@/lib/mascot";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { prefetchBotDefaults } from "@/lib/bot-defaults-prefetch";
 import { stoppedAtBotLimit } from "@/lib/bot-limit";
 import { CREATE_BOT_EVENT, openCreateBot, takeCreateBotSection } from "@/lib/create-bot-request";
@@ -40,7 +41,9 @@ export function CreateBotDialog() {
 }
 
 function CreateBotForm({ section, onClose }: { section?: string; onClose: () => void }) {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
+  const { dispatch } = store;
+  const pending = useStoreSelector((state) => state.botCreationPending === true);
   const [name, setName] = useState("");
   // the dialog opens on a shape and colour of its own choosing, a new one each time
   const [body, setBody] = useState<DuskBodyId>(() => pick(DUSK_BODY_IDS));
@@ -51,7 +54,6 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
   // the preview watches whichever shape or colour the pointer or focus is on
   const [look, setLook] = useState<{ x: number; y: number }>(FACING);
   const titleId = useId();
-  const pending = state.botCreationPending === true;
   // the dialog stays until the bot exists, and keeps the draft when it could not be made
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +87,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
 
   const create = () => {
     if (!canCreate) return;
-    if (stoppedAtBotLimit(state)) { onClose(); return; }
+    if (stoppedAtBotLimit(store.state())) { onClose(); return; }
     started.current = false;
     setError(null);
     setCreating(true);

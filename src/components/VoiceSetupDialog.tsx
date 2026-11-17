@@ -4,7 +4,8 @@ import { CheckCircle2, ChevronRight, Loader2, Phone, X } from "../icons";
 
 import { glassPopupFrameStyle } from "@/lib/glass-popup";
 import { t } from "@/lib/i18n";
-import { openBot, useStore, type Bot } from "@/state/store";
+import { openBot, useStoreSelector, type Bot } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { VoiceSettings } from "./VoiceSettings";
 import { useBotSettingsDerived } from "./bot-settings/useBotSettingsDerived";
 import { openBotSettings } from "./bot-panel/panel-link";
@@ -31,7 +32,8 @@ export function VoiceSetupDialog({
   onStartCall: () => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
+  const hasTts = useStoreSelector((s) => Boolean(s.config?.tts));
   const { patch } = useBotSettingsDerived(bot);
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -88,8 +90,8 @@ export function VoiceSetupDialog({
 
   const openAllSettings = () => {
     close();
-    if (state.selectedId !== bot.id) openBot(dispatch, bot);
-    openBotSettings(dispatch, "voice");
+    if (store.state().selectedId !== bot.id) openBot(store.dispatch, bot);
+    openBotSettings(store.dispatch, "voice");
   };
 
   return createPortal(
@@ -128,7 +130,7 @@ export function VoiceSetupDialog({
           <p id={subtitleId} className={cn(rowHintCls, "m-0 mb-3 text-pretty")}>
             {t("call.voiceSetup.subtitle")}
           </p>
-          {state.config?.tts ? (
+          {hasTts ? (
             <VoiceSettings bot={bot} onPatch={patch} />
           ) : (
             <div className="flex items-center justify-center gap-2 py-8 text-[13px] leading-[18px] text-ink/68">

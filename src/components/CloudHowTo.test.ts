@@ -8,7 +8,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
     return [f.values[index], (next: unknown) => { f.values[index] = next; }]; },
   useEffect: (effect: EffectCallback) => { f.effects.push(effect); },
 }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }) }))()));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("./onboarding/Spotlight", () => ({ Spotlight: (props: { anchor: string; placement: string; secondary: { label: string; onClick: () => void }; children: unknown }) =>
   createElement("div", { "data-spotlight": props.anchor, "data-placement": props.placement }, props.children as never, createElement("button", { onClick: props.secondary.onClick }, props.secondary.label)) }));

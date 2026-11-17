@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useStore } from "@/state/store";
+import { useStoreSelector, type AppState } from "@/state/store";
 import { activeLocale, t } from "@/lib/i18n";
 import { BotAvatar } from "./Avatar";
 import { SettingRow, Switch } from "./SettingsPrimitives";
@@ -16,6 +16,8 @@ const DISPLAYS: AmbientPrefs["display"][] = ["active", "built-in", "main"];
 /** A 14 inch MacBook Pro at its default scale: the notch the previews draw. */
 const SAMPLE_NOTCH = notchOf({ internal: true, bounds: { x: 0, y: 0, width: 1512, height: 982 }, workArea: { x: 0, y: 37, width: 1512, height: 945 } }, "darwin")!;
 const PREVIEW_SCALE = 0.72;
+const selectBots = (state: AppState) => state.bots;
+const selectInstances = (state: AppState) => state.instances;
 
 /** Settings → Appearance: the notch island and the bot dock (electron/ambient-main.mjs), on the desktop app only. */
 export function AmbientRows() {
@@ -76,9 +78,10 @@ export function AmbientRows() {
 
 /** The island as it sits now, drawn small: hugging the notch on a built-in display, a floating pill on another. */
 function IslandPreviews({ size }: { size: Size }) {
-  const { state } = useStore();
-  const snapshot = useMemo(() => ambientSnapshot(state.bots, state.instances, turnLive, activeLocale()), [state.bots, state.instances]);
-  const bot = state.bots.find((entry) => entry.id === [...snapshot.bots].sort((a, b) => b.at - a.at)[0]?.id) ?? state.bots[0];
+  const bots = useStoreSelector(selectBots);
+  const instances = useStoreSelector(selectInstances);
+  const snapshot = useMemo(() => ambientSnapshot(bots, instances, turnLive, activeLocale()), [bots, instances]);
+  const bot = bots.find((entry) => entry.id === [...snapshot.bots].sort((a, b) => b.at - a.at)[0]?.id) ?? bots[0];
   const emoji = MOOD_EMOJI[moodOf(snapshot.bots)];
   const s = ISLAND_SIZES[size];
   const k = PREVIEW_SCALE;

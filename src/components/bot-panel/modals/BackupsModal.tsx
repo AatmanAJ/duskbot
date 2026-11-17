@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { shortModelLabel } from "@/lib/model-friendly";
 import { modelName, providerName } from "@/lib/simple-model-menu";
-import { useStore, type Bot } from "@/state/store";
+import { useStoreSelector, type Bot } from "@/state/store";
 import { Icon } from "../../Icon";
 import { InstanceProviderMark } from "../../ProviderIcons";
 import type { useBotSettingsDerived } from "../../bot-settings/useBotSettingsDerived";
@@ -21,7 +21,7 @@ export function BackupsModal({ bot, derived }: {
   derived: ReturnType<typeof useBotSettingsDerived>;
   onClose: () => void;
 }) {
-  const { state } = useStore();
+  const instances = useStoreSelector((s) => s.instances);
   const chain = bot.fallback ?? [];
   const addRef = useRef<HTMLButtonElement>(null);
   const editable = bot.yourAccess !== "view";
@@ -29,7 +29,7 @@ export function BackupsModal({ bot, derived }: {
   const others = (except: number | null) => new Set([bot.modelSelection, ...chain.filter((_, index) => index !== except)]
     .map((entry) => modelKey(entry.instanceId, entry.model)));
   const describe = (entry: Backup) => {
-    const instance = state.instances.find((candidate) => candidate.instanceId === entry.instanceId);
+    const instance = instances.find((candidate) => candidate.instanceId === entry.instanceId);
     const option = instance?.models.options.find((candidate) => candidate.id === entry.model);
     const name = modelName(instance, entry.model);
     return { instance, name, short: instance && option ? shortModelLabel(option.label, providerName(instance)) : name };

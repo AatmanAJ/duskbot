@@ -8,11 +8,11 @@ const fixture = vi.hoisted(() => ({
   api: vi.fn(),
   config: { tts: { configured: true, provider: "elevenlabs", voice: "" } } as Record<string, unknown>,
 }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   api: fixture.api,
   useStore: () => ({ state: { config: fixture.config }, dispatch: vi.fn() }),
-}));
+}))(importOriginal)));
 
 const { VoiceSettings } = await import("./VoiceSettings");
 

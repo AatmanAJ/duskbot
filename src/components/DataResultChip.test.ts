@@ -10,7 +10,7 @@ import { roomActivityVisible } from "@/lib/room-activity";
 
 const dispatch = vi.fn();
 const store = vi.hoisted(() => ({ state: { bots: [{ id: "bot" }], dataSheets: {} as Record<string, unknown> } }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: store.state, dispatch }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: store.state, dispatch }) }))()));
 vi.mock("./data/DataChart", () => ({
   DataChart: (props: { botId: string; cardId: string; spec: unknown; inline?: boolean }) =>
     createElement("div", { "data-testid": "data-chart", "data-card": props.cardId, "data-inline": String(props.inline), "data-spec": JSON.stringify(props.spec) }),

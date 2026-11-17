@@ -13,10 +13,10 @@ const fixture = vi.hoisted(() => ({
   dispatch: vi.fn(),
   store: { config: null as unknown, bots: [] as unknown[] },
 }));
-vi.mock("@/state/store", () => ({
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({
   api: fixture.api,
   useStore: () => ({ state: fixture.store, dispatch: fixture.dispatch }),
-}));
+}))()));
 vi.mock("@/lib/mcp-sign-in", async (original) => ({
   ...(await original<typeof import("@/lib/mcp-sign-in")>()),
   runMcpSignIn: fixture.runMcpSignIn,

@@ -3,7 +3,8 @@ import { useCallback, useId, useState } from "react";
 import { LIVE_VOICE_OPTIONS } from "../../shared/live-call";
 import { t } from "@/lib/i18n";
 import { liveDisclosure } from "@/lib/call-mode";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import type { LiveSettings } from "../../shared/wire";
 import { LiveKeySetup } from "./LiveKeySetup";
 import { LiveProviderSettings } from "./LiveProviderSettings";
@@ -14,8 +15,10 @@ import { friendlyError } from "@/lib/plain-error";
 const IDLE_CHOICES = [1, 2, 3, 5, 10, 15, 30, 60];
 
 export function LiveCallSettings({ onClose }: { onClose: () => void }) {
-  const { state, dispatch } = useStore();
-  const live: LiveSettings = state.config?.live ?? { configured: false, voice: "", readTypedReplies: true, idleMinutes: 5 };
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
+  const live: LiveSettings = useStoreSelector((s) => s.config?.live) ?? { configured: false, voice: "", readTypedReplies: true, idleMinutes: 5 };
   const [saving, setSaving] = useState(false);
   const [changingKey, setChangingKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +36,8 @@ export function LiveCallSettings({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       const body = await api<{ live: LiveSettings }>("/api/live/settings", { method: "PATCH", body: JSON.stringify(patch) });
-      if (state.config) dispatch({ type: "configStatus", config: { ...state.config, live: body.live } });
+      const { config } = store.state();
+      if (config) dispatch({ type: "configStatus", config: { ...config, live: body.live } });
     } catch (saveError) {
       setError(friendlyError(saveError));
     } finally {
@@ -125,7 +129,7 @@ export function LiveCallSettings({ onClose }: { onClose: () => void }) {
         <div className="-mt-2 text-[12px] text-ink-tertiary">{t(live.keySource === "openai" ? "call.live.keyFromApiKeys" : "call.live.needsKey")} <KeysLink id="openai" purpose="liveCalls" /></div>
       )}
       {changingKey && <LiveKeySetup compact onSaved={() => setChangingKey(false)} />}
-      <div className="text-[12px] text-ink-tertiary">{liveDisclosure({ cloudHome: state.config?.cloudHome === true, azure })} {t(azure ? "call.live.azureCost" : "call.live.cost")}</div>
+      <div className="text-[12px] text-ink-tertiary">{liveDisclosure({ cloudHome, azure })} {t(azure ? "call.live.azureCost" : "call.live.cost")}</div>
       {error && <div className="text-[12px] text-danger">{error}</div>}
     </div>
   );

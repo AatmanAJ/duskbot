@@ -5,10 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, Message } from "@/state/store";
 
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   useStore: () => ({ dispatch: vi.fn() }),
-}));
+}))(importOriginal)));
 
 import { automaticSystemFile, ComputerFilesPane, recentChangedFiles, sharedFileReferences } from "./ComputerFilesPane";
 

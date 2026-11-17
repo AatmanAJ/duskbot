@@ -1,19 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { shownChatIsUnread } from "@/lib/shown-chat-unread";
-import { useStore } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 
 /** Replies that reached the shown chat while the window was in the background stay unread; once the window has focus
  * again, that chat is read through `select`, which also puts the "New" divider above them. */
 export function useReadShownChatOnFocus(): void {
-  const { state, dispatch } = useStore();
-  const latest = useRef(state);
-  latest.current = state;
+  const store = useStoreRef();
   useEffect(() => {
     const readShownChat = () => {
-      const { selectedId } = latest.current;
-      if (selectedId && shownChatIsUnread(latest.current)) dispatch({ type: "select", id: selectedId });
+      const state = store.state();
+      if (state.selectedId && shownChatIsUnread(state)) store.dispatch({ type: "select", id: state.selectedId });
     };
     window.addEventListener("focus", readShownChat);
     return () => window.removeEventListener("focus", readShownChat);
-  }, [dispatch]);
+  }, [store]);
 }

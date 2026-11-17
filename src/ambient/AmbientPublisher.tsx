@@ -2,7 +2,8 @@
 // live stream this page already reads, never a request of its own) and carries out what they ask. It also keeps main's
 // view of the working bots for ⌘Q (DesktopBots).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useStore, type AppState } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { onAnyTurnLive, turnLive } from "@/state/turn-status";
 import { activeLocale } from "@/lib/i18n";
 import { openCreateBot } from "@/lib/create-bot-request";
@@ -20,7 +21,12 @@ import type { AmbientAct, AmbientViewing } from "./types";
 /** Summaries go out at most this often: a streaming reply changes a bot's status line many times a second. */
 export const PUBLISH_MS = 160;
 
-type Dispatch = ReturnType<typeof useStore>["dispatch"];
+type Dispatch = ReturnType<typeof useDispatch>;
+
+const selectHydrated = (state: AppState) => state.hydrated;
+const selectBots = (state: AppState) => state.bots;
+const selectInstances = (state: AppState) => state.instances;
+const selectSelectedId = (state: AppState) => state.selectedId;
 
 /** Checked again here: the surfaces may only answer a plain approval, or a question with one of its own choices (or typed,
  * where it takes that), that the page itself still shows as open, and stop only a bot that is working. */
@@ -50,14 +56,17 @@ export function runAmbientAct(act: AmbientAct, state: AppState, dispatch: Dispat
 }
 
 export function AmbientPublisher() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const hydrated = useStoreSelector(selectHydrated);
+  const bots = useStoreSelector(selectBots);
+  const instances = useStoreSelector(selectInstances);
+  const selectedId = useStoreSelector(selectSelectedId);
   const bridge = typeof window === "undefined" ? undefined : window.duskDesktop?.ambient;
   const [wanted, setWanted] = useState(false);
   const away = useAmbientAwayValue();
   const awayNow = useRef(away);
   awayNow.current = away;
-  const latest = useRef(state);
-  latest.current = state;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sent = useRef("");
   // what the person watched in this window: those bots stay quiet on the surfaces (summary.ts Watch)
@@ -77,7 +86,7 @@ export function AmbientPublisher() {
     if (timer.current || !bridge) return;
     timer.current = setTimeout(() => {
       timer.current = null;
-      const { bots, instances, selectedId, hydrated } = latest.current;
+      const { bots, instances, selectedId, hydrated } = store.state();
       if (!hydrated) return;
       const focused = document.hasFocus() && document.visibilityState === "visible";
       const snapshot = awayNow.current
@@ -88,21 +97,21 @@ export function AmbientPublisher() {
       sent.current = key;
       bridge.publish(snapshot);
     }, PUBLISH_MS);
-  }, [bridge]);
+  }, [bridge, store]);
 
   // nothing until the app has loaded its bots: an empty list at start-up would show an empty dock
   useEffect(() => {
     if (!wanted) { sent.current = ""; return; }
-    if (!state.hydrated) return;
+    if (!hydrated) return;
     schedule();
-  }, [wanted, away, state.hydrated, state.bots, state.instances, state.selectedId, schedule]);
+  }, [wanted, away, hydrated, bots, instances, selectedId, schedule]);
   useEffect(() => (wanted ? onAnyTurnLive(schedule) : undefined), [wanted, schedule]);
   // a reply as it streams, word by word, not only once it has landed
   useEffect(() => (wanted ? onAnyLiveReply(schedule) : undefined), [wanted, schedule]);
   const asked = useRef("");
   useEffect(() => bridge?.onViewing?.((next) => {
     viewing.current = next && typeof next.botId === "string" ? { botId: next.botId, limit: Math.max(1, Math.min(VIEWED_MAX, Math.floor(next.limit) || 0)) } : null;
-    const bot = viewing.current && latest.current.bots.find((entry) => entry.id === viewing.current!.botId);
+    const bot = viewing.current && store.state().bots.find((entry) => entry.id === viewing.current!.botId);
     // more than the page holds: the next older page, once per stretch asked for
     const key = bot ? `${bot.threadId}:${viewing.current!.limit}` : "";
     if (bot && bot.hasMore && viewing.current!.limit > sidebarPreviewMessages(bot).length && asked.current !== key) {
@@ -110,7 +119,7 @@ export function AmbientPublisher() {
       dispatch({ type: "loadOlderMessages", threadId: bot.threadId });
     }
     schedule();
-  }), [bridge, dispatch, schedule]);
+  }), [bridge, dispatch, schedule, store]);
   useEffect(() => {
     if (!wanted) return;
     window.addEventListener("focus", schedule);
@@ -119,6 +128,6 @@ export function AmbientPublisher() {
     return () => { window.removeEventListener("focus", schedule); window.removeEventListener("blur", schedule); document.removeEventListener("visibilitychange", schedule); };
   }, [wanted, schedule]);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  useEffect(() => bridge?.onAct((act) => runAmbientAct(act, latest.current, dispatch)), [bridge, dispatch]);
+  useEffect(() => bridge?.onAct((act) => runAmbientAct(act, store.state(), dispatch)), [bridge, dispatch, store]);
   return <DesktopBots />;
 }

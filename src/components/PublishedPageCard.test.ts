@@ -7,10 +7,10 @@ import type { Message } from "@/state/store";
 
 const dispatch = vi.fn();
 const api = vi.fn(async (_path: string, _init?: RequestInit) => ({ ok: true }));
-vi.mock("@/state/store", async () => {
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (async () => {
   const { createContext } = await import("react");
   return { StoreContext: createContext(null), useStore: () => ({ state: {}, dispatch }), api: (path: string, init?: RequestInit) => api(path, init) };
-});
+})()));
 const openExternalLink = vi.fn(async (_url: string) => {});
 vi.mock("@/lib/app-links", () => ({ openExternalLink: (url: string) => openExternalLink(url) }));
 import { StoreContext } from "@/state/store";

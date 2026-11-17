@@ -5,7 +5,8 @@ import { phoneAppEnabled } from "@/lib/feature-flags";
 import { DEFAULT_BOT_NAME, introChips, introStaged, stageIntro, useWelcomingBot } from "@/lib/default-bot";
 import { activeLocale, t } from "@/lib/i18n";
 import { detectSetupWithin, localSetupImport, setupImportApi } from "@/lib/setup-import";
-import { api, useStore, type Bot, type InstanceInfo, type Message } from "@/state/store";
+import { api, useStoreSelector, type Bot, type InstanceInfo, type Message } from "@/state/store";
+import { botById } from "@/state/store-index";
 import { useTeamPeople, type TeamPeople } from "@/state/team-people";
 import { freeFallback } from "../../shared/ai-ranking";
 import { greetingName } from "../../shared/greeting-name";
@@ -117,15 +118,20 @@ function useArrival(first: boolean, ai: boolean, ready: boolean): { shown: numbe
 export function SimpleHelperIntro({ botId, threadId, message, answered, followup }: {
   botId: string; threadId: string; message: Message; answered: boolean; followup?: Message;
 }) {
-  const { state } = useStore();
   const welcoming = useWelcomingBot();
   const hidden = welcoming === botId;
-  const bot = state.bots.find((candidate) => candidate.id === botId);
-  const team = bot?.defaultBot?.person ? state.config?.team?.name : undefined;
-  const person = greetingName(state.config?.profile?.name) || undefined;
+  const bot = useStoreSelector((s) => botById(s, botId));
+  const teamName = useStoreSelector((s) => s.config?.team?.name);
+  const hasTeam = useStoreSelector((s) => Boolean(s.config?.team));
+  const onCloud = useStoreSelector((s) => s.config?.cloudHome === true);
+  const profileName = useStoreSelector((s) => s.config?.profile?.name);
+  const instances = useStoreSelector((s) => s.instances);
+  const ownBots = useStoreSelector((s) => s.bots.filter((candidate) => !candidate.hidden && !candidate.defaultBot).length);
+  const team = bot?.defaultBot?.person ? teamName : undefined;
+  const person = greetingName(profileName) || undefined;
   const lines = introLines({ name: bot?.name ?? DEFAULT_BOT_NAME, chief: Boolean(bot?.chiefOfStaff), person, team });
   const look = useLookAround(!answered);
-  const ai = thinksWith(bot, state.instances);
+  const ai = thinksWith(bot, instances);
   const connects = whoConnectsAi(useTeamPeople());
 
   // A first run's intro plays once: it asks for the follow-up, which then stays in the conversation.
@@ -152,7 +158,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
 
   // An intro from before follow-ups were written says what it sees, without saving it.
   const local: HelperFollowupFacts | null = look.settled && (unsaved || !(first || due))
-    ? { ai, apps: look.apps ?? [], bots: state.bots.filter((candidate) => !candidate.hidden && !candidate.defaultBot).length, routines: 0 }
+    ? { ai, apps: look.apps ?? [], bots: ownBots, routines: 0 }
     : null;
   const said = followup?.helperFollowup ?? posted ?? local;
   const facts = said && connects !== undefined ? { connects, ...said } : said;
@@ -162,9 +168,9 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
   const bubbles = [...lines.slice(0, Math.min(shown, 3)), ...(shown >= 5 && facts ? [followupLine(facts)] : [])];
   const chips = answered || shown < ALL || !facts ? [] : introChips({
     aiReady: ai === "own",
-    ownBots: state.bots.filter((candidate) => !candidate.hidden && !candidate.defaultBot).length,
-    onCloud: state.config?.cloudHome === true,
-    team: Boolean(state.config?.team),
+    ownBots,
+    onCloud,
+    team: hasTeam,
     remote: typeof window !== "undefined" && window.duskDesktop?.remoteClient?.active === true,
     appsConnected: Boolean(look.apps?.length),
     phonePaired: look.phonePaired,

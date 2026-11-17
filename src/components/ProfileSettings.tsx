@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 import { textFieldCls } from "./ui/GrokDialog";
 import { useEffect, useRef, useState } from "react";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { saveTeamProfile } from "@/lib/own-profile";
 import { IMAGE_MAX_BYTES, imageAttachmentFromFile, isImageFile } from "@/lib/composer-attachments";
@@ -66,8 +66,9 @@ function croppedPhoto(file: File, zoom: number): Promise<File> {
 
 /** The person's own picture beside their name in the sidebar. Kept in the app's attachment store; "" removes it. */
 function ProfilePhoto({ face }: { face?: PersonFace | null }) {
-  const { state, dispatch } = useStore();
-  const avatarUrl = state.config?.profile?.avatarUrl ?? "";
+  const dispatch = useDispatch();
+  const avatarUrl = useStoreSelector((s) => s.config?.profile?.avatarUrl) ?? "";
+  const team = useStoreSelector((s) => Boolean(s.config?.team));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<PhotoDraft | null>(null);
@@ -81,7 +82,6 @@ function ProfilePhoto({ face }: { face?: PersonFace | null }) {
   useEffect(() => () => {
     if (draftRef.current) URL.revokeObjectURL(draftRef.current.previewUrl);
   }, []);
-  const team = Boolean(state.config?.team);
   const store = async (next: string) => {
     const profile = team
       ? await saveTeamProfile({ avatarUrl: next })
@@ -157,15 +157,17 @@ function ProfilePhoto({ face }: { face?: PersonFace | null }) {
 
 /** `face` is the signed-in account's (its photo or chosen avatar), shown while this place has no photo of its own. */
 export function ProfileFields({ face }: { face?: PersonFace | null }) {
-  const { state, dispatch } = useStore();
-  const [name, setName] = useState(state.config?.profile?.name ?? "");
-  const [email, setEmail] = useState(state.config?.profile?.email ?? "");
+  const dispatch = useDispatch();
+  const savedName = useStoreSelector((s) => s.config?.profile?.name);
+  const savedEmail = useStoreSelector((s) => s.config?.profile?.email);
+  const team = useStoreSelector((s) => Boolean(s.config?.team));
+  const [name, setName] = useState(savedName ?? "");
+  const [email, setEmail] = useState(savedEmail ?? "");
   useEffect(() => {
-    setName(state.config?.profile?.name ?? "");
-    setEmail(state.config?.profile?.email ?? "");
-  }, [state.config?.profile?.name, state.config?.profile?.email]);
+    setName(savedName ?? "");
+    setEmail(savedEmail ?? "");
+  }, [savedName, savedEmail]);
 
-  const team = Boolean(state.config?.team);
   const save = () => {
     if (team) {
       void saveTeamProfile({ name: name.trim() })

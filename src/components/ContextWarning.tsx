@@ -4,14 +4,14 @@ import { Gauge } from "../icons";
 import { cn } from "@/lib/cn";
 import { roomContextWarnings, threadContextWarning } from "@/lib/context-warning";
 import { t } from "@/lib/i18n";
-import { api, useStore, type Bot, type Group, type Message } from "@/state/store";
+import { api, useDispatch, type Bot, type Group, type Message } from "@/state/store";
 import { friendlyError } from "@/lib/plain-error";
 
 const pill = "flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 text-[13px] text-ink";
 const action = "rounded-full px-1.5 font-medium text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline";
 
 function useCompact() {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [pending, setPending] = useState(false);
   const run = (path: string, body: unknown) => {
     if (pending) return;

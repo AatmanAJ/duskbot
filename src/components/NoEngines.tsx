@@ -1,6 +1,6 @@
 import { ArrowUpRight, KeyRound, Loader2, RefreshCw } from "../icons";
 import { useState } from "react";
-import { useStore } from "@/state/store";
+import { useStoreActions, useStoreSelector } from "@/state/store";
 import { EngineGroupLabel } from "@/components/EngineGroupLabel";
 import { EngineSetup } from "@/components/EngineSetup";
 import { installsHere } from "@/state/engine-install";
@@ -12,7 +12,8 @@ import { productName } from "../lib/brand";
 import { openKeySettings } from "./keys/key-focus";
 
 export function NoEngines() {
-  const { state, dispatch, refreshInstances } = useStore();
+  const { dispatch, refreshInstances } = useStoreActions();
+  const instances = useStoreSelector((s) => s.instances);
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
   const [rechecking, setRechecking] = useState(false);
   const recheck = async () => {
@@ -41,7 +42,7 @@ export function NoEngines() {
     );
   }
 
-  const engines = state.instances
+  const engines = instances
     .filter((i) => i.install)
     .sort((a, b) => {
       const aHere = installsHere(a.install) ? 0 : 1;

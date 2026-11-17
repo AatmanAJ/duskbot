@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn(), effects: [] as Array<() => void> }));
-vi.mock("@/state/store", () => ({ api: fixture.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api }))()));
 vi.mock("react", async (importOriginal) => ({
   ...await importOriginal<typeof import("react")>(),
   useEffect: (effect: () => void) => { fixture.effects.push(effect); },

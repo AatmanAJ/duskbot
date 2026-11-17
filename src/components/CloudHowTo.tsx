@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { track } from "@/lib/analytics";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState } from "@/state/store";
 import { NoticeToast } from "./NoticeCard";
 import { Spotlight } from "./onboarding/Spotlight";
 
@@ -14,11 +14,13 @@ export function switcherPlacement(doc: Pick<Document, "querySelectorAll"> = docu
   return shown.width < 80 ? "right" : "below";
 }
 
+const selectCloudHowTo = (state: AppState) => state.cloudHowTo;
+
 export function CloudHowTo() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const [placement, setPlacement] = useState<"below" | "right" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const open = state.cloudHowTo;
+  const open = useStoreSelector(selectCloudHowTo);
   useEffect(() => {
     if (!open) return;
     const found = switcherPlacement();

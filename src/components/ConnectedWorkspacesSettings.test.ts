@@ -10,7 +10,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
   useEffect: (effect: EffectCallback) => { f.effects.push(effect); },
 }));
 const config = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: { config: config.value }, dispatch: () => {} }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: { config: config.value }, dispatch: () => {} }) }))()));
 // the forms are small portal dialogs in the app; here they render in place so their fields can be read
 vi.mock("./ListRows", async original => ({ ...await original<typeof import("./ListRows")>(),
   FormDialog: ({ children }: { children?: ReactNode }) => children }));

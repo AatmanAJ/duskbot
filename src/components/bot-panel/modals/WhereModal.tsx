@@ -1,6 +1,6 @@
 import { t } from "@/lib/i18n";
 import { openPlaceAction, placeHasIssue } from "@/lib/place-view";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, type Bot } from "@/state/store";
 import { usePlaceViews } from "../../PlaceChip";
 import type { useBotSettingsDerived } from "../../bot-settings/useBotSettingsDerived";
 import { Card, CheckRow, NavRow, SheetPane } from "../../ListRows";
@@ -24,7 +24,7 @@ export function WhereModal({ bot, derived, onClose }: {
   derived: ReturnType<typeof useBotSettingsDerived>;
   onClose: () => void;
 }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const { options, current, usingNow, choosePlace, warning, cloudDesktop } = usePlacePicker(bot, derived);
   const cloud = usePlaceViews(bot).cloud;
   const title = t("botPanel.ui.computerSimpleWhereWorks", { name: bot.name });

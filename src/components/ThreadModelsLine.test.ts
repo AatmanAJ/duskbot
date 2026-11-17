@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, Task } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ dispatch: (() => {}) as (...args: unknown[]) => void }));
-vi.mock("@/state/store", async (importOriginal) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/state/store")>()),
   useStore: () => ({ dispatch: fixture.dispatch }),
-}));
+}))(importOriginal)));
 
 const { ThreadModelsLine } = await import("./ThreadModelsLine");
 

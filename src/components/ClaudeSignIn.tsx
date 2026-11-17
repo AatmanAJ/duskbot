@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Loader2, LogIn } from "../icons";
-import { api, ApiError, useStore } from "@/state/store";
+import { api, ApiError, useStoreActions } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { openExternalLink } from "@/lib/app-links";
 import { engineSignedIn } from "@/lib/product-events";
@@ -35,7 +35,7 @@ export function ClaudeSignIn({ instanceId, autoStart = false, onDone }: {
   autoStart?: boolean;
   onDone?: (signedIn: boolean) => void;
 }) {
-  const { refreshInstances, refreshModels } = useStore();
+  const { refreshInstances, refreshModels } = useStoreActions();
   const [auth, setAuth] = useState<DeviceSignInStatus | null>(null);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState<"start" | "finish" | "cancel" | null>(autoStart ? "start" : null);

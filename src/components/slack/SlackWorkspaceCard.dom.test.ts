@@ -8,7 +8,7 @@ import { setLocale } from "@/lib/i18n";
 import type { SlackWorkspaceStatus } from "../../../shared/slack.ts";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn() }));
-vi.mock("@/state/store", () => ({ api: fixture.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api }))()));
 const { SlackWorkspaceCard } = await import("./SlackWorkspaceCard");
 let host: HTMLDivElement;
 let root: Root;

@@ -1,7 +1,8 @@
 import { useState } from "react";
 
 import { t } from "@/lib/i18n";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch, useStoreSelector } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import type { LiveProvider, LiveSettings } from "../../shared/wire";
 import { Select } from "./Select";
 import { friendlyError } from "@/lib/plain-error";
@@ -11,8 +12,9 @@ type ProviderPatch = Partial<Pick<LiveSettings, "provider" | "azureEndpoint" | "
 const FIELD = "w-full rounded-lg border border-transparent bg-inset px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-accent/60";
 
 export function LiveProviderSettings() {
-  const { state, dispatch } = useStore();
-  const live: LiveSettings = state.config?.live ?? { configured: false, voice: "", readTypedReplies: true, idleMinutes: 5 };
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const live: LiveSettings = useStoreSelector((s) => s.config?.live) ?? { configured: false, voice: "", readTypedReplies: true, idleMinutes: 5 };
   const provider: LiveProvider = live.provider ?? "openai";
   const [endpoint, setEndpoint] = useState(live.azureEndpoint ?? "");
   const [deployment, setDeployment] = useState(live.azureDeployment ?? "");
@@ -25,7 +27,8 @@ export function LiveProviderSettings() {
     setError(null);
     try {
       const body = await api<{ live: LiveSettings }>("/api/live/settings", { method: "PATCH", body: JSON.stringify(patch) });
-      if (state.config) dispatch({ type: "configStatus", config: { ...state.config, live: body.live } });
+      const { config } = store.state();
+      if (config) dispatch({ type: "configStatus", config: { ...config, live: body.live } });
     } catch (saveError) {
       setError(friendlyError(saveError));
     } finally {

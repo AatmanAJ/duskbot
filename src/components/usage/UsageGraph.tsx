@@ -8,7 +8,7 @@ import { EASE } from "@/lib/motion-presets";
 import { fetchDaily, type DailyUsageReport, type DailyUsageSeries } from "@/lib/spend";
 import { formatTokens } from "@/lib/usage";
 import { formatCost } from "@/lib/usage-trace";
-import { useStore, type Bot } from "@/state/store";
+import { useStoreSelector, type Bot } from "@/state/store";
 import { BotAvatar } from "../Avatar";
 import { Card as RowsCard } from "../ListRows";
 
@@ -76,7 +76,7 @@ function SeriesMark({ bot, color }: { bot: Bot | undefined; color: string }) {
 /** Each bot's use per day over the last two weeks: one line in its mascot's colour, the busiest washed underneath.
  * The pointer or the arrow keys pick a day and name what each bot used on it. */
 export function UsageGraph({ version = 0 }: { version?: number }) {
-  const { state } = useStore();
+  const bots = useStoreSelector((s) => s.bots);
   const { report, failed, retry } = useDaily(version);
   const reduce = useReducedMotion();
   const box = useRef<HTMLDivElement>(null);
@@ -116,7 +116,6 @@ export function UsageGraph({ version = 0 }: { version?: number }) {
   }
 
   const { days, series } = report;
-  const bots = state.bots;
   const empty = report.total <= 0;
   const max = niceMax(Math.max(0, ...series.flatMap((one) => one.values)));
   const iw = w - PAD.left - PAD.right, ih = H - PAD.top - PAD.bottom;

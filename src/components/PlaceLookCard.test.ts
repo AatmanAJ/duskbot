@@ -19,7 +19,7 @@ const SET = { version: "v1", width: 1200, height: 300 };
  * computer's own page in the desktop app; `owner`: what the server says of whoever is signed in. */
 async function page(start: PlaceLook | null, { answer = saved(start ?? COMPUTER), own = false, owner = true, banner = null as typeof SET | null } = {}) {
   vi.resetModules();
-  vi.doMock("@/state/store", () => ({ useStore: () => ({ state: { config: { workspaceBanner: banner } } }) }));
+  vi.doMock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: { config: { workspaceBanner: banner } } }) }))()));
   vi.doMock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => owner }));
   const pictures = { upload: vi.fn(async () => ({ ok: true })), remove: vi.fn(async () => ({ ok: true })) };
   vi.doMock("@/lib/place-banner", async (original) => ({ ...(await original<typeof import("@/lib/place-banner")>()),
@@ -147,7 +147,7 @@ it("a browser or an older app: no colour and no tint, only the place's picture",
   expect(host.textContent).toContain("Sidebar picture");
   await act(async () => root?.unmount());
   vi.resetModules();
-  vi.doMock("@/state/store", () => ({ useStore: () => ({ state: { config: {} } }) }));
+  vi.doMock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: { config: {} } }) }))()));
   vi.doMock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
   Object.assign(window, { duskDesktop: { workspaces: { state: vi.fn() } } });
   const { PlaceLookRows } = await import("./PlaceLookCard");

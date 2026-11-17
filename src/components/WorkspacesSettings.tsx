@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { removePlace, usePlaces, type RailPlace } from "@/lib/places";
@@ -101,9 +101,10 @@ function WorkspaceRow({ place, onOpen, onRemove, busy }: { place: RailPlace; onO
 /** Settings → Computer's first group: every workspace the bots can live in, with the current one marked and one click to
  * switch, then moving to dusk cloud (or getting one) and adding another. */
 export function WorkspacesGroup({ onAdd }: { onAdd: () => void }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
   const rail = usePlaces();
-  const here = useWorkspacePlace({ cloudHome: state.config?.cloudHome === true });
+  const here = useWorkspacePlace({ cloudHome });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const mine = rail.places[0]?.group;
@@ -115,7 +116,7 @@ export function WorkspacesGroup({ onAdd }: { onAdd: () => void }) {
   const hasCloud = places.some((place) => place.kind === "cloud" || place.kind === "team");
   const canBuy = Boolean(window.duskDesktop?.cloudAccount) && window.duskDesktop?.remoteClient?.active !== true;
   // a server of the person's own on screen: main answers the move's view only there, so an answer means it can move
-  const serverMove = useVpsCloudMove(desktopShowsOtherServer() && state.config?.cloudHome !== true).view;
+  const serverMove = useVpsCloudMove(desktopShowsOtherServer() && !cloudHome).view;
   const moveServer = () => { dispatch({ type: "toggleSettings", open: false }); openCloudMove("cloud"); };
 
   const open = (place: RailPlace) => {

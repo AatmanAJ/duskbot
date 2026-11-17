@@ -6,7 +6,7 @@ import { INTRO_CHIPS, type IntroChip } from "@/lib/default-bot";
 import { t } from "@/lib/i18n";
 import { phonePairingSettingsAction } from "@/lib/phone-pairing";
 import type { LocaleKey } from "@/locales";
-import { useStore, type Action } from "@/state/store";
+import { useDispatch, useStoreSelector, type Action } from "@/state/store";
 import { ConnectAiDialog } from "./onboarding/ConnectAi";
 import { useWelcomeAi } from "./onboarding/welcome-ai";
 
@@ -29,14 +29,14 @@ export function chipAction(chip: Exclude<IntroChip, "ai">): Action {
 }
 
 function IntroConnectAi({ onClose }: { onClose: () => void }) {
-  const { state } = useStore();
-  return <ConnectAiDialog tested={useWelcomeAi(state.instances, true)} onClose={onClose} />;
+  const instances = useStoreSelector((s) => s.instances);
+  return <ConnectAiDialog tested={useWelcomeAi(instances, true)} onClose={onClose} />;
 }
 
 /** What is still missing, as chips under Dusk's follow-up (Simple mode): at most INTRO_CHIPS. A tapped chip stays, so it
  * can be tapped again if its flow was closed. */
 export function IntroChips({ chips }: { chips: readonly IntroChip[] }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const [connecting, setConnecting] = useState(false);
   const shown = chips.slice(0, INTRO_CHIPS);
   const tap = (chip: IntroChip) => {

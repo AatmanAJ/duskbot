@@ -3,10 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Action, AppState, Bot, Group, Message } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ api: vi.fn() }));
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(),
   api: (...args: unknown[]) => fixture.api(...args),
-}));
+}))(importOriginal)));
 
 const { landOnSearchHit } = await import("./focus-message");
 

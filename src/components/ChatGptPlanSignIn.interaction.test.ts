@@ -15,10 +15,10 @@ vi.mock("react", async (original) => ({
   useEffect: (effect: () => (() => void) | undefined) => { fixture.effects.push(effect); },
   useRef: (current: unknown) => ({ current }),
 }));
-vi.mock("@/state/store", async (original) => ({
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({
   ...await original<typeof import("@/state/store")>(), api: fixture.api,
   useStore: () => ({ dispatch: fixture.dispatch, refreshInstances: fixture.refreshInstances, refreshModels: fixture.refreshModels }),
-}));
+}))(importOriginal)));
 vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
 const { DeviceSignIn } = await import("./DeviceSignIn");
 const { AddAccount } = await import("./EngineAccounts");

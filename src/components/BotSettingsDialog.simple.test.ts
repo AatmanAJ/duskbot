@@ -103,7 +103,7 @@ vi.mock("./bot-settings/useBotApps", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./bot-settings/useBotApps")>()),
   useBotApps: () => fixture.apps,
 }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const store = await importOriginal<typeof import("@/state/store")>();
   return {
     ...store,
@@ -114,7 +114,7 @@ vi.mock("@/state/store", async (importOriginal) => {
       flushBotPatches: () => Promise.resolve(),
     }),
   };
-});
+})(importOriginal)));
 
 const { BotSettingsDialog } = await import("./BotSettingsDialog");
 const { BotPanel, PanelPageBody, PanelDetailsTab, PanelAdvancedTab, PanelAvatarEditor } = await import("./bot-panel/PanelShell");

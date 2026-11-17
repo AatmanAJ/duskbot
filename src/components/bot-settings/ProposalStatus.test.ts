@@ -6,10 +6,10 @@ import { StoreProvider, api, type Bot } from "@/state/store";
 import { BotEditorContext } from "./BotEditorContext";
 
 const fixture = vi.hoisted(() => ({ bots: [] as Bot[] }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({ state: { ...original.initialState, bots: fixture.bots }, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 vi.mock("../DesktopCapabilities", () => ({
   useDesktopCapabilities: () => ({ capabilities: { host: { homeDir: undefined } } }),
 }));

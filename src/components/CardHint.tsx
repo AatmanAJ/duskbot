@@ -1,25 +1,16 @@
 import { useEffect, useState } from "react";
 import { t } from "@/lib/i18n";
 import { hintSeen, hintSeenPatch } from "@/lib/onboarding";
-import { api, useStore } from "@/state/store";
+import { api, useOptionalStoreActions, useOptionalStoreSelector, type AppState } from "@/state/store";
 
 const COPY = { "spot.approval": "onboarding.hint.approval", "spot.connector": "onboarding.hint.connector" } as const;
 const shownHere = new Set<string>();
-
-/** A card drawn outside the app (a preview) has no record to go by, so no hint. */
-function useStoreIfAny(): ReturnType<typeof useStore> | null {
-  try {
-    return useStore();
-  } catch {
-    return null;
-  }
-}
+const selectOnboarding = (state: AppState) => state.config?.onboarding;
 
 /** A one-line hint on an approval or app card, the first time one shows. Seen once it shows, in the onboarding record. */
 export function CardHint({ id }: { id: keyof typeof COPY }) {
-  const store = useStoreIfAny();
-  const dispatch = store?.dispatch;
-  const record = store?.state.config?.onboarding;
+  const dispatch = useOptionalStoreActions()?.dispatch;
+  const record = useOptionalStoreSelector(selectOnboarding, undefined);
   const [show] = useState(() => Boolean(dispatch) && Boolean(record?.completedAt) && !hintSeen(record, id) && !shownHere.has(id));
   useEffect(() => {
     if (!show) return;

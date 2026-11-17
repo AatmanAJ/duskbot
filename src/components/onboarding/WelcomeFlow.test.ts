@@ -14,7 +14,7 @@ import { notesWaiting, stopWaiting } from "@/lib/assistant-notes";
 
 const f = vi.hoisted(() => ({ state: {} as Record<string, unknown>, dispatch: vi.fn(), api: vi.fn(), onDone: vi.fn(),
   improve: [] as unknown[] }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch, refreshInstances: vi.fn(), refreshModels: vi.fn() }), api: f.api }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch, refreshInstances: vi.fn(), refreshModels: vi.fn() }), api: f.api }))()));
 vi.mock("@/state/api", () => ({ api: f.api }));
 // the directory has its own tests; here only that More providers opens it
 vi.mock("@/components/models/ModelDirectory", () => ({ ModelDirectory: () => null }));

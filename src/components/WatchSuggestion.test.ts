@@ -14,7 +14,7 @@ vi.mock("react", async (original) => ({
     return [fixture.values[index], (next: unknown) => { fixture.values[index] = next; }];
   },
 }));
-vi.mock("@/state/store", () => ({ api: fixture.api, useStore: () => ({ state: {}, dispatch: vi.fn() }) }));
+vi.mock("@/state/store", async () => (await import("@/testing/store-mock")).withStoreHooks(await (() => ({ api: fixture.api, useStore: () => ({ state: {}, dispatch: vi.fn() }) }))()));
 
 type Node = ReactElement<Record<string, unknown> & { children?: ReactNode }>;
 const nodes = (value: ReactNode): Node[] => Children.toArray(value).flatMap((child) => (isValidElement(child) ? [child as Node, ...nodes((child as Node).props.children)] : []));

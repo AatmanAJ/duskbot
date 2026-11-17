@@ -2,11 +2,11 @@ import { KeyRound, X } from "../../icons";
 import type { PasskeyWall } from "../../../shared/passkey-wall";
 import { PASSKEY_HELP_URL, openExternalLink } from "@/lib/app-links";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useDispatch } from "@/state/store";
 
 /** A sign-in stopped at a passkey this browser cannot reach, and the ways that work instead, best first. */
 export function PasskeyNotice({ wall, botName, onDismiss }: { wall: PasskeyWall; botName: string; onDismiss: () => void }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const provider = wall === "google" ? "Google" : "Microsoft";
   return (
     <section role="status" aria-label={t("browser.passkey.title")} className="shrink-0 px-3 py-2.5 text-[12px] leading-relaxed text-ink-secondary">

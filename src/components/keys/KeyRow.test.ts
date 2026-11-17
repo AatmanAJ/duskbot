@@ -5,10 +5,10 @@ import { setLocale } from "@/lib/i18n";
 import type { ConfigStatus, InstanceInfo } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ config: {} as Partial<ConfigStatus>, instances: [] as InstanceInfo[] }));
-vi.mock("@/state/store", async (original) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => {
   const store = await original<typeof import("@/state/store")>();
   return { ...store, useStore: () => ({ state: { ...store.initialState, config: fixture.config, instances: fixture.instances }, dispatch: vi.fn() }) };
-});
+})(importOriginal)));
 
 const { KeyRow } = await import("./KeyRow");
 const { cleanKey, looksLikeKey, tregVerdict } = await import("./key-save");

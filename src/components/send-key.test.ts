@@ -9,13 +9,13 @@ import type { ApprovalModeSelector } from "./ApprovalModeSelector";
 import type { ModelPicker } from "./ModelPicker";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), instances: [] as unknown[], config: undefined as unknown }));
-vi.mock("@/state/store", async (importOriginal) => {
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, api: vi.fn(async () => ({})), useStore: () => ({
     state: { ...original.initialState, instances: fixture.instances, config: fixture.config ?? original.initialState.config },
     dispatch: fixture.dispatch,
   }) };
-});
+})(importOriginal)));
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   ...await importOriginal<typeof import("./DesktopCapabilities")>(),
   useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false }, host: { packaged: true, platform: "other" }, localComputer: { available: false, reasonCode: "x", message: "" } }, ready: true }),

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Bell, ChevronLeft, ImagePlus, Loader2, Trash2, X } from "../icons";
 
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useDispatch, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { useCaptionChrome } from "@/components/DesktopCapabilities";
@@ -21,7 +21,7 @@ export function RemoteAgentSettingsPanel({ bot, overlay = false }: {
   bot: Bot;
   overlay?: boolean;
 }) {
-  const { dispatch } = useStore();
+  const dispatch = useDispatch();
   const { dragProps } = useCaptionChrome();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 
 import { initialState, type Bot } from "@/state/store";
 
-vi.mock("@/state/store", async (original) => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: initialState, dispatch: () => {} }) }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async (original) => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: initialState, dispatch: () => {} }) }))(importOriginal)));
 vi.mock("./bot-settings/useBotSettingsDerived", () => ({ useBotSettingsDerived: () => ({}) }));
 vi.mock("./bot-panel/PanelShell", () => ({ BotPanel: () => createElement("button", { type: "button", "data-panel-close": "" }, "close") }));
 

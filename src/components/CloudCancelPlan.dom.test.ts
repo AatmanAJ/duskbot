@@ -8,7 +8,7 @@ import type { CloudRenewal } from "../../electron/cloud-list.mjs";
 import { setLocale } from "@/lib/i18n";
 
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({ capabilities: { host: { platform: "darwin" } }, ready: true }) }));
-vi.mock("@/state/store", async original => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: { bots: [], config: {} }, dispatch: vi.fn() }) }));
+vi.mock("@/state/store", async (importOriginal) => (await import("@/testing/store-mock")).withStoreHooks(await (async original => ({ ...await original<typeof import("@/state/store")>(), useStore: () => ({ state: { bots: [], config: {} }, dispatch: vi.fn() }) }))(importOriginal)));
 import { CLOUD_CALL_URL, CloudCancelPlan, type CloudRenewalActions } from "./CloudCancelPlan";
 import { CloudAccountSettings, CloudPlanOnCloud } from "./CloudAccountSettings";
 

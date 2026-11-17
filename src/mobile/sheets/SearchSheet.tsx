@@ -8,7 +8,8 @@ import { plainPreviewText } from "@/lib/plain-preview";
 import { landOnSearchHit } from "@/lib/focus-message";
 import { t } from "@/lib/i18n";
 import type { SearchHit } from "@/lib/search-hit";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type Bot } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { haptic } from "../haptics";
 import { Sheet } from "../Sheet";
 import { listTime } from "../time";
@@ -62,7 +63,11 @@ function activity(bot: Bot): number {
 type Results = { query: string; status: "loading" | "ready" | "error"; hits: SearchHit[] };
 
 export const SearchSheet: ComponentType<SheetPageProps<"search">> = ({ open, onClose, onOpenChat }) => {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const allBots = useStoreSelector((s) => s.bots);
+  const allGroups = useStoreSelector((s) => s.groups);
+  const instances = useStoreSelector((s) => s.instances);
   const you = useGroupYou();
   const [query, setQuery] = useState("");
   const [retry, setRetry] = useState(0);
@@ -72,9 +77,9 @@ export const SearchSheet: ComponentType<SheetPageProps<"search">> = ({ open, onC
   const input = useRef<HTMLInputElement>(null);
   const q = query.trim();
   const normalized = normalizeSearch(q);
-  const bots = state.bots.filter((bot) => !bot.hidden && normalizeSearch(bot.name).includes(normalized));
-  const groups = state.groups.filter((group) => normalizeSearch(group.name).includes(normalized));
-  const recent = [...state.bots].filter((bot) => !bot.hidden).sort((a, b) => activity(b) - activity(a)).slice(0, 4);
+  const bots = allBots.filter((bot) => !bot.hidden && normalizeSearch(bot.name).includes(normalized));
+  const groups = allGroups.filter((group) => normalizeSearch(group.name).includes(normalized));
+  const recent = [...allBots].filter((bot) => !bot.hidden).sort((a, b) => activity(b) - activity(a)).slice(0, 4);
   const current = results.query === q;
   const loading = Boolean(q) && (!current || results.status === "loading");
   const hits = current ? results.hits : [];
@@ -105,7 +110,7 @@ export const SearchSheet: ComponentType<SheetPageProps<"search">> = ({ open, onC
     setOpening(true);
     setOpenError(false);
     try {
-      await landOnSearchHit(hit, state, dispatch, true);
+      await landOnSearchHit(hit, store.state(), dispatch, true);
       const id = hit.groupId ?? hit.botId;
       if (!id) throw new Error("missing search owner");
       onOpenChat(id);
@@ -141,7 +146,7 @@ export const SearchSheet: ComponentType<SheetPageProps<"search">> = ({ open, onC
                   <BotAvatar bot={bot} size={40} animated={false} label="" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate text-[16px] font-semibold text-ink">{bot.name}</span>{at > 0 && <time dateTime={new Date(at).toISOString()} className="shrink-0 text-[14px] font-medium tabular-nums text-ink-secondary">{listTime(at)}</time>}</span>
-                    <span className="mt-0.5 block truncate text-[14px] text-ink-secondary">{botPreview(bot, sidebarPreviewMessages(bot), state.instances) || " "}</span>
+                    <span className="mt-0.5 block truncate text-[14px] text-ink-secondary">{botPreview(bot, sidebarPreviewMessages(bot), instances) || " "}</span>
                   </span>
                 </button></li>;
               })}
@@ -152,7 +157,7 @@ export const SearchSheet: ComponentType<SheetPageProps<"search">> = ({ open, onC
         {(bots.length > 0 || groups.length > 0) && <SettingsSection title={t("mobile.search.owners")}>
           <ul>
             {bots.map((bot) => <li key={bot.id}><button type="button" onClick={() => onOpenChat(bot.id)} className="mobile-row flex min-h-[76px] w-full items-center gap-3.5 rounded-2xl px-3 py-3 text-left text-ink"><BotAvatar bot={bot} size={52} animated={false} label="" /><span className="min-w-0 truncate text-[16px] font-semibold">{bot.name}</span></button></li>)}
-            {groups.map((group) => <li key={group.id}><button type="button" onClick={() => onOpenChat(group.id)} className="mobile-row flex min-h-[76px] w-full items-center gap-3.5 rounded-2xl px-3 py-3 text-left text-ink"><GroupAvatar members={state.bots.filter((bot) => group.memberIds.includes(bot.id))} size={52} you={you} /><span className="min-w-0 truncate text-[16px] font-semibold">{group.name}</span></button></li>)}
+            {groups.map((group) => <li key={group.id}><button type="button" onClick={() => onOpenChat(group.id)} className="mobile-row flex min-h-[76px] w-full items-center gap-3.5 rounded-2xl px-3 py-3 text-left text-ink"><GroupAvatar members={allBots.filter((bot) => group.memberIds.includes(bot.id))} size={52} you={you} /><span className="min-w-0 truncate text-[16px] font-semibold">{group.name}</span></button></li>)}
           </ul>
         </SettingsSection>}
         {loading ? <div role="status" aria-label={t("mobile.search.loading")} className="px-4 py-2">
@@ -163,10 +168,10 @@ export const SearchSheet: ComponentType<SheetPageProps<"search">> = ({ open, onC
         </div> : hits.length > 0 ? <SettingsSection title={t("mobile.search.messages")}>
           <ul aria-busy={opening}>
             {hits.map((hit) => {
-              const bot = state.bots.find((candidate) => candidate.id === hit.botId);
-              const group = state.groups.find((candidate) => candidate.id === hit.groupId);
+              const bot = allBots.find((candidate) => candidate.id === hit.botId);
+              const group = allGroups.find((candidate) => candidate.id === hit.groupId);
               return <li key={`${hit.threadId}:${hit.messageId}`}><button type="button" disabled={opening} onClick={() => { void openHit(hit); }} className="mobile-row flex min-h-[76px] w-full items-start gap-3 rounded-2xl px-4 py-3 text-left disabled:opacity-60">
-                <span className="shrink-0">{group ? <GroupAvatar members={state.bots.filter((candidate) => group.memberIds.includes(candidate.id))} size={32} you={you} /> : bot ? <BotAvatar bot={bot} size={32} animated={false} label="" /> : <MausAvatar color="blue" size={32} animated={false} label="" />}</span>
+                <span className="shrink-0">{group ? <GroupAvatar members={allBots.filter((candidate) => group.memberIds.includes(candidate.id))} size={32} you={you} /> : bot ? <BotAvatar bot={bot} size={32} animated={false} label="" /> : <MausAvatar color="blue" size={32} animated={false} label="" />}</span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate text-[16px] font-semibold text-ink">{hit.name}</span><time dateTime={new Date(hit.at).toISOString()} className="shrink-0 text-[14px] font-medium tabular-nums text-ink-secondary">{listTime(hit.at)}</time></span>
                   <span className="mt-1 line-clamp-2 text-[15px] leading-5 text-ink-secondary">{searchSnippetParts(searchSnippetText(hit.snippet), q).map((part, index) => <span key={index} className={part.matched ? "font-semibold text-ink" : undefined}>{part.text}</span>)}</span>
