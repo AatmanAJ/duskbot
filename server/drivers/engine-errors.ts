@@ -7,7 +7,7 @@ import { toolCountLimitFromError } from "../tool-count-limit.ts";
 import { USAGE_LIMIT } from "./retry.ts";
 import { usageLimitWait } from "./acp/quiet-status.ts";
 
-export type EngineFailureKind = "credits" | "usage_limit" | "rate_limit" | "overloaded" | "server" | "tool_schema" | "tool_count" | "refused" | "network";
+export type EngineFailureKind = "credits" | "usage_limit" | "rate_limit" | "overloaded" | "server" | "tool_schema" | "tool_count" | "refused" | "network" | "session_id";
 
 /** No answer at all from the provider: the Anthropic SDK's "Request timed out." and "Connection error.", Node's errno codes. */
 const NETWORK = /\b(?:request timed out|connection error|network error|fetch failed|socket hang up|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN)\b/i;
@@ -22,6 +22,10 @@ const OUT_OF_CREDITS = /\bpayment required\b|\binsufficient (?:account )?(?:fund
 const TOOL_SCHEMA = /moonshot flavou?red json schema|schema exceeds maximum allowed size|invalid schema for function\b|\btools\.\d+\.custom\.input_schema\b|function_declarations\[\d+\]\.parameters|\btoolSpec\.inputSchema\b/i;
 const SCHEMA_TOOL_NAME = /\b(?:function|tool) ['"`]([\w.:-]{1,128})['"`]/i;
 const SCHEMA_TOO_LARGE = /exceeds maximum allowed size|\btoo (?:large|long|big)\b/i;
+
+/** OpenCode Go's 400 for a request without a usable `x-opencode-session` (type MissingSessionID): every OpenCode build
+ * the app installs sends one, so the copy that ran is an older or other OpenCode found on this computer. */
+const MISSING_SESSION_ID = /\bMissingSessionID\b|\bmissing x-opencode-session\b/i;
 
 /** Grok Build's "API error (status 402 Payment Required): …" (inside ACP's "Internal error: …"), the chat-completions
  * drivers' "xAI HTTP 402: …", and Claude Code's "API Error: 529 …". */
@@ -74,6 +78,7 @@ export function providerReason(text: string): string | null {
 
 /** What a raw engine failure is, from its HTTP status or its words; null when it is none of these. */
 export function engineFailureKind(text: string, status = httpStatusOf(text)): EngineFailureKind | null {
+  if (MISSING_SESSION_ID.test(text)) return "session_id";
   if (status === 402 || OUT_OF_CREDITS.test(text)) return "credits";
   if (USAGE_LIMIT.test(text)) return "usage_limit";
   if (status === 529 || /\boverloaded\b/i.test(text)) return "overloaded";
@@ -114,6 +119,8 @@ export function engineFailureMessage(
     }
     case "tool_count": return `${provider} refused this turn because this model takes at most ${toolCountLimitFromError(text) ?? "a limited number of"} tools `
       + "and this bot offers more, even with its tool lists trimmed, so nothing ran. Turn off some of this bot's apps or MCP servers, or switch the bot to another model.";
+    case "session_id": return `OpenCode Go refused this turn because the request carried no session id, which Go requires. `
+      + "The OpenCode on this computer is likely out of date: update it with `opencode upgrade`, then run it again, or switch this bot to an OpenCode Zen model.";
     case "refused": return `${provider} stopped with an error${detail(code, says)}.`;
     case "network": return /\b(?:timed out|ETIMEDOUT)\b/i.test(text)
       ? `${provider} did not answer in time (the request timed out). Check the internet connection, then run it again.`

@@ -60,6 +60,17 @@ describe("engineFailureMessage", () => {
     expect(engineFailureKind("the tool call timed out")).toBeNull();
   });
 
+  it("names OpenCode Go's missing session id instead of passing its raw 400 through (bug report dr-shfbj86w8h)", () => {
+    const raw = 'Bad Request: {"type":"error","error":{"type":"MissingSessionID","message":"Request is missing x-opencode-session and cannot be routed efficiently. Please see https://opencode.ai/v2/docs/console/go/#where-can-i-use-it"}}';
+    for (const text of [raw, "Request is missing x-opencode-session and cannot be routed efficiently.", "API error (status 400 Bad Request): MissingSessionID"]) {
+      expect(engineFailureKind(text), text).toBe("session_id");
+      const message = engineFailureMessage("OpenCode", text)!;
+      expect(message).toMatch(/OpenCode Go refused this turn because the request carried no session id/);
+      expect(message).toMatch(/opencode upgrade/);
+      expect(classifyError({ text: message }).transient, message).toBe(false);
+    }
+  });
+
   it("leaves a failure it does not know to the caller, whose text stays as it was", () => {
     expect(engineFailureMessage("Grok", "Internal error: could not change mode")).toBeNull();
     expect(engineFailureMessage("Grok", "Grok could not confirm its MCP catalog in time. No prompt was sent.")).toBeNull();
