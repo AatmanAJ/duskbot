@@ -212,3 +212,35 @@ export type DemoReplayProgress =
   | { type: "step-start"; item: string; step: string }
   | { type: "step-done"; item: string; step: string; ok: boolean; via: "direct" | "bot"; attempts: number; note?: string }
   | { type: "item-done"; item: string; ok: boolean };
+
+export type DemoRunItemStatus = "waiting" | "running" | "done" | "failed" | "skipped";
+
+/** A replay as the app watches it: one row for each file or table row, updated as it goes. */
+export interface DemoReplayRun {
+  id: string;
+  recordingId: string;
+  status: "running" | "done" | "stopped";
+  items: Array<{
+    id: string;
+    label: string;
+    status: DemoRunItemStatus;
+    values: Record<string, string>;
+    missing: string[];
+    /** The step it is on, or the one it failed at. */
+    step?: string;
+    /** How many of its steps the bot's own computer use had to do. */
+    byBot: number;
+    note?: string;
+  }>;
+  done: number;
+  failed: number;
+}
+
+/** One change to a recording or a replay, as the events stream carries it. */
+export interface DemoChange {
+  botId: string;
+  recording?: DemoRecording;
+  /** A recording that was removed. */
+  removed?: string;
+  run?: DemoReplayRun;
+}

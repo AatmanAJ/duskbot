@@ -4,6 +4,7 @@ import type { Screenshot } from "../browser/cdp/screencast.ts";
 import { personUrl } from "../browser/dispatch.ts";
 import { createDomProbe, createDomSurface, type PageEvaluate } from "./accessibility/dom.ts";
 import type { AccessibilityProbe, ScreenSource } from "./capture.ts";
+import type { DemoSeat } from "./host.ts";
 import type { ReplaySurface } from "./replay.ts";
 
 /** What a recording and a replay need of one bot's browser. */
@@ -46,4 +47,9 @@ export function browserDemoSource(access: BrowserDemoAccess): { probe: Accessibi
     press: async (key) => { await access.act((page) => page.press(key)); },
   });
   return { probe: createDomProbe(evaluate), screen, surface };
+}
+
+/** That browser as the seat a task is shown at: `tap` says where the person's input is heard. */
+export function browserDemoSeat(access: BrowserDemoAccess, tap: DemoSeat["tap"]): DemoSeat {
+  return { ...browserDemoSource(access), tap, where: () => access.page()?.url() ?? "" };
 }

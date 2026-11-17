@@ -328,6 +328,12 @@ export class LiveRouter {
     return true;
   }
 
+  /** The browser a task can be shown in and done again in; null on agent-browser, whose pages cannot be read this way. */
+  demo({ session, spec }: SessionSpec): { target: BrowserTarget; service: BrowserService } | null {
+    const target = chromeTarget(session, spec);
+    return target ? { target, service: this.#chrome.service } : null;
+  }
+
   fileChooserOffered({ session, spec }: SessionSpec, owner: string, chooserId: string): boolean {
     return chromeTarget(session, spec) ? this.#chrome.service.fileChooserOffered(session, owner, chooserId) : false;
   }

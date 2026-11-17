@@ -631,6 +631,7 @@ import { createScreenDirect, directPortRange } from "./screen-direct.ts";
 import { createScreenTransportAgentRoutes } from "./routes/screen-transport-agent.ts";
 import { createDirectSockets } from "./routes/direct-sockets.ts";
 import { createBrowserViewerRoutes } from "./routes/browser-viewers.ts";
+import { createDemoRecordingRoutes } from "./routes/demo-recordings.ts"; import { createDemoHost } from "./demo-recorder/host.ts"; import { browserDemoSeat } from "./demo-recorder/browser-source.ts"; import { createDemoRecorder } from "./demo-recorder/recorder.ts"; import { resvgMasker } from "./demo-recorder/mask.ts"; import type { DemoChange } from "../shared/demo-recording.ts";
 import { localDesktopTarget, localVmViewerStatus } from "./desktop-viewer-targets.ts";
 import { viewerTargetId } from "../shared/desktop-viewer.ts";
 import { createComputerPreviews } from "./computer-previews.ts";
@@ -13501,6 +13502,46 @@ ROUTES.push(createBrowserViewerRoutes({ authorize: async () => null, relayed: (r
   restartRefusal: (session) => browserRestartRefusal(browserRuntime.interrupted(session), store.bots.filter((candidate) => candidate.busy
     && browserSessionsOf(candidate.id, candidate.browserProfile).includes(session)).map((candidate) => ({ waitingOnBrowser: computerControl.snapshot(candidate.id).help?.place === "browser" }))),
 }));
+const demoChanged = (change: DemoChange) => broadcast({ kind: "demo", ...change }, { adminOnly: true });
+const demoRecorder = createDemoRecorder({
+  dir: join(DATA_DIR, "demo-recordings"), masker: resvgMasker(), log: (line) => console.log(line),
+  engine: (botId) => sideJobs.text("demo-steps", botId),
+  skills: { install: (botId, source, files) => {
+    const installed = installSkill(botId, source, files);
+    if (!("error" in installed)) setSkillEnabled(botId, installed.name, true);
+    return installed;
+  } },
+  routines: { create: (input) => (routines ? { id: routines.create(routineHost.shape({ ...input, enabled: false, schedule: { type: "daily", time: "09:00", weekdays: [1, 2, 3, 4, 5] } })).id } : { error: "Routines are not ready yet. Try again in a moment." }) },
+  onChange: (recording) => demoChanged({ botId: recording.botId, recording }),
+});
+const demoHost = createDemoHost<RequestAuth>({
+  recorder: demoRecorder, changed: demoChanged, log: (line) => console.log(line),
+  engine: (botId) => sideJobs.text("demo-steps", botId),
+  browser: async (botId, threadId, auth) => {
+    const bot = store.bot(botId);
+    if (!bot) return { status: 404, error: "no such bot" };
+    if (!builtInBrowserEnabled(cfg) || bot.browser === false) return { status: 409, error: "Enable this bot's browser in its profile first." };
+    const audience = teamHost.viewerBrowserAudience({ threadId, sees: (id) => visibleTo(viewerFor(auth)).thread(id), person: auth.kind === "session" ? actorKey(auth) : null });
+    const browser = audience ? await browserIntegration(bot.id, bot.browserProfile, undefined, audience) : null;
+    const demo = browser ? browserLive.demo(browser) : null;
+    if (!browser || !demo) return { status: 409, error: "A task cannot be shown in this bot's browser yet: it runs on the older browser engine." };
+    return browserDemoSeat({ page: () => demo.service.demoPage(browser.session), still: () => demo.service.demoStill(browser.session), act: (work) => demo.service.demoAct(demo.target, work) },
+      (tap) => { demo.service.demoTap(browser.session, tap); });
+  },
+  secret: (botId, blank, where) => {
+    const host = URL.canParse(where) ? new URL(where).hostname : "";
+    const login = host && /pass/i.test(`${blank.name} ${blank.label}`) ? logins.usableFor(host, botId)[0] : undefined;
+    if (login) heldSecrets.remember(login.password, "password");
+    return login?.password ?? null;
+  },
+  turn: (botId, threadId, text) => new Promise<string>((resolve) => {
+    const giveUp = setTimeout(() => resolve("STUCK: the bot did not finish in time."), 10 * 60_000);
+    const done = (answer: string) => { clearTimeout(giveUp); resolve(answer); };
+    void startTurn(botId, text, { ...(threadId ? { threadId } : {}), unattended: true, onSettled: (outcome) => done(outcome.ok ? outcome.text : "STUCK: the bot's turn failed.") }).catch(() => done("STUCK: the bot could not start."));
+  }),
+});
+ROUTES.push(createDemoRecordingRoutes({ host: demoHost, recorder: demoRecorder, botExists: (id) => Boolean(store.bot(id)), changed: demoChanged,
+  surfaces: (botId) => ({ browser: browserEngineKind(cfg) === "chrome" && builtInBrowserEnabled(cfg) && store.bot(botId)?.browser !== false, computer: false }) }));
 const internalToolRoutes = createInternalToolRoutes({ engineLimits: { instances: () => registry.instances(), configs: () => instanceConfigs(cfg), status: (instanceId) => registry.knownSnapshot(instanceId), load: (accounts) => loadPlanUsage({ accounts }), audienceOf: (threadId) => teamHost.audienceOf(threadId), guestDriven: cloudGuestDriven, dataDir: DATA_DIR }, helpers: { decider, extractor }, notifications: { bot: (id) => store.bot(id), team: sharedMembership, broadcast }, xResearch: { credential: () => researchCredential(cfg.treg?.key), botEnabled: (botId) => store.bot(botId)?.xResearch !== false, cloudHome: CLOUD_HOME !== null, researchOff: () => researchAvailability.refused() } }); const waitRoutes = createWaitRoutes({ waits: botWaits, cloudHome: Boolean(CLOUD_HOME), sleeps: Boolean(CLOUD_HOME) && CLOUD_TEAM === null }); ROUTES.push(createXConnectorRoutes({ credential: () => researchCredential(cfg.treg?.key), included: () => xCredential(), unavailable: () => xResearchStatus().unavailable === true }));
 
 // Live calls: the client holds the WebRTC audio; the key never leaves the harness, which creates the session.
