@@ -8688,7 +8688,7 @@ async function beginTurn(
   watchdog.watch(threadId, bot.id);
   store.setTaskClosedBy(bot.id, threadId, null);
   // Only a person's turn clears unread: the fold never re-marks an internal turn.
-  if (commsDepth === 0) store.patchTask(bot.id, threadId, { unread: false });
+  if (commsDepth === 0 && opts?.automationSource === undefined) store.patchTask(bot.id, threadId, { unread: false });
   turnUsage.delete(threadId);
   turnContext.delete(threadId);
 

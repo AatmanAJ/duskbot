@@ -90,7 +90,7 @@ posixOnly("a routine run's task on the event stream", () => {
       cwd: join(SERVER_DIR, ".."),
       env: {
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
-        HOME: home, DUSK_PORT: String(PORT), DUSK_WEBHOOK_PORT: String(PORT + 1),
+        HOME: home, DUSK_PORT: String(PORT), DUSK_WEBHOOK_PORT: String(PORT + 1), FAKE_ACP_MODE: "echo-gated",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -153,7 +153,7 @@ posixOnly("a routine run's task on the event stream", () => {
     }
   }, 60_000);
 
-  it("leaves the bot's chat unread when a routine that reports there replies in it", async () => {
+  it("leaves the bot's chat unread when a routine that reports there replies in it, and a quiet run keeps it so", async () => {
     const created = await api("POST", "/api/bots", { name: "Check Heron" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const bot = created.body.bot as { id: string; threadId: string };
@@ -166,15 +166,31 @@ posixOnly("a routine run's task on the event stream", () => {
     expect(routine.status, JSON.stringify(routine.body)).toBe(201);
     expect((await api("POST", `/api/routines/${routine.body.routine.id}/run`)).status).toBeLessThan(300);
 
-    const settled = await waitFor(async () => {
+    const settledAfter = (runs: number) => waitFor(async () => {
       const messages = (await api("GET", `/api/threads/${bot.threadId}/messages`)).body.messages ?? [];
-      const started = messages.findIndex((m: any) => m.routineStart);
-      const replied = started >= 0 && messages.slice(started).some((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal);
+      const started = messages.findLastIndex((m: any) => m.routineStart);
+      const replied = messages.filter((m: any) => m.routineStart).length === runs
+        && messages.slice(started).some((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal);
       const task = (await api("GET", "/api/bots")).body.bots.find((b: any) => b.id === bot.id)
         ?.tasks.find((t: { threadId: string }) => t.threadId === bot.threadId);
       return replied && task && !task.busy && task.activity === "idle" ? task : null;
     });
-    expect(settled, log.slice(-2_000)).not.toBeNull();
-    expect(settled.unread).toBe(true);
+    const reported = await settledAfter(1);
+    expect(reported, log.slice(-2_000)).not.toBeNull();
+    expect(reported.unread).toBe(true);
+
+    const quiet = await api("POST", "/api/routines", {
+      name: "Quiet check", botId: bot.id, prompt: "Answer with this line only:\nNOTHING NEW", enabled: false,
+      schedule: { type: "interval", everyMinutes: 20, anchorAt: Date.now() + 86_400_000 },
+      resultsThreadId: bot.threadId,
+    });
+    expect(quiet.status, JSON.stringify(quiet.body)).toBe(201);
+    expect((await api("POST", `/api/routines/${quiet.body.routine.id}/run`)).status).toBeLessThan(300);
+    const stillUnread = await settledAfter(2);
+    expect(stillUnread, log.slice(-2_000)).not.toBeNull();
+    const last = ((await api("GET", `/api/threads/${bot.threadId}/messages`)).body.messages ?? [])
+      .findLast((m: any) => m.role === "bot" && m.kind === "text");
+    expect(last?.text.trim().split("\n").at(-1)).toBe("NOTHING NEW");
+    expect(stillUnread.unread).toBe(true);
   }, 60_000);
 });
