@@ -39,7 +39,7 @@ export interface PageProbe {
 
 const MARKERS = ["#challenge-running", "#challenge-stage", "#challenge-form", "#cf-challenge-running", ".cf-browser-verification", "#cf-error-details",
   "#px-captcha", "#sec-if-cpt-container", "#sec-cpt-if", "awswaf-captcha", "#captcha-container"] as const;
-const BUSY = `[aria-busy="true"],[class*="skeleton" i],[class*="shimmer" i],[class*="spinner" i],[role="progressbar"]:not([aria-valuenow])`;
+export const BUSY = `[aria-busy="true"],[class*="skeleton" i],[class*="shimmer" i],[class*="spinner" i],[role="progressbar"]:not([aria-valuenow])`;
 const CONTROLS = `a[href],button,input,select,textarea,[role="button"],[role="link"],[role="textbox"],[contenteditable="true"]`;
 
 export const PROBE_EXPRESSION = `(() => {

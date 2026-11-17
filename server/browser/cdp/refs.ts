@@ -23,6 +23,11 @@ export class RefCounter {
   take(): number {
     return this.#next++;
   }
+
+  /** The last number taken, or 0: refs above it are given out later. */
+  peek(): number {
+    return this.#next - 1;
+  }
 }
 
 const REF = /^(?:aria-ref\s*=\s*)?@?(e\d+)$/;
@@ -47,6 +52,11 @@ export class RefTable {
 
   get size(): number {
     return this.#byRef.size;
+  }
+
+  /** The newest ref number given out in this browser so far. */
+  get mark(): number {
+    return this.#counter.peek();
   }
 
   refFor(handle: NodeHandle): string {

@@ -65,7 +65,7 @@ function headline(ending: Ending, total: number, elapsedMs: number, limitMs: num
 export function runBatch(context: ToolContext, input: ToolInput<typeof BATCH_TOOL>, deps: BatchDeps): Promise<ToolResult> {
   const limitMs = input.timeoutMs ?? MAX_BATCH_MS;
   const deadline = Math.min(context.deadline, Date.now() + limitMs);
-  const stepContext: ToolContext = { ...context, deadline };
+  const stepContext: ToolContext = { ...context, deadline, inBatch: true };
   return runSteps(input.steps, {
     deadline, limitMs,
     parse: (step) => batchStepCall(step as BatchStep),

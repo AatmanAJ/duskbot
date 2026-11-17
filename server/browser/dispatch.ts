@@ -17,6 +17,7 @@ import { checkboxPoint } from "./cdp/checkbox.ts";
 import { CONSENT_LOOK_MS, consentNote, rejectConsent } from "./cdp/consent.ts";
 import { checkStatus, settleNote, settlePage, type CheckboxPoint } from "./cdp/settle.ts";
 import { MAX_VISIBLE_TEXT_LENGTH } from "./cdp/snapshot.ts";
+import { newElements, newElementsNote, settleAfterAction } from "./after-action.ts";
 import { runBatch } from "./batch.ts";
 import { PersonHoldAnswer } from "../browser-refusals.ts";
 import { BROWSER_CONTROL_REFUSAL, type HoldWait, type ProfileControl, type Scope } from "./control.ts";
@@ -74,6 +75,8 @@ export interface ToolContext {
   downloads(): Download[];
   /** Whether cookie banners on `tab` are answered for the bot: a tab it opened, never one a person opened or holds. */
   answersConsent?(tab: Tab): boolean;
+  /** A step of a batch: what the page brought up is reported once, after the batch. */
+  readonly inBatch?: boolean;
   /** Throws once the call may no longer act, such as when its turn ended; a batch checks it between steps. */
   checkpoint?(): void;
 }
@@ -203,14 +206,51 @@ async function act(context: ToolContext, tab: Tab | null, run: () => Promise<Too
     const known = new Set(context.tabs.list().map((candidate) => candidate.id));
     const before = observeChange && tab ? await observe(tab) : null;
     const mark = before && tab ? tab.page.navigations.mark() : null;
+    const refMark = tab?.page.refs.mark ?? 0;
     const result = await run();
     if (!tab || result.isError) return result;
     // An open dialog blocks the page's scripts, so the page is read again only once it is answered.
     if (mark && !tab.page.dialogs.pending) await tab.page.navigations.follow(mark, Math.min(NAVIGATION_FOLLOW_MS, remaining(context)));
+    const reports = before !== null && !context.inBatch && !tab.page.dialogs.pending;
+    if (reports) await settleAfterAction(tab, context.deadline - FOLLOW_UP_MS);
     const after = before && !tab.page.dialogs.pending ? await observe(tab) : null;
     const opened = observeChange ? await openedNote(context, tab, known) : null;
-    return withParts(result, before && after ? describePageChange(before, after) : null, opened, dialogNote(tab), context.health(tab));
+    const change = before && after ? (reports ? await pageNews(context, tab, before, after, refMark) : describePageChange(before, after)) : null;
+    return withParts(result, change, opened, dialogNote(tab), context.health(tab));
   });
+}
+
+/** What the action changed and what to act on next: a page it moved to comes with its snapshot, new controls with refs. */
+async function pageNews(context: ToolContext, tab: Tab, before: PageState, after: PageState, refMark: number): Promise<string> {
+  const change = describePageChange(before, after);
+  try {
+    if (after.url !== before.url) {
+      const snapshot = await snapshotResult(context, tab, { fresh: true });
+      const text = snapshot.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
+      return `The page is now ${sanitizeUrl(after.url) || "a new address"}. Its snapshot, with current refs to act on:\n${text}`;
+    }
+    if (change.startsWith("The visible text of the page did not change")) return change;
+    const snapshot = await tab.page.snapshot();
+    return [change, newElementsNote(newElements(snapshot.tree, refMark))].filter(Boolean).join("\n");
+  } catch {
+    return change;
+  }
+}
+
+const ACTING_STEPS: ReadonlySet<string> = new Set(["open", "navigate", "click", "fill", "type", "press", "select", "check", "hover", "scroll", "upload", "drag", "eval"]);
+
+/** The page a batch left: its snapshot when the batch moved to another page, else the controls it brought up. */
+async function batchNews(context: ToolContext, tab: Tab, moved: boolean, refMark: number): Promise<string | null> {
+  try {
+    await settleAfterAction(tab, context.deadline - FOLLOW_UP_MS);
+    if (moved) {
+      const snapshot = await snapshotResult(context, tab);
+      return `The page now, with current refs to act on:\n${snapshot.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")}`;
+    }
+    return newElementsNote(newElements((await tab.page.snapshot()).tree, refMark));
+  } catch {
+    return null;
+  }
 }
 
 /** How a picture's pixels map to the CSS pixels the point tools take, so a point read off it lands where it was seen. */
@@ -337,7 +377,9 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
           ? await tab.page.navigate(agentUrl(url), options)
           : action === "back" ? await tab.page.back(options) : action === "forward" ? await tab.page.forward(options) : await tab.page.reload(options);
         if (result.signInPrompt) return textResult(signInWait(tab, result.url, result.signInPrompt));
-        return textResult(`${tab.id} is now at ${sanitizeUrl(result.url) || result.url}${result.status && result.status >= 400 ? ` (HTTP ${result.status})` : ""}. Refs from earlier snapshots do not apply to it; take a snapshot before acting on refs.`);
+        const lead = `${tab.id} is now at ${sanitizeUrl(result.url) || result.url}${result.status && result.status >= 400 ? ` (HTTP ${result.status})` : ""}. Refs from earlier snapshots do not apply to it${context.inBatch ? "." : "; its snapshot, with current refs:"}`;
+        if (context.inBatch) return textResult(lead);
+        return withParts(textResult(lead), ...(await snapshotResult(context, tab, { fresh: true })).content.map((part) => (part.type === "text" ? part.text : null)));
       });
     }
     case "agent_browser_snapshot": {
@@ -503,7 +545,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       if (action === "close") return bot(context, tab, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
       return bot(context, tab, async () => {
         await tab.page.bringToFront();
-        return textResult(`${context.control.owner === null ? `${tab.id} is in front` : `You work in ${tab.id}`}: ${pageLabel(describe(tab))}. Take a snapshot to act on it.`);
+        return withParts(textResult(`${context.control.owner === null ? `${tab.id} is in front` : `You work in ${tab.id}`}; its snapshot, with current refs:`), ...(await snapshotResult(context, tab)).content.map((part) => (part.type === "text" ? part.text : null)));
       });
     }
     case "agent_browser_close": {
@@ -513,8 +555,15 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       }
       return bot(context, "every", async () => { await context.closeBrowser(); return textResult("Closed the browser. Saved sign-ins are kept; agent_browser_open starts it again."); });
     }
-    case "agent_browser_batch":
-      return runBatch(context, call.input, { execute: executeTool, failure: toolFailure });
+    case "agent_browser_batch": {
+      const tab = context.active();
+      const start = tab ? { url: tab.page.url(), refMark: tab.page.refs.mark } : null;
+      const result = await runBatch(context, call.input, { execute: executeTool, failure: toolFailure });
+      const front = context.active();
+      const last = call.input.steps.at(-1)?.do ?? "";
+      if (result.isError || !front || !start || ["snapshot", "read", "screenshot"].includes(last) || !call.input.steps.some((step) => ACTING_STEPS.has(step.do))) return result;
+      return withParts(result, await bot(context, front, () => batchNews(context, front, front !== tab || front.page.url() !== start.url, start.refMark)));
+    }
     case "restart_browser":
       return errorResult("restart_browser is handled before a call reaches its tab.");
   }
