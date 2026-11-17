@@ -14,7 +14,7 @@ import { formatCost } from "@/lib/usage-trace";
 import { isRoutineProblemRun, type Routine, type RoutineRunOn } from "@/lib/routines";
 import { hoursLine, liveStrip, probeLine } from "@/lib/routine-display";
 import { saveWebhookCredential, webhookCredentialStore } from "@/lib/webhook-credentials";
-import { useStore, useDispatch, type Bot } from "@/state/store";
+import { useDispatch, useStoreSelector, useStoreShallow, type Bot } from "@/state/store";
 import { useAllAutomationActions } from "../automations/app-actions";
 import { AppEventEditor } from "../automations/AppEventEditor";
 import { WebhookEditor } from "../WebhookTrigger";
@@ -44,20 +44,22 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
  * and its switch. Clicking one opens a small sheet with what the bot knows about it and the run, test, edit and delete
  * actions; the list itself never grows. "Add a routine" opens the same small form at the end of the card. */
 export function BotRoutines({ bot, defaultRunOn, label = true }: { bot: Bot; defaultRunOn?: RoutineRunOn; label?: boolean }) {
-  const { state } = useStore();
+  const allRoutines = useStoreSelector((s) => s.routines);
+  const allWebhooks = useStoreSelector((s) => s.webhooks);
+  const routineRuns = useStoreSelector((s) => s.routineRuns);
+  const focus = useStoreSelector((s) => s.routinesFocus);
   const appTriggers = useAppTriggers();
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const remote = typeof window !== "undefined" && window.duskDesktop?.remoteClient?.active === true;
   const automations = useMemo(() => automationsFrom({
-    routines: state.routines.filter((routine) => routine.botId === bot.id).sort((a, b) => a.createdAt - b.createdAt),
-    webhooks: remote ? [] : state.webhooks.filter((webhook) => webhook.botId === bot.id),
+    routines: allRoutines.filter((routine) => routine.botId === bot.id).sort((a, b) => a.createdAt - b.createdAt),
+    webhooks: remote ? [] : allWebhooks.filter((webhook) => webhook.botId === bot.id),
     appTriggers: appTriggers.triggers.filter((trigger) => trigger.botId === bot.id),
-    runs: state.routineRuns,
-  }), [state.routines, state.webhooks, appTriggers.triggers, state.routineRuns, bot.id, remote]);
+    runs: routineRuns,
+  }), [allRoutines, allWebhooks, appTriggers.triggers, routineRuns, bot.id, remote]);
 
   // a chat card, a notice or a run's chat names a routine: open it here, or straight into its form
-  const focus = state.routinesFocus;
   useEffect(() => {
     if (focus.nonce <= handledFocus || !focus.routineId) return;
     if (!automations.some((automation) => automation.id === focus.routineId)) return;
@@ -83,7 +85,7 @@ export function BotRoutines({ bot, defaultRunOn, label = true }: { bot: Bot; def
           key={automation.id}
           bot={bot}
           automation={automation}
-          routine={automation.kind === "schedule" ? state.routines.find((routine) => routine.id === automation.id) : undefined}
+          routine={automation.kind === "schedule" ? allRoutines.find((routine) => routine.id === automation.id) : undefined}
           open={openId === automation.id}
           editing={editing === automation.id}
           onOpen={() => { setOpenId(automation.id); setEditing(null); }}
@@ -163,12 +165,12 @@ function AutomationRow({ bot, automation, routine, open, editing, onOpen, onClos
 
 /** Webhooks and app events keep their own editors: they have fields a routine has none of. */
 function ForeignEditor({ automation, onClose }: { automation: Automation; onClose: () => void }) {
-  const { state } = useStore();
-  const bots = state.bots.filter((bot) => !bot.hidden);
+  const bots = useStoreShallow((s) => s.bots.filter((bot) => !bot.hidden));
+  const webhook = useStoreSelector((s) => s.webhooks.find((one) => one.id === automation.id));
   return createPortal(
     automation.kind === "app"
       ? <AppEventEditor trigger={automation.appTrigger} bots={bots} onClose={onClose} />
-      : <WebhookEditor webhook={state.webhooks.find((webhook) => webhook.id === automation.id)} bots={bots} onClose={onClose} onCredential={(credential, id) => saveWebhookCredential(webhookCredentialStore(), id, credential)} />,
+      : <WebhookEditor webhook={webhook} bots={bots} onClose={onClose} onCredential={(credential, id) => saveWebhookCredential(webhookCredentialStore(), id, credential)} />,
     document.body,
   );
 }
@@ -181,16 +183,19 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   actions: ReturnType<typeof useAllAutomationActions>;
   onEdit: () => void;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
+  const roomName = useStoreSelector((s) => s.groups.find((group) => group.id === routine?.groupId)?.name);
+  const routineRuns = useStoreSelector((s) => s.routineRuns);
   const [confirming, setConfirming] = useState(false);
   const [capSaved, setCapSaved] = useState(0);
   const forecast = useLoaded(() => (routine ? fetchForecast(routine.id) : Promise.resolve(null)), `${routine?.id}:${routine?.updatedAt}:${capSaved}:${automation.runs[0]?.status}`);
   const status = automationStatus(automation);
   const runs = automation.runs.filter((run) => run.status !== "queued").slice(0, RECENT_RUNS);
   const roomGoal = routine?.target === "room-goal";
-  const worksOn = routineRunsOn({ roomGoal, runOn: routine?.runOn ?? automation.appTrigger?.runOn, computer: bot.computer, cloudHome: state.config?.cloudHome === true });
+  const worksOn = routineRunsOn({ roomGoal, runOn: routine?.runOn ?? automation.appTrigger?.runOn, computer: bot.computer, cloudHome });
   const resultsTo = roomGoal
-    ? state.groups.find((group) => group.id === routine?.groupId)?.name ?? t("routines.results.main")
+    ? roomName ?? t("routines.results.main")
     : routine?.resultsThreadId
       ? bot.tasks?.find((task) => task.threadId === routine.resultsThreadId)?.title ?? t("routines.results.missing")
       : t("routines.results.main");
@@ -202,7 +207,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   ].filter((note): note is string => Boolean(note));
   const looksAt = routine?.checks?.map((check) => (check === "probe" && routine.probe ? probeLine(routine.probe) : t(`routines.inline.check.${check}`)));
   const hours = routine ? hoursLine(routine.schedule) : null;
-  const strip = routine ? liveStrip(routine, state.routineRuns) : [];
+  const strip = routine ? liveStrip(routine, routineRuns) : [];
   const busy = Boolean(actions.busy);
   const fix = (kind: AutomationFix) => {
     if (kind === "usage") dispatch({ type: "toggleAppSettings", open: true, section: "usage" });

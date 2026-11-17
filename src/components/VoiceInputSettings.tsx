@@ -15,7 +15,7 @@ import { saveVoiceKey, useVoiceKeys } from "@/lib/voice-input/keys";
 import { listenOnce } from "@/lib/voice-input/listen-once";
 import { setVoicePrefs, useVoicePrefs, type VoicePrefs } from "@/lib/voice-input/prefs";
 import { voiceBridgeFor } from "@/lib/voice-input/select";
-import { useStore, type InstanceInfo } from "@/state/store";
+import { useStoreSelector, type InstanceInfo } from "@/state/store";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { NoteRow, SwitchRow } from "./ListRows";
 import { OpenSystemSettings } from "./OpenSystemSettings";
@@ -451,8 +451,8 @@ function TestRow({ prefs, keys, device, serverListens }: { prefs: VoicePrefs; ke
 }
 
 function CleanupRows({ prefs }: { prefs: VoicePrefs }) {
-  const { state } = useStore();
-  const connections = cleanupConnections(state.instances ?? []);
+  const instances = useStoreSelector((s) => s.instances);
+  const connections = cleanupConnections(instances ?? []);
   const chosen = connections.find((instance) => instance.instanceId === prefs.cleanup.instanceId);
   const models = chosen?.models.options.filter((option) => !option.orgBlocked) ?? [];
   return (
@@ -495,7 +495,7 @@ export function VoiceInputSettings() {
   const device = useVoiceDevice();
   const prefs = useVoicePrefs();
   const keys = useVoiceKeys();
-  const serverListens = serverListeningReady(useStore().state.config);
+  const serverListens = useStoreSelector((s) => serverListeningReady(s.config));
   const engine = resolveEngine(prefs, device, keys, serverListens);
   const options = engineOptions(device, prefs.engine);
   const note = engineNote(engine, prefs, device);

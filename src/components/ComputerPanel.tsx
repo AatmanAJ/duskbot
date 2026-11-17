@@ -8,7 +8,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { z } from "zod";
 import { waitForLocalVmReady } from "@/lib/local-vm-readiness";
 import { Globe, Hand, Loader2, Maximize2, Monitor, Moon, Power, X } from "../icons";
-import { api, ApiError, currentTaskBot, useStore, type Bot, type ConfigStatus } from "@/state/store";
+import { api, ApiError, currentTaskBot, useStoreActions, useStoreSelector, type AppState, type Bot, type ConfigStatus } from "@/state/store";
+import { botById } from "@/state/store-index";
 import { ComputerFullscreen, ComputerFullscreenNote, fullscreenActionCls, type ScreenControl } from "./ComputerFullscreen";
 import { MausAvatar } from "./Avatar";
 import { AsleepMascot, COMPUTER_FRAME_CLASS, COMPUTER_SCREEN_ASPECT, COMPUTER_WAKE_BUTTON_CLASS, ComputerWaking } from "./bot-panel/ComputerScreenMascot";
@@ -130,6 +131,10 @@ const computerControlSnapshotSchema = z.object({
   owned: z.boolean().optional(),
 }).passthrough();
 
+const selectConfig = (state: AppState) => state.config;
+const selectInstances = (state: AppState) => state.instances;
+const selectHydrated = (state: AppState) => state.hydrated;
+
 export function ComputerPanel({
   bot: profileBot,
   fullscreen,
@@ -148,13 +153,16 @@ export function ComputerPanel({
   useComputerAnalytics(profileBot.id, visible);
   const { dragProps } = useCaptionChrome();
   const { panelWidth, separatorRef, separatorWidth, onSeparatorKeyDown, onResizeStart, onResizeMove, onResizeEnd } = useComputerPanelResize();
-  const { state, dispatch, flushBotPatches } = useStore();
+  const { dispatch, flushBotPatches } = useStoreActions();
+  const appConfig = useStoreSelector(selectConfig);
+  const instances = useStoreSelector(selectInstances);
+  const hydrated = useStoreSelector(selectHydrated);
   const liveTask = profileBot.tasks?.find((task) => task.threadId === profileBot.threadId);
   const livePin = personPin(liveTask);
   // a place Auto picked for an earlier turn is not a pin: the panel still shows what Auto would use now
   const livePlace = effectivePlace(profileBot, livePin ? liveTask : null);
   const threadBot = currentTaskBot(profileBot);
-  const connectionKey = `${profileBot.id}:${profileBot.threadId}:${livePlace}:vps:${threadBot.modelSelection.instanceId}:${profileBot.vpsAlias ?? ""}:${profileBot.section ?? ""}:${state.config?.vps?.sshAlias ?? ""}:${state.config?.vps?.mode ?? "shared"}:${state.config?.vps?.independentScreens ?? true}`;
+  const connectionKey = `${profileBot.id}:${profileBot.threadId}:${livePlace}:vps:${threadBot.modelSelection.instanceId}:${profileBot.vpsAlias ?? ""}:${profileBot.section ?? ""}:${appConfig?.vps?.sshAlias ?? ""}:${appConfig?.vps?.mode ?? "shared"}:${appConfig?.vps?.independentScreens ?? true}`;
   const [autoSurface, setAutoSurface] = useState<{ key: string; surface: Bot["computer"]; revision: number; status?: VpsComputerStatus } | null>(null);
   const autoSurfaceCurrent = autoSurface?.key === connectionKey;
   const surfaceReady = livePlace !== "auto" || autoSurfaceCurrent;
@@ -167,10 +175,10 @@ export function ComputerPanel({
   const { capabilities, ready: capabilitiesReady } = useDesktopCapabilities();
   const localAvailable = capabilities.localComputer.available;
   const isLinux = capabilities.host.platform === "linux";
-  const providerSupportsLocal = instanceSupportsLocalComputer(state.instances, bot);
-  const localSelectable = placeOffered("local", state.config) && localComputerSelectable({ capabilities, providerSupportsLocal });
+  const providerSupportsLocal = instanceSupportsLocalComputer(instances, bot);
+  const localSelectable = placeOffered("local", appConfig) && localComputerSelectable({ capabilities, providerSupportsLocal });
   const localDisabledReason = localComputerDisabledReason({ capabilities, providerSupportsLocal });
-  const placeSeat = usePlaceSeat(state.config, capabilities.host.platform);
+  const placeSeat = usePlaceSeat(appConfig, capabilities.host.platform);
   const canManageCloud = placeSeat.role === "admin" && (livePlace === "cloud" || livePlace === "auto");
   const canManageVm = placeSeat.role === "admin" && profileBot.computer === "vm" && livePlace === "vm";
   const [phase, setPhase] = useState<Phase>("checking");
@@ -277,9 +285,9 @@ export function ComputerPanel({
   const panelTabs = computerPanelTabs(tabsContext);
   const panelView = fullscreen || inline ? "computer" : resolveComputerPanelView(storedPanelView, tabsContext);
   const panelRef = useComputerPanelEntry(profileBot.id, panelView);
-  const browserAvailableHere = browserAvailable(state.config);
-  const browserEnabled = builtInBrowserEnabled(state.config) && bot.browser !== false
-    && (browserAvailableHere || state.config?.browserEngine?.installable === true);
+  const browserAvailableHere = browserAvailable(appConfig);
+  const browserEnabled = builtInBrowserEnabled(appConfig) && bot.browser !== false
+    && (browserAvailableHere || appConfig?.browserEngine?.installable === true);
   const [retry, setRetry] = useState(0);
   const [livePreviewFailed, setLivePreviewFailed] = useState<string | null>(null);
   const [decodedDesktop, setDecodedDesktop] = useState<{ key: string; ready: boolean } | null>(null);
@@ -326,7 +334,7 @@ export function ComputerPanel({
     }
     return () => { vmActionController.current?.abort(); };
   }, [bot.id, bot.threadId, bot.computer, panelView]);
-  const selectedInstance = state.instances.find(
+  const selectedInstance = instances.find(
     (instance) => instance.instanceId === bot.modelSelection.instanceId,
   );
   const explicitPanelView = useRef(false);
@@ -348,7 +356,7 @@ export function ComputerPanel({
       : previous === null ? readComputerPanelView(bot.id) : "computer");
   }, [panelTargetKey, bot.id, bot.computer, browserEnabled]);
 
-  const requestedSignIn = state.signInFocus?.botId === bot.id ? state.signInFocus : undefined;
+  const requestedSignIn = useStoreSelector((state) => state.signInFocus?.botId === bot.id ? state.signInFocus : undefined);
   const [signInRequest, setSignInRequest] = useState<{ url: string; site: string; nonce: number }>();
   // A published page's Open (usePageOpener): this bot's browser shows, with the page in a new tab.
   const [pageRequest, setPageRequest] = useState<PanelPage>();
@@ -392,13 +400,13 @@ export function ComputerPanel({
   );
   const cloudSupported = canWorkOnCloud(cloudEngineOf(selectedInstance));
   const cloudRoutineReady = Boolean(
-    state.config?.vps?.configured &&
-      computerCapableEngine(state.instances, bot.modelSelection.instanceId)?.snapshot.state === "available",
+    appConfig?.vps?.configured &&
+      computerCapableEngine(instances, bot.modelSelection.instanceId)?.snapshot.state === "available",
   );
   useEffect(() => {
     if (panelView !== "computer") return;
     let alive = true;
-    const target = `${connectionKey}:${bot.vpsAlias ?? ""}:${bot.section ?? ""}:${state.config?.vps?.sshAlias ?? ""}`;
+    const target = `${connectionKey}:${bot.vpsAlias ?? ""}:${bot.section ?? ""}:${appConfig?.vps?.sshAlias ?? ""}`;
     if (lastStatusTarget.current !== target) {
       lastStatusTarget.current = target;
       vpsReadinessAttempts.current = 0;
@@ -437,7 +445,7 @@ export function ComputerPanel({
       setResolvedComputerSelection({ botId: bot.id, threadId: bot.threadId, computer: bot.computer, cloudBackend });
       return;
     }
-    if (!selectedInstance && !state.hydrated) { setPhase("checking"); return; }
+    if (!selectedInstance && !hydrated) { setPhase("checking"); return; }
     if (bot.computer === "vm") {
       if (!vmSupported) {
         setError(new LocalizedPanelError("computer.err.vmEngine"));
@@ -584,10 +592,10 @@ export function ComputerPanel({
     isLinux,
     providerSupportsLocal,
     selectedInstance?.driverKind,
-    state.hydrated,
+    hydrated,
     vmSupported,
     cloudSupported,
-    state.config?.vps?.sshAlias,
+    appConfig?.vps?.sshAlias,
     panelView,
     computerSelectionPersisted,
     surfaceReady,
@@ -613,7 +621,7 @@ export function ComputerPanel({
     onMissedFrames: () => setRetry(value => value + 1),
   }), [profileBot.id, vpsStatus?.resourceKey]);
 
-  const control = state.computerControl[bot.id] ?? { held: false, helpReason: null };
+  const control = useStoreSelector((state) => state.computerControl[bot.id]) ?? { held: false, helpReason: null };
   const requestControl = useCallback(async (action: ComputerControlAction, controlLeaseId?: string, cid?: string) => {
     const snap = computerControlSnapshotSchema.parse(await api(`/api/bots/${bot.id}/computer/control`, {
       method: "POST",
@@ -793,7 +801,7 @@ export function ComputerPanel({
   const previewOpensDesktop = Boolean(frameSrc && (liveTarget || cloudPreviewReady));
 
   const signInHelp = control.help ?? null;
-  const signInAsker = signInHelp ? state.bots.find((candidate) => candidate.id === signInHelp.botId)?.name ?? bot.name : bot.name;
+  const signInAsker = useStoreSelector((state) => signInHelp ? botById(state, signInHelp.botId)?.name ?? bot.name : bot.name);
   useEffect(() => {
     let alive = true;
     api(`/api/bots/${bot.id}/computer/control`)
@@ -1011,14 +1019,14 @@ export function ComputerPanel({
 
   const openConnectionSettings = () => dispatch({ type: "toggleAppSettings", open: true, section: "computer" });
 
-  const browserCanTurnOn = browserAvailableHere || state.config?.browserEngine?.installable === true;
+  const browserCanTurnOn = browserAvailableHere || appConfig?.browserEngine?.installable === true;
   const [browserTurningOn, setBrowserTurningOn] = useState(false);
   const turnOnBrowser = async () => {
     if (browserTurningOn) return;
     setBrowserTurningOn(true);
     setError(null);
     try {
-      if (!builtInBrowserEnabled(state.config)) {
+      if (!builtInBrowserEnabled(appConfig)) {
         const config: ConfigStatus = await api("/api/config", {
           method: "PATCH",
           body: JSON.stringify({ features: { browser: true } }),
@@ -1042,7 +1050,7 @@ export function ComputerPanel({
       <Globe size={15} className="shrink-0 text-ink-secondary" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <div className="text-[13px] font-medium text-ink">{t("computer.browserSwitch.title", { name: bot.name })}</div>
-        {!browserCanTurnOn && <div className="text-[12px] text-ink-secondary">{browserUnavailableReason(state.config)}</div>}
+        {!browserCanTurnOn && <div className="text-[12px] text-ink-secondary">{browserUnavailableReason(appConfig)}</div>}
       </div>
       <Switch
         checked={browserEnabled}
@@ -1058,7 +1066,7 @@ export function ComputerPanel({
       : phase === "vps-stopped" ? "asleep" : containerState === "missing" ? "none" : undefined;
   const viewOf = (place: PlaceFacts["place"]): PlaceView => placeViewFor({
     ...placeFacts({
-      bot, place, seat: placeSeat, config: state.config, instances: state.instances,
+      bot, place, seat: placeSeat, config: appConfig, instances,
       local: { ready: localSelectable, reason: localDisabledReason ?? t("computer.unavailableLocal") },
       ...(place === "cloud" ? { computer: cloudComputer } : {}),
       ...(place === "auto" && currentTeamComputer ? { teamComputer: currentTeamComputer.name } : {}),
@@ -1068,7 +1076,7 @@ export function ComputerPanel({
   const cloudView = viewOf("cloud");
   const autoView = viewOf("auto");
   const placeOptions = ([null, "cloud", "vm", "local", "browser", "off"] as const)
-    .filter((mode) => mode === null || mode === "off" || (placeOffered(mode, state.config) && !(mode === "local" && capabilities.localComputer.reasonCode === "remote-server")))
+    .filter((mode) => mode === null || mode === "off" || (placeOffered(mode, appConfig) && !(mode === "local" && capabilities.localComputer.reasonCode === "remote-server")))
     .map((mode) => ({
       mode,
       simpleLabel: worksOnSimpleLabel(mode ?? undefined, capabilities.host.platform),
@@ -1198,7 +1206,7 @@ export function ComputerPanel({
     };
     // no computer to show: the bot gets its own (from the browser it was set to), or one is added; never a browser-only card
     const noComputer = phase === "browser" || phase === "auto-unavailable" || (phase === "off" && profileBot.computer !== "off");
-    const ownComputer = noComputer && profileBot.computer === "browser" && Boolean(state.config?.vps?.configured);
+    const ownComputer = noComputer && profileBot.computer === "browser" && Boolean(appConfig?.vps?.configured);
     const needsAdmin = placeSeat.role !== "admin" && (noComputer || phase === "vps-stopped" || phase === "vps-unconfigured" || phase === "vps-incompatible");
     const wake = () => {
       if (checking) setQueuedWake(wakeKey);
@@ -1356,7 +1364,7 @@ export function ComputerPanel({
             <Globe size={22} className="text-ink-secondary" aria-hidden="true" />
             <div className="text-[14px] font-medium text-ink">{t("computer.browserOff.title")}</div>
             <p className="text-[12px] leading-5 text-ink-secondary">
-              {browserCanTurnOn ? t("computer.browserOff.body", { name: bot.name }) : browserUnavailableReason(state.config)}
+              {browserCanTurnOn ? t("computer.browserOff.body", { name: bot.name }) : browserUnavailableReason(appConfig)}
             </p>
             {errorText && (
               <div role="alert" className="w-full text-[12px] text-danger">

@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from "react";
 import { openSignIn } from "@/lib/sign-in-sheet";
 import { importFirst, previousOpenAt } from "@/lib/import-first";
 import { ChevronRight } from "../icons";
-import { useStore, type AppSettingsSection } from "@/state/store";
+import { useDispatch, useStoreSelector, useStoreShallow, type AppSettingsSection } from "@/state/store";
 import { ADVANCED_PAGES, type AdvancedPage } from "@/lib/open-settings";
 import { t, tPreferred, tOptional } from "@/lib/i18n";
 import { HELP_CENTER_URL, appVersion, openExternalLink } from "@/lib/app-links";
@@ -98,11 +98,10 @@ function PageRow({ page, title, value, hint, ...rest }: { page: string; title: s
 /** Grok's account card: the person's initials or photo, their name and the account they are signed in with, then Add
  * account and Sign Out as pills (or Add, for a name, where nobody signs in); the name opens a small form. */
 export function AccountRows() {
-  const { state } = useStore();
+  const profile = useStoreSelector((s) => s.config?.profile);
   const accounts = useAccounts();
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
-  const profile = state.config?.profile;
   const active = accounts.view?.active ?? null;
   const name = profile?.name?.trim() || active?.email?.split("@")[0] || "";
   const email = active?.email ?? profile?.email?.trim() ?? "";
@@ -184,9 +183,10 @@ function DressUpRow() {
 
 export function GeneralPane({ has, remoteActive }: { has: Has; remoteActive: boolean }) {
   const { at } = useSubPage();
-  const { state } = useStore();
+  const completedAt = useStoreSelector((s) => s.config?.onboarding?.completedAt);
+  const botCount = useStoreSelector((s) => s.bots?.length ?? 0);
   if (at === "import") return <AdminOnly><ImportSettings /></AdminOnly>;
-  const lead = importFirst({ completedAt: state.config?.onboarding?.completedAt, lastOpenAt: previousOpenAt(), bots: state.bots?.length ?? 0 });
+  const lead = importFirst({ completedAt, lastOpenAt: previousOpenAt(), bots: botCount });
   const bring = has("import") && (
     <SettingsGroup label={tPreferred("settings.docs.bring", "settings.section.import")} block="import">
       <SettingsRows><ImportRow /></SettingsRows>
@@ -385,9 +385,9 @@ const ADVANCED_HINTS: Record<AdvancedPage, LocaleKey> = {
 
 /** The first screen of Advanced: the rarer pages, and the archived bots while there are any. */
 export function AdvancedIndex({ pages, remoteActive, onOpen }: { pages: readonly AdvancedPage[]; remoteActive: boolean; onOpen: (page: AdvancedPage) => void }) {
-  const { state } = useStore();
+  const archivedBots = useStoreShallow((s) => s.bots.filter((bot) => bot.hidden && !bot.movedTo));
   const [archivedOpen, setArchivedOpen] = useState(false);
-  const archived = remoteActive ? [] : state.bots.filter((bot) => bot.hidden && !bot.movedTo);
+  const archived = remoteActive ? [] : archivedBots;
   return (
     <>
       <RowsCard label={t("settings.docs.everythingElse")} data-settings-block="advanced-pages">
@@ -402,9 +402,10 @@ export function AdvancedIndex({ pages, remoteActive, onOpen }: { pages: readonly
 }
 
 function AppsPage({ has }: { has: Has }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector((s) => s.config);
   const { at } = useSubPage();
-  const skills = has("skills") && skillsLibraryEnabled(state.config);
+  const skills = has("skills") && skillsLibraryEnabled(config);
   if (at === "mcp") return <div data-settings-block="mcp" className="contents"><AdminOnly><McpServersPanel embedded rows /></AdminOnly></div>;
   if (at === "skills") return <div data-settings-block="skills" className="contents"><SkillsSection /></div>;
   return (

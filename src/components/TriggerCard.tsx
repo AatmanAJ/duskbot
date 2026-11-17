@@ -6,7 +6,8 @@ import { automationFor, automationSentence, automationStatus, cardAutomation, fi
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { saveWebhookCredential, webhookCredentialStore } from "@/lib/webhook-credentials";
-import { api, ApiError, useStore, type OptionCardData } from "@/state/store";
+import { api, ApiError, useDispatch, useStoreSelector, useStoreShallow, type AppState, type Bot, type OptionCardData } from "@/state/store";
+import { botById } from "@/state/store-index";
 import { appWaitingLine } from "@/lib/app-automations";
 import { useAppTriggers } from "@/lib/app-triggers";
 import { useAllAutomationActions } from "./automations/app-actions";
@@ -16,23 +17,37 @@ import { friendlyError } from "@/lib/plain-error";
 const WebhookEditor = lazy(async () => ({ default: (await import("./WebhookTrigger")).WebhookEditor }));
 const AppEventEditor = lazy(async () => ({ default: (await import("./automations/AppEventEditor")).AppEventEditor }));
 
+const NO_BOTS: Bot[] = [];
+const selectRoutines = (state: AppState) => state.routines;
+const selectWebhooks = (state: AppState) => state.webhooks;
+const selectRoutineRuns = (state: AppState) => state.routineRuns;
+const selectRoutinesLoading = (state: AppState) => state.routinesLoadState === "loading";
+const selectBotIds = (state: AppState) => state.bots.map((bot) => bot.id);
+
 const ACTION = "rounded-md px-1.5 py-0.5 font-medium hover:bg-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50";
 
 /** What a chat-made automation leaves in the conversation: one sentence, what happens next or what happened last. */
 export function TriggerCard({ card, threadId }: { card: OptionCardData; threadId?: string }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const routines = useStoreSelector(selectRoutines);
+  const webhooks = useStoreSelector(selectWebhooks);
+  const routineRuns = useStoreSelector(selectRoutineRuns);
+  const routinesLoading = useStoreSelector(selectRoutinesLoading);
+  const botIds = useStoreShallow(selectBotIds);
   const actions = useAllAutomationActions();
   const appTriggers = useAppTriggers();
   const [editing, setEditing] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const [error, setError] = useState<string>();
   const ref = cardAutomation(card);
+  const automation = ref && automationFor(ref, { routines, webhooks, appTriggers: appTriggers.triggers, runs: routineRuns, bots: botIds.map((id) => ({ id })) });
+  const ownerName = useStoreSelector((s) => botById(s, automation?.botId)?.name);
+  const visibleBots = useStoreShallow((s) => (editing ? s.bots.filter((bot) => !bot.hidden) : NO_BOTS));
   if (!ref) return null;
-  const automation = automationFor(ref, { routines: state.routines, webhooks: state.webhooks, appTriggers: appTriggers.triggers, runs: state.routineRuns, bots: state.bots });
   const fallbackName = card.routineRequest?.undo?.name ?? card.webhookRequest?.undo?.name ?? card.appTriggerRequest?.undo?.name ?? card.title;
 
   if (card.undone || !automation) {
-    if (!card.undone && ref.kind === "schedule" && state.routinesLoadState === "loading") return null;
+    if (!card.undone && ref.kind === "schedule" && routinesLoading) return null;
     if (!card.undone && ref.kind === "app" && !appTriggers.loaded) return null;
     return (
       <div data-trigger-card={ref.id} className="flex w-full max-w-[840px] items-center gap-2 text-[13px] text-ink-tertiary">
@@ -42,7 +57,7 @@ export function TriggerCard({ card, threadId }: { card: OptionCardData; threadId
     );
   }
 
-  const botName = state.bots.find((bot) => bot.id === automation.botId)?.name ?? t("routines.unavailableBot");
+  const botName = ownerName ?? t("routines.unavailableBot");
   const sentence = automationSentence(automation, botName);
   const status = automationStatus(automation);
   const last = automation.runs.find((run) => run.status !== "queued");
@@ -65,7 +80,6 @@ export function TriggerCard({ card, threadId }: { card: OptionCardData; threadId
         : friendlyError(failure)))
       .finally(() => setUndoing(false));
   };
-  const visibleBots = state.bots.filter((bot) => !bot.hidden);
 
   return (
     <section data-trigger-card={automation.id} data-automation-status={status.state} aria-label={sentence} className="w-full max-w-[640px] rounded-xl border border-transparent bg-card px-3.5 py-2.5 text-[13px]">
@@ -89,7 +103,7 @@ export function TriggerCard({ card, threadId }: { card: OptionCardData; threadId
       {editing && createPortal(
         <Suspense fallback={null}>
           {automation.kind === "app" ? <AppEventEditor trigger={automation.appTrigger} bots={visibleBots} onClose={() => setEditing(false)} />
-            : <WebhookEditor webhook={state.webhooks.find((webhook) => webhook.id === automation.id)} bots={visibleBots} onClose={() => setEditing(false)} onCredential={(credential, id) => saveWebhookCredential(webhookCredentialStore(), id, credential)} />}
+            : <WebhookEditor webhook={webhooks.find((webhook) => webhook.id === automation.id)} bots={visibleBots} onClose={() => setEditing(false)} onCredential={(credential, id) => saveWebhookCredential(webhookCredentialStore(), id, credential)} />}
         </Suspense>,
         document.body,
       )}

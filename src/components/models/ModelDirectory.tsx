@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Search, X } from "../../icons";
 import { PROVIDER_SECTIONS, type ProviderSection } from "../../../shared/model-providers";
 import type { SearchHit } from "../../../shared/model-search";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { cachedProviders, loadProviders, placeLine, useModelSearch, type ProviderInfo, type ProvidersAnswer } from "@/lib/model-providers";
@@ -27,7 +27,7 @@ export function providerStatus(provider: ProviderInfo): { text: string; tone?: "
 /** Settings > Models: one search over every provider and model, and a short sheet to connect any of them where the
  * bots run. */
 export function ModelDirectory() {
-  const { state } = useStore();
+  const instances = useStoreSelector((s) => s.instances);
   const [answer, setAnswer] = useState<ProvidersAnswer | null>(cachedProviders);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
@@ -39,7 +39,7 @@ export function ModelDirectory() {
     let live = true;
     loadProviders().then((next) => { if (live) setAnswer(next); }, () => { if (live) setFailed(true); });
     return () => { live = false; };
-  }, [state.instances]);
+  }, [instances]);
 
   if (!answer) {
     return failed ? null : (

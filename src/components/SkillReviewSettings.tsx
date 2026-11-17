@@ -9,17 +9,18 @@ import {
   skillReviewSteps,
   skillReviewUnavailableEngines,
 } from "@/lib/feature-flags";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, useStoreShallow, type ConfigStatus } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { Switch } from "./SettingsPrimitives";
 import { friendlyError } from "@/lib/plain-error";
 
 export function SkillReviewSettings() {
-  const { state, dispatch } = useStore();
-  const authoring = skillAuthoringEnabled(state.config);
-  const enabled = skillReviewEnabled(state.config);
-  const confirmedSteps = skillReviewSteps(state.config);
-  const unavailable = skillReviewUnavailableEngines(state.bots, state.instances);
+  const dispatch = useDispatch();
+  const config = useStoreSelector((s) => s.config);
+  const authoring = skillAuthoringEnabled(config);
+  const enabled = skillReviewEnabled(config);
+  const confirmedSteps = skillReviewSteps(config);
+  const unavailable = useStoreShallow((s) => skillReviewUnavailableEngines(s.bots, s.instances));
   const [value, setValue] = useState(String(confirmedSteps));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);

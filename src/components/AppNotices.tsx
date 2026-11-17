@@ -3,7 +3,7 @@ import { openSignIn } from "@/lib/sign-in-sheet";
 const browserSignIn = () => Boolean(window.duskDesktop?.cloudAccount?.continueInBrowser);
 import type { CloudAccountState } from "../../electron/cloud-account.mjs";
 import type { CloudOffer } from "../../electron/cloud-home.mjs";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type AppState } from "@/state/store";
 import { track } from "@/lib/analytics";
 import { buyOfferAllowed, cloudNoticeKind, cloudPlanView, cloudTrialNotice, cloudTrialView, offerTrialDays } from "@/lib/cloud-plan";
 import { jobRoutine, useCloudIntent } from "@/lib/cloud-intent";
@@ -36,9 +36,37 @@ import { feedbackDue } from "@/lib/feedback-prompt";
 import { noticeActed, noticeClosed, noticeOnScreen } from "@/lib/notice-clock";
 
 const trialKey = (trial: { state: string; endsAt: number }) => `${trial.state}:${trial.endsAt}`;
+const selectOnboarding = (state: AppState) => state.config?.onboarding;
+const selectConnected = (state: AppState) => state.connected;
+const selectEnginesKnown = (state: AppState) => state.instances.length > 0;
+const selectEngineReady = (state: AppState) => state.instances.some(engineReady);
+const selectRoutines = (state: AppState) => state.routines;
+const selectRoutineRuns = (state: AppState) => state.routineRuns;
+const selectCloudAdd = (state: AppState) => Boolean(state.cloudAdd);
+const selectCloudHowTo = (state: AppState) => state.cloudHowTo;
+const selectUsedBefore = (state: AppState) => usedBefore(state.bots);
+const selectInvested = (state: AppState) => isInvested(state);
+const selectFirstChatQuiet = (state: AppState) => firstChatQuiet(state);
+const selectCloudHome = (state: AppState) => Boolean(state.config?.cloudHome);
+const selectManagedPolicy = (state: AppState) => Boolean(state.config?.managedPolicy);
 
 export function AppNotices({ quiet = false, viewer = null, now = Date.now }: { quiet?: boolean; viewer?: WelcomeViewer | null; now?: () => number }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const record = useStoreSelector(selectOnboarding);
+  const connected = useStoreSelector(selectConnected);
+  const enginesKnown = useStoreSelector(selectEnginesKnown);
+  const anyEngineReady = useStoreSelector(selectEngineReady);
+  const routines = useStoreSelector(selectRoutines);
+  const routineRuns = useStoreSelector(selectRoutineRuns);
+  const cloudAdd = useStoreSelector(selectCloudAdd);
+  const cloudHowTo = useStoreSelector(selectCloudHowTo);
+  const used = useStoreSelector(selectUsedBefore);
+  const invested = useStoreSelector(selectInvested);
+  const quietFirstChat = useStoreSelector(selectFirstChatQuiet);
+  const cloudHome = useStoreSelector(selectCloudHome);
+  const managedPolicy = useStoreSelector(selectManagedPolicy);
+  const signInDue = useStoreSelector((state) => cloudSignInDue(viewer, state, engineReady));
+  const popupWaits = useStoreSelector((state) => cornerPopupWaits(state, { quiet, idle: true, viewer, duringFirstChat: true }));
   const remote = window.duskDesktop?.remoteClient?.active === true;
   const local = localDesktopPage();
   const bridge = !remote && local ? window.duskDesktop?.cloudAccount : undefined;
@@ -87,7 +115,6 @@ export function AppNotices({ quiet = false, viewer = null, now = Date.now }: { q
     return () => { active = false; unsubscribe(); };
   }, []);
   const view = bridge ? cloudPlanView(account) : null;
-  const record = state.config?.onboarding;
   const introAllowed = Boolean(bridge) && organization !== true && !onboardingCloudOffered(record);
   const stage = introStage(record, now());
   const trialDue = cloudTrialNotice(plan);
@@ -104,32 +131,32 @@ export function AppNotices({ quiet = false, viewer = null, now = Date.now }: { q
   const trial = plan?.trial;
   const key = trial ? trialKey(trial) : null;
   const setupRecord = record && (intent.pending || intent.sent) ? { ...record, hintsSeen: [...record.hintsSeen, CLOUD_INTENT_GIVEN] } : record;
-  const setupHere = cloudSignInDue(viewer, state, engineReady)
-    || ["waiting", "shown"].includes(cloudSetupStage({ viewer, connected: state.connected, enginesKnown: state.instances.length > 0,
-      engineReady: state.instances.some(engineReady), onboarding: setupRecord, planned: Boolean(jobRoutine(state.routines, intent.sent)) }));
-  const waits = cornerPopupWaits(state, { quiet, idle: true, viewer, duringFirstChat: true }) || Boolean(state.cloudAdd) || state.cloudHowTo || setupHere;
+  const setupHere = signInDue
+    || ["waiting", "shown"].includes(cloudSetupStage({ viewer, connected, enginesKnown,
+      engineReady: anyEngineReady, onboarding: setupRecord, planned: Boolean(jobRoutine(routines, intent.sent)) }));
+  const waits = popupWaits || cloudAdd || cloudHowTo || setupHere;
   const kind = view ? cloudNoticeKind(view, account) : null;
   const introDue = (): boolean | null => {
     if (!introAllowed || !view) return false;
     if (view.kind === "unknown" || view.kind === "connecting" || organization === null) return null;
     // the corner card is the louder pitch: only once someone is invested (shared/cloud-upsell.ts), never in their first chats
-    if (!buyOfferAllowed(view) || !usedBefore(state.bots) || !isInvested(state)) return false;
+    if (!buyOfferAllowed(view) || !used || !invested) return false;
     if (offer === undefined) return null;
     if (offerTrialDays(offer) === null) return false;
     if (stage === "resting" && !introOpen) return false;
     return introOpen || stage === "due" ? true : null;
   };
   // a routine here that ran late or not at all while this computer slept: the plainest case for dusk cloud, said once
-  const late = bridge && !noticeSeen(record, LATE_ROUTINE_NOTICE) ? lateRoutineRun(state.routines ?? [], state.routineRuns ?? [], now()) : null;
+  const late = bridge && !noticeSeen(record, LATE_ROUTINE_NOTICE) ? lateRoutineRun(routines ?? [], routineRuns ?? [], now()) : null;
   const lateDue = (): boolean | null => {
     if (!late || !view) return false;
     if (view.kind === "unknown" || view.kind === "connecting" || organization === null) return null;
-    return organization === false && buyOfferAllowed(view) && !state.config?.cloudHome && !state.config?.managedPolicy;
+    return organization === false && buyOfferAllowed(view) && !cloudHome && !managedPolicy;
   };
   const cards = Boolean(bridge || planBridge);
   const launch = launchNotice();
   const notice = waits || closed ? null
-    : firstChatQuiet(state) ? null
+    : quietFirstChat ? null
     : cards || twoFact !== false || bring.fact !== false ? nextNotice({
     [GROK_MOVE_NOTICE]: false,
     [WHATS_NEW_NOTICE]: false,
@@ -179,7 +206,7 @@ export function AppNotices({ quiet = false, viewer = null, now = Date.now }: { q
       onDone={allowance.seen} action={{ label: t("notices.allowance.see"), onClick: () => dispatch({ type: "toggleAppSettings", open: true, section: "usage" }) }} />;
   }
   if (!notice && behind && !waits) return <NoticeToast text={behind.text} onDone={behind.seen} action={behind.action} />;
-  if (!notice && askFeedback && !waits && usedBefore(state.bots)) return <FeedbackCard onDone={() => setAskFeedback(false)} />;
+  if (!notice && askFeedback && !waits && used) return <FeedbackCard onDone={() => setAskFeedback(false)} />;
   if (!notice) return null;
 
   if (notice === CLOUD_INTRO && offer) {

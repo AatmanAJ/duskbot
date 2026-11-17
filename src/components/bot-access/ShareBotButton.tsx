@@ -2,16 +2,17 @@ import { useCallback, useState, type ReactNode } from "react";
 import { Share } from "../../icons";
 
 import { t } from "@/lib/i18n";
-import { useStore, type Bot } from "@/state/store";
+import { useStoreSelector, type Bot } from "@/state/store";
 import { Toast } from "../ui/Toast";
 import { saveAccess } from "./access";
 import { ShareBotDialog, type AccessChange } from "./ShareBotDialog";
 
 /** The team's name, or null anywhere but a team. */
 export function useTeamName(): string | null {
-  const { state } = useStore();
-  const team = (state.config as { team?: { name?: unknown } } | null | undefined)?.team;
-  return typeof team?.name === "string" && team.name ? team.name : null;
+  return useStoreSelector((state) => {
+    const team = (state.config as { team?: { name?: unknown } } | null | undefined)?.team;
+    return typeof team?.name === "string" && team.name ? team.name : null;
+  });
 }
 
 /** A bot's Share button on a team: opens who has access. `headerMenu` holds what else the button offers there. */

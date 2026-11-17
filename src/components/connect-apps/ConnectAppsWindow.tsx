@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
-import { api, useStore, type Action } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type Action } from "@/state/store";
 import type { LocaleKey } from "@/locales";
 import { t } from "@/lib/i18n";
 import { connectorDescription } from "@/lib/app-catalog";
@@ -153,7 +153,10 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   onClose: () => void;
   onTemplates: () => void;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const bots = useStoreSelector((s) => s.bots);
+  const instances = useStoreSelector((s) => s.instances);
+  const policy = useStoreSelector((s) => s.config?.managedPolicy);
   const connectors = useConnectors();
   const tokens = useTokenApps();
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
@@ -239,7 +242,6 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
     return () => previous?.focus();
   }, []);
 
-  const policy = state.config?.managedPolicy;
   const blocked = useCallback((slug: string) => policy?.apps && !policy.apps.allowAll && !policy.apps.allowlist.includes(slug)
     ? t("policy.managedBy", { organization: policy.organizationName }) : null, [policy]);
 
@@ -646,8 +648,8 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
         ways,
         connectors,
         ownFirst: !detailComposioLeads && (gmailShown || (OWN_KINDS.has(detailEntry.kind) && ways.length > 1)),
-        usedBy: card && connection(detailEntry.id) === "connected" ? botsUsingService(state.bots, state.instances, card.slug).map((bot) => bot.name) : [],
-        appBots: card ? botsUsingService(state.bots, state.instances, card.slug).map((bot) => ({ id: bot.id, name: bot.name })) : [],
+        usedBy: card && connection(detailEntry.id) === "connected" ? botsUsingService(bots, instances, card.slug).map((bot) => bot.name) : [],
+        appBots: card ? botsUsingService(bots, instances, card.slug).map((bot) => ({ id: bot.id, name: bot.name })) : [],
         ...(detailEntry.kind === "composio" ? { toolkit: snapshotToolkit(detailEntry.id) } : {}),
         remoteClient: window.duskDesktop?.remoteClient?.active === true,
         onOpenLogins: () => leaveFor(SETTINGS("logins")),
@@ -658,7 +660,7 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
           stalled: remote.stalled[vendor.id] === true,
           appId: vendor.id,
           accounts: remote.accounts(vendor.id),
-          bots: state.bots.map((bot) => ({ id: bot.id, name: bot.name })),
+          bots: bots.map((bot) => ({ id: bot.id, name: bot.name })),
           onReconnect: (server: string) => void remote.connect(vendor, { server }),
           onAddAccount: (account: string) => void remote.connect(vendor, { account }),
           onConnect: () => void remote.connect(vendor),

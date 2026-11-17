@@ -1,7 +1,7 @@
 import { MentionText } from "./MentionText";
 import type { MentionPeer } from "@/lib/mentions";
-import { createContext, useContext, useMemo, useRef, type ReactNode } from "react";
-import { botOpensTo, openBot, openThread, useStore, type Action, type AppState, type Bot, type Group, type ThreadTarget } from "@/state/store";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { botOpensTo, openBot, openThread, useStoreSelector, type Action, type AppState, type Bot, type Group, type ThreadTarget } from "@/state/store";
 import { useStoreRef } from "@/state/store-ref";
 import { t } from "@/lib/i18n";
 import { parseBotRefUrl, parseThreadRefUrl, resolveThreadRefAddress, splitThreadRefsForDisplay, type ThreadRefCandidate } from "@/lib/thread-refs";
@@ -38,15 +38,13 @@ export function collectThreadRefs(
 
 const signatureOf = (refs: ThreadRefCandidate[]) =>
   refs.map((ref) => `${ref.botId}\u0000${ref.threadId}\u0000${ref.title}\u0000${ref.activeAt ?? ""}\u0000${ref.botName}`).join("\u0001");
+const sameRefs = (a: ThreadRefCandidate[], b: ThreadRefCandidate[]) => signatureOf(a) === signatureOf(b);
+const selectThreadRefs = (state: AppState) => collectThreadRefs(state.bots, state.groups);
+const selectCurrentBotId = (state: AppState) => state.selectedId;
 
 export function ThreadRefsProvider({ children }: { children: ReactNode }) {
-  const { state } = useStore();
-  const next = collectThreadRefs(state.bots, state.groups);
-  const signature = signatureOf(next);
-  const cache = useRef({ signature, threads: next });
-  if (cache.current.signature !== signature) cache.current = { signature, threads: next };
-  const threads = cache.current.threads;
-  const currentBotId = state.selectedId;
+  const threads = useStoreSelector(selectThreadRefs, sameRefs);
+  const currentBotId = useStoreSelector(selectCurrentBotId);
   const value = useMemo(() => ({ threads, currentBotId }), [threads, currentBotId]);
   return <ThreadRefsContext.Provider value={value}>{children}</ThreadRefsContext.Provider>;
 }

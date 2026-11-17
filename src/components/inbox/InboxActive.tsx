@@ -2,7 +2,7 @@
 // conversations at work.
 import type { InboxView } from "../../../shared/inbox";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 import { useTeamPeople } from "@/state/team-people";
 import { AttentionThreadRows, attentionJumpAction, crossBotAttentionThreads } from "../SidebarBotActivity";
 import { NeedsYouLine } from "../TeamOwner";
@@ -10,13 +10,16 @@ import { closeInbox } from "@/state/inbox";
 import { inboxFixes } from "./inbox-view";
 
 export function InboxActive({ view }: { view: InboxView | null }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const bots = useStoreSelector((s) => s.bots);
+  const pendingQueued = useStoreSelector((s) => s.pendingQueued);
+  const groups = useStoreSelector((s) => s.groups);
   const team = useTeamPeople();
   const rows = view?.rows ?? [];
   const asked = new Set(rows.filter((row) => row.tab === "needs-you").map((row) => row.origin?.threadId));
   const news = new Set(rows.filter((row) => row.tab === "info").map((row) => row.origin?.threadId));
   const atWork = (task: { busy?: boolean; activity?: string; queued?: boolean }) => task.busy === true || task.activity === "working" || task.queued === true;
-  const entries = crossBotAttentionThreads(state.bots, state.pendingQueued, undefined, state.groups)
+  const entries = crossBotAttentionThreads(bots, pendingQueued, undefined, groups)
     .filter((entry) => !asked.has(entry.task.threadId) && (atWork(entry.task) || !news.has(entry.task.threadId)));
   const fixes = inboxFixes(team?.needsYou, view);
   return (

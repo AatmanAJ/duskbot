@@ -6,7 +6,7 @@ import { botRoom, closeBotLimit, useBotLimitOpen } from "@/lib/bot-limit";
 import { cloudPlanLabel } from "@/lib/cloud-plan";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { useCloudPlanSnapshot } from "./CloudTrialNotice";
 import { NoteLine, UpgradeButton, usageBridge, useUpgrade } from "./CloudUsageMeter";
@@ -23,8 +23,10 @@ export function BotLimitPopup() {
 }
 
 function BotLimitDialog({ onClose }: { onClose: () => void }) {
-  const { state } = useStore();
-  const bridge = usageBridge(state.config?.cloudHome === true);
+  const cloudHome = useStoreSelector((state) => state.config?.cloudHome === true);
+  const limit = useStoreSelector((state) => state.config?.botLimit);
+  const room = useStoreSelector(botRoom);
+  const bridge = usageBridge(cloudHome);
   const plan = useCloudPlanSnapshot(bridge);
   const usage = plan?.status === "paid" ? plan.usage ?? null : null;
   const [upgraded, setUpgraded] = useState<string | null>(null);
@@ -34,8 +36,7 @@ function BotLimitDialog({ onClose }: { onClose: () => void }) {
   // The Admin tells this Cloud about a new plan within a minute; until then the plan page and this Cloud disagree.
   const goingThrough = plan?.tier !== undefined && plan.tier !== "starter";
   const settled = upgraded !== null || goingThrough;
-  const limit = state.config?.botLimit;
-  const noRoom = limit !== undefined && botRoom(state) === 0;
+  const noRoom = limit !== undefined && room === 0;
 
   useEffect(() => {
     document.querySelector<HTMLElement>(`${POPUP} button`)?.focus();

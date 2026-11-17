@@ -3,7 +3,7 @@ import { Globe, Hand, Loader2, LockKeyhole, Moon, X } from "../icons";
 import { browserUnavailableReason } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
 import { usePageVisible } from "@/lib/page-visible";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useStoreSelector, type AppState, type Bot } from "@/state/store";
 import { askConfirm } from "./ConfirmDialog";
 import { BrowserProfilesManager } from "./BrowserProfilesManager";
 import { ChromeRow, type BrowserNav, type BrowserTab } from "./browser/ChromeRow";
@@ -34,15 +34,22 @@ function tabsOf(value: unknown): BrowserTab[] {
     : []);
 }
 
+const selectConfig = (state: AppState) => state.config;
+const selectTeam = (state: AppState) => state.config?.team;
+const selectChromeEngine = (state: AppState) => state.config?.browserEngine?.engine === "chrome";
+
 /**
  * A bot's browser: the page fills the panel on either engine, streamed over the v2 WebSocket when the new engine runs
  * it, else over the v1 live view. Security: a new connection never replays old input. Only the server gives this view a
  * hold: one of the same person's, when none of their views uses it or when they take it over here.
  */
 export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserSignIn; page?: BrowserPage }) {
-  const { state } = useStore();
+  const chrome = useStoreSelector(selectChromeEngine);
+  const signInOpen = useStoreSelector((state) => state.computerControl?.[bot.id]?.help?.place === "browser");
+  const team = useStoreSelector(selectTeam);
+  const savedProfileName = useStoreSelector((state) => state.config?.browserProfiles?.find((profile) => profile.id === bot.browserProfile)?.name);
   const [fallback, setFallback] = useState(false);
-  const stream = state.config?.browserEngine?.engine === "chrome" && !fallback;
+  const stream = chrome && !fallback;
   const [attempt, setAttempt] = useState(0);
   const [connected, setConnected] = useState(false);
   const [control, setControl] = useState<PreviewStreamControl | null>(null);
@@ -81,11 +88,10 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
   const signInPage = useRef<string | null>(null);
   const pageNow = useRef<string | null>(null);
   const latest = useRef({ openSignInPage: () => {}, takeControl: () => {} });
-  const signInOpen = state.computerControl?.[bot.id]?.help?.place === "browser";
-  const scopedThread = browserScope(state.config?.team, bot.threadId).threadId;
+  const scopedThread = browserScope(team, bot.threadId).threadId;
   keepNow.current = kept || signInOpen;
   const profileName = bot.browserProfile === "guest" ? "temporary browser"
-    : state.config?.browserProfiles?.find((profile) => profile.id === bot.browserProfile)?.name ?? `${bot.name}’s own browser`;
+    : savedProfileName ?? `${bot.name}’s own browser`;
   useEffect(() => { if (showProfiles) profilesDialog.current?.showModal(); else profilesDialog.current?.close(); }, [showProfiles]);
   useEffect(() => {
     browserControl.current?.hold(showTyping);
@@ -373,8 +379,8 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
 }
 
 export function BrowserPanel({ bot, signIn, page }: { bot: Bot; signIn?: BrowserSignIn; page?: BrowserPage }) {
-  const { state } = useStore();
-  const engine = state.config?.browserEngine;
+  const config = useStoreSelector(selectConfig);
+  const engine = config?.browserEngine;
   const [requested, setRequested] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [admin, setAdmin] = useState<boolean | null>(null);
@@ -390,7 +396,7 @@ export function BrowserPanel({ bot, signIn, page }: { bot: Bot; signIn?: Browser
   if (engine?.kind === "engine" && !installing && !engine.installError) return <LiveBrowser key={bot.id} bot={bot} signIn={signIn} page={page} />;
   return <div className="flex min-h-0 flex-1 flex-col items-start justify-center gap-3 p-5">
     <div className="text-[15px] font-medium text-ink">{engine?.kind === "engine" ? t("browser.panel.installIncomplete") : t("browser.panel.engineNotInstalled")}</div>
-    <p className="text-[13px] leading-relaxed text-ink-secondary">{engine?.kind === "engine" ? t("browser.panel.installIncompleteHelp") : engine?.installable && admin !== false ? t("browser.panel.engineNotInstalledHelp", { name: bot.name }) : browserUnavailableReason(state.config)}</p>
+    <p className="text-[13px] leading-relaxed text-ink-secondary">{engine?.kind === "engine" ? t("browser.panel.installIncompleteHelp") : engine?.installable && admin !== false ? t("browser.panel.engineNotInstalledHelp", { name: bot.name }) : browserUnavailableReason(config)}</p>
     {engine?.installable || engine?.kind === "engine" ? <button type="button" onClick={() => void install()} disabled={installing || admin !== true} className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-ink disabled:opacity-60">{installing ? t("browser.panel.installing") : engine?.kind === "engine" ? t("browser.panel.retryInstall") : t("browser.panel.installEngine")}</button> : null}
     {(engine?.installError || error) && <p role="alert" className="text-[12px] text-danger">{error ?? engine?.installError}</p>}
   </div>;

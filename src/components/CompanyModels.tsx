@@ -1,17 +1,21 @@
 import { useState } from "react";
 import { Check } from "../icons";
-import { useStore, type InstanceInfo } from "@/state/store";
+import { useStoreActions, useStoreSelector, type AppState, type InstanceInfo } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { companyInstanceFor, instanceCanRun, planCompanySwitch } from "@/lib/company-models";
 import { EngineSetup, needsCli } from "./EngineSetup";
 
+const selectBots = (state: AppState) => state.bots;
+const selectInstances = (state: AppState) => state.instances;
 const providerNames: Record<string, string> = { anthropic: "Anthropic", openai: "OpenAI", openrouter: "OpenRouter" };
 
 export function CompanyModels({ providers }: { providers: ReadonlyArray<{ id: string; configured: boolean; models: readonly string[] }> }) {
-  const { state, dispatch, flushBotPatches } = useStore();
+  const { dispatch, flushBotPatches } = useStoreActions();
+  const allBots = useStoreSelector(selectBots);
+  const instances = useStoreSelector(selectInstances);
   const [switching, setSwitching] = useState(false);
   const [done, setDone] = useState<{ name: string; bots: string[] } | null>(null);
-  const plan = planCompanySwitch(state.bots, state.instances);
+  const plan = planCompanySwitch(allBots, instances);
   const target = plan.target;
   const names = (bots: typeof plan.bots) => bots.map((bot) => bot.name).join(", ");
 
@@ -36,7 +40,7 @@ export function CompanyModels({ providers }: { providers: ReadonlyArray<{ id: st
         <span className="text-ink-secondary">{provider.configured ? t("organization.modelCount", { count: provider.models.length }) : t("organization.notConfigured")}</span>
       </div>
       {provider.configured && provider.models.length > 0 &&
-        <CompanyEngineReadiness instance={companyInstanceFor(state.instances, provider.id)} instances={state.instances} />}
+        <CompanyEngineReadiness instance={companyInstanceFor(instances, provider.id)} instances={instances} />}
     </li>)}</ul>
     {done && <p role="status" className="break-words text-[12px] text-ink-secondary">{t("organization.useCompanyDone", { name: done.name, names: done.bots.join(", ") })}</p>}
     {target && plan.bots.length > 0 && <div data-company-switch className="flex flex-col items-start gap-2 rounded-lg border border-transparent p-3">

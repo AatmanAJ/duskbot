@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { CircleHelp } from "../icons";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { saveTeamProfile } from "@/lib/own-profile";
 import { createAboutMeDraft } from "./about-me-draft";
@@ -8,9 +8,9 @@ import { createAboutMeDraft } from "./about-me-draft";
 const drafts = new WeakMap<object, { controller: ReturnType<typeof createAboutMeDraft>; team: { current: boolean } }>();
 
 export function AboutMeSettings() {
-  const { state, dispatch } = useStore();
-  const confirmed = state.config?.profile?.aboutMe ?? "";
-  const team = Boolean(state.config?.team);
+  const dispatch = useDispatch();
+  const confirmed = useStoreSelector((state) => state.config?.profile?.aboutMe) ?? "";
+  const team = useStoreSelector((state) => Boolean(state.config?.team));
   let draft = drafts.get(dispatch);
   if (!draft) {
     const savesToTeam = { current: team };

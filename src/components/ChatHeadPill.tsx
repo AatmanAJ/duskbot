@@ -3,7 +3,7 @@ import { Lock, UserRound, Users } from "../icons";
 import type { ComponentProps, MouseEvent, ReactNode } from "react";
 
 import { t } from "@/lib/i18n";
-import { useStore, type Bot } from "@/state/store";
+import { useStoreSelector, type AppState, type Bot } from "@/state/store";
 import { awayFromMainThread } from "@/state/thread-navigation";
 import { BotAvatar } from "./Avatar";
 import { Icon } from "./Icon";
@@ -38,6 +38,8 @@ export interface ChatHeadRoom {
   expanded: boolean;
 }
 
+const selectSettingsOpen = (state: AppState) => state.settingsOpen;
+
 /** A bot's chat passes `bot`, `avatar` and `privacy`; a room passes `room` alone. */
 interface ChatHeadPillProps {
   bot?: Bot;
@@ -52,8 +54,8 @@ interface ChatHeadPillProps {
  * No dot: the sidebar says which of the bot's other conversations need a look. A room's header is the same pill with
  * its members' faces. */
 export function ChatHeadPill({ bot, avatar, privacy = null, room, onToggle }: ChatHeadPillProps) {
-  const { state } = useStore();
-  const open = room ? room.expanded : state.settingsOpen;
+  const settingsOpen = useStoreSelector(selectSettingsOpen);
+  const open = room ? room.expanded : settingsOpen;
   const privacyLabel = privacyLabelOf(privacy);
   const PrivacyIcon = privacy ? PRIVACY_ICONS[privacy.kind] : Users;
   const title = bot?.tasks?.find((task) => task.threadId === bot.threadId)?.title;

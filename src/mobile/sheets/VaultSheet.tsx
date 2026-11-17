@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, KeyRound, Plus } from "../../icons";
 import { t } from "@/lib/i18n";
 import { deleteLogin, listLogins } from "@/lib/logins";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch, useStoreSelector } from "@/state/store";
 import type { LoginBots, LoginSummary } from "../../../shared/logins";
 import type { SavedSecretSummary } from "../../../shared/saved-secrets";
 import { Sheet } from "../Sheet";
@@ -25,7 +25,8 @@ function VaultTile() {
 }
 
 export function VaultSheet({ open, onClose }: SheetPageProps<"vault">) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const allBots = useStoreSelector((s) => s.bots);
   const [entries, setEntries] = useState<VaultEntry[]>([]);
   const [selected, setSelected] = useState<VaultEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,7 +52,7 @@ export function VaultSheet({ open, onClose }: SheetPageProps<"vault">) {
   const who = (bots: LoginBots) => {
     if (bots === "all") return t("mobile.vault.allBots");
     if (!bots.length) return t("mobile.vault.noBots");
-    return t("mobile.vault.botAccess", { names: bots.map((id) => state.bots.find((bot) => bot.id === id)?.name ?? t("mobile.vault.unknownBot")).join(", ") });
+    return t("mobile.vault.botAccess", { names: bots.map((id) => allBots.find((bot) => bot.id === id)?.name ?? t("mobile.vault.unknownBot")).join(", ") });
   };
   const title = (entry: VaultEntry) => entry.kind === "login" ? entry.value.site : entry.value.label;
   const account = (entry: VaultEntry) => entry.kind === "login" ? entry.value.username || t("mobile.vault.noAccount") : t("mobile.vault.secret");

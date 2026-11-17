@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Search } from "../../icons";
-import { useStore, type ConfigStatus } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState, type ConfigStatus } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { scrollParent, scrollWithin } from "@/lib/scroll-within";
 import { t } from "@/lib/i18n";
@@ -39,12 +39,14 @@ function connected(entry: KeyEntry, config: ConfigStatus | null | undefined): bo
   return saved.configured || saved.included === true;
 }
 
+const selectConfig = (s: AppState) => s.config;
+
 /** A row of settings that aren't one key: its state on the quiet line, Set up opens them in a dialog. */
 function PanelRow({ entry }: { entry: KeyEntry }) {
-  const { state } = useStore();
+  const config = useStoreSelector(selectConfig);
   const titleId = useId();
   const [open, setOpen] = useState(false);
-  const saved = savedState(entry, state.config);
+  const saved = savedState(entry, config);
   const name = t(entry.labelKey);
   const hint = entry.status ? (saved.configured ? t("keys.connected") : t("keys.row.notConnected")) : t(entry.purposeKey);
   const action = saved.configured ? t("keys.row.change") : t("keys.row.setUp");
@@ -61,10 +63,11 @@ function PanelRow({ entry }: { entry: KeyEntry }) {
 }
 
 function ElsewhereRow({ entry }: { entry: KeyEntry }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector(selectConfig);
   const titleId = useId();
   const opens = entry.opens;
-  const saved = savedState(entry, state.config);
+  const saved = savedState(entry, config);
   const name = t(entry.labelKey);
   return (
     <KeyPlainRow data-key-row={entry.id} titleId={titleId} mark={<KeyMarkIcon entry={entry} />} title={name}
@@ -100,11 +103,11 @@ export function CloudDesktopKeys() {
 }
 
 function KeySection({ id, rows, open, onToggle }: { id: KeySectionId; rows: KeyEntry[]; open: boolean; onToggle: () => void }) {
-  const { state } = useStore();
+  const config = useStoreSelector(selectConfig);
   const section = KEY_SECTIONS.find((candidate) => candidate.id === id)!;
   const headId = useId();
   const bodyId = useId();
-  const count = rows.filter((entry) => connected(entry, state.config)).length;
+  const count = rows.filter((entry) => connected(entry, config)).length;
   return (
     <section data-keys-section={id} aria-labelledby={headId}>
       <button
@@ -138,7 +141,8 @@ function landOn(page: HTMLElement | null, request: KeyFocusRequest, section: Key
 }
 
 export function KeysPage() {
-  const { state } = useStore();
+  // With Azure chosen, Live calls do not use the OpenAI key that row points at.
+  const azureLive = useStoreSelector((s) => s.config?.live?.provider === "azure");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<ReadonlySet<KeySectionId>>(() => new Set());
   const pageRef = useRef<HTMLDivElement>(null);
@@ -160,8 +164,6 @@ export function KeysPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [focus]);
 
-  // With Azure chosen, Live calls do not use the OpenAI key that row points at.
-  const azureLive = state.config?.live?.provider === "azure";
   const live = liveCallEnabled();
   const rows = KEY_CATALOG.filter((entry) => keyMatches(entry, q) && !(azureLive && entry.id === "liveCalls")
     && (live || (entry.id !== "liveCalls" && entry.id !== "liveKey")));

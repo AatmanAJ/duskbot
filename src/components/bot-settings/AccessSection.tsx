@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { browserUnavailableReason, phoneAppEnabled } from "@/lib/feature-flags";
 import { ChevronDown, ChevronRight, FolderOpen, Plus } from "../../icons";
 
-import { api, useStore, useDispatch, type Bot } from "@/state/store";
+import { api, useStoreSelector, useDispatch, type AppState, type Bot } from "@/state/store";
 import { useBotEditor } from "./BotEditorContext";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -477,9 +477,11 @@ export function ConnectorToolsGrants({
 /** Research through treg (the X tools and the general research tools): on for every bot whenever this server holds a
  * treg key or a Cloud plan's research credential, and switchable off per bot. */
 function ResearchCard({ bot, patch }: { bot: Bot; patch: (patch: { xResearch: boolean }) => void }) {
-  const { state, dispatch } = useStore();
-  const connecting = xResearchAction(useCloudPlan()?.view ?? null) === "connecting" && state.config?.xResearch?.unavailable !== true;
-  const ownKey = state.config?.treg?.configured === true, included = state.config?.xResearch?.included === true;
+  const dispatch = useDispatch();
+  const xUnavailable = useStoreSelector((s) => s.config?.xResearch?.unavailable === true);
+  const ownKey = useStoreSelector((s) => s.config?.treg?.configured === true);
+  const included = useStoreSelector((s) => s.config?.xResearch?.included === true);
+  const connecting = xResearchAction(useCloudPlan()?.view ?? null) === "connecting" && !xUnavailable;
   const available = ownKey || included;
   const on = bot.xResearch !== false;
   const line = !available ? t(connecting ? "research.connecting" : "research.addKey")
@@ -537,8 +539,7 @@ export function cloudPreferenceShown(bot: Pick<Bot, "computer">, config: { cloud
  */
 export function VpsAliasField({ bot }: { bot: Bot }) {
   const { request: api } = useBotEditor();
-  const { state } = useStore();
-  const defaultAlias = state.config?.vps?.sshAlias ?? "";
+  const defaultAlias = useStoreSelector((s) => s.config?.vps?.sshAlias ?? "");
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Set when the old server could not be reached: the move went ahead, and this says what may be left there.
@@ -596,9 +597,9 @@ export function VpsAliasField({ bot }: { bot: Bot }) {
 }
 
 export function CloudPreference({ bot, patch }: { bot: Bot; patch: ReturnType<typeof useBotSettingsDerived>["patch"] }) {
-  const { state } = useStore();
+  const shown = useStoreSelector((s) => cloudPreferenceShown(bot, s.config));
   const { draft } = useBotEditor();
-  if (!cloudPreferenceShown(bot, state.config)) return null;
+  if (!shown) return null;
   return (
     <>
       {!bot.computer && (
@@ -630,6 +631,10 @@ export function CloudPreference({ bot, patch }: { bot: Bot; patch: ReturnType<ty
 
 export type AccessPart = "worksOn" | "folder" | "apps" | "phone" | "xResearch" | "mcp" | "tools" | "browser" | "webhooks" | "always";
 
+const selectConfig = (state: AppState) => state.config;
+const selectInstances = (state: AppState) => state.instances;
+const selectWebhooks = (state: AppState) => state.webhooks;
+
 export function AccessSection({
   bot,
   derived,
@@ -640,7 +645,10 @@ export function AccessSection({
   parts?: readonly AccessPart[];
 }) {
   const { draft } = useBotEditor();
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector(selectConfig);
+  const instances = useStoreSelector(selectInstances);
+  const allWebhooks = useStoreSelector(selectWebhooks);
   const {
     patch,
     canUseConnectedApps,
@@ -654,11 +662,11 @@ export function AccessSection({
     browserAllowed,
     browserEnabled,
   } = derived;
-  const browserInstallable = state.config?.browserEngine?.installable === true;
+  const browserInstallable = config?.browserEngine?.installable === true;
   const { capabilities } = useDesktopCapabilities();
-  const placeSeat = usePlaceSeat(state.config, capabilities.host?.platform ?? "other");
+  const placeSeat = usePlaceSeat(config, capabilities.host?.platform ?? "other");
   const worksOn = placeViewFor(placeFacts({
-    bot, place: bot.computer ?? "auto", seat: placeSeat, config: state.config, instances: state.instances,
+    bot, place: bot.computer ?? "auto", seat: placeSeat, config, instances,
   }));
   // The same list the Vault tab shows: Composio's connected accounts plus the native Email connection.
   const apps = useBotApps(bot);
@@ -666,7 +674,7 @@ export function AccessSection({
   const connectedSlugs = apps.connectedSlugs;
   const appLabels = Object.fromEntries(apps.apps.map((app) => [app.slug, app.label]));
 
-  const webhooks = state.webhooks.filter((webhook) => webhook.botId === bot.id);
+  const webhooks = allWebhooks.filter((webhook) => webhook.botId === bot.id);
   const alwaysAllow = bot.alwaysAllow ?? [];
   const shows = (part: AccessPart) => !parts || parts.includes(part);
 
@@ -758,7 +766,7 @@ export function AccessSection({
               {!desktopBrowser
                 ? browserBlockedOnWindows && !browserInstallable
                   ? t("botAccess.browser.windowsUnavailable")
-                  : browserUnavailableReason(state.config)
+                  : browserUnavailableReason(config)
                 : !browserFeature
                   ? t("botAccess.browser.disabledInSettings")
                   : !canUseBrowser
@@ -787,7 +795,7 @@ export function AccessSection({
           <RecordStepsRow
             on={bot.recordBrowserSteps === true}
             browserOn={browserEnabled && bot.computer !== "off"}
-            myChrome={state.config?.browserEngine?.myChrome === true && (state.config?.browserProfiles ?? []).some((profile) => profile.id === bot.browserProfile && profile.browser === "chrome")}
+            myChrome={config?.browserEngine?.myChrome === true && (config?.browserProfiles ?? []).some((profile) => profile.id === bot.browserProfile && profile.browser === "chrome")}
             onChange={(recordBrowserSteps) => patch({ recordBrowserSteps })}
           />
         )}

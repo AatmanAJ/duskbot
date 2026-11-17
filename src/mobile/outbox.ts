@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo } from "react";
-import { useStore, type Action } from "@/state/store";
+import { useDispatch, useStoreSelector, type Action } from "@/state/store";
 import { installSendOutbox, type OutboxSend, type SendOutbox } from "@/state/send-outbox";
 import { ActiveConnection, outboxKey } from "./connection/active";
 import { usePlatform, type MobilePlatform } from "./platform";
@@ -106,10 +106,11 @@ export function createOutbox(prefs: MobilePlatform["prefs"], key: string, now: (
 export function useOutbox() {
   const platform = usePlatform();
   const connection = useContext(ActiveConnection);
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const live = useStoreSelector((s) => s.hydrated && s.connected);
   const outbox = useMemo(() => (connection ? createOutbox(platform.prefs, outboxKey(connection)) : null), [platform, connection]);
   useEffect(() => (outbox ? installSendOutbox(outbox) : undefined), [outbox]);
-  const ready = Boolean(outbox && state.hydrated && state.connected);
+  const ready = Boolean(outbox && live);
   useEffect(() => { if (ready) void outbox!.flush(dispatch); }, [ready, outbox, dispatch]);
-  useEffect(() => platform.onResume?.(() => { if (outbox && state.hydrated && state.connected) void outbox.flush(dispatch); }), [platform, outbox, state.hydrated, state.connected, dispatch]);
+  useEffect(() => platform.onResume?.(() => { if (outbox && live) void outbox.flush(dispatch); }), [platform, outbox, live, dispatch]);
 }

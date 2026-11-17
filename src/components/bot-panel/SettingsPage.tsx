@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { t } from "@/lib/i18n";
 import { shortPath } from "@/lib/short-path";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, useStoreSelector, type Bot } from "@/state/store";
 import { useTeamName } from "../bot-access/ShareBotButton";
 import { BotApiCard } from "../bot-settings/BotApiCard";
 import { useManagedSkills } from "../bot-settings/SkillsSection";
@@ -36,7 +36,8 @@ export function SettingsPage({ bot, onOpen, more }: {
   /** rows that join the rest under More settings */
   more?: ReactNode;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const engineCoordinates = useStoreSelector((s) => s.instances.find((instance) => instance.instanceId === bot.modelSelection.instanceId)?.capabilities?.agentsMcp);
   const skills = useManagedSkills(bot);
   const { capabilities } = useDesktopCapabilities();
   const memoryLine = useMemoryLine(bot);
@@ -49,7 +50,6 @@ export function SettingsPage({ bot, onOpen, more }: {
 
   const skillsOn = skills.skills.filter((skill) => skill.enabled).length;
   const backups = bot.fallback?.length ?? 0;
-  const engineCoordinates = state.instances.find((instance) => instance.instanceId === bot.modelSelection.instanceId)?.capabilities?.agentsMcp;
   const editable = bot.yourAccess !== "view";
 
   return (

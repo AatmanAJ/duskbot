@@ -1,6 +1,8 @@
 // On a Team Cloud: a line in the person's inbox says who it is from and where it came from, with the way back there, and
 // what their assistant answered for them. An answer that came back from someone's inbox says who answered.
-import { useStore, openThread, type Message } from "@/state/store";
+import { useStoreSelector, openThread, type Message } from "@/state/store";
+import { botById } from "@/state/store-index";
+import { useStoreRef } from "@/state/store-ref";
 import { isQuestionCard } from "@/lib/question-card";
 import { t } from "@/lib/i18n";
 import type { TeamPerson } from "@/state/team-people";
@@ -11,21 +13,20 @@ const face = (person: { name: string; email: string }): TeamPerson => ({ email: 
 
 /** The face of who a line is from: a teammate's picture, or the bot's avatar. */
 export function InboxSender({ from, size = 16 }: { from: NonNullable<Message["inbox"]>["from"]; size?: number }) {
-  const { state } = useStore();
+  const bot = useStoreSelector((s) => botById(s, from.botId));
   if (from.email) return <PersonFace person={face({ name: from.name, email: from.email })} size={size} />;
-  const bot = state.bots.find((one) => one.id === from.botId);
   return <BotAvatar bot={bot ?? { name: from.name, color: "blue" }} state="happy" size={size} motion="none" motionKey={0} animated={false} />;
 }
 
 /** Where an inbox line came from, as a link that opens it there; none for a line from a conversation the person can't read. */
 export function useInboxOrigin(message: Pick<Message, "inbox">): { label: string; hint: string; open(): void } | undefined {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
   const origin = message.inbox?.origin;
   if (!origin) return undefined;
   return {
     label: t("inbox.in", { title: origin.title }),
     hint: t("inbox.openOrigin", { title: origin.title }),
-    open: () => openThread(dispatch, { botId: origin.botId, threadId: origin.threadId }, state),
+    open: () => openThread(store.dispatch, { botId: origin.botId, threadId: origin.threadId }, store.state()),
   };
 }
 
@@ -38,7 +39,7 @@ function headedByItsCard({ inbox, card }: Message): boolean {
 
 /** Above an inbox line: from whom, through which bot, and the conversation it came from. */
 export function InboxCaption({ message }: { message: Message }) {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
   const item = message.inbox;
   if (!item || headedByItsCard(message)) return null;
   const who = item.assistant ? t("inbox.assistantOf", { name: item.from.name }) : t("inbox.from", { name: item.from.name });
@@ -49,7 +50,7 @@ export function InboxCaption({ message }: { message: Message }) {
       <span className="truncate font-medium text-ink-secondary">{who}</span>
       {item.via && <span className="shrink-0">· {t("inbox.via", { name: item.via.name })}</span>}
       {origin && (
-        <button type="button" onClick={() => openThread(dispatch, { botId: origin.botId, threadId: origin.threadId }, state)}
+        <button type="button" onClick={() => openThread(store.dispatch, { botId: origin.botId, threadId: origin.threadId }, store.state())}
           aria-label={t("inbox.openOrigin", { title: origin.title })} title={t("inbox.openOrigin", { title: origin.title })}
           className="min-w-0 truncate rounded px-1 hover:bg-inset hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
           · {t("inbox.in", { title: origin.title })}

@@ -1,7 +1,8 @@
 import { memo, useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { motion, useTransform, type MotionValue } from "motion/react";
 import { BellDot, Check, MonitorSmartphone, Pin, PinOff, Plus, RotateCcw, Search, Star, UserRound } from "../icons";
-import { api, retryLoad, useStore, type Bot, type Group } from "@/state/store";
+import { api, retryLoad, useDispatch, useStoreSelector, type AppState, type Bot, type Group } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { BotAvatar, MausAvatar } from "@/components/Avatar";
 import { GroupAvatar, useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
@@ -50,7 +51,15 @@ function lastAt(owner: Bot | Group): number {
 
 /** Grok's home: a few round buttons floating over the top, the pinned bots big, then every chat as a plain row. */
 export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: string) => void; onOpenSheet: OpenSheet }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const bots = useStoreSelector((s) => s.bots);
+  const groups = useStoreSelector((s) => s.groups);
+  const instances = useStoreSelector((s) => s.instances);
+  const unreadNotes = useStoreSelector((s) => s.notifications.filter((note) => !note.read).length);
+  const hydrated = useStoreSelector((s) => s.hydrated);
+  const loadFailed = useStoreSelector((s) => s.loadFailed);
+  const connected = useStoreSelector((s) => s.connected);
   const platform = usePlatform();
   const resuming = useQuietResume(platform);
   const offline = useOffline();
@@ -64,23 +73,22 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   const [menu, setMenu] = useState<{ entry: Entry; rect: DOMRect; pinnedTile: boolean } | null>(null);
 
   const { pinned, entries } = useMemo(() => {
-    const parts = partitionSidebarBots(state.bots);
-    const { primary } = withPrimaryTile(parts, state.bots.find((bot) => bot.defaultBot && !bot.hidden)?.id);
+    const parts = partitionSidebarBots(bots);
+    const { primary } = withPrimaryTile(parts, bots.find((bot) => bot.defaultBot && !bot.hidden)?.id);
     const top = [...(primary ? [primary] : []), ...parts.pinnedBots.filter((bot) => bot.id !== primary?.id)];
     const topIds = new Set(top.map((bot) => bot.id));
-    const visible = state.bots.filter((bot) => !bot.hidden && !topIds.has(bot.id) && (parts.unsectionedBots.includes(bot) || parts.sectionedBots.includes(bot) || parts.sectionChiefs.includes(bot)));
+    const visible = bots.filter((bot) => !bot.hidden && !topIds.has(bot.id) && (parts.unsectionedBots.includes(bot) || parts.sectionedBots.includes(bot) || parts.sectionChiefs.includes(bot)));
     const rows: Entry[] = [
-      ...visible.map((bot): Entry => ({ kind: "bot", id: bot.id, bot, at: lastAt(bot), preview: botPreview(bot, sidebarPreviewMessages(bot), state.instances), unread: botShowsUnread(bot) })),
-      ...state.groups.map((group): Entry => {
-        const members = state.bots.filter((bot) => group.memberIds.includes(bot.id));
-        return { kind: "group", id: group.id, group, members, at: lastAt(group), preview: groupPreview(group, state.bots, state.instances), unread: Boolean(group.unread) };
+      ...visible.map((bot): Entry => ({ kind: "bot", id: bot.id, bot, at: lastAt(bot), preview: botPreview(bot, sidebarPreviewMessages(bot), instances), unread: botShowsUnread(bot) })),
+      ...groups.map((group): Entry => {
+        const members = bots.filter((bot) => group.memberIds.includes(bot.id));
+        return { kind: "group", id: group.id, group, members, at: lastAt(group), preview: groupPreview(group, bots, instances), unread: Boolean(group.unread) };
       }),
     ];
     rows.sort((a, b) => b.at - a.at);
     return { pinned: top, entries: rows };
-  }, [state.bots, state.groups, state.instances]);
+  }, [bots, groups, instances]);
 
-  const unreadNotes = state.notifications.filter((note) => !note.read).length;
   const primary = pinned[0];
 
   const actionsFor = useCallback((entry: Entry): ContextAction[] => {
@@ -112,12 +120,12 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
       >
         <PullToRefresh
           scrollRef={scrollRef}
-          onRefresh={() => refreshSnapshot(state, dispatch)}
+          onRefresh={() => refreshSnapshot(store.state(), dispatch)}
           top={LIST_TOP}
           indicator={(progress, refreshing) => <RefreshMark bot={primary} progress={progress} refreshing={refreshing} />}
         >
           <div style={{ paddingTop: LIST_TOP }} className="pb-[calc(var(--m-safe-bottom)+24px)]">
-            {!state.hydrated ? (state.loadFailed ? (
+            {!hydrated ? (loadFailed ? (
               <EmptyState tone="error" art="signpost" className="pt-16" title={t("mobile.home.loadFailedTitle")} body={t(offline ? "mobile.home.loadFailedOffline" : "mobile.home.loadFailedBody")}
                 action={{ label: t("mobile.home.retry"), icon: <RotateCcw size={17} aria-hidden />, onClick: retryLoad }} />
             ) : <HomeSkeleton />) : pinned.length + entries.length === 0 ? (
@@ -130,7 +138,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                   <h2 id="home-pinned" className="px-5 pb-1 text-[13px] font-semibold text-ink-secondary">{t("sidebar.section.pinned")}</h2>
                   <div className="no-scrollbar flex gap-3 overflow-x-auto px-3 pb-2 pt-1">
                     {pinned.map((bot) => (
-                      <PinnedTile key={bot.id} bot={bot} onOpen={onOpenChat} onMenu={(rect) => openMenu(botEntry(bot, state), rect, true)} />
+                      <PinnedTile key={bot.id} bot={bot} onOpen={onOpenChat} onMenu={(rect) => openMenu(botEntry(bot, store.state()), rect, true)} />
                     ))}
                   </div>
                   </section>
@@ -168,7 +176,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
           {unreadNotes > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold tabular-nums text-app ring-2 ring-app">{unreadNotes > 9 ? "9+" : unreadNotes}</span>}
         </RoundButton>
         <div className="flex-1" />
-        {state.hydrated && (!state.connected || waking || offline) && !resuming && (
+        {hydrated && (!connected || waking || offline) && !resuming && (
           <span role="status" data-testid="mobile-connection-status" className="pointer-events-auto flex h-11 min-w-0 items-center gap-2 whitespace-nowrap rounded-full bg-composer px-4 text-[13px] font-medium text-ink-secondary mobile-float">
             {offline ? t("mobile.home.offline") : <><WorkingDots size={3} />{t(waking ? "cloudAsleep.waking" : "mobile.home.reconnecting")}</>}
           </span>
@@ -189,7 +197,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   );
 }
 
-function botEntry(bot: Bot, state: ReturnType<typeof useStore>["state"]): Entry {
+function botEntry(bot: Bot, state: AppState): Entry {
   return { kind: "bot", id: bot.id, bot, at: lastAt(bot), preview: botPreview(bot, sidebarPreviewMessages(bot), state.instances), unread: botShowsUnread(bot) };
 }
 

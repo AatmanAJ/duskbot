@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Check, CircleAlert, ExternalLink, Eye, EyeOff, Loader2, TriangleAlert } from "../../icons";
-import { api, useStore } from "@/state/store";
+import { api, useStoreActions, useStoreSelector, type AppState } from "@/state/store";
 import { installsHere } from "@/state/engine-install";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -49,10 +49,13 @@ export function MaskedKey({ saved, label }: { saved: SavedState; label: string }
   );
 }
 
+const selectConfig = (s: AppState) => s.config;
+const selectInstances = (s: AppState) => s.instances;
+
 export function SavedKeyLine({ id }: { id: KeyId }) {
-  const { state } = useStore();
+  const config = useStoreSelector(selectConfig);
   const entry = keyEntry(id);
-  const saved = savedState(entry, state.config);
+  const saved = savedState(entry, config);
   if (!saved.configured) return null;
   const label = t(entry.labelKey);
   return (
@@ -142,7 +145,9 @@ export function KeyRow({
   className?: string;
   children?: ReactNode;
 }) {
-  const { state, dispatch, refreshInstances } = useStore();
+  const { dispatch, refreshInstances } = useStoreActions();
+  const config = useStoreSelector(selectConfig);
+  const instances = useStoreSelector(selectInstances);
   const titleId = useId();
   const [draft, setDraft] = useState("");
   const [shown, setShown] = useState(false);
@@ -169,19 +174,19 @@ export function KeyRow({
     (goal === "input" ? inputRef.current : replaceRef.current)?.focus();
   });
 
-  const entry = shownKeyEntry(id, state.config);
-  const row = rowId ? shownKeyEntry(rowId, state.config) : entry;
+  const entry = shownKeyEntry(id, config);
+  const row = rowId ? shownKeyEntry(rowId, config) : entry;
   const target = entry.target;
   if (!target) throw new Error(`${id} is not saved by a key row`);
   const pointer = row.id !== entry.id;
   const label = t(entry.labelKey);
-  const saved = savedState(entry, state.config);
-  const engineRejected = (state.instances ?? []).some((instance) => instance.access === "api" && keyForInstance(instance.instanceId) === entry.id
+  const saved = savedState(entry, config);
+  const engineRejected = (instances ?? []).some((instance) => instance.access === "api" && keyForInstance(instance.instanceId) === entry.id
     && instance.snapshot.state === "available" && instance.snapshot.authenticated === false);
   // A key engine with its own CLI (DeepSeek Harness) can't use a saved key until that CLI runs here.
   // The Grok CLI signs in with a grok.com account and drops XAI_API_KEY, so installing it never puts the xAI key to use.
   const keyEngines = saved.configured
-    ? (state.instances ?? []).filter((instance) => instance.driverKind !== "grokAgent" && keyForInstance(instance.instanceId) === entry.id)
+    ? (instances ?? []).filter((instance) => instance.driverKind !== "grokAgent" && keyForInstance(instance.instanceId) === entry.id)
     : [];
   const missingEngine = keyEngines.some((instance) => instance.snapshot.state === "available")
     ? undefined

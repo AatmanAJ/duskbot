@@ -21,7 +21,7 @@ import type { LocaleKey } from "@/locales";
 import { updateMcpServers } from "@/lib/mcp-servers";
 import { completeMcpSignIn, mcpSignInLink, runMcpSignIn, type McpSignInStatus } from "@/lib/mcp-sign-in";
 import { listenLiveFrames } from "@/lib/live-events";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch, useStoreSelector } from "@/state/store";
 
 import { askConfirm } from "./ConfirmDialog";
 import { McpAppsSwitch } from "./McpAppsSwitch";
@@ -115,9 +115,11 @@ export function McpServersPanel({ embedded = false, rows = false, hostedCards, h
   hideHosted?: boolean;
   refreshKey?: number;
 } = {}) {
-  const { state: store, dispatch } = useStore();
-  const botName = (id: string) => store.bots?.find((bot) => bot.id === id)?.name ?? id;
-  const policy = store.config?.managedPolicy;
+  const dispatch = useDispatch();
+  const bots = useStoreSelector((s) => s.bots);
+  const config = useStoreSelector((s) => s.config);
+  const botName = (id: string) => bots?.find((bot) => bot.id === id)?.name ?? id;
+  const policy = config?.managedPolicy;
   const restricted = Boolean(policy && !policy.mcp.allowCustom);
   const [servers, setServers] = useState<McpServerListing[] | null>(null);
   const [editing, setEditing] = useState<string | "new" | null>(null);
@@ -275,7 +277,7 @@ export function McpServersPanel({ embedded = false, rows = false, hostedCards, h
     try {
       let body = item.body;
       let ownKey: string | undefined;
-      if (store.config?.team && existing.scope !== "team" && typeof body.url === "string" && !body.oauth) {
+      if (config?.team && existing.scope !== "team" && typeof body.url === "string" && !body.oauth) {
         const connections = await api("/api/team/my-connections");
         if (connections.mcp.some((connection: { name: string }) => connection.name === item.name)) {
           const headers = (body.headers ?? {}) as Record<string, string | true>;
@@ -526,7 +528,7 @@ export function McpServersPanel({ embedded = false, rows = false, hostedCards, h
       <div data-hosted-access="" className="ca-kit">
         <h3 className="ca-group-label" style={{ paddingInline: 0 }}>{t("hostedMcp.access")}</h3>
         <KitText>{t("hostedMcp.accessHint")}</KitText>
-        <KitActions>{(store.bots ?? []).filter((bot) => !bot.hidden).map((bot) => (
+        <KitActions>{(bots ?? []).filter((bot) => !bot.hidden).map((bot) => (
           <KitButton key={bot.id} variant="secondary" onClick={() => { closeConnectApps(); openBotSettings(dispatch, "access", { botId: bot.id, page: "mcp" }); }}>{t("hostedMcp.botSettings", { name: bot.name })}</KitButton>
         ))}</KitActions>
       </div>
@@ -622,7 +624,7 @@ export function McpServersPanel({ embedded = false, rows = false, hostedCards, h
           {notice && <NoteRow><span role="status">{t(notice.key, { ...notice.params, ...(notice.stateKey ? { state: t(notice.stateKey) } : {}) })}</span></NoteRow>}
         </RowsCard>
         {(editing === "new" || editingServer) && (
-          <McpServerEditor key={`${editing}${fixingKeys ? ":keys" : ""}`} server={editingServer} fixKeys={fixingKeys} taken={(servers ?? []).map((server) => server.name)} team={Boolean(store.config?.team)}
+          <McpServerEditor key={`${editing}${fixingKeys ? ":keys" : ""}`} server={editingServer} fixKeys={fixingKeys} taken={(servers ?? []).map((server) => server.name)} team={Boolean(config?.team)}
             busy={busy !== null} onCancel={closeEditor} onSubmit={(items) => void (editing === "new" ? addServers(items) : saveEdit(items))} />
         )}
         <SettingsRows><ClaudeCodeSwitches /></SettingsRows>
@@ -668,7 +670,7 @@ export function McpServersPanel({ embedded = false, rows = false, hostedCards, h
 
         {restricted && policy && <p role="status" className="mt-3 text-[13px] leading-relaxed text-ink-secondary">{t("policy.mcpRestricted", { organization: policy.organizationName })}</p>}
         {(editing === "new" || editingServer) && (
-          <McpServerEditor key={`${editing}${fixingKeys ? ":keys" : ""}`} server={editingServer} fixKeys={fixingKeys} taken={(servers ?? []).map((server) => server.name)} team={Boolean(store.config?.team)}
+          <McpServerEditor key={`${editing}${fixingKeys ? ":keys" : ""}`} server={editingServer} fixKeys={fixingKeys} taken={(servers ?? []).map((server) => server.name)} team={Boolean(config?.team)}
             busy={busy !== null} onCancel={closeEditor} onSubmit={(items) => void (editing === "new" ? addServers(items) : saveEdit(items))} />
         )}
         {error && <div role="alert" className="mt-3 text-[12px] text-danger">{typeof error === "string" ? error : t(error.key, error.params)}</div>}
@@ -760,7 +762,7 @@ export function McpServersPanel({ embedded = false, rows = false, hostedCards, h
                     <details className="mt-2">
                       <summary className="cursor-pointer font-medium text-ink">{t("hostedMcp.access")}</summary>
                       <p className="mt-2">{t("hostedMcp.accessHint")}</p>
-                      <div className="mt-2 flex flex-wrap gap-2">{(store.bots ?? []).filter((bot) => !bot.hidden).map((bot) => <button key={bot.id} type="button" onClick={() => { closeConnectApps(); openBotSettings(dispatch, "access", { botId: bot.id, page: "mcp" }); }} className="rounded-lg bg-control px-2.5 py-1.5 text-ink hover:bg-raised-hover">{t("hostedMcp.botSettings", { name: bot.name })}</button>)}</div>
+                      <div className="mt-2 flex flex-wrap gap-2">{(bots ?? []).filter((bot) => !bot.hidden).map((bot) => <button key={bot.id} type="button" onClick={() => { closeConnectApps(); openBotSettings(dispatch, "access", { botId: bot.id, page: "mcp" }); }} className="rounded-lg bg-control px-2.5 py-1.5 text-ink hover:bg-raised-hover">{t("hostedMcp.botSettings", { name: bot.name })}</button>)}</div>
                     </details>
                   </div>}
                   <McpAppsSwitch<McpServerListing> server={server} disabled={busy !== null || signingIn !== null} onSaved={(next) => { loadGeneration.current += 1; listed(next); }} />{renderSignIn(server)}

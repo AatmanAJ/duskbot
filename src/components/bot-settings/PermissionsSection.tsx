@@ -6,7 +6,7 @@ import { Crown } from "../../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
-import { useStore, type Bot } from "@/state/store";
+import { useDispatch, useStoreShallow, type Bot } from "@/state/store";
 import type { ApprovalMode } from "../../../shared/approval-mode";
 import { effectiveOutboundPolicy, type OutboundPolicy } from "../../../shared/outbound";
 import { ApprovalModeSelector } from "../ApprovalModeSelector";
@@ -19,6 +19,8 @@ import { useBotEditor } from "./BotEditorContext";
 
 export type PermissionsPart = "chief" | "peers" | "approval" | "outbound";
 
+const NO_BOTS: Bot[] = [];
+
 export function PermissionsSection({
   bot,
   derived,
@@ -30,7 +32,11 @@ export function PermissionsSection({
 }) {
   const { patch, engine, canCoordinate, approvalMode, trustedModesAvailable, currentChief } = derived;
   const team = useTeamPeople();
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const peerBots = useStoreShallow((s) => {
+    const peers = bot.peers;
+    return Array.isArray(peers) ? s.bots.filter((other) => peers.includes(other.id)) : NO_BOTS;
+  });
   const ownerOrAdmin = useOwnerOrAdmin();
   const { draft } = useBotEditor();
   const [localAutoWarning, setLocalAutoWarning] = useState<string | null>(null);
@@ -116,7 +122,7 @@ export function PermissionsSection({
             className="disabled:cursor-not-allowed"
           />
         </div>
-        {Array.isArray(bot.peers) && <PeersListNote peers={bot.peers} bots={state.bots}
+        {Array.isArray(bot.peers) && <PeersListNote peers={bot.peers} bots={peerBots}
           onOpen={() => patch({ peers: null, acknowledgePeerScope: true })} />}
       </div>}
 

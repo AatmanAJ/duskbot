@@ -4,7 +4,7 @@ import { cloudAsleep, cloudPaused, onCloudPower } from "@/lib/cloud-power";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { railShown, usePlaces } from "@/lib/places";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 
 import { endCloudHowTo, openServerMenu, useWorkspacePlace } from "./DesktopWorkspaceSwitcher";
 import { Icon } from "./Icon";
@@ -33,7 +33,7 @@ function markPlaceDotSeen(): void {
 }
 
 export function usePlaceStatus(waking: boolean): PlaceStatus {
-  const { state } = useStore();
+  const down = useStoreSelector((s) => s.hydrated === true && !s.connected);
   const [paused, setPaused] = useState(cloudPaused);
   const [late, setLate] = useState(false);
   const [network, setNetwork] = useState(() => typeof navigator === "undefined" || navigator.onLine !== false);
@@ -44,7 +44,6 @@ export function usePlaceStatus(waking: boolean): PlaceStatus {
     window.addEventListener("offline", off);
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
-  const down = state.hydrated === true && !state.connected;
   useEffect(() => {
     setLate(false);
     if (!down) return;
@@ -65,17 +64,19 @@ export function switchPlaceCommand(): (() => void) | null {
 /** Security: the list of places is main's native menu; this page, which a server connected by hand may have written,
  * learns only the place it is on (cloud-rail.mjs). */
 export function SidebarPlaceButton() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const team = useStoreSelector((s) => s.config?.team);
+  const howTo = useStoreSelector((s) => s.cloudHowTo);
   const places = usePlaces();
-  const cloudHome = state.config?.cloudHome === true;
-  const place = useWorkspacePlace({ cloudHome, howTo: state.cloudHowTo, onMenuClosed: () => endCloudHowTo(dispatch) });
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
+  const place = useWorkspacePlace({ cloudHome, howTo, onMenuClosed: () => endCloudHowTo(dispatch) });
   const status = usePlaceStatus(place.waking !== "");
   const [seen, setSeen] = useState(placeDotSeen);
   if (!place.switchable) return null;
   const openMenu = () => { if (!seen) { markPlaceDotSeen(); setSeen(true); } place.openMenu(); };
   const dot = status !== "online" || !seen;
-  const kind = placeKind(place.current, { cloudHome, team: Boolean(state.config?.team) });
-  const name = place.current?.name ?? (cloudHome ? state.config?.team?.name || t("cloudSetup.myCloud") : t("rail.thisComputer"));
+  const kind = placeKind(place.current, { cloudHome, team: Boolean(team) });
+  const name = place.current?.name ?? (cloudHome ? team?.name || t("cloudSetup.myCloud") : t("rail.thisComputer"));
   const said = `${name} · ${t(WORD[status])}${place.onLine ? ` · ${place.onLine}` : ""}`;
   const button = <div data-sidebar-place className="relative flex">
     <button type="button" data-tour="server-switcher" data-place-kind={kind} data-place-status={status}

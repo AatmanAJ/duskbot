@@ -5,7 +5,7 @@ import { sharedLevel, type BotAccess } from "../../../shared/bot-access";
 import { botOwner } from "../../../shared/bot-owner";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore, type Bot } from "@/state/store";
+import { useStoreShallow, type AppState, type Bot } from "@/state/store";
 import { ownerOf, useTeamPeople, type TeamPeople, type TeamPerson } from "@/state/team-people";
 import { BotAvatar } from "../Avatar";
 import { PersonFace } from "../TeamOwner";
@@ -39,8 +39,10 @@ const includes = (wanted: string, ...parts: Array<string | undefined>): boolean 
 
 /** Settings → Bot access on a team, for its admins: the team's bots, or its people, each opening what can change there.
  * A person's stored level stays as it is; the page shows who is added and lets them be removed. */
+const selectSharedBots = (state: AppState) => sharedBots(state.bots);
+
 export function AccessOverview() {
-  const { state } = useStore();
+  const bots = useStoreShallow(selectSharedBots);
   const team = useTeamPeople();
   const teamName = useTeamName();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -59,7 +61,6 @@ export function AccessOverview() {
   }, [personEmail]);
   if (!team || !teamName) return null;
   const members = team.people.filter((person) => person.role === "member").sort((a, b) => a.name.localeCompare(b.name));
-  const bots = sharedBots(state.bots);
   const sharing = sharingId ? bots.find((bot) => bot.id === sharingId) : undefined;
   const person = personEmail ? members.find((member) => member.email === personEmail) : undefined;
   const wanted = query.trim().toLowerCase();

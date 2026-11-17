@@ -11,7 +11,7 @@ import { t } from "@/lib/i18n";
 import { desktopShowsOtherServer, useOtherServerName } from "@/lib/other-server";
 import { useCloudOffer } from "@/lib/use-cloud-offer";
 import { vpsCloudMoveBridge } from "@/lib/vps-cloud-move";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 import { GrokDialog, mdPrimaryCls, mdSecondaryCls } from "../ui/GrokDialog";
 import { PlaceArt } from "../ui/PlaceArt";
 import { deviceWord } from "../vps-link/parts";
@@ -21,7 +21,9 @@ import { VpsCloudMoveSheet } from "./VpsCloudMoveSheet";
 
 /** The sheet's state and its one next step, shared by the sheet and the watcher that finishes a move after checkout. */
 function useCloudMove(onBuy?: () => void) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const bots = useStoreSelector((s) => s.bots.filter((bot) => !bot.hidden && !bot.movedTo).length);
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
   const cloudDesktop = useCloudDesktop();
   const elsewhere = desktopShowsOtherServer();
   const stage: CloudMoveStage | null = cloudDesktop ? cloudMoveStage(cloudDesktop.view, cloudDesktop.keep) : elsewhere ? "elsewhere" : null;
@@ -51,8 +53,7 @@ function useCloudMove(onBuy?: () => void) {
     else if (next === "clear") writeMoveIntent(false);
   });
 
-  const bots = state.bots.filter((bot) => !bot.hidden && !bot.movedTo).length;
-  return { stage, cloudDesktop, busy, failed, buy, move, keepHere, run, bots, cloudHome: state.config?.cloudHome === true };
+  return { stage, cloudDesktop, busy, failed, buy, move, keepHere, run, bots, cloudHome };
 }
 
 /** Finishes a move asked for here once its checkout is paid, while no sheet is open. */

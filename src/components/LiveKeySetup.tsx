@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { useStore, type ConfigStatus } from "@/state/store";
+import { useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { liveDisclosure } from "@/lib/call-mode";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -8,8 +8,9 @@ import { putConfig } from "@/lib/sealed-send";
 import { friendlyError } from "@/lib/plain-error";
 
 export function LiveKeySetup({ onSaved, compact = false }: { onSaved: () => void; compact?: boolean }) {
-  const { state, dispatch } = useStore();
-  const azure = state.config?.live?.provider === "azure";
+  const dispatch = useDispatch();
+  const azure = useStoreSelector((s) => s.config?.live?.provider === "azure");
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
   const [key, setKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +52,7 @@ export function LiveKeySetup({ onSaved, compact = false }: { onSaved: () => void
     >
       <div className="text-[14px] font-medium text-ink">{t(azure ? "call.live.azureKeyTitle" : "call.live.keyTitle")}</div>
       <div className="text-[13px] leading-[1.45] text-ink-secondary">{t(azure ? "call.live.azureKeyExplain" : "call.live.keyExplain")}</div>
-      <div className="text-[13px] leading-[1.45] text-ink-secondary">{liveDisclosure({ cloudHome: state.config?.cloudHome === true, azure })}</div>
+      <div className="text-[13px] leading-[1.45] text-ink-secondary">{liveDisclosure({ cloudHome, azure })}</div>
       <input
         type="password"
         autoComplete="off"

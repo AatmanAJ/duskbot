@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 import { jevRoomRoutingOn } from "@/lib/group-routing";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import { api, useStore, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type ConfigStatus } from "@/state/store";
 import { AdminOnly } from "../AdminOnly";
 import { buttonCls, Card, fieldCls, ItemRow, LinkRow, NoteRow, rowCls, Segmented } from "../bot-panel/rows";
 import { SettingsSelect } from "../SettingsSelect";
@@ -86,11 +86,11 @@ function useModels(provider: JevProvider): ModelList | null {
 
 /** The room's Jev card: a quiet "Jev: <model> via <provider>" row once set up, else a provider, a key, Test, a model. */
 export function JevSetup() {
-  const { state } = useStore();
-  const decider = state.config?.decider;
-  const ready = jevRoomRoutingOn(state.config);
+  const config = useStoreSelector((s) => s.config);
+  const decider = config?.decider;
+  const ready = jevRoomRoutingOn(config);
   const [editing, setEditing] = useState(false);
-  if (!state.config) return null;
+  if (!config) return null;
   const configured = decider?.configured === true;
   return (
     <Card label={t("room.jev.title")} data-sheet-group="jev">
@@ -102,8 +102,8 @@ export function JevSetup() {
 }
 
 function JevReady({ ready, onChange }: { ready: boolean; onChange: () => void }) {
-  const { state, dispatch } = useStore();
-  const decider = state.config!.decider!;
+  const dispatch = useDispatch();
+  const decider = useStoreSelector((s) => s.config!.decider!);
   const provider: JevProvider = decider.provider === "gateway" || decider.provider === "openrouter" ? decider.provider : "jev";
   const models = useModels(provider);
   const names = Object.fromEntries((models?.models ?? []).map((model) => [model.id, model.name]));
@@ -132,9 +132,9 @@ function JevReady({ ready, onChange }: { ready: boolean; onChange: () => void })
 }
 
 function JevForm({ onDone }: { onDone?: () => void }) {
-  const { state, dispatch } = useStore();
-  const decider = state.config?.decider;
-  const own = state.config?.helpers?.own;
+  const dispatch = useDispatch();
+  const decider = useStoreSelector((s) => s.config?.decider);
+  const own = useStoreSelector((s) => s.config?.helpers?.own);
   const [provider, setProvider] = useState<JevProvider>(decider?.configured && !decider.included && (decider.provider === "openrouter" || decider.provider === "jev") ? decider.provider : "gateway");
   const [key, setKey] = useState("");
   const [testing, setTesting] = useState(false);

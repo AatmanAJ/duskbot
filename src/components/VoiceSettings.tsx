@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Volume2 } from "../icons";
 
-import { api, useStore, type Bot, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type Bot, type ConfigStatus } from "@/state/store";
 import { useDesktopCapabilities } from "@/components/DesktopCapabilities";
 import { speaker } from "@/lib/tts";
 import { useSpeech } from "@/lib/tts/useSpeech";
@@ -40,8 +40,8 @@ export function VoiceSettings({
   onPatch: (patch: Partial<Pick<Bot, "voice" | "speakReplies" | "voiceNotes">>) => void;
   workspaceConfigurationLocked?: boolean;
 }) {
-  const { state, dispatch } = useStore();
-  const tts = state.config?.tts;
+  const dispatch = useDispatch();
+  const tts = useStoreSelector((s) => s.config?.tts);
 
   const [keyDraft, setKeyDraft] = useState<VoiceKeyDraft>({ provider: null, value: "" });
   const [serverUrl, setServerUrl] = useState("");

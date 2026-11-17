@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Loader2 } from "../../icons";
 import { requiredFields, type Place } from "../../../shared/model-providers";
-import { useStore, type InstanceInfo } from "@/state/store";
+import { useStoreActions, useStoreSelector, type InstanceInfo } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { friendlyError } from "@/lib/plain-error";
@@ -27,10 +27,11 @@ export function ConnectProviderDialog({ provider, place, model, onClose, onConne
   onClose: () => void;
   onConnected?: (instanceId: string, instances: InstanceInfo[]) => void;
 }) {
-  const { state, dispatch, refreshInstances } = useStore();
+  const { dispatch, refreshInstances } = useStoreActions();
+  const instances = useStoreSelector((s) => s.instances);
   const flow = useConnectFlow();
   const signInTile = provider.signIn && SIGN_IN_TILE[provider.id]
-    ? aiTiles(state.instances, engineReady, (instance) => connectsInApp(instance as unknown as ConnectInstance)).find((tile) => tile.id === SIGN_IN_TILE[provider.id])
+    ? aiTiles(instances, engineReady, (instance) => connectsInApp(instance as unknown as ConnectInstance)).find((tile) => tile.id === SIGN_IN_TILE[provider.id])
     : undefined;
   const [fields, setFields] = useState<ProviderFields>(model && provider.section === "custom" ? { model } : {});
   const [key, setKey] = useState("");

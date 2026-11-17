@@ -5,7 +5,8 @@ import { routineDateTime } from "@/lib/routine-display";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import type { RoutineRunCardData } from "../../shared/routine-run";
-import { openThread, useStore, type Message } from "@/state/store";
+import { openThread, useStoreSelector, type Message } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 
 const DETAIL_LIMIT = 280;
 
@@ -124,16 +125,16 @@ export function RoutineRunCard({
 }
 
 export function RoutineRunRow({ message, botId }: { message: Message; botId: string }) {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
   const executionThreadId = message.routineRun?.executionThreadId;
-  const canOpen = executionThreadId && state.bots.some((candidate) =>
+  const canOpen = useStoreSelector((s) => Boolean(executionThreadId && s.bots.some((candidate) =>
     candidate.threadId === executionThreadId || hasRoutineExecutionTask(candidate.tasks, executionThreadId)
-  );
+  )));
   return (
     <RoutineRunCard
       message={message}
       onOpen={canOpen && executionThreadId
-        ? () => openThread(dispatch, { botId, threadId: executionThreadId }, state)
+        ? () => openThread(store.dispatch, { botId, threadId: executionThreadId }, store.state())
         : undefined}
     />
   );

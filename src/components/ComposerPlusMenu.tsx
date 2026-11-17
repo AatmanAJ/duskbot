@@ -14,7 +14,7 @@ import { serverListeningReady, listensHere, speechBridge } from "@/lib/speech";
 import { requestCallStart } from "@/lib/call-start-request";
 import { useOnCall } from "@/lib/call";
 import { isLiveCallRunning, useLiveMedia } from "@/lib/live-call-media";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
@@ -176,15 +176,16 @@ export function ComposerPlusMenu({ onAttach, attachChoices, goal, teach, approva
   callBotId?: string;
 }) {
   const { capabilities, ready } = useDesktopCapabilities();
-  const { state } = useStore();
+  const config = useStoreSelector((state) => state.config);
+  const liveCall = useStoreSelector((state) => state.liveCall);
   const storedMode = useCallMode();
   const onCall = useOnCall();
   const media = useLiveMedia();
-  const turnsHere = !ready || listensHere(capabilities, state.config);
+  const turnsHere = !ready || listensHere(capabilities, config);
   const callMode = effectiveCallMode(storedMode, { turnsHere, canLive: true });
-  const turnsHelp = turnsHere ? null : callCapabilityHelp(capabilities, Boolean(speechBridge()?.speechStart), serverListeningReady(state.config));
+  const turnsHelp = turnsHere ? null : callCapabilityHelp(capabilities, Boolean(speechBridge()?.speechStart), serverListeningReady(config));
   // As the call button, which hides while Live is the mode and its line is held on another device.
-  const lineHeldElsewhere = callMode === "live" && liveLineHeldElsewhere(media, state.liveCall);
+  const lineHeldElsewhere = callMode === "live" && liveLineHeldElsewhere(media, liveCall);
   const calling = callBotId !== undefined && (onCall === callBotId || isLiveCallRunning(media.phase) || lineHeldElsewhere);
   const items: SidebarMenuItem[] = [
     ...(attachChoices ? [

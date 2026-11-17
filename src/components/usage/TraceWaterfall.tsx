@@ -6,7 +6,7 @@ import { formatTokens, hasFiniteCost } from "@/lib/usage";
 import {
   formatCost, formatDuration, formatTick, groupLabel, timeAxis, toolLabel, traceBadges, traceRows, type TraceRow,
 } from "@/lib/usage-trace";
-import { useStore, type InstanceInfo } from "@/state/store";
+import { useStoreSelector, type InstanceInfo } from "@/state/store";
 import type { TraceDetail, TraceNode, TraceRootSummary, TraceTotals } from "../../../shared/usage-trace";
 import { appName, StepIcon, ToolIcon, TurnAvatar, useAppCards } from "./TraceIcon";
 
@@ -79,16 +79,16 @@ function tokenLine(node: TraceNode): string | null {
 }
 
 function RowName({ row, models }: { row: TraceRow; models: readonly InstanceInfo[] }) {
-  const { state } = useStore();
   const catalog = useAppCards();
   const node = row.node;
+  const turnBot = useStoreSelector((s) => node.kind === "turn" ? s.bots.find((bot) => bot.id === node.botId) : undefined);
   const failed = rowFailed(node);
   let icon: ReactNode;
   let name: string;
   let detail: string | undefined;
   switch (node.kind) {
     case "turn":
-      icon = <TurnAvatar bot={state.bots.find((bot) => bot.id === node.botId)} name={node.botName} />;
+      icon = <TurnAvatar bot={turnBot} name={node.botName} />;
       name = node.botName || t("trace.unknownBot");
       detail = modelName(node.model, models);
       break;
@@ -178,7 +178,7 @@ function RowBar({ row, origin, axisMax, badges, now, trackPx }: {
 
 /** The trace waterfall: a stat strip, then a collapsible span tree beside a time axis. */
 export function TraceWaterfall({ detail, now, actions }: { detail: TraceDetail; now: number; actions?: ReactNode }) {
-  const { state } = useStore();
+  const instances = useStoreSelector((s) => s.instances);
   const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
   const root = detail.root;
   const live = root.running;
@@ -256,7 +256,7 @@ export function TraceWaterfall({ detail, now, actions }: { detail: TraceDetail; 
                       {row.open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
                   ) : <span className="w-5 shrink-0" />}
-                  <RowName row={row} models={state.instances} />
+                  <RowName row={row} models={instances} />
                   {rowFailed(row.node) && row.node.kind === "turn" && <X size={13} className="shrink-0 text-danger" aria-label={t("trace.failed")} />}
                 </div>
                 <div className="relative mx-4 h-7 sm:ml-0 sm:mr-6 sm:h-9 sm:border-l sm:border-transparent" style={grid}>

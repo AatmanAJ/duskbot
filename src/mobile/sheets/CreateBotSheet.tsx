@@ -5,7 +5,7 @@ import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { PICKER_COLORS, colorSwatch, type MausColor } from "@/lib/mascot";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 import { DEFAULT_BOT_BODY, DUSK_BODY_IDS, DUSK_BODY_NAMES, type DuskBodyId } from "../../../shared/body-migration";
 import { Sheet } from "../Sheet";
 import { haptic } from "../haptics";
@@ -28,7 +28,7 @@ function moveRadio(event: KeyboardEvent<HTMLDivElement>) {
 }
 
 export function CreateBotSheet({ open, onClose, onOpenChat }: SheetPageProps<"create">) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const [name, setName] = useState("");
   const [body, setBody] = useState<DuskBodyId>(DEFAULT_BOT_BODY);
   const [color, setColor] = useState<MausColor>("blue");
@@ -36,7 +36,7 @@ export function CreateBotSheet({ open, onClose, onOpenChat }: SheetPageProps<"cr
   const [error, setError] = useState(false);
   const reduced = useReducedMotion();
   const nameId = useId();
-  const pending = state.botCreationPending === true;
+  const pending = useStoreSelector((s) => s.botCreationPending) === true;
   useEffect(() => { if (open) { setName(""); setError(false); setRevision(0); } }, [open]);
   const create = () => {
     if (!name.trim() || pending) return;

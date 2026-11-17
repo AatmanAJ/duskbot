@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { setSidebarFooterSlot } from "@/lib/sidebar-footer-slot";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 
 import { AccountMoveStatus, useAccountMoveLine } from "./AccountMove";
 import { CloudRoomCard } from "./CloudRoomCard";
@@ -14,8 +14,10 @@ import { SidebarProfileMenu, useSimpleAccount, type ArchivedBots } from "./Sideb
 import { SidebarSpot } from "./SidebarSpot";
 
 export function useSimplePlace(): WorkspacePlace {
-  const { state, dispatch } = useStore();
-  return useWorkspacePlace({ cloudHome: state.config?.cloudHome === true, howTo: state.cloudHowTo, onMenuClosed: () => endCloudHowTo(dispatch) });
+  const dispatch = useDispatch();
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
+  const howTo = useStoreSelector((s) => s.cloudHowTo);
+  return useWorkspacePlace({ cloudHome, howTo, onMenuClosed: () => endCloudHowTo(dispatch) });
 }
 
 export function SidebarPlaceStatus({ place, className }: { place: WorkspacePlace; className?: string }) {
@@ -25,10 +27,10 @@ export function SidebarPlaceStatus({ place, className }: { place: WorkspacePlace
 }
 
 export function SidebarFooter({ owner = null, archived }: { owner?: string | null; archived?: ArchivedBots }) {
-  const { state } = useStore();
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
   const place = useSimplePlace();
   const account = useSimpleAccount(place, owner, archived);
-  const move = useAccountMoveLine(state.config?.cloudHome === true);
+  const move = useAccountMoveLine(cloudHome);
   const apps = useSidebarApps();
   const [appsEngaged, setAppsEngaged] = useState(false);
   const footer = useRef<HTMLDivElement>(null);

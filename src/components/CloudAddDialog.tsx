@@ -11,7 +11,7 @@ import { cloudColor, cloudNameShown, DEFAULT_CLOUD_COLOR } from "@/lib/cloud-loo
 import { cloudAddView, offerPlan, offerPlanLabel, sameTerms, startedSleeps, type CloudAddView, type CloudSignInPhase } from "@/lib/cloud-plan";
 import { t } from "@/lib/i18n";
 import { welcomeOnScreen } from "@/lib/onboarding";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState } from "@/state/store";
 import { openCloudMove } from "@/lib/cloud-move";
 import { AddCloudFlow } from "./cloud-buy/AddCloudFlow";
 import { ChooseScreen } from "./cloud-buy/ChooseScreen";
@@ -113,12 +113,15 @@ const FOCUSABLE = "button:not([disabled]):not([tabindex='-1']), input:not([disab
 const free = (state: CloudAccountState) => state.status === "connected" && state.entitlement?.plan === "free" && !state.purchase && !state.machine;
 const currentTier = (state: CloudAccountState | null | undefined) =>
   state?.status === "connected" && state.entitlement?.plan === "pro" && state.entitlement.status === "active" ? state.entitlement.tier ?? "pro" : null;
+const selectCloudAdd = (state: AppState) => state.cloudAdd;
+const selectProfileEmail = (state: AppState) => state.config?.profile?.email;
 type AutoOpen = number | "off" | "done" | null;
 type Note = "copied" | "pay-failed" | "interest-sent" | "interest-failed" | null;
 
 export function CloudAddDialog({ now = Date.now }: { now?: () => number }) {
-  const { state, dispatch } = useStore();
-  const request = state.cloudAdd;
+  const dispatch = useDispatch();
+  const request = useStoreSelector(selectCloudAdd);
+  const savedEmail = useStoreSelector(selectProfileEmail);
   const bridge = window.duskDesktop?.remoteClient?.active ? undefined : window.duskDesktop?.cloudAccount;
   const [account, setAccount] = useState<CloudAccountState | null>(null);
   const [offer, setOffer] = useState<CloudOffer | null | undefined>(undefined);
@@ -141,7 +144,7 @@ export function CloudAddDialog({ now = Date.now }: { now?: () => number }) {
   const [terms, setTerms] = useState(false);
   const [extraWide, setExtraWide] = useState(false);
   const open = Boolean(request && bridge);
-  const profileEmail = state.config?.profile?.email?.trim() || null;
+  const profileEmail = savedEmail?.trim() || null;
   // Over the welcome flow the sheet is as good as closed for "ready": main notifies, and nothing switches the window away.
   const overWelcome = welcomeOnScreen();
   useEffect(() => {

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, Trash2, X } from "../icons";
 import type { CommandAllowRule, CommandAllowlistResponse } from "../../shared/command-allowlist";
-import { api, useStore } from "@/state/store";
+import { api, useStoreSelector } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { dialogPrimaryCls, fieldLabelCls, footnoteCls, formBodyCls, formCloseCls, formHeaderCls, formSheetCls, formTitleCls, listCardCls, rowHintCls, textAreaCls, textFieldCls } from "./ui/GrokDialog";
@@ -22,7 +22,7 @@ export function CommandAllowlistDialog({ botId, botName, threadId, onClose }: {
   threadId?: string;
   onClose: () => void;
 }) {
-  const { state } = useStore();
+  const instances = useStoreSelector((state) => state.instances);
   const [data, setData] = useState<CommandAllowlistResponse | null>(null);
   const [command, setCommand] = useState("");
   const [cwd, setCwd] = useState("");
@@ -40,7 +40,7 @@ export function CommandAllowlistDialog({ botId, botName, threadId, onClose }: {
   const exactId = useId();
   const basePath = `/api/bots/${encodeURIComponent(botId)}/command-allowlist`;
   const query = threadId ? `?threadId=${encodeURIComponent(threadId)}` : "";
-  const providerName = (id: string) => state.instances.find((instance) => instance.instanceId === id)?.displayName ?? id;
+  const providerName = (id: string) => instances.find((instance) => instance.instanceId === id)?.displayName ?? id;
 
   useEffect(() => {
     mounted.current = true;

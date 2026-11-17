@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useStoreSelector, type Bot } from "@/state/store";
 import { PackageProvenance } from "../bot-settings/PackageProvenance";
 import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerived";
 import { SelectPill } from "../ui/SelectPill";
@@ -58,8 +58,7 @@ export function ModelCard({ bot }: { bot: Bot }) {
 }
 
 export function VoiceChatCard({ bot, patch }: { bot: Bot; patch: Derived["patch"] }) {
-  const { state } = useStore();
-  const tts = state.config?.tts;
+  const tts = useStoreSelector((s) => s.config?.tts);
   const voices = useVoiceOptions(bot, Boolean(tts?.configured)) ?? [];
   const prefs = useVoicePrefs(bot.id);
   // grok names the voice a bot speaks with by default, so the default row wears that voice's name

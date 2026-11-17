@@ -2,7 +2,7 @@ import { xResearchAction } from "@/lib/cloud-plan";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { mcpServersForBot, mcpServersOfBot, useMcpServers } from "@/lib/mcp-servers";
-import { useStore, useDispatch, type Bot } from "@/state/store";
+import { useStoreSelector, useDispatch, type Bot } from "@/state/store";
 import type { ConnectorScope } from "../../../../shared/connector-scopes";
 import { ConnectorGrantPage, ConnectorGrantRows, GRANT_PAGE } from "../../bot-settings/ConnectorGrantRows";
 import { useToolSelection } from "../../bot-settings/ToolSelectionCard";
@@ -285,9 +285,10 @@ function ServersPage({ bot, patch }: { bot: Bot; patch: Derived["patch"] }) {
 }
 
 function ResearchRow({ bot, patch }: { bot: Bot; patch: Derived["patch"] }) {
-  const { state, dispatch } = useStore();
-  const connecting = xResearchAction(useCloudPlan()?.view ?? null) === "connecting" && state.config?.xResearch?.unavailable !== true;
-  const available = state.config?.treg?.configured === true || state.config?.xResearch?.included === true;
+  const dispatch = useDispatch();
+  const xUnavailable = useStoreSelector((s) => s.config?.xResearch?.unavailable === true);
+  const available = useStoreSelector((s) => s.config?.treg?.configured === true || s.config?.xResearch?.included === true);
+  const connecting = xResearchAction(useCloudPlan()?.view ?? null) === "connecting" && !xUnavailable;
   const on = bot.xResearch !== false;
   if (!available && !connecting) {
     return <NavRow data-sheet-row="research" title={t("botPanel.sheet.researchRow")} value={t("botPanel.sheet.researchKey")} onClick={() => dispatch(openKeySettings("treg"))} />;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Copy, Download, ExternalLink, KeyRound, Loader2, LogIn, TerminalSquare, X } from "../icons";
-import { api, useStore, useDispatch, useStoreActions, type InstanceInfo } from "@/state/store";
+import { api, useDispatch, useStoreActions, useStoreSelector, type InstanceInfo } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { copyText } from "@/lib/copy-text";
@@ -564,9 +564,8 @@ export function EngineSetup({
   /** Settings' engine page: an install drawn as rows of one card */
   rows?: boolean;
 }) {
-  const { state } = useStore();
+  const cloudHome = useStoreSelector((state) => state.config?.cloudHome === true);
   const [checked, setChecked] = useState(false);
-  const cloudHome = state.config?.cloudHome === true;
   const install = instance.install;
   const unavailable = instance.snapshot.state === "unavailable" ? instance.snapshot.reason : undefined;
   const reason = unavailable && (checked || !notInstalledYet(unavailable)) ? unavailable : undefined;

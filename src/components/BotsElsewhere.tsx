@@ -16,7 +16,7 @@ import {
   parseElsewhereView, setMacEmpty, setSimulatedFreshInstall, SIMULATED_FRESH_INSTALL, useSimulatedFreshInstall, type ElsewherePlace, type ElsewhereScreen,
   type ElsewhereView,
 } from "@/lib/bots-elsewhere";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState } from "@/state/store";
 import { useAmbientAway } from "@/ambient/away";
 import { ChevronRight } from "../icons";
 import { CloudMoveRow } from "./CloudMoveSettings";
@@ -49,8 +49,17 @@ function listed(rail: RailPlace[], here: ElsewherePlace[]): RailPlace[] {
     ...here.map((place): RailPlace => ({ id: place.id, name: place.name, color: null, kind: KIND_OF_WHY[place.why], opens: true }))];
 }
 
+const selectAppSettingsOpen = (state: AppState) => state.appSettingsOpen;
+const selectCloudAdd = (state: AppState) => Boolean(state.cloudAdd);
+const selectEmpty = (state: AppState) => state.hydrated === true && state.connected && emptyHere(state.bots);
+const selectOwnHere = (state: AppState) => state.bots.filter((bot) => !bot.defaultBot && !bot.hidden).length;
+
 export function BotsElsewhere() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const appSettingsOpen = useStoreSelector(selectAppSettingsOpen);
+  const cloudAdd = useStoreSelector(selectCloudAdd);
+  const empty = useStoreSelector(selectEmpty);
+  const ownHere = useStoreSelector(selectOwnHere);
   const bridge = typeof window === "undefined" ? undefined : window.duskDesktop?.elsewhere;
   const rail = usePlaces();
   const simulated = useSimulatedFreshInstall();
@@ -63,11 +72,10 @@ export function BotsElsewhere() {
   const [failed, setFailed] = useState<string | null>(null);
   // the add-a-place sheet opens over this screen rather than hiding it, so closing the sheet comes back here
   const covered = elsewhereCovered({
-    settings: state.appSettingsOpen, cloudAdd: Boolean(state.cloudAdd), addVps: useAddVpsOpen(), cloudMove: Boolean(useCloudMoveOpen()),
+    settings: appSettingsOpen, cloudAdd, addVps: useAddVpsOpen(), cloudMove: Boolean(useCloudMoveOpen()),
   });
   // picked here, this run: the page is this computer's from now on, whatever main's older answer said
   const [stayed, setStayed] = useState(false);
-  const empty = state.hydrated === true && state.connected && emptyHere(state.bots);
 
   const load = useCallback(() => {
     if (!bridge) return;
@@ -120,7 +128,6 @@ export function BotsElsewhere() {
   const places = listed(rail.places, [screen.place, ...screen.others]);
   const hasCloud = places.some((place) => place.kind === "cloud" || place.kind === "team");
   const canBuy = Boolean(window.duskDesktop?.cloudAccount) && window.duskDesktop?.remoteClient?.active !== true;
-  const ownHere = state.bots.filter((bot) => !bot.defaultBot && !bot.hidden).length;
   return (
     <PlacesHub
       places={places}

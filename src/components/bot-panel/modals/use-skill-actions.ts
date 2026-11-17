@@ -3,7 +3,8 @@ import { useState } from "react";
 import { openExternalLink } from "@/lib/app-links";
 import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
-import { useStore, type Bot } from "@/state/store";
+import type { Bot } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { useBotEditor } from "../../bot-settings/BotEditorContext";
 import { useManagedSkills, type ManagedSkill } from "../../bot-settings/SkillsSection";
 import { friendlyError } from "@/lib/plain-error";
@@ -17,11 +18,10 @@ function errorText(error: unknown, fallback: string): string {
 /** A bot's skills with what the panel does to them: switch, remove after asking, add from a link, browse for more. */
 export function useSkillActions(bot: Bot) {
   const { request: api } = useBotEditor();
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
   const skills = useManagedSkills(bot);
   const [source, setSource] = useState("");
   const [importing, setImporting] = useState(false);
-  const libraryOn = skillsLibraryEnabled(state.config);
 
   const remove = async (skill: ManagedSkill) => {
     if (skills.working) return;
@@ -56,8 +56,8 @@ export function useSkillActions(bot: Bot) {
     }
   };
   const browse = () => {
-    if (libraryOn) {
-      dispatch({ type: "toggleAppSettings", open: true, section: "skills" });
+    if (skillsLibraryEnabled(store.state().config)) {
+      store.dispatch({ type: "toggleAppSettings", open: true, section: "skills" });
       return;
     }
     void openExternalLink(SKILLS_SITE);

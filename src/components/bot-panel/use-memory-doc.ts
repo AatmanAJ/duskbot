@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { fetchMemoryDoc, fetchMemoryOverview, MEMORY_INDEX, type MemoryDoc } from "@/lib/memory";
-import { useStore, type Bot } from "@/state/store";
+import { useStoreSelector, type Bot } from "@/state/store";
 
 export interface MemoryNotesState {
   /** MEMORY.md first; on a Team Cloud also the person's topic files. Null until read. */
@@ -22,7 +22,7 @@ async function readDocs(botId: string, mine: boolean): Promise<MemoryDoc[]> {
 /** The notes the bot panel shows for a bot whose memory is on. They are read again as a turn starts and ends, so a note
  * the bot just saved shows. */
 export function useMemoryDoc(bot: Pick<Bot, "id" | "memoryEnabled" | "busy">): MemoryNotesState {
-  const mine = Boolean(useStore().state.config?.team);
+  const mine = useStoreSelector((s) => Boolean(s.config?.team));
   const [state, setState] = useState<{ botId: string; docs: MemoryDoc[] | null; error: boolean }>({ botId: bot.id, docs: null, error: false });
   const memoryOn = bot.memoryEnabled !== false;
 

@@ -8,7 +8,7 @@ import { t } from "@/lib/i18n";
 import { instanceSupportsLocalComputer, localComputerDisabledReason, localComputerSelectable } from "@/lib/local-computer";
 import { effectivePlace, personPin, PLACES, placeLabelKey, placeOffered, type Place } from "@/lib/place";
 import { placeBlocked, placeFacts, placeHasIssue, placeViewFor, usePlaceSeat } from "@/lib/place-view";
-import { useStore, type Bot, type Task } from "@/state/store";
+import { useStoreSelector, type AppState, type Bot, type Task } from "@/state/store";
 import type { PlaceView } from "../../shared/place-view";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { PlaceIcon } from "./PlaceIcon";
@@ -16,20 +16,23 @@ import type { SidebarMenuItem } from "./SidebarPopoverMenu";
 
 export type PlaceAvailability = Record<Place, boolean>;
 
+const selectConfig = (s: AppState) => s.config;
+
 export function usePlaceViews(bot: Bot): Record<Place, { view: PlaceView; reachable: boolean; policy: boolean }> {
-  const { state } = useStore();
+  const config = useStoreSelector(selectConfig);
+  const instances = useStoreSelector((s) => s.instances);
   const { capabilities } = useDesktopCapabilities();
-  const seat = usePlaceSeat(state.config, capabilities.host.platform);
-  const allowed = state.config?.managedPolicy?.computers ?? { thisComputer: true, localVm: true, box: true, vps: true };
-  const providerSupportsLocal = instanceSupportsLocalComputer(state.instances, bot);
+  const seat = usePlaceSeat(config, capabilities.host.platform);
+  const allowed = config?.managedPolicy?.computers ?? { thisComputer: true, localVm: true, box: true, vps: true };
+  const providerSupportsLocal = instanceSupportsLocalComputer(instances, bot);
   const local = {
     ready: localComputerSelectable({ capabilities, providerSupportsLocal }),
     reason: localComputerDisabledReason({ capabilities, providerSupportsLocal }) ?? t("computer.unavailableLocal"),
   };
   const entry = (place: Place) => {
-    const view = placeViewFor(placeFacts({ bot, place, seat, config: state.config, instances: state.instances, local }));
+    const view = placeViewFor(placeFacts({ bot, place, seat, config, instances, local }));
     const policy = (place === "cloud" ? allowed.vps : place === "vm" ? allowed.localVm : place === "local" ? allowed.thisComputer : true)
-      && placeOffered(place, state.config);
+      && placeOffered(place, config);
     return { view, policy, reachable: policy && !placeBlocked(view) };
   };
   return { cloud: entry("cloud"), vm: entry("vm"), local: entry("local"), browser: entry("browser") };
@@ -47,7 +50,7 @@ export function usePlaceMenuItem({ bot, task, disabled = false, onPin }: {
   disabled?: boolean;
   onPin: (surface: Place | null) => void;
 }): SidebarMenuItem {
-  const { state } = useStore();
+  const config = useStoreSelector(selectConfig);
   const places = usePlaceViews(bot);
   const effective = effectivePlace(bot, task);
   const pin = personPin(task);
@@ -74,7 +77,7 @@ export function usePlaceMenuItem({ bot, task, disabled = false, onPin }: {
         trailing: !pinned ? check : undefined,
         onSelect: () => choose(null),
       },
-      ...PLACES.filter((place) => placeOffered(place, state.config)).map((place): SidebarMenuItem => {
+      ...PLACES.filter((place) => placeOffered(place, config)).map((place): SidebarMenuItem => {
         const { view, reachable, policy } = places[place];
         return {
           key: `place:${place}`,
@@ -105,7 +108,7 @@ export function PlaceChip({ bot, task, live, disabled = false, onPin }: {
   const [open, setOpen] = useState(false);
   const motion = useMenuMotion(open);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const { state } = useStore();
+  const config = useStoreSelector(selectConfig);
   const places = usePlaceViews(bot);
   const effective = effectivePlace(bot, task);
   const pin = personPin(task);
@@ -168,7 +171,7 @@ export function PlaceChip({ bot, task, live, disabled = false, onPin }: {
               </span>
               {!pinned && <Check size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />}
             </button>
-            {PLACES.filter((place) => placeOffered(place, state.config)).map((place) => {
+            {PLACES.filter((place) => placeOffered(place, config)).map((place) => {
               const selected = pin === place;
               const { view, reachable, policy } = places[place];
               const detail = !policy ? t("place.unavailable") : placeHasIssue(view) ? view.short : t(DESCRIPTION[place]);

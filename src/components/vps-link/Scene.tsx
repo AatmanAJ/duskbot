@@ -6,7 +6,7 @@ import { usePrefersReducedMotion } from "@/components/mascot-clock";
 import { cn } from "@/lib/cn";
 import type { MausState } from "@/lib/mascot";
 import type { MarkReaction } from "@/components/mascot-engine";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { DUSK_BODY_IDS, type DuskBodyId } from "../../../shared/body-migration";
 import { isMausColor, type MausColor } from "../../../shared/wire";
 import "../../styles/vps-flow.css";
@@ -50,8 +50,7 @@ const FALLBACK: MausColor[] = ["blue", "pink", "orange", "teal", "purple", "red"
 
 /** A bot's own face where this app knows it, else a mascot in a steady colour of its own. */
 export function BotFace({ bot, index, size = FACE }: { bot: SceneBot; index: number; size?: number }) {
-  const { state } = useStore();
-  const known = state.bots?.find((entry) => entry.id === bot.id);
+  const known = useStoreSelector((s) => s.bots?.find((entry) => entry.id === bot.id));
   return known
     ? <BotAvatar bot={known} size={size} animated={false} trackPointer={false} />
     : <MausAvatar color={FALLBACK[index % FALLBACK.length]!} bodyId={DUSK_BODY_IDS[(index * 3 + 1) % DUSK_BODY_IDS.length]} size={size} animated={false} trackPointer={false} />;

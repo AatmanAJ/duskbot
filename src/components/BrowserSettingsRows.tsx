@@ -3,7 +3,7 @@ import { useState } from "react";
 import { browserAvailable, browserUnavailableReason, builtInBrowserEnabled } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
-import { api, useStore, useDispatch, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type AppState, type ConfigStatus } from "@/state/store";
 import { SettingRow, Switch } from "./SettingsPrimitives";
 import { friendlyError } from "@/lib/plain-error";
 
@@ -31,11 +31,13 @@ function useConfigSave() {
   return { saving, error, save };
 }
 
+const selectConfig = (state: AppState) => state.config;
+
 export function BuiltInBrowserRow() {
-  const { state } = useStore();
-  const browser = builtInBrowserEnabled(state.config);
-  const desktopBrowser = browserAvailable(state.config);
-  const browserInstallable = state.config?.browserEngine?.installable === true;
+  const config = useStoreSelector(selectConfig);
+  const browser = builtInBrowserEnabled(config);
+  const desktopBrowser = browserAvailable(config);
+  const browserInstallable = config?.browserEngine?.installable === true;
   const browserBlockedOnWindows = window.duskDesktop?.platform === "win32" && !desktopBrowser && !browserInstallable;
   const { saving, error, save } = useConfigSave();
 
@@ -46,9 +48,9 @@ export function BuiltInBrowserRow() {
         ? t("settings.w6a.browser.hint")
         : browserBlockedOnWindows
           ? t("settings.w6a.browser.windows")
-          : state.config?.browserEngine?.kind === "unavailable" && browserInstallable
+          : config?.browserEngine?.kind === "unavailable" && browserInstallable
             ? t("settings.w6a.browser.notInstalled")
-            : browserUnavailableReason(state.config)}
+            : browserUnavailableReason(config)}
     message={error ? <p role="alert" className="text-danger">{error}</p> : null}
     >
       <Switch
@@ -65,11 +67,11 @@ export function BuiltInBrowserRow() {
 /** Self-hosted servers only, for the owner: browserEngine.egress.localNetwork lets bots' browsers open this server's
  * own sites and its local network. dusk bot's own ports, cloud metadata and link-local addresses stay closed. */
 export function ServerSitesRow() {
-  const { state } = useStore();
+  const on = useStoreSelector((state) => state.config?.browserEngine?.serverSites);
+  const enabled = useStoreSelector((state) => builtInBrowserEnabled(state.config));
   const owner = useOwnerOrAdmin();
-  const on = state.config?.browserEngine?.serverSites;
   const { saving, error, save } = useConfigSave();
-  if (on === undefined || owner !== true || !builtInBrowserEnabled(state.config)) return null;
+  if (on === undefined || owner !== true || !enabled) return null;
 
   return (
     <SettingRow

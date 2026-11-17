@@ -4,7 +4,7 @@
 import { useEffect } from "react";
 
 import type { WelcomeViewer } from "@/lib/onboarding";
-import { api, useStore } from "@/state/store";
+import { api, useStoreSelector } from "@/state/store";
 
 export function deviceTimeZone(): string | null {
   try {
@@ -25,8 +25,8 @@ export async function syncCloudTimeZone(zone: string | null, request: typeof api
 }
 
 export function CloudTimeZoneSync({ viewer }: { viewer: WelcomeViewer | null }) {
-  const { state } = useStore();
-  const due = Boolean(viewer?.cloudHome && viewer.canSave && state.connected);
+  const connected = useStoreSelector((state) => state.connected);
+  const due = Boolean(viewer?.cloudHome && viewer.canSave && connected);
   useEffect(() => {
     if (due) void syncCloudTimeZone(deviceTimeZone()).catch(() => {});
   }, [due]);

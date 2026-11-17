@@ -1,7 +1,8 @@
 import { useProductScreen } from "@/lib/product-analytics-app";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { MotionConfig } from "motion/react";
-import { openBot, openBotThread, openRoomThread, StoreProvider, useStore } from "@/state/store";
+import { openBot, openBotThread, openRoomThread, StoreProvider, useDispatch, useStore, useStoreSelector } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { useTeamChats } from "@/state/team-chats";
 import { useWarmChatImages } from "@/components/use-warm-chat-images";
 import { ThreadRefsProvider } from "@/components/ThreadRefs";
@@ -32,28 +33,38 @@ import { useOutbox } from "./outbox";
 import { usePlatform } from "./platform";
 import type { MobileSheet } from "./sheets";
 
+function ChatHaptics({ chatId }: { chatId: string | null }) {
+  const platform = usePlatform();
+  const { state } = useStore();
+  // notifications are asked for when they mean something: once a message is on its way and its reply will follow
+  useChatHaptics(state, chatId, useCallback(() => { if (platform.native) void registerPushForConnection(platform, { prompt: true }); }, [platform]));
+  return null;
+}
+
 function Shell() {
   const platform = usePlatform();
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const config = useStoreSelector((s) => s.config);
+  const bots = useStoreSelector((s) => s.bots);
+  const groups = useStoreSelector((s) => s.groups);
+  const hydrated = useStoreSelector((s) => s.hydrated);
+  const appSettingsOpen = useStoreSelector((s) => s.appSettingsOpen);
+  const appSettingsSection = useStoreSelector((s) => s.appSettingsSection);
   const rootRef = useRef<HTMLDivElement>(null);
   const [chatId, setChatId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<MobileSheet | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   useProductScreen(sheetOpen && sheet ? `/${sheet.kind}` : chatId ? "/chats/:id" : "/", chatId);
-  useTeamChats(state.config);
-  useWarmChatImages(state.bots);
-  usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language));
+  useTeamChats(config);
+  useWarmChatImages(bots);
+  usePageLanguage(effectiveLanguage(useLanguageChoice(), config?.language));
   useKeyboardSync(platform, rootRef);
-  // notifications are asked for when they mean something: once a message is on its way and its reply will follow
-  useChatHaptics(state, chatId, useCallback(() => { if (platform.native) void registerPushForConnection(platform, { prompt: true }); }, [platform]));
   useOutbox();
   // a bot's reply someone finds harmful or wrong goes to a person at dusk bot, with the reply in the mail they send
   useEffect(() => installAiReport(({ text, messageId }) => {
     void platform.openExternal(supportMail(t("mobile.report.subject"), t("mobile.report.body", { text: text.slice(0, 1500), id: messageId })));
   }), [platform]);
-
-  const latest = useRef(state);
-  latest.current = state;
 
   // the status bar's clock and battery follow the look, when it is changed in Settings and when the system's changes
   const skin = useSyncExternalStore(subscribeSkin, readSkinChoice, () => "system");
@@ -71,12 +82,12 @@ function Shell() {
   useEffect(() => { setChatCovered(chatId === null); return () => setChatCovered(false); }, [chatId]);
 
   const openChat = useCallback((id: string) => {
-    const current = latest.current;
+    const current = store.state();
     const bot = current.bots.find((b) => b.id === id);
     if (bot) openBot(dispatch, bot);
     else dispatch({ type: "select", id });
     setChatId(id);
-  }, [dispatch]);
+  }, [dispatch, store]);
 
   const openSheet = useCallback((next: MobileSheet) => {
     setSheet(next);
@@ -88,19 +99,20 @@ function Shell() {
   // says where that lives instead of doing nothing
   const [desktopOnly, setDesktopOnly] = useState(false);
   useEffect(() => {
-    if (!state.appSettingsOpen) return;
+    if (!appSettingsOpen) return;
     dispatch({ type: "toggleAppSettings", open: false });
     // voice input is set up on the phone itself: its own settings sheet has the page
-    if (state.appSettingsSection === "voice") openSheet({ kind: "settings", page: "voice" });
+    if (appSettingsSection === "voice") openSheet({ kind: "settings", page: "voice" });
     else setDesktopOnly(true);
-  }, [state.appSettingsOpen, state.appSettingsSection, dispatch, openSheet]);
+  }, [appSettingsOpen, appSettingsSection, dispatch, openSheet]);
 
   const openTarget = useCallback((target: MobileOpenTarget) => {
     const id = target.botId ?? target.groupId;
     if (id) {
-      const bot = latest.current.bots.find((b) => b.id === id);
+      const latest = store.state();
+      const bot = latest.bots.find((b) => b.id === id);
       if (bot && target.threadId) { openBotThread(dispatch, bot, target.threadId, true); setChatId(bot.id); }
-      else if (target.groupId && target.threadId) { openRoomThread(dispatch, { groupId: target.groupId, threadId: target.threadId }, latest.current.groups); setChatId(target.groupId); }
+      else if (target.groupId && target.threadId) { openRoomThread(dispatch, { groupId: target.groupId, threadId: target.threadId }, latest.groups); setChatId(target.groupId); }
       else openChat(id);
       if (target.messageId && target.threadId) dispatch({ type: "focusMessage", threadId: target.threadId, messageId: target.messageId });
     }
@@ -109,7 +121,7 @@ function Shell() {
     else if (target.view === "settings") openSheet({ kind: "settings" });
     else if (target.view === "notifications") openSheet({ kind: "notifications" });
     else if (target.view === "routines") openSheet({ kind: "routines", botId: target.botId });
-  }, [dispatch, openChat, openSheet]);
+  }, [dispatch, store, openChat, openSheet]);
 
   useEffect(() => platform.onAppUrl?.((url) => {
     if (parseSlackOAuthLink(url)) { void completeSlackOAuth(url); return true; }
@@ -119,13 +131,14 @@ function Shell() {
     const bot = parseBotRefUrl(url);
     const thread = parseThreadRefUrl(url);
     if (!bot && !thread) return false;
-    if (openChatLink(dispatch, url, latest.current, true)) {
-      const owner = bot?.botId ?? thread?.botId ?? latest.current.groups.find((g) => g.threadId === thread?.threadId || g.tasks?.some((task) => task.threadId === thread?.threadId))?.id
-        ?? latest.current.bots.find((b) => b.threadId === thread?.threadId || b.tasks?.some((task) => task.threadId === thread?.threadId))?.id;
+    const latest = store.state();
+    if (openChatLink(dispatch, url, latest, true)) {
+      const owner = bot?.botId ?? thread?.botId ?? latest.groups.find((g) => g.threadId === thread?.threadId || g.tasks?.some((task) => task.threadId === thread?.threadId))?.id
+        ?? latest.bots.find((b) => b.threadId === thread?.threadId || b.tasks?.some((task) => task.threadId === thread?.threadId))?.id;
       if (owner) setChatId(owner);
     }
     return true;
-  }), [platform, openTarget, dispatch]);
+  }), [platform, openTarget, dispatch, store]);
   useEffect(() => platform.onNotificationOpen?.(openTarget), [platform, openTarget]);
 
   useEffect(() => platform.onBack?.(() => {
@@ -137,10 +150,10 @@ function Shell() {
   // a resumed app reads the chat on screen, as a refocused desktop window does
   useEffect(() => platform.onResume?.(() => { if (chatId) dispatch({ type: "select", id: chatId }); }), [platform, chatId, dispatch]);
 
-  const group = chatId ? state.groups.find((g) => g.id === chatId) : undefined;
-  const bot = chatId && !group ? state.bots.find((b) => b.id === chatId) : undefined;
-  const members = useMemo(() => group ? state.bots.filter((b) => group.memberIds.includes(b.id)) : [], [group, state.bots]);
-  useEffect(() => { if (chatId && state.hydrated && !group && !bot) setChatId(null); }, [chatId, state.hydrated, group, bot]);
+  const group = chatId ? groups.find((g) => g.id === chatId) : undefined;
+  const bot = chatId && !group ? bots.find((b) => b.id === chatId) : undefined;
+  const members = useMemo(() => group ? bots.filter((b) => group.memberIds.includes(b.id)) : [], [group, bots]);
+  useEffect(() => { if (chatId && hydrated && !group && !bot) setChatId(null); }, [chatId, hydrated, group, bot]);
 
   const page = bot || group ? (
     <ChatScreen
@@ -155,6 +168,7 @@ function Shell() {
 
   return (
     <div ref={rootRef} className="dusk-mobile relative">
+      <ChatHaptics chatId={chatId} />
       <NavStack
         base={<HomeScreen onOpenChat={openChat} onOpenSheet={openSheet} />}
         page={page}

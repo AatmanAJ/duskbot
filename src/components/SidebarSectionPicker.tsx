@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, FolderMinus } from "../icons";
-import { useStore } from "@/state/store";
+import { useStoreShallow } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { useHeldMenuMotion } from "./MenuMotion";
@@ -19,7 +19,7 @@ export function SectionPicker({
   onClose: () => void;
   onAssign: (section: string) => void;
 }) {
-  const { state } = useStore();
+  const sections = useStoreShallow(departmentNames);
   const [name, setName] = useState("");
   const motion = useHeldMenuMotion(anchor);
   const shown = motion.value;
@@ -42,8 +42,6 @@ export function SectionPicker({
       window.removeEventListener("blur", onClose);
     };
   }, [anchor, onClose]);
-
-  const sections = departmentNames(state);
 
   const assign = (section: string) => {
     onAssign(section);

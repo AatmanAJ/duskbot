@@ -7,7 +7,7 @@ import { track } from "@/lib/analytics";
 import { moveOfferBridge, moveProgress, moveSheetState, offerAsk, type MoveSheetState } from "@/lib/cloud-move-offer";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useStoreSelector, type AppState } from "@/state/store";
 import { CloudMoveScene } from "./CloudMoveScene";
 import { WhatMovesLine } from "./WhatMoves";
 import { useCloudSendNotice } from "./CloudSendStrip";
@@ -16,13 +16,15 @@ import { ScrimMotion, SheetMotion } from "./ui/SheetMotion";
 
 export const QUIET_BUTTON = "inline-flex h-9 shrink-0 cursor-pointer items-center rounded-full px-3 text-[13px] font-medium text-ink-secondary transition-[color,background-color] duration-[120ms] ease-[ease] hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50";
 
+const selectWaits = (state: AppState) => !state.connected || !state.config || state.appSettingsOpen || state.settingsOpen || state.pluginsOpen || state.shortcutsOpen;
+
 /**
  * Moving this computer's bots to the person's dusk cloud, in one small sheet: it asks once by itself, then follows the move
  * as the bots hop across, and ends with All moved. Closed while it asks, a slim line at the top asks instead; closed too,
  * Settings → Computer keeps Move (CloudMoveSettings). On My Cloud's page All moved is a slim line at the top, never a sheet over its chat.
  */
 export function CloudMoveOffer({ cloudHome = false }: { cloudHome?: boolean }) {
-  const { state } = useStore();
+  const waits = useStoreSelector(selectWaits);
   const bridge = moveOfferBridge();
   const [notice, setNotice] = useCloudSendNotice(bridge);
   const [open, setOpen] = useState(false);
@@ -31,7 +33,6 @@ export function CloudMoveOffer({ cloudHome = false }: { cloudHome?: boolean }) {
   const declined = useRef(false);
   const shown = useRef<string | null>(null);
   const furthest = useRef(0);
-  const waits = !state.connected || !state.config || state.appSettingsOpen || state.settingsOpen || state.pluginsOpen || state.shortcutsOpen;
   const ask = waits ? null : offerAsk(notice);
   const moving = moveSheetState(notice?.move) ?? (startFailed ? "failed" : null);
   const sheet: MoveSheetState | null = moving === "done" ? "done" : open ? moving ?? (notice?.offer ? "ask" : null) : null;

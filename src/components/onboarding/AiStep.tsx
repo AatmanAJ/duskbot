@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, LoaderCircle, RefreshCw } from "../../icons";
 import { engineReady } from "@/components/EngineLibrary";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { AiCards } from "./AiCards";
 import { ConnectAiDialog } from "./ConnectAi";
 import { aiName, aiTiles, freeModel } from "./funnel";
@@ -17,10 +17,10 @@ import type { WelcomeAiNow } from "./welcome-ai";
  * the person's dusk cloud is being made meanwhile, which the line says. `auto`: an AI that already works is used without
  * asking (false when the person came back to this step). */
 export function AiStep({ tested, cloud = false, auto = true, onNext }: { tested: WelcomeAiNow | null; cloud?: boolean; auto?: boolean; onNext: (how: "connected" | "free" | "later") => void }) {
-  const { state } = useStore();
+  const instances = useStoreSelector((s) => s.instances);
   const [more, setMore] = useState(false);
-  const free = freeModel(state.instances, engineReady);
-  const connected = aiTiles(state.instances, engineReady).filter((tile) => engineReady(tile.instance));
+  const free = freeModel(instances, engineReady);
+  const connected = aiTiles(instances, engineReady).filter((tile) => engineReady(tile.instance));
   const { using, goOn, skip } = useFoundAi(auto ? tested : null, onNext);
 
   if (using !== "none") {

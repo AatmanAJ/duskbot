@@ -10,7 +10,7 @@ import { pickerPlacement, type PickerPlacement } from "@/lib/picker-placement";
 import { shortModelLabel } from "@/lib/model-friendly";
 import { modelName, providerName, simpleModelMenu } from "@/lib/simple-model-menu";
 import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
-import { useStore, type Bot, type InstanceInfo } from "@/state/store";
+import { useStoreActions, useStoreSelector, type AppState, type Bot, type InstanceInfo } from "@/state/store";
 import { useMenuMotion } from "../MenuMotion";
 import { modelMenuKey, modelMenuPointerMove } from "../model-menu-keys";
 import { SIMPLE_POPOVER_WIDTH } from "../ModelPicker";
@@ -27,6 +27,7 @@ const NO_SELECTION = { instanceId: "", model: "" };
 /** One model of one account: a bot's backups may share an account, never a model. */
 export const modelKey = (instanceId: string, model: string) => `${instanceId}\u0000${model}`;
 const NOTHING_PROBED: ReadonlySet<string> = new Set();
+const selectInstances = (state: AppState) => state.instances;
 
 export function BackupChooser({ bot, current, exclude, onPick, label, title, buttonRef, className, children, ...rest }: {
   bot: Bot;
@@ -40,7 +41,8 @@ export function BackupChooser({ bot, current, exclude, onPick, label, title, but
   children: ReactNode;
   "data-panel-action"?: string;
 }) {
-  const { state, dispatch, refreshInstances, refreshModels } = useStore();
+  const { dispatch, refreshInstances, refreshModels } = useStoreActions();
+  const instances = useStoreSelector(selectInstances);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
@@ -109,13 +111,13 @@ export function BackupChooser({ bot, current, exclude, onPick, label, title, but
   };
 
   const menuFor = () => {
-    const listed = configuredModelInstances(state.instances, current?.instanceId).flatMap((instance) => {
+    const listed = configuredModelInstances(instances, current?.instanceId).flatMap((instance) => {
       const options = instance.models.options.filter((option) => !exclude.has(modelKey(instance.instanceId, option.id)));
       if (options.length === instance.models.options.length) return [instance];
       return options.length ? [{ ...instance, models: { ...instance.models, options } }] : [];
     });
     const built = simpleModelMenu({
-      instances: state.instances, listed, selection: current ?? NO_SELECTION,
+      instances, listed, selection: current ?? NO_SELECTION,
       bot: { name: bot.name, selection: bot.modelSelection }, query, expanded, probing: NOTHING_PROBED, loading, refreshing,
     });
     const groups = built.groups.map((group) => group.instance.instanceId === bot.modelSelection.instanceId
@@ -213,13 +215,13 @@ export function BackupChooser({ bot, current, exclude, onPick, label, title, but
 }
 
 export function BackupAis({ bot, onChange }: { bot: Bot; onChange: (fallback: Backup[]) => void }) {
-  const { state } = useStore();
+  const instances = useStoreSelector(selectInstances);
   const chain = bot.fallback ?? [];
   const addRef = useRef<HTMLButtonElement>(null);
   const others = (except: number | null) => new Set([bot.modelSelection, ...chain.filter((_, index) => index !== except)]
     .map((entry) => modelKey(entry.instanceId, entry.model)));
   const describe = (entry: Backup) => {
-    const instance = state.instances.find((candidate) => candidate.instanceId === entry.instanceId);
+    const instance = instances.find((candidate) => candidate.instanceId === entry.instanceId);
     const option = instance?.models.options.find((candidate) => candidate.id === entry.model);
     const name = modelName(instance, entry.model);
     return { instance, name, short: instance && option ? shortModelLabel(option.label, providerName(instance)) : name };

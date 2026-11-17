@@ -8,7 +8,7 @@ import { routineDateTime, routineNextLabel, routineRunLabel, routineRunTime } fr
 import { upperFirst } from "@/lib/lower-first";
 import { scheduleLabel } from "@/lib/schedule-label";
 import type { Routine, RoutineRun } from "@/lib/routines";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch, useStoreSelector } from "@/state/store";
 import { Sheet } from "../Sheet";
 import { haptic } from "../haptics";
 import { SettingsSwitch } from "./SettingsRow";
@@ -21,7 +21,11 @@ export function routineResultsThread(routine: Pick<Routine, "resultsThreadId">, 
 }
 
 export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPageProps<"routines">) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const allRoutines = useStoreSelector((s) => s.routines);
+  const bots = useStoreSelector((s) => s.bots);
+  const routineRuns = useStoreSelector((s) => s.routineRuns);
+  const routinesLoadState = useStoreSelector((s) => s.routinesLoadState);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
   const [busy, setBusy] = useState<string[]>([]);
@@ -30,9 +34,9 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
   const [notice, setNotice] = useState(false);
   const [loading, setLoading] = useState(false);
   const requestVersion = useRef(0);
-  const selected = state.routines.find((routine) => routine.id === selectedId);
-  const bot = state.bots.find((entry) => entry.id === sheet.botId);
-  const routines = state.routines.filter((routine) => !sheet.botId || routine.botId === sheet.botId);
+  const selected = allRoutines.find((routine) => routine.id === selectedId);
+  const bot = bots.find((entry) => entry.id === sheet.botId);
+  const routines = allRoutines.filter((routine) => !sheet.botId || routine.botId === sheet.botId);
   const load = useCallback(async () => {
     const version = ++requestVersion.current;
     setLoading(true);
@@ -46,9 +50,9 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
     } finally { if (version === requestVersion.current) setLoading(false); }
   }, [dispatch]);
   useEffect(() => {
-    if (open && state.routinesLoadState !== "ready") void load();
+    if (open && routinesLoadState !== "ready") void load();
     return () => { requestVersion.current++; };
-  }, [open, load, state.routinesLoadState]);
+  }, [open, load, routinesLoadState]);
   useEffect(() => { if (open) { setSelectedId(null); setArmed(null); setError(null); setNotice(false); } }, [open, sheet.botId]);
   useEffect(() => { if (!armed) return; const timer = window.setTimeout(() => setArmed(null), 3000); return () => window.clearTimeout(timer); }, [armed]);
   const work = async (routine: Routine, action: "toggle" | "run" | "delete") => {
@@ -78,10 +82,10 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
     finally { pending.current.delete(routine.id); setBusy([...pending.current]); }
   };
   const back = () => { setSelectedId(null); setArmed(null); setError(null); setNotice(false); };
-  const runs = selected ? state.routineRuns.filter((run) => run.routineId === selected.id).sort((a, b) => routineRunTime(b) - routineRunTime(a)) : [];
-  const selectedBot = state.bots.find((entry) => entry.id === selected?.botId);
-  const askBot = bot ?? state.bots.find((entry) => entry.defaultBot && !entry.hidden) ?? state.bots.find((entry) => !entry.hidden);
-  const loadFailed = state.routinesLoadState === "error" || error === t("mobile.routines.loadError");
+  const runs = selected ? routineRuns.filter((run) => run.routineId === selected.id).sort((a, b) => routineRunTime(b) - routineRunTime(a)) : [];
+  const selectedBot = bots.find((entry) => entry.id === selected?.botId);
+  const askBot = bot ?? bots.find((entry) => entry.defaultBot && !entry.hidden) ?? bots.find((entry) => !entry.hidden);
+  const loadFailed = routinesLoadState === "error" || error === t("mobile.routines.loadError");
   const title = selected?.name ?? (bot ? t("mobile.routines.botTitle", { name: bot.name }) : t("mobile.routines.title"));
   return (
     <Sheet open={open} onClose={onClose} full title={title} back={selected ? back : undefined}>
@@ -99,9 +103,9 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
               {runs.length ? <ul>{runs.map((run) => <li key={run.id} className="flex min-h-14 items-center justify-between gap-3 py-2"><span className="text-[16px] font-semibold text-ink">{routineRunLabel(run)}</span><time dateTime={new Date(routineRunTime(run)).toISOString()} className="text-right text-[14px] text-ink-secondary">{routineDateTime(routineRunTime(run))}</time></li>)}</ul> : <p className="py-3 text-[14px] text-ink-secondary">{t("mobile.routines.noRuns")}</p>}
             </section>
           </div>
-        ) : (loading || state.routinesLoadState === "loading" && !error) && !routines.length ? <div role="status" aria-label={t("mobile.routines.loading")}>{[0, 1, 2].map((key) => <div key={key} aria-hidden className="flex min-h-[84px] items-center gap-3 px-3 py-3"><span className="size-9 shrink-0 rounded-full bg-ink/[0.06]" /><span className="flex-1 space-y-2"><span className="block h-4 w-2/5 rounded-full bg-ink/[0.06]" /><span className="block h-3 w-3/5 rounded-full bg-ink/[0.05]" /></span></div>)}</div> : routines.length ? (
+        ) : (loading || routinesLoadState === "loading" && !error) && !routines.length ? <div role="status" aria-label={t("mobile.routines.loading")}>{[0, 1, 2].map((key) => <div key={key} aria-hidden className="flex min-h-[84px] items-center gap-3 px-3 py-3"><span className="size-9 shrink-0 rounded-full bg-ink/[0.06]" /><span className="flex-1 space-y-2"><span className="block h-4 w-2/5 rounded-full bg-ink/[0.06]" /><span className="block h-3 w-3/5 rounded-full bg-ink/[0.05]" /></span></div>)}</div> : routines.length ? (
           <ul>{routines.map((routine) => {
-            const owner = state.bots.find((entry) => entry.id === routine.botId);
+            const owner = bots.find((entry) => entry.id === routine.botId);
             return <li key={routine.id} aria-busy={busy.includes(routine.id)}>
               <SwipeRow actions={[{ label: armed === routine.id ? t("mobile.routines.confirmDelete") : t("mobile.routines.delete"), danger: true, onPress: () => void work(routine, "delete") }]}>
                 <div className="flex items-center">
@@ -115,7 +119,7 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
               </SwipeRow>
             </li>;
           })}</ul>
-        ) : !error && state.routinesLoadState === "ready" ? <EmptyState art="clock" title={t("mobile.routines.empty")} body={t("mobile.routines.emptyHint")} action={askBot ? { label: t("mobile.routines.ask", { name: askBot.name }), onClick: () => { onClose(); onOpenChat(askBot.id); } } : undefined} className="pt-16" /> : null}
+        ) : !error && routinesLoadState === "ready" ? <EmptyState art="clock" title={t("mobile.routines.empty")} body={t("mobile.routines.emptyHint")} action={askBot ? { label: t("mobile.routines.ask", { name: askBot.name }), onClick: () => { onClose(); onOpenChat(askBot.id); } } : undefined} className="pt-16" /> : null}
       </div>
     </Sheet>
   );

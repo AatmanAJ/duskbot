@@ -3,7 +3,7 @@ import { LayoutGrid, MessageSquareText, Puzzle, Search, X } from "../icons";
 import { openFeedback } from "@/lib/feedback-sheet";
 
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 
 import { CloudRoomCard } from "./CloudRoomCard";
 import { CloudUsageCard } from "./CloudUsageMeter";
@@ -11,13 +11,14 @@ import { SidebarPopoverMenu, type SidebarMenuItem } from "./SidebarPopoverMenu";
 
 /** The phone's bottom bar: a round button for the tools that are rows in the desktop sidebar, and a search pill. */
 export function SidebarPhoneBar({ query, onQuery }: { query: string; onQuery: (query: string) => void }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const pluginsOpen = useStoreSelector((s) => s.pluginsOpen);
   const items: SidebarMenuItem[] = [
     {
       key: "apps",
       label: t("sidebar.nav.apps"),
       icon: <Puzzle size={18} />,
-      active: state.pluginsOpen,
+      active: pluginsOpen,
       onSelect: () => dispatch({ type: "togglePlugins", open: true }),
     },
     { key: "feedback", label: t("giveFeedback.card"), icon: <MessageSquareText size={18} />, onSelect: openFeedback },

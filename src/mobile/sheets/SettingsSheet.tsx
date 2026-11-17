@@ -9,7 +9,7 @@ import { t } from "@/lib/i18n";
 import { effectiveLanguage, setLanguageChoice, useLanguageChoice, usePageLanguage } from "@/lib/language-preference";
 import { applySkinChoice, readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
 import { localeChoices } from "@/locales";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { useLongPress } from "../ContextMenu";
 import { useConnections } from "../connection/connections";
@@ -67,7 +67,10 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
 }
 
 export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet, open, onClose, onOpenSheet }) => {
-  const { state } = useStore();
+  const configLanguage = useStoreSelector((s) => s.config?.language);
+  const profileName = useStoreSelector((s) => s.config?.profile?.name);
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome);
+  const unreadNotes = useStoreSelector((s) => s.notifications.filter((entry) => !entry.read).length);
   const { connections, activeId, switchTo, remove } = useConnections();
   const you = useGroupYou();
   const face = useMobileAccount()?.account ?? you?.face ?? null;
@@ -75,7 +78,7 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
   const account = useMobileAccount();
   const hapticsEnabled = useHapticsEnabled();
   const skin = useSyncExternalStore(subscribeSkin, readSkinChoice, () => "system");
-  const language = effectiveLanguage(useLanguageChoice(), state.config?.language);
+  const language = effectiveLanguage(useLanguageChoice(), configLanguage);
   usePageLanguage(language);
   const [page, setPage] = useState<"main" | "language" | "voice" | "delete">(sheet.page === "language" || sheet.page === "voice" ? sheet.page : "main");
   const [unlinkId, setUnlinkId] = useState<string | null>(null);
@@ -84,7 +87,7 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
   const appearanceId = useId();
   const active = connections.find((connection) => connection.id === activeId);
   const email = account?.account?.email;
-  const identity = settingsIdentity({ name: state.config?.profile?.name, email, workspace: active?.label });
+  const identity = settingsIdentity({ name: profileName, email, workspace: active?.label });
   const pageRef = useRef<HTMLDivElement>(null);
   // each page inside the sheet opens at its top, not where the last one was scrolled to
   useEffect(() => { const body = pageRef.current?.closest(".mobile-sheet-body"); if (body) body.scrollTop = 0; }, [page]);
@@ -155,7 +158,7 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
               <div className="min-w-0"><p className="truncate text-[22px] font-semibold leading-7 tracking-[-0.01em] text-ink">{identity.title}</p><p data-settings-identity className="truncate text-[15px] font-medium text-ink-secondary">{identity.subtitle}</p></div>
             </div>
             <SettingsSection>
-              <SettingsRow icon={<Bell />} label={t("mobile.settings.notifications")} value={state.notifications.filter((entry) => !entry.read).length || undefined} onClick={() => onOpenSheet({ kind: "notifications" })} />
+              <SettingsRow icon={<Bell />} label={t("mobile.settings.notifications")} value={unreadNotes || undefined} onClick={() => onOpenSheet({ kind: "notifications" })} />
             </SettingsSection>
             <SettingsSection title={t("mobile.settings.bots")} art="books" hint={t("mobile.settings.botsHint")}>
               <SettingsRow icon={<CalendarClock />} label={t("mobile.settings.routines")} detail={t("mobile.settings.routinesDetail")} onClick={() => onOpenSheet({ kind: "routines" })} />
@@ -183,7 +186,7 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
               <SettingsRow icon={<Mic />} label={t("settings.voice.title")} detail={t("settings.voice.rowHint")} onClick={() => setPage("voice")} />
               <SettingsRow icon={<Globe />} label={t("mobile.settings.language")} value={localeChoices.find((choice) => choice.code === language)?.label ?? t("mobile.settings.system")} onClick={() => setPage("language")} />
             </SettingsSection>
-            {rows.dashboard && !state.config?.cloudHome && <CloudCard onOpen={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}
+            {rows.dashboard && !cloudHome && <CloudCard onOpen={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}
             {(rows.dashboard || rows.signOut || rows.signIn) && (
               <SettingsSection title={t("mobile.settings.account")} art="key" hint={email}>
                 {rows.dashboard && <SettingsRow icon={<LayoutDashboard />} label={t("mobile.settings.accountDashboard")} onClick={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}

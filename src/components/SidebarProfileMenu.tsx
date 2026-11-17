@@ -41,7 +41,7 @@ import { useAutomationNeedingYou, type AutomationNeedingYou } from "./SidebarFoo
 import { SidebarPopoverMenu, type SidebarMenuItem } from "./SidebarPopoverMenu";
 import { ShortcutHint } from "./ShortcutHint";
 import { useSidebarPhoneStatus } from "./SidebarPhoneButton";
-import { api, useStore, type Action, type ConfigStatus } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type Action, type ConfigStatus } from "@/state/store";
 import { localDesktopPage } from "./onboarding/WelcomeGate";
 import { serverCheckPhase, serverUpdateRow, type ServerUpdateCheck, type ServerUpdatePhase } from "@/lib/server-update";
 import type { CloudAccountBridge, CloudAccountState } from "../../electron/cloud-account.mjs";
@@ -573,13 +573,14 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
   /** grok folds the name away while the Connect apps pill widens beside it */
   nameHidden?: boolean;
 } = {}) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector((s) => s.config);
   const simple = account !== undefined;
   const [menuOpen, setMenuOpen] = useState(false);
-  const cloudUsage = cloudUsageSummary(useCloudPlanSnapshot(simple ? usageBridge(state.config?.cloudHome === true) : undefined));
+  const cloudUsage = cloudUsageSummary(useCloudPlanSnapshot(simple ? usageBridge(config?.cloudHome === true) : undefined));
   const engineUsage = usePlanUsageSummary(simple && menuOpen && cloudUsage === null && window.duskDesktop?.remoteClient?.active !== true);
   const phone = useSidebarPhoneStatus();
-  const connectPhone = useConnectPhoneEntry(state.config?.cloudHome === true);
+  const connectPhone = useConnectPhoneEntry(config?.cloudHome === true);
   const cloudPhone = useCloudPhoneDestination(connectPhone?.target === "computer");
   const destinations = phoneDestinations(connectPhone, cloudPhone.cloud);
   const update = useServerUpdateItem(true);
@@ -597,9 +598,9 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
   }, []);
 
   const accounts = useAccounts();
-  const ownProfile = profileForSession(state.config?.profile, session);
-  useAccountName(localDesktopPage() && window.duskDesktop?.remoteClient?.active !== true && !state.config?.cloudHome && !state.config?.team,
-    state.config?.profile, accounts.view?.active ?? null, dispatch);
+  const ownProfile = profileForSession(config?.profile, session);
+  useAccountName(localDesktopPage() && window.duskDesktop?.remoteClient?.active !== true && !config?.cloudHome && !config?.team,
+    config?.profile, accounts.view?.active ?? null, dispatch);
   const profile = withAccountFace(ownProfile, accounts.view?.active ?? null);
   const face = personFace(ownProfile, accounts.view?.active ?? null);
   // grok's footer falls back to the computer's account: its initial in the grey circle, its name beside it
@@ -607,10 +608,10 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
   const name = computer ?? profileLabel(profile);
   const connectTo = (destination: PhoneDestination) => selectPhoneDestination(destination, { bridge: cloudPhone.bridge, dispatch });
   const remote = window.duskDesktop?.remoteClient?.active === true;
-  const cloudAccount = !remote && Boolean(window.duskDesktop?.cloudAccount || (window.duskDesktop?.cloudPlan && state.config?.cloudHome === true));
+  const cloudAccount = !remote && Boolean(window.duskDesktop?.cloudAccount || (window.duskDesktop?.cloudPlan && config?.cloudHome === true));
   const openCloudAccount = () => dispatch({ type: "toggleAppSettings", open: true, section: "cloudAccount" });
   const phoneApp = phoneAppEnabled();
-  const move = useAccountMove(state.config?.cloudHome === true, { onOpen: openCloudAccount, onPairPhone: phoneApp ? () => dispatch(phonePairingSettingsAction()) : undefined });
+  const move = useAccountMove(config?.cloudHome === true, { onOpen: openCloudAccount, onPairPhone: phoneApp ? () => dispatch(phonePairingSettingsAction()) : undefined });
 
   // one place to connect the phone to opens its pairing at once; only a choice of places asks where
   const getApp = () => {
@@ -654,7 +655,7 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
     accounts: accountMenuItems(accounts),
     ...(account ? { simple: {
       tools: toolMenuItems({ archived: account.archived }),
-      places: placeMenuItems(account.place, { owner: account.owner, name: state.config?.team?.name, onCloudSettings: openCloudAccount }),
+      places: placeMenuItems(account.place, { owner: account.owner, name: config?.team?.name, onCloudSettings: openCloudAccount }),
     } } : {}),
     onUsage: () => dispatch({ type: "toggleAppSettings", open: true, section: "usage" }),
     onSettings: () => dispatch({ type: "toggleAppSettings" }),

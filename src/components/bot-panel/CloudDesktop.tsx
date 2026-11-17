@@ -5,7 +5,7 @@ import type { KeepHereState } from "../../../electron/cloud-send.mjs";
 import { cloudDesktopHint, cloudDesktopOnCloud, cloudDesktopOnComputer, type CloudDesktopView } from "@/lib/cloud-desktop";
 import { ipcErrorText } from "@/lib/cloud-send";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { ItemRow, NavRow } from "../ListRows";
 import { useCloudSendNotice } from "../CloudSendStrip";
@@ -25,8 +25,8 @@ function bridges(cloudPage: boolean) {
  * confirms), or it opens once they are there. On its own page: they move back. Null outside the desktop app.
  */
 export function useCloudDesktop() {
-  const { state, dispatch } = useStore();
-  const cloudPage = state.config?.cloudHome === true;
+  const dispatch = useDispatch();
+  const cloudPage = useStoreSelector((s) => s.config?.cloudHome === true);
   const bridge = bridges(cloudPage);
   const [account, setAccount] = useState<CloudAccountState | null>(null);
   const [plan, setPlan] = useState<CloudPlanSnapshot | null>(null);

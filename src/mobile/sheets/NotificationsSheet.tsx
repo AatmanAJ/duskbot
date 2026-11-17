@@ -3,7 +3,8 @@ import { useMemo, useState, type ComponentType } from "react";
 import { BotAvatar, MausAvatar } from "@/components/Avatar";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { api, openBotThread, openRoomThread, useStore } from "@/state/store";
+import { api, openBotThread, openRoomThread, useDispatch, useStoreSelector } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import type { NotificationLogEntry } from "../../../shared/notification";
 import { haptic } from "../haptics";
 import { Sheet } from "../Sheet";
@@ -39,18 +40,21 @@ export function stackByOwner(entries: readonly NotificationLogEntry[]): Notifica
 }
 
 export const NotificationsSheet: ComponentType<SheetPageProps<"notifications">> = ({ open, onClose, onOpenChat }) => {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const notifications = useStoreSelector((s) => s.notifications);
+  const bots = useStoreSelector((s) => s.bots);
   const [reading, setReading] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<"read" | "missing" | null>(null);
-  const groups = useMemo(() => groupNotifications(state.notifications), [state.notifications]);
-  const unread = state.notifications.some((entry) => !entry.read);
+  const groups = useMemo(() => groupNotifications(notifications), [notifications]);
+  const unread = notifications.some((entry) => !entry.read);
 
   const readAll = async () => {
     if (reading) return;
     setReading(true);
     setError(null);
-    const ids = state.notifications.filter((entry) => !entry.read).map((entry) => entry.id);
+    const ids = notifications.filter((entry) => !entry.read).map((entry) => entry.id);
     try {
       await api("/api/notifications/read-all", { method: "POST" });
       dispatch({ type: "notificationsRead", ids });
@@ -64,6 +68,7 @@ export const NotificationsSheet: ComponentType<SheetPageProps<"notifications">> 
 
   const openEntry = async (stack: NotificationStack) => {
     const entry = stack.latest;
+    const rooms = store.state().groups;
     if (opening) return;
     setOpening(entry.id);
     setError(null);
@@ -72,11 +77,11 @@ export const NotificationsSheet: ComponentType<SheetPageProps<"notifications">> 
       await Promise.all(unreadIds.map((id) => api(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" })));
       for (const id of unreadIds) dispatch({ type: "notificationRead", id });
       if (entry.groupId) {
-        if (!state.groups.some((group) => group.id === entry.groupId)) { setError("missing"); haptic("error"); return; }
+        if (!rooms.some((group) => group.id === entry.groupId)) { setError("missing"); haptic("error"); return; }
         onOpenChat(entry.groupId);
-        openRoomThread(dispatch, { groupId: entry.groupId, threadId: entry.threadId }, state.groups);
+        openRoomThread(dispatch, { groupId: entry.groupId, threadId: entry.threadId }, rooms);
       } else {
-        const bot = state.bots.find((candidate) => candidate.id === entry.botId);
+        const bot = bots.find((candidate) => candidate.id === entry.botId);
         if (!bot) { setError("missing"); haptic("error"); return; }
         onOpenChat(bot.id);
         openBotThread(dispatch, bot, entry.threadId, true);
@@ -92,7 +97,7 @@ export const NotificationsSheet: ComponentType<SheetPageProps<"notifications">> 
   return (
     <Sheet open={open} onClose={onClose} title={t("mobile.notifications.title")} full trailing={unread ? <button type="button" disabled={reading} onClick={() => { void readAll(); }} className="mobile-press flex min-h-11 items-center"><span className="flex h-11 items-center rounded-full bg-ink/[0.05] px-4 text-[15px] font-semibold text-ink">{t("mobile.notifications.readAll")}</span></button> : undefined}>
       {error && <p role="alert" className="px-6 py-3 text-[15px] text-danger">{t(error === "missing" ? "mobile.notifications.chatMissing" : "mobile.notifications.readError")}</p>}
-      {state.notifications.length === 0 ? (
+      {notifications.length === 0 ? (
         <EmptyState art="mailbox" title={t("mobile.notifications.emptyTitle")} body={t("mobile.notifications.emptyBody")} className="pt-20" />
       ) : (
         <div className="px-2 pt-2" aria-busy={reading || Boolean(opening)}>
@@ -101,7 +106,7 @@ export const NotificationsSheet: ComponentType<SheetPageProps<"notifications">> 
               <ul>
                 {stackByOwner(groups[day]).map((stack) => {
                   const entry = stack.latest;
-                  const bot = state.bots.find((candidate) => candidate.id === entry.botId);
+                  const bot = bots.find((candidate) => candidate.id === entry.botId);
                   const more = stack.entries.length - 1;
                   return (
                     <li key={stack.key}>

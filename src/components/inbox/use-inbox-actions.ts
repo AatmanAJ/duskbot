@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { InboxRow, InboxView } from "../../../shared/inbox";
-import { openThread, useStore } from "@/state/store";
+import { openThread, useDispatch, useStoreSelector } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { doneInboxRow, openInbox, readInboxRow, refreshInbox } from "@/state/inbox";
 import type { CardResponse } from "@/lib/card-answer";
 import { answerThread, closeResponse, type QuickAction } from "./inbox-view";
@@ -8,7 +9,9 @@ import { answerThread, closeResponse, type QuickAction } from "./inbox-view";
 /** What a row's buttons do. An ask is answered through its copy's card here, which answers the card where it was asked,
  * as its buttons in the chat do; a line of news is done, or opened where it came from. */
 export function useInboxActions(view: InboxView | null) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const bots = useStoreSelector((s) => s.bots);
 
   const answer = useCallback((row: InboxRow, response: CardResponse, failed?: () => void) => {
     const threadId = answerThread(view, row);
@@ -23,9 +26,9 @@ export function useInboxActions(view: InboxView | null) {
     const target = row.origin ? { botId: row.origin.botId, threadId: row.origin.threadId, messageId: row.origin.messageId }
       : view?.threadId && view.botId ? { botId: view.botId, threadId: view.threadId, messageId: row.id } : null;
     if (!target) return;
-    openThread(dispatch, { botId: target.botId, threadId: target.threadId }, state);
+    openThread(dispatch, { botId: target.botId, threadId: target.threadId }, store.state());
     if (target.messageId) dispatch({ type: "focusMessage", threadId: target.threadId, messageId: target.messageId });
-  }, [view, state, dispatch]);
+  }, [view, store, dispatch]);
 
   const run = useCallback((row: InboxRow, action: QuickAction) => {
     if (action === "allow" || action === "deny") answer(row, { behavior: action });
@@ -36,7 +39,7 @@ export function useInboxActions(view: InboxView | null) {
   }, [answer, openInChat]);
 
   /** The bot a line is from: its face leads the line's card and its colour is on the card's answer. None for a teammate's line. */
-  const askerOf = (row: InboxRow) => (row.from.botId ? state.bots.find((bot) => bot.id === row.from.botId) : undefined);
+  const askerOf = (row: InboxRow) => (row.from.botId ? bots.find((bot) => bot.id === row.from.botId) : undefined);
   const colorOf = (row: InboxRow) => askerOf(row)?.color;
 
   return { run, answer, openInChat, colorOf, askerOf };

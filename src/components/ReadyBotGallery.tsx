@@ -12,7 +12,8 @@ import { READY_BOT_CATEGORIES, READY_BOTS, matchesReadyBot, readyBot, readyBotTe
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import { useStore, type Bot } from "@/state/store";
+import { type Bot } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { friendlyError } from "@/lib/plain-error";
 
 const CATEGORY_KEYS: Record<ReadyBotCategory, LocaleKey> = {
@@ -27,7 +28,8 @@ export function ReadyBotGallery({ search, onDialog, onAdded }: {
   onAdded: (bot: Bot) => void;
 }) {
   const [category, setCategory] = useState<ReadyBotCategory | null>(null);
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
+  const { dispatch } = store;
   const [confirming, setConfirming] = useState<string | null>(null);
   const [making, setMaking] = useState<string | null>(null);
   const team = useTeamPeople();
@@ -36,6 +38,7 @@ export function ReadyBotGallery({ search, onDialog, onAdded }: {
   // one click makes the bot, as Grok's create does; it is tuned afterwards in its settings
   const add = async (id: string, allowLocalAuto = false) => {
     const ready = readyBot(id);
+    const state = store.state();
     if (!ready || making || state.botCreationPending || stoppedAtBotLimit(state)) return;
     // a paired device may not read the host's New bot defaults the bot is filled from
     if (window.duskDesktop?.remoteClient?.active) { dispatch({ type: "newBot", onCreated: onAdded }); return; }

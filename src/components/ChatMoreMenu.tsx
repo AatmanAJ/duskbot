@@ -1,6 +1,6 @@
 import { useMemo, useState, type JSX } from "react";
 import { Copy, Cpu, Download, Gauge, Monitor, MoreHorizontal, Search, Share, UserRound } from "../icons";
-import { currentTaskBot, useStore, visibleMessages, type Bot } from "@/state/store";
+import { currentTaskBot, useDispatch, useStoreSelector, visibleMessages, type AppState, type Bot } from "@/state/store";
 import { requestChatFind, useChatFindOpen } from "@/lib/chat-find";
 import { usageSummary } from "@/lib/chat-usage-summary";
 import {
@@ -18,21 +18,26 @@ import { openBotSettings } from "./bot-panel/panel-link";
 import { ShareBotButton, useTeamName } from "./bot-access/ShareBotButton";
 import { UsageBars } from "./EngineUsage";
 
+const selectInstances = (state: AppState) => state.instances;
+const selectComputerOpen = (state: AppState) => state.settingsOpen && state.botSettingsSection === "computer";
+
 /** One item list for the chat's ⋯ menu wherever it sits. The Simple bot panel draws the same items as rows, and its
  * Share button holds the two that export. */
 export function useChatMoreItems(profile: Bot, phoneHeader = false): { items: SidebarMenuItem[]; on: boolean } {
   const bot = useMemo(() => currentTaskBot(profile), [profile]);
   const messages = useMemo(() => visibleMessages(bot), [bot]);
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const instances = useStoreSelector(selectInstances);
+  const computerOpen = useStoreSelector(selectComputerOpen);
   const findOpen = useChatFindOpen(bot.threadId);
   const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | null>(null);
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
-  const usage = usageSummary(bot, state.instances);
+  const usage = usageSummary(bot, instances);
   const hasMessages = messages.length > 0;
   const transcript = () => formatTranscriptMarkdown({ title: bot.name, messages, botName: bot.name, isGroup: false });
   const selection = profile.modelSelection;
   const modelName = phoneHeader && selection
-    ? state.instances.find((candidate) => candidate.instanceId === selection.instanceId)?.models.options.find((option) => option.id === selection.model)?.label ?? selection.model
+    ? instances.find((candidate) => candidate.instanceId === selection.instanceId)?.models.options.find((option) => option.id === selection.model)?.label ?? selection.model
     : "";
   // On a phone the header drops the profile pill's click target, the model chip and the Bot's screen button; they live here.
   const phoneItems: SidebarMenuItem[] = phoneHeader ? [
@@ -56,7 +61,7 @@ export function useChatMoreItems(profile: Bot, phoneHeader = false): { items: Si
       key: "computer",
       label: t("chat.computer"),
       icon: <Monitor size={16} />,
-      active: state.settingsOpen && state.botSettingsSection === "computer",
+      active: computerOpen,
       onSelect: () => dispatch({ type: "toggleComputer", open: true }),
     },
   ] : [];

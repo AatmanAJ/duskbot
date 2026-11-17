@@ -17,7 +17,8 @@ import { hintSeen, type WelcomeViewer } from "@/lib/onboarding";
 import type { LocaleKey } from "@/locales";
 import type { Routine } from "@/lib/routines";
 import { useSidebarFooterSlot } from "@/lib/sidebar-footer-slot";
-import { openBot, useStore, useDispatch } from "@/state/store";
+import { openBot, useDispatch, useStoreSelector, type AppState } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 
 const TITLE: Record<CloudSetupStep, LocaleKey> = {
   cloud: "cloudSetup.cloud.title", job: "cloudSetup.job.title", engine: "cloudSetup.engine.title", plan: "cloudSetup.plan.title", move: "cloudWelcome.step.bring",
@@ -146,8 +147,24 @@ export function CloudReady({ routine, onDone, slot, from = null }: { routine?: R
   </motion.aside>);
 }
 
+const selectOnboarding = (state: AppState) => state.config?.onboarding;
+const selectRoutines = (state: AppState) => state.routines;
+const selectConnected = (state: AppState) => state.connected;
+const selectEnginesKnown = (state: AppState) => state.instances.length > 0;
+const selectEngineReady = (state: AppState) => state.instances.some(engineReady);
+const selectActiveView = (state: AppState) => state.activeView;
+const selectSelectedId = (state: AppState) => state.selectedId;
+
 export function CloudSetup({ viewer, welcomeShown = false }: { viewer: WelcomeViewer | null; welcomeShown?: boolean }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const savedOnboarding = useStoreSelector(selectOnboarding);
+  const routines = useStoreSelector(selectRoutines);
+  const connected = useStoreSelector(selectConnected);
+  const enginesKnown = useStoreSelector(selectEnginesKnown);
+  const anyEngineReady = useStoreSelector(selectEngineReady);
+  const activeView = useStoreSelector(selectActiveView);
+  const selectedId = useStoreSelector(selectSelectedId);
   const [hidden, setHidden] = useState(false);
   const [collapsed, setCollapsed] = useState(storedCollapsed);
   const [finale, setFinale] = useState(false);
@@ -162,14 +179,14 @@ export function CloudSetup({ viewer, welcomeShown = false }: { viewer: WelcomeVi
   const intent = useCloudIntent();
   const slot = useSidebarFooterSlot();
   const welcome = useCloudWelcome();
-  const record = withEarlyHints(state.config?.onboarding, welcome.early);
+  const record = withEarlyHints(savedOnboarding, welcome.early);
   const early: string[] = [];
   if (intent.pending || intent.sent) early.push(CLOUD_INTENT_GIVEN);
   const onboarding = withEarlyHints(record, early);
-  const routine = jobRoutine(state.routines, intent.sent);
+  const routine = jobRoutine(routines, intent.sent);
   const facts = {
-    viewer, connected: state.connected, enginesKnown: state.instances.length > 0,
-    engineReady: state.instances.some(engineReady), onboarding, planned: Boolean(routine), welcomeShown,
+    viewer, connected, enginesKnown,
+    engineReady: anyEngineReady, onboarding, planned: Boolean(routine), welcomeShown,
   };
   const welcomeStage = cloudWelcomeStage(facts);
   const welcoming = welcomeStage === "pending";
@@ -187,19 +204,19 @@ export function CloudSetup({ viewer, welcomeShown = false }: { viewer: WelcomeVi
   const todo = items.filter((item) => item.status === "todo");
   const current = (todo.find((item) => item.id === chosen) ?? todo[0])?.id;
   const remember = (id: string) => {
-    if (!hintSeen(record, id)) void saveWelcomeHints(state.config?.onboarding, [id], dispatch);
+    if (!hintSeen(record, id)) void saveWelcomeHints(savedOnboarding, [id], dispatch);
   };
   const hide = () => {
     setHidden(true);
     if (welcoming) endWelcomeHere();
     remember(CLOUD_SETUP_HIDDEN);
   };
-  const asking = state.activeView === "chat" && cloudIntentShown(cloudIntentDue({ ...facts, reopened: false }), intent);
+  const asking = activeView === "chat" && cloudIntentShown(cloudIntentDue({ ...facts, reopened: false }), intent);
   const askAgain = () => withViewTransition(() => { reopenCloudIntent(true); dispatch({ type: "showChat" }); });
   const jobBot = intent.sent?.botId;
   const openJobChat = () => {
     dispatch({ type: "showChat" });
-    const bot = state.bots.find((candidate) => candidate.id === jobBot);
+    const bot = store.state().bots.find((candidate) => candidate.id === jobBot);
     if (bot) openBot(dispatch, bot);
   };
   const hint = (key: LocaleKey) => <p className="mt-1 text-[13px] leading-relaxed text-ink-secondary">{t(key)}</p>;
@@ -211,7 +228,7 @@ export function CloudSetup({ viewer, welcomeShown = false }: { viewer: WelcomeVi
       returnToWelcome(id === "move" ? "bring" : id);
       dispatch({ type: "showChat" });
     }) };
-    if (id === "engine") return { body: hint("cloudSetup.engine.hint"), act: state.activeView !== "chat" && action("cloudSetup.engine.action", () => dispatch({ type: "showChat" })) };
+    if (id === "engine") return { body: hint("cloudSetup.engine.hint"), act: activeView !== "chat" && action("cloudSetup.engine.action", () => dispatch({ type: "showChat" })) };
     if (id === "job") return { body: hint("cloudSetup.job.hint"), act: !asking && action("cloudSetup.job.action", askAgain) };
     if (id === "plan") return { body: hint("cloudSetup.plan.hint"), act: action("cloudSetup.plan.action", openJobChat) };
     return { body: null };
@@ -244,9 +261,9 @@ export function CloudSetup({ viewer, welcomeShown = false }: { viewer: WelcomeVi
         : <div className="-mx-2 flex items-start gap-2.5 px-2 py-1.5 text-ink-secondary">{mark(item)}{title}</div>}
     </motion.li>;
   };
-  const inChat = state.activeView === "chat" && !asking;
+  const inChat = activeView === "chat" && !asking;
   const onScreen = (id: CloudSetupStep) => (id === "job" && asking) || (id === "engine" && inChat && !facts.engineReady)
-    || (id === "plan" && inChat && (!jobBot || state.selectedId === jobBot));
+    || (id === "plan" && inChat && (!jobBot || selectedId === jobBot));
   const focus = (id: CloudSetupStep) => {
     const here = onScreen(id);
     const { body, act } = here ? { body: null, act: null } : details(id);

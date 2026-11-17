@@ -46,7 +46,7 @@ describe("ChatErrorBanner", () => {
     for (const file of ["components/ChatView.tsx", "components/GroupView.tsx"]) {
       const text = source(file);
       expect(text).toContain("<ChatErrorBanner");
-      expect(text).toContain('message={state.error}');
+      expect(text).toContain('message={chatError}');
       expect(text).toContain('dispatch({ type: "error", message: null })');
     }
     const store = source("state/store.tsx");
@@ -80,7 +80,7 @@ describe("ChatNotice", () => {
 
   it("shows in the room as well as the chat", () => {
     for (const file of ["components/ChatView.tsx", "components/GroupView.tsx"]) {
-      expect(source(file)).toContain("<ChatNotice notice={state.notice} />");
+      expect(source(file)).toContain("<ChatNotice notice={notice} />");
     }
   });
 });

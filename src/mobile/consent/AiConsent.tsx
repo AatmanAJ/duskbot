@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { t } from "@/lib/i18n";
 import { installAiConsentGate } from "@/lib/ai-consent-gate";
-import { useStore } from "@/state/store";
+import { useStoreSelector, useStoreShallow } from "@/state/store";
 import { useMobileAccount } from "../account/AccountGate";
 import { ActiveConnection } from "../connection/active";
 import { useConnections } from "../connection/connections";
@@ -23,12 +23,12 @@ export function AiConsentProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const account = useMobileAccount();
   const connection = useContext(ActiveConnection) ?? "none";
-  const { state } = useStore();
+  const providers = useStoreShallow((s) => aiProviders(s.bots, s.instances));
+  const hydrated = useStoreSelector((s) => s.hydrated);
   const accountId = account?.account?.id ?? null;
   const store = useMemo(() => createConsentStore(platform.prefs, consentKey(accountId, connection)), [platform, accountId, connection]);
   const consent = useSyncExternalStore(store.subscribe, store.get, store.get);
   const loaded = useSyncExternalStore(store.subscribe, store.loaded, store.loaded);
-  const providers = useMemo(() => aiProviders(state.bots, state.instances), [state.bots, state.instances]);
   const covered = consentCovers(consent, providers);
   const [open, setOpen] = useState(false);
   const retry = useRef<(() => void) | null>(null);
@@ -42,10 +42,10 @@ export function AiConsentProvider({ children }: { children: ReactNode }) {
   // first run: the question comes up as soon as the bots are in, before anyone types
   const asked = useRef(false);
   useEffect(() => {
-    if (asked.current || !loaded || !state.hydrated || consent) return;
+    if (asked.current || !loaded || !hydrated || consent) return;
     asked.current = true;
     setOpen(true);
-  }, [loaded, state.hydrated, consent]);
+  }, [loaded, hydrated, consent]);
 
   const close = useCallback(() => { retry.current = null; setOpen(false); }, []);
   const allow = async () => {

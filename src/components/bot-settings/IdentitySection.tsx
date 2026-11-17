@@ -1,7 +1,8 @@
 import { DefaultBotHideRow } from "../DefaultBotControls";
 import { phoneAppEnabled } from "@/lib/feature-flags";
 
-import { useStore, type Bot } from "@/state/store";
+import type { Bot } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import type { MausMotion, MausState } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 import { BOT_PROFILE_LIMITS } from "../../../shared/bot-profile";
@@ -32,7 +33,7 @@ export function IdentitySection({
   parts?: readonly IdentityPart[];
 }) {
   const { draft } = useBotEditor();
-  const { state } = useStore();
+  const store = useStoreRef();
   const shows = (part: IdentityPart) => !parts || parts.includes(part);
 
   return (
@@ -48,7 +49,7 @@ export function IdentitySection({
               key={kind}
               type="button"
               className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[12px] leading-4 tracking-[0.01em] text-ink/68 hover:bg-ink/[0.035] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-              onClick={() => patch({ name: randomBotName(kind, bot.name, state.bots.map(existing => existing.name)) })}
+              onClick={() => patch({ name: randomBotName(kind, bot.name, store.state().bots.map(existing => existing.name)) })}
             >{t(kind === "female" ? "newBot.randomFemaleName" : "newBot.randomMaleName")}</button>)}
           </div>}
         </div>

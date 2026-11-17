@@ -10,7 +10,7 @@ import { looksLikeNotes } from "@/lib/assistant-notes";
 import { macPermissionsBridge, permissionsMissing, type MacPermissionStatus } from "@/lib/mac-permissions";
 import { openPlaceSetup, usePlaceSetupOpen } from "@/lib/place-setup";
 import { localSetupImport } from "@/lib/setup-import";
-import { api, useStore } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type AppState } from "@/state/store";
 import { useBotMove } from "../BringBots";
 import { useNotesIntake } from "../NotesWaiting";
 import { WindowDragStrip } from "../DesktopCapabilities";
@@ -28,7 +28,7 @@ import { localDesktopPage } from "./WelcomeGate";
 import "../../styles/onboarding.css";
 import "../../styles/place-setup.css";
 
-type Config = ReturnType<typeof useStore>["state"]["config"];
+type Config = AppState["config"];
 
 /** A genuine first run on this computer's own page names the person after its account, where their profile has none
  * (never on a Cloud, a Team Cloud or a remote page). The name stays theirs to change in Settings. */
@@ -83,13 +83,16 @@ export function WelcomeFlow({
   initialBeat?: BeatId;
   embedded?: boolean;
 }) {
-  const { state, dispatch } = useStore();
-  const maus = myDefaultBot(state.bots, useViewerEmail());
+  const dispatch = useDispatch();
+  const bots = useStoreSelector((s) => s.bots);
+  const config = useStoreSelector((s) => s.config);
+  const instances = useStoreSelector((s) => s.instances);
+  const maus = myDefaultBot(bots, useViewerEmail());
   const keepsDraft = !replay && !embedded;
   const root = useRef<HTMLDivElement>(null);
   const finishing = useRef(false);
-  const record = useRef(state.config?.onboarding);
-  record.current = state.config?.onboarding;
+  const record = useRef(config?.onboarding);
+  record.current = config?.onboarding;
 
   // the account: asked once where this window can sign in; a step only for someone not signed in yet
   const account = useMemo(() => (embedded ? null : funnelAccount()), [embedded]);
@@ -117,7 +120,7 @@ export function WelcomeFlow({
 
   // the bring step is the prompt for AIs online; Grok bot's bots on this computer are looked for from the welcome on, in
   // the background, so the step can name them. What else this computer holds waits in Settings' import page.
-  const offersMove = !replay && desktop && localSetupImport(state.config?.cloudHome === true);
+  const offersMove = !replay && desktop && localSetupImport(config?.cloudHome === true);
   const move = useBotMove({ look: offersMove, downloads: false, ms: FIRST_RUN_LOOK_MS });
   // the Mac's permissions: read once, so the step stays put while the person grants them; offered until that read says
   // nothing is missing, which lets a run reopened on this step (Screen Recording needs that) land back on it
@@ -149,7 +152,7 @@ export function WelcomeFlow({
     event.stopPropagation();
   };
   const [from, setFrom] = useState<"next" | "back">("next");
-  const tested = useWelcomeAi(state.instances);
+  const tested = useWelcomeAi(instances);
   const cloudTile = useCloudTile(desktop);
 
   // each screen shown, with the path and how long the screen before it took: drop-off per step on the admin page
@@ -167,7 +170,7 @@ export function WelcomeFlow({
   // A Cloud sheet opened over the welcome never switches the window away from it (CloudAddDialog).
   useEffect(() => (embedded ? undefined : showWelcome()), [embedded]);
   useEffect(() => {
-    if (!replay && !embedded) void nameFromComputer(state.config, (config) => dispatch({ type: "configStatus", config }));
+    if (!replay && !embedded) void nameFromComputer(config, (next) => dispatch({ type: "configStatus", config: next }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // each step's title takes focus, so a screen reader hears where it is
@@ -199,12 +202,12 @@ export function WelcomeFlow({
   // where it fits, Dusk becomes the Chief of Staff and greets in its chat, with no screen to ask
   const toChat = useCallback(() => {
     if (finishing.current) return;
-    const chief = Boolean(maus && chiefStepFits(state.bots, maus));
-    if (chief && maus) dispatch({ type: "updateBot", botId: maus.id, patch: createChiefPatch(maus, chiefFor(state.bots, maus)) });
+    const chief = Boolean(maus && chiefStepFits(bots, maus));
+    if (chief && maus) dispatch({ type: "updateBot", botId: maus.id, patch: createChiefPatch(maus, chiefFor(bots, maus)) });
     const botId = chief ? maus!.id : null;
     if (botId && !replay) stageIntro(botId);
     void finish(botId ? "completed" : "skipped", botId);
-  }, [maus, state.bots, dispatch, finish, replay]);
+  }, [maus, bots, dispatch, finish, replay]);
 
   const go = useCallback((step: FunnelStep | null, direction: "next" | "back") => {
     if (!step) { if (direction === "next") toChat(); return; }

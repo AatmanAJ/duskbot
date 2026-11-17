@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2 } from "../../icons";
 
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useStoreSelector, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { BotVisibility } from "../../../shared/wire";
@@ -42,6 +42,9 @@ export function mixedRooms(
     .map((group) => ({ id: group.id, name: group.name }));
 }
 
+const sameRooms = (a: Array<{ id: string; name: string }>, b: Array<{ id: string; name: string }>) =>
+  a.length === b.length && a.every((room, index) => room.id === b[index]!.id && room.name === b[index]!.name);
+
 const OPTIONS: Array<{ mode: VisibilityMode; key: "botSettings.visibility.everyone" | "botSettings.visibility.admins" | "botSettings.visibility.people" }> = [
   { mode: "everyone", key: "botSettings.visibility.everyone" },
   { mode: "admins", key: "botSettings.visibility.admins" },
@@ -49,8 +52,7 @@ const OPTIONS: Array<{ mode: VisibilityMode; key: "botSettings.visibility.everyo
 ];
 
 export function VisibilitySection({ bot }: { bot: Bot }) {
-  const { state } = useStore();
-  const mixed = mixedRooms(bot, state.groups, state.bots);
+  const mixed = useStoreSelector((s) => mixedRooms(bot, s.groups, s.bots), sameRooms);
   const saved = formFromVisibility(bot.visibility);
   const [mode, setMode] = useState<VisibilityMode>(saved.mode);
   const [people, setPeople] = useState(saved.people);

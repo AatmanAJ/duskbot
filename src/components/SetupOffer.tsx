@@ -11,7 +11,7 @@ import { currentReactor, useReactor } from "@/lib/cloud-guest";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import { api, useStore, type Bot, type Message } from "@/state/store";
+import { api, useDispatch, useStoreSelector, type Bot, type Message } from "@/state/store";
 import { ASK_CARD_LIFT, ASK_CARD_RING, ASK_CHOICE, ChoiceLetter, moveChoiceFocus, returnFocusToComposer } from "./AskCard";
 import { friendlyError } from "@/lib/plain-error";
 
@@ -30,7 +30,9 @@ const PLACEHOLDER_WIDTHS = ["62%", "48%", "56%", "44%", "58%", "30%"];
  * transcript cover the moments before that reaches this screen. The conversation's AI must have the tools a bot sets
  * itself up with. */
 export function SetupOffer({ botId, threadId, message, transcript }: { botId: string; threadId: string; message: Message; transcript: Message[] }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const bot = useStoreSelector((s) => s.bots.find((candidate) => candidate.id === botId));
+  const instances = useStoreSelector((s) => s.instances);
   const [busy, setBusy] = useState(false);
   const phone = useMediaQuery(PHONE_LAYOUT);
   const [closed, setClosed] = useState(false);
@@ -56,10 +58,9 @@ export function SetupOffer({ botId, threadId, message, transcript }: { botId: st
     const timer = setTimeout(() => setRewriteWaitedOut(stamp), PENDING_GRACE_MS);
     return () => clearTimeout(timer);
   }, [rewriting, stamp]);
-  const bot = state.bots.find((candidate) => candidate.id === botId);
   if (closed || message.setupOffer !== true || !bot) return null;
   const selection = bot.tasks?.find((task) => task.threadId === threadId)?.modelSelection ?? bot.modelSelection;
-  const capable = state.instances.find((instance) => instance.instanceId === selection?.instanceId)?.capabilities?.agentsMcp === true;
+  const capable = instances.find((instance) => instance.instanceId === selection?.instanceId)?.capabilities?.agentsMcp === true;
   // The first line written here settles the card; it is the card's answer when it set the bot up.
   const first = transcript.find((line) => line.role === "user");
   // a phone has no room for a card the person skipped by writing something else

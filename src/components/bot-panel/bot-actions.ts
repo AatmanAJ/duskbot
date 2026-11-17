@@ -3,21 +3,24 @@ import { useRef, useState } from "react";
 import { t } from "@/lib/i18n";
 import { useCopyFeedback } from "@/lib/copy-text";
 import { botUnreadThreadIds, markBotRead } from "@/lib/folder-read";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, useStoreSelector, type Bot } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import { announceArchiveNotice, archiveBotWithNotice } from "../bot-archive";
 import { moveBotsToSection } from "../bot-sections";
 import { currentArchivableBot, type BotConfirmKind } from "../Sidebar";
 import { friendlyError } from "@/lib/plain-error";
 
 export function useBotActions(bot: Bot) {
-  const { state, dispatch } = useStore();
+  const store = useStoreRef();
+  const { dispatch } = store;
+  const visibleBotCount = useStoreSelector((s) => s.bots.filter((candidate) => !candidate.hidden).length);
+  const deleting = useStoreSelector((s) => s.deletingBots[bot.id] === true);
   const [confirm, setConfirm] = useState<BotConfirmKind | null>(null);
   const [reading, setReading] = useState(false);
   const [readError, setReadError] = useState<string | null>(null);
   const readInFlight = useRef(false);
   const copy = useCopyFeedback(bot.threadId);
 
-  const visibleBotCount = state.bots.filter((candidate) => !candidate.hidden).length;
   const archiveHint = bot.chiefOfStaff
     ? t("botPanel.ui.sidebarBotArchiveBlockedChief")
     : visibleBotCount <= 1
@@ -46,6 +49,7 @@ export function useBotActions(bot: Bot) {
 
   // The sidebar's own archive path: its corner notice says "Archived" with Undo, or why it failed.
   const archive = async () => {
+    const state = store.state();
     const current = currentArchivableBot(state.bots, bot.id);
     if (!current) return;
     await archiveBotWithNotice(current, {
@@ -60,7 +64,7 @@ export function useBotActions(bot: Bot) {
   };
 
   const requestArchive = () => {
-    if (currentArchivableBot(state.bots, bot.id)) setConfirm("archive");
+    if (currentArchivableBot(store.state().bots, bot.id)) setConfirm("archive");
   };
 
   const confirmed = () => {
@@ -92,7 +96,7 @@ export function useBotActions(bot: Bot) {
     confirm,
     cancelConfirm: () => setConfirm(null),
     confirmed,
-    deleting: state.deletingBots[bot.id] === true,
+    deleting,
     moveToTeam,
   };
 }

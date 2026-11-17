@@ -4,7 +4,7 @@ import { EyeOff } from "../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { DEFAULT_BOT_NAME, myDefaultBot, useViewerEmail } from "@/lib/default-bot";
-import { useStore, useDispatch, type Action, type Bot } from "@/state/store";
+import { useDispatch, useStoreSelector, type Action, type Bot } from "@/state/store";
 import { Card, NavRow } from "./bot-panel/rows";
 import { SettingRow, Switch } from "./SettingsPrimitives";
 
@@ -33,8 +33,9 @@ export function HideDefaultBotItem({ bot, onDone, className = "flex w-full items
 
 /** Settings → General: whether the viewer's own Dusk has a row in the sidebar. */
 export function DefaultBotSidebarRow({ simple = false }: { simple?: boolean }) {
-  const { state, dispatch } = useStore();
-  const bot = myDefaultBot(state.bots, useViewerEmail());
+  const dispatch = useDispatch();
+  const viewer = useViewerEmail();
+  const bot = useStoreSelector((state) => myDefaultBot(state.bots, viewer));
   if (!bot) return null;
   const shown = !bot.sidebarHidden;
   return (

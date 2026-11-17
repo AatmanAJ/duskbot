@@ -11,7 +11,7 @@ import { PRIVATE_SETUP_PAGE } from "./settings-page-ids";
 import { SettingsSelect } from "./SettingsSelect";
 import { useCopyFeedback } from "@/lib/copy-text";
 import { cn } from "@/lib/cn";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { openPlaceSetup } from "@/lib/place-setup";
 import { VpsComputersCard } from "./VpsComputersCard";
 import { DirectLinkRow } from "./DirectLinkRow";
@@ -444,7 +444,7 @@ export function LocalVmIdleTimeoutSetting({
 }
 
 export function LocalComputerSection() {
-  const cloudHome = useStore().state.config?.cloudHome === true;
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
   const sub = useSubPage();

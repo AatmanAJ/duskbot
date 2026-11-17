@@ -8,7 +8,8 @@ import { myDefaultBot, useViewerEmail } from "@/lib/default-bot";
 import { bringChosen, forgetBringRun, localFinds, useBringRun, type LocalFind } from "@/lib/first-run-import";
 import { t } from "@/lib/i18n";
 import { detectSetupWithin, localSetupImport, setupImportApi, type SetupImportClient } from "@/lib/setup-import";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 import type { SetupDetection } from "../../shared/setup-import";
 import { useBotMove } from "./BringBots";
 import { BringIn, useBringChoice } from "./BringIn";
@@ -16,10 +17,12 @@ import { BringIn, useBringChoice } from "./BringIn";
 const LOOK_MS = 4_000;
 
 export function ImportSettings({ client = setupImportApi }: { client?: SetupImportClient }) {
-  const { state, dispatch } = useStore();
-  const first = myDefaultBot(state.bots, useViewerEmail());
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const viewer = useViewerEmail();
+  const firstBotId = useStoreSelector((s) => myDefaultBot(s.bots, viewer)?.id ?? null);
   // only the desktop app on the computer running dusk bot can read what that computer holds
-  const local = localSetupImport(state.config?.cloudHome === true);
+  const local = localSetupImport(useStoreSelector((s) => s.config?.cloudHome === true));
   const move = useBotMove({ look: local });
   const [detection, setDetection] = useState<SetupDetection | null | undefined>(local ? undefined : null);
   useEffect(() => {
@@ -39,7 +42,8 @@ export function ImportSettings({ client = setupImportApi }: { client?: SetupImpo
 
   const bring = (chosen: readonly LocalFind[]) => {
     track("settings_bring", { apps: chosen.length });
-    void bringChosen(chosen, { client, dispatch, firstBotId: first?.id ?? null, aboutMe: state.config?.profile?.aboutMe ?? "", team: Boolean(state.config?.team) });
+    const { config } = store.state();
+    void bringChosen(chosen, { client, dispatch, firstBotId, aboutMe: config?.profile?.aboutMe ?? "", team: Boolean(config?.team) });
   };
 
   return (

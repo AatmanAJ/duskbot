@@ -4,7 +4,7 @@ import { Search, X } from "../icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { t } from "@/lib/i18n";
 import { useModalDialog } from "@/hooks/use-modal-dialog";
-import { useStore } from "@/state/store";
+import { useStoreShallow } from "@/state/store";
 import { Switch } from "./SettingsPrimitives";
 import { Card as RowsCard, FormDialog, ItemRow, NavRow, NoteRow, rowCls } from "./ListRows";
 import { textFieldCls } from "./ui/GrokDialog";
@@ -38,7 +38,7 @@ export function LibrarySkillMeta({ skill }: { skill: SkillsLibrarySkillWire }) {
 }
 
 export function SkillsSection() {
-  const { state } = useStore();
+  const bots = useStoreShallow((s) => s.bots.filter((bot) => !bot.hidden));
   const [skills, setSkills] = useState<SkillsLibrarySkillWire[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -53,7 +53,6 @@ export function SkillsSection() {
   const busy = useRef(false);
   const [importOpen, setImportOpen] = useState(false);
 
-  const bots = state.bots.filter((bot) => !bot.hidden);
   const tags = useMemo(
     () => [...new Set(skills.flatMap((skill) => skill.tags))].sort((a, b) => a.localeCompare(b)),
     [skills],

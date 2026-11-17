@@ -5,7 +5,7 @@ import { startingTemplate, type BotDefaultsAnswer } from "@/lib/new-bot";
 import { type BotSettingsRow, type RoomSettingsRow, type SettingsBotTarget } from "@/lib/open-settings";
 import { responderShortLabel } from "@/lib/room-responder";
 import { shortPath } from "@/lib/short-path";
-import { api, BotEditorStore, useStore, type Bot, type Group, type ModelSelection } from "@/state/store";
+import { api, BotEditorStore, useDispatch, useStore, useStoreSelector, useStoreShallow, type Bot, type Group, type ModelSelection } from "@/state/store";
 import { useManagedSkills } from "./bot-settings/SkillsSection";
 import { useBotSettingsDerived } from "./bot-settings/useBotSettingsDerived";
 import { usePlaceChoices } from "./bot-panel/ComputerTab";
@@ -76,14 +76,12 @@ export function targetPage(target: SettingsBotTarget | null, bot?: Bot): { id: s
 
 /** The scope shown: the one picked, else the bot open in the chat, else new bots' defaults. */
 export function useBotsScope(): { scope: BotsScope; bot?: Bot; group?: Group } {
-  const { state } = useStore();
   const picked = useSyncExternalStore(subscribe, () => chosenScope, () => chosenScope);
-  const groups = state.groups ?? [];
-  const selected = state.bots.find((bot) => bot.id === state.selectedId && !bot.hidden);
-  const selectedGroup = groups.find((group) => group.id === state.selectedId && !group.dm);
+  const selected = useStoreSelector((s) => s.bots.find((bot) => bot.id === s.selectedId && !bot.hidden));
+  const selectedGroup = useStoreSelector((s) => (s.groups ?? []).find((group) => group.id === s.selectedId && !group.dm));
   const scope: BotsScope = picked ?? (selected ? `bot:${selected.id}` : selectedGroup ? `group:${selectedGroup.id}` : "defaults");
-  const bot = scope.startsWith("bot:") ? state.bots.find((entry) => entry.id === scope.slice(4)) : undefined;
-  const group = scope.startsWith("group:") ? groups.find((entry) => entry.id === scope.slice(6)) : undefined;
+  const bot = useStoreSelector((s) => scope.startsWith("bot:") ? s.bots.find((entry) => entry.id === scope.slice(4)) : undefined);
+  const group = useStoreSelector((s) => scope.startsWith("group:") ? (s.groups ?? []).find((entry) => entry.id === scope.slice(6)) : undefined);
   return bot || group ? { scope, bot, group } : { scope: "defaults" };
 }
 
@@ -164,9 +162,9 @@ function useMemoryLine(bot: Bot): string {
 }
 
 function ReasoningRow({ bot }: { bot: Bot }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const selection = bot.modelSelection;
-  const levels = state.instances.find((instance) => instance.instanceId === selection.instanceId)?.capabilities?.effortLevels;
+  const levels = useStoreSelector((s) => s.instances.find((instance) => instance.instanceId === selection.instanceId)?.capabilities?.effortLevels);
   if (!levels?.length) return null;
   return (
     <SettingRow title={t("model.simple.reasoning")}>
@@ -244,8 +242,7 @@ function BotPage({ bot, page, onDone }: { bot: Bot; page: SheetPage; onDone: () 
 }
 
 function useMembers(group: Group): Bot[] {
-  const { state } = useStore();
-  return group.memberIds.map((id) => state.bots.find((bot) => bot.id === id)).filter((bot): bot is Bot => Boolean(bot));
+  return useStoreShallow((s) => group.memberIds.map((id) => s.bots.find((bot) => bot.id === id)).filter((bot): bot is Bot => Boolean(bot)));
 }
 
 function RoomPage({ group, page, onDone }: { group: Group; page: RoomSettingsRow; onDone: () => void }) {

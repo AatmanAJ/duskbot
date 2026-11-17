@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Loader2, MoreHorizontal, Plus } from "../icons";
-import { api, useStore, useDispatch, type InstanceInfo } from "@/state/store";
+import { api, useDispatch, useStoreActions, useStoreSelector, type InstanceInfo } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import type { LocaleKey } from "@/locales";
@@ -69,14 +69,14 @@ function summaryFor(group: AccountGroup, accounts: InstanceInfo[]): EngineCardSu
 }
 
 function AccountMenu({ group, instance, onRename }: { group: AccountGroup; instance: InstanceInfo; onRename: () => void }) {
-  const { state, dispatch, refreshInstances } = useStore();
+  const { dispatch, refreshInstances } = useStoreActions();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState<"signOut" | "remove" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { signOut: canSignOut, remove: canRemove } = accountActions(group, instance);
-  const usedBy = state.bots.filter((bot) => bot.modelSelection.instanceId === instance.instanceId).length;
+  const usedBy = useStoreSelector((state) => state.bots.filter((bot) => bot.modelSelection.instanceId === instance.instanceId).length);
 
   useEffect(() => {
     if (!open) return;

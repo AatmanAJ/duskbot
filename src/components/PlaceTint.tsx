@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { bannerSrc, type BannerSummary } from "@/lib/place-banner";
 import { placeTint, usePlaceLook } from "@/lib/place-look";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 
 /** What the top of the sidebar shows, first that applies: the workspace's banner picture (kept on its own server), the
  * place's colour, or nothing as it always was. Under the picture the colour waits for a picture that won't load, and
@@ -21,6 +21,6 @@ export function PlaceTop({ banner, color }: { banner: BannerSummary | null | und
 
 /** The sidebar's own: this page's banner from its server's settings, and its place's colour from the app. */
 export function PlaceTint() {
-  const { state } = useStore();
-  return <PlaceTop banner={state.config?.workspaceBanner} color={usePlaceLook()?.color} />;
+  const banner = useStoreSelector((s) => s.config?.workspaceBanner);
+  return <PlaceTop banner={banner} color={usePlaceLook()?.color} />;
 }

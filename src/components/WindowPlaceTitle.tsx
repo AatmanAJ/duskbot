@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { t } from "@/lib/i18n";
 import { usePlaceLook } from "@/lib/place-look";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { PlaceMark } from "./PlacesRail";
 
 type WorkspaceState = Awaited<ReturnType<NonNullable<NonNullable<typeof window.duskDesktop>["workspaces"]>["state"]>>;
@@ -34,9 +34,9 @@ export function windowPlaceName(place: WorkspaceState, team: string | undefined)
 export function WindowPlaceTitle() {
   const place = useWindowPlace();
   const look = usePlaceLook();
-  const { state } = useStore();
+  const teamName = useStoreSelector((s) => s.config?.team?.name);
   if (!place) return <span aria-hidden="true" />;
-  const name = windowPlaceName(place, state.config?.team?.name);
+  const name = windowPlaceName(place, teamName);
   return <div data-window-place className="flex min-w-0 items-center justify-center gap-1.5 px-2 text-[12px] font-medium text-ink-secondary">
     <PlaceMark place={{ kind: place.local ? "computer" : place.role ? "team" : "cloud", name, color: look?.color ?? place.color ?? null }} size={16} />
     <span className="min-w-0 truncate">{name}</span>

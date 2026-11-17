@@ -10,16 +10,26 @@ import { arrivalFailed, dismissArrival, noteArrival, useNotesArrival, useNotesWo
 import { copyNotesPrompt, importNotes, notesWatch, takeNotesFromDownloads, WATCH_EVERY_MS, isNotesPrompt, notesErrorLine, notesOutcomeLine, scheduleNotesReminder, stopWaiting, useNotesWaiting } from "@/lib/assistant-notes";
 import { myDefaultBot, useViewerEmail } from "@/lib/default-bot";
 import { t } from "@/lib/i18n";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector, type Action, type AppState } from "@/state/store";
+import { useStoreRef } from "@/state/store-ref";
 
 export type NotesSay = (line: string, state: "working" | "done" | "failed") => void;
+
+const notesContext = (state: AppState, firstBotId: string | null, dispatch: (action: Action) => void) =>
+  ({ bots: state.bots, aboutMe: state.config?.profile?.aboutMe ?? "", team: Boolean(state.config?.team), firstBotId, dispatch });
+
+function useFirstBotId(): string | null {
+  const viewer = useViewerEmail();
+  return useStoreSelector((s) => myDefaultBot(s.bots, viewer)?.id ?? null);
+}
 
 /** Takes a pasted or dropped block. A chat passes no `say`: the card above its message box and the first bot's chat
  * say how it goes. A screen of its own (the bring step) passes `say` to hear "bringing in…", then the outcome. */
 export function useNotesIntake() {
-  const { state, dispatch } = useStore();
-  const firstBotId = myDefaultBot(state.bots, useViewerEmail())?.id ?? null;
+  const store = useStoreRef();
+  const firstBotId = useFirstBotId();
   return useCallback((text: string, say?: NotesSay, via: NotesVia = "paste", chatBot?: string | null) => {
+    const state = store.state();
     // the chat it was pasted or dropped into; a group's or none is the first bot's
     const here = (chatBot && state.bots.some((bot) => bot.id === chatBot) ? chatBot : null) ?? firstBotId;
     if (isNotesPrompt(text)) {
@@ -31,21 +41,22 @@ export function useNotesIntake() {
     else noteArrival(via, here);
     // in a chat, that chat's bot says how it goes; a screen of its own leaves it to the first bot
     const chatBotId = say ? null : here;
-    void importNotes(text, { bots: state.bots, aboutMe: state.config?.profile?.aboutMe ?? "", team: Boolean(state.config?.team), firstBotId, chatBotId, dispatch }, { via })
+    void importNotes(text, { ...notesContext(state, firstBotId, store.dispatch), chatBotId }, { via })
       .then((outcome) => say?.(notesOutcomeLine(outcome), outcome.failed.length || outcome.lost?.length ? "failed" : "done"),
         (cause: unknown) => (say ? say(notesErrorLine(cause), "failed") : arrivalFailed(notesErrorLine(cause))));
-  }, [state.bots, state.config?.profile?.aboutMe, state.config?.team, firstBotId, dispatch]);
+  }, [store, firstBotId]);
 }
 
 /** While the prompt's answer may still come, Downloads is checked every few seconds for the dusk-bot-notes.md it
  * asks for, and a new one comes in by itself, with the first bot's note saying so. Only on the desktop app's own
  * computer; never before the prompt was copied. Paste and drop still work the whole time. */
 export function useNotesFromDownloads() {
-  const { state, dispatch } = useStore();
-  const firstBotId = myDefaultBot(state.bots, useViewerEmail())?.id ?? null;
-  const context = useRef({ bots: state.bots, aboutMe: "", team: false, firstBotId, dispatch });
-  context.current = { bots: state.bots, aboutMe: state.config?.profile?.aboutMe ?? "", team: Boolean(state.config?.team), firstBotId, dispatch };
-  const local = Boolean(state.config) && localSetupImport(state.config?.cloudHome === true);
+  const store = useStoreRef();
+  const firstBotId = useRef<string | null>(null);
+  firstBotId.current = useFirstBotId();
+  const hasConfig = useStoreSelector((s) => Boolean(s.config));
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome === true);
+  const local = hasConfig && localSetupImport(cloudHome);
   useEffect(() => {
     if (!local) return;
     let busy = false;
@@ -53,18 +64,18 @@ export function useNotesFromDownloads() {
       const watch = notesWatch();
       if (busy || !watch || Date.now() > watch.until) return;
       busy = true;
-      void takeNotesFromDownloads(context.current).finally(() => { busy = false; });
+      void takeNotesFromDownloads(notesContext(store.state(), firstBotId.current, store.dispatch)).finally(() => { busy = false; });
     }, WATCH_EVERY_MS);
     return () => clearInterval(timer);
-  }, [local]);
+  }, [local, store]);
 }
 
 /** One reminder 15 minutes after the prompt was copied, while its answer hasn't come: a system notification that opens
  * the first bot's chat. Without permission for one, the waiting line in that chat is the reminder. */
 export function useNotesReminder() {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const waiting = useNotesWaiting();
-  const firstBotId = myDefaultBot(state.bots, useViewerEmail())?.id;
+  const firstBotId = useFirstBotId();
   useEffect(() => {
     if (!waiting || waiting.reminded || !firstBotId) return;
     return scheduleNotesReminder(() => {
@@ -87,12 +98,11 @@ const xClass = "grid size-7 shrink-0 place-items-center rounded-full text-ink-te
 /** Above the message box: while notes are on their way (first bot's chat only), "waiting" with the prompt again and a
  * way to stop; once they come into this chat, that they came, for a few seconds, then nothing. */
 export function NotesWaitingLine({ botId }: { botId: string | undefined }) {
-  const { state } = useStore();
   const waiting = useNotesWaiting();
   const arrival = useNotesArrival();
-  const first = myDefaultBot(state.bots, useViewerEmail());
+  const firstBotId = useFirstBotId() ?? undefined;
   // while the first bot works through them, its chat says how it goes: no waiting card under that
-  const working = useNotesWork(first?.id);
+  const working = useNotesWork(firstBotId);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -100,7 +110,7 @@ export function NotesWaitingLine({ botId }: { botId: string | undefined }) {
     return () => clearTimeout(timer);
   }, [copied]);
   if (!botId) return null;
-  if (arrival && (arrival.botId ?? first?.id) === botId) {
+  if (arrival && (arrival.botId ?? firstBotId) === botId) {
     return (
       <div data-notes-arrived={arrival.failed ? "failed" : arrival.via} role="status" aria-live="polite" className={cardClass}>
         {arrival.failed
@@ -113,7 +123,7 @@ export function NotesWaitingLine({ botId }: { botId: string | undefined }) {
       </div>
     );
   }
-  if (!waiting || working || botId !== first?.id) return null;
+  if (!waiting || working || botId !== firstBotId) return null;
   return (
     <div data-notes-waiting="" className={cardClass}>
       <span aria-hidden="true" className="funnel-wait inline-block size-1.5 shrink-0 rounded-full bg-ink/60" />

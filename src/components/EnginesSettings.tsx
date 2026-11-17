@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Loader2 } from "../icons";
 
-import { api, useStore, useStoreActions, type InstanceInfo } from "@/state/store";
+import { api, useStoreActions, useStoreSelector, type AppState, type InstanceInfo } from "@/state/store";
 import { EngineCard, EngineSections, RefreshEngines, engineReady } from "./EngineLibrary";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -245,12 +245,12 @@ function EngineAdvanced({ instance }: { instance: InstanceInfo }) {
 
 /** Remove drops an added account; Sign out forgets a signed-in account's Google sign-in, the first one too. */
 function AntigravityAccountAction({ instance, action }: { instance: InstanceInfo; action: "remove" | "signOut" }) {
-  const { state, dispatch, refreshInstances } = useStore();
+  const { dispatch, refreshInstances } = useStoreActions();
   const [confirming, setConfirming] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const remove = action === "remove";
-  const usedBy = remove ? state.bots.filter((bot) => bot.modelSelection.instanceId === instance.instanceId).length : 0;
+  const usedBy = useStoreSelector((state) => remove ? state.bots.filter((bot) => bot.modelSelection.instanceId === instance.instanceId).length : 0);
   const label = t(remove ? "accounts.remove" : "accounts.signOut");
   const run = async () => {
     setConfirming(false);
@@ -369,9 +369,12 @@ function SimpleEngines({ rows, isReady, renderEngine, more }: {
   );
 }
 
+const selectInstances = (state: AppState) => state.instances;
+
 /** Providers someone hid: listed apart, folded, each one click from coming back. */
 export function HiddenEngines() {
-  const { state, refreshInstances } = useStore();
+  const { refreshInstances } = useStoreActions();
+  const instances = useStoreSelector(selectInstances);
   const [hidden, setHidden] = useState<Array<{ instanceId: string; displayName: string }>>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -382,7 +385,7 @@ export function HiddenEngines() {
       .then((result) => { if (alive) setHidden(Array.isArray(result?.instances) ? result.instances : []); })
       .catch(() => {});
     return () => { alive = false; };
-  }, [state.instances]);
+  }, [instances]);
   if (hidden.length === 0) return null;
   const unhide = (instanceId: string) => {
     setBusy(instanceId);
@@ -407,10 +410,10 @@ export function HiddenEngines() {
 }
 
 export function EnginesSettings({ simple = false, more }: { simple?: boolean; more?: { id: string; open: boolean; onToggle: () => void } }) {
-  const { state } = useStore();
+  const instances = useStoreSelector(selectInstances);
   // Leaving Settings ends the "now uses the copy dusk bot installed" lines.
   useEffect(() => forgetAppCopySwitches, []);
-  const listed = state.instances.filter((i) => i.readOnly || i.cli !== undefined || i.cliDefault !== undefined || i.snapshot.state === "unavailable" || isApiKeyEngine(i));
+  const listed = instances.filter((i) => i.readOnly || i.cli !== undefined || i.cliDefault !== undefined || i.snapshot.state === "unavailable" || isApiKeyEngine(i));
   // A provider's accounts share one card, which takes the place of its first account.
   const groups = new Map<AccountGroup, InstanceInfo[]>();
   for (const instance of listed) {

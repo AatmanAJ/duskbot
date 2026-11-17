@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "../icons";
-import { api, useStore, currentTaskBot, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
+import { api, useDispatch, useStoreActions, useStoreSelector, currentTaskBot, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
+import { botById } from "@/state/store-index";
+import { useStoreRef } from "@/state/store-ref";
 import type { EffortLevel } from "../../shared/wire";
 import type { ModelVariantOption } from "../../shared/runtime-events";
 import { configuredModelInstances, isCustomOnly, modelsAwaitEngine } from "@/lib/engine-rail";
@@ -68,9 +70,9 @@ export function EffortRow({
   label?: ReactNode;
   compact?: boolean;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
   const selection = bot.modelSelection;
-  const instance = state.instances.find((candidate) => candidate.instanceId === selection.instanceId);
+  const instance = useStoreSelector((s) => s.instances.find((candidate) => candidate.instanceId === selection.instanceId));
   if (instance?.capabilities?.modelVariants) {
     return <ModelVariantRow bot={bot} threadId={threadId} updateBotDefault={updateBotDefault} className={className} label={label} compact={compact} quiet={compact} />;
   }
@@ -132,9 +134,11 @@ export function ModelVariantRow({ bot, threadId, updateBotDefault, className, la
   wide?: boolean;
   quiet?: boolean;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const instances = useStoreSelector((s) => s.instances);
+  const modelVariantSessions = useStoreSelector((s) => s.modelVariantSessions);
   const selection = bot.modelSelection;
-  const choices = variantChoices(state, selection, threadId ?? bot.threadId);
+  const choices = variantChoices({ instances, modelVariantSessions }, selection, threadId ?? bot.threadId);
   if (!choices) return null;
   const { instance, reported, options } = choices;
   const missing = selection.variant !== undefined && !options.some((option) => option.id === selection.variant);
@@ -219,7 +223,12 @@ export function ModelPicker({
   label?: ReactNode;
   size?: "sm" | "md";
 }) {
-  const { state, dispatch: storeDispatch, refreshInstances, refreshModels: refreshInstanceModels } = useStore();
+  const { dispatch: storeDispatch, refreshInstances, refreshModels: refreshInstanceModels } = useStoreActions();
+  const store = useStoreRef();
+  const storeInstances = useStoreSelector((s) => s.instances);
+  const modelVariantSessions = useStoreSelector((s) => s.modelVariantSessions);
+  const cloudHome = useStoreSelector((s) => s.config?.cloudHome);
+  const reasoningState = { instances: storeInstances, modelVariantSessions };
   const [open, setOpen] = useState(false);
   const { bot, dispatch } = useAiSwitch({ bot: shown, threadId, contained, dispatch: storeDispatch, setOpen: (next) => (next ? openMenu() : setOpen(false)) });
   const motion = useMenuMotion(open);
@@ -292,7 +301,7 @@ export function ModelPicker({
 
   const selection = bot.modelSelection;
   const refocusAfterPick = useRefocusAfterPick(menuRef, open, selection, query);
-  const instances = withTypedModels(state.instances, selection, query);
+  const instances = withTypedModels(storeInstances, selection, query);
   const active = instances.find((instance) => instance.instanceId === selection.instanceId);
   const pickerInstances = configuredModelInstances(instances, selection.instanceId);
   const selectedVariantLabel = selection.variant === undefined ? undefined : variantLabel(
@@ -381,12 +390,12 @@ export function ModelPicker({
     setOpen(true);
   }
 
-  const profile = state.bots.find((candidate) => candidate.id === bot.id) ?? bot;
+  const profile = useStoreSelector((s) => botById(s, bot.id)) ?? bot;
   const follows = threadId ? profile.tasks?.find((task) => task.threadId === threadId)?.followsBotModel : undefined;
   const backup = useThreadBackup(profile, threadId);
   const answering = threadId ? answeringModel(profile, threadId, selection) : selection;
   const shownInstance = instances.find((instance) => instance.instanceId === answering.instanceId);
-  const botModelInstance = state.instances.find((instance) => instance.instanceId === profile.modelSelection.instanceId);
+  const botModelInstance = storeInstances.find((instance) => instance.instanceId === profile.modelSelection.instanceId);
   const botModelName = modelName(botModelInstance, profile.modelSelection.model, profile.modelSelection.variant);
   const botModelTitle = !botModelInstance ? profile.modelSelection.model : isFreeModel(botModelInstance) ? t("model.free.hint")
     : `${botModelInstance.displayName} · ${modelLabel(botModelInstance, profile.modelSelection.model)}${variantSuffix(botModelInstance, profile.modelSelection.model, profile.modelSelection.variant)}`;
@@ -399,7 +408,7 @@ export function ModelPicker({
     }
     const target = currentTaskBot(profile, threadId ?? bot.threadId);
     if (modelSwitchNeedsAsk(approvalModeFor(target),
-      state.instances.find((candidate) => candidate.instanceId === target.modelSelection.instanceId)?.driverKind,
+      storeInstances.find((candidate) => candidate.instanceId === target.modelSelection.instanceId)?.driverKind,
       botModelInstance?.driverKind)) {
       close(false);
       if (working) return setToast({ text: t("model.picker.stopFirst", { model: botModelName }), tone: "error" });
@@ -411,13 +420,14 @@ export function ModelPicker({
     if (working) setToast({ text: t("model.picker.nextMessage", { model: botModelName }), tone: "done" });
   };
 
-  const driverOf = (instanceId: string) => state.instances.find((candidate) => candidate.instanceId === instanceId)?.driverKind;
+  const driverOf = (instanceId: string) => storeInstances.find((candidate) => candidate.instanceId === instanceId)?.driverKind;
   const asksFor = (target: Bot, instance: InstanceInfo) =>
     modelSwitchNeedsAsk(approvalModeFor(target), driverOf(target.modelSelection.instanceId), instance.driverKind);
 
   /** Every bot on the pick, and new bots too; a bot with its own different model changes as well, since that's the ask. */
   const applyAll = (instance: InstanceInfo, model: string, variant: string | undefined, confirmed: boolean): "applied" | "asked" => {
-    const bots = state.bots.length > 0 ? state.bots : [profile];
+    const latest = store.state().bots;
+    const bots = latest.length > 0 ? latest : [profile];
     const plan = bots.map((one) => {
       const thread = one.id === bot.id ? threadId ?? bot.threadId : one.threadId;
       const next = modelSelectionForPick(one.modelSelection, instance, model);
@@ -476,7 +486,7 @@ export function ModelPicker({
     const nextSelection = modelSelectionForPick(selection, instance, model);
     // A model with reasoning levels keeps the menu open, so its level can be set next without opening it again;
     // picking a variant row already sets that level.
-    if (to === "all" || variant !== undefined || contained || !offersReasoning(state, instance, nextSelection, threadId ?? bot.threadId)) close(true);
+    if (to === "all" || variant !== undefined || contained || !offersReasoning(reasoningState, instance, nextSelection, threadId ?? bot.threadId)) close(true);
     else refocusAfterPick();
   };
 
@@ -491,7 +501,7 @@ export function ModelPicker({
   const connected = (tileId: AiTileId) => {
     const to = handoff?.scope ?? "bot";
     setHandoff(null);
-    const tile = aiTiles(state.instances, engineReady).find((one) => one.id === tileId);
+    const tile = aiTiles(storeInstances, engineReady).find((one) => one.id === tileId);
     const instance = tile?.candidates.find(engineReady);
     if (!tile || !instance) return;
     const options = instance.models.options;
@@ -513,7 +523,7 @@ export function ModelPicker({
       selection: effort ? { ...model, effort } : model, ...(working && threadId ? { nextTurn: true } : {}) });
   };
   const thinking: SimpleThinking | null = contained ? null
-    : variantChoices(state, selection, threadId ?? bot.threadId) ? {
+    : variantChoices(reasoningState, selection, threadId ?? bot.threadId) ? {
       variants: (
         <ModelVariantRow compact quiet bot={shown} threadId={threadId} updateBotDefault={Boolean(threadId) && updatesBotDefault} className="px-2 py-1"
           label={<span className="shrink-0 text-[12px] font-medium leading-4 text-ink-tertiary">{t("botSettings.simple.thinking")}</span>} />
@@ -610,10 +620,10 @@ export function ModelPicker({
   });
 
   // only the owner connects a provider; the rows stay out of a search, which looks through the models there are
-  const connectRows = mayChangeBot && !simpleMenu.query ? notConnectedRows(state.instances, simpleMenu.connect) : [];
+  const connectRows = mayChangeBot && !simpleMenu.query ? notConnectedRows(storeInstances, simpleMenu.connect) : [];
   const connectInstance = (instance: InstanceInfo) => {
     if (!mayChangeBot) return;
-    const [row] = notConnectedRows(state.instances, [{ instance, label: providerName(instance), provider: providerName(instance),
+    const [row] = notConnectedRows(storeInstances, [{ instance, label: providerName(instance), provider: providerName(instance),
       body: needsCli(instance) ? { kind: "setUp" } : { kind: "signIn" } }]);
     if (row?.tile) connect(row);
     else if (!remote) openDirectory();
@@ -670,7 +680,7 @@ export function ModelPicker({
         onMore={mayChangeBot && !remote ? openDirectory : undefined}
         onResetVariant={resetVariant}
         scope={mayChangeBot ? { value: scope, onChange: setScope } : undefined}
-        where={state.config?.cloudHome ? t("model.picker.onCloud") : undefined}
+        where={cloudHome ? t("model.picker.onCloud") : undefined}
         notConnected={connectRows.length > 0 ? { rows: connectRows, onConnect: connect } : undefined}
       />
     </div>

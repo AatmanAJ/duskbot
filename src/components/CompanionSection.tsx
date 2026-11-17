@@ -17,7 +17,7 @@ import { PhonesList } from "./PhonesList";
 import { ConnectionDetail } from "./ConnectionDetail";
 import { SettingRow, SettingsGroup, SettingsRows, Switch } from "./SettingsPrimitives";
 import { NavRow, NoteRow, useSubPage } from "./ListRows";
-import { useStore } from "@/state/store";
+import { useStoreSelector } from "@/state/store";
 import { PHONE_ADVANCED_PAGE } from "./settings-page-ids";
 
 export {
@@ -141,7 +141,7 @@ export function CompanionSection({ profileEmail = "", focusRequest = 0 }: { prof
     if (!focusRequest) revealed.current = 0;
     else if (revealed.current !== focusRequest && revealPhonePairing(pairingFlow.current)) revealed.current = focusRequest;
   }, [focusRequest, loaded]);
-  const managedPolicy = useStore().state.config?.managedPolicy;
+  const managedPolicy = useStoreSelector((state) => state.config?.managedPolicy);
   const remoteBlocked = managedPolicy?.remoteAccess === false ? t("policy.remoteBlocked", { organization: managedPolicy.organizationName }) : null;
   const managedBy = managedPolicy?.remoteAccess === false ? t("policy.managedBy", { organization: managedPolicy.organizationName }) : null;
 

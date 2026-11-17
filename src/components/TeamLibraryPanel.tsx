@@ -6,7 +6,7 @@ import { addTemplate } from "@/lib/template-add";
 import { orgCardAction, orgPackagePreview, type OrgLibraryListing, type OrgLibraryPackage } from "@/lib/org-library";
 import type { PackageDocument } from "../../shared/package-format";
 import type { Routine } from "@/lib/routines";
-import { api, useStore, type Bot, type Group } from "@/state/store";
+import { api, useDispatch, useStoreSelector, useStoreShallow, type Bot, type Group } from "@/state/store";
 import { ArrowLeft, Check, Compass, ExternalLink, FolderOpen, Github, Loader2, Search, UploadCloud, X } from "../icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -77,7 +77,9 @@ export function TeamLibraryPanel({
   returnFocusRef: React.RefObject<HTMLButtonElement | null>;
   initialUrl?: string;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const currentBotCount = useStoreSelector((s) => s.bots.filter((bot) => !bot.hidden).length);
+  const botNames = useStoreShallow((s) => s.bots.map((bot) => bot.name));
   const dialogRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<TeamTab>("explore");
@@ -120,8 +122,7 @@ export function TeamLibraryPanel({
   // Monotonic scout token: a late response from an older scout must never overwrite a newer one's state.
   const scoutRequest = useRef(0);
 
-  const currentBotCount = state.bots.filter((bot) => !bot.hidden).length;
-  const takenNames = new Set(state.bots.map((bot) => bot.name.trim().toLowerCase()));
+  const takenNames = new Set(botNames.map((name) => name.trim().toLowerCase()));
   const importedNames = pending?.members.map((member) => takeImportName(member.name, takenNames)) ?? [];
 
   const loadOrgLibrary = useCallback(async () => {
