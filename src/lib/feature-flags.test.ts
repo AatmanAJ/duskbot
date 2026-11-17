@@ -44,14 +44,14 @@ describe("experimental feature flags", () => {
     for (const bad of ["", "2", "101", "4.5", "-5", "ten"]) expect(parseSkillReviewSteps(bad)).toBeNull();
   });
 
-  it("shows the phone app in a plain build, since the iPhone app is on the App Store, and hides it only when a build asks", () => {
-    // release builds set no flag: settings, phone has to be there for a browser user on a cloud to pair
+  it("keeps the phone app off in a plain build and shows it only when a build asks", () => {
+    // release builds set no flag: no phone step, phone pane or pairing prompt
     vi.stubEnv("VITE_DUSK_PHONE_APP", "");
-    expect(phoneAppEnabled()).toBe(true);
-    vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
-    expect(phoneAppEnabled()).toBe(true);
+    expect(phoneAppEnabled()).toBe(false);
     vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     expect(phoneAppEnabled()).toBe(false);
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
+    expect(phoneAppEnabled()).toBe(true);
     vi.unstubAllEnvs();
   });
 
