@@ -19,7 +19,6 @@ import { ASK_CARD_LIFT, ASK_CARD_RING } from "./AskCard";
 import { EventChip, EventLabel, EventLine } from "./EventLine";
 import { Icon, type IconName } from "./Icon";
 import { BotAvatar } from "./Avatar";
-import { openBotSettings } from "./bot-panel/panel-link";
 import { CardHint } from "./CardHint";
 import { lowerFirst } from "../lib/lower-first";
 import { appActionLine } from "@/lib/app-action";
@@ -229,7 +228,7 @@ const WAIT_EVENT = {
 
 interface AppliedEvent {
   label: string;
-  chip?: { icon: IconName; name: string; title?: string; routinesOf?: string | null };
+  chip?: { icon: IconName; name: string; title?: string };
   /** Bots the change made or changed, each drawn as its mascot. */
   bots?: Array<{ name: string; botId?: string }>;
   forBot?: { name: string; botId?: string };
@@ -245,7 +244,7 @@ export function appliedEvent(card: OptionCardData): AppliedEvent | undefined {
       ? plainWhen(routine.undo.schedule) : "";
     return {
       label: t(ROUTINE_EVENT[operation.action]),
-      ...(name ? { chip: { icon: "clock" as const, name, title: when ? `${name}, ${when}` : name, routinesOf: operation.action === "delete" ? null : operation.forBot?.botId ?? "" } } : {}),
+      ...(name ? { chip: { icon: "clock" as const, name, title: when ? `${name}, ${when}` : name } } : {}),
       ...(operation.forBot ? { forBot: { name: operation.forBot.name, botId: operation.forBot.botId } } : {}),
     };
   }
@@ -256,7 +255,7 @@ export function appliedEvent(card: OptionCardData): AppliedEvent | undefined {
     const name = webhook.undo?.name ?? "";
     return {
       label: t(ROUTINE_EVENT[webhook.operation.action]),
-      ...(name ? { chip: { icon: "lightning" as const, name, routinesOf: webhook.operation.action === "delete" ? null : webhook.operation.forBot?.botId ?? "" } } : {}),
+      ...(name ? { chip: { icon: "lightning" as const, name } } : {}),
       ...(webhook.operation.forBot ? { forBot: { name: webhook.operation.forBot.name, botId: webhook.operation.forBot.botId } } : {}),
     };
   }
@@ -310,7 +309,6 @@ function AppliedEventLine({ event, bots }: { event: AppliedEvent; bots: readonly
 
 function AppliedEventParts({ event, bots }: { event: AppliedEvent; bots: readonly Bot[] | undefined }) {
   const chip = event.chip;
-  const store = useContext(StoreContext);
   const many = event.bots && event.bots.length > 2;
   return (
     <>
@@ -319,12 +317,6 @@ function AppliedEventParts({ event, bots }: { event: AppliedEvent; bots: readonl
         <EventChip
           leading={<Icon name={chip.icon} size={12} />}
           title={chip.title ?? chip.name}
-          {...(chip.routinesOf !== undefined && chip.routinesOf !== null && store
-            ? {
-                onClick: () => openBotSettings(store.dispatch, "routines", chip.routinesOf ? { botId: chip.routinesOf } : {}),
-                "aria-label": t("chat.event.openRoutine", { name: chip.name }),
-              }
-            : {})}
         >
           {chip.name}
         </EventChip>
