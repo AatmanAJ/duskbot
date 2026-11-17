@@ -1983,6 +1983,28 @@ describe("ACP turns (fake CLI)", () => {
     expect(recorder.events.find((e) => e.type === "runtime.error")?.message).toMatch(/not signed in/);
   });
 
+  it("grok shows signed out once a turn finds its auth.json unusable, and signed in again after a new sign-in", async () => {
+    process.env.FAKE_ACP_AUTH_METHOD = "grok.com";
+    const grokDir = join(scratch, ".grok");
+    mkdirSync(grokDir, { recursive: true });
+    const session = (expires: string, refresh?: string) => JSON.stringify({ "https://auth.x.ai::client": { key: "fixture", expires_at: expires, ...(refresh ? { refresh_token: refresh } : {}) } });
+    writeFileSync(join(grokDir, "auth.json"), session("2026-01-01T00:00:00Z", "fixture-refresh"));
+    instance = await GrokAgentDriver.create({
+      instanceId: "acp-test", displayName: "ACP Test", enabled: true,
+      environment: { HOME: scratch, GROK_HOME: grokDir },
+      config: { cli: FAKE_CLI, fullAuto: false },
+    });
+    recorder = recordEvents(instance.adapter);
+    expect((await instance.snapshot()).authenticated).toBe(true);
+    await instance.adapter.sendTurn({ threadId: "t-grok-refused", text: "go" });
+    expect(await recorder.until((e) => e.type === "turn.completed")).toMatchObject({ ok: false, stopReason: "auth_required" });
+    expect((await instance.snapshot()).authenticated).toBe(false);
+    writeFileSync(join(grokDir, "auth.json"), session(new Date(Date.now() + 6 * 3_600_000).toISOString(), "fixture-refresh-2"));
+    expect((await instance.snapshot()).authenticated).toBe(true);
+    writeFileSync(join(grokDir, "auth.json"), session("2026-01-01T00:00:00Z"));
+    expect((await instance.snapshot()).authenticated).toBe(false);
+  });
+
   it("grok fails closed when the CLI advertises no supported authentication method", async () => {
     await create(GrokAgentDriver, "no-auth");
     await instance.adapter.sendTurn({ threadId: "t-auth", text: "go" });

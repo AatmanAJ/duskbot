@@ -1,6 +1,6 @@
 // Grok Build: the official `grok` CLI over ACP stdio (`grok … agent stdio`) on the grok.com
 // subscription login (~/.grok/auth.json), not the xAI API key. Verified against grok 1.0.0.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parse as parseYaml } from "yaml";
@@ -31,8 +31,60 @@ export function grokHome(env: Record<string, string | undefined> = process.env):
   return env.GROK_HOME || harnessHome("grok", env);
 }
 
+const grokAuthFile = (env: Record<string, string | undefined>) => resolve(grokHome(env), "auth.json");
+
+function authFileStamp(path: string): string | null {
+  try {
+    const stat = statSync(path);
+    return `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    return null;
+  }
+}
+
+/** auth.json as a turn last found it unusable; any rewrite (a sign-in, or grok's own token refresh) ends the refusal. */
+const refusedAuthFiles = new Map<string, string>();
+
+/** grok 1.0.44 offers its cached_token only for an unexpired session or one its silent refresh renews
+ * (xai-grok-shell acp_agent.rs initialize); a session with neither is a login only the browser can redo. */
+function grokSessionsDead(text: string): boolean {
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); } catch { return false; }
+  if (!parsed || typeof parsed !== "object") return false;
+  const sessions = Object.values(parsed as Record<string, unknown>)
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && typeof (entry as { key?: unknown }).key === "string");
+  return sessions.length > 0 && sessions.every((session) => {
+    const expires = typeof session.expires_at === "string" ? Date.parse(session.expires_at) : NaN;
+    const refresh = typeof session.refresh_token === "string" && session.refresh_token.length > 0;
+    return !refresh && Number.isFinite(expires) && expires <= Date.now();
+  });
+}
+
 export function grokSignedIn(env: Record<string, string | undefined>): boolean {
-  return existsSync(join(grokHome(env), "auth.json"));
+  const path = grokAuthFile(env);
+  const stamp = authFileStamp(path);
+  if (stamp === null) return false;
+  const refused = refusedAuthFiles.get(path);
+  if (refused !== undefined) {
+    if (refused === stamp) return false;
+    refusedAuthFiles.delete(path);
+  }
+  try {
+    return !grokSessionsDead(readFileSync(path, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
+/** A turn grok refused for want of a login: signed out until auth.json changes. */
+export function grokTurnRefusedLogin(env: Record<string, string | undefined>): void {
+  const path = grokAuthFile(env);
+  const stamp = authFileStamp(path);
+  if (stamp !== null) refusedAuthFiles.set(path, stamp);
+}
+
+export function grokSignInFinished(env: Record<string, string | undefined>): void {
+  refusedAuthFiles.delete(grokAuthFile(env));
 }
 
 function grokLoginFailure(output: string): string {
@@ -510,6 +562,8 @@ const support: AcpSupport = {
   pickAuthMethod: (methods) => methods.some((m) => m.id === "cached_token") ? "cached_token" : null,
   authFailure: "fail",
   isAuthenticated: (env) => grokSignedIn(env),
+  noteSignedOut: (env) => grokTurnRefusedLogin(env),
+  noteSignedIn: (env) => grokSignInFinished(env),
   classifyError: classifyGrokError,
 
   // `--append-system-prompt`/`--rules` do not reach the agent-stdio system prompt (1.0.0).
