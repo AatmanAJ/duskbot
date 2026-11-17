@@ -1,4 +1,5 @@
 import type { DeletionBlocker, DeleteAccountOptions } from "../../../../shared/billing-api";
+import type { WebsiteHome } from "../../../../shared/account-api";
 import type { CommandKind, CommandView, ConnectorsAnswer, WorkspaceDetail, WorkspaceSummary } from "../../../../shared/dashboard-protocol";
 import type { PulseAnswer } from "../../../../shared/machine-pulse";
 import type { AccountDevice, AccountProfile, AuthProviders, BillingOverview, ChangeOffer, CheckoutAnswer, CheckoutRequest, CloudDesktop, DesktopId, EmailCodeStart, Identity, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection, SlackWake } from "../data/contracts";
@@ -170,11 +171,13 @@ export const api = {
     if (FIXTURE) return send<AccountData>("/v1/account", "PATCH", profile);
     return accountFromWire(await send<AccountAnswer>("/v1/account", "PATCH", profile));
   },
-  finishOnboarding: async () => {
-    if (FIXTURE) return send("/v1/account/onboarded", "POST");
+  /** `home`: where the first steps put the bots, which the desktop app that sent the person here carries on from */
+  finishOnboarding: async (home?: WebsiteHome) => {
+    const body = home ? { home } : {};
+    if (FIXTURE) return send("/v1/account/onboarded", "POST", body);
     if (!accountId) await api.me();
     try { localStorage.setItem(`dusk-dash-onboarded:${accountId}`, "1"); } catch {}
-    await send("/v1/account/onboarded", "POST").catch(() => {});
+    await send("/v1/account/onboarded", "POST", body).catch(() => {});
     trackOnboardingDone();
   },
   setNotifications: (prefs: NotificationPrefs) => send<NotificationPrefs>("/v1/account/notifications", "PUT", prefs),

@@ -256,7 +256,15 @@ export interface AppSessionIdentity {
   account: { id: string; email: string };
   /** the website's handoff page, `${publicUrl}${pageBase}/handoff`, so the app can open it at once (WebHandoffRequest.token) */
   handoffUrl?: string;
+  /** "open": this account was just made through the app's browser sign-in and the website is taking it through its first
+   * steps (name, plan) now; the app's first run waits for them. "free" or "cloud": those steps are done, and where they
+   * put the bots. absent: done before, elsewhere, or a service older than this field */
+  websiteSetup?: WebsiteSetup;
 }
+/** where the website's first steps put the bots: this computer (free) or dusk cloud (a plan picked, its checkout opened) */
+export type WebsiteHome = "free" | "cloud";
+export type WebsiteSetup = "open" | WebsiteHome;
+export const WEBSITE_HOMES: readonly WebsiteHome[] = ["free", "cloud"];
 
 /** the error answer of the /v1 routes: { error: human text, code }. the Admin contract v1 routes (/api/cloud/*) answer
  * { error: code } instead, as the shipped apps read it. */

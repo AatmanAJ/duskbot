@@ -2,12 +2,14 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createJsonStore } from "../billing/json-store.ts";
 import { randomBytes } from "node:crypto";
-import type { AccountIntent, NotificationPrefs, OAuthProvider, SessionView } from "../../../../shared/account-api.ts";
+import type { AccountIntent, NotificationPrefs, OAuthProvider, SessionView, WebsiteHome } from "../../../../shared/account-api.ts";
 
 /** `notifications`: only what the owner changed (NOTIFICATION_DEFAULTS fill the rest); `onboardedAt`: first-run steps done;
  *  `avatarUrl`: the photo of the newest google sign-in that had one; `avatar`: the person's choice of avatar
  *  (shared/user-avatar.ts), absent for the default */
 export interface Account { id: string; email: string; name: string | null; avatarUrl?: string; avatar?: string; createdAt: number; notifications?: Partial<NotificationPrefs>; onboardedAt?: number;
+  /** where the website's first steps put the bots: "free" (this computer) or "cloud" (a plan picked, checkout opened) */
+  onboardedHome?: WebsiteHome;
   /** the app install whose sign-in made this account (its hand-back: the desktop sign-in code it opened the website with) */
   signedUpFrom?: { name: string; platform: string; appVersion: string | null; at: number } }
 /** `revoke`: Apple's newest refresh token per client id (json), sealed with the auth secret, for the revoke on deletion;

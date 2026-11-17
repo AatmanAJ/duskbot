@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { accountIntentPath, cleanAccountIntent, type AccountIntent } from "../../../../shared/account-api.ts";
-import { ACCOUNT_ROUTES as R, cleanPhoneSignInCode, PHONE_SIGN_IN_CODE_LENGTH, PHONE_SIGN_IN_TTL_MS, APP_AUTH_REDIRECT, APP_LANDING_PATH, CSRF_COOKIE, CSRF_HEADER, EMAIL_CODE_DIGITS, EMAIL_CODE_TRIES, EMAIL_CODE_TTL_SECONDS, EMAIL_RESEND_SECONDS, HANDOFF_PAGES, HANDOFF_PLANS, NOTIFICATION_DEFAULTS, OAUTH_PROVIDERS, SESSION_COOKIE } from "../../../../shared/account-api.ts";
-import type { AccountAnswer, AccountErrorCode, AccountView, AppGrant, NotificationPrefs, AppSessionIdentity, HandoffAnswer, OAuthErrorCode, OAuthProvider, PhoneSignInGrant, WebHandoffAnswer } from "../../../../shared/account-api.ts";
+import { ACCOUNT_ROUTES as R, cleanPhoneSignInCode, PHONE_SIGN_IN_CODE_LENGTH, PHONE_SIGN_IN_TTL_MS, APP_AUTH_REDIRECT, APP_LANDING_PATH, CSRF_COOKIE, WEBSITE_HOMES, CSRF_HEADER, EMAIL_CODE_DIGITS, EMAIL_CODE_TRIES, EMAIL_CODE_TTL_SECONDS, EMAIL_RESEND_SECONDS, HANDOFF_PAGES, HANDOFF_PLANS, NOTIFICATION_DEFAULTS, OAUTH_PROVIDERS, SESSION_COOKIE } from "../../../../shared/account-api.ts";
+import type { AccountAnswer, AccountErrorCode, AccountView, AppGrant, NotificationPrefs, AppSessionIdentity, HandoffAnswer, OAuthErrorCode, OAuthProvider, PhoneSignInGrant, WebHandoffAnswer, WebsiteHome, WebsiteSetup } from "../../../../shared/account-api.ts";
 import { generatePairingCode, PAIRING_CODE_ALPHABET } from "../../../../server/sessions.ts";
 import { CHECKOUT_SOURCES } from "../../../../shared/billing-api.ts";
 import { parseUserAvatarChoice } from "../../../../shared/user-avatar.ts";
@@ -46,6 +46,9 @@ export interface AuthOptions {
    *  limits and tries as an emailed code, and nothing else about the account changes */
   review?: ReviewAccount | null;
   dev: boolean; signupOpen: boolean; trustProxy: boolean; legacyAccounts?: () => Array<{ id: string; email: string }>;
+  /** false before launch (waitlist-only): the website has no first steps then, so an account made by an app's sign-in counts
+   *  as onboarded there at once */
+  websiteFirstSteps?: boolean;
 }
 export interface ReviewAccount { email: string; code: string }
 /** DUSK_REVIEW_EMAIL and DUSK_REVIEW_CODE (EMAIL_CODE_DIGITS digits, what the apps' code field takes), both or none */
@@ -262,6 +265,9 @@ export function createAuth(options: AuthOptions) {
   }
   /** an account signed in to an app had its first run there: the website never walks it through a second one */
   function onboardedInApp(owner: Account) { if (owner.onboardedAt === undefined) { owner.onboardedAt = now(); store.changed(); } }
+  /** made by an app's browser sign-in, its website first steps not done yet: the app waits on them, so its links to the
+   *  website (a handoff) open them rather than end them */
+  const websiteStepsOpen = (owner: Account) => owner.onboardedAt === undefined && owner.signedUpFrom !== undefined && options.websiteFirstSteps !== false;
   /** `onboard` false: the account was just made through this app's sign-in, and the website is taking it through its first
    *  steps (name, plan) right now; that finishes them there, not this */
   function appGrant(owner: Account, device: DeviceInfo, { onboard = true }: { onboard?: boolean } = {}): AppGrant {
@@ -554,7 +560,7 @@ export function createAuth(options: AuthOptions) {
     if (current && current.account.id !== owner.id && data.replace !== true) return fail(409, "other_account", { email: owner.email });
     if (!current && data.confirm !== true) return fail(409, "confirm", { email: owner.email });
     handoffs.delete(key);
-    onboardedInApp(owner);
+    if (!websiteStepsOpen(owner)) onboardedInApp(owner);
     if (current && current.account.id === owner.id) return { account: view(owner), csrfToken: csrfFor(current.session), next: grant.next };
     if (current) dropSessions(item => item === current.session);
     // security: the web session is only as fresh as the app sign-in behind it, so it never passes a "signed in recently"
@@ -697,7 +703,12 @@ export function createAuth(options: AuthOptions) {
         json(notificationsOf(owner));
       } else if (method === "POST" && path === R.onboarded) {
         const owner = requireWeb(req, { mutation: true });
-        if (owner.onboardedAt === undefined) { owner.onboardedAt = now(); store.changed(); }
+        if (data.home !== undefined && !WEBSITE_HOMES.includes(data.home as WebsiteHome)) return fail(400, "invalid_request");
+        if (owner.onboardedAt === undefined) {
+          owner.onboardedAt = now();
+          if (data.home !== undefined) owner.onboardedHome = data.home as WebsiteHome;
+          store.changed();
+        }
         json({ onboarded: true });
       } else if (method === "DELETE" && path.startsWith("/v1/account/identities/")) {
         const owner = requireWeb(req, { mutation: true }), provider = path.slice("/v1/account/identities/".length);
@@ -782,7 +793,7 @@ export function createAuth(options: AuthOptions) {
         if (!owner) return fail(400, "invalid_grant");
         for (const hook of signedInHooks) hook(owner);
         const madeHere = Boolean(owner.signedUpFrom && device.createdAt !== undefined && owner.signedUpFrom.at >= device.createdAt);
-        json(appGrant(owner, device.device, { onboard: !madeHere }));
+        json(appGrant(owner, device.device, { onboard: !madeHere || options.websiteFirstSteps === false }));
       } else if ((method === "GET" || method === "DELETE") && path === R.appSession) {
         const found = appSession(req);
         if (!found) return fail(401, "invalid_token");
@@ -791,7 +802,8 @@ export function createAuth(options: AuthOptions) {
           let extra: Record<string, unknown> = { entitlement: { plan: "free", status: "inactive", expiresAt: null, version: 0 } };
           for (const extension of extensions) extra = { ...extra, ...await extension(found.account.id) };
           if (!state.sessions.includes(found.session)) return fail(401, "invalid_token");
-          json({ ...extra, ...identity(found.account, found.session), handoffUrl: `${pages}/handoff` });
+          const websiteSetup: WebsiteSetup | undefined = found.account.onboardedAt === undefined ? "open" : found.account.onboardedHome;
+          json({ ...extra, ...identity(found.account, found.session), handoffUrl: `${pages}/handoff`, ...(websiteSetup ? { websiteSetup } : {}) });
         }
       } else if (method === "POST" && path === R.appAvatar) {
         const found = appSession(req);

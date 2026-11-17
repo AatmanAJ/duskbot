@@ -1,4 +1,5 @@
 import type { DeleteAccountOptions } from "../../../../shared/billing-api";
+import type { WebsiteHome } from "../../../../shared/account-api";
 import type { ConnectorsAnswer } from "../../../../shared/dashboard-protocol";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, FIXTURE, type AccountData } from "../lib/api";
@@ -37,7 +38,7 @@ export interface CloudData {
   revokeDevice(id: string): Promise<void>;
   signOutEverywhere(): Promise<void>;
   deleteAccount(confirm: string, options?: DeleteAccountOptions): Promise<void>;
-  finishOnboarding(): Promise<void>;
+  finishOnboarding(home?: WebsiteHome): Promise<void>;
 }
 
 const Ctx = createContext<CloudData | null>(null);
@@ -202,8 +203,8 @@ export function CloudDataProvider({ children, signedIn }: { children: ReactNode;
     updateProfile: (name) => mutate(() => api.updateProfile({ name })),
     unlinkIdentity: (p) => mutate(() => api.unlinkIdentity(p)),
     revokeDevice: (id) => mutate(() => api.revokeDevice(id)),
-    finishOnboarding: () => mutate(async () => {
-      await api.finishOnboarding();
+    finishOnboarding: (home?: WebsiteHome) => mutate(async () => {
+      await api.finishOnboarding(home);
       setAccount((a) => (a ? { ...a, profile: { ...a.profile, onboarded: true } } : a));
     }),
     signOutEverywhere, deleteAccount,
