@@ -4,7 +4,7 @@ import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
 import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { HEADLINE, LINE, PRIMARY, Screen } from "../onboarding/parts";
-import { PixelArt } from "../Illustration";
+import { LoadingMascot, PixelArt } from "../Illustration";
 
 /** seconds before each automatic retry; the last one repeats */
 export const RETRY_SECONDS = [5, 10, 20, 40, 60];
@@ -45,7 +45,7 @@ export function Unreachable({ record, others, attempts, trying, onRetry, onSwitc
         <h1 className={HEADLINE}>{t("mobile.unreachable.title", { name: record.label })}</h1>
         <p className={LINE}>{t("mobile.unreachable.body")}</p>
         <p role="status" className="mt-4 flex min-h-6 items-center justify-center gap-2 text-[15px] font-medium text-ink-secondary">
-          {trying ? <><WorkingDots size={3} />{t("mobile.unreachable.trying")}</> : t("mobile.unreachable.next", { seconds: left })}
+          {trying ? <><LoadingMascot size={22} />{t("mobile.unreachable.trying")}</> : t("mobile.unreachable.next", { seconds: left })}
         </p>
         {others.length > 0 && (
           <div className="mt-8 w-full max-w-[320px] text-left">

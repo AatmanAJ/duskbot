@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence } from "motion/react";
-import { MausAvatar } from "@/components/Avatar";
+import { LoadingMascot } from "../Illustration";
 import { readSessionState } from "@/lib/session";
 import { resetSessionEnded, useSessionEnded } from "@/lib/session-ended";
 import { THEME_SKINS } from "@/lib/skins";
@@ -170,7 +170,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
     </AnimatePresence>
   );
   const onboarding = state.kind !== "ready" || (forcePair && !entered);
-  if (state.kind === "loading" && !incoming && !forcePair) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MausAvatar color="green" size={56} state="idle" animated={false} personality={false} /></div>;
+  if (state.kind === "loading" && !incoming && !forcePair) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><LoadingMascot /></div>;
   if (state.kind === "offline" && !forcePair) {
     if (!incoming && adding === 0) return <>{success}<Unreachable record={state.record} others={state.others} attempts={state.attempts} trying={state.trying} onRetry={retry} onSwitch={switchTo} /></>;
     return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;

@@ -9,7 +9,7 @@ import { t } from "@/lib/i18n";
 import { usePlatform } from "../platform";
 import { useOffline } from "../network";
 import { refreshSnapshot } from "../refresh";
-import { PixelArt } from "../Illustration";
+import { LoadingMascot, PixelArt } from "../Illustration";
 import { spring } from "../motion";
 import { ActiveConnection } from "./active";
 import { useConnections } from "./connections";
@@ -83,7 +83,7 @@ export function ConnectionPill({ notice, trying, onRetry, testId, className = "h
   }
   return (
     <span role="status" data-testid={testId} data-notice={notice} className={`${base} text-ink-secondary`}>
-      {notice === "offline" ? t("mobile.home.offline") : <><WorkingDots size={3} />{t(notice === "waking" ? "cloudAsleep.waking" : "mobile.home.reconnecting")}</>}
+      {notice === "offline" ? t("mobile.home.offline") : <><LoadingMascot size={20} />{t(notice === "waking" ? "cloudAsleep.waking" : "mobile.home.reconnecting")}</>}
     </span>
   );
 }

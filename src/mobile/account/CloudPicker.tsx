@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Cloud, RotateCw } from "../../icons";
-import { WorkingDots } from "@/components/WorkingIndicator";
+import { LoadingMascot } from "../Illustration";
 import { t } from "@/lib/i18n";
 import type { TypedPairing } from "../connection/pair";
 import { haptic } from "../haptics";
@@ -75,7 +75,7 @@ export function CloudPicker({ busy, onPairing, autoPick = false, onNone }: {
   return (
     <section aria-label={t("mobile.clouds.title")} data-testid="mobile-cloud-picker" className="mt-7 w-full text-left">
       <h2 className="mb-2 px-1 text-[15px] font-semibold text-ink-secondary">{t("mobile.clouds.title")}</h2>
-      {clouds === undefined && <p role="status" className="flex min-h-16 items-center gap-2.5 rounded-[18px] bg-ink/[0.04] px-4 text-[16px] text-ink-secondary"><WorkingDots />{t("mobile.clouds.loading")}</p>}
+      {clouds === undefined && <p role="status" className="flex min-h-16 items-center gap-2.5 rounded-[18px] bg-ink/[0.04] px-4 text-[16px] text-ink-secondary"><LoadingMascot size={24} />{t("mobile.clouds.loading")}</p>}
       {clouds === null && (
         <ErrorLine action={<button type="button" onClick={() => setReload((n) => n + 1)} className="mobile-press mt-1 flex min-h-11 items-center gap-1.5 font-semibold text-ink"><RotateCw size={15} />{t("mobile.onboarding.retry")}</button>}>
           {t("mobile.clouds.loadFailed")}
@@ -96,7 +96,7 @@ export function CloudPicker({ busy, onPairing, autoPick = false, onNone }: {
                     <span className={`block truncate text-[17px] font-semibold ${can ? "" : "text-ink-secondary"}`}>{cloud.name}</span>
                     <span className="mt-0.5 block text-[14px] text-ink-secondary">{mine ? t("mobile.clouds.connecting") : statusLine(cloud)}</span>
                   </span>
-                  {mine ? <WorkingDots /> : can && <ChevronRight size={18} className="text-ink-tertiary" />}
+                  {mine ? <LoadingMascot size={24} /> : can && <ChevronRight size={18} className="text-ink-tertiary" />}
                 </button>
               </li>
             );
