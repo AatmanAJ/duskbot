@@ -336,6 +336,7 @@ export interface Bot extends DefaultBotFields, Pick<WireBot, "mascotFaceColor" |
   connectorScopes?: { apps: Record<string, "read" | "write"> }; phoneApps?: import("../../shared/phone-apps").PhoneApps;
   outbound?: { policy: "ask" | "allow"; dailyCap: number };
   fallback?: Array<{ instanceId: string; model: string }>;
+  limitMode?: WireBot["limitMode"];
   browser?: boolean;
   recordBrowserSteps?: boolean;
   memoryUpkeep?: boolean;

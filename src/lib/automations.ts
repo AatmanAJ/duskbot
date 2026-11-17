@@ -335,6 +335,7 @@ export function runLine(run: RoutineRun, now = Date.now()): { when: string; mark
     return { when, mark: attention ? "!" : "…", text: attention || t("routines.status.waiting") };
   }
   if (isLimitSkip(run)) return { when, mark: "–", text: t("routines.strip.skipped") };
+  if (run.status === "queued" && run.attention?.trim()) return { when, mark: "…", text: short(firstLine(run.attention)) };
   if (run.status === "running" || run.status === "queued") return { when, mark: "…", text: t("automations.runningNow") };
   if (run.status === "cancelled") {
     const reason = short(firstLine(run.error));

@@ -97,6 +97,19 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
     for (const notice of notices) dismissed.add(notice.id);
     setClosed((n) => n + 1);
   };
+  // the turn waits for its AI's limit to reset and carries on by itself: no failure to fix, only a wait to stop
+  const held = notices.findLast((m) => m.tool?.limitHold === true);
+  const heldBotId = lead?.bot?.id ?? ownBotId;
+  if (held && (!lead || lead.kind === "usage_limit")) {
+    return (
+      <div className="mb-2 w-full px-5" data-failed-reply="" data-limit-hold="">
+        <ChatErrorCard tone="info" icon="batteryFull" title={noticeText(held)} onDismiss={close}
+          actions={heldBotId && threadId && (
+            <button type="button" onClick={() => dispatch({ type: "interrupt", botId: heldBotId, threadId })} className={QUIET_CARD_ACTION}>{t("failedReply.stopWaiting")}</button>
+          )} />
+      </div>
+    );
+  }
   if (!lead || !tool) {
     // only notices: the newest one is the card, the one way on its pill
     const last = notices.at(-1);
