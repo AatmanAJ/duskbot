@@ -345,8 +345,8 @@ export function useSubPage(): SubPageNav {
   return useContext(SubPageContext);
 }
 
-const WIPE_MS = 200;
-const reducedMotion = () => document.documentElement.dataset.reducedMotion === "true" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+export const WIPE_MS = 200;
+export const reducedMotion = () => document.documentElement.dataset.reducedMotion === "true" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
 /** Grok's in-dialog push between a list and a page of it (200ms, the app "out" curve): the incoming layer slides over the
  * outgoing one on push, the outgoing slides off it on pop. A change of `group` (another pane) swaps without motion. The

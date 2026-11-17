@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ChevronLeft } from "../icons";
+import { Apple, ChevronLeft } from "../icons";
 import { QRCodeSVG } from "qrcode.react";
 
 import { universalPairLink, universalSignInLink, type MobileDevice, type MobilePairingRequest, type MobilePairingResponse } from "../../shared/mobile-link";
@@ -13,8 +12,7 @@ import { requireUserPresence } from "@/lib/user-presence";
 import { api, ApiError } from "@/state/store";
 import { lastSeen, minutesLeft } from "../lib/pairing-time";
 import { haptic } from "../mobile/haptics";
-import { dur, ease } from "../mobile/motion";
-import { Card as RowsCard, ItemRow } from "./ListRows";
+import { Card as RowsCard, ItemRow, reducedMotion, WIPE_MS } from "./ListRows";
 import { PlaceArt, type PlaceArtName } from "./ui/PlaceArt";
 import { StoreMark } from "./ui/StoreMarks";
 import { PRIMARY, QUIET, TILE } from "./onboarding/FunnelSteps";
@@ -51,14 +49,8 @@ export interface PhoneParts {
 type Flow = "loading" | "home" | "platform" | "link";
 export type PhoneKind = "ios" | "android";
 
-/** the phone picked last time: the next link starts at its steps, with a way back to pick again */
-export const PHONE_KIND_KEY = "dusk.settings.phoneKind";
-export function rememberedPhone(): PhoneKind | null {
-  try {
-    const kind = window.localStorage.getItem(PHONE_KIND_KEY);
-    return kind === "ios" || kind === "android" ? kind : null;
-  } catch { return null; }
-}
+/** the Android app is not on Google Play yet: its card is shown, not pickable */
+export const ANDROID_APP_OUT = false;
 
 /** a live code is swapped for a new one this long before it ends, so the screen never shows a dead code */
 export const RENEW_BEFORE_MS = 60_000;
@@ -97,7 +89,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [flow, setFlow] = useState<Flow>("loading");
-  const [kind, setKind] = useState<PhoneKind>(() => rememberedPhone() ?? "ios");
+  const [kind, setKind] = useState<PhoneKind>("ios");
   const linking = useRef(false);
   linking.current = flow === "link";
   const [copied, setCopied] = useState<CopyFeedback>("idle");
@@ -111,9 +103,9 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const stepId = useId();
   const stepHeading = useRef<HTMLHeadingElement>(null);
   const moved = useRef(false);
-  const reducedMotion = useReducedMotion();
 
-  const start = (): Flow => rememberedPhone() ? "link" : "platform";
+  // every link starts at the phone picker, whatever was picked before
+  const start = (): Flow => "platform";
 
   const loadDevices = useCallback(async (epoch: number) => {
     try {
@@ -280,9 +272,9 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   }
 
   function pick(next: PhoneKind) {
+    if (next === "android" && !ANDROID_APP_OUT) return;
     haptic("selection");
     setKind(next);
-    try { window.localStorage.setItem(PHONE_KIND_KEY, next); } catch {}
     go("link");
   }
 
@@ -330,17 +322,10 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const signInEmail = offer?.email ?? accountEmail ?? (email?.trim() || undefined);
   const failed = error !== null && offer === null && !busy;
 
-  const motionProps = {
-    initial: { opacity: 0, y: reducedMotion ? 0 : 8 },
-    animate: { opacity: 1, y: 0 },
-    exit: { opacity: 0, y: reducedMotion ? 0 : -4 },
-    transition: { duration: reducedMotion ? 0.12 : dur.base, ease: ease.out },
-  };
-
-  const heading = (title: ReactNode, sub?: ReactNode, art?: PlaceArtName) => (
+  const heading = (live: boolean, title: ReactNode, sub?: ReactNode, art?: PlaceArtName) => (
     <div className="flex flex-col items-center text-center">
       {art && <PlaceArt name={art} size={52} className="place-mark mb-4" />}
-      <h3 id={stepId} ref={stepHeading} tabIndex={-1} className="m-0 text-balance text-[22px] font-normal leading-7 tracking-[-0.02em] text-ink outline-none">{title}</h3>
+      <h3 id={live ? stepId : undefined} ref={live ? stepHeading : undefined} tabIndex={-1} className="m-0 text-balance text-[22px] font-normal leading-7 tracking-[-0.02em] text-ink outline-none">{title}</h3>
       {sub && <p className="m-0 mt-1.5 max-w-[400px] text-pretty text-[14px] leading-5 text-ink-secondary">{sub}</p>}
     </div>
   );
@@ -370,15 +355,16 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   );
 
   const ios = kind === "ios";
-  const storeBadge = ios ? (
-    <a data-phone-app-store="" href={storeUrl("ios")} target="_blank" rel="noreferrer" aria-label={t("settings.phone.appStoreLabel")}
-      className="inline-flex min-h-11 items-center gap-2 self-start rounded-full bg-ink/[0.05] py-1.5 pe-3.5 ps-2.5 text-[13px] font-medium leading-[18px] text-ink transition-colors duration-150 ease-[ease] hover:bg-ink/[0.09] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none">
-      <StoreMark name="apple" />{t("settings.phone.iphoneTag")}
+  // apple's badge, in the page's own ink: dark on a light skin, light on a dark one
+  const appStoreBadge = (
+    <a data-phone-app-store="" href={storeUrl("ios")} target="_blank" rel="noreferrer"
+      className="inline-flex h-11 items-center gap-2 self-start rounded-[10px] bg-ink ps-3 pe-4 text-app transition-opacity duration-150 ease-[ease] hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none">
+      <Apple size={20} aria-hidden="true" className="-mt-0.5" />
+      <span className="flex flex-col items-start">
+        <span className="text-[10px] leading-3 tracking-[0.01em]">{t("settings.phone.appStoreSmall")}</span>
+        <span className="text-[16px] font-semibold leading-5 tracking-[-0.015em]">{t("settings.phone.appStoreBig")}</span>
+      </span>
     </a>
-  ) : (
-    <span data-phone-google-play="" className="inline-flex min-h-11 items-center gap-2 self-start rounded-full bg-ink/[0.035] py-1.5 pe-2 ps-2.5 text-[13px] leading-[18px] text-ink-secondary">
-      <StoreMark name="android" />{t("settings.phone.googlePlay")}<span className={pill}>{t("settings.phone.androidTag")}</span>
-    </span>
   );
 
   const backBar = (to: Flow | null) => to && (
@@ -396,14 +382,16 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
 
   const phoneCard = (option: PhoneKind) => {
     const apple = option === "ios";
+    const off = !apple && !ANDROID_APP_OUT;
     return (
-      <button type="button" data-phone-platform={option} aria-pressed={rememberedPhone() === option} onClick={() => pick(option)}
-        className={cn(TILE, "flex min-h-[176px] min-w-0 flex-col items-start justify-between gap-6 p-5 text-start")}>
+      <button type="button" data-phone-platform={option} aria-disabled={off || undefined} onClick={() => pick(option)}
+        className={cn(off ? "cursor-default rounded-2xl bg-ink/[0.025] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" : TILE,
+          "flex min-h-[176px] min-w-0 flex-col items-start justify-between gap-6 p-5 text-start")}>
         <span className="flex w-full items-start justify-between gap-2">
-          <span className="flex size-14 items-center justify-center"><StoreMark name={apple ? "apple" : "android"} scale={2} /></span>
-          <span className={pill}>{t(apple ? "settings.phone.iphoneTag" : "settings.phone.androidTag")}</span>
+          <span className={cn("flex size-14 items-center justify-center", off && "opacity-50 grayscale")}><StoreMark name={apple ? "apple" : "android"} scale={2} /></span>
+          {off && <span className={pill}>{t("settings.phone.androidTag")}</span>}
         </span>
-        <span className="flex flex-col gap-0.5">
+        <span className={cn("flex flex-col gap-0.5", off && "opacity-60")}>
           <span className="text-[16px] font-medium leading-6 text-ink">{t(apple ? "settings.phone.iphone" : "settings.phone.android")}</span>
           <span className="text-[13px] leading-[18px] text-ink-secondary">{t(apple ? "settings.phone.iphoneSub" : "settings.phone.androidSub")}</span>
         </span>
@@ -411,57 +399,56 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     );
   };
 
-  const platformStep = (
+  const platformStep = (live: boolean) => (
     <div data-phone-choose="" className="flex flex-col items-center gap-6">
-      {heading(t("settings.phone.whichTitle"), t(cloudHome ? "settings.phone.whichSubCloud" : "settings.phone.whichSub"))}
+      {heading(live, t("settings.phone.whichTitle"), t(cloudHome ? "settings.phone.whichSubCloud" : "settings.phone.whichSub"))}
       <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">{phoneCard("ios")}{phoneCard("android")}</div>
     </div>
   );
 
   // one numbered step: a round number, what to do, and what it needs right under it
-  const step = (n: number, title: ReactNode, children: ReactNode) => (
-    <li className="flex min-w-0 gap-3.5">
-      <span aria-hidden="true" className="mt-px flex size-6 shrink-0 items-center justify-center rounded-full bg-ink/[0.07] text-[12px] font-medium leading-4 text-ink">{n}</span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+  const step = (n: number, title: ReactNode, children?: ReactNode) => (
+    <li className="flex min-w-0 gap-3">
+      <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-full bg-ink/[0.07] text-[12px] font-medium leading-4 text-ink">{n}</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
         <span className="text-[15px] font-medium leading-6 text-ink">{title}</span>
         {children}
       </div>
     </li>
   );
-  const line = (text: ReactNode) => <span className="text-pretty text-[13px] leading-[18px] text-ink-secondary">{text}</span>;
+  const line = (text: ReactNode) => <span className="-mt-1 text-pretty text-[13px] leading-[18px] text-ink-secondary">{text}</span>;
 
-  // the qr beside the two steps where there is room, above them where there is not
-  const slab = (left: ReactNode, steps: ReactNode) => (
+  // the qr and its code in one column, the steps beside them where there is room, under them where there is not
+  const linkGrid = (credentials: ReactNode, steps: ReactNode) => (
     <div className="@container w-full">
-      <div data-phone-slab="" className="grid grid-cols-1 gap-6 rounded-[20px] bg-ink/[0.035] p-5 @[500px]:grid-cols-[auto_minmax(0,1fr)] @[500px]:items-start @[500px]:gap-7">
-        <div className="flex flex-col items-center gap-2 justify-self-center">
-          {left}
-          <span className="text-[12px] leading-4 text-ink-tertiary">{t(ios ? "settings.phone.qrCaption" : "settings.phone.qrCaptionAndroid")}</span>
-        </div>
-        <ol data-phone-steps={kind} className="m-0 flex list-none flex-col gap-6 p-0 @[500px]:pt-1">{steps}</ol>
+      <div data-phone-slab="" className="grid grid-cols-1 justify-items-center gap-8 @[500px]:grid-cols-[180px_minmax(0,1fr)] @[500px]:justify-items-stretch @[500px]:gap-10">
+        <div className="flex w-[180px] flex-col items-center gap-3">{credentials}</div>
+        <ol data-phone-steps={kind} className="m-0 flex w-full max-w-[400px] list-none flex-col gap-7 p-0 @[500px]:max-w-none">{steps}</ol>
       </div>
     </div>
   );
 
   const getApp = ios
-    ? step(1, t("settings.phone.getIos"), <>{line(t("settings.phone.getIosLine"))}{storeBadge}</>)
-    : step(1, t("settings.phone.getAndroid"), <>{line(t(cloudHome ? "settings.phone.getAndroidLineCloud" : "settings.phone.getAndroidLine"))}{storeBadge}</>);
+    ? step(1, t("settings.phone.getIos"), appStoreBadge)
+    : step(1, t("settings.phone.getAndroid"), line(t(cloudHome ? "settings.phone.getAndroidLineCloud" : "settings.phone.getAndroidLine")));
 
-  const codeBlock = offer && !offer.code ? line(t("settings.mobile.scanOnly")) : (
-    <div className="flex flex-col items-start gap-1">
+  // the typed code under the qr: its place is kept while it is made, so nothing moves when it lands
+  const codeBlock = offer && !offer.code ? null : (
+    <div className="flex w-full flex-col items-center">
       {offer && !expired ? (
-        <code aria-label={t("settings.mobile.code")} data-phone-code="" className="select-all whitespace-nowrap font-mono text-[26px] leading-9 tracking-[0.08em] text-ink">{groupedCode}</code>
+        <code aria-label={t("settings.mobile.code")} data-phone-code="" className="select-all whitespace-nowrap font-mono text-[18px] leading-8 tracking-[0.06em] text-ink">{groupedCode}</code>
       ) : (
-        <span aria-hidden="true" className={cn("my-0.5 block h-8 w-[220px] max-w-full rounded-[8px] bg-ink/[0.06]", !expired && "animate-pulse motion-reduce:animate-none")} />
+        <span aria-hidden="true" className={cn("my-1.5 block h-5 w-[140px] rounded-[6px] bg-ink/[0.06]", !expired && "animate-pulse motion-reduce:animate-none")} />
       )}
-      <div className="-ms-3 flex flex-wrap items-center gap-1">
+      <div className="flex items-center">
         <button type="button" data-phone-copy="" onClick={() => void copyCode()} disabled={!offer || expired} className={quietButton} aria-live="polite">
           {t(copied === "copied" ? "settings.mobile.copied" : copied === "failed" ? "settings.mobile.copyFailed" : "settings.mobile.copyCode")}
         </button>
-        {offer && !expired && <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className={quietButton}>{t("settings.mobile.newCode")}</button>}
+        <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy || !offer || expired} className={cn(quietButton, (!offer || expired) && "invisible")}>{t("settings.mobile.newCode")}</button>
       </div>
     </div>
   );
+  const codeLine = (withCode: Parameters<typeof t>[0]) => line(t(offer && !offer.code ? "settings.mobile.scanOnly" : withCode));
 
   const failedBlock = (
     <div data-pairing-failed="" className="flex w-full flex-col items-center gap-3 rounded-[20px] bg-ink/[0.035] px-6 py-8 text-center">
@@ -471,84 +458,76 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     </div>
   );
 
-  const localLink = (
-    <div data-phone-link="" className="flex flex-col items-center gap-6">
-      {heading(t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"))}
-      {failed ? failedBlock : slab(
-        expired ? ended("expired", t("settings.mobile.expired"), t("settings.mobile.newCode"))
-          : qrTile(offer?.qr ?? null, t("settings.mobile.qr")),
-        <>
-          {getApp}
-          {step(2, t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"), <>{line(t(ios ? "settings.phone.openIosLine" : "settings.phone.openAndroidLine"))}{codeBlock}</>)}
-        </>,
-      )}
+  const offerTile = (label: string) => expired ? ended("expired", t("settings.mobile.expired"), t("settings.mobile.newCode")) : qrTile(offer?.qr ?? null, label);
+
+  const localLink = (live: boolean) => (
+    <div data-phone-link="" className="flex flex-col items-center gap-8">
+      {heading(live, t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"))}
+      {failed ? failedBlock : linkGrid(<>{offerTile(t("settings.mobile.qr"))}{codeBlock}</>, <>
+        {getApp}
+        {step(2, t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"), codeLine(ios ? "settings.phone.openIosLine" : "settings.phone.openAndroidLine"))}
+      </>)}
       {countdown && waiting(<>{t("mobile.desktop.waiting")} · {countdown}</>)}
     </div>
   );
 
   // a cloud from the desktop app: one qr and one letters-only code that log the phone in to the account, no email step
-  const cloudCodeLink = (
-    <div data-phone-cloud="" data-phone-cloud-code="" className="flex flex-col items-center gap-6">
-      {heading(t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"))}
-      {failed ? failedBlock : slab(
-        expired ? ended("expired", t("settings.mobile.expired"), t("settings.mobile.newCode"))
-          : qrTile(offer?.qr ?? null, t("settings.phone.cloudCodeQr")),
-        <>
-          {getApp}
-          {step(2, t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"), <>
-            {line(t(ios ? "settings.phone.cloudCodeLine" : "settings.phone.cloudCodeLineAndroid"))}
-            {codeBlock}
-            {signInEmail && <span data-phone-cloud-as="" className="max-w-full break-all text-[12px] leading-4 text-ink-tertiary">{t("settings.phone.cloudAs", { email: signInEmail })}</span>}
-          </>)}
-        </>,
-      )}
+  const cloudCodeLink = (live: boolean) => (
+    <div data-phone-cloud="" data-phone-cloud-code="" className="flex flex-col items-center gap-8">
+      {heading(live, t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"),
+        signInEmail && <span data-phone-cloud-as="" className="break-all">{t("settings.phone.cloudAs", { email: signInEmail })}</span>)}
+      {failed ? failedBlock : linkGrid(<>{offerTile(t("settings.phone.cloudCodeQr"))}{codeBlock}</>, <>
+        {getApp}
+        {step(2, t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"), codeLine(ios ? "settings.phone.cloudCodeLine" : "settings.phone.cloudCodeLineAndroid"))}
+      </>)}
       {countdown && waiting(<>{t("settings.phone.waitingCloud")} · {countdown}</>)}
     </div>
   );
 
   // a cloud in a browser tab or an older app: no code to make, the qr opens the app at its dusk cloud log in with the email filled in
-  const cloudLink = codesInCloud ? cloudCodeLink : (
-    <div data-phone-cloud="" className="flex flex-col items-center gap-6">
-      {heading(t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"))}
-      {slab(
-        qrTile(universalSignInLink(signInEmail), t("settings.phone.cloudQr")),
-        <>
-          {getApp}
-          {step(2, t("settings.phone.logInStep"), signInEmail ? (
-            <div data-phone-cloud-sign-in="" className="flex min-w-0 flex-col gap-1">
-              <span className="text-[12px] leading-4 text-ink-tertiary">{t("settings.phone.logInWith")}</span>
-              <span className="max-w-full break-all text-[18px] font-medium leading-6 text-ink">{signInEmail}</span>
-              {line(t(ios ? "settings.phone.cloudScan" : "settings.phone.cloudScanAndroid"))}
-            </div>
-          ) : line(t("settings.phone.cloudScanAny")))}
-        </>,
-      )}
+  const cloudLink = (live: boolean) => codesInCloud ? cloudCodeLink(live) : (
+    <div data-phone-cloud="" className="flex flex-col items-center gap-8">
+      {heading(live, t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"))}
+      {linkGrid(qrTile(universalSignInLink(signInEmail), t("settings.phone.cloudQr")), <>
+        {getApp}
+        {step(2, t("settings.phone.logInStep"), signInEmail ? (
+          <div data-phone-cloud-sign-in="" className="-mt-1 flex min-w-0 flex-col gap-1">
+            <span className="text-[12px] leading-4 text-ink-tertiary">{t("settings.phone.logInWith")}</span>
+            <span className="max-w-full break-all text-[15px] font-medium leading-6 text-ink">{signInEmail}</span>
+            <span className="text-pretty text-[13px] leading-[18px] text-ink-secondary">{t(ios ? "settings.phone.cloudScan" : "settings.phone.cloudScanAndroid")}</span>
+          </div>
+        ) : line(t("settings.phone.cloudScanAny")))}
+      </>)}
       {waiting(t("settings.phone.waitingCloud"))}
     </div>
   );
 
-  const doneStep = (
-    <div role="status" data-phone-linked="" className="flex flex-col items-center gap-6">
-      {heading(cloudHome ? t("settings.phone.cloudLinked") : t("mobile.desktop.linked", { name: pairedName ?? "" }), t("mobile.desktop.linkedHint"), "connected")}
+  const doneStep = (live: boolean) => (
+    <div role={live ? "status" : undefined} data-phone-linked="" className="flex flex-col items-center gap-6">
+      {heading(live, cloudHome ? t("settings.phone.cloudLinked") : t("mobile.desktop.linked", { name: pairedName ?? "" }), t("mobile.desktop.linkedHint"), "connected")}
       <button type="button" data-primary="" onClick={() => go("home")} className={PRIMARY}>{t("common.done")}</button>
     </div>
   );
 
   const loadingStep = <div aria-hidden="true" className="h-[300px] animate-pulse rounded-[20px] bg-ink/[0.035] motion-reduce:animate-none" />;
 
-  const steps: Record<Exclude<typeof view, "home">, ReactNode> = { loading: loadingStep, platform: platformStep, link: cloudHome ? cloudLink : localLink, done: doneStep };
+  // one page of the flow, its own way back sliding with it
+  const page = (at: string, live: boolean) => (
+    <div className="mx-auto flex w-full max-w-[560px] flex-col gap-2 pb-2">
+      {at === "link" ? <>{backBar("platform")}{(cloudHome ? cloudLink : localLink)(live)}</>
+        : at === "platform" ? <>{backBar(hasPhones ? "home" : null)}{platformStep(live)}</>
+        : at === "done" ? doneStep(live) : loadingStep}
+    </div>
+  );
 
   const top = view === "home" ? (cloudHome ? (
     <RowsCard label={t("settings.phone.linkedTitle")} action={<LinkAnother onClick={() => go(start())} />}>
       <ItemRow pixel="phone" title={t("settings.phone.cloudHome")} hint={signInEmail ? t("settings.phone.cloudHomeHint", { email: signInEmail }) : t("settings.phone.cloudHomeHintAny")} />
     </RowsCard>
   ) : null) : (
-    <section aria-labelledby={stepId} data-phone-flow={view} className="mx-auto flex w-full max-w-[560px] flex-col gap-2 pb-2">
-      {view === "link" ? backBar("platform") : view === "platform" ? backBar(hasPhones ? "home" : null) : null}
-      {/* focus follows the swap once the old view has left */}
-      <AnimatePresence mode="wait" initial={false} onExitComplete={() => requestAnimationFrame(() => { if (moved.current) stepHeading.current?.focus({ preventScroll: true }); })}>
-        <motion.div key={view} {...motionProps}>{steps[view]}</motion.div>
-      </AnimatePresence>
+    <section aria-labelledby={stepId} data-phone-flow={view} className="flex w-full flex-col">
+      {/* focus follows the swap onto the new page's heading */}
+      <PhoneWipe at={view} layer={page} onSwap={() => requestAnimationFrame(() => { if (moved.current) stepHeading.current?.focus({ preventScroll: true }); })} />
     </section>
   );
 
@@ -573,9 +552,55 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
         .phone-link-wait { animation: phone-link-wait 1.6s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) { .phone-link-wait { animation-play-state: paused; } }
         [data-reduced-motion="true"] .phone-link-wait { animation-play-state: paused; }
+        .phone-wipe { display: grid; }
+        .phone-wipe[data-wiping] { overflow: clip; }
+        .phone-wipe-layer { position: relative; z-index: 0; grid-area: 1 / 1; min-width: 0; background-color: var(--color-app); animation-duration: ${WIPE_MS}ms; animation-timing-function: var(--dusk-ease-out); }
+        .phone-wipe-layer[data-wipe-out] { pointer-events: none; animation-fill-mode: forwards; }
+        .phone-wipe-layer[data-wipe="push"]:not([data-wipe-out]) { z-index: 1; animation-name: dusk-wipe-push-in; }
+        .phone-wipe-layer[data-wipe="push"][data-wipe-out] { animation-name: dusk-wipe-push-out; }
+        .phone-wipe-layer[data-wipe="pop"]:not([data-wipe-out]) { animation-name: dusk-wipe-pop-in; }
+        .phone-wipe-layer[data-wipe="pop"][data-wipe-out] { z-index: 1; animation-name: dusk-wipe-pop-out; }
+        .phone-wipe-layer[data-wipe="fade"] { animation-duration: 150ms; }
+        .phone-wipe-layer[data-wipe="fade"]:not([data-wipe-out]) { z-index: 1; background-color: transparent; animation-name: dusk-fade-in; }
+        .phone-wipe-layer[data-wipe="fade"][data-wipe-out] { animation-name: dusk-fade-out; }
       `}</style>
       {children ? children(parts) : <div className="flex flex-col gap-5">{parts.top}{parts.phones}</div>}
     </>
+  );
+}
+
+const PHONE_DEPTH: Partial<Record<string, number>> = { platform: 1, link: 2 };
+
+/** The settings sub-page push (ListRows' WipeStack: 200ms, the app "out" curve) between the picker and a phone's link
+ * page; any other change, or reduced motion, crossfades. Both pages share one grid cell while it runs, so the box keeps
+ * the taller one's height and nothing below jumps. */
+function PhoneWipe({ at, layer, onSwap }: { at: string; layer: (at: string, live: boolean) => ReactNode; onSwap: () => void }) {
+  const [shown, setShown] = useState(at);
+  const [wipe, setWipe] = useState<{ direction: "push" | "pop" | "fade"; from: string; id: number } | null>(null);
+  if (at !== shown) {
+    setShown(at);
+    const from = PHONE_DEPTH[shown], to = PHONE_DEPTH[at];
+    const slide = from !== undefined && to !== undefined && !reducedMotion();
+    setWipe({ direction: slide ? (to > from ? "push" : "pop") : "fade", from: shown, id: (wipe?.id ?? 0) + 1 });
+  }
+  const swapped = useRef(onSwap);
+  swapped.current = onSwap;
+  useEffect(() => {
+    if (!wipe) return;
+    swapped.current();
+    const timer = window.setTimeout(() => setWipe((current) => (current?.id === wipe.id ? null : current)), WIPE_MS + 50);
+    return () => window.clearTimeout(timer);
+  }, [wipe]);
+  return (
+    <div className="phone-wipe" data-wiping={wipe ? "" : undefined}>
+      <div className="phone-wipe-layer" data-wipe={wipe?.direction}>{layer(at, true)}</div>
+      {wipe && (
+        <div key={`out:${wipe.id}`} aria-hidden="true" inert className="phone-wipe-layer" data-wipe={wipe.direction} data-wipe-out=""
+          onAnimationEnd={(event) => { if (event.target === event.currentTarget) setWipe((current) => (current?.id === wipe.id ? null : current)); }}>
+          {layer(wipe.from, false)}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -16,7 +16,7 @@ vi.mock("motion/react", async (original) => {
   return { ...actual, motion, AnimatePresence: ({ children }: { children: ReactNode }) => createElement(Fragment, null, children), useReducedMotion: () => true };
 });
 
-import { AUTO_RENEWALS, MobilePairingCard, PHONE_KIND_KEY, RENEW_BEFORE_MS } from "./MobilePairingCard";
+import { AUTO_RENEWALS, MobilePairingCard, RENEW_BEFORE_MS } from "./MobilePairingCard";
 import { ServerPairingCard } from "./ServerPairingCard";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -26,8 +26,6 @@ beforeEach(() => {
   setLocale("en");
   const saved = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => saved.set(key, value), clear: () => saved.clear() });
-  // most tests start at a picked iPhone; the ones about picking clear it
-  window.localStorage.setItem("dusk.settings.phoneKind", "ios");
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
   host = document.createElement("div"); document.body.append(host);
   minted = 0;
@@ -47,19 +45,29 @@ afterEach(async () => { await act(async () => root?.unmount()); host.remove(); v
 const flush = () => act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
 const click = (selector: string) => act(async () => { host.querySelector<HTMLElement>(selector)!.click(); });
-const mount = async (props: Parameters<typeof MobilePairingCard>[0]) => {
+/** mounts the card; most tests then pick the iPhone on the picker it always opens on */
+const mount = async (props: Parameters<typeof MobilePairingCard>[0], pickIphone = true) => {
   await act(async () => { root = createRoot(host); root.render(createElement(MobilePairingCard, props)); });
   await flush();
+  if (pickIphone && host.querySelector("[data-phone-flow=platform]")) {
+    await click("[data-phone-platform=ios]");
+    await flush();
+  }
 };
 const qrs = () => host.querySelectorAll("[aria-label*=\"QR code\"]").length;
 
-it("asks which phone first, then shows that phone's two numbered steps beside one qr, and remembers the pick", async () => {
-  window.localStorage.clear();
-  await mount({ remote: false });
-  expect(host.textContent).toContain("Which phone do you have?");
+it("always opens on the phone picker, Android shown but not pickable, then shows the iPhone's two numbered steps beside one qr", async () => {
+  window.localStorage.setItem("dusk.settings.phoneKind", "ios");
+  await mount({ remote: false }, false);
+  expect(host.textContent, "never straight to a remembered phone").toContain("Which phone do you have?");
   expect(host.querySelector("[data-phone-platform=ios] [data-store-mark=apple]")).not.toBeNull();
-  expect(host.querySelector("[data-phone-platform=android] [data-store-mark=android]")).not.toBeNull();
-  expect(host.querySelector<HTMLButtonElement>("[data-phone-platform=android]")?.disabled, "Android is still pickable").toBe(false);
+  const android = host.querySelector<HTMLButtonElement>("[data-phone-platform=android]")!;
+  expect(android.getAttribute("aria-disabled")).toBe("true");
+  expect(android.textContent).toContain("Coming soon");
+  expect(android.className).not.toContain("hover:");
+  await click("[data-phone-platform=android]");
+  await flush();
+  expect(host.querySelector("[data-phone-flow=platform]"), "Android does not open a link page").not.toBeNull();
   expect(minted, "no code before a phone is picked").toBe(0);
   await click("[data-phone-platform=ios]");
   await flush();
@@ -72,23 +80,32 @@ it("asks which phone first, then shows that phone's two numbered steps beside on
   expect(steps.textContent).toContain("Get dusk bot from the App Store");
   expect(steps.textContent).toContain("Open dusk bot and scan the QR code");
   expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGH 0001");
-  expect(host.querySelector("[data-phone-app-store]")?.getAttribute("href")).toBe("https://apps.apple.com/app/id6834725640");
+  const store = host.querySelector("[data-phone-app-store]")!;
+  expect(store.getAttribute("href")).toBe("https://apps.apple.com/app/id6834725640");
+  expect(store.textContent).toBe("Download on theApp Store");
+  expect(store.querySelector("[data-store-mark]"), "a plain Apple glyph, not the pixel art").toBeNull();
   expect(host.textContent).toContain("Waiting for your phone");
-  expect(window.localStorage.getItem(PHONE_KIND_KEY)).toBe("ios");
   await click("[data-pairing-back]");
   expect(host.textContent).toContain("Which phone do you have?");
-  await click("[data-phone-platform=android]");
-  await flush();
-  expect(host.textContent).toContain("Link your Android phone");
-  expect(host.querySelector("[data-phone-steps=android]")?.textContent).toContain("dusk bot is coming to Google Play");
-  expect(host.querySelector("[data-phone-google-play]")?.textContent).toContain("Coming soon");
-  expect(host.querySelector("[data-phone-code]")?.textContent, "the same live code, not a second one").toBe("ABCD EFGH 0001");
-  expect(minted).toBe(1);
-  // next time it starts at the remembered phone's steps
+  // the next visit starts at the picker again
   await act(async () => root.unmount());
-  await mount({ remote: false });
-  await flush();
-  expect(host.textContent).toContain("Link your Android phone");
+  await mount({ remote: false }, false);
+  expect(host.querySelector("[data-phone-flow=platform]")).not.toBeNull();
+  expect(window.localStorage.getItem("dusk.settings.phoneKind"), "the pick is not written down").toBe("ios");
+});
+
+it("slides the picker and the link page past each other, the old page inert until the slide ends", async () => {
+  await mount({ remote: false }, false);
+  await click("[data-phone-platform=ios]");
+  const layers = host.querySelectorAll(".phone-wipe-layer");
+  expect(layers).toHaveLength(2);
+  expect(layers[0]!.getAttribute("data-wipe")).toBe("push");
+  expect(layers[1]!.hasAttribute("inert")).toBe(true);
+  expect(layers[1]!.querySelector("h3")?.id, "only the live page names the section").toBeFalsy();
+  await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+  expect(host.querySelectorAll(".phone-wipe-layer")).toHaveLength(1);
+  await click("[data-pairing-back]");
+  expect(host.querySelector(".phone-wipe-layer")?.getAttribute("data-wipe")).toBe("pop");
 });
 
 it("says when the phone links, then folds into the linked phones with a way to link another", async () => {
@@ -106,6 +123,9 @@ it("says when the phone links, then folds into the linked phones with a way to l
   expect(host.textContent).toContain("Ada's iPhone");
   await click("[data-phone-link-another]");
   await flush();
+  expect(host.querySelector("[data-phone-flow=platform]"), "linking another starts at the picker").not.toBeNull();
+  await click("[data-phone-platform=ios]");
+  await flush();
   expect(host.querySelector("[data-phone-flow=link]")).not.toBeNull();
   expect(minted, "linking another makes a fresh code").toBe(2);
   await click("[data-pairing-back]");
@@ -118,8 +138,7 @@ it("on a dusk cloud shows one qr that opens the app's log in with the account's 
   let sessions: { id: string; label: string; scopes: string[] }[] = [{ id: "me", label: "This window", scopes: ["admin"] }];
   const base = api.getMockImplementation()!;
   api.mockImplementation(async (path: string, init?: unknown) => path === "/api/auth/sessions" ? { sessions, current: "me" } : base(path, init));
-  window.localStorage.clear();
-  await mount({ remote: false, cloudHome: true, email: "owner@example.test" });
+  await mount({ remote: false, cloudHome: true, email: "owner@example.test" }, false);
   expect(host.querySelector("[data-phone-flow=platform]"), "this window's own sign-in is not a phone").not.toBeNull();
   await click("[data-phone-platform=ios]");
   expect(host.querySelector("[data-phone-cloud]")).not.toBeNull();
