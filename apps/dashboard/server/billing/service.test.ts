@@ -860,6 +860,12 @@ describe("plan switching", () => {
     return { preview, result: await service.change(owner, sub.id, preview.confirmation) };
   }
   const trialFirst = () => { config.trial = { days: 3 }; };
+  /** the provider's subscription as a webhook carries it */
+  const subscriptionEvent = (id: string) => {
+    const row = provider.subscriptions.get(id)!;
+    return { subscription_id: id, customer: { customer_id: row.customerId }, metadata: { checkoutId: row.input.checkoutId, accountId: row.input.accountId }, product_id: row.input.cart[0].productId,
+      addons: row.input.cart[0].addons.map(addon => ({ addon_id: addon.addonId, quantity: addon.quantity })), next_billing_date: new Date(row.nextBillingAt).toISOString(), cancel_at_next_billing_date: false, status: "active" };
+  };
 
   it("trial plus to pro: nothing today, the trial keeps its end, the first charge is pro's, and the machine grows now", async () => {
     trialFirst();
@@ -872,6 +878,9 @@ describe("plan switching", () => {
     expect(sub).toMatchObject({ cart: pro(), totalCents: 5000, trialEndsAt: trialEnd, currentPeriodEnd: trialEnd });
     expect(service.licenses(owner.id)[0]).toMatchObject({ kind: "solo", status: "active", seats: 1 });
     expect(clouds.changePlan).toHaveBeenLastCalledWith(sub.cloudId, expect.objectContaining({ kind: "shared_m", spec: { vcpu: 4, ramGb: 8, diskGb: 60 } }), { now: true });
+    // dodo answers a trial switch with subscription.renewed whose next date is still the trial's end: the trial goes on
+    deliver([signed("subscription.renewed", { ...subscriptionEvent(sub.providerSubscriptionId!), next_billing_date: new Date(trialEnd).toISOString() })]);
+    expect(sub.trialEndsAt).toBe(trialEnd); expect(service.subscriptions(owner.id)[0]!.trialEndsAt).toBe(trialEnd);
     time = trialEnd; deliver(provider.renew(sub.providerSubscriptionId!));
     expect(store.state.invoices.at(-1)!.amountCents).toBe(5000); expect(sub.currentPeriodEnd).toBeGreaterThan(trialEnd);
   });
