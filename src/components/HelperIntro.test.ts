@@ -8,6 +8,7 @@ import { setWelcomingBot, stageIntro } from "@/lib/default-bot";
 import { setLocale, t } from "@/lib/i18n";
 import type { Bot, InstanceInfo, Message } from "@/state/store";
 import type { HelperFollowupFacts } from "../../shared/helper-followup";
+import { rememberConnectorStatus } from "@/lib/connected-apps";
 
 const f = vi.hoisted(() => ({
   state: {} as Record<string, unknown>, dispatch: vi.fn(), local: false, reduced: false,
@@ -254,13 +255,21 @@ describe("in the chat (Simple mode)", () => {
     document.body.append(box);
     await show(false, saved({ ai: "own", apps: [], bots: 0, routines: 0 }));
     const asks = [...host.querySelectorAll<HTMLElement>("[data-helper-ask]")];
-    expect(asks.map((node) => node.textContent)).toEqual(["Keep an eye on my day", "Set up a bot for my inbox"]);
+    expect(asks.map((node) => node.textContent)).toEqual(["Keep an eye on my day", "Set up a bot for my inbox", "Help me plan my week"]);
     expect(asks[0]!.closest("[data-helper-setup]"), "in the chips' own row, before them").toBe(host.querySelector("[data-helper-setup]"));
     await act(async () => { asks[0]!.click(); });
     await act(async () => { await new Promise((done) => requestAnimationFrame(() => done(null))); });
     expect(f.dispatch).toHaveBeenCalledWith({ type: "answerCard", botId: "maus", threadId: "t", messageId: "intro", answer: "Keep an eye on my day" });
     expect(document.activeElement).toBe(field);
     box.remove();
+  });
+
+  it("fits the first jobs to a connected inbox", async () => {
+    rememberConnectorStatus({ gmail: { connected: true } } as Parameters<typeof rememberConnectorStatus>[0], true);
+    await show(false, saved({ ai: "own", apps: ["Gmail"], bots: 0, routines: 0 }));
+    rememberConnectorStatus({}, true);
+    expect([...host.querySelectorAll<HTMLElement>("[data-helper-ask]")].map((node) => node.textContent))
+      .toEqual(["Keep an eye on my day", "What needs a reply in my inbox?", "Help me plan my week"]);
   });
 
   it("offers no jobs to tap before there is an AI to do them, or once the person has written", async () => {

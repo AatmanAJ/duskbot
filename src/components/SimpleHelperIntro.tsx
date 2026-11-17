@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { phoneAppPrompted } from "@/lib/feature-flags";
-import { DEFAULT_BOT_NAME, introChips, introStaged, stageIntro, useWelcomingBot } from "@/lib/default-bot";
+import { DEFAULT_BOT_NAME, introAsks, introChips, introStaged, stageIntro, useWelcomingBot } from "@/lib/default-bot";
 import { activeLocale, t } from "@/lib/i18n";
 import { detectSetupWithin, localSetupImport, setupImportApi } from "@/lib/setup-import";
 import { api, useStore, type Bot, type InstanceInfo, type Message } from "@/state/store";
@@ -60,6 +60,8 @@ function thinksWith(bot: Bot | undefined, instances: readonly InstanceInfo[]): H
 
 interface Look {
   apps: string[] | null;
+  /** The connected apps' slugs, for fitting the first jobs (introAsks). */
+  slugs?: string[];
   phonePaired?: boolean;
   importFound?: boolean;
   settled: boolean;
@@ -73,13 +75,13 @@ function useLookAround(deep: boolean): Look {
     let active = true;
     const apps = Promise.all([preloadConnectedApps(), loadAppCards()])
       .then(([inventory, cards]) => Object.entries(inventory.services).filter(([, status]) => status.connected)
-        .map(([slug]) => cards.get(slug)?.label ?? slug))
+        .map(([slug]) => ({ slug, label: cards.get(slug)?.label ?? slug })))
       .catch(() => null);
     const phones = api<{ phones?: unknown[] }>("/api/phones").then((response) => (response.phones?.length ?? 0) > 0).catch(() => undefined);
     const look = deep && localSetupImport(false) ? detectSetupWithin(setupImportApi) : null;
     const timer = setTimeout(() => { if (active) setFound((now) => ({ ...now, settled: true })); }, LOOK_MS);
-    void Promise.all([apps, phones, look?.found ?? null]).then(([appNames, phonePaired, detection]) => {
-      if (active) setFound({ apps: appNames, phonePaired, importFound: Boolean(detection), settled: true });
+    void Promise.all([apps, phones, look?.found ?? null]).then(([connected, phonePaired, detection]) => {
+      if (active) setFound({ apps: connected?.map((app) => app.label) ?? null, slugs: connected?.map((app) => app.slug), phonePaired, importFound: Boolean(detection), settled: true });
     });
     return () => {
       active = false;
@@ -203,7 +205,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
           <span className="text-[14px] leading-5 text-ink-tertiary">{t("helperIntro.typing")}</span>
         </div>
       )}
-      <IntroChips chips={chips} onAsk={ready ? (answer) => { dispatch({ type: "answerCard", botId, threadId, messageId: message.id, answer }); returnFocusToComposer(); } : undefined} />
+      <IntroChips chips={chips} asks={introAsks(look.slugs ?? [])} onAsk={ready ? (answer) => { dispatch({ type: "answerCard", botId, threadId, messageId: message.id, answer }); returnFocusToComposer(); } : undefined} />
     </div>
   );
 }
