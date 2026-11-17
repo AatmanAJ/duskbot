@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { around, newElements } from "./after-action.ts";
 import { coverAdvice, samplePoints } from "./cdp/cover.ts";
 import { sliderNumber } from "./cdp/slider.ts";
-import { errorsNote } from "./page-errors.ts";
+import { errorishLines, errorsNote } from "./page-errors.ts";
 
 describe("the error line after an action", () => {
   it("names a new error first, then one still showing, and says nothing without errors", () => {
@@ -11,6 +11,13 @@ describe("the error line after an action", () => {
     expect(errorsNote(["Required"], ["Required"])).toBe("The page still shows an error: \"Required\".");
     expect(errorsNote(["Old"], ["Old", "New"])).toMatch(/now shows an error: "New".*Still showing: "Old"\./u);
     expect(errorsNote(["Gone"], [])).toBeNull();
+  });
+
+  it("takes plain text that appeared and reads as an error, and nothing else", () => {
+    const before = "Sign in to X\nPhone, email, or username\nNext\nForgot password?";
+    expect(errorishLines(before, `${before}\nWe couldn't find an active X account with that username.`)).toEqual(["We couldn't find an active X account with that username."]);
+    expect(errorishLines(before, `${before}\nEnter your password`)).toEqual([]);
+    expect(errorishLines(`${before}\nTry again later`, `${before}\nTry again later`)).toEqual([]);
   });
 });
 

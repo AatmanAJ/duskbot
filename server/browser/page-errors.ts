@@ -52,5 +52,15 @@ export function errorsNote(before: readonly string[], after: readonly string[]):
   return null;
 }
 
+const ERROR_WORDS = /\b(?:couldn.?t|could not|can.?t|cannot|unable|invalid|incorrect|wrong|not found|doesn.?t (?:exist|match)|does not (?:exist|match)|no (?:active )?account|failed|error|required|try again|too (?:short|long|many)|expired|denied|not allowed)\b/iu;
+
+/** Lines the action made appear that read as an error, for a page that shows its error as plain text with no error markup. */
+export function errorishLines(beforeText: string, afterText: string): string[] {
+  const seen = new Set(beforeText.split("\n").map((line) => line.trim()));
+  return afterText.split("\n").map((line) => line.replace(/\s+/gu, " ").trim())
+    .filter((line) => line.length >= 6 && line.length <= 200 && !seen.has(line) && ERROR_WORDS.test(line))
+    .slice(0, 3);
+}
+
 /** An action that sends what was entered: a submit-like button, Enter, or fill with submit. */
 export const SUBMIT_NAME = /\b(continue|next|submit|sign ?in|log ?in|sign ?up|save|send|confirm|verify|pay|place order|search|apply|done|ok)\b/iu;
