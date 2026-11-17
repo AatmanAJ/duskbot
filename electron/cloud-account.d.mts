@@ -249,7 +249,9 @@ export interface CloudPlanSnapshot {
   /** Verified: who runs My Cloud's machine, when the session's list says ("managed"). */
   provider?: string;
 }
-export type CloudPhoneSignIn = { outcome: "code"; code: string; expiresAt: number; email: string } | { outcome: "signed-out" | "limited" | "failed" | "canceled" };
+export type CloudPhoneSignIn = { outcome: "code"; code: string; expiresAt: number; email: string;
+  /** the account service that made the code, which the phone must redeem it at; absent from an older app */
+  service?: string } | { outcome: "signed-out" | "limited" | "failed" | "canceled" };
 export interface CloudPlanBridge {
   state(): Promise<CloudPlanSnapshot>;
   manage(): Promise<void>;

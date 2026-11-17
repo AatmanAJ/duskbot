@@ -255,7 +255,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
       const result = await cloudCodes.phoneSignIn(renew);
       if (result.outcome === "code") {
         setAccountEmail(result.email);
-        return { qr: universalSignInLink(result.email, result.code), code: result.code, expiresAt: result.expiresAt, email: result.email };
+        return { qr: universalSignInLink(result.email, result.code, result.service), code: result.code, expiresAt: result.expiresAt, email: result.email };
       }
       if (result.outcome === "canceled") return null;
       throw new Error(t(result.outcome === "signed-out" ? "settings.phone.cloudSignedOut" : result.outcome === "limited" ? "settings.phone.cloudLimited" : "settings.mobile.error"));

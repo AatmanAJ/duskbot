@@ -742,7 +742,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
       } catch (error) { if (signInEnded(error)) await refresh().catch(() => {}); return null; }
     },
     /** A ten-minute, single-use letters-only code (and the account's email) that logs a phone in to this account
-     * (ACCOUNT_ROUTES.phoneSignIn): { outcome: "code", code, expiresAt, email } or { outcome: "signed-out" | "limited" | "failed" }. */
+     * (ACCOUNT_ROUTES.phoneSignIn): { outcome: "code", code, expiresAt, email, service } or { outcome: "signed-out" | "limited" | "failed" }. */
     async phoneSignIn() {
       const signedIn = grant;
       if (!signedIn || state().status !== "connected") return { outcome: "signed-out" };
@@ -750,7 +750,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
         const result = await request("", { path: "/v1/app/phone-sign-in", method: "POST", body: {}, token: signedIn.token });
         if (grant !== signedIn || result?.v !== 1 || typeof result.code !== "string" || !/^[A-Z]{4}-[A-Z]{4}$/.test(result.code)
           || !timestamp(result.expiresAt) || !text(result.email, 254)) return { outcome: "failed" };
-        return { outcome: "code", code: result.code, expiresAt: result.expiresAt, email: result.email };
+        return { outcome: "code", code: result.code, expiresAt: result.expiresAt, email: result.email, service: origin };
       } catch (error) {
         if (signInEnded(error)) { await refresh().catch(() => {}); return { outcome: "signed-out" }; }
         return { outcome: error?.status === 429 ? "limited" : "failed" };

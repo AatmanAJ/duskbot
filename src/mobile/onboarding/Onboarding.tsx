@@ -10,6 +10,7 @@ import { haptic } from "../haptics";
 import { PixelArt, PixelMascot } from "../Illustration";
 import { usePlatform, type CameraPermission } from "../platform";
 import { PairError, readScanned, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
+import { followSignInService } from "../account/environment";
 import { Scanner } from "./Scanner";
 import { CloudPicker } from "../account/CloudPicker";
 import { MobileSignIn } from "../account/MobileSignIn";
@@ -115,6 +116,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
       if (typeof text === "string") {
         const scanned = readScanned(text);
         if (scanned?.kind === "store") throw new PairError("store-qr");
+        if (scanned?.kind === "signin" && followSignInService(text, scanned.service, account)) return;
         const accountCode = scanned?.kind === "account" || scanned?.kind === "signin" ? scanned.code : undefined;
         if (accountCode) {
           if (!account) throw new PairError("sign-in");
