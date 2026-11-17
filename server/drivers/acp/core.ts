@@ -1819,7 +1819,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           await probeFreeLadder(
             freeLadder({ model: asked }, order, catalog.models),
             (rung) => oneShotText(FREE_PROBE_PROMPT, { timeoutMs: FREE_PROBE_MS }, rung),
-            ({ rung, ok, ms, reason }) => trail("free_model.probe", { model: rung.model, variant: rung.variant ?? null, ok, ms, ...(reason ? { reason } : {}) }),
+            ({ rung, ok, ms, reason, suspended }) => trail("free_model.probe", { model: rung.model, variant: rung.variant ?? null, ok, ms, ...(reason ? { reason } : {}), ...(suspended ? { suspended } : {}) }),
           );
         })().catch(() => undefined);
       }
