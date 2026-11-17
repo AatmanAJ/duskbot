@@ -87,20 +87,13 @@ afterEach(() => {
 vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
 
 describe("the phone composer", () => {
-  it("while the bot works, Stop holds the mic's place at the end and every control has its native glass twin", () => {
+  it("while the bot works there is no Stop: the mic keeps its place and every control has its native glass twin", () => {
     vi.stubEnv("VITE_DUSK_LIVE_CALL", "");
     try {
       render({ bot: { ...bot, busy: true } });
-      const stop = container.querySelector<HTMLElement>("[data-composer-stop]")!;
-      expect(stop.dataset.composerStop).toBe("slot");
-      expect(stop.className).toContain("order-last");
-      expect(container.querySelector('[data-voice-mic="start"]')!.className).toContain("composer-mic-in");
-      expect(composerButtons(container.querySelector("[data-composer-actions]"))?.buttons.map((b) => b.kind)).toContain("stop");
-
-      render({ bot });
       expect(container.querySelector("[data-composer-stop]")).toBeNull();
-      expect(container.querySelector('[data-voice-mic="start"]')!.className).toContain("composer-mic-back");
-      expect(container.querySelector("[data-composer-stop-ghost]")).not.toBeNull();
+      expect(container.querySelector('[data-voice-mic="start"]')).not.toBeNull();
+      expect(composerButtons(container.querySelector("[data-composer-actions]"))?.buttons.map((b) => b.kind)).not.toContain("stop");
     } finally {
       vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
     }

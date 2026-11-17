@@ -580,10 +580,9 @@ export function Composer({
   const stopPressed = Boolean(useStopPress(threadId || undefined));
   const stoppable = (busy || Boolean(!group && bot?.waitingForTeammates)) && !stopPressed;
   const live = liveCallEnabled();
-  // Simple mode's round button is the mic (the call when live calls are on), Send while there is text, and Stop while the bot works.
-  const stopInSlot = simpleDock && stoppable && !locked && !filled && !calling;
-  // a phone shows one round button at the end of the pill: stop while it works, send once there is text, else the mic
-  const callShown = !filled && (singleRow ? !(busy && !stopPressed) : !stopInSlot);
+  // the composer never shows Stop (the owner's rule): only send and voice, even while the bot works
+  const stopInSlot = false;
+  const callShown = !filled;
   // with live calls off the mic takes the call's place: the one round button at rest
   const micInSlot = !live && callShown && !locked && !recording;
   // the round button's glyph pops in only when it swaps here (call, send, stop); a fresh composer, as on a chat
@@ -619,7 +618,7 @@ export function Composer({
   // a phone's Stop takes the mic's place at the end of the pill the same way
   // the phone listens with two controls only, discard beside and keep in the round button's place
   const phoneVoice = singleRow && phoneApp() && recording;
-  const phoneStop = singleRow && busy && !stopPressed && !locked && !filled && !phoneVoice;
+  const phoneStop = false;
   const micPlace = filled && !phoneVoice ? "beside" : (stopInSlot && !singleRow) || phoneStop ? "stop" : "end";
   // when the turn ends on a phone the square fades out over the mic coming back to its place
   const [micTrail, setMicTrail] = useState({ place: micPlace, from: micPlace, swaps: 0 });
@@ -1128,26 +1127,6 @@ export function Composer({
             />
           )}
           <div ref={actionsRef} data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
-          {/* with something typed it is only voice and send: no stop beside them */}
-          {(simpleDock ? stoppable : busy && !stopPressed) && !filled && !locked && !phoneVoice && (
-          <button
-            // the button leaves with the press: focus goes back to the field (not on a phone, where it would raise the keyboard)
-            onClick={() => { interruptTurn(); if (!singleRow) refocusInput(); }}
-            aria-label={t("chat.stopTurn")}
-            data-composer-stop={simpleDock ? (stopInSlot ? "slot" : "beside") : singleRow ? (phoneStop ? "slot" : "beside") : undefined}
-            className={cn(
-              "flex shrink-0 items-center justify-center rounded-full",
-              singleRow ? cn("size-10 bg-ink text-app", phoneStop && "order-last")
-                : !simpleDock ? "size-8 text-ink-secondary hover:bg-raised hover:text-ink max-md:size-10"
-                : stopInSlot ? cn("composer-press size-7 order-last", slot.button.className)
-                : SIMPLE_CONTROL,
-            )}
-            style={stopInSlot ? slot.button.style : undefined}
-            title={t("chat.stop")}
-          >
-            <span aria-hidden className={cn("block rounded-[2.5px] bg-current", simpleDock ? "size-[10px]" : "size-[12px]", (stopInSlot || phoneStop) && "composer-glyph composer-stop-glyph")} />
-          </button>
-        )}
         {!locked && recording && (
           <button
             type="button"

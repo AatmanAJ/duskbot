@@ -81,9 +81,9 @@ describe("dictation while the bot works", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps the mic beside Stop, and a dictated line goes out as the follow-up", () => {
+  it("shows no Stop while the bot works, and a dictated line goes out as the follow-up", () => {
     mount("");
-    expect(button(t("chat.stopTurn"))).not.toBeNull();
+    expect(button(t("chat.stopTurn"))).toBeNull();
     click(t("composer.dictation.start"));
     hear("also check the footer");
     flushSync(() => input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
