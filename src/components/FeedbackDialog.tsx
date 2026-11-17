@@ -64,7 +64,7 @@ export function FeedbackDialog({ onClose, onSent, send = sendFeedback }: { onClo
       await send(text.trim(), images);
       onSent();
     } catch (failed) {
-      // a server from before 0.2.13 has no feedback route and answers a bare "no route: POST /api/feedback" (#9)
+      // a server from before 0.2.13 has no feedback route: its fallback answers 404 "no route: POST /api/feedback"
       if (failed instanceof ApiError && failed.status === 404) setError(t("giveFeedback.serverTooOld"));
       else setError(failed instanceof Error && failed.message ? friendlyError(failed) : t("giveFeedback.failed"));
       setSending(false);

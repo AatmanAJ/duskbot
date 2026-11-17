@@ -97,7 +97,6 @@ describe("the Give feedback sheet", () => {
     expect(onSent).toHaveBeenCalledTimes(1);
   });
 
-  // a server older than the feedback route answered "no route: POST /api/feedback", shown as is (#9)
   it("says the server is too old when it has no feedback route, keeping what was written", async () => {
     await mount();
     await type("It froze");

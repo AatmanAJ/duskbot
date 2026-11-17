@@ -51,7 +51,6 @@ describe("host setup", () => {
   });
 });
 
-// the browser told people to run `sudo duskbot browser setup`, which the CLI did not know (#10)
 describe("browser setup", () => {
   it("is a command the CLI takes, as every browser error quotes it", () => {
     for (const error of [new BrowserHostError("sandbox"), new BrowserHostError("libraries", ["libnss3.so"])]) {

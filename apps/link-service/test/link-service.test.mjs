@@ -430,7 +430,6 @@ describe("a linked server's own update", () => {
     expect(statSync(join(staged, "ready.json")).mode & 0o777).toBe(0o600);
   });
 
-  // a server left on an old build said nothing at all about why, check after check (#8)
   it("the agent logs what each check found, once each time it changes", async () => {
     const lines = [];
     const quiet = await linked();

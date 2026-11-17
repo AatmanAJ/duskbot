@@ -201,7 +201,6 @@ describe("warm summary scheduling", () => {
     expect(warm.state("t1")?.last?.outcome).toBe("failed: the summary failed: overloaded");
   });
 
-  // a fold with nothing to fold logged "failed:" dozens of times a day and buried real errors (#13)
   it("notes a summary that was not needed as skipped, without a log line", async () => {
     const lines: string[] = [];
     const { time, warm, runs } = setup({ log: (line) => lines.push(line) });
