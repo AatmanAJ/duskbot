@@ -86,6 +86,7 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
   const run = useRef<AnimationPlaybackControls | null>(null);
   const [moving, setMoving] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
+  const scrimPressed = useRef(false);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const reduced = useReducedMotion();
@@ -180,7 +181,10 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
   if (!mounted) return null;
   return (
     <div className="mobile-sheet-layer fixed inset-0 z-40" data-sheet-open="" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
-      <motion.div aria-hidden className="absolute inset-0 bg-[rgb(12_12_14/0.42)]" style={{ opacity: scrim }} onClick={onClose} />
+      {/* only a press that began on the scrim closes the sheet: the finger that opened it on press lifts over it */}
+      <motion.div aria-hidden className="absolute inset-0 bg-[rgb(12_12_14/0.42)]" style={{ opacity: scrim }}
+        onPointerDown={() => { scrimPressed.current = true; }}
+        onClick={() => { if (scrimPressed.current) onClose(); scrimPressed.current = false; }} />
       <motion.div
         ref={sheetRef}
         role="dialog"

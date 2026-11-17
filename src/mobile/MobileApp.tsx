@@ -38,6 +38,10 @@ import { installPress } from "./press";
 import { MessageHold } from "./MessageHold";
 import { usePlatform } from "./platform";
 import type { MobileSheet } from "./sheets";
+import { PanelDetailsTab } from "@/components/bot-panel/PanelShell";
+import { loadLimits } from "@/lib/limit-resets";
+
+const SHEET_WARM_MS = 600;
 
 function Shell() {
   const platform = usePlatform();
@@ -159,6 +163,14 @@ function Shell() {
 
   // a resumed app reads the chat on screen, as a refocused desktop window does
   useEffect(() => platform.onResume?.(() => { if (chatId) dispatch({ type: "select", id: chatId }); }), [platform, chatId, dispatch]);
+
+  // the bot's sheet is a tap away from an open chat: its first tab's code and the usage it shows load once the chat has
+  // landed, so the tap only has to draw it
+  useEffect(() => {
+    if (!chatId) return;
+    const warm = setTimeout(() => { void PanelDetailsTab.preload().catch(() => {}); void loadLimits(); }, SHEET_WARM_MS);
+    return () => clearTimeout(warm);
+  }, [chatId]);
 
   const group = chatId ? state.groups.find((g) => g.id === chatId) : undefined;
   const bot = chatId && !group ? state.bots.find((b) => b.id === chatId) : undefined;

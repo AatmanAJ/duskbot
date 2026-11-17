@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { ChevronLeft, Monitor } from "../icons";
 import { useStore, type Bot, type Group } from "@/state/store";
 import { ChatView } from "@/components/ChatView";
@@ -7,6 +8,8 @@ import { GroupAvatar } from "@/components/GroupAvatar";
 import { t } from "@/lib/i18n";
 import { RoundButton } from "./RoundButton";
 import { ConnectionPill, useLiveConnection } from "./connection/ConnectionProblem";
+
+const PRESS_CLICK_MS = 1000;
 
 /** The shared chat, with floating glass nav in place of its header row: back, the bot's pill (its profile) centred,
  * and the computer. The shared header keeps its height under the nav, so the transcript starts where it always does. */
@@ -22,6 +25,7 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
   const name = group?.name ?? bot?.name ?? "";
   const live = Boolean(bot && (bot.busy || state.computerControl[bot.id]?.held));
   const link = useLiveConnection();
+  const pressedAt = useRef(-Infinity);
   return (
     <div data-mobile-chat className="relative flex h-full flex-col">
       {group ? <GroupView key={group.id} group={group} /> : bot ? <ChatView bot={bot} /> : null}
@@ -37,7 +41,10 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
         <div className="relative flex min-w-0 justify-center">
           <button
             type="button"
-            onClick={onProfile}
+            // the sheet rises as the finger lands, not when it lifts; the click that follows (or a key, or the native pill's
+            // tap over the glass bridge) opens it only when the press did not
+            onPointerDown={(event) => { if (event.button === 0) { pressedAt.current = performance.now(); onProfile(); } }}
+            onClick={() => { if (performance.now() - pressedAt.current > PRESS_CLICK_MS) onProfile(); }}
             data-glass="title"
             aria-label={t("mobile.chat.openProfile", { name })}
             className="mobile-press m-glass pointer-events-auto flex h-11 min-w-0 max-w-[calc(100vw-136px)] items-center gap-2 rounded-full pl-1.5 pr-4 text-ink"
