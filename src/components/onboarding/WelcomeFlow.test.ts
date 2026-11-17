@@ -77,7 +77,7 @@ const passAi = async () => {
   expect(step()).toBe("ai");
   await act(async () => { await vi.advanceTimersByTimeAsync(1_400); });
   await settle();
-  if (step() === "ai") await press(button("Continue")?.disabled === false ? "Continue" : "Set up later");
+  if (step() === "ai") await choose(button("Continue")?.disabled === false ? "[data-funnel-ai-continue]" : "[data-funnel-later]");
 };
 /** Past the hello, the AI (and an account step's Skip for now) to where bots live. */
 const toPlace = async () => {
@@ -381,10 +381,24 @@ describe("on the desktop app", () => {
     expect(text()).toContain("Your cloud is getting ready.");
     expect(bridge.continueInBrowser, "no checkout").not.toHaveBeenCalled();
     expect(document.body.querySelector("[data-funnel-back]"), "no way back to the place").toBeNull();
-    await press("Set up later");
+    expect(button("Set up later"), "the line offers the free model, so the button is it").toBeUndefined();
+    await press("Start with the free model");
     expect(step()).toBe("bring");
     await choose("[data-bring-next]");
     expect(step()).toBe("making");
+  });
+
+  it("on the cloud path with no free model, the AI step never offers one", async () => {
+    const bridge = cloudBridge({ status: "connected", account: { email: "sam@qa.dusk.test" }, clouds: [{ id: "c1", primary: true, runsOn: "cloud", status: "ready", origin: "https://c1.dusk.test" }] });
+    f.state = { ...f.state, instances: nothingSignedIn() };
+    desktop({ cloudAccount: bridge });
+    await show();
+    await press("Get started");
+    expect(step()).toBe("ai");
+    expect(text()).toContain("Your cloud is getting ready.");
+    expect(text()).not.toContain("free model");
+    await press("Set up later");
+    expect(step()).toBe("bring");
   });
 
   it("signing in on the account step to an account with dusk cloud goes on to the AI, not where bots live", async () => {
@@ -507,7 +521,7 @@ describe("on the desktop app", () => {
     expect(text()).toContain("Your cloud is getting ready.");
     expect(document.body.querySelector("[data-funnel-back]"), "no way back to a purchase that is done").toBeNull();
     expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("4/6");
-    await press("Set up later");
+    await press("Start with the free model");
     expect(step(), "what other AI apps here hold, before the cloud is made").toBe("bring");
     await choose("[data-bring-next]");
     expect(step()).toBe("making");
