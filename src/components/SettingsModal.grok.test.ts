@@ -25,8 +25,9 @@ vi.mock("@/state/store", async (importOriginal) => ({
 vi.mock("@/lib/analytics", () => ({ analyticsEnabled: () => false, setAnalyticsEnabled: vi.fn() }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.ownerOrAdmin }));
 vi.mock("@/lib/notification-preferences", () => ({
-  useNotificationSounds: () => fixture.sounds,
-  setNotificationSounds: vi.fn(),
+  NOTIFICATION_SOUND_MODES: ["bot", "always", "never"],
+  useNotificationSoundMode: () => (fixture.sounds ? "bot" : "never"),
+  setNotificationSoundMode: vi.fn(),
   notificationSoundsEnabled: () => fixture.sounds,
   useFinishedNotifications: () => true,
   setFinishedNotifications: vi.fn(),

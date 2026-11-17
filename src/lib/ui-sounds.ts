@@ -36,7 +36,32 @@ export function chosenSound(): UiSoundName {
   }
 }
 
-export function chooseSound(name: UiSoundName): void {
+/** The OS banner's own sound instead of a chime: the OS holds it back under its Do Not Disturb or Focus. */
+export const SYSTEM_SOUND = "system";
+export type SoundChoice = UiSoundName | typeof SYSTEM_SOUND;
+
+/** Only the desktop app shows its banners through the OS, so only there can the OS play the sound. */
+export function systemSoundAvailable(): boolean {
+  return typeof window !== "undefined" && Boolean(window.duskDesktop?.desktopNotifications);
+}
+
+/** macOS and Windows play a banner's sound and mute it under Focus or Do Not Disturb, so there it is the default; a
+ * Linux notification server may play none, so Linux keeps the chime unless the person picks the system's. */
+const systemSoundByDefault = () => window.duskDesktop?.platform === "darwin" || window.duskDesktop?.platform === "win32";
+
+export function soundChoice(): SoundChoice {
+  let saved: string | null | undefined;
+  try {
+    saved = globalThis.localStorage?.getItem(UI_SOUND_KEY);
+  } catch {
+    saved = undefined;
+  }
+  if (isSoundName(saved)) return saved;
+  if (!systemSoundAvailable()) return DEFAULT_UI_SOUND;
+  return saved === SYSTEM_SOUND || systemSoundByDefault() ? SYSTEM_SOUND : DEFAULT_UI_SOUND;
+}
+
+export function chooseSound(name: SoundChoice): void {
   try {
     globalThis.localStorage?.setItem(UI_SOUND_KEY, name);
   } catch {

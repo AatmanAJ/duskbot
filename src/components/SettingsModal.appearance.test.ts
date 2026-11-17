@@ -15,8 +15,9 @@ const fixture = vi.hoisted(() => ({
   setShowRunCard: vi.fn(),
   toolsLayout: "rows" as "rows" | "toolbar",
   setSidebarToolsLayout: vi.fn(),
-  notificationSounds: true,
-  setNotificationSounds: vi.fn(),
+  notificationSounds: "bot" as "bot" | "always" | "never",
+  setNotificationSoundMode: vi.fn(),
+  selects: [] as Array<{ "aria-label"?: string; value?: unknown; options: Array<{ value: string; label: string }>; onChange: (event: { target: { value: string } }) => void }>,
   sendKey: "enter" as SendKey,
   setSendKey: vi.fn(),
   colorUserBubbles: false,
@@ -44,8 +45,9 @@ vi.mock("@/lib/sidebar-preferences", async (importOriginal) => ({
   setSidebarToolsLayout: fixture.setSidebarToolsLayout,
 }));
 vi.mock("@/lib/notification-preferences", () => ({
-  useNotificationSounds: () => fixture.notificationSounds,
-  setNotificationSounds: fixture.setNotificationSounds,
+  NOTIFICATION_SOUND_MODES: ["bot", "always", "never"],
+  useNotificationSoundMode: () => fixture.notificationSounds,
+  setNotificationSoundMode: fixture.setNotificationSoundMode,
   useFinishedNotifications: () => true,
   setFinishedNotifications: vi.fn(),
 }));
@@ -61,6 +63,16 @@ vi.mock("@/lib/user-bubble-preference", () => ({
 vi.mock("@/lib/analytics", () => ({ analyticsEnabled: () => false, setAnalyticsEnabled: vi.fn() }));
 vi.mock("./PeopleSection", () => ({ PeopleSection: () => null }));
 vi.mock("./LocalComputerSection", () => ({ LocalComputerSection: () => null }));
+vi.mock("./SettingsSelect", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./SettingsSelect")>();
+  return {
+    ...original,
+    SettingsSelect: (props: (typeof fixture.selects)[number]) => {
+      fixture.selects.push(props);
+      return createElement(original.SettingsSelect as never, props as never);
+    },
+  };
+});
 vi.mock("./SettingsPrimitives", async (importOriginal) => {
   const original = await importOriginal<typeof import("./SettingsPrimitives")>();
   return {
@@ -77,7 +89,8 @@ beforeEach(() => {
   fixture.section = "appearance";
   fixture.showRunCard = true;
   fixture.toolsLayout = "rows";
-  fixture.notificationSounds = true;
+  fixture.notificationSounds = "bot";
+  fixture.selects = [];
   fixture.sendKey = "enter";
   fixture.colorUserBubbles = false;
   fixture.advancedMode = false;
@@ -145,15 +158,18 @@ describe("Settings → General → Appearance", () => {
     expect(render()).not.toContain("Show your computers");
   });
 
-  it.each([true, false])("mutes notification sounds on this computer only when the switch is %s", (enabled) => {
+  it.each(["bot", "always", "never"] as const)("sets this computer's notification sounds from %s, without the server", (mode) => {
     fixture.section = "general";
-    fixture.notificationSounds = enabled;
+    fixture.notificationSounds = mode;
     const html = render();
     expect(html).toContain("Play sound for notifications");
-    const toggle = fixture.switches.find((props) => props["aria-label"] === "Notification sounds")!;
-    expect(toggle.checked).toBe(enabled);
-    toggle.onClick!({} as never);
-    expect(fixture.setNotificationSounds).toHaveBeenCalledWith(!enabled);
+    const select = fixture.selects.find((props) => props["aria-label"] === "Notification sounds")!;
+    expect(select.value).toBe(mode);
+    expect(select.options.map((option) => option.label)).toEqual(["Let the bot decide", "Always", "Never"]);
+    expect(html.includes("Receipts and routine results arrive quietly")).toBe(mode === "bot");
+    const next = mode === "never" ? "always" : "never";
+    select.onChange({ target: { value: next } });
+    expect(fixture.setNotificationSoundMode).toHaveBeenCalledWith(next);
     expect(fixture.api).not.toHaveBeenCalled();
     expect(fixture.dispatch).not.toHaveBeenCalled();
   });

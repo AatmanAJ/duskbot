@@ -7,8 +7,9 @@ import { DeviceNotificationsRow } from "./NotificationSettingsRows";
 
 const fixture = vi.hoisted(() => ({ optedIn: true, setFinishedNotifications: vi.fn() }));
 vi.mock("@/lib/notification-preferences", () => ({
-  useNotificationSounds: () => true,
-  setNotificationSounds: vi.fn(),
+  NOTIFICATION_SOUND_MODES: ["bot", "always", "never"],
+  useNotificationSoundMode: () => "bot",
+  setNotificationSoundMode: vi.fn(),
   useFinishedNotifications: () => fixture.optedIn,
   setFinishedNotifications: fixture.setFinishedNotifications,
 }));

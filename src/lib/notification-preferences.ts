@@ -3,7 +3,14 @@ import { useSyncExternalStore } from "react";
 export const NOTIFICATION_SOUNDS_KEY = "dusk-notification-sounds";
 export const FINISHED_NOTIFICATIONS_KEY = "dusk-finished-notifications";
 
-let sessionChoice: boolean | undefined;
+/** Per device: `bot` plays a sound unless the bot sent its notice quietly, `always` for every notice, `never` for none. */
+export type NotificationSoundMode = "bot" | "always" | "never";
+export const NOTIFICATION_SOUND_MODES: readonly NotificationSoundMode[] = ["bot", "always", "never"];
+
+const STORED_MODE: Record<NotificationSoundMode, string> = { bot: "1", always: "always", never: "0" };
+const modeOf = (stored: string | null | undefined): NotificationSoundMode => (stored === "0" ? "never" : stored === "always" ? "always" : "bot");
+
+let sessionChoice: NotificationSoundMode | undefined;
 let finishedSessionChoice: boolean | undefined;
 const listeners = new Set<() => void>();
 
@@ -15,13 +22,23 @@ function storage(): Storage | undefined {
   }
 }
 
-export function notificationSoundsEnabled(): boolean {
+export function notificationSoundMode(): NotificationSoundMode {
   if (sessionChoice !== undefined) return sessionChoice;
   try {
-    return storage()?.getItem(NOTIFICATION_SOUNDS_KEY) !== "0";
+    return modeOf(storage()?.getItem(NOTIFICATION_SOUNDS_KEY));
   } catch {
-    return true;
+    return "bot";
   }
+}
+
+export function notificationSoundsEnabled(): boolean {
+  return notificationSoundMode() !== "never";
+}
+
+/** Whether a notice plays a sound on this device: the person's setting first, then the bot's choice. */
+export function notificationDings(notice: { silent?: boolean }): boolean {
+  const mode = notificationSoundMode();
+  return mode === "always" || (mode === "bot" && notice.silent !== true);
 }
 
 function notify() {
@@ -49,11 +66,11 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-export function setNotificationSounds(enabled: boolean): void {
-  sessionChoice = enabled;
+export function setNotificationSoundMode(mode: NotificationSoundMode): void {
+  sessionChoice = mode;
   try {
     const local = storage();
-    const value = enabled ? "1" : "0";
+    const value = STORED_MODE[mode];
     local?.setItem(NOTIFICATION_SOUNDS_KEY, value);
     if (local?.getItem(NOTIFICATION_SOUNDS_KEY) === value) sessionChoice = undefined;
   } catch {
@@ -61,8 +78,12 @@ export function setNotificationSounds(enabled: boolean): void {
   notify();
 }
 
+export function useNotificationSoundMode(): NotificationSoundMode {
+  return useSyncExternalStore(subscribe, notificationSoundMode, () => "bot");
+}
+
 export function useNotificationSounds(): boolean {
-  return useSyncExternalStore(subscribe, notificationSoundsEnabled, () => true);
+  return useNotificationSoundMode() !== "never";
 }
 
 /** Per device: "done" notices only; approvals, questions and warnings always show. */
