@@ -38,6 +38,8 @@ export function mountMobile(platform: MobilePlatform): void {
   followSystemTextSize(platform);
   setColorUserBubblesDefault(false);
   document.documentElement.dataset.mobileApp = platform.kind;
+  // the app never zooms: webkit's pinch gestures are stopped, a double tap never scales
+  for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
   applySkinChoice(phoneSkin(params));
   applyFont(readFont());
   const dark = document.documentElement.dataset.skin === THEME_SKINS.dark;

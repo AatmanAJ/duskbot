@@ -91,6 +91,9 @@ html.mobile-scanning [data-scan-hide] { visibility: hidden; }
 
 /* the phone app's document never scrolls sideways: a focused field or a wide row must not shift the whole screen */
 html[data-mobile-app], html[data-mobile-app] body { overflow: hidden; overscroll-behavior: none; }
+/* an app, not a page: no pinch or double-tap zoom, no text-size jumps, no stray text selection outside what you type */
+html[data-mobile-app] { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-user-select: none; user-select: none; }
+html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-user-select: text; user-select: text; }
 
 /* touch targets the shared desktop components draw smaller than a thumb needs: at least 44px inside the phone shell */
 .dusk-mobile [data-mobile-chat] [data-grok-inset] button:not([role="menuitem"]),
