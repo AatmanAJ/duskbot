@@ -666,7 +666,7 @@ export function createAdmin(options: AdminOptions) {
       if (previewRoute) {
         const account = directory().accounts.find(item => item.id === previewRoute[1]);
         if (!account) throw new AdminError(404, "not_found", "Not found.");
-        try { return send(plans.preview({ id: account.id, email: account.email }, options.bodyObject(await options.readBody(req)))); } catch (error) { return rethrow(error); }
+        try { return send(await plans.preview({ id: account.id, email: account.email }, options.bodyObject(await options.readBody(req)))); } catch (error) { return rethrow(error); }
       }
       if (planRoute) {
         const account = directory().accounts.find(item => item.id === planRoute[1]);

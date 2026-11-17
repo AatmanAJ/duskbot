@@ -65,7 +65,7 @@ import { commandSummary, toolDetailPreview } from "../../tool-summary.ts";
 import { acpToolEndEvents } from "./tool-items.ts";
 import { AcpHost } from "./host.ts";
 import { exitDetail } from "./exit-report.ts";
-import { endTurn, trackRunningTool, type AcpAskFinish, type AcpSession, type AcpTurn } from "./turn-state.ts";
+import { endTurn, lookupResultArrived, trackRunningTool, type AcpAskFinish, type AcpSession, type AcpTurn } from "./turn-state.ts";
 import { recoveryPromptFor } from "../../resume-recovery.ts";
 import { armIdleClose, engineIdleMs, sessionIdlePolicy, stopIdleClose } from "../session-idle.ts";
 import { classifyError } from "../retry.ts";
@@ -73,7 +73,7 @@ import { engineFailureKind, engineFailureMessage, stopCause } from "../engine-er
 import { cliExitCode, failureCode } from "../../../shared/usage-signals.ts";
 import { narrowsNativeTools, parseToolScope } from "../../../shared/tool-scope.ts";
 import { acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
-import { learnedToolCountLimit, mcpToolBudget, retryUnderToolLimit } from "../../tool-count-limit.ts"; import { instanceEnvNames } from "../../bot-box/env.ts"; import { botBox } from "../../bot-box/box.ts";
+import { learnedMcpToolBudget, retryUnderToolLimit } from "../../tool-count-limit.ts"; import { instanceEnvNames } from "../../bot-box/env.ts"; import { botBox } from "../../bot-box/box.ts";
 
 /** Failures fixed on the provider account, not by retrying; the reporting process stays pooled. */
 export type AccountErrorCode = Extract<ProviderErrorCode,
@@ -897,7 +897,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             current.state.startupActivity = true;
           }
           if (!current || !current.state.promptSent) return;
-          const u = p.update ?? {};
+          const u = lookupResultArrived(current, p.update ?? {}) ? { ...p.update, status: "completed" } : p.update ?? {};
           const finished = u.status === "completed" || u.status === "failed";
           const toolEnded = (itemId: string | undefined) => {
             current.state.producedItem = true;
@@ -1088,8 +1088,9 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         }
         const resolvedModel = support.resolveTurnModel?.(turn.model, env);
         const toolLimitKey = JSON.stringify([instanceId, resolvedModel ?? null]);
-        const mcpServers = acpMcpServers(turn, { http: support.ownMcpOverHttp === true, engine: support.driverKind,
-          toolBudget: mcpToolBudget(learnedToolCountLimit(toolLimitKey), support.engineTools ?? 32) });
+        const engineTools = support.engineTools ?? 32;
+        const toolBudget = learnedMcpToolBudget(toolLimitKey, engineTools);
+        const mcpServers = acpMcpServers(turn, { http: support.ownMcpOverHttp === true, engine: support.driverKind, toolBudget });
         support.applyTurnEnv?.(env, {
           model: resolvedModel, requestedModel: turn.model, fullAuto: turnConfig.fullAuto === true, botId: turn.botId, cwd, toolScope: turn.toolScope,
           threadId, mcpServers,
@@ -1222,6 +1223,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           runningTools: new Set(),
           unkeyedToolIds: [],
           endedToolIds: new Set(),
+          lookupTools: new Set(),
           interruptTimer: null,
           stopQuietWatch: null,
           flushAssistantText,
@@ -1655,8 +1657,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
               return;
             }
             if (!state.settled && !state.cancelling) {
-              const untouched = retryOf === undefined && !state.producedItem && !state.text && !current.runningTools.size && !asks.size && !state.stopped && !session.closing;
-              if (untouched && retryUnderToolLimit(e, { key: toolLimitKey, model: resolvedModel, engine: DRIVER_KIND, retry: () => {
+              const untouched = !state.producedItem && !state.text && !current.runningTools.size && !asks.size && !state.stopped && !session.closing;
+              if (untouched && retryUnderToolLimit(e, { key: toolLimitKey, model: resolvedModel, engine: DRIVER_KIND, offered: toolBudget, engineTools, retry: () => {
                 state.settled = true; session.current = null; active.delete(threadId); current.stopQuietWatch?.();
                 return sendTurn({ ...turn, startupRecovery: undefined, sessionReset: undefined, resumeCursor: session.sessionId ?? turn.resumeCursor }, turnId);
               }, failed: (error) => { emit({ ...base(threadId, turnId), type: "runtime.error", message: error instanceof Error ? error.message : String(error) });
@@ -1819,7 +1821,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           await probeFreeLadder(
             freeLadder({ model: asked }, order, catalog.models),
             (rung) => oneShotText(FREE_PROBE_PROMPT, { timeoutMs: FREE_PROBE_MS }, rung),
-            ({ rung, ok, ms, reason }) => trail("free_model.probe", { model: rung.model, variant: rung.variant ?? null, ok, ms, ...(reason ? { reason } : {}) }),
+            ({ rung, ok, ms, reason, suspended }) => trail("free_model.probe", { model: rung.model, variant: rung.variant ?? null, ok, ms, ...(reason ? { reason } : {}), ...(suspended ? { suspended } : {}) }),
           );
         })().catch(() => undefined);
       }

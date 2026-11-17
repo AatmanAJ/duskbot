@@ -192,8 +192,9 @@ export interface CloudsService {
   order(input: OrderInput): StoredCloud;
   /** paid: provisioning starts (idempotent) */
   activate(cloudId: string, subscriptionId: string, plan: DesktopPlan): void;
-  /** a plan change: resized on the next reconcile; placement changes are refused unless `movable` */
-  changePlan(cloudId: string, plan: DesktopPlan): void;
+  /** a plan change: resized on the next reconcile (`now`: a managed home restarts into it at once rather than at its
+   *  next idle sleep); placement changes are refused unless `movable` */
+  changePlan(cloudId: string, plan: DesktopPlan, options?: { now?: boolean }): void;
   /** whether a plan change can take this cloud to `plan`: same placement, or a managed cloud whose backend runs that kind */
   movable?(cloudId: string, plan: DesktopPlan): boolean;
   setPaymentProblem(cloudId: string, problem: boolean): void;

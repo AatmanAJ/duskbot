@@ -27,9 +27,9 @@ export interface FunnelFacts {
   permissions?: boolean;
 }
 
-/** The screens this person gets, in order: the hello, then the account (when there is none yet), then on the desktop app
- * where the bots live. This Mac goes on to an AI, what to bring and, last, the Mac's permissions; dusk cloud goes to the browser for its plan and
- * checkout, then an AI while the cloud is made, then the cloud. */
+/** The screens this person gets, in order: the hello, an AI, then the account (when there is none yet), then on the
+ * desktop app where the bots live. This Mac goes on to what to bring and, last, the Mac's permissions; dusk cloud goes to
+ * the browser for its plan and checkout, the AI, what to bring (the cloud's move carries it there), then the cloud being made. */
 export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
   const cloud = facts.desktop && facts.path === "cloud";
   return FUNNEL_STEPS.filter((step) => {
@@ -37,7 +37,7 @@ export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
     if (step === "place") return facts.desktop;
     if (step === "account") return facts.account;
     if (step === "checkout") return cloud;
-    if (step === "bring") return (facts.desktop && Boolean(facts.bring) && !cloud) || Boolean(facts.cloudBring);
+    if (step === "bring") return (facts.desktop && Boolean(facts.bring)) || Boolean(facts.cloudBring);
     if (step === "phone") return Boolean(facts.phone) && facts.desktop && !cloud;
     if (step === "making") return cloud;
     if (step === "permissions") return facts.desktop && Boolean(facts.permissions) && !cloud;
@@ -64,6 +64,16 @@ export function cloudBought(account: { purchase?: unknown; machine?: { status: s
   if (account.purchase) return true;
   if (account.clouds?.some((entry) => entry.primary && entry.runsOn === "cloud" && (entry.status === "setting_up" || entry.status === "ready"))) return true;
   return account.machine?.status === "provisioning" || account.machine?.status === "ready";
+}
+
+/** The signed-in account already has dusk cloud (bought, or a plan running or on trial that it pays for itself), so the
+ * first run skips where the bots live and its checkout. */
+export function cloudOwned(account: Parameters<typeof cloudBought>[0] & {
+  status?: string; entitlement?: { plan: string; status: string }; renewal?: unknown; trial?: unknown;
+} | null): boolean {
+  if (account?.status !== "connected") return false;
+  // only a purchase or a cloud being made or ready: a plan with no cloud behind it still gets the place step
+  return cloudBought(account);
 }
 
 interface AiTileInstance {

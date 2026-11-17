@@ -3,11 +3,12 @@ import { motion, useTransform, type MotionValue } from "motion/react";
 import { BellDot, Check, MonitorSmartphone, Pin, PinOff, Plus, RotateCcw, Search, Star, UserRound } from "../icons";
 import { api, retryLoad, useStore, type Bot, type Group } from "@/state/store";
 import { BotAvatar, MausAvatar } from "@/components/Avatar";
+import { MascotLoader } from "@/components/MascotLoader";
 import { GroupAvatar, useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
 import { useMobileAccount } from "./account/AccountGate";
 import { botPreview, groupPreview, lastPreviewable, sidebarPreviewMessages } from "@/components/sidebar-preview";
-import { WorkingDots } from "@/components/WorkingIndicator";
+import { SidebarWorkingWord } from "@/components/SidebarWorkingStep";
 import { partitionSidebarBots, withPrimaryTile } from "@/lib/sidebar-layout";
 import { botShowsUnread } from "@/lib/bot-unread";
 import { botUnreadThreadIds, markBotRead } from "@/lib/folder-read";
@@ -16,7 +17,8 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { threadRefUrl } from "@/lib/thread-refs";
 import { RoundButton } from "./RoundButton";
-import { ContextMenu, useLongPress, type ContextAction } from "./ContextMenu";
+import { ContextMenu, useLongPress, type ContextAction, type NativePress } from "./ContextMenu";
+import { useNativeHold, type HeldMenu } from "./native-menu";
 import { PullToRefresh } from "./PullToRefresh";
 import { revealOnce, useListFlip } from "./list-motion";
 import { refreshSnapshot } from "./refresh";
@@ -40,6 +42,16 @@ export function releasePressed() {
 type Entry =
   | { kind: "bot"; id: string; bot: Bot; at: number; preview: string; unread: boolean }
   | { kind: "group"; id: string; group: Group; members: Bot[]; at: number; preview: string; unread: boolean };
+type BotEntry = Extract<Entry, { kind: "bot" }>;
+
+/** Nothing the row shows differs: its memoised row can keep last render's output (a reply streaming into one chat
+ * rebuilds the store's lists, and every row with them). */
+function sameEntry(a: Entry, b: Entry): boolean {
+  if (a.kind !== b.kind || a.id !== b.id || a.at !== b.at || a.preview !== b.preview || a.unread !== b.unread) return false;
+  if (a.kind === "bot") return a.bot === (b as BotEntry).bot;
+  const other = b as Extract<Entry, { kind: "group" }>;
+  return a.group === other.group && a.members.length === other.members.length && a.members.every((member, i) => member === other.members[i]);
+}
 
 const BAR_TOP = "calc(var(--m-safe-top) + 6px)";
 const LIST_TOP = "calc(var(--m-safe-top) + 64px)";
@@ -63,7 +75,17 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   const [scrolled, setScrolled] = useState(false);
   const [menu, setMenu] = useState<{ entry: Entry; rect: DOMRect; pinnedTile: boolean; source: HTMLElement | null } | null>(null);
 
-  const { pinned, entries } = useMemo(() => {
+  const kept = useRef(new Map<string, Entry>());
+  const { pinned, pinnedEntries, entries } = useMemo(() => {
+    const previous = kept.current;
+    const next = new Map<string, Entry>();
+    const keep = <T extends Entry>(entry: T): T => {
+      const key = `${entry.kind}:${entry.id}`;
+      const old = previous.get(key);
+      const use = old && sameEntry(old, entry) ? old as T : entry;
+      next.set(key, use);
+      return use;
+    };
     const parts = partitionSidebarBots(state.bots);
     const { primary } = withPrimaryTile(parts, state.bots.find((bot) => bot.defaultBot && !bot.hidden)?.id);
     const top = [...(primary ? [primary] : []), ...parts.pinnedBots.filter((bot) => bot.id !== primary?.id)];
@@ -77,16 +99,21 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
       }),
     ];
     rows.sort((a, b) => b.at - a.at);
-    return { pinned: top, entries: rows };
+    const tiles = top.map((bot) => keep(botEntry(bot, state.instances)));
+    const listed = rows.map(keep);
+    kept.current = next;
+    return { pinned: top, pinnedEntries: tiles, entries: listed };
   }, [state.bots, state.groups, state.instances]);
 
   useListFlip(listRef, `${pinned.length}|${entries.map((entry) => entry.id).join(",")}`);
-  const sawSkeleton = useRef(!state.hydrated);
+  // the loader hops away as the chats arrive under it; it never comes back once gone
+  const [listIn, setListIn] = useState(state.hydrated === true);
+  const [loaderGone, setLoaderGone] = useState(state.hydrated === true);
+  const sawLoader = useRef(!state.hydrated);
   const reveal = useCallback((el: HTMLDivElement | null) => {
-    if (el && sawSkeleton.current) { sawSkeleton.current = false; revealOnce(el); }
+    if (el && sawLoader.current) { sawLoader.current = false; revealOnce(el); }
   }, []);
 
-  const unreadNotes = state.notifications.filter((note) => !note.read).length;
   const primary = pinned[0];
 
   const actionsFor = useCallback((entry: Entry): ContextAction[] => {
@@ -107,6 +134,14 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
     return list;
   }, [dispatch, onOpenSheet, platform]);
 
+  const hold = useNativeHold(platform.menu, "chat");
+  const latestActions = useRef(actionsFor);
+  latestActions.current = actionsFor;
+  const native = useMemo(() => hold && ((entry: Entry): NativePress => ({
+    press: (el) => hold.press(el, () => heldChatMenu(entry, latestActions.current(entry))),
+    cancel: () => hold.cancel(),
+  })), [hold]);
+
   const openMenu = useCallback((entry: Entry, rect: DOMRect, source: HTMLElement | null, pinnedTile = false) => setMenu({ entry, rect, pinnedTile, source }), []);
 
   return (
@@ -124,10 +159,10 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         >
           <div ref={listRef} style={{ paddingTop: LIST_TOP }} className="pb-[calc(var(--m-safe-bottom)+24px)]">
             {state.hydrated && <ConnectionProblemCard notice={live.notice} place={live.place} trying={live.trying} onRetry={live.retry} />}
-            {!state.hydrated ? (state.loadFailed ? (
+            {!state.hydrated || !listIn ? (state.loadFailed ? (
               <EmptyState tone="error" art="signpost" className="pt-16" title={t("mobile.home.loadFailedTitle")} body={t(offline ? "mobile.home.loadFailedOffline" : "mobile.home.loadFailedBody")}
                 action={{ label: t("mobile.home.retry"), icon: <RotateCcw size={17} aria-hidden />, onClick: retryLoad }} />
-            ) : <HomeSkeleton />) : pinned.length + entries.length === 0 ? (
+            ) : null) : pinned.length + entries.length === 0 ? (
               <EmptyState mascot="blue" className="pt-20" title={t("mobile.home.emptyTitle")} body={t("mobile.home.emptyBody")}
                 action={{ label: t("mobile.home.emptyAction"), icon: <Plus size={18} aria-hidden />, onClick: () => onOpenSheet({ kind: "create" }) }} />
             ) : (
@@ -136,8 +171,8 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                   <section aria-labelledby="home-pinned" data-no-swipe>
                   <h2 id="home-pinned" className="px-5 pb-1 text-[13px] font-semibold text-ink-secondary">{t("sidebar.section.pinned")}</h2>
                   <div className="no-scrollbar flex gap-3 overflow-x-auto px-3 pb-2 pt-1">
-                    {pinned.map((bot) => (
-                      <PinnedTile key={bot.id} bot={bot} onOpen={onOpenChat} onMenu={(rect, source) => openMenu(botEntry(bot, state), rect, source, true)} />
+                    {pinnedEntries.map((entry) => (
+                      <PinnedTile key={entry.id} entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
                     ))}
                   </div>
                   </section>
@@ -148,7 +183,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                   <ul role="list" aria-label={t("mobile.home.chats")} className="px-2">
                     {entries.map((entry) => (
                       <li key={entry.id} data-flip-key={entry.id}>
-                        <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} />
+                        <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
                       </li>
                     ))}
                   </ul>
@@ -166,13 +201,17 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         </PullToRefresh>
       </div>
 
+      {!loaderGone && !state.loadFailed && (
+        <div data-home-loader="" className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center">
+          <MascotLoader naps={false} leaving={state.hydrated === true} waking={state.loadWaking === true} onExit={() => setListIn(true)} onGone={() => setLoaderGone(true)} />
+        </div>
+      )}
       <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-0 z-[5] h-[calc(var(--m-safe-top)+72px)] bg-gradient-to-b from-app from-60% to-transparent transition-opacity duration-150", scrolled ? "opacity-100" : "opacity-0")} />
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-3" style={{ paddingTop: BAR_TOP }}>
-        <RoundButton floating label={unreadNotes ? t("mobile.home.youWithNotifications", { count: unreadNotes }) : t("mobile.home.you")} onClick={() => onOpenSheet({ kind: "settings" })} className="pointer-events-auto overflow-visible">
+        <RoundButton floating label={t("mobile.home.you")} onClick={() => onOpenSheet({ kind: "settings" })} className="pointer-events-auto overflow-visible">
           {face
             ? <UserFace account={face} size={40} className="size-full" />
             : <span className="text-[14px] font-semibold">{you?.initials ?? <UserRound size={19} />}</span>}
-          {unreadNotes > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold tabular-nums text-app ring-2 ring-app">{unreadNotes > 9 ? "9+" : unreadNotes}</span>}
         </RoundButton>
         <div className="flex-1" />
         <ConnectionPill notice={live.notice} trying={live.trying} onRetry={live.retry} testId="mobile-connection-status" />
@@ -193,8 +232,19 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   );
 }
 
-function botEntry(bot: Bot, state: ReturnType<typeof useStore>["state"]): Entry {
-  return { kind: "bot", id: bot.id, bot, at: lastAt(bot), preview: botPreview(bot, sidebarPreviewMessages(bot), state.instances), unread: botShowsUnread(bot) };
+const CHAT_SYMBOLS: Record<string, string> = { read: "checkmark.message", unread: "message.badge", profile: "person.crop.circle", desktop: "desktopcomputer" };
+
+/** A chat's actions for the system menu, each running the same action the page's own menu does. */
+function heldChatMenu(entry: Entry, actions: ContextAction[]): HeldMenu {
+  const pinned = entry.kind === "bot" && entry.bot.pinned;
+  return {
+    content: { items: actions.map((action) => ({ key: action.key, title: action.label, icon: action.key === "pin" ? (pinned ? "pin.slash" : "pin") : CHAT_SYMBOLS[action.key], danger: action.danger, disabled: action.disabled })) },
+    select: (key) => actions.find((action) => action.key === key)?.onSelect(),
+  };
+}
+
+function botEntry(bot: Bot, instances: ReturnType<typeof useStore>["state"]["instances"]): BotEntry {
+  return { kind: "bot", id: bot.id, bot, at: lastAt(bot), preview: botPreview(bot, sidebarPreviewMessages(bot), instances), unread: botShowsUnread(bot) };
 }
 
 function RefreshMark({ bot, progress, refreshing }: { bot?: Bot; progress: MotionValue<number>; refreshing: boolean }) {
@@ -209,9 +259,10 @@ function RefreshMark({ bot, progress, refreshing }: { bot?: Bot; progress: Motio
   );
 }
 
-const PinnedTile = memo(function PinnedTile({ bot, onOpen, onMenu }: { bot: Bot; onOpen: (id: string) => void; onMenu: (rect: DOMRect, source: HTMLElement | null) => void }) {
+const PinnedTile = memo(function PinnedTile({ entry, onOpen, onMenu, native }: { entry: BotEntry; onOpen: (id: string) => void; onMenu: (entry: Entry, rect: DOMRect, source: HTMLElement | null, pinnedTile: boolean) => void; native?: (entry: Entry) => NativePress }) {
   const ref = useRef<HTMLButtonElement>(null);
-  useLongPress(ref, (rect) => onMenu(rect, ref.current));
+  const bot = entry.bot;
+  useLongPress(ref, (rect) => onMenu(entry, rect, ref.current, true), true, native?.(entry));
   return (
     <button ref={ref} type="button" onClick={(event) => { holdPressed(event.currentTarget); onOpen(bot.id); }} className="mobile-press flex w-[84px] shrink-0 flex-col items-center gap-1.5 rounded-[20px] py-1" aria-label={botShowsUnread(bot) ? t("mobile.home.unreadChat", { name: bot.name }) : bot.name}>
       <PinnedTileFace bot={bot} />
@@ -237,9 +288,9 @@ function PinnedTileFace({ bot }: { bot: Bot }) {
   );
 }
 
-const HomeRow = memo(function HomeRow({ entry, onOpen, onMenu }: { entry: Entry; onOpen: (id: string) => void; onMenu: (entry: Entry, rect: DOMRect, source: HTMLElement | null) => void }) {
+const HomeRow = memo(function HomeRow({ entry, onOpen, onMenu, native }: { entry: Entry; onOpen: (id: string) => void; onMenu: (entry: Entry, rect: DOMRect, source: HTMLElement | null) => void; native?: (entry: Entry) => NativePress }) {
   const ref = useRef<HTMLButtonElement>(null);
-  useLongPress(ref, (rect) => onMenu(entry, rect, ref.current));
+  useLongPress(ref, (rect) => onMenu(entry, rect, ref.current), true, native?.(entry));
   const name = entry.kind === "bot" ? entry.bot.name : entry.group.name;
   return (
     <button
@@ -271,27 +322,12 @@ function RowFace({ entry }: { entry: Entry }) {
         </span>
         <span className="mt-0.5 flex items-center gap-2">
           <span className={cn("min-w-0 flex-1 truncate text-[14px] leading-5", entry.unread ? "text-ink" : "text-ink-secondary")}>
-            {working && <WorkingDots size={3} className="me-1.5 inline-flex align-middle" />}
-            {entry.preview || " "}
+            {entry.kind === "bot" && working && !entry.bot.waitingForTeammates && entry.bot.activity !== "waiting-on-you"
+              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} size={20} />
+              : entry.preview || " "}
           </span>
         </span>
       </span>
     </span>
-  );
-}
-
-function HomeSkeleton() {
-  return (
-    <div aria-hidden className="px-4">
-      <div className="flex gap-4 pb-4 pt-1">
-        {[0, 1, 2, 3].map((i) => <div key={i} className="flex w-[84px] flex-col items-center gap-2"><div className="size-[76px] rounded-full bg-ink/[0.06]" /><div className="h-3 w-12 rounded-full bg-ink/[0.06]" /></div>)}
-      </div>
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="flex min-h-[76px] items-center gap-3.5 px-0.5">
-          <div className="size-[52px] shrink-0 rounded-full bg-ink/[0.06]" />
-          <div className="flex-1 space-y-2"><div className="h-3.5 w-1/3 rounded-full bg-ink/[0.07]" /><div className="h-3 w-2/3 rounded-full bg-ink/[0.05]" /></div>
-        </div>
-      ))}
-    </div>
   );
 }

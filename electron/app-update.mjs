@@ -1,17 +1,20 @@
 // the mac app installs its own updates. dusk.bot's signed latest.json names the version and the sha256 of that
-// release's SHA256SUMS; the zip for this mac's arch is downloaded from the public downloads repo, checked against those
-// sums, and handed to Electron's autoUpdater (Squirrel.Mac) through a feed on 127.0.0.1 that only this process knows.
+// release's SHA256SUMS; the zip for this mac's arch is downloaded from the public downloads repo (or dusk.bot's copy,
+// app-update-download.mjs), checked against those sums, and handed to Electron's autoUpdater (Squirrel.Mac) through a
+// feed on 127.0.0.1 that only this process knows.
 // Squirrel.Mac installs only an app signed with the same Developer ID as the running one (its designated requirement),
-// so an unsigned or ad-hoc build keeps the old behaviour: one notification that opens the download page.
+// and only one it can replace where it runs, so an unsigned build, or one run from a disk image or a translocated copy,
+// is shown how to update by hand instead. Windows and Linux are shown a link to their own installer.
 // a downloaded update installs when the app quits, or at a quiet moment (locked, or no window focused and nobody touched
 // the mac for QUIET_IDLE_MS, with no turn, call or dictation running), and the app shows "restart to update" while it waits.
 import { execFile } from "node:child_process";
 import { createHash, createPublicKey, randomBytes, verify } from "node:crypto";
-import { createReadStream, createWriteStream, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { accessSync, constants, createReadStream, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
-import { join } from "node:path";
-import { Readable, Transform } from "node:stream";
+import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
+
+import { failReason, resumableDownload, UpdateError } from "./app-update-download.mjs";
 
 export const DESKTOP_MANIFEST_URL = "https://dusk.bot/releases/latest.json";
 export const sumsUrl = (version) => `https://dusk.bot/releases/${version}/SHA256SUMS`;
@@ -65,6 +68,19 @@ export function zipIn(sums, version, arch) {
  */
 export function developerIdSigned(bundle, run = (file, args) => new Promise((resolve) => execFile(file, args, { timeout: 15_000 }, (_error, stdout, stderr) => resolve(`${stdout}\n${stderr}`)))) {
   return run("/usr/bin/codesign", ["-dv", "--verbose=4", bundle]).then((out) => /^Authority=Developer ID Application: /m.test(out) && /^TeamIdentifier=[A-Z0-9]{10}$/m.test(out), () => false);
+}
+
+const writableDir = (dir) => { try { accessSync(dir, constants.W_OK); return true; } catch { return false; } };
+
+/**
+ * whether Squirrel.Mac can replace the app at `bundle`: "move" for a copy macOS translocated (opened straight from
+ * Downloads or a disk image without being moved) or one on a read-only disk image, "readonly" when its folder can't be
+ * written (an admin's /Applications for a standard account), else null
+ */
+export function updatePlace(bundle, writable = writableDir) {
+  if (bundle.includes("/AppTranslocation/")) return "move";
+  if (writable(dirname(bundle))) return null;
+  return bundle.startsWith("/Volumes/") ? "move" : "readonly";
 }
 
 /**
@@ -133,64 +149,107 @@ export function justUpdated(memory, current, installedHere = () => false) {
   return typeof before === "string" ? newer(current, before) : installedHere();
 }
 
+export const DOWNLOAD_PAGE = "https://dusk.bot/download";
+/** dusk.bot's own copy of a release file, next to its SHA256SUMS (scripts/mirror-release.sh puts it there) */
+export const mirrorUrl = (version, name) => `https://dusk.bot/releases/${version}/${name}`;
+/** where a release's update zip can come from, in the order they are tried */
+export const zipSources = (version, name) => [zipUrl(version, name), mirrorUrl(version, name)];
+
+// the downloads repo keeps the installers under the stable names dusk.bot/download links to
+const STABLE = { "setup.exe": "DuskBot-setup.exe", "x86_64.AppImage": "DuskBot.AppImage", "amd64.deb": "DuskBot-amd64.deb" };
+
+/** the installer someone on `platform` runs by hand, named as SHA256SUMS names it, or null */
+export function installerIn(sums, version, platform, { appImage = false } = {}) {
+  const end = platform === "win32" ? "setup.exe" : platform === "linux" ? (appImage ? "x86_64.AppImage" : "amd64.deb") : null;
+  if (!end) return null;
+  const name = `DuskBot-${version}-${end}`;
+  return String(sums).split("\n").some((line) => /^[0-9a-f]{64} {2}/.test(line.trim()) && line.trim().slice(66) === name) ? name : null;
+}
+
+/** a link that downloads `name` itself: dusk.bot's copy when it has one, else the downloads repo's, else the download page */
+export async function installerUrl(version, name, fetchImpl = fetch) {
+  if (!name) return DOWNLOAD_PAGE;
+  try {
+    const answer = await fetchImpl(mirrorUrl(version, name), { method: "HEAD", signal: AbortSignal.timeout(15_000) });
+    if (answer.ok) return mirrorUrl(version, name);
+  } catch { /* the downloads repo then */ }
+  const stable = STABLE[name.slice(`DuskBot-${version}-`.length)];
+  return stable ? zipUrl(version, stable) : DOWNLOAD_PAGE;
+}
+
 /**
- * keeps the mac app current. `signed()`: whether this build can install updates (developerIdSigned); when it can't, or
- * anything on the way fails, `fallback.check()` (update-notice.mjs) tells the person instead. `onState({ ready })` says
- * a downloaded version waits for a restart; `available` names a newer version found, and `progress` (0 to 1) its download
- * while it runs; `checking` while a check runs, and `failed` when the last one could not finish.
+ * keeps the app current. on a mac (`installs`) that is Developer ID signed (`signed()`) and runs from a place it may
+ * replace (`blocked()` is null), it downloads the update and restarts into it; otherwise the state names what the
+ * person can do: `blocked: "move"` (move the app to Applications) or `manual` (`{ version, url }`, a link to download
+ * the release by hand). `fallback.check()` (update-notice.mjs) also tells an unsigned build, and any failure.
+ * `onState` hears: `available` (a newer version), `progress` (0 to 1) while it downloads, `retrying` while a failed try
+ * waits for the next, `ready` once it waits for a restart, `checking` while a check runs, `failed` when the last could
+ * not finish. `onFailed(message, { stage, reason })`: `reason` is a short word, never a path.
  */
-export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys = RELEASE_KEYS, signed, installer, quiet, fallback, onState = () => {}, onFailed = () => {}, log = () => {}, firstDelayMs = 20_000, intervalMs = HOUR_MS, jitterMs = JITTER_MS, random = Math.random, quietEveryMs = 60_000, timers = globalThis }) {
-  let ready = null, available = null, progress = null, timer = null, quietTimer = null, checking = null, installing = false, failed = false;
-  const state = () => ({ ready, available, progress, checking: checking !== null, failed });
+export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys = RELEASE_KEYS, installs = true, platform = "darwin", appImage = false, signed, blocked = async () => null,
+  installer, quiet, fallback, onState = () => {}, onFailed = () => {}, log = () => {}, firstDelayMs = 20_000, intervalMs = HOUR_MS, jitterMs = JITTER_MS, random = Math.random,
+  quietEveryMs = 60_000, timers = globalThis, download = {} }) {
+  let ready = null, available = null, progress = null, timer = null, quietTimer = null, checking = null, installing = false, failed = false, retrying = false, stuck = null, manual = null, kick = null;
+  const toldBlocked = new Set();
+  const state = () => ({ ready, available, progress, checking: checking !== null, failed, retrying, blocked: stuck, manual });
   const tell = () => onState(state());
+  const report = (version, why) => {
+    if (toldBlocked.has(`${version}:${why}`)) return;
+    toldBlocked.add(`${version}:${why}`);
+    try { onFailed(why, { stage: "other", reason: why }); } catch {}
+  };
 
   async function text(url, limit) {
-    const response = await fetchImpl(url, { signal: AbortSignal.timeout(20_000), cache: "no-store" });
-    if (!response.ok) throw new Error(`${url} answered ${response.status}`);
+    let response;
+    try { response = await fetchImpl(url, { signal: AbortSignal.timeout(20_000), cache: "no-store" }); } catch (error) { throw new UpdateError("manifest", failReason(error), String(error?.message ?? error)); }
+    if (!response.ok) throw new UpdateError("manifest", `http_${response.status}`, `${new URL(url).pathname} answered ${response.status}`);
     const body = await response.text();
-    if (body.length > limit) throw new Error(`${url} is too large`);
+    if (body.length > limit) throw new UpdateError("manifest", "too_large");
     return body;
   }
 
-  async function download(url, file, sha256) {
-    try { if (await hashOf(file) === sha256) return; } catch { /* not here yet */ }
-    const part = `${file}.part`;
-    const response = await fetchImpl(url, { signal: AbortSignal.timeout(30 * 60_000) });
-    if (!response.ok || !response.body) throw new Error(`the update download answered ${response.status}`);
-    // progress in whole percents, so the window hears at most a hundred changes
-    const total = Number(response.headers.get("content-length")) || 0;
-    let got = 0;
-    const count = new Transform({ transform(chunk, _encoding, next) {
-      got += chunk.length;
-      const now = total ? Math.min(99, Math.floor((got * 100) / total)) / 100 : null;
-      if (now !== null && now !== progress) { progress = now; tell(); }
-      next(null, chunk);
-    } });
-    await pipeline(Readable.fromWeb(response.body), count, createWriteStream(part));
-    if (await hashOf(part) !== sha256) { rmSync(part, { force: true }); throw new Error("the update did not match its checksum"); }
-    renameSync(part, file);
+  /** the newest signed release when it is newer than this app: `{ version, sums }` (the verified SHA256SUMS text) */
+  async function lookup() {
+    let body;
+    try { body = JSON.parse(await text(DESKTOP_MANIFEST_URL, 64 * 1024)); } catch (error) { throw error instanceof UpdateError ? error : new UpdateError("manifest", "bad_json", String(error?.message ?? error)); }
+    const release = verifiedRelease(body, keys);
+    if (!release) throw new UpdateError("manifest", "not_signed", "the release manifest is not signed by a pinned key");
+    if (!newer(release.version, current)) return null;
+    const sums = await text(sumsUrl(release.version), 64 * 1024);
+    if (createHash("sha256").update(sums).digest("hex") !== release.sums) throw new UpdateError("checksum", "sums_mismatch", "SHA256SUMS does not match the signed manifest");
+    return { version: release.version, sums };
   }
 
   async function run() {
     if (ready) return ready;
-    if (!(await signed())) { await fallback.check(); return null; }
-    const release = verifiedRelease(JSON.parse(await text(DESKTOP_MANIFEST_URL, 64 * 1024)), keys);
-    if (!release) throw new Error("the release manifest is not signed by a pinned key");
-    if (!newer(release.version, current)) return null;
-    const sums = await text(sumsUrl(release.version), 64 * 1024);
-    if (createHash("sha256").update(sums).digest("hex") !== release.sums) throw new Error("SHA256SUMS does not match the signed manifest");
-    const zip = zipIn(sums, release.version, arch);
-    if (!zip) throw new Error(`release ${release.version} has no zip for ${arch}`);
+    const release = await lookup();
+    if (!release) { available = manual = stuck = null; return null; }
+    const { version, sums } = release;
+    available = version;
+    if (!installs) { manual = { version, url: await installerUrl(version, installerIn(sums, version, platform, { appImage }), fetchImpl) }; return null; }
+    if (!(await signed())) { manual = { version, url: DOWNLOAD_PAGE }; await fallback.check(); return null; }
+    const where = await blocked().catch(() => null);
+    if (where === "move") { stuck = "move"; manual = null; report(version, "translocated"); return null; }
+    if (where === "readonly") { stuck = null; manual = { version, url: DOWNLOAD_PAGE }; report(version, "read_only"); return null; }
+    stuck = manual = null;
+    const zip = zipIn(sums, version, arch);
+    if (!zip) throw new UpdateError("manifest", "no_zip", `release ${version} has no zip for ${arch}`);
     mkdirSync(dir, { recursive: true });
     for (const name of readdirSync(dir)) if (name !== zip.name && name !== `${zip.name}.part`) rmSync(join(dir, name), { recursive: true, force: true });
     const file = join(dir, zip.name);
-    available = release.version; progress = 0; tell();
+    progress = 0; retrying = false; tell();
     try {
-      await download(zipUrl(release.version, zip.name), file, zip.sha256);
-      // squirrel's own words rarely say where it failed; this names the stage for the failure signal
-      try { await installer.prepare(file, release.version); } catch (error) { throw new Error(`the update could not install: ${error instanceof Error ? error.message : String(error)}`); }
-    } finally { progress = null; }
-    ready = release.version;
+      await resumableDownload({ sources: zipSources(version, zip.name), file, sha256: zip.sha256, fetchImpl, ...download,
+        setKick: (fn) => { kick = fn; },
+        onProgress: (fraction) => {
+          // whole percents, so the window hears at most a hundred changes
+          const now = fraction === null ? progress : Math.min(99, Math.floor(fraction * 100)) / 100;
+          if (now !== progress || retrying) { progress = now; retrying = false; tell(); }
+        },
+        onRetry: (error, tries) => { retrying = true; log(`app update: download try ${tries} failed (${failReason(error)}), trying again`); tell(); } });
+      try { await installer.prepare(file, version); } catch (error) { throw new UpdateError("install", `install_${failReason(error)}`.slice(0, 40).replace(/_+$/, ""), `the update could not install: ${error instanceof Error ? error.message : String(error)}`); }
+    } finally { progress = null; retrying = false; kick = null; }
+    ready = version;
     log(`app update: ${ready} is ready; it installs on quit or at a quiet moment`);
     tell();
     watchQuiet();
@@ -202,8 +261,9 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
     failed = false;
     checking = run().catch(async (error) => {
       failed = true;
-      log(`app update: ${error instanceof Error ? error.message : String(error)}; telling the person instead`);
-      try { onFailed(error instanceof Error ? error.message : String(error)); } catch {}
+      const message = error instanceof Error ? error.message : String(error);
+      log(`app update: ${message}; telling the person instead`);
+      try { onFailed(message, { stage: error instanceof UpdateError ? error.stage : null, reason: failReason(error) }); } catch {}
       await fallback.check();
       return null;
     }).finally(() => { checking = null; tell(); });
@@ -240,18 +300,14 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
       if (timer) return;
       again(firstDelayMs);
     },
-    /** checks again after `delayMs` (the mac woke: the network needs a moment), then hourly from there */
+    /** the mac woke: a download in flight goes on from where it got (its socket died in the sleep), and the next check
+     * comes after `delayMs` (the network needs a moment), then hourly from there */
     soon(delayMs = 30_000) {
+      kick?.();
       if (!timer) return;
       timers.clearTimeout(timer);
       again(delayMs);
     },
     stop() { if (timer) timers.clearTimeout(timer); if (quietTimer) timers.clearTimeout(quietTimer); timer = quietTimer = null; },
   };
-}
-
-async function hashOf(file) {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(file)) hash.update(chunk);
-  return hash.digest("hex");
 }

@@ -84,7 +84,7 @@ export function createBilling(options: BillingOptions) {
     if (mode !== "test" && mode !== "live") throw new Error("Invalid DUSK_DODO_MODE.");
     required("DUSK_DODO_PRODUCTS");
     provider = createDodoProvider({ apiKey, webhookSecret, mode, now, fetch: options.fetch });
-  } else provider = fake ?? { name: "dodo", createCheckout: unavailable, updatePaymentMethod: unavailable, verifyWebhook: unavailable, cancelAtPeriodEnd: unavailable, cancelNow: unavailable, refundPayment: unavailable, changePlan: unavailable, applyDiscount: unavailable, invoiceUrl: unavailable, invoicePdf: unavailable };
+  } else provider = fake ?? { name: "dodo", createCheckout: unavailable, updatePaymentMethod: unavailable, verifyWebhook: unavailable, cancelAtPeriodEnd: unavailable, cancelNow: unavailable, refundPayment: unavailable, previewChange: unavailable, changePlan: unavailable, cancelScheduledChange: unavailable, subscription: unavailable, applyDiscount: unavailable, invoiceUrl: unavailable, invoicePdf: unavailable };
   let products: Record<string, string>;
   try { products = dodoProducts(env); } catch { throw new Error("Invalid DUSK_DODO_PRODUCTS."); }
   if (billingProvider === "dodo" && missingDodoProducts(products).length) console.error(`billing: DUSK_DODO_PRODUCTS is missing ${missingDodoProducts(products).join(", ")}; carts that need them answer 503`);

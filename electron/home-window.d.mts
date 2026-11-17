@@ -99,6 +99,8 @@ export interface HomeWindow {
   current(): Home;
   shown(): HomePlace | null;
   retry(): Promise<unknown>;
+  openHere(): Promise<void>;
+  here(): boolean;
   signIn(): Promise<void>;
   repair(): Promise<void>;
   changed(): Promise<void>;

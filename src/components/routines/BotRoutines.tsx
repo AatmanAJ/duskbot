@@ -186,7 +186,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   const [capSaved, setCapSaved] = useState(0);
   const forecast = useLoaded(() => (routine ? fetchForecast(routine.id) : Promise.resolve(null)), `${routine?.id}:${routine?.updatedAt}:${capSaved}:${automation.runs[0]?.status}`);
   const status = automationStatus(automation);
-  const runs = automation.runs.filter((run) => run.status !== "queued").slice(0, RECENT_RUNS);
+  const runs = automation.runs.filter((run) => run.status !== "queued" || Boolean(run.attention?.trim())).slice(0, RECENT_RUNS);
   const roomGoal = routine?.target === "room-goal";
   const worksOn = routineRunsOn({ roomGoal, runOn: routine?.runOn ?? automation.appTrigger?.runOn, computer: bot.computer, cloudHome: state.config?.cloudHome === true });
   const resultsTo = roomGoal
@@ -207,6 +207,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   const fix = (kind: AutomationFix) => {
     if (kind === "usage") dispatch({ type: "toggleAppSettings", open: true, section: "usage" });
     else if (kind === "reconnect") dispatch({ type: "togglePlugins", open: true, surface: "apps" });
+    else if (kind === "answer") actions.answerRun(automation);
     else actions.openRun(automation, automation.runs.find((run) => run.status !== "queued"));
   };
 

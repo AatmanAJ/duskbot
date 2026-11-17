@@ -139,6 +139,8 @@ let fakeClaudeDump: string;
 let fakeClaudePrompts: string;
 /** While this file exists, the hanging fake engine ends its turn normally: a finished turn, never a Stop. */
 let fakeClaudeRelease: string;
+/** While this file exists, every fake engine turn fails with the file's text as its API error. */
+let fakeClaudeApiError: string;
 let oneShotTextFile: string;
 let oneShotTextDump: string;
 let setupAnswersFile: string;
@@ -345,7 +347,7 @@ const uploadAvatar = async (mime = "image/png"): Promise<string> => {
   const response = await fetch(`${BASE}/api/attachments`, {
     method: "POST",
     headers: { "content-type": mime },
-    body: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    body: new Uint8Array(mime === "image/webp" ? Buffer.from("RIFF\0\0\0\0WEBPVP8 ", "latin1") : Buffer.from("89504e470d0a1a0a", "hex")),
   });
   expect(response.status).toBe(201);
   const saved = (await response.json()) as { path: string };
@@ -371,6 +373,7 @@ beforeAll(async () => {
   fakeClaudeDump = join(home, "fake-claude-dump.json");
   fakeClaudePrompts = join(home, "fake-claude-prompts.jsonl");
   fakeClaudeRelease = join(home, "fake-claude-release");
+  fakeClaudeApiError = join(home, "fake-claude-api-error.txt");
   oneShotTextFile = join(home, "fake-claude-one-shot.txt");
   oneShotTextDump = join(home, "fake-claude-one-shot-dump.json");
   setupAnswersFile = join(home, "fake-claude-setup-answers.txt");
@@ -1058,6 +1061,7 @@ beforeAll(async () => {
       FAKE_CLAUDE_DUMP: fakeClaudeDump,
       FAKE_CLAUDE_PROMPTS: fakeClaudePrompts,
       FAKE_CLAUDE_RELEASE: fakeClaudeRelease,
+      FAKE_CLAUDE_API_ERROR_FILE: fakeClaudeApiError,
       // The one-shot text helper fails until a test writes its reply file, and its dump never overwrites a turn's.
       FAKE_CLAUDE_TEXT_FILE: oneShotTextFile,
       FAKE_CLAUDE_TEXT_DUMP: oneShotTextDump,
@@ -4062,6 +4066,24 @@ describe("harness HTTP API", () => {
     });
     expect(wrongType.status).toBe(400);
 
+    // a PNG whose first byte was decoded as UTF-8 text on the way, as a phone sent one
+    const damaged = await fetch(`${BASE}/api/attachments`, {
+      method: "POST",
+      headers: { "content-type": "image/png" },
+      body: new Uint8Array(Buffer.from("\xef\xbf\xbdPNG\r\n\x1a\n0000", "latin1")),
+    });
+    expect(damaged.status).toBe(400);
+    expect(((await damaged.json()) as { error: string }).error).toMatch(/damaged/);
+
+    // a real picture under the wrong label is kept as what it is
+    const relabelled = await fetch(`${BASE}/api/attachments`, {
+      method: "POST",
+      headers: { "content-type": "image/jpeg" },
+      body: new Uint8Array(png),
+    });
+    expect(relabelled.status).toBe(201);
+    expect(((await relabelled.json()) as { mime: string; path: string })).toMatchObject({ mime: "image/png", path: expect.stringMatching(/\.png$/) });
+
     const saved = await fetch(`${BASE}/api/attachments`, {
       method: "POST",
       headers: { "content-type": "image/png" },
@@ -4110,7 +4132,7 @@ describe("harness HTTP API", () => {
     const conflictingRetry = await fetch(`${BASE}/api/attachments?uploadId=${uploadId}`, {
       method: "POST",
       headers: { "content-type": "image/png" },
-      body: new Uint8Array([1, 2, 3]),
+      body: new Uint8Array([...png, 0]),
     });
     expect(conflictingRetry.status).toBe(409);
 
@@ -4287,6 +4309,67 @@ describe("harness HTTP API", () => {
       expect(JSON.stringify(rewound.prompt)).not.toContain(imagePath);
       await releaseTurn(bot.id);
     } finally {
+      await api("POST", `/api/bots/${bot.id}/interrupt`, {}).catch(() => undefined);
+      await api("DELETE", `/api/bots/${bot.id}`);
+    }
+  });
+
+  it("keeps a chat going past a stored picture that is no image, and past an engine refusing a picture", async () => {
+    const created = await api("POST", "/api/bots", {
+      modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
+      requireAvailableModel: true,
+    });
+    expect(created.status).toBe(201);
+    const bot = created.body.bot;
+    const note = "[An attached image could not be read, so it was left out.]";
+    type Dump = { prompt: { message: { content: string | Array<{ type: string; text?: string }> } } };
+    const imageBlocks = (dump: Dump) => {
+      const { content } = dump.prompt.message;
+      return typeof content === "string" ? [] : content.filter((part) => part.type === "image");
+    };
+    const upload = async () => {
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "base64",
+      );
+      const uploaded = await fetch(`${BASE}/api/attachments`, { method: "POST", headers: { "content-type": "image/png" }, body: new Uint8Array(png) });
+      expect(uploaded.status).toBe(201);
+      return (await uploaded.json() as { path: string }).path;
+    };
+    const send = async (text: string) => {
+      rmSync(fakeClaudeDump, { force: true });
+      expect((await api("POST", `/api/bots/${bot.id}/messages`, { text })).status).toBe(202);
+      return readJsonFileWhenReady<Dump>(fakeClaudeDump, 20_000);
+    };
+    try {
+      // a picture stored before uploads were checked: its bytes turned into text on the way
+      const broken = await upload();
+      writeFileSync(broken, Buffer.concat([Buffer.from("efbfbd504e470d0a1a0a", "hex"), Buffer.from("0000")]));
+      const first = await send(`What is this\n\n<attached-image path="${broken}" name="bad.png" />`);
+      expect(imageBlocks(first)).toEqual([]);
+      expect(JSON.stringify(first.prompt)).toContain(note);
+      await releaseTurn(bot.id);
+
+      // a picture whose bytes look right that the engine still cannot decode
+      const refused = await upload();
+      expect(imageBlocks(await send(`Describe this screenshot\n\n<attached-image path="${refused}" name="tiny.png" />`))).toHaveLength(1);
+      await releaseTurn(bot.id);
+      writeFileSync(fakeClaudeApiError, "API Error: 400 messages.0.content.0.image.source.base64.data: Could not process image");
+      try {
+        await send("what colour is it");
+        await expect.poll(async () => (await api("GET", "/api/bots?messages=0")).body.bots
+          .find((candidate: { id: string }) => candidate.id === bot.id)?.busy, { timeout: 10_000, interval: 20 }).toBe(false);
+      } finally { rmSync(fakeClaudeApiError, { force: true }); }
+
+      // the next turn starts a new engine session that replays the chat with the earlier pictures left out
+      const after = await send("and what shape is it");
+      expect(imageBlocks(after)).toEqual([]);
+      expect(JSON.stringify(after.prompt)).toContain("Describe this screenshot");
+      expect(JSON.stringify(after.prompt)).toContain(note);
+      expect(JSON.stringify(after.prompt)).not.toContain(refused);
+      await releaseTurn(bot.id);
+    } finally {
+      rmSync(fakeClaudeApiError, { force: true });
       await api("POST", `/api/bots/${bot.id}/interrupt`, {}).catch(() => undefined);
       await api("DELETE", `/api/bots/${bot.id}`);
     }
@@ -8632,7 +8715,7 @@ describe("harness HTTP API", () => {
 
     const tools = await api("PATCH", "/api/config", { features: { showToolCalls: true } });
     expect(tools.status).toBe(200);
-    expect(tools.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: true, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true });
+    expect(tools.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, quickUpdates: true });
 
     const bot = (await api("POST", "/api/bots", {})).body.bot;
     try {

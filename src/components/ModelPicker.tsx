@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, X } from "../icons";
+import { ChevronDown, ChevronRight, X } from "../icons";
 import { api, useStore, currentTaskBot, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
 import type { EffortLevel } from "../../shared/wire";
 import type { ModelVariantOption } from "../../shared/runtime-events";
@@ -24,7 +24,9 @@ import { SimpleModelMenu, type PickerScope, type SimpleThinking } from "./Simple
 import { aiTiles, type AiTileId } from "./onboarding/funnel";
 import { ConnectAiDialog } from "./onboarding/ConnectAi";
 import { Toast } from "./ui/Toast";
-import { useStarredModels } from "@/lib/starred-models";
+import { starKey, useStarredModels } from "@/lib/starred-models";
+import { noteRecentModels, useRecentModels } from "@/lib/recent-models";
+import { friendlyError } from "@/lib/plain-error";
 import { modelMenuKey, modelMenuPointerMove } from "./model-menu-keys";
 import { offersReasoning, useRefocusAfterPick, variantChoices } from "./model-picker-reasoning";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
@@ -211,6 +213,8 @@ export function ModelPicker({
   contained = false,
   label,
   size = "md",
+  asRow,
+  withThinking = false,
 }: {
   bot: Bot;
   threadId?: string;
@@ -218,7 +222,12 @@ export function ModelPicker({
   contained?: boolean;
   label?: ReactNode;
   size?: "sm" | "md";
+  /** A settings row (label left, model right, a chevron) whose menu the caller presents, in a sheet of its own. */
+  asRow?: { className: string; present: (menu: { open: boolean; close: () => void; content: ReactNode }) => ReactNode };
+  /** A contained picker whose place has no thinking control of its own: its menu sets the level too. */
+  withThinking?: boolean;
 }) {
+  const ownThinking = !contained || withThinking;
   const { state, dispatch: storeDispatch, refreshInstances, refreshModels: refreshInstanceModels } = useStore();
   const [open, setOpen] = useState(false);
   const { bot, dispatch } = useAiSwitch({ bot: shown, threadId, contained, dispatch: storeDispatch, setOpen: (next) => (next ? openMenu() : setOpen(false)) });
@@ -242,6 +251,7 @@ export function ModelPicker({
     all?: { instance: InstanceInfo; model: string; variant?: string } } | null>(null);
   const [handoff, setHandoff] = useState<{ tile: AiTileId; scope: PickerScope } | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: "done" | "error" } | null>(null);
+  const [disconnecting, setDisconnecting] = useState<{ instance: InstanceInfo; provider: string; busy?: boolean } | null>(null);
   const [placement, setPlacement] = useState<PickerPlacement | null>(null);
   const [changedBotModel, setChangedBotModel] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -255,7 +265,7 @@ export function ModelPicker({
 
   const floating = typeof document !== "undefined";
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open || asRow) return;
     const place = (event?: Event) => {
       if (event?.type === "scroll" && event.target instanceof Node && menuRef.current?.contains(event.target)) return;
       const anchor = triggerRef.current?.getBoundingClientRect();
@@ -334,7 +344,7 @@ export function ModelPicker({
     else refreshModels(active?.instanceId);
   }, [open, refreshLocalInstances]);
 
-  usePopoverDismiss(open, inside, () => close(false));
+  usePopoverDismiss(open && !asRow, inside, () => close(false));
 
   function close(refocus: boolean) {
     setOpen(false);
@@ -473,11 +483,13 @@ export function ModelPicker({
   const pick = (instance: InstanceInfo, model: string, variant?: string) => {
     if (instance.policy) return;
     const to = mayChangeBot ? scope : "bot";
+    const was = selection.instanceId ? [starKey(selection.instanceId, selection.model, selection.variant)] : [];
     if (commit(instance, model, variant, to) === "asked") return close(false);
+    noteRecentModels(...was, starKey(instance.instanceId, model, variant));
     const nextSelection = modelSelectionForPick(selection, instance, model);
     // A model with reasoning levels keeps the menu open, so its level can be set next without opening it again;
     // picking a variant row already sets that level.
-    if (to === "all" || variant !== undefined || contained || !offersReasoning(state, instance, nextSelection, threadId ?? bot.threadId)) close(true);
+    if (to === "all" || variant !== undefined || !ownThinking || !offersReasoning(state, instance, nextSelection, threadId ?? bot.threadId)) close(true);
     else refocusAfterPick();
   };
 
@@ -488,13 +500,16 @@ export function ModelPicker({
     close(false);
     setHandoff({ tile: row.tile, scope });
   };
-  /** The handed-over connect finished: its suggested model becomes this bot's (or every bot's), with a short toast. */
+  /** The handed-over connect finished: its suggested model becomes this bot's (or every bot's), with a short toast. A bot
+   * that is replying keeps its AI: a sign-in is not a pick, so the reply and its queued follow-ups stay where they were
+   * and the person picks the new AI from the menu when they want it. */
   const connected = (tileId: AiTileId) => {
     const to = handoff?.scope ?? "bot";
     setHandoff(null);
     const tile = aiTiles(state.instances, engineReady).find((one) => one.id === tileId);
     const instance = tile?.candidates.find(engineReady);
     if (!tile || !instance) return;
+    if (working) return setToast({ text: t("model.picker.connectedName", { name: tile.label }), tone: "done" });
     const options = instance.models.options;
     const model = (options.find((option) => option.id === instance.models.default) ?? options.find((option) => !option.custom) ?? options[0])?.id;
     if (!model) return setToast({ text: t("model.picker.connectedName", { name: tile.label }), tone: "done" });
@@ -513,7 +528,7 @@ export function ModelPicker({
     dispatch({ type: "setModel", botId: bot.id, threadId, ...(threadId && updatesBotDefault ? { updateBotDefault: true } : {}),
       selection: effort ? { ...model, effort } : model, ...(working && threadId ? { nextTurn: true } : {}) });
   };
-  const thinking: SimpleThinking | null = contained ? null
+  const thinking: SimpleThinking | null = !ownThinking ? null
     : variantChoices(state, selection, threadId ?? bot.threadId) ? {
       variants: (
         <ModelVariantRow compact quiet bot={shown} threadId={threadId} updateBotDefault={Boolean(threadId) && updatesBotDefault} className="px-2 py-1"
@@ -598,6 +613,7 @@ export function ModelPicker({
   );
 
   const { starred, toggle: toggleStarred } = useStarredModels();
+  const recent = useRecentModels();
   const simpleMenu = simpleModelMenu({
     instances,
     listed: pickerInstances,
@@ -609,6 +625,7 @@ export function ModelPicker({
     loading: loadingInstances,
     refreshing: refreshingId,
     starred,
+    recent,
   });
 
   // only the owner connects a provider; the rows stay out of a search, which looks through the models there are
@@ -621,7 +638,41 @@ export function ModelPicker({
     else if (!remote) openDirectory();
   };
 
-  const menu = motion.shown && (
+  const menuBody = (
+    <SimpleModelMenu
+      menu={simpleMenu}
+      query={query}
+      bot={profile}
+      botModel={{ label: botModelName, title: botModelTitle }}
+      thinking={thinking}
+      idPrefix={menuId}
+      onQuery={setQuery}
+      onPick={pick}
+      onPickCurrent={() => close(true)}
+      onToggleStar={toggleStarred}
+      onFollowBot={pickBotModel}
+      onToggle={(instance) => {
+        const opening = !expanded.has(instance.instanceId);
+        setExpanded((current) => {
+          const next = new Set(current);
+          if (opening) next.add(instance.instanceId);
+          else next.delete(instance.instanceId);
+          return next;
+        });
+        if (opening) lookForLocalIn(instance);
+      }}
+      onSetUp={connectInstance}
+      onCheckAgain={(instance) => refreshModels(instance.instanceId)}
+      onMore={mayChangeBot && !remote ? openDirectory : undefined}
+      onResetVariant={resetVariant}
+      onDisconnect={mayChangeBot ? (instance, provider) => { close(false); setDisconnecting({ instance, provider }); } : undefined}
+      scope={mayChangeBot ? { value: scope, onChange: setScope } : undefined}
+      where={state.config?.cloudHome ? t("model.picker.onCloud") : undefined}
+      notConnected={connectRows.length > 0 ? { rows: connectRows, onConnect: connect } : undefined}
+    />
+  );
+
+  const menu = !asRow && motion.shown && (
     <div
       ref={menuRef}
       id={menuId}
@@ -645,42 +696,38 @@ export function ModelPicker({
       } : { width: SIMPLE_POPOVER_WIDTH }}
       className={cn("menu-surface z-[80] flex flex-col overflow-hidden", motion.className)}
     >
-      <SimpleModelMenu
-        menu={simpleMenu}
-        query={query}
-        bot={profile}
-        botModel={{ label: botModelName, title: botModelTitle }}
-        thinking={thinking}
-        idPrefix={menuId}
-        onQuery={setQuery}
-        onPick={pick}
-        onPickCurrent={() => close(true)}
-        onToggleStar={toggleStarred}
-        onFollowBot={pickBotModel}
-        onToggle={(instance) => {
-          const opening = !expanded.has(instance.instanceId);
-          setExpanded((current) => {
-            const next = new Set(current);
-            if (opening) next.add(instance.instanceId);
-            else next.delete(instance.instanceId);
-            return next;
-          });
-          if (opening) lookForLocalIn(instance);
-        }}
-        onSetUp={connectInstance}
-        onCheckAgain={(instance) => refreshModels(instance.instanceId)}
-        onMore={mayChangeBot && !remote ? openDirectory : undefined}
-        onResetVariant={resetVariant}
-        scope={mayChangeBot ? { value: scope, onChange: setScope } : undefined}
-        where={state.config?.cloudHome ? t("model.picker.onCloud") : undefined}
-        notConnected={connectRows.length > 0 ? { rows: connectRows, onConnect: connect } : undefined}
-      />
+      {menuBody}
     </div>
+  );
+
+  const sheetMenu = asRow?.present({
+    open,
+    close: () => close(false),
+    content: (
+      <div ref={menuRef} id={menuId} data-model-picker-content="" data-presented="" onKeyDown={onMenuKey} className="flex flex-col">
+        {menuBody}
+      </div>
+    ),
+  });
+
+  const rowTrigger = asRow && (
+    <button {...triggerProps} className={asRow.className}>
+      <span className="min-w-0 flex-1">
+        {label}
+        {backup && <span data-model-backup="" className="mt-0.5 block text-[13px] leading-[18px] text-ink-secondary">{backupLine(backup)}</span>}
+      </span>
+      <span className="flex min-w-0 max-w-[55%] shrink-0 items-center gap-1.5 text-[15px] text-ink-secondary">
+        {attention && !backup && <span data-model-attention className="size-1.5 shrink-0 rounded-full bg-warning" aria-hidden="true" />}
+        <span className="min-w-0 truncate">{unanswered ?? modelName(shownInstance, answering.model)}</span>
+        {!unanswered && answering.variant !== undefined && <span className="shrink-0 whitespace-pre">{variantSuffix(shownInstance, answering.model, answering.variant)}</span>}
+      </span>
+      <ChevronRight aria-hidden="true" size={18} className="shrink-0 text-ink-tertiary" />
+    </button>
   );
 
   return (
     <div ref={rootRef} className={cn(contained ? "w-full" : "relative", className)}>
-      {contained ? (
+      {rowTrigger ? rowTrigger : contained ? (
         <div className="flex items-center justify-between gap-4">
           {backup ? (
             <span className="flex shrink-0 flex-col">
@@ -694,6 +741,7 @@ export function ModelPicker({
         trigger
       )}
       {menu && floating ? createPortal(menu, document.body) : menu}
+      {sheetMenu}
       {handoff && <ConnectAiDialog tested={null} start={handoff.tile} onClose={() => setHandoff(null)} onConnected={connected} />}
       {toast && <Toast text={toast.text} tone={toast.tone} onDone={() => setToast(null)} data-notice-toast="model" />}
       {!contained && changedBotModel && !open && ownModelThreads > 0 && (
@@ -706,6 +754,26 @@ export function ModelPicker({
           </button>
         </div>
       )}
+      <ConfirmDialog
+        open={disconnecting !== null}
+        title={t("engines.disconnectTitle", { name: disconnecting?.provider ?? "" })}
+        body={t("engines.disconnectBody", { name: disconnecting?.provider ?? "" })}
+        tone="neutral"
+        confirmLabel={t("engines.disconnect")}
+        pending={disconnecting?.busy}
+        onCancel={() => { if (!disconnecting?.busy) setDisconnecting(null); }}
+        onConfirm={() => {
+          if (!disconnecting || disconnecting.busy) return;
+          const { instance, provider } = disconnecting;
+          setDisconnecting({ ...disconnecting, busy: true });
+          void api(`/api/instances/${encodeURIComponent(instance.instanceId)}`, { method: "PATCH", body: JSON.stringify({ hidden: true }) })
+            .then(() => {
+              setToast({ text: t("model.picker.disconnected", { name: provider }), tone: "done" });
+              return refreshInstances().catch(() => {});
+            }, (cause: unknown) => setToast({ text: friendlyError(cause), tone: "error" }))
+            .finally(() => setDisconnecting(null));
+        }}
+      />
       <ConfirmDialog
         open={pendingSwitch !== null}
         title={t("model.providerSwitch.title")}

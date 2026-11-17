@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
-import { motion } from "motion/react";
-import { Bell, CalendarClock, Check, ChevronRight, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, MoreHorizontal, Palette, Plug, Plus, ShieldCheck, Trash2, UserRound, Hand, Server } from "../../icons";
+import { motion, useReducedMotion } from "motion/react";
+import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, Palette, Plug, ShieldCheck, UserRound, Hand, Server } from "../../icons";
 import { accountDashboardUrl } from "@/lib/account-dashboard";
 import { useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
@@ -10,14 +10,12 @@ import { effectiveLanguage, setLanguageChoice, useLanguageChoice, usePageLanguag
 import { applySkinChoice, readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
 import { localeChoices } from "@/locales";
 import { useStore } from "@/state/store";
-import type { MobileConnectionRecord } from "../../../shared/mobile-link";
-import { useLongPress } from "../ContextMenu";
 import { useConnections } from "../connection/connections";
+import { usePlaces, type Place, type PlaceStatus } from "../connection/places";
 import { haptic, setHapticsEnabled, useHapticsEnabled } from "../haptics";
-import { spring } from "../motion";
+import { dur, ease, spring } from "../motion";
 import { useMobileAccount } from "../account/AccountGate";
 import { chooseAccountOrigin, environmentName, PREVIEW_ORIGIN, PRODUCTION_ORIGIN } from "../account/environment";
-import { placeKind } from "../connection/connection-notice";
 import { LEGAL_LINKS, supportMail } from "../legal";
 import { useAiConsent } from "../consent/AiConsent";
 import { WorkingDots } from "@/components/WorkingIndicator";
@@ -30,12 +28,13 @@ import { NotificationsSheet } from "./NotificationsSheet";
 import { RoutinesSheet } from "./RoutinesSheet";
 import { ConnectorsSheet } from "./ConnectorsSheet";
 import { VaultSheet } from "./VaultSheet";
+import { DeleteAccountPage } from "./DeleteAccountPage";
 import { SettingsRow, SettingsSection, SettingsSwitch } from "./SettingsRow";
 import { PixelArt } from "../Illustration";
 import type { SheetPageProps } from "./registry";
 
 /** The account rows Settings shows. The account dashboard sells plans, so the store apps never link to it (App Store
- * guideline 3.1.1, Play payments policy); a signed-in account can always be signed out and deleted from here, and a
+ * guideline 3.1.1, Play payments policy); a signed-in account can be signed out and deleted here (App Store 5.1.1(v)), and a
  * phone with no account (a paired computer needs none) is offered the sign-in that finds a dusk cloud. */
 export function accountRows(input: { native: boolean; signedIn: boolean; offered?: boolean }): { dashboard: boolean; signOut: boolean; deleteAccount: boolean; signIn: boolean } {
   return { dashboard: !input.native, signOut: input.signedIn, deleteAccount: input.signedIn, signIn: Boolean(input.offered) && !input.signedIn };
@@ -73,13 +72,14 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-type SettingsPage = "account" | "language" | "voice" | "notifications" | "routines" | "connectors" | "vault";
-const SETTINGS_PAGES: readonly string[] = ["account", "language", "voice", "notifications", "routines", "connectors", "vault"];
+type SettingsPage = "language" | "voice" | "notifications" | "routines" | "connectors" | "vault" | "delete";
+const SETTINGS_PAGES: readonly string[] = ["language", "voice", "notifications", "routines", "connectors", "vault"];
 
 /** Settings is a stack inside one sheet, as iOS Settings: the grouped list, and each page pushed over it with the
  * system's slide and edge swipe back. Notifications, routines, apps and the vault are the same pages the rest of the
  * app opens as sheets, drawn here as pages, so nothing in Settings leaves it. */
 export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet, open, onClose, onOpenSheet, onOpenChat }) => {
+  const account = useMobileAccount();
   const [page, setPage] = useState<SettingsPage | null>(SETTINGS_PAGES.includes(sheet.page ?? "") ? sheet.page as SettingsPage : null);
   const pop = useCallback(() => setPage(null), []);
   const stack = useMemo(() => ({ back: pop }), [pop]);
@@ -89,8 +89,8 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
     : page === "connectors" ? <ConnectorsSheet sheet={{ kind: "connectors" }} {...pageProps} />
     : page === "vault" ? <VaultSheet sheet={{ kind: "vault" }} {...pageProps} />
     : page === "language" ? <LanguagePage />
+    : page === "delete" && account?.account ? <DeleteAccountPage email={account.account.email} onDelete={account.deleteAccount} onCancel={pop} onDone={onClose} />
     : page === "voice" ? <Sheet open onClose={pop} title={t("settings.voice.title")}><div data-settings-look="simple" className={`flex flex-col gap-6 px-4 pt-2 ${SIMPLE_BUTTONS}`}><VoiceInputSettings /></div></Sheet>
-    : page === "account" ? <AccountPage onDone={onClose} />
     : null;
   return (
     <Sheet open={open} onClose={onClose} full flush label={t("mobile.settings.title")} bodyClassName="overflow-hidden pb-0">
@@ -106,7 +106,7 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
 
 function SettingsList({ onClose, push }: { onClose: () => void; push: (page: SettingsPage) => void }) {
   const { state } = useStore();
-  const { connections, activeId, switchTo, remove } = useConnections();
+  const { connections, activeId } = useConnections();
   const you = useGroupYou();
   const platform = usePlatform();
   const account = useMobileAccount();
@@ -114,9 +114,9 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
   const skin = useSyncExternalStore(subscribeSkin, readSkinChoice, () => "system");
   const language = effectiveLanguage(useLanguageChoice(), state.config?.language);
   usePageLanguage(language);
-  const [unlinkId, setUnlinkId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
+  const { places, expected, open: openPlace } = usePlaces(state.connected === true);
+  const [opening, setOpening] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const appearanceId = useId();
   const active = connections.find((connection) => connection.id === activeId);
   const email = account?.account?.email;
@@ -141,26 +141,27 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
     void (account?.signOut() ?? Promise.resolve()).finally(() => window.location.reload());
   };
 
-  const changeWorkspace = async (id: string, unlink = false) => {
-    if (busy) return;
-    setBusy(true);
-    setError(false);
+  const choosePlace = async (place: Place) => {
+    if (opening || place.active) return;
+    haptic("selection");
+    setOpening(place.key);
+    setError(null);
     try {
-      if (unlink) await remove(id);
-      else { haptic("selection"); await switchTo(id); }
-      setUnlinkId(null);
+      const outcome = await openPlace(place);
+      if (outcome === "paired") onClose();
+      else if (outcome !== "switched") { haptic("error"); setError(outcome === "asleep" || outcome === "unavailable" ? t("mobile.settings.placeAsleepError", { name: place.name }) : t("mobile.settings.workspaceError")); }
     } catch {
       haptic("error");
-      setError(true);
+      setError(t("mobile.settings.workspaceError"));
     } finally {
-      setBusy(false);
+      setOpening(null);
     }
   };
 
   return (
     <div className="pb-6">
       <SettingsSection card>
-        <button type="button" disabled={!email} onClick={() => push("account")} className="mobile-row flex w-full items-center gap-4 px-4 py-3.5 text-left disabled:pointer-events-none">
+        <div className="flex w-full items-center gap-4 px-4 py-3.5">
           <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink/[0.07] text-[20px] font-semibold text-ink">
             {face ? <UserFace account={face} size={56} className="size-full" /> : you?.initials ?? <UserRound aria-hidden size={24} />}
           </span>
@@ -168,17 +169,13 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
             <span className="block truncate text-[19px] font-semibold leading-6 tracking-[-0.01em] text-ink">{identity.title}</span>
             <span data-settings-identity className="block truncate text-[14px] text-ink-secondary">{identity.subtitle}</span>
           </span>
-          {email && <ChevronRight aria-hidden size={18} className="shrink-0 text-ink-tertiary" />}
-        </button>
+        </div>
         {rows.dashboard && <SettingsRow icon={<LayoutDashboard />} label={t("mobile.settings.accountDashboard")} onClick={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}
         {rows.signIn && <SettingsRow icon={<UserRound />} label={t("mobile.entry.signIn")} detail={t("mobile.settings.signInDetail")} onClick={() => { onClose(); window.dispatchEvent(new Event("dusk:sign-in")); }} />}
       </SettingsSection>
 
-      <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{t("mobile.settings.workspaceError")}</span> : t("mobile.settings.workspacesHint")}>
-        {connections.map((connection) => (
-          <WorkspaceRow key={connection.id} connection={connection} environment={environment} active={connection.id === activeId} confirming={unlinkId === connection.id} busy={busy} onSelect={() => { void changeWorkspace(connection.id); }} onConfirm={() => { setError(false); setUnlinkId(connection.id); }} onCancel={() => { setUnlinkId(null); setError(false); }} onUnlink={() => { void changeWorkspace(connection.id, true); }} />
-        ))}
-        <SettingsRow icon={<Plus />} label={t("mobile.settings.link")} onClick={() => { onClose(); window.dispatchEvent(new Event("dusk:link-another")); }} />
+      <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>
+        <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />
       </SettingsSection>
 
       <SettingsSection card>
@@ -229,7 +226,17 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
             value={environment ?? "dusk.bot"} onClick={switchServers} />
         </SettingsSection>
       )}
+      {rows.signOut && (
+        <SettingsSection card>
+          <SettingsRow icon={<LogOut />} label={t("accountGate.signOut")} chevron={false} onClick={() => { haptic("light"); void account?.signOut(); onClose(); }} />
+        </SettingsSection>
+      )}
       {rows.dashboard && !state.config?.cloudHome && <CloudCard onOpen={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}
+      {rows.deleteAccount && (
+        <button type="button" data-settings-delete-account onClick={() => { haptic("light"); push("delete"); }} className="mx-auto mt-4 block min-h-11 px-4 text-center text-[13px] text-danger">
+          {t("mobile.settings.deleteAccount")}
+        </button>
+      )}
     </div>
   );
 }
@@ -251,85 +258,40 @@ function LanguagePage() {
   );
 }
 
-/** The signed-in account: who it is, signing out, and deleting it after one plain confirmation on the same page. */
-function AccountPage({ onDone }: { onDone: () => void }) {
-  const account = useMobileAccount();
-  const email = account?.account?.email ?? "";
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const deleteAccount = async () => {
-    if (deleting || !account) return;
-    setDeleting(true);
-    setFailed(false);
-    const deleted = await account.deleteAccount().catch(() => false);
-    setDeleting(false);
-    if (!deleted) { haptic("error"); setFailed(true); return; }
-    haptic("success");
-    onDone();
-  };
-  return (
-    <Sheet open onClose={() => {}} title={t("mobile.settings.account")}>
-      <SettingsSection card hint={email}>
-        <SettingsRow icon={<LogOut />} label={t("accountGate.signOut")} chevron={false} onClick={() => { haptic("light"); void account?.signOut(); onDone(); }} />
-      </SettingsSection>
-      <SettingsSection card hint={confirming ? undefined : t("mobile.settings.deleteNow", { email })}>
-        {!confirming
-          ? <SettingsRow icon={<Trash2 />} label={t("mobile.settings.deleteAccount")} danger chevron={false} onClick={() => setConfirming(true)} />
-          : (
-            <div className="px-4 py-4" aria-busy={deleting}>
-              <p className="text-[16px] font-semibold text-ink">{t("mobile.settings.deleteTitle")}</p>
-              <p className="mt-1 text-[14px] leading-5 text-ink-secondary">{t("mobile.settings.deleteNow", { email })}</p>
-              {failed && <p role="alert" className="mt-2 text-[14px] leading-5 text-danger">{t("mobile.settings.deleteFailed")}</p>}
-              <div className="mt-4 flex gap-2">
-                <button type="button" disabled={deleting} onClick={() => setConfirming(false)} className="mobile-press flex min-h-11 flex-1 items-center justify-center rounded-full bg-ink/[0.06] px-4 text-[15px] font-semibold text-ink">{t("mobile.settings.cancel")}</button>
-                <button type="button" disabled={deleting} onClick={() => void deleteAccount()} className="mobile-press flex min-h-11 flex-1 items-center justify-center rounded-full bg-danger px-4 text-[15px] font-semibold text-[var(--color-danger-ink)] disabled:opacity-60">{deleting ? <WorkingDots /> : t("mobile.settings.deleteConfirm")}</button>
-              </div>
-            </div>
-          )}
-      </SettingsSection>
-    </Sheet>
-  );
-}
+const DOT: Record<PlaceStatus, string> = { online: "bg-success", asleep: "bg-ink/[0.22]", offline: "bg-ink/[0.22]" };
+const ROW = "flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left";
 
-/** what a linked place is, and which servers it came through when they are not dusk.bot's own */
-export function placeLine(connection: Pick<MobileConnectionRecord, "origin" | "via">, environment: string | null): string {
-  const kind = t(placeKind(connection) === "cloud" ? "mobile.settings.placeCloud" : "mobile.settings.placeComputer");
-  return environment ? `${kind} · ${environment}` : kind;
-}
-
-function WorkspaceRow({ connection, environment, active, confirming, busy, onSelect, onConfirm, onCancel, onUnlink }: {
-  connection: MobileConnectionRecord;
-  environment: string | null;
-  active: boolean;
-  confirming: boolean;
-  busy: boolean;
-  onSelect: () => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-  onUnlink: () => void;
-}) {
-  const ref = useRef<HTMLButtonElement>(null);
-  useLongPress(ref, onConfirm, !confirming && !busy);
-  if (confirming) return (
-    <div className="px-4 py-2" aria-busy={busy}>
-      <p className="text-[16px] font-semibold text-ink">{t("mobile.settings.unlinkQuestion", { name: connection.label })}</p>
-      <div className="mt-1 flex gap-2">
-        <button autoFocus type="button" disabled={busy} onClick={onCancel} className="mobile-press min-h-11 rounded-full bg-ink/[0.05] px-5 text-[14px] font-semibold text-ink disabled:opacity-40">{t("mobile.settings.cancel")}</button>
-        <button type="button" disabled={busy} onClick={onUnlink} className="mobile-press min-h-11 rounded-full px-5 text-[14px] font-semibold text-danger disabled:opacity-40">{t("mobile.settings.unlink")}</button>
-      </div>
+/** Every place on the account, each a status dot and its name. Until the list is in, skeleton rows of the same height
+ * hold its place; the rows then fade in over them, so nothing below moves. */
+function PlacesList({ places, expected, opening, onChoose }: { places: Place[] | null; expected: number; opening: string | null; onChoose: (place: Place) => void }) {
+  const reduced = useReducedMotion();
+  const drawnAtOnce = useRef(places !== null);
+  if (!places) return (
+    <div role="status" aria-label={t("mobile.settings.placesLoading")}>
+      {Array.from({ length: Math.max(expected, 1) }, (_, index) => (
+        <div key={index} aria-hidden className={ROW}>
+          <span className="size-2.5 shrink-0 rounded-full bg-ink/[0.08]" />
+          <span className="h-4 rounded-full bg-ink/[0.06]" style={{ width: `${[46, 34, 40][index % 3]}%` }} />
+        </div>
+      ))}
     </div>
   );
   return (
-    <div className="flex items-center pr-2">
-      <button ref={ref} type="button" disabled={busy} aria-current={active ? "true" : undefined} onClick={active ? undefined : onSelect} className="mobile-row flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl px-4 py-2.5 text-left text-ink disabled:opacity-40">
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[16px] font-semibold">{connection.label}</span>
-          <span data-testid="mobile-place-kind" className="block truncate text-[13px] text-ink-secondary">{placeLine(connection, environment)}</span>
-        </span>
-        {active && <Check size={20} aria-label={t("mobile.settings.active")} />}
-      </button>
-      <button type="button" disabled={busy} aria-label={t("mobile.settings.workspaceActions", { name: connection.label })} onClick={onConfirm} className="mobile-press flex size-11 shrink-0 items-center justify-center rounded-full text-ink-secondary disabled:opacity-40"><MoreHorizontal aria-hidden size={20} /></button>
-    </div>
+    <motion.ul initial={drawnAtOnce.current ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? 0 : dur.base, ease: ease.out }}>
+      {places.map((place) => <li key={place.key}><PlaceRow place={place} working={opening === place.key} disabled={Boolean(opening)} onChoose={() => onChoose(place)} /></li>)}
+    </motion.ul>
   );
+}
+
+const STATUS_LABEL = { online: "mobile.settings.placeOnline", asleep: "mobile.settings.placeAsleep", offline: "mobile.settings.placeOffline" } as const;
+
+function PlaceRow({ place, working, disabled, onChoose }: { place: Place; working: boolean; disabled: boolean; onChoose: () => void }) {
+  const content = <>
+    <span aria-hidden data-place-status={place.status} className={`size-2.5 shrink-0 rounded-full transition-colors duration-200 ${DOT[place.status]}`} />
+    <span className={`min-w-0 flex-1 truncate text-[16px] text-ink ${place.active ? "font-semibold" : "font-medium"}`}>{place.name}</span>
+    <span className="sr-only">{t(STATUS_LABEL[place.status])}</span>
+    {working && <WorkingDots size={3} />}
+  </>;
+  if (place.active) return <div data-testid="mobile-place" aria-current="true" className={ROW}>{content}</div>;
+  return <button type="button" data-testid="mobile-place" disabled={disabled} aria-busy={working || undefined} onClick={onChoose} className={`mobile-row ${ROW} disabled:opacity-100`}>{content}</button>;
 }

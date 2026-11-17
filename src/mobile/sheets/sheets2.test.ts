@@ -58,13 +58,13 @@ describe("settings account rows", () => {
     expect(accountRows({ native: false, signedIn: false }).dashboard).toBe(true);
   });
 
-  it("an account made in the app can be deleted from the app", () => {
-    expect(accountRows({ native: true, signedIn: true })).toMatchObject({ signOut: true, deleteAccount: true });
-    expect(accountRows({ native: true, signedIn: false })).toMatchObject({ signOut: false, deleteAccount: false });
+  it("a signed-in phone can sign out and delete the account", () => {
+    expect(accountRows({ native: true, signedIn: true })).toEqual({ dashboard: false, signOut: true, deleteAccount: true, signIn: false });
+    expect(accountRows({ native: true, signedIn: false }).signOut).toBe(false);
   });
 
-  it("a phone with no account is offered the sign-in, never the sign-out or delete rows", () => {
-    expect(accountRows({ native: true, signedIn: false, offered: true })).toMatchObject({ signIn: true, signOut: false, deleteAccount: false });
+  it("a phone with no account is offered the sign-in, never the sign-out row", () => {
+    expect(accountRows({ native: true, signedIn: false, offered: true })).toMatchObject({ signIn: true, signOut: false });
     expect(accountRows({ native: true, signedIn: true, offered: true }).signIn).toBe(false);
     expect(accountRows({ native: true, signedIn: false, offered: false }).signIn).toBe(false);
     expect(LEGAL_LINKS.privacy).toBe("https://dusk.bot/privacy");

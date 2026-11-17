@@ -4,8 +4,10 @@ import { botEngine, claudeUpdateTarget } from "@/lib/failed-turn";
 import { blockerDetail, canOfferSignIn, currentFailureWords, failedReplyDetail, failedReplyKind, failedReplyTitle, mostActionable, restartAlreadyDid, trailingRows } from "@/lib/failed-reply";
 import { statusActivity } from "@/lib/activity-runs";
 import { lowerFirst } from "@/lib/lower-first";
+import { resetTime } from "@/lib/limit-resets";
+import { providerName } from "@/lib/simple-model-menu";
 import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
-import { useStore, type Message } from "@/state/store";
+import { useStore, type Message, type ModelSelection } from "@/state/store";
 import { failedTurnCause } from "../../shared/failed-turn";
 import { freeFallback } from "../../shared/ai-ranking";
 import { engineReady } from "./EngineLibrary";
@@ -16,6 +18,8 @@ import { CARD_ACTION, ChatErrorCard } from "./ChatErrorBanner";
 // the card's second way on, next to its one main action: the same pill, without the fill until hovered
 const QUIET_CARD_ACTION = "ui-button ui-button-sm ui-button-pill border-transparent bg-transparent text-ink-secondary hover:bg-ink/[0.06] hover:text-ink";
 import { ClaudeUpdatePrompt } from "./ClaudeUpdatePrompt";
+import { ScreenAccessCard, useScreenAccessMissing } from "./ScreenAccessNotice";
+import { isThisComputerNotReady } from "../../shared/your-computer";
 import { aiRunsOnServer } from "./ComposerSignInNotice";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { useLimitResetContinue } from "./EngineUsage";
@@ -24,6 +28,16 @@ import { openBotSettings } from "./bot-panel/panel-link";
 
 // a card someone closed stays closed for this run of the app; a newer failure is a new card
 const dismissed = new Set<string>();
+// the AI each failure was first shown under: a switch of model, or connecting an AI of one's own, closes it
+const shownUnder = new Map<string, string>();
+
+/** True once the AI a failure was first shown under has changed since (another model or engine, or one's own AI). */
+export function aiChangedSince(seen: Map<string, string>, messageId: string, selection: ModelSelection | undefined, ownAi: boolean): boolean {
+  const now = `${selection?.instanceId ?? ""}/${selection?.model ?? ""}/${ownAi ? 1 : 0}`;
+  const first = seen.get(messageId);
+  if (first === undefined) { seen.set(messageId, now); return false; }
+  return first !== now;
+}
 
 /** The notice rows the card above the composer says, so the transcript leaves them out. */
 export const FoldedNoticesContext = createContext<ReadonlySet<string>>(new Set());
@@ -70,19 +84,41 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   const items = failures.filter((m) => !dismissed.has(m.id)).map((message) => {
     const id = message.from?.botId ?? ownBotId;
     const bot = state.bots.find((candidate) => candidate.id === id);
+    const engineNow = botEngine(bot, state.instances);
+    // the free backup ran out, and this bot answers on another AI now: nothing left to fix
+    const freeGone = message.tool?.reason === "no_ai" && engineNow !== undefined && !freeFallback(engineNow);
+    if (freeGone || aiChangedSince(shownUnder, message.id, bot?.modelSelection, ownAi)) { dismissed.add(message.id); return null; }
     const engine = botEngine(bot, state.instances);
     return { message, bot, engine, kind: failedReplyKind(message.tool!, engine, ownAi) };
-  });
+  }).filter((item) => item !== null);
   const lead = mostActionable(items);
   const tool = lead?.message.tool;
   const leadBotId = lead?.bot?.id ?? ownBotId;
   const resume = useLimitResetContinue(leadBotId, threadId, lead?.kind === "usage_limit" ? tool?.limitResetsAt : undefined);
   const signInNotice = notices.find((m) => m.tool?.setup === true || m.tool?.signIn === true);
+  const screenAccessMissing = useScreenAccessMissing();
   const close = () => {
     for (const item of items) dismissed.add(item.message.id);
     for (const notice of notices) dismissed.add(notice.id);
     setClosed((n) => n + 1);
   };
+  // the turn waits for its AI's limit to reset and carries on by itself: no failure to fix, only a wait to stop
+  const held = lead?.kind === "usage_limit" ? tool?.limitHold : undefined;
+  const heldBotId = lead?.bot?.id ?? ownBotId;
+  if (held) {
+    const ai = lead?.engine ? providerName(lead.engine) : t("failedReply.limitHold.anAi");
+    const title = held.retryAt ? t("failedReply.limitHold.retry", { ai, time: resetTime(held.retryAt) })
+      : held.resetsAt ? t("failedReply.limitHold.paused", { ai, time: resetTime(held.resetsAt) })
+      : t("failedReply.limitHold.pausedUnknown", { ai });
+    return (
+      <div className="mb-2 w-full px-5" data-failed-reply="" data-limit-hold="">
+        <ChatErrorCard tone="info" icon="batteryFull" title={title} onDismiss={close}
+          actions={heldBotId && threadId && (
+            <button type="button" onClick={() => dispatch({ type: "interrupt", botId: heldBotId, threadId })} className={QUIET_CARD_ACTION}>{t("failedReply.stopWaiting")}</button>
+          )} />
+      </div>
+    );
+  }
   if (!lead || !tool) {
     // only notices: the newest one is the card, the one way on its pill
     const last = notices.at(-1);
@@ -98,6 +134,10 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
       </div>
     );
   }
+
+  // a turn lost to screen access before the bot chatted without it: the one way on is allowing it
+  const placeCause = lead.kind === "place" ? tool.place?.params.cause : undefined;
+  if (screenAccessMissing && typeof placeCause === "string" && isThisComputerNotReady(placeCause)) return <ScreenAccessCard onDismiss={close} />;
 
   if (lead.kind === "no_ai") {
     // no AI of the person's own yet: the first reply is the way to connect one, not an error

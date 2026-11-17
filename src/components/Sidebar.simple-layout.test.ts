@@ -117,7 +117,8 @@ describe("Simple-mode sidebar layout", () => {
     expect(tree.some((node) => node.type === SidebarTileGrid)).toBe(false);
   });
 
-  it("keeps the order the person dragged the bots into, as Discord's channels do: a turn starting or a message arriving moves no row", () => {
+  it("in the person's own order, keeps the order they dragged the bots into, as Discord's channels do: a turn starting or a message arriving moves no row", () => {
+    fixture.storage.set("duskbot.sidebarBotOrder", "custom");
     const at = Date.now() - 60_000;
     const said = (id: string, when: number): Message => ({ id, at: when, role: "bot", kind: "text", text: id });
     fixture.state = { ...fixture.state, sections: [], groups: [], bots: [
@@ -135,6 +136,20 @@ describe("Simple-mode sidebar layout", () => {
     expect(listedBots(render().tree)).toEqual(["atlas", "bea", "cora"]);
   });
 
+  it("by recent activity, puts the bot with a new message first and the latest chats next, pinned ones still above", () => {
+    const at = Date.now() - 60_000;
+    const thread = (id: string, when: number) => [{ threadId: `${id}-thread`, title: "Chat", createdAt: at, updatedAt: when, lastThreadOrderAt: when }];
+    fixture.state = { ...fixture.state, sections: [], groups: [], bots: [
+      bot("atlas", { tasks: thread("atlas", at + 1) }),
+      bot("bea", { tasks: thread("bea", at + 3) }),
+      bot("cora", { tasks: thread("cora", at + 2) }),
+      bot("dodo", { tasks: thread("dodo", at), pinned: true }),
+    ] };
+    expect(listedBots(render().tree)).toEqual(["bea", "cora", "atlas"]);
+    fixture.state = { ...fixture.state, bots: fixture.state.bots.map((one) => one.id === "atlas" ? { ...one, unread: true, tasks: one.tasks?.map((task) => ({ ...task, unread: true })) } : one) };
+    expect(listedBots(render().tree)).toEqual(["atlas", "bea", "cora"]);
+  });
+
   it("leads with the main bot, headless, when it is the only bot outside every department", () => {
     fixture.state = { ...fixture.state, bots: [bot("chief", { chiefOfStaff: true }), bot("dodo", { section: "Work" })] };
     const { tree } = render();
@@ -143,8 +158,8 @@ describe("Simple-mode sidebar layout", () => {
     expect(headers(tree).map((header) => header.props.name)).toEqual(["Work", "Group chats"]);
   });
 
-  it("shows the pinned bots as tiles above the rows and the Chief as the first row, with no Pinned or Bots heading", () => {
-    fixture.state = { ...fixture.state, bots: [bot("chief", { chiefOfStaff: true, pinned: true }), bot("atlas", { pinned: true }), bot("bea"), bot("dodo", { section: "Work", pinned: true })] };
+  it("shows the pinned bots as tiles above the rows and the unpinned Chief as the first row, with no Pinned or Bots heading", () => {
+    fixture.state = { ...fixture.state, bots: [bot("chief", { chiefOfStaff: true }), bot("atlas", { pinned: true }), bot("bea"), bot("dodo", { section: "Work", pinned: true })] };
     const { tree } = render();
     const grid = tree.find((node) => node.type === SidebarTileGrid)!.props as Parameters<typeof SidebarTileGrid>[0];
     expect(grid.primary).toBeNull();
@@ -152,6 +167,14 @@ describe("Simple-mode sidebar layout", () => {
     expect(sectionOrder(tree)).toEqual([userSectionId("Work"), BOTS_SECTION_ID, CHANNELS_SECTION_ID]);
     expect(listedBots(tree)).toEqual(["chief", "bea"]);
     expect(headers(tree).map((header) => header.props.name)).toEqual(["Work", "Unassigned", "Group chats"]);
+  });
+
+  it("lifts a pinned unassigned Chief into the tiles with the other pinned bots", () => {
+    fixture.state = { ...fixture.state, bots: [bot("chief", { chiefOfStaff: true, pinned: true }), bot("atlas", { pinned: true }), bot("bea")] };
+    const { tree } = render();
+    const grid = tree.find((node) => node.type === SidebarTileGrid)!.props as Parameters<typeof SidebarTileGrid>[0];
+    expect(grid.pinned.map((candidate) => candidate.id)).toEqual(["chief", "atlas"]);
+    expect(listedBots(tree)).toEqual(["bea"]);
   });
 
   it("fades the list's edges in both modes, with the top buttons and the tiles fixed above it", () => {

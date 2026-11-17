@@ -66,11 +66,26 @@ describe("mobile pairing link adapter", () => {
     expect(appLinkFromUniversal(link)).toBe("duskbot://signin?email=a%2Bb%40example.test");
     expect(parseSignInLink(link)).toEqual({ email: "a+b@example.test" });
     expect(parseSignInLink("duskbot://signin")).toEqual({ email: "" });
+    // the code's account service rides along, so a phone on the other one can follow it
+    expect(universalSignInLink("a@b.test", "ABCD-EFGH", "https://preview.dusk.bot")).toBe("https://dusk.bot/m/signin#c=ABCDEFGH&email=a%40b.test&s=preview");
+    expect(parseSignInLink(universalSignInLink("a@b.test", "ABCD-EFGH", "https://preview.dusk.bot"))).toEqual({ email: "a@b.test", code: "ABCDEFGH", service: "preview" });
+    expect(parseSignInLink(universalSignInLink("a@b.test", "ABCD-EFGH", "https://dusk.bot"))).toMatchObject({ service: "production" });
+    expect(universalSignInLink("a@b.test", null, "http://127.0.0.1:9000")).toBe("https://dusk.bot/m/signin#email=a%40b.test");
+    expect(parseSignInLink("duskbot://signin?s=elsewhere")).toEqual({ email: "" });
     expect(parseSignInLink(universalSignInLink(null))).toEqual({ email: "" });
     expect(parseSignInLink("duskbot://signin?email=not-an-email")).toEqual({ email: "" });
     expect(appLinkFromUniversal("https://dusk.bot/m/signin?email=a@b.c"), "the email stays where no server sees it").toBeNull();
     expect(parseSignInLink("duskbot://pair?m=x")).toBeNull();
     expect(parseSignInLink("https://evil.example/m/signin#email=a@b.c")).toBeNull();
+  });
+
+  it("a dusk cloud's qr with a desktop's code carries it beside the email, after the # where no server sees it", () => {
+    const link = universalSignInLink("a@example.test", "ABCD-EFGH");
+    expect(link).toBe("https://dusk.bot/m/signin#c=ABCDEFGH&email=a%40example.test");
+    expect(parseSignInLink(link)).toEqual({ email: "a@example.test", code: "ABCDEFGH" });
+    expect(parseSignInLink("duskbot://signin?c=abcdefgh")).toEqual({ email: "", code: "ABCDEFGH" });
+    expect(parseSignInLink("duskbot://signin?c=ABCD1234"), "never a code with digits").toEqual({ email: "" });
+    expect(parseSignInLink("duskbot://signin?c=ABCDEFGHJKLM"), "nor a computer's 12").toEqual({ email: "" });
   });
 
   it("leaves every other address alone", () => {

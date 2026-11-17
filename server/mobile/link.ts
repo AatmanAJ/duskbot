@@ -32,6 +32,8 @@ import { formatPairingCode, type Scope, type SessionRegistry } from "../sessions
 import { postLookup } from "./lookup.ts";
 import { createPhonePresence } from "./presence.ts";
 import { createPushSender, pushRelayBase, type PushMessage, type PushSender } from "./push.ts";
+import { createTurnActivities } from "./turn-activity.ts";
+import type { TurnActivityAttributes, TurnActivityEvent } from "../../shared/phone-activity.ts";
 
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 const B64URL_KEY = /^[A-Za-z0-9_-]{43}$/;
@@ -43,6 +45,8 @@ const SYNC_WAIT_MAX_S = 25;
 const MAX_DEVICES = 24;
 /** a push the service could not take is tried again after these */
 const PUSH_RETRY_MS = [10_000, 60_000];
+/** a notification waits this long before it pushes, so one read right away (on any device) never buzzes */
+export const PUSH_GRACE_MS = 4_000;
 
 const relayId = () => Array.from(randomBytes(10), (byte) => B32[byte & 31]).join("");
 
@@ -55,6 +59,8 @@ const deviceSchema = z.object({
   createdAt: z.number(),
   relay: z.object({ channel: z.string().regex(/^[a-z2-7]{10}$/), verifier: z.string().regex(HEX64), pub: z.string().regex(B64URL_KEY) }).nullable(),
   push: z.object({ service: z.enum(PUSH_SERVICES), token: z.string().min(8).max(4096), environment: z.enum(["sandbox", "production"]).optional(), updatedAt: z.number() }).nullable(),
+  /** the iPhone's Live Activity push-to-start token */
+  activityStart: z.object({ token: z.string().min(8).max(4096), environment: z.enum(["sandbox", "production"]).optional(), updatedAt: z.number() }).nullable().optional(),
 });
 type DeviceRecord = z.infer<typeof deviceSchema>;
 const fileSchema = z.object({ v: z.literal(1), devices: z.array(deviceSchema) });
@@ -86,11 +92,23 @@ export interface MobileLinkDeps {
 }
 
 let activeNotify: ((notification: NotificationLogEntry, options: { adminOnly?: boolean; person?: string }) => void) | null = null;
+let activeRead: ((ids: readonly string[]) => void) | null = null;
+let activeTurnActivity: ((threadId: string, event: TurnActivityEvent, context: { attributes?: TurnActivityAttributes; reply?: string }) => void) | null = null;
+
+/** a turn's progress, for the Live Activities phones show for its thread; a no-op until a workspace link exists */
+export function turnActivityToPhones(threadId: string, event: TurnActivityEvent, context: { attributes?: TurnActivityAttributes; reply?: string } = {}): void {
+  activeTurnActivity?.(threadId, event, context);
+}
 
 /** the event stream's `notify` frames, fanned out to registered phones; a no-op until a workspace link exists */
 export function notifyPhones(notification: unknown, options: { adminOnly?: boolean; person?: string } = {}): void {
   const entry = notification as NotificationLogEntry | null;
   if (activeNotify && entry && typeof entry.id === "string" && typeof entry.threadId === "string") activeNotify(entry, options);
+}
+
+/** the event stream's `notifications.read` frames: a notification read anywhere never pushes after that */
+export function readOnPhones(ids: unknown): void {
+  if (activeRead && Array.isArray(ids)) activeRead(ids.filter((id): id is string => typeof id === "string"));
 }
 
 /** DUSK_MOBILE_RELAY: the relay that holds typed-code lookups when no link agent names one ("default" for the public one,
@@ -116,16 +134,38 @@ export function createMobileLink(deps: MobileLinkDeps) {
   const syncWaiters = new Set<() => void>();
   const applyWaiters = new Set<() => void>();
   const pushed = new Set<string>();
-  const presence = createPhonePresence<PushMessage>({ flush: (deviceId, events) => {
-    const device = devices.find((one) => one.id === deviceId);
-    if (!device?.push) return;
-    // one push per conversation: the newest; the phone collapses a thread's pushes anyway
-    const latest = new Map<string, PushMessage>();
-    for (const event of events) if (!deps.isRead?.(event.id)) latest.set(event.threadId, event);
-    for (const event of latest.values()) void deliver(device, event);
-  } });
+  const presence = createPhonePresence({ now });
+  /** pushes waiting out their grace, one per phone and conversation: a newer notification there replaces the older */
+  const waiting = new Map<string, { timer: ReturnType<typeof setTimeout>; id: string }>();
+  /** not read on any device, and the phone is not open on that conversation */
+  const stillNews = (device: DeviceRecord, message: PushMessage) => !deps.isRead?.(message.id) && !presence.viewing(device.id, message.threadId);
 
-  /** sends now; a push the service could not take goes again at 10 s and 60 s while the phone is still away and unread */
+  function later(device: DeviceRecord, message: PushMessage) {
+    const key = `${device.id}\n${message.threadId}`;
+    clearTimeout(waiting.get(key)?.timer);
+    const timer = setTimeout(() => {
+      if (waiting.get(key)?.timer === timer) waiting.delete(key);
+      if (devices.includes(device) && device.push && stillNews(device, message)) void deliver(device, message);
+    }, PUSH_GRACE_MS);
+    timer.unref?.();
+    waiting.set(key, { timer, id: message.id });
+  }
+  function read(ids: readonly string[]) {
+    const done = new Set(ids);
+    for (const [key, one] of waiting) if (done.has(one.id)) { clearTimeout(one.timer); waiting.delete(key); }
+  }
+  const activities = createTurnActivities({
+    now,
+    send: (target, message) => push.sendActivity?.({ service: "apns", ...target }, message) ?? Promise.resolve("skipped"),
+    startTargets: () => {
+      const live = new Set(deps.sessions.list().map((session) => session.id));
+      return devices.flatMap((device) => device.activityStart && live.has(device.sessionId) && presence.away(device.id)
+        ? [{ deviceId: device.id, token: device.activityStart.token, ...(device.activityStart.environment ? { environment: device.activityStart.environment } : {}) }]
+        : []);
+    },
+  });
+
+  /** sends now; a push the service could not take goes again at 10 s and 60 s while it is still news to the phone */
   function deliver(device: DeviceRecord, message: PushMessage, attempt = 0): Promise<void> {
     const registration = device.push;
     if (!registration) return Promise.resolve();
@@ -136,7 +176,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
         const wait = PUSH_RETRY_MS[attempt];
         if (outcome !== "failed" || wait === undefined) return;
         const timer = setTimeout(() => {
-          if (device.push !== registration || !devices.includes(device) || !presence.away(device.id) || deps.isRead?.(message.id)) return;
+          if (device.push !== registration || !devices.includes(device) || !stillNews(device, message)) return;
           void deliver(device, message, attempt + 1);
         }, wait);
         timer.unref?.();
@@ -169,7 +209,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
   function prune(): boolean {
     const live = devices.filter((device) => deps.sessions.isLive(device.sessionId));
     if (live.length === devices.length) return false;
-    for (const device of devices) if (!live.includes(device)) presence.forget(device.id);
+    for (const device of devices) if (!live.includes(device)) { presence.forget(device.id); activities.forgetDevice(device.id); }
     devices = live;
     persist();
     bump();
@@ -177,7 +217,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
   }
   deps.sessions.onSessionRevoked((sessionId) => {
     if (!devices.some((device) => device.sessionId === sessionId)) return;
-    for (const device of devices) if (device.sessionId === sessionId) presence.forget(device.id);
+    for (const device of devices) if (device.sessionId === sessionId) { presence.forget(device.id); activities.forgetDevice(device.id); }
     devices = devices.filter((device) => device.sessionId !== sessionId);
     persist();
     bump();
@@ -309,6 +349,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     const device = devices.find((one) => one.id === id);
     if (!device) return false;
     presence.forget(id);
+    activities.forgetDevice(id);
     devices = devices.filter((one) => one.id !== id);
     persist();
     bump();
@@ -351,17 +392,19 @@ export function createMobileLink(deps: MobileLinkDeps) {
     const targets = devices.filter((device) => device.push);
     if (!targets.length) return;
     const sessions = new Map(deps.sessions.list().map((session) => [session.id, session]));
-    const message: PushMessage = { id: notification.id, kind: notification.kind, title: notification.title, botId: notification.botId, botName: notification.botName, threadId: notification.threadId, ...(notification.groupId ? { groupId: notification.groupId } : {}) };
+    const message: PushMessage = { id: notification.id, kind: notification.kind, title: notification.title, botId: notification.botId, botName: notification.botName, threadId: notification.threadId, ...(notification.groupId ? { groupId: notification.groupId } : {}), ...(notification.requestId ? { requestId: notification.requestId } : {}) };
     await Promise.all(targets.map((device) => {
       const session = sessions.get(device.sessionId);
       if (!session || (options.adminOnly && !session.scopes.includes("admin")) || !device.push) return;
-      return presence.route(device.id, message) === "push" ? deliver(device, message) : undefined;
+      if (!presence.viewing(device.id, message.threadId)) later(device, message);
     }));
   }
 
   const deviceOf = (auth: RequestAuth) => (auth.kind === "session" ? devices.find((device) => device.sessionId === auth.session.id) ?? null : null);
 
   activeNotify = (notification, options) => { void notify(notification, options).catch((error) => log(`mobile: push failed (${(error as Error).message})`)); };
+  activeTurnActivity = (threadId, event, context) => activities.event(threadId, event, context);
+  activeRead = read;
 
   return {
     /** POST /api/mobile/redeem, before the auth gate: the grant's secret is the authorization */
@@ -416,12 +459,40 @@ export function createMobileLink(deps: MobileLinkDeps) {
         json(res, 200, { ok: true, delivering: push.delivers?.(service) ?? push.configured.includes(service) });
         return true;
       }
+      if ((path === "/api/mobile/activity" || path === "/api/mobile/activity-start") && (method === "PUT" || method === "DELETE")) {
+        const device = deviceOf(auth);
+        if (!device || device.platform !== "ios") { json(res, 403, { error: "only a paired iPhone shows Live Activities" }); return true; }
+        const value = await body();
+        const token = typeof value.token === "string" ? value.token.trim() : "";
+        const environment = value.environment === "sandbox" || value.environment === "production" ? value.environment : undefined;
+        if (path === "/api/mobile/activity-start") {
+          if (method === "DELETE") device.activityStart = null;
+          else if (/^[0-9a-f]{16,512}$/i.test(token)) device.activityStart = { token, ...(environment ? { environment } : {}), updatedAt: now() };
+          else { json(res, 400, { error: "token must be the push-to-start token, hex" }); return true; }
+          persist();
+          json(res, 200, { ok: true });
+          return true;
+        }
+        const threadId = typeof value.threadId === "string" && /^[\w:.-]{1,128}$/.test(value.threadId) ? value.threadId : null;
+        if (!threadId) { json(res, 400, { error: "threadId is required" }); return true; }
+        if (method === "DELETE") { activities.unregister(device.id, threadId); json(res, 200, { ok: true }); return true; }
+        if (!/^[0-9a-f]{16,512}$/i.test(token)) { json(res, 400, { error: "token must be the activity's push token, hex" }); return true; }
+        activities.register(device.id, {
+          threadId, token, ...(environment ? { environment } : {}),
+          ...(typeof value.key === "string" ? { key: value.key } : {}),
+          ...(typeof value.startedAt === "number" ? { startedAt: value.startedAt } : {}),
+        });
+        json(res, 200, { ok: true, delivering: push.delivers?.("apns") ?? push.configured.includes("apns") });
+        return true;
+      }
       if (path === "/api/mobile/presence" && method === "PUT") {
         const device = deviceOf(auth);
         if (!device) { json(res, 403, { error: "only a paired phone reports where it is" }); return true; }
         const value = await body();
         if (typeof value.away !== "boolean") { json(res, 400, { error: "away must be true or false" }); return true; }
-        presence.report(device.id, value.away);
+        const viewing = value.threadId ?? null;
+        if (viewing !== null && (typeof viewing !== "string" || !/^[\w:.-]{1,128}$/.test(viewing))) { json(res, 400, { error: "threadId must be a conversation id or null" }); return true; }
+        presence.report(device.id, value.away, viewing);
         // the app open in the foreground on a Cloud home: the same hint as the desktop's focus, never someone using it
         if (!value.away) cloudPowerNow()?.noteFocus?.();
         json(res, 200, { ok: true });
@@ -439,6 +510,11 @@ export function createMobileLink(deps: MobileLinkDeps) {
       return false;
     },
     notify: (notification: NotificationLogEntry, options?: { adminOnly?: boolean; person?: string }) => notify(notification, options),
+    /** these notifications were read somewhere: their pushes still waiting out the grace never go */
+    read,
+    turnActivity: (threadId: string, event: TurnActivityEvent, context?: { attributes?: TurnActivityAttributes; reply?: string }) => activities.event(threadId, event, context),
+    /** for tests */
+    activities: (threadId: string) => activities.state(threadId),
     /** for tests */
     state: () => ({ rev, applied, devices: devices.map((device) => ({ ...device })), grants: grants.size, agent }),
   };

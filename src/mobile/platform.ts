@@ -1,7 +1,10 @@
 import { createContext, useContext } from "react";
 import type { MobileOpenTarget } from "../../shared/mobile-link";
+import type { TurnActivityAttributes, TurnActivityState } from "../../shared/phone-activity";
+import type { NativeAction } from "./phone-actions";
 import { friendlyError } from "@/lib/plain-error";
 import type { GlassBridge } from "./native-glass";
+import type { MenuBridge } from "./native-menu";
 
 export type HapticKind = "light" | "soft" | "medium" | "selection" | "error" | "success";
 
@@ -16,6 +19,9 @@ export interface ScanResult {
   text: string;
 }
 
+/** A push still in Notification Center: its own identifier, the conversation and the notification it was for. */
+export interface DeliveredNotification { id: string; threadId?: string; notificationId?: string }
+
 export interface AppleCredential { identityToken: string; authorizationCode: string; givenName?: string; familyName?: string }
 
 export type CameraPermission = "granted" | "denied" | "prompt";
@@ -25,6 +31,20 @@ export type CameraPermission = "granted" | "denied" | "prompt";
 export interface CameraSession {
   stop(): Promise<void>;
   torch?: { set(on: boolean): Promise<void> };
+  /** The system drew the whole scanner itself (iPhone, VisionKit): the page shows none of its own. */
+  fullScreen?: boolean;
+  /** A read code is being redeemed: a full screen scanner pauses and says so. */
+  busy?(on: boolean, label?: string): void;
+}
+
+/** The page's words for a scanner the system draws full screen. */
+export interface ScanOverlay {
+  title: string;
+  hint: string;
+  close: string;
+  torch: string;
+  /** buttons under the viewfinder; `icon` is an SF Symbol */
+  actions: { key: string; title: string; icon?: string }[];
 }
 
 export interface CameraScanner {
@@ -32,11 +52,39 @@ export interface CameraScanner {
   request(): Promise<CameraPermission>;
   /** The OS settings page for this app, where a refused camera is turned back on. */
   openSettings?(): Promise<void>;
-  start(options: { onCode: (text: string) => void; onError?: (message: string) => void; video?: HTMLVideoElement | null }): Promise<CameraSession>;
+  start(options: {
+    onCode: (text: string) => void;
+    onError?: (message: string) => void;
+    video?: HTMLVideoElement | null;
+    overlay?: ScanOverlay;
+    /** a button of the overlay, or "close" */
+    onAction?: (key: string) => void;
+  }): Promise<CameraSession>;
 }
 
 /** Everything the phone layer asks of the device. The native app supplies Capacitor plugins; the web preview and a
  * plain browser get the fallbacks in `webPlatform`. Capability flags, never user-agent guesses. */
+export interface OrientationBridge {
+  allowLandscape(on: boolean): void;
+  rotate(to: "portrait" | "landscape"): void;
+}
+
+export interface TurnActivityBridge {
+  /** the activity's id, or null when the person turned Live Activities off */
+  start(attributes: TurnActivityAttributes, state: TurnActivityState): Promise<string | null>;
+  update(id: string, state: TurnActivityState): Promise<void>;
+  /** stays a few minutes; `now` takes it away at once */
+  end(id: string, state: TurnActivityState, now?: boolean): Promise<void>;
+  /** the ones running, the ones a push started among them */
+  list(): Promise<Array<{ id: string; botId: string; threadId: string; startedAt: number }>>;
+  /** each activity's push token, as the system issues or renews it */
+  onToken(listener: (token: { id: string; threadId: string; token: string; startedAt: number }) => void): () => void;
+  /** the push-to-start token (iOS 17.2 and later) */
+  onStartToken(listener: (token: string) => void): () => void;
+  /** the X25519 public key (base64url) the done line is sealed to, or null when the phone shows no previews */
+  lineKey(): Promise<string | null>;
+}
+
 export interface MobilePlatform {
   kind: "ios" | "android" | "web";
   native: boolean;
@@ -79,8 +127,23 @@ export interface MobilePlatform {
    * the system's question: a phone not yet asked resolves null. */
   registerPush?(options?: { prompt?: boolean }): Promise<{ token: string; platform: "apns" | "fcm" } | null>;
   onNotificationOpen?(listener: (target: MobileOpenTarget) => void): () => void;
+  /** The conversation on screen, null for none: a push about it shows nothing while the app is open, any other shows
+   * the system's own banner. */
+  setViewingThread?(threadId: string | null): void;
+  /** What Notification Center holds from the bot host, and its removal. */
+  deliveredNotifications?(): Promise<DeliveredNotification[]>;
+  removeDeliveredNotifications?(ids: readonly string[]): Promise<void>;
+  /** A push's button, its reply field, a tap on a push from the bot host, or a Live Activity's button; one that arrived
+   * before a listener waits for the first. */
+  onPhoneAction?(listener: (action: NativeAction) => void): () => void;
+  /** The iPhone's Live Activities (ActivityKit), where the system allows them. */
+  turnActivity?: TurnActivityBridge;
   /** The chat header and composer drawn in the OS's own glass, where the app has it. */
   glass?: GlassBridge;
+  /** The system's own context menu over the page's items, where the app has it. */
+  menu?: MenuBridge;
+  /** The phone may turn sideways while a remote screen is open; everywhere else the app stays upright. */
+  orientation?: OrientationBridge;
   deviceName(): string;
   appVersion: string;
 }

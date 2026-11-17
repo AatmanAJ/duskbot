@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activityStepLabel, formatProgressSize, liveActivityLabel, liveActivityPhrases, phraseAt, phraseHoldMs, turnNowPhrases, NOTICE_LABEL_MAX } from "./live-activity";
+import { activityStepLabel, formatProgressSize, liveActivityLabel, liveActivityPhrases, phraseAt, phraseCycle, phraseHoldMs, rotationHoldMs, turnNowPhrases, NOTICE_LABEL_MAX } from "./live-activity";
 import { friendlyNowPhrases } from "./friendly-activity";
 import type { Message } from "@/state/store";
 
@@ -123,6 +123,35 @@ describe("phraseAt", () => {
       const hold = phraseHoldMs("turn-1", step);
       expect(hold).toBeGreaterThanOrEqual(4000);
       expect(hold).toBeLessThanOrEqual(6000);
+    }
+  });
+});
+
+describe("phraseCycle: the working line's shuffle bag", () => {
+  const pool = Array.from({ length: 30 }, (_, index) => `Word ${index}`);
+
+  it("says every phrase once before any repeats, and never one twice in a row, across passes too", () => {
+    for (const seed of ["a", "b", "turn-7", "bot:thread:1|friendly:generic"]) {
+      const walk = Array.from({ length: pool.length * 4 }, (_, step) => phraseCycle(pool, seed, step));
+      for (let pass = 0; pass < 4; pass++) expect(new Set(walk.slice(pass * pool.length, (pass + 1) * pool.length)).size).toBe(pool.length);
+      for (let i = 1; i < walk.length; i++) expect(walk[i], `${seed} step ${i}`).not.toBe(walk[i - 1]);
+    }
+  });
+
+  it("is reproducible for a seed, differs across turns, and copes with tiny or repeated pools", () => {
+    const walk = (seed: string) => Array.from({ length: 10 }, (_, step) => phraseCycle(pool, seed, step)).join("|");
+    expect(walk("turn-1")).toBe(walk("turn-1"));
+    expect(new Set(["a", "b", "c", "d"].map(walk)).size).toBeGreaterThan(1);
+    expect(phraseCycle(["Typing…"], "x", 9)).toBe("Typing…");
+    const two = Array.from({ length: 6 }, (_, step) => phraseCycle(["A", "B", "A"], "x", step));
+    for (let i = 1; i < two.length; i++) expect(two[i]).not.toBe(two[i - 1]);
+  });
+
+  it("holds each phrase 2.5 to 3.5 seconds, so a 30 s turn says many", () => {
+    for (let step = 0; step < 50; step++) {
+      const hold = rotationHoldMs("turn-1", step);
+      expect(hold).toBeGreaterThanOrEqual(2500);
+      expect(hold).toBeLessThanOrEqual(3500);
     }
   });
 });

@@ -246,6 +246,16 @@ function ownerFix(run: RoutineRun): { reason: string; fix: AutomationFix } | nul
   return null;
 }
 
+const settledRuns = (automation: Pick<Automation, "runs">) =>
+  automation.runs.filter((run) => run.status !== "cancelled" && run.status !== "queued" && !isLimitSkip(run));
+
+/** The last run, while it waits on the person: the server names what it waits on in `attention`. A wait with nothing named
+ * is the bot's own (a busy chat), never the person's. */
+export function runWaitingOnYou(automation: Pick<Automation, "runs">): RoutineRun | null {
+  const latest = settledRuns(automation)[0];
+  return latest?.status === "waiting" && latest.attention?.trim() ? latest : null;
+}
+
 /** Done when a one-time automation's time has passed, Paused when switched off. Needs you when its last run waits on the
  * person, its app needs reconnecting, failed for a reason only the person can fix, or failed twice running. A run that
  * failed and then recovered is Working. */
@@ -254,9 +264,10 @@ export function automationStatus(automation: Pick<Automation, "enabled" | "runs"
   const app = automation.appTrigger && appProblem(automation.appTrigger);
   if (app) return { state: "needs-you", ...app };
   if (automation.checkTrouble) return { state: "needs-you", reason: automation.checkTrouble, fix: SIGNED_OUT.test(automation.checkTrouble) ? "reconnect" : "run" };
-  const settled = automation.runs.filter((run) => run.status !== "cancelled" && run.status !== "queued" && !isLimitSkip(run));
+  const settled = settledRuns(automation);
   const latest = settled[0];
-  if (latest?.status === "waiting") return { state: "needs-you", reason: t("automations.reason.answer"), fix: "answer" };
+  const waiting = runWaitingOnYou(automation);
+  if (waiting) return { state: "needs-you", reason: waiting.attention!.trim(), fix: "answer" };
   if (latest && isProblem(latest)) {
     const owner = ownerFix(latest);
     if (owner) return { state: "needs-you", ...owner };
@@ -319,8 +330,12 @@ export function runLine(run: RoutineRun, now = Date.now()): { when: string; mark
   const short = (text: string) => (text.length > 110 ? `${text.slice(0, 109).trimEnd()}…` : text);
   const when = lastWhen(runTime(run), now);
   if (run.status === "completed") return { when, mark: "✓", text: run.report?.state === "quiet" ? t("automations.run.nothingNew") : short(firstLine(run.output)) || t("automations.run.done") };
-  if (run.status === "waiting") return { when, mark: "!", text: t("automations.reason.answer") };
+  if (run.status === "waiting") {
+    const attention = short(firstLine(run.attention));
+    return { when, mark: attention ? "!" : "…", text: attention || t("routines.status.waiting") };
+  }
   if (isLimitSkip(run)) return { when, mark: "–", text: t("routines.strip.skipped") };
+  if (run.status === "queued" && run.attention?.trim()) return { when, mark: "…", text: short(firstLine(run.attention)) };
   if (run.status === "running" || run.status === "queued") return { when, mark: "…", text: t("automations.runningNow") };
   if (run.status === "cancelled") {
     const reason = short(firstLine(run.error));

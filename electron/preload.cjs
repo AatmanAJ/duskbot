@@ -193,6 +193,13 @@ const bridge = {
       ipcRenderer.on("workspaces:changed", handler);
       return () => ipcRenderer.removeListener("workspaces:changed", handler);
     },
+    onSwitching: (cb) => {
+      const handler = (_event, on) => cb(on === true);
+      ipcRenderer.on("workspaces:switching", handler);
+      return () => ipcRenderer.removeListener("workspaces:switching", handler);
+    },
+    handLook: (look) => ipcRenderer.send("workspaces:switch-look", look),
+    takeLook: () => { try { return ipcRenderer.sendSync("workspaces:switch-look-take") ?? null; } catch { return null; } },
   },
   // The window's own rail (this app's page at /rail, beside every place's page): while a sheet of its own is open it
   // covers the window; the skin of the page beside it comes from main, and whether that page draws the window's frame.
@@ -435,10 +442,10 @@ const bridge = {
   permStatus: () => ipcRenderer.invoke("perm:status"),
   permRequestMic: () => ipcRenderer.invoke("perm:request-mic"),
   permOpenSettings: (pane) => ipcRenderer.invoke("perm:open-settings", pane),
-  /** Accessibility, Screen Recording and Notifications on macOS: `status` never prompts, `request` asks for one. */
+  /** Accessibility and Screen Recording on macOS: `status` never prompts, `request` asks for one. */
   macPermissions: {
     status: () => ipcRenderer.invoke("mac-permissions:status"),
-    request: (kind, note) => ipcRenderer.invoke("mac-permissions:request", String(kind), note && typeof note === "object" ? { title: String(note.title ?? ""), body: String(note.body ?? "") } : undefined),
+    request: (kind) => ipcRenderer.invoke("mac-permissions:request", String(kind)),
   },
   relaunch: () => ipcRenderer.invoke("desktop:relaunch"),
 
@@ -688,6 +695,8 @@ const bridge = {
     restart: () => ipcRenderer.invoke("app-update:restart"),
     download: () => ipcRenderer.invoke("app-update:download"),
     seen: () => ipcRenderer.invoke("app-update:seen"),
+    open: () => ipcRenderer.invoke("app-update:open"),
+    move: () => ipcRenderer.invoke("app-update:move"),
     onState: cb => {
       const handler = (_event, state) => cb(state);
       ipcRenderer.on("app-update:changed", handler);
@@ -794,6 +803,8 @@ const bridge = {
     signIn: () => isLocalPage || navigator.userActivation?.isActive === true
       ? ipcRenderer.invoke("home:sign-in") : Promise.reject(new Error("Choose Sign in to sign in again.")),
     noticeSeen: () => ipcRenderer.invoke("cloud-plan:notice-seen"),
+    // a code that logs a phone in to the account; main checks the person is here first (renew: a silent swap of the code on screen)
+    phoneSignIn: renew => ipcRenderer.invoke("cloud-plan:phone-sign-in", renew === true),
     openPage: (page, workspaceId) => isLocalPage || navigator.userActivation?.isActive === true
       ? ipcRenderer.invoke("cloud-plan:open-page", String(page), workspaceId === undefined ? undefined : String(workspaceId)) : Promise.reject(new Error("Choose the account dashboard to open it.")),
     // The usage meter's Upgrade: both only from the person's click (Upgrade, then the confirm's Upgrade), never by themselves.

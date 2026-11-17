@@ -32,7 +32,7 @@ import { linkBrand, PLATED_LOGOS } from "@/lib/link-brand"; import { siteIconUrl
 export { CodeBlock, HIGHLIGHT_CACHE_MAX, HIGHLIGHT_CACHE_MAX_CHARS, HIGHLIGHT_MAX_CHARS, type CodeBlockProps } from "./CodeBlock";
 import { FilePreviewButton } from "./FilePreviewButton";
 import { MermaidViewer } from "./MermaidViewer";
-import { SaveIconButton, useHtmlPreview } from "./HtmlFilePreview";
+import { SaveIconButton, useFilePreview } from "./HtmlFilePreview";
 import "./chat.css";
 import { friendlyError } from "@/lib/plain-error";
 
@@ -291,7 +291,7 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
 // which calls shell.openExternal without main's containment check.
 function LocalFileLink({ filePath, name, children, message }: { filePath: string; name?: string; children?: ReactNode; message?: MessageAttachmentContext }) {
   const save = useLocalFileSave(filePath, name, message);
-  const preview = useHtmlPreview(filePath, name ?? fileName(filePath), message);
+  const preview = useFilePreview(filePath, name ?? fileName(filePath), message);
   if (!message) {
     return <span title={t("chat.markdown.legacyFile")} className="break-words text-ink-secondary">{children}</span>;
   }
@@ -305,18 +305,18 @@ function LocalFileLink({ filePath, name, children, message }: { filePath: string
 
   return (
     <span dir="ltr" className="inline-flex flex-wrap items-center gap-x-1.5 [unicode-bidi:isolate]">
-      {preview.html
+      {preview.opens
         ? <SaveIconButton name={name ?? fileName(filePath)} save={save} retryable={save.state === "failed" && !save.outsideWorkspace} />
         : <FilePreviewButton path={filePath} name={name ?? fileName(filePath)} message={message} />}
       <button
         type="button"
-        onClick={preview.html ? preview.show : () => void save.save()}
-        disabled={!preview.html && save.state === "saving"}
-        title={preview.html ? t("html.preview", { name: name ?? fileName(filePath) }) : t("chat.markdown.saveCopy")}
+        onClick={preview.opens ? preview.show : () => void save.save()}
+        disabled={!preview.opens && save.state === "saving"}
+        title={preview.opens ? preview.label : t("chat.markdown.saveCopy")}
         className="inline-flex items-center gap-1 break-words text-start text-accent underline decoration-accent/40 hover:decoration-accent disabled:cursor-wait"
       >
         {children}
-        {preview.html ? (
+        {preview.opens ? (
           <Eye size={12} className="shrink-0" aria-hidden="true" />
         ) : save.state === "saving" ? (
           <LoaderCircle size={12} className="shrink-0 animate-spin" aria-hidden="true" />

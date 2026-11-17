@@ -6,12 +6,12 @@ import { useStore } from "@/state/store";
 
 import { AccountMoveStatus, useAccountMoveLine } from "./AccountMove";
 import { CloudRoomCard } from "./CloudRoomCard";
-import { SidebarCloudCard } from "./CloudUpsell";
+import { useSidebarCloudCta } from "./CloudUpsell";
 import { CloudUsageCard } from "./CloudUsageMeter";
 import { endCloudHowTo, useWorkspacePlace, type WorkspacePlace } from "./DesktopWorkspaceSwitcher";
 import { ConnectAppsButton, useSidebarApps } from "./SidebarConnectApps";
 import { SidebarProfileMenu, useSimpleAccount, type ArchivedBots } from "./SidebarProfileMenu";
-import { SidebarSpot } from "./SidebarSpot";
+import { SpotView, useSidebarSpot } from "./SidebarSpot";
 
 export function useSimplePlace(): WorkspacePlace {
   const { state, dispatch } = useStore();
@@ -30,19 +30,20 @@ export function SidebarFooter({ owner = null, archived }: { owner?: string | nul
   const account = useSimpleAccount(place, owner, archived);
   const move = useAccountMoveLine(state.config?.cloudHome === true);
   const apps = useSidebarApps();
+  const spot = useSidebarSpot();
+  const cta = useSidebarCloudCta(spot.spot.kind !== "feedback");
   const [appsEngaged, setAppsEngaged] = useState(false);
   const footer = useRef<HTMLDivElement>(null);
   // The move's words open the account menu just below them, where the move's row is.
   const openAccount = () => footer.current?.querySelector("[data-sidebar-account]")?.closest("button")?.click();
   return (
     <div ref={footer} data-sidebar-footer="simple" className="px-4 pb-4">
-      <SidebarCloudCard />
       <CloudRoomCard />
       <CloudUsageCard />
       <SidebarPlaceStatus place={place} className="mb-2 px-1" />
       <AccountMoveStatus kind={move.kind} place={move.place} retry={move.retry} onOpen={openAccount} className="ps-1" />
       <div ref={setSidebarFooterSlot} data-sidebar-footer-slot="" className="empty:hidden" />
-      <SidebarSpot className="mb-2.5" />
+      <SpotView className="mb-2.5" state={spot} cta={cta} />
       <div className="flex items-center gap-1.5" onPointerLeave={() => setAppsEngaged(false)}>
         {apps.connected ? <>
           <div className="me-auto min-w-0"><SidebarProfileMenu simple={account} named nameHidden={appsEngaged} /></div>

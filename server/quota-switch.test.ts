@@ -346,6 +346,87 @@ describe("quota switch", () => {
       expect(notices()).toEqual([{ name: "notice: switched to Codex. Your request is still under way here and continues on Codex.", ok: true }]);
     });
 
+    describe("when nothing can take over", () => {
+      let holds: Array<Parameters<NonNullable<QuotaSwitchDeps["hold"]>>[0]>;
+      let mode: "wait" | "ask" | "free";
+      let free: ModelSelection | null;
+      beforeEach(() => {
+        holds = [];
+        mode = "wait";
+        free = null;
+        backups = [];
+        deps.limitMode = () => mode;
+        deps.hold = (input) => { holds.push(input); return true; };
+        deps.takeover = { ...deps.takeover!, freeSelection: () => free };
+        quota = createQuotaSwitch(deps);
+      });
+
+      it("holds the person's turn for the reset the engine named, and still tells once", async () => {
+        flags = { limit: "engine", limitResetsAt: 1_900_000_000_000 };
+        await limited();
+        expect(holds).toEqual([{ botId: bot.id, threadId: bot.threadId, from: defaultSelection(), resetsAt: 1_900_000_000_000, request: "asked" }]);
+        expect(told).toHaveLength(1);
+        expect(cards()).toEqual([]);
+        expect(resend).not.toHaveBeenCalled();
+      });
+
+      it("holds even with carrying on switched off, which only stops other AIs taking over", async () => {
+        enabled = false;
+        await limited();
+        expect(holds).toHaveLength(1);
+      });
+
+      it("never holds what a backup took over", async () => {
+        backups = [CODEX];
+        const message = said("Draft the reply");
+        await limited({ messageId: message });
+        expect(holds).toEqual([]);
+        expect(moves).toHaveLength(1);
+      });
+
+      it("never holds a teammate's or an internal turn, nor credits that reset on no clock", async () => {
+        const turn = begin();
+        coordinator.endTurn(turn.id, { ok: false, text: QUOTA });
+        await ranOut(turn, QUOTA, true);
+        flags = { limit: "credits" };
+        await limited();
+        expect(holds).toEqual([]);
+      });
+
+      it("set to ask: one card offers the free model or the wait, and Wait holds the turn", async () => {
+        mode = "ask";
+        free = CURSOR;
+        flags = { limit: "engine", limitResetsAt: 1_900_000_000_000 };
+        await limited();
+        expect(holds).toEqual([]);
+        const card = pending()!;
+        expect(card.card).toMatchObject({ title: "Claude reached its limit", options: ["Cursor", "Wait for the reset"], fixedOptions: true,
+          quotaSwitch: { engines: [{ instanceId: "cursor", name: "Cursor" }], wait: { resetsAt: 1_900_000_000_000 } } });
+        expect(await answer(card, "Wait for the reset")).toBe("answered");
+        expect(cardNow(card)).toMatchObject({ answered: "answer", answeredText: "Wait for the reset" });
+        expect(holds).toEqual([expect.objectContaining({ threadId: bot.threadId, from: defaultSelection(), resetsAt: 1_900_000_000_000 })]);
+        expect(quota.answer(bot.threadId, card.card!.requestId!, "answer", "Wait for the reset")).toBeNull();
+      });
+
+      it("set to ask: the free model on the card switches the conversation and sends the message again", async () => {
+        mode = "ask";
+        free = CURSOR;
+        const message = said("Draft the reply");
+        await limited({ messageId: message });
+        expect(await answer(pending()!, "Cursor")).toBe("answered");
+        expect(thread().modelSelection.instanceId).toBe("cursor");
+        expect(resend).toHaveBeenCalledTimes(1);
+        expect(holds).toEqual([]);
+      });
+
+      it("set to ask with no free model to offer: it waits without asking", async () => {
+        mode = "ask";
+        await limited();
+        expect(cards()).toEqual([]);
+        expect(holds).toHaveLength(1);
+      });
+    });
+
     describe("an AI that is signed out", () => {
       const SIGNED_OUT = "Not logged in · Please run /login";
       const NOTICE = "Claude is signed out on the Cloud. Sign in again in Settings → AI to keep using it.";

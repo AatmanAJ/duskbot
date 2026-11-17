@@ -7,7 +7,7 @@ const ai = (instanceId: string, driverKind: string, ready = false, extra: Record
 const ready = (instance: { snapshot: { state: string } }) => instance.snapshot.state === "available";
 
 describe("the funnel's steps", () => {
-  it("opens on the hello everywhere, then the account where there is none yet, then on the desktop app where bots live", () => {
+  it("opens on the hello and the AI everywhere, then the account where there is none yet, then on the desktop app where bots live", () => {
     expect(funnelSteps({ account: true, desktop: true })).toEqual(["welcome", "account", "place", "ai"]);
     expect(funnelSteps({ account: false, desktop: false })).toEqual(["welcome", "ai"]);
   });
@@ -21,8 +21,11 @@ describe("the funnel's steps", () => {
     expect(funnelSteps({ account: false, desktop: false, cloudBring: true, phone: true, permissions: true })).toEqual(["welcome", "ai", "bring"]);
   });
 
-  it("offers bringing bots in only when another app has some", () => {
+  it("offers bringing things in on this computer's own window, after the place", () => {
     expect(funnelSteps({ account: false, desktop: true, bring: true })).toEqual(["welcome", "place", "ai", "bring"]);
+    expect(funnelSteps({ account: false, desktop: true, bring: false })).not.toContain("bring");
+    expect(funnelSteps({ account: false, desktop: true, bring: true, path: "cloud" }), "on dusk cloud too, before the cloud is made")
+      .toEqual(["welcome", "place", "checkout", "ai", "bring", "making"]);
   });
 
   it("shows the phone only while the phone app is offered, on this computer's own window", () => {
@@ -31,11 +34,13 @@ describe("the funnel's steps", () => {
     expect(funnelSteps({ account: false, desktop: true, path: "cloud", phone: true })).not.toContain("phone");
   });
 
-  it("on dusk cloud goes from the place straight to the browser's checkout, then the AI and the cloud", () => {
+  it("on dusk cloud goes from the place straight to the browser's checkout, then the cloud being made", () => {
     const steps = funnelSteps({ account: true, desktop: true, bring: true, path: "cloud", phone: true });
-    expect(steps, "the account was asked before the place").toEqual(["welcome", "account", "place", "checkout", "ai", "making"]);
+    expect(steps, "the account and the place come before the AI").toEqual(["welcome", "account", "place", "checkout", "ai", "bring", "making"]);
     expect(nextStep(steps, "place")).toBe("checkout");
     expect(nextStep(steps, "checkout")).toBe("ai");
+    expect(nextStep(steps, "ai")).toBe("bring");
+    expect(nextStep(steps, "bring")).toBe("making");
     expect(nextStep(steps, "making"), "the chat comes after the last").toBeNull();
     expect(previousStep(steps, "checkout"), "an easy way back before paying").toBe("place");
     expect(previousStep(steps, "ai", { paid: true }), "never back to a purchase that is done").toBeNull();
@@ -47,11 +52,13 @@ describe("the funnel's steps", () => {
     expect(nextStep(steps, "welcome")).toBe("account");
     expect(nextStep(steps, "account")).toBe("place");
     expect(nextStep(steps, "place")).toBe("ai");
-    expect(previousStep(steps, "place")).toBe("account");
+    expect(nextStep(steps, "ai")).toBe("bring");
+    expect(previousStep(steps, "ai")).toBe("place");
   });
 
   it("never passes over the AI step, so a connected AI still shows and more can be added", () => {
     const steps = funnelSteps({ account: false, desktop: true, phone: true });
+    expect(nextStep(steps, "welcome")).toBe("place");
     expect(nextStep(steps, "place")).toBe("ai");
     expect(previousStep(steps, "phone")).toBe("ai");
     expect(nextStep(steps, "phone")).toBeNull();

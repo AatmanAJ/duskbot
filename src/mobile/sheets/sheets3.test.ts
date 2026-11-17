@@ -3,7 +3,7 @@ import type { AppEntry } from "@/components/connect-apps/catalog";
 import type { NotificationLogEntry } from "../../../shared/notification";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AppFace, CATEGORY_SHOWN, groupApps } from "./ConnectorsSheet";
+import { AppFace, connectedApps } from "./ConnectorsSheet";
 import { stackByOwner } from "./NotificationsSheet";
 import { searchSnippetText } from "./SearchSheet";
 import { readableWorkspace, settingsIdentity } from "./SettingsSheet";
@@ -12,34 +12,11 @@ import { recedeStyle } from "../Sheet";
 
 const app = (id: string, categories: AppEntry["categories"], kind: AppEntry["kind"] = "composio"): AppEntry => ({ id, kind, label: id, description: "", categories, icon: {} });
 
-describe("connected apps grouping", () => {
-  const entries = [
-    app("gmail", ["communication"]),
-    app("slack", ["communication"]),
-    app("zoho", ["productivity"]),
-    app("zulip", ["communication"]),
-    ...Array.from({ length: 8 }, (_, i) => app(`tool${i}`, ["data"])),
-    app("misc", []),
-  ];
-
-  it("leads with what's connected, then the popular apps, then categories, each app once", () => {
-    const groups = groupApps(entries, new Set(["zoho"]));
-    expect(groups.map((group) => group.key)).toEqual(["connected", "popular", "communication", "data", "other"]);
-    expect(groups[0].entries.map((entry) => entry.id)).toEqual(["zoho"]);
-    expect(groups[1].entries.map((entry) => entry.id)).toEqual(["gmail", "slack"]);
-    const ids = groups.flatMap((group) => group.entries.map((entry) => entry.id));
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it("shows a category's first few until it is expanded", () => {
-    const data = groupApps(entries, new Set()).find((group) => group.key === "data")!;
-    expect(data.entries).toHaveLength(CATEGORY_SHOWN);
-    expect(data.total).toBe(8);
-    expect(groupApps(entries, new Set(), new Set(["data"])).find((group) => group.key === "data")!.entries).toHaveLength(8);
-  });
-
-  it("files apps with no category under other", () => {
-    expect(groupApps(entries, new Set()).find((group) => group.key === "other")!.entries.map((entry) => entry.id)).toEqual(["misc"]);
+describe("connected apps", () => {
+  it("lists only what is connected, each app once, nothing to add", () => {
+    const entries = [app("gmail", ["communication"]), app("slack", ["communication"]), app("zoho", ["productivity"]), app("misc", [])];
+    expect(connectedApps(entries, new Set(["zoho", "gmail"])).map((entry) => entry.id)).toEqual(["gmail", "zoho"]);
+    expect(connectedApps(entries, new Set())).toEqual([]);
   });
 });
 

@@ -73,7 +73,10 @@ export function thumbBox({ scrollTop, scrollHeight, clientHeight }: Pick<HTMLEle
  * (12% under the pointer itself) and out 150ms after it leaves. Dragging it scrolls the list. */
 export function OverlayScrollbar({ scroller, style }: { scroller: HTMLElement | null; style?: CSSProperties }) {
   const track = useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = useState<ThumbBox>(null);
+  // the thumb's place follows the scroll straight in its style; only its size and presence re-render
+  const box = useRef<ThumbBox>(null);
+  const thumbEl = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<number | null>(null);
   const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
   const drag = useRef<{ y: number; top: number } | null>(null);
@@ -85,7 +88,9 @@ export function OverlayScrollbar({ scroller, style }: { scroller: HTMLElement | 
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const next = thumbBox(scroller, track.current?.clientHeight ?? 0);
-        setThumb((current) => (current?.top === next?.top && current?.height === next?.height ? current : next));
+        box.current = next;
+        if (next && thumbEl.current) thumbEl.current.style.top = `${next.top}px`;
+        setSize(next ? next.height : null);
       });
     };
     measure();
@@ -107,6 +112,10 @@ export function OverlayScrollbar({ scroller, style }: { scroller: HTMLElement | 
       resize?.disconnect();
     };
   }, [scroller]);
+  const placeThumb = (el: HTMLDivElement | null) => {
+    thumbEl.current = el;
+    if (el && box.current) el.style.top = `${box.current.top}px`;
+  };
   const grab = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!scroller || event.button !== 0) return;
     event.preventDefault();
@@ -115,24 +124,25 @@ export function OverlayScrollbar({ scroller, style }: { scroller: HTMLElement | 
     setDragging(true);
   };
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const start = drag.current, box = thumb, height = track.current?.clientHeight ?? 0;
-    if (!scroller || !start || !box) return;
-    const travel = height - THUMB_INSET * 2 - box.height;
+    const start = drag.current, thumb = box.current, height = track.current?.clientHeight ?? 0;
+    if (!scroller || !start || !thumb) return;
+    const travel = height - THUMB_INSET * 2 - thumb.height;
     if (travel > 0) scroller.scrollTop = start.top + ((event.clientY - start.y) * (scroller.scrollHeight - scroller.clientHeight)) / travel;
   };
   const release = () => { drag.current = null; setDragging(false); };
   const shown = hover || dragging;
   return (
-    <div ref={track} aria-hidden="true" data-overlay-scrollbar="" data-scrollable={thumb ? "" : undefined}
+    <div ref={track} aria-hidden="true" data-overlay-scrollbar="" data-scrollable={size !== null ? "" : undefined}
       className="pointer-events-none absolute right-[2px] z-30 w-[5px]" style={{ top: 0, bottom: 0, ...style }}>
-      {thumb && (
+      {size !== null && (
         <div
+          ref={placeThumb}
           data-overlay-scrollbar-thumb=""
           onPointerDown={grab}
           onPointerMove={move}
           onPointerUp={release}
           onPointerCancel={release}
-          style={{ top: thumb.top, height: thumb.height }}
+          style={{ height: size }}
           className={cn(
             "absolute inset-x-0 rounded-full bg-ink/[0.08] transition-[background-color,opacity] duration-150 hover:bg-ink/[0.12]",
             dragging && "bg-ink/[0.12]",

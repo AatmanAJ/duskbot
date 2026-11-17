@@ -87,7 +87,7 @@ export async function answerOf<T = any>(res: Response): Promise<T> {
     const raw = typeof error === "string" ? error : typeof error?.message === "string" ? error.message : `${res.status} ${res.statusText}`;
     const { message, detail } = plainOrRaw(raw);
     const refused = new ApiError(message, res.status, body, detail);
-    requestRefused(res.status, body);
+    requestRefused(res.status, body, res.url);
     if (res.status === 401 || (res.status === 403 && !lacksAdminScope(refused))) noteRefusedRequest();
     if (res.status === 409 && isBotLimitRefusal(refused)) showBotLimit();
     throw refused;

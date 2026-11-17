@@ -580,7 +580,8 @@ describe("independent bot tasks through the isolated control surface", () => {
     const botId = created.bot.id;
     const selectedThread = created.bot.activeTaskId;
     const routine = await api("POST", "/api/routines", {
-      name: "Captured routine provider", prompt: "ROUTINE_PROVIDER_OWNER", botId, runOn: "maus", enabled: false,
+      // a run delivered to the brief keeps a conversation of its own, apart from the chat the person has selected
+      name: "Captured routine provider", prompt: "ROUTINE_PROVIDER_OWNER", botId, runOn: "maus", enabled: false, deliver: "brief",
       schedule: { type: "daily", time: "10:00", weekdays: [1] },
     });
     expect(routine.status).toBe(201);

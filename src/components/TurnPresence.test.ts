@@ -6,8 +6,8 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/testing/quiet-canceled-animations";
 
-import { phraseAt, phraseHoldMs } from "@/lib/live-activity";
-import { STATUS_QUIET_MS, TurnPresence } from "./TurnPresence";
+import { phraseAt, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
+import { STATUS_HOLD_MS, STATUS_QUIET_MS, TurnPresence } from "./TurnPresence";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -138,6 +138,80 @@ describe("a long step's quiet part", () => {
     expect(line() ?? "", "the mark comes alone first, as grok's does").toBe("");
     act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max));
     expect(line()).toBe("Running scrape.py · Waiting on the network");
+  });
+});
+
+describe("Simple mode's rotating words", () => {
+  const line = () => host.querySelector("[data-turn-status]")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+  const pool = Array.from({ length: 12 }, (_, index) => `Word ${index}`);
+
+  it("shows the mark alone first, then its first word, then a new word every 2.5 to 3.5 s, never the same one twice in a row", () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 10_000, phrases: pool, phase: "friendly:generic" });
+    expect(line(), "the mascot alone for a beat").toBe("");
+    act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max));
+    const said = [line()];
+    for (let i = 0; i < 9; i++) {
+      act(() => void vi.advanceTimersByTime(3500));
+      said.push(line());
+    }
+    expect(said[0], "it opens with the pool's first word").toBe("Word 0");
+    expect(new Set(said).size, "a 30 s turn says nine or ten different words").toBeGreaterThanOrEqual(9);
+    for (let i = 1; i < said.length; i++) expect(said[i], `word ${i}`).not.toBe(said[i - 1]);
+    for (const word of said) expect(pool).toContain(word);
+    expect(host.querySelector("[data-turn-now]")?.classList, "each new word rises in").toContain("turn-label-in");
+  });
+
+  it("holds a word its seeded time before the next", () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 0, phrases: pool, phase: "friendly:generic" });
+    const first = line();
+    act(() => void vi.advanceTimersByTime(rotationHoldMs(`${seed}|friendly:generic`, 0) - 1));
+    expect(line()).toBe(first);
+    act(() => void vi.advanceTimersByTime(1));
+    expect(line()).not.toBe(first);
+  });
+
+  it("opens with Thinking, then a step's own words, and the bot's own words beat the generic pool at once", () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 10_000 - STATUS_QUIET_MS.max, phrases: ["Running a command"], phase: "friendly:commands" });
+    expect(line(), "every turn opens with Thinking").toBe("Thinking");
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+    expect(line(), "the step's word beats the generic one").toBe("Running a command");
+    render({ simple: true, since: 0, phrases: pool, phase: "friendly:generic" });
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+    expect(pool).toContain(line());
+    render({ simple: true, since: 0, label: "Comparing standing desks", phrases: pool, phase: "friendly:generic" });
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+    expect(line()).toBe("Comparing standing desks");
+    act(() => void vi.advanceTimersByTime(30_000));
+    expect(line(), "one specific phrase stays put").toBe("Comparing standing desks");
+  });
+
+  it("says Writing at once while the reply is written, then Wrapping up", () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 0, phrases: ["Writing", "Wrapping up"], phase: "friendly:chat.typing" });
+    expect(line()).toBe("Writing");
+    act(() => void vi.advanceTimersByTime(3500));
+    expect(line()).toBe("Wrapping up");
+  });
+
+  it("keeps fun words out of a short turn and mixes them into a long one, never one word twice in a row", () => {
+    const normal = ["Thinking", "Working", "On it", "Getting it done", "Figuring it out", "Almost there"];
+    const fun = ["Noodling", "Percolating", "Brewing", "Tinkering", "Stargazing", "Scheming"];
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 10_000, phrases: normal, fun, phase: "friendly:generic" });
+    act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max));
+    const said = [line()];
+    while (Date.now() < 10_000 + 120_000) {
+      act(() => void vi.advanceTimersByTime(500));
+      if (line() !== said.at(-1)) said.push(line());
+    }
+    expect(said[0]).toBe("Thinking");
+    const early = said.slice(0, 4);
+    expect(early.every((word) => normal.includes(word)), `first 15 s: ${early.join(", ")}`).toBe(true);
+    expect(said.some((word) => fun.includes(word)), "a two minute turn says some fun words").toBe(true);
+    expect(said.filter((word) => normal.includes(word)).length, "plain words still lead overall").toBeGreaterThan(said.filter((word) => fun.includes(word)).length);
   });
 });
 

@@ -441,6 +441,10 @@ const NUMBER_RUN = /\+?\d[\d().\s-]*[\s().-][\d().\s-]*\d/g, DIGITS = /\S*\d\S*/
 export const NOTE_WORDS: ReadonlySet<string> = new Set([
   ...USAGE_APPS, ...USAGE_ENGINES, "google", "calendar", "drive", "docs", "sheets", "outlook", "teams", "whatsapp", "telegram", "imessage", "chrome", "safari", "mac", "macos",
   "windows", "linux", "iphone", "android", "excel", "word", "powerpoint", "pdf", "chatgpt", "openai", "anthropic", "mcp", "api", "vps", "ai", "ok", "i", "x",
+  "linkedin", "instagram", "facebook", "youtube", "tiktok", "zoom", "meet", "canva", "spotify", "perplexity", "claude", "vscode", "messenger",
+  "dusk", "bot", "bots", "chat", "chats", "browser", "app", "apps", "assistant", "agent", "model", "computer", "screen", "terminal", "phone", "desktop",
+  "cloud", "web", "website", "site", "page", "tab", "link", "search", "routine", "routines", "memory", "skill", "skills", "task", "tasks", "email", "emails",
+  "message", "messages", "post", "posts", "reply", "draft", "file", "files", "folder", "note", "notes", "account", "settings", "room", "team",
 ]);
 const words = (text: string) => text.toLowerCase().normalize("NFKC").split(/[^\p{L}\p{N}']+/u).filter(Boolean);
 /** a word run this long shared with the chat means the note copied the person's words */

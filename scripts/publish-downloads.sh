@@ -49,3 +49,6 @@ cp "$work/site/latest.json" "$SITE/public/landing/releases/latest.json"
 cp "$work/site/SHA256SUMS" "$SITE/public/landing/releases/$VERSION/SHA256SUMS"
 (cd "$SITE" && ./deploy.sh landing)
 curl -fsS "https://dusk.bot/releases/latest.json" | grep -q "\"version\": \"$VERSION\"" && echo "dusk.bot announces $VERSION"
+
+# dusk.bot keeps its own copy of the installers and update zips (the apps fall back to it when GitHub fails)
+"$(dirname "$0")/mirror-release.sh" "$TAG"

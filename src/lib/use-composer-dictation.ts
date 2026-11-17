@@ -10,6 +10,7 @@ import { useStore } from "@/state/store";
 import { VOICE_PROVIDER_INFO } from "../../electron/voice-catalog.mjs";
 import { appendDictatedText } from "./drafts";
 import { t } from "./i18n";
+import { phoneApp } from "./store-app";
 import { serverListeningReady } from "./speech";
 import type { VoiceBridge, VoiceEnd, VoiceLine } from "./voice-input/bridge";
 import { cleanTranscript, cleanupWanted } from "./voice-input/cleanup";
@@ -333,8 +334,9 @@ export function useComposerDictation({ draftId, text, onText }: {
       return;
     }
     if (session.current && phase !== "idle") return finish();
-    // the first tap on the device's own recognizer says which one listens and where to choose another
-    if (engine.kind === "system" && !prefs.firstRunSeen) {
+    // the first tap on the device's own recognizer says which one listens and where to choose another; the phone app
+    // just listens
+    if (engine.kind === "system" && !prefs.firstRunSeen && !phoneApp()) {
       setFirstRunOpen(true);
       return;
     }

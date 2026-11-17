@@ -12,7 +12,7 @@ vi.mock("@/state/store", async (original) => ({
 }));
 vi.mock("./CreateBotDialog", () => ({ openCreateBot: vi.fn() }));
 import { EMPTY_VIEW, closeAddVps, VPS_STEP_IDS, type VpsLinkBridge, type VpsLinkView } from "@/lib/vps-link";
-import { PlaceSetup, wayLine, wayOf } from "./PlaceSetup";
+import { PlaceSetup, ServerWays, wayLine, wayOf } from "./PlaceSetup";
 import { MacEmptyMain, useMacEmptyPrompt } from "./MacEmptyMain";
 
 const SERVER = { id: "vps-1", name: "my-vps", origin: "https://vps.example.com" };
@@ -400,4 +400,11 @@ it("the welcome's own server opens on the recommended way's one line, with every
   expect(q("[data-place-setup]")?.getAttribute("data-place-setup")).toBe("server");
   expect(document.body.textContent).toContain("Tailscale");
   closePlaceSetup();
+});
+
+it("a browser with no way to add a server says where to do it instead of an empty page (bug report dr-s489q74m7b)", async () => {
+  vi.stubGlobal("duskDesktop", undefined);
+  await act(async () => { root.render(createElement(ServerWays, { onPick: vi.fn() })); });
+  expect(document.querySelectorAll("button[data-setup-method]")).toHaveLength(0);
+  expect(q("[data-setup-method=none]")?.textContent).toBe("Add a server of your own from the desktop app on your computer. It makes the setup line and links the server for you.");
 });

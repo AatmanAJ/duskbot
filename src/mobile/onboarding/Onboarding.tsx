@@ -10,6 +10,7 @@ import { haptic } from "../haptics";
 import { PixelArt, PixelMascot } from "../Illustration";
 import { usePlatform, type CameraPermission } from "../platform";
 import { PairError, readScanned, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
+import { followSignInService } from "../account/environment";
 import { Scanner } from "./Scanner";
 import { CloudPicker } from "../account/CloudPicker";
 import { MobileSignIn } from "../account/MobileSignIn";
@@ -18,7 +19,20 @@ import { MascotTrio } from "./SkyScene";
 import { BackButton, ErrorLine, FIELD, HEADLINE, LINE, PRIMARY, QUIET, Screen, StepPane, TONAL } from "./parts";
 
 export type Step = "welcome" | "signin" | "clouds" | "confirm" | "permission" | "denied" | "scan" | "code" | "paste";
-type Failure = { code: PairError["code"]; name: string; companion: boolean };
+type Failure = { code: PairError["code"] | "account-offline"; name: string; companion: boolean };
+type PhoneCodeOutcome = Awaited<ReturnType<NonNullable<ReturnType<typeof useMobileAccount>>["signIn"]["phoneCode"]>>["outcome"];
+
+/** a dusk cloud code that did not log in, as the failure the code screen says */
+export function phoneCodeFailure(outcome: Exclude<PhoneCodeOutcome, "signed-in">): Failure["code"] {
+  switch (outcome) {
+    case "wrong-code": return "unknown";
+    case "expired": return "expired";
+    case "used": return "used";
+    case "limited": return "limited";
+    case "offline": return "account-offline";
+    case "failed": return "account-offline";
+  }
+}
 
 export const DOWNLOAD_URL = "https://dusk.bot/download";
 
@@ -55,11 +69,13 @@ function Failed({ failure, onSignIn }: { failure: Failure; onSignIn?: () => void
 /** First launch to linked. Pairing with your own computer needs no account (App Store guideline 5.1.1(v)): scan its QR
  * code first, or type its code. Signing in is only for a dusk cloud (the account finds it and pairs with it). The success moment and the hand-off
  * to Home belong to the connection gate. */
-export function Onboarding({ initial = null, reason = null, startAtLink = false, startAt = "welcome", email, onLinked, onCancel }: {
+export function Onboarding({ initial = null, reason = null, startAtLink = false, startAt = "welcome", email, signInCode, onLinked, onCancel }: {
   /** where a sheet opened from inside the app starts */
   startAt?: "welcome" | "signin";
   /** a dusk cloud's qr named the account to sign in with */
   email?: string;
+  /** and carried a desktop's code that logs the phone in: it is redeemed at once, on the code screen */
+  signInCode?: string;
   initial?: TypedPairing | null;
   /** Linking another computer from inside the app: a way back out. */
   startAtLink?: boolean;
@@ -71,14 +87,14 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   const account = useMobileAccount();
   const signedIn = Boolean(account?.account);
   const home: Step = firstStep({ incoming: false, signedIn, adding: startAtLink });
-  const [step, setStep] = useState<Step>(() => firstStep({ incoming: Boolean(initial), signedIn, adding: startAtLink, startAt }));
+  const [step, setStep] = useState<Step>(() => signInCode ? "code" : firstStep({ incoming: Boolean(initial), signedIn, adding: startAtLink, startAt }));
   const [confirm, setConfirm] = useState<TypedPairing | null>(initial);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   // a failed scan lands on the code screen with an empty field: its way forward is scanning again, not a dead submit
   const [scanFailed, setScanFailed] = useState(false);
   const [noClouds, setNoClouds] = useState(false);
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(() => signInCode ? formatCode(signInCode) : "");
   const [signInEmail, setSignInEmail] = useState(email ?? "");
   const locked = useRef(false);
   const fieldId = useId();
@@ -100,6 +116,21 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
       if (typeof text === "string") {
         const scanned = readScanned(text);
         if (scanned?.kind === "store") throw new PairError("store-qr");
+        if (scanned?.kind === "signin" && followSignInService(text, scanned.service, account)) return;
+        const accountCode = scanned?.kind === "account" || scanned?.kind === "signin" ? scanned.code : undefined;
+        if (accountCode) {
+          if (!account) throw new PairError("sign-in");
+          const result = await account.signIn.phoneCode(accountCode);
+          if (result.outcome !== "signed-in") {
+            haptic("error");
+            setFailure({ code: phoneCodeFailure(result.outcome), name: t("mobile.pair.workspace"), companion: false });
+            if (from !== "code") { setStep("code"); setValue(formatCode(accountCode)); }
+            return;
+          }
+          haptic("success");
+          go("clouds");
+          return;
+        }
         if (scanned?.kind === "signin") { setSignInEmail(scanned.email); go(signedIn ? "clouds" : "signin"); return; }
         payload = scanned?.kind === "code" ? await resolveTypedCode(scanned.code) : scanned?.kind === "pair" ? scanned.payload : null;
       }
@@ -115,6 +146,13 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
       setBusy(false);
     }
   };
+
+  const linkCode = useRef(signInCode);
+  useEffect(() => {
+    const code = linkCode.current;
+    linkCode.current = undefined;
+    if (code) void redeem(code, "code");
+  }, []);
 
   const openScanner = async () => {
     setFailure(null);
@@ -241,7 +279,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
               <div className="flex shrink-0 flex-col items-center gap-1 px-6 pb-[calc(var(--m-safe-bottom)+16px)] pt-4">
                 {scanFailed && !value.trim() && !busy
                   ? <button type="button" data-scan-again="" className={PRIMARY} onClick={() => void openScanner()}><QrCode size={20} />{t("mobile.onboarding.scanAgain")}</button>
-                  : <button type="submit" disabled={busy || !value.trim() || (step === "code" && value.replace(/-/g, "").length < 12)} className={PRIMARY}>{busy ? <WorkingDots /> : t(failure ? "mobile.onboarding.retry" : "mobile.pair.link")}</button>}
+                  : <button type="submit" disabled={busy || !value.trim() || (step === "code" && !typedCodeComplete(value))} className={PRIMARY}>{busy ? <WorkingDots /> : t(failure ? "mobile.onboarding.retry" : "mobile.pair.link")}</button>}
                 {step === "code" && <button type="button" className={QUIET} onClick={() => { setValue(""); setFailure(null); setStep("paste"); }}>{t("mobile.onboarding.pasteInstead")}</button>}
               </div>
             </form>
@@ -258,6 +296,12 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
       </AnimatePresence>
     </main>
   );
+}
+
+/** a computer's 12-character code, or a dusk cloud's 8 letters */
+export function typedCodeComplete(value: string): boolean {
+  const raw = value.replace(/-/g, "");
+  return raw.length === 12 || (raw.length === 8 && /^[A-Z]+$/.test(raw));
 }
 
 /** XXXX-XXXX-XXXX as the person types: letters and digits only, uppercase, dashes added. */

@@ -184,3 +184,36 @@ test("the move's word changing while nobody's signed in moves the window too, bo
   assert.equal(clean.on, false, "home again: this computer's own copy, not the clean workspace");
   assert.equal(w.home.current().clean, undefined);
 });
+
+test("This Mac chosen while My Cloud is home opens a fresh workspace here, never the frozen copy, and stays until a place is asked for", async () => {
+  const clean = cleanSide(), w = world({ clean });
+  await w.home.show();
+  assert.deepEqual(w.went, [[CLOUD, CLOUD]]);
+  w.url = `${CLOUD}/`;
+  await w.home.openHere();
+  assert.equal(clean.enters, 1, "the clean workspace starts (a fresh server seeds its own first bot), the frozen copy's bots never show");
+  assert.equal(clean.on, true);
+  assert.deepEqual(w.local, [true], "the window leaves My Cloud for this computer's page");
+  assert.equal(w.home.here(), true);
+  // the screen looking again, or the sign-in changing, keeps the person here
+  await w.home.retry();
+  await w.home.changed();
+  assert.equal(clean.leaves, 0);
+  assert.equal(clean.on, true);
+  assert.deepEqual(w.went, [[CLOUD, CLOUD]]);
+  // asking for My Cloud goes back there, this computer's own copy running first
+  await w.home.show({ place: "cloud" });
+  assert.equal(w.home.here(), false);
+  assert.equal(clean.order.at(-1), "leave");
+  assert.equal(clean.on, false);
+  assert.equal(w.went.length, 2);
+});
+
+test("This Mac that can't start fresh says so and stays on My Cloud, never a dead copy", async () => {
+  const clean = cleanSide(), w = world({ clean });
+  await w.home.show();
+  clean.fails = true;
+  await assert.rejects(w.home.openHere(), /could not start a fresh workspace/);
+  assert.equal(w.home.here(), false);
+  assert.deepEqual(w.local, []);
+});

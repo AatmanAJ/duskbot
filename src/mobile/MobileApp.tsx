@@ -15,25 +15,33 @@ import { effectiveLanguage, useLanguageChoice, usePageLanguage } from "@/lib/lan
 import { parseMobileOpenLink, type MobileOpenTarget } from "../../shared/mobile-link";
 import { setChatCovered } from "@/lib/chat-in-front";
 import { readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
-import { screenViewAllowed } from "@/lib/store-app";
-import { AiConsentProvider } from "./consent/AiConsent";
+import { AiConsentProvider, AiConsentSheet } from "./consent/AiConsent";
 import { installAiReport } from "@/lib/ai-report";
 import { registerPushForConnection } from "./connection/push";
+import { setPresenceThread } from "./connection/presence";
+import { useSeenNotifications } from "./connection/seen-notifications";
+import { visibleNotificationThread } from "@/state/thread-navigation";
 import { supportMail } from "./legal";
 import { NavStack } from "./NavStack";
 import { ChatScreen } from "./ChatScreen";
 import { HomeScreen, releasePressed } from "./HomeScreen";
-import { SheetHost } from "./SheetHost";
+import { panelOpenAction, SheetHost } from "./SheetHost";
 import { closeTopSheet, Sheet } from "./Sheet";
 import { t } from "@/lib/i18n";
-import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
+import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useNativeGlass } from "./native-glass";
 import { useChatHaptics } from "./use-chat-haptics";
+import { usePhoneActions } from "./use-phone-actions";
+import { useTurnActivities } from "./use-turn-activities";
 import { useOutbox } from "./outbox";
 import { installPress } from "./press";
 import { MessageHold } from "./MessageHold";
 import { usePlatform } from "./platform";
 import type { MobileSheet } from "./sheets";
+import { PanelDetailsTab } from "@/components/bot-panel/PanelShell";
+import { loadLimits } from "@/lib/limit-resets";
+
+const SHEET_WARM_MS = 600;
 
 function Shell() {
   const platform = usePlatform();
@@ -48,8 +56,15 @@ function Shell() {
   usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language));
   useKeyboardSync(platform, rootRef);
   useKeyboardDismiss(platform, rootRef);
+  const startTurnActivity = useTurnActivities(platform, state);
+  const shownChat = useRef(chatId);
+  shownChat.current = chatId;
   // notifications are asked for when they mean something: once a message is on its way and its reply will follow
-  useChatHaptics(state, chatId, useCallback(() => { if (platform.native) void registerPushForConnection(platform, { prompt: true }); }, [platform]));
+  useChatHaptics(state, chatId, useCallback(() => {
+    if (platform.native) void registerPushForConnection(platform, { prompt: true });
+    const bot = latest.current.bots.find((one) => one.id === shownChat.current);
+    if (bot) startTurnActivity(bot);
+  }, [platform, startTurnActivity]));
   useOutbox();
   useEffect(() => { const root = rootRef.current; return root ? installPress(root) : undefined; }, []);
   // a bot's reply someone finds harmful or wrong goes to a person at dusk bot, with the reply in the mail they send
@@ -74,6 +89,10 @@ function Shell() {
 
   // with the list in front, the chat last opened is not being read: its replies stay unread and still notify
   useEffect(() => { setChatCovered(chatId === null); return () => setChatCovered(false); }, [chatId]);
+  // the conversation on screen never pushes or shows a banner here; pushes already seen leave Notification Center
+  const viewingThread = chatId ? visibleNotificationThread(state) : null;
+  useEffect(() => { setPresenceThread(viewingThread); return () => setPresenceThread(null); }, [viewingThread]);
+  useSeenNotifications(platform, state.notifications, viewingThread);
 
   const openChat = useCallback((id: string) => {
     const current = latest.current;
@@ -84,9 +103,11 @@ function Shell() {
   }, [dispatch]);
 
   const openSheet = useCallback((next: MobileSheet) => {
+    const panel = panelOpenAction(next);
+    if (panel) dispatch(panel);
     setSheet(next);
     setSheetOpen(true);
-  }, []);
+  }, [dispatch]);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
 
   // a shared card that opens the computer app's settings (connect an AI, add a key) has nothing to open on a phone: it
@@ -109,7 +130,7 @@ function Shell() {
       else openChat(id);
       if (target.messageId && target.threadId) dispatch({ type: "focusMessage", threadId: target.threadId, messageId: target.messageId });
     }
-    if (target.view === "computer" && target.botId && screenViewAllowed()) openSheet({ kind: "computer", botId: target.botId });
+    if (target.view === "computer" && target.botId) openSheet({ kind: "computer", botId: target.botId });
     else if (target.view === "profile" && id) openSheet({ kind: "profile", id });
     else if (target.view === "settings") openSheet({ kind: "settings" });
     else if (target.view === "notifications") openSheet({ kind: "notifications" });
@@ -132,6 +153,7 @@ function Shell() {
     return true;
   }), [platform, openTarget, dispatch]);
   useEffect(() => platform.onNotificationOpen?.(openTarget), [platform, openTarget]);
+  usePhoneActions(platform, state, dispatch, openTarget);
 
   useEffect(() => platform.onBack?.(() => {
     if (closeTopSheet()) return true;
@@ -142,12 +164,25 @@ function Shell() {
   // a resumed app reads the chat on screen, as a refocused desktop window does
   useEffect(() => platform.onResume?.(() => { if (chatId) dispatch({ type: "select", id: chatId }); }), [platform, chatId, dispatch]);
 
+  // the bot's sheet is a tap away from an open chat: its first tab's code and the usage it shows load once the chat has
+  // landed, so the tap only has to draw it
+  useEffect(() => {
+    if (!chatId) return;
+    const warm = setTimeout(() => { void PanelDetailsTab.preload().catch(() => {}); void loadLimits(); }, SHEET_WARM_MS);
+    return () => clearTimeout(warm);
+  }, [chatId]);
+
   const group = chatId ? state.groups.find((g) => g.id === chatId) : undefined;
   const bot = chatId && !group ? state.bots.find((b) => b.id === chatId) : undefined;
   const members = useMemo(() => group ? state.bots.filter((b) => group.memberIds.includes(b.id)) : [], [group, state.bots]);
   useEffect(() => { if (chatId && state.hydrated && !group && !bot) setChatId(null); }, [chatId, state.hydrated, group, bot]);
 
-  useNativeGlass(platform, rootRef, Boolean(bot || group));
+  // the native chrome stays with a chat until its page has slid away, so the page never draws its own on the way out
+  const [glassHeld, setGlassHeld] = useState(false);
+  if ((bot || group) && !glassHeld) setGlassHeld(true);
+  const pageSettled = useCallback((shown: boolean) => { if (!shown) setGlassHeld(false); releasePressed(); }, []);
+  const slideGlass = useNativeGlass(platform, rootRef, Boolean(bot || group) || glassHeld);
+  const leaveChat = useCallback(() => { if (rootRef.current) dismissKeyboard(platform, rootRef.current); }, [platform]);
 
   const page = bot || group ? (
     <ChatScreen
@@ -156,7 +191,7 @@ function Shell() {
       members={members}
       onBack={() => setChatId(null)}
       onProfile={() => openSheet({ kind: "profile", id: chatId! })}
-      onComputer={bot && screenViewAllowed() ? () => openSheet({ kind: "computer", botId: bot.id }) : undefined}
+      onComputer={() => openSheet({ kind: "computer", botId: chatId! })}
     />
   ) : null;
 
@@ -167,11 +202,14 @@ function Shell() {
         page={page}
         pageKey={page ? chatId : null}
         onBack={() => setChatId(null)}
-        onSettled={releasePressed}
+        onSettled={pageSettled}
+        onSlide={slideGlass}
+        onLeave={leaveChat}
       />
       <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); openChat(id); }} />
       <ConnectAppsHost />
       <MessageHold rootRef={rootRef} />
+      <AiConsentSheet />
       <Sheet open={desktopOnly} onClose={() => setDesktopOnly(false)} title={t("mobile.desktopOnly.title")}>
         <div className="px-5 pb-[calc(var(--m-safe-bottom)+16px)]">
           <p className="text-[15px] leading-6 text-ink-secondary">{t("mobile.desktopOnly.body")}</p>

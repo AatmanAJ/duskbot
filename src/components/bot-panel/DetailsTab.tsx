@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useContext, useEffect, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -10,6 +10,7 @@ import type { SimplePageId } from "./page-registry";
 import { BotRoutines } from "../routines/BotRoutines";
 import { Card, PanelSections, rowCls, RowText } from "./rows";
 import { ModelSelectRow } from "../native/ModelSelectRow";
+import { ModelRowSlot } from "./model-row-slot";
 import { UsageMeterRow } from "../native/UsageMeter";
 import { answeringModel, useThreadBackup } from "@/lib/thread-backup";
 import { setVoicePrefs, useVoicePrefs, VOICE_LANGUAGES, VOICE_SPEEDS, type VoiceSpeed } from "./voice-prefs";
@@ -47,11 +48,14 @@ function VoiceChatRow({ label, children, row }: { label: string; children: React
 export function ModelCard({ bot }: { bot: Bot }) {
   useThreadBackup(bot, bot.threadId);
   const engine = answeringModel(bot, bot.threadId, bot.modelSelection).instanceId;
+  const HostRow = useContext(ModelRowSlot);
   return (
     <Card anchor="model">
-      <div className="[&_[data-tour=model]>span:first-child]:flex! [&_[data-provider-mark]]:opacity-100!">
-        <ModelSelectRow bot={bot} threadId={bot.threadId} title={t("botPanel.page.model")} />
-      </div>
+      {HostRow ? <HostRow bot={bot} /> : (
+        <div className="[&_[data-tour=model]>span:first-child]:flex! [&_[data-provider-mark]]:opacity-100!">
+          <ModelSelectRow bot={bot} threadId={bot.threadId} title={t("botPanel.page.model")} withThinking />
+        </div>
+      )}
       <UsageMeterRow engine={engine} />
     </Card>
   );

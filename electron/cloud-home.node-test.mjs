@@ -429,7 +429,7 @@ test("the Server menu opens My Cloud through the Cloud's own connection, never a
   const start = source.indexOf("let rememberedHome = null;"), end = source.indexOf("const organizationEntry = createOrganizationEntry", start);
   assert.ok(start > 0 && end > start);
   const calls = [];
-  let connect = async () => { calls.push("connect"); }, signedIn = false;
+  let connect = async () => { calls.push("connect"); }, signedIn = false, covered = 0;
   const entry = { id: "cloud", name: CLOUD_HOME_NAME, origin }, other = { id: "vps", kind: "remote", name: "VPS", origin: "https://vps.example.test" };
   const context = vm.createContext({
     environmentsState: { environments: [entry, other], activeId: environments.LOCAL_ID }, LOCAL_ID: environments.LOCAL_ID,
@@ -444,11 +444,13 @@ test("the Server menu opens My Cloud through the Cloud's own connection, never a
     handSaved, serverOpens: async (place) => { calls.push(`look:${place.id}`); return answers; }, session: { defaultSession: { fetch: async () => null } }, dialog: {},
     // the first-pick mark main keeps beside switchEnvironment (47ad2f03a)
     placesChosenStore: () => ({ choose() {} }), jsonFile: () => ({}), path: { join: (...parts) => parts.join("/") }, app: { getPath: () => "/data" },
+    workspaceSwitch: { around: (action) => { covered += 1; return action(); } },
   });
   let answers = true;
   vm.runInContext(`${source.slice(start, end)}; this.switchEnvironment = switchEnvironment; this.remember = value => { rememberedHome = value; };`, context);
   await context.switchEnvironment("cloud");
   assert.deepEqual(calls, ["remember:null", "connect"]);
+  assert.equal(covered, 1, "the window shows the loading mascot for the switch");
   calls.length = 0; await context.switchEnvironment("vps");
   assert.deepEqual(calls, ["remember:null", "look:vps", "active:vps", `navigate:${other.origin}`], "another server: the remembered team is let go");
   calls.length = 0; context.environmentsState = { ...context.environmentsState, activeId: environments.LOCAL_ID }; answers = false;

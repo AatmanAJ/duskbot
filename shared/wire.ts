@@ -389,6 +389,9 @@ export interface WireBot extends DefaultBotFields, BotAccessFields {
   phoneApps?: import("./phone-apps.ts").PhoneApps;
   /** Ordered backups used only by opt-in, pre-prompt startup recovery. */
   fallback?: Array<{ instanceId: string; model: string }>;
+  /** What a turn does when its AI's usage limit refuses it and no backup can take over: "wait" (absent) holds it and
+   * carries on by itself at the reset, "ask" offers the free model or the wait on a card, "free" moves to the free model. */
+  limitMode?: LimitMode;
   /** Whether this bot gets the app's built-in browser. */
   browser?: boolean;
   /** Record a screenshot and a short note of each browser action, kept with
@@ -526,6 +529,8 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
     name: string; ok?: boolean; spoken?: string; setup?: boolean; terminal?: boolean; summary?: string;
     /** A notice whose way out is signing in to an AI: the chat offers Sign in beside it. */
     signIn?: boolean;
+    /** error rows: the turn waits for its AI's usage limit to reset and carries on by itself; Stop ends the wait. */
+    limitHold?: LimitHoldState;
     input?: string; output?: string; clipped?: boolean;
     /** What the call works on, as its live status said it: the chip's and the "Now" card's specific words. `whose`: the person whose own app or MCP server the call used. */
     step?: import("./turn-progress.ts").LiveStep; whose?: { person: string; app: string };
@@ -559,6 +564,10 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
    * context folded in mid-turn, never a new request. The text is stored
    * enveloped exactly as injected. */
   aside?: boolean;
+  /** bot text rows: the quick reply to a person's message sent while a
+   * turn worked, written outside that turn (no turnId), so it never takes
+   * the turn's result, receipts or "Worked for" fold. */
+  sideReply?: boolean;
   /** A user-role message that arrived through the server's HTTP API
    * ("api"), or a request a person spoke on a Live call ("call"). */
   via?: "api" | "call";
@@ -757,10 +766,18 @@ export interface OptionCardData extends WaitCardField, AccessRequestCardField, O
 
 /** Kept on the card so the offer survives a restart. `engines` follow the card's options; `messageId` is the
  * message to resend, `rootId` the failed request's job-runtime root. */
+/** A held turn as its card shows it: when the limit resets, when known, and when a resumed turn refused again tries next. */
+export interface LimitHoldState { resetsAt?: number; retryAt?: number }
+
+export const LIMIT_MODES = ["wait", "ask", "free"] as const;
+export type LimitMode = (typeof LIMIT_MODES)[number];
+
 export interface QuotaSwitchCardData {
   engines: Array<{ instanceId: string; name: string }>;
   messageId?: string;
   rootId?: string;
+  /** The option after `engines` waits for the limit to reset instead; `resetsAt` when the engine said. */
+  wait?: { resetsAt?: number };
 }
 
 export interface SecretRequestCardData {
@@ -1012,6 +1029,9 @@ export type ServerFrame =
    * computer (absent: a Local VM). */
   | { kind: "computer"; botId: string; state: "provisioning" | "waking"; place?: "cloud" }
   | { kind: "computer-state"; botId: string; resourceKey: string; state: "starting" | "ready" | "stopped" | "failed"; problem?: string }
+  /** A bot on this Mac asked for screen control (request_screen_access): the chat shows the Allow access notice. `missing`
+   * names the macOS grants still off. */
+  | { kind: "screen-access"; botId: string; threadId: string; missing: string[]; reason?: string }
   | { kind: "computer-control"; botId: string; held: boolean; helpReason: string | null; help?: ComputerHelpRef | null }
   /** The desktop app's built-in browser is still downloading (server/app-parts.ts): `botIds` are the bots that needed it
    * since, whose chats show one progress line until `phase` is "ready". */

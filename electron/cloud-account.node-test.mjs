@@ -337,7 +337,7 @@ test("Dodo's own checkout page is the only checkout address ever opened", () => 
     assert.equal(checkoutDestination(url), null, String(url));
   }
   assert.equal(checkoutDestination("https://test.checkout.dodopayments.com/session/cks_123", { fixture: true }), "https://test.checkout.dodopayments.com/session/cks_123");
-  assert.deepEqual([...CHECKOUT_SOURCES], ["app_card", "app_howto", "app_menu", "app_settings", "app_routines", "app_pages", "app_whats_new_pro", "app_whats_new_team", "app_onboarding", "app_computer_move", "app_sidebar", "app_invested", "app_always_on", "app_bot_panel"]);
+  assert.deepEqual([...CHECKOUT_SOURCES], ["app_card", "app_howto", "app_menu", "app_settings", "app_routines", "app_pages", "app_whats_new_pro", "app_whats_new_team", "app_onboarding", "app_computer_move", "app_sidebar", "app_invested", "app_always_on", "app_bot_panel", "app_late_routine", "app_asleep"]);
 });
 
 test("signed in, a checkout is the Admin's for this account, opened in the browser only when it is Dodo's; then the session is asked every 3 seconds for 30 minutes", async t => {
@@ -391,6 +391,14 @@ test("signed in, a checkout is the Admin's for this account, opened in the brows
   f.checkout = { status: 404, body: "<!doctype html>not here" };
   assert.equal((await f.client.checkout("max", "app_card")).outcome, "opened");
   assert.deepEqual(f.browsers, [`${f.origin}/billing?plan=max&src=app_card`]);
+  f.browsers = [];
+  f.checkout = { status: 503, body: { cloudContractVersion: 1, error: "temporarily_unavailable", errorDescription: "Off." } };
+  assert.equal((await f.client.checkout("pro", "app_menu")).outcome, "opened", "a paused app checkout falls back to the billing page, like upgrade");
+  assert.deepEqual(f.browsers, [`${f.origin}/billing?plan=pro&src=app_menu`]);
+  f.browsers = [];
+  f.checkout = { status: 503, body: "<!doctype html>Service Unavailable" };
+  assert.equal((await f.client.checkout("pro", "app_menu")).outcome, "failed", "a 503 page from in between is not the Admin's pause");
+  assert.deepEqual(f.browsers, []);
   f.now += 24 * 3600_000; assert.equal(f.client.state().checkout, undefined); assert.equal(f.client.checkoutLink(), null);
 });
 

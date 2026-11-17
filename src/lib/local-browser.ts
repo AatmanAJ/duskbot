@@ -20,8 +20,9 @@ const POLL_MS = 5_000;
 const RETRY_MS = 1_000;
 const NONE: LocalBrowserState = { open: false, closed: null };
 
-/** The surfaces gallery's stand-in for the server's answer; `tabs`, an open browser's tabs, each with a still page. */
-export type LocalBrowserFixture = LocalBrowserState & { tabs?: ClosedTabView[]; working?: boolean };
+/** The surfaces gallery's stand-in for the server's answer; `tabs`, an open browser's tabs, each with a still page, and
+ * `held`, the one the person holds. */
+export type LocalBrowserFixture = LocalBrowserState & { tabs?: ClosedTabView[]; working?: boolean; held?: number };
 let fixture: LocalBrowserFixture | null = null;
 export function setLocalBrowserFixture(next: LocalBrowserFixture | null): void { fixture = next; }
 export const localBrowserFixture = (): LocalBrowserFixture | null => fixture;
@@ -75,7 +76,7 @@ export function keepView(key: string, patch: KeptView): void {
   if (keptViews.size > 24) keptViews.delete(keptViews.keys().next().value!);
 }
 
-/** Whether a bot's browser on this computer is open now, and what it closed with in the last 30 minutes. Asked again every
+/** Whether a bot's browser on this computer is open now, and what it closed with in the last hour. Asked again every
  * few seconds while the page shows; asking never starts the browser. Starts from what was last known for the bot. */
 export function useLocalBrowser(botId: string, threadId: string | undefined, enabled: boolean): LocalBrowserState & { known: boolean } {
   const key = keptKey(botId, threadId);
@@ -142,7 +143,19 @@ export function tabLetter(title: string, url: string): string {
   return (source.match(/[\p{L}\p{N}]/u)?.[0] ?? "·").toUpperCase();
 }
 
-/** Whole minutes since, for the closed list. */
-export function minutesSince(at: number, now = Date.now()): number {
-  return Math.max(0, Math.floor((now - at) / 60_000));
+/** What the line above the browser says: the bot browsing while its turn has acted in the browser, else that it is open. */
+export function browserHeadline({ busy, turnStartedAt, actedAt, working }: { busy: boolean; turnStartedAt: number | undefined; actedAt: number | null; working?: boolean }): "browsing" | "open" {
+  if (working) return "browsing";
+  return busy && actedAt !== null && actedAt >= (turnStartedAt ?? 0) ? "browsing" : "open";
+}
+
+export function closePath(botId: string, threadId: string | undefined): string {
+  const query = threadId ? `?threadId=${encodeURIComponent(threadId)}` : "";
+  return `/api/bots/${encodeURIComponent(botId)}/browser/close${query}`;
+}
+
+/** Closes the bot's browser on this computer; its tabs stay listed for an hour. */
+export async function closeLocalBrowser(botId: string, threadId: string | undefined): Promise<boolean> {
+  const answer = await api(closePath(botId, threadId), { method: "POST", body: "{}" }) as { closed?: unknown } | null;
+  return answer?.closed === true;
 }

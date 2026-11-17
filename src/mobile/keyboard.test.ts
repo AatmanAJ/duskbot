@@ -3,7 +3,7 @@ import { createElement, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
+import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import type { KeyboardFrame, MobilePlatform } from "./platform";
 
 let root: Root;
@@ -66,6 +66,23 @@ describe("the phone keyboard", () => {
     expect(list().scrollTop).toBe(2000);
   });
 
+  it("keeps a chat resting at its newest row there as the keyboard goes away", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    // a real scroller: its height follows the keyboard's inset and scrollTop is clamped to the range on every read
+    const el = list();
+    let top = 0;
+    const client = () => 800 - (parseFloat(host.querySelector<HTMLElement>(".dusk-mobile")!.style.getPropertyValue("--m-kb")) || 0);
+    const clamp = (value: number) => Math.max(0, Math.min(value, 1200 - client()));
+    Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => 1200 });
+    Object.defineProperty(el, "clientHeight", { configurable: true, get: client });
+    Object.defineProperty(el, "scrollTop", { configurable: true, get: () => (top = clamp(top)), set: (value: number) => { top = clamp(value); } });
+    keyboard!({ height: 336, phase: "will" });
+    keyboard!({ height: 336, phase: "did" });
+    expect(el.scrollTop).toBe(1200 - 464);
+    keyboard!({ height: 0, phase: "will" });
+    expect(el.scrollTop).toBe(1200 - 800);
+  });
+
   it("is put away by a drag down the transcript, not by a sideways or upward one", () => {
     flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
     field().focus();
@@ -90,5 +107,25 @@ describe("the phone keyboard", () => {
     expect(document.activeElement).toBe(field());
     (host.querySelector("#bubble") as HTMLElement).click();
     expect(document.activeElement).not.toBe(field());
+  });
+});
+
+describe("leaving a chat", () => {
+  it("puts away the keyboard of the native composer and of a field on the page", () => {
+    const blur = vi.fn();
+    const p = { ...platform(true), glass: { blur } } as unknown as MobilePlatform;
+    flushSync(() => root.render(createElement(Shell, { platform: p })));
+    const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    shell.dataset.glassFocused = "";
+    dismissKeyboard(p, shell);
+    expect(blur).toHaveBeenCalledTimes(1);
+    expect(hideKeyboard).not.toHaveBeenCalled();
+    delete shell.dataset.glassFocused;
+    field().focus();
+    dismissKeyboard(p, shell);
+    expect(document.activeElement).not.toBe(field());
+    expect(hideKeyboard).toHaveBeenCalledTimes(1);
+    dismissKeyboard(p, shell);
+    expect(hideKeyboard).toHaveBeenCalledTimes(1);
   });
 });

@@ -18,8 +18,12 @@ const keystore = SecureStorage as unknown as {
 };
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform } from "@/mobile/platform";
-import type { GlassBridge, GlassEvent, GlassState } from "@/mobile/native-glass";
+import type { AppleCredential, CameraPermission, CameraScanner, DeliveredNotification, MobilePlatform, OrientationBridge, ScanOverlay, TurnActivityBridge } from "@/mobile/platform";
+import type { NativeAction } from "@/mobile/phone-actions";
+import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
+import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
+import type { SlidePath } from "@/mobile/NavStack";
+import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
 import { registerPhoneVoice } from "@/lib/voice-input/device";
 import { appLinkFromUniversal, type MobileOpenTarget } from "../../../shared/mobile-link";
@@ -30,11 +34,13 @@ interface QrScannerPlugin {
   checkPermissions(): Promise<{ camera: string }>;
   requestPermissions(): Promise<{ camera: string }>;
   openSettings(): Promise<void>;
-  startScan(): Promise<void>;
+  startScan(options?: { overlay?: ScanOverlay }): Promise<{ fullScreen?: boolean } | undefined>;
   stopScan(): Promise<void>;
   isTorchAvailable(): Promise<{ available: boolean }>;
   setTorch(options: { on: boolean }): Promise<void>;
+  setBusy(options: { busy: boolean; label?: string }): Promise<void>;
   addListener(event: "codeScanned", listener: (event: { text?: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "scannerAction", listener: (event: { key?: string }) => void): Promise<PluginListenerHandle>;
 }
 const QrScanner = registerPlugin<QrScannerPlugin>("QrScanner");
 /** The app's own Sign in with Apple (ios/App/App/AppleSignInPlugin.swift): AuthenticationServices, no SDK. */
@@ -65,6 +71,8 @@ interface GlassPlugin {
   focus(): Promise<void>;
   blur(): Promise<void>;
   clear(): Promise<void>;
+  slide(options: { path: SlidePath | null }): Promise<void>;
+  glyphs(): Promise<GlassGlyphs>;
   addListener(event: "glass", listener: (event: GlassEvent) => void): Promise<PluginListenerHandle>;
 }
 const DuskGlass = registerPlugin<GlassPlugin>("DuskGlass");
@@ -78,7 +86,91 @@ export function glassBridge(plugin: GlassPlugin): GlassBridge {
     focus: () => quiet(plugin.focus()),
     blur: () => quiet(plugin.blur()),
     clear: () => quiet(plugin.clear()),
+    slide: (path) => quiet(plugin.slide({ path })),
+    glyphs: () => plugin.glyphs().catch(() => ({})),
     onEvent: (listener) => unsubscribe([plugin.addListener("glass", listener)]),
+  };
+}
+
+/** The app's own context menu over page items (ios/App/App/NativeMenuPlugin.swift), iOS 26 and later. */
+interface MenuPlugin {
+  supported(): Promise<{ supported: boolean }>;
+  arm(options: NativeMenuArm): Promise<void>;
+  disarm(options: { id?: string }): Promise<void>;
+  resolve(options: { id: string; content: NativeMenuContent }): Promise<void>;
+  addListener(event: "menu", listener: (event: NativeMenuEvent) => void): Promise<PluginListenerHandle>;
+}
+const DuskMenu = registerPlugin<MenuPlugin>("DuskMenu");
+
+export function menuBridge(plugin: MenuPlugin): MenuBridge {
+  const quiet = (work: Promise<unknown>) => { void work.catch(() => {}); };
+  return {
+    arm: (options) => quiet(plugin.arm(options)),
+    disarm: (id) => quiet(plugin.disarm({ id })),
+    resolve: (id, content) => quiet(plugin.resolve({ id, content })),
+    onEvent: (listener) => unsubscribe([plugin.addListener("menu", listener)]),
+  };
+}
+
+/** Which way the app may turn (ios/App/App/AppViewController.swift). */
+interface OrientationPlugin {
+  allowLandscape(options: { on: boolean }): Promise<void>;
+  rotate(options: { to: "portrait" | "landscape" }): Promise<void>;
+}
+const DuskOrientation = registerPlugin<OrientationPlugin>("DuskOrientation");
+
+/** ActivityKit and the Live Activity's buttons (ios/App/App/TurnActivityPlugin.swift). */
+interface TurnActivityPlugin {
+  start(options: { attributes: TurnActivityAttributes; state: TurnActivityState }): Promise<{ id?: string }>;
+  update(options: { id: string; state: TurnActivityState }): Promise<void>;
+  end(options: { id: string; state: TurnActivityState; now?: boolean }): Promise<void>;
+  list(): Promise<{ activities: Array<{ id: string; botId: string; threadId: string; startedAt: number }> }>;
+  lineKey(): Promise<{ key?: string }>;
+  addListener(event: "token", listener: (event: { id: string; threadId: string; token: string; startedAt: number }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "startToken", listener: (event: { token: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "action", listener: (event: NativeAction) => void): Promise<PluginListenerHandle>;
+}
+const DuskTurnActivity = registerPlugin<TurnActivityPlugin>("DuskTurnActivity");
+
+interface NotificationsPlugin {
+  setViewing(options: { threadId: string | null }): Promise<void>;
+  delivered(): Promise<{ notifications: DeliveredNotification[] }>;
+  remove(options: { ids: string[] }): Promise<void>;
+}
+const DuskNotifications = registerPlugin<NotificationsPlugin>("DuskNotifications");
+
+/** Android's delivered pushes: FCM's data block is flat (server/mobile/push.ts messageData). */
+async function androidDelivered(): Promise<DeliveredNotification[]> {
+  const { notifications } = await PushNotifications.getDeliveredNotifications();
+  return notifications.map((one) => {
+    const data = (one.data ?? {}) as Record<string, unknown>;
+    return {
+      id: one.id,
+      ...(typeof data.threadId === "string" ? { threadId: data.threadId } : {}),
+      ...(typeof data.id === "string" ? { notificationId: data.id } : {}),
+    };
+  });
+}
+
+function turnActivityBridge(): TurnActivityBridge {
+  return {
+    async start(attributes, state) { return (await DuskTurnActivity.start({ attributes, state })).id ?? null; },
+    update: (id, state) => DuskTurnActivity.update({ id, state }),
+    end: (id, state, now) => DuskTurnActivity.end({ id, state, ...(now ? { now } : {}) }),
+    list: async () => (await DuskTurnActivity.list()).activities,
+    onToken: (listener) => unsubscribe([DuskTurnActivity.addListener("token", listener)]),
+    onStartToken: (listener) => unsubscribe([DuskTurnActivity.addListener("startToken", ({ token }) => listener(token))]),
+    lineKey: async () => (await DuskTurnActivity.lineKey()).key ?? null,
+  };
+}
+
+/** a push the bot host sent, as opposed to one from an older link that put its ids at the top level */
+const fromBotHost = (data: Record<string, unknown>) => ["dusk", "omb"].some((key) => data[key] && typeof data[key] === "object");
+
+export function orientationBridge(plugin: OrientationPlugin): OrientationBridge {
+  return {
+    allowLandscape: (on) => { void plugin.allowLandscape({ on }).catch(() => {}); },
+    rotate: (to) => { void plugin.rotate({ to }).catch(() => {}); },
   };
 }
 
@@ -161,8 +253,10 @@ export interface ScanDriver {
   permission(): Promise<string>;
   request(): Promise<string>;
   openSettings(): Promise<void>;
-  listen(onCode: (text: string | undefined) => void, onError: (message: string) => void): Promise<PluginListenerHandle[]>;
-  start(): Promise<void>;
+  listen(onCode: (text: string | undefined) => void, onError: (message: string) => void, onAction?: (key: string) => void): Promise<PluginListenerHandle[]>;
+  /** with an overlay a scanner may draw the whole screen itself, and says so */
+  start(overlay?: ScanOverlay): Promise<{ fullScreen?: boolean } | void>;
+  busy?(on: boolean, label?: string): Promise<void>;
   stop(): Promise<void>;
   torchAvailable(): Promise<boolean>;
   torch(on: boolean): Promise<void>;
@@ -172,8 +266,12 @@ const iosScanner: ScanDriver = {
   permission: async () => (await QrScanner.checkPermissions()).camera,
   request: async () => (await QrScanner.requestPermissions()).camera,
   openSettings: () => QrScanner.openSettings(),
-  listen: async (onCode) => [await QrScanner.addListener("codeScanned", ({ text }) => onCode(text))],
-  start: () => QrScanner.startScan(),
+  listen: async (onCode, _onError, onAction) => [
+    await QrScanner.addListener("codeScanned", ({ text }) => onCode(text)),
+    await QrScanner.addListener("scannerAction", ({ key }) => { if (typeof key === "string") onAction?.(key); }),
+  ],
+  start: async (overlay) => (await QrScanner.startScan(overlay ? { overlay } : undefined)) ?? undefined,
+  busy: (busy, label) => QrScanner.setBusy({ busy, label }),
   stop: () => QrScanner.stopScan(),
   torchAvailable: async () => (await QrScanner.isTorchAvailable()).available,
   torch: (on) => QrScanner.setTorch({ on }),
@@ -187,7 +285,7 @@ const androidScanner: ScanDriver = {
     await BarcodeScanner.addListener("barcodesScanned", ({ barcodes }) => onCode(barcodes[0]?.rawValue)),
     await BarcodeScanner.addListener("scanError", ({ message }) => onError(message)),
   ],
-  start: () => BarcodeScanner.startScan({ formats: [BarcodeFormat.QrCode] }),
+  start: async () => { await BarcodeScanner.startScan({ formats: [BarcodeFormat.QrCode] }); },
   stop: () => BarcodeScanner.stopScan(),
   torchAvailable: async () => (await BarcodeScanner.isTorchAvailable()).available,
   torch: (on) => (on ? BarcodeScanner.enableTorch() : BarcodeScanner.disableTorch()),
@@ -199,7 +297,7 @@ export function scannerCamera(driver: ScanDriver, scanning: (on: boolean) => voi
     permission: async () => cameraPermission(await driver.permission()),
     request: async () => cameraPermission(await driver.request()),
     openSettings: () => driver.openSettings(),
-    async start({ onCode, onError }) {
+    async start({ onCode, onError, overlay, onAction }) {
       let handles: PluginListenerHandle[] = [];
       const deliver = distinctCodes(onCode);
       let stopped = false;
@@ -224,11 +322,20 @@ export function scannerCamera(driver: ScanDriver, scanning: (on: boolean) => voi
       };
       try {
         scanning(true);
-        handles = await driver.listen((text) => { if (!stopped) deliver(text); }, (message) => { if (!stopped) onError?.(message); });
-        await driver.start();
-        const available = await driver.torchAvailable();
+        handles = await driver.listen(
+          (text) => { if (!stopped) deliver(text); },
+          (message) => { if (!stopped) onError?.(message); },
+          (key) => { if (!stopped) onAction?.(key); },
+        );
+        const fullScreen = Boolean((await driver.start(overlay))?.fullScreen);
+        // the system's own scanner covers the page, which stays as it is under it
+        if (fullScreen) scanning(false);
+        const available = !fullScreen && await driver.torchAvailable();
+        const busy = driver.busy;
         return {
           stop,
+          fullScreen,
+          busy: fullScreen && busy ? (on, label) => { if (!stopped) void busy(on, label).catch(() => {}); } : undefined,
           torch: available ? {
             set(on) {
               if (stopped) return Promise.resolve();
@@ -328,11 +435,12 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     const timer = setTimeout(() => { console.warn(`startup: ${label} did not answer`); resolve(undefined); }, 2000);
     work.then(resolve, () => resolve(undefined)).finally(() => clearTimeout(timer));
   });
-  const [info, launch, , glass] = await Promise.all([
+  const [info, launch, , glass, menu] = await Promise.all([
     bounded(App.getInfo(), "app info"),
     bounded(App.getLaunchUrl(), "launch url"),
     bounded(overlayReady ?? Promise.resolve(), "status bar"),
     kind === "ios" && Capacitor.isPluginAvailable("DuskGlass") ? bounded(DuskGlass.supported(), "glass") : undefined,
+    kind === "ios" && Capacitor.isPluginAvailable("DuskMenu") ? bounded(DuskMenu.supported(), "menu") : undefined,
   ]);
   let pendingLaunchUrl = launch?.url;
   const secrets: MobilePlatform["secrets"] = {
@@ -344,6 +452,8 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: SECRET_PREFIX + key, sync: false }); },
   };
   const speech = Capacitor.isPluginAvailable("DuskSpeech");
+  const turnActivityOn = kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity");
+  const notificationsOn = kind === "ios" && Capacitor.isPluginAvailable("DuskNotifications");
   registerPhoneVoice({
     os: kind,
     speech: speech ? phoneSpeech(DuskSpeech) : undefined,
@@ -357,6 +467,8 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     appVersion: info?.version || __APP_VERSION__,
     deviceName: () => kind === "ios" ? "iPhone" : "Android phone",
     glass: glass?.supported ? glassBridge(DuskGlass) : undefined,
+    menu: menu?.supported ? menuBridge(DuskMenu) : undefined,
+    orientation: Capacitor.isPluginAvailable("DuskOrientation") ? orientationBridge(DuskOrientation) : undefined,
     haptic(type) {
       void (async () => {
         switch (type) {
@@ -471,10 +583,39 @@ export async function nativePlatform(): Promise<MobilePlatform> {
         return null;
       }
     },
+    setViewingThread: notificationsOn ? (threadId) => { void DuskNotifications.setViewing({ threadId }).catch(() => {}); } : undefined,
+    async deliveredNotifications() {
+      try {
+        return notificationsOn ? (await DuskNotifications.delivered()).notifications : kind === "android" ? await androidDelivered() : [];
+      } catch {
+        return [];
+      }
+    },
+    async removeDeliveredNotifications(ids) {
+      if (!ids.length) return;
+      try {
+        if (notificationsOn) return await DuskNotifications.remove({ ids: [...ids] });
+        if (kind !== "android") return;
+        // Android cancels by id and tag, so the delivered entries go back whole
+        const { notifications } = await PushNotifications.getDeliveredNotifications();
+        const gone = notifications.filter((one) => ids.includes(one.id));
+        if (gone.length) await PushNotifications.removeDeliveredNotifications({ notifications: gone });
+      } catch {}
+    },
     onNotificationOpen(listener) {
-      return unsubscribe([PushNotifications.addListener("pushNotificationActionPerformed", ({ notification }) => {
-        listener(notificationTarget(notification.data ?? {}));
+      return unsubscribe([PushNotifications.addListener("pushNotificationActionPerformed", ({ actionId, notification }) => {
+        const data = notification.data ?? {};
+        if (actionId === "tap" && !fromBotHost(data)) listener(notificationTarget(data));
       })]);
     },
+    onPhoneAction(listener) {
+      const handles = [PushNotifications.addListener("pushNotificationActionPerformed", ({ actionId, inputValue, notification }) => {
+        const data = notification.data ?? {};
+        if (actionId !== "tap" || fromBotHost(data)) listener({ actionId, ...(inputValue ? { inputValue } : {}), data });
+      })];
+      if (kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity")) handles.push(DuskTurnActivity.addListener("action", listener));
+      return unsubscribe(handles);
+    },
+    turnActivity: turnActivityOn ? turnActivityBridge() : undefined,
   };
 }

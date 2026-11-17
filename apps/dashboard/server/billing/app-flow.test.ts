@@ -294,38 +294,25 @@ it("reports Add a Cloud cap and rate blocks in the desktop shape", async () => {
   expect(await f.request("clouds", { tier: "pro", interval: "month", name: "Rate limited" })).toMatchObject({ status: 429, data: { error: "rate_limited", addBlocked: "rate" } });
 });
 
-it("lets the desktop's Start fresh cancel its own plan, then delete its own account with its clouds destroyed now, and nobody else's", async () => {
+it("refuses an older desktop's Start fresh account delete, so a local reset never ends a plan or trial", async () => {
   const f = await fixture(); await f.client.start(); await f.signIn();
   expect((await f.client.checkout("starter", "app_card")).outcome).toBe("opened");
   const checkout = await f.complete();
   await f.reconcile(); await f.client.refresh();
   const owner = f.owner(), cloudId = checkout.cloudId!;
-  expect(f.client.freshClouds()).toEqual([{ id: cloudId, name: expect.any(String) }]);
 
   // someone else signed in on another computer can't cancel this cloud's plan or delete this account, even by its email
   const { token: stranger } = await f.signIn("stranger@example.test");
   expect(await f.request(`clouds/${cloudId}/cancel`, {}, stranger)).toMatchObject({ status: 404 });
-  expect((await f.request("/v1/app/delete-account", { email: owner.email, destroyDesktopsNow: true }, stranger)).status).toBe(400);
+  expect((await f.request("/v1/app/delete-account", { email: owner.email }, stranger)).status).toBe(400);
+
+  // what an older desktop's Start fresh sent: refused, the account, its plan and its cloud all stay
+  const token = f.token();
+  expect(await f.request("/v1/app/delete-account", { email: owner.email, destroyDesktopsNow: true }, token)).toMatchObject({ status: 409, data: { code: "delete_on_account_page" } });
+  expect(await f.request("/v1/app/delete-account", { email: owner.email, destroyDesktopsNow: false }, token)).toMatchObject({ status: 409 });
   expect((await f.session()).account).toMatchObject({ id: owner.id });
   expect(f.billing.fake!.cancelCalls).toEqual([]);
-
-  // the plan is cancelled while the account is still there, then the account goes and its cloud is destroyed now
-  const order: string[] = [];
-  const cancel = f.billing.fake!.cancelAtPeriodEnd.bind(f.billing.fake);
-  vi.spyOn(f.billing.fake!, "cancelAtPeriodEnd").mockImplementation(async (id, value) => {
-    order.push(f.billing.service.subscriptions(owner.id).length ? "cancel:account-alive" : "cancel:account-gone");
-    return cancel(id, value);
-  });
-  await f.client.cancelCloudPlan(cloudId);
-  // a second cancel (a retry) changes nothing and still answers
-  await f.client.cancelCloudPlan(cloudId);
-  expect(order[0]).toBe("cancel:account-alive");
-  await f.client.deleteAccountNow(owner.email);
-  expect(f.billing.fake!.cancelCalls.every(call => call.cancel)).toBe(true);
-  expect(f.billing.clouds.get(cloudId)).toMatchObject({ ended: true, destroyAt: f.now() });
-  expect((await f.request("session")).status).toBe(401);
-  // the stranger's account is untouched
-  expect((await f.request("session", undefined, stranger)).status).toBe(200);
+  expect(f.billing.clouds.get(cloudId)).not.toMatchObject({ ended: true });
 });
 
 it("offers no trial without DUSK_TRIAL_DAYS", async () => {

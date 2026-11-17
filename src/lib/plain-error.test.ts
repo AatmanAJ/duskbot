@@ -70,3 +70,11 @@ describe("a provider refusing a message as too large", () => {
     expect(plainErrorLine("this message is too large for the box.")).toBeUndefined();
   });
 });
+
+it("never shows an engine's internal error or a wall of text, only the plain line", () => {
+  const echoed = "Internal error: 'You are Campaign Manager, a personal bot in dusk bot.\\n\\nAbout you: kept in \"/Users/someone/.duskbot/workspaces/x/MEMORY.md\"'";
+  expect(isTechnicalError(echoed)).toBe(true);
+  expect(plainErrorLine(echoed)).not.toContain("Campaign Manager");
+  expect(isTechnicalError("The model said something long. ".repeat(12))).toBe(true);
+  expect(isTechnicalError("Your OpenAI key has run out of credits.")).toBe(false);
+});

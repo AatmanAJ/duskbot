@@ -308,6 +308,17 @@ describe("workspace reconnect", () => {
     await expect(connectToWorkspace(record, token, platform, new AbortController().signal)).rejects.toMatchObject({ code: "unreachable" });
   });
 
+  it("opens a dusk cloud whose edge says it sleeps instead of calling it unreachable: no read could ever wake it", async () => {
+    const { record, token, platform } = await saved();
+    record.via = [{ kind: "https", url: "https://workspace.test" }];
+    const asleep = () => new Response("asleep", { status: 503, headers: { "x-dusk-cloud-power": "asleep", "retry-after": "5" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(asleep()));
+    expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "bearer", origin: "https://workspace.test", token, asleep: true });
+    // a plain outage is still unreachable
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 503)));
+    await expect(connectToWorkspace(record, token, platform, new AbortController().signal)).rejects.toMatchObject({ code: "unreachable" });
+  });
+
   it("falls back after a server failure and stops after a successful companion check", async () => {
     const { record, token, platform } = await saved();
     record.via = [{ kind: "https", url: "https://workspace.test" }, { kind: "companion", url: "http://mac.test:8810", net: "lan", priority: 1 }];
@@ -431,6 +442,13 @@ describe("the app's own scanner reads every qr the desktop, the site or an older
     expect(readScanned(universalSignInLink("owner@example.test"))).toEqual({ kind: "signin", email: "owner@example.test" });
     expect(readScanned("duskbot://signin?email=owner%40example.test")).toEqual({ kind: "signin", email: "owner@example.test" });
     expect(readScanned(universalSignInLink(null))).toEqual({ kind: "signin", email: "" });
+  });
+
+  it("a cloud qr with a code, or 8 typed letters, is a dusk cloud log in by code; 12 is still a computer's", () => {
+    expect(readScanned(universalSignInLink("owner@example.test", "ABCD-EFGH"))).toEqual({ kind: "signin", email: "owner@example.test", code: "ABCDEFGH" });
+    expect(readScanned("abcd-efgh")).toEqual({ kind: "account", code: "ABCDEFGH" });
+    expect(readScanned(" ABCD EFGH ")).toEqual({ kind: "account", code: "ABCDEFGH" });
+    expect(readScanned("ABCD-EFGH-JKLM")).toEqual({ kind: "code", code: "ABCDEFGHJKLM" });
   });
 
   it("knows the store qr, takes a typed code, and refuses anything else", () => {

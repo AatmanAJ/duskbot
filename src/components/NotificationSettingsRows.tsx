@@ -6,7 +6,7 @@ import {
   useFinishedNotifications,
   useNotificationSounds,
 } from "@/lib/notification-preferences";
-import { requestNotificationPermission } from "@/lib/notify";
+import { requestNotificationPermission, systemNotificationsAllowed } from "@/lib/notify";
 import { chooseSound, chosenSound, play, UI_SOUND_NAMES, type UiSoundName } from "@/lib/ui-sounds";
 import type { LocaleKey } from "@/locales";
 import { SettingRow, Switch } from "./SettingsPrimitives";
@@ -39,7 +39,7 @@ export function DeviceNotificationsRow() {
       document.removeEventListener("visibilitychange", refresh);
     };
   }, []);
-  if (typeof Notification === "undefined") return null;
+  if (typeof Notification === "undefined" || !systemNotificationsAllowed()) return null;
 
   const blocked = permission === "denied";
   const toggle = async () => {

@@ -1682,8 +1682,10 @@ export function serverReleaseSigned(signature, sha256, keys = SERVER_RELEASE_KEY
  * offer or a bad signature is never downloaded
  */
 export function createServerUpdater({ base, id, token, dir = serverReleaseDir(), keys = [...SERVER_RELEASE_KEYS, ...(process.env.DUSK_RELEASE_PUBLIC_KEYS ?? "").split(",").map((key) => key.trim()).filter(Boolean)], fetchImpl = fetch, current = async () => (await serverLink())?.version ?? null, now = Date.now, log = () => {}, everyMs = SERVER_UPDATE_EVERY_MS, firstMs = SERVER_UPDATE_FIRST_MS, jitterMs = SERVER_UPDATE_JITTER_MS, random = Math.random }) {
-  let checking = null, timer = null, last = { checkedAt: null, staged: null, error: null };
+  let checking = null, timer = null, last = { checkedAt: null, staged: null, error: null }, said = null;
   const auth = { authorization: `Bearer ${token}` };
+  // what a check found, once each time it changes: an hourly "nothing new" line would bury the journal
+  const tell = (line) => { if (line !== said) { said = line; log(line); } };
 
   async function download(sha256, size) {
     const file = join(dir, `${sha256}.tgz`), part = `${file}.part`;
@@ -1699,7 +1701,11 @@ export function createServerUpdater({ base, id, token, dir = serverReleaseDir(),
 
   async function stage() {
     const answer = await fetchImpl(`${base}/v1/tunnels/${id}/server`, { headers: auth, signal: AbortSignal.timeout(30_000) });
-    if (answer.status === 404) { await answer.body?.cancel().catch(() => {}); return null; }
+    if (answer.status === 404) {
+      await answer.body?.cancel().catch(() => {});
+      tell("link: no server build is published on the link service (it answered 404); the server stays as it is");
+      return null;
+    }
     if (!answer.ok) throw new Error(`the link service answered ${answer.status} for the server release`);
     const offer = await answer.json();
     const pkg = offer?.package, sha256 = String(pkg?.sha256 ?? ""), size = pkg?.size;
@@ -1709,23 +1715,29 @@ export function createServerUpdater({ base, id, token, dir = serverReleaseDir(),
     if (!signed) throw new Error("the server release is not signed by a pinned key");
     const version = signed.version;
     const running = await current().catch(() => null);
-    if (running && compareVersions(version, running) <= 0) return null;
+    if (running && compareVersions(version, running) <= 0) {
+      tell(`link: server ${running} is up to date (the link service offers ${version})`);
+      return null;
+    }
     let ready = null;
     try { ready = JSON.parse(readFileSync(join(dir, "ready.json"), "utf8")); } catch { /* nothing staged */ }
-    if (ready?.sha256 === sha256 && existsSync(join(dir, `${sha256}.tgz`))) return version;
+    if (ready?.sha256 === sha256 && existsSync(join(dir, `${sha256}.tgz`))) {
+      tell(`link: server build ${version} is staged; it installs once no bot is working`);
+      return version;
+    }
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     await download(sha256, size);
     const policy = offer.policy && typeof offer.policy.body === "string" && /^[A-Za-z0-9_-]{1,32000}$/.test(offer.policy.body) && SIGNATURE.test(offer.policy.signature ?? "")
       ? { body: offer.policy.body, signature: offer.policy.signature } : null;
     writePrivate(join(dir, "ready.json"), JSON.stringify({ v: 1, sha256, size, version, signature, ...(policy ? { policy } : {}), at: now() }));
     for (const name of readdirSync(dir)) if (/^[0-9a-f]{64}\.tgz(\.part)?$/.test(name) && !name.startsWith(sha256)) rmSync(join(dir, name), { force: true });
-    log(`link: server build ${version} is staged; it installs once no bot is working`);
+    tell(`link: server build ${version} is staged; it installs once no bot is working`);
     return version;
   }
 
   function check() {
     checking ??= stage().then((staged) => { last = { checkedAt: now(), staged, error: null }; return staged; },
-      (failed) => { last = { checkedAt: now(), staged: null, error: failed?.message ?? String(failed) }; log(`link: no server update (${last.error})`); return null; })
+      (failed) => { last = { checkedAt: now(), staged: null, error: failed?.message ?? String(failed) }; tell(`link: no server update (${last.error})`); return null; })
       .finally(() => { checking = null; });
     return checking;
   }
@@ -2583,16 +2595,17 @@ export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = 
         }
         applied = answer.rev;
         failed = refused;
+        if (failures) log(`link: phone channel sync is back after ${failures} ${failures === 1 ? "retry" : "retries"}`);
         failures = 0;
-      } catch {
+      } catch (error) {
         if (stopped) break;
-        if (!failures) log("link: phone channel sync retrying");
+        if (!failures) log(`link: phone channel sync retrying (${error?.message ?? error})`);
         await wait(Math.min(30_000, 500 * 2 ** Math.min(failures++, 6)));
       }
     }
   }
   async function read() {
-    let failures = 0, ahead = null;
+    let failures = 0, ahead = null, down = 0;
     while (!stopped) {
       const postsBefore = successfulPosts, next = ahead;
       ahead = null;
@@ -2609,6 +2622,7 @@ export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = 
           if (response.status === 404) { stop(); break; }
           throw new Error("phone channel read failed");
         }
+        if (down) { log(`link: phone channel read is back after ${down} ${down === 1 ? "retry" : "retries"}`); down = 0; }
         const beat = beatWatch(response, () => { log("link: the phone channel read went silent; reconnecting"); fetchImpl.reset?.(); });
         beatStop = beat.stop;
         await Promise.race([readChannelBatches(response, ({ channel: cid, frames = [] }) => {
@@ -2627,7 +2641,8 @@ export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = 
         if (stopped) break;
         if (stall.signal.aborted && !heard) { stream.stalled(); continue; }
         failures += 1;
-        if (failures === 1 || failures % 20 === 0) log("link: phone channel read retrying");
+        down += 1;
+        if (down === 1 || down % 20 === 0) log("link: phone channel read retrying");
         if (postsBefore === successfulPosts) {
           pollRetry = new AbortController();
           await delay(spread(Math.min(15_000, 500 * 2 ** Math.min(failures, 5))), undefined, { signal: AbortSignal.any([abort.signal, pollRetry.signal]) }).catch(() => {});

@@ -15,6 +15,17 @@ describe("what the phone says about its live connection", () => {
     expect(connectionNotice({ ...base, now: STUCK_AFTER_MS })).toBe("stuck");
   });
 
+  it("never says it can't reach a place that answered a request just now: only the live stream is catching up", () => {
+    expect(connectionNotice({ ...base, answeredAt: STUCK_AFTER_MS * 3, now: STUCK_AFTER_MS * 3 + 100 })).toBe("reconnecting");
+    expect(connectionNotice({ ...base, answeredAt: 0, now: STUCK_AFTER_MS })).toBe("stuck");
+    expect(connectionNotice({ ...base, connected: true, downSince: null, answeredAt: 0, now: 1 })).toBeNull();
+  });
+
+  it("says nothing for a dusk cloud that agreed to sleep: the next action wakes it", () => {
+    expect(connectionNotice({ ...base, asleep: true, now: STUCK_AFTER_MS * 10 })).toBeNull();
+    expect(connectionNotice({ ...base, asleep: true, waking: true, downSince: null, wakingSince: 0, now: 1 })).toBe("waking");
+  });
+
   it("says offline first, and a slow wake once a cloud has taken too long", () => {
     expect(connectionNotice({ ...base, offline: true, now: STUCK_AFTER_MS })).toBe("offline");
     expect(connectionNotice({ ...base, waking: true, downSince: null, wakingSince: 0, now: WAKE_SLOW_AFTER_MS - 1 })).toBe("waking");

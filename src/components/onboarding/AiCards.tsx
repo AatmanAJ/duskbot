@@ -136,11 +136,13 @@ export function AiCards({ onMore, className, onConnected, suggested = [] }: { te
   useFocusOnConnect(tiles.filter((tile) => ready(tile.instance)).map((tile) => tile.id));
   const told = useRef(false);
   const pickedReady = Boolean(picked && tiles.some((tile) => tile.id === picked && ready(tile.instance)));
+  // a sign-in still confirming has not finished: telling now would close the dialog and cancel it mid-way
+  const settled = flow.state.stage === "connected" || flow.state.stage === "idle" || flow.state.stage === "failed";
   useEffect(() => {
-    if (told.current || !picked || !(pickedReady || flow.state.stage === "connected")) return;
+    if (told.current || !picked || !settled || !(pickedReady || flow.state.stage === "connected")) return;
     told.current = true;
     onConnected?.(picked);
-  }, [picked, pickedReady, flow.state.stage]);
+  }, [picked, pickedReady, settled, flow.state.stage]);
 
   return (
     <div data-ai-cards="" className={cn("@container flex w-full flex-col items-center", className)}>

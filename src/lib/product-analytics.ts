@@ -189,13 +189,24 @@ export function settingsClosed(): void {
   settingsOpenedAt = 0;
 }
 const REFUSED_STATUSES = new Set([403, 409, 423, 429]);
-/** the workspace said no to a request (busy, a limit, a permission): its status and fixed code, never its message */
-export function requestRefused(status: number, body: unknown): void {
+/** the API path of a request as one word with its ids folded: ".../api/bots/<id>/messages?x" is "bots_id_messages" */
+export function apiRouteWord(url: string): string | null {
+  let pathname: string;
+  try { pathname = new URL(url, "http://local").pathname; } catch { return null; }
+  const at = pathname.indexOf("/api/");
+  const folded = at < 0 ? null : route(pathname.slice(at + 4));
+  if (!folded || folded === "/") return null;
+  const word = folded.slice(1).replace(/:id/g, "id").replace(/[/-]+/g, "_").slice(0, 40).replace(/_+$/, "");
+  return /^[a-z][a-z0-9_]{0,39}$/.test(word) ? word : null;
+}
+/** the workspace said no to a request (busy, a limit, a permission): its status, fixed code and folded route, never its message */
+export function requestRefused(status: number, body: unknown, url = ""): void {
   if (!REFUSED_STATUSES.has(status)) return;
   const answer = body && typeof body === "object" ? body as { code?: unknown; error?: unknown } : {};
   const raw = typeof answer.code === "string" ? answer.code : typeof answer.error === "string" && /^[a-z][a-z0-9_-]{0,39}$/.test(answer.error) ? answer.error : "none";
   const code = raw.replace(/-/g, "_").toLowerCase();
-  action("refused", { by: "request", status, code: /^[a-z][a-z0-9_]{0,39}$/.test(code) ? code : "other" });
+  const at = apiRouteWord(url);
+  action("refused", { by: "request", status, code: /^[a-z][a-z0-9_]{0,39}$/.test(code) ? code : "other", ...(at ? { route: at } : {}) });
 }
 export function action(name: string, props?: Record<string, unknown>): void { track("app_action", { ...props, name }); }
 export function feedback(score: number, moment: string): void { track("app_feedback", { score, moment }); }

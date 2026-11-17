@@ -56,7 +56,7 @@ test("switch to pro on the plans page goes straight to checkout, with no sheet",
 });
 
 test("a running plan switches in place, and stops on the card to show a charge", async () => {
-  const changeCharge = vi.fn(async () => 15);
+  const changeCharge = vi.fn(async () => ({ timing: "now" as const, todayUsd: 15, taxUsd: 0, effectiveAt: 1, nextUsd: 50, nextAt: Date.UTC(2026, 11, 8) }));
   const changePlan = vi.fn(async () => {});
   state.cloud = { catalog: fixtureCatalog, billing: billingFor(plus), clouds: [], refresh: () => {}, error: null, checkout: vi.fn(), changeCharge, changePlan };
   const { BillingPage } = await import("./Billing");
@@ -64,8 +64,26 @@ test("a running plan switches in place, and stops on the card to show a charge",
   await act(async () => button(/^switch to pro$/)!.click());
   expect(document.querySelector("[role=dialog]")).toBeNull();
   expect(changePlan).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain("$15 today, for the rest of this billing month. then $50/mo from 8 Dec 2026.");
   await act(async () => button(/^pay \$15 and switch$/)!.click());
   expect(changePlan).toHaveBeenCalledWith(expect.objectContaining({ desktop: "shared-m" }), 15);
+});
+
+test("a switch during the trial and a smaller plan both stop once to say $0 today and when the new price starts", async () => {
+  const trialEnd = Date.UTC(2026, 10, 20), periodEnd = Date.UTC(2026, 11, 8);
+  const changeCharge = vi.fn(async (sel: { desktop: string }) => sel.desktop === "shared-m"
+    ? { timing: "trial" as const, todayUsd: 0, taxUsd: 0, effectiveAt: 1, nextUsd: 50, nextAt: trialEnd }
+    : { timing: "scheduled" as const, todayUsd: 0, taxUsd: 0, effectiveAt: periodEnd, nextUsd: 20, nextAt: periodEnd });
+  const changePlan = vi.fn(async () => {});
+  state.cloud = { catalog: fixtureCatalog, billing: billingFor(plus), clouds: [], refresh: () => {}, error: null, checkout: vi.fn(), changeCharge, changePlan };
+  const { BillingPage } = await import("./Billing");
+  await mount(createElement(BillingPage));
+  await act(async () => button(/^switch to pro$/)!.click());
+  expect(changePlan).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain("$0 today. your free trial still ends 20 Nov 2026, then $50/mo.");
+  expect(document.body.textContent).not.toMatch(/hello@dusk\.bot/);
+  await act(async () => button(/^switch to pro$/)!.click());
+  expect(changePlan).toHaveBeenCalledWith(expect.objectContaining({ desktop: "shared-m" }), 0);
 });
 
 test("buying a work license on its own: one click asks once, the button holds while the page opens, and says so if it can't", async () => {

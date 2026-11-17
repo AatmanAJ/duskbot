@@ -72,11 +72,32 @@ describe("dodo HTTP provider fixture", () => {
     expect(await p.updatePaymentMethod("sub/1", input.returnUrl)).toEqual({ url: "https://test.checkout.dodopayments.com/abc" });
     expect(requests[0]).toEqual({ method: "POST", url: "/subscriptions/sub%2F1/update-payment-method", auth: `Bearer ${apiKey}`, body: { type: "new", return_url: input.returnUrl } });
     expect(p).not.toHaveProperty("portal");
-    reply = {}; await p.cancelAtPeriodEnd("sub/1", true); await p.changePlan({ subscriptionId: "sub/1", productId: "new", addons: [{ addonId: "cpu", quantity: 8 }] });
+    reply = {}; await p.cancelAtPeriodEnd("sub/1", true);
+    expect(await p.changePlan({ subscriptionId: "sub/1", productId: "new", addons: [{ addonId: "cpu", quantity: 8 }], mode: "keep_cycle" })).toEqual({ paymentUrl: null });
     expect(requests[1]).toMatchObject({ method: "PATCH", url: "/subscriptions/sub%2F1", body: { cancel_at_next_billing_date: true } });
-    expect(requests[2]).toMatchObject({ method: "POST", url: "/subscriptions/sub%2F1/change-plan", body: { product_id: "new", quantity: 1, proration_billing_mode: "difference_immediately", on_payment_failure: "prevent_change", addons: [{ addon_id: "cpu", quantity: 8 }] } });
+    expect(requests[2]).toEqual(expect.objectContaining({ method: "POST", url: "/subscriptions/sub%2F1/change-plan", body: { product_id: "new", quantity: 1, proration_billing_mode: "prorated_immediately_keep_cycle", on_payment_failure: "prevent_change",
+      cancel_scheduled_change_plan: true, addons: [{ addon_id: "cpu", quantity: 8 }] } }));
     expect(await p.invoiceUrl("pay")).toBeNull(); contentType = "application/pdf"; reply = Buffer.from("%PDF-fixture");
     expect(await p.invoicePdf("pay/1")).toEqual({ contentType, body: reply }); expect(requests[3].url).toBe("/invoices/payments/pay%2F1");
+  });
+  it("sends each change mode as dodo's own, prices it from dodo's preview and reads the plan back", async () => {
+    const p = provider(), base = { subscriptionId: "sub_1", productId: "pro", addons: [] };
+    contentType = "application/json";
+    reply = { immediate_charge: { summary: { total_amount: 2655, tax: 405, currency: "USD" } } };
+    expect(await p.previewChange({ ...base, mode: "keep_cycle" })).toEqual({ chargeCents: 2655, taxCents: 405 });
+    expect(requests.at(-1)).toMatchObject({ url: "/subscriptions/sub_1/change-plan/preview", body: { proration_billing_mode: "prorated_immediately_keep_cycle" } });
+    expect(await p.previewChange({ ...base, mode: "scheduled" })).toEqual({ chargeCents: 0, taxCents: 0 });
+    expect(requests.at(-1)!.body).toMatchObject({ proration_billing_mode: "full_immediately", effective_at: "next_billing_date" });
+    await p.previewChange({ ...base, mode: "trial" }); expect(requests.at(-1)!.body).toMatchObject({ proration_billing_mode: "do_not_bill" }); expect(requests.at(-1)!.body).not.toHaveProperty("effective_at");
+    await p.previewChange({ ...base, mode: "new_cycle" }); expect(requests.at(-1)!.body).toMatchObject({ proration_billing_mode: "prorated_immediately" });
+    reply = { immediate_charge: { summary: { total_amount: 100, tax: 0, currency: "EUR" } } };
+    await expect(p.previewChange({ ...base, mode: "keep_cycle" })).rejects.toMatchObject({ code: "refused" });
+    reply = { payment_link: "https://test.checkout.dodopayments.com/pay_x" };
+    expect(await p.changePlan({ ...base, mode: "keep_cycle" })).toEqual({ paymentUrl: "https://test.checkout.dodopayments.com/pay_x" });
+    reply = { payment_link: "https://evil.test/pay" }; await expect(p.changePlan({ ...base, mode: "keep_cycle" })).rejects.toMatchObject({ code: "refused" });
+    reply = {}; await p.cancelScheduledChange("sub_1"); expect(requests.at(-1)).toMatchObject({ method: "DELETE", url: "/subscriptions/sub_1/change-plan/scheduled" });
+    reply = { product_id: "pro", addons: [{ addon_id: "seat", quantity: 2 }], next_billing_date: "2026-12-17T04:37:20Z", status: "active", scheduled_change: { product_id: "plus", addons: [] } };
+    expect(await p.subscription("sub_1")).toEqual({ productId: "pro", addons: [{ addonId: "seat", quantity: 2 }], nextBillingAt: Date.parse("2026-12-17T04:37:20Z"), status: "active", scheduled: { productId: "plus", addons: [] } });
     status = 404; expect(await p.invoicePdf("missing")).toBeNull();
   });
   it("refuses a payment method link that is not the mode's checkout page, such as the customer portal", async () => {

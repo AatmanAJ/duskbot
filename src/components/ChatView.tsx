@@ -1,5 +1,6 @@
-import { createContext, memo, startTransition, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType, type Dispatch, type Ref, type RefObject } from "react";
+import { createContext, memo, startTransition, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type RefObject } from "react";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
+import { phoneApp } from "@/lib/store-app";
 import { ThreadLinkContext } from "@/components/ThreadLinkMenu";
 import { ChevronLeft, ChevronRight, Copy, Monitor, RefreshCw, Square, Webhook } from "../icons";
 import { WorkingDots } from "@/components/WorkingIndicator";
@@ -33,6 +34,8 @@ import { CHATGPT_USAGE_URL, ManageUsageLink } from "./ChatGptPlanStatus";
 import { CODEX_USAGE_URL, codexUsageLimitReached } from "../../shared/codex-usage-limit";
 import { ClaudeUpdatePrompt } from "./ClaudeUpdatePrompt";
 import { MacCuaRecoveryActions } from "./MacCuaRecoveryActions";
+import { ScreenAccessNotice } from "./ScreenAccessNotice";
+import { ComposerNoticeSlot } from "./ComposerNoticeSlot";
 import { macCuaPermissionMessage, missingMacCuaPermissions } from "@/lib/mac-cua-permissions";
 import { claudeUpdateTarget, failedTurnCause, signedOutEngine } from "@/lib/failed-turn";
 import { plainErrorLine } from "@/lib/plain-error";
@@ -45,35 +48,31 @@ import { ConversationalReply, QuickModelNote, isConversational, useReplySegments
 import { isProviderSafetyBlock, PROVIDER_SAFETY_GUIDANCE, PROVIDER_SAFETY_HELP_URL } from "../../shared/provider-safety";
 import { isCancelledTranscriptRow, isStoppedTurnName, PERSON_STOPPED_TURN_NAME } from "../../shared/client-cancel";
 import { isThisComputerNotGranted, isThisComputerNotReady } from "../../shared/your-computer";
-import { BotAvatar, type MausAvatarHandle } from "./Avatar";
+import { BotAvatar } from "./Avatar";
 import type { MarkState } from "./mascot-engine";
-import { turnMarkState } from "./mascot-presence";
+import { poolWords } from "@/lib/friendly-activity";
 import type { LiveStatus } from "@/state/turn-status";
 import { TurnPresence, TYPING_PHASE } from "./TurnPresence";
 import { BrowserPartLine } from "./BrowserPartLine";
 import { browserPartFor } from "@/lib/browser-part";
-import { MarkCrossfade } from "./MarkCrossfade";
+import { WorkingMascot } from "./WorkingMascot";
 import { liveCallEnabled, showToolCallsEnabled } from "@/lib/feature-flags";
 import { normalizeState } from "@/lib/mascot";
 import { peerLine, peerRequest, type PeerLine } from "@/lib/peer-message";
 import { showWorkingDots } from "@/lib/turn-tail";
 import { useNotesWork } from "@/lib/notes-arrival";
 import { useTypingHold } from "@/hooks/use-typing-hold";
-import { glideColumn, OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
+import { OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
 import { growFromMascot, hasSendLaunch, morphFromComposer } from "./bubble-entrance";
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
-import { useReplyLife, type LifeTurn } from "@/hooks/use-reply-life";
-import { LIFE_MASCOT_STATE, lifeDraw, lifeMarkState, lifeSpan } from "@/lib/reply-life";
-import { presenceKind, TYPING_MARK, turnWorked, useHeldPresence, workingMark } from "@/lib/presence-mark";
+import { lifeDraw, lifeSpan } from "@/lib/reply-life";
+import { presenceKind, turnWorked, useHeldPresence } from "@/lib/presence-mark";
 import { lastNonReceipt } from "@/lib/receipts";
 import { routineStartName } from "./RoutineStartLine"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
 import { followSentTurn, sentTurn, useSentTurn } from "@/state/sent-turn";
 import { forgetLateRow, isLateRow, isSettledRow, noteLateRow, noteSettledRow, useStopPress, type StopPress } from "@/lib/stop-turn";
-import { replacedLiveReply, shownReplyText } from "@/state/live-reply";
-import { phoneApp } from "@/lib/store-app";
-import { revealedWords, revealStep, wordCount, REVEAL_SPAN_MS } from "@/lib/text-reveal";
-import { LiveReplyBubble } from "./LiveReplyBubble";
+import { shownReplyText } from "@/state/live-reply";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { TranscriptStaging } from "./transcript-staging";
 import { LiveToolsContext, useLiveToolIds } from "@/hooks/use-live-tool-ids";
@@ -117,7 +116,6 @@ import { LiveCallBar } from "./LiveCallBar";
 import { LiveCallChip } from "./LiveCallPill";
 import { effectivePlace, toolPlace, type EffectivePlace } from "@/lib/place";
 import { cn } from "@/lib/cn";
-import { useThinkingMoment } from "@/hooks/use-thinking-moment";
 import { activeLocale, t } from "@/lib/i18n";
 import { COMPACT_BUBBLE } from "@/lib/compact-chip";
 import { groupTranscript, isStatusActivity, statusActivity, type TranscriptItem } from "@/lib/activity-runs";
@@ -383,9 +381,7 @@ const Bubble = memo(function Bubble({
   );
   const join: BubbleJoin = { above: joinAbove, below: joinBelow };
   // only rows that arrive while the conversation is open slide in; a reply that streamed in is already in place
-  // on the phone a reply that streamed in was already on screen in its live bubble: it takes that bubble's place
-  const tookOver = !user && phoneApp() && replacedLiveReply(message.id);
-  const fresh = !emerging && message.at > openedAt && !isSettledRow(message.id) && !tookOver;
+  const fresh = !emerging && message.at > openedAt && !isSettledRow(message.id);
   const reply = useReplySegments(conversational && !user && !peer && !replyTarget && message.kind === "text", text);
   const split = reply.segments.length > 1;
   // each table of a reply draws as its own card between the reply's prose bubbles
@@ -413,24 +409,13 @@ const Bubble = memo(function Bubble({
     const plain = !webhookView && !hasAttachments && Boolean(visibleText.trim()) && !emojiOnly(visibleText);
     return plain && !reduced && hasSendLaunch(message.sendId) ? "morph" : null;
   });
-  // the phone reveals a reply's words a step apart; one that took over a live bubble carries on from what it showed
-  const [reveal, setReveal] = useState<{ from: number; step: number } | undefined>(() => {
-    if (user || reduced || message.kind !== "text" || !phoneApp()) return undefined;
-    const total = wordCount(text);
-    const from = tookOver && message.at > openedAt ? revealedWords(threadId) ?? total : entrance === "grow" ? 0 : total;
-    return from < total ? { from, step: revealStep(total - from) } : undefined;
-  });
-  useEffect(() => {
-    if (!reveal) return;
-    const timer = setTimeout(() => setReveal(undefined), Math.max(REVEAL_SPAN_MS, reveal.step * wordCount(text)) + 600);
-    return () => clearTimeout(timer);
-  }, [reveal]);
   const [filling, setFilling] = useState(entrance === "morph");
   useLayoutEffect(() => {
     const parts = own.current;
     if (parts.entered || !entrance || !parts.bubble) return;
     parts.entered = true;
-    if (entrance === "grow") growFromMascot(parts.bubble, reduced, Boolean(reveal));
+    // on the phone the words come with the bubble, so no frame shows an empty one where the typing line just was
+    if (entrance === "grow") growFromMascot(parts.bubble, reduced, phoneApp());
     else void morphFromComposer(parts.bubble, parts.fill, message.sendId).then(() => setFilling(false));
   }, [entrance, reduced, message.sendId]);
 
@@ -584,7 +569,7 @@ const Bubble = memo(function Bubble({
               ) : text && mediaSplit ? (
                 <div data-chat-bubble="simple" className={cn("w-fit max-w-full", SIMPLE_BOT_BUBBLE, join && joinedCorners("start", join))}><ChatMarkdown text={text} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} /></div>
               ) : text ? (
-                <ChatMarkdown text={text} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} reveal={reveal} />
+                <ChatMarkdown text={text} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} />
               ) : null}
               {group && (mediaChips
                 ? <div className="relative mt-[26px]">{mediaChips}<AttachmentGallery media={message.media} images={group.images} files={group.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} /></div>
@@ -667,9 +652,6 @@ const ActivityChip = memo(function ActivityChip({ message, place = "auto" }: { m
 });
 
 const RoomHandoffChip = ({ message, comm, bots, dispatch }: { message: Message; comm: NonNullable<Message["comm"]>; bots: readonly Bot[]; dispatch: Dispatch<Action> }) => { const store = useStoreRef(); return <HandoffChip message={message} bots={bots} title={t("chat.openConversationWith", { name: comm.withName })} onClick={() => openRoomThread(dispatch, comm, store.state().groups)} />; };
-/** BotAvatar hands its ref through to the mark, whose handle pokes it; its props type just doesn't name the ref. */
-const StatusMark = BotAvatar as unknown as ComponentType<ComponentProps<typeof BotAvatar> & { ref?: Ref<MausAvatarHandle> }>;
-const NO_LIFE: readonly LifeTurn[] = [];
 
 /** What grok's status-line mark plays: the live step while the turn runs, its outcome once it ends. */
 export function statusMarkFor({ busy, waitingOnYou, answering, live, failed }: { busy: boolean; waitingOnYou: boolean; answering: boolean; live: LiveStatus["activity"] | undefined; failed: boolean }): MarkState {
@@ -777,10 +759,11 @@ export function useFirstPaintRows(key: string, rows: Message[], hold: boolean, s
   useEffect(() => {
     if (count >= total) {
       whole.current = key;
-      staging.onWhole?.();
       return;
     }
-    startTransition(() => setShown({ key, count: count + MOUNT_STEP_ROWS >= total ? Infinity : count + MOUNT_STEP_ROWS }));
+    const step = () => startTransition(() => setShown({ key, count: count + MOUNT_STEP_ROWS >= total ? Infinity : count + MOUNT_STEP_ROWS }));
+    if (staging.afterSlide) return staging.afterSlide(step);
+    step();
   }, [key, count, total, hold, staging]);
   return useMemo(() => (count >= rows.length ? rows : rows.slice(-count)), [count, rows]);
 }
@@ -1033,8 +1016,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   else if (pressedOn.current?.at !== press.at) pressedOn.current = { at: press.at, ids: new Set(visible.map((message) => message.id)) };
   const shownMessages = useMemo(() => withoutLateRows(visible, press, pressedOn.current?.ids), [visible, press]);
   // each new bot bubble waits for its "Typing…" beat on the status line before it lands; a Stop lets what was said land now
-  // the phone shows a reply as it streams, so a bubble that took over from it has nothing to wait for
-  const hold = useTypingHold(`${bot.id}:${bot.threadId ?? ""}`, shownMessages, bot.id, Boolean(bot.busy), phoneApp() ? replacedLiveReply : undefined);
+  const hold = useTypingHold(`${bot.id}:${bot.threadId ?? ""}`, shownMessages, bot.id, Boolean(bot.busy));
   const messages = stopCut ? shownMessages : hold.rows;
   const lookups = useMemo(() => transcriptLookups(allMessages, messages), [allMessages, messages]);
   const liveTools = useLiveToolIds(messages, bot);
@@ -1061,8 +1043,6 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
     hasMore: bot.hasMore,
   });
   useTimestampPeek(scrollRef);
-  // a streaming reply's new line: the scroll already moved to the end, so the column is drawn where it was and glides up
-  const glideUp = useCallback((px: number) => glideColumn(transcriptRef.current, clipRef.current, px), [transcriptRef, clipRef]);
 
   const lastBotTextId = useMemo(
     () => [...messages].reverse().find((m) => m.role === "bot" && m.kind === "text")?.id,
@@ -1132,11 +1112,8 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // The mascot and its status line stay for the whole turn, through every bubble it sends; only its end hides them.
   const waiting = Boolean(turnBusy && bot.activity !== "waiting-on-you" && showWorkingDots(turnBusy, lastMessage, undefined, sent?.phase === "sending" ? false : live.ended));
   const teammatesWorking = !bot.busy && Boolean(bot.waitingForTeammates);
-  const markRef = useRef<MausAvatarHandle>(null);
-  const [markEmphasized, setMarkEmphasized] = useState(false);
   // the reply is written whole; while the engine types it the mark only looks like it is answering
   const streamingReply = useLiveReplyActive(bot.threadId);
-  const statusMarkState = turnBusy ? turnMarkState({ running: true, composing: streamingReply, activity: live.status?.activity ?? null, awaiting: bot.activity === "waiting-on-you", settled: null }, Date.now()) : statusMarkFor({ busy: false, waitingOnYou: bot.activity === "waiting-on-you", answering: streamingReply, live: live.status?.activity, failed: lastMessage?.kind === "activity" && lastMessage.tool?.ok === false });
   const [busySince, setBusySince] = useState<number | null>(null);
   useEffect(() => {
     setBusySince(turnBusy ? turnStartedAt ?? Date.now() : null);
@@ -1152,11 +1129,14 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const importing = useNotesWork(bot.id);
   const presenceVisible = !stopCut && (hold.typing || (waiting && mountDue) || teammatesWorking || Boolean(importing));
   // the bubble the line hangs under keeps its pinched corner until the line has finished leaving, as grok's does
-  const presenceShown = useLingering(presenceVisible, 140);
+  const presenceLingers = useLingering(presenceVisible, 140);
   const paintedMessages = useFirstPaintRows(transcriptKey, windowedMessages, Boolean(focus && !focus.consumed) || laterCount > 0, scrollRef, following);
   const lastShownRow = windowedMessages.findLast((message) => !quietRow(message, showToolCalls));
   const lastRowIsBubble = Boolean(lastShownRow && isBotTextRow(lastShownRow, bot.id));
   const presenceUnderBubble = lastRowIsBubble;
+  // on the phone a landing reply takes the typing line's place in the same frame: the line fading on under it, pushed
+  // below the new bubble, read as a flicker
+  const presenceShown = presenceLingers && !(phoneApp() && !presenceVisible && lastRowIsBubble);
   // grok keeps the status line's slot at the end of the conversation whether it shows or not, so it never moves a row
   const statusSlot = windowedMessages.length > 0 || busy;
   const announcement = useMemo((): TranscriptSnapshot => {
@@ -1168,13 +1148,11 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
       approval: approval ? { id: approval.requestId, name: bot.name } : undefined,
     };
   }, [messages, bot.busy, bot.name]);
-  // the turn's start lives: the mascot, one pass of its thinking dots, then the mascot again as the words come
-  // the typing dots only while the reply is being written; a turn at work shows the bot's own mascot at work
   const worked = useMemo(() => turnWorked(messages), [messages]);
   const writing = !stopCut && (streamingReply || live.status?.activity === "reply" || hold.typing);
   // the person's Stop, said once and quietly where the working line was, until the next turn
   const stoppedShown = (stopCut || personStoppedLast(messages)) && !(turnBusy && !stopCut) && !presenceVisible;
-  const typingPhrases = useMemo(() => [t("chat.typing")], [locale]);
+  const typingPhrases = useMemo(() => poolWords("typing"), [locale]);
   // the bot's own label stays on the line while it leaves, after the turn's end has cleared it
   const shownLabel = useRef<{ seed: string; label?: string }>({ seed: presenceSeed });
   // a new turn starts clean; the end of this one (busySince gone) keeps it
@@ -1182,17 +1160,12 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   if (live.label) shownLabel.current.label = live.label;
   const turnLabel = live.label ?? shownLabel.current.label;
   const presence = useHeldPresence(turnBusy && bot.activity !== "waiting-on-you" ? presenceKind({ writing, activity: live.status?.activity, worked }) : null);
-  // grok's mark opens every turn the same way, mascot then dots then mascot with the first words, even when a step has
+  // every turn opens the same way, the working mascot alone for a beat before its first word, even when a step has
   // already started
   const openingEnd = turnBusy && turnStartedAt
     ? turnStartedAt + mountDelay + lifeSpan(presenceSeed, 0) + lifeSpan(presenceSeed, 1)
     : null;
   const opening = !useReached(openingEnd) && openingEnd !== null && presence === "working";
-  const lifeBeat = useReplyLife(presenceVisible && !teammatesWorking && (presence === "waiting" || opening) ? [{ key: bot.id, seed: presenceSeed, typing: writing }] : NO_LIFE).get(bot.id);
-  const presenceMarkState = presence === "typing" || writing ? TYPING_MARK
-    : opening ? lifeMarkState("thinking", lifeBeat)
-    : presence === "working" ? workingMark(live.status?.activity) : lifeMarkState(statusMarkState, lifeBeat);
-  useThinkingMoment(markRef, presenceMarkState === LIFE_MASCOT_STATE);
 
   // while the turn runs its notices are the working row's to say, not the chat's too; once it ends, what it left is one
   // card above the composer
@@ -1426,23 +1399,10 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               </div>
             </div>
           )}
-          {phoneApp() && !stopCut && bot.threadId && <LiveReplyBubble threadId={bot.threadId} mentionPeers={mentionPeers} onGrow={following ? glideUp : undefined} />}
-          <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"} onMouseEnter={() => setMarkEmphasized(true)} onMouseLeave={() => setMarkEmphasized(false)} onClick={() => markRef.current?.poke?.()}>
+          <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
             avatar={
-              <MarkCrossfade swap={presenceMarkState}>
-                <StatusMark
-                  ref={markRef}
-                  bot={bot}
-                  state={presenceMarkState}
-                  size={28}
-                  eyeInk="var(--color-app)"
-                  emphasized={markEmphasized}
-                  forward={false}
-                  lookAround={1}
-                  trackPointer={false}
-                />
-              </MarkCrossfade>
+              <WorkingMascot bot={bot} size={phoneApp() ? 30 : 24} seed={presenceSeed} />
             }
             simple
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}
@@ -1474,20 +1434,25 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           <JumpToLatestButton onClick={jumpToLatest} className="pointer-events-auto bottom-2" />
         </div>
       )}
-      {/* grok's usage warning rides just above the composer, near or at a limit; a failed reply's card already says so, so it wins */}
-      {canWrite !== false && !rescuing && !trailing?.failures.length && !(lastShownRow && codexUsageLimitReached(`${lastShownRow.text ?? ""} ${lastShownRow.tool?.name ?? ""}`)) && (
-        // empty, it takes no room: its padding coming and going with a turn moved the whole chat 8px
-        <div className="pointer-events-auto px-5 pb-2 empty:hidden">
-          <WeeklyLimitLine onSeeUsage={() => dispatch(openSettings("usage"))} error={state.error} clearError={clearLimitError} />
-          <UsageBanner engine={answering.instanceId} onSeeUsage={() => dispatch(openSettings("usage"))} />
-        </div>
-      )}
-      {/* grok says what went wrong, or a passing note, in one quiet line just above the message box; at the top it ran
-          into the transcript's first time stamp */}
-      <div className="pointer-events-auto"><ChatNotice notice={state.notice} /></div>
-      <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
-      <div className="pointer-events-auto"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
-      {canWrite !== false && !trailing?.failures.length && !trailing?.notices.length && <div className="pointer-events-auto"><ComposerSignInNotice bot={bot} /></div>}
+      {/* every card above the composer comes and goes through one slot, so the composer and the chat never jump; each row
+          stays mounted and its card decides whether it shows */}
+      <ComposerNoticeSlot>
+        {/* grok's usage warning rides just above the composer, near or at a limit; a failed reply's card already says so, so it wins */}
+        {canWrite !== false && !rescuing && !trailing?.failures.length && !(lastShownRow && codexUsageLimitReached(`${lastShownRow.text ?? ""} ${lastShownRow.tool?.name ?? ""}`)) && (
+          // empty, it takes no room: its padding coming and going with a turn moved the whole chat 8px
+          <div className="pointer-events-auto px-5 pb-2 empty:hidden">
+            <WeeklyLimitLine onSeeUsage={() => dispatch(openSettings("usage"))} error={state.error} clearError={clearLimitError} />
+            <UsageBanner engine={answering.instanceId} onSeeUsage={() => dispatch(openSettings("usage"))} />
+          </div>
+        )}
+        {/* grok says what went wrong, or a passing note, in one quiet line just above the message box; at the top it ran
+            into the transcript's first time stamp */}
+        <div className="pointer-events-auto"><ChatNotice notice={state.notice} /></div>
+        <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
+        <div className="pointer-events-auto"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
+        <div className="pointer-events-auto">{canWrite !== false && !trailing?.failures.length && !trailing?.notices.length && <ComposerSignInNotice bot={bot} />}</div>
+        <div className="pointer-events-auto">{!trailing?.failures.length && <ScreenAccessNotice bot={bot} />}</div>
+      </ComposerNoticeSlot>
       {liveCallEnabled() && <LiveCallBar bot={bot} />}
       {canWrite === false ? (
         <NewConversationInstead bot={bot} onNew={() => dispatch({ type: "newTask", botId: bot.id })} />

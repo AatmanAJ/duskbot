@@ -10,6 +10,10 @@ export type ConnectionNotice = "offline" | "reconnecting" | "waking" | "stuck" |
 
 export type NoticeInput = {
   hydrated: boolean; connected: boolean; offline: boolean; waking: boolean; resuming: boolean;
+  /** a dusk cloud that agreed to sleep: the person's next action wakes it, so it is never a problem */
+  asleep?: boolean;
+  /** when the place last answered a request (src/mobile/connection/reachability.ts), null if it has not */
+  answeredAt?: number | null;
   /** when the live connection was last seen dropping, null while connected */
   downSince: number | null; wakingSince: number | null; now: number;
 };
@@ -19,9 +23,12 @@ export function connectionNotice(input: NoticeInput): ConnectionNotice {
   if (!input.hydrated) return null;
   if (input.offline) return "offline";
   if (input.waking) return input.wakingSince !== null && input.now - input.wakingSince >= WAKE_SLOW_AFTER_MS ? "wake-slow" : "waking";
-  if (input.connected || input.resuming) return null;
+  if (input.connected || input.resuming || input.asleep) return null;
+  if (answeredRecently(input)) return "reconnecting";
   return input.downSince !== null && input.now - input.downSince >= STUCK_AFTER_MS ? "stuck" : "reconnecting";
 }
+
+const answeredRecently = (input: Pick<NoticeInput, "answeredAt" | "now">) => input.answeredAt != null && input.now - input.answeredAt < STUCK_AFTER_MS;
 
 /** a managed dusk cloud lives at d<20 hex>.dusk.bot (or a preview of one); anything else is a computer */
 export function isCloudOrigin(origin: string | undefined): boolean {
@@ -42,9 +49,9 @@ const restarted = new Set<() => void>();
 /** Tracks when the connection dropped and when a wake began, once for every screen that asks, and re-renders when a
  * time box runs out. */
 export function useConnectionNotice(input: Omit<NoticeInput, "downSince" | "wakingSince" | "now">, clock: () => number = Date.now) {
-  const { hydrated, connected, offline, waking, resuming } = input;
-  // a resume or going offline restarts the clock: the wait before "can't reach" counts from when it could connect
-  const down = hydrated && !connected && !offline && !waking && !resuming;
+  const { hydrated, connected, offline, waking, resuming, asleep, answeredAt } = input;
+  // a resume, going offline or a cloud asleep restarts the clock: the wait before "can't reach" counts from when it could connect
+  const down = hydrated && !connected && !offline && !waking && !resuming && !asleep;
   const wakingNow = waking && !offline;
   const [downSince, setDownSince] = useState<number | null>(() => (down ? since.down ??= clock() : null));
   const [wakingSince, setWakingSince] = useState<number | null>(() => (wakingNow ? since.waking ??= clock() : null));
@@ -62,7 +69,8 @@ export function useConnectionNotice(input: Omit<NoticeInput, "downSince" | "waki
     if (wakingNow) since.waking ??= clock(); else since.waking = null;
     setWakingSince(since.waking);
   }, [wakingNow, clock]);
-  const deadline = downSince !== null ? downSince + STUCK_AFTER_MS : wakingSince !== null ? wakingSince + WAKE_SLOW_AFTER_MS : null;
+  const stuckAt = downSince === null ? null : Math.max(downSince, answeredAt ?? -Infinity) + STUCK_AFTER_MS;
+  const deadline = stuckAt ?? (wakingSince !== null ? wakingSince + WAKE_SLOW_AFTER_MS : null);
   useEffect(() => {
     if (deadline === null) return;
     const wait = deadline - clock();

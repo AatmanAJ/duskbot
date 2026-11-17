@@ -27,6 +27,19 @@ function composerField(root: HTMLElement): HTMLElement | null {
   return active instanceof HTMLTextAreaElement && root.querySelector("[data-mobile-chat]")?.contains(active) ? active : null;
 }
 
+/** Puts the keyboard away from whichever field holds it, the native glass composer's or one on the page. */
+export function dismissKeyboard(platform: MobilePlatform, root: HTMLElement, field: HTMLElement | null = editingField(root)): void {
+  if (root.dataset.glassFocused !== undefined) platform.glass?.blur();
+  if (!field) return;
+  field.blur();
+  platform.hideKeyboard?.();
+}
+
+function editingField(root: HTMLElement): HTMLElement | null {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && root.contains(active) && active.matches("input, textarea, [contenteditable=true]") ? active : null;
+}
+
 /** A drag down the transcript, or a tap on it away from a control, puts the keyboard away (UIScrollView's
  * keyboardDismissMode onDrag, as Messages and WhatsApp do). */
 export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<HTMLElement | null>) {
@@ -35,13 +48,7 @@ export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<
     if (!root) return;
     let start: { x: number; y: number } | null = null;
     const inTranscript = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest("[data-mobile-chat] .glass-scroller"));
-    const dismiss = () => {
-      if (root.dataset.glassFocused !== undefined) { platform.glass?.blur(); return; }
-      const field = composerField(root);
-      if (!field) return;
-      field.blur();
-      platform.hideKeyboard?.();
-    };
+    const dismiss = () => dismissKeyboard(platform, root, root.dataset.glassFocused !== undefined ? null : composerField(root));
     const down = (event: TouchEvent) => {
       const touch = event.touches[0];
       start = touch && event.touches.length === 1 && inTranscript(event.target) ? { x: touch.clientX, y: touch.clientY } : null;
@@ -106,8 +113,9 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       const shift = Math.max(0, height - safeBottom(root));
       delete root.dataset.kbMoving;
       const list = scroller(root);
+      const top = list?.scrollTop ?? 0;
       set(height, 0);
-      if (list) list.scrollTop += shift - Math.max(0, committed - safeBottom(root));
+      if (list) list.scrollTop = top + shift - Math.max(0, committed - safeBottom(root));
       committed = height;
     };
 
@@ -133,8 +141,10 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
         delete root.dataset.kbMoving;
         delete root.dataset.keyboard;
         const list = scroller(root);
+        // read before the layout gives the space back: the taller scroller clamps scrollTop on the next read
+        const top = list?.scrollTop ?? 0;
         set(0, shift);
-        if (list) list.scrollTop -= shift;
+        if (list) list.scrollTop = Math.max(0, top - shift);
         committed = 0;
         requestAnimationFrame(() => requestAnimationFrame(() => {
           root.dataset.kbMoving = "";

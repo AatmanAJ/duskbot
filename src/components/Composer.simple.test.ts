@@ -245,23 +245,16 @@ describe("the Simple composer in a bot chat", () => {
     }
   });
 
-  it("turns its round button into Stop while the bot works, and keeps a quiet Stop beside Send while you type", () => {
+  it("never shows Stop while the bot works: only voice and send, typed or not", () => {
     const busy = { ...bot, busy: true };
     render({ bot: busy });
-    const slot = container.querySelector<HTMLButtonElement>('[data-composer-stop="slot"]')!;
-    expect(slot.getAttribute("aria-label")).toBe("Stop this turn");
-    expectBotButton(slot, "purple");
-    expect(fixture.call).toBeNull();
-    // the round button holds its spot at the end, and the small mic springs in before it
-    expect(slot.className).toContain("order-last");
-    expect(slot.parentElement!.querySelector('[data-voice-mic="start"]')!.className).toContain("composer-mic-in");
-    click(slot);
-    expect(fixture.dispatch).toHaveBeenCalledWith({ type: "interrupt", botId: "atlas", threadId: "atlas-thread" });
+    expect(container.querySelector("[data-composer-stop]")).toBeNull();
+    expect(container.querySelector('[data-voice-mic="start"]')).not.toBeNull();
 
     restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "and also this", attachments: [] });
     render({ bot: busy });
-    expect(container.querySelector('[data-composer-stop="beside"]')).not.toBeNull();
-    expect(container.querySelector('[data-composer-stop="slot"]')).toBeNull();
+    expect(container.querySelector("[data-composer-stop]")).toBeNull();
+    expect(container.querySelector('[data-voice-mic="start"]')).not.toBeNull();
   });
 
   it("shows the approval level as a chip only while this conversation overrides the bot, in the panel's words", () => {

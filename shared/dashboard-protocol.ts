@@ -119,8 +119,11 @@ export interface AppsReport {
   services: Array<{ slug: string; connected: boolean; pending: boolean }>;
 }
 
-export type CommandKind = "computer.wake" | "computer.sleep" | "phone.revoke" | "session.revoke" | "routine.pause" | "routine.resume" | "app.connect" | "app.disconnect";
+export type CommandKind = "computer.wake" | "computer.sleep" | "phone.revoke" | "session.revoke" | "routine.pause" | "routine.resume" | "app.connect" | "app.disconnect" | "phone.pair";
+/** what the website's dashboard may queue; phone.pair is queued only by the account service for a signed-in phone */
 export const COMMAND_KINDS: readonly CommandKind[] = ["computer.wake", "computer.sleep", "phone.revoke", "session.revoke", "routine.pause", "routine.resume", "app.connect", "app.disconnect"];
+/** a phone.pair command is picked up within this long or dropped, so a computer waking later never mints a grant no one waits for */
+export const PHONE_PAIR_COMMAND_TTL_MS = 60_000;
 /** app.* commands only queue for a workspace seen this recently; anything older reads as asleep */
 export const APP_COMMAND_ONLINE_MS = 45_000;
 /** after an app command a workspace reports its apps on every report for this long, so a finished sign-in shows */
@@ -132,10 +135,18 @@ export function appSlug(input: unknown): string | null {
   return typeof input === "string" && APP_SLUG.test(input.toLowerCase()) ? input.toLowerCase() : null;
 }
 
-/** `target` is a bot id for computer.*, a phone or session id for *.revoke, a routine id for routine.*, a toolkit slug for app.* */
+/** `target` is a bot id for computer.*, a phone or session id for *.revoke, a routine id for routine.*, a toolkit slug for app.*,
+ * the phone's own name for phone.pair */
 export interface DashboardCommand { id: string; kind: CommandKind; target: string; issuedAt: number; expiresAt: number }
-/** `url` is app.connect's sign-in page: https only, shown only to the workspace's owner, never stored */
-export interface CommandResult { id: string; ok: boolean; message: string | null; at: number; url?: string | null }
+/** `url` is app.connect's sign-in page: https only, shown only to the workspace's owner, never stored. `link` is
+ * phone.pair's one-time pairing link (duskbot://pair?m=..., shared/mobile-link.ts): handed to the waiting phone only, never
+ * stored. `reason` says why a phone.pair failed: no route a phone could use, or refused (policy, too many phones) */
+export interface CommandResult { id: string; ok: boolean; message: string | null; at: number; url?: string | null; link?: string; reason?: "unreachable" | "refused" }
+
+/** a phone pairing link a workspace may hand back for phone.pair; anything else is dropped */
+export function commandPairLink(input: unknown): string | null {
+  return typeof input === "string" && input.length <= 8192 && /^duskbot:\/\/pair\?m=[A-Za-z0-9_-]+$/.test(input) ? input : null;
+}
 
 /** a sign-in link a workspace may hand back; anything else is dropped */
 export function commandUrl(input: unknown): string | null {
@@ -151,7 +162,9 @@ export interface WorkspaceReport {
   v: 1;
   seq: number;
   at: number;
-  workspace: { name: string; kind: WorkspaceKind; version: string; platform: string };
+  /** `environmentId`: the workspace's own id, the one its phone links carry, so a phone can tell a computer it already
+   * links to; older workspaces leave it out */
+  workspace: { name: string; kind: WorkspaceKind; version: string; platform: string; environmentId?: string };
   machine?: MachineReport;
   computers?: { provider: "vps" | "local" | "none"; computers: ComputerReport[] };
   bots?: BotReport[];
@@ -245,7 +258,13 @@ const dashboardObject = (shape: Record<string, DashboardParser>): DashboardParse
   return result;
 };
 const dashboardKind = dashboardEnum("vps", "mac", "linux", "windows");
-const dashboardWorkspace = dashboardObject({ name: dashboardName, kind: dashboardKind, version: dashboardText(), platform: dashboardText() });
+const dashboardEnvironment: DashboardParser = input => input === undefined ? undefined : typeof input === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(input) ? input : dashboardInvalid;
+const dashboardWorkspace: DashboardParser = input => {
+  const value = dashboardObject({ name: dashboardName, kind: dashboardKind, version: dashboardText(), platform: dashboardText() })(input);
+  if (value === dashboardInvalid) return value;
+  const environmentId = dashboardEnvironment((input as Record<string, unknown>).environmentId);
+  return environmentId === dashboardInvalid || environmentId === undefined ? value : { ...(value as object), environmentId };
+};
 const dashboardTotals = { turns: dashboardNumber, tokens: dashboardNumber, costUsd: dashboardNullable(dashboardNumber),
   input: dashboardOptional(dashboardNumber), output: dashboardOptional(dashboardNumber), cacheRead: dashboardOptional(dashboardNumber), cacheWrite: dashboardOptional(dashboardNumber) };
 const dashboardSections: Record<string, DashboardParser> = {
@@ -292,8 +311,10 @@ const dashboardSections: Record<string, DashboardParser> = {
   results: dashboardArray(input => {
     const result = dashboardObject({ id: dashboardId, ok: dashboardBoolean, message: dashboardNullable(dashboardText()), at: dashboardNumber })(input);
     if (result === dashboardInvalid) return result;
-    const url = commandUrl((input as Record<string, unknown>).url);
-    return url ? { ...(result as object), url } : result;
+    const raw = input as Record<string, unknown>;
+    const url = commandUrl(raw.url), link = commandPairLink(raw.link);
+    const reason = raw.reason === "unreachable" || raw.reason === "refused" ? raw.reason : undefined;
+    return { ...(result as object), ...(url ? { url } : {}), ...(link ? { link } : {}), ...(reason ? { reason } : {}) };
   }, 50),
 };
 

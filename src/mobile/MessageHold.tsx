@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
 import { t } from "@/lib/i18n";
 import { ContextMenu, holdSink, type ContextAction, type ContextReaction } from "./ContextMenu";
 import { haptic } from "./haptics";
+import { useNativeHold, type HeldMenu, type NativeHold } from "./native-menu";
+import { usePlatform } from "./platform";
 
 const HOLD_MS = 400;
 const MOVE_CANCEL = 8;
@@ -98,6 +100,84 @@ export function pickReaction(row: HTMLElement, label: string): void {
     .finally(() => { bar.style.visibility = ""; });
 }
 
+/** SF Symbols for a message's actions, by the label it shows. */
+function symbolFor(label: string): string | undefined {
+  const symbols: Record<string, string> = {
+    [t("chat.replyToMessage")]: "arrowshape.turn.up.left",
+    [t("chat.copyMessage")]: "doc.on.doc",
+    [t("chat.speak.read")]: "speaker.wave.2",
+    [t("chat.speak.stop")]: "stop.circle",
+    [t("chat.regenerate")]: "arrow.clockwise",
+    [t("chat.pinMessage")]: "pin",
+    [t("chat.unpinMessage")]: "pin.slash",
+    [t("chat.editMessage")]: "pencil",
+    [t("chat.reportReply")]: "exclamationmark.bubble",
+  };
+  return symbols[label];
+}
+
+/** A message's actions and reactions for the system menu: the same ones its own bar offers, each pressing that control. */
+export async function nativeMessageMenu(row: HTMLElement): Promise<HeldMenu | null> {
+  const { actions, reactions } = await readMessageActions(row);
+  if (!actions.length && !reactions.length) return null;
+  return {
+    content: {
+      items: actions.map((action) => ({ key: action.key, title: action.label, icon: symbolFor(action.label), disabled: action.disabled })),
+      reactions: reactions.map((reaction) => ({ key: reaction.key, title: reaction.label, glyph: typeof reaction.glyph === "string" ? reaction.glyph : "", selected: reaction.selected })).filter((reaction) => reaction.glyph),
+    },
+    select: (key) => actions.find((action) => action.key === key)?.onSelect(),
+    react: (key) => pickReaction(row, key),
+  };
+}
+
+/** Reading a message's menu opens its own small menus out of sight, so it waits until the finger has held still a beat. */
+const NATIVE_PREFETCH_MS = 280;
+
+/** The held message under a touch, or null when the touch belongs to something else in it (a button, a field). */
+export function heldBubble(target: EventTarget | null): { bubble: HTMLElement; row: HTMLElement } | null {
+  const el = target instanceof Element ? target : null;
+  const bubble = el?.closest<HTMLElement>(BUBBLE);
+  if (!bubble || el?.closest("button, input, textarea, [contenteditable='true'], [aria-hidden='true']")) return null;
+  const row = bubble.closest<HTMLElement>("[data-message-row]");
+  if (!row?.querySelector("[data-testid='message-actions']")) return null;
+  return { bubble, row };
+}
+
+/** iOS 26: the system's context menu lifts the message and shows its actions; the page only says what is under the finger. */
+function useNativeMessageHold(rootRef: RefObject<HTMLElement | null>, hold: NativeHold | undefined) {
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || !hold) return;
+    const html = document.documentElement;
+    html.dataset.nativeMenu = "";
+    let start: { x: number; y: number } | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      start = null;
+      if (event.touches.length !== 1) { hold.cancel(); return; }
+      const held = heldBubble(event.target);
+      if (!held) return;
+      start = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+      hold.press(held.bubble, () => nativeMessageMenu(held.row), {
+        prefetchMs: NATIVE_PREFETCH_MS,
+        // the bar's own long press would also bring up its pill
+        onOpen: () => held.row.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "touch" })),
+      });
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (!start) return;
+      const touch = event.touches[0];
+      if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > MOVE_CANCEL) { start = null; hold.cancel(); }
+    };
+    root.addEventListener("touchstart", onTouchStart, { passive: true });
+    root.addEventListener("touchmove", onTouchMove, { passive: true });
+    return () => {
+      delete html.dataset.nativeMenu;
+      root.removeEventListener("touchstart", onTouchStart);
+      root.removeEventListener("touchmove", onTouchMove);
+    };
+  }, [rootRef, hold]);
+}
+
 function Preview({ bubble, width }: { bubble: HTMLElement; width: number }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -120,10 +200,12 @@ function Preview({ bubble, width }: { bubble: HTMLElement; width: number }) {
 export function MessageHold({ rootRef }: { rootRef: RefObject<HTMLElement | null> }) {
   const [held, setHeld] = useState<Held | null>(null);
   const [open, setOpen] = useState(false);
+  const native = useNativeHold(usePlatform().menu, "message");
+  useNativeMessageHold(rootRef, native);
 
   useEffect(() => {
     const root = rootRef.current;
-    if (!root) return;
+    if (!root || native) return;
     let timer = 0;
     let start: { x: number; y: number } | null = null;
     let fired = false;
@@ -132,11 +214,9 @@ export function MessageHold({ rootRef }: { rootRef: RefObject<HTMLElement | null
     const onTouchStart = (event: TouchEvent) => {
       fired = false;
       if (event.touches.length !== 1) { cancel(); return; }
-      const target = event.target instanceof Element ? event.target : null;
-      const bubble = target?.closest<HTMLElement>(BUBBLE);
-      if (!bubble || target?.closest("button, input, textarea, [contenteditable='true'], [aria-hidden='true']")) return;
-      const row = bubble.closest<HTMLElement>("[data-message-row]");
-      if (!row?.querySelector("[data-testid='message-actions']")) return;
+      const found = heldBubble(event.target);
+      if (!found) return;
+      const { bubble, row } = found;
       start = { x: event.touches[0].clientX, y: event.touches[0].clientY };
       sink = holdSink(bubble);
       sink(true);
@@ -175,7 +255,7 @@ export function MessageHold({ rootRef }: { rootRef: RefObject<HTMLElement | null
       root.removeEventListener("touchend", onTouchEnd);
       root.removeEventListener("touchcancel", cancel);
     };
-  }, [rootRef]);
+  }, [rootRef, native]);
 
   const close = useCallback(() => setOpen(false), []);
   const row = held?.bubble.closest<HTMLElement>("[data-message-row]") ?? null;

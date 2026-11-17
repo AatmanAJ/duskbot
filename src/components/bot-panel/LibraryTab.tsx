@@ -8,7 +8,7 @@ import { useStore, visibleMessages, type Bot, type Message } from "@/state/store
 import { useLocalFileSave } from "../AttachmentPreview";
 import { recentChangedFiles, sharedFileReferences } from "../ComputerFilesPane";
 import { Icon } from "../Icon";
-import { chipNameAction, useHtmlPreview } from "../HtmlFilePreview";
+import { chipNameAction, useFilePreview } from "../HtmlFilePreview";
 import { FileKindIcon } from "./FileKindIcon";
 import type { SimplePageId } from "./page-registry";
 import { Card, LabelAction, PanelEmpty } from "./rows";
@@ -118,7 +118,7 @@ function ActionRow({ name, lead, age, onClick, ...rest }: { name: string; lead: 
 function FileRow({ reference, age }: { reference: LibraryItems["shared"][number]; age: string | null }) {
   const { file, message } = reference;
   const save = useLocalFileSave(file.path, file.name, message);
-  const preview = useHtmlPreview(file.path, file.name, message);
+  const preview = useFilePreview(file.path, file.name, message);
   const usable = file.private || file.linked;
   if (!usable) {
     return (

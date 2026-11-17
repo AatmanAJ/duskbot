@@ -53,6 +53,8 @@ export function useChatHaptics(state: AppState, chatId: string | null, onSent?: 
     };
     // a long press that brings up a message's actions answers with a tick, as a context menu does
     const shown = new MutationObserver((records) => {
+      // the system's context menu gives its own haptic
+      if (document.documentElement.dataset.nativeMenu !== undefined) return;
       if (records.some((record) => record.target instanceof HTMLElement && record.target.dataset.shown === "true" && lastTouch.current > performance.now() - 900)) haptic("selection");
     });
     const onTouch = () => { lastTouch.current = performance.now(); };

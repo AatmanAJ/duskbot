@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 import { act, createElement, Fragment, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "@/lib/i18n";
 import { AccountGate } from "../account/AccountGate";
 import { SignInOffer, SIGN_IN_OFFER_KEY } from "../account/SignInOffer";
 import { PlatformContext, webPlatform, type MobilePlatform } from "../platform";
-import { firstStep, Onboarding } from "./Onboarding";
+import { firstStep, Onboarding, typedCodeComplete } from "./Onboarding";
 
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => createElement("span"), BotAvatar: () => createElement("span") }));
 // steps swap without waiting on exit animations, so each choice lands on its screen at once
@@ -192,4 +192,65 @@ it("a scan of the desktop's App Store qr says so, and the screen after a failed 
   const again = host.querySelector<HTMLButtonElement>("[data-scan-again]");
   expect(again?.disabled, "never a disabled Try again over an empty field").toBe(false);
   expect(host.querySelector("button[type=submit]")).toBeNull();
+});
+
+describe("a dusk cloud's code from the desktop", () => {
+  const phoneGrant = { cloudContractVersion: 1, accessToken: token, expiresAt: Date.now() + 86_400_000, device: { id: "phone" }, account };
+  const route = (phone: () => Response) => fetcher.mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/api/cloud/app/sign-in/phone")) return phone();
+    if (url.endsWith("/api/cloud/desktop/session")) return response({ ...phoneGrant, clouds: [] });
+    return response({ v: 1, providers: [], signupOpen: true });
+  });
+  const type = (text: string) => act(async () => {
+    const input = host.querySelector<HTMLInputElement>("input[autocomplete=one-time-code]")!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, text);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const submit = () => press("button[type=submit]");
+  const phoneCalls = () => fetcher.mock.calls.filter(([input]) => String(input).endsWith("/api/cloud/app/sign-in/phone"));
+
+  it("typing its 8 letters logs the phone in with no email step and goes on to the clouds", async () => {
+    route(() => response(phoneGrant));
+    await mount(onboarding());
+    await press("[data-entry=code]");
+    await type("abcdefgh");
+    expect(host.querySelector<HTMLInputElement>("input[autocomplete=one-time-code]")!.value).toBe("ABCD-EFGH");
+    expect(host.querySelector<HTMLButtonElement>("button[type=submit]")!.disabled).toBe(false);
+    await submit();
+    expect(phoneCalls()).toHaveLength(1);
+    expect(JSON.parse(String(phoneCalls()[0]![1]?.body))).toMatchObject({ code: "ABCDEFGH" });
+    expect(host.querySelector("input[type=email]"), "never the email sign-in").toBeNull();
+    expect(heading()).not.toBe("Enter the code");
+    expect(secrets.has("dusk.account")).toBe(true);
+  });
+
+  it.each([
+    [410, "expired", "That code expired"], [409, "used", "That code was already used"], [400, "invalid_code", "We couldn't find that code"],
+  ])("says what went wrong, next to the code (%s %s)", async (status, error, words) => {
+    route(() => response({ error }, status));
+    await mount(onboarding());
+    await press("[data-entry=code]");
+    await type("ABCDEFGH");
+    await submit();
+    expect(heading()).toBe("Enter the code");
+    expect(host.textContent).toContain(words);
+    expect(secrets.has("dusk.account")).toBe(false);
+  });
+
+  it("the qr's link carries the code: it is redeemed at once", async () => {
+    route(() => response(phoneGrant));
+    await mount(onboarding({ signInCode: "ABCDEFGH", email: "person@example.com", startAt: "signin" }));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(phoneCalls()).toHaveLength(1);
+    expect(secrets.has("dusk.account")).toBe(true);
+    expect(host.querySelector("input[type=email]")).toBeNull();
+  });
+
+  it("a computer's code still needs all 12", () => {
+    expect(typedCodeComplete("ABCD-EFGH")).toBe(true);
+    expect(typedCodeComplete("ABCD-EFG2")).toBe(false);
+    expect(typedCodeComplete("ABCD-EFGH-JK")).toBe(false);
+    expect(typedCodeComplete("ABCD-EFGH-JK23")).toBe(true);
+  });
 });

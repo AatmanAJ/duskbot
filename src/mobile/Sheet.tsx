@@ -41,6 +41,8 @@ type SheetProps = {
   bodyClassName?: string;
   /** No header row: the content draws its own. */
   flush?: boolean;
+  /** False for a sheet over another sheet: the page behind already stepped back for the first one. */
+  recede?: boolean;
 };
 
 /** Inside a stack of pages (Settings), a sheet page is pushed in place instead of opening over it: `back` pops it. */
@@ -74,7 +76,7 @@ export function StackPage({ title, label, children, back, onClose, trailing, bod
   );
 }
 
-function ModalSheet({ open, onClose, title, label, children, full = false, back, trailing, bodyClassName, flush = false }: SheetProps) {
+function ModalSheet({ open, onClose, title, label, children, full = false, back, trailing, bodyClassName, flush = false, recede = true }: SheetProps) {
   const [mounted, setMounted] = useState(open);
   const sheetRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -84,6 +86,7 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
   const run = useRef<AnimationPlaybackControls | null>(null);
   const [moving, setMoving] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
+  const scrimPressed = useRef(false);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const reduced = useReducedMotion();
@@ -93,18 +96,21 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
     if (!nav || reduced) return;
     const style = recedeStyle(progress);
     nav.style.transform = style?.transform ?? "";
-    nav.style.borderRadius = style?.borderRadius ?? "";
-    nav.style.transformOrigin = "50% 0";
+    // the page clips to its corners: rounding them a little more each frame repaints the whole page every frame, so
+    // they round once as it starts to step back (the screen's own corners hide them that early) and stay so
+    const corners = style ? recedeStyle(1)!.borderRadius : "";
+    if (nav.style.borderRadius !== corners) nav.style.borderRadius = corners;
+    if (nav.style.transformOrigin !== "50% 0px") nav.style.transformOrigin = "50% 0";
   });
   useLayoutEffect(() => {
-    if (!mounted) return;
+    if (!mounted || !recede) return;
     page.current = sheetRef.current?.closest(".dusk-mobile")?.querySelector<HTMLElement>(":scope > .mobile-nav") ?? null;
     return () => {
       const nav = page.current;
       if (nav) { nav.style.transform = ""; nav.style.borderRadius = ""; }
       page.current = null;
     };
-  }, [mounted]);
+  }, [mounted, recede]);
 
   if (open && !mounted) setMounted(true);
 
@@ -122,10 +128,16 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
     if (open) {
       opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       y.set(height.current);
-      go(0, 0);
       sheet.focus({ preventScroll: true });
-      // the content arrives a beat behind the sheet that carries it
-      if (!reduced) bodyRef.current?.animate([{ opacity: 0.25, translate: "0 18px" }, { opacity: 1, translate: "0 0" }], { duration: 340, delay: 30, easing: "cubic-bezier(.22,1,.36,1)", fill: "backwards" });
+      // the rise starts on the first frame drawn with the sheet in place below the screen: started here, the spring's
+      // clock would run through the frame that mounts its content and its first steps would lurch, then stall
+      const body = bodyRef.current;
+      const start = requestAnimationFrame(() => {
+        go(0, 0);
+        // the content arrives a beat behind the sheet that carries it
+        if (!reduced) body?.animate([{ opacity: 0.25, translate: "0 18px" }, { opacity: 1, translate: "0 0" }], { duration: 340, delay: 30, easing: "cubic-bezier(.22,1,.36,1)", fill: "backwards" });
+      });
+      return () => cancelAnimationFrame(start);
     } else {
       go(height.current + 24, 0, () => {
         setMounted(false);
@@ -169,7 +181,10 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
   if (!mounted) return null;
   return (
     <div className="mobile-sheet-layer fixed inset-0 z-40" data-sheet-open="" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
-      <motion.div aria-hidden className="absolute inset-0 bg-[rgb(12_12_14/0.42)]" style={{ opacity: scrim }} onClick={onClose} />
+      {/* only a press that began on the scrim closes the sheet: the finger that opened it on press lifts over it */}
+      <motion.div aria-hidden className="absolute inset-0 bg-[rgb(12_12_14/0.42)]" style={{ opacity: scrim }}
+        onPointerDown={() => { scrimPressed.current = true; }}
+        onClick={() => { if (scrimPressed.current) onClose(); scrimPressed.current = false; }} />
       <motion.div
         ref={sheetRef}
         role="dialog"

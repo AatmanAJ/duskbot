@@ -72,6 +72,8 @@ export type LiveActivityPhrases = {
   size?: string;
   /** The whole command, query or page address behind a step's short words, for the phrase's tooltip. */
   hover?: string;
+  /** Playful words a long stretch of plain work may mix in among `phrases`. */
+  fun?: string[];
 };
 
 function phaseOf(key: LocaleKey): LiveActivityPhrases {
@@ -202,4 +204,29 @@ export function phraseAt(phrases: readonly string[], seed: string, step: number)
 
 export function phraseHoldMs(seed: string, step: number): number {
   return 4000 + (hash(`${seed}#${step}`) % 2001);
+}
+
+function shuffled(pool: readonly string[], seed: string): string[] {
+  return pool
+    .map((phrase, index) => ({ phrase, rank: hash(`${seed}|${index}`) }))
+    .sort((a, b) => a.rank - b.rank)
+    .map((entry) => entry.phrase);
+}
+
+/** A shuffle bag: every pass says each phrase once in its own seeded order, and no phrase follows itself, not even where
+ * one pass meets the next. */
+export function phraseCycle(phrases: readonly string[], seed: string, step: number): string {
+  const pool = [...new Set(phrases)];
+  if (pool.length < 2) return pool[0] ?? "";
+  const at = Math.max(0, step);
+  if (pool.length === 2) return pool[(hash(seed) + at) % 2]!;
+  const pass = Math.floor(at / pool.length);
+  const order = shuffled(pool, `${seed}|${pass}`);
+  if (pass > 0 && order[0] === shuffled(pool, `${seed}|${pass - 1}`).at(-1)) [order[0], order[1]] = [order[1]!, order[0]!];
+  return order[at % pool.length]!;
+}
+
+/** How long the line keeps a pool's phrase before the next: 2.5 to 3.5 s. */
+export function rotationHoldMs(seed: string, step: number): number {
+  return 2500 + (hash(`${seed}#${step}`) % 1001);
 }

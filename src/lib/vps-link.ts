@@ -106,10 +106,15 @@ export interface VpsLinkBridge {
   onChange(callback: (view: VpsLinkView) => void): () => void;
 }
 
+/** False on a page this app's window shows from elsewhere (dusk cloud, a server) and while it is another computer's remote
+ * client: a server of one's own is added only from this computer's own page. */
+export function thisComputerPage(): boolean {
+  if (typeof window === "undefined" || window.duskDesktop?.remoteClient?.active) return false;
+  return !(window.duskDesktop?.app && window.duskDesktop.app.ownPage === false);
+}
+
 export function vpsLinkBridge(): VpsLinkBridge | undefined {
-  if (typeof window === "undefined" || window.duskDesktop?.remoteClient?.active) return undefined;
-  if (window.duskDesktop?.app && window.duskDesktop.app.ownPage === false) return undefined;
-  return window.duskDesktop?.vpsLink;
+  return thisComputerPage() ? window.duskDesktop?.vpsLink : undefined;
 }
 
 /** False in a browser, on another place's page, and in desktop builds without the bridge. */

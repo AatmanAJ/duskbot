@@ -1,11 +1,21 @@
 import { Suspense, useEffect, useRef, type ReactNode } from "react";
-import { useStore } from "@/state/store";
+import { useStore, type Action } from "@/state/store";
 import { BotSettingsDialog, RoomPanel } from "@/components/lazy-screens";
 import { t } from "@/lib/i18n";
+import { ModelRowSlot } from "@/components/bot-panel/model-row-slot";
+import { PhoneModelRow } from "./PhoneModelRow";
 import { Sheet } from "./Sheet";
 import type { MobileSheet, OpenSheet } from "./sheets";
 import { SHEET_PAGES } from "./sheets/registry";
 import "./sheets/sheets.css";
+
+/** What opening a bot's sheet tells the store, dispatched with the open itself so the panel and the sheet arrive in one
+ * render instead of a second one landing in the sheet's first frames. A room has no store panel: the store ignores it. */
+export function panelOpenAction(sheet: MobileSheet): Action | null {
+  if (sheet.kind === "computer") return { type: "toggleComputer", open: true, botId: sheet.botId };
+  if (sheet.kind === "profile") return { type: "toggleSettings", open: true, botId: sheet.id };
+  return null;
+}
 
 /** The bot's own panel (profile, conversations, library, routines, computer) in a full sheet. The store still thinks
  * of it as the side panel, so opening and closing keep `settingsOpen` in step both ways. */
@@ -17,22 +27,24 @@ function PanelSheet({ sheet, open, onClose }: { sheet: Extract<MobileSheet, { ki
   const wasOpen = useRef(false);
 
   useEffect(() => {
-    if (!open || !bot) return;
-    dispatch(sheet.kind === "computer" ? { type: "toggleComputer", open: true, botId: bot.id } : { type: "toggleSettings", open: true, botId: bot.id });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, sheet.kind, id]);
-  useEffect(() => {
     if (!bot) return;
     if (state.settingsOpen) wasOpen.current = true;
     else if (wasOpen.current && open) { wasOpen.current = false; onClose(); }
   }, [state.settingsOpen, bot, open, onClose]);
-  useEffect(() => { if (!open && state.settingsOpen) dispatch({ type: "toggleSettings", open: false }); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (open) return;
+    // a sheet closed from the phone (a swipe, the scrim, Back) must not read as the panel closing itself next time it opens
+    wasOpen.current = false;
+    if (state.settingsOpen) dispatch({ type: "toggleSettings", open: false });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Sheet open={open} onClose={onClose} full flush label={bot?.name ?? group?.name ?? t("mobile.sheet.profile")} bodyClassName="mobile-panel-sheet">
-      <Suspense fallback={null}>
-        {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} /> : null}
-      </Suspense>
+      <ModelRowSlot.Provider value={PhoneModelRow}>
+        <Suspense fallback={null}>
+          {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} initialTab={sheet.kind === "computer" ? "computer" : "details"} /> : null}
+        </Suspense>
+      </ModelRowSlot.Provider>
     </Sheet>
   );
 }

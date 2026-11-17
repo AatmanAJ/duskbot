@@ -118,6 +118,15 @@ describe("status: Working, Paused, Needs you", () => {
       .toMatchObject({ state: "needs-you", fix: "run", reason: "It didn't finish the last 2 times." });
   });
 
+  it("says what a waiting run waits on, and a wait that names nothing is the bot's own, not the person's", () => {
+    expect(automationStatus(automation([run("waiting", at(0, 9), { attention: "Waiting for your approval to send the email" })])))
+      .toEqual({ state: "needs-you", fix: "answer", reason: "Waiting for your approval to send the email" });
+    expect(automationStatus(automation([run("waiting", at(0, 9))])).state).toBe("working");
+    expect(automationStatus(automation([run("waiting", at(0, 9), { attention: "  " })])).state).toBe("working");
+    expect(runLine(run("waiting", at(0, 9), { attention: "Which inbox?" }), NOW)).toMatchObject({ mark: "!", text: "Which inbox?" });
+    expect(runLine(run("waiting", at(0, 9)), NOW)).toMatchObject({ mark: "…", text: "Waiting" });
+  });
+
   it("ignores runs still waiting to start and runs a person stopped when judging the last run", () => {
     expect(automationStatus(automation([run("queued", at(0, 11)), run("cancelled", at(0, 10)), run("completed", at(0, 9))])).state).toBe("working");
     expect(automationStatus(automation([run("queued", at(0, 11)), run("cancelled", at(0, 10)), run("failed", at(0, 9)), run("failed", at(-1, 9))])).state).toBe("needs-you");

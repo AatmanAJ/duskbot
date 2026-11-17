@@ -610,6 +610,14 @@ export function setActiveLeaf(threadId: string, leafId: string | null): void {
   prepared("INSERT INTO thread_state (thread_id, active_leaf_id) VALUES (?, ?) ON CONFLICT(thread_id) DO UPDATE SET active_leaf_id = excluded.active_leaf_id").run(threadId, leafId);
 }
 
+/** The conversations, of `threadIds`, holding at least one message from the person. */
+export function threadsWithPersonMessage(threadIds: readonly string[]): Set<string> {
+  if (!threadIds.length) return new Set();
+  const rows = db().prepare(`SELECT DISTINCT thread_id AS threadId FROM messages WHERE role = 'user' AND thread_id IN (${threadIds.map(() => "?").join(",")})`)
+    .all(...threadIds) as Array<{ threadId: string }>;
+  return new Set(rows.map((row) => row.threadId));
+}
+
 /** Each conversation's newest stored row, by its row number, and how many rows it has: what Send to My Cloud compares with what it sent. */
 export function threadHeads(): Map<string, { last: number; lastId: string; rows: number }> {
   const rows = db().prepare("SELECT m.thread_id AS threadId, m.rowid AS last, m.id AS lastId, h.rows AS rows FROM messages m " +

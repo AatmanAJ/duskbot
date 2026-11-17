@@ -8,6 +8,7 @@ import { openSignIn } from "@/lib/sign-in-sheet";
 
 import { nextShortcutBot, shortcutBots, shownBotIds } from "@/lib/sidebar-shortcut-order";
 import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
+import { LateCloudPlan } from "@/components/onboarding/LateCloudPlan";
 import { IslandIntroHost } from "@/components/onboarding/IslandIntroHost";
 import { CloudTimeZoneSync } from "@/components/CloudTimeZone";
 import { useWarmChatImages } from "@/components/use-warm-chat-images";
@@ -81,6 +82,7 @@ import { useDesktopNotificationOpens, useExternalChatLinks } from "@/hooks/use-e
 import { useReadShownChatOnFocus } from "@/hooks/use-read-shown-chat";
 import { usePresence } from "@/hooks/use-presence";
 import { useComputerPanelActivity } from "@/hooks/use-computer-panel-activity";
+import { useBrowserPanelReveal } from "@/hooks/use-browser-panel-reveal";
 import { AppEmptyMain } from "@/components/AppEmptyMain";
 import { BootCover } from "@/components/BootCover";
 import { t } from "@/lib/i18n";
@@ -167,6 +169,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const macFrom = useMacEmpty();
   const [macPrompt, dismissMacPrompt] = useMacEmptyPrompt(macFrom);
   useProductScreen(state.appSettingsOpen ? "/settings" : state.pluginsOpen ? "/apps" : group ? "/rooms/:id" : bot ? (state.activeView === "files" ? "/bots/:id/files" : "/bots/:id") : "/", group?.id ?? bot?.id);
+  useBrowserPanelReveal({ bot, active: state.activeView === "chat", panel: state.settingsOpen ? state.botSettingsSection ?? null : null, dispatch });
   useComputerPanelActivity({ bot, active: state.activeView === "chat", settingsOpen: state.settingsOpen, targetKey: `${bot?.vpsAlias}:${bot?.section}:${state.config?.vps?.sshAlias}:${state.config?.vps?.mode}:${state.config?.vps?.independentScreens}`, dispatch });
   const roomPanelOpen = useRoomPanelShown({ group, state, simple: !remoteClient });
   // The sidebar only folds when the person folds it: a side panel opening beside it never collapses it, as in Grok Bot.
@@ -367,7 +370,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       </div>
       <AnimatePresence>{state.appSettingsOpen && <SettingsModal key="settings" />}</AnimatePresence>
       {cloudAddOpened.current && <CloudAddDialog />}
-      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} text={t(loading.text)} />
+      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} first={loading.text === "app.loading.updating" ? t(loading.text) : undefined} />
       <CloudHowTo />
       <CloudSetup viewer={viewer} welcomeShown={welcomeOnScreen} />
       <WelcomeKeeper viewer={viewer} />
@@ -413,6 +416,7 @@ function Application({ children }: { children?: ReactNode }) {
           <Shell viewer={viewer} />
         </ThreadRefsProvider>
         <WelcomeGate viewer={viewer} />
+        <LateCloudPlan viewer={viewer} />
         <BotsElsewhere />
         <IslandIntroHost />
         <CloudTimeZoneSync viewer={viewer} />

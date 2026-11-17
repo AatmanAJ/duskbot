@@ -18,12 +18,21 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "focus", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "blur", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "clear", returnType: CAPPluginReturnNone),
+        CAPPluginMethod(name: "slide", returnType: CAPPluginReturnNone),
+        CAPPluginMethod(name: "glyphs", returnType: CAPPluginReturnPromise),
     ]
 
     private var chrome: AnyObject?
 
+    /// The page asks once at startup: the chrome is built then, hidden, so the first chat opened never waits for its
+    /// glass views to be made.
     @objc func supported(_ call: CAPPluginCall) {
-        if #available(iOS 26.0, *) { call.resolve(["supported": true]) } else { call.resolve(["supported": false]) }
+        if #available(iOS 26.0, *) {
+            withChrome { _ in }
+            call.resolve(["supported": true])
+        } else {
+            call.resolve(["supported": false])
+        }
     }
 
     @available(iOS 26.0, *)
@@ -31,7 +40,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if let chrome = self.chrome as? ChatGlassChrome { body(chrome); return }
-            guard let host = self.bridge?.webView else { return }
+            guard let host = self.bridge?.nativeHost else { return }
             let chrome = ChatGlassChrome(host: host) { [weak self] event in self?.notifyListeners("glass", data: event) }
             self.chrome = chrome
             body(chrome)
@@ -71,6 +80,23 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         guard #available(iOS 26.0, *) else { return }
         withChrome { $0.apply([:]) }
     }
+
+    /// The header's own symbols as the page can draw them: while a sheet covers the chat the page shows its header in
+    /// the glass's place, and with these its back and computer buttons are the same glyphs, so nothing changes there.
+    @objc func glyphs(_ call: CAPPluginCall) {
+        guard #available(iOS 26.0, *) else { call.resolve([:]); return }
+        DispatchQueue.main.async { call.resolve(ChatGlassChrome.glyphImages()) }
+    }
+
+    @objc func slide(_ call: CAPPluginCall) {
+        guard #available(iOS 26.0, *) else { return }
+        let path = call.options["path"] as? [String: Any]
+        let points = (path?["points"] as? [Any] ?? []).compactMap { ($0 as? NSNumber).map { CGFloat($0.doubleValue) } }
+        let duration = ((path?["duration"] as? NSNumber)?.doubleValue ?? 0) / 1000
+        withChrome { chrome in
+            if points.isEmpty { chrome.stopSlide() } else { chrome.slide(points, duration: duration) }
+        }
+    }
 }
 
 /// Lets touches through everywhere but on its own controls.
@@ -78,6 +104,97 @@ private class PassthroughView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let hit = super.hitTest(point, with: event)
         return hit === self ? nil : hit
+    }
+}
+
+/// A 36pt disc that answers the 44pt square around it (HIG minimum hit region).
+private class DiscButton: UIButton {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: min(0, (bounds.width - 44) / 2), dy: min(0, (bounds.height - 44) / 2)).contains(point)
+    }
+}
+
+/// The round button at the end of the composer: a solid disc in the page's own colours for it, not glass. A prominent
+/// glass button (iOS 26) lays its tint over what is behind it and adapts its glyph to that backdrop, so a near-black or
+/// near-white fill read washed out or inverted; this one is exactly the page's fill and ink. Fill and glyph change in
+/// one spring, the old glyph shrinking out as the new one grows in.
+@available(iOS 26.0, *)
+private final class SlotButton: DiscButton {
+    private var glyph = UIImageView()
+    private var symbol = ""
+    private var ink: UIColor?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        layer.cornerCurve = .circular
+        glyph.isUserInteractionEnabled = false
+        glyph.contentMode = .center
+        addSubview(glyph)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+        for view in subviews where view is UIImageView {
+            view.bounds = bounds
+            view.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        }
+    }
+
+    override var isHighlighted: Bool {
+        didSet {
+            guard isHighlighted != oldValue, !UIAccessibility.isReduceMotionEnabled else { return }
+            let pressed = isHighlighted
+            UIView.animate(springDuration: pressed ? 0.12 : 0.3, bounce: 0, initialSpringVelocity: 0, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+                self.transform = pressed ? CGAffineTransform(scaleX: 0.94, y: 0.94) : .identity
+            }
+        }
+    }
+
+    func show(symbol name: String, configuration: UIImage.SymbolConfiguration, fill: UIColor, ink newInk: UIColor, animated: Bool) {
+        let glyphChanged = name != symbol || newInk != ink
+        let fillChanged = backgroundColor != fill
+        guard glyphChanged || fillChanged else { return }
+        let image = UIImage(systemName: name, withConfiguration: configuration)?.withRenderingMode(.alwaysTemplate)
+        // a button just made arrives with its own entrance (or none): it starts in its colours
+        let first = symbol.isEmpty
+        symbol = name
+        ink = newInk
+        guard animated, !first, window != nil else {
+            backgroundColor = fill
+            glyph.image = image
+            glyph.tintColor = newInk
+            return
+        }
+        let reduced = UIAccessibility.isReduceMotionEnabled
+        let small = CGAffineTransform(scaleX: 0.5, y: 0.5)
+        var incoming: UIImageView?
+        var outgoing: UIImageView?
+        if glyphChanged {
+            let next = UIImageView(image: image)
+            next.tintColor = newInk
+            next.contentMode = .center
+            next.isUserInteractionEnabled = false
+            next.bounds = bounds
+            next.center = CGPoint(x: bounds.midX, y: bounds.midY)
+            next.alpha = 0
+            if !reduced { next.transform = small }
+            addSubview(next)
+            outgoing = glyph
+            glyph = next
+            incoming = next
+        }
+        UIView.animate(springDuration: 0.3, bounce: 0, initialSpringVelocity: 0, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            self.backgroundColor = fill
+            incoming?.alpha = 1
+            incoming?.transform = .identity
+            outgoing?.alpha = 0
+            if !reduced { outgoing?.transform = small }
+        } completion: { _ in
+            outgoing?.removeFromSuperview()
+        }
     }
 }
 
@@ -93,8 +210,8 @@ private struct Frame {
 @available(iOS 26.0, *)
 final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private static let capsuleHeight: CGFloat = 48
-    private static let inset: CGFloat = 7
-    private static let disc: CGFloat = 34
+    private static let inset: CGFloat = 6
+    private static let disc: CGFloat = 36
     private static let maxLines: CGFloat = 5
 
     private weak var host: UIView?
@@ -108,7 +225,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     private let composer = PassthroughView()
     private let capsule = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
-    private let plus = UIButton(configuration: .glass())
+    private let plus = DiscButton(configuration: .glass())
     private let text = UITextView()
     private let placeholder = UILabel()
     private let voice = UILabel()
@@ -122,12 +239,28 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     private var headerShown = false
     private var composerShown = false
+    /// the page draws its own chrome in the same place (a sheet over the chat), or did until now: the two swap at once,
+    /// never crossfade, or both show (or neither) for the length of the fade
+    private var handoff = false
+    private var instant = false
     private var returnSends = true
     private var textSeq = 0
     private var reportedHeight: CGFloat = 0
     private var accent = UIColor.systemBlue
     private var avatar: UIImage?
+    private var avatarData: String?
     private var name = ""
+    private var titleRect: CGRect?
+
+    /// the chat page's distance right of where it rests: the header and composer sit on it, so they move with it
+    private var offset: CGFloat = 0
+    private var slideEnd: CFTimeInterval = 0
+    private var sliding: Bool { CACurrentMediaTime() < slideEnd }
+    private static let slideKey = "page-slide"
+
+    /// from the composer's bottom to the line it rests on: the home indicator's edge, or the keyboard's top
+    private var gap: CGFloat = 8
+    private var keyboardOverlap: CGFloat = 0
 
     init(host: UIView, emit: @escaping ([String: Any]) -> Void) {
         self.host = host
@@ -142,13 +275,14 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         header.alpha = 0
         header.isHidden = true
         host.addSubview(header)
-        round(back, symbol: "chevron.left", label: "Back") { [weak self] in self?.emit(["type": "tap", "target": "back"]) }
-        round(right, symbol: "ellipsis", label: "More") { [weak self] in self?.emit(["type": "tap", "target": "right"]) }
+        round(back, symbol: Self.headerSymbols["back"]!, label: "Back") { [weak self] in self?.emit(["type": "tap", "target": "back"]) }
+        round(right, symbol: Self.headerSymbols["right"]!, label: "Computer") { [weak self] in self?.emit(["type": "tap", "target": "right"]) }
         pill.configuration?.cornerStyle = .capsule
         pill.configuration?.imagePadding = 8
         pill.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 7, bottom: 0, trailing: 16)
         pill.configuration?.titleLineBreakMode = .byTruncatingTail
-        pill.addAction(UIAction { [weak self] _ in self?.emit(["type": "tap", "target": "title"]) }, for: .touchUpInside)
+        // the bot's sheet rises as the finger lands, not when it lifts
+        pill.addAction(UIAction { [weak self] _ in self?.emit(["type": "tap", "target": "title"]) }, for: .touchDown)
         liveDot.backgroundColor = .systemGreen
         liveDot.layer.cornerRadius = 4
         liveDot.isUserInteractionEnabled = false
@@ -190,15 +324,82 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         leading = composer.leadingAnchor.constraint(equalTo: host.leadingAnchor)
         width = composer.widthAnchor.constraint(equalToConstant: 300)
         height = composer.heightAnchor.constraint(equalToConstant: Self.capsuleHeight)
-        bottom = composer.bottomAnchor.constraint(equalTo: host.keyboardLayoutGuide.topAnchor, constant: -8)
+        bottom = composer.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -gap)
         NSLayoutConstraint.activate([leading, width, height, bottom])
 
         NotificationCenter.default.addObserver(self, selector: #selector(contentSizeChanged), name: UIContentSizeCategory.didChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+    }
+
+    private func restingBottom() -> CGFloat {
+        -(max(host?.safeAreaInsets.bottom ?? 0, keyboardOverlap) + gap)
+    }
+
+    /// The composer rides the keyboard in the keyboard's own animation: the duration and curve its notification carries.
+    @objc private func keyboardWillChangeFrame(_ note: Notification) {
+        guard let host, let info = note.userInfo, let end = (info[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+        guard let window = host.window else { return }
+        let local = host.convert(end, from: window.screen.coordinateSpace)
+        let overlap = max(0, host.bounds.maxY - local.minY)
+        guard overlap != keyboardOverlap else { return }
+        keyboardOverlap = overlap
+        bottom.constant = restingBottom()
+        let duration = (info[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
+        let curve = (info[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+        guard composerShown, duration > 0 else {
+            UIView.performWithoutAnimation { host.layoutIfNeeded() }
+            return
+        }
+        UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction]) {
+            host.layoutIfNeeded()
+        }
+    }
+
+    // MARK: riding on the page
+
+    private func setOffset(_ x: CGFloat) {
+        offset = x
+        let moved = CGAffineTransform(translationX: x, y: 0)
+        for view in [header, composer] where view.transform != moved { view.transform = moved }
+    }
+
+    /// Plays the page's own slide: the same positions, one per 60 Hz frame and linear between, which is what the page
+    /// hands its compositor in the same frame. Both views share one transaction, so they start together.
+    func slide(_ points: [CGFloat], duration: TimeInterval) {
+        guard let to = points.last else { return }
+        guard points.count > 1, duration > 0 else {
+            stopSlide()
+            setOffset(to)
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for view in [header, composer] {
+            view.layer.removeAnimation(forKey: Self.slideKey)
+            let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
+            animation.values = points.map { NSNumber(value: Double($0)) }
+            animation.duration = duration
+            animation.calculationMode = .linear
+            animation.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+            view.layer.add(animation, forKey: Self.slideKey)
+        }
+        setOffset(to)
+        CATransaction.commit()
+        slideEnd = CACurrentMediaTime() + duration
+    }
+
+    /// A finger took the page mid-slide: the chrome stays where it is drawn, and follows the page's frames from here.
+    func stopSlide() {
+        guard sliding else { return }
+        let drawn = (header.layer.presentation()?.value(forKeyPath: "transform.translation.x") as? NSNumber).map { CGFloat($0.doubleValue) }
+        for view in [header, composer] { view.layer.removeAnimation(forKey: Self.slideKey) }
+        slideEnd = 0
+        setOffset(drawn ?? offset)
     }
 
     private func round(_ button: UIButton, symbol: String, label: String, action: @escaping () -> Void) {
         button.configuration?.cornerStyle = .capsule
-        button.configuration?.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
+        button.configuration?.image = UIImage(systemName: symbol, withConfiguration: Self.headerGlyph)
         button.configuration?.baseForegroundColor = .label
         button.accessibilityLabel = label
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
@@ -213,8 +414,24 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             composer.overrideUserInterfaceStyle = style
         }
         if let hex = state["accent"] as? String, let color = UIColor(cssHex: hex) { accent = color }
+        if let x = (state["offset"] as? NSNumber).map({ CGFloat($0.doubleValue) }), !sliding { setOffset(x) }
+        let handing = state["handoff"] as? Bool ?? false
+        // off its resting place the chrome is riding a page in or out: it comes and goes with the page, never fades
+        instant = handing || handoff || sliding || abs(offset) > 0.5
+        handoff = handing
         applyHeader(state["header"] as? [String: Any])
         applyComposer(state["composer"] as? [String: Any])
+        keepOnTop()
+    }
+
+    /// views the system adds to the host later must not land over the chrome and take its taps
+    private func keepOnTop() {
+        guard let host, headerShown || composerShown else { return }
+        let tail = Array(host.subviews.suffix(2))
+        if tail.first !== header || tail.last !== composer {
+            host.bringSubviewToFront(header)
+            host.bringSubviewToFront(composer)
+        }
     }
 
     private func applyHeader(_ data: [String: Any]?) {
@@ -230,32 +447,43 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         if let rightFrame = Frame(data["right"]) {
             right.isHidden = false
             right.frame = rightFrame.rect
-            let kind = data["rightKind"] as? String ?? "computer"
-            let symbol = kind == "more" ? "ellipsis" : "display"
-            right.configuration?.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
             right.accessibilityLabel = data["rightLabel"] as? String
             liveDot.isHidden = !(data["live"] as? Bool ?? false)
             liveDot.frame = CGRect(x: rightFrame.rect.width - 14, y: 6, width: 8, height: 8)
         } else {
             right.isHidden = true
         }
+        titleRect = titleFrame.rect
+        layoutPill()
+        show(header, true, &headerShown)
+    }
+
+    private func layoutPill() {
+        guard let titleRect else { return }
         let side: CGFloat = 16 + 44 + 8
         let maxWidth = max(80, (host?.bounds.width ?? 390) - side * 2)
         let fitted = pill.sizeThatFits(CGSize(width: maxWidth, height: 44))
         let pillWidth = min(maxWidth, ceil(fitted.width))
-        pill.frame = CGRect(x: titleFrame.rect.midX - pillWidth / 2, y: titleFrame.rect.midY - 22, width: pillWidth, height: 44)
-        show(header, true, &headerShown)
+        let frame = CGRect(x: titleRect.midX - pillWidth / 2, y: titleRect.midY - 22, width: pillWidth, height: 44)
+        if pill.frame != frame { pill.frame = frame }
     }
 
+    /// name and avatar swap in one go, with no crossfade: a new chat's pill is drawn before its header shows
     private func refreshPill() {
         var title = AttributedString(name)
         title.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        pill.configuration?.attributedTitle = title
-        pill.configuration?.baseForegroundColor = .label
-        pill.configuration?.image = avatar
+        UIView.performWithoutAnimation {
+            pill.configuration?.attributedTitle = title
+            pill.configuration?.baseForegroundColor = .label
+            pill.configuration?.image = avatar
+            pill.layoutIfNeeded()
+        }
+        layoutPill()
     }
 
     func setAvatar(_ data: String?) {
+        guard data != avatarData else { return }
+        avatarData = data
         avatar = data.flatMap(Self.image(fromDataURL:)).map { Self.pixelScaled($0, to: CGSize(width: 30, height: 30)) }
         refreshPill()
     }
@@ -268,7 +496,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         }
         leading.constant = frame.rect.minX
         width.constant = frame.rect.width
-        if let gap = (data["gap"] as? NSNumber)?.doubleValue { bottom.constant = -CGFloat(max(0, gap)) }
+        if let gap = (data["gap"] as? NSNumber)?.doubleValue { self.gap = CGFloat(max(0, gap)) }
+        let resting = restingBottom()
+        if bottom.constant != resting { bottom.constant = resting }
         plus.isHidden = !(data["plus"] as? Bool ?? true)
         if let label = data["plusLabel"] as? String, !label.isEmpty { plus.accessibilityLabel = label }
         placeholder.text = data["placeholder"] as? String ?? ""
@@ -286,51 +516,121 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         show(composer, true, &composerShown)
     }
 
+    /// the round button at the end of the pill: the mic at rest, Send once there is text, Stop while the bot works, keep
+    /// while listening
+    private static let slotKinds: Set<String> = ["mic", "send", "micSend", "stop", "waits", "keep"]
+    /// the small control beside it: the mic, or discard while listening; one turns into the other in place
+    private static let besideKinds: Set<String> = ["mic", "discard"]
+
     private func applyActions(_ buttons: [[String: Any]]) {
         let kinds = buttons.map { $0["kind"] as? String ?? "" }
         if kinds != actionKinds {
-            let appearing = Set(kinds).subtracting(actionKinds)
-            actions.forEach { $0.removeFromSuperview() }
-            actions = kinds.enumerated().map { index, kind in makeAction(kind, index: index) }
-            actions.forEach(capsule.contentView.addSubview)
+            let oldKinds = actionKinds
+            // the mic beside the round button (Send, or a working bot's Stop): it springs out of the round button and
+            // slips back into it, as composer-mic-in and composer-mic-out do on the page
+            let hadBeside = oldKinds.dropLast().contains { Self.besideKinds.contains($0) }
+            let hasBeside = kinds.dropLast().contains { Self.besideKinds.contains($0) }
+            // the slot keeps one button and one frame through mic, Send and Stop: only its symbol changes
+            let keep: UIButton? = {
+                guard let last = actions.last, let was = oldKinds.last, let now = kinds.last,
+                      Self.slotKinds.contains(was), Self.slotKinds.contains(now) else { return nil }
+                return last
+            }()
+            // the mic beside turns into discard as listening starts, and back as it ends
+            let besideKept: UIButton? = {
+                guard keep != nil, oldKinds.count == 2, kinds.count == 2, Self.besideKinds.contains(oldKinds[0]),
+                      Self.besideKinds.contains(kinds[0]) else { return nil }
+                return actions.first
+            }()
+            let leaving = zip(actions, oldKinds).filter { $0.0 !== keep && $0.0 !== besideKept }
+            actions = kinds.enumerated().map { index, kind in
+                if index == kinds.count - 1, let keep {
+                    configure(keep, kind: kind, index: index)
+                    return keep
+                }
+                if index == 0, let besideKept {
+                    configure(besideKept, kind: kind, index: index)
+                    return besideKept
+                }
+                let button: UIButton = index == kinds.count - 1 && Self.slotKinds.contains(kind) ? SlotButton() : DiscButton(configuration: .glass())
+                configure(button, kind: kind, index: index)
+                capsule.contentView.addSubview(button)
+                return button
+            }
             actionKinds = kinds
             layoutComposer()
-            for (button, kind) in zip(actions, kinds) where appearing.contains(kind) && (kind == "send" || kind == "micSend") {
-                button.transform = CGAffineTransform(scaleX: 0.6, y: 0.6)
-                button.alpha = 0
-                UIView.animate(springDuration: 0.35, bounce: 0.15) { button.transform = .identity; button.alpha = 1 }
+            for (button, kind) in leaving {
+                button.isUserInteractionEnabled = false
+                if Self.besideKinds.contains(kind) && hadBeside && !hasBeside && keep != nil {
+                    ComposerMotion.leave(button) { button.removeFromSuperview() }
+                } else {
+                    button.removeFromSuperview()
+                }
+            }
+            let had = Set(oldKinds)
+            for (index, (button, kind)) in zip(actions, kinds).enumerated() where button !== keep && button !== besideKept {
+                if Self.besideKinds.contains(kind) && index < kinds.count - 1 && !hadBeside && keep != nil { ComposerMotion.micIn(button) }
+                else if (kind == "send" || kind == "micSend") && !had.contains(kind) { ComposerMotion.popIn(button) }
             }
         }
         for (button, data) in zip(actions, buttons) {
             button.isEnabled = !(data["disabled"] as? Bool ?? false)
             if let label = data["label"] as? String, !label.isEmpty { button.accessibilityLabel = label }
+            paint(button, kind: data["kind"] as? String ?? "", fill: data["fill"] as? String, ink: data["ink"] as? String)
         }
     }
 
-    private func makeAction(_ kind: String, index: Int) -> UIButton {
-        let prominent = kind == "send" || kind == "micSend"
-        let button = UIButton(configuration: prominent ? .prominentGlass() : kind == "followUp" ? .plain() : .glass())
-        let symbol: String
+    private static func symbol(_ kind: String) -> (name: String, configuration: UIImage.SymbolConfiguration) {
+        let (name, size, weight): (String, CGFloat, UIImage.SymbolWeight)
         switch kind {
-        case "mic": symbol = "mic.fill"
-        case "send", "micSend": symbol = "arrow.up"
-        case "stop": symbol = "stop.fill"
-        case "waits": symbol = "clock"
-        case "followUp": symbol = "chevron.up"
-        case "discard": symbol = "xmark"
-        default: symbol = "circle"
+        case "mic": (name, size, weight) = ("mic.fill", 17, .semibold)
+        case "send", "micSend": (name, size, weight) = ("arrow.up", 16, .bold)
+        // a filled square reads larger than an arrow at the same point size
+        case "stop": (name, size, weight) = ("stop.fill", 13, .bold)
+        case "waits": (name, size, weight) = ("clock", 16, .semibold)
+        case "followUp": (name, size, weight) = ("chevron.up", 15, .semibold)
+        case "discard": (name, size, weight) = ("xmark", 15, .semibold)
+        case "keep": (name, size, weight) = ("checkmark", 15, .bold)
+        default: (name, size, weight) = ("circle", 15, .semibold)
         }
-        button.configuration?.cornerStyle = .capsule
-        button.configuration?.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: prominent ? 16 : 15, weight: prominent ? .bold : .semibold))
-        button.configuration?.baseForegroundColor = prominent ? .white : kind == "mic" ? .secondaryLabel : .label
-        if prominent { button.tintColor = accent }
-        button.addAction(UIAction { [weak self] _ in self?.emit(["type": "button", "index": index]) }, for: .touchUpInside)
-        return button
+        return (name, UIImage.SymbolConfiguration(pointSize: size, weight: weight))
+    }
+
+    /// The round button wears the page's own fill and ink for its kind (the bot's Send, the ink-filled mic and Stop), so it
+    /// reads as the desktop's in the app's light or dark look; symbol, fill and ink change together in one animation
+    private func paint(_ button: UIButton, kind: String, fill: String?, ink: String?) {
+        guard let slot = button as? SlotButton else { return }
+        let prominent = kind == "send" || kind == "micSend" || kind == "keep"
+        let fillColor = fill.flatMap(UIColor.init(cssHex:)) ?? (prominent ? accent : .clear)
+        let inkColor = ink.flatMap(UIColor.init(cssHex:)) ?? (prominent ? .white : .label)
+        let symbol = Self.symbol(kind)
+        slot.show(symbol: symbol.name, configuration: symbol.configuration, fill: fillColor, ink: inkColor, animated: true)
+    }
+
+    private func configure(_ button: UIButton, kind: String, index: Int) {
+        button.enumerateEventHandlers { action, _, event, _ in if let action { button.removeAction(action, for: event) } }
+        button.addAction(UIAction { [weak self] _ in self?.emit(["type": "button", "index": index, "kind": kind]) }, for: .touchUpInside)
+        if button is SlotButton { return }
+        var config: UIButton.Configuration = kind == "followUp" ? .plain() : .glass()
+        let symbol = Self.symbol(kind)
+        config.cornerStyle = .capsule
+        config.contentInsets = .zero
+        config.preferredSymbolConfigurationForImage = symbol.configuration
+        config.image = UIImage(systemName: symbol.name)
+        config.symbolContentTransition = UISymbolContentTransition(UIAccessibility.isReduceMotionEnabled ? .automatic : .replace)
+        config.baseForegroundColor = kind == "mic" ? .secondaryLabel : .label
+        button.configuration = config
     }
 
     private func show(_ view: UIView, _ visible: Bool, _ shown: inout Bool) {
         guard visible != shown else { return }
         shown = visible
+        if instant {
+            view.layer.removeAllAnimations()
+            view.alpha = visible ? 1 : 0
+            view.isHidden = !visible
+            return
+        }
         if visible { view.isHidden = false }
         UIView.animate(withDuration: 0.18, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
             view.alpha = visible ? 1 : 0
@@ -341,7 +641,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     // MARK: layout
 
-    private func layoutComposer() {
+    /// `animated` false when the page set the text (a send clearing it): the page re-pins the chat to the new height in
+    /// the same frame, so the capsule must not spring there behind it
+    private func layoutComposer(animated: Bool = true) {
         let w = width.constant
         let line = text.font?.lineHeight ?? 20
         let side = Self.inset + Self.disc + 8
@@ -354,21 +656,37 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         text.isScrollEnabled = fitted > maxText
         let pad = (Self.capsuleHeight - line) / 2
         let h = max(Self.capsuleHeight, textHeight + pad * 2)
+        // the discs sit on the capsule's bottom edge and the field fills it: they move in the capsule's own animation, or
+        // a wrapping line drops them to the new bottom at once while the capsule is still growing toward it
+        let place = { [self] in
+            let discY = h - Self.inset - Self.disc
+            plus.frame = CGRect(x: Self.inset, y: discY, width: Self.disc, height: Self.disc)
+            text.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: h - pad * 2)
+            placeholder.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: line)
+            voice.frame = placeholder.frame
+            var x = w - Self.inset
+            for (button, kind) in zip(actions, actionKinds).reversed() {
+                let bw = Self.actionWidth(kind)
+                x -= bw
+                button.frame = CGRect(x: x, y: discY, width: bw, height: Self.disc)
+                x -= 6
+            }
+        }
         if height.constant != h {
             height.constant = h
-            UIView.animate(springDuration: 0.3, bounce: 0) { self.host?.layoutIfNeeded() }
-        }
-        let discY = h - Self.inset - Self.disc
-        plus.frame = CGRect(x: Self.inset, y: discY, width: Self.disc, height: Self.disc)
-        text.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: h - pad * 2)
-        placeholder.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: line)
-        voice.frame = placeholder.frame
-        var x = w - Self.inset
-        for (button, kind) in zip(actions, actionKinds).reversed() {
-            let bw = Self.actionWidth(kind)
-            x -= bw
-            button.frame = CGRect(x: x, y: discY, width: bw, height: Self.disc)
-            x -= 6
+            if animated && composerShown && host?.window != nil {
+                UIView.animate(springDuration: 0.3, bounce: 0, initialSpringVelocity: 0, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                    self.host?.layoutIfNeeded()
+                    place()
+                }
+            } else {
+                UIView.performWithoutAnimation {
+                    host?.layoutIfNeeded()
+                    place()
+                }
+            }
+        } else {
+            place()
         }
         if h != reportedHeight {
             reportedHeight = h
@@ -390,7 +708,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         if text.text != value {
             text.text = value
             updatePlaceholder()
-            layoutComposer()
+            layoutComposer(animated: false)
         }
     }
 
@@ -426,6 +744,23 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     // MARK: images
 
+    static let headerSymbols = ["back": "chevron.left", "right": "display"]
+    static let headerGlyph = UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+
+    /// Each header symbol as a black-on-clear png the page uses as a mask, with its size in points.
+    static func glyphImages() -> [String: Any] {
+        var out: [String: Any] = [:]
+        for (key, name) in headerSymbols {
+            guard let symbol = UIImage(systemName: name, withConfiguration: headerGlyph)?.withTintColor(.black, renderingMode: .alwaysOriginal) else { continue }
+            let format = UIGraphicsImageRendererFormat.preferred()
+            format.opaque = false
+            let drawn = UIGraphicsImageRenderer(size: symbol.size, format: format).image { _ in symbol.draw(at: .zero) }
+            guard let png = drawn.pngData() else { continue }
+            out[key] = ["data": "data:image/png;base64," + png.base64EncodedString(), "w": symbol.size.width, "h": symbol.size.height]
+        }
+        return out
+    }
+
     private static func image(fromDataURL url: String) -> UIImage? {
         guard let comma = url.firstIndex(of: ","), url.hasPrefix("data:image/") else { return nil }
         guard let data = Data(base64Encoded: String(url[url.index(after: comma)...])) else { return nil }
@@ -444,13 +779,55 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     }
 }
 
+/// The desktop composer's swaps (src/styles/composer.css) in UIKit: the same curves and durations, so a turn starting
+/// and ending moves the same on both. Reduce Motion keeps the fades and drops the travel.
+@available(iOS 26.0, *)
+private enum ComposerMotion {
+    static let glyphEase = UICubicTimingParameters(controlPoint1: CGPoint(x: 0.22, y: 1), controlPoint2: CGPoint(x: 0.36, y: 1))
+    static let leaveEase = UICubicTimingParameters(controlPoint1: CGPoint(x: 0.4, y: 0), controlPoint2: CGPoint(x: 1, y: 1))
+    static var reduced: Bool { UIAccessibility.isReduceMotionEnabled }
+
+    private static func run(_ duration: TimeInterval, _ timing: UITimingCurveProvider, delay: TimeInterval = 0, _ change: @escaping () -> Void, done: (() -> Void)? = nil) {
+        let animator = UIViewPropertyAnimator(duration: duration, timingParameters: timing)
+        animator.addAnimations(change)
+        if let done { animator.addCompletion { _ in done() } }
+        animator.startAnimation(afterDelay: delay)
+    }
+
+    /// composer-mic-in: the mic springs out of the round button (Send, or Stop) from 10pt toward it and .6 of its size
+    /// (420ms on --composer-bounce, a few percent of give, 40ms late)
+    static func micIn(_ button: UIButton) {
+        button.alpha = 0
+        if reduced { run(0.2, glyphEase) { button.alpha = 1 }; return }
+        button.transform = CGAffineTransform(translationX: 10, y: 0).scaledBy(x: 0.6, y: 0.6)
+        UIView.animate(springDuration: 0.42, bounce: 0.2, initialSpringVelocity: 0, delay: 0.04, options: [.allowUserInteraction]) {
+            button.alpha = 1
+            button.transform = .identity
+        }
+    }
+
+    /// send arriving with the first character: m-pop, from .9 on the release spring
+    static func popIn(_ button: UIButton) {
+        button.alpha = 0
+        if reduced { run(0.2, glyphEase) { button.alpha = 1 }; return }
+        button.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
+        UIView.animate(springDuration: 0.34, bounce: 0.2) { button.alpha = 1; button.transform = .identity }
+    }
+
+    /// composer-mic-out: the mic beside the round button slips back into it (150ms) as the field empties or the turn ends
+    static func leave(_ button: UIButton, done: @escaping () -> Void) {
+        run(0.15, leaveEase, { button.alpha = 0; if !reduced { button.transform = CGAffineTransform(translationX: 10, y: 0).scaledBy(x: 0.6, y: 0.6) } }, done: done)
+    }
+}
+
 private extension UIColor {
     convenience init?(cssHex value: String) {
         var hex = value.trimmingCharacters(in: .whitespaces)
         guard hex.hasPrefix("#") else { return nil }
         hex.removeFirst()
         if hex.count == 3 { hex = hex.map { "\($0)\($0)" }.joined() }
-        guard hex.count == 6, let n = UInt32(hex, radix: 16) else { return nil }
-        self.init(red: CGFloat((n >> 16) & 0xff) / 255, green: CGFloat((n >> 8) & 0xff) / 255, blue: CGFloat(n & 0xff) / 255, alpha: 1)
+        if hex.count == 6 { hex += "ff" }
+        guard hex.count == 8, let n = UInt32(hex, radix: 16) else { return nil }
+        self.init(red: CGFloat((n >> 24) & 0xff) / 255, green: CGFloat((n >> 16) & 0xff) / 255, blue: CGFloat((n >> 8) & 0xff) / 255, alpha: CGFloat(n & 0xff) / 255)
     }
 }

@@ -283,7 +283,7 @@ describe("new bot default model selection wiring in index.ts", () => {
     expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start);
     return source.slice(start + 1, end + close.length - 1);
   };
-  const code = ts.transpileModule(`${extract("function policyModelRefusal(")}\n${extract("function selectableInstances<")}\n${extract("async function defaultSelection(")}\n${extract("const selectionContext = {", "\n};\n")}`,
+  const code = ts.transpileModule(`${extract("function policyModelRefusal(")}\n${extract("function selectableInstances<")}\n${extract("function providersInUse(")}\n${extract("async function defaultSelection(")}\n${extract("const selectionContext = {", "\n};\n")}`,
     { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
   const companyRouter = {
     instanceId: "company.fixture.openrouter", driverKind: "openai-compat",
@@ -292,19 +292,33 @@ describe("new bot default model selection wiring in index.ts", () => {
   };
   const companyClaude = { ...claude, instanceId: "company.fixture.anthropic", models: { default: "company-claude", options: [{ id: "company-claude", label: "Company" }] } };
   const signedOut = { ...claude, snapshot: { state: "available", authenticated: false } satisfies ProviderSnapshot };
-  function server(instances: unknown[], { enrolled = false, companyModelsOnly = false, saved, configs = {}, answered }: { enrolled?: boolean; companyModelsOnly?: boolean; saved?: ModelSelection; configs?: Record<string, { enabled?: boolean; access?: EngineAccess }>; answered?: (instance: SelectableInstance) => boolean | undefined } = {}) {
+  /** every provider here was chosen by the person unless named in `found` */
+  const withChosen = (instances: unknown[], configs: Record<string, object>, found: readonly string[]) => ({ ...configs, ...Object.fromEntries((instances as SelectableInstance[]).map((instance) =>
+    [instance.instanceId, { driver: instance.driverKind, ...(found.includes(instance.instanceId) ? {} : { chosen: true }), ...configs[instance.instanceId] }])) });
+  function server(instances: unknown[], { enrolled = false, companyModelsOnly = false, saved, configs = {}, answered, bots = [], found = [] }: { found?: string[]; enrolled?: boolean; companyModelsOnly?: boolean; saved?: ModelSelection; configs?: Record<string, { enabled?: boolean; access?: EngineAccess; chosen?: boolean }>; answered?: (instance: SelectableInstance) => boolean | undefined; bots?: Array<{ id: string; modelSelection: ModelSelection }> } = {}) {
     const managedPolicy = new ManagedDesktopPolicy();
     if (companyModelsOnly) managedPolicy.apply({ organizationId: "11111111-1111-4111-8111-111111111111", organizationName: "Fixture Company", expiresAt: Date.now() + 60_000,
       version: 1, companyModelsOnly: true, allowedEngines: "all", mcp: { allowCustom: true, allowlist: [] },
       computers: { thisComputer: true, localVm: true, box: true, vps: true }, remoteAccess: true });
     const managedDesktop = { owns: (instanceId: string) => enrolled && instanceId.startsWith("company.") };
     const describe = vi.fn(async () => instances);
-    const defaultSelection = new Function("cfg", "registry", "managedDesktop", "managedPolicy", "BUILT_IN_DRIVERS", "selectDefaultModelSelection", "instanceConfigs", "withInstanceConfig", "testedAi",
+    const defaultSelection = new Function("cfg", "registry", "managedDesktop", "managedPolicy", "BUILT_IN_DRIVERS", "selectDefaultModelSelection", "instanceConfigs", "withInstanceConfig", "testedAi", "store",
       `${code}; return defaultSelection;`)({ defaultModelSelection: saved }, { describe }, managedDesktop, managedPolicy,
-      [{ driverKind: "claudeAgent", metadata: { displayName: "Claude" } }], selectDefaultModelSelection, () => configs, withInstanceConfig,
-      { answered: answered ?? (() => undefined) }) as (saved?: ModelSelection | null, instances?: readonly SelectableInstance[]) => Promise<ModelSelection>;
+      [{ driverKind: "claudeAgent", metadata: { displayName: "Claude" } }], selectDefaultModelSelection, () => withChosen(instances, configs, found), withInstanceConfig,
+      { answered: answered ?? (() => undefined) }, { bots, tasks: () => [] }) as (saved?: ModelSelection | null, instances?: readonly SelectableInstance[]) => Promise<ModelSelection>;
     return { defaultSelection, describe, close: () => managedPolicy.close() };
   }
+
+  const freeBackup = { ...codex, instanceId: "opencodeGo", driverKind: "opencodeGo", snapshot: { state: "available", authenticated: false, freeFallback: true } satisfies ProviderSnapshot,
+    models: { default: "big-pickle", options: [{ id: "big-pickle", label: "Big Pickle" }] } };
+  it("counts as chosen on the server once a bot uses it", async () => {
+    const lone = server([claude, freeBackup], { found: ["claude"] });
+    await expect(lone.defaultSelection(null)).resolves.toEqual({ instanceId: "opencodeGo", model: "big-pickle" });
+    lone.close();
+    const used = server([claude, freeBackup], { found: ["claude"], bots: [{ id: "pen", modelSelection: { instanceId: "claude", model: "claude-default" } }] });
+    await expect(used.defaultSelection(null)).resolves.toEqual({ instanceId: "claude", model: "claude-default" });
+    used.close();
+  });
 
   it("honors a disabled configured provider in both automatic and saved selection", async () => {
     const fixture = server([claude, codex], { configs: { claude: { enabled: false } } });
@@ -320,7 +334,7 @@ describe("new bot default model selection wiring in index.ts", () => {
   });
 
   it("uses a supplied inventory without probing the provider a second time", async () => {
-    const fixture = server([claude]);
+    const fixture = server([claude], { configs: { codex: { chosen: true } } });
     await expect(fixture.defaultSelection(null, [codex])).resolves.toEqual({ instanceId: "codex", model: "codex-default" });
     expect(fixture.describe).not.toHaveBeenCalled();
     fixture.close();
@@ -387,3 +401,31 @@ describe("a hidden provider", () => {
   });
 });
 
+describe("a provider found on this computer", () => {
+  const free = { ...codex, instanceId: "opencodeGo", driverKind: "opencodeGo", snapshot: { state: "available", authenticated: false, freeFallback: true } satisfies ProviderSnapshot,
+    models: { default: "big-pickle", options: [{ id: "big-pickle", label: "Big Pickle" }] } };
+  const unused = (_instanceId: string) => false;
+
+  it("is marked found until the person chooses it or something uses it", () => {
+    const marked = (configs: Parameters<typeof withInstanceConfig>[1], inUse = unused) =>
+      withInstanceConfig([claude, free, { ...codex, access: "api" as const }] as SelectableInstance[], configs, inUse).filter((instance) => instance.found).map((instance) => instance.instanceId);
+    expect(marked({})).toEqual(["claude"]);
+    expect(marked({ claude: { driver: "claudeAgent", chosen: true } })).toEqual([]);
+    expect(marked({}, (id) => id === "claude")).toEqual([]);
+    expect(marked({ claude: { driver: "claudeAgent", config: { cli: "/opt/claude" } } })).toEqual([]);
+    expect(withInstanceConfig([claude] as SelectableInstance[], {}).some((instance) => instance.found)).toBe(false);
+  });
+
+  it("is never picked on its own: new bots stay on the free model and nothing moves off it", () => {
+    const found = { ...claude, found: true as const };
+    expect(selectDefaultModelSelection([found, free])).toEqual({ instanceId: "opencodeGo", model: "big-pickle" });
+    expect(freeBackupOverConnected([found, free], { instanceId: "opencodeGo", model: "big-pickle" })).toBe(false);
+    expect(freeBackupOverConnected([claude, free], { instanceId: "opencodeGo", model: "big-pickle" })).toBe(true);
+  });
+
+  it("still answers when picked by name", () => {
+    expect(selectDefaultModelSelection([{ ...claude, found: true as const }, free], { instanceId: "claude", model: "claude-default" }))
+      .toEqual({ instanceId: "claude", model: "claude-default" });
+  });
+
+});

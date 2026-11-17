@@ -43,7 +43,7 @@ export function AppVersionRow({ fallback, bridge = ownBridge() }: { fallback: Re
     };
     return <NavRow data-settings-open="app-update" title={title} hint={t("appUpdate.ready", { version: ready })} value={restarting ? t("settings.updates.restartingShort") : t("appUpdate.restart")} drill={false} disabled={restarting} onClick={restart} />;
   }
-  if (update.available) {
+  if (update.available && (update.progress != null || update.checking)) {
     const percent = update.progress == null ? null : Math.round(update.progress * 100);
     const hint = percent === null ? t("appUpdate.downloading", { version: update.available }) : `${t("appUpdate.downloading", { version: update.available })} · ${t("appUpdate.percent", { percent })}`;
     return <NavRow data-settings-open="app-update" title={title} hint={hint} value={t("common.checking")} drill={false} disabled onClick={() => {}} />;

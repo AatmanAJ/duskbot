@@ -279,12 +279,12 @@ describe("profileMenuItems", () => {
     expect(items.find((item) => item.key === "account")!.label).toBe("dusk bot Cloud");
   });
 
-  it("ends Support with delete and fresh install in a developer build, never over the chat", async () => {
+  it("ends Support with start fresh in a developer build, never over the chat", async () => {
     vi.stubEnv("VITE_DUSK_DEV_TOOLS", "");
     try {
       const support = build().find((item) => item.key === "support")!.submenu!;
       expect(support.map((item) => item.key)).toEqual(["help", "feedback", "shortcuts", "about", "dev-fresh-install"]);
-      expect(support.at(-1)!.label).toBe("Dev: delete and fresh install");
+      expect(support.at(-1)!.label).toBe("Dev: start fresh on this computer");
     } finally {
       vi.stubEnv("VITE_DUSK_DEV_TOOLS", "0");
     }
@@ -570,6 +570,8 @@ describe("grok's profile menu", () => {
     expect(items[0]).toMatchObject({ label: "Ada Lovelace", labelNote: "Plus", subtitle: "ada@qa.dusk.test", title: "ada@qa.dusk.test", large: true });
     expect(items[1]).toMatchObject({ key: "mobile", separatorBefore: true });
     expect(items.at(-1)).toMatchObject({ label: "Sign out", separatorBefore: true });
+    const trial = grokProfileMenuItems({ ...base, accounts: { view: { active: { ...active, plan: { status: "active", tier: "starter", trial: true } } }, openSheet: null, signOut, add: vi.fn(), editAvatar: vi.fn() } as never });
+    expect(trial[0]).toMatchObject({ labelNote: "Plus trial" });
     expect(items.some((item) => item.label === "Account and sign out")).toBe(false);
     items[0]!.onSelect();
     expect(onDashboard).toHaveBeenCalledOnce();

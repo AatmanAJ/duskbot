@@ -41,6 +41,8 @@
 }
 
 .dusk-mobile .mobile-page { box-shadow: -12px 0 32px rgb(10 10 12 / .10); }
+/* the list under an open chat is out of sight: its working dots and other loops hold still until it shows again */
+.dusk-mobile .mobile-nav > [inert] * { animation-play-state: paused !important; }
 
 .dusk-mobile :focus-visible {
   outline: none;
@@ -113,14 +115,19 @@ html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-u
   }
 }
 
-/* a message still on its way: after a beat (a send that lands at once never shows it) it dims and says so */
+/* a message still on its way: after a beat (a send that lands at once never shows it) it dims and says so, under the
+   bubble and outside its box, so the bubble keeps one size from the composer to the server's copy */
 @keyframes m-sending { to { opacity: 1; } }
 @keyframes m-sending-dim { to { opacity: .6; } }
-.dusk-mobile [data-chat-bubble][data-sending] { animation: m-sending-dim .2s ease-out 1.2s forwards; }
+.dusk-mobile [data-chat-bubble][data-sending] { position: relative; animation: m-sending-dim .2s ease-out 1.2s forwards; }
 .dusk-mobile [data-chat-bubble][data-sending]::after {
   content: attr(data-sending);
-  display: block;
+  position: absolute;
+  top: 100%;
+  inset-inline-end: 4px;
+  white-space: nowrap;
   margin-top: 2px;
+  color: var(--color-ink-secondary);
   font-size: 12px;
   line-height: 16px;
   text-align: end;
@@ -159,6 +166,33 @@ html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-u
 @media (prefers-reduced-motion: reduce) {
   .dusk-mobile [data-mobile-chat] [data-testid="message-actions"] { scale: 1; }
 }
+
+/* with the system's context menu (iOS 26) a message's actions live in that menu: the bar leaves the row, still there
+   for VoiceOver and for the menu to read, and the bubble takes the room it held */
+html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-testid="message-actions"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  opacity: 0;
+  pointer-events: none;
+}
+/* bubbles read like a chat app: a bot reply and your own both stop at 85% of the column. the actions pill holds no
+   room in the row for that, it rises over the bubble's top corner when a tap brings it up */
+.dusk-mobile [data-mobile-chat] [data-message-row] :has(> [data-testid="message-actions"]) { position: relative; }
+.dusk-mobile [data-mobile-chat] [data-message-row] [data-testid="message-actions"] {
+  position: absolute;
+  bottom: calc(100% - 6px);
+  inset-inline-start: 0;
+  z-index: 2;
+  transform-origin: left bottom;
+}
+.dusk-mobile [data-mobile-chat] [data-message-row] [data-testid="message-actions"].flex-row-reverse {
+  inset-inline: auto 0;
+  transform-origin: right bottom;
+}
+.dusk-mobile [data-mobile-chat] [data-chat-bubble][class*="100%-82px"] { max-width: 85%; }
 
 /* the room's setup form is drawn at desktop density; on a phone its labels and hints read at the shell's sizes */
 .dusk-mobile [data-testid="room-setup"] .text-\[13px\] { font-size: 15px; line-height: 20px; }
@@ -216,28 +250,39 @@ html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-u
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
   align-items: flex-end;
   gap: 2px;
-  margin-inline: 10px;
-  padding: 7px;
+  /* out to the top bar's 12px edge (the dock pads 16), so the field takes the width the buttons leave, as in Messages */
+  margin-inline: -4px;
+  padding: 6px;
   border-radius: 26px;
 }
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] > div:has(> [data-composer-row]) {
-  min-height: 34px;
+  min-height: 36px;
   padding: 0 0 0 8px;
   border-radius: 20px;
   background: transparent;
   box-shadow: none;
 }
 .dusk-mobile [data-mobile-chat] [data-composer-plus] {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   color: color-mix(in srgb, var(--color-ink) 82%, transparent);
   background-color: var(--g-tint-quiet);
   transition: scale .2s var(--m-ease-release), background-color .15s ease;
 }
 .dusk-mobile [data-mobile-chat] [data-composer-plus] svg { width: 19px; height: 19px; }
-/* the discs inside the capsule draw at 34px; the coarse-pointer hit area keeps each at 44 */
+/* the discs inside the capsule draw at 36px; the coarse-pointer hit area keeps each at 44 */
 .dusk-mobile [data-mobile-chat] [data-grok-inset] [data-tour="composer"] button:not([role="menuitem"]):is([data-composer-send], [data-voice-mic], [data-composer-stop], :has(> [data-composer-plus])) {
-  width: 34px; height: 34px; min-width: 34px; min-height: 34px;
+  width: 36px; height: 36px; min-width: 36px; min-height: 36px;
+}
+/* the mic's held spot draws at the discs' size, or the empty bar stands taller than a typed one */
+.dusk-mobile [data-mobile-chat] [data-composer-stop-ghost],
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-mic-spacer] { width: 36px; height: 36px; min-width: 36px; }
+/* desktop's hold-the-spot swap: Stop turns in where the mic was, the mic springs in beside it, and when the turn ends
+   the stop disc fades out over the mic's glyph popping back (keyframes in src/styles/composer.css) */
+.dusk-mobile [data-mobile-chat] [data-composer-stop="slot"] .composer-stop-glyph { animation: composer-stop-in 260ms var(--composer-glyph-ease); }
+.dusk-mobile [data-mobile-chat] .composer-mic-back > svg { animation: composer-glyph-in 200ms var(--composer-glyph-ease); }
+@media (prefers-reduced-motion: reduce) {
+  .dusk-mobile [data-mobile-chat] :is([data-composer-stop="slot"] .composer-stop-glyph, .composer-mic-back > svg) { animation-name: composer-glyph-fade; }
 }
 .dusk-mobile [data-mobile-chat] :active > [data-composer-plus] { scale: .92; background-color: var(--g-tint-press); transition-duration: .16s, .15s; }
 .dusk-mobile [data-mobile-chat] [data-composer-actions] { gap: 6px; }
@@ -245,6 +290,15 @@ html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-u
   background-color: var(--g-tint-quiet);
   color: var(--color-ink-secondary);
 }
+/* listening: discard sits where the mic sat beside the round button, which turns into keep */
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-discard] {
+  width: 36px; height: 36px; min-width: 36px;
+  background-color: var(--g-tint-quiet);
+  color: var(--color-ink-secondary);
+}
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-discard], [data-voice-mic="done"]) svg { animation: composer-glyph-in 200ms var(--composer-glyph-ease); }
+/* a press scales; the narrow layout's dim on top of it read as the button flashing lighter */
+.dusk-mobile [data-mobile-chat] [data-composer-actions] button:active { opacity: 1; }
 
 /* under the composer the transcript dims into the home indicator; it rides the keyboard with the dock */
 .dusk-mobile [data-mobile-chat] [data-grok-inset]::before {
@@ -255,29 +309,68 @@ html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-u
   background: linear-gradient(to top, var(--color-app) var(--m-safe-bottom), transparent);
 }
 
-/* send is filled in the accent: it springs in with the first character */
-@keyframes m-pop { from { opacity: 0; scale: .9; } }
-@keyframes m-fade { from { opacity: 0; } }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send]:not(:disabled),
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-voice-mic="send"] {
-  background-color: color-mix(in oklab, var(--color-accent) 86%, black) !important;
-  color: #fafafa !important;
+/* send wears the bot's own button, as on the desktop; the round button holds its spot as the field fills, only its glyph
+   turns, while the mic springs out beside it (composer-mic-in) and slips back in as the field empties (composer-mic-out) */
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] svg { animation: composer-glyph-in 200ms var(--composer-glyph-ease); }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-mic-ghost] {
+  right: 42px;
+  width: 36px;
+  height: 36px;
+  background-color: var(--g-tint-quiet);
+  color: var(--color-ink-secondary);
 }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] { animation: m-pop .34s var(--m-ease-release) both; }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]) { transition: scale .2s var(--m-ease-release), background-color .15s ease; }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active:not(:disabled) { scale: .9; transition-duration: .14s, .15s; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic], [data-composer-discard]) { transition: scale .2s var(--m-ease-release); }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic], [data-composer-discard]):active:not(:disabled) { scale: .9; transition-duration: .14s; }
 @media (prefers-reduced-motion: reduce) {
-  .dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] { animation: m-fade .2s ease-out both; }
+  .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-composer-discard], [data-voice-mic="done"]) svg { animation-name: composer-glyph-fade; }
   .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active { scale: 1; }
 }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic="send"]) svg { width: 18px; height: 18px; stroke-width: 2.5; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic="send"], [data-voice-mic="done"]) svg { width: 18px; height: 18px; stroke-width: 2.5; }
 
 /* the native glass draws the header and composer over the page: the page's own stay in place, unseen, for layout,
    menus and focus */
 html[data-native-glass-header] .dusk-mobile [data-glass-nav] [data-glass] { opacity: 0; }
+/* the glass and the page's header swap in one frame both ways: a press's opacity fade here would leave a blank header
+   (or two) for its length */
+.dusk-mobile [data-glass-nav] [data-glass].mobile-press { transition: scale .2s var(--m-ease-release), background-color .15s ease; }
+/* where the native glass draws the header, a sheet hands it to the page's own (the glass cannot sit under the sheet):
+   that one wears the glass's symbols, its live dot and its pill's inset, so the swap shows nothing */
+html[data-native-glyphs~="back"] .dusk-mobile [data-glass-nav] [data-glass="back"] > svg,
+html[data-native-glyphs~="right"] .dusk-mobile [data-glass-nav] [data-glass="right"] > svg { visibility: hidden; }
+html[data-native-glyphs~="back"] .dusk-mobile [data-glass-nav] [data-glass="back"]::after,
+html[data-native-glyphs~="right"] .dusk-mobile [data-glass-nav] [data-glass="right"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  translate: none;
+  background-color: currentColor;
+  -webkit-mask: var(--glyph) center / 100% 100% no-repeat;
+  mask: var(--glyph) center / 100% 100% no-repeat;
+  width: var(--glyph-w);
+  height: var(--glyph-h);
+  pointer-events: none;
+}
+html[data-native-glyphs~="back"] .dusk-mobile [data-glass-nav] [data-glass="back"] { --glyph: var(--native-glyph-back); --glyph-w: var(--native-glyph-back-w); --glyph-h: var(--native-glyph-back-h); }
+html[data-native-glyphs~="right"] .dusk-mobile [data-glass-nav] [data-glass="right"] { --glyph: var(--native-glyph-right); --glyph-w: var(--native-glyph-right-w); --glyph-h: var(--native-glyph-right-h); }
+html[data-native-glyphs~="right"] .dusk-mobile [data-glass-nav] [data-glass-live] { top: 6px; right: 6px; }
+html[data-native-glyphs] .dusk-mobile [data-glass-nav] [data-glass="title"] { padding-left: 7px; }
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
   visibility: hidden;
   height: var(--glass-composer-h, auto) !important;
 }
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea { visibility: visible; opacity: 0; caret-color: transparent; }
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] :is([role="menu"], [role="listbox"], [data-sidebar-popover-menu], [data-composer-menu]) { visibility: visible; }
+
+/* message text at the phone's body size: iOS Body is 17/22 at the default text size (HIG Typography), a step heavier
+   than the desktop's Geist so it reads like Messages on a small screen */
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] {
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 450;
+  padding: 8px 14px;
+}
+.dusk-mobile [data-mobile-chat] [data-chat-bubble]:not([class*="rounded-es-"]):not([class*="rounded-ee-"]) { border-radius: 19px; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] :is(.chat-text, .chat-md, p, li, blockquote, td, th) { font-size: inherit; line-height: inherit; }
+.dusk-mobile [data-mobile-chat] .turn-label-slot { font-size: 17px; }

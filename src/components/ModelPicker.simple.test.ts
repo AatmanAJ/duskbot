@@ -118,13 +118,13 @@ function bot(effort?: EffortLevel, instanceId = "claude", model = "claude-opus-5
   };
 }
 
-function render(forBot: Bot, options: { contained?: boolean; thread?: boolean } = {}) {
+function render(forBot: Bot, options: { contained?: boolean; thread?: boolean; withThinking?: boolean } = {}) {
   fixture.values.length = Math.min(fixture.values.length, fixture.own);
   let tree: ReactNode = null;
   function Capture() {
     fixture.index = 0;
     tree = options.contained
-      ? ModelPicker({ bot: forBot, contained: true, label: "default model", ...(options.thread ? { threadId: forBot.threadId } : {}) })
+      ? ModelPicker({ bot: forBot, contained: true, label: "default model", ...(options.thread ? { threadId: forBot.threadId } : {}), ...(options.withThinking ? { withThinking: true } : {}) })
       : ModelPicker({ bot: forBot, threadId: forBot.threadId });
     fixture.own = fixture.index;
     return tree;
@@ -133,7 +133,7 @@ function render(forBot: Bot, options: { contained?: boolean; thread?: boolean } 
   return { html, nodes: nodes(tree) };
 }
 
-function open(forBot: Bot, options: { contained?: boolean; thread?: boolean } = {}) {
+function open(forBot: Bot, options: { contained?: boolean; thread?: boolean; withThinking?: boolean } = {}) {
   const trigger = render(forBot, options).nodes.find((node) => node.props["data-tour"] === "model")!;
   (trigger.props.onClick as () => void)();
   return render(forBot, options);
@@ -396,6 +396,10 @@ describe("the model picker in Simple mode", () => {
     expect(classes()).not.toMatch(/hover:bg-ink|aria-expanded:bg-ink/);
   });
 
+  it("puts the thinking level in a contained picker's menu where its place has no row for it, as the bot panel's Model row", () => {
+    expect(thinking(open(bot(), { contained: true, withThinking: true })).levels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
   it("leaves a contained picker on its settings row unchanged, with no floating surface", () => {
     const chip = render(bot(), { contained: true }).nodes.find((node) => node.props["data-tour"] === "model")!;
     expect(String(chip.props.className)).not.toContain("bg-composer");
@@ -624,6 +628,20 @@ describe("the model picker in Simple mode", () => {
     const after = render(forBot);
     expect(dialog(after)).toBeUndefined();
     expect(after.html).toContain(">Scout now uses GPT-5.6</div>");
+  });
+
+  it("keeps a replying bot's AI when a connect finishes mid-reply: signing in is not picking", () => {
+    fixture.instances = [claude(), { ...codex, snapshot: { state: "available", version: "1.0.0", authenticated: false }, authentication: { method: "device-code" } } as InstanceInfo];
+    const forBot = { ...bot(), busy: true };
+    const opened = open(forBot);
+    notConnected(opened).onConnect(notConnected(opened).rows.find((one) => one.tile === "chatgpt")!);
+    fixture.instances = [claude(), codex];
+    dialog(render(forBot))!.props.onConnected!("chatgpt");
+    expect(fixture.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "setModel" }));
+    const after = render(forBot);
+    expect(dialog(after)).toBeUndefined();
+    expect(after.html).toContain(">ChatGPT is connected</div>");
+    expect(after.html).not.toContain("now uses");
   });
 
   it("hands a missing engine to its card in Connect an AI, and one with no card to the model directory", () => {

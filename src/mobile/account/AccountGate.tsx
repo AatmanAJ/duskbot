@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { MausAvatar } from "@/components/Avatar";
+import { MascotLoader } from "@/components/MascotLoader";
 import type { SignInVerify } from "@/components/account-gate/bridge";
 import { problemLine } from "@/components/cloud-buy/SignInScreen";
 import { t } from "@/lib/i18n";
 import type { CloudSignInStart } from "../../../electron/cloud-account.mjs";
 import type { OAuthProvider } from "../../../shared/account-api";
 import { usePlatform, type MobilePlatform } from "../platform";
-import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AuthResult, type CloudPairResult, type MobileAccount, type MobileCloud } from "./account-client";
+import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AccountPlaces, type AuthResult, type CloudPairResult, type ComputerPairResult, type MobileAccount, type MobileComputer, type MobileCloud, type MobileTeamCloud, type PhoneCodeResult } from "./account-client";
 import { setTurnSource } from "../transport/direct-rtc";
 import { chosenAccountOrigin } from "./environment";
 
@@ -16,10 +16,13 @@ type AccountContextValue = { account: MobileAccount | null; origin: string;
   /** deletes the account from the app; false when it could not be done (nothing changed) */
   deleteAccount(): Promise<boolean>; enrollGrant(): Promise<{ enrollToken: string; dashboardUrl: string } | null>;
   clouds(): Promise<MobileCloud[] | null>; pairCloud(cloud: MobileCloud): Promise<CloudPairResult>; wakeCloud(): Promise<boolean>;
+  places(): Promise<AccountPlaces | null>; pairTeamCloud(cloud: MobileTeamCloud): Promise<CloudPairResult>; pairComputer(computer: MobileComputer): Promise<ComputerPairResult>;
   /** what the sign-in screen asks of the account service */
   signIn: {
     providers(): Promise<OAuthProvider[]>; emailStart(email: string): Promise<CloudSignInStart>; emailVerify(code: string): Promise<SignInVerify>;
     cancelEmail(): void; browser(provider: OAuthProvider): Promise<void>;
+    /** a code from a signed-in desktop's settings › phone: logs this phone in to that account, no email step */
+    phoneCode(code: string): Promise<PhoneCodeResult>;
     /** a sign-in that came back through duskbot://auth and did not finish */
     problem?: string; signedIn(): void;
   } };
@@ -129,9 +132,15 @@ export function AccountGate({ children }: { children: ReactNode }) {
     },
     enrollGrant: () => client.enrollGrant(),
     clouds: () => client.clouds(), pairCloud: cloud => client.pairCloud(cloud), wakeCloud: () => client.wakeCloud(),
+    places: () => client.places(), pairTeamCloud: cloud => client.pairTeamCloud(cloud), pairComputer: computer => client.pairComputer(computer),
     signIn: {
       providers: async () => providersFor(platform.kind, await client.providers()),
       emailStart: email => client.emailStart(email), emailVerify: code => client.emailVerify(code), cancelEmail: () => client.cancelEmail(),
+      phoneCode: async code => {
+        const result = await client.phoneCode(code);
+        if (result.outcome === "signed-in") { setAccount(client.account()); setProblem(undefined); }
+        return result;
+      },
       browser: async provider => {
         setProblem(undefined);
         // on the iPhone, Apple signs in in the system's own sheet, not a web page
@@ -143,6 +152,6 @@ export function AccountGate({ children }: { children: ReactNode }) {
       problem, signedIn: () => { setAccount(client.account()); setProblem(undefined); },
     },
   }), [account, origin, wanted, client, platform.kind, platform.appleSignIn, problem]);
-  if (wanted && restoring) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MausAvatar color="green" size={56} state="idle" animated={false} personality={false} /></div>;
+  if (wanted && restoring) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader naps={false} /></div>;
   return <AccountContext value={context}>{children}</AccountContext>;
 }

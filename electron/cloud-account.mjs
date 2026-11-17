@@ -38,7 +38,8 @@ const CHECKING_AFTER = 2;
 const MAX_ENROLL_SECONDS = 1800;
 const OFFER_MS = 10 * 60_000, OFFER_RETRY_MS = 30_000;
 const CHECKOUT_WATCH_MS = 30 * 60_000, CHECKOUT_KEPT_MS = 24 * 3600_000;
-export const CHECKOUT_SOURCES = Object.freeze(["app_card", "app_howto", "app_menu", "app_settings", "app_routines", "app_pages", "app_whats_new_pro", "app_whats_new_team", "app_onboarding", "app_computer_move", "app_sidebar", "app_invested", "app_always_on", "app_bot_panel"]);
+const WEBSITE_SETUPS = Object.freeze(["open", "free", "cloud"]);
+export const CHECKOUT_SOURCES = Object.freeze(["app_card", "app_howto", "app_menu", "app_settings", "app_routines", "app_pages", "app_whats_new_pro", "app_whats_new_team", "app_onboarding", "app_computer_move", "app_sidebar", "app_invested", "app_always_on", "app_bot_panel", "app_late_routine", "app_asleep"]);
 export const UPGRADE_SOURCES = Object.freeze(["app_usage", "app_settings", "app_room"]);
 const UPGRADE_TIERS = Object.freeze(["starter", "personal", "pro", "max"]);
 const UPGRADE_REFUSALS = Object.freeze(["payment_failed", "not_subscribed", "already_on_plan", "plan_change_unavailable", "confirmation_required", "price_changed", "rate_limited"]);
@@ -188,8 +189,6 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
   let profile = null;
   /** The plan's own Cloud that Cancel and Keep act on, as the last verified session names it. */
   let renewalCloud = null;
-  // start fresh asked the Admin to delete this account and got no answer: a 401 next time means it went through
-  let deleteAsked = false;
   let offerCache = null, offerPending = null, waking = false;
   /** The checkout this app opened, its address kept here for Reopen and Copy link: never published, never asked for again. */
   let opened = null;
@@ -365,6 +364,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
       const purchase = parseCloudPurchase(result.cloud?.purchase);
       const trial = parseCloudTrial(result.cloud?.trial), offer = parseCloudOffer(result.offer);
       const usage = access.status === "active" ? parseCloudUsage(result.cloud?.usage) : null, room = usage ? parseCloudRoom(result.cloud?.room) : null;
+      const websiteSetup = WEBSITE_SETUPS.includes(result.websiteSetup) ? result.websiteSetup : null;
       const clouds = parseCloudList(result.clouds), more = clouds ? addOffer(result) : null, latest = clouds ? releaseVersion(result.latestVersion) : null;
       const organizations = clouds ? parseOrganizations(result.organizations) : null;
       const { cloudId: renewingCloud = null, ...renewal } = parseCloudRenewal(result.clouds) ?? {};
@@ -395,13 +395,13 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
       verifiedUntil = Math.min(grant.expiresAt, serverNow() + STEADY_MS,
         access.status === "active" && access.expiresAt !== null ? access.expiresAt : Infinity);
       publish({ ...view("connected"), entitlement: access, ...(machine ? { machine } : {}), ...(teams.length ? { teams } : {}), ...(purchase ? { purchase } : {}),
-        ...(trial ? { trial } : {}), ...(offer ? { offer } : {}), ...(usage ? { usage } : {}), ...(room ? { room } : {}), ...(renewingCloud ? { renewal } : {}),
+        ...(trial ? { trial } : {}), ...(offer ? { offer } : {}), ...(usage ? { usage } : {}), ...(room ? { room } : {}), ...(renewingCloud ? { renewal } : {}), ...(websiteSetup ? { websiteSetup } : {}),
         ...(clouds ? { clouds, addCloud: more } : {}), ...(organizations ? { organizations } : {}), ...(latest ? { latestVersion: latest } : {}), verifiedAt: now(), verifiedUntil });
       const planCloud = teamPlan(value) ? planTeam(value)?.machine ?? null : machine;
       const settingUp = planCloud?.status === "provisioning" || (access.status === "active" && !planCloud) || Boolean(purchase) || otherOwnClouds(clouds).some(cloud => cloud.status === "setting_up");
       const added = adding ? clouds?.find(cloud => cloud.id === adding.cloudId) ?? null : null;
       const paying = watchingAdd() && Boolean(adding.url) && (!added || added.status === "checkout");
-      const delay = (watching() && planCloud?.status !== "ready") || paying ? WATCH_REFRESH_MS : settingUp ? SETUP_REFRESH_MS : awaitingWake() ? ASLEEP_REFRESH_MS : REFRESH_MS;
+      const delay = (watching() && planCloud?.status !== "ready") || paying || websiteSetup === "open" ? WATCH_REFRESH_MS : settingUp ? SETUP_REFRESH_MS : awaitingWake() ? ASLEEP_REFRESH_MS : REFRESH_MS;
       schedule(refresh, Math.min(delay, verifiedUntil - serverNow()));
     } catch (error) {
       if (!current(stamp)) return state();
@@ -617,7 +617,9 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
       if (!error?.opaque && error?.status === 409) return { outcome: "conflict", state: await refresh() };
       if (!error?.opaque && error?.status === 429) return { outcome: "rate-limited", state: state() };
       if (signInEnded(error)) return { outcome: "failed", state: await refresh() };
-      if (![404, 405, 501].includes(error?.status)) return { outcome: "failed", state: state() };
+      // the Admin paused the app's checkout (503 temporarily_unavailable): the Cloud page's billing still takes the plan
+      const paused = !error?.opaque && error?.status === 503 && error.code === "temporarily_unavailable";
+      if (![404, 405, 501].includes(error?.status) && !paused) return { outcome: "failed", state: state() };
       destination = `${origin}/billing?${new URLSearchParams({ plan, src: source })}`;
     }
     if (grant !== signedIn) return { outcome: "failed", state: state() };
@@ -704,33 +706,6 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
         return result?.ok === true ? true : null;
       } catch (error) { if (signInEnded(error)) await refresh().catch(() => {}); return null; }
     },
-    /** Start fresh's own clouds: the dusk cloud computers this account owns, in no team, whose plans it cancels. */
-    freshClouds() {
-      const current = state();
-      if (current.status !== "connected" || !Array.isArray(current.clouds)) return [];
-      return current.clouds.filter(cloud => cloud.managed && cloud.role === "owner" && cloud.teamId === null).map(cloud => ({ id: cloud.id, name: cloud.name }));
-    },
-    /** Start fresh: renewal off for one of this account's clouds; a cloud with no plan (never paid, already ended) has
-     * nothing to cancel. The Admin answers 404 for a cloud of someone else's. */
-    async cancelCloudPlan(cloudId) {
-      const signedIn = grant;
-      if (!signedIn) throw Object.assign(new Error("Signed out."), { code: "signed_out" });
-      try { await request(`clouds/${encodeURIComponent(cloudId)}/cancel`, { method: "POST", body: {}, token: signedIn.token, timeoutMs: 60_000 }); }
-      catch (error) { if (error?.status === 409 && error?.code === "not_subscribed") return; throw error; }
-    },
-    /** Start fresh: deletes this account (its plans cancelled first by the Admin, its clouds destroyed now). A 401 after this
-     * app already asked once means the first ask went through and only its answer was lost. */
-    async deleteAccountNow(email) {
-      const signedIn = grant ?? issued;
-      if (!signedIn) throw Object.assign(new Error("Signed out."), { code: "signed_out" });
-      try { await request("", { path: "/v1/app/delete-account", method: "POST", body: { email, destroyDesktopsNow: true }, token: signedIn.token, timeoutMs: 60_000 }); }
-      catch (error) {
-        if (error?.status === 401 && deleteAsked) return;
-        deleteAsked = deleteAsked || error?.status === undefined || error.status >= 500;
-        throw error;
-      }
-      deleteAsked = false;
-    },
     /** A five-minute signed grant for the link service, so a VPS setup session belongs to this account; null when signed out. */
     async linkGrant() {
       const signedIn = grant;
@@ -740,6 +715,21 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
         if (grant !== signedIn || result?.v !== 1 || typeof result.grant !== "string" || !/^l1\.[a-z0-9-]{1,32}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(result.grant) || result.grant.length > 1024) return null;
         return result.grant;
       } catch (error) { if (signInEnded(error)) await refresh().catch(() => {}); return null; }
+    },
+    /** A ten-minute, single-use letters-only code (and the account's email) that logs a phone in to this account
+     * (ACCOUNT_ROUTES.phoneSignIn): { outcome: "code", code, expiresAt, email, service } or { outcome: "signed-out" | "limited" | "failed" }. */
+    async phoneSignIn() {
+      const signedIn = grant;
+      if (!signedIn || state().status !== "connected") return { outcome: "signed-out" };
+      try {
+        const result = await request("", { path: "/v1/app/phone-sign-in", method: "POST", body: {}, token: signedIn.token });
+        if (grant !== signedIn || result?.v !== 1 || typeof result.code !== "string" || !/^[A-Z]{4}-[A-Z]{4}$/.test(result.code)
+          || !timestamp(result.expiresAt) || !text(result.email, 254)) return { outcome: "failed" };
+        return { outcome: "code", code: result.code, expiresAt: result.expiresAt, email: result.email, service: origin };
+      } catch (error) {
+        if (signInEnded(error)) { await refresh().catch(() => {}); return { outcome: "signed-out" }; }
+        return { outcome: error?.status === 429 ? "limited" : "failed" };
+      }
     },
     /** Short-lived Cloudflare TURN servers for the direct screen path, kept until shortly before they expire; null when signed out or off. */
     async screenIce() {

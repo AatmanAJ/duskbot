@@ -7,6 +7,7 @@ import { CodeBoxes, codeDigits } from "@/components/cloud-buy/CodeBoxes";
 import { problemLine } from "@/components/cloud-buy/SignInScreen";
 import type { CloudSignInProblem } from "@/lib/cloud-plan";
 import { cn } from "@/lib/cn";
+import { useDesktopCapabilities } from "@/components/DesktopCapabilities";
 import { t } from "@/lib/i18n";
 import { accountSignIn, type AccountSignInMethod, type AccountSignInVia } from "@/lib/product-events";
 import type { OAuthProvider } from "../../../shared/account-api";
@@ -40,6 +41,9 @@ const PROVIDER_LABEL: Record<OAuthProvider, Parameters<typeof t>[0]> = {
   google: "funnel.account.google", apple: "funnel.account.apple",
 };
 
+/** how often the account is read again while the website's first steps are open, beside main's own watch */
+const WEBSITE_LOOK_MS = 4_000;
+
 /** The shown sign-ins less any the service says it doesn't offer; the same array when nothing changes, so nothing redraws. */
 export function refineProviders(shown: readonly OAuthProvider[], offered: readonly OAuthProvider[]): readonly OAuthProvider[] {
   const next = shown.filter((provider) => offered.includes(provider));
@@ -54,6 +58,7 @@ export function AccountStep({ account, known, onDone, onSkip }: {
   /** continue without an account, where the app works without one */
   onSkip: (() => void) | null;
 }) {
+  const winCaption = useDesktopCapabilities().capabilities.windowChrome === "win-caption";
   const id = useId();
   const host = useRef<HTMLDivElement>(null);
   // every sign-in shows from the first frame; the service's own list only takes away one it doesn't offer
@@ -97,6 +102,15 @@ export function AccountStep({ account, known, onDone, onSkip }: {
     return () => { alive = false; };
   }, [account]);
   useEffect(() => { host.current?.querySelector<HTMLInputElement>("[data-autofocus]")?.focus(); }, [sent]);
+  // a new account takes the website's first steps (name, plan) before the app goes on: read again until they end
+  const websiteOpen = known?.signedIn === true && known.website === "open";
+  useEffect(() => {
+    if (!websiteOpen || !account.refresh) return;
+    const look = () => void account.refresh!().catch(() => {});
+    const timer = setInterval(look, WEBSITE_LOOK_MS);
+    window.addEventListener("focus", look);
+    return () => { clearInterval(timer); window.removeEventListener("focus", look); };
+  }, [websiteOpen, account]);
   useEffect(() => {
     if (!sent) return;
     const timer = setInterval(() => setNow(Date.now()), 1_000);
@@ -136,12 +150,39 @@ export function AccountStep({ account, known, onDone, onSkip }: {
     });
   };
 
+  if (websiteOpen) {
+    return (
+      <StepFrame art={<StepArt art="key" />} title={t("funnel.account.websiteTitle")} sub={t("funnel.account.website")}
+        footer={<>
+          <p role="status" data-funnel-account-website="" className="flex items-center gap-2 text-[13px] leading-[18px] text-ink-secondary">
+            <LoaderCircle size={14} aria-hidden="true" className="shrink-0 animate-spin motion-reduce:animate-none" />{t("funnel.account.waiting")}
+          </p>
+          {account.reopenWebsite && (
+            <button type="button" data-funnel-account-website-again="" className={cn(SECONDARY, "mt-2")} disabled={busy}
+              onClick={() => void run(async () => { await account.reopenWebsite!(); })}>{t("funnel.account.websiteAgain")}</button>
+          )}
+          {account.signOut && (
+            <button type="button" data-funnel-account-switch="" className={cn(QUIET, "disabled:opacity-40")} disabled={busy}
+              onClick={() => void run(async () => { await account.signOut!(); })}>{t("funnel.account.switch")}</button>
+          )}
+          {problem && <p role="alert" className="text-center text-[13px] leading-[18px] text-danger">{problemLine(problem, null)}</p>}
+        </>} />
+    );
+  }
+
   if (known?.signedIn) {
     return (
       <StepFrame art={<span className="place-mark grid size-14 place-items-center rounded-full bg-success/10 text-success"><Check size={26} aria-hidden="true" /></span>}
         title={t("funnel.account.signedInTitle")}
         sub={known.email ? t("funnel.account.signedIn", { email: known.email }) : undefined}
-        footer={<button type="button" data-primary="" autoFocus onClick={onDone} className={PRIMARY}>{t("funnel.next")}</button>} />
+        footer={<>
+          <button type="button" data-primary="" autoFocus onClick={onDone} disabled={busy} className={PRIMARY}>{t("funnel.next")}</button>
+          {account.signOut && (
+            <button type="button" data-funnel-account-switch="" className={cn(QUIET, "mt-2 disabled:opacity-40")} disabled={busy}
+              onClick={() => void run(async () => { await account.signOut!(); })}>{t("funnel.account.switch")}</button>
+          )}
+          {problem && <p role="alert" className="text-center text-[13px] leading-[18px] text-danger">{problemLine(problem, null)}</p>}
+        </>} />
     );
   }
 
@@ -178,9 +219,15 @@ export function AccountStep({ account, known, onDone, onSkip }: {
   return (
     // my-auto: centred in the step's pane like the steps that are a StepFrame alone
     <div ref={host} className="my-auto w-full pb-16">
-      {/* never in the top corner: Windows draws its caption buttons there */}
+      {/* top right, quiet: on Windows it stays left of the caption buttons */}
+      {skip && (
+        <button type="button" data-funnel-account-skip="" onClick={skip}
+          className={cn("fixed top-0 z-20 flex h-14 items-center px-2 text-[13px] text-ink-tertiary/60 transition-colors hover:text-ink-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none", winCaption ? "end-[148px]" : "end-4")}>
+          {t("funnel.account.skip")}
+        </button>
+      )}
       <StepFrame art={<StepArt art="key" />} title={t("funnel.account.title")} sub={t(sent ? "funnel.account.codeSub" : phoneAppEnabled() ? "funnel.account.sub" : "funnel.account.subNoPhone", { email: sent?.email ?? "" })}
-        footer={skip ? <button type="button" data-funnel-account-skip="" onClick={skip} className={QUIET}>{t("funnel.account.skip")}</button> : undefined}>
+>
         <div className="flex w-full max-w-[320px] flex-col gap-3">
           {!sent && providers.length > 0 && (
             <>

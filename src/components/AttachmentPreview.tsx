@@ -26,7 +26,7 @@ import {
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { FilePreviewButton } from "./FilePreviewButton";
-import { chipNameAction, SaveIconButton, useHtmlPreview } from "./HtmlFilePreview";
+import { chipNameAction, SaveIconButton, useFilePreview } from "./HtmlFilePreview";
 import { ImageLoading } from "./ImageLoading";
 import { Icon } from "./Icon";
 import { imageReady, knownImageSize, noteImageLoaded, reservedAspect, type MediaSize } from "@/lib/image-cache";
@@ -872,7 +872,7 @@ function FileCard({ file, message, save, preview, retryable, className }: {
   file: TranscriptFileAttachment;
   message: MessageAttachmentContext;
   save: ReturnType<typeof useLocalFileSave>;
-  preview: ReturnType<typeof useHtmlPreview>;
+  preview: ReturnType<typeof useFilePreview>;
   retryable: boolean;
   className?: string;
 }) {
@@ -892,7 +892,7 @@ function FileCard({ file, message, save, preview, retryable, className }: {
         <span role={failed ? "alert" : save.state === "idle" ? undefined : "status"} className={cn("truncate text-[13px] leading-[18px]", failed ? "text-danger" : "text-ink-secondary")}>{meta}</span>
       </span>
       <span className="relative flex shrink-0">
-        {preview.html ? <SaveIconButton name={file.name} save={save} retryable={retryable} /> : <FilePreviewButton path={file.path} name={file.name} message={message} />}
+        {preview.opens ? <SaveIconButton name={file.name} save={save} retryable={retryable} /> : <FilePreviewButton path={file.path} name={file.name} message={message} />}
       </span>
       {preview.dialog}
     </section>
@@ -909,7 +909,7 @@ export function AttachedFileChip({ file, message, linked = false, compact = fals
   className?: string;
 }) {
   const save = useLocalFileSave(file.path, file.name, message);
-  const preview = useHtmlPreview(file.path, file.name, message);
+  const preview = useFilePreview(file.path, file.name, message);
   const failed = save.state === "failed";
   const retryable = failed && !save.outsideWorkspace;
   if (compact) return <CompactFileChip file={file} message={message} linked={linked} save={save} preview={preview} className={className} />;
@@ -936,7 +936,7 @@ export function AttachedFileChip({ file, message, linked = false, compact = fals
         >
           <FileText size={14} className="shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate text-ink">{file.name}</span>
-          {preview.html ? <Eye size={13} className="shrink-0" /> : save.state === "saving" ? (
+          {preview.opens ? <Eye size={13} className="shrink-0" /> : save.state === "saving" ? (
             <LoaderCircle size={13} className="shrink-0 animate-spin" />
           ) : save.state === "saved" ? (
             <Check size={13} className="shrink-0 text-success" />
@@ -946,7 +946,7 @@ export function AttachedFileChip({ file, message, linked = false, compact = fals
             <Download size={13} className="shrink-0" />
           )}
         </button>
-        {preview.html ? <SaveIconButton name={file.name} save={save} retryable={retryable} /> : <FilePreviewButton path={file.path} name={file.name} message={message} />}
+        {preview.opens ? <SaveIconButton name={file.name} save={save} retryable={retryable} /> : <FilePreviewButton path={file.path} name={file.name} message={message} />}
         {preview.dialog}
       </div>
       {save.state !== "idle" && (
@@ -980,7 +980,7 @@ function CompactFileChip({ file, message, linked, save, preview, className }: {
   message?: MessageAttachmentContext;
   linked: boolean;
   save: ReturnType<typeof useLocalFileSave>;
-  preview: ReturnType<typeof useHtmlPreview>;
+  preview: ReturnType<typeof useFilePreview>;
   className?: string;
 }) {
   const failed = save.state === "failed";
@@ -1008,7 +1008,7 @@ function CompactFileChip({ file, message, linked, save, preview, className }: {
         >
           <FileText size={14} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />
           {name}
-          {preview.html ? <Eye size={13} strokeWidth={1.75} className="shrink-0" aria-hidden="true" /> : save.state === "saving" ? (
+          {preview.opens ? <Eye size={13} strokeWidth={1.75} className="shrink-0" aria-hidden="true" /> : save.state === "saving" ? (
             <LoaderCircle size={13} className="shrink-0 animate-spin" aria-hidden="true" />
           ) : save.state === "saved" ? (
             <Check size={13} className="shrink-0 text-success" aria-hidden="true" />
@@ -1018,7 +1018,7 @@ function CompactFileChip({ file, message, linked, save, preview, className }: {
             <Download size={13} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />
           )}
         </button>
-        {preview.html ? <SaveIconButton name={file.name} save={save} retryable={retryable} /> : <FilePreviewButton path={file.path} name={file.name} message={message} />}
+        {preview.opens ? <SaveIconButton name={file.name} save={save} retryable={retryable} /> : <FilePreviewButton path={file.path} name={file.name} message={message} />}
         {preview.dialog}
       </span>
       {save.state !== "idle" && save.state !== "saved" && (

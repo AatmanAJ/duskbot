@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { storeApp } from "@/lib/store-app";
+import { phoneApp, storeApp } from "@/lib/store-app";
+import { macPermissionsBridge } from "@/lib/mac-permissions";
 
 
 import { cloudMoveStage, openCloudMove, runsOnHost, type CloudMoveStage, type RunsOnHost } from "@/lib/cloud-move";
 import { cloudPlanView } from "@/lib/cloud-plan";
-import { ipcErrorText } from "@/lib/cloud-send";
 import { cn } from "@/lib/cn";
 import { writeComputerPanelView, type ComputerPanelView } from "@/lib/computer-panel-view";
 import { t } from "@/lib/i18n";
@@ -146,21 +146,28 @@ export function WherePage({ bot, derived }: { bot: Bot; derived: Derived }) {
   );
 }
 
-/** Whether the element is in view; the live screen pauses while the panel is scrolled away or covered by layout. */
-function useOnScreen(element: HTMLElement | null) {
+/** Whether the element is in view; the live screen pauses while the panel is scrolled away or covered by layout. `leaveMs`:
+ * how long it must stay out of view before it counts as gone, so a sheet's spring or a tab's slide that carries it past
+ * the edge for a moment never drops and reconnects the stream. */
+export function useOnScreen(element: HTMLElement | null, leaveMs = 0) {
   const [onScreen, setOnScreen] = useState(true);
   const last = useRef(true);
   useEffect(() => {
     if (!element || typeof IntersectionObserver === "undefined") return;
+    let leaving: ReturnType<typeof setTimeout> | undefined;
     const observer = new IntersectionObserver(([entry]) => {
       const next = Boolean(entry?.isIntersecting);
-      if (next !== last.current) setOnScreen((last.current = next));
+      clearTimeout(leaving);
+      if (next === last.current) return;
+      if (next || leaveMs === 0) setOnScreen((last.current = next));
+      else leaving = setTimeout(() => setOnScreen((last.current = false)), leaveMs);
     });
     observer.observe(element);
-    return () => observer.disconnect();
-  }, [element]);
+    return () => { clearTimeout(leaving); observer.disconnect(); };
+  }, [element, leaveMs]);
   return onScreen;
 }
+const PHONE_LEAVE_MS = 1_000;
 
 /** The screen while the panel's code loads: already the wake button, and a click is kept for the panel to act on. */
 export function AsleepScreen({ bot, off }: { bot: Bot; off: boolean }) {
@@ -179,9 +186,6 @@ export function AsleepScreen({ bot, off }: { bot: Bot; off: boolean }) {
   );
 }
 
-
-/** a quiet secondary move: plain 12px words that darken on hover, under the one primary action */
-const quietCls = "inline-flex h-7 cursor-pointer items-center rounded-full px-2.5 text-[12px] leading-4 text-ink/[0.56] hover:bg-ink/[0.04] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 
 /** This computer, where a bot stops while it sleeps and has no screen of its own to choose or show. */
 const isLocalHost = (host: RunsOnHost) => host.kind === "mac" || host.kind === "pc";
@@ -253,39 +257,17 @@ export function CloudCtaCard({ bot, group, stage, cloudDesktop }: { bot: Bot; gr
     else openCloudMove("cloud");
   };
   const label = t(step === "get" ? "runsOn.getCloud" : step === "switch" ? "runsOn.switchCloud" : step === "moving" ? "runsOn.movingCloud" : "runsOn.moveDuskCloud");
-  const there = step === "switch";
+  // these bots work on this computer, so the card is always the offer, with the switch once the account has a cloud
   const vars = { name: bot.name, device };
   return cloudCta({
-    bots, anchor: "dusk-cloud", step, there: there || step === "moving", asleep: step === "get", hopping, setHopping,
-    title: t(many ? (there ? "runsOn.cta.groupTitleThere" : "runsOn.cta.groupTitle") : there ? "runsOn.cta.titleThere" : "runsOn.cta.title", vars),
-    body: t(many ? (there ? "runsOn.cta.groupBodyThere" : "runsOn.cta.groupBody") : there ? "runsOn.cta.bodyThere" : "runsOn.cta.body", vars),
+    bots, anchor: "dusk-cloud", step, there: step === "moving", asleep: step === "get", hopping, setHopping,
+    title: t(many ? "runsOn.cta.groupTitle" : "runsOn.cta.title", vars),
+    body: t(many ? "runsOn.cta.groupBody" : "runsOn.cta.body", vars),
     action: act, label, disabled: step === "moving",
   });
 }
 
-/** The account has a dusk cloud: its own computer is on the cloud's page, never an offer to get or move to one here. */
-export function hasDuskCloud(stage: CloudMoveStage | null): boolean {
-  return stage !== null && stage !== "buy" && stage !== "resume" && stage !== "elsewhere";
-}
-
-/** Under this computer's screen when the account has a dusk cloud: where the cloud's own computer is, and the way there. */
-export function CloudSwitchLine({ cloudDesktop }: { cloudDesktop: CloudDesktopRow | null }) {
-  const [failed, setFailed] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const openHome = cloudDesktop?.openHome;
-  const go = () => {
-    if (!openHome || busy) return;
-    setBusy(true); setFailed(null);
-    void openHome().then(() => setBusy(false), (cause: unknown) => { setBusy(false); setFailed(ipcErrorText(cause) ?? t("place.cloudDesktop.failed")); });
-  };
-  return (
-    <div data-panel-cloud-switch="" className="mt-2 flex flex-col items-center gap-1 text-center">
-      <p className="text-[12px] leading-4 text-ink/[0.56]">{t("computer.cloudHasOwn")}</p>
-      {openHome && <button type="button" data-panel-action="switch-cloud" className={`${quietCls} disabled:cursor-default`} disabled={busy} onClick={go}>{t("runsOn.switchCloud")}</button>}
-      {failed && <p role="alert" className="text-[12px] leading-4 text-danger">{failed}</p>}
-    </div>
-  );
-}
+export { hasDuskCloud } from "@/lib/cloud-move";
 
 /** One small disclosure for what a person rarely needs: the computer's own words for a problem, and its settings. */
 export function ComputerTab({ bot, derived, cloudFor }: {
@@ -299,7 +281,7 @@ export function ComputerTab({ bot, derived, cloudFor }: {
   const { current, warning, cloudDesktop } = picker;
   const otherServer = useOtherServerName();
   const [screenBox, setScreenBox] = useState<HTMLElement | null>(null);
-  const onScreen = useOnScreen(screenBox);
+  const onScreen = useOnScreen(screenBox, phoneApp() ? PHONE_LEAVE_MS : 0);
   const [report, setReport] = useState<InlineReport | null>(null);
   const host = runsOnHost({ cloudHome: state.config?.cloudHome === true, otherServer, platform: capabilities.host?.platform ?? "other" });
   const screenOf = t(host.kind === "cloud" ? "computer.screenOfCloud" : "computer.screenOf", { name: bot.name });
@@ -312,15 +294,16 @@ export function ComputerTab({ bot, derived, cloudFor }: {
     : stage === "moved" || stage === "open" ? t("runsOn.openCloud")
     : stage === "coming-back" ? t("runsOn.movingBack") : t("runsOn.moveDuskCloud");
   const detail = report?.detail ?? null;
-  // with a dusk cloud already, this computer's bot shows this computer's screen and the way to the cloud's own, never the offer
-  const cloudOwned = local && hasDuskCloud(stage);
-  const cloudOffer = local && !cloudOwned && cloudBots.length > 0 && <CloudCtaCard bot={cloudBots[0]!} group={cloudBots} stage={stage} cloudDesktop={cloudDesktop} />;
-  const ownScreen = !local || cloudOwned || current === "vm";
+  // this computer's bot leads with its browser; the dusk cloud card follows it, whatever step the account is at
+  const cloudOffer = local && cloudBots.length > 0 && <CloudCtaCard bot={cloudBots[0]!} group={cloudBots} stage={stage} cloudDesktop={cloudDesktop} />;
+  const ownScreen = !local || current === "vm";
+  // a bot set to use this Mac asks for the Mac's permissions it lacks when the person starts its browser, never before
+  const askFirst = local && current === "local" ? macPermissionsBridge() : null;
 
   return (
     <div data-panel-tabpanel="computer">
       {!ownScreen ? !storeApp() && <>
-        <LocalBrowserSection bot={bot} after={cloudOffer} />
+        <LocalBrowserSection bot={bot} askFirst={askFirst} after={cloudOffer} />
       </> : <>
         <div ref={setScreenBox}>
           <Suspense fallback={<AsleepScreen bot={bot} off={current === "off"} />}>
@@ -331,7 +314,6 @@ export function ComputerTab({ bot, derived, cloudFor }: {
           <span data-panel-screen-of="" className="min-w-0 truncate text-[12px] leading-4 tracking-normal text-ink/[0.56]">{screenOf}</span>
         </div>
         {detail && <Card><NoteRow data-sheet-row="problem-detail">{detail}</NoteRow></Card>}
-        {cloudOwned && <CloudSwitchLine cloudDesktop={cloudDesktop} />}
         {toCloud && <CloudDesktopCta bots={cloudBots} stage={stage} label={cloudLabel} />}
         {cloudOffer}
       </>}

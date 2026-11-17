@@ -3,7 +3,6 @@ import { Bot, File, Globe as GlobeIcon, Link2, MapPin, Monitor, MousePointerClic
 import { Button, cx } from "../ui/kit";
 import { SkyEmpty } from "../ui/Sky";
 import { AnimatePresence, m, Pill, SwapText, usePill, useSlots } from "../ui/motion";
-import { Figure } from "../ui/Figure";
 import { ago } from "../lib/format";
 import { Link } from "../lib/router";
 import { PersonLink } from "./sheet";
@@ -11,12 +10,13 @@ import { useNow } from "../lib/now";
 import { adminCall, useAdmin, type Overview } from "./api";
 import { avatarOf } from "./names";
 import { centroid, countryName } from "./geo";
-import { Avatar, CHANNEL, Chip, Delta, FilterChips, NoteDialog, RangePicker, RankCard, duration, percent, personName, rangeOf, usd, type Mark, type Note, type Range, type RankRow, type SeriesData } from "./kit";
+import { Avatar, CHANNEL, Chip, FilterChips, NoteDialog, RangePicker, RankCard, duration, percent, personName, rangeOf, usd, type Mark, type Note, type Range, type RankRow, type SeriesData } from "./kit";
 import { CheerBubble, PaymentsCard, useCheer, type RevenueAnswer } from "./Revenue";
 import { PulseGrid } from "./Pulse";
 import { UsageSection } from "./Usage";
 import { ChartCard, ConversionList, LiveMap, LtvList, MainChart, PeakHours, SERIES, StackedBars, channelStacks, type ChartShow, type Insights } from "./charts";
 import { FunnelChart } from "./FunnelChart";
+import { KpiRow } from "./KpiRow";
 import { RevenueStrip } from "./RevenuePage";
 import { Failed, Loading, n } from "./ui";
 
@@ -90,23 +90,6 @@ function SitePicker({ value, onChange, counts }: { value: Surface; onChange(v: S
 }
 
 const I = { size: 14, strokeWidth: 1.75 } as const;
-/** one number in the strip: money and traffic in the same plain tile, easing to each new value */
-/** one number in the strip, money and traffic alike; a charted one has a checkbox in its series colour that shows or hides
- * it on the chart, and the revenue tile sits on a soft green wash */
-function Kpi({ label, value, format, now, before, invert, toggle, money }: { label: string; value: number | null; format(v: number): string; now?: number | null; before?: number | null; invert?: boolean;
-  toggle?: { on: boolean; flip(): void; colour: string }; money?: boolean }) {
-  return (
-    <div className={cx("min-w-0 rounded-[16px] px-4 py-3.5 transition-colors duration-200", money && toggle?.on !== false ? "bg-wash-lime" : "bg-pop")}>
-      {toggle ? (
-        <label className="flex cursor-pointer items-center gap-2 text-13 font-medium text-ink-2">
-          <input type="checkbox" checked={toggle.on} onChange={toggle.flip} className="size-3.5 cursor-pointer rounded-[4px]" style={{ accentColor: toggle.colour }} />{label}
-        </label>
-      ) : <div className="text-13 font-medium text-ink-3">{label}</div>}
-      <div className={cx("mt-1 truncate font-mono text-[26px] font-medium leading-9 tracking-[-0.045em] num", money ? "text-money" : "text-ink")}>{value === null ? "-" : <Figure value={format(value)} className="!font-mono !text-[26px] !leading-9 !tracking-[-0.045em] ![color:inherit]" />}</div>
-      <div className="mt-0.5 h-5 truncate leading-5">{now !== undefined && <Delta now={now ?? null} before={before ?? null} invert={invert} />}</div>
-    </div>
-  );
-}
 
 function MapPanel({ rows }: { rows: RankRow[] }) {
   const points = rows.slice(0, 40).flatMap((row) => {
@@ -279,16 +262,16 @@ export function OverviewPage() {
       {data && c && p && series && (
         <div className={cx("transition-opacity duration-150", loading && "opacity-80")}>
           <section className="rounded-[28px] bg-card p-2" aria-label="key numbers and chart">
-            <div className="grid grid-cols-8 gap-1.5 max-xl:grid-cols-4 max-sm:grid-cols-2">
-              <Kpi label="visitors" value={c.visitors} format={whole} now={c.visitors} before={p.visitors} toggle={{ on: show.visitors, flip: flip("visitors"), colour: SERIES.visitors }} />
-              <Kpi label="revenue" value={r ? r.current.net : null} format={dollars} now={r?.current.net} before={r?.previous.net} money toggle={{ on: show.revenue, flip: flip("revenue"), colour: SERIES.revenue }} />
-              <Kpi label="signups" value={c.signups} format={whole} now={c.signups} before={p.signups} toggle={{ on: show.signups, flip: flip("signups"), colour: SERIES.signups }} />
-              <Kpi label="mrr" value={r && !filtered ? r.current.mrr : null} format={dollars} now={r && !filtered ? r.current.mrr : undefined} before={r?.previous.mrr} />
-              <Kpi label="customers" value={r ? (overview.data?.totals.paying ?? r.current.customers) : null} format={whole} now={r?.current.customers} before={r?.previous.customers} />
-              <Kpi label="per visitor" value={r && c.visitors ? r.current.net / c.visitors : null} format={(v) => usd(Math.round(v))} now={r && c.visitors ? r.current.net / c.visitors : undefined} before={r && p.visitors ? r.previous.net / p.visitors : undefined} />
-              <Kpi label="conversion" value={c.conversion} format={share} now={c.conversion} before={p.conversion} />
-              <Kpi label="bounce rate" value={c.bounce} format={share} now={c.bounce} before={p.bounce} invert />
-            </div>
+            <KpiRow cards={[
+              { id: "visitors", value: c.visitors, format: whole, now: c.visitors, before: p.visitors, toggle: { on: show.visitors, flip: flip("visitors"), colour: SERIES.visitors } },
+              { id: "revenue", value: r ? r.current.net : null, format: dollars, now: r?.current.net, before: r?.previous.net, toggle: { on: show.revenue, flip: flip("revenue"), colour: SERIES.revenue } },
+              { id: "signups", value: c.signups, format: whole, now: c.signups, before: p.signups, toggle: { on: show.signups, flip: flip("signups"), colour: SERIES.signups } },
+              { id: "mrr", value: r && !filtered ? r.current.mrr : null, format: dollars, now: r && !filtered ? r.current.mrr : undefined, before: r?.previous.mrr },
+              { id: "customers", value: r ? (overview.data?.totals.paying ?? r.current.customers) : null, format: whole, now: r?.current.customers, before: r?.previous.customers },
+              { id: "per visitor", value: r && c.visitors ? r.current.net / c.visitors : null, format: (v) => usd(Math.round(v)), now: r && c.visitors ? r.current.net / c.visitors : undefined, before: r && p.visitors ? r.previous.net / p.visitors : undefined },
+              { id: "conversion", value: c.conversion, format: share, now: c.conversion, before: p.conversion },
+              { id: "bounce rate", value: c.bounce, format: share, now: c.bounce, before: p.bounce, invert: true },
+            ]} />
             <div className="px-3 pb-2 pt-6 max-sm:px-1">
               {!data.tracked && <p className="mb-3 rounded-[14px] bg-wash-lemon px-4 py-2.5 text-13 text-ink">no visits recorded for this view yet.</p>}
               <MainChart data={series} previous={data.insights?.previousVisitors ?? []} notes={data.notes} show={show} onNote={setNote} emptyMoney={r?.live ? "no sales in this window" : "payments aren't live yet"} />

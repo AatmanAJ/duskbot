@@ -4,6 +4,7 @@ import { storeApp } from "@/lib/store-app";
 import { aiSendAllowed } from "@/lib/ai-consent-gate";
 import { trailAction } from "@/lib/trail-actions";
 import { cloudAsleep, onCloudPower } from "../lib/cloud-power";
+import { cloudWakingLoad, WAKING_LOAD_MS } from "./waking-load";
 import { chatInFront } from "@/lib/chat-in-front";
 import { answerOf, api, ApiError, snapshotArrays } from "./api";
 import { sendOutbox } from "./send-outbox";
@@ -26,7 +27,7 @@ import { dropSentTurn, followSendReceipt, noteSentTurn } from "./sent-turn";
 import { applySendReceipt } from "./send-receipt";
 import { foldSnapshotOntoStreamed, patchedGroups, roomAnswers, snapshotPatch } from "./room-frames";
 import { savedStateAction, type SavedOwner, type SavedSnapshot } from "./saved-state";
-import { heldTranscript, keepBotNavigation, keepGroupNavigation, navigatedSince, visibleMessages } from "./snapshot-navigation";
+import { heldTranscript, keepBotNavigation, keepGroupNavigation, navigatedSince, openElsewhere, visibleMessages } from "./snapshot-navigation";
 import { createTranscriptCache, indexedDbShelf, reconcileTranscript, type CachedTranscript } from "./transcript-cache";
 import { TranscriptShelfScope } from "./transcript-scope";
 export { shownTranscript, visibleMessages } from "./snapshot-navigation";
@@ -67,13 +68,13 @@ import { answerResponse, dismissResponse } from "@/lib/card-answer";
 import { forgetLiveTurns, forgetStopPress, noteRuntimeTurn, sendStop } from "@/lib/stop-turn"; import { forgetTurnStatuses } from "@/state/turn-status"; import { forgetLiveReplies } from "@/state/live-reply";
 import { readLastConversation, rememberConversation } from "@/lib/last-conversation";
 import { readLastBotSection, rememberBotSection } from "@/lib/last-bot-section";
-import { showNotification } from "@/lib/notify";
+import { readOnArrival, showNotification } from "@/lib/notify";
 import { randomUuid } from "@/lib/random-uuid";
 import { speechOwner, spokenReplyStream } from "@/lib/spoken-reply-stream";
 import { t } from "@/lib/i18n";
 import { createBotPatchQueue, flushWhenLeaving, keepaliveFits, type BotUpdatePatch } from "./bot-patch-queue"; import { createNewTaskOnce } from "./new-task-once";
 import { liveCallFromFrame, nextLiveCallLookup } from "./live-call";
-import { isNoAiRefusal, useChatErrorClear } from "./chat-error";
+import { isNoAiRefusal, refusalFoundAi, useChatErrorClear } from "./chat-error";
 import { openLiveEvents, publishLiveFrame, publishMissedFrames, withoutScreenPixels } from "@/lib/live-events";
 import { unlessRefused } from "@/lib/admin-scope";
 import { olderRunsSince, ROUTINE_RUNS_WINDOW_MS, trimRoutineRuns, withOlderRoutineRuns } from "./routine-runs";
@@ -139,7 +140,7 @@ export interface Message extends Pick<import("../../shared/wire").WireMessage, "
   goalRun?: GroupGoalRunCardData;
   call?: import("../../shared/wire").LiveCallRecord;
   channelMode?: "chat" | "goal";
-  tool?: { name: string; ok?: boolean; spoken?: string; setup?: boolean; signIn?: boolean; claudeUpdate?: boolean; place?: PlaceRow; resolvedAt?: number; limitResetsAt?: number; partial?: boolean; reason?: import("../../shared/failed-turn").FailedReplyReason; blocker?: import("../../shared/failed-turn").BrowserBlocker; summary?: string; input?: string; output?: string ; itemId?: string; outputPath?: string; fullResult?: boolean; clipped?: boolean; rescue?: import("../../shared/first-reply-rescue").FirstReplyRescue; step?: import("../../shared/turn-progress").LiveStep; whose?: { person: string; app: string }; label?: string };
+  tool?: { name: string; ok?: boolean; spoken?: string; setup?: boolean; signIn?: boolean; claudeUpdate?: boolean; place?: PlaceRow; resolvedAt?: number; limitResetsAt?: number; limitHold?: import("../../shared/wire").LimitHoldState; partial?: boolean; reason?: import("../../shared/failed-turn").FailedReplyReason; blocker?: import("../../shared/failed-turn").BrowserBlocker; summary?: string; input?: string; output?: string ; itemId?: string; outputPath?: string; fullResult?: boolean; clipped?: boolean; rescue?: import("../../shared/first-reply-rescue").FirstReplyRescue; step?: import("../../shared/turn-progress").LiveStep; whose?: { person: string; app: string }; label?: string };
   steered?: boolean;
   via?: "api" | "call";
   callId?: string;
@@ -335,6 +336,7 @@ export interface Bot extends DefaultBotFields, Pick<WireBot, "mascotFaceColor" |
   connectorScopes?: { apps: Record<string, "read" | "write"> }; phoneApps?: import("../../shared/phone-apps").PhoneApps;
   outbound?: { policy: "ask" | "allow"; dailyCap: number };
   fallback?: Array<{ instanceId: string; model: string }>;
+  limitMode?: WireBot["limitMode"];
   browser?: boolean;
   recordBrowserSteps?: boolean;
   memoryUpkeep?: boolean;
@@ -519,6 +521,8 @@ export interface InstanceInfo {
   cliCandidates?: string[];
   claudeAccount?: { configDir: string; signInCommand: string; signInShell: "powershell" | "sh"; isDefault: boolean };
   freeUpSpace?: boolean; replyWaitMinutes?: number; modelsUnconfirmed?: true;
+  /** Found on this computer, never chosen: listed, never used on its own until the person says so. */
+  found?: true;
 }
 
 export type AppSettingsSection =
@@ -623,8 +627,12 @@ export interface AppState {
   hydrated?: true;
   /** the first chat snapshot failed; it is being asked for again (`retryLoad` asks now) */
   loadFailed?: true;
+  /** the first chat snapshot is waiting for the person's dusk cloud to wake; asked for again every moment meanwhile */
+  loadWaking?: true;
   error: string | null;
-  notice: { kind: "thread-gone" | "bot-gone" | "steer-images" | "note"; botName: string | null; text?: string } | null;
+  notice: { kind: "thread-gone" | "bot-gone" | "steer-images" | "note"; botName: string | null; text?: string;
+    /** an AI found on this computer the note offers to turn on */
+    found?: { instanceId: string; name: string } } | null;
   revealThread: { threadId: string; nonce: number } | null;
   mascotMotion: {
     botId: string;
@@ -799,6 +807,7 @@ export type Action =
   | { type: "interrupt"; botId: string; threadId?: string; onError?: () => void }
   | { type: "connected"; value: boolean }
   | { type: "loadFailed" }
+  | { type: "loadWaking" }
   | { type: "error"; message: string | null }
   | { type: "notice"; notice: AppState["notice"] }
   | { type: "revealThread"; threadId: string }
@@ -926,7 +935,9 @@ export function reducer(state: AppState, action: Action): AppState {
         bots: action.bots.map((sent) => {
           const previous = state.bots.find((candidate) => candidate.id === sent.id);
           const bot = heldTranscript(previous, { ...sent, messages: sent.messages ?? [] }, !action.loadedThreads || action.loadedThreads.includes(sent.threadId));
-          return keepBotNavigation(previous, previous ? { ...bot, tasks: mergeTaskStamps(previous.tasks, bot.tasks) } : bot,
+          const merged = previous ? { ...bot, tasks: mergeTaskStamps(previous.tasks, bot.tasks) } : bot;
+          if (openElsewhere(previous, sent)) return { ...keepBotNavigation(previous, merged, true, action.taskIdsAtStart), transcriptStale: true };
+          return keepBotNavigation(previous, merged,
             action.preserveNavigation === true && navigatedSince(previous, action.navigationSince, state.transcriptGeneration), action.taskIdsAtStart);
         }),
         groups: action.groups.map((group) => {
@@ -942,6 +953,7 @@ export function reducer(state: AppState, action: Action): AppState {
         selectedId,
         hydrated: true as const,
         loadFailed: undefined,
+        loadWaking: undefined,
         backgroundThreadEvents: {},
         loadingOlder: {},
         transcriptGeneration: {},
@@ -1463,7 +1475,9 @@ export function reducer(state: AppState, action: Action): AppState {
     case "connected":
       return { ...state, connected: action.value };
     case "loadFailed":
-      return state.hydrated || state.loadFailed ? state : { ...state, loadFailed: true };
+      return state.hydrated || state.loadFailed ? state : { ...state, loadFailed: true, loadWaking: undefined };
+    case "loadWaking":
+      return state.hydrated || state.loadWaking ? state : { ...state, loadWaking: true, loadFailed: undefined };
     case "error":
       return {
         ...(action.message && state.selectedId
@@ -2174,7 +2188,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const olderPagesInFlight = new Set<string>();
     const newTaskOnce = createNewTaskOnce();
     let creatingBot = false;
-    const showError = (e: unknown) => { if (isBotLimitRefusal(e)) return; if (isNoAiRefusal(e)) wrapped({ type: "notice", notice: { kind: "note", botName: null, text: e.message } }); else rawDispatch({ type: "error", message: friendlyError(e) }); };
+    const showError = (e: unknown) => { if (isBotLimitRefusal(e)) return; if (isNoAiRefusal(e)) { const found = refusalFoundAi(e); wrapped({ type: "notice", notice: { kind: "note", botName: null, text: e.message, ...(found ? { found } : {}) } }); } else rawDispatch({ type: "error", message: friendlyError(e) }); };
     const showSavedState = (owner: SavedOwner) => (error: unknown) => {
       showError(error);
       void api<SavedSnapshot>("/api/bots?messages=0").then((snapshot) => {
@@ -3081,12 +3095,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       resumeId: readLastConversation() ?? undefined,
     });
     const selectedPath = () => chatSnapshotPath(stateRef.current.selectedId || readLastConversation() || "");
+    let chatError: unknown;
     const loadAll = async (): Promise<boolean> => {
       const marks = beginLoad();
+      chatError = undefined;
       const chat = () =>
         readSnapshot<ChatSnapshot>(selectedPath()).then((answer) => snapshotArrays(answer, "bots")).then((answer) => {
           if (alive) applyChat(answer, marks);
-        });
+        }, (error: unknown) => { chatError = error; throw error; });
       const peripherals = peripheralParts.map((part) => ({
         key: part.key,
         load: () => loadPeripheral(part, true),
@@ -3101,7 +3117,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Hydrate only after the stream's hello; queue frames during the REST snapshot and apply them on top.
     let hydrated = false;
     let hydrationPromise: Promise<boolean> | null = null;
-    let loadRetry: ReturnType<typeof setTimeout> | undefined, loadAttempts = 0;
+    let loadRetry: ReturnType<typeof setTimeout> | undefined, loadAttempts = 0, wakingSince = 0;
     let rehydrateRequested = false;
     const pendingFrames: ServerFrame[] = [];
     let handleFrame: (frame: ServerFrame) => void;
@@ -3119,12 +3135,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } while (alive && rehydrateRequested);
         if (!alive) return false;
         if (!loaded) {
+          // a dusk cloud waking up answers nothing useful for a while: keep asking every moment, not as a failure
+          if (cloudWakingLoad(chatError) && Date.now() - (wakingSince ||= Date.now()) < WAKING_LOAD_MS) {
+            rawDispatch({ type: "loadWaking" });
+            clearTimeout(loadRetry);
+            loadRetry = setTimeout(() => { if (!hydrated) void hydrate(); }, 1_500);
+            return false;
+          }
+          wakingSince = 0;
           rawDispatch({ type: "loadFailed" });
           clearTimeout(loadRetry);
           loadRetry = setTimeout(() => { if (!hydrated) void hydrate(); }, Math.min(30_000, 2_000 * 2 ** Math.min(loadAttempts++, 4)));
           return false;
         }
-        loadAttempts = 0;
+        loadAttempts = 0; wakingSince = 0;
         hydrated = true;
         for (const frame of pendingFrames.splice(0)) handleFrame(frame);
         return true;
@@ -3212,16 +3236,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rawDispatch({ type: "groupPatched", group });
           break;
         }
-        case "notify":
+        case "notify": {
+          const shown = visibleNotificationThread(stateRef.current);
           // The wrapped dispatch: only it PATCHes unread:false back to the server.
           showNotification(
             frame.notification,
             (target) => openThread(dispatch, target, stateRef.current),
             stateRef.current.bots.find((bot) => bot.id === frame.notification.botId)?.avatarUrl,
-            visibleNotificationThread(stateRef.current),
+            shown,
           );
-          rawDispatch({ type: "notificationReceived", entry: frame.notification });
+          const seen = readOnArrival(frame.notification, shown, chatInFront());
+          rawDispatch({ type: "notificationReceived", entry: seen ? { ...frame.notification, read: true } : frame.notification });
+          if (seen) fetch(`/api/notifications/${encodeURIComponent(frame.notification.id)}/read`, { method: "POST" }).catch(() => {});
           break;
+        }
         case "notifications.read":
           bumpPeripheralVersion("notifications");
           rawDispatch({ type: "notificationsRead", ids: frame.ids });

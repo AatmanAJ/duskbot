@@ -24,6 +24,10 @@ const TECHNICAL: RegExp[] = [
   /Unexpected token .* in JSON|is not valid JSON|Unexpected end of JSON input/,
   /^\S+(?: \S+){0,2} exited (?:with code )?(?:-?\d+|null|SIG[A-Z0-9]+)\b/,
   /^[a-z]+(?:_[a-z0-9]+)+$/,
+  // a JSON-RPC -32603 from an engine's agent server: what follows is its own internals (once, the whole prompt it was sent)
+  /^Internal error\b/i,
+  // nobody reads a wall of engine text in a one-line card
+  /^[\s\S]{280,}$/,
 ];
 
 const KINDS: Array<[RegExp, LocaleKey]> = [

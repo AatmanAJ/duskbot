@@ -14,6 +14,9 @@ export interface ContextAction {
   onSelect: () => void;
 }
 
+/** A touch handed to the system's context menu instead of the page's own hold. */
+export interface NativePress { press(el: HTMLElement): void; cancel(): void }
+
 const HOLD_MS = 430;
 const MOVE_CANCEL = 8;
 
@@ -46,9 +49,12 @@ export function holdSink(el: HTMLElement): (on: boolean | null) => void {
 /** Press and hold: the element sinks over the hold so the hand feels it coming, then a medium tap and the menu.
  * A right click or the context-menu key opens it at once (web preview, keyboards). The click that follows a hold is
  * swallowed so the row does not also open. */
-export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: DOMRect) => void, enabled = true) {
+export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: DOMRect) => void, enabled = true, native?: NativePress) {
   const latest = useRef(onOpen);
   latest.current = onOpen;
+  // with the system's context menu a touch only arms it; a right click and the menu key still open the page's own
+  const system = useRef(native);
+  system.current = native;
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
@@ -67,16 +73,18 @@ export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: 
       latest.current(el.getBoundingClientRect());
     };
     const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 1) { cancel(); return; }
+      const press = system.current;
+      if (event.touches.length !== 1) { cancel(); press?.cancel(); return; }
       fired = false;
       start = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+      if (press) { press.press(el); return; }
       sink(true);
       timer = window.setTimeout(fire, HOLD_MS);
     };
     const onTouchMove = (event: TouchEvent) => {
-      if (!start || !timer) return;
+      if (!start || (!timer && !system.current)) return;
       const touch = event.touches[0];
-      if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > MOVE_CANCEL) cancel();
+      if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > MOVE_CANCEL) { cancel(); system.current?.cancel(); }
     };
     const onTouchEnd = (event: TouchEvent) => {
       if (fired && event.cancelable) event.preventDefault();

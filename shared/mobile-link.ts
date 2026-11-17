@@ -354,20 +354,32 @@ export function universalPairLink(deepLink: string, code: string | null): string
   return `https://${UNIVERSAL_LINK_HOSTS[0]}/m/pair#${query}${typed ? `${query ? "&" : ""}c=${typed}` : ""}`;
 }
 
-/** A dusk cloud's QR: `https://dusk.bot/m/signin#email=...` opens the app at its dusk cloud sign-in, the email filled in. */
-export function universalSignInLink(email?: string | null): string {
-  const value = email?.trim();
-  return `https://${UNIVERSAL_LINK_HOSTS[0]}/m/signin${value ? `#email=${encodeURIComponent(value)}` : ""}`;
+/** A dusk cloud's QR: `https://dusk.bot/m/signin#c=CODE&email=...`. `c`, a desktop's phone sign-in code
+ * (shared/account-api.ts PhoneSignInGrant), logs the app in; without it the app opens its dusk cloud sign-in with the email
+ * filled in, as an app too old to know `c` does. */
+/** The account service a sign-in link's code belongs to, as the link names it (`s=`): a code from one is unknown to the other. */
+export type SignInService = "production" | "preview";
+const SIGN_IN_SERVICES: Record<string, SignInService> = { "https://dusk.bot": "production", "https://preview.dusk.bot": "preview" };
+
+export function universalSignInLink(email?: string | null, code?: string | null, serviceOrigin?: string | null): string {
+  const value = email?.trim(), typed = code?.replace(/[^a-z]/gi, "").toUpperCase();
+  const service = serviceOrigin ? SIGN_IN_SERVICES[serviceOrigin] : undefined;
+  const fields = [...(typed ? [`c=${typed}`] : []), ...(value ? [`email=${encodeURIComponent(value)}`] : []), ...(service ? [`s=${service}`] : [])];
+  return `https://${UNIVERSAL_LINK_HOSTS[0]}/m/signin${fields.length ? `#${fields.join("&")}` : ""}`;
 }
 
-/** `duskbot://signin?email=...` (or the https link it stands for): the email to sign in with, "" when it names none. */
-export function parseSignInLink(link: string): { email: string } | null {
+/** `duskbot://signin?c=...&email=...` (or the https link it stands for): the email to sign in with ("" when it names none)
+ * and the phone sign-in code it carries, if any. */
+export function parseSignInLink(link: string): { email: string; code?: string; service?: SignInService } | null {
   const app = appLinkFromUniversal(link) ?? link.trim();
   let url: URL;
   try { url = new URL(app); } catch { return null; }
   if (url.protocol !== "duskbot:" || (url.hostname || url.pathname.replace(/^\/+/, "")) !== "signin") return null;
   const email = (url.searchParams.get("email") ?? "").trim();
-  return { email: email.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(email) ? email : "" };
+  const code = (url.searchParams.get("c") ?? "").toUpperCase();
+  const service = url.searchParams.get("s");
+  return { email: email.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(email) ? email : "", ...(/^[A-Z]{8}$/.test(code) ? { code } : {}),
+    ...(service === "production" || service === "preview" ? { service } : {}) };
 }
 
 /** `https://dusk.bot/m/open?...`, `https://dusk.bot/m/pair#...` and `https://dusk.bot/m/signin#...` as the `duskbot://`

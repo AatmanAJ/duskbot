@@ -340,7 +340,11 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
       c.linkPublicKey = keys.publicKey; c.sealedLinkPrivateKey = sealer.seal(keys.privateKey); c.bootstrapSecret = sealer.seal(random(32).toString("base64url"));
       c.spec = { ...c.desiredSpec }; c.status = "provisioning"; c.setupStep = "reserving"; c.provisionedAt = now(); save(c); kick();
     },
-    changePlan(id, plan) { const c = requireCloud(id); if (c.status === "destroyed" || c.status === "destroying" || c.ended) throw new CloudError(409, "unavailable"); applyPlan(c, plan); c.nextAttemptAt = 0; save(c); },
+    changePlan(id, plan, options) {
+      const c = requireCloud(id); if (c.status === "destroyed" || c.status === "destroying" || c.ended) throw new CloudError(409, "unavailable");
+      applyPlan(c, plan); c.nextAttemptAt = 0; save(c);
+      if (options?.now && c.backend && managed?.resizing(c)) { managed.resizeNow(c); hurry(c.id); }
+    },
     setPaymentProblem(id, problem) { const c = requireCloud(id); if (problem && c.review) return; c.paymentProblem = problem; save(c); },
     setReview(id, review) { const c = requireCloud(id); if (!!c.review === review) return; if (review) c.review = true; else delete c.review; save(c); },
     scheduleDestroy(id, at) { const c = requireCloud(id); if (c.status === "destroyed" || c.status === "destroying" || c.review) return; c.destroyAt = c.ended && c.destroyAt !== null ? Math.min(c.destroyAt, at) : at; save(c); },

@@ -221,6 +221,42 @@ describe("own clouds", () => {
     await signIn(); fetcher.mockResolvedValueOnce(response({ error }, status));
     expect(await client.pairCloud({ id: "c1", origin: "https://d1.dusk.bot" })).toEqual({ outcome });
   });
+  it("lists the account's own clouds and its teams' clouds from one session read, and its computers beside it", async () => {
+    await signIn();
+    fetcher.mockImplementation(async (url) => String(url).endsWith("/v1/app/computers")
+      ? response({ v: 1, computers: [{ id: "ws_mac", name: "Studio Mac", kind: "mac", presence: "asleep", lastSeenAt: 1, environmentId: "env-1" }, { id: "../x", name: "bad", kind: "mac", presence: "online" }] })
+      : response({ clouds: [listed()], teams: [{ id: "t0123", name: "Acme team", role: "member", machine: { state: "ready", origin: "https://t0123.dusk.bot", power: { state: "asleep" } } }, { id: "bad id!", machine: { state: "ready" } }] }));
+    expect(await client.places()).toEqual({
+      clouds: [expect.objectContaining({ id: "c0123456789abcdef01234567" })],
+      teams: [{ id: "t0123", name: "Acme team", status: "ready", origin: "https://t0123.dusk.bot", asleep: true }],
+      computers: [{ id: "ws_mac", name: "Studio Mac", kind: "mac", presence: "asleep", environmentId: "env-1" }],
+    });
+    // a service without the computers list still lists the clouds
+    fetcher.mockImplementation(async (url) => String(url).endsWith("/v1/app/computers") ? response({ error: "Route not found.", code: "not_found" }, 404) : response({ clouds: [], teams: [] }));
+    expect(await client.places()).toEqual({ clouds: [], teams: [], computers: [] });
+    fetcher.mockReset();
+  });
+  it("asks a computer for its pairing link, and reads why it could not", async () => {
+    await signIn();
+    const link = "duskbot://pair?m=eyJ2IjoyfQ";
+    fetcher.mockResolvedValueOnce(response({ v: 1, link, expiresAt: Date.now() + 300_000 }));
+    expect(await client.pairComputer({ id: "ws_mac" })).toEqual({ outcome: "paired", link });
+    expect(fetcher.mock.calls.at(-1)![0]).toBe(`${origin}/v1/app/computers/ws_mac/pair`);
+    for (const [status, code, outcome] of [[409, "computer_offline", "asleep"], [409, "computer_unreachable", "unavailable"], [404, "not_found", "unavailable"], [429, "rate_limited", "limited"], [401, "invalid_token", "signed-out"]] as const) {
+      fetcher.mockResolvedValueOnce(response({ error: "words", code }, status));
+      expect(await client.pairComputer({ id: "ws_mac" })).toEqual({ outcome });
+    }
+    fetcher.mockResolvedValueOnce(response({ v: 1, link: "https://elsewhere.example", expiresAt: Date.now() + 300_000 }));
+    expect(await client.pairComputer({ id: "ws_mac" })).toEqual({ outcome: "failed" });
+  });
+  it("pairs with a team's cloud through that team's pairing route", async () => {
+    await signIn();
+    fetcher.mockResolvedValueOnce(response({ cloudContractVersion: 1, origin: "https://t1.dusk.bot", code: "ABCD-EFGH-JKLM", expiresAt: Date.now() + 300_000 }));
+    expect(await client.pairTeamCloud({ id: "t1", origin: "https://t1.dusk.bot" })).toMatchObject({ outcome: "paired" });
+    expect(fetcher.mock.calls[0][0]).toBe(`${origin}/api/cloud/desktop/teams/t1/pairing`);
+    fetcher.mockResolvedValueOnce(response({ error: "not_found" }, 404));
+    expect(await client.pairTeamCloud({ id: "t1", origin: "https://t1.dusk.bot" })).toEqual({ outcome: "unavailable" });
+  });
   it("wakes the primary cloud with a click intent", async () => {
     expect(await client.wakeCloud()).toBe(false);
     await signIn(); fetcher.mockResolvedValueOnce(response({ state: "waking" }));
@@ -320,5 +356,39 @@ describe("mobileFace", () => {
     expect(mobileFace({ avatarUrl: "http://example.test/a.png", avatar: "<b>" })).toEqual({});
     expect(mobileFace({ avatarUrl: "https://u:p@example.test/a.png", avatar: "drawn" })).toEqual({ avatar: "drawn" });
     expect(mobileFace(null)).toEqual({});
+  });
+});
+
+describe("phone code", () => {
+  it("logs in with a desktop's code: one request with the code and this phone, no email step", async () => {
+    fetcher.mockResolvedValueOnce(response(grant()));
+    expect(await client.phoneCode(" abcd-efgh ")).toEqual({ outcome: "signed-in" });
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe(`${origin}/api/cloud/app/sign-in/phone`);
+    expect(JSON.parse(String(init?.body))).toMatchObject({ code: "ABCDEFGH", platform: "ios", appVersion: "0.0.0" });
+    expect(client.account()).toEqual(grant().account);
+    expect(secrets.has("dusk.account")).toBe(true);
+  });
+  it("ends the sign-in this phone held before once the new one is kept", async () => {
+    secrets.set("dusk.account", JSON.stringify(stored({ token: `omc_${"o".repeat(43)}` })));
+    await client.cached();
+    fetcher.mockResolvedValueOnce(response(grant())).mockResolvedValueOnce(response({ ok: true }));
+    expect((await client.phoneCode("ABCDEFGH")).outcome).toBe("signed-in");
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(fetcher.mock.calls[1]![1]).toMatchObject({ method: "DELETE", headers: { authorization: `Bearer omc_${"o".repeat(43)}` } });
+  });
+  it.each([
+    [{ error: "invalid_code" }, 400, "wrong-code"], [{ error: "expired" }, 410, "expired"], [{ error: "used" }, 409, "used"],
+    [{ error: "rate_limited" }, 429, "limited"], [{ error: "failed" }, 500, "failed"],
+  ])("says why a code did not log in: %o", async (body, status, outcome) => {
+    fetcher.mockResolvedValueOnce(response(body, status));
+    expect(await client.phoneCode("ABCDEFGH")).toEqual({ outcome });
+    expect(client.account()).toBeNull();
+  });
+  it("offline, and a code of the wrong shape never reaches the service", async () => {
+    fetcher.mockRejectedValueOnce(new TypeError("offline"));
+    expect(await client.phoneCode("ABCDEFGH")).toEqual({ outcome: "offline" });
+    expect(await client.phoneCode("ABCD-EFGH-JKLM")).toEqual({ outcome: "wrong-code" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

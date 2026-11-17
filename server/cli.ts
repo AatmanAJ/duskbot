@@ -62,8 +62,8 @@ export interface CliOptions {
   serviceAction?: "install" | "uninstall";
   sentinel?: boolean;
   email?: string;
-  /** `browser install [--with-deps]` */
-  browserAction?: "install" | "status";
+  /** `browser install [--with-deps]`, `browser status`, `browser setup` (root: libraries and the sandbox's AppArmor profile) */
+  browserAction?: "install" | "status" | "setup";
   withDeps?: boolean;
   json: boolean;
   /** Explicitly ignore saved remote access for this launch. */
@@ -132,7 +132,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       } else if (options.command === "access" && arg === "--chat-only") options.chatOnly = true;
       else if (options.command === "service" && !options.serviceAction && (arg === "install" || arg === "uninstall")) options.serviceAction = arg;
       else if (options.command === "service" && arg === "--sentinel") options.sentinel = true;
-      else if (options.command === "browser" && (arg === "install" || arg === "status")) options.browserAction = arg;
+      else if (options.command === "browser" && (arg === "install" || arg === "status" || arg === "setup")) options.browserAction = arg;
       else if (options.command === "browser" && arg === "--with-deps") options.withDeps = true;
       else return { error: `unknown argument "${arg}"` };
     } catch (error) {
@@ -146,7 +146,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
   if (options.command === "service" && !options.serviceAction) return { error: "service needs one of: install [the same options as serve], uninstall" };
   if (options.domain && (options.tailscale || options.tunnel || options.publicUrl)) return { error: "--domain already gives the server its address; drop --tailscale, --tunnel and --public-url" };
   if (options.local && (options.tailscale || options.tunnel || options.publicUrl)) return { error: "--local cannot be combined with a remote-access option" };
-  if (options.command === "browser" && !options.browserAction) return { error: "browser needs an action: install or status" };
+  if (options.command === "browser" && !options.browserAction) return { error: "browser needs an action: install, status or setup" };
   return options;
 }
 
@@ -542,6 +542,7 @@ export async function runLogout(options: CliOptions, io: CliIo = defaultIo()): P
 }
 
 export async function runBrowser(options: CliOptions, io: CliIo = defaultIo()): Promise<number> {
+  if (options.browserAction === "setup") return (await import("./browser/chrome/host-setup.ts")).setUpThisHost(() => runBrowser({ ...options, browserAction: "install", withDeps: true }, io), io);
   const { browserEngineStatus, describeBrowserEngine, ensureChrome, installAgentBrowserBinary, resolveAgentBrowserBinary } = await import("./browser-engine.ts");
   const status = browserEngineStatus({ dataDir: options.dataDir });
   if (options.browserAction === "status") {

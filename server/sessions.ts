@@ -121,15 +121,15 @@ function sameDigest(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-/** 12 symbols, rejection-sampled so every symbol is equally likely. */
-export function generatePairingCode(): string {
+/** 12 symbols (or `length`), rejection-sampled so every symbol is equally likely. */
+export function generatePairingCode(length = PAIRING_CODE_LENGTH): string {
   const limit = Math.floor(256 / PAIRING_CODE_ALPHABET.length) * PAIRING_CODE_ALPHABET.length;
   let code = "";
-  while (code.length < PAIRING_CODE_LENGTH) {
-    for (const byte of randomBytes(PAIRING_CODE_LENGTH)) {
+  while (code.length < length) {
+    for (const byte of randomBytes(length)) {
       if (byte >= limit) continue;
       code += PAIRING_CODE_ALPHABET[byte % PAIRING_CODE_ALPHABET.length];
-      if (code.length === PAIRING_CODE_LENGTH) break;
+      if (code.length === length) break;
     }
   }
   return code;

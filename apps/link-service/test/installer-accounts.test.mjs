@@ -83,7 +83,8 @@ describe("the installer's units", () => {
 
     const link = await read(join(dir, "units", "duskbot-link.service"));
     for (const line of ["User=omb-link", `Environment=HOME=${dir}/var/lib/omb-link`, `Environment=DUSK_LINK_ENGINES_FILE=${dir}/var/lib/omb-link/handoff/engines.env`,
-      `Environment=DUSK_LINK_CODEX_AUTH_FILE=${dir}/var/lib/omb-link/handoff/codex-auth.json`, "NoNewPrivileges=yes", "ProtectHome=yes", "RestrictNamespaces=yes", "ProtectKernelTunables=yes", "PrivateDevices=yes", `ReadWritePaths=${dir}/var/lib/omb-link`]) {
+      `Environment=DUSK_LINK_CODEX_AUTH_FILE=${dir}/var/lib/omb-link/handoff/codex-auth.json`, "NoNewPrivileges=yes", "ProtectHome=yes", "RestrictNamespaces=yes", "ProtectKernelTunables=yes", "PrivateDevices=yes", `ReadWritePaths=${dir}/var/lib/omb-link`,
+      "PartOf=duskbot.service", "WantedBy=multi-user.target duskbot.service"]) {
       expect(link.split("\n"), line).toContain(line);
     }
     expect(link).not.toContain("User=dusk");

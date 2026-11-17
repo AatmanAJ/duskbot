@@ -17,6 +17,7 @@ import { callResearchTool, RESEARCH_TOOL_NAMES } from "./agents-research-tools.t
 import { callReadPages, READ_PAGES_TOOL } from "./agents-read-pages.ts";
 import { callHelperTool, HELPER_TOOL_NAMES } from "./agents-helper-tools.ts";
 import { callUsageLimitsTool, USAGE_LIMITS_TOOL } from "./agents-usage-tool.ts";
+import { callChecklistTool, CHECKLIST_TOOL } from "./agents-checklist-tool.ts";
 import { callWaitTool, WAIT_TOOL_NAMES } from "./agents-wait-tools.ts";
 import { callDuskTool, DUSK_TOOL_NAMES } from "./agents-dusk-tools.ts";
 import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
@@ -254,6 +255,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (TRIGGER_TOOL_NAMES.has(name)) return callTriggerTool(name, args, context);
   if (WAIT_TOOL_NAMES.has(name)) return callWaitTool(name, args, context);
   if (name === USAGE_LIMITS_TOOL) return callUsageLimitsTool(context);
+  if (name === CHECKLIST_TOOL) return callChecklistTool(args, context);
   if (name === STATUS_TOOL) return callStatusTool();
   if (name === SEND_MESSAGE_TOOL) return callSendMessageTool();
   if (name === "tool_result_read") {
@@ -623,6 +625,13 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
     return {
       text: `The person was asked to sign in to ${host} on ${where}. Your turn ends now. The card already says what to do, so do not repeat it: write nothing more, or at most one short line, then stop. dusk bot resumes you when they finish or decline. Never ask for the password or a code in chat.`,
     };
+  }
+  if (name === "request_screen_access") {
+    const reason = typeof args.reason === "string" ? args.reason.trim().slice(0, 200) : "";
+    if (!reason) return { text: "request_screen_access needs reason: one short line on what you need the screen for.", isError: true };
+    const r = await api("/api/internal/request-screen-access", { method: "POST", body: JSON.stringify({ fromBotId: BOT_ID, fromThreadId: THREAD_ID, reason }) });
+    if (r.shown !== true) return { text: "dusk bot can already control this Mac's screen, or this conversation does not work on it: carry on with the tools you have." };
+    return { text: "The person now sees a notice to let dusk bot control this Mac. Do not explain permissions or settings. Carry on with what you can do without it, such as your built-in browser, or say in one short line that you will go on once it is allowed, then stop." };
   }
   if (name === "fill_login") {
     const username = typeof args.username === "string" ? args.username.trim().slice(0, 512) : "";

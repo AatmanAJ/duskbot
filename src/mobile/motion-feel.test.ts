@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { feel, springEasing } from "./motion";
+import { feel, springEasing, springPath } from "./motion";
 import { placeContextMenu } from "./ContextMenu";
 import { pressScale, pressTarget } from "./press";
 
@@ -20,6 +20,31 @@ describe("springEasing", () => {
   it("never overshoots when critically damped", () => {
     const points = springEasing(400, 40).easing.slice("linear(".length, -1).split(",").map(Number);
     expect(Math.max(...points)).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("springPath", () => {
+  it("pushes a page in from the edge without overshoot and lands exactly", () => {
+    const { duration, points } = springPath(440, 0, 0, { stiffness: 380, damping: 39 });
+    expect(points[0]).toBe(440);
+    expect(points.at(-1)).toBe(0);
+    expect(Math.min(...points)).toBeGreaterThanOrEqual(0);
+    expect(points.every((p, i) => i === 0 || p <= points[i - 1]!)).toBe(true);
+    expect(duration).toBeGreaterThan(300);
+    expect(duration).toBeLessThan(700);
+  });
+
+  it("carries a flick's speed into the first frame", () => {
+    const flung = springPath(200, 440, 2000, { stiffness: 440, damping: 40 });
+    const still = springPath(200, 440, 0, { stiffness: 440, damping: 40 });
+    expect(flung.points[1]! - 200).toBeGreaterThan(still.points[1]! - 200 + 20);
+    expect(flung.points.at(-1)).toBe(440);
+  });
+
+  it("follows an underdamped spring past its target and back", () => {
+    const { points } = springPath(0, 100, 0, { stiffness: 500, damping: 18 });
+    expect(Math.max(...points)).toBeGreaterThan(100);
+    expect(points.at(-1)).toBe(100);
   });
 });
 

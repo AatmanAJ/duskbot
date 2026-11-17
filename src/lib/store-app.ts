@@ -15,9 +15,10 @@ export function phoneApp(): boolean {
   return Boolean(kind());
 }
 
-/** The iPhone app has no screen view or take-over of a bot's computer (guideline 4.2.7: a remote view of a computer). */
+/** Every app shows a bot's screen view and computer, the iPhone included. Known open
+ * risk: App Store review may read it as a remote view of a computer under guideline 4.2.7. */
 export function screenViewAllowed(): boolean {
-  return kind() !== "ios";
+  return true;
 }
 
 /** The bot and room panel tabs this app shows. */

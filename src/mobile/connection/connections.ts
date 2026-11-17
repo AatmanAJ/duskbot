@@ -9,12 +9,18 @@ import type { PhoneTransport } from "../transport/transport";
 import { forgetTranscriptShelf } from "@/state/transcript-cache";
 import { outboxKey } from "./active";
 import { PairError } from "./pair";
+import { asleepAnswer, wakingAnswer } from "@/lib/cloud-power";
 
-export async function connectToWorkspace(record: MobileConnectionRecord, token: string, platform: MobilePlatform, signal: AbortSignal): Promise<PhoneTransport> {
+/** `asleep`: the place's edge said its dusk cloud sleeps (or is waking). It is still the place: the app opens on it and
+ * wakes it, because the edge never wakes a cloud for a read, so asking again could never get past this answer. */
+export type WorkspaceTransport = PhoneTransport & { asleep?: true };
+
+export async function connectToWorkspace(record: MobileConnectionRecord, token: string, platform: MobilePlatform, signal: AbortSignal): Promise<WorkspaceTransport> {
   const routes: MobileTransport[] = record.via ?? (record.origin ? [record.transport === "companion"
     ? { kind: "companion", url: record.origin, net: "lan", priority: 0 }
     : { kind: "https", url: record.origin }] : []);
   let gone = false;
+  let sleeping: WorkspaceTransport | null = null;
   for (const route of routes) {
     signal.throwIfAborted();
     let transport: PhoneTransport | undefined;
@@ -49,11 +55,13 @@ export async function connectToWorkspace(record: MobileConnectionRecord, token: 
       if (transport.kind === "relay") transport.channel.close();
       signal.throwIfAborted();
       if (response.status === 401) throw new PairError("refused");
+      if (transport.kind !== "relay" && (asleepAnswer(response) || wakingAnswer(response))) sleeping ??= { ...transport, asleep: true };
       continue;
     }
     return transport;
   }
   signal.throwIfAborted();
+  if (sleeping) return sleeping;
   // the relay dropping this phone's channel is the removal reaching a phone that has no other way to hear of it
   throw new PairError(gone ? "refused" : "unreachable");
 }
@@ -158,6 +166,8 @@ export function createConnectionStore(platform: MobilePlatform): ConnectionStore
 export type ConnectionsApi = {
   connections: MobileConnectionRecord[];
   activeId: string | null;
+  /** the saved list has been read once */
+  loaded: boolean;
   switchTo(id: string): Promise<void>;
   remove(id: string): Promise<void>;
   refresh(): Promise<void>;
@@ -168,13 +178,14 @@ export function useConnections(): ConnectionsApi {
   const store = useMemo(() => createConnectionStore(platform), [platform]);
   const [connections, setConnections] = useState<MobileConnectionRecord[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const refresh = useCallback(async () => {
     const records = await store.list();
     const id = await platform.prefs.get(ACTIVE_KEY);
     setConnections(records);
     setActiveId(id);
   }, [platform, store]);
-  useEffect(() => { void refresh().catch(() => {}); }, [refresh]);
+  useEffect(() => { void refresh().catch(() => {}).finally(() => setLoaded(true)); }, [refresh]);
   const switchTo = useCallback(async (id: string) => {
     await store.setActive(id);
     window.location.reload();
@@ -185,5 +196,5 @@ export function useConnections(): ConnectionsApi {
     if (wasActive) window.location.reload();
     else await refresh();
   }, [platform, store, refresh]);
-  return { connections, activeId, switchTo, remove, refresh };
+  return { connections, activeId, loaded, switchTo, remove, refresh };
 }

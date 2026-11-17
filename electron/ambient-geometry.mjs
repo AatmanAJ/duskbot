@@ -50,13 +50,26 @@ export function islandLayout(display, { platform, size = "medium" } = {}) {
   return { window, collapsed, tile: s.tile, size: ISLAND_SIZES[size] ? size : "medium" };
 }
 
-/** The dock window: a strip against the right edge of the work area (left of a Dock pinned right), as tall as it, so
- * the body grows with what it shows; its page draws the body centred and lets clicks through everywhere else. */
+/** macOS keeps a few points of the work area free on the side of an auto-hidden Dock (Windows does the same for an
+ * auto-hidden taskbar); a Dock that shows is always wider than this. */
+const HIDDEN_DOCK_STRIP = 12;
+
+/** Where the dock's column meets the screen: the display's right edge, or the left side of a Dock showing there. */
+export function dockEdge(display) {
+  const area = display.workArea, screen = display.bounds;
+  const right = area.x + area.width;
+  if (!rect(screen)) return right;
+  const screenRight = screen.x + screen.width;
+  return screenRight - right < HIDDEN_DOCK_STRIP ? screenRight : right;
+}
+
+/** The dock window: a strip against the right edge of the screen (left of a Dock pinned right), as tall as the work
+ * area, so the body grows with what it shows; its page draws the body centred and lets clicks through everywhere else. */
 export function dockLayout(display) {
   const area = display.workArea;
   const width = DOCK.open + DOCK.overhang;
   // whole points, rounded outward: the window's right side always lands past the edge, never short of it
-  const right = area.x + area.width;
+  const right = dockEdge(display);
   const y = Math.floor(area.y), height = Math.ceil(area.y + area.height) - y;
   const window = { x: Math.floor(right - DOCK.open), y, width, height };
   const top = DOCK.ear + DOCK.margin;

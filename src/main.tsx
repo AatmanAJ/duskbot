@@ -6,7 +6,8 @@ import { startDesktopAnalytics } from "./lib/product-analytics-app";
 import { screen as productScreen } from "./lib/product-analytics";
 import { AccountGate, reloadWhenSignedOut } from "./components/account-gate/AccountGate";
 import { WindowDragStrip } from "./components/DesktopCapabilities";
-import { StrictMode } from "react";
+import { StrictMode, useLayoutEffect } from "react";
+import { HOLD_ID } from "./lib/switch-hold-key";
 import { createRoot } from "react-dom/client";
 import {
   BROWSER_SIGN_IN_FAILED, previewBrowserSignIn, readSessionState, SERVICE_TRUST_REASON, takeBrowserSignInFromLocation, takePairingCodeFromLocation, takeInvitedEmailFromLocation,
@@ -81,8 +82,14 @@ async function chooseRoot(): Promise<React.ReactNode> {
   return <App />;
 }
 
+/** The mascot src/switch-hold.ts painted goes in the commit that brings the page, before it paints. */
+function SwitchHoldGone() {
+  useLayoutEffect(() => { document.getElementById(HOLD_ID)?.remove(); }, []);
+  return null;
+}
+
 document.title = productName();
 void Promise.all([chooseRoot(), loadPageLanguage()]).then(([root]) => {
   installTrailCapture();
-  createRoot(document.getElementById("root")!, rootErrorOptions).render(<StrictMode><PageBoundary>{root}</PageBoundary></StrictMode>);
+  createRoot(document.getElementById("root")!, rootErrorOptions).render(<StrictMode><SwitchHoldGone /><PageBoundary>{root}</PageBoundary></StrictMode>);
 });
