@@ -60,6 +60,8 @@ beforeEach(() => {
   fixture.ownerOrAdmin = null;
   fixture.sounds = true;
   fixture.advancedMode = false;
+  // these drawings are of the phone app offered; one test hides it
+  vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
   vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn(), duskDesktop: { environments: {}, organization: {}, cloudAccount: {} } });
   vi.stubGlobal("document", { addEventListener: vi.fn(), removeEventListener: vi.fn(), documentElement: { dataset: {} } });
   setLocale("en");
@@ -174,8 +176,8 @@ describe("Settings, drawn as Grok Bot's", () => {
     expect(current(open("companion"))).toBe("general");
     expect(current(open("texting"))).toBe("general");
     expect(markers(open("companion"))).not.toContain("pairing");
-    // a plain build (production sets no flag) keeps Phone, so a browser user on a cloud can reach the code
-    vi.stubEnv("VITE_DUSK_PHONE_APP", "");
+    // a build that offers the phone app keeps Phone
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
     expect(panes(open("general"))).toEqual(["general", "voice", "computer", "texting", "vault", "models", "usage", "updates", "advanced"]);
     expect(current(open("companion"))).toBe("texting");
     const groups = [...open("general").matchAll(/data-settings-rail-group="([^"]+)" class="settings-nav-group"><p aria-hidden="true" class="settings-nav-label">([^<]+)</g)].map((match) => `${match[1]}:${match[2]}`);

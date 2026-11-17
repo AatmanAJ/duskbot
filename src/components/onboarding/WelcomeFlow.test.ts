@@ -303,8 +303,8 @@ describe("on the desktop app", () => {
     expect(document.body.querySelector(".phone-frame"), "the phone app is hidden").toBeNull();
   });
 
-  it("with the phone app offered, as every release build now is, ends on the phone: a code to scan, then the chat", async () => {
-    vi.stubEnv("VITE_DUSK_PHONE_APP", "");
+  it("with the phone app offered, ends on the phone: a code to scan, then the chat", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
     desktop({ platform: "linux" });
     await show({ initialBeat: "place" });
     expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("2/5");
