@@ -5,7 +5,7 @@ import { blockerDetail, canOfferSignIn, currentFailureWords, failedReplyDetail, 
 import { statusActivity } from "@/lib/activity-runs";
 import { lowerFirst } from "@/lib/lower-first";
 import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
-import { useStore, type Message } from "@/state/store";
+import { useStore, type Message, type ModelSelection } from "@/state/store";
 import { failedTurnCause } from "../../shared/failed-turn";
 import { freeFallback } from "../../shared/ai-ranking";
 import { engineReady } from "./EngineLibrary";
@@ -24,6 +24,16 @@ import { openBotSettings } from "./bot-panel/panel-link";
 
 // a card someone closed stays closed for this run of the app; a newer failure is a new card
 const dismissed = new Set<string>();
+// the AI each failure was first shown under: a switch of model, or connecting an AI of one's own, closes it
+const shownUnder = new Map<string, string>();
+
+/** True once the AI a failure was first shown under has changed since (another model or engine, or one's own AI). */
+export function aiChangedSince(seen: Map<string, string>, messageId: string, selection: ModelSelection | undefined, ownAi: boolean): boolean {
+  const now = `${selection?.instanceId ?? ""}/${selection?.model ?? ""}/${ownAi ? 1 : 0}`;
+  const first = seen.get(messageId);
+  if (first === undefined) { seen.set(messageId, now); return false; }
+  return first !== now;
+}
 
 /** The notice rows the card above the composer says, so the transcript leaves them out. */
 export const FoldedNoticesContext = createContext<ReadonlySet<string>>(new Set());
@@ -70,9 +80,13 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   const items = failures.filter((m) => !dismissed.has(m.id)).map((message) => {
     const id = message.from?.botId ?? ownBotId;
     const bot = state.bots.find((candidate) => candidate.id === id);
+    const engineNow = botEngine(bot, state.instances);
+    // the free backup ran out, and this bot answers on another AI now: nothing left to fix
+    const freeGone = message.tool?.reason === "no_ai" && engineNow !== undefined && !freeFallback(engineNow);
+    if (freeGone || aiChangedSince(shownUnder, message.id, bot?.modelSelection, ownAi)) { dismissed.add(message.id); return null; }
     const engine = botEngine(bot, state.instances);
     return { message, bot, engine, kind: failedReplyKind(message.tool!, engine, ownAi) };
-  });
+  }).filter((item) => item !== null);
   const lead = mostActionable(items);
   const tool = lead?.message.tool;
   const leadBotId = lead?.bot?.id ?? ownBotId;
