@@ -18,7 +18,7 @@ const keystore = SecureStorage as unknown as {
 };
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform, OrientationBridge, ScanOverlay, TurnActivityBridge } from "@/mobile/platform";
+import type { AppleCredential, CameraPermission, CameraScanner, DeliveredNotification, MobilePlatform, OrientationBridge, ScanOverlay, TurnActivityBridge } from "@/mobile/platform";
 import type { NativeAction } from "@/mobile/phone-actions";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
 import type { GlassBridge, GlassEvent, GlassState } from "@/mobile/native-glass";
@@ -126,6 +126,26 @@ interface TurnActivityPlugin {
   addListener(event: "action", listener: (event: NativeAction) => void): Promise<PluginListenerHandle>;
 }
 const DuskTurnActivity = registerPlugin<TurnActivityPlugin>("DuskTurnActivity");
+
+interface NotificationsPlugin {
+  setViewing(options: { threadId: string | null }): Promise<void>;
+  delivered(): Promise<{ notifications: DeliveredNotification[] }>;
+  remove(options: { ids: string[] }): Promise<void>;
+}
+const DuskNotifications = registerPlugin<NotificationsPlugin>("DuskNotifications");
+
+/** Android's delivered pushes: FCM's data block is flat (server/mobile/push.ts messageData). */
+async function androidDelivered(): Promise<DeliveredNotification[]> {
+  const { notifications } = await PushNotifications.getDeliveredNotifications();
+  return notifications.map((one) => {
+    const data = (one.data ?? {}) as Record<string, unknown>;
+    return {
+      id: one.id,
+      ...(typeof data.threadId === "string" ? { threadId: data.threadId } : {}),
+      ...(typeof data.id === "string" ? { notificationId: data.id } : {}),
+    };
+  });
+}
 
 function turnActivityBridge(): TurnActivityBridge {
   return {
@@ -428,6 +448,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   };
   const speech = Capacitor.isPluginAvailable("DuskSpeech");
   const turnActivityOn = kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity");
+  const notificationsOn = kind === "ios" && Capacitor.isPluginAvailable("DuskNotifications");
   registerPhoneVoice({
     os: kind,
     speech: speech ? phoneSpeech(DuskSpeech) : undefined,
@@ -556,6 +577,25 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       } catch {
         return null;
       }
+    },
+    setViewingThread: notificationsOn ? (threadId) => { void DuskNotifications.setViewing({ threadId }).catch(() => {}); } : undefined,
+    async deliveredNotifications() {
+      try {
+        return notificationsOn ? (await DuskNotifications.delivered()).notifications : kind === "android" ? await androidDelivered() : [];
+      } catch {
+        return [];
+      }
+    },
+    async removeDeliveredNotifications(ids) {
+      if (!ids.length) return;
+      try {
+        if (notificationsOn) return await DuskNotifications.remove({ ids: [...ids] });
+        if (kind !== "android") return;
+        // Android cancels by id and tag, so the delivered entries go back whole
+        const { notifications } = await PushNotifications.getDeliveredNotifications();
+        const gone = notifications.filter((one) => ids.includes(one.id));
+        if (gone.length) await PushNotifications.removeDeliveredNotifications({ notifications: gone });
+      } catch {}
     },
     onNotificationOpen(listener) {
       return unsubscribe([PushNotifications.addListener("pushNotificationActionPerformed", ({ actionId, notification }) => {

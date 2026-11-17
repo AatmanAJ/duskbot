@@ -24,6 +24,8 @@
 		D05C000F2F00000100B07D05 /* NativeMenuPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */; };
 		D05C00052F00000100B07D05 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D05C00062F00000100B07D05 /* PrivacyInfo.xcprivacy */; };
 		E1A100112F00000100B07D05 /* TurnActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100012F00000100B07D05 /* TurnActivityPlugin.swift */; };
+		F2B100112F00000100B07D05 /* PhoneNotificationsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B100012F00000100B07D05 /* PhoneNotificationsPlugin.swift */; };
+		F2B100122F00000100B07D05 /* NotificationPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B100022F00000100B07D05 /* NotificationPresentation.swift */; };
 		E1A100122F00000100B07D05 /* TurnActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100022F00000100B07D05 /* TurnActivity.swift */; };
 		E1A100132F00000100B07D05 /* TurnActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100022F00000100B07D05 /* TurnActivity.swift */; };
 		E1A100142F00000100B07D05 /* TurnActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100032F00000100B07D05 /* TurnActivityWidget.swift */; };
@@ -76,6 +78,8 @@
 		D05C00062F00000100B07D05 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D05C00072F00000100B07D05 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		E1A100012F00000100B07D05 /* TurnActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivityPlugin.swift; sourceTree = "<group>"; };
+		F2B100012F00000100B07D05 /* PhoneNotificationsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneNotificationsPlugin.swift; sourceTree = "<group>"; };
+		F2B100022F00000100B07D05 /* NotificationPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPresentation.swift; sourceTree = "<group>"; };
 		E1A100022F00000100B07D05 /* TurnActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivity.swift; sourceTree = "<group>"; };
 		E1A100032F00000100B07D05 /* TurnActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivityWidget.swift; sourceTree = "<group>"; };
 		E1A100042F00000100B07D05 /* MascotBodies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MascotBodies.swift; sourceTree = "<group>"; };
@@ -153,6 +157,8 @@
 				D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */,
 				D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */,
 				E1A100012F00000100B07D05 /* TurnActivityPlugin.swift */,
+				F2B100012F00000100B07D05 /* PhoneNotificationsPlugin.swift */,
+				F2B100022F00000100B07D05 /* NotificationPresentation.swift */,
 				D05C00062F00000100B07D05 /* PrivacyInfo.xcprivacy */,
 				D05C00072F00000100B07D05 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
@@ -313,6 +319,8 @@
 				D05C000F2F00000100B07D05 /* NativeMenuPlugin.swift in Sources */,
 				E1A100112F00000100B07D05 /* TurnActivityPlugin.swift in Sources */,
 				E1A100122F00000100B07D05 /* TurnActivity.swift in Sources */,
+				F2B100112F00000100B07D05 /* PhoneNotificationsPlugin.swift in Sources */,
+				F2B100122F00000100B07D05 /* NotificationPresentation.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
