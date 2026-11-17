@@ -7,7 +7,7 @@ import type { CloudSetupStep } from "../../../electron/cloud-home.mjs";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import { Checklist, ProgressBar } from "../cloud-buy/parts";
-import { PRIMARY, StepFrame } from "./FunnelSteps";
+import { PRIMARY, QUIET, StepFrame } from "./FunnelSteps";
 import { PlaceArt } from "../ui/PlaceArt";
 
 const STEPS = [
@@ -47,18 +47,41 @@ export function makingFrom(account: CloudAccountState | null): Making {
   return { kind: "waiting" };
 }
 
-export function MakingView({ making, opening, openFailed, onOpen, onPlan }: { making: Making; opening: boolean; openFailed: boolean; onOpen: () => void; onPlan?: () => void }) {
-  const ready = making.kind === "ready";
-  const at = ready ? STEPS.length : making.kind === "setting-up" ? STEPS.findIndex(([key]) => key === making.step) : 0;
+/** How long each checklist step shows done before the next one ticks, when the Admin reports several at once. */
+export const STEP_TICK_MS = 450;
+
+/** The checklist position, one step at a time toward `target`: a jump in the Admin's word never skips a tick. */
+export function useStepwise(target: number, tickMs = STEP_TICK_MS): number {
+  const [shown, setShown] = useState(target);
+  useEffect(() => {
+    if (shown === target) return;
+    if (target < shown) { setShown(target); return; }
+    const timer = window.setTimeout(() => setShown((now) => Math.min(target, now + 1)), tickMs);
+    return () => window.clearTimeout(timer);
+  }, [shown, target, tickMs]);
+  return shown;
+}
+
+export function MakingView({ making, opening, openFailed, onOpen, onPlan, onHere }: {
+  making: Making; opening: boolean; openFailed: boolean; onOpen: () => void; onPlan?: () => void;
+  /** after a failed open: on to this computer's own chat, the cloud still there to open later */
+  onHere?: () => void;
+}) {
+  const target = making.kind === "ready" ? STEPS.length : making.kind === "setting-up" ? STEPS.findIndex(([key]) => key === making.step) : 0;
+  const at = useStepwise(target);
+  const ready = making.kind === "ready" && at === STEPS.length;
   const progress = ready ? 1 : making.kind === "setting-up" ? making.progress : 0.04;
   return (
     <StepFrame
       art={<PlaceArt name="cloud" size={60} className="place-mark" />}
       title={ready ? t("funnel.making.readyTitle") : t("funnel.making.title")}
       sub={ready ? t("funnel.making.readySub") : making.kind === "failed" ? t("funnel.making.failed") : making.kind === "payment" ? t("funnel.making.payment") : t("funnel.making.sub")}
-      footer={ready ? (
-        // ready is ready: the button stays live while the chat opens by itself (a second press waits on the same open)
-        <button type="button" data-primary="" data-funnel-open-cloud="" aria-busy={opening || undefined} onClick={onOpen} className={PRIMARY}>{t("funnel.making.open")}</button>
+      footer={ready && openFailed ? (
+        // the cloud opens by itself once ready; a button only after that open failed
+        <div className="flex flex-col items-center gap-1">
+          <button type="button" data-primary="" data-funnel-open-cloud="" aria-busy={opening || undefined} onClick={onOpen} className={PRIMARY}>{t("funnel.making.retry")}</button>
+          {onHere && <button type="button" data-funnel-use-here="" onClick={onHere} className={QUIET}>{t("funnel.making.here")}</button>}
+        </div>
       ) : making.kind === "payment" && onPlan ? (
         <button type="button" data-primary="" data-funnel-plan-page="" onClick={onPlan} className={PRIMARY}>{t("funnel.making.planPage")}</button>
       ) : undefined}
@@ -145,6 +168,6 @@ export function MakingStep({ onOpened }: { onOpened: () => void }) {
     autoOpened.current = true;
     open();
   });
-  return <MakingView making={making} opening={opening} openFailed={openFailed} onOpen={open}
+  return <MakingView making={making} opening={opening} openFailed={openFailed} onOpen={open} onHere={onOpened}
     onPlan={bridge ? () => void bridge.openDashboard().catch(() => {}) : undefined} />;
 }

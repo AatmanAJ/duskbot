@@ -25,6 +25,7 @@ import { CloudBringStep, useCloudBringOffered } from "./CloudBringStep";
 import { cloudOwned, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
 import { funnelAccount, type FunnelAccountState } from "./funnel-account";
 import { FunnelBar, PhoneStep, PlaceStep, WelcomeStep } from "./FunnelSteps";
+import { cloudOpenedHere } from "./late-cloud";
 import { MakingStep } from "./MakingStep";
 import { PermissionsStep } from "./PermissionsStep";
 import { useWelcomeAi } from "./welcome-ai";
@@ -206,7 +207,7 @@ export function WelcomeFlow({
       if (keepsDraft) clearWelcomeDraft();
       onDone(botId);
       try {
-        const patch = replay ? completionPatch() : firstRunPatch(record.current, new Date(), { cloudHome });
+        const patch = replay ? completionPatch() : cloudOpenedHere(firstRunPatch(record.current, new Date(), { cloudHome }), path === "cloud", record.current?.hintsSeen ?? []);
         const config = await api("/api/config", { method: "PUT", body: JSON.stringify(patch), signal: AbortSignal.timeout(10_000) });
         dispatch({ type: "configStatus", config });
       } catch {

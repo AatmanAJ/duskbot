@@ -527,6 +527,8 @@ describe("on the desktop app", () => {
     expect(step()).toBe("making");
     expect(title()).toBe("Making your cloud");
     expect(document.body.querySelector("[data-funnel-making]")?.getAttribute("data-funnel-making")).toBe("setting-up");
+    expect(document.body.querySelector("[aria-current=step]")?.textContent, "the checklist ticks one step at a time").toBe("Reserving your machine");
+    for (let i = 0; i < 3; i++) await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(document.body.querySelector("[aria-current=step]")?.textContent).toBe("Preparing storage");
     expect(bridge.holdSignIns).toHaveBeenCalledOnce();
     expect(JSON.parse(localStorage.getItem("dusk.onboarding.welcomeDraft")!), "a closed app comes back here").toMatchObject({ beat: "making", cloud: true });
@@ -534,6 +536,7 @@ describe("on the desktop app", () => {
     vi.stubGlobal("fetch", vi.fn(async () => { if (!up) throw new TypeError("Failed to fetch"); return new Response(null); }));
     await bridge.tell(own("ready"));
     await settle();
+    for (let i = 0; i < 3; i++) await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(title(), "ready at the Admin, but its page doesn't answer yet: still the last check, never a second setup screen").toBe("Making your cloud");
     expect(document.body.querySelector("[aria-current=step]")?.textContent).toBe("Checking it's ready");
     expect(bridge.connectHome).not.toHaveBeenCalled();

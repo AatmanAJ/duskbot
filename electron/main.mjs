@@ -2123,6 +2123,17 @@ async function connectCloudHome(open = null) {
 /** A new cloud's first run starts from what this computer knows. Once the window shows the cloud (a new one can take
  * minutes to load the first time), its own session carries it once. */
 const welcomedClouds = new Set();
+const CARRY_BEFORE_OPEN_MS = 8_000;
+/** Before the window first loads My Cloud (its session already in the window's cookie): what this computer knows goes
+ * there first, so the page's first config read already holds CLOUD_FROM_COMPUTER and opens straight onto the first run. */
+async function welcomeBeforeOpen(origin) {
+  if (!origin || desktopRemoteAccess || welcomedClouds.has(origin)) return;
+  welcomedClouds.add(origin);
+  const carried = carryWelcomeToCloud({ origin, fetch: (...args) => session.defaultSession.fetch(...args), localRequest: localServerRequest, log: slog })
+    .then((changed) => { slog(`cloud welcome: ${changed ? "carried from this computer before it opened" : "nothing to carry"}`); return true; }, () => false);
+  const done = await Promise.race([carried, new Promise(resolve => setTimeout(() => resolve(false), CARRY_BEFORE_OPEN_MS))]);
+  if (!done) welcomedClouds.delete(origin);
+}
 async function welcomedOnCloud() {
   const origin = homeWindow.cloudOrigin() ?? cloudAccount?.homeTarget()?.origin ?? null;
   if (!origin || desktopRemoteAccess || welcomedClouds.has(origin)) return;
@@ -3052,7 +3063,7 @@ trailMain = installTrailMain({ ipcMain, app, dialog, shell, powerMonitor, Browse
   linkPath: event => { const origin = activePageOrigin(event); return origin ? vpsLink.pathAt(origin) : null; } });
 // Teams from the verified session as places this window shows (home-places.mjs): the one to open next time, and its lines.
 const homePlaces = createHomePlaces({ store: jsonFile(path.join(app.getPath("userData"), "home-place.json")), environments: () => environmentsState, persist: persistEnvironments, makeId: randomUUID, homeOrigin: myCloud, log: slog });
-const homeWindow = createHomeWindow({ cloudRoute: WELCOMED_ROUTE, clean: cleanWorkspace, journal: () => oneHome.journal() ?? vpsCloudMove?.homeJournal() ?? null, frozen: oneHome.marker, account: () => (accountApp() ? cloudAccount : null), restored: cloudAccountRestored,
+const homeWindow = createHomeWindow({ cloudRoute: WELCOMED_ROUTE, beforeOpen: welcomeBeforeOpen, clean: cleanWorkspace, journal: () => oneHome.journal() ?? vpsCloudMove?.homeJournal() ?? null, frozen: oneHome.marker, account: () => (accountApp() ? cloudAccount : null), restored: cloudAccountRestored,
   window: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null), ensureWindow: () => { if (!mainWindow || mainWindow.isDestroyed()) createWindow({ deferNavigation: true }); },
   localOrigin: rendererOrigin, cookieFetch: (...args) => session.defaultSession.fetch(...args), power: cloudPower, splash: () => startupScreen, lastInput: oneHome.lastInput, rehomed: () => talk.homeChanged(), log: slog,
   hosts: () => session.defaultSession, readyStore: jsonFile(path.join(app.getPath("userData"), "cloud-ready.json")), ownMove: () => ownHome?.underWay() ?? null, ownAway: () => ownHome?.away() === true, lastSeen: createLastSeenStore({ file: path.join(app.getPath("userData"), "cloud-last-seen.bin"), encryption: cloudEncryption }),
