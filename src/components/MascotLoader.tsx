@@ -51,14 +51,15 @@ function tile(crew: LoadingCrew, eyes: LoaderEyes, look: number, body: string): 
  * The one whole-screen wait: one of the startup card's crew in this launch's colour, alive while it waits (it hops in,
  * blinks, looks about, hops, naps if it runs long), a short line that changes now and then, and a cheer and a hop away
  * once `leaving`, after which `onGone` runs. A wait shorter than a moment never shows it. `waking`: the computer is
- * still starting, so the mascot naps first and wakes up.
+ * still starting, so the mascot naps first and wakes up. `naps` false keeps it awake however long the wait runs.
  */
-export function MascotLoader({ leaving = false, onExit, onGone, waking = false, size = 80, first, className, lineClassName }: {
+export function MascotLoader({ leaving = false, onExit, onGone, waking = false, naps = true, size = 80, first, className, lineClassName }: {
   leaving?: boolean;
   /** the hop away starts: what comes next can arrive under it */
   onExit?: () => void;
   onGone?: () => void;
   waking?: boolean;
+  naps?: boolean;
   /** the mascot's box in CSS pixels; drawn at the nearest whole multiple of its 16-pixel grid */
   size?: number;
   /** a line said before any of the playful ones, while it is still true */
@@ -78,7 +79,7 @@ export function MascotLoader({ leaving = false, onExit, onGone, waking = false, 
   const [phase, setPhase] = useState<"waiting" | "happy" | "exit">("waiting");
   const read = (): { face: LoadingFace; line: LocaleKey } => {
     const elapsed = performance.now() - look.start;
-    const face = loadingFace(elapsed, look.mood, dozeFrom.current);
+    const face = naps ? loadingFace(elapsed, look.mood, dozeFrom.current) : look.mood;
     return { face, line: loadingLineAt(elapsed, face) };
   };
   const [now, setNow] = useState(read);

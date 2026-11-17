@@ -152,6 +152,6 @@ export function AccountGate({ children }: { children: ReactNode }) {
       problem, signedIn: () => { setAccount(client.account()); setProblem(undefined); },
     },
   }), [account, origin, wanted, client, platform.kind, platform.appleSignIn, problem]);
-  if (wanted && restoring) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader /></div>;
+  if (wanted && restoring) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader naps={false} /></div>;
   return <AccountContext value={context}>{children}</AccountContext>;
 }
