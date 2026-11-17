@@ -11,6 +11,12 @@ export const DEMO_MARK = "data-dusk-demo";
 
 const GLOBAL = "__duskDemo";
 const STASH = "__dusk_demo_queue";
+/** How a later evaluation reaches the recorder: an event on the document, with the request and the answer left where
+ * every script world of the page can read them. agent-browser 0.37 may evaluate each expression in a world of its own,
+ * where a global the recorder set is not there. */
+const CALL_EVENT = "dusk-demo:call";
+const CALL_IN = "__dusk_demo_in";
+const CALL_OUT = "__dusk_demo_out";
 const MAX_QUEUE = 800;
 /** One read answers at most this many events, so the answer stays under the browser's 64 KB evaluation result. */
 const DRAIN_MAX = 60;
@@ -22,6 +28,24 @@ export const DEMO_VALUE_MAX = 2_000;
 const SOURCE = String.raw`(() => {
   if (window.top !== window) return "frame";
   if (window[GLOBAL]) return "installed";
+  // Left where every script world of this document reads it: session storage, or the root element where a page has none.
+  const leave = (key, value) => {
+    try { sessionStorage.setItem(key, value); return; } catch (error) {}
+    if (document.documentElement) document.documentElement.setAttribute("data-" + key.replace(/_/g, "-"), value);
+  };
+  const collect = (key) => {
+    let value = null;
+    try { value = sessionStorage.getItem(key); if (value !== null) sessionStorage.removeItem(key); } catch (error) {}
+    const root = document.documentElement;
+    const name = "data-" + key.replace(/_/g, "-");
+    if (value === null && root && root.hasAttribute(name)) { value = root.getAttribute(name); root.removeAttribute(name); }
+    return value;
+  };
+  // Another world of this document already records: this one adds nothing.
+  leave(CALL_IN, JSON.stringify({ do: "ping" }));
+  document.dispatchEvent(new Event(CALL_EVENT));
+  collect(CALL_IN);
+  if (collect(CALL_OUT) !== null) return "installed";
   const queue = [];
   const everPrivate = new WeakSet();
   const formIds = new WeakMap();
@@ -454,7 +478,24 @@ const SOURCE = String.raw`(() => {
     return JSON.stringify({ installed: true, url: location.href, title: clean(document.title), events, more: queue.length > 0 });
   };
 
-  Object.defineProperty(window, GLOBAL, { value: { drain, find, act, unmark, state }, enumerable: false, configurable: true });
+  const answerTo = (request) => {
+    if (!request || typeof request !== "object") return JSON.stringify({ error: "request" });
+    if (request.do === "ping") return JSON.stringify({ ok: true });
+    if (request.do === "drain") return drain();
+    if (request.do === "state") return state();
+    if (request.do === "find") return find(request.target || {}, request.options || {});
+    if (request.do === "act") return act(request.nonce, request.action || {});
+    if (request.do === "unmark") return JSON.stringify(unmark(request.nonce));
+    return JSON.stringify({ error: "request" });
+  };
+  document.addEventListener(CALL_EVENT, () => {
+    const asked = collect(CALL_IN);
+    if (asked === null) return;
+    let answer;
+    try { answer = answerTo(JSON.parse(asked)); } catch (error) { answer = JSON.stringify({ error: "failed" }); }
+    leave(CALL_OUT, answer);
+  });
+  Object.defineProperty(window, GLOBAL, { value: true, enumerable: false, configurable: true });
   return "installed";
 })()`;
 
@@ -463,6 +504,9 @@ export const DEMO_PAGE_SCRIPT = SOURCE
   .replaceAll("SENSITIVE_SOURCE", JSON.stringify(SENSITIVE_FIELD_PATTERN.source))
   .replaceAll("SENSITIVE_FLAGS", JSON.stringify(SENSITIVE_FIELD_PATTERN.flags))
   .replaceAll("GLOBAL", JSON.stringify(GLOBAL))
+  .replaceAll("CALL_EVENT", JSON.stringify(CALL_EVENT))
+  .replaceAll("CALL_IN", JSON.stringify(CALL_IN))
+  .replaceAll("CALL_OUT", JSON.stringify(CALL_OUT))
   .replaceAll("STASH", JSON.stringify(STASH))
   .replaceAll("MAX_QUEUE", String(MAX_QUEUE))
   .replaceAll("DRAIN_MAX", String(DRAIN_MAX))
@@ -471,14 +515,31 @@ export const DEMO_PAGE_SCRIPT = SOURCE
   .replaceAll("VALUE_MAX", String(DEMO_VALUE_MAX))
   .replaceAll("MARK", JSON.stringify(DEMO_MARK));
 
-/** A call on the installed recorder, or `absent` where a document has none. */
-function call(method: string, args: readonly unknown[], absent: unknown): string {
-  return `(() => { const demo = window[${JSON.stringify(GLOBAL)}]; return demo ? demo.${method}(${args.map((arg) => JSON.stringify(arg)).join(", ")}) : ${JSON.stringify(JSON.stringify(absent))}; })()`;
+/** One request to the document's recorder, from whatever script world the expression runs in; `absent` where a
+ * document has none. The answer is the recorder's own JSON text. */
+function call(request: Record<string, unknown>, absent: string): string {
+  return `(() => {
+  const IN = ${JSON.stringify(CALL_IN)}, OUT = ${JSON.stringify(CALL_OUT)};
+  const attribute = (key) => "data-" + key.replace(/_/g, "-");
+  const root = document.documentElement;
+  let stored = false;
+  try { sessionStorage.setItem(IN, ${JSON.stringify(JSON.stringify(request))}); stored = true; } catch (error) {}
+  if (!stored) { if (!root) return ${absent}; root.setAttribute(attribute(IN), ${JSON.stringify(JSON.stringify(request))}); }
+  document.dispatchEvent(new Event(${JSON.stringify(CALL_EVENT)}));
+  let answer = null;
+  try { answer = sessionStorage.getItem(OUT); if (answer !== null) sessionStorage.removeItem(OUT); sessionStorage.removeItem(IN); } catch (error) {}
+  if (root) {
+    if (answer === null && root.hasAttribute(attribute(OUT))) answer = root.getAttribute(attribute(OUT));
+    root.removeAttribute(attribute(OUT));
+    root.removeAttribute(attribute(IN));
+  }
+  return answer === null ? ${absent} : answer;
+})()`;
 }
 
 /** Answers a `DemoDrain` as JSON: what the person did since the last read. `installed` is false where the script is absent. */
 export function demoDrainExpression(): string {
-  return `(() => { const demo = window[${JSON.stringify(GLOBAL)}]; return demo ? demo.drain() : JSON.stringify({ installed: false, url: location.href, title: document.title, events: [] }); })()`;
+  return call({ do: "drain" }, `JSON.stringify({ installed: false, url: location.href, title: document.title, events: [] })`);
 }
 
 /** What `demoFindExpression` answers, as JSON. */
@@ -503,7 +564,7 @@ export interface DemoFound {
 export function demoFindExpression(target: DemoTarget, options: { kind: DemoStepKind; nonce: string; value?: string }): string {
   const words: DemoTarget = { role: target.role, name: target.name, ...(target.label ? { label: target.label } : {}), ...(target.within ? { within: target.within } : {}),
     ...(target.placeholder ? { placeholder: target.placeholder } : {}), ...(target.testId ? { testId: target.testId } : {}) };
-  return call("find", [words, { kind: options.kind, nonce: options.nonce, ...(options.value === undefined ? {} : { value: options.value }) }], { count: 0, absent: true });
+  return call({ do: "find", target: words, options: { kind: options.kind, nonce: options.nonce, ...(options.value === undefined ? {} : { value: options.value }) } }, JSON.stringify(JSON.stringify({ count: 0, absent: true })));
 }
 
 export type DemoPageAction =
@@ -514,12 +575,12 @@ export type DemoPageAction =
 
 /** Acts on the element `nonce` marks, in the page: focus and select a field, set a value typing cannot, choose an option, read back. */
 export function demoActExpression(nonce: string, action: DemoPageAction): string {
-  return call("act", [nonce, action], { ok: false, reason: "absent" });
+  return call({ do: "act", nonce, action }, JSON.stringify(JSON.stringify({ ok: false, reason: "absent" })));
 }
 
 /** Takes the marks of `nonce` off the page. */
 export function demoUnmarkExpression(nonce: string): string {
-  return call("unmark", [nonce], "absent");
+  return call({ do: "unmark", nonce }, JSON.stringify(JSON.stringify("absent")));
 }
 
 /** What `demoPageStateExpression` answers, as JSON. */
@@ -535,5 +596,5 @@ export interface DemoPageState {
 }
 
 export function demoPageStateExpression(): string {
-  return `(() => { const demo = window[${JSON.stringify(GLOBAL)}]; return demo ? demo.state() : JSON.stringify({ url: location.href, title: document.title, ready: document.readyState !== "loading", passwordField: false, absent: true }); })()`;
+  return call({ do: "state" }, `JSON.stringify({ url: location.href, title: document.title, ready: document.readyState !== "loading", passwordField: false, absent: true })`);
 }

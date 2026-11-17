@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ArrowLeft, Loader2, Maximize, Shrink } from "../../icons";
 
 import { browserStreamAccess, createPreviewStreamClient, type PreviewStreamClient, type PreviewStreamControl, type PreviewStreamInput } from "@/lib/browser-stream-client";
-import { createLiveStreamClient, type LiveResume } from "@/lib/browser-stream-v1";
+import { createLiveStreamClient, type LiveResume, type LiveStreamClient } from "@/lib/browser-stream-v1";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { blankPage, keepView, keptKey, keptView, localBrowserFixture, minutesSince, pageTitle, siteOf, tabLetter, useLocalBrowser, type ClosedTabView, type LocalBrowserState } from "@/lib/local-browser";
@@ -14,6 +14,7 @@ import { api, useStore, type Bot } from "@/state/store";
 import { BROWSER_HELD_ELSEWHERE } from "../../../shared/browser-held";
 import type { BrowserTab } from "../browser/ChromeRow";
 import { StreamSurface, type SurfaceConnect } from "../browser/StreamSurface";
+import { useDemoRecorder } from "../DemoRecorder";
 import { buttonCls } from "./rows";
 
 /** The frame around the page: the tab strip sits in it, and the shown tab is cut from the page's own surface. */
@@ -131,6 +132,7 @@ export function LocalBrowserLive({ bot }: { bot: Bot }) {
   const [frame] = useState(() => keptView(key).frame ?? null);
   const [error, setError] = useState("");
   const [big, setBig] = useState(false);
+  const [taking, setTaking] = useState(false);
   const pageVisible = usePageVisible();
   const clientRef = useRef<PreviewStreamClient | null>(null);
   const screenRef = useRef<HTMLDivElement | null>(null);
@@ -154,6 +156,17 @@ export function LocalBrowserLive({ bot }: { bot: Bot }) {
   const interact = useCallback((input: PreviewStreamInput) => {
     if (clientRef.current?.send(input)) { setError(""); return; }
     if (controlRef.current?.controller === "another-viewer") setError(BROWSER_HELD_ELSEWHERE);
+  }, []);
+  /** Takes the browser for the person, or hands it back: the one time this view holds it is while a task is recorded. */
+  const holdBrowser = useCallback((hold: boolean) => {
+    const client = clientRef.current;
+    if (!client) return;
+    if ("transport" in client) {
+      const { transport } = client as LiveStreamClient;
+      void (hold ? transport.take() : transport.release()).catch(() => undefined);
+    } else {
+      client.send({ type: hold ? "takeControl" : "releaseControl" });
+    }
   }, []);
   const controlRef = useRef<PreviewStreamControl | null>(null);
   const onControl = useCallback((next: PreviewStreamControl | null) => { controlRef.current = next; setControl(next); }, []);
@@ -189,8 +202,22 @@ export function LocalBrowserLive({ bot }: { bot: Bot }) {
     const kept = snapshot(screenRef.current);
     if (kept) keepView(key, { frame: kept });
     setPainted(false);
+    setConnected(false);
     setBig((on) => !on);
   };
+  // Show it once: Record takes the browser for the person, so what is recorded is theirs alone, and hands it back after.
+  // This view shares the browser with the bot, so it never holds it otherwise.
+  const demo = useDemoRecorder({
+    botId: bot.id, botName: bot.name, place: "browser", canRecord: false,
+    take: () => { setTaking(true); if (!big) toggleBig(); },
+    release: () => holdBrowser(false),
+  });
+  // Opening big connects the page anew, so the browser is asked for once that view is the one connected.
+  useEffect(() => {
+    if (!taking || !big || !connected) return;
+    setTaking(false);
+    holdBrowser(true);
+  }, [taking, big, connected, holdBrowser]);
   const active = tabs.find((tab) => tab.active) ?? tabs[0] ?? null;
   const strip = tabs.filter((tab) => !blankPage(tab.url));
   const select = (tab: BrowserTab) => { if (!tab.active) interact({ type: "tabSelect", tabId: tab.tabId }); };
@@ -201,6 +228,7 @@ export function LocalBrowserLive({ bot }: { bot: Bot }) {
   const view = (
     <section data-local-browser="live" data-big={big || undefined} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={t("localBrowser.label", { name: bot.name })}
       className={big ? "fixed inset-0 z-50 flex flex-col gap-2 bg-app p-4 text-ink" : "flex flex-col gap-2"}>
+      <div className={big && demo.active ? "flex min-h-0 flex-1 gap-2 max-md:flex-col" : "contents"}>
       <div className={cn(screenCls, "flex flex-col", big && "min-h-0 flex-1")}>
         {strip.length > 0 && <TabStrip bot={bot} tabs={strip} selected={active?.tabId ?? null} onSelect={select} dot={dot} />}
         <div ref={screenRef} data-local-browser-page="" className={cn("relative w-full overflow-hidden bg-composer", big ? "min-h-0 flex-1" : "aspect-[16/10]", strip.length === 0 && "rounded-t-xl")}>
@@ -237,9 +265,12 @@ export function LocalBrowserLive({ bot }: { bot: Bot }) {
           )}
         </div>
       </div>
-      {error && <p role="alert" className="m-0 text-[12px] leading-4 text-danger">{error}</p>}
+      {demo.active && demo.panel(big ? "side" : "card")}
+      </div>
+      {(error || demo.error) && <p role="alert" className="m-0 text-[12px] leading-4 text-danger">{error || demo.error}</p>}
       <div className="flex min-h-7 items-center gap-1.5">
         <span data-local-browser-status="" title={status ?? undefined} className="min-w-0 flex-1 truncate text-[12px] leading-4 text-ink/[0.56]">{status}</span>
+        {!fixture && !demo.active && connected && demo.button}
         <button type="button" data-local-browser-action="big" className={buttonCls} onClick={toggleBig}>
           {big ? <Shrink size={13} aria-hidden="true" /> : <Maximize size={13} aria-hidden="true" />}
           {t(big ? "localBrowser.closeBig" : "localBrowser.openBig")}
