@@ -134,8 +134,9 @@ async function metadata(file) {
   const one = await app();
   const infos = await call("GET", `/v1/apps/${one.id}/appInfos?include=appInfoLocalizations,ageRatingDeclaration`);
   const info = infos.data.find((i) => (i.attributes.state ?? i.attributes.appStoreState) !== "READY_FOR_DISTRIBUTION") ?? infos.data[0];
-  const infoLocal = infos.included.find((i) => i.type === "appInfoLocalizations" && i.attributes.locale === "en-US");
-  const rating = infos.included.find((i) => i.type === "ageRatingDeclarations");
+  const mine = (kind) => new Set([info.relationships?.[kind]?.data].flat().filter(Boolean).map((r) => r.id));
+  const infoLocal = infos.included.find((i) => i.type === "appInfoLocalizations" && i.attributes.locale === "en-US" && mine("appInfoLocalizations").has(i.id));
+  const rating = infos.included.find((i) => i.type === "ageRatingDeclarations" && mine("ageRatingDeclaration").has(i.id));
   const { name, subtitle, privacyPolicyUrl, primaryCategory, secondaryCategory } = want.appInfo;
   await call("PATCH", `/v1/appInfoLocalizations/${infoLocal.id}`, { data: { type: "appInfoLocalizations", id: infoLocal.id, attributes: { name, subtitle, privacyPolicyUrl } } });
   console.log("app info: name, subtitle, privacy policy URL");
