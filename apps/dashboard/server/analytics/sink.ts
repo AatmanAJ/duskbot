@@ -157,6 +157,7 @@ export async function mongoSink(db: Db): Promise<AnalyticsSink> {
     marks.createIndexes([{ key: { expiresAt: 1 }, expireAfterSeconds: 0, partialFilterExpression: { expiresAt: { $type: "date" } } }]),
     audits.createIndexes([{ key: { at: -1 } }, { key: { target: 1, at: -1 } }]),
     notes.createIndexes([{ key: { at: 1 } }]),
+    db.collection("analytics_crawls").createIndexes([{ key: { at: 1 } }]),
   ]);
   return sinkOf(db);
 }
