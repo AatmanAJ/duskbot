@@ -2,9 +2,10 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode 
 import { ChevronDown } from "../icons";
 import { cn } from "@/lib/cn";
 import { WorkingTimer } from "@/components/WorkingIndicator";
-import { phraseAt, phraseHoldMs } from "@/lib/live-activity";
+import { phraseAt, phraseCycle, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
 import { quietText } from "@/lib/now-steps";
 import { t } from "@/lib/i18n";
+import { startsAnywhere, TYPING_PHASE } from "@/lib/friendly-activity";
 import { formatElapsed } from "@/lib/working-time";
 import type { StepQuiet } from "../../shared/turn-progress";
 
@@ -55,12 +56,12 @@ function ShimmerPhrase({ text, className }: { text: string; className?: string }
   );
 }
 
-/** The status label rules, as Grok Bot's: the mark comes alone, its first words follow 1.8 to 2.6 s after the send
- * (drawn per turn, about 1.2 to 1.4 s after the mark), then each step shows one phrase and keeps it at least 800ms before
- * the next. "Typing…" is the line's own and comes and goes at once. */
+/** The status label rules: the mark comes alone, its first words follow 1.8 to 2.6 s after the send (drawn per turn,
+ * about 1.2 to 1.4 s after the mark), then each step keeps its words at least 800ms before the next step's. A step with a
+ * pool of words moves to another of them every 2.5 to 3.5 s. "Typing…" is the line's own and comes and goes at once. */
 export const STATUS_QUIET_MS = { min: 1800, max: 2600 } as const;
 export const STATUS_HOLD_MS = 800;
-export const TYPING_PHASE = "friendly:chat.typing";
+export { TYPING_PHASE };
 
 function quietFor(seed: string): number {
   let hash = 2166136261;
@@ -68,39 +69,39 @@ function quietFor(seed: string): number {
   return STATUS_QUIET_MS.min + ((hash >>> 0) % (STATUS_QUIET_MS.max - STATUS_QUIET_MS.min));
 }
 
-function drawn(phrases: readonly string[], seed: string): string {
-  let hash = 2166136261;
-  for (let i = 0; i < seed.length; i++) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
-  return phrases[(hash >>> 0) % Math.max(1, phrases.length)] ?? "";
-}
+type ShownLabel = { phase: string; step: number; text: string; at: number };
 
 /** The step label the simple status line shows now, or null while the line is still quiet. */
 export function useStatusLabel(phrases: readonly string[] | null, phase: string, seed: string, since: number | null, active: boolean): { key: string; text: string } | null {
   const [, wake] = useState(0);
-  const shown = useRef<{ key: string; text: string; at: number } | null>(null);
+  const shown = useRef<ShownLabel | null>(null);
   const firstSeen = useRef<number | null>(null);
   const now = Date.now();
   if (!active) firstSeen.current = null;
   else firstSeen.current ??= now;
   const typing = phase === TYPING_PHASE;
   const quietUntil = (since ?? firstSeen.current ?? now) + quietFor(`${seed}|quiet`);
-  let next: { key: string; text: string } | null = phrases && phrases.length > 0 && (typing || now >= quietUntil)
-    ? { key: phase, text: drawn(phrases, `${seed}|${phase}`) }
-    : null;
+  const pool = phrases && phrases.length > 0 ? phrases : null;
+  const phaseSeed = `${seed}|${phase}`;
+  // a step leads with what it is, then plays; a pool with no lead starts anywhere
+  const say = (step: number) => pool ? (startsAnywhere(phase) ? phraseCycle(pool, phaseSeed, step) : phraseAt(pool, phaseSeed, step)) : "";
   const held = shown.current;
-  const holdUntil = held && !typing && held.key !== TYPING_PHASE ? held.at + STATUS_HOLD_MS : 0;
-  if (held && next?.key !== held.key && now < holdUntil) next = held;
-  // one phrase per step: a re-render inside the same step keeps the words it already showed
-  else if (held && next?.key === held.key) next = held;
-  if (!next) shown.current = null;
-  else if (next.key !== held?.key) shown.current = { ...next, at: now };
-  const due = Math.min(...[quietUntil, holdUntil].filter((at) => at > now));
+  const holdUntil = held && !typing && held.phase !== TYPING_PHASE ? held.at + STATUS_HOLD_MS : 0;
+  const rotateAt = held && pool && held.phase === phase && pool.length > 1 ? held.at + rotationHoldMs(phaseSeed, held.step) : 0;
+  let next: ShownLabel | null;
+  if (held && (held.phase !== phase || !pool) && now < holdUntil) next = held;
+  else if (held && pool && held.phase === phase) next = rotateAt && now >= rotateAt ? { phase, step: held.step + 1, text: say(held.step + 1), at: now } : held;
+  else if (!pool || !(typing || now >= quietUntil)) next = null;
+  else next = { phase, step: 0, text: say(0), at: now };
+  shown.current = next;
+  const nextTurn = next && pool && next.phase === phase && pool.length > 1 ? next.at + rotationHoldMs(phaseSeed, next.step) : 0;
+  const due = Math.min(...[quietUntil, holdUntil, nextTurn].filter((at) => at > now));
   useEffect(() => {
     if (!active || !Number.isFinite(due)) return;
     const timer = setTimeout(() => wake((tick) => tick + 1), due - Date.now());
     return () => clearTimeout(timer);
   }, [active, due]);
-  return active && next ? { key: next.key, text: next.text } : null;
+  return active && next ? { key: `${next.phase}#${next.step}`, text: next.text } : null;
 }
 
 /** Grok's shimmer: the words in 40% ink with a full-ink band swept across them by background-position, 2.2s in 60
@@ -109,7 +110,7 @@ function StatusShimmer({ text }: { text: string }) {
   return <span className="status-shimmer">{text}</span>;
 }
 
-/** One step's words. A new step swaps them and rises in 4px over 180ms, as Grok Bot's line does: no crossfade. */
+/** One step's words. New words swap in and rise 4px over 180ms, as Grok Bot's line does: no crossfade. */
 function StepPhrase({ text, hover }: { text: string; hover?: string }) {
   return (
     <span className="turn-label-in flex min-w-0 items-center [grid-area:1/1]" title={hover} data-turn-now="">

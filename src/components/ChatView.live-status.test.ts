@@ -11,6 +11,7 @@ import { STATUS_HOLD_MS, STATUS_QUIET_MS } from "./TurnPresence";
 import { LIFE_DOTS_MS, LIFE_MASCOT_MS, LIFE_MASCOT_STATE } from "@/lib/reply-life";
 import { STATUS_MOUNT_MS } from "@/hooks/use-reached";
 import { TYPING_MIN_MS } from "@/hooks/use-typing-hold";
+import { poolWords } from "@/lib/friendly-activity";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -91,7 +92,7 @@ describe("the working line", () => {
     render(busyBot([ask]));
     expect(mascot()).not.toBeNull();
     const first = statusLine();
-    expect(["Working on it", "Chipping away", "Getting it done", "Making progress", "Handling it"]).toContain(first);
+    expect(poolWords("generic")).toContain(first);
     expect(mascot()!.innerHTML).toMatch(/width(="|: )28px/);
     const row = mascot()!.firstElementChild as HTMLElement;
     expect([...row.classList]).toEqual(expect.arrayContaining(["h-9", "ps-2", "gap-[8.5px]"]));

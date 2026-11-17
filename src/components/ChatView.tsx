@@ -49,6 +49,7 @@ import { isThisComputerNotGranted, isThisComputerNotReady } from "../../shared/y
 import { BotAvatar, type MausAvatarHandle } from "./Avatar";
 import type { MarkState } from "./mascot-engine";
 import { turnMarkState } from "./mascot-presence";
+import { poolWords } from "@/lib/friendly-activity";
 import type { LiveStatus } from "@/state/turn-status";
 import { TurnPresence, TYPING_PHASE } from "./TurnPresence";
 import { BrowserPartLine } from "./BrowserPartLine";
@@ -1159,7 +1160,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const writing = !stopCut && (streamingReply || live.status?.activity === "reply" || hold.typing);
   // the person's Stop, said once and quietly where the working line was, until the next turn
   const stoppedShown = (stopCut || personStoppedLast(messages)) && !(turnBusy && !stopCut) && !presenceVisible;
-  const typingPhrases = useMemo(() => [t("chat.typing")], [locale]);
+  const typingPhrases = useMemo(() => poolWords("typing"), [locale]);
   // the bot's own label stays on the line while it leaves, after the turn's end has cleared it
   const shownLabel = useRef<{ seed: string; label?: string }>({ seed: presenceSeed });
   // a new turn starts clean; the end of this one (busySince gone) keeps it

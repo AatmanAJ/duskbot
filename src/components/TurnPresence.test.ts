@@ -6,8 +6,8 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/testing/quiet-canceled-animations";
 
-import { phraseAt, phraseHoldMs } from "@/lib/live-activity";
-import { STATUS_QUIET_MS, TurnPresence } from "./TurnPresence";
+import { phraseAt, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
+import { STATUS_HOLD_MS, STATUS_QUIET_MS, TurnPresence } from "./TurnPresence";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -138,6 +138,59 @@ describe("a long step's quiet part", () => {
     expect(line() ?? "", "the mark comes alone first, as grok's does").toBe("");
     act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max));
     expect(line()).toBe("Running scrape.py · Waiting on the network");
+  });
+});
+
+describe("Simple mode's rotating words", () => {
+  const line = () => host.querySelector("[data-turn-status]")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+  const pool = Array.from({ length: 12 }, (_, index) => `Word ${index}`);
+
+  it("shows the mark alone first, then a new word every 2.5 to 3.5 s, never the same one twice in a row", () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 10_000, phrases: pool, phase: "friendly:generic" });
+    expect(line(), "the mascot alone for a beat").toBe("");
+    act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max));
+    const said = [line()];
+    for (let i = 0; i < 9; i++) {
+      act(() => void vi.advanceTimersByTime(3500));
+      said.push(line());
+    }
+    expect(new Set(said).size, "a 30 s turn says ten different words").toBe(10);
+    for (const word of said) expect(pool).toContain(word);
+    expect(host.querySelector("[data-turn-now]")?.classList, "each new word rises in").toContain("turn-label-in");
+  });
+
+  it("holds a word its seeded time before the next", () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 0, phrases: pool, phase: "friendly:generic" });
+    const first = line();
+    act(() => void vi.advanceTimersByTime(rotationHoldMs(`${seed}|friendly:generic`, 0) - 1));
+    expect(line()).toBe(first);
+    act(() => void vi.advanceTimersByTime(1));
+    expect(line()).not.toBe(first);
+  });
+
+  it("leads a step with what it is, and the bot's own words beat the generic pool at once", () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 0, phrases: ["Running a few commands", "Tinkering", "Crunching"], phase: "friendly:commands" });
+    expect(line()).toBe("Running a few commands");
+    render({ simple: true, since: 0, phrases: pool, phase: "friendly:generic" });
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+    expect(pool).toContain(line());
+    render({ simple: true, since: 0, label: "Comparing standing desks", phrases: pool, phase: "friendly:generic" });
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+    expect(line()).toBe("Comparing standing desks");
+    act(() => void vi.advanceTimersByTime(30_000));
+    expect(line(), "one specific phrase stays put").toBe("Comparing standing desks");
+  });
+
+  it("says Typing… first while the reply is written, then the writing words", () => {
+    vi.setSystemTime(10_000);
+    const typing = ["Typing…", "Writing", "Wordsmithing"];
+    render({ simple: true, since: 0, phrases: typing, phase: "friendly:chat.typing" });
+    expect(line()).toBe("Typing…");
+    act(() => void vi.advanceTimersByTime(3500));
+    expect(["Writing", "Wordsmithing"]).toContain(line());
   });
 });
 
