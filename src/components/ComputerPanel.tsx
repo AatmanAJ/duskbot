@@ -6,6 +6,8 @@ import { viewerTargetId } from "../../shared/desktop-viewer";
 import { Switch } from "./SettingsPrimitives";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLiveDesktop } from "./live-desktop-module";
+import { lastScreen, rememberScreen, SteadyImage } from "./bot-panel/last-screen";
+import { phoneApp } from "@/lib/store-app";
 import { z } from "zod";
 import { waitForLocalVmReady } from "@/lib/local-vm-readiness";
 import { Globe, Hand, Loader2, Maximize2, Monitor, Moon, Power, X } from "../icons";
@@ -793,6 +795,10 @@ export function ComputerPanel({
         ? polledFrame && `data:${polledFrame.mime};base64,${polledFrame.png}`
         : null;
   const previewOpensDesktop = Boolean(frameSrc && (liveTarget || cloudPreviewReady));
+  // the phone shows an awake computer's last picture while its view comes back, and each new one only once it is decoded
+  const phone = phoneApp();
+  useEffect(() => { if (phone) rememberScreen(bot.id, bot.threadId, frameSrc); }, [phone, bot.id, bot.threadId, frameSrc]);
+  const picture = frameSrc ?? (phone && computerStatusCurrent && (cloudPreviewReady || phase === "vm") ? lastScreen(bot.id, bot.threadId) : null);
 
   const signInHelp = control.help ?? null;
   const signInAsker = signInHelp ? state.bots.find((candidate) => candidate.id === signInHelp.botId)?.name ?? bot.name : bot.name;
@@ -1189,7 +1195,7 @@ export function ComputerPanel({
   // inline, the panel itself holds the waking picture, so it plays once through the whole wake
   const remoteFrame = (liveHere || livePreview) && liveTarget ? !LiveDesktop ? <span data-live-desktop-loading="" /> : (
         <LiveDesktop key={viewerConnectionKey} waking={(expanded) => (inline && !expanded ? null : wakingView(expanded || Boolean(fullscreen)))} onScreenSize={(width, height) => setScreenAspect(width / height)}
-          target={liveTarget} threadId={bot.threadId} botId={bot.id} name={bot.name} poster={frameSrc} viewOnly={!liveHere} wake={wakingHere} taking={controlPending} asked={Boolean(control.helpReason)}
+          target={liveTarget} threadId={bot.threadId} botId={bot.id} name={bot.name} poster={picture} viewOnly={!liveHere} wake={wakingHere} taking={controlPending} asked={Boolean(control.helpReason)}
           expanded={takeover.expanded} onExpandedChange={(expanded) => {
             if (!expanded && inline && takeover.here) void handBack(); else takeover.setExpanded(expanded);
           }}
@@ -1236,14 +1242,17 @@ export function ComputerPanel({
       : phase === "vps-incompatible" && problem ? t(problem.line, { name: bot.name }) : screenLine;
     const frame = remoteFrame ?? (localPicture && liveLocal.stream
       ? <LiveScreenVideo stream={liveLocal.stream} playing={pageVisible} className="absolute inset-0 size-full object-contain" />
-      : !waking && frameSrc ? <img src={frameSrc} alt={t("computer.screenOf", { name: bot.name })} className="absolute inset-0 size-full object-contain" /> : null);
+      : !waking && picture ? phone
+        ? <SteadyImage src={picture} alt={t("computer.screenOf", { name: bot.name })} className="absolute inset-0 size-full object-contain" />
+        : <img src={picture} alt={t("computer.screenOf", { name: bot.name })} className="absolute inset-0 size-full object-contain" /> : null);
     // awake, with its picture still on the way (the live screen dropped, a first picture not back yet): never the asleep card
     const pictureOnWay = !frame && !waking && (cloudPreviewReady || phase === "vm") && !previewError;
     const stage = remoteFrame ? desktopDecoded ? "screen" : "loading" : frame ? "screen" : waking || pictureOnWay ? "loading" : phase === "off" && !noComputer ? "off" : "asleep";
     // a wake the person asked for shows the bot waking up until the live screen paints itself over it; one element in
     // one place for the whole wake, so its animation never starts over
     const wakeRequested = !frame && (waking || pictureOnWay);
-    const wakingShown = wakeRequested || Boolean(remoteFrame && !desktopDecoded && !takeover.expanded);
+    // on the phone a reconnecting screen keeps its last picture under it rather than the waking card over it
+    const wakingShown = wakeRequested || Boolean(remoteFrame && !desktopDecoded && !takeover.expanded && !(phone && picture));
     return (
       <div data-inline-computer="" data-stage={stage}>
         <div data-panel-screen="" aria-busy={stage === "loading" || undefined} className={COMPUTER_FRAME_CLASS} style={{ aspectRatio: String(screenAspect) }}>

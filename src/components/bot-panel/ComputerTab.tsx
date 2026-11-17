@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { storeApp } from "@/lib/store-app";
+import { phoneApp, storeApp } from "@/lib/store-app";
 import { macPermissionsBridge } from "@/lib/mac-permissions";
 
 
@@ -146,21 +146,28 @@ export function WherePage({ bot, derived }: { bot: Bot; derived: Derived }) {
   );
 }
 
-/** Whether the element is in view; the live screen pauses while the panel is scrolled away or covered by layout. */
-function useOnScreen(element: HTMLElement | null) {
+/** Whether the element is in view; the live screen pauses while the panel is scrolled away or covered by layout. `leaveMs`:
+ * how long it must stay out of view before it counts as gone, so a sheet's spring or a tab's slide that carries it past
+ * the edge for a moment never drops and reconnects the stream. */
+export function useOnScreen(element: HTMLElement | null, leaveMs = 0) {
   const [onScreen, setOnScreen] = useState(true);
   const last = useRef(true);
   useEffect(() => {
     if (!element || typeof IntersectionObserver === "undefined") return;
+    let leaving: ReturnType<typeof setTimeout> | undefined;
     const observer = new IntersectionObserver(([entry]) => {
       const next = Boolean(entry?.isIntersecting);
-      if (next !== last.current) setOnScreen((last.current = next));
+      clearTimeout(leaving);
+      if (next === last.current) return;
+      if (next || leaveMs === 0) setOnScreen((last.current = next));
+      else leaving = setTimeout(() => setOnScreen((last.current = false)), leaveMs);
     });
     observer.observe(element);
-    return () => observer.disconnect();
-  }, [element]);
+    return () => { clearTimeout(leaving); observer.disconnect(); };
+  }, [element, leaveMs]);
   return onScreen;
 }
+const PHONE_LEAVE_MS = 1_000;
 
 /** The screen while the panel's code loads: already the wake button, and a click is kept for the panel to act on. */
 export function AsleepScreen({ bot, off }: { bot: Bot; off: boolean }) {
@@ -275,7 +282,7 @@ export function ComputerTab({ bot, derived, cloudFor }: {
   const { current, warning, cloudDesktop } = picker;
   const otherServer = useOtherServerName();
   const [screenBox, setScreenBox] = useState<HTMLElement | null>(null);
-  const onScreen = useOnScreen(screenBox);
+  const onScreen = useOnScreen(screenBox, phoneApp() ? PHONE_LEAVE_MS : 0);
   const [report, setReport] = useState<InlineReport | null>(null);
   const host = runsOnHost({ cloudHome: state.config?.cloudHome === true, otherServer, platform: capabilities.host?.platform ?? "other" });
   const screenOf = t(host.kind === "cloud" ? "computer.screenOfCloud" : "computer.screenOf", { name: bot.name });

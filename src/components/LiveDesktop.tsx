@@ -7,6 +7,8 @@ import { connectDesktop, desktopSize, isPasteShortcut, keyOnDesktop, pasteOnDesk
 import { t } from "@/lib/i18n";
 import { isMacPlatform } from "@/lib/keyboard-shortcuts";
 import { PlatformContext } from "@/mobile/platform";
+import { phoneApp } from "@/lib/store-app";
+import { rememberScreen } from "./bot-panel/last-screen";
 import { ScreenTrackpad, type RemoteInput } from "@/mobile/ScreenTrackpad";
 import { BotPointer } from "./BotPointer";
 import { ComputerFullscreen } from "./ComputerFullscreen";
@@ -67,6 +69,8 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
   readyChanged.current = onReadyChange;
   const unreachable = useRef(onUnreachable);
   unreachable.current = onUnreachable;
+  const whose = useRef(botId);
+  whose.current = botId;
   const sized = useRef(onScreenSize);
   sized.current = onScreenSize;
   const [aspect, setAspect] = useState<number | undefined>(undefined);
@@ -128,6 +132,11 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
       connected.focusOnClick = !connected.viewOnly;
     }, () => { if (!controller.signal.aborted) lost(); });
     const disconnect = () => {
+      // on the phone its view comes back often (a tab, the sheet): it starts again on the last picture, not an empty frame
+      const owner = whose.current;
+      if (decoded && owner && phoneApp()) {
+        try { rememberScreen(owner, threadId, screen.current?.querySelector("canvas")?.toDataURL("image/jpeg", 0.8)); } catch { /* a canvas it cannot read */ }
+      }
       setText("");
       reportReady?.(false);
       controller.abort();
@@ -216,7 +225,7 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
   const desktopFrame = (
       <div className={cn("relative h-full w-full overflow-hidden", expanded ? "bg-black" : "bg-inset")}>
         {poster && connection !== "connected" && (
-          <img src={poster} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-contain opacity-50" />
+          <img src={poster} alt="" aria-hidden="true" className={cn("absolute inset-0 h-full w-full object-contain", !phoneApp() && "opacity-50")} />
         )}
         <div ref={screen} role="application" aria-label={label} data-live-desktop-screen="" data-watching={viewOnly ? "" : undefined} className="absolute inset-0" />
         {botId && viewOnly && connection === "connected" && <BotPointer host={screen} botId={botId} />}

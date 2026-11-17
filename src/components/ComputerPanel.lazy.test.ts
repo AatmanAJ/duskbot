@@ -454,4 +454,25 @@ describe("VPS computer preparation", () => {
     picture();
     await expect.poll(() => document.querySelector("[data-inline-computer]")?.getAttribute("data-stage")).toBe("screen");
   });
+
+  it("on the phone, a computer view that comes back starts on its last picture while the next one is on its way", async () => {
+    document.documentElement.dataset.mobileApp = "ios";
+    try {
+      fixture.container = "running";
+      fixture.unreachable = true;
+      await open(makeBot({ computer: "cloud" }), true);
+      await expect.poll(() => document.querySelector("[data-inline-computer] img")?.getAttribute("src")).toBe("data:image/jpeg;base64,FRAME");
+      root!.unmount();
+      root = null;
+      document.body.innerHTML = "";
+      // the next picture holds back: the view must not wait on it, or blink empty, to show the screen
+      fixture.screenshotGate = new Promise(() => {});
+      await open(makeBot({ computer: "cloud" }), true);
+      await expect.poll(() => document.querySelector("[data-inline-computer]")?.getAttribute("data-stage")).toBe("screen");
+      expect(document.querySelector("[data-inline-computer] img")?.getAttribute("src")).toBe("data:image/jpeg;base64,FRAME");
+      expect(document.querySelector("[data-computer-waking]")).toBeNull();
+    } finally {
+      delete document.documentElement.dataset.mobileApp;
+    }
+  });
 });
