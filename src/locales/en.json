@@ -8588,6 +8588,8 @@
   "runsOn.getCloud": "Get dusk cloud",
   "runsOn.moveDuskCloud": "Move to dusk cloud",
   "runsOn.switchCloud": "Switch to dusk cloud",
+  "runsOn.useThisMac": "Use this Mac",
+  "runsOn.useThisComputer": "Use this computer",
   "runsOn.cloudLine": "Keep {name} working on dusk cloud",
   "runsOn.cloudLineThere": "{name} works on dusk cloud",
   "runsOn.movingCloud": "Moving to cloud desktop…",

@@ -316,6 +316,8 @@ export function ComputerTab({ bot, derived, cloudFor }: {
   const cloudOwned = local && hasDuskCloud(stage);
   const cloudOffer = local && !cloudOwned && cloudBots.length > 0 && <CloudCtaCard bot={cloudBots[0]!} group={cloudBots} stage={stage} cloudDesktop={cloudDesktop} />;
   const ownScreen = !local || cloudOwned || current === "vm";
+  // with a dusk cloud, a bot on this computer that has no computer of its own here gets this one in one press
+  const useHere = cloudOwned && current !== "local" && current !== "vm" && current !== "off";
 
   return (
     <div data-panel-tabpanel="computer">
@@ -323,9 +325,16 @@ export function ComputerTab({ bot, derived, cloudFor }: {
         <LocalBrowserSection bot={bot} after={cloudOffer} />
       </> : <>
         <div ref={setScreenBox}>
-          <Suspense fallback={<AsleepScreen bot={bot} off={current === "off"} />}>
+          {useHere ? (
+            <div data-panel-screen="" data-stage="asleep" className={COMPUTER_FRAME_CLASS} style={{ aspectRatio: String(COMPUTER_SCREEN_ASPECT) }}>
+              <button type="button" data-panel-action="use-here" onClick={() => picker.choosePlace("local")} className={COMPUTER_WAKE_BUTTON_CLASS}>
+                <AsleepMascot bot={bot} />
+                <span className="max-w-[80%] font-medium text-ink">{t(capabilities.host?.platform === "darwin" ? "runsOn.useThisMac" : "runsOn.useThisComputer")}</span>
+              </button>
+            </div>
+          ) : <Suspense fallback={<AsleepScreen bot={bot} off={current === "off"} />}>
             <ComputerPanel bot={bot} inline visible={onScreen} onReport={setReport} />
-          </Suspense>
+          </Suspense>}
         </div>
         <div className="mt-[5px] flex min-h-6 items-center justify-center">
           <span data-panel-screen-of="" className="min-w-0 truncate text-[12px] leading-4 tracking-normal text-ink/[0.56]">{screenOf}</span>
