@@ -609,7 +609,7 @@ export class BrowserRuntime {
         const stripped = method === "tools/call" ? stripHarnessOwnedArguments(params) : params;
         const labelled = toolName === "agent_browser_tab_new" && ctx
           ? { ...stripped as object, arguments: this.threadTabs.labelNewTab(ctx.threadId, ((stripped as { arguments?: Record<string, unknown> }).arguments) ?? {}) } : stripped;
-        const request = method === "tools/call" ? this.pageSizes.callArguments(session, labelled) : params;
+        const request = method === "tools/call" ? this.pageSizes.callArguments(session, ctx ? this.threadTabs.refs.carry(session, ctx.threadId, labelled) : labelled) : params;
         const args = (request as { arguments?: unknown } | null)?.arguments;
         const call: StepCall | null = this.steps && method === "tools/call" && toolName !== undefined ? {
           session, spec, tool: toolName, args: args && typeof args === "object" ? args as Record<string, unknown> : {}, ctx,
@@ -716,6 +716,7 @@ export class BrowserRuntime {
             ...(!observed ? { isError: true } : {}),
           };
         }
+        if (ctx && toolName !== undefined) this.threadTabs.refs.saw(session, ctx.threadId, toolName, args, result);
         const afterStarted = performance.now();
         const extra = call && stepState ? await this.steps!.after(call, result, stepState, phases.engineMs) : null;
         phases.stepsMs = (phases.stepsMs ?? 0) + performance.now() - afterStarted;

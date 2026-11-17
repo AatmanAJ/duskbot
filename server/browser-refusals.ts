@@ -10,8 +10,11 @@ export const AGENT_CLOSE_FAILED = "The browser could not be closed. Ask the pers
 export const LANE_BUSY = "Your previous browser call is still running; wait for it to finish, then call again.";
 export const PERSON_RESTART_STOPPED = "The person restarted your browser from the Browser panel while this call ran, so it stopped. Pages you had open are gone: open the page you need again, and check whether this action already happened before repeating it.";
 
+/** A call not run by design: the bot reads its words as the call's result. */
+export class RefusedCall extends Error {}
+
 /** A by-design answer about a person's hold on a tab: the bot reads its words as the call's result. */
-export class PersonHoldAnswer extends Error {}
+export class PersonHoldAnswer extends RefusedCall {}
 
 /** `where` is "tab t2", or "the browser" where the engine has no tabs of its own. */
 export function personUsedTab(where: string): string {
@@ -31,5 +34,5 @@ const KNOWN = new Set([BROWSER_CONTROL_REFUSAL, BROWSER_INTERRUPTED, BROWSER_CLO
 /** The words of a refusal by design, or null for a fault, which stays an error (a 500 with its reason in the trail). */
 export function browserRefusal(error: unknown): string | null {
   if (!(error instanceof Error) || typeof (error as { status?: unknown }).status === "number") return null;
-  return error instanceof PersonHoldAnswer || KNOWN.has(error.message) || error.message.startsWith("This browser cannot ") ? error.message : null;
+  return error instanceof RefusedCall || KNOWN.has(error.message) || error.message.startsWith("This browser cannot ") ? error.message : null;
 }
