@@ -185,4 +185,35 @@ show("general");`,
   },
 };
 
-export const COMPOSER_TASKS: BenchTask[] = [xDm, gmail, slack];
+const draftReplace: BenchTask = {
+  id: "draft-replace",
+  group: "composers",
+  title: "Contenteditable reply box holding an old draft that must be replaced, not appended to",
+  start: "inbox/thread",
+  request: ({ base }) => `In the support inbox at ${base}inbox/thread, the reply box already holds an old draft. Replace it entirely with this reply and send it: Thanks Dana, your refund was issued today.`,
+  check(run) {
+    const sent = run.events.filter((event) => event.type === "reply");
+    const right = sent.length === 1 && String(sent[0]!.text).trim() === "Thanks Dana, your refund was issued today.";
+    return verdict(right, sent.length ? `sent ${JSON.stringify(sent.map((event) => event.text))}` : "nothing sent");
+  },
+  routes: {
+    "inbox/thread": () => page("Ticket #8812 · Support", `<main class="t"><h2>Refund for order 4471</h2><div class="m"><b>Dana Lee</b><p>Hi, I returned the jacket last week. Any news on the refund?</p></div>
+<div class="reply"><div class="box empty" contenteditable="true" role="textbox" aria-label="Reply" aria-multiline="true" data-placeholder="Write a reply…"></div><button id="send">Send reply</button></div></main>`, {
+      style: `${EDITOR_CSS}.t{max-width:680px;margin:30px auto}.m{background:#f6f6f8;border-radius:8px;padding:12px}.reply{margin-top:20px;border:1px solid #ccc;border-radius:8px}.box{min-height:90px;padding:10px;position:relative}#send{margin:8px;padding:8px 14px;background:#1f6feb;color:#fff;border:0;border-radius:6px}`,
+      script: `${RICH_EDITOR_JS}
+const box = document.querySelector(".box");
+const editor = richEditor(box);
+box.focus(); document.execCommand("insertText", false, "Hi Dana, let me check with the warehouse and get back to you");
+box.blur();
+document.getElementById("send").onclick = () => { if (!editor.text.trim()) return; report("reply", { text: editor.text }); editor.clear(); const s = document.createElement("p"); s.setAttribute("role", "status"); s.textContent = "Reply sent"; document.querySelector(".t").appendChild(s); };`,
+    }),
+  },
+  async solve(call, { base }) {
+    await call("agent_browser_open", { url: `${base}inbox/thread` });
+    await call("agent_browser_fill", { selector: "[aria-label=Reply]", text: "Thanks Dana, your refund was issued today." });
+    await call("agent_browser_click", { selector: "#send" });
+    return "sent";
+  },
+};
+
+export const COMPOSER_TASKS: BenchTask[] = [xDm, gmail, slack, draftReplace];

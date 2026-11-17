@@ -80,7 +80,7 @@ async function playClaude(task: BenchTask): Promise<Play> {
     const ms = Date.now() - started;
     await new Promise((resolve) => setTimeout(resolve, 300));
     const calls = existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as LoggedCall) : [];
-    return scorePlay({ taskId: task.id, group: task.group, verdict: task.check(run, answer), calls, ms, answer, ...(error ? { runError: error } : {}) });
+    return { ...scorePlay({ taskId: task.id, group: task.group, verdict: task.check(run, answer), calls, ms, answer, ...(error ? { runError: error } : {}) }), events: [...run.events, ...run.requests] };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

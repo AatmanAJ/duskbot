@@ -18,6 +18,8 @@ export interface Play {
   errorKinds: Record<string, number>;
   answer: string;
   calls: LoggedCall[];
+  /** What the pages reported, for reading a failure afterwards. */
+  events?: unknown[];
   runError?: string;
 }
 
