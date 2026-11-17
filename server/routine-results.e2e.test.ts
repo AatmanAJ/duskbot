@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk, verificationServerEnvironment } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 it("runs every routine in the bot's main chat as an ordinary turn, with no run conversation, line or card, and its approvals there", async () => {
   const fixture = await launchVerificationServer();
@@ -248,7 +249,7 @@ it("after the upgrade, reports into and opens the conversation the person last w
       delete file.frozenResultsCleared;
       file.routines.find((candidate: any) => candidate.id === routine).resultsThreadId = oldest;
     }, (dataDir) => {
-      const bots = JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8")) as any[];
+      const bots = readSavedBots<any>(dataDir) as any[];
       for (const saved of bots) for (const each of saved.tasks ?? []) delete each.askedAt;
       writeFileSync(join(dataDir, "bots.json"), JSON.stringify(bots));
       rmSync(join(dataDir, "asked-at-filled"), { force: true });

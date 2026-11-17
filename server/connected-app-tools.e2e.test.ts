@@ -7,6 +7,7 @@ import { expect, it } from "vitest";
 
 import { launchVerificationServer } from "../scripts/control-dusk.ts";
 import { startFakeConnectedApps } from "./testing/fake-connected-apps.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 type Bridge = { command: string; args: string[]; env: Record<string, string> };
 
@@ -57,7 +58,7 @@ it("a bot given Gmail by its app switch reaches gmail.search_emails by name on C
     const bot = (await api("POST", "/api/bots", { name: "Paul" }, 201)).bot;
     // The record an Apps switch left before it also wrote the tool list: Gmail on by scope, no tool granted.
     await api("PATCH", `/api/bots/${bot.id}`, { composio: true, connectorTools: {}, connectorScopes: { apps: { gmail: "read", googlecalendar: "read" } } });
-    const saved = JSON.parse(readFileSync(join(fixture.info.dataDir, "bots.json"), "utf8")).find((row: any) => row.id === bot.id);
+    const saved = readSavedBots<any>(fixture.info.dataDir).find((row: any) => row.id === bot.id);
     expect(saved.connectorTools).toEqual({ gmail: { tools: "*" }, googlecalendar: { tools: "*" } });
 
     const send = async (text: string, sendId: string) => api("POST", `/api/bots/${bot.id}/messages`, { threadId: bot.threadId, text, sendId }, 202);

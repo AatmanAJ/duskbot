@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 it("retains empty teams, moves existing bots, and keeps legacy imports additive through restart", async () => {
   const fixture = await launchVerificationServer();
@@ -120,7 +121,7 @@ it("retains empty teams, moves existing bots, and keeps legacy imports additive 
     expect(await control("wait", "--channel", room.id, "--timeout", "30")).toMatchObject({ status: "settled" });
     const roomMessages = (await control("messages", "--channel", room.id, "--limit", "10") as any).messages;
     await waitForExit(restarted, { signal: "SIGTERM" });
-    const legacyBots = JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8"));
+    const legacyBots = readSavedBots<any>(dataDir);
     const legacyGroups = JSON.parse(readFileSync(join(dataDir, "groups.json"), "utf8"));
     const legacyBot = legacyBots.find((bot: any) => bot.id === a.id);
     const legacyGroup = legacyGroups.find((group: any) => group.id === room.id);
@@ -139,7 +140,7 @@ it("retains empty teams, moves existing bots, and keeps legacy imports additive 
     expect(recovered.groups.find((group: any) => group.id === room.id)).toMatchObject({ section: "Recovered group team", defaultResponder: { kind: "member", botId: a.id } });
     expect(await messages()).toEqual(transcript);
     expect((await control("messages", "--channel", room.id, "--limit", "10") as any).messages).toEqual(roomMessages);
-    expect(JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8")).find((bot: any) => bot.id === a.id).tasks).toHaveLength(1);
+    expect(readSavedBots<any>(dataDir).find((bot: any) => bot.id === a.id).tasks).toHaveLength(1);
     expect(JSON.parse(readFileSync(join(dataDir, "groups.json"), "utf8")).find((group: any) => group.id === room.id).tasks).toHaveLength(1);
     await api("/api/sidebar-sections", "POST", { name: "Must not overwrite recovery data" }, 500);
     expect(readFileSync(registryFile, "utf8")).toBe(malformed);

@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { launchVerificationServer, type VerificationServer } from "../scripts/control-dusk.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 describe("organizational folders through an isolated HTTP fixture", () => {
   let fixture: VerificationServer;
@@ -21,7 +22,7 @@ describe("organizational folders through an isolated HTTP fixture", () => {
   };
   const selection = (model: string) => ({ instanceId: "claude", model });
   const getBot = async (botId: string) => (await api("GET", "/api/bots?messages=30")).body.bots.find((bot: any) => bot.id === botId);
-  const persistedBot = (botId: string) => JSON.parse(readFileSync(join(fixture.info.dataDir, "bots.json"), "utf8")).find((bot: any) => bot.id === botId);
+  const persistedBot = (botId: string) => readSavedBots<any>(fixture.info.dataDir).find((bot: any) => bot.id === botId);
 
   beforeAll(async () => {
     fixture = await launchVerificationServer();

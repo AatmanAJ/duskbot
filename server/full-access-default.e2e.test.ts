@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk, verificationServerEnvironment } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 it("starts new bots and threads at Full access on each engine family, and keeps a person's Ask", async () => {
   const fixture = await launchVerificationServer({}, undefined, undefined, undefined, undefined, ["codex"]);
@@ -36,7 +37,7 @@ it("starts new bots and threads at Full access on each engine family, and keeps 
   const control = (...args: string[]) => runControlDusk([...args, "--url", url]) as Promise<any>;
   const send = (botId: string, threadId: string) => control("send", "--bot", botId, "--task", threadId, "--text", "Check the fixture report.");
   const wait = (botId: string, threadId: string) => control("wait", "--bot", botId, "--task", threadId, "--timeout", "30");
-  const stored = (botId: string) => JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8")).find((bot: any) => bot.id === botId);
+  const stored = (botId: string) => readSavedBots<any>(dataDir).find((bot: any) => bot.id === botId);
   const openCard = async (threadId: string) => ((await api("GET", `/api/threads/${threadId}/messages?limit=50`)).messages as any[])
     .find((message) => message.card?.requestId && !message.card.answered)?.card;
   try {

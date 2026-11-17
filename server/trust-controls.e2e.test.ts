@@ -7,6 +7,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { launchVerificationServer, verificationServerEnvironment, type VerificationServer } from "../scripts/control-dusk.ts";
 import { SessionRegistry } from "./sessions.ts";
 import { waitForExit } from "./testing/cleanup.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 const key = "isolated-trust-capability";
 let fixture: VerificationServer;
@@ -480,7 +481,7 @@ it("honors Ask every time enabled while a Full-access send is waiting for dispat
   try {
     await expect.poll(() => sessionEntered, { timeout: 5_000 }).toBe(true);
     expect((await api("PATCH", `/api/bots/${b.id}`, { outbound: { policy: "ask", dailyCap: 100 } })).status).toBe(200);
-    await expect.poll(() => JSON.parse(readFileSync(join(fixture.info.dataDir, "bots.json"), "utf8"))
+    await expect.poll(() => readSavedBots<any>(fixture.info.dataDir)
       .find((bot: any) => bot.id === b.id).outbound?.policy).toBe("ask");
   } finally {
     blockSession?.();

@@ -11,6 +11,7 @@ import { NO_TEXT_ENGINE } from "./memory-upkeep.ts";
 import { SKILL_REVIEW_MARKER } from "./skill-review.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { workerPort } from "./testing/worker-port.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const fake = (name: string) => join(SERVER_DIR, "testing", name);
@@ -192,7 +193,7 @@ posixOnly("the helper model, through the real server", () => {
     expect(saved.status).toBe(200);
     expect(saved.body.bot).toMatchObject({ id: bot.id, helperModel: false });
     expect(await getBot(bot.id)).toMatchObject({ helperModel: false });
-    const onDisk = () => (JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8")) as Array<{ id: string; helperModel?: boolean }>).find((record) => record.id === bot.id);
+    const onDisk = () => (readSavedBots<any>(dataDir) as Array<{ id: string; helperModel?: boolean }>).find((record) => record.id === bot.id);
     expect(onDisk()).toMatchObject({ helperModel: false });
 
     // memory upkeep: the panel's answer is the one a server with no helper gives, and the capture that comes due is refused
@@ -224,7 +225,7 @@ posixOnly("the helper model, through the real server", () => {
     const id = created.body.bot.id as string;
     // before any later request: on the wire and in the saved record
     expect(await getBot(id)).toMatchObject({ helperModel: false });
-    expect((JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8")) as Array<{ id: string }>).find((record) => record.id === id)).toMatchObject({ helperModel: false });
+    expect((readSavedBots<any>(dataDir) as Array<{ id: string }>).find((record) => record.id === id)).toMatchObject({ helperModel: false });
     // the copy then takes its source's engine, and still has no model steps from the helper
     expect((await api("PATCH", `/api/bots/${id}`, { name: "Private copy", modelSelection: { instanceId: "pi", model: "fake-model" } })).status).toBe(200);
     expect((await api("GET", `/api/bots/${id}/memory/upkeep`)).body).toMatchObject({ modelSteps: false });

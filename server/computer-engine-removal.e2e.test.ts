@@ -11,6 +11,7 @@ import { SNAPSHOT_REUSE_MS } from "./harness/registry.ts";
 import { freePortBlock } from "./testing/ports.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { vpsContainerName } from "./vps-computer.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FAKE_CLI = join(ROOT, "server/testing/fake-claude-cli.ts");
@@ -46,7 +47,7 @@ function install(home: string, vm: LocalVm) {
   }).then(response => response.status);
   const bots = async (): Promise<any[]> => (await api("GET", "/api/bots?messages=0")).bots;
   const bot = async (botId: string) => (await bots()).find(entry => entry.id === botId);
-  const savedBots = (): any[] => JSON.parse(readFileSync(join(data, "bots.json"), "utf8"));
+  const savedBots = (): any[] => readSavedBots<any>(data);
   const editSavedBot = (botId: string, edit: (bot: any) => void) => {
     const saved = savedBots();
     edit(saved.find(entry => entry.id === botId));
