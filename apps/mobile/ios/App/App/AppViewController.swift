@@ -16,12 +16,32 @@ extension CAPBridgeProtocol {
 }
 
 class AppViewController: CAPBridgeViewController {
+    /// Only a remote screen the person is viewing turns sideways; the rest of the app stays portrait.
+    var landscapeAllowed = false {
+        didSet {
+            guard landscapeAllowed != oldValue else { return }
+            setNeedsUpdateOfSupportedInterfaceOrientations()
+            if !landscapeAllowed { rotate(to: .portrait) }
+        }
+    }
+
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        landscapeAllowed ? .allButUpsideDown : .portrait
+    }
+
+    /// Turns the app even with the system's portrait lock on, as a viewer's rotate button asks.
+    func rotate(to mask: UIInterfaceOrientationMask) {
+        guard let scene = view.window?.windowScene else { return }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { _ in }
+    }
+
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(QrScannerPlugin())
         bridge?.registerPluginInstance(AppleSignInPlugin())
         bridge?.registerPluginInstance(SpeechRecognizerPlugin())
         bridge?.registerPluginInstance(GlassChromePlugin())
         bridge?.registerPluginInstance(NativeMenuPlugin())
+        bridge?.registerPluginInstance(OrientationPlugin())
         // iOS 26 gives the web view's scroll view a top edge effect that draws a pale band under the status bar; the
         // page scrolls inside itself, so the effect never tracks its content
         if #available(iOS 26.0, *) {
@@ -43,5 +63,33 @@ class AppViewController: CAPBridgeViewController {
         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         root.addSubview(web)
         view = root
+    }
+}
+
+@objc(OrientationPlugin)
+public class OrientationPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "OrientationPlugin"
+    public let jsName = "DuskOrientation"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "allowLandscape", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "rotate", returnType: CAPPluginReturnPromise),
+    ]
+
+    @objc func allowLandscape(_ call: CAPPluginCall) {
+        let on = call.getBool("on") ?? false
+        DispatchQueue.main.async {
+            (self.bridge?.viewController as? AppViewController)?.landscapeAllowed = on
+            call.resolve()
+        }
+    }
+
+    @objc func rotate(_ call: CAPPluginCall) {
+        let landscape = call.getString("to") == "landscape"
+        DispatchQueue.main.async {
+            guard let controller = self.bridge?.viewController as? AppViewController else { return call.resolve() }
+            if landscape { controller.landscapeAllowed = true }
+            controller.rotate(to: landscape ? .landscapeRight : .portrait)
+            call.resolve()
+        }
     }
 }

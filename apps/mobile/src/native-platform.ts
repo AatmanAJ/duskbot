@@ -18,7 +18,7 @@ const keystore = SecureStorage as unknown as {
 };
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform, ScanOverlay } from "@/mobile/platform";
+import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform, OrientationBridge, ScanOverlay } from "@/mobile/platform";
 import type { GlassBridge, GlassEvent, GlassState } from "@/mobile/native-glass";
 import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
@@ -102,6 +102,20 @@ export function menuBridge(plugin: MenuPlugin): MenuBridge {
     disarm: (id) => quiet(plugin.disarm({ id })),
     resolve: (id, content) => quiet(plugin.resolve({ id, content })),
     onEvent: (listener) => unsubscribe([plugin.addListener("menu", listener)]),
+  };
+}
+
+/** Which way the app may turn (ios/App/App/AppViewController.swift). */
+interface OrientationPlugin {
+  allowLandscape(options: { on: boolean }): Promise<void>;
+  rotate(options: { to: "portrait" | "landscape" }): Promise<void>;
+}
+const DuskOrientation = registerPlugin<OrientationPlugin>("DuskOrientation");
+
+export function orientationBridge(plugin: OrientationPlugin): OrientationBridge {
+  return {
+    allowLandscape: (on) => { void plugin.allowLandscape({ on }).catch(() => {}); },
+    rotate: (to) => { void plugin.rotate({ to }).catch(() => {}); },
   };
 }
 
@@ -397,6 +411,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     deviceName: () => kind === "ios" ? "iPhone" : "Android phone",
     glass: glass?.supported ? glassBridge(DuskGlass) : undefined,
     menu: menu?.supported ? menuBridge(DuskMenu) : undefined,
+    orientation: Capacitor.isPluginAvailable("DuskOrientation") ? orientationBridge(DuskOrientation) : undefined,
     haptic(type) {
       void (async () => {
         switch (type) {
