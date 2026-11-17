@@ -73,7 +73,7 @@ import { composerPlaceholder, pendingQuestion, sendLabels, SIMPLE_COMPOSER, SIMP
 import { PendingApprovalActions, PendingApprovalPanel, pendingApprovals } from "./PendingApproval";
 import { CallButton } from "./CallView";
 import { ApprovalChip, ComposerPlusMenu, GoalToggle } from "./ComposerPlusMenu";
-import { PhonePlus } from "./PhonePlus";
+import { PhoneMicGhost, PhonePlus } from "./PhonePlus";
 import { useThreadApproval } from "./thread-approval";
 import { usePillHeight, useSlideOnChange, useStackedField } from "./composer-wrap";
 import "@/styles/composer.css";
@@ -630,8 +630,7 @@ export function Composer({
   if (micTrail.place !== micPlace) setMicTrail({ place: micPlace, from: micTrail.place, swaps: micTrail.swaps + 1 });
   const micBack = singleRow && micPlace === "end" && micTrail.from === "stop";
   // a phone's mic comes out of the round button as the field fills and slips back into it as it empties
-  const micOut = singleRow && micPlace === "beside" && micTrail.from === "end";
-  const micIn = singleRow && micPlace === "end" && micTrail.from === "beside";
+  const micOut = singleRow && micPlace === "beside" && micTrail.from === "end", micIn = singleRow && micPlace === "end" && micTrail.from === "beside";
   const micFocused = useRef(false);
   useLayoutEffect(() => {
     if (micFocused.current && document.activeElement !== micButtonRef.current) micButtonRef.current?.focus({ preventScroll: true });
@@ -1211,11 +1210,7 @@ export function Composer({
               <span className="block size-[12px] rounded-[2.5px] bg-current" />
             </span>
           )}
-          {micIn && !recording && (
-            <span aria-hidden="true" data-composer-mic-ghost="" key={`mic-in-${micTrail.swaps}`} className="composer-mic-out pointer-events-none absolute inset-y-0 my-auto flex size-10 items-center justify-center rounded-full">
-              <Mic size={16} strokeWidth={1.75} absoluteStrokeWidth className="[&_rect]:fill-current" />
-            </span>
-          )}
+          {micIn && !recording && <PhoneMicGhost key={`mic-in-${micTrail.swaps}`} />}
           {ghostGlyph === "stop" && !singleRow && (
             <span aria-hidden="true" data-composer-mic-ghost key={`mic-${glyphs.swaps}`} className={cn(SIMPLE_CONTROL, "composer-mic-out pointer-events-none absolute bottom-0 right-9 flex items-center justify-center")}>
               <Icon name="mic" variant="filled" size={16} />
