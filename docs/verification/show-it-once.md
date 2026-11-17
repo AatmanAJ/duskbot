@@ -24,6 +24,11 @@ They cover, with the fake expense portal in `server/demo-recorder/fixtures`:
   the bot's own turn takes the step and the value must still be on screen;
 - the desktop: a viewer's RFB bytes read into clicks and keys, the driver's
   accessibility tree, and a plan carried out through the driver's actions.
+- the edges a review found (`server/demo-recorder/hardening.test.ts`): a key
+  typed right after Tab waits for the Tab to reach the page before its field is
+  read, Option and AltGr characters count as typing, a run stops between
+  steps, a slow page is not sent a form twice, and a saved secret goes only
+  into a secure field and stays out of every report.
 
 ## On real Chrome
 
