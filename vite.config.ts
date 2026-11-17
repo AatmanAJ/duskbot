@@ -119,6 +119,11 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },
+  // per checkout: a worktree links the same node_modules, and a second dev server rewriting node_modules/.vite under a
+  // running one makes that window's later imports (the screen viewer) fail until it restarts
+  cacheDir: fileURLToPath(new URL("./.dusk-scratch/vite", import.meta.url)),
+  // the screen viewer's dependency is bundled at start: found later, Vite re-bundles and fails the import in flight
+  optimizeDeps: { include: ["@novnc/novnc"] },
   test: {
     environment: "node",
     include,

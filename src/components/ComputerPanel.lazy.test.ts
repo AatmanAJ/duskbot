@@ -23,6 +23,10 @@ const fixture = vi.hoisted(() => ({
   outdated: false,
   updating: false,
   daemonUp: false,
+  /** Holds the first picture back until the test lets it come. */
+  screenshotGate: null as Promise<void> | null,
+  /** The live screen cannot be reached. */
+  unreachable: false,
 }));
 vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   ...await importOriginal<typeof import("./DesktopCapabilities")>(),
@@ -44,7 +48,13 @@ vi.mock("./CloudScreenPreview", () => ({
   CloudScreenPreview: () => createElement("div", { "data-live-screen": "" }),
 }));
 vi.mock("./BrowserPanel", () => ({ BrowserPanel: () => null }));
-vi.mock("./LiveDesktop", () => ({ LiveDesktop: (props: { expanded: boolean; wake?: boolean }) => createElement("div", { "data-live-screen": "", "data-expanded": String(props.expanded), "data-wake": String(Boolean(props.wake)) }) }));
+vi.mock("./LiveDesktop", async () => {
+  const { useEffect } = await import("react");
+  return { LiveDesktop: (props: { expanded: boolean; wake?: boolean; onUnreachable: () => void }) => {
+    useEffect(() => { if (fixture.unreachable) props.onUnreachable(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return createElement("div", { "data-live-screen": "", "data-expanded": String(props.expanded), "data-wake": String(Boolean(props.wake)) });
+  } };
+});
 vi.mock("./bot-settings/RoutinesSection", () => ({ RoutinesSection: () => null }));
 vi.mock("@/state/store", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
@@ -56,7 +66,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
       fixture.screenStopped = false;
       return { surface: "cloud", backend: "vps", configured: true, ready: true, container: "running" };
     }
-    if (path.startsWith("/api/bots/scout/computer/screenshot")) return { png: "FRAME", format: "jpeg" };
+    if (path.startsWith("/api/bots/scout/computer/screenshot")) { await fixture.screenshotGate; return { png: "FRAME", format: "jpeg" }; }
     if (path.startsWith("/api/bots/scout/computer/control")) return { held: false, helpReason: null };
     if (path.startsWith("/api/bots/scout/computer?")) {
       fixture.looks++;
@@ -71,6 +81,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
 }));
 
 const { ComputerPanel } = await import("./ComputerPanel");
+const { forgetComputerWakes } = await import("./bot-panel/computer-wake");
 const { BotEditorStore, initialState } = await import("@/state/store");
 
 const engine = {
@@ -134,6 +145,9 @@ afterEach(() => {
   fixture.outdated = false;
   fixture.updating = false;
   fixture.daemonUp = false;
+  fixture.screenshotGate = null;
+  fixture.unreachable = false;
+  forgetComputerWakes();
   vi.useRealTimers();
 });
 
@@ -404,5 +418,40 @@ describe("VPS computer preparation", () => {
     await open(makeBot({ computer: "cloud" }));
     expect(fixture.posts).toEqual([]);
     expect(document.querySelector("[data-live-screen]")).toBeNull();
+  });
+
+  it("keeps waking while the panel is away, and shows the wake again when it comes back", async () => {
+    let finish!: () => void;
+    fixture.provisionGate = new Promise((resolve) => { finish = resolve; });
+    await open(makeBot({ computer: "cloud" }), true);
+    flushSync(() => document.querySelector<HTMLButtonElement>("[data-panel-screen] button")!.click());
+    await settle();
+    expect(document.querySelector("[data-computer-waking]")).not.toBeNull();
+    // another tab: the computer view goes away mid-wake
+    root!.unmount();
+    root = null;
+    document.body.innerHTML = "";
+    await settle();
+    await open(makeBot({ computer: "cloud" }), true);
+    expect(document.querySelector("[data-inline-computer]")?.getAttribute("data-stage")).toBe("loading");
+    expect(document.querySelector("[data-computer-waking]")).not.toBeNull();
+    expect(document.querySelector("[data-asleep-mascot]")).toBeNull();
+    finish();
+    await expect.poll(() => document.querySelector("[data-live-screen]")).not.toBeNull();
+    // one wake, never a second one for coming back
+    expect(fixture.posts.filter((path) => path.endsWith("/provision"))).toHaveLength(1);
+  });
+
+  it("an awake computer whose live screen dropped shows its picture coming, never asleep", async () => {
+    fixture.container = "running";
+    fixture.unreachable = true;
+    let picture!: () => void;
+    fixture.screenshotGate = new Promise((resolve) => { picture = resolve; });
+    await open(makeBot({ computer: "cloud" }), true);
+    await expect.poll(() => document.querySelector("[data-live-screen]")).toBeNull();
+    expect(document.querySelector("[data-inline-computer]")?.getAttribute("data-stage")).toBe("loading");
+    expect(document.querySelector("[data-asleep-mascot]")).toBeNull();
+    picture();
+    await expect.poll(() => document.querySelector("[data-inline-computer]")?.getAttribute("data-stage")).toBe("screen");
   });
 });

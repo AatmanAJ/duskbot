@@ -9,6 +9,7 @@ import { Icon } from "../Icon";
 import { useCaptionChrome } from "../DesktopCapabilities";
 import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerived";
 import { ComputerTab } from "./ComputerTab";
+import { TabBoundary } from "./TabBoundary";
 import { panelTabs, phoneApp, screenViewAllowed } from "@/lib/store-app";
 import { dur, ease, feel } from "@/mobile/motion";
 import { PAGES, resolveTarget, TAB_LABEL, type PanelTab, type PanelTarget, type SimplePageId } from "./page-registry";
@@ -135,7 +136,7 @@ export function BotPanel({ bot, derived, linkedSection, computerRequest = 0, onC
   const tabContent = (
     <>
       {tab === "details" && <PanelDetailsTab bot={bot} derived={derived} onOpen={openPage} />}
-      {tab === "computer" && screenViewAllowed() && <ComputerTab bot={bot} derived={derived} onOpen={openPage} />}
+      {tab === "computer" && screenViewAllowed() && <TabBoundary name={bot.name}><ComputerTab bot={bot} derived={derived} onOpen={openPage} /></TabBoundary>}
       {tab === "advanced" && <PanelAdvancedTab bot={bot} derived={derived} onOpen={openPage} />}
     </>
   );

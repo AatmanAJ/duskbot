@@ -21,6 +21,7 @@ import { sidePanelCls } from "../bot-panel/side-panel";
 import { SegmentedTabs } from "../ui/SegmentedTabs";
 import { RoomAdvancedTab } from "./RoomAdvancedTab";
 import { RoomComputerTab } from "./RoomComputerTab";
+import { TabBoundary } from "../bot-panel/TabBoundary";
 import { PerBotModels, RoomDetailsTab, type RoomPage, type RoomTarget } from "./RoomDetailsTab";
 import type { RoomDialog } from "./RoomModals";
 import { RoomSheet } from "./RoomSheet";
@@ -147,7 +148,7 @@ export function RoomPanel({ group, overlay = false, initialTab = "details" }: { 
         animate={SWAP.animate}
       >
         {tab === "details" && <RoomDetailsTab {...rowProps} />}
-        {tab === "computer" && screenViewAllowed() && <RoomComputerTab members={members} />}
+        {tab === "computer" && screenViewAllowed() && <TabBoundary name={group.name}><RoomComputerTab members={members} /></TabBoundary>}
         {tab === "advanced" && <RoomAdvancedTab {...rowProps} />}
       </MotionDiv>
     </>
