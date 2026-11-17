@@ -239,7 +239,7 @@ describe("the recorder", () => {
     expect(routines).toHaveLength(1);
     expect(routines[0]!.name).toBe("File an expense report");
     expect(routines[0]!.prompt).toContain("file-an-expense-report");
-    expect(routines[0]!.prompt).toContain(INBOX);
+    expect(routines[0]!.prompt).toContain(`folder ${JSON.stringify(INBOX)}`);
     expect(routines[0]!.prompt).toContain("skill_replay");
   });
 
