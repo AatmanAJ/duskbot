@@ -107,7 +107,8 @@ it("Clive sets up multi-provider teams at Ask with no card, keeps existing threa
     await finish();
     await api("POST", `/api/bots/${chief.id}/respond`, { threadId: chief.threadId, requestId: deletion.requestId, behavior: "allow" });
     await expect.poll(async () => (await state()).some((bot: any) => bot.id === engineer.id), { timeout: 20_000 }).toBe(false);
-    // the decision resumes Clive once; let that turn settle before the next one starts
+    // the decision resumes Clive once; let that turn start and settle before the next one starts
+    await expect.poll(() => JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).pid, { timeout: 20_000 }).not.toBe(previousPid);
     await expect.poll(async () => !(await state()).find((bot: any) => bot.id === chief.id).busy, { timeout: 20_000 }).toBe(true);
     if (existsSync(fixture.fixtureDumpPath)) previousPid = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).pid;
     expect((await state()).filter((bot: any) => initialBotIds.has(bot.id)).map((bot: any) => bot.id).sort())
