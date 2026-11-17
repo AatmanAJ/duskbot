@@ -31,56 +31,99 @@ const SITE = new Set<string>(SITE_EVENTS);
 const APP = new Set<string>(APP_VISIT_EVENTS);
 
 export function visitsOf(events: readonly StoredEvent[], surfaces: readonly Surface[] = ["site"]): Visit[] {
-  const by = new Map<string, Visit>();
-  const opens = new Map<Visit, number>(), closed = new Map<Visit, number>();
-  for (const event of [...events].sort((a, b) => a.at - b.at)) {
-    const app = APP.has(event.name), account = event.name === "page_view";
-    if (!SITE.has(event.name) && !app && !account) continue;
-    const ctx = event.ctx ?? {};
-    const session = ctx.session ?? (app && ctx.install ? `${ctx.install}:${Math.floor(event.at / DAY)}` : null);
-    const visitor = app ? event.accountId ?? (ctx.install ? `install:${ctx.install}` : null) : ctx.visitor ?? (account ? event.accountId : null);
-    if (!session || !visitor) continue;
-    const surface = app ? ctx.app?.platform === "ios" || ctx.app?.platform === "android" || (event.name === "app_open" && event.props.kind === "mobile") ? "phone" : "desktop" : account ? "account" : "site";
-    const key = `${app ? "app" : surface}:${session}`;
-    let visit = by.get(key);
-    if (!visit) {
-      visit = { session, visitor, surface, start: event.at, end: event.at, host: ctx.host ?? null, keyword: null, pages: [], goals: [], leaves: new Map(), entry: "", exit: "", engagedMs: 0, bounced: true,
-        source: "direct", channel: "direct", referrer: null, campaign: null, ref: null, country: null, region: null, city: null, lat: null, lon: null, device: null, os: null, browser: null };
-      by.set(key, visit);
-      if (app) attribute(visit, ctx);
-    }
-    visit.start = Math.min(visit.start, event.at); visit.end = Math.max(visit.end, event.at);
-    if (app) {
-      if (surface === "phone") visit.surface = surface;
-      if (event.accountId) visit.visitor = event.accountId;
-      fill(visit, ctx);
-      if (event.name === "app_open" && !opens.has(visit)) opens.set(visit, event.at);
-      if (event.name === "app_screen") visit.pages.push({ path: String(event.props.screen ?? "/"), at: event.at, pv: null });
-      if (event.name === "app_close" && typeof event.props.ms === "number") closed.set(visit, Math.max(closed.get(visit) ?? 0, event.props.ms));
-    } else if (event.name === "site_view" || account) {
-      const first = visit.pages.length === 0;
-      const path = String(event.props.path ?? ctx.page ?? "/");
-      // the account page lives under /dashboard on the site's origin; its own paths start at its root
-      visit.pages.push({ path: account ? `/dashboard${path === "/" ? "" : path}` : path, at: event.at, pv: ctx.pv ?? null });
-      if (first) attribute(visit, ctx);
-      else fill(visit, ctx);
-    } else if (event.name === "site_goal") visit.goals.push({ goal: String(event.props.goal), at: event.at, to: typeof event.props.to === "string" ? event.props.to : null });
-    else if (event.name === "site_leave" && ctx.pv) {
-      const prev = visit.leaves.get(ctx.pv);
-      visit.leaves.set(ctx.pv, { path: String(event.props.path ?? ctx.page ?? "/"), scroll: Math.max(prev?.scroll ?? 0, Number(event.props.scroll) || 0), ms: Math.max(prev?.ms ?? 0, Number(event.props.ms) || 0) });
-    }
+  const sessions: Sessions = new Map();
+  for (const event of [...events].sort((a, b) => a.at - b.at)) addToSessions(sessions, event);
+  return visitsFrom(sessions, surfaces);
+}
+
+/** a visit while its events are still coming in: what the finished visit needs beyond its fields */
+export interface Session extends Visit {
+  /** the first app_open, the newest longest app_close, and whether an event with an account named the visitor */
+  opened: number | null; closedMs: number | null; named: boolean;
+}
+/** visits being built, by `${surface or app}:${session}`, in the order their first event came */
+export type Sessions = Map<string, Session>;
+
+/** adds one event (in time order) to the visits being built */
+export function addToSessions(by: Sessions, event: StoredEvent) {
+  const app = APP.has(event.name), account = event.name === "page_view";
+  if (!SITE.has(event.name) && !app && !account) return;
+  const ctx = event.ctx ?? {};
+  const session = ctx.session ?? (app && ctx.install ? `${ctx.install}:${Math.floor(event.at / DAY)}` : null);
+  const visitor = app ? event.accountId ?? (ctx.install ? `install:${ctx.install}` : null) : ctx.visitor ?? (account ? event.accountId : null);
+  if (!session || !visitor) return;
+  const surface = app ? ctx.app?.platform === "ios" || ctx.app?.platform === "android" || (event.name === "app_open" && event.props.kind === "mobile") ? "phone" : "desktop" : account ? "account" : "site";
+  const key = `${app ? "app" : surface}:${session}`;
+  let visit = by.get(key);
+  if (!visit) {
+    visit = { session, visitor, surface, start: event.at, end: event.at, host: ctx.host ?? null, keyword: null, pages: [], goals: [], leaves: new Map(), entry: "", exit: "", engagedMs: 0, bounced: true,
+      source: "direct", channel: "direct", referrer: null, campaign: null, ref: null, country: null, region: null, city: null, lat: null, lon: null, device: null, os: null, browser: null,
+      opened: null, closedMs: null, named: false };
+    by.set(key, visit);
+    if (app) attribute(visit, ctx);
   }
+  visit.start = Math.min(visit.start, event.at); visit.end = Math.max(visit.end, event.at);
+  if (app) {
+    if (surface === "phone") visit.surface = surface;
+    if (event.accountId) { visit.visitor = event.accountId; visit.named = true; }
+    fill(visit, ctx);
+    if (event.name === "app_open" && visit.opened === null) visit.opened = event.at;
+    if (event.name === "app_screen") visit.pages.push({ path: String(event.props.screen ?? "/"), at: event.at, pv: null });
+    if (event.name === "app_close" && typeof event.props.ms === "number") visit.closedMs = Math.max(visit.closedMs ?? 0, event.props.ms);
+  } else if (event.name === "site_view" || account) {
+    const first = visit.pages.length === 0;
+    const path = String(event.props.path ?? ctx.page ?? "/");
+    // the account page lives under /dashboard on the site's origin; its own paths start at its root
+    visit.pages.push({ path: account ? `/dashboard${path === "/" ? "" : path}` : path, at: event.at, pv: ctx.pv ?? null });
+    if (first) attribute(visit, ctx);
+    else fill(visit, ctx);
+  } else if (event.name === "site_goal") visit.goals.push({ goal: String(event.props.goal), at: event.at, to: typeof event.props.to === "string" ? event.props.to : null });
+  else if (event.name === "site_leave" && ctx.pv) {
+    const prev = visit.leaves.get(ctx.pv);
+    visit.leaves.set(ctx.pv, { path: String(event.props.path ?? ctx.page ?? "/"), scroll: Math.max(prev?.scroll ?? 0, Number(event.props.scroll) || 0), ms: Math.max(prev?.ms ?? 0, Number(event.props.ms) || 0) });
+  }
+}
+
+const ATTRIBUTED = ["source", "channel", "referrer", "campaign", "ref", "keyword"] as const;
+const FILLED = ["country", "region", "city", "lat", "lon", "device", "os", "browser"] as const;
+/** folds `later` (the same visits' events from a later time) into `into`, as if every event had been added to `into` in order */
+export function mergeSessions(into: Sessions, later: Sessions) {
+  for (const [key, next] of later) {
+    const visit = into.get(key);
+    if (!visit) { into.set(key, next); continue; }
+    const app = key.startsWith("app:");
+    if (app) {
+      if (next.named) { visit.visitor = next.visitor; visit.named = true; }
+      if (next.surface === "phone") visit.surface = "phone";
+    } else if (!visit.pages.length && next.pages.length) {
+      // a site or account visit takes its source from its first page view
+      for (const field of ATTRIBUTED) (visit as unknown as Record<string, unknown>)[field] = next[field];
+    }
+    for (const field of FILLED) (visit as unknown as Record<string, unknown>)[field] ??= next[field];
+    visit.start = Math.min(visit.start, next.start); visit.end = Math.max(visit.end, next.end);
+    visit.pages.push(...next.pages); visit.goals.push(...next.goals);
+    for (const [pv, leave] of next.leaves) {
+      const prev = visit.leaves.get(pv);
+      visit.leaves.set(pv, { path: leave.path, scroll: Math.max(prev?.scroll ?? 0, leave.scroll), ms: Math.max(prev?.ms ?? 0, leave.ms) });
+    }
+    visit.opened ??= next.opened;
+    if (next.closedMs !== null) visit.closedMs = Math.max(visit.closedMs ?? 0, next.closedMs);
+  }
+}
+
+/** the finished visits on these surfaces, oldest first; the sessions are left as they were */
+export function visitsFrom(by: Sessions, surfaces: readonly Surface[]): Visit[] {
   const out: Visit[] = [];
-  for (const visit of by.values()) {
-    if (!surfaces.includes(visit.surface)) continue;
-    if (!visit.pages.length && opens.has(visit)) visit.pages.push({ path: "/", at: opens.get(visit)!, pv: null });
-    if (!visit.pages.length) continue;
-    visit.pages.sort((a, b) => a.at - b.at);
-    visit.entry = visit.pages[0]!.path; visit.exit = visit.pages.at(-1)!.path;
-    const engaged = [...visit.leaves.values()].reduce((sum, leave) => sum + leave.ms, 0);
-    visit.engagedMs = closed.get(visit) ?? Math.max(engaged, visit.end - visit.start);
-    visit.bounced = visit.pages.length === 1 && visit.goals.length === 0;
-    out.push(visit);
+  for (const state of by.values()) {
+    if (!surfaces.includes(state.surface)) continue;
+    const pages = [...state.pages];
+    if (!pages.length && state.opened !== null) pages.push({ path: "/", at: state.opened, pv: null });
+    if (!pages.length) continue;
+    pages.sort((a, b) => a.at - b.at);
+    const { opened: _opened, closedMs, named: _named, ...fields } = state;
+    const engaged = [...state.leaves.values()].reduce((sum, leave) => sum + leave.ms, 0);
+    out.push({ ...fields, pages, goals: [...state.goals], leaves: new Map(state.leaves), entry: pages[0]!.path, exit: pages.at(-1)!.path,
+      engagedMs: closedMs ?? Math.max(engaged, state.end - state.start), bounced: pages.length === 1 && state.goals.length === 0 });
   }
   return out.sort((a, b) => a.start - b.start);
 }
@@ -260,7 +303,9 @@ export interface FunnelInput {
   mode: "visitors" | "signups";
   visits: readonly Visit[];
   identity: Identity;
-  events: readonly StoredEvent[];
+  /** the window's events, or `facts` already taken from them */
+  events?: readonly StoredEvent[];
+  facts?: FunnelFacts;
   people: People;
   /** first time each account chose a cloud (a cart checkout with a desktop) */
   cloudChosen: ReadonlyMap<string, number>;
@@ -270,6 +315,26 @@ export interface FunnelInput {
   replied: ReadonlyMap<string, number>;
 }
 const ONBOARDING = ["name", "plan", "app"] as const;
+
+/** what the funnel reads from events, per account: the first time of each onboarding step ("done" when finished), its active
+ *  days, and its newest event (the page it was on) */
+export interface FunnelFacts {
+  onboarding: Map<string, Map<string, number>>;
+  days: Map<string, Set<number>>;
+  last: Map<string, { name: string; page: string | null }>;
+}
+export function funnelFacts(events: readonly StoredEvent[]): FunnelFacts {
+  const onboarding = new Map<string, Map<string, number>>(), last = new Map<string, { name: string; page: string | null }>();
+  for (const event of events) {
+    if (!event.accountId) continue;
+    last.set(event.accountId, { name: event.name, page: event.name === "page_view" ? String(event.props.path) : event.ctx?.page ?? null });
+    const step = event.name === "onboarding_step" ? String(event.props.step) : event.name === "onboarding_done" ? "done" : null;
+    if (!step) continue;
+    const per = onboarding.get(event.accountId) ?? onboarding.set(event.accountId, new Map()).get(event.accountId)!;
+    if (!per.has(step) || per.get(step)! > event.at) per.set(step, event.at);
+  }
+  return { onboarding, days: activeDays(events), last };
+}
 
 /**
  * The Dusk funnel per person: a step counts someone who reached it and every step above it, whenever they did (someone
@@ -282,15 +347,7 @@ export function funnel(input: FunnelInput) {
   const { identity } = input;
   const firstVisit = new Map<string, Visit>();
   for (const visit of input.visits) if (!firstVisit.has(visit.visitor) || firstVisit.get(visit.visitor)!.start > visit.start) firstVisit.set(visit.visitor, visit);
-  const onboarding = new Map<string, Map<string, number>>();
-  for (const event of input.events) {
-    if (!event.accountId) continue;
-    const step = event.name === "onboarding_step" ? String(event.props.step) : event.name === "onboarding_done" ? "done" : null;
-    if (!step) continue;
-    const per = onboarding.get(event.accountId) ?? onboarding.set(event.accountId, new Map()).get(event.accountId)!;
-    if (!per.has(step) || per.get(step)! > event.at) per.set(step, event.at);
-  }
-  const days = activeDays(input.events);
+  const { onboarding, days, last: lastEventOf } = input.facts ?? funnelFacts(input.events ?? []);
   type Person = { key: string; source: string; channel: string; account: string | null; times: Array<number | null>; last: { page: string | null; scroll: number | null; event: string | null } };
   const people: Person[] = [];
   const accountSteps = (account: string | null): Array<number | null> => {
@@ -320,15 +377,13 @@ export function funnel(input: FunnelInput) {
         last: { page: lastVisit.exit, scroll: lastLeave?.scroll ?? null, event: lastVisit.goals.at(-1)?.goal ?? null } });
     }
   } else {
-    const lastEventOf = new Map<string, StoredEvent>();
-    for (const event of input.events) if (event.accountId) lastEventOf.set(event.accountId, event);
     for (const [account, at] of input.people.signups) {
       if (at < input.from || at >= input.to) continue;
       const visitor = [...(identity.visitorsOf.get(account) ?? [])][0];
       const visit = visitor ? firstVisit.get(visitor) : undefined;
       const lastEvent = lastEventOf.get(account);
       people.push({ key: account, source: visit?.source ?? "unknown", channel: visit?.channel ?? "unknown", account, times: [visit?.start ?? null, at, ...accountSteps(account)],
-        last: { page: lastEvent?.name === "page_view" ? String(lastEvent.props.path) : lastEvent?.ctx?.page ?? null, scroll: null, event: lastEvent?.name ?? null } });
+        last: { page: lastEvent?.page ?? null, scroll: null, event: lastEvent?.name ?? null } });
     }
   }
   const labels: Array<[string, string]> = [["visit", "visited the site"], ["signup", input.mode === "visitors" ? "joined the waitlist or signed up" : "signed up"],

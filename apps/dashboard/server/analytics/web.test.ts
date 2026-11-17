@@ -246,7 +246,7 @@ describe("retention", () => {
   });
 });
 
-function funnelFixture(): FunnelInput {
+function funnelFixture(): FunnelInput & { events: StoredEvent[] } {
   const events = [site("a1", "a1", FROM, "/", { source: "ChatGPT", channel: "ai" }), site("b1", "b1", FROM, "/pricing", { channel: "search" }), link("a1", "a"), link("b1", "b")];
   for (const [i, step] of ["name", "plan", "app"].entries()) events.push(event("onboarding_step", FROM + (i + 2) * 1000, { step }, undefined, "a"));
   events.push(event("onboarding_done", FROM + 5000, {}, undefined, "a"), event("onboarding_step", FROM + 3000, { step: "plan" }, undefined, "b"));

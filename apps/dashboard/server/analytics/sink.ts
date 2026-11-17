@@ -1,6 +1,7 @@
-import type { Db } from "mongodb";
+import { Binary, type Db } from "mongodb";
 import { DAY_MS, RAW_RETENTION_DAYS, type Props } from "./events.ts";
 import type { EventContext } from "./context.ts";
+import type { RollupDoc, RollupMeta, RollupScope, RollupStore } from "./rollup.ts";
 
 export interface StoredEvent { id: string; name: string; at: number; accountId: string | null; props: Props; ctx?: EventContext }
 export interface AuditEntry { id: string; at: number; actor: string; action: string; target: string | null; detail: Record<string, string | number | boolean | null> }
@@ -45,7 +46,8 @@ export interface AnalyticsSink {
   auditFor(targets: string[], limit: number, skipActions?: string[]): Promise<AuditEntry[]>;
   health(): Promise<{ ok: boolean; detail: string; latencyMs: number | null }>;
   /** raw events in [since, until), oldest first, optionally only some names */
-  scan(since: number, until: number, names?: readonly string[]): Promise<StoredEvent[]>;
+  /** `byTime` reads through the time index, so events of the same millisecond come in the order they were written (the rollups need one order) */
+  scan(since: number, until: number, names?: readonly string[], byTime?: boolean): Promise<StoredEvent[]>;
   notes(since: number, until: number): Promise<Note[]>;
   saveNote(note: Note): Promise<void>;
   deleteNote(id: string): Promise<boolean>;
@@ -59,6 +61,16 @@ export interface AnalyticsSink {
   lastSeen(since: number): Promise<Map<string, number>>;
   /** visitors and installs with no account on their events in [since, until), newest first; `before` pages on lastAt */
   anonymous(since: number, until: number, options: { before?: number; limit: number }): Promise<{ total: number; rows: AnonymousRow[] }>;
+  /** how many raw events of these names are in [since, until) */
+  count?(since: number, until: number, names: readonly string[]): Promise<number>;
+  /** the time of the oldest raw event, null with none */
+  oldest?(): Promise<number | null>;
+  /** called with an event's time when one is written or removed (null: any may have been) */
+  listen?(fn: (at: number | null) => void): void;
+  /** whose events scan() returns, for the admin's rollups */
+  rollupScope?(): RollupScope | null;
+  /** where rollups of this service's analytics are kept */
+  rollups?: RollupStore;
 }
 
 /** the anonymous people among these events, newest first: shared by the memory sink and the tests */
@@ -78,17 +90,22 @@ export function anonymousOf(events: readonly StoredEvent[], since: number, until
   return [...rows.values()].sort((a, b) => b.lastAt - a.lastAt || a.key.localeCompare(b.key));
 }
 
+let memorySinks = 0;
 export function memorySink(now: () => number = Date.now): AnalyticsSink & { all: StoredEvent[]; daySums: Map<string, number> } {
   let all: StoredEvent[] = [];
   const daySums = new Map<string, number>(), marks = new Map<string, number | null>(), audits: AuditEntry[] = [], notes = new Map<string, Note>(), crawlLog: Crawl[] = [];
+  const listeners: Array<(at: number | null) => void> = [];
+  const changed = (at: number | null) => { for (const fn of listeners) fn(at); };
   const match = (event: StoredEvent, q: Omit<EventQuery, "limit">) => (q.accountId === undefined || event.accountId === q.accountId) && (q.name === undefined || event.name === q.name)
     && (q.since === undefined || event.at >= q.since) && (q.before === undefined || event.at < q.before);
-  return {
+  const key = `memory${++memorySinks}`;
+  const sink: AnalyticsSink & { all: StoredEvent[]; daySums: Map<string, number> } = {
     all, daySums,
     async insert(event) {
       all.push(event);
+      changed(event.at);
       const cutoff = now() - RAW_RETENTION_DAYS * DAY_MS;
-      if (all[0] && all[0].at < cutoff) { all = all.filter(item => item.at >= cutoff); this.all = all; }
+      if (all[0] && all[0].at < cutoff) { all = all.filter(item => item.at >= cutoff); this.all = all; changed(null); }
     },
     async bump(day, name, by = 1) { const key = `${day}|${name}`; daySums.set(key, (daySums.get(key) ?? 0) + by); },
     async once(key, expiresAt) {
@@ -107,7 +124,10 @@ export function memorySink(now: () => number = Date.now): AnalyticsSink & { all:
       return [...by].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
     },
     async accounts(names, since) { return new Set(all.filter(event => event.accountId && names.includes(event.name) && event.at >= since).map(event => event.accountId!)); },
-    async forget(accountId) { all = all.filter(event => event.accountId !== accountId); this.all = all; },
+    async forget(accountId) {
+      for (const event of all) if (event.accountId === accountId) changed(event.at);
+      all = all.filter(event => event.accountId !== accountId); this.all = all;
+    },
     async audit(entry) { audits.push(entry); },
     async auditLog(limit, before) { return audits.filter(entry => before === undefined || entry.at < before).sort((a, b) => b.at - a.at).slice(0, limit); },
     async auditFor(targets, limit, skipActions = []) { return audits.filter(entry => entry.target !== null && targets.includes(entry.target) && !skipActions.includes(entry.action)).sort((a, b) => b.at - a.at).slice(0, limit); },
@@ -137,7 +157,12 @@ export function memorySink(now: () => number = Date.now): AnalyticsSink & { all:
       const rows = anonymousOf(all, since, until);
       return { total: rows.length, rows: rows.filter(row => options.before === undefined || row.lastAt < options.before).slice(0, options.limit) };
     },
+    async count(since, until, names) { return all.filter(event => event.at >= since && event.at < until && names.includes(event.name)).length; },
+    async oldest() { return all.reduce<number | null>((min, event) => min === null || event.at < min ? event.at : min, null); },
+    listen(fn) { listeners.push(fn); },
+    rollupScope: () => ({ key, sink, hidden: null, drops: null }),
   };
+  return sink;
 }
 
 type EventDoc = { _id: string; name: string; at: Date; accountId: string | null; props: Props; ctx?: EventContext };
@@ -158,14 +183,51 @@ export async function mongoSink(db: Db): Promise<AnalyticsSink> {
     audits.createIndexes([{ key: { at: -1 } }, { key: { target: 1, at: -1 } }]),
     notes.createIndexes([{ key: { at: 1 } }]),
     db.collection("analytics_crawls").createIndexes([{ key: { at: 1 } }]),
+    ...rollupIndexes(db),
   ]);
-  return sinkOf(db);
+  const sink = sinkOf(db, "own");
+  return { ...sink, rollups: mongoRollupStore(db) };
 }
 
 /** another service's analytics, read only (preview's admin reading dusk.bot's): no setup, and every write refuses */
 export function readonlySink(db: Db): AnalyticsSink {
   const refuse = () => Promise.reject(new Error("These analytics are read only."));
-  return { ...sinkOf(db), insert: refuse, bump: refuse, once: refuse, forget: refuse, audit: refuse, saveNote: refuse, deleteNote: refuse, crawl: refuse };
+  return { ...sinkOf(db, "live"), insert: refuse, bump: refuse, once: refuse, forget: refuse, audit: refuse, saveNote: refuse, deleteNote: refuse, crawl: refuse };
+}
+
+type RollupRow = Omit<RollupDoc, "at" | "data"> & { _id: string; at: Date; data: Binary };
+/** analytics_rollups: digests of closed hours and days (rollup.ts), kept as long as raw events; analytics_rollup_marks: when a slot last went stale */
+function rollupIndexes(db: Db) {
+  const keep = (RAW_RETENTION_DAYS + 2) * 86_400;
+  return [db.collection("analytics_rollups").createIndexes([{ key: { scope: 1, slot: 1 } }, { key: { at: 1 }, expireAfterSeconds: keep }]),
+    db.collection("analytics_rollup_marks").createIndexes([{ key: { at: 1 }, expireAfterSeconds: keep }])];
+}
+export function mongoRollupStore(db: Db): RollupStore {
+  const rows = db.collection<RollupRow>("analytics_rollups"), marks = db.collection<{ _id: string; stamp: number; at: Date }>("analytics_rollup_marks");
+  const id = (scope: string, kind: string, slot: string) => `${scope}|${kind}|${slot}`;
+  const toDoc = ({ _id: _ignored, at, data, ...rest }: RollupRow): RollupDoc => ({ ...rest, at: at.getTime(), data: data.buffer });
+  return {
+    async read(scope, kind, slots) {
+      return (await rows.find({ _id: { $in: slots.map(slot => id(scope, kind, slot)) } }).maxTimeMS(READ_TIMEOUT_MS).toArray()).map(toDoc);
+    },
+    async meta(scope, slots) {
+      return (await rows.find({ scope, slot: { $in: [...slots] } }, { projection: { data: 0 } }).maxTimeMS(READ_TIMEOUT_MS).toArray())
+        .map(({ _id: _ignored, at, ...rest }) => ({ ...rest, at: at.getTime() }) as unknown as RollupMeta);
+    },
+    async write(docs) {
+      if (!docs.length) return;
+      await rows.bulkWrite(docs.map(doc => ({ replaceOne: { filter: { _id: id(doc.scope, doc.kind, doc.slot) }, upsert: true,
+        replacement: { ...doc, at: new Date(doc.at), data: new Binary(doc.data) } } })), { ordered: false });
+    },
+    async marks(source, slots) {
+      const docs = await marks.find({ _id: { $in: [...slots, "*"].map(slot => `${source}|${slot}`) } }).toArray();
+      return new Map(docs.map(doc => [doc._id.slice(source.length + 1), doc.stamp]));
+    },
+    async mark(source, slots, stamp) {
+      await marks.bulkWrite(slots.map(slot => ({ updateOne: { filter: { _id: `${source}|${slot}` }, upsert: true,
+        update: { $max: { stamp }, $set: { at: new Date(slot === "*" ? Date.now() : Date.parse(slot.startsWith("d:") ? `${slot.slice(2)}T00:00:00Z` : `${slot.slice(2)}:00:00Z`)) } } } })), { ordered: false });
+    },
+  };
 }
 
 function collectionsOf(db: Db) {
@@ -175,11 +237,16 @@ function collectionsOf(db: Db) {
     crawlCollection: db.collection<{ at: Date; bot: string; kind: Crawl["kind"]; path: string; host: string | null }>("analytics_crawls") };
 }
 
-function sinkOf(db: Db): AnalyticsSink {
+function sinkOf(db: Db, key: string): AnalyticsSink {
   const { events, daily, marks, audits, notes, crawlCollection } = collectionsOf(db);
   const toEvent = (doc: EventDoc): StoredEvent => ({ id: doc._id, name: doc.name, at: doc.at.getTime(), accountId: doc.accountId, props: doc.props ?? {}, ...(doc.ctx ? { ctx: doc.ctx } : {}) });
-  return {
-    async insert(event) { await events.insertOne({ _id: event.id, name: event.name, at: new Date(event.at), accountId: event.accountId, props: event.props, ...(event.ctx ? { ctx: event.ctx } : {}) }); },
+  const listeners: Array<(at: number | null) => void> = [];
+  const changed = (at: number | null) => { for (const fn of listeners) fn(at); };
+  const sink: AnalyticsSink = {
+    async insert(event) {
+      await events.insertOne({ _id: event.id, name: event.name, at: new Date(event.at), accountId: event.accountId, props: event.props, ...(event.ctx ? { ctx: event.ctx } : {}) });
+      changed(event.at);
+    },
     async bump(day, name, by = 1) { await daily.updateOne({ _id: `${day}|${name}` }, { $setOnInsert: { day, name }, $inc: { count: by } }, { upsert: true }); },
     async once(key, expiresAt) {
       const until = expiresAt === null ? null : new Date(expiresAt);
@@ -205,7 +272,12 @@ function sinkOf(db: Db): AnalyticsSink {
     async accounts(names, since) {
       return new Set((await events.distinct("accountId", { name: { $in: names }, at: { $gte: new Date(since) }, accountId: { $type: "string" } })) as string[]);
     },
-    async forget(accountId) { await events.deleteMany({ accountId }); },
+    async forget(accountId) {
+      const hours = await events.aggregate<{ _id: number }>([{ $match: { accountId } }, { $group: { _id: { $subtract: [{ $toLong: "$at" }, { $mod: [{ $toLong: "$at" }, 3_600_000] }] } } }],
+        { maxTimeMS: READ_TIMEOUT_MS }).toArray().catch(() => null);
+      await events.deleteMany({ accountId });
+      if (hours) for (const hour of hours) changed(Number(hour._id)); else changed(null);
+    },
     async audit(entry) { const { id, at, ...rest } = entry; await audits.insertOne({ _id: id, at: new Date(at), ...rest }); },
     async auditLog(limit, before) {
       return (await audits.find(before === undefined ? {} : { at: { $lt: new Date(before) } }).sort({ at: -1 }).limit(limit).toArray())
@@ -214,9 +286,10 @@ function sinkOf(db: Db): AnalyticsSink {
     async auditFor(targets, limit, skipActions = []) {
       return (await audits.find({ target: { $in: targets }, ...(skipActions.length ? { action: { $nin: skipActions } } : {}) }).sort({ at: -1 }).limit(limit).toArray()).map(({ _id, at, ...rest }) => ({ id: _id, at: at.getTime(), ...rest }));
     },
-    async scan(since, until, names) {
+    async scan(since, until, names, byTime) {
       const filter = { at: { $gte: new Date(since), $lt: new Date(until) }, ...(names ? { name: { $in: [...names] } } : {}) };
-      const docs = await events.find(filter).sort({ at: -1 }).limit(SCAN_LIMIT).maxTimeMS(READ_TIMEOUT_MS).toArray();
+      const query = events.find(filter).sort({ at: -1 }).limit(SCAN_LIMIT).maxTimeMS(READ_TIMEOUT_MS);
+      const docs = await (byTime ? query.hint({ at: 1 }) : query).toArray();
       return docs.reverse().map(toEvent);
     },
     async notes(since, until) {
@@ -266,5 +339,15 @@ function sinkOf(db: Db): AnalyticsSink {
       const started = performance.now();
       try { await db.command({ ping: 1 }); return { ok: true, detail: "mongodb", latencyMs: Math.round(performance.now() - started) }; } catch { return { ok: false, detail: "mongodb ping failed", latencyMs: null }; }
     },
+    async count(since, until, names) {
+      return events.countDocuments({ at: { $gte: new Date(since), $lt: new Date(until) }, name: { $in: [...names] } }, { maxTimeMS: READ_TIMEOUT_MS });
+    },
+    async oldest() {
+      const [doc] = await events.find({}, { projection: { at: 1 } }).sort({ at: 1 }).limit(1).toArray();
+      return doc ? doc.at.getTime() : null;
+    },
+    listen(fn) { listeners.push(fn); },
+    rollupScope: () => ({ key, sink, hidden: null, drops: null }),
   };
+  return sink;
 }

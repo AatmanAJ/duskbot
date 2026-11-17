@@ -113,6 +113,13 @@ export function createAdmin(options: AdminOptions) {
     const directory = () => withoutAccounts(view.directory(), hidden());
     const store = () => withoutBilling(view.store(), hidden());
     const sink: AnalyticsSink = { ...view.sink, scan: async (since, until, names) => { const ids = hidden(); return (await view.sink.scan(since, until, names)).filter(event => !isTestEvent(event, ids)); },
+      // the rollups read the unfiltered events and drop the same ones, keyed apart from the unfiltered view's
+      rollupScope: () => {
+        const base = view.sink.rollupScope?.();
+        if (!base) return null;
+        const ids = hidden();
+        return { key: `${base.key}~clean`, sink: base.sink, hidden: ids, drops: event => isTestEvent(event, ids) };
+      },
       person: async query => { const ids = hidden(); return (await view.sink.person(query)).filter(event => !isTestEvent(event, ids)); },
       lastSeen: async since => { const seen = await view.sink.lastSeen(since); for (const id of hidden()) seen.delete(id); return seen; },
       anonymous: async (since, until, options) => {

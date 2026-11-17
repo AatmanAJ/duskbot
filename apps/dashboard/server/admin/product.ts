@@ -1,5 +1,6 @@
 import type { StoredEvent } from "../analytics/sink.ts";
 import { DAY } from "../analytics/web.ts";
+import { pack, unpack, type Digest } from "../analytics/rollup.ts";
 
 export interface FunnelStepIn { id: string; label: string; count: number }
 export interface ProductInput { from: number; to: number; events: StoredEvent[]; funnel: FunnelStepIn[] }
@@ -23,17 +24,26 @@ const median = (values: number[]) => {
 const rate = (part: number, whole: number) => whole > 0 ? part / whole : null;
 const words = (value: string) => value.replace(/_/g, " ");
 
-function tally(events: StoredEvent[], key: (event: StoredEvent) => string | null, limit = 20): Count[] {
-  const map = new Map<string, { count: number; people: Set<string> }>();
-  for (const event of events) {
-    const k = key(event);
-    if (!k) continue;
-    const row = map.get(k) ?? map.set(k, { count: 0, people: new Set() }).get(k)!;
-    row.count++;
-    const who = whoOf(event);
-    if (who) row.people.add(who);
+type Tally = Map<string, { count: number; people: Set<string> }>;
+function count(map: Tally, key: string | null, who: string | null) {
+  if (!key) return;
+  const row = map.get(key) ?? map.set(key, { count: 0, people: new Set() }).get(key)!;
+  row.count++;
+  if (who) row.people.add(who);
+}
+function mergeTally(into: Tally, later: Tally) {
+  for (const [key, row] of later) {
+    const mine = into.get(key);
+    if (!mine) { into.set(key, row); continue; }
+    mine.count += row.count;
+    for (const who of row.people) mine.people.add(who);
   }
-  return [...map].map(([k, row]) => ({ key: k, count: row.count, people: row.people.size })).sort((a, b) => b.count - a.count || b.people - a.people).slice(0, limit);
+}
+const rowsOf = (map: Tally, limit = 20): Count[] => [...map].map(([k, row]) => ({ key: k, count: row.count, people: row.people.size })).sort((a, b) => b.count - a.count || b.people - a.people).slice(0, limit);
+function tally(events: StoredEvent[], key: (event: StoredEvent) => string | null, limit = 20): Count[] {
+  const map: Tally = new Map();
+  for (const event of events) count(map, key(event), whoOf(event));
+  return rowsOf(map, limit);
 }
 
 /**
@@ -41,29 +51,23 @@ function tally(events: StoredEvent[], key: (event: StoredEvent) => string | null
  * lift is the share of a feature's users active in the window's last week minus the same share for everyone else
  */
 export function featureRows(events: StoredEvent[], from: number, to: number): FeatureRow[] {
+  const digest = productDigest.empty();
+  for (const event of events) productDigest.add(digest, event);
+  return featureRowsOf(digest, from, to);
+}
+function featureRowsOf(digest: ProductDigest, from: number, to: number): FeatureRow[] {
   const lastWeek = Math.max(from, to - 7 * DAY);
-  const appPeople = new Set<string>(), recent = new Set<string>(), earlyFirst = new Map<string, number>();
-  const uses = new Map<string, Map<string, Set<number>>>();
-  for (const event of events) {
-    const who = whoOf(event);
-    if (!who || !event.name.startsWith("app_")) continue;
-    appPeople.add(who);
-    if (event.at >= lastWeek) recent.add(who);
-    if (!earlyFirst.has(who) || earlyFirst.get(who)! > event.at) earlyFirst.set(who, event.at);
-    if (event.name !== "app_feature" || typeof event.props.feature !== "string") continue;
-    const per = uses.get(event.props.feature) ?? uses.set(event.props.feature, new Map()).get(event.props.feature)!;
-    (per.get(who) ?? per.set(who, new Set()).get(who)!).add(dayIndex(event.at));
-  }
-  const early = [...earlyFirst].filter(([, at]) => at < lastWeek).map(([who]) => who);
+  const appPeople = digest.app.size, recent = new Set([...digest.app].filter(([, [, last]]) => last >= lastWeek).map(([who]) => who));
+  const early = [...digest.app].filter(([, [first]]) => first < lastWeek).map(([who]) => who);
   const stayed = (list: string[]) => rate(list.filter(who => recent.has(who)).length, list.length);
-  return [...uses].map(([feature, per]) => {
+  return [...digest.uses].map(([feature, per]) => {
     const users = [...per.keys()];
     const usersEarly = early.filter(who => per.has(who)), othersEarly = early.filter(who => !per.has(who));
     const usedStay = usersEarly.length >= MIN_PEOPLE ? stayed(usersEarly) : null, otherStay = othersEarly.length >= MIN_PEOPLE ? stayed(othersEarly) : null;
     const lastDay = (who: string) => Math.max(...per.get(who)!);
     return {
       feature, people: users.length, uses: [...per.values()].reduce((sum, days) => sum + days.size, 0),
-      adoption: rate(users.length, appPeople.size), repeat: rate(users.filter(who => per.get(who)!.size >= 2).length, users.length),
+      adoption: rate(users.length, appPeople), repeat: rate(users.filter(who => per.get(who)!.size >= 2).length, users.length),
       triedOnce: users.filter(who => per.get(who)!.size === 1 && lastDay(who) < dayIndex(lastWeek)).length,
       lift: usedStay !== null && otherStay !== null ? usedStay - otherStay : null,
     };
@@ -71,17 +75,7 @@ export function featureRows(events: StoredEvent[], from: number, to: number): Fe
 }
 
 /** an app moment (a card, a dialog, a step) with how it went: its first telling sub-word, like action or result */
-function moments(events: StoredEvent[]) {
-  const map = new Map<string, { count: number; people: Set<string>; outcomes: Map<string, number> }>();
-  for (const event of events) {
-    if (event.name !== "app_action" || typeof event.props.name !== "string") continue;
-    const row = map.get(event.props.name) ?? map.set(event.props.name, { count: 0, people: new Set(), outcomes: new Map() }).get(event.props.name)!;
-    row.count++;
-    const who = whoOf(event);
-    if (who) row.people.add(who);
-    const sub = SUBKEYS.map(key => event.props[key]).find(value => typeof value === "string");
-    if (typeof sub === "string") row.outcomes.set(sub, (row.outcomes.get(sub) ?? 0) + 1);
-  }
+function momentsOf(map: ProductDigest["moments"]) {
   return [...map].map(([name, row]) => ({ name, count: row.count, people: row.people.size, outcomes: [...row.outcomes].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count).slice(0, 6) }))
     .sort((a, b) => b.count - a.count).slice(0, 40);
 }
@@ -133,40 +127,52 @@ export function appFirstRun(events: StoredEvent[]) {
     .filter(row => row.reached > 0 || row.step !== "phone"));
 }
 
-function site(events: StoredEvent[]) {
-  const views = new Map<string, number>();
-  for (const event of events) if (event.name === "site_view" && typeof event.props.path === "string") views.set(event.props.path, (views.get(event.props.path) ?? 0) + 1);
-  const sections = new Map<string, { path: string; section: string; seen: number; ms: number[] }>();
-  for (const event of events) {
-    if (event.name !== "site_section" || typeof event.props.section !== "string") continue;
-    const path = String(event.props.path ?? "/"), key = `${path}#${event.props.section}`;
-    const row = sections.get(key) ?? sections.set(key, { path, section: event.props.section, seen: 0, ms: [] }).get(key)!;
+const goalKey = (event: StoredEvent) => {
+  const label = [event.props.label, event.props.section].filter(value => typeof value === "string").join(" in ") || null;
+  return `${words(String(event.props.goal))}${label ? `: ${words(label)}` : ""}`;
+};
+const rageKey = (event: StoredEvent) => `${event.props.label ? words(String(event.props.label)) : "empty space"}${event.props.section ? ` in the ${words(String(event.props.section))} section` : ""} of ${event.ctx?.page ?? "/"}`;
+const NOT_CLICKS = new Set(["js_error", "form_start", "form_abandon", "rage_click"]);
+function addSite(site: ProductDigest["site"], event: StoredEvent, who: string | null) {
+  if (event.name === "site_view" && typeof event.props.path === "string") site.views.set(event.props.path, (site.views.get(event.props.path) ?? 0) + 1);
+  if (event.name !== "site_goal" && event.name !== "site_section") return;
+  site.latest = Math.max(site.latest, event.at);
+  const place = (key: string) => site.places.set(key, Math.max(site.places.get(key) ?? 0, event.at));
+  if (event.name === "site_section") {
+    const path = String(event.props.path ?? "/");
+    place(`${path}#${String(event.props.section)}`); place(`${path}#`);
+    if (typeof event.props.section !== "string") return;
+    const key = `${path}#${event.props.section}`;
+    const row = site.sections.get(key) ?? site.sections.set(key, { path, section: event.props.section, seen: 0, ms: [] }).get(key)!;
     row.seen++;
     if (typeof event.props.ms === "number") row.ms.push(event.props.ms);
+    return;
   }
-  const goals = events.filter(event => event.name === "site_goal");
-  // a section the site no longer shows (the waitlist page before launch) has nothing left to fix: only the last day's sections rank
-  const placeOf = (event: StoredEvent) => `${event.ctx?.page ?? "/"}#${typeof event.props.section === "string" ? event.props.section : ""}`;
-  const latest = events.reduce((max, event) => event.name === "site_goal" || event.name === "site_section" ? Math.max(max, event.at) : max, 0);
-  const current = new Set(events.filter(event => event.at > latest - DAY && (event.name === "site_goal" || event.name === "site_section"))
-    .flatMap(event => event.name === "site_section" ? [`${String(event.props.path ?? "/")}#${String(event.props.section)}`, `${String(event.props.path ?? "/")}#`] : [placeOf(event)]));
-  const goalOf = (name: string) => goals.filter(event => event.props.goal === name);
-  const label = (event: StoredEvent) => [event.props.label, event.props.section].filter(value => typeof value === "string").join(" in ") || null;
-  const starts = goalOf("form_start").length, abandons = goalOf("form_abandon").length;
+  // a section the site no longer shows (the waitlist page before launch) has nothing left to fix: only the last day's places rank
+  const at = `${event.ctx?.page ?? "/"}#${typeof event.props.section === "string" ? event.props.section : ""}`;
+  place(at);
+  const goal = event.props.goal;
+  if (!NOT_CLICKS.has(String(goal))) count(site.clicks, goalKey(event), who);
+  if (goal === "rage_click") site.rage.push([at, rageKey(event), who]);
+  if (goal === "download_click") count(site.downloads, typeof event.props.value === "string" ? event.props.value : "unknown", who);
+  if (goal === "js_error") count(site.errors, event.ctx?.page ?? "unknown page", who);
+  if (goal === "form_start") site.forms.started++;
+  if (goal === "form_abandon") site.forms.abandoned++;
+  if (goal === "waitlist_join") site.forms.joined++;
+}
+function siteOf(site: ProductDigest["site"]) {
+  const current = new Set([...site.places].filter(([, at]) => at > site.latest - DAY).map(([place]) => place));
+  const rage: Tally = new Map();
+  for (const [place, key, who] of site.rage) if (current.size === 0 || current.has(place)) count(rage, key, who);
   return {
-    sections: [...sections.values()].map(row => ({ path: row.path, section: row.section, seen: row.seen, share: rate(row.seen, views.get(row.path) ?? 0), medianMs: median(row.ms) }))
+    sections: [...site.sections.values()].map(row => ({ path: row.path, section: row.section, seen: row.seen, share: rate(row.seen, site.views.get(row.path) ?? 0), medianMs: median(row.ms) }))
       .sort((a, b) => a.path.localeCompare(b.path) || b.seen - a.seen).slice(0, 40),
-    clicks: tally(goals.filter(event => event.props.goal !== "js_error" && event.props.goal !== "form_start" && event.props.goal !== "form_abandon" && event.props.goal !== "rage_click"),
-      event => `${words(String(event.props.goal))}${label(event) ? `: ${words(label(event)!)}` : ""}`, 25),
-    rage: tally(goalOf("rage_click").filter(event => current.size === 0 || current.has(placeOf(event))),
-      event => `${event.props.label ? words(String(event.props.label)) : "empty space"}${event.props.section ? ` in the ${words(String(event.props.section))} section` : ""} of ${event.ctx?.page ?? "/"}`),
-    downloads: tally(goalOf("download_click"), event => typeof event.props.value === "string" ? event.props.value : "unknown"),
-    forms: { started: starts, abandoned: abandons, joined: goalOf("waitlist_join").length },
-    errors: tally(goalOf("js_error"), event => event.ctx?.page ?? "unknown page"),
+    clicks: rowsOf(site.clicks, 25), rage: rowsOf(rage), downloads: rowsOf(site.downloads), forms: { ...site.forms }, errors: rowsOf(site.errors),
   };
 }
 
-function likes(events: StoredEvent[], from: number, to: number) {
+/** reactions, ratings and bots made from the few events kept one by one; messages and session lengths from their sums */
+function likes(events: StoredEvent[], messages: ProductDigest["messages"], sessions: number[], from: number, to: number) {
   const reactions = events.filter(event => event.name === "app_action" && event.props.name === "reply_reaction" && event.props.on !== false);
   const feedback = events.filter(event => event.name === "app_feedback" && typeof event.props.score === "number");
   const scores = [1, 2, 3, 4, 5].map(score => feedback.filter(event => event.props.score === score).length);
@@ -185,10 +191,7 @@ function likes(events: StoredEvent[], from: number, to: number) {
       if (index >= 0) { deletedSoon++; list.splice(index, 1); }
     }
   }
-  let sent = 0, replies = 0;
-  const senders = new Set<string>();
-  for (const event of events) if (event.name === "app_messages") { sent += Number(event.props.sent) || 0; replies += Number(event.props.replies) || 0; const who = whoOf(event); if (who && Number(event.props.sent) > 0) senders.add(who); }
-  const sessions = events.filter(event => event.name === "app_close" && typeof event.props.ms === "number").map(event => Number(event.props.ms));
+  const { sent, replies, senders } = messages;
   return {
     reactions: { positive: reactions.filter(event => POSITIVE.has(String(event.props.emoji))).length, negative: reactions.filter(event => event.props.emoji === "no").length, total: reactions.length },
     feedback: { count: feedback.length, average: feedback.length ? Math.round(feedback.reduce((sum, event) => sum + Number(event.props.score), 0) / feedback.length * 10) / 10 : null, scores,
@@ -201,13 +204,13 @@ function likes(events: StoredEvent[], from: number, to: number) {
 
 const versionOf = (event: StoredEvent) => (event.ctx as { app?: { version?: unknown } } | undefined)?.app?.version;
 const newer = (a: string, b: string) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0); return false; };
-function errors(events: StoredEvent[]) {
+/** the newest app version opened so far, then this event's if it is newer */
+const newest = (latest: string | null, v: unknown) => typeof v === "string" && /^\d+\.\d+\.\d+$/.test(v) && (!latest || newer(v, latest)) ? v : latest;
+/** `latest` is the newest app anyone opened in the window; with the newest each error was seen on, an error the current app no
+ * longer throws is history, not a fix */
+function errors(events: StoredEvent[], latest: string | null) {
   const errorEvents = events.filter(event => event.name === "app_error");
   const appErrors = tally(errorEvents, event => `${event.props.kind ?? "unknown"}: ${event.props.code ?? "unknown"}`);
-  // the newest app anyone opened in the window, and the newest each error was seen on: an error the current app no longer
-  // throws is history, not a fix
-  let latest: string | null = null;
-  for (const event of events) { const v = versionOf(event); if (event.name === "app_open" && typeof v === "string" && /^\d+\.\d+\.\d+$/.test(v) && (!latest || newer(v, latest))) latest = v; }
   const lastOn = new Map<string, string>();
   for (const event of errorEvents) {
     const v = versionOf(event), key = `${event.props.kind ?? "unknown"}: ${event.props.code ?? "unknown"}`, seen = lastOn.get(key);
@@ -220,7 +223,7 @@ function errors(events: StoredEvent[]) {
 
 /** the few things most worth fixing, each with the number behind it; weight orders them and is roughly "share of people affected" */
 export function improvements(input: { funnel: FunnelStepIn[]; features: FeatureRow[]; feedback: ReturnType<typeof likes>["feedback"]; bots: ReturnType<typeof likes>["bots"];
-  onboarding: ReturnType<typeof onboarding>; site: ReturnType<typeof site>; errors: ReturnType<typeof errors>; appPeople: number }): Improvement[] {
+  onboarding: ReturnType<typeof onboarding>; site: ReturnType<typeof siteOf>; errors: ReturnType<typeof errors>; appPeople: number }): Improvement[] {
   const out: Improvement[] = [];
   let worst: { prev: FunnelStepIn; step: FunnelStepIn; lost: number } | null = null;
   for (let i = 1; i < input.funnel.length; i++) {
@@ -254,18 +257,129 @@ export function improvements(input: { funnel: FunnelStepIn[]; features: FeatureR
   return out.sort((a, b) => b.weight - a.weight);
 }
 
+/** the events the report reads one by one: few, unlike the clicks, sections and messages it only counts */
+const KEPT_ACTIONS = new Set(["onboarding_step", "onboarding_completed", "reply_reaction"]);
+const kept = (event: StoredEvent) => event.name === "onboarding_step" || event.name === "onboarding_done" || event.name === "app_paired" || event.name === "app_feedback"
+  || event.name === "app_error" || event.name === "app_pair_failed" || (event.name === "app_action" && KEPT_ACTIONS.has(String(event.props.name)))
+  || (event.name === "app_feature" && (event.props.feature === "bot_created" || event.props.feature === "bot_deleted"));
+const slim = (event: StoredEvent): StoredEvent => {
+  const ctx = event.ctx, version = ctx?.app?.version;
+  return { id: event.id, name: event.name, at: event.at, accountId: event.accountId, props: event.props,
+    ...(ctx ? { ctx: { ...(ctx.install ? { install: ctx.install } : {}), ...(ctx.visitor ? { visitor: ctx.visitor } : {}), ...(version ? { app: { version } } : {}) } } : {}) };
+};
+
+export interface ProductDigest {
+  /** the events read one by one (kept) */
+  events: StoredEvent[];
+  /** each person's first and last app event */
+  app: Map<string, [number, number]>;
+  /** each feature's users and the UTC days they used it */
+  uses: Map<string, Map<string, Set<number>>>;
+  moments: Map<string, { count: number; people: Set<string>; outcomes: Map<string, number> }>;
+  messages: { sent: number; replies: number; senders: Set<string> };
+  sessions: number[];
+  latestVersion: string | null;
+  site: {
+    views: Map<string, number>; sections: Map<string, { path: string; section: string; seen: number; ms: number[] }>;
+    /** the newest goal or section seen, and the newest time each place (page#section) was */
+    latest: number; places: Map<string, number>;
+    clicks: Tally; rage: Array<[string, string, string | null]>; downloads: Tally; errors: Tally; forms: { started: number; abandoned: number; joined: number };
+  };
+  page: { actions: Tally; choices: Tally; downloads: Tally };
+}
+const PRODUCT_NAMES = ["app_open", "app_close", "app_screen", "app_feature", "app_messages", "app_error", "app_pair_failed", "app_action", "app_feedback", "onboarding_step", "onboarding_done",
+  "app_paired", "site_view", "site_goal", "site_section", "page_action"];
+const pageKey = (event: StoredEvent) => [event.props.action, event.props.label, event.props.value].filter(value => typeof value === "string").map(value => words(String(value))).join(": ") + (event.props.path ? ` (${event.props.path})` : "");
+export const productDigest: Digest<ProductDigest> = {
+  kind: "product", version: 1, names: PRODUCT_NAMES,
+  empty: () => ({ events: [], app: new Map(), uses: new Map(), moments: new Map(), messages: { sent: 0, replies: 0, senders: new Set() }, sessions: [], latestVersion: null,
+    site: { views: new Map(), sections: new Map(), latest: 0, places: new Map(), clicks: new Map(), rage: [], downloads: new Map(), errors: new Map(), forms: { started: 0, abandoned: 0, joined: 0 } },
+    page: { actions: new Map(), choices: new Map(), downloads: new Map() } }),
+  add(into, event) {
+    const who = whoOf(event);
+    if (kept(event)) into.events.push(slim(event));
+    if (who && event.name.startsWith("app_")) {
+      const span = into.app.get(who);
+      if (!span) into.app.set(who, [event.at, event.at]); else { span[0] = Math.min(span[0], event.at); span[1] = Math.max(span[1], event.at); }
+      if (event.name === "app_feature" && typeof event.props.feature === "string") {
+        const per = into.uses.get(event.props.feature) ?? into.uses.set(event.props.feature, new Map()).get(event.props.feature)!;
+        (per.get(who) ?? per.set(who, new Set()).get(who)!).add(dayIndex(event.at));
+      }
+    }
+    if (event.name === "app_action" && typeof event.props.name === "string") {
+      const row = into.moments.get(event.props.name) ?? into.moments.set(event.props.name, { count: 0, people: new Set(), outcomes: new Map() }).get(event.props.name)!;
+      row.count++;
+      if (who) row.people.add(who);
+      const sub = SUBKEYS.map(key => event.props[key]).find(value => typeof value === "string");
+      if (typeof sub === "string") row.outcomes.set(sub, (row.outcomes.get(sub) ?? 0) + 1);
+    }
+    if (event.name === "app_messages") {
+      into.messages.sent += Number(event.props.sent) || 0; into.messages.replies += Number(event.props.replies) || 0;
+      if (who && Number(event.props.sent) > 0) into.messages.senders.add(who);
+    }
+    if (event.name === "app_close" && typeof event.props.ms === "number") into.sessions.push(Number(event.props.ms));
+    if (event.name === "app_open") into.latestVersion = newest(into.latestVersion, versionOf(event));
+    addSite(into.site, event, who);
+    if (event.name === "page_action") {
+      count(into.page.actions, pageKey(event), who);
+      if (event.props.action === "choose") count(into.page.choices, `${words(String(event.props.label ?? ""))}: ${words(String(event.props.value ?? ""))}`, who);
+      if (event.props.action === "download") count(into.page.downloads, String(event.props.value ?? "unknown"), who);
+    }
+  },
+  merge(into, later) {
+    into.events.push(...later.events);
+    for (const [who, [first, last]] of later.app) {
+      const span = into.app.get(who);
+      if (!span) into.app.set(who, [first, last]); else { span[0] = Math.min(span[0], first); span[1] = Math.max(span[1], last); }
+    }
+    for (const [feature, per] of later.uses) {
+      const mine = into.uses.get(feature);
+      if (!mine) { into.uses.set(feature, per); continue; }
+      for (const [who, days] of per) { const have = mine.get(who); if (have) for (const day of days) have.add(day); else mine.set(who, days); }
+    }
+    for (const [name, row] of later.moments) {
+      const mine = into.moments.get(name);
+      if (!mine) { into.moments.set(name, row); continue; }
+      mine.count += row.count;
+      for (const who of row.people) mine.people.add(who);
+      for (const [key, n] of row.outcomes) mine.outcomes.set(key, (mine.outcomes.get(key) ?? 0) + n);
+    }
+    into.messages.sent += later.messages.sent; into.messages.replies += later.messages.replies;
+    for (const who of later.messages.senders) into.messages.senders.add(who);
+    into.sessions.push(...later.sessions);
+    into.latestVersion = newest(into.latestVersion, later.latestVersion);
+    const site = into.site, next = later.site;
+    for (const [path, n] of next.views) site.views.set(path, (site.views.get(path) ?? 0) + n);
+    for (const [key, row] of next.sections) {
+      const mine = site.sections.get(key);
+      if (!mine) { site.sections.set(key, row); continue; }
+      mine.seen += row.seen; mine.ms.push(...row.ms);
+    }
+    site.latest = Math.max(site.latest, next.latest);
+    for (const [place, at] of next.places) site.places.set(place, Math.max(site.places.get(place) ?? 0, at));
+    mergeTally(site.clicks, next.clicks); site.rage.push(...next.rage); mergeTally(site.downloads, next.downloads); mergeTally(site.errors, next.errors);
+    site.forms.started += next.forms.started; site.forms.abandoned += next.forms.abandoned; site.forms.joined += next.forms.joined;
+    mergeTally(into.page.actions, later.page.actions); mergeTally(into.page.choices, later.page.choices); mergeTally(into.page.downloads, later.page.downloads);
+  },
+  encode: pack,
+  decode: json => unpack(json) as ProductDigest,
+};
+
 export function productReport(input: ProductInput) {
-  const events = input.events.filter(event => event.at >= input.from && event.at < input.to);
-  const features = featureRows(events, input.from, input.to);
-  const appPeople = new Set(events.filter(event => event.name.startsWith("app_")).map(whoOf).filter((who): who is string => !!who)).size;
-  const liked = likes(events, input.from, input.to), board = onboarding(events, input.to), web = site(events), errs = errors(events);
-  const pageActions = tally(events.filter(event => event.name === "page_action"), event => [event.props.action, event.props.label, event.props.value].filter(value => typeof value === "string").map(value => words(String(value))).join(": ") + (event.props.path ? ` (${event.props.path})` : ""), 25);
-  const choices = tally(events.filter(event => event.name === "page_action" && event.props.action === "choose"), event => `${words(String(event.props.label ?? ""))}: ${words(String(event.props.value ?? ""))}`);
-  const downloads = tally(events.filter(event => event.name === "page_action" && event.props.action === "download"), event => String(event.props.value ?? "unknown"));
+  const digest = productDigest.empty();
+  for (const event of input.events) if (event.at >= input.from && event.at < input.to) productDigest.add(digest, event);
+  return productReportOf(digest, input.from, input.to, input.funnel);
+}
+/** the product report of [from, to) from its digest */
+export function productReportOf(digest: ProductDigest, from: number, to: number, funnel: FunnelStepIn[]) {
+  const events = digest.events;
+  const features = featureRowsOf(digest, from, to);
+  const appPeople = digest.app.size;
+  const liked = likes(events, digest.messages, digest.sessions, from, to), board = onboarding(events, to), web = siteOf(digest.site), errs = errors(events, digest.latestVersion);
   return {
-    from: input.from, to: input.to, appPeople, features, moments: moments(events), likes: liked, onboarding: board, appFirstRun: appFirstRun(events), site: web, errors: errs,
-    account: { actions: pageActions, choices, downloads },
-    improve: improvements({ funnel: input.funnel, features, feedback: liked.feedback, bots: liked.bots, onboarding: board, site: web, errors: errs, appPeople }),
+    from, to, appPeople, features, moments: momentsOf(digest.moments), likes: liked, onboarding: board, appFirstRun: appFirstRun(events), site: web, errors: errs,
+    account: { actions: rowsOf(digest.page.actions, 25), choices: rowsOf(digest.page.choices), downloads: rowsOf(digest.page.downloads) },
+    improve: improvements({ funnel, features, feedback: liked.feedback, bots: liked.bots, onboarding: board, site: web, errors: errs, appPeople }),
   };
 }
 export type ProductReport = ReturnType<typeof productReport>;
