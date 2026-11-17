@@ -9,6 +9,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cloudPairingSignature, cloudRequestSignature } from "./cloud-home.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const HOST = "dusk-t-0123456789ab.fly.dev";
@@ -65,7 +68,7 @@ await import(${JSON.stringify(pathToFileURL(join(SERVER_DIR, "testing", "fake-cl
     const prelude = `data:text/javascript,${encodeURIComponent('const real = globalThis.fetch; globalThis.fetch = async (url, init) => String(url).startsWith("http://127.0.0.1:") ? real(url, init) : new Response("{}", { status: 503 });')}`;
     this.child = spawn(process.execPath, ["--import", prelude, join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
-      env: { PATH: process.env.PATH, HOME: this.home, USERPROFILE: this.home, DUSK_DATA_DIR: this.dataDir, DUSK_PORT: String(this.port), DUSK_WEBHOOK_PORT: String(this.port + 1),
+      env: { PATH: process.env.PATH, HOME: this.home, USERPROFILE: this.home, DUSK_MCP_HOST: "0", DUSK_DATA_DIR: this.dataDir, DUSK_PORT: String(this.port), DUSK_WEBHOOK_PORT: String(this.port + 1),
         DUSK_CLOUD_ROLE: "home", DUSK_CLOUD_MACHINE_ID: "3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93", DUSK_CLOUD_ADMIN_URL: "https://cloud.example.test",
         DUSK_CLOUD_BOOTSTRAP_SECRET: this.secret, DUSK_PUBLIC_URL: `https://${HOST}` },
       stdio: ["ignore", "pipe", "pipe"],

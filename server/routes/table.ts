@@ -6,6 +6,7 @@ import { mcpOAuthProxyRoutes } from "../mcp-oauth-proxy.ts";
 import { cloudPresenceRoutes } from "./cloud-presence.ts";
 import { cloudSyncRoutes } from "./cloud-sync.ts";
 import { ownMcpHttpRoutes } from "./own-mcp-http.ts";
+import { mcpHostRoutes } from "../mcp-host/http.ts";
 import { linkPreviewRoutes } from "./link-preview.ts";
 import { siteIconRoutes } from "./site-icon.ts";
 import { webPanelRoutes } from "./web-panels.ts";
@@ -28,7 +29,7 @@ export interface RouteContext {
 export type RouteHandler = (ctx: RouteContext) => Promise<typeof PASS | void>;
 
 /** Modules with no wiring from index.ts are listed here; index.ts pushes the rest. */
-export const ROUTES: RouteHandler[] = [cloudPresenceRoutes, cloudSyncRoutes, ownMcpHttpRoutes, mcpOAuthProxyRoutes, webPanelRoutes, siteIconRoutes, linkPreviewRoutes, createAccountChoiceRoutes()];
+export const ROUTES: RouteHandler[] = [cloudPresenceRoutes, cloudSyncRoutes, mcpHostRoutes, ownMcpHttpRoutes, mcpOAuthProxyRoutes, webPanelRoutes, siteIconRoutes, linkPreviewRoutes, createAccountChoiceRoutes()];
 
 /** True means stop routing. A handler that wrote a response but returned PASS still counts as answered. */
 export async function dispatchRoutes(routes: readonly RouteHandler[], ctx: RouteContext): Promise<boolean> {

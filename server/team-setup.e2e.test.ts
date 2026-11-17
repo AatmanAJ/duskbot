@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("Clive sets up multi-provider teams at Ask with no card, keeps existing threads through setup and a deletion the person confirms on its card, and adds a specialist it picked itself at once, with an Undo", async () => {
   const gates = mkdtempSync(join(tmpdir(), "dusk-team-setup-gates-"));

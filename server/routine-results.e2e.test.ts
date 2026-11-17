@@ -7,6 +7,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk, verificationServerEnvironment } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("runs every routine in the bot's main chat as an ordinary turn, with no run conversation, line or card, and its approvals there", async () => {
   const fixture = await launchVerificationServer();

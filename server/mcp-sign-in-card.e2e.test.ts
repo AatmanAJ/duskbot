@@ -6,6 +6,9 @@ import { expect, it } from "vitest";
 
 import { launchVerificationServer } from "../scripts/control-dusk.ts";
 import { startFakePostiz, type FakePostiz } from "./testing/fake-postiz.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 /** A real server with the fake Claude engine held mid-turn until the gate opens, a stand-in OAuth provider, and Iris's
  * turn that has added the provider's server and called sign_in. */

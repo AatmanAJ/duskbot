@@ -14,6 +14,9 @@ import { readHandoffs } from "./testing/handoff-rows.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { appHandsItOver } from "./testing/your-computer.ts";
 import { THIS_COMPUTER_NOT_READY } from "../shared/your-computer.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const CALL_WAIT_MS = 3_000;
@@ -95,7 +98,7 @@ beforeAll(async () => {
       "--import", pathToFileURL(join(ROOT, "server/testing/desktop-parent.mjs")).href, join(ROOT, "server/index.ts")], {
       cwd: ROOT, env: {
         PATH: dirname(process.execPath), ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-        HOME: fixtureHome, USERPROFILE: fixtureHome, DUSK_DATA_DIR: data,
+        HOME: fixtureHome, USERPROFILE: fixtureHome, DUSK_MCP_HOST: "0", DUSK_DATA_DIR: data,
         APPDATA: join(fixtureHome, "appdata"), LOCALAPPDATA: join(fixtureHome, "localappdata"),
         TEMP: fixtureHome, TMP: fixtureHome, TMPDIR: fixtureHome,
         DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1), DUSK_STATIC_DIR: ui, DUSK_TEST_VM_STATE: stateFile,

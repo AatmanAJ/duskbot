@@ -10,6 +10,9 @@ import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { launchVerificationServer, verificationServerEnvironment } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("remembers real permission requests, scopes and revokes grants, and preserves them across restart", async () => {
   const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "hang" });

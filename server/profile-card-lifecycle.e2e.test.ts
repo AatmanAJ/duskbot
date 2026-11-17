@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("applies the bot's own alert and voice changes at once, refuses a stale Undo, and supersedes credential requests in an isolated conversation", async () => {
   const gates = mkdtempSync(join(tmpdir(), "dusk-profile-cards-"));

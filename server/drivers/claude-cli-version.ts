@@ -20,6 +20,14 @@ export const CLAUDE_FLAG_FLOORS = {
 } as const satisfies Record<string, ClaudeCliVersion>;
 
 
+/** The first Claude CLI to take `{"type": "http", "url", "headers"}` servers in --mcp-config (streamable HTTP, 1.0.27).
+ * An unidentified CLI keeps stdio relays. */
+export const CLAUDE_HTTP_MCP_FLOOR: ClaudeCliVersion = [1, 0, 27];
+
+export function claudeCliHttpMcp(version: ClaudeCliVersion | null): boolean {
+  return version !== null && versionAtLeast(version, CLAUDE_HTTP_MCP_FLOOR);
+}
+
 /** `claude --version` prints "2.1.232 (Claude Code)". */
 export function parseClaudeCliVersion(stdout: string | null | undefined): ClaudeCliVersion | null {
   return parseVersionTriple(stdout ?? "");

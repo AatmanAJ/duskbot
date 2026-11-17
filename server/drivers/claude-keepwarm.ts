@@ -29,6 +29,9 @@ export interface KeepWarmContract {
   system: string | null;
   mcpServers: Record<string, unknown> | null;
   settings: Record<string, unknown> | null;
+  /** The live process's dusk server is a host mount: a fork gets this one instead, which lists the same tools and whose
+   * asks reach no broker. */
+  pingDusk?: unknown;
 }
 
 const VALUE_FLAGS = new Set(["--output-format", "--input-format", "--mcp-config", "--settings", "--append-system-prompt-file", "--resume", "--session-id"]);
@@ -56,8 +59,9 @@ export function keepWarmArgs(
   return kept;
 }
 
-export function keepWarmMcpServers(mcpServers: Record<string, unknown>, deadSocket: string): Record<string, unknown> {
+export function keepWarmMcpServers(mcpServers: Record<string, unknown>, deadSocket: string, pingDusk?: unknown): Record<string, unknown> {
   const out: Record<string, unknown> = { ...mcpServers };
+  if (pingDusk !== undefined && out.dusk !== undefined) return { ...out, dusk: pingDusk };
   const dusk = out.dusk as { args?: unknown } | undefined;
   if (dusk && Array.isArray(dusk.args) && dusk.args.length >= 2) {
     out.dusk = { ...dusk, args: [...dusk.args.slice(0, -1), deadSocket] };
@@ -155,7 +159,7 @@ export function runForkedPrompt<T>(opts: {
     let mcpConfigPath: string | null = null;
     if (contract.mcpServers) {
       mcpConfigPath = join(dir, "mcp.json");
-      writeFileSync(mcpConfigPath, JSON.stringify({ mcpServers: keepWarmMcpServers(contract.mcpServers, join(dir, "no-broker.sock")) }), { mode: 0o600 });
+      writeFileSync(mcpConfigPath, JSON.stringify({ mcpServers: keepWarmMcpServers(contract.mcpServers, join(dir, "no-broker.sock"), contract.pingDusk) }), { mode: 0o600 });
     }
     let systemPromptPath: string | null = null;
     if (contract.system) {

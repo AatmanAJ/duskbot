@@ -9,6 +9,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runControlDusk } from "../scripts/control-dusk.ts";
 import { startFakeSlack, type FakeSlack } from "./testing/fake-slack.ts";
 import { launchRestartableServer, type RestartableServer } from "./testing/restartable-server.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const REPLY = "**Done.** See [the docs](https://example.test/docs).";
 const SLACK_REPLY = "*Done.* See <https://example.test/docs|the docs>.";

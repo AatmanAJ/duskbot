@@ -7,6 +7,9 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { WIDGET_SAMPLES } from "../shared/widget-samples.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("shows, replaces and answers a widget on a bot's own conversation, once per press", async () => {
   const gates = mkdtempSync(join(tmpdir(), "dusk-chat-widgets-"));

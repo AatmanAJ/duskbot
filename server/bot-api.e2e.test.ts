@@ -12,6 +12,9 @@ import { launchVerificationServer, runControlDusk, type VerificationServer } fro
 import { botApiCurl } from "../shared/bot-api.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { BOT_API_REFUSAL } from "./bot-api-fence.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 let fixture: VerificationServer | undefined;
 let socket: Socket | undefined;

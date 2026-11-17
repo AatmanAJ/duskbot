@@ -22,6 +22,9 @@ import { turnEvidence } from "./turn-outcome.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { childEnv } from "./testing/dusk-env.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 type McpServer = { command: string; args: string[]; env: Record<string, string> };
 type Launched = { pid: number; systemPrompt: string; mcpConfig: { mcpServers: Record<string, McpServer> } };

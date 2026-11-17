@@ -13,6 +13,9 @@ import { cloudPairingSignature } from "./cloud-home.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { freePortBlock } from "./testing/ports.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const HOST = "dusk-t-0123456789ab.fly.dev";
@@ -54,7 +57,7 @@ async function boot(asCloud: boolean) {
   child = spawn(process.execPath, ["--import", offline, join(SERVER_DIR, "index.ts")], {
     cwd: join(SERVER_DIR, ".."),
     env: {
-      PATH: process.env.PATH, HOME: home, USERPROFILE: home, DUSK_DATA_DIR: dataDir, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1),
+      PATH: process.env.PATH, HOME: home, USERPROFILE: home, DUSK_MCP_HOST: "0", DUSK_DATA_DIR: dataDir, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1),
       ...(asCloud ? { DUSK_CLOUD_ROLE: "home", DUSK_CLOUD_MACHINE_ID: MACHINE_ID, DUSK_CLOUD_ADMIN_URL: "https://cloud.example.test",
         DUSK_CLOUD_BOOTSTRAP_SECRET: secret, DUSK_PUBLIC_URL: `https://${HOST}` } : {}),
     },

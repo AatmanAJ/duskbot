@@ -17,6 +17,9 @@ import { CLOUD_OUTSIDE_KEY } from "./cloud-sharing.ts";
 import { CLOUD_NOBODY_KEY, markLeftBehind } from "./testing/cloud-left-behind.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { freePortBlock } from "./testing/ports.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const HOST = "dusk-t-0123456789ab.fly.dev";
@@ -93,7 +96,7 @@ await import(${JSON.stringify(pathToFileURL(join(SERVER_DIR, "testing", "fake-co
     const hooks = stallClock ? ["--import", pathToFileURL(join(SERVER_DIR, "testing", "stall-clock-hooks.mjs")).href] : [];
     child = spawnWithSecrets(process.execPath, ["--import", offline, ...hooks, join(SERVER_DIR, "index.ts")], {
       PATH: process.env.PATH, ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home, USERPROFILE: home, DUSK_DATA_DIR: dataDir, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1),
+      HOME: home, USERPROFILE: home, DUSK_MCP_HOST: "0", DUSK_DATA_DIR: dataDir, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1),
       DUSK_CLOUD_ROLE: "home", DUSK_CLOUD_MACHINE_ID: MACHINE_ID, DUSK_CLOUD_ADMIN_URL: "https://cloud.example.test",
       DUSK_PUBLIC_URL: `https://${HOST}`, DUSK_CLOUD_VOICE_URL: "https://cloud.example.test/api/cloud/services/voice/v1",
       DUSK_CLOUD_SECRETS_FD: "3", ...stall,

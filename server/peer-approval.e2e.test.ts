@@ -6,6 +6,9 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk, verificationServerEnvironment } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("preserves peer approval outcomes through real HTTP responses and sends no work without an allow", async () => {
   const fixture = await launchVerificationServer(process.env);

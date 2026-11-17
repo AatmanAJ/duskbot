@@ -4,6 +4,9 @@ import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk, type VerificationServer } from "../scripts/control-dusk.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const SETTLED = "Your downstream room requests have settled.";
 const REPORT_FROM_PEER = "[From @Routine peer (bot) · report on assignment";

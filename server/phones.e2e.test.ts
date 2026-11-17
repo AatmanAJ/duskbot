@@ -17,6 +17,9 @@ import { PHONE_INTERNAL_MCP_PATH } from "./phones/rpc.ts";
 import { READ_AND_DRAFT_REFUSAL } from "./read-and-draft.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { openSse, type SseRecorder } from "./testing/sse.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const key = "isolated-phone-capability";
 const PHONE_NAME = "Omkar's iPhone";

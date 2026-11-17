@@ -11,6 +11,9 @@ import { freePortBlock } from "./testing/ports.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { vpsToolsKey } from "./vps-computer-relay.ts";
 import { WAKES_ON_CALL_VPS_NOTE } from "./vps-turn-start.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 let child: ChildProcess;
@@ -73,7 +76,7 @@ beforeAll(async () => {
   child = spawn(process.execPath, ["--import", pathToFileURL(join(ROOT, "server/testing/group-local-vm-hooks.mjs")).href, join(ROOT, "server/index.ts")], {
     cwd: ROOT, env: {
       PATH: dirname(process.execPath), ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home, USERPROFILE: home, DUSK_DATA_DIR: data, APPDATA: join(home, "appdata"), LOCALAPPDATA: join(home, "localappdata"),
+      HOME: home, USERPROFILE: home, DUSK_MCP_HOST: "0", DUSK_DATA_DIR: data, APPDATA: join(home, "appdata"), LOCALAPPDATA: join(home, "localappdata"),
       TEMP: home, TMP: home, TMPDIR: home, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1), DUSK_STATIC_DIR: ui,
       DUSK_TEST_VM_STATE: join(home, "vm.json"), DUSK_TEST_VPS_STATE: vpsStateFile, DUSK_TEST_VPS_DRIVER_LOG: driverLog,
     }, stdio: ["ignore", "pipe", "pipe"],

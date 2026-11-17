@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("keeps a question nobody answered on Today after its turn ends, and a late answer wakes the bot and clears it", async () => {
   const gates = mkdtempSync(join(tmpdir(), "dusk-late-question-today-"));

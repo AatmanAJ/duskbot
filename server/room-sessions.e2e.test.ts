@@ -16,6 +16,9 @@ import type { WireBot, WireGroup } from "../shared/wire.ts";
 import { roomTurnVoiceNote } from "./group-voice.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { withoutTurnClock } from "./testing/turn-clock-text.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const NOTE = "[Messages this conversation received since your last turn in this room, oldest first. Your session already holds the conversation before them.]";
 // The control surface sends through the local API, and the room says so.

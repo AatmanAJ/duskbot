@@ -11,6 +11,9 @@ import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { ownTurnText } from "./testing/room-handoff-agent.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SETTLED = "Your downstream room requests have settled.";

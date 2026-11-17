@@ -8,6 +8,9 @@ import { launchVerificationServer, runControlDusk, verificationServerEnvironment
 import { ROUTINE_SUPERSEDED } from "./routine-execution.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 let fixture: VerificationServer | undefined;
 let restarted: ChildProcess | undefined;

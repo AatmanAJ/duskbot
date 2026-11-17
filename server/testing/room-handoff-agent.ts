@@ -1,12 +1,10 @@
 // Scripted provider fixture that exercises the REAL injected agents MCP proxy.
 import { splitLaunchNote } from "./launch-note.ts";
-import { spawn } from "node:child_process";
 import { appendFileSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
-import { waitForExit } from "./cleanup.ts";
+import { isHttpEntry, mcpRequest, openMcp, type McpEntry } from "./fake-mcp-client.ts";
 
-type AgentsIntegration = { command: string; args: string[]; env: Record<string, string> };
+type AgentsIntegration = McpEntry & { env: Record<string, string> };
 
 /** A `script` entry runs on the turn whose own text holds every `match` string, once or, with `repeat`, every time. */
 type ScriptEntry = { key: string; match: string[]; repeat?: boolean; [field: string]: unknown };
@@ -31,28 +29,9 @@ export function ownTurnText(prompt: unknown): string {
 }
 
 async function askPermission(server: AgentsIntegration, ask: { tool_name: string; input: Record<string, unknown> }): Promise<{ behavior: string; message?: string }> {
-  const child = spawn(server.command, server.args, { env: { ...process.env, ...server.env }, stdio: ["pipe", "pipe", "pipe"] });
-  child.stderr.resume();
-  try {
-    return await new Promise((resolve, reject) => {
-      createInterface({ input: child.stdout }).on("line", line => {
-        try {
-          const data = JSON.parse(line);
-          if (data.id !== 2) return;
-          const text = String(data.result?.content?.[0]?.text ?? "");
-          try { resolve(JSON.parse(text)); } catch { resolve({ behavior: "unparsed", message: text }); }
-        } catch { reject(new Error("Fixture permission MCP returned malformed JSON")); }
-      });
-      child.on("error", reject);
-      child.on("exit", (code, signal) => reject(new Error(`Fixture permission MCP exited before answering: ${signal ?? code}`)));
-      const send = (id: number, method: string, params: unknown) => child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-      send(1, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "claude-code", version: "fixture" } });
-      send(2, "tools/call", { name: "approve", arguments: { ...ask, tool_use_id: `toolu_fixture_${process.pid}_${Date.now()}` } });
-    });
-  } finally {
-    child.stdin.destroy();
-    await waitForExit(child, { signal: "SIGTERM", graceMs: 500 });
-  }
+  const data = await mcpRequest(server, "tools/call", { name: "approve", arguments: { ...ask, tool_use_id: `toolu_fixture_${process.pid}_${Date.now()}` } });
+  const text = String(data.result?.content?.[0]?.text ?? "");
+  try { return JSON.parse(text); } catch { return { behavior: "unparsed", message: text }; }
 }
 
 /** `{{name}}` in a step's string arguments, and in a scripted entry's reply, becomes what an earlier step's `capture` found. */
@@ -64,26 +43,7 @@ function withCaptured(value: unknown, captured: Record<string, string>): unknown
 }
 
 async function serverToolCall(server: AgentsIntegration, name: string, args: unknown): Promise<any> {
-  const child = spawn(server.command, server.args, { env: { ...process.env, ...server.env }, stdio: ["pipe", "pipe", "pipe"] });
-  child.stderr.resume();
-  try {
-    return await new Promise((resolve, reject) => {
-      createInterface({ input: child.stdout }).on("line", line => {
-        try {
-          const data = JSON.parse(line);
-          if (data.id === 2) resolve(data);
-        } catch { reject(new Error("Fixture MCP server returned malformed JSON")); }
-      });
-      child.on("error", reject);
-      child.on("exit", (code, signal) => reject(new Error(`Fixture MCP server exited before answering: ${signal ?? code}`)));
-      const send = (id: number, method: string, params: unknown) => child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-      send(1, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "claude-code", version: "fixture" } });
-      send(2, "tools/call", { name, arguments: args });
-    });
-  } finally {
-    child.stdin.destroy();
-    await waitForExit(child, { signal: "SIGTERM", graceMs: 500 });
-  }
+  return mcpRequest(server, "tools/call", { name, arguments: args });
 }
 
 async function screenCalls(server: AgentsIntegration, count: number): Promise<Array<{ ms: number; state: unknown }>> {
@@ -107,6 +67,11 @@ export async function runRoomHandoffAgent(argv: string[], planPath: string, prom
   const mounted = launch ? [] : Object.values(JSON.parse(readAtLaunch(arg("--mcp-config"))).mcpServers as Record<string, AgentsIntegration>);
   // With a tool selection every server sits behind the gate, which names its upstream in DUSK_GATE_UPSTREAM.
   const agentEnv = (server: AgentsIntegration): Record<string, string> => {
+    // A host mount says whom it speaks for in its identity headers; its credential never reaches the engine.
+    if (isHttpEntry(server)) {
+      const bot = server.headers?.["x-dusk-bot-id"];
+      return bot ? { DUSK_BOT_ID: bot, DUSK_THREAD_ID: server.headers?.["x-dusk-thread-id"] ?? "", DUSK_COMMS_TOKEN: "hosted" } : {};
+    }
     if (server.env?.DUSK_COMMS_TOKEN || server.env?.DUSK_BOT_ID) return server.env;
     try { return (JSON.parse(server.env?.DUSK_GATE_UPSTREAM ?? "") as AgentsIntegration).env ?? {}; } catch { return {}; }
   };
@@ -158,9 +123,7 @@ export async function runRoomHandoffAgent(argv: string[], planPath: string, prom
   for (const expected of plan.expectContextIncludes ?? []) if (!turnContext.includes(expected)) throw new Error(`Missing conversation context: ${expected}`);
   const indexed = Boolean(entry || basePlan.turns);
   const steps = indexed ? plan.steps ?? [] : resumed ? plan.resumeSteps ?? [] : plan.steps ?? [];
-  const child = spawn(integration.command, integration.args, { env: { ...process.env, ...integration.env }, stdio: ["pipe", "pipe", "pipe"] });
-  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
-  let serial = 0;
+  const connection = openMcp(integration);
   let closing = false;
   let failure: Error | undefined;
   let rejectRun!: (error: Error) => void;
@@ -168,27 +131,10 @@ export async function runRoomHandoffAgent(argv: string[], planPath: string, prom
   const fail = (error: Error) => {
     if (closing || failure) return;
     failure = error;
-    for (const p of pending.values()) p.reject(error);
-    pending.clear();
     rejectRun(error);
   };
-  const lines = createInterface({ input: child.stdout });
-  lines.on("line", line => {
-    try {
-      const data = JSON.parse(line);
-      const waiter = pending.get(data.id);
-      if (waiter) { pending.delete(data.id); waiter.resolve(data); }
-    } catch { fail(new Error("Fixture MCP returned malformed JSON")); }
-  });
-  child.on("error", fail);
-  child.on("exit", (code, signal) => fail(new Error(`Fixture MCP exited unexpectedly: ${signal ?? code}`)));
-  child.stdin.on("error", fail);
-  child.stderr.resume();
-  const call = (method: string, params: unknown = {}) => new Promise<any>((resolve, reject) => {
-    if (failure) { reject(failure); return; }
-    const id = ++serial; pending.set(id, { resolve, reject });
-    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-  });
+  connection.onFailure(fail);
+  const call = (method: string, params: unknown = {}) => failure ? Promise.reject(failure) : connection.call(method, params);
   const timer = setTimeout(() => fail(new Error("Fixture MCP run timed out")), typeof plan.timeoutMs === "number" ? plan.timeoutMs : 20_000);
   let delayTimer: ReturnType<typeof setTimeout> | undefined;
   let gateTimer: ReturnType<typeof setInterval> | undefined;
@@ -253,8 +199,8 @@ export async function runRoomHandoffAgent(argv: string[], planPath: string, prom
     })()]);
   } finally {
     closing = true;
-    clearTimeout(timer); clearTimeout(delayTimer); clearInterval(gateTimer); lines.close(); child.stdin.destroy();
-    await waitForExit(child, { signal: "SIGTERM", graceMs: 500 });
+    clearTimeout(timer); clearTimeout(delayTimer); clearInterval(gateTimer);
+    await connection.close();
     appendFileSync(`${planPath}.evidence.jsonl`, JSON.stringify({ botId, turnIndex, threadId: agent.DUSK_THREAD_ID, pid: process.pid,
       model: argv.includes("--model") ? arg("--model") : undefined,
       permissionMode: argv.includes("--permission-mode") ? arg("--permission-mode") : undefined,

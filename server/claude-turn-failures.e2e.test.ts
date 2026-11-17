@@ -8,6 +8,9 @@ import { pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { rebuiltSessionNotice } from "./resume-recovery.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 /** Pesto's account, as the CLI's rate_limit_event reported it on Oct 9. */
 const weekly = (resetsAt: number) => ({

@@ -6,6 +6,9 @@ import { expect, it } from "vitest";
 
 import { launchVerificationServer } from "../scripts/control-dusk.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("answers a bot's yes-or-no question with a 👍, and the bot goes on by itself", async () => {
   const scratch = mkdtempSync(join(tmpdir(), "dusk-reactions-"));

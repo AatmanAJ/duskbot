@@ -11,6 +11,9 @@ import { z } from "zod";
 import { launchVerificationServer, verificationServerEnvironment } from "../scripts/control-dusk.ts";
 import type { GroupTask, WireBot, WireGroup, WireMessage } from "../shared/wire.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("keeps live room questions fenced but allows task changes after their turn settles and restarts", async () => {
   const gates = mkdtempSync(join(tmpdir(), "dusk-room-question-gates-"));

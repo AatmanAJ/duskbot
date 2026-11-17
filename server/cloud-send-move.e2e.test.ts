@@ -14,6 +14,9 @@ import { DEFAULT_BOT_NAME } from "../shared/default-bot.ts";
 import { launchCloudSendFixture, type CloudSendFixture } from "../scripts/testing/cloud-send-fixture.ts";
 import { startBrokerFake, type BrokerFake } from "./testing/broker-fake.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 // Obvious fakes only.
 const hex = (bytes: number) => randomBytes(bytes).toString("hex");

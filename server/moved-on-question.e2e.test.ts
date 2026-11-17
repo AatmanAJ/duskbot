@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("stops waiting on a question the person moved on from: their next message closes it, and the bot works on", async () => {
   const gates = mkdtempSync(join(tmpdir(), "dusk-moved-on-question-"));

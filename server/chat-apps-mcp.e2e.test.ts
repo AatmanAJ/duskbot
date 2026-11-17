@@ -12,6 +12,9 @@ import { APP_EXTENSION_KEY } from "../shared/app.ts";
 import { CSP_META_PREFIX } from "../shared/app-frame/document.ts";
 import { APP_ONLY_REFUSAL } from "./mcp-app-observer.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const FAKE_APP = fileURLToPath(new URL("./testing/fake-stdio-app-server.ts", import.meta.url));
 const BOARD_URI = "ui://fake-app/board.html";

@@ -6,6 +6,9 @@ import { z } from "zod";
 
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 type Bot = { id: string; threadId: string; name: string };
 type Room = { id: string; name: string; memberIds: string[]; section?: string; bulletin: string; working?: boolean };

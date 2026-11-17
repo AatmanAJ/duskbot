@@ -9,6 +9,9 @@ import { afterEach, expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk, type VerificationServer } from "../scripts/control-dusk.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { openSse, type SseRecorder } from "./testing/sse.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 let fixture: VerificationServer | undefined;
 let events: SseRecorder | undefined;
