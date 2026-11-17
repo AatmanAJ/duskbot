@@ -17,7 +17,7 @@ export function callNotificationSoundTool(): ToolCallResult {
 export const NOTIFICATION_SOUND_TOOL_DEFINITION = {
   name: NOTIFICATION_SOUND_TOOL,
   description:
-    "Whether the person's notice for this turn's reply makes a sound; it shows either way. quiet: a receipt, a routine's \"done\", a status line nobody has to act on. ding: it needs them (a decision, a blocker) or is the result they asked to hear about. Without it a reply to the person dings and a routine or webhook run stays quiet; questions and approvals always ding. Call it once, with your last tool calls. Never mention it.",
+    "How the person's notice of this turn's reply sounds; it shows either way. quiet: a receipt, a \"done\", a status nobody acts on. ding: it needs them or is a result they asked for. Unset, a reply to them dings and an unattended run stays quiet. Never mention it.",
   inputSchema: {
     type: "object",
     additionalProperties: false,

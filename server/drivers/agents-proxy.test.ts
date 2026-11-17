@@ -629,6 +629,7 @@ describe("agents-proxy MCP surface", () => {
     expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual([
       "set_status",
       "send_message",
+      "set_notification_sound",
       "tool_result_read",
       "list_room_targets",
       "coordinate_bots",
@@ -755,7 +756,7 @@ describe("agents-proxy MCP surface", () => {
   it("advertises read annotations only for the reviewed built-in reads", async () => {
     const list = await rpc("tools/list");
     const readNames = [
-      "set_status", "send_message", "tool_result_read", "list_room_targets",
+      "set_status", "send_message", "set_notification_sound", "tool_result_read", "list_room_targets",
       "assignment_status", "list_bots", "usage_limits", "list_rooms", "list_threads",
       "list_team_setup", "list_team_library", "decide", "extract",
       "session_search", "trigger_info", "list_waits", "skills_list",
