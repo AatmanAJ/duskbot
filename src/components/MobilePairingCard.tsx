@@ -330,40 +330,22 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     </div>
   );
 
-  const waiting = (line: ReactNode) => (
-    <p role="status" className="m-0 flex items-center justify-center gap-2 text-[13px] leading-[18px] text-ink-tertiary">
-      <span aria-hidden="true" className="phone-link-wait inline-block size-1.5 shrink-0 rounded-full bg-ink-secondary" />
-      {line}
-    </p>
-  );
-
   // the qr's white tile, the same size whatever it holds, so nothing jumps while a code is made or renewed. level L: a
   // screen does not smudge, and the long link gets bigger modules that a camera reads from further away
   const qrTile = (value: string | null, label: string) => (
-    <div role="img" aria-label={label} aria-busy={!value} data-phone-qr={value ?? ""} className="flex size-[180px] shrink-0 items-center justify-center rounded-[14px] bg-white p-2.5">
-      {value ? <QRCodeSVG value={value} size={160} level="L" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
-        : <span className="size-[160px] animate-pulse rounded-[8px] bg-[#1b1b1f]/[0.06] motion-reduce:animate-none" />}
-    </div>
-  );
-
-  const ended = (art: PlaceArtName, line: string, action: string) => (
-    <div className="flex size-[180px] shrink-0 flex-col items-center justify-center gap-3 rounded-[14px] bg-ink/[0.04] p-3 text-center">
-      <PlaceArt name={art} size={40} />
-      <p role="status" className="m-0 text-[13px] leading-[18px] text-ink-secondary">{line}</p>
-      <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className="ui-button ui-button-pill min-h-11">{action}</button>
+    <div role="img" aria-label={label} aria-busy={!value} data-phone-qr={value ?? ""} className="flex size-[200px] shrink-0 items-center justify-center rounded-[16px] bg-white p-3">
+      {value ? <QRCodeSVG value={value} size={176} level="L" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
+        : <span className="size-[176px] animate-pulse rounded-[8px] bg-[#1b1b1f]/[0.06] motion-reduce:animate-none" />}
     </div>
   );
 
   const ios = kind === "ios";
-  // apple's badge, in the page's own ink: dark on a light skin, light on a dark one
+  // apple's badge, cut down to the step's row and drawn in the page's ink: dark on a light skin, light on a dark one. its
+  // hit area reaches 44px past the drawn 32
   const appStoreBadge = (
-    <a data-phone-app-store="" href={storeUrl("ios")} target="_blank" rel="noreferrer"
-      className="inline-flex h-11 items-center gap-2 self-start rounded-[10px] bg-ink ps-3 pe-4 text-app transition-opacity duration-150 ease-[ease] hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none">
-      <Apple size={20} aria-hidden="true" className="-mt-0.5" />
-      <span className="flex flex-col items-start">
-        <span className="text-[10px] leading-3 tracking-[0.01em]">{t("settings.phone.appStoreSmall")}</span>
-        <span className="text-[16px] font-semibold leading-5 tracking-[-0.015em]">{t("settings.phone.appStoreBig")}</span>
-      </span>
+    <a data-phone-app-store="" href={storeUrl("ios")} target="_blank" rel="noreferrer" aria-label={t("settings.phone.appStoreLabel")}
+      className="relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] bg-ink ps-2.5 pe-3 text-[13px] font-semibold leading-4 tracking-[-0.01em] text-app transition-opacity duration-150 ease-[ease] before:absolute before:-inset-y-1.5 before:inset-x-0 hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none">
+      <Apple size={15} aria-hidden="true" className="-mt-px" />{t("settings.phone.appStore")}
     </a>
   );
 
@@ -406,101 +388,101 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     </div>
   );
 
-  // one numbered step: a round number, what to do, and what it needs right under it
-  const step = (n: number, title: ReactNode, children?: ReactNode) => (
-    <li className="flex min-w-0 gap-3">
+  // one numbered step on one line, the same weight as the other
+  const step = (n: number, title: ReactNode, end?: ReactNode) => (
+    <li className="flex min-h-11 min-w-0 items-center gap-3">
       <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-full bg-ink/[0.07] text-[12px] font-medium leading-4 text-ink">{n}</span>
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <span className="text-[15px] font-medium leading-6 text-ink">{title}</span>
-        {children}
-      </div>
+      <span className="min-w-0 flex-1 text-pretty text-[14px] leading-5 text-ink">{title}</span>
+      {end}
     </li>
   );
-  const line = (text: ReactNode) => <span className="-mt-1 text-pretty text-[13px] leading-[18px] text-ink-secondary">{text}</span>;
 
-  // the qr and its code in one column, the steps beside them where there is room, under them where there is not
-  const linkGrid = (credentials: ReactNode, steps: ReactNode) => (
-    <div className="@container w-full">
-      <div data-phone-slab="" className="grid grid-cols-1 justify-items-center gap-8 @[500px]:grid-cols-[180px_minmax(0,1fr)] @[500px]:justify-items-stretch @[500px]:gap-10">
-        <div className="flex w-[180px] flex-col items-center gap-3">{credentials}</div>
-        <ol data-phone-steps={kind} className="m-0 flex w-full max-w-[400px] list-none flex-col gap-7 p-0 @[500px]:max-w-none">{steps}</ol>
-      </div>
+  const steps = (second: ReactNode) => (
+    <ol data-phone-steps={kind} className="m-0 flex w-full list-none flex-col p-0 px-2">
+      {ios ? step(1, t("settings.phone.getIos"), appStoreBadge) : step(1, t("settings.phone.getAndroid"))}
+      {step(2, second)}
+    </ol>
+  );
+
+  // the one card on the page: the qr, under it what to type, what to do with it, and the wait. Every state keeps its
+  // rows, so a code that lands, renews, ends or fails changes what is in them and never the card's size
+  const card = (tile: ReactNode, below: ReactNode, actions: ReactNode, status: ReactNode) => (
+    <div data-phone-card="" className="flex min-h-[384px] w-full flex-col items-center rounded-[24px] bg-ink/[0.035] p-6">
+      {failed ? failedBlock : expired ? expiredBlock : <>
+        {tile}
+        <div className="mt-4 flex min-h-8 items-center justify-center text-center">{below}</div>
+        <div className="flex min-h-11 items-center justify-center">{actions}</div>
+        <div className="mt-2 w-full">{status}</div>
+      </>}
     </div>
   );
 
-  const getApp = ios
-    ? step(1, t("settings.phone.getIos"), appStoreBadge)
-    : step(1, t("settings.phone.getAndroid"), line(t(cloudHome ? "settings.phone.getAndroidLineCloud" : "settings.phone.getAndroidLine")));
+  const typed = offer && !offer.code
+    ? <span className="max-w-[300px] text-pretty text-[13px] leading-[18px] text-ink-secondary">{t("settings.mobile.scanOnly")}</span>
+    : offer && !expired
+      ? <code aria-label={t("settings.mobile.code")} data-phone-code="" className="select-all whitespace-nowrap font-mono text-[20px] leading-8 tracking-[0.08em] text-ink">{groupedCode}</code>
+      : <span aria-hidden="true" className={cn("block h-6 w-[160px] rounded-[6px] bg-ink/[0.06]", !expired && "animate-pulse motion-reduce:animate-none")} />;
 
-  // the typed code under the qr: its place is kept while it is made, so nothing moves when it lands
-  const codeBlock = offer && !offer.code ? null : (
-    <div className="flex w-full flex-col items-center">
-      {offer && !expired ? (
-        <code aria-label={t("settings.mobile.code")} data-phone-code="" className="select-all whitespace-nowrap font-mono text-[18px] leading-8 tracking-[0.06em] text-ink">{groupedCode}</code>
-      ) : (
-        <span aria-hidden="true" className={cn("my-1.5 block h-5 w-[140px] rounded-[6px] bg-ink/[0.06]", !expired && "animate-pulse motion-reduce:animate-none")} />
-      )}
-      <div className="flex items-center">
-        <button type="button" data-phone-copy="" onClick={() => void copyCode()} disabled={!offer || expired} className={quietButton} aria-live="polite">
-          {t(copied === "copied" ? "settings.mobile.copied" : copied === "failed" ? "settings.mobile.copyFailed" : "settings.mobile.copyCode")}
-        </button>
-        <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy || !offer || expired} className={cn(quietButton, (!offer || expired) && "invisible")}>{t("settings.mobile.newCode")}</button>
-      </div>
-    </div>
+  const codeActions = (
+    <>
+      <button type="button" data-phone-copy="" onClick={() => void copyCode()} disabled={!offer?.code || expired} className={quietButton} aria-live="polite">
+        {t(copied === "copied" ? "settings.mobile.copied" : copied === "failed" ? "settings.mobile.copyFailed" : "settings.mobile.copyCode")}
+      </button>
+      <span aria-hidden="true" className="text-[13px] text-ink-tertiary">·</span>
+      <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy || !offer || expired} className={quietButton}>{t("settings.mobile.newCode")}</button>
+    </>
   );
-  const codeLine = (withCode: Parameters<typeof t>[0]) => line(t(offer && !offer.code ? "settings.mobile.scanOnly" : withCode));
 
-  const failedBlock = (
-    <div data-pairing-failed="" className="flex w-full flex-col items-center gap-3 rounded-[20px] bg-ink/[0.035] px-6 py-8 text-center">
-      <PlaceArt name="error" size={44} />
-      <p role="alert" className="m-0 max-w-[380px] text-pretty text-[14px] leading-5 text-ink-secondary">{error}</p>
-      <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className="ui-button ui-button-pill min-h-11">{t("settings.phone.tryAgain")}</button>
+  // the wait and, under it, when the code changes; both rows stay while there is nothing to say
+  const status = (waitingLine: string, countdownLine: ReactNode) => (
+    <div role="status" className="flex flex-col items-center gap-0.5 text-center">
+      <span className="flex items-center gap-2 text-[13px] leading-[18px] text-ink-secondary">
+        <span aria-hidden="true" className="phone-link-wait inline-block size-1.5 shrink-0 rounded-full bg-ink-secondary" />{waitingLine}
+      </span>
+      <span className="min-h-4 text-[12px] leading-4 text-ink-tertiary">{countdownLine || " "}</span>
     </div>
   );
 
-  const offerTile = (label: string) => expired ? ended("expired", t("settings.mobile.expired"), t("settings.mobile.newCode")) : qrTile(offer?.qr ?? null, label);
-
-  const localLink = (live: boolean) => (
-    <div data-phone-link="" className="flex flex-col items-center gap-8">
-      {heading(live, t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"))}
-      {failed ? failedBlock : linkGrid(<>{offerTile(t("settings.mobile.qr"))}{codeBlock}</>, <>
-        {getApp}
-        {step(2, t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"), codeLine(ios ? "settings.phone.openIosLine" : "settings.phone.openAndroidLine"))}
-      </>)}
-      {countdown && waiting(<>{t("mobile.desktop.waiting")} · {countdown}</>)}
+  // a code that could not be made, or ended, fills the card in place of its rows: one picture, one line, one way on
+  const notice = (art: PlaceArtName, line: ReactNode, action: string, attrs: Record<string, string>, role: "alert" | "status") => (
+    <div {...attrs} className="flex w-full flex-1 flex-col items-center justify-center gap-3 text-center">
+      <PlaceArt name={art} size={44} />
+      <p role={role} className="m-0 max-w-[300px] text-pretty text-[14px] leading-5 text-ink-secondary">{line}</p>
+      <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className="ui-button ui-button-pill min-h-11">{action}</button>
     </div>
   );
+  const failedBlock = notice("error", error, t("settings.phone.tryAgain"), { "data-pairing-failed": "" }, "alert");
+  const expiredBlock = notice("expired", t("settings.mobile.expired"), t("settings.mobile.newCode"), { "data-phone-expired": "" }, "status");
+
+  const offerTile = (label: string) => qrTile(offer?.qr ?? null, label);
+
+  // one centred column: what this is, the card, then the two steps
+  const column = (live: boolean, attrs: Record<string, string>, title: string, sub: ReactNode, body: ReactNode, second: ReactNode) => (
+    <div {...attrs} className="mx-auto flex w-full max-w-[400px] flex-col items-center gap-6">
+      {heading(live, title, sub)}
+      {body}
+      {steps(second)}
+    </div>
+  );
+
+  const localLink = (live: boolean) => column(live, { "data-phone-link": "" }, t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"), t("settings.phone.whichSub"),
+    card(offerTile(t("settings.mobile.qr")), typed, codeActions, status(t("mobile.desktop.waiting"), countdown)),
+    t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"));
 
   // a cloud from the desktop app: one qr and one letters-only code that log the phone in to the account, no email step
-  const cloudCodeLink = (live: boolean) => (
-    <div data-phone-cloud="" data-phone-cloud-code="" className="flex flex-col items-center gap-8">
-      {heading(live, t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"),
-        signInEmail && <span data-phone-cloud-as="" className="break-all">{t("settings.phone.cloudAs", { email: signInEmail })}</span>)}
-      {failed ? failedBlock : linkGrid(<>{offerTile(t("settings.phone.cloudCodeQr"))}{codeBlock}</>, <>
-        {getApp}
-        {step(2, t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"), codeLine(ios ? "settings.phone.cloudCodeLine" : "settings.phone.cloudCodeLineAndroid"))}
-      </>)}
-      {countdown && waiting(<>{t("settings.phone.waitingCloud")} · {countdown}</>)}
-    </div>
-  );
+  const cloudCodeLink = (live: boolean) => column(live, { "data-phone-cloud": "", "data-phone-cloud-code": "" }, t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"),
+    signInEmail && <span data-phone-cloud-as="" className="break-all">{t("settings.phone.cloudAs", { email: signInEmail })}</span>,
+    card(offerTile(t("settings.phone.cloudCodeQr")), typed, codeActions, status(t("settings.phone.waitingCloud"), countdown)),
+    t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"));
 
   // a cloud in a browser tab or an older app: no code to make, the qr opens the app at its dusk cloud log in with the email filled in
-  const cloudLink = (live: boolean) => codesInCloud ? cloudCodeLink(live) : (
-    <div data-phone-cloud="" className="flex flex-col items-center gap-8">
-      {heading(live, t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"))}
-      {linkGrid(qrTile(universalSignInLink(signInEmail), t("settings.phone.cloudQr")), <>
-        {getApp}
-        {step(2, t("settings.phone.logInStep"), signInEmail ? (
-          <div data-phone-cloud-sign-in="" className="-mt-1 flex min-w-0 flex-col gap-1">
-            <span className="text-[12px] leading-4 text-ink-tertiary">{t("settings.phone.logInWith")}</span>
-            <span className="max-w-full break-all text-[15px] font-medium leading-6 text-ink">{signInEmail}</span>
-            <span className="text-pretty text-[13px] leading-[18px] text-ink-secondary">{t(ios ? "settings.phone.cloudScan" : "settings.phone.cloudScanAndroid")}</span>
-          </div>
-        ) : line(t("settings.phone.cloudScanAny")))}
-      </>)}
-      {waiting(t("settings.phone.waitingCloud"))}
-    </div>
-  );
+  const cloudLink = (live: boolean) => codesInCloud ? cloudCodeLink(live) : column(live, { "data-phone-cloud": "" }, t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"), undefined,
+    card(qrTile(universalSignInLink(signInEmail), t("settings.phone.cloudQr")),
+      signInEmail
+        ? <span data-phone-cloud-sign-in="" className="max-w-[320px] break-all text-[14px] leading-5 text-ink-secondary">{t("settings.phone.logInWith")} <span className="font-medium text-ink">{signInEmail}</span></span>
+        : <span className="max-w-[300px] text-pretty text-[13px] leading-[18px] text-ink-secondary">{t("settings.phone.cloudScanAny")}</span>,
+      null, status(t("settings.phone.waitingCloud"), null)),
+    t("settings.phone.logInStep"));
 
   const doneStep = (live: boolean) => (
     <div role={live ? "status" : undefined} data-phone-linked="" className="flex flex-col items-center gap-6">
@@ -513,7 +495,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
 
   // one page of the flow, its own way back sliding with it
   const page = (at: string, live: boolean) => (
-    <div className="mx-auto flex w-full max-w-[560px] flex-col gap-2 pb-2">
+    <div className={cn("mx-auto flex w-full flex-col gap-2 pb-2", at === "link" ? "max-w-[400px]" : "max-w-[560px]")}>
       {at === "link" ? <>{backBar("platform")}{(cloudHome ? cloudLink : localLink)(live)}</>
         : at === "platform" ? <>{backBar(hasPhones ? "home" : null)}{platformStep(live)}</>
         : at === "done" ? doneStep(live) : loadingStep}

@@ -77,12 +77,14 @@ it("always opens on the phone picker, Android shown but not pickable, then shows
   expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/pair#m=offer1&c=ABCDEFGH0001");
   const steps = host.querySelector("[data-phone-steps=ios]")!;
   expect(steps.querySelectorAll(":scope > li")).toHaveLength(2);
-  expect(steps.textContent).toContain("Get dusk bot from the App Store");
-  expect(steps.textContent).toContain("Open dusk bot and scan the QR code");
+  expect(steps.textContent).toContain("Get the dusk bot app");
+  expect(steps.textContent).toContain("Open it and scan the QR code, or type the code");
+  expect(host.querySelector("[data-phone-card] [data-phone-code]"), "the code sits in the card under the qr").not.toBeNull();
   expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGH 0001");
   const store = host.querySelector("[data-phone-app-store]")!;
   expect(store.getAttribute("href")).toBe("https://apps.apple.com/app/id6834725640");
-  expect(store.textContent).toBe("Download on theApp Store");
+  expect(store.textContent).toBe("App Store");
+  expect(store.getAttribute("aria-label")).toBe("Get dusk bot on the App Store");
   expect(store.querySelector("[data-store-mark]"), "a plain Apple glyph, not the pixel art").toBeNull();
   expect(host.textContent).toContain("Waiting for your phone");
   await click("[data-pairing-back]");
@@ -176,7 +178,8 @@ it("stops renewing after an hour or so and then says the code ended, with a new 
   await flush();
   for (let i = 0; i < AUTO_RENEWALS + 1; i++) await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
   expect(minted).toBe(1 + AUTO_RENEWALS);
-  expect(host.textContent).toContain("This code expired");
+  expect(host.querySelector("[data-phone-expired]")?.textContent).toContain("This code expired");
+  expect(host.querySelector("[data-phone-qr]"), "the ended code fills the card in place of the qr").toBeNull();
   await click("[data-phone-new-code]");
   await flush();
   expect(minted).toBe(2 + AUTO_RENEWALS);
@@ -193,7 +196,7 @@ it("when no code can be made, says why with one way to try again, and shows no e
   await mount({ remote: false });
   await flush();
   expect(host.querySelector("[data-pairing-failed] [role=alert]")?.textContent).toContain("cannot reach");
-  expect(host.querySelector("[data-phone-slab]")).toBeNull();
+  expect(host.querySelector("[data-phone-qr]")).toBeNull();
   expect(host.querySelector("[data-phone-copy]")).toBeNull();
   expect(host.textContent).not.toContain("Scan with your phone's camera");
   refuse = false;
@@ -239,8 +242,7 @@ describe("a dusk cloud in the desktop app", () => {
     expect(qrs()).toBe(1);
     expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/signin#c=ABCDEFGH&email=owner%40example.test");
     expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGH");
-    expect(host.querySelector("[data-phone-steps=ios]")?.textContent).toContain("Open dusk bot and scan the QR code");
-    expect(host.querySelector("[data-phone-steps=ios]")?.textContent).toContain("no email needed");
+    expect(host.querySelector("[data-phone-steps=ios]")?.textContent).toContain("Open it and scan the QR code");
     expect(host.querySelector("[data-phone-cloud-as]")?.textContent).toBe("Logs in as owner@example.test");
     expect(host.textContent).toContain("Waiting for your phone to log in");
     expect(host.textContent).toContain("A new code appears in 9 min");
