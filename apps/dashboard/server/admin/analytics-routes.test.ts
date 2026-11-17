@@ -214,21 +214,26 @@ describe("admin analytics routes", () => {
     expect(filtered.cards.channel).toHaveLength(1);
   });
 
-  it("asks the database for only the events a view reads, and still counts someone acting in an app as online", async () => {
+  it("reads closed hours from digests: once built, a view reads raw only the hour still open and the few identify and billing events", async () => {
     const admin = await login(ADMIN);
-    await view(VID, "s1", time - 60_000);
-    await record("site_section", { at: time - 50_000, visitor: VID, props: { path: "/", section: "hero", ms: 3000 }, ctx: { visitor: VID, session: "s1", pv: "s1:pv" } });
+    await view(VID, "s1", time - 3 * HOUR);
+    await record("site_section", { at: time - 3 * HOUR + 10_000, visitor: VID, props: { path: "/", section: "hero", ms: 3000 }, ctx: { visitor: VID, session: "s1", pv: "s1:pv" } });
     await record("app_action", { ctx: { install: INSTALL }, props: { name: "send" } });
-    const asked: Array<readonly string[] | undefined> = [];
+    // the panel's windows start at the reader's midnight
+    const midnight = `from=${time - 12 * HOUR - 30 * DAY}&to=${time}`;
+    const paths = ["web", "web/page", "funnel", "journeys", "app", "retention", "product"].map(path => `/v1/admin/${path}?${midnight}`).concat("/v1/admin/revenue");
+    for (const path of paths) expect((await call(path, { cookie: admin })).status, path).toBe(200);
+    const asked: Array<{ span: number; names: readonly string[] | undefined }> = [];
     const scan = sink.scan.bind(sink);
-    sink.scan = (since, until, names) => { asked.push(names); return scan(since, until, names); };
+    sink.scan = (since, until, names) => { asked.push({ span: until - since, names }); return scan(since, until, names); };
+    time += 31_000;
     const web = await read<Web>(`/v1/admin/web?${range(time - DAY, time)}`, admin);
-    expect(web.online).toEqual({ site: 1, app: 1 });
+    expect(web.online).toEqual({ site: 0, app: 1 });
     expect(web.current).toMatchObject({ visitors: 1, pageviews: 1 });
-    for (const path of ["/v1/admin/web/page", "/v1/admin/funnel", "/v1/admin/journeys", "/v1/admin/app", "/v1/admin/retention"]) expect((await call(path, { cookie: admin })).status, path).toBe(200);
-    const named = asked.filter((names): names is readonly string[] => names !== undefined);
-    expect(named.length).toBeGreaterThanOrEqual(6);
-    for (const names of named) expect(names).not.toContain("site_section");
+    for (const path of paths) expect((await call(path, { cookie: admin })).status, path).toBe(200);
+    expect(asked.length).toBeGreaterThan(0);
+    for (const { span, names } of asked.filter(row => row.span > HOUR + 60_000)) expect(names, String(span)).toBeDefined();
+    for (const { names } of asked.filter(row => row.span > HOUR + 60_000)) for (const name of names!) expect(["identify", "billing", "checkout_paid"]).toContain(name);
   });
 
   it("rejects reversed, empty and over-400-day ranges", async () => {
