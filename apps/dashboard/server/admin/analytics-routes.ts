@@ -5,7 +5,7 @@ import type { createBilling } from "../billing/index.ts";
 import type { Analytics } from "../analytics/index.ts";
 import type { StoredEvent } from "../analytics/sink.ts";
 import type { StoredWorkspace } from "../store.ts";
-import { DAY, DIMENSIONS, SURFACES, activeDays, breakdown, funnel, identityOf, kpis, matches, online, retention, series, visitsOf, type Dimension, type Filters, type People, type Visit } from "../analytics/web.ts";
+import { ACTIVE_EVENTS, DAY, DIMENSIONS, ONLINE_MS, SITE_EVENTS, SURFACES, VISIT_EVENTS, activeDays, breakdown, funnel, identityOf, kpis, matches, online, retention, series, visitsOf, type Dimension, type Filters, type People, type Visit } from "../analytics/web.ts";
 import { choseCloud, wasPaid, workspaceTurns } from "./metrics.ts";
 import { productReport } from "./product.ts";
 import { paymentsOf, revenueReport } from "../analytics/revenue.ts";
@@ -19,9 +19,20 @@ import { BILLING_CONFIG } from "../billing/plans.ts";
 import { quote } from "../billing/pricing.ts";
 import type { Step } from "../analytics/profile.ts";
 import { moneyIn, opsEventOf, withoutOps, type MoneyMode } from "./money-mode.ts";
+import { EVENTS } from "../analytics/events.ts";
 /** the most events one person's page reads (newest kept) */
 const PERSON_EVENTS = 20_000;
 /** an account's face for the people views: its photo and avatar choice, when it has them */
+/** the events load() reads beyond visits: when an account first paired, got a bot reply and chose a paid plan */
+const PEOPLE_EVENTS = ["app_paired", "first_bot_reply", "plan_chosen"];
+/** each view asks the database for only the events it reads; site_section (a quarter of all events) is read by the product view alone */
+const SCANS = {
+  web: [...VISIT_EVENTS, "identify", ...PEOPLE_EVENTS],
+  details: [...VISIT_EVENTS, "identify"],
+  journeys: [...SITE_EVENTS, "identify"],
+  funnel: Object.keys(EVENTS).filter(name => name !== "site_section"),
+  app: Object.keys(EVENTS).filter(name => name.startsWith("app_")),
+} as const;
 const face = (account: { avatarUrl?: string; avatar?: string }) => ({ ...(account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}), ...(account.avatar ? { avatar: account.avatar } : {}) });
 
 export class AnalyticsRouteError extends Error {
@@ -119,8 +130,8 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     for (const ws of options.workspaces()) if (ws.ownerAccountId && workspaceTurns(ws) > 0) first(replied, ws.ownerAccountId, ws.lastReportAt ?? ws.connectedAt);
     return { signups, paid, cloudChosen, paired, replied };
   }
-  async function load(from: number) {
-    const [events, identifies] = await Promise.all([sink.scan(from, now() + 60_000), sink.scan(0, now() + 60_000, ["identify"])]);
+  async function load(from: number, names?: readonly string[]) {
+    const [events, identifies] = await Promise.all([sink.scan(from, now() + 60_000, names), sink.scan(0, now() + 60_000, ["identify"])]);
     const merged = events.some(event => event.name === "identify") ? events : [...events, ...identifies];
     const identity = identityOf(identifies);
     const p = people();
@@ -136,7 +147,9 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
   async function web(url: URL) {
     const { from, to } = windowOf(url, now()), span = to - from;
     const { surface, filters, scoped } = webFilters(url);
-    const { events, identity, people: p } = await load(Math.min(from - span, from - 60 * DAY));
+    const time = now();
+    const [{ identity, people: p, events }, recent, crawls, notes] = await Promise.all([load(Math.min(from - span, from - 60 * DAY), SCANS.web), sink.scan(time - ONLINE_MS, time + 60_000),
+      sink.crawls(from, to), sink.notes(from - span, to)]);
     const all = visitsOf(events, SURFACES), visits = all.filter(visit => surface === "all" || visit.surface === surface);
     const current = kpis(visits, identity, p, from, to, scoped), previous = kpis(visits, identity, p, from - span, from, scoped);
     const cards = Object.fromEntries(DIMENSIONS.map(dim => [dim, breakdown(visits, identity, p, dim, from, to, scoped)]));
@@ -146,11 +159,10 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     const marks = (["signup", "paid"] as const).flatMap(kind => [...(kind === "signup" ? p.signups : p.paid)].filter(([id, at]) => at >= from && at < to && (!allowed || allowed.has(id)))
       .map(([id, at]) => ({ at, kind, seed: [...(identity.visitorsOf.get(id) ?? [])][0] ?? id, email: accounts.get(id)?.email ?? null, customer: p.paid.has(id) })))
       .sort((a, b) => b.at - a.at || a.seed.localeCompare(b.seed)).slice(0, 60);
-    const live = online(events, now(), analytics.presence.list().map(entry => entry.key));
+    const live = online(recent, time, analytics.presence.list().map(entry => entry.key));
     const money = moneyState();
     const revenue = revenueReport({ payments: paymentsOf(money), subscriptions: money.subscriptions, visits, identity, from, to, now: now(), filters: scoped,
       accounts: new Map([...accounts].map(([id, account]) => [id, { email: account.email, createdAt: account.createdAt }])) });
-    const crawls = await sink.crawls(from, to);
     const count = (values: string[]) => [...values.reduce((map, value) => map.set(value, (map.get(value) ?? 0) + 1), new Map<string, number>())]
       .map(([key, requests]) => ({ key, visitors: requests, signups: 0, paid: 0 })).sort((a, b) => b.visitors - a.visitors).slice(0, 50);
     const chart = series(visits, p, from, to, scoped, identity);
@@ -159,13 +171,13 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     const insights = { previousVisitors: aligned(series(visits, p, from - span, from, scoped, identity).visitors, chart.starts.length),
       visitors: newVsReturning(visits, from, to, scoped), hours: peakHours(visits, from, to, tz, scoped) };
     // payments are live when the server takes live money, sold or not; before the first sale the chart says no sales
-    return { from, to, now: now(), filters, current, previous, surfaces, marks, online: live, series: chart, insights, cards, revenue: { ...revenue, live: revenue.live || serverMode() === "live" }, notes: await sink.notes(from - span, to),
+    return { from, to, now: now(), filters, current, previous, surfaces, marks, online: live, series: chart, insights, cards, revenue: { ...revenue, live: revenue.live || serverMode() === "live" }, notes,
       tracked: visits.length > 0, crawlers: { total: crawls.length, bot: count(crawls.map(c => c.bot)), page: count(crawls.map(c => c.path)), kind: count(crawls.map(c => c.kind)) } };
   }
 
   async function webDetails(dim: Dimension, url: URL) {
     const { from, to } = windowOf(url, now()), { surface, filters, scoped } = webFilters(url);
-    const { events, identity, people: p } = await load(from);
+    const { events, identity, people: p } = await load(from, SCANS.details);
     const visits = visitsOf(events, SURFACES).filter(visit => surface === "all" || visit.surface === surface);
     const rows = breakdown(visits, identity, p, dim, from, to, scoped, 500).map(row => {
       const { conversion, bounce, visitMs, pageviews } = kpis(visits, identity, p, from, to, { ...scoped, [dim]: row.key });
@@ -177,7 +189,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
   async function funnelRoute(url: URL) {
     const { from, to } = windowOf(url, now());
     const mode = url.searchParams.get("mode") === "signups" ? "signups" : "visitors";
-    const { events, identity, people: p, visits } = await load(from);
+    const { events, identity, people: p, visits } = await load(from, SCANS.funnel);
     return { from, to, ...funnel({ from, to, now: now(), mode, visits, identity, events, people: p, cloudChosen: p.cloudChosen, paired: p.paired, replied: p.replied }),
       upsells: upsellsOf(events, moneyState().subscriptions, from, to) };
   }
@@ -194,7 +206,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     const only = url.searchParams.get("only") ?? "all";
     if (!["all", "signups", "customers"].includes(only)) throw bad();
     const q = (url.searchParams.get("q") ?? "").trim().toLowerCase().slice(0, 100);
-    const { identity, people: p, visits } = await load(from - 90 * DAY);
+    const { identity, people: p, visits } = await load(from - 90 * DAY, SCANS.journeys);
     const emails = new Map(auth.directory().accounts.map(account => [account.id, account]));
     const groups = new Map<string, Visit[]>();
     for (const visit of visits) {
@@ -327,7 +339,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
 
   async function app(url: URL) {
     const { from, to } = windowOf(url, now());
-    const events = (await sink.scan(from, to)).filter(event => event.name.startsWith("app_"));
+    const events = (await sink.scan(from, to, SCANS.app)).filter(event => event.name.startsWith("app_"));
     const top = (values: string[], limit = 12) => {
       const counts = new Map<string, number>();
       for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
@@ -402,7 +414,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
   }
   async function revenueData() {
     const time = now();
-    const [recent, history] = await Promise.all([sink.scan(time - 14 * DAY, time + 60_000), sink.scan(time - 400 * DAY, time + 60_000, ["site_view", "page_view", "identify"])]);
+    const [recent, history] = await Promise.all([sink.scan(time - 14 * DAY, time + 60_000, ACTIVE_EVENTS), sink.scan(time - 400 * DAY, time + 60_000, ["site_view", "page_view", "identify"])]);
     const activity = new Map([...activeDays(recent)].map(([id, days]) => [id, days.size]));
     const input = subscriptionInput(activity);
     const pays = paysOf(input), paying = new Set([...pays.map(pay => pay.accountId), ...input.subscriptions.filter(sub => sub.status !== "pending" && !sub.review).map(sub => sub.accountId)]);

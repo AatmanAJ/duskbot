@@ -8,7 +8,9 @@ export const HOUR = 3_600_000, DAY = 86_400_000;
 export const ONLINE_MS = 5 * 60_000;
 export const SURFACES = ["site", "account", "desktop", "phone"] as const;
 export type Surface = (typeof SURFACES)[number];
-const ACTIVE = new Set(Object.entries(EVENTS).filter(([, spec]) => "active" in spec).map(([name]) => name));
+/** the events that count an account as active that day */
+export const ACTIVE_EVENTS: readonly string[] = Object.entries(EVENTS).filter(([, spec]) => "active" in spec).map(([name]) => name);
+const ACTIVE = new Set(ACTIVE_EVENTS);
 
 export interface Visit {
   session: string; visitor: string; surface: Surface; start: number; end: number; host: string | null; keyword: string | null;
@@ -21,8 +23,12 @@ export interface Visit {
   country: string | null; region: string | null; city: string | null; lat: number | null; lon: number | null;
   device: string | null; os: string | null; browser: string | null;
 }
-const SITE = new Set(["site_view", "site_goal", "site_leave"]);
-const APP = new Set(["app_open", "app_screen", "app_feature", "app_close"]);
+export const SITE_EVENTS = ["site_view", "site_goal", "site_leave"] as const;
+const APP_VISIT_EVENTS = ["app_open", "app_screen", "app_feature", "app_close"] as const;
+/** every event visitsOf reads: a scan for visits needs no others */
+export const VISIT_EVENTS: readonly string[] = [...SITE_EVENTS, ...APP_VISIT_EVENTS, "page_view"];
+const SITE = new Set<string>(SITE_EVENTS);
+const APP = new Set<string>(APP_VISIT_EVENTS);
 
 export function visitsOf(events: readonly StoredEvent[], surfaces: readonly Surface[] = ["site"]): Visit[] {
   const by = new Map<string, Visit>();
@@ -299,23 +305,28 @@ export function funnel(input: FunnelInput) {
     return [...steps, back(RETURN_WINDOWS.d1), back(RETURN_WINDOWS.d7), back(RETURN_WINDOWS.d30)];
   };
   if (input.mode === "visitors") {
+    const byVisitor = new Map<string, Visit[]>();
+    for (const visit of input.visits) (byVisitor.get(visit.visitor) ?? byVisitor.set(visit.visitor, []).get(visit.visitor)!).push(visit);
     for (const [visitor, visit] of firstVisit) {
       if (visit.start < input.from || visit.start >= input.to) continue;
       const account = identity.accountOf.get(visitor) ?? null;
-      const joined = input.visits.filter(item => item.visitor === visitor).flatMap(item => item.goals.filter(goal => goal.goal === "waitlist_join").map(goal => goal.at));
+      const mine = byVisitor.get(visitor)!;
+      const joined = mine.flatMap(item => item.goals.filter(goal => goal.goal === "waitlist_join").map(goal => goal.at));
       const signup = account ? input.people.signups.get(account) ?? null : null;
       const second = [signup, ...joined].filter((at): at is number => at !== null).sort((a, b) => a - b)[0] ?? null;
-      const lastVisit = input.visits.filter(item => item.visitor === visitor).at(-1)!;
+      const lastVisit = mine.at(-1)!;
       const lastLeave = [...lastVisit.leaves.values()].at(-1);
       people.push({ key: visitor, source: visit.source, channel: visit.channel, account, times: [visit.start, second, ...accountSteps(account)],
         last: { page: lastVisit.exit, scroll: lastLeave?.scroll ?? null, event: lastVisit.goals.at(-1)?.goal ?? null } });
     }
   } else {
+    const lastEventOf = new Map<string, StoredEvent>();
+    for (const event of input.events) if (event.accountId) lastEventOf.set(event.accountId, event);
     for (const [account, at] of input.people.signups) {
       if (at < input.from || at >= input.to) continue;
       const visitor = [...(identity.visitorsOf.get(account) ?? [])][0];
       const visit = visitor ? firstVisit.get(visitor) : undefined;
-      const lastEvent = input.events.filter(event => event.accountId === account).at(-1);
+      const lastEvent = lastEventOf.get(account);
       people.push({ key: account, source: visit?.source ?? "unknown", channel: visit?.channel ?? "unknown", account, times: [visit?.start ?? null, at, ...accountSteps(account)],
         last: { page: lastEvent?.name === "page_view" ? String(lastEvent.props.path) : lastEvent?.ctx?.page ?? null, scroll: null, event: lastEvent?.name ?? null } });
     }
