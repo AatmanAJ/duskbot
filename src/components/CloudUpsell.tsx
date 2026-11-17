@@ -9,6 +9,8 @@ import { CLOUD_INTRO, dismissNotice, INVESTED_NOTICE, LATE_ROUTINE_NOTICE, launc
 import { t } from "@/lib/i18n";
 import { api, useStore } from "@/state/store";
 import { SpotCtaCard, type SpotCta } from "./SidebarSpot";
+import { useCloudDesktop } from "./bot-panel/CloudDesktop";
+import { cloudMoveStage, hasDuskCloud, MOVE_IN_PROGRESS } from "@/lib/cloud-move";
 import { localDesktopPage } from "./onboarding/WelcomeGate";
 import { useCloudPlan } from "./ProIntroduction";
 import { deviceWord } from "./vps-link/parts";
@@ -48,6 +50,34 @@ let launchInvested: InvestedFacts | null = null;
  * so the pitch is said once. Someone clearly invested (shared/cloud-upsell.ts INVESTED) gets it in their own numbers
  * instead, once per account. `covered`: an update holds the spot, so no showing starts under it. */
 export function useSidebarCloudCta(covered = false): SpotCta | null {
+  const switchCta = useSidebarSwitchCta(covered);
+  const offer = useSidebarOfferCta(covered);
+  return offer ?? switchCta;
+}
+
+// closed for this launch: Give feedback comes back until the app starts again
+let switchClosed = false;
+
+/** An account that has a dusk cloud: the spot's way to it from this computer, in Give feedback's place. Never while the
+ * bots are on their way, on the cloud's own page, or in a store build. */
+export function useSidebarSwitchCta(covered = false): SpotCta | null {
+  const { state } = useStore();
+  const cloudDesktop = useCloudDesktop();
+  const [closed, setClosed] = useState(switchClosed);
+  const stage = cloudDesktop ? cloudMoveStage(cloudDesktop.view, cloudDesktop.keep) : null;
+  const openHome = cloudDesktop?.openHome;
+  if (covered || closed || storeApp() || state.config?.cloudHome === true || !openHome || !hasDuskCloud(stage) || MOVE_IN_PROGRESS.has(stage!)) return null;
+  return {
+    id: "cloud-switch",
+    title: t("runsOn.switchCloud"),
+    art: "server",
+    closeLabel: t("cloudUpsell.hide"),
+    onStart: () => void openHome().catch(() => {}),
+    onClose: () => { switchClosed = true; setClosed(true); },
+  };
+}
+
+function useSidebarOfferCta(covered: boolean): SpotCta | null {
   const { state, dispatch } = useStore();
   const { allowed, open } = useCloudUpsell();
   const [held, setHeld] = useState<InvestedFacts | null>(launchInvested);

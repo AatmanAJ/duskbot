@@ -27,6 +27,7 @@ const fixture = vi.hoisted(() => {
     storeState: {} as Record<string, unknown>,
     otherServer: null as string | null,
     cloudDesktop: undefined as unknown,
+    capabilities: undefined as unknown,
     skills: {
       skills: [] as ManagedSkill[],
       loading: false,
@@ -81,10 +82,14 @@ vi.mock("@/lib/memory", async (importOriginal) => ({
 // The server renderer cannot portal; the dialog's props are what these tests read.
 vi.mock("./ConfirmDialog", () => ({ ConfirmDialog: () => null }));
 vi.mock("./bot-settings/useBotSettingsDerived", () => ({ useBotSettingsDerived: () => fixture.derived }));
-vi.mock("./DesktopCapabilities", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./DesktopCapabilities")>()),
-  useCaptionChrome: () => ({ padClass: "" }),
-}));
+vi.mock("./DesktopCapabilities", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./DesktopCapabilities")>();
+  return {
+    ...original,
+    useCaptionChrome: () => ({ padClass: "" }),
+    useDesktopCapabilities: () => (fixture.capabilities === undefined ? original.useDesktopCapabilities() : { capabilities: fixture.capabilities, ready: true }),
+  };
+});
 vi.mock("./Avatar", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./Avatar")>()),
   BotAvatar: () => null,
@@ -130,7 +135,7 @@ const { DetailsTab } = await import("./bot-panel/DetailsTab");
 const { AdvancedTab } = await import("./bot-panel/AdvancedTab");
 const { SettingsPage } = await import("./bot-panel/SettingsPage");
 const { LibraryPage, LibrarySection } = await import("./bot-panel/LibraryTab");
-const { CloudCtaCard, CloudSwitchLine, ComputerTab, WherePage, cloudCtaStep, hasDuskCloud } = await import("./bot-panel/ComputerTab");
+const { CloudCtaCard, ComputerTab, WherePage, cloudCtaStep, hasDuskCloud } = await import("./bot-panel/ComputerTab");
 const { PageBody, AppsPage, RoutinesPage, MemoryPage, SkillsPage, FolderPage, BrowserPage } = await import("./bot-panel/pages");
 const { BrowserLogins } = await import("./bot-panel/browser-logins");
 const { PAGES, sectionTarget } = await import("./bot-panel/page-registry");
@@ -814,40 +819,53 @@ describe("the Computer tab", () => {
 });
 
 describe("the Computer tab with a dusk cloud already", () => {
-  it("never offers dusk cloud again: only an account with no cloud, or one still at checkout, sees the offer", () => {
+  it("never offers to buy dusk cloud again: only an account with no cloud, or one still at checkout, sees the offer", () => {
     for (const stage of ["ready", "preparing", "moving", "moved", "open", "manage", "coming-back"] as const) expect(hasDuskCloud(stage), stage).toBe(true);
     for (const stage of [null, "buy", "resume", "elsewhere"] as const) expect(hasDuskCloud(stage), String(stage)).toBe(false);
   });
 
-  it("shows only the screen and the way to the cloud, never a browser above it", () => {
+  const SCREEN_OFF = { host: { platform: "darwin", label: "This Mac", session: "unknown", packaged: true }, windowChrome: "mac-inset",
+    screenPreview: { available: false, interaction: "none" }, dictation: { available: false, engine: "none", onDevice: false },
+    localComputer: { available: false, support: "supported", enabled: true, status: "unavailable", reasonCode: "permission-denied" } };
+  const macPermissions = { status: () => Promise.resolve({ supported: true, screen: "missing", accessibility: "missing" }), request: () => Promise.resolve({ supported: false }) };
+  const tab = (bot: Bot) => {
     fixture.otherServer = null;
-    fixture.cloudDesktop = { view: { step: "move" }, keep: null, openHome: () => Promise.resolve(), dialog: null };
+    fixture.cloudDesktop = { view: { step: "open" }, keep: { shown: false, moved: false }, openHome: () => Promise.resolve(), dialog: null };
+    fixture.capabilities = SCREEN_OFF;
+    const shell = window as unknown as { duskDesktop?: unknown };
+    shell.duskDesktop = { platform: "darwin", macPermissions };
     try {
-      const rendered = computer(makeBot({ computer: "local" }));
-      expect(rendered.html).not.toContain("data-local-browser-first");
-      expect(rendered.nodes.findIndex((node) => node.props.inline === true)).toBeGreaterThan(-1);
-      expect(has(rendered, "data-panel-action", "use-here")).toBe(false);
-      expect(rendered.html).toContain('data-panel-cloud-switch=""');
-
-      const noComputer = computer(makeBot());
-      expect(noComputer.html).not.toContain("data-local-browser-first");
-      expect(noComputer.nodes.findIndex((node) => node.props.inline === true)).toBe(-1);
-      expect(has(noComputer, "data-panel-action", "use-here")).toBe(true);
-      expect(noComputer.html).toContain('data-panel-cloud-switch=""');
+      const rendered = computer(bot);
+      const section = rendered.nodes.find((node) => isValidElement(node.props.after));
+      return { rendered, section, after: section?.props.after as { type: unknown } | undefined };
     } finally {
       fixture.cloudDesktop = undefined;
+      fixture.capabilities = undefined;
+      delete shell.duskDesktop;
     }
+  };
+
+  it("leads with the browser on This Mac without screen permission, with no screen or permission words, then the dusk cloud card", () => {
+    const { rendered, section, after } = tab(makeBot({ computer: "local" }));
+    expect(rendered.nodes.some((node) => node.props.inline === true), "never this Mac's screen").toBe(false);
+    for (const gone of ['data-asleep-mascot=""', "Bots can&#x27;t use this Mac yet", "Your dusk cloud has its own computer", "Screen control", 'data-panel-screen-off']) {
+      expect(rendered.html, gone).not.toContain(gone);
+    }
+    expect(after?.type).toBe(CloudCtaCard);
+    // the Start browser pill asks for this Mac's permissions first, only for a bot set to use this Mac
+    expect(section?.props.askFirst).toBe(macPermissions);
+    expect(tab(makeBot()).section?.props.askFirst).toBeNull();
   });
 
-  it("says the cloud has its own computer, and Switch to dusk cloud goes there", () => {
+  it("offers the switch to the cloud for a bot still on This Mac, in the offer's words, never that it is there", () => {
     const openHome = vi.fn(() => Promise.resolve());
-    const line = capture(() => CloudSwitchLine({ cloudDesktop: { openHome } as unknown as Parameters<typeof CloudSwitchLine>[0]["cloudDesktop"] }));
-    expect(line.html).toContain(">Your dusk cloud has its own computer. Switch to it from the left to see it.<");
-    expect(line.html).not.toMatch(/Keep .* working|Move to dusk cloud/);
-    click(find(line, "data-panel-action", "switch-cloud"));
+    const desktop = { openHome } as unknown as Parameters<typeof CloudCtaCard>[0]["cloudDesktop"];
+    const card = capture(() => CloudCtaCard({ bot: makeBot(), stage: "open", cloudDesktop: desktop }));
+    expect(card.html).toContain(">Keep Scout working<");
+    expect(card.html).toContain(">Switch to dusk cloud<");
+    expect(card.html).not.toContain("is on dusk cloud");
+    click(find(card, "data-panel-action", "move-cloud"));
     expect(openHome).toHaveBeenCalledTimes(1);
-    const bare = capture(() => CloudSwitchLine({ cloudDesktop: null }));
-    expect(has(bare, "data-panel-action", "switch-cloud"), "no way to switch here: the line alone").toBe(false);
   });
 });
 

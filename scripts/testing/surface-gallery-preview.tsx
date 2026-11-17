@@ -67,6 +67,24 @@ if (params.get("card") === "cloud-stale-checkout") {
   } } });
 }
 
+// ?card=cloud-mac: this Mac's desktop app with a ready dusk cloud on the account, the bots kept here, and Screen Recording and
+// Accessibility not allowed yet; Allow turns each on, as macOS would
+if (params.get("card") === "cloud-mac") {
+  const account = { status: "connected", entitlement: { plan: "pro" }, account: { email: "sam@example.test" },
+    clouds: [{ id: "c1", name: "My Cloud", primary: true, role: "owner", teamId: null, managed: true, provider: "managed", status: "ready" }] };
+  const grants = { screen: "missing", accessibility: "missing" } as Record<"screen" | "accessibility", string>;
+  const capabilities = { host: { platform: "darwin", label: "This Mac", session: "unknown", packaged: true }, windowChrome: "native",
+    screenPreview: { available: false, interaction: "none" }, dictation: { available: false, engine: "none", onDevice: false },
+    localComputer: { available: false, support: "supported", enabled: true, status: "unavailable", reasonCode: "permission-denied" } };
+  Object.assign(window, { duskDesktop: { ...(window as { duskDesktop?: object }).duskDesktop, platform: "darwin",
+    getCapabilities: async () => capabilities,
+    cloudAccount: { state: async () => account, onState: () => () => undefined, offer: async () => GALLERY_OFFER, sheet: async () => undefined,
+      connectHome: async () => undefined, openDashboard: async () => undefined },
+    cloudSendPage: { keepHere: async () => ({ shown: false, moved: false }), setKeepHere: async () => ({ shown: false, moved: false }) },
+    macPermissions: { status: async () => ({ supported: true, ...grants }), request: async (kind: "screen" | "accessibility") => { grants[kind] = "granted"; return { supported: true, ...grants }; } },
+  } });
+}
+
 function Cards() {
   const slot = useSidebarFooterSlot();
   const [dock, setDock] = useState<Element | null>(null);

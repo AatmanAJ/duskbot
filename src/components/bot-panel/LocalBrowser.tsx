@@ -20,6 +20,8 @@ import { StreamSurface, type SurfaceConnect } from "../browser/StreamSurface";
 import { BrowserHeader, BrowserToolbar, FRAME_TONE, SiteMark, StartPill, TabStrip, tabName, type StripTab } from "./browser-strip";
 import { buttonCls } from "./rows";
 import { BOT_PANEL_ID } from "./side-panel";
+import { permissionsMissing, type MacPermissionsBridge } from "@/lib/mac-permissions";
+import { MacPermissionsDialog } from "../onboarding/PermissionsStep";
 
 const NO_NAV: BrowserNav = { url: "", loading: false, canGoBack: false, canGoForward: false };
 /** The pill opening into the browser, and the browser's frame closing back onto its first line. */
@@ -316,8 +318,8 @@ const closedView = (tabs: readonly StripTab[]): ClosedTabView[] =>
   tabs.filter((tab) => !blankPage(tab.url)).map((tab) => ({ title: tab.title, url: tab.url, image: null }));
 
 /** A closed browser: the gray Start browser pill, and for an hour after it closed, the tabs it closed with. */
-export function LocalBrowserClosed({ bot, recent, now, pill, onStart }: {
-  bot: Bot; recent: LocalBrowserState["closed"]; now: number;
+export function LocalBrowserClosed({ bot, recent, now, pill, starting = false, onStart }: {
+  bot: Bot; recent: LocalBrowserState["closed"]; now: number; starting?: boolean;
   pill: RefObject<HTMLButtonElement | null>; onStart: () => void;
 }) {
   const [chosen, setChosen] = useState<number | null>(null);
@@ -346,7 +348,7 @@ export function LocalBrowserClosed({ bot, recent, now, pill, onStart }: {
   return (
     <section data-local-browser="closed" aria-label={t("localBrowser.label", { name: bot.name })}
       className="flex flex-col gap-2 transition-opacity duration-200 ease-out starting:opacity-0">
-      <StartPill ref={pill} onStart={onStart} />
+      <StartPill ref={pill} onStart={onStart} disabled={starting} />
       {recent && <>
         <h3 className="m-0 mt-2 px-1 text-[12px] font-normal leading-4 text-ink/[0.56]">{t("localBrowser.workedOn")}</h3>
         <ul data-local-browser-recent="" className="m-0 flex list-none flex-col p-0">
@@ -391,7 +393,11 @@ function useNow(everyMs: number): number {
 
 /** A bot's browser on this computer in its Computer tab: the live browser while it runs; otherwise the Start browser pill,
  * with what it worked on for an hour after it closed. */
-export function LocalBrowserSection({ bot, after }: { bot: Bot; after?: ReactNode }) {
+export function LocalBrowserSection({ bot, after, askFirst = null }: {
+  bot: Bot; after?: ReactNode;
+  /** this Mac's permissions the bot needs, asked for when the person starts its browser while any is off */
+  askFirst?: MacPermissionsBridge | null;
+}) {
   const { open, closed, known } = useLocalBrowser(bot.id, bot.threadId, bot.browser !== false);
   const [override, setOverride] = useState<Override | null>(null);
   const now = useNow(30_000);
@@ -424,10 +430,19 @@ export function LocalBrowserSection({ bot, after }: { bot: Bot; after?: ReactNod
   const listed = closed && (!ownClose || closed.at >= ownClose.at - 60_000) ? closed : ownClose ?? closed;
   const recent = recentClosed(listed, now);
 
-  const start = () => {
+  const openBrowser = () => {
+    setAsking(false);
     const box = pill.current?.getBoundingClientRect();
     belowTop.current = below.current?.getBoundingClientRect().top ?? null;
     setOverride({ kind: "started", from: box ? { top: box.top, left: box.left, width: box.width, height: box.height } : null });
+  };
+  // what the bot needs on this Mac and lacks is asked for first; once all of it is on, the browser opens
+  const [asking, setAsking] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const start = () => {
+    if (!askFirst) { openBrowser(); return; }
+    setChecking(true);
+    void askFirst.status().then((status) => (permissionsMissing(status) ? setAsking(true) : openBrowser()), () => openBrowser()).finally(() => setChecking(false));
   };
   const ended = (kind: "closed" | "ended") => (tabs: ClosedTabView[]) => {
     belowTop.current = below.current?.getBoundingClientRect().top ?? null;
@@ -447,8 +462,10 @@ export function LocalBrowserSection({ bot, after }: { bot: Bot; after?: ReactNod
   return (
     <>
       {live ? <LocalBrowserLive key={`${bot.id}\n${bot.threadId ?? ""}`} bot={bot} from={from} onClosed={ended("closed")} onEnded={ended("ended")} />
-        : known || late || override ? <LocalBrowserClosed bot={bot} recent={recent} now={now} pill={pill} onStart={start} /> : null}
+        : known || late || override ? <LocalBrowserClosed bot={bot} recent={recent} now={now} pill={pill} starting={checking} onStart={start} /> : null}
       <div ref={below} className="mt-3 empty:hidden">{(known || late) && after}</div>
+      {asking && askFirst && <MacPermissionsDialog bridge={askFirst} onClose={() => setAsking(false)} onAllowed={openBrowser}
+        relaunch={typeof window.duskDesktop?.relaunch === "function" ? () => void window.duskDesktop!.relaunch!() : null} />}
     </>
   );
 }

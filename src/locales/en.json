@@ -3290,6 +3290,7 @@
   "funnel.permissions.reopenLine": "Turned on screen recording? Reopen {app} to finish.",
   "funnel.permissions.reopen": "Reopen",
   "funnel.permissions.later": "Later",
+  "funnel.permissions.done": "Done",
   "funnel.permissions.noteTitle": "{app}",
   "funnel.permissions.noteBody": "This is where your bots will reach you.",
   "funnel.making.title": "Making your cloud",

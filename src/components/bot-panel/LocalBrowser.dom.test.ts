@@ -166,6 +166,33 @@ describe("the compact browser in the Computer tab", () => {
     expect(document.documentElement.style.getPropertyValue("--side-panel-w")).toBe("320px");
   });
 
+  it("asks for this Mac's missing permissions before starting, then opens the browser once all are on", async () => {
+    f.open = false;
+    let state: "missing" | "granted" = "missing";
+    const status = () => ({ supported: true as const, screen: state, accessibility: state });
+    const askFirst = { status: async () => status(), request: async () => { state = "granted"; return status(); } };
+    await act(async () => { root.render(createElement(LocalBrowserSection, { bot: BOT, askFirst, after: createElement("p", { "data-cta": "" }, "Keep Nova working") })); });
+    await click("[data-local-browser-action=start]");
+    const dialog = () => document.body.querySelector("[data-mac-permissions-dialog]");
+    expect(dialog()).not.toBeNull();
+    expect(q("[data-local-browser=live]")).toBeNull();
+    expect(document.body.querySelectorAll("[data-permission-ask]")).toHaveLength(2);
+    await act(async () => { document.body.querySelector<HTMLElement>("[data-permission-ask=accessibility]")!.click(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(dialog()).toBeNull();
+    expect(q("[data-local-browser=live]")).not.toBeNull();
+  });
+
+  it("starts at once when this Mac already allows everything", async () => {
+    f.open = false;
+    const granted = { supported: true as const, screen: "granted" as const, accessibility: "granted" as const };
+    const askFirst = { status: async () => granted, request: async () => granted };
+    await act(async () => { root.render(createElement(LocalBrowserSection, { bot: BOT, askFirst })); });
+    await click("[data-local-browser-action=start]");
+    expect(document.body.querySelector("[data-mac-permissions-dialog]")).toBeNull();
+    expect(q("[data-local-browser=live]")).not.toBeNull();
+  });
+
   it("marks the tab the person holds, and hands it back", async () => {
     await render();
     await message({ type: "tabs", tabs: [{ ...TABS[0], held: true }, TABS[1]] });
