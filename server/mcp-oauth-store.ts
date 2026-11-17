@@ -87,9 +87,7 @@ export class McpOAuthStore {
   private read(): StoreFile {
     try {
       const raw = readFileSync(this.file);
-      const key = this.key(false);
-      const text = raw[0] === 0x7b ? raw.toString("utf8") : key ? decryptBrowserState(raw, key) : "";
-      const parsed = fileSchema.safeParse(JSON.parse(text));
+      const parsed = fileSchema.safeParse(JSON.parse(fileText(raw, this.key(false))));
       if (parsed.success) return parsed.data;
     } catch {
     }
@@ -104,7 +102,18 @@ export class McpOAuthStore {
 
 /** The whole file as JSON, opened with its key: for tests and moves that look at it from outside the store. */
 export function openMcpOAuthFile(file: string): { servers: Record<string, any> } {
-  const raw = readFileSync(file);
-  if (raw[0] === 0x7b) return JSON.parse(raw.toString("utf8"));
-  return JSON.parse(decryptBrowserState(raw, readFileSync(`${file}.key`, "utf8").trim()));
+  let key: string | null = null;
+  try { key = readFileSync(`${file}.key`, "utf8").trim(); } catch {}
+  return JSON.parse(fileText(readFileSync(file), key));
+}
+
+/** A sealed file starts with a random nonce, so its first byte says nothing; the GCM tag does. A file the key cannot
+ * open is a plain one from before sealing. */
+function fileText(raw: Buffer, key: string | null): string {
+  if (key) {
+    try {
+      return decryptBrowserState(raw, key);
+    } catch {}
+  }
+  return raw.toString("utf8");
 }

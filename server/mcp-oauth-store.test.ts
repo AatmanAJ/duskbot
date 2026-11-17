@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { McpOAuthStore } from "./mcp-oauth-store.ts";
+import { encryptBrowserState } from "./browser-sites.ts";
+import { McpOAuthStore, openMcpOAuthFile } from "./mcp-oauth-store.ts";
 
 const URL_A = "https://mcp.example.com/mcp";
 let dir: string;
@@ -59,5 +60,17 @@ describe("sealed on disk", () => {
     store.put("composio", { url: "https://connect.composio.dev/mcp", state: "signed-in", tokens: { access: "new-secret" } });
     expect(readFileSync(file).includes(Buffer.from("new-secret"))).toBe(false);
     expect(new McpOAuthStore(file).get("composio", "https://connect.composio.dev/mcp")?.tokens?.access).toBe("new-secret");
+  });
+
+  it("reads a sealed file whose random nonce happens to start with the byte of a JSON brace", () => {
+    const store = new McpOAuthStore(file);
+    store.put("docs", { url: URL_A, state: "signed-in", tokens: { access: "at" } });
+    const key = readFileSync(`${file}.key`, "utf8").trim();
+    const text = JSON.stringify({ servers: { docs: { url: URL_A, state: "signed-in", tokens: { access: "brace" } } } });
+    let sealed = encryptBrowserState(text, key);
+    while (sealed[0] !== 0x7b) sealed = encryptBrowserState(text, key);
+    writeFileSync(file, sealed, { mode: 0o600 });
+    expect(store.get("docs", URL_A)?.tokens?.access).toBe("brace");
+    expect(openMcpOAuthFile(file).servers.docs.tokens.access).toBe("brace");
   });
 });
