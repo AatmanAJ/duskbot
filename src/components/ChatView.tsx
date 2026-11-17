@@ -1,4 +1,4 @@
-import { createContext, memo, startTransition, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType, type Dispatch, type Ref, type RefObject } from "react";
+import { createContext, memo, startTransition, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type RefObject } from "react";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { phoneApp } from "@/lib/store-app";
 import { ThreadLinkContext } from "@/components/ThreadLinkMenu";
@@ -46,15 +46,14 @@ import { ConversationalReply, QuickModelNote, isConversational, useReplySegments
 import { isProviderSafetyBlock, PROVIDER_SAFETY_GUIDANCE, PROVIDER_SAFETY_HELP_URL } from "../../shared/provider-safety";
 import { isCancelledTranscriptRow, isStoppedTurnName, PERSON_STOPPED_TURN_NAME } from "../../shared/client-cancel";
 import { isThisComputerNotGranted, isThisComputerNotReady } from "../../shared/your-computer";
-import { BotAvatar, type MausAvatarHandle } from "./Avatar";
+import { BotAvatar } from "./Avatar";
 import type { MarkState } from "./mascot-engine";
-import { turnMarkState } from "./mascot-presence";
 import { poolWords } from "@/lib/friendly-activity";
 import type { LiveStatus } from "@/state/turn-status";
 import { TurnPresence, TYPING_PHASE } from "./TurnPresence";
 import { BrowserPartLine } from "./BrowserPartLine";
 import { browserPartFor } from "@/lib/browser-part";
-import { MarkCrossfade } from "./MarkCrossfade";
+import { WorkingMascot } from "./WorkingMascot";
 import { liveCallEnabled, showToolCallsEnabled } from "@/lib/feature-flags";
 import { normalizeState } from "@/lib/mascot";
 import { peerLine, peerRequest, type PeerLine } from "@/lib/peer-message";
@@ -65,9 +64,8 @@ import { OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
 import { growFromMascot, hasSendLaunch, morphFromComposer } from "./bubble-entrance";
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
-import { useReplyLife, type LifeTurn } from "@/hooks/use-reply-life";
-import { LIFE_MASCOT_STATE, lifeDraw, lifeMarkState, lifeSpan } from "@/lib/reply-life";
-import { presenceKind, TYPING_MARK, turnWorked, useHeldPresence, workingMark } from "@/lib/presence-mark";
+import { lifeDraw, lifeSpan } from "@/lib/reply-life";
+import { presenceKind, turnWorked, useHeldPresence } from "@/lib/presence-mark";
 import { lastNonReceipt } from "@/lib/receipts";
 import { routineStartName } from "./RoutineStartLine"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
 import { followSentTurn, sentTurn, useSentTurn } from "@/state/sent-turn";
@@ -116,7 +114,6 @@ import { LiveCallBar } from "./LiveCallBar";
 import { LiveCallChip } from "./LiveCallPill";
 import { effectivePlace, toolPlace, type EffectivePlace } from "@/lib/place";
 import { cn } from "@/lib/cn";
-import { useThinkingMoment } from "@/hooks/use-thinking-moment";
 import { activeLocale, t } from "@/lib/i18n";
 import { COMPACT_BUBBLE } from "@/lib/compact-chip";
 import { groupTranscript, isStatusActivity, statusActivity, type TranscriptItem } from "@/lib/activity-runs";
@@ -653,9 +650,6 @@ const ActivityChip = memo(function ActivityChip({ message, place = "auto" }: { m
 });
 
 const RoomHandoffChip = ({ message, comm, bots, dispatch }: { message: Message; comm: NonNullable<Message["comm"]>; bots: readonly Bot[]; dispatch: Dispatch<Action> }) => { const store = useStoreRef(); return <HandoffChip message={message} bots={bots} title={t("chat.openConversationWith", { name: comm.withName })} onClick={() => openRoomThread(dispatch, comm, store.state().groups)} />; };
-/** BotAvatar hands its ref through to the mark, whose handle pokes it; its props type just doesn't name the ref. */
-const StatusMark = BotAvatar as unknown as ComponentType<ComponentProps<typeof BotAvatar> & { ref?: Ref<MausAvatarHandle> }>;
-const NO_LIFE: readonly LifeTurn[] = [];
 
 /** What grok's status-line mark plays: the live step while the turn runs, its outcome once it ends. */
 export function statusMarkFor({ busy, waitingOnYou, answering, live, failed }: { busy: boolean; waitingOnYou: boolean; answering: boolean; live: LiveStatus["activity"] | undefined; failed: boolean }): MarkState {
@@ -1116,11 +1110,8 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // The mascot and its status line stay for the whole turn, through every bubble it sends; only its end hides them.
   const waiting = Boolean(turnBusy && bot.activity !== "waiting-on-you" && showWorkingDots(turnBusy, lastMessage, undefined, sent?.phase === "sending" ? false : live.ended));
   const teammatesWorking = !bot.busy && Boolean(bot.waitingForTeammates);
-  const markRef = useRef<MausAvatarHandle>(null);
-  const [markEmphasized, setMarkEmphasized] = useState(false);
   // the reply is written whole; while the engine types it the mark only looks like it is answering
   const streamingReply = useLiveReplyActive(bot.threadId);
-  const statusMarkState = turnBusy ? turnMarkState({ running: true, composing: streamingReply, activity: live.status?.activity ?? null, awaiting: bot.activity === "waiting-on-you", settled: null }, Date.now()) : statusMarkFor({ busy: false, waitingOnYou: bot.activity === "waiting-on-you", answering: streamingReply, live: live.status?.activity, failed: lastMessage?.kind === "activity" && lastMessage.tool?.ok === false });
   const [busySince, setBusySince] = useState<number | null>(null);
   useEffect(() => {
     setBusySince(turnBusy ? turnStartedAt ?? Date.now() : null);
@@ -1155,8 +1146,6 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
       approval: approval ? { id: approval.requestId, name: bot.name } : undefined,
     };
   }, [messages, bot.busy, bot.name]);
-  // the turn's start lives: the mascot, one pass of its thinking dots, then the mascot again as the words come
-  // the typing dots only while the reply is being written; a turn at work shows the bot's own mascot at work
   const worked = useMemo(() => turnWorked(messages), [messages]);
   const writing = !stopCut && (streamingReply || live.status?.activity === "reply" || hold.typing);
   // the person's Stop, said once and quietly where the working line was, until the next turn
@@ -1169,17 +1158,12 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   if (live.label) shownLabel.current.label = live.label;
   const turnLabel = live.label ?? shownLabel.current.label;
   const presence = useHeldPresence(turnBusy && bot.activity !== "waiting-on-you" ? presenceKind({ writing, activity: live.status?.activity, worked }) : null);
-  // grok's mark opens every turn the same way, mascot then dots then mascot with the first words, even when a step has
+  // every turn opens the same way, the working mascot alone for a beat before its first word, even when a step has
   // already started
   const openingEnd = turnBusy && turnStartedAt
     ? turnStartedAt + mountDelay + lifeSpan(presenceSeed, 0) + lifeSpan(presenceSeed, 1)
     : null;
   const opening = !useReached(openingEnd) && openingEnd !== null && presence === "working";
-  const lifeBeat = useReplyLife(presenceVisible && !teammatesWorking && (presence === "waiting" || opening) ? [{ key: bot.id, seed: presenceSeed, typing: writing }] : NO_LIFE).get(bot.id);
-  const presenceMarkState = presence === "typing" || writing ? TYPING_MARK
-    : opening ? lifeMarkState("thinking", lifeBeat)
-    : presence === "working" ? workingMark(live.status?.activity) : lifeMarkState(statusMarkState, lifeBeat);
-  useThinkingMoment(markRef, presenceMarkState === LIFE_MASCOT_STATE);
 
   // while the turn runs its notices are the working row's to say, not the chat's too; once it ends, what it left is one
   // card above the composer
@@ -1413,22 +1397,10 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               </div>
             </div>
           )}
-          <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"} onMouseEnter={() => setMarkEmphasized(true)} onMouseLeave={() => setMarkEmphasized(false)} onClick={() => markRef.current?.poke?.()}>
+          <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
             avatar={
-              <MarkCrossfade swap={presenceMarkState}>
-                <StatusMark
-                  ref={markRef}
-                  bot={bot}
-                  state={presenceMarkState}
-                  size={28}
-                  eyeInk="var(--color-app)"
-                  emphasized={markEmphasized}
-                  forward={false}
-                  lookAround={1}
-                  trackPointer={false}
-                />
-              </MarkCrossfade>
+              <WorkingMascot bot={bot} size={20} seed={presenceSeed} />
             }
             simple
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}

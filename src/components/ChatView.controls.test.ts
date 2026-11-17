@@ -194,7 +194,7 @@ describe("header name", () => {
       };
       expect(pillOf(busyMarkup)).not.toContain("animate-status-pulse");
       expect(pillOf(busyMarkup)).toBe(pillOf(idleMarkup));
-      expect(busyMarkup).toMatch(/<span role="status" class="sr-only" data-chathead-status="true">Working…<\/span>/);
+      expect(busyMarkup).toMatch(/<span role="status" class="sr-only" data-chathead-status="true">Working<\/span>/);
       expect(idleMarkup).toMatch(/<span role="status" class="sr-only" data-chathead-status="true"><\/span>/);
       expect(busyMarkup).toContain(remote ? 'title="Stop this turn"' : 'aria-label="Stop this turn"');
     }

@@ -5,7 +5,7 @@ import { motion, type MotionStyle } from "motion/react";
 import { createPortal } from "react-dom";
 import { Bot as BotIcon, Check, ClipboardCopy, Crown, FolderPlus, Library, Loader2, MoreHorizontal, Pencil, Phone, Pin, Plus, TextQuote, Trash2, Users, X } from "../icons";
 import { api, useStore, formatTime, visibleMessages, botOpensTo, openBot, openThread, type Action, type AppState, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
-import { SidebarWorkingStep, useWorkingLabel } from "./SidebarWorkingStep";
+import { SidebarWorkingStep, SidebarWorkingWord, useWorkingLabel } from "./SidebarWorkingStep";
 import { openBotRow } from "@/state/thread-navigation";
 import { liveCallEnabled, llmThreadTitlesEnabled } from "@/lib/feature-flags";
 
@@ -647,6 +647,8 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
             <span className={cn("flex min-w-0 items-center gap-1.5 truncate text-[13px] leading-[18px]", simpleRow && "tracking-[0.015em]", waiting ? simpleRow ? "text-[#aa6300]" : "font-semibold text-warning" : "text-ink-secondary")}>
               {working && !simpleRow ? (
                 <SidebarWorkingStep bot={bot} last={last} />
+              ) : working && !waiting && !teammateWait && !queued ? (
+                <SidebarWorkingWord bot={bot} last={last} />
               ) : (
                 <span dir="auto" className="truncate">{preview}</span>
               )}

@@ -52,6 +52,11 @@
 @keyframes dusk-typing-dot { 0%, 60%, 100% { opacity: 0.35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 @keyframes dusk-breathe { 0%, 100% { opacity: 0.85; transform: scale(1); } 50% { opacity: 1; transform: scale(1.04); } }
 @keyframes dusk-zzz { 0% { opacity: 0; transform: translateY(0) scale(0.6); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-12px) scale(1); } }
+/* the working mascot: one pixel (1/16 of its box) of bob and glance, a quick blink; each on its own layer */
+@keyframes working-mascot-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6.25%); } }
+@keyframes working-mascot-glance { 0%, 28% { transform: translateX(0); } 32%, 50% { transform: translateX(-6.25%); } 54%, 66% { transform: translateX(0); } 70%, 88% { transform: translateX(6.25%); } 92%, 100% { transform: translateX(0); } }
+@keyframes working-mascot-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(0.15); } }
+@keyframes working-mascot-blink-still { 0%, 90%, 100% { opacity: 1; } 94% { opacity: 0.3; } }
 
 .dusk-popup-in { animation: dusk-popup-in var(--dusk-duration-fast) var(--dusk-ease-sharp); }
 .dusk-dialog-in { animation: dusk-dialog-in var(--dusk-duration-slow) var(--dusk-ease-sharp) forwards; }
@@ -74,6 +79,11 @@
 .dusk-zzz { animation: dusk-zzz 2.4s ease-out infinite; }
 .dusk-zzz:nth-child(2) { animation-delay: -800ms; }
 .dusk-zzz:nth-child(3) { animation-delay: -1600ms; }
+.working-mascot-bob { animation: working-mascot-bob 1.4s ease-in-out infinite; }
+.working-mascot-glance { animation: working-mascot-glance 5.2s ease-in-out infinite; }
+.working-mascot-blink { animation: working-mascot-blink 3.8s ease-in-out infinite; }
+:root[data-reduced-motion="true"] :is(.working-mascot-bob, .working-mascot-glance) { animation: none; }
+:root[data-reduced-motion="true"] .working-mascot-blink { animation-name: working-mascot-blink-still; }
 
 /* bencho's press: a button gives to 96% on the out curve and lets go with a hair of overshoot; colours keep Grok's 120ms */
 .dusk-press {
@@ -109,4 +119,6 @@
   .dusk-chip-bump, .dusk-typing-dot, .dusk-breathe, .dusk-zzz {
     animation: none;
   }
+  .working-mascot-bob, .working-mascot-glance { animation: none; }
+  .working-mascot-blink { animation-name: working-mascot-blink-still; }
 }

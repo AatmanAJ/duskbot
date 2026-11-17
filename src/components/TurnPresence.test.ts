@@ -145,7 +145,7 @@ describe("Simple mode's rotating words", () => {
   const line = () => host.querySelector("[data-turn-status]")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
   const pool = Array.from({ length: 12 }, (_, index) => `Word ${index}`);
 
-  it("shows the mark alone first, then a new word every 2.5 to 3.5 s, never the same one twice in a row", () => {
+  it("shows the mark alone first, then its first word, then a new word every 2.5 to 3.5 s, never the same one twice in a row", () => {
     vi.setSystemTime(10_000);
     render({ simple: true, since: 10_000, phrases: pool, phase: "friendly:generic" });
     expect(line(), "the mascot alone for a beat").toBe("");
@@ -155,7 +155,9 @@ describe("Simple mode's rotating words", () => {
       act(() => void vi.advanceTimersByTime(3500));
       said.push(line());
     }
-    expect(new Set(said).size, "a 30 s turn says ten different words").toBe(10);
+    expect(said[0], "it opens with the pool's first word").toBe("Word 0");
+    expect(new Set(said).size, "a 30 s turn says nine or ten different words").toBeGreaterThanOrEqual(9);
+    for (let i = 1; i < said.length; i++) expect(said[i], `word ${i}`).not.toBe(said[i - 1]);
     for (const word of said) expect(pool).toContain(word);
     expect(host.querySelector("[data-turn-now]")?.classList, "each new word rises in").toContain("turn-label-in");
   });
@@ -170,10 +172,12 @@ describe("Simple mode's rotating words", () => {
     expect(line()).not.toBe(first);
   });
 
-  it("leads a step with what it is, and the bot's own words beat the generic pool at once", () => {
+  it("opens with Thinking, then a step's own words, and the bot's own words beat the generic pool at once", () => {
     vi.setSystemTime(10_000);
-    render({ simple: true, since: 0, phrases: ["Running a few commands", "Tinkering", "Crunching"], phase: "friendly:commands" });
-    expect(line()).toBe("Running a few commands");
+    render({ simple: true, since: 10_000 - STATUS_QUIET_MS.max, phrases: ["Running a command"], phase: "friendly:commands" });
+    expect(line(), "every turn opens with Thinking").toBe("Thinking");
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+    expect(line(), "the step's word beats the generic one").toBe("Running a command");
     render({ simple: true, since: 0, phrases: pool, phase: "friendly:generic" });
     act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
     expect(pool).toContain(line());
@@ -184,13 +188,30 @@ describe("Simple mode's rotating words", () => {
     expect(line(), "one specific phrase stays put").toBe("Comparing standing desks");
   });
 
-  it("says Typing… first while the reply is written, then the writing words", () => {
+  it("says Writing at once while the reply is written, then Wrapping up", () => {
     vi.setSystemTime(10_000);
-    const typing = ["Typing…", "Writing", "Wordsmithing"];
-    render({ simple: true, since: 0, phrases: typing, phase: "friendly:chat.typing" });
-    expect(line()).toBe("Typing…");
+    render({ simple: true, since: 0, phrases: ["Writing", "Wrapping up"], phase: "friendly:chat.typing" });
+    expect(line()).toBe("Writing");
     act(() => void vi.advanceTimersByTime(3500));
-    expect(["Writing", "Wordsmithing"]).toContain(line());
+    expect(line()).toBe("Wrapping up");
+  });
+
+  it("keeps fun words out of a short turn and mixes them into a long one, never one word twice in a row", () => {
+    const normal = ["Thinking", "Working", "On it", "Getting it done", "Figuring it out", "Almost there"];
+    const fun = ["Noodling", "Percolating", "Brewing", "Tinkering", "Stargazing", "Scheming"];
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 10_000, phrases: normal, fun, phase: "friendly:generic" });
+    act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max));
+    const said = [line()];
+    while (Date.now() < 10_000 + 120_000) {
+      act(() => void vi.advanceTimersByTime(500));
+      if (line() !== said.at(-1)) said.push(line());
+    }
+    expect(said[0]).toBe("Thinking");
+    const early = said.slice(0, 4);
+    expect(early.every((word) => normal.includes(word)), `first 15 s: ${early.join(", ")}`).toBe(true);
+    expect(said.some((word) => fun.includes(word)), "a two minute turn says some fun words").toBe(true);
+    expect(said.filter((word) => normal.includes(word)).length, "plain words still lead overall").toBeGreaterThan(said.filter((word) => fun.includes(word)).length);
   });
 });
 

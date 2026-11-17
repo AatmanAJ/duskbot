@@ -2,10 +2,10 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode 
 import { ChevronDown } from "../icons";
 import { cn } from "@/lib/cn";
 import { WorkingTimer } from "@/components/WorkingIndicator";
-import { phraseAt, phraseCycle, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
+import { phraseAt, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
 import { quietText } from "@/lib/now-steps";
 import { t } from "@/lib/i18n";
-import { startsAnywhere, TYPING_PHASE } from "@/lib/friendly-activity";
+import { plainWord, startsAnywhere, TYPING_PHASE, workingWord } from "@/lib/friendly-activity";
 import { formatElapsed } from "@/lib/working-time";
 import type { StepQuiet } from "../../shared/turn-progress";
 
@@ -69,10 +69,16 @@ function quietFor(seed: string): number {
   return STATUS_QUIET_MS.min + ((hash >>> 0) % (STATUS_QUIET_MS.max - STATUS_QUIET_MS.min));
 }
 
-type ShownLabel = { phase: string; step: number; text: string; at: number };
+type ShownLabel = { phase: string; step: number; text: string; at: number; key: string };
 
-/** The step label the simple status line shows now, or null while the line is still quiet. */
-export function useStatusLabel(phrases: readonly string[] | null, phase: string, seed: string, since: number | null, active: boolean): { key: string; text: string } | null {
+/** A step's own words follow a moment of "Thinking": every turn opens with it. */
+const OPENING_PHASE = "friendly:opening";
+/** A line first seen this long into its turn (a chat opened mid-turn) says what is happening at once. */
+const OPENING_WITHIN_MS = STATUS_QUIET_MS.max + 1_500;
+
+/** The step label the simple status line shows now, or null while the line is still quiet. Plain work rotates through
+ * `phrases` with `fun` ones mixed in as the turn runs long (workingWord); a step leads with its own words. */
+export function useStatusLabel(phrases: readonly string[] | null, phase: string, seed: string, since: number | null, active: boolean, fun: readonly string[] = NOTHING): { key: string; text: string } | null {
   const [, wake] = useState(0);
   const shown = useRef<ShownLabel | null>(null);
   const firstSeen = useRef<number | null>(null);
@@ -80,28 +86,33 @@ export function useStatusLabel(phrases: readonly string[] | null, phase: string,
   if (!active) firstSeen.current = null;
   else firstSeen.current ??= now;
   const typing = phase === TYPING_PHASE;
-  const quietUntil = (since ?? firstSeen.current ?? now) + quietFor(`${seed}|quiet`);
+  const start = since ?? firstSeen.current ?? now;
+  const quietUntil = start + quietFor(`${seed}|quiet`);
   const pool = phrases && phrases.length > 0 ? phrases : null;
   const phaseSeed = `${seed}|${phase}`;
-  // a step leads with what it is, then plays; a pool with no lead starts anywhere
-  const say = (step: number) => pool ? (startsAnywhere(phase) ? phraseCycle(pool, phaseSeed, step) : phraseAt(pool, phaseSeed, step)) : "";
+  const plain = startsAnywhere(phase);
+  const say = (step: number, previous?: string) => pool ? (plain ? workingWord(pool, fun, phaseSeed, step, now - start, previous) : phraseAt(pool, phaseSeed, step)) : "";
+  const label = (step: number, previous?: string): ShownLabel => ({ phase, step, text: say(step, previous), at: now, key: `${phase}#${step}` });
   const held = shown.current;
   const holdUntil = held && !typing && held.phase !== TYPING_PHASE ? held.at + STATUS_HOLD_MS : 0;
   const rotateAt = held && pool && held.phase === phase && pool.length > 1 ? held.at + rotationHoldMs(phaseSeed, held.step) : 0;
   let next: ShownLabel | null;
-  if (held && (held.phase !== phase || !pool) && now < holdUntil) next = held;
-  else if (held && pool && held.phase === phase) next = rotateAt && now >= rotateAt ? { phase, step: held.step + 1, text: say(held.step + 1), at: now } : held;
+  if (held?.phase === OPENING_PHASE && plain && pool) next = { ...held, phase };
+  else if (held && (held.phase !== phase || !pool) && now < holdUntil) next = held;
+  else if (held && pool && held.phase === phase) next = rotateAt && now >= rotateAt ? label(held.step + 1, held.text) : held;
   else if (!pool || !(typing || now >= quietUntil)) next = null;
-  else next = { phase, step: 0, text: say(0), at: now };
+  else if (!held && !typing && !plain && phase.startsWith("friendly:") && now - start < OPENING_WITHIN_MS) next = { phase: OPENING_PHASE, step: 0, text: plainWord("thinking"), at: now, key: OPENING_PHASE };
+  else next = label(0);
   shown.current = next;
   const nextTurn = next && pool && next.phase === phase && pool.length > 1 ? next.at + rotationHoldMs(phaseSeed, next.step) : 0;
-  const due = Math.min(...[quietUntil, holdUntil, nextTurn].filter((at) => at > now));
+  const opened = next?.phase === OPENING_PHASE ? next.at + STATUS_HOLD_MS : 0;
+  const due = Math.min(...[quietUntil, holdUntil, nextTurn, opened].filter((at) => at > now));
   useEffect(() => {
     if (!active || !Number.isFinite(due)) return;
     const timer = setTimeout(() => wake((tick) => tick + 1), due - Date.now());
     return () => clearTimeout(timer);
   }, [active, due]);
-  return active && next ? { key: `${next.phase}#${next.step}`, text: next.text } : null;
+  return active && next ? { key: next.key, text: next.text } : null;
 }
 
 /** Grok's shimmer: the words in 40% ink with a full-ink band swept across them by background-position, 2.2s in 60
@@ -145,6 +156,7 @@ export function TurnPresence({
   visible,
   label,
   phrases,
+  fun,
   phase,
   seed = "",
   answering = false,
@@ -162,6 +174,8 @@ export function TurnPresence({
   visible: boolean;
   label?: string;
   phrases?: readonly string[];
+  /** Playful words plain work mixes in as the turn runs long. */
+  fun?: readonly string[];
   phase?: string;
   seed?: string;
   answering?: boolean;
@@ -228,7 +242,7 @@ export function TurnPresence({
   const lead = label ?? t("chat.activity.working");
   const now = phrases && phrases.length > 0 ? phrases : null;
   const { current, previous } = useRotatingPhrase(now ?? NOTHING, phase ?? now?.[0] ?? "", seed, !simple && mounted && showWorking && now !== null);
-  const step = useStatusLabel(label ? [label] : now, label ? `label:${label}` : phase ?? now?.[0] ?? "", seed, since, mounted && simpleStatus);
+  const step = useStatusLabel(label ? [label] : now, label ? `label:${label}` : phase ?? now?.[0] ?? "", seed, since, mounted && simpleStatus, label ? NOTHING : fun);
   if (!mounted) return null;
   const status = simpleStatus ? (
     <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[14px] leading-[22px]" data-turn-status>

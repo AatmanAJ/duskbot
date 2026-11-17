@@ -8,7 +8,7 @@ import { GroupAvatar, useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
 import { useMobileAccount } from "./account/AccountGate";
 import { botPreview, groupPreview, lastPreviewable, sidebarPreviewMessages } from "@/components/sidebar-preview";
-import { WorkingDots } from "@/components/WorkingIndicator";
+import { SidebarWorkingWord } from "@/components/SidebarWorkingStep";
 import { partitionSidebarBots, withPrimaryTile } from "@/lib/sidebar-layout";
 import { botShowsUnread } from "@/lib/bot-unread";
 import { botUnreadThreadIds, markBotRead } from "@/lib/folder-read";
@@ -298,8 +298,9 @@ function RowFace({ entry }: { entry: Entry }) {
         </span>
         <span className="mt-0.5 flex items-center gap-2">
           <span className={cn("min-w-0 flex-1 truncate text-[14px] leading-5", entry.unread ? "text-ink" : "text-ink-secondary")}>
-            {working && <WorkingDots size={3} className="me-1.5 inline-flex align-middle" />}
-            {entry.preview || " "}
+            {entry.kind === "bot" && working && !entry.bot.waitingForTeammates && entry.bot.activity !== "waiting-on-you"
+              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} size={16} />
+              : entry.preview || " "}
           </span>
         </span>
       </span>

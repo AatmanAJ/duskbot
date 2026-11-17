@@ -151,7 +151,7 @@ describe("bot-first sidebar", () => {
   it("shows a waiting Simple row as grok's amber dot and preview, and a working one with no dot at all, with no badge or live region", () => {
     const quiet = { ...bot, tasks: [], projects: [], unread: false, messages: [] };
     const waiting = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...quiet, activity: "waiting-on-you" })));
-    expect(waiting).toContain('data-testid="waiting-dot" title="Waiting for you…" class="size-2 shrink-0 rounded-full bg-[#da830e]"');
+    expect(waiting).toContain('data-testid="waiting-dot" title="Needs you" class="size-2 shrink-0 rounded-full bg-[#da830e]"');
     expect(waiting).toContain("text-[#aa6300]");
     const asked = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...quiet, activity: "waiting-on-you", messages: [{ id: "q", role: "bot", kind: "text", text: "send the reply to vitaliu?", at: 1 }] } as Bot)));
     expect(asked).toContain(">Waiting for you: send the reply to vitaliu?</span>");

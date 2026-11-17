@@ -8,10 +8,8 @@ import type { RuntimeEvent } from "../../shared/runtime-events";
 import type { ApprovalModeSelector } from "./ApprovalModeSelector";
 import type { ModelPicker } from "./ModelPicker";
 import { STATUS_HOLD_MS, STATUS_QUIET_MS } from "./TurnPresence";
-import { LIFE_DOTS_MS, LIFE_MASCOT_MS, LIFE_MASCOT_STATE } from "@/lib/reply-life";
 import { STATUS_MOUNT_MS } from "@/hooks/use-reached";
 import { TYPING_MIN_MS } from "@/hooks/use-typing-hold";
-import { poolWords } from "@/lib/friendly-activity";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -87,13 +85,15 @@ afterEach(() => {
 });
 
 describe("the working line", () => {
-  it("is the bot's 28px mark and one quiet friendly phrase, with the timer and size kept in its tooltip", () => {
+  it("is the bot's tiny working mascot and one word, Thinking first, with the timer and size kept in its tooltip", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     expect(mascot()).not.toBeNull();
-    const first = statusLine();
-    expect(poolWords("generic")).toContain(first);
-    expect(mascot()!.innerHTML).toMatch(/width(="|: )28px/);
+    expect(statusLine()).toBe("Thinking");
+    const working = mascot()!.querySelector("[data-working-mascot]") as HTMLElement;
+    expect(working.style.width).toBe("20px");
+    expect(working.querySelector(".working-mascot-bob .working-mascot-glance .working-mascot-blink"), "it bobs, glances and blinks").not.toBeNull();
+    expect(mascot()!.querySelector("[data-dusk-mark]"), "no engine-drawn mark, so no dots").toBeNull();
     const row = mascot()!.firstElementChild as HTMLElement;
     expect([...row.classList]).toEqual(expect.arrayContaining(["h-9", "ps-2", "gap-[8.5px]"]));
     expect(row.title).toMatch(/^Working · /);
@@ -107,7 +107,7 @@ describe("the working line", () => {
     expect(mascot(), "a bubble in the middle of a turn is not its end: the line stays").not.toBeNull();
     act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
     engine({ type: "turn.progress", activity: "write", itemId: "toolu_write", file: "index.html", bytes: 14 * 1024 + 300 } as Partial<RuntimeEvent>);
-    expect(statusLine()).toBe("Writing some code");
+    expect(statusLine()).toBe("Writing code");
   });
 
   it("stays through the turn's bubbles and leaves only when the turn ends, in 140ms", () => {
@@ -123,24 +123,20 @@ describe("the working line", () => {
     expect(mascot()).toBeNull();
   });
 
-  it("comes 0.55 to 1.2 s after the send, as the mascot, condenses into the dots once, then the words come", () => {
+  it("comes 0.55 to 1.2 s after the send as the working mascot, never the dots, then Thinking", () => {
     vi.setSystemTime(started);
-    const markState = () => host.querySelector(".turn-presence [data-state]")?.getAttribute("data-state");
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     expect(mascot(), "nothing at first").toBeNull();
     act(() => void vi.advanceTimersByTime(STATUS_MOUNT_MS.min - 50));
     expect(mascot()).toBeNull();
     act(() => void vi.advanceTimersByTime(STATUS_MOUNT_MS.max - STATUS_MOUNT_MS.min + 60));
-    expect(mascot(), "then the mark, wordless").not.toBeNull();
-    expect(markState(), "the bot as itself first, not the dots").toBe(LIFE_MASCOT_STATE);
+    expect(mascot(), "then the mascot, wordless").not.toBeNull();
+    expect(mascot()!.querySelector("[data-working-mascot]")).not.toBeNull();
     expect(statusLine()).toBe("");
-    act(() => void vi.advanceTimersByTime(LIFE_MASCOT_MS.max + 20));
-    expect(markState(), "then it condenses into the thinking dots").toBe("thinking");
-    act(() => void vi.advanceTimersByTime(LIFE_DOTS_MS.max + 20));
-    expect(markState(), "and back, for good").toBe(LIFE_MASCOT_STATE);
-    act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max));
-    expect(statusLine()).not.toBe("");
+    act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max + 1_500));
+    expect(mascot()!.querySelector("[data-dusk-mark]"), "never the dots").toBeNull();
+    expect(statusLine()).toBe("Thinking");
   });
 
   // the owner's "hi": the server answered the send 6.9 s after Enter, and the bot showed nothing until then
@@ -170,31 +166,24 @@ describe("the working line", () => {
     expect(host.textContent!.split("Waiting on the model").length - 1, "one place only").toBe(1);
   });
 
-  it("opens the same way when a step starts at once: mascot, dots, then the mascot with the bot's words", () => {
+  it("opens with the bot's own words when it set them at once, as a specific label beats Thinking", () => {
     vi.setSystemTime(started);
-    const markState = () => host.querySelector(".turn-presence [data-state]")?.getAttribute("data-state");
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     engine({ type: "turn.progress", activity: "tool", tool: "set_status", label: "Comparing standing desks" } as Partial<RuntimeEvent>);
     engine({ type: "item.started", itemType: "tool", itemId: "w1", title: "WebSearch" } as Partial<RuntimeEvent>);
     act(() => void vi.advanceTimersByTime(STATUS_MOUNT_MS.max + 10));
-    expect(markState(), "the bot as itself first, not at work yet").toBe(LIFE_MASCOT_STATE);
     expect(statusLine()).toBe("");
-    act(() => void vi.advanceTimersByTime(LIFE_MASCOT_MS.max + 20));
-    expect(markState(), "then the dots, though a step is running").toBe("thinking");
-    expect(statusLine()).toBe("");
-    act(() => void vi.advanceTimersByTime(LIFE_DOTS_MS.max + STATUS_QUIET_MS.max));
-    expect(markState(), "then at work").not.toBe("thinking");
+    act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max + 1_500));
     expect(statusLine()).toBe("Comparing standing desks");
   });
 
-  it("types as the bot itself, never the dots", () => {
-    const markState = () => host.querySelector(".turn-presence [data-state]")?.getAttribute("data-state");
+  it("says Writing while the reply comes, with the mascot, never the dots", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     engine({ type: "content.delta", streamKind: "assistant_text", delta: "Hi" } as Partial<RuntimeEvent>);
-    expect(markState()).toBe("streaming");
-    expect(statusLine()).toBe("Typing…");
+    expect(mascot()!.querySelector("[data-working-mascot]")).not.toBeNull();
+    expect(statusLine()).toBe("Writing");
   });
 
   it("shows the bot's own label for its phase, and keeps it until it sets another", () => {
@@ -222,13 +211,13 @@ describe("each bubble's typing beat", () => {
   const fresh = (id: string, text: string): Message => ({ id, role: "bot", kind: "text", at: Date.now(), text, turnId: "t1" });
   const rows = () => [...host.querySelectorAll("[data-mid]")].map((row) => row.getAttribute("data-mid"));
 
-  it("says Typing… for at least 500ms before each bubble lands, the line staying for the turn", () => {
+  it("says Writing for at least 500ms before each bubble lands, the line staying for the turn", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     const ack = fresh("ack", "On it, checking reviews now.");
     render(busyBot([ask, ack]));
     expect(rows(), "held while the line types").toEqual(["ask"]);
-    expect(statusLine()).toBe("Typing…");
+    expect(statusLine()).toBe("Writing");
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS - 10));
     expect(rows()).toEqual(["ask"]);
     act(() => void vi.advanceTimersByTime(10));
@@ -243,7 +232,7 @@ describe("each bubble's typing beat", () => {
     render(busyBot([ask, fresh("one", "First."), fresh("two", "Second.")]));
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS));
     expect(rows()).toEqual(["ask", "one"]);
-    expect(statusLine()).toBe("Typing…");
+    expect(statusLine()).toBe("Writing");
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS));
     expect(rows()).toEqual(["ask", "one", "two"]);
   });
@@ -254,7 +243,7 @@ describe("each bubble's typing beat", () => {
     const last = fresh("last", "It's 441, so yes.");
     engine({ type: "turn.completed", ok: true } as Partial<RuntimeEvent>);
     render(busyBot([ask, last], false));
-    expect(statusLine()).toBe("Typing…");
+    expect(statusLine()).toBe("Writing");
     expect(rows()).toEqual(["ask"]);
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS));
     expect(host.querySelector(".turn-status-out"), "the line starts leaving").not.toBeNull();
@@ -308,7 +297,7 @@ describe("what the bot is doing right now", () => {
     engine({ type: "item.started", itemType: "tool", itemId: "b1", title: "Bash" } as Partial<RuntimeEvent>);
     engine({ type: "turn.progress", activity: "command", itemId: "b1", target: "scrape.py", quiet: { kind: "idle" } } as Partial<RuntimeEvent>);
     render(busyBot([ask, search, bash]));
-    expect(statusLine()).toBe("Running a few commands · Idle, no output yet");
+    expect(statusLine(), "a chat opened mid-turn says the step at once").toBe("Running a command · Idle, no output yet");
     expect(toggle(), "the step list unfolds only with tool calls shown").toBeNull();
     expect(steps()).toEqual([]);
   });

@@ -72,6 +72,8 @@ export type LiveActivityPhrases = {
   size?: string;
   /** The whole command, query or page address behind a step's short words, for the phrase's tooltip. */
   hover?: string;
+  /** Playful words a long stretch of plain work may mix in among `phrases`. */
+  fun?: string[];
 };
 
 function phaseOf(key: LocaleKey): LiveActivityPhrases {
