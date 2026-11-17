@@ -11,6 +11,7 @@ import { AGENT_BROWSER_BATCH_SPEC, agentBrowserStep, planAgentBrowserBatch, PROB
 import { runSteps } from "./browser/batch.ts";
 import { settleNote, settlePage, type PageReader } from "./browser/cdp/settle.ts";
 import { ThreadTabs, type ClosedThreadTab } from "./browser-thread-tabs.ts";
+import { agentBrowserTypeInLines, runAgentBrowserTypeInLines } from "./line-break-typing.ts";
 import type { Content, ToolResult } from "./browser/shape.ts";
 import { BATCH_TOOL } from "./browser/tools.ts";
 
@@ -605,9 +606,17 @@ export class BrowserRuntime {
         if (method === "tools/call") { dispatched = true; gate.dispatched++; }
         const engineTimeoutMs = Math.max(1, Math.min(this.options.requestTimeoutMs, deadline - Date.now() - this.options.followUpReserveMs));
         const relayed = method === "tools/call" && toolName !== undefined ? RELAYED_TOOLS.get(toolName) : undefined;
+        const inLines = method === "tools/call" && toolName !== undefined ? agentBrowserTypeInLines(toolName, args) : null;
+        const engineEnd = Date.now() + engineTimeoutMs;
         let result = relayed
           ? await this.relayTool(session, spec, relayed, args, engineTimeoutMs)
-          : await entry.client.rpc(method, request, engineTimeoutMs);
+          : inLines
+            ? await runAgentBrowserTypeInLines(inLines, (step) => {
+              beforeDispatch?.();
+              if (this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+              return entry.client.rpc("tools/call", { ...request as object, name: step.name, arguments: step.arguments }, Math.max(1, engineEnd - Date.now()));
+            })
+            : await entry.client.rpc(method, request, engineTimeoutMs);
         phases.engineMs = performance.now() - engineStarted;
         beforeDispatch?.();
         if (method === "tools/list") {
