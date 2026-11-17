@@ -823,10 +823,17 @@ describe("the Computer tab with a dusk cloud already", () => {
     fixture.otherServer = null;
     fixture.cloudDesktop = { view: { step: "move" }, keep: null, openHome: () => Promise.resolve(), dialog: null };
     try {
-      const rendered = computer(makeBot());
+      const rendered = computer(makeBot({ computer: "local" }));
       expect(rendered.html).not.toContain("data-local-browser-first");
       expect(rendered.nodes.findIndex((node) => node.props.inline === true)).toBeGreaterThan(-1);
+      expect(has(rendered, "data-panel-action", "use-here")).toBe(false);
       expect(rendered.html).toContain('data-panel-cloud-switch=""');
+
+      const noComputer = computer(makeBot());
+      expect(noComputer.html).not.toContain("data-local-browser-first");
+      expect(noComputer.nodes.findIndex((node) => node.props.inline === true)).toBe(-1);
+      expect(has(noComputer, "data-panel-action", "use-here")).toBe(true);
+      expect(noComputer.html).toContain('data-panel-cloud-switch=""');
     } finally {
       fixture.cloudDesktop = undefined;
     }
