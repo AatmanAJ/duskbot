@@ -16,7 +16,6 @@ import { SkyEmpty } from "./ui/Sky";
 import { CrashBoundary } from "./ui/Crash";
 import { LoadingPage } from "./pages/common";
 import { PlansPageSkeleton, PlansSkeleton } from "./ui/plans-skeleton";
-import { cameFromApp } from "./lib/from-app";
 import { ClaimPage, hasClaim, stashClaim } from "./pages/Connect";
 import { deletePageId, deleteSignInNote, deleteToken, stashDeleteToken } from "./data/delete-data";
 import { HomePage } from "./pages/Home";
@@ -117,17 +116,14 @@ function route(path: string): ReactNode {
 function SignedIn() {
   const { path, query } = useLocation();
   useEffect(prefetchPages, []);
-  const { account, error, finishOnboarding } = useCloud();
-  const viaApp = cameFromApp(query);
-  // the app's own first run is this account's first run, so the website's setup is done too
-  useEffect(() => { if (viaApp && account && !account.profile.onboarded) void finishOnboarding().catch(() => {}); }, [viaApp, account?.profile.onboarded]);
+  const { account, error } = useCloud();
   const next = query.get("next");
   const intent = planIntent(query);
   const welcome = path === "/welcome";
   const admin = path === "/admin" || path.startsWith("/admin/");
   const exempt = path === "/claim" || path === "/cloud/desktop" || path === TEAM_JOIN_PATH || deletePageId(path) !== null;
   // until onboarding is done every dashboard page leads back into it; the account page (sign out, delete) stays open
-  const unfinished = account !== null && !account.profile.onboarded && !viaApp && !welcome && !exempt && !admin && path !== "/account";
+  const unfinished = account !== null && !account.profile.onboarded && !welcome && !exempt && !admin && path !== "/account";
   const search = query.toString();
   // a plan picked on the site: someone signed in already goes to the plan step, or straight to plans once onboarded
   const moved = MOVED[path]
