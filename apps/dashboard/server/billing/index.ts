@@ -58,6 +58,7 @@ export interface BillingOptions {
   /** every deletion action of a managed cloud and fleet alerts, for the record; never an email */
   alert?: (entry: { at: number; cloudId: string; action: string; actor: string; reason: string }) => void;
 }
+export const ACCOUNT_CLOSE_UNAVAILABLE = "Your plan couldn't be cancelled with the payment provider just now, so nothing was deleted and your dusk cloud is still there; try again in a few minutes.";
 /** the hosted app's Bearer resolver remains null until shared/account-api.ts supplies the accounts service */
 export function createBilling(options: BillingOptions) {
   const env = options.env ?? process.env, now = options.now ?? Date.now, url = new URL(options.publicUrl);
@@ -193,7 +194,11 @@ export function createBilling(options: BillingOptions) {
     async beforeAccountDelete(owner: AccountRef, body: Record<string, unknown>) {
       const blockers = service.deletionBlockers(owner.id);
       if (body.cancelBilling !== true && blockers.length) { const error = new BillingError(409, "billing_active"); error.blockers = blockers; throw error; }
-      await service.closeAccount(owner, { destroyDesktopsNow: body.destroyDesktopsNow === true });
+      try { await service.closeAccount(owner, { destroyDesktopsNow: body.destroyDesktopsNow === true }); }
+      catch (error) {
+        if (error instanceof BillingError && error.code === "unavailable") error.message = ACCOUNT_CLOSE_UNAVAILABLE;
+        throw error;
+      }
     },
     accountDeleted: service.accountDeleted,
     /** the account's plans, payments and cloud desktops for its owner's export: no provider ids, keys or sealed secrets */

@@ -9,6 +9,7 @@ import { quote } from "./pricing.ts";
 import { createFakeBillingProvider } from "./fake-provider.ts";
 import { createBillingStore } from "./store.ts";
 import { CHECKOUT_BURST, CHECKOUT_REUSE_MS, createBillingService } from "./service.ts";
+import { BillingProviderError } from "./types.ts";
 
 const owner = { id: "owner", email: "owner@example.com" }, stranger = { id: "stranger", email: "stranger@example.com" };
 const day = 86_400_000;
@@ -727,6 +728,18 @@ describe("cancel flow and the stay-on discount", () => {
     expect(provider.discountCalls).toHaveLength(0);
   });
 
+  it("account closure with the cloud deleted now asks the provider only about plans it would still renew", async () => {
+    const cancelled = await buy(), otherMode = await buy(desktopOnly()), renewing = await buy(desktopOnly(), stranger);
+    await service.cancel(owner, cancelled.sub.id, { answer: "switching" });
+    store.state.subscriptions.find(sub => sub.id === otherMode.sub.id)!.mode = "live";
+    const refuse = vi.spyOn(provider, "cancelAtPeriodEnd").mockRejectedValue(new BillingProviderError("refused"));
+    await service.closeAccount(owner, { destroyDesktopsNow: true });
+    expect(refuse).not.toHaveBeenCalled();
+    expect(clouds.end).toHaveBeenCalledWith(cancelled.answer.cloudId, expect.any(Number));
+    expect(store.state.closures!.find(c => c.accountId === owner.id)!.completedAt).not.toBeNull();
+    await expect(service.closeAccount(stranger, { destroyDesktopsNow: true })).rejects.toMatchObject({ status: 503, code: "unavailable" });
+    expect(refuse.mock.calls).toEqual([[renewing.sub.providerSubscriptionId, true]]);
+  });
   it("records each step and a cancel with its reason, and validates the step", async () => {
     const { sub } = await buy();
     const seen: unknown[] = [];

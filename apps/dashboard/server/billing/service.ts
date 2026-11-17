@@ -114,6 +114,11 @@ export function createBillingService(options: BillingServiceOptions) {
       ...clouds.list(accountId, true).filter(cloud => !["checkout", "destroyed"].includes(cloud.status)).map(cloud => ({ kind: "cloud_desktop" as const, id: cloud.id, label: cloud.name, status: clouds.view(cloud).status })),
     ];
   }
+  /** one the provider would still renew: a plan already set to end, or one made in the other provider mode (which that
+   * provider can't find, so it refuses every call), needs no cancel */
+  function renews(sub: StoredSubscription) {
+    return sub.status !== "ended" && sub.status !== "cancelled" && !sub.cancelAtPeriodEnd && !!sub.providerSubscriptionId && (sub.mode === undefined || sub.mode === mode);
+  }
   function closeAccount(account: AccountRef, input: { destroyDesktopsNow: boolean }) {
     return serialized(account.id, async () => {
       const closure = ensureClosure(account.id, input.destroyDesktopsNow);
@@ -128,7 +133,7 @@ export function createBillingService(options: BillingServiceOptions) {
           checkout.status = "expired";
         }
       });
-      for (const sub of state.subscriptions.filter(sub => sub.accountId === account.id && sub.status !== "ended" && sub.providerSubscriptionId)) {
+      for (const sub of state.subscriptions.filter(sub => sub.accountId === account.id && renews(sub))) {
         await step(`cancel:${sub.id}`, async () => {
           await provider.cancelAtPeriodEnd(sub.providerSubscriptionId!, true);
           sub.cancelAtPeriodEnd = true; sub.updatedAt = now(); sub.version++;
