@@ -6,20 +6,37 @@ import { promisify } from "node:util";
 import type { AnalyticsSink, StoredEvent } from "./sink.ts";
 import { RAW_RETENTION_DAYS } from "./events.ts";
 
+/** an array whose first item is a plain value holds only plain values (every digest's arrays are one or the other) */
+const plain = (list: unknown[]) => list.length === 0 || list[0] === null || typeof list[0] !== "object";
 /** Maps and Sets as JSON, for the small digests */
 export function pack(value: unknown): unknown {
-  if (value instanceof Map) return { $m: [...value].map(([key, item]) => [key, pack(item)]) };
+  if (value instanceof Map) {
+    const out: unknown[] = [];
+    for (const [key, item] of value) out.push([key, item !== null && typeof item === "object" ? pack(item) : item]);
+    return { $m: out };
+  }
   if (value instanceof Set) return { $s: [...value] };
-  if (Array.isArray(value)) return value.map(pack);
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, pack(item)]));
+  if (Array.isArray(value)) return plain(value) ? value : value.map(pack);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key in value) { const item = (value as Record<string, unknown>)[key]; out[key] = item !== null && typeof item === "object" ? pack(item) : item; }
+    return out;
+  }
   return value;
 }
 export function unpack(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(unpack);
+  if (Array.isArray(value)) return plain(value) ? value : value.map(unpack);
   if (value && typeof value === "object") {
-    if ("$m" in value) return new Map((value.$m as Array<[unknown, unknown]>).map(([key, item]) => [key, unpack(item)]));
-    if ("$s" in value) return new Set(value.$s as unknown[]);
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, unpack(item)]));
+    const tagged = value as { $m?: Array<[unknown, unknown]>; $s?: unknown[] };
+    if (tagged.$m) {
+      const out = new Map();
+      for (const [key, item] of tagged.$m) out.set(key, item !== null && typeof item === "object" ? unpack(item) : item);
+      return out;
+    }
+    if (tagged.$s) return new Set(tagged.$s);
+    const out: Record<string, unknown> = {};
+    for (const key in value) { const item = (value as Record<string, unknown>)[key]; out[key] = item !== null && typeof item === "object" ? unpack(item) : item; }
+    return out;
   }
   return value;
 }
