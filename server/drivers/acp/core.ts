@@ -71,7 +71,7 @@ import { armIdleClose, engineIdleMs, sessionIdlePolicy, stopIdleClose } from "..
 import { classifyError } from "../retry.ts";
 import { engineFailureKind, engineFailureMessage, stopCause } from "../engine-errors.ts";
 import { narrowsNativeTools, parseToolScope } from "../../../shared/tool-scope.ts";
-import { acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
+import { acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { mcpHost } from "../../mcp-host/host.ts"; import type { MountLease } from "../../mcp-host/mounts.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
 import { learnedToolCountLimit, mcpToolBudget, retryUnderToolLimit } from "../../tool-count-limit.ts"; import { instanceEnvNames } from "../../bot-box/env.ts"; import { botBox } from "../../bot-box/box.ts";
 
 /** Failures fixed on the provider account, not by retrying; the reporting process stays pooled. */
@@ -388,6 +388,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       }
       const active = new Map<string, Turn>();
       const sessions = new Map<string, AcpSession>();
+      // Each thread's holds on the MCP host's mounts, for the agent session its servers were given to.
+      const hostLeases = new Map<string, MountLease>();
     // Retain every closing Qwen child until its tree is gone: closing drops the pool entry, not its native writer lease.
       const retiring = new Map<string, Set<ReturnType<typeof spawnCli>>>();
       const retireChild = async (threadId: string, child: ReturnType<typeof spawnCli>): Promise<boolean> => {
@@ -407,6 +409,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         const session = sessions.get(threadId);
         if (!session || session.closing) return;
         session.closing = true;
+        hostLeases.get(threadId)?.release();
+        hostLeases.delete(threadId);
         stopIdleClose(`${instanceId}\0${threadId}`, session.idleTimer);
         appendNative(threadId, { dir: "out", source: SOURCE, msg: { close: why } });
         sessions.delete(threadId);
@@ -1086,8 +1090,14 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         }
         const resolvedModel = support.resolveTurnModel?.(turn.model, env);
         const toolLimitKey = JSON.stringify([instanceId, resolvedModel ?? null]);
-        const mcpServers = acpMcpServers(turn, { http: support.ownMcpOverHttp === true, engine: support.driverKind,
+        const hostLease = support.ownMcpOverHttp === true && mcpHost.enabled(env) ? mcpHost.lease() : undefined;
+        const mcpServers = acpMcpServers(turn, { http: support.ownMcpOverHttp === true, engine: support.driverKind, lease: hostLease,
           toolBudget: mcpToolBudget(learnedToolCountLimit(toolLimitKey), support.engineTools ?? 32) });
+        // This turn's holds first, so a mount both turns name keeps its bearer; a session the old ones served is done.
+        const heldBefore = hostLeases.get(threadId);
+        if (hostLease) hostLeases.set(threadId, hostLease);
+        else hostLeases.delete(threadId);
+        heldBefore?.release();
         support.applyTurnEnv?.(env, {
           model: resolvedModel, requestedModel: turn.model, fullAuto: turnConfig.fullAuto === true, botId: turn.botId, cwd, toolScope: turn.toolScope,
           threadId, mcpServers,
