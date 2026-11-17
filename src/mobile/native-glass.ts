@@ -15,7 +15,7 @@ export interface GlassHeader {
   rightLabel: string;
 }
 
-export type GlassButtonKind = "stop" | "mic" | "micSend" | "send" | "waits" | "followUp" | "discard";
+export type GlassButtonKind = "stop" | "mic" | "micSend" | "send" | "waits" | "followUp" | "discard" | "keep";
 /** `fill` and `ink` are the page's own colours for the button (#rrggbb), so Send wears the bot's button as on the desktop. */
 export interface GlassButton { kind: GlassButtonKind; disabled: boolean; label: string; fill?: string; ink?: string }
 
@@ -86,6 +86,7 @@ export function buttonKind(el: HTMLElement): GlassButtonKind | null {
   if (el.matches("[data-composer-stop]")) return "stop";
   if (el.matches('[data-voice-mic="start"]')) return "mic";
   if (el.matches('[data-voice-mic="send"]')) return "micSend";
+  if (el.matches('[data-voice-mic="done"]')) return "keep";
   if (el.matches("[data-composer-send]")) return el.dataset.composerSend === "waits" ? "waits" : "send";
   if (el.closest("[data-composer-follow-up]") && el.getAttribute("aria-haspopup")) return "followUp";
   if (el.matches("[data-composer-discard]")) return "discard";

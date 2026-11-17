@@ -79,6 +79,8 @@ import { usePillHeight, useSlideOnChange, useStackedField } from "./composer-wra
 import "@/styles/composer.css";
 import { ComposerReplyStrip } from "./ReplyQuote";
 import { ComposerVoiceStrip } from "./ComposerVoiceStrip";
+import { useSendHold } from "./use-send-hold";
+import { useSlotHandoff } from "./use-slot-handoff";
 import { VoiceFirstRunSheet } from "./VoiceFirstRunSheet";
 import { voiceShortcut, voiceShortcutLabel } from "@/lib/voice-input/shortcut";
 import { openSettings } from "@/lib/open-settings";
@@ -116,8 +118,7 @@ interface ComposerDraftSnapshot extends ComposerSendSnapshot {
 }
 
 type SlotGlyph = "waveform" | "mic" | "arrow-up" | "stop";
-/** A send the server never answers lets go of the grayed Send after this long. */
-export const SEND_HOLD_MAX_MS = 15_000;
+export { SEND_HOLD_MAX_MS } from "./use-send-hold";
 
 function SlotGlyphGhost({ glyph, ink }: { glyph: SlotGlyph; ink: string }) {
   return (
@@ -568,14 +569,7 @@ export function Composer({
 
   const pickers = useComposerFilePickers((files) => void pickFiles(files));
   const hasContent = Boolean(effectiveText.trim()) || attachments.length > 0;
-  // a sent message keeps Send, grayed, until the server has it; then the arrow crossfades to the mic (or Stop)
-  const [sendHeld, setSendHeld] = useState<string | null>(null);
-  useEffect(() => {
-    if (!sendHeld) return;
-    const timer = setTimeout(() => setSendHeld((held) => (held === sendHeld ? null : held)), SEND_HOLD_MAX_MS);
-    return () => clearTimeout(timer);
-  }, [sendHeld]);
-  useEffect(() => { setSendHeld(null); }, [threadId, bot?.id, group?.id]);
+  const { sendHeld, holdSend } = useSendHold(busy, singleRow, `${threadId}|${bot?.id}|${group?.id}`);
   const held = Boolean(sendHeld) && !hasContent && !locked;
   const filled = hasContent || held;
   const onCall = useOnCall();
@@ -623,10 +617,15 @@ export function Composer({
   // fills or empties (only Send or the reserved spot takes a place); focus on the old one carries to the new
   // beside a working bot's Stop the small mic springs in where the spacer was, so it mounts fresh there too
   // a phone's Stop takes the mic's place at the end of the pill the same way
-  const phoneStop = singleRow && busy && !stopPressed && !locked && !filled;
-  const micPlace = filled ? "beside" : (stopInSlot && !singleRow) || phoneStop ? "stop" : "end";
+  // the phone listens with two controls only, discard beside and keep in the round button's place
+  const phoneVoice = singleRow && phoneApp() && recording;
+  const phoneStop = singleRow && busy && !stopPressed && !locked && !filled && !phoneVoice;
+  const micPlace = filled && !phoneVoice ? "beside" : (stopInSlot && !singleRow) || phoneStop ? "stop" : "end";
   // when the turn ends on a phone the square fades out over the mic coming back to its place
   const [micTrail, setMicTrail] = useState({ place: micPlace, from: micPlace, swaps: 0 });
+  const actionsRef = useSlotHandoff(singleRow);
+  const [listenedFrom, setListenedFrom] = useState<{ on: boolean; empty: boolean }>({ on: false, empty: true });
+  if (listenedFrom.on !== phoneVoice) setListenedFrom({ on: phoneVoice, empty: !hasContent });
   if (micTrail.place !== micPlace) setMicTrail({ place: micPlace, from: micTrail.place, swaps: micTrail.swaps + 1 });
   const micBack = singleRow && micPlace === "end" && micTrail.from === "stop";
   // a phone's mic comes out of the round button as the field fills and slips back into it as it empties
@@ -699,8 +698,7 @@ export function Composer({
       channelMode: effectiveChannelMode, mentions: picks.ids(body),
     };
     const sendId = sentDraft.sendId;
-    const onSettled = () => setSendHeld((current) => (current === sendId ? null : current));
-    setSendHeld(sendId);
+    const onSettled = holdSend(sendId);
     if (group) {
       dispatch({
         type: "sendGroup",
@@ -1129,9 +1127,9 @@ export function Composer({
               className={singleRow ? "flex-1 py-1.5" : "mb-px mt-[3px] flex-1"}
             />
           )}
-          <div data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
+          <div ref={actionsRef} data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
           {/* with something typed it is only voice and send: no stop beside them */}
-          {(simpleDock ? stoppable : busy && !stopPressed) && !filled && !locked && (
+          {(simpleDock ? stoppable : busy && !stopPressed) && !filled && !locked && !phoneVoice && (
           <button
             // the button leaves with the press: focus goes back to the field (not on a phone, where it would raise the keyboard)
             onClick={() => { interruptTurn(); if (!singleRow) refocusInput(); }}
@@ -1161,9 +1159,10 @@ export function Composer({
               "flex shrink-0 items-center justify-center rounded-full",
               simpleDock ? "size-7" : "size-8 max-md:size-10",
               singleRow ? "text-ink-secondary hover:bg-raised hover:text-ink" : SIMPLE_CONTROL,
+              phoneVoice && cn("composer-press", listenedFrom.empty && "composer-mic-in"),
             )}
           >
-            <Icon name="close" size={14} />
+            <Icon name="close" size={phoneVoice ? 16 : 14} />
           </button>
         )}
         {/* the mic in the round button's place keeps the small control's place beside it, so Send or Discard takes
@@ -1177,31 +1176,32 @@ export function Composer({
             onFocus={() => { micFocused.current = true; }}
             onBlur={() => { micFocused.current = false; }}
             // on a phone the button that ends listening sends what was heard: one tap from speaking to sent
-            onClick={recording && phoneApp() ? () => send(followUpFor(false)) : toggleMic}
-            data-voice-mic={recording ? (phoneApp() ? "send" : "done") : "start"}
+            onClick={toggleMic}
+            data-voice-mic={recording ? "done" : "start"}
             disabled={dictation.phase === "finishing"}
-            aria-label={recording ? (phoneApp() ? sendNames.label : t("composer.dictation.stop")) : t("composer.dictation.start")}
+            aria-label={recording ? t("composer.dictation.stop") : t("composer.dictation.start")}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
               simpleDock ? "size-7" : "size-8 max-md:size-10",
               (micPlace === "stop" || micOut) && "composer-mic-in",
               micBack && "composer-mic-back",
-              recording
+              phoneVoice ? cn("composer-press", slot.button.className)
+              : recording
                 ? "composer-press bg-ink text-app hover:bg-[color-mix(in_srgb,var(--color-ink)_88.5%,var(--color-menu))] disabled:opacity-40"
                 : micInSlot ? singleRow ? "composer-press bg-ink text-app hover:opacity-90" : "composer-press hover:brightness-[0.88]"
                 : singleRow ? "text-ink-secondary hover:bg-raised hover:text-ink" : SIMPLE_CONTROL,
             )}
-            style={micInSlot && !singleRow ? { backgroundColor: slot.fill, color: slot.ink } : undefined}
+            style={phoneVoice ? slot.button.style : micInSlot && !singleRow ? { backgroundColor: slot.fill, color: slot.ink } : undefined}
             title={recording ? t("composer.voice.stopHint", { key: voiceShortcutLabel() }) : t("composer.voice.hint", { key: voiceShortcutLabel() })}
           >
-            {recording ? <Icon name={phoneApp() ? "arrow-up" : "check"} size={phoneApp() ? 16 : 14} />
+            {recording ? <Icon name="check" size={phoneVoice ? 16 : 14} />
               : simpleDock ? <Icon name="mic" variant="filled" size={16} className={micInSlot ? "composer-glyph" : undefined} /> : <Mic size={16} strokeWidth={1.75} absoluteStrokeWidth className="[&_rect]:fill-current" />}
           </button>
         )}
         {live && callShown && bot && !group && <CallButton bot={bot} placement="composer" fill={singleRow ? undefined : slot.fill} ink={slot.ink} inverse={singleRow} />}
-        {filled && !locked && (
+        {filled && !locked && !phoneVoice && (
           <ComposerSendButton compact={simpleDock} waits={!held && busy && !steersNow} label={sendNames.label} title={sendNames.title} look={slot.button}
-            disabled={held || attachmentPending || unsentUpload} onSend={(alternate) => send(followUpFor(alternate))} onChoose={send}
+            disabled={(held && !singleRow) || attachmentPending || unsentUpload} onSend={(alternate) => { if (!held) send(followUpFor(alternate)); }} onChoose={send}
             menu={undefined} />
           )}
           {ghostGlyph && <SlotGlyphGhost key={glyphs.swaps} glyph={ghostGlyph} ink={slot.ink} />}

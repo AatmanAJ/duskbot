@@ -156,16 +156,17 @@ describe("voice input in the real composer", () => {
     expect(container.textContent).not.toContain(t("composer.dictation.failed"));
   });
 
-  it("in the phone app the button that ends listening sends what was heard in one tap", () => {
+  it("in the phone app listening shows only discard and keep, and keep leaves the words in the field", () => {
     document.documentElement.dataset.mobileApp = "ios";
     try {
       start();
       hear("call the dentist");
-      const send = container.querySelector<HTMLButtonElement>('button[data-voice-mic="send"]')!;
-      expect(send.getAttribute("aria-label")).toBe("Send message");
-      flushSync(() => send.click());
-      expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "send", text: "call the dentist" }));
-      expect(input().value).toBe("");
+      expect(container.querySelector("[data-composer-send]")).toBeNull();
+      expect(container.querySelector('button[data-voice-mic="send"]')).toBeNull();
+      expect(container.querySelector("[data-composer-discard]")).not.toBeNull();
+      click(t("composer.dictation.stop"));
+      expect(input().value).toBe("call the dentist");
+      expect(fixture.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "send" }));
     } finally {
       delete document.documentElement.dataset.mobileApp;
     }

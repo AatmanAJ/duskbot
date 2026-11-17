@@ -274,6 +274,15 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-chat-bubble][class*
   background-color: var(--g-tint-quiet);
   color: var(--color-ink-secondary);
 }
+/* listening: discard sits where the mic sat beside the round button, which turns into keep */
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-discard] {
+  width: 36px; height: 36px; min-width: 36px;
+  background-color: var(--g-tint-quiet);
+  color: var(--color-ink-secondary);
+}
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-discard], [data-voice-mic="done"]) svg { animation: composer-glyph-in 200ms var(--composer-glyph-ease); }
+/* a press scales; the narrow layout's dim on top of it read as the button flashing lighter */
+.dusk-mobile [data-mobile-chat] [data-composer-actions] button:active { opacity: 1; }
 
 /* under the composer the transcript dims into the home indicator; it rides the keyboard with the dock */
 .dusk-mobile [data-mobile-chat] [data-grok-inset]::before {
@@ -294,13 +303,13 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-chat-bubble][class*
   background-color: var(--g-tint-quiet);
   color: var(--color-ink-secondary);
 }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]) { transition: scale .2s var(--m-ease-release); }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active:not(:disabled) { scale: .9; transition-duration: .14s; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic], [data-composer-discard]) { transition: scale .2s var(--m-ease-release); }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic], [data-composer-discard]):active:not(:disabled) { scale: .9; transition-duration: .14s; }
 @media (prefers-reduced-motion: reduce) {
-  .dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] svg { animation-name: composer-glyph-fade; }
+  .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-composer-discard], [data-voice-mic="done"]) svg { animation-name: composer-glyph-fade; }
   .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active { scale: 1; }
 }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic="send"]) svg { width: 18px; height: 18px; stroke-width: 2.5; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic="send"], [data-voice-mic="done"]) svg { width: 18px; height: 18px; stroke-width: 2.5; }
 
 /* the native glass draws the header and composer over the page: the page's own stay in place, unseen, for layout,
    menus and focus */

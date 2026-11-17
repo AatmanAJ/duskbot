@@ -308,8 +308,11 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         show(composer, true, &composerShown)
     }
 
-    /// the round button at the end of the pill: the mic at rest, Send once there is text, Stop while the bot works
-    private static let slotKinds: Set<String> = ["mic", "send", "micSend", "stop", "waits"]
+    /// the round button at the end of the pill: the mic at rest, Send once there is text, Stop while the bot works, keep
+    /// while listening
+    private static let slotKinds: Set<String> = ["mic", "send", "micSend", "stop", "waits", "keep"]
+    /// the small control beside it: the mic, or discard while listening; one turns into the other in place
+    private static let besideKinds: Set<String> = ["mic", "discard"]
 
     private func applyActions(_ buttons: [[String: Any]]) {
         let kinds = buttons.map { $0["kind"] as? String ?? "" }
@@ -317,19 +320,29 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             let oldKinds = actionKinds
             // the mic beside the round button (Send, or a working bot's Stop): it springs out of the round button and
             // slips back into it, as composer-mic-in and composer-mic-out do on the page
-            let hadBeside = oldKinds.dropLast().contains("mic")
-            let hasBeside = kinds.dropLast().contains("mic")
+            let hadBeside = oldKinds.dropLast().contains { Self.besideKinds.contains($0) }
+            let hasBeside = kinds.dropLast().contains { Self.besideKinds.contains($0) }
             // the slot keeps one button and one frame through mic, Send and Stop: only its symbol changes
             let keep: UIButton? = {
                 guard let last = actions.last, let was = oldKinds.last, let now = kinds.last,
                       Self.slotKinds.contains(was), Self.slotKinds.contains(now) else { return nil }
                 return last
             }()
-            let leaving = zip(actions, oldKinds).filter { $0.0 !== keep }
+            // the mic beside turns into discard as listening starts, and back as it ends
+            let besideKept: UIButton? = {
+                guard keep != nil, oldKinds.count == 2, kinds.count == 2, Self.besideKinds.contains(oldKinds[0]),
+                      Self.besideKinds.contains(kinds[0]) else { return nil }
+                return actions.first
+            }()
+            let leaving = zip(actions, oldKinds).filter { $0.0 !== keep && $0.0 !== besideKept }
             actions = kinds.enumerated().map { index, kind in
                 if index == kinds.count - 1, let keep {
-                    configure(keep, kind: kind, index: index)
+                    configure(keep, kind: kind, index: index, was: oldKinds.last)
                     return keep
+                }
+                if index == 0, let besideKept {
+                    configure(besideKept, kind: kind, index: index, was: oldKinds.first)
+                    return besideKept
                 }
                 let button = DiscButton(configuration: .glass())
                 configure(button, kind: kind, index: index)
@@ -340,15 +353,15 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             layoutComposer()
             for (button, kind) in leaving {
                 button.isUserInteractionEnabled = false
-                if kind == "mic" && hadBeside && !hasBeside && keep != nil {
+                if Self.besideKinds.contains(kind) && hadBeside && !hasBeside && keep != nil {
                     ComposerMotion.leave(button) { button.removeFromSuperview() }
                 } else {
                     button.removeFromSuperview()
                 }
             }
             let had = Set(oldKinds)
-            for (index, (button, kind)) in zip(actions, kinds).enumerated() where button !== keep {
-                if kind == "mic" && index < kinds.count - 1 && !hadBeside && keep != nil { ComposerMotion.micIn(button) }
+            for (index, (button, kind)) in zip(actions, kinds).enumerated() where button !== keep && button !== besideKept {
+                if Self.besideKinds.contains(kind) && index < kinds.count - 1 && !hadBeside && keep != nil { ComposerMotion.micIn(button) }
                 else if (kind == "send" || kind == "micSend") && !had.contains(kind) { ComposerMotion.popIn(button) }
             }
         }
@@ -359,7 +372,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         }
     }
 
-    private static func prominent(_ kind: String) -> Bool { kind == "send" || kind == "micSend" }
+    private static func prominent(_ kind: String) -> Bool { kind == "send" || kind == "micSend" || kind == "keep" }
 
     /// Send wears the page's own fill for it (the bot's button, per the app's light or dark look, as on the desktop)
     private func paint(_ button: UIButton, kind: String, fill: String?, ink: String?) {
@@ -370,7 +383,15 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         if button.configuration?.baseForegroundColor != foreground { button.configuration?.baseForegroundColor = foreground }
     }
 
-    private func configure(_ button: UIButton, kind: String, index: Int) {
+    /// `was` is the kind the button wore until now: going between the bot's filled button and the plain glass one, the
+    /// fill and the glyph's colour cross over together, never one frame flat then the other
+    private func configure(_ button: UIButton, kind: String, index: Int, was: String? = nil) {
+        if let was, was != kind, Self.prominent(was) != Self.prominent(kind), button.window != nil {
+            UIView.transition(with: button, duration: 0.2, options: [.transitionCrossDissolve, .allowUserInteraction, .beginFromCurrentState]) {
+                self.configure(button, kind: kind, index: index)
+            }
+            return
+        }
         let prominent = Self.prominent(kind)
         var config: UIButton.Configuration = prominent ? .prominentGlass() : kind == "followUp" ? .plain() : .glass()
         let symbol: String
@@ -384,6 +405,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         case "waits": (symbol, size, weight) = ("clock", 16, .semibold)
         case "followUp": (symbol, size, weight) = ("chevron.up", 15, .semibold)
         case "discard": (symbol, size, weight) = ("xmark", 15, .semibold)
+        case "keep": (symbol, size, weight) = ("checkmark", 15, .bold)
         default: (symbol, size, weight) = ("circle", 15, .semibold)
         }
         config.cornerStyle = .capsule
