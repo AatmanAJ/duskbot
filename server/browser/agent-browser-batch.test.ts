@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { BROWSER_CONTROL_REFUSAL, BrowserRuntime, type BrowserSpawnSpec } from "../browser-runtime.ts";
+import { BrowserRuntime, type BrowserSpawnSpec } from "../browser-runtime.ts";
 import { planAgentBrowserBatch } from "./agent-browser-batch.ts";
 
 const selector = { type: "string", description: "Element @ref from snapshot, or a CSS selector." };
@@ -151,10 +151,13 @@ describe("a batch on the agent-browser engine", () => {
     const result = await running;
     expect(result.isError).toBe(true);
     expect(texts(result)[0]).toBe("A person took control of the browser at step 1 of 3, so the steps after it did not run. Step 1 may already have taken effect: check the page before repeating it.");
-    expect(texts(result).at(-1)).toBe(BROWSER_CONTROL_REFUSAL);
+    expect(texts(result).at(-1)).toMatch(/^The person took control of the browser while this call ran/);
     expect(calls().map((entry) => entry.name)).not.toContain("agent_browser_press");
     expect(calls().map((entry) => entry.name)).not.toContain("agent_browser_snapshot");
-    await expect(call("agent_browser_batch", { steps: [{ do: "press", key: "Enter" }] })).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: BROWSER_CONTROL_REFUSAL })]) });
+    const next = call("agent_browser_batch", { steps: [{ do: "press", key: "Enter" }] });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    runtime.release("s", "person");
+    await expect(next).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: expect.stringMatching(/^The person used the browser while this call waited/) })]) });
     expect(calls().map((entry) => entry.name)).not.toContain("agent_browser_press");
   });
 });
@@ -195,7 +198,7 @@ describe("settled reads on the agent-browser engine", () => {
     const started = Date.now();
     await runtime.take("s", "person");
     expect(Date.now() - started).toBeLessThan(2_000);
-    await expect(reading).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: BROWSER_CONTROL_REFUSAL })]) });
+    await expect(reading).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: expect.stringMatching(/^The person took control of the browser while this call ran/) })]) });
     expect(calls().map((entry) => entry.name)).not.toContain("agent_browser_snapshot");
   });
 });

@@ -38,11 +38,35 @@ describe("a browser refusal", () => {
     expect(browserRefusal(new TransportError("The browser did not answer in time."))).toBeNull();
   });
 
-  it("answers a call made while a person controls the browser at once, as an isError result", async () => {
-    const value = runtime();
+  it("answers a call made while a person answers the bot's sign-in request at once, as an isError result", async () => {
+    const value = runtime({ signingIn: (session) => session === "held" });
     await value.take("held", "person");
     await expect(value.agentRpc("held", { command: "node", args: [], env: {} }, "tools/call", { name: "agent_browser_get_url", arguments: {} }))
       .resolves.toMatchObject(refusedWith(/paused while a person controls this browser/));
+  });
+
+  it("holds a call made while a person controls the browser until the hand-back, then answers that it did not run", async () => {
+    const value = runtime();
+    await value.take("held", "person");
+    let settled = false;
+    const call = value.agentRpc("held", { command: "node", args: [], env: {} }, "tools/call", { name: "agent_browser_get_url", arguments: {} })
+      .finally(() => { settled = true; });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(settled).toBe(false);
+    value.release("held", "person");
+    await expect(call).resolves.toMatchObject(refusedWith(/The person used the browser while this call waited.*this call did not run/));
+  });
+
+  it("stops holding a call when its turn stops, and past its budget says the person still holds the browser", async () => {
+    const value = runtime({ callBudgetMs: 16_500, followUpReserveMs: 15_000 });
+    await value.take("held", "person");
+    let stopped = false;
+    const stopping = value.agentRpc("held", { command: "node", args: [], env: {} }, "tools/call", { name: "agent_browser_get_url", arguments: {} }, () => { if (stopped) throw new Error("The turn was stopped."); });
+    stopped = true;
+    await expect(stopping).rejects.toThrow("The turn was stopped.");
+    await expect(value.agentRpc("held", { command: "node", args: [], env: {} }, "tools/call", { name: "agent_browser_get_url", arguments: {} }))
+      .resolves.toMatchObject(refusedWith(/The person still holds the browser after \d+ s, so this call did not run/));
+    expect(value.interrupted("held")).toBe(false);
   });
 });
 
@@ -51,7 +75,7 @@ describe("browser takeover gate", () => {
     const value = runtime();
     const action = deferred<string>();
     const pending = value.withAgentAction("shared-profile", () => action.promise);
-    const observed = expect(pending).rejects.toThrow(/paused/);
+    const observed = expect(pending).rejects.toThrow(/took control of the browser/);
     const taking = value.take("shared-profile", "person");
     expect(value.heldBy("shared-profile")).toBe("person");
     expect(value.canControl("shared-profile", "person")).toBe(false);
@@ -70,7 +94,7 @@ describe("browser takeover gate", () => {
     const value = runtime({ takeoverTimeoutMs: 20 });
     const action = deferred();
     const pending = value.withAgentAction("s", () => action.promise);
-    const observed = expect(pending).rejects.toThrow(/paused/);
+    const observed = expect(pending).rejects.toThrow(/took control of the browser/);
     await expect(value.take("s", "owner")).rejects.toThrow(/still finishing/);
     expect(value.heldBy("s")).toBe("owner");
     action.resolve();
@@ -106,7 +130,7 @@ describe("browser takeover gate", () => {
     // A preview frame holds the gate but sends no command that moves the page.
     const frame = deferred();
     const pending = value.previewFrame("s", () => frame.promise);
-    const observed = expect(pending).rejects.toThrow(/paused/);
+    const observed = expect(pending).rejects.toThrow(/took control of the browser/);
     const taking = value.take("s", "owner");
     frame.resolve(); await observed;
     await expect(taking).resolves.toBe(false);
@@ -211,7 +235,7 @@ describe("browser takeover gate", () => {
     const agent = value.withAgentAction("s", () => busy.promise);
     const restarting = value.restart("s", "recovery", nativeClose);
     busy.resolve();
-    await expect(agent).rejects.toThrow(/paused/);
+    await expect(agent).rejects.toThrow(/took control of the browser/);
     await restarting;
     expect(nativeClose).toHaveBeenCalledOnce();
     nativeClose.mockClear();
@@ -315,7 +339,7 @@ describe("server-owned browser MCP runtime", () => {
   });
 
   it("captures nothing of the page while a person holds it to sign in: no screenshot, snapshot or preview frame", async () => {
-    const value = runtime();
+    const value = runtime({ signingIn: (session) => session === "signin" });
     const daemon = daemonSpec();
     try {
       await value.agentRpc("signin", daemon.spec, "tools/call", { name: "agent_browser_get_url", arguments: {} });
@@ -435,14 +459,14 @@ describe("server-owned browser MCP runtime", () => {
       let taking: Promise<boolean> | undefined;
       const refused = value.agentRpc("s", daemon.spec, "tools/call", { name: "agent_browser_fill", arguments: { selector: "@e3", text: "ada" } },
         () => { taking ??= value.take("s", "owner"); });
-      await expect(refused).resolves.toMatchObject(refusedWith(/paused/));
+      await expect(refused).resolves.toMatchObject(refusedWith(/took control of the browser/));
       await expect(taking).resolves.toBe(false);
       expect(daemon.calls()).toEqual([]);
       value.release("s", "owner");
       // Received: the engine is still running the command when the take lands.
       writeFileSync(daemon.busy, "busy");
       const running = value.agentRpc("s", daemon.spec, "tools/call", { name: "agent_browser_get_url" });
-      const discarded = expect(running).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: expect.stringMatching(/paused/) })]) });
+      const discarded = expect(running).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: expect.stringMatching(/took control of the browser/) })]) });
       await vi.waitFor(() => expect(daemon.calls()).toEqual(["agent_browser_get_url"]));
       const waited = value.take("s", "owner");
       rmSync(daemon.busy);
@@ -557,8 +581,10 @@ describe("server-owned browser MCP runtime", () => {
     const other = await value.agentRpc("two", spec(), "tools/list", {}) as { pid: number };
     expect(other.pid).not.toBe(list.pid);
     await value.take("one", "owner");
-    await expect(value.agentRpc("one", spec(), "tools/call", { name: "echo" })).resolves.toMatchObject(refusedWith(/paused/));
+    const waiting = value.agentRpc("one", spec(), "tools/call", { name: "echo" });
     await expect(value.agentRpc("one", spec(), "tools/list", {})).resolves.toMatchObject({ tools: [{ name: "echo" }, { name: BROWSER_UPLOAD_TOOL }, { name: BROWSER_HOVER_TOOL }, { name: "agent_browser_batch" }, { name: "restart_browser" }] });
+    value.release("one", "owner");
+    await expect(waiting).resolves.toMatchObject(refusedWith(/The person used the browser/));
   });
 
   it("runs upload and hover through the daemon's relay, with only their own fields", async () => {
@@ -590,12 +616,16 @@ describe("server-owned browser MCP runtime", () => {
     expect(silent.interrupted("t")).toBe(true);
   });
 
-  it("refuses upload and hover while a person controls the browser", async () => {
+  it("never runs upload or hover while a person controls the browser", async () => {
     const relayCommand = vi.fn(async () => ({ success: true, data: {} }));
     const value = runtime({ relayCommand });
     await value.agentRpc("s", spec(), "tools/list", {});
     await value.take("s", "owner");
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: BROWSER_HOVER_TOOL, arguments: { selector: "#menu" } })).resolves.toMatchObject(refusedWith(/paused/));
+    const waiting = value.agentRpc("s", spec(), "tools/call", { name: BROWSER_HOVER_TOOL, arguments: { selector: "#menu" } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(relayCommand).not.toHaveBeenCalled();
+    value.release("s", "owner");
+    await expect(waiting).resolves.toMatchObject(refusedWith(/The person used the browser/));
     expect(relayCommand).not.toHaveBeenCalled();
   });
 
@@ -1013,7 +1043,7 @@ describe("server-owned browser MCP runtime", () => {
       const action = value.withAgentAction("s", () => acting.promise);
       const restarting = value.restart("s", "person", async () => {});
       acting.resolve();
-      await expect(action).rejects.toThrow(/paused/);
+      await expect(action).rejects.toThrow(/took control of the browser/);
       await restarting;
     } finally {
       await value.closeAll();
@@ -1263,7 +1293,7 @@ describe("around each bot call (browser-steps.ts)", () => {
       void taking.catch(() => {});
     });
     value = runtime({ steps, applyViewport });
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: "echo" }, undefined, ctx)).resolves.toMatchObject(refusedWith(/paused/));
+    await expect(value.agentRpc("s", spec(), "tools/call", { name: "echo" }, undefined, ctx)).resolves.toMatchObject(refusedWith(/took control of the browser/));
     expect(applyViewport).toHaveBeenCalledTimes(2);
     expect(seen).toEqual([false, true]);
     seen = [];
@@ -1328,7 +1358,7 @@ describe("around each bot call (browser-steps.ts)", () => {
     const taking = value.take("s", "person");
     expect(steps.personTook).toHaveBeenCalledWith("s");
     action.resolve();
-    await expect(pending).rejects.toThrow(/paused/);
+    await expect(pending).rejects.toThrow(/took control of the browser/);
     await taking;
   });
 

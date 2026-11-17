@@ -850,7 +850,7 @@ describe("authenticated browser viewer relay", () => {
     // A frame, not a bot command, held the browser: the person's input stands.
     let finish!: () => void;
     const frame = runtime.previewFrame("profile-a", () => new Promise<boolean>((resolve) => { finish = () => resolve(true); }));
-    const discarded = expect(frame).rejects.toThrow("paused");
+    const discarded = expect(frame).rejects.toThrow("took control of the browser");
     const taking = a.action({ type: "take" });
     finish(); await discarded;
     expect(await taking).toEqual({ ok: true, waited: false });

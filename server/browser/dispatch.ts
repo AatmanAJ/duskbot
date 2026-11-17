@@ -16,7 +16,8 @@ import { resolveElement } from "./cdp/selectors.ts";
 import { settleNote, settlePage } from "./cdp/settle.ts";
 import { MAX_VISIBLE_TEXT_LENGTH } from "./cdp/snapshot.ts";
 import { runBatch } from "./batch.ts";
-import { BROWSER_CONTROL_REFUSAL, type ProfileControl } from "./control.ts";
+import { PersonHoldAnswer } from "../browser-refusals.ts";
+import { BROWSER_CONTROL_REFUSAL, type HoldWait, type ProfileControl, type Scope } from "./control.ts";
 import { BrowserControlInterrupted } from "./session-control.ts";
 import { errorResult, pageLabel, snapshotText, textResult, withParts, type ToolResult } from "./shape.ts";
 import type { Tab, TabRegistry } from "./tabs.ts";
@@ -43,6 +44,8 @@ export interface BrowserStatus {
   loading: boolean;
   tabs: Array<{ tab: string; url: string; title: string; active: boolean; openedBy?: string }>;
   heldByPerson: boolean;
+  /** The tabs a person holds: calls on them wait for the hand-back, other tabs still work. */
+  heldTabs: string[];
   dialog: { type: string; message: string; defaultPrompt?: string } | null;
   fileChooser: { multiple: boolean } | null;
   signInPrompt: { origin: string; realm: string } | null;
@@ -50,7 +53,7 @@ export interface BrowserStatus {
 }
 
 export interface ToolContext {
-  readonly control: ProfileControl;
+  readonly control: ProfileControl<Tab>;
   readonly tabs: TabRegistry;
   readonly browser: CdpBrowser;
   readonly deadline: number;
@@ -141,6 +144,7 @@ export function statusOf(context: Pick<ToolContext, "tabs" | "control" | "active
       ...(listed.openerTabId ? { openedBy: listed.openerTabId } : {}),
     })),
     heldByPerson: context.control.owner !== null,
+    heldTabs: context.control.heldTabs().map((held) => held.id),
     dialog: dialog ? { type: dialog.type, message: dialog.message, ...(dialog.type === "prompt" ? { defaultPrompt: dialog.defaultPrompt } : {}) } : null,
     fileChooser: chooser ? { multiple: chooser.multiple } : null,
     signInPrompt: auth ? { origin: auth.origin, realm: auth.realm } : null,
@@ -174,9 +178,19 @@ async function openedNote(context: ToolContext, tab: Tab, known: ReadonlySet<str
   return opened.map((candidate) => `The page opened a new tab ${candidate.id} at ${sanitizeUrl(candidate.page.url()) || candidate.page.url()}${candidate === front ? ", now in front" : ""}; take a snapshot to act on it.`).join(" ");
 }
 
+/** A call waits on a held tab until its reads after would no longer fit, and stops with its turn. */
+function holdWait(context: ToolContext): HoldWait {
+  return { until: context.deadline - FOLLOW_UP_MS, ...(context.checkpoint ? { checkpoint: context.checkpoint } : {}) };
+}
+
+/** Bot work on `scope`, waiting out a person's hold on it within the call. */
+function bot<R>(context: ToolContext, scope: Scope<Tab>, run: () => Promise<R>): Promise<R> {
+  return context.control.agent(scope, run, holdWait(context));
+}
+
 /** Runs `run` as bot work on `tab` (or the whole browser), with what the page did and reported after it. */
 async function act(context: ToolContext, tab: Tab | null, run: () => Promise<ToolResult>, { observeChange = false } = {}): Promise<ToolResult> {
-  return context.control.agent(tab, async () => {
+  return bot(context, tab, async () => {
     const known = new Set(context.tabs.list().map((candidate) => candidate.id));
     const before = observeChange && tab ? await observe(tab) : null;
     const mark = before && tab ? tab.page.navigations.mark() : null;
@@ -250,7 +264,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
   switch (call.name) {
     case "agent_browser_status": {
       const tab = call.input.tab ? tabOf(context, call.input.tab) : null;
-      return context.control.agent(tab, async () => {
+      return bot(context, tab, async () => {
         await context.browser.refreshTargets().catch(() => undefined);
         const status = statusOf(context, tab);
         if (call.as === "url") return textResult(status.url ?? "about:blank");
@@ -262,8 +276,8 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       const { url, tab: which } = call.input;
       const address = url !== undefined && url.trim() !== "" ? agentUrl(url) : null;
       const existing = which === "new" ? null : which ? tabOf(context, which) : context.active();
-      const tab = existing ?? await context.control.agent(null, () => context.openTab());
-      return context.control.agent(tab, async () => {
+      const tab = existing ?? await bot(context, null, () => context.openTab());
+      return bot(context, tab, async () => {
         await tab.page.bringToFront();
         const opened = address ? await tab.page.navigate(address, { readiness: "load", timeoutMs: remaining(context) }) : null;
         if (opened?.signInPrompt) return textResult(signInWait(tab, opened.url, opened.signInPrompt));
@@ -289,7 +303,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
     }
     case "agent_browser_snapshot": {
       const tab = tabOf(context, call.input.tab);
-      return context.control.agent(tab, async () => {
+      return bot(context, tab, async () => {
         await tab.page.bringToFront();
         return withParts(await snapshotResult(context, tab, call.input), dialogNote(tab));
       });
@@ -424,21 +438,21 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
     }
     case "agent_browser_dialog": {
       const tab = tabOf(context, call.input.tab);
-      if (context.control.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+      await context.control.heldBack(tab, holdWait(context));
       const answered = await tab.page.answerDialog({ accept: call.input.accept, ...(call.input.promptText === undefined ? {} : { promptText: call.input.promptText }) });
       return textResult(`${call.input.accept ? "Accepted" : "Dismissed"} the ${answered.type} dialog.`);
     }
     case "agent_browser_tabs": {
       const { action, url, tab: which } = call.input;
       if (action === "list") {
-        return context.control.agent(null, async () => {
+        return bot(context, null, async () => {
           await context.browser.refreshTargets().catch(() => undefined);
           return textResult(JSON.stringify(statusOf(context).tabs));
         });
       }
       if (action === "new") {
         const address = url !== undefined && url.trim() !== "" ? agentUrl(url) : null;
-        const tab = await context.control.agent(null, () => context.openTab());
+        const tab = await bot(context, null, () => context.openTab());
         return act(context, tab, async () => {
           await tab.page.bringToFront();
           if (address) await tab.page.navigate(address, { readiness: "load", timeoutMs: remaining(context) });
@@ -447,8 +461,8 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       }
       if (!which) return errorResult(`Pass tab for ${action}.`);
       const tab = tabOf(context, which);
-      if (action === "close") return context.control.agent(null, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
-      return context.control.agent(tab, async () => {
+      if (action === "close") return bot(context, tab, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
+      return bot(context, tab, async () => {
         await tab.page.bringToFront();
         return textResult(`${tab.id} is in front: ${pageLabel(describe(tab))}. Take a snapshot to act on it.`);
       });
@@ -456,9 +470,9 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
     case "agent_browser_close": {
       if (call.input.tab) {
         const tab = tabOf(context, call.input.tab);
-        return context.control.agent(null, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
+        return bot(context, tab, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
       }
-      return context.control.agent(null, async () => { await context.closeBrowser(); return textResult("Closed the browser. Saved sign-ins are kept; agent_browser_open starts it again."); });
+      return bot(context, "every", async () => { await context.closeBrowser(); return textResult("Closed the browser. Saved sign-ins are kept; agent_browser_open starts it again."); });
     }
     case "agent_browser_batch":
       return runBatch(context, call.input, { execute: executeTool, failure: toolFailure });
@@ -470,7 +484,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
 /** A tool's failure as the bot reads it; null for one the service must handle itself. */
 export function toolFailure(error: unknown): ToolResult | null {
   if (isUnanswered(error)) return null;
-  if (error instanceof Error && error.message === BROWSER_CONTROL_REFUSAL) return null;
+  if (error instanceof PersonHoldAnswer || (error instanceof Error && error.message === BROWSER_CONTROL_REFUSAL)) return null;
   if (error instanceof DriverError) return errorResult(error.message);
   if (error instanceof BrowserControlInterrupted) return errorResult(error.message);
   return errorResult(error instanceof Error ? error.message : String(error));

@@ -51,6 +51,7 @@ export interface ChromeEngineOptions {
   log?: (line: string) => void;
   onScratch?: (session: string, path: string) => void;
   onClosing?: BrowserServiceOptions["onClosing"];
+  signingIn?: BrowserServiceOptions["signingIn"];
   /** Run with each sweep: the day-old and over-the-disk-limit scratch of this data folder. */
   sweepScratch?: () => void;
 }
@@ -104,6 +105,7 @@ export class ChromeEngine {
       ...(options.log ? { log: options.log } : {}),
       ...(options.onScratch ? { onScratch: options.onScratch } : {}),
       ...(options.onClosing ? { onClosing: options.onClosing } : {}),
+      ...(options.signingIn ? { signingIn: options.signingIn } : {}),
     });
     this.live = new LiveV1({ service: this.service, target: (session) => this.target(session) });
     this.stream = new StreamV2({ service: this.service });

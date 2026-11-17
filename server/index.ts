@@ -2423,7 +2423,7 @@ const {
 } = createBrowserHost({ cfg, store: () => store, boxChrome: botBoxChrome, turnResources, activeInternalGenerationByThread, mintInternalCapability: capability => mintInternalCapability({ ...capability,
   ...(teamComputerTurns.get(capability.threadId) ? { teamComputerId: teamComputerTurns.get(capability.threadId)!.computerId } : {}),
   ...(turnVpsTargets.get(capability.threadId)?.screenLease ? { screenGeneration: turnVpsTargets.get(capability.threadId)!.screenLease!.target.generation } : {}),
-}), DESKTOP_MANAGED, CLOUD_HOME, PORT, engineMemory, audienceOf: teamHost.browserAudience, ...(CLOUD_TEAM ? { browserBox: (fd: number, ro: readonly string[]) => botBox.browserBox(fd, ro) } : {}) });
+}), DESKTOP_MANAGED, CLOUD_HOME, PORT, engineMemory, audienceOf: teamHost.browserAudience, signingIn: (botId) => computerControl.snapshot(botId).help?.place === "browser", ...(CLOUD_TEAM ? { browserBox: (fd: number, ro: readonly string[]) => botBox.browserBox(fd, ro) } : {}) });
 
 const dataSheets = new DataSheetRegistry({
   broadcast: (frame) => broadcast({ ...frame }),

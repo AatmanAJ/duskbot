@@ -69,6 +69,8 @@ export interface PreviewStreamControl {
   readonly stale?: boolean;
   /** The person watching holds the browser, from this view or another of theirs: they may hand it back from here. */
   readonly owned?: boolean;
+  /** The tabs the person holds: the bot waits on these and keeps working in the others. */
+  readonly heldTabs?: readonly string[];
 }
 
 const isPreviewStreamDialog = (value: unknown): value is PreviewStreamControl["dialog"] =>
@@ -366,6 +368,7 @@ export function createPreviewStreamClient(
         dialog,
         stale,
         owned,
+        heldTabs,
         text,
         id,
         fileName,
@@ -471,6 +474,7 @@ export function createPreviewStreamClient(
           dialog,
           ...(stale === true ? { stale: true } : {}),
           ...(owned === true ? { owned: true } : {}),
+          ...(Array.isArray(heldTabs) && heldTabs.length ? { heldTabs: heldTabs.filter((held): held is string => typeof held === "string").slice(0, 100) } : {}),
         };
         const first = control === null;
         control = nextControl;

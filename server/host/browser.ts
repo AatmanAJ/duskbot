@@ -76,6 +76,9 @@ export interface BrowserHostDeps {
   /** Chromium on this turn's assigned VPS computer. Null permits a host browser; false omits structured browsing on a
    * selected desktop without CDP. An unavailable selected computer rejects. The turn pins shared-computer ownership. */
   boxChrome?(botId: string, turn?: BrowserTurn): Promise<string | false | null>;
+  /** The bot asked the person to sign in or pass a check in its browser and the card is still open: while they hold
+   * that browser, its calls are refused rather than held back, because they may be typing a password. */
+  signingIn?(botId: string): boolean;
 }
 
 type Spec = { command: string; args?: readonly string[]; env: Record<string, string> };
@@ -117,6 +120,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     botByThread: (threadId: string) => deps.store().botByThread(threadId) };
 
   // an idle close (or its bot stopped) says so just before it closes the browser; a restart never does
+  const signingIn = (session: string) => Boolean(deps.signingIn) && store.bots.some((bot) => deps.signingIn!(bot.id) && browserSessionsOf(bot.id, bot.browserProfile).includes(session));
   const idleClosing = new Set<string>();
   const agentBrowserRuntime = new BrowserRuntime({
     closeBrowser: async (session, spec) => {
@@ -129,6 +133,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
       throw error instanceof RelayTimeout ? new TransportError(error.message) : error;
     }),
     steps: browserSteps,
+    signingIn,
     onTiming: process.env.DUSK_BROWSER_TIMING === "1" ? (timing) => console.info(formatBrowserTiming(timing)) : undefined,
   });
   const browserBox = deps.browserBox;
@@ -151,6 +156,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     host,
     egressPort: (key) => browserEgress.open(key),
     egressNotice: (key) => browserEgress.takeNotice(key),
+    signingIn,
     idleMs,
     log: (line) => console.warn(line),
     onScratch: (session, path) => { scratch.mark(`browser:${session}`, path); },

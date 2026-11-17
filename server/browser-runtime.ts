@@ -2,7 +2,7 @@ import { killCliTree, spawnCli } from "./procs.ts";
 import { scrubHeldSecrets } from "../shared/redact.ts";
 import { DEFAULT_BROWSER_RESULT_BUDGET, describePageChange, OBSERVE_PAGE_SCRIPT, parsePageState, READ_OPEN_PAGE_ONLY, readsAroundBrowser, scrubBrowserResult, shapeBrowserToolResult, slimBrowserToolList, stripHarnessOwnedArguments, type PageState } from "./browser-tool-shape.ts";
 import { BrowserLanes } from "./browser-lane.ts";
-import { AGENT_CLOSE_FAILED, BROWSER_CLOSING, BROWSER_CONTROL_REFUSAL, BROWSER_INTERRUPTED, BROWSER_RESTART_TOOL, LANE_BUSY, LAUNCH_CHANGED, PERSON_RESTART_STOPPED, RESTART_BUSY, browserRefusal } from "./browser-refusals.ts";
+import { AGENT_CLOSE_FAILED, BROWSER_CLOSING, BROWSER_CONTROL_REFUSAL, BROWSER_INTERRUPTED, BROWSER_RESTART_TOOL, LANE_BUSY, LAUNCH_CHANGED, PERSON_RESTART_STOPPED, PersonHoldAnswer, personStillHolds, personTookTab, personUsedTab, RESTART_BUSY, browserRefusal } from "./browser-refusals.ts";
 export { BROWSER_CONTROL_REFUSAL, BROWSER_RESTART_TOOL, browserRefusal };
 import { trail } from "./trail.ts";
 import { PageSizes, type PageSize } from "./browser-page-size.ts";
@@ -69,6 +69,7 @@ const PERSON_RESTARTED = "The person restarted your browser from the Browser pan
 export const BROWSER_CALL_DEFAULTS = { requestTimeoutMs: 120_000, laneWaitMs: 30_000, callBudgetMs: HARNESS_CALL_BUDGET_MS, followUpReserveMs: 15_000 } as const;
 const RESTART_COST = "a restart closes every tab and loses page state such as form input";
 const LATE = Symbol("late");
+const HOLD_POLL_MS = 500;
 
 const PAGE_ACTIONS: ReadonlySet<string> = new Set([
   "agent_browser_click", "agent_browser_fill", "agent_browser_type", "agent_browser_press",
@@ -369,8 +370,11 @@ export class BrowserRuntime {
   /** Strips held secrets (a filled password, a one-time code) from every tool result before the bot reads it. */
   private scrub: (text: string) => string;
   private onTiming?: (timing: BrowserTiming) => void;
+  /** A bot of this session asked the person to sign in or pass a check: while they hold its browser, its calls are refused. */
+  private signingIn: (session: string) => boolean;
 
-  constructor({ closeBrowser, applyViewport, launch, relayCommand, steps, scrub, onTiming, ...options }: Partial<BrowserRuntime["options"]> & { closeBrowser?: CloseBrowser; applyViewport?: ApplyViewport; launch?: BrowserLaunch; relayCommand?: RelayCommand; steps?: BrowserRuntime["steps"]; scrub?: (text: string) => string; onTiming?: (timing: BrowserTiming) => void } = {}) {
+  constructor({ closeBrowser, applyViewport, launch, relayCommand, steps, scrub, onTiming, signingIn, ...options }: Partial<BrowserRuntime["options"]> & { closeBrowser?: CloseBrowser; applyViewport?: ApplyViewport; launch?: BrowserLaunch; relayCommand?: RelayCommand; steps?: BrowserRuntime["steps"]; scrub?: (text: string) => string; onTiming?: (timing: BrowserTiming) => void; signingIn?: (session: string) => boolean } = {}) {
+    this.signingIn = signingIn ?? (() => false);
     this.options = { ...BROWSER_CALL_DEFAULTS, takeoverTimeoutMs: 15_000, idleMs: 60_000, maxPending: 16, resultBudget: DEFAULT_BROWSER_RESULT_BUDGET, recoveryCheckMs: 30_000, ...options };
     this.closeBrowser = closeBrowser ?? (async () => false);
     this.applyViewport = applyViewport;
@@ -414,6 +418,44 @@ export class BrowserRuntime {
     for (const notify of gate.changed) notify();
   }
 
+  /** What a bot call is told when the person took the browser while it ran. */
+  private taken(session: string): Error {
+    return this.signingIn(session) ? new Error(BROWSER_CONTROL_REFUSAL) : new PersonHoldAnswer(personTookTab("the browser"));
+  }
+
+  /**
+   * agent-browser drives the tab in front, the one a person's hold is on, so a bot call waits out the whole hold: until
+   * the hand-back, its turn's stop (`beforeDispatch` throws), or the call's budget. It never runs after, since the page may
+   * have changed under the person's hands. A hold on the bot's own sign-in request is refused outright.
+   */
+  private async heldBack(session: string, deadline: number, beforeDispatch?: () => void): Promise<void> {
+    const gate = this.gate(session);
+    if (gate.owner === null) return;
+    if (this.signingIn(session)) throw new Error(BROWSER_CONTROL_REFUSAL);
+    const started = Date.now();
+    const until = deadline - this.options.followUpReserveMs;
+    throw await new Promise<Error>((resolve) => {
+      const answer = (): Error | null => {
+        try { beforeDispatch?.(); } catch (error) { return error instanceof Error ? error : new Error(String(error)); }
+        if (gate.owner !== null && this.signingIn(session)) return new Error(BROWSER_CONTROL_REFUSAL);
+        if (gate.owner === null && !gate.releasing) return new PersonHoldAnswer(personUsedTab("the browser"));
+        if (Date.now() >= until) return new PersonHoldAnswer(personStillHolds("the browser", Date.now() - started));
+        return null;
+      };
+      const check = () => {
+        const found = answer();
+        if (!found) return;
+        gate.changed.delete(check);
+        clearInterval(timer);
+        resolve(found);
+      };
+      gate.changed.add(check);
+      const timer = setInterval(check, HOLD_POLL_MS);
+      timer.unref();
+      check();
+    });
+  }
+
   async withAgentAction<T>(session: string, fn: () => Promise<T>): Promise<T> {
     return this.agentAction(session, fn, true);
   }
@@ -427,7 +469,7 @@ export class BrowserRuntime {
     gate.agents++;
     try {
       const result = await fn();
-      if (gate.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+      if (gate.owner !== null) throw this.taken(session);
       return result;
     } finally {
       gate.agents--;
@@ -526,15 +568,15 @@ export class BrowserRuntime {
     // Uncertainty survives client replacement: nothing new reaches the engine until it is resolved.
     const toolName = toolNameOf(params);
     const gate = this.gate(session);
+    if (method === "tools/call") await this.heldBack(session, deadline, beforeDispatch);
     if (gate.uncertain) {
       if (method === "tools/list") return withDuskTools(this.toolLists.get(session) ?? { tools: [] });
-      if (gate.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
       const lostCall = gate.lostCall;
       if (lostCall === null) return stuckBrowserToolError();
       beforeDispatch?.();
       const url = await this.recoverAfterLoss(session, spec);
       beforeDispatch?.();
-      if (gate.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+      if (gate.owner !== null) throw this.taken(session);
       return url === null ? stillBusyToolError(lostCall) : recoveredResult(lostCall, url);
     }
     const followUpMs = () => Math.min(this.options.requestTimeoutMs, deadline - Date.now());
@@ -546,22 +588,22 @@ export class BrowserRuntime {
       const entry = this.connect(session, spec);
       await entry.client.ready;
       beforeDispatch?.();
-      if (method === "tools/call" && this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+      if (method === "tools/call" && this.gate(session).owner !== null) throw this.taken(session);
       if (method === "tools/call" && await this.pageSizes.beforeCall(session)) {
         beforeDispatch?.();
-        if (this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+        if (this.gate(session).owner !== null) throw this.taken(session);
       }
       if (method === "tools/call" && this.launch && toolName !== "agent_browser_close") {
         await this.launched(session, spec);
         beforeDispatch?.();
-        if (this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+        if (this.gate(session).owner !== null) throw this.taken(session);
       }
       phases.launchMs = performance.now() - launchStarted;
       try {
         if (method === "tools/call" && ctx && toolName !== undefined) {
           await this.threadTabs.front(session, ctx, toolName, (name, args) => entry.client.rpc("tools/call", { name, arguments: args }, Math.max(1, Math.min(followUpMs(), 10_000))));
           beforeDispatch?.();
-          if (this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+          if (this.gate(session).owner !== null) throw this.taken(session);
         }
         const pageUrl = () => entry.client.rpc("tools/call", { name: "agent_browser_get_url", arguments: {} }, Math.max(1, Math.min(followUpMs(), 5_000)))
           .then((result) => firstText(result).trim(), (error: unknown) => { if (error instanceof TransportError) throw error; return ""; });
@@ -601,13 +643,13 @@ export class BrowserRuntime {
         if (method === "tools/call" && toolName !== undefined && PAGE_ACTIONS.has(toolName)) {
           before = await observePage();
           beforeDispatch?.();
-          if (this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+          if (this.gate(session).owner !== null) throw this.taken(session);
         }
         let settled: string | null = null;
         if (method === "tools/call" && toolName !== undefined && SETTLED_READS.has(toolName)) {
           settled = await this.settle(entry.client, gate, deadline, false);
           beforeDispatch?.();
-          if (this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+          if (this.gate(session).owner !== null) throw this.taken(session);
         }
         const engineStarted = performance.now();
         if (method === "tools/call") { dispatched = true; gate.dispatched++; }
@@ -620,7 +662,7 @@ export class BrowserRuntime {
           : inLines
             ? await runAgentBrowserTypeInLines(inLines, (step) => {
               beforeDispatch?.();
-              if (this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+              if (this.gate(session).owner !== null) throw this.taken(session);
               return entry.client.rpc("tools/call", { ...request as object, name: step.name, arguments: step.arguments }, Math.max(1, engineEnd - Date.now()));
             })
             : await entry.client.rpc(method, request, engineTimeoutMs);
@@ -644,10 +686,10 @@ export class BrowserRuntime {
         if (toolName === "agent_browser_open" && result && typeof result === "object" &&
             (result as { isError?: boolean }).isError !== true) {
           beforeDispatch?.();
-          if (this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+          if (this.gate(session).owner !== null) throw this.taken(session);
           settled = await this.settle(entry.client, gate, deadline, true);
           beforeDispatch?.();
-          if (this.gate(session).owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+          if (this.gate(session).owner !== null) throw this.taken(session);
           let observation: unknown;
           const observeStarted = performance.now();
           try {
@@ -717,7 +759,7 @@ export class BrowserRuntime {
   private async agentBatch(session: string, spec: BrowserSpawnSpec, params: unknown, deadline: number, beforeDispatch?: () => void, ctx?: StepContext): Promise<unknown> {
     const gate = this.gate(session);
     if (gate.uncertain) return this.agentRequest(session, spec, "tools/call", params, deadline, beforeDispatch, ctx);
-    if (gate.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+    await this.heldBack(session, deadline, beforeDispatch);
     const tools = this.toolLists.get(session) ?? await this.agentRequest(session, spec, "tools/list", {}, deadline);
     const plan = planAgentBrowserBatch((params as { arguments?: unknown } | null)?.arguments, tools);
     if (!plan.ok) return { isError: true, content: [{ type: "text", text: plan.error }] };
