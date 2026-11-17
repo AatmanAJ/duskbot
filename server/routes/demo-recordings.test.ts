@@ -23,7 +23,7 @@ import { dispatchRoutes } from "./table.ts";
 const cleanup: Array<() => Promise<unknown> | void> = [];
 afterEach(async () => { for (const step of cleanup.splice(0).reverse()) await step(); });
 
-async function serve(options: { turn?: (text: string) => Promise<string> } = {}) {
+async function serve(options: { turn?: (text: string) => Promise<string>; guest?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "dusk-demo-routes-"));
   cleanup.push(() => removeTempDir(dir));
   const page: PortalPage = await openPortal("standard");
@@ -50,7 +50,7 @@ async function serve(options: { turn?: (text: string) => Promise<string> } = {})
   const routes = [createDemoRecordingRoutes({ host, recorder, botExists: (id) => id.startsWith("bot-"), surfaces: async () => ({ browser: true, computer: false }), changed: (change) => changes.push(change) })];
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const auth = { kind: "loopback", scopes: ["admin"] } as unknown as RequestAuth;
+    const auth = (options.guest ? { kind: "session", scopes: ["client"] } : { kind: "loopback", scopes: ["admin"] }) as unknown as RequestAuth;
     if (!await dispatchRoutes(routes, { req, res, url, path: url.pathname, method: req.method ?? "GET", auth, json, readBody })) json(res, 404, { from: "no route" });
   });
   cleanup.push(() => new Promise((done) => server.close(done)));
@@ -60,7 +60,7 @@ async function serve(options: { turn?: (text: string) => Promise<string> } = {})
     const response = await fetch(`${base}${path}`, { method, ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }) });
     return { status: response.status, body: await response.json() as T };
   };
-  return { base, call, page, changes, installed, routines, person: () => page.person({ input: async (raw) => { await tap?.input(raw); } }), tapped: () => tap !== null };
+  return { base, call, page, changes, installed, routines, person: () => page.person({ input: async (raw) => tap?.input(raw) }), tapped: () => tap !== null };
 }
 
 /** Shows one expense through the routes and returns the recording as it stops. */
@@ -209,6 +209,7 @@ describe("showing a bot a task over the routes", () => {
     await on.call("POST", `/api/demos/${recording.id}/replay`, { files: receiptFiles().slice(1, 4) });
     for (let tries = 0; tries < 200 && asked.length === 0; tries++) await new Promise((resolve) => setTimeout(resolve, 10));
     expect((await on.call("POST", `/api/demos/${recording.id}/replay`, { files: receiptFiles().slice(1, 2) })).status).toBe(409);
+    expect((await on.call("POST", "/api/bots/bot-1/demos", { surface: "browser" })).status).toBe(409);
     expect((await on.call<{ stopped: boolean }>("POST", `/api/demos/${recording.id}/replay/stop`)).body.stopped).toBe(true);
     release();
     const run = await finished(on, recording.id);
@@ -221,6 +222,16 @@ describe("showing a bot a task over the routes", () => {
     expect(asked[0]).toMatch(/Could not find the button "Create claim"/);
     expect(asked[0]).toMatch(/DONE, or STUCK/);
   }, 30_000);
+
+  it("answers only the owner or an admin", async () => {
+    const on = await serve({ guest: true });
+    const id = "demo-00000000-0000-4000-8000-000000000000";
+
+    for (const [method, path] of [["GET", "/api/bots/bot-1/demos"], ["POST", "/api/bots/bot-1/demos"], ["GET", `/api/demos/${id}`], ["PUT", `/api/demos/${id}/plan`], ["POST", `/api/demos/${id}/skill`], ["GET", `/api/demos/${id}/frames/f${"0".repeat(20)}`]] as const) {
+      expect((await on.call(method, path, method === "GET" ? undefined : {})).status, `${method} ${path}`).toBe(403);
+    }
+    expect((await on.call("GET", "/api/elsewhere")).status).toBe(404);
+  });
 
   it("removes a recording and everything of it", async () => {
     const on = await serve();

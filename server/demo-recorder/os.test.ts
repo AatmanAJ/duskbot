@@ -133,8 +133,8 @@ describe("secure fields on a desktop", () => {
 });
 
 describe("recording on a desktop", () => {
-  async function record(rows: Row[], inputs: RawInput[]) {
-    const { tools } = desktop(rows);
+  async function record(rows: Row[], inputs: RawInput[], between: (state: { rows: Row[] }, raw: RawInput) => void = () => {}) {
+    const { tools, state } = desktop(rows);
     const probe = createOsProbe(tools);
     const dir = mkdtempSync(join(tmpdir(), "dusk-demo-os-"));
     dirs.push(dir);
@@ -142,9 +142,39 @@ describe("recording on a desktop", () => {
     for (const raw of inputs) {
       probe.note(raw);
       await capture.input(raw);
+      between(state, raw);
     }
     return capture.finish();
   }
+
+  it("keeps nothing typed after a click on something that is not a text field", async () => {
+    const trace = await record(LEDGER(), [down(130, 362), { type: "pointer", action: "up", x: 130, y: 362, button: "left" }, ...typed("hunter2")]);
+
+    expect(trace.events.find((event) => event.kind === "type")).toMatchObject({ secure: true, chars: 7 });
+    expect(JSON.stringify(trace)).not.toContain("hunter2");
+  });
+
+  it("keeps nothing typed while a secure field is anywhere on the screen, as when a prompt takes the keyboard by itself", async () => {
+    const prompt: Row = { role: "AXSecureTextField", label: "", frame: { x: 200, y: 200, w: 300, h: 28 } };
+    const trace = await record(LEDGER(), [down(130, 192), { type: "pointer", action: "up", x: 130, y: 192, button: "left" }, ...typed("hunter2")],
+      (state, raw) => { if (raw.type === "pointer" && raw.action === "up") state.rows.push(prompt); });
+
+    expect(trace.events.find((event) => event.kind === "type")).toMatchObject({ secure: true, chars: 7 });
+    expect(JSON.stringify(trace)).not.toContain("hunter2");
+  });
+
+  it("names a click by what was there before it, when the click took that off the screen", async () => {
+    const { tools, state } = desktop([...LEDGER(), { role: "push button", label: "Discard", frame: { x: 400, y: 300, w: 120, h: 32 } }]);
+    let clock = 10_000;
+    const probe = createOsProbe(tools, { now: () => clock });
+    await probe.context();
+    clock += 800;
+    state.rows.pop();
+    probe.note(down(510, 362));
+
+    expect(await probe.at({ x: 510, y: 362 })).toMatchObject({ role: "button", name: "Discard" });
+    expect(await probe.at({ x: 510, y: 362 })).toBeNull();
+  });
 
   it("keeps what is typed into the field the person clicked", async () => {
     const trace = await record(LEDGER(), [down(130, 192), { type: "pointer", action: "up", x: 130, y: 192, button: "left" }, ...typed("1280.00")]);

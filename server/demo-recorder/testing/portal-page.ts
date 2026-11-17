@@ -198,11 +198,16 @@ export async function openPage(url: string, html: string, pages: (url: string) =
     surface: createDomSurface(evaluate, driver),
     screen,
     person(capture) {
+      const told = async (raw: RawInput): Promise<() => void> => {
+        const landed = await capture?.input(raw);
+        return () => { if (typeof landed === "function") landed(); };
+      };
       return {
         async click(name) {
           const { x, y } = center(name);
-          await capture?.input({ type: "pointer", action: "down", x, y, button: "left", clickCount: 1 });
+          const landed = await told({ type: "pointer", action: "down", x, y, button: "left", clickCount: 1 });
           await driver.clickAt(x, y);
+          landed();
           await capture?.input({ type: "pointer", action: "up", x, y, button: "left", clickCount: 1 });
         },
         async type(text) {
@@ -213,8 +218,9 @@ export async function openPage(url: string, html: string, pages: (url: string) =
           }
         },
         async press(key) {
-          await capture?.input({ type: "key", action: "down", key });
+          const landed = await told({ type: "key", action: "down", key });
           await driver.press(key);
+          landed();
           await capture?.input({ type: "key", action: "up", key });
         },
         async paste(text) {
@@ -223,7 +229,7 @@ export async function openPage(url: string, html: string, pages: (url: string) =
         },
         async choose(field, option) {
           const { x, y } = center(field);
-          await capture?.input({ type: "choose", x, y, label: option });
+          const landed = await told({ type: "choose", x, y, label: option });
           window.eval(`(() => {
             const select = ${FIND}(${JSON.stringify(field)});
             const option = [...select.options].find((candidate) => (candidate.label || candidate.text) === ${JSON.stringify(option)});
@@ -233,6 +239,7 @@ export async function openPage(url: string, html: string, pages: (url: string) =
             select.dispatchEvent(new Event("input", { bubbles: true }));
             select.dispatchEvent(new Event("change", { bubbles: true }));
           })()`);
+          landed();
         },
       };
     },

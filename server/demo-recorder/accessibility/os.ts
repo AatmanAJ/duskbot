@@ -37,6 +37,10 @@ interface Look {
 }
 
 const LOOK_MS = 400;
+/** A look this recent is from before a press, so it says what was pressed even when the press took it off the screen. */
+const BEFORE_PRESS_MS = 2_500;
+const TYPED_INTO = new Set(["textbox", "searchbox", "combobox", "spinbutton"]);
+const SECURE_SOMEWHERE: DemoTarget = { role: "textbox", name: "", secure: true };
 const TREE_TIMEOUT_MS = 8_000;
 const MAX_ELEMENTS = 1_200;
 const NAME_LIMIT = 300;
@@ -130,14 +134,19 @@ export function createOsProbe(tools: DesktopTools, options: { now?: () => number
   let last: Look | null = null;
   let pending: Promise<Look> | null = null;
   let clicked: DemoPoint | null = null;
+  let beforePress: Look | null = null;
   const seen = (): Promise<Look> => {
     if (last && now() - last.at < LOOK_MS) return Promise.resolve(last);
     pending ??= look(tools, now).then((next) => { last = next; return next; }).finally(() => { pending = null; });
     return pending;
   };
+  const hitIn = (current: Look, point: DemoPoint): OsElement | undefined => current.elements
+    .filter((element) => element.bounds && holds(element.bounds, point) && (element.name || FIELD_ROLES.has(element.role) || element.role === "button"))
+    .sort((a, b) => a.bounds!.width * a.bounds!.height - b.bounds!.width * b.bounds!.height)[0];
   const under = async (point: DemoPoint): Promise<DemoTarget | null> => {
-    const hit = (await seen()).elements.filter((element) => element.bounds && holds(element.bounds, point) && (element.name || FIELD_ROLES.has(element.role) || element.role === "button"))
-      .sort((a, b) => a.bounds!.width * a.bounds!.height - b.bounds!.width * b.bounds!.height)[0];
+    const earlier = beforePress;
+    beforePress = null;
+    const hit = (earlier ? hitIn(earlier, point) : undefined) ?? hitIn(await seen(), point);
     return hit ? targetOf(hit) : null;
   };
   return {
@@ -145,12 +154,21 @@ export function createOsProbe(tools: DesktopTools, options: { now?: () => number
     note(raw) {
       if (raw.type === "pointer" && raw.action === "down") {
         clicked = { x: raw.x, y: raw.y };
+        beforePress = last && now() - last.at < BEFORE_PRESS_MS ? last : null;
         last = null;
       } else if (raw.type === "key" && raw.action === "down" && !raw.text && [...raw.key].length !== 1) clicked = null;
       else if (raw.type === "open" || raw.type === "choose") clicked = null;
     },
     at: under,
-    focused: async () => (clicked ? under(clicked) : null),
+    // Security: typing is placed only in a text field the person clicked, and never while any secure field is on the
+    // screen: a prompt that takes the keyboard by itself is not told apart from the field behind it.
+    async focused() {
+      last = null;
+      const current = await seen();
+      if (current.elements.some((element) => element.secure)) return SECURE_SOMEWHERE;
+      const hit = clicked ? hitIn(current, clicked) : undefined;
+      return hit && TYPED_INTO.has(hit.role) ? targetOf(hit) : null;
+    },
     async secureRegions() {
       const current = await seen().catch(() => null);
       if (!current || current.elements.some((element) => element.secure)) return null;

@@ -22,6 +22,8 @@ const BUTTONS = [[1, "left"], [2, "middle"], [4, "right"]] as const;
 const WHEEL = [[8, 0, -120], [16, 0, 120], [32, -120, 0], [64, 120, 0]] as const;
 const WHEEL_BITS = 8 | 16 | 32 | 64;
 const LARGEST_MESSAGE = 16 * 1024 * 1024;
+/** A message longer than this that carries no click or key (a clipboard, mostly) is passed over without being held. */
+const SMALL_MESSAGE = 64;
 
 /** The character a keysym writes, or null when it writes none. */
 function charOf(keysym: number): string | null {
@@ -100,7 +102,9 @@ export function createRfbDecoder(onInput: (raw: RawInput) => void, options: { sk
     const char = charOf(keysym);
     const name = char ?? NAMED[keysym];
     if (!name) return;
-    const writes = char !== null && !(held & (MODIFIER.ctrl | MODIFIER.alt | MODIFIER.meta));
+    const ctrl = (held & MODIFIER.ctrl) !== 0;
+    const alt = (held & MODIFIER.alt) !== 0;
+    const writes = char !== null && !(held & MODIFIER.meta) && ctrl === alt;
     onInput({ type: "key", action: down ? "down" : "up", key: name, ...(down && writes ? { text: char } : {}), ...(held ? { modifiers: held } : {}) });
   }
 
@@ -150,8 +154,15 @@ export function createRfbDecoder(onInput: (raw: RawInput) => void, options: { sk
           pending = Buffer.alloc(0);
           return;
         }
-        if (size === 0 || pending.length < size) return;
+        if (size === 0) return;
         const type = pending[0]!;
+        if (pending.length < size) {
+          if (type !== 4 && type !== 5 && size > SMALL_MESSAGE) {
+            skip = size - pending.length;
+            pending = Buffer.alloc(0);
+          }
+          return;
+        }
         try {
           if (type === 4) key(pending[1] !== 0, pending.readUInt32BE(4));
           else if (type === 5) pointer(pending[1]!, pending.readUInt16BE(2), pending.readUInt16BE(4));

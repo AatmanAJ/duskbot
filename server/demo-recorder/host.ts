@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { DemoBlank, DemoChange, DemoRecording, DemoReplayRun } from "../../shared/demo-recording.ts";
 import type { DemoTap } from "../browser/viewers/demo-tap.ts";
-import type { AccessibilityProbe, ScreenSource } from "./capture.ts";
+import { CAPTURE_LIMITS, type AccessibilityProbe, type ScreenSource } from "./capture.ts";
 import type { DemoEngine } from "./compiler.ts";
 import { readDemoInputs, type InputFile } from "./inputs.ts";
 import type { DemoRecorder } from "./recorder.ts";
@@ -53,6 +53,8 @@ export interface DemoHost<Who> {
 }
 
 const refused = (value: unknown): value is Refusal => typeof value === "object" && value !== null && "status" in value && "error" in value;
+/** A showing nobody ended is ended for them this long after a recording can hold no more. */
+const ABANDONED_MS = CAPTURE_LIMITS.maxDurationMs + 60_000;
 const firstLine = (text: string) => text.trim().split(/\r?\n/, 1)[0]?.trim() ?? "";
 
 /** The bot's own computer use as the one a replay hands a step to: one turn for a step, one to look at the result. */
@@ -81,42 +83,57 @@ function botActor(turn: NonNullable<DemoHostDeps<unknown>["turn"]>, botId: strin
 
 export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
   const { recorder } = deps;
-  const seats = new Map<string, DemoSeat>();
+  const seats = new Map<string, { seat: DemoSeat; abandoned: ReturnType<typeof setTimeout> }>();
   const runs = new Map<string, { run: DemoReplayRun; stop: AbortController }>();
+  const replaying = new Set<string>();
 
   async function seatFor(botId: string, surface: DemoRecording["surface"], threadId: string | null, who: Who): Promise<DemoSeat | Refusal> {
     if (surface === "computer") return deps.computer ? deps.computer(botId, threadId, who) : { status: 409, error: "Showing a task on this computer is not available here yet. Show it in the bot's browser instead." };
     return deps.browser(botId, threadId, who);
   }
 
-  function leave(botId: string): void {
-    const seat = seats.get(botId);
-    seat?.tap(null);
-    seat?.close?.();
+  /** Stops hearing the person. The seat stays open for the recording's last picture: `close` what this answers after it. */
+  function leave(botId: string): DemoSeat | null {
+    const held = seats.get(botId);
+    if (!held) return null;
     seats.delete(botId);
+    clearTimeout(held.abandoned);
+    held.seat.tap(null);
+    return held.seat;
+  }
+
+  async function stop(botId: string): Promise<DemoRecording | Refusal> {
+    const seat = leave(botId);
+    const stopped = await recorder.stop(botId).finally(() => seat?.close?.());
+    return "id" in stopped ? stopped : { status: 409, error: stopped.error };
   }
 
   return {
     async start(botId, surface, threadId, who) {
       if (recorder.recording(botId)) return { status: 409, error: "This bot is already being shown a task." };
+      if (replaying.has(botId)) return { status: 409, error: "This bot is doing a task again. Wait for it to finish, or stop it first." };
       const seat = await seatFor(botId, surface, threadId, who);
       if (refused(seat)) return seat;
       const started = recorder.start({ botId, surface, probe: seat.probe, screen: seat.screen, ...(threadId ? { threadId } : {}) });
-      if (!("id" in started)) return { status: 409, error: started.error };
-      seats.set(botId, seat);
-      seat.tap({ input: (raw) => recorder.input(botId, raw) });
+      if (!("id" in started)) {
+        seat.close?.();
+        return { status: 409, error: started.error };
+      }
+      const abandoned = setTimeout(() => {
+        deps.log?.("demo recorder: a showing nobody ended was ended");
+        void stop(botId).catch(() => {});
+      }, ABANDONED_MS);
+      abandoned.unref?.();
+      seats.set(botId, { seat, abandoned });
+      seat.tap({ input: (raw) => recorder.relay(botId, raw) });
       return started;
     },
 
-    async stop(botId) {
-      leave(botId);
-      const stopped = await recorder.stop(botId);
-      return "id" in stopped ? stopped : { status: 409, error: stopped.error };
-    },
+    stop,
 
     async cancel(botId) {
-      leave(botId);
-      await recorder.cancel(botId);
+      const seat = leave(botId);
+      await recorder.cancel(botId).finally(() => seat?.close?.());
     },
 
     async replay(recordingId, files, who) {
@@ -125,13 +142,31 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
       if (runs.get(recordingId)?.run.status === "running") return { status: 409, error: "This task is already being done again. Stop it first." };
       if (recorder.recording(recording.botId)) return { status: 409, error: "Finish showing the task before doing it again." };
       const { plan, botId } = recording;
-      const seat = await seatFor(botId, recording.surface, recording.threadId ?? null, who);
-      if (refused(seat)) return seat;
-      const items = await readDemoInputs(files, plan.blanks, { engine: deps.engine(botId) });
+      if (replaying.has(botId)) return { status: 409, error: "This bot is already doing a task again. Stop it first." };
+      replaying.add(botId);
+      let seat: DemoSeat | null = null;
+      const ended = () => {
+        replaying.delete(botId);
+        seat?.close?.();
+      };
+      let items: Awaited<ReturnType<typeof readDemoInputs>>;
+      try {
+        const found = await seatFor(botId, recording.surface, recording.threadId ?? null, who);
+        if (refused(found)) {
+          replaying.delete(botId);
+          return found;
+        }
+        seat = found;
+        items = await readDemoInputs(files, plan.blanks, { engine: deps.engine(botId) });
+      } catch (error) {
+        ended();
+        throw error;
+      }
       if (!items.length) {
-        seat.close?.();
+        ended();
         return { status: 422, error: "Those files hold nothing to read inputs from." };
       }
+      const at = seat;
       const run: DemoReplayRun = {
         id: randomUUID(),
         recordingId,
@@ -148,11 +183,11 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
       tell();
       void recorder.replay(recordingId, {
         items,
-        surface: seat.surface,
+        surface: at.surface,
         actor: deps.turn ? botActor(deps.turn, botId, recording.threadId, recording.surface) : null,
         secrets: async (name) => {
           const blank = plan.blanks.find((each) => each.name === name);
-          return blank && deps.secret ? deps.secret(botId, blank, seat.where()) : null;
+          return blank && deps.secret ? deps.secret(botId, blank, at.where()) : null;
         },
         signal: stop.signal,
         onProgress(progress) {
@@ -164,7 +199,7 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
             if (progress.via === "bot") item.byBot += 1;
             if (!progress.ok && progress.note) item.note = progress.note;
           } else {
-            item.status = progress.ok ? "done" : item.missing.length ? "skipped" : "failed";
+            item.status = progress.ok ? "done" : item.step === undefined ? "skipped" : "failed";
             if (progress.ok) delete item.step;
             run.done = run.items.filter((each) => each.status === "done").length;
             run.failed = run.items.filter((each) => each.status === "failed").length;
@@ -179,11 +214,11 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
           }
         }
         run.status = stop.signal.aborted ? "stopped" : "done";
-        seat.close?.();
+        ended();
         tell();
       }, () => {
         run.status = "stopped";
-        seat.close?.();
+        ended();
         tell();
         deps.log?.("demo replay: the run ended on an error");
       });

@@ -722,7 +722,7 @@ export class BrowserLive {
   private async input(viewer: Viewer, message: ObjectValue): Promise<void> {
     if (!viewer.port) throw new BrowserLiveError("The browser stream is not connected.", 409);
     const shown = this.demoTaps.get(viewer.session), did = shown ? liveDemoInputOf(message) : null;
-    if (shown && did) await shown.input(did);
+    const landed = shown && did ? await shown.input(did) : undefined;
     let command: ObjectValue;
     const { type, eventType, ...fields } = message;
     const key = String(fields.code || fields.key);
@@ -749,12 +749,14 @@ export class BrowserLive {
     let confirmed: boolean;
     try { confirmed = await this.sendInput(viewer, viewer.port, command, releases); }
     catch (error) {
+      landed?.();
       if (error instanceof BrowserInputRefusedError) {
         if (command.action === "input_keyboard" && eventType === "keyDown") viewer.pressedKeys.delete(key);
         if (type === "input_mouse" && eventType === "mousePressed") viewer.pressedButtons.delete(String(fields.button));
       }
       throw error;
     }
+    landed?.();
     if (!confirmed) throw new BrowserInputUnconfirmedError();
     if (command.action === "press" || (command.action === "input_keyboard" && eventType === "keyUp")) viewer.pressedKeys.delete(key);
     if (type === "input_mouse" && eventType === "mouseReleased") viewer.pressedButtons.delete(String(fields.button));

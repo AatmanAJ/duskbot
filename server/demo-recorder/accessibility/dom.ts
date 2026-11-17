@@ -107,14 +107,25 @@ const nameOf = (element) => {
   const picture = element.querySelector ? element.querySelector("img[alt], svg[aria-label]") : null;
   return clean(element.getAttribute("title")) || (picture ? clean(picture.getAttribute("alt") || picture.getAttribute("aria-label")) : "");
 };
-const sensitive = (element) => {
+const onceSecure = globalThis.duskOnceSecure || (globalThis.duskOnceSecure = new WeakSet());
+const hidesText = (element) => {
+  try { const style = getComputedStyle(element); return (style.webkitTextSecurity || style.getPropertyValue("-webkit-text-security") || "none") !== "none"; } catch { return false; }
+};
+const looksSensitive = (element) => {
   if (!takesText(element) && element.tagName !== "INPUT") return false;
   const type = (element.getAttribute("type") || "").toLowerCase();
   if (type === "password") return true;
   if (element.tagName === "INPUT" && NON_TEXT.includes(type)) return false;
+  if (hidesText(element)) return true;
   const raw = [element.getAttribute("autocomplete"), element.getAttribute("name"), element.id, element.getAttribute("placeholder"), element.getAttribute("aria-label"), labelsOf(element)].filter(Boolean).join(" ");
   const words = raw.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[^A-Za-z0-9]+/g, " ").trim().toLowerCase();
   return SENSITIVE.test(raw) || /(?:^| )(pin|security code)(?: |$)/.test(words);
+};
+const sensitive = (element) => {
+  if (onceSecure.has(element)) return true;
+  const secure = looksSensitive(element);
+  if (secure) onceSecure.add(element);
+  return secure;
 };
 const describe = (element) => {
   const role = roleOf(element);
@@ -137,8 +148,9 @@ const controlFor = (element) => {
   if (label && label.control) return label.control;
   return (element.closest ? element.closest(CONTROLS) : null) || element;
 };
+const activeOf = typeof Document === "function" ? Object.getOwnPropertyDescriptor(Document.prototype, "activeElement") : undefined;
 const focusedElement = () => {
-  let element = document.activeElement;
+  let element = activeOf && activeOf.get ? activeOf.get.call(document) : document.activeElement;
   while (element && element.shadowRoot && element.shadowRoot.activeElement) element = element.shadowRoot.activeElement;
   if (!element || element === document.body || element === document.documentElement) return null;
   return element.tagName === "IFRAME" || element.tagName === "FRAME" ? null : element;
@@ -239,7 +251,7 @@ if (typeof element.select === "function") element.select();
 else { const range = document.createRange(); range.selectNodeContents(element); const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); }
 const now = focusedElement();
 const box = boxOf(element);
-return { focused: now === element, filled: String("value" in element ? element.value : element.textContent || "").length > 0, x: box.x + box.width / 2, y: box.y + box.height / 2 };`);
+return { focused: now === element, secure: sensitive(element), filled: String("value" in element ? element.value : element.textContent || "").length > 0, x: box.x + box.width / 2, y: box.y + box.height / 2 };`);
 const FILLED = (role: string, name: string) => FIND(role, name, `return { filled: String("value" in element ? element.value : element.textContent || "").length > 0 };`);
 const CHOOSE = (role: string, name: string, value: string) => FIND(role, name, `
 if (element.tagName !== "SELECT") return { wrongKind: true };
@@ -355,6 +367,8 @@ export function createDomSurface(evaluate: PageEvaluate, driver: DomDriver): Rep
         if (lost) return { ok: false, reason: lost };
         if (focus.wrongKind === true) return { ok: false, reason: sentence(`${quoted(role, name)} does not take text.`) };
         if (focus.focused !== true) return { ok: false, reason: `Could not put the cursor in ${quoted(role, name)}.` };
+        // Security: a saved secret goes only into a field the page itself treats as one, so no check can read it back in the clear.
+        if (options?.secret && focus.secure !== true) return { ok: false, reason: sentence(`${quoted(role, name)} takes a saved sign-in, which only the bot's own sign-in tool may fill here.`) };
         await driver.hover?.(finite(focus.x), finite(focus.y)).catch(() => {});
         if (action.value.length > 0) await (options?.secret && driver.insertSecret ? driver.insertSecret(action.value) : driver.insertText(action.value));
         else if (focus.filled === true) await driver.press("Backspace");

@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { DemoChange, DemoRecording } from "../../shared/demo-recording.ts";
 import type { DemoHost, Refusal } from "../demo-recorder/host.ts";
 import type { DemoRecorder } from "../demo-recorder/recorder.ts";
-import type { RequestAuth } from "../request-auth.ts";
+import { ownerOrAdmin, type RequestAuth } from "../request-auth.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
 export interface DemoRecordingRouteDeps {
@@ -32,6 +32,9 @@ const isRefusal = (value: DemoRecording | Refusal | object): value is Refusal =>
 export function createDemoRecordingRoutes(deps: DemoRecordingRouteDeps): RouteHandler {
   const { host, recorder } = deps;
   return async ({ req, res, path, method, auth, json, readBody }) => {
+    if (!path.startsWith("/api/demos/") && !BOT.test(path)) return PASS;
+    // Security: a recording shows its maker's screen and becomes a skill the bot runs, so only the owner or an admin reads or changes one.
+    if (!ownerOrAdmin(auth)) return json(res, 403, { error: "Only the owner or an admin can show a bot a task." });
     const frame = FRAME.exec(path);
     if (frame && method === "GET") {
       const picture = recorder.frame(frame[1]!, frame[2]!);

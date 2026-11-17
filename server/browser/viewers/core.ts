@@ -878,15 +878,15 @@ export class ViewerHub {
         viewer.select = null;
         const index = num(message.index, -1);
         if (!select || select.id !== message.id || select.tab !== tab || !Number.isInteger(index) || index < 0) return;
-        await this.host.demo?.()?.input({ type: "choose", x: select.x, y: select.y, label: select.labels[index] ?? "" });
-        await human(tab, () => chooseOption(tab.page, select.id, index));
+        const chosen = await this.host.demo?.()?.input({ type: "choose", x: select.x, y: select.y, label: select.labels[index] ?? "" });
+        await human(tab, () => chooseOption(tab.page, select.id, index)).finally(() => chosen?.());
         return;
       }
     }
     const demo = this.host.demo?.();
     const shown = demo ? demoInputOf(message) : null;
-    if (demo && shown) await demo.input(shown);
-    await human(tab, () => this.#dispatch(viewer, tab, message));
+    const landed = demo && shown ? await demo.input(shown) : undefined;
+    await human(tab, () => this.#dispatch(viewer, tab, message)).finally(() => landed?.());
   }
 
   /** A view used together with the bot while nobody holds the browser: its input runs at once, beside the bot's. */

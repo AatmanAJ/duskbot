@@ -11,6 +11,9 @@ const ROW_LIMIT = 500;
 const VALUE_LIMIT = 2_000;
 const ASK_CONTENT_LIMIT = 20_000;
 const ASK_TIMEOUT_MS = 60_000;
+/** How many items of one request the model is asked about; the rest keep their unread blanks as missing. */
+const ASK_LIMIT = 40;
+const LINE_LIMIT = 2_000;
 
 /** Other words files use for the same thing, so a receipt's "Total" fills an "Amount". */
 const ALSO_CALLED: readonly string[][] = [
@@ -59,7 +62,7 @@ function matched(pairs: Pairs, blanks: readonly DemoBlank[]): { values: Record<s
   const values: Record<string, string> = {};
   const wanted = blanks.filter((blank) => blank.kind !== "secret");
   const take = (blank: DemoBlank, names: string[]) => {
-    if (blank.name in values) return;
+    if (Object.hasOwn(values, blank.name)) return;
     const pair = open.find((each) => !each.used && names.includes(each.key));
     if (!pair) return;
     pair.used = true;
@@ -67,12 +70,13 @@ function matched(pairs: Pairs, blanks: readonly DemoBlank[]): { values: Record<s
   };
   for (const blank of wanted) take(blank, namesOf(blank).own);
   for (const blank of wanted) take(blank, namesOf(blank).also);
-  return { values, missing: wanted.filter((blank) => !(blank.name in values)).map((blank) => blank.name) };
+  return { values, missing: wanted.filter((blank) => !Object.hasOwn(values, blank.name)).map((blank) => blank.name) };
 }
 
 function textPairs(content: string): Pairs {
   const pairs: Pairs = [];
   for (const line of content.split(/\r?\n/)) {
+    if (line.length > LINE_LIMIT) continue;
     const labelled = /^\s*([A-Za-z][A-Za-z0-9 _./#-]{0,40}?)\s*[:=]\s*(\S.*)$/.exec(line);
     if (labelled) {
       pairs.push([labelled[1]!, labelled[2]!]);
@@ -185,18 +189,20 @@ function askPrompt(source: Source, wanted: readonly DemoBlank[]): string {
  */
 export async function readDemoInputs(files: readonly InputFile[], blanks: readonly DemoBlank[], deps: { engine?: DemoEngine | null } = {}): Promise<DemoReplayItem[]> {
   const items: DemoReplayItem[] = [];
+  let asked = 0;
   for (const file of files.slice(0, FILE_LIMIT)) {
     for (const source of sourcesOf(file)) {
       const { values, missing } = matched(source.pairs, blanks);
       let left = missing;
-      if (left.length && deps.engine) {
+      if (left.length && deps.engine && asked < ASK_LIMIT) {
+        asked++;
         const wanted = blanks.filter((blank) => left.includes(blank.name));
         const answer = await deps.engine.generateText(askPrompt(source, wanted), { timeoutMs: ASK_TIMEOUT_MS }).then(jsonObject, () => null);
         for (const blank of wanted) {
           const found = answer?.[blank.name];
           if ((typeof found === "string" && found.trim()) || typeof found === "number") values[blank.name] = cleaned(String(found), blank);
         }
-        left = left.filter((name) => !(name in values));
+        left = left.filter((name) => !Object.hasOwn(values, name));
       }
       const slug = source.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
       items.push({ id: `${items.length + 1}-${slug || "item"}`, label: source.label, values, missing: left });

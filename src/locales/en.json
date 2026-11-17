@@ -9230,6 +9230,7 @@
   "showOnce.review.fromModel": "{name} wrote these steps from what you showed.",
   "showOnce.review.fromOutline": "These steps were written straight from what you showed, one for each thing you did.",
   "showOnce.review.blind": "Nothing on this screen could be read, so each step is a picture that {name} looks at.",
+  "showOnce.review.truncated": "The showing ran longer than one recording holds, so its last part is missing. Check the last steps.",
   "showOnce.review.framesSkipped.one": "{count} picture was left out because a secure field on it could not be hidden.",
   "showOnce.review.framesSkipped.many": "{count} pictures were left out because a secure field on them could not be hidden.",
   "showOnce.review.stepProblem": "Step {number}: {problem}",

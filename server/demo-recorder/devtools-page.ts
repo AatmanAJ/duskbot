@@ -35,14 +35,32 @@ export class DevToolsPage {
     this.mouse = new Mouse(sender, this.keyboard);
   }
 
-  /** The page showing `url`, or the newest page when none does; null when the browser has no page. */
+  /**
+   * The page a person is looking at: the tab in front (the one showing `url` when more than one says it is), or with
+   * none in front the one showing `url`, or the newest. Null when the browser has no page.
+   */
   static async open(cdp: Cdp, options: { url?: string; mac?: boolean } = {}): Promise<DevToolsPage | null> {
     const { targetInfos } = await cdp.send("Target.getTargets") as { targetInfos?: TargetInfo[] };
     const pages = (targetInfos ?? []).filter((target) => target.type === "page" && !/^(devtools|chrome-extension):/.test(target.url));
-    const chosen = pages.find((target) => options.url && target.url === options.url) ?? pages.at(-1);
-    if (!chosen) return null;
-    const { sessionId } = await cdp.send("Target.attachToTarget", { targetId: chosen.targetId, flatten: true }) as { sessionId?: string };
-    return typeof sessionId === "string" ? new DevToolsPage(cdp, sessionId, options.mac ?? process.platform === "darwin") : null;
+    const found: Array<{ page: DevToolsPage; shows: boolean; front: boolean }> = [];
+    for (const target of pages.toReversed()) {
+      const { sessionId } = await cdp.send("Target.attachToTarget", { targetId: target.targetId, flatten: true }) as { sessionId?: string };
+      if (typeof sessionId !== "string") continue;
+      const page = new DevToolsPage(cdp, sessionId, options.mac ?? process.platform === "darwin");
+      found.push({ page, shows: Boolean(options.url) && target.url === options.url, front: pages.length === 1 || await page.inFront() });
+    }
+    const chosen = found.find((each) => each.front && each.shows) ?? found.find((each) => each.front) ?? found.find((each) => each.shows) ?? found[0];
+    for (const each of found) if (each !== chosen) each.page.leave();
+    return chosen?.page ?? null;
+  }
+
+  /** Whether this is the tab its window shows. */
+  async inFront(): Promise<boolean> {
+    return await this.evaluate("document.visibilityState === \"visible\"").catch(() => false) === true;
+  }
+
+  leave(): void {
+    void this.#cdp.send("Target.detachFromTarget", { sessionId: this.#session }).catch(() => {});
   }
 
   #send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> {

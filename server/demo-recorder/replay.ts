@@ -80,6 +80,8 @@ interface Verdict {
   ok: boolean;
   why: string;
   unchecked?: boolean;
+  /** Nothing new came on screen either: the page may still be working on it. */
+  quiet?: boolean;
 }
 
 /** Runs the plan once for each item: every step carried out, checked, and tried again when its check does not pass. */
@@ -94,11 +96,16 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
   };
   const secretNames = new Set(plan.blanks.filter((blank) => blank.kind === "secret").map((blank) => blank.name));
   const neededNames = new Set(plan.steps.flatMap((step) => blankNames([step.goal, checkText(step.check), ...step.actions.map((action) => ("value" in action ? action.value : ""))].join("\n"))).filter((name) => !secretNames.has(name)));
-  const secretValues = new Map<string, string | null>();
+  const secretsUsed = new Set<string>();
+  // Security: asked again at every fill, so a saved sign-in is given for the page in front then, not the one a run began on.
   const secretOf = async (name: string): Promise<string | null> => {
-    if (!secretValues.has(name)) secretValues.set(name, options.secrets ? await options.secrets(name).catch(() => null) : null);
-    return secretValues.get(name) ?? null;
+    const value = options.secrets ? await options.secrets(name).catch(() => null) : null;
+    if (value) secretsUsed.add(value);
+    return value;
   };
+  /** Security: what a run says about itself goes to the bot, the app and its log, so no secret it typed stays in it. */
+  const hushed = (text: string) => [...secretsUsed].reduce((said, secret) => said.split(secret).join(SAVED_SIGN_IN), text);
+  const stopped = () => options.signal?.aborted === true;
   const spoken = (values: Readonly<Record<string, string>>) => ({ ...Object.fromEntries([...secretNames].map((name) => [name, SAVED_SIGN_IN])), ...values });
 
   const blank = (step: DemoStep): DemoStepOutcome => ({ id: step.id, title: step.title, status: "not-run", attempts: 0 });
@@ -126,7 +133,7 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
 
   /** Whether every value the check speaks of can be seen somewhere on the screen. */
   function grounded(step: DemoStep, values: Readonly<Record<string, string>>, seen: Observation | null): boolean {
-    const wanted = blankNames(checkText(step.check)).filter((name) => !secretNames.has(name)).map((name) => values[name] ?? "").filter((value) => value.trim().length > 0);
+    const wanted = blankNames(checkText(step.check)).filter((name) => !secretNames.has(name)).map((name) => (Object.hasOwn(values, name) ? values[name]! : "")).filter((value) => value.trim().length > 0);
     if (!wanted.length) return true;
     if (!seen) return false;
     const shown = [seen.title, ...seen.texts, ...seen.fields.map((field) => field.value)];
@@ -146,7 +153,7 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
     const check = step.check;
     const field = check.kind === "field" ? seen?.fields.find((each) => sameRole(each.role, check.role) && sameName(each.name, check.name)) : undefined;
     const found = check.kind !== "field" ? "" : field ? ` It holds "${blankNames(check.value).some((name) => secretNames.has(name)) ? "" : field.value}".` : ` There is no ${check.role} "${check.name}" on the screen.`;
-    return { ok: false, why: `The check did not hold: ${said}.${found}${fresh.length ? ` The screen says: ${fresh.join(" | ")}` : ""}` };
+    return { ok: false, quiet: fresh.length === 0, why: `The check did not hold: ${said}.${found}${fresh.length ? ` The screen says: ${fresh.join(" | ")}` : ""}` };
   }
 
   async function act(step: DemoStep, values: Readonly<Record<string, string>>): Promise<{ ok: true } | { ok: false; reason: string; needsBot?: boolean }> {
@@ -175,7 +182,9 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
     let via: "direct" | "bot" = direct ? "direct" : "bot";
     let botOnly = !direct;
     let attempts = 0;
+    const pressesSomething = step.actions.some((action) => action.do === "click" || action.do === "press");
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (stopped()) return { id: step.id, title: step.title, status: "failed", via, attempts, note: note(hint || "Stopped.") };
       const useBot = botOnly || (attempt > 1 && actor !== null);
       if (useBot && !actor) {
         return { id: step.id, title: step.title, status: "failed", via, attempts, note: note(hint || "This step needs the bot: nothing here says what is on the screen, so only the bot can look and act.") };
@@ -185,21 +194,23 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
         via = "bot";
         const tried = await actor!.attempt({ step, item, goal: fillBlanks(step.goal, said), check: describeCheck(step.check, said), hint, attempt }).catch(() => ({ ok: false, note: "The bot's turn did not finish." }));
         if (!tried.ok) {
-          hint = tried.note?.trim() || "The bot could not do the step.";
+          hint = hushed(tried.note?.trim() || "The bot could not do the step.");
           continue;
         }
       } else {
         via = "direct";
         const done = await act(step, values);
         if (!done.ok) {
-          hint = done.reason;
+          hint = hushed(done.reason);
           if (done.needsBot) botOnly = true;
           continue;
         }
       }
-      const verdict = await verify(step, values, useBot, before);
+      let verdict = await verify(step, values, useBot, before);
+      // A press that changed nothing yet is given as long again before it is pressed twice: a slow page is not sent a form two times.
+      if (!verdict.ok && verdict.quiet && !useBot && pressesSomething) verdict = await verify(step, values, useBot, before);
       if (verdict.ok) return { id: step.id, title: step.title, status: "done", via, attempts, ...(verdict.unchecked ? { note: "Done, with nothing to check it against." } : {}) };
-      hint = verdict.why;
+      hint = hushed(verdict.why);
     }
     return { id: step.id, title: step.title, status: "failed", via, attempts, note: note(hint) };
   }
@@ -212,14 +223,20 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
       continue;
     }
     emit({ type: "item-start", item: item.id, index, total: options.items.length });
-    const lacking = [...neededNames].filter((name) => item.missing.includes(name) || !(name in item.values));
+    const lacking = [...neededNames].filter((name) => item.missing.includes(name) || !Object.hasOwn(item.values, name));
     if (lacking.length) {
       outcomes.push({ id: item.id, label: item.label, status: "skipped", steps });
       emit({ type: "item-done", item: item.id, ok: false });
       continue;
     }
     let ok = true;
+    let begun = true;
     for (const [at, step] of plan.steps.entries()) {
+      if (stopped()) {
+        ok = false;
+        begun = at > 0;
+        break;
+      }
       emit({ type: "step-start", item: item.id, step: step.id });
       const outcome = await runStep(step, item);
       steps[at] = outcome;
@@ -230,7 +247,7 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
         break;
       }
     }
-    outcomes.push({ id: item.id, label: item.label, status: ok ? "done" : "failed", steps });
+    outcomes.push({ id: item.id, label: item.label, status: ok ? "done" : begun ? "failed" : "skipped", steps });
     emit({ type: "item-done", item: item.id, ok });
   }
   return { items: outcomes, done: outcomes.filter((item) => item.status === "done").length, failed: outcomes.filter((item) => item.status === "failed").length };

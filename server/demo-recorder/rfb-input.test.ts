@@ -41,3 +41,24 @@ describe("a desktop viewer's opening handshake", () => {
     expect(decode([Buffer.concat([version("RFB 003.003\n"), Buffer.from([1]), key(true, 0x68)])])).toEqual([]);
   });
 });
+
+describe("what a desktop viewer's keys write", () => {
+  const CTRL = 0xffe3;
+  const ALT = 0xffe9;
+
+  it("is a character with AltGr sent as Control and Alt, and none with either alone", () => {
+    expect(decode([Buffer.concat([key(true, CTRL), key(true, ALT), key(true, 0x40)])])).toEqual([{ type: "key", action: "down", key: "@", text: "@", modifiers: 3 }]);
+    expect(decode([Buffer.concat([key(true, CTRL), key(true, 0x61)])])).toEqual([{ type: "key", action: "down", key: "a", modifiers: 2 }]);
+    expect(decode([Buffer.concat([key(true, ALT), key(true, 0x66)])])).toEqual([{ type: "key", action: "down", key: "f", modifiers: 1 }]);
+  });
+
+  it("is still read after a long clipboard, which is passed over without being held", () => {
+    const cut = Buffer.alloc(8 + 300_000, 0x70);
+    cut[0] = 6;
+    cut.writeUInt32BE(300_000, 4);
+    const stream = Buffer.concat([cut, key(true, 0x68)]);
+    const chunks = [stream.subarray(0, 4_000), stream.subarray(4_000, 150_000), stream.subarray(150_000)];
+
+    expect(decode(chunks)).toEqual(TYPED_H);
+  });
+});

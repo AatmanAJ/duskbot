@@ -37,6 +37,8 @@ export interface DemoRecorder {
   start(request: StartRequest): DemoRecording | { error: string };
   /** What the person did, before it reaches the screen; nothing happens when the bot is not being recorded. */
   input(botId: string, raw: RawInput): Promise<void>;
+  /** The same for a caller that passes the input on afterwards and calls the answer once it has landed. It never rejects: a recording that cannot be written must not hold a person's click back. */
+  relay(botId: string, raw: RawInput): Promise<() => void>;
   recording(botId: string): boolean;
   /** Ends the recording and turns it into steps. */
   stop(botId: string): Promise<DemoRecording | { error: string }>;
@@ -81,6 +83,7 @@ function readRecording(path: string): DemoRecording | null {
       ...(typeof value.skillName === "string" ? { skillName: value.skillName } : {}),
       ...(typeof value.routineId === "string" ? { routineId: value.routineId } : {}),
       ...(typeof value.error === "string" ? { error: value.error } : {}),
+      ...(value.truncated === true ? { truncated: true } : {}),
     };
   } catch {
     return null;
@@ -134,6 +137,12 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
     return recording.status === "ready" && recording.plan ? { recording, plan: recording.plan } : { refused: { error: NOT_READY } };
   };
 
+  function counted(botId: string, entry: { recording: DemoRecording; capture: DemoCapture }): void {
+    if (active.get(botId) !== entry || entry.capture.eventCount === entry.recording.eventCount) return;
+    entry.recording.eventCount = entry.capture.eventCount;
+    changed(entry.recording);
+  }
+
   const recorder: DemoRecorder = {
     start(request) {
       if (active.has(request.botId)) return { error: "This bot is already being recorded." };
@@ -161,9 +170,19 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
       const entry = active.get(botId);
       if (!entry) return;
       await entry.capture.input(raw);
-      if (active.get(botId) === entry && entry.capture.eventCount !== entry.recording.eventCount) {
-        entry.recording.eventCount = entry.capture.eventCount;
-        changed(entry.recording);
+      counted(botId, entry);
+    },
+
+    async relay(botId, raw) {
+      const entry = active.get(botId);
+      if (!entry) return () => {};
+      try {
+        const landed = await entry.capture.relay(raw);
+        counted(botId, entry);
+        return landed;
+      } catch {
+        deps.log?.("demo recorder: an input could not be written down");
+        return () => {};
       }
     },
 
@@ -180,14 +199,17 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
       } catch {
         return changed({ ...recording, status: "failed", error: "The recording could not be read back." });
       }
-      Object.assign(recording, { durationMs: trace.durationMs, eventCount: trace.events.length, frames: trace.frames, framesSkipped: trace.framesSkipped });
+      if (!recordings.has(recording.id)) return { error: NOT_FOUND };
+      Object.assign(recording, { durationMs: trace.durationMs, eventCount: trace.events.length, frames: trace.frames, framesSkipped: trace.framesSkipped, ...(trace.truncated ? { truncated: true } : {}) });
       if (trace.events.length === 0) return changed(Object.assign(recording, { status: "failed" as const, error: "Nothing was recorded." }));
       writeFileAtomic(join(folderOf(recording.id), TRACE_FILE), `${JSON.stringify(trace)}\n`, PRIVATE_FILE);
       changed(Object.assign(recording, { status: "compiling" as const }));
       try {
         const plan = await compileDemo(trace, { engine: deps.engine?.(botId) ?? null, ...(deps.log ? { log: deps.log } : {}) });
+        if (!recordings.has(recording.id)) return { error: NOT_FOUND };
         return changed(Object.assign(recording, { status: "ready" as const, plan }));
       } catch {
+        if (!recordings.has(recording.id)) return { error: NOT_FOUND };
         return changed(Object.assign(recording, { status: "failed" as const, error: "The steps could not be worked out from the recording." }));
       }
     },
@@ -257,11 +279,11 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
       const recording = recordings.get(id);
       if (!recording) return false;
       const entry = active.get(recording.botId);
+      discard(id);
       if (entry?.recording.id === id) {
         active.delete(recording.botId);
-        void entry.capture.finish().catch(() => {});
+        void entry.capture.finish().catch(() => {}).then(() => rmSync(folderOf(id), { recursive: true, force: true }));
       }
-      discard(id);
       return true;
     },
 

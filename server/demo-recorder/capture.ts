@@ -55,12 +55,20 @@ export interface DemoCapture {
    * accessibility says, before the next click or key that could move focus, that the field is not a secure one.
    */
   input(raw: RawInput): Promise<void>;
+  /**
+   * The same, for a caller that passes the input on to the screen afterwards: it calls what this answers once the
+   * input has landed there. Security: a look at the focused field waits for the click or key before it to land, so a
+   * key typed right after a Tab is never placed in the field the Tab left.
+   */
+  relay(raw: RawInput): Promise<() => void>;
   finish(): Promise<DemoTrace>;
   readonly eventCount: number;
 }
 
 /** A desktop's accessibility is read over a slow path, so one look serves a run of keys for this long. */
 const OS_LOOK_MS = 750;
+/** How long a relayed input may take to reach the screen before what is typed after it stops being kept. */
+const LANDING_MS = 3_000;
 const DOUBLE_CLICK_MS = 500;
 const DOUBLE_CLICK_PIXELS = 6;
 const TEXT_LIMIT = 10_000;
@@ -80,8 +88,13 @@ const isControl = (char: string) => char.charCodeAt(0) < 0x20 || char.charCodeAt
 
 /** The characters a key press writes, or null for a key that writes none. */
 function typedText(raw: Extract<RawInput, { type: "key" }>): string | null {
-  if ((raw.modifiers ?? 0) & (MODIFIER.ctrl | MODIFIER.alt | MODIFIER.meta)) return null;
+  const bits = raw.modifiers ?? 0;
+  const alt = (bits & MODIFIER.alt) !== 0;
+  const ctrl = (bits & MODIFIER.ctrl) !== 0;
+  // Security: Option on a Mac and AltGr elsewhere (Control with Alt) write characters, so those are typing, never a named key.
+  if (bits & MODIFIER.meta || (ctrl && !alt)) return null;
   if (typeof raw.text === "string" && raw.text.length > 0 && ![...raw.text].some(isControl)) return raw.text;
+  if (alt && !ctrl) return null;
   return [...raw.key].length === 1 && raw.text === undefined ? raw.key : null;
 }
 
@@ -128,6 +141,7 @@ export function createDemoCapture(deps: CaptureDeps): DemoCapture {
   const used = new Set<string>();
 
   let chain: Promise<void> = Promise.resolve();
+  let landing: Promise<boolean> = Promise.resolve(true);
   let arrived = 0;
   let lastFocusMove = 0;
   let run: Run | null = null;
@@ -249,7 +263,7 @@ export function createDemoCapture(deps: CaptureDeps): DemoCapture {
   /** Whether an input that can move focus has come since `order`: a look that finished after it says nothing about before it. */
   const focusMovedSince = (order: number) => lastFocusMove > order;
 
-  async function typed(text: string, order: number): Promise<void> {
+  async function typed(text: string, order: number, landed: Promise<boolean>): Promise<void> {
     const chars = [...text].length;
     if (!chars) return;
     if (run && run.text === null) {
@@ -260,6 +274,7 @@ export function createDemoCapture(deps: CaptureDeps): DemoCapture {
     let target = run?.target ?? null;
     let certain = probe.kind !== "none";
     if (probe.kind !== "none" && mustLook) {
+      if (!await landed) certain = false;
       try {
         target = clean(await probe.focused());
       } catch {
@@ -287,7 +302,7 @@ export function createDemoCapture(deps: CaptureDeps): DemoCapture {
     run.chars += chars;
   }
 
-  async function handle(raw: RawInput, order: number): Promise<void> {
+  async function handle(raw: RawInput, order: number, landed: Promise<boolean>): Promise<void> {
     if (finished) return;
     if (raw.type === "pointer") {
       const point = { x: raw.x, y: raw.y };
@@ -325,14 +340,14 @@ export function createDemoCapture(deps: CaptureDeps): DemoCapture {
       return;
     }
     if (raw.type === "text") {
-      await typed(raw.text, order);
+      await typed(raw.text, order, landed);
       return;
     }
     if (raw.type === "key") {
       if (raw.action === "up" || MODIFIER_KEYS.has(raw.key)) return;
       const text = typedText(raw);
       if (text !== null) {
-        await typed(text, order);
+        await typed(text, order, landed);
         return;
       }
       if (raw.key === "Backspace" && !raw.modifiers && run) {
@@ -364,14 +379,32 @@ export function createDemoCapture(deps: CaptureDeps): DemoCapture {
     emit(event);
   }
 
+  function record(raw: RawInput): Promise<void> {
+    const order = ++arrived;
+    const landed = landing;
+    if (movesFocus(raw)) lastFocusMove = order;
+    chain = chain.then(() => handle(raw, order, landed)).catch(() => {
+      deps.log?.("demo capture: an input could not be recorded");
+    });
+    return chain;
+  }
+
   return {
-    input(raw) {
-      const order = ++arrived;
-      if (movesFocus(raw)) lastFocusMove = order;
-      chain = chain.then(() => handle(raw, order)).catch(() => {
-        deps.log?.("demo capture: an input could not be recorded");
-      });
-      return chain;
+    input: record,
+    async relay(raw) {
+      if (!movesFocus(raw)) {
+        await record(raw);
+        return () => {};
+      }
+      let land: (reached: boolean) => void = () => {};
+      const recorded = record(raw);
+      landing = new Promise<boolean>((resolve) => { land = resolve; });
+      await recorded;
+      const late = setTimeout(() => land(false), LANDING_MS);
+      return () => {
+        clearTimeout(late);
+        land(true);
+      };
     },
     async finish() {
       await chain;

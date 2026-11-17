@@ -655,7 +655,7 @@ jobs:
           DUSK_CDP_E2E: "1"
         shell: bash
         run: |
-          run=(pnpm exec vitest run server/browser/cdp/s4- server/browser/checklist.e2e server/browser/passkey-wall.e2e server/browser/viewers/viewers.e2e server/browser/viewers/stream-v2.e2e --reporter=verbose --silent=false --reporter=github-actions)
+          run=(pnpm exec vitest run server/browser/cdp/s4- server/browser/checklist.e2e server/browser/passkey-wall.e2e server/browser/viewers/viewers.e2e server/browser/viewers/stream-v2.e2e server/demo-recorder/browser.e2e server/demo-recorder/devtools-page.e2e --reporter=verbose --silent=false --reporter=github-actions)
           if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a "${run[@]}"; else "${run[@]}"; fi
       - name: The runner's Google Chrome did not change during the run
         if: ${{ !cancelled() && runner.os == 'macOS' }}
@@ -674,4 +674,4 @@ jobs:
           docker run --rm --init --shm-size=512m --user maus -e CI=true \
             -e DUSK_CDP_CHROME=/opt/duskbot-browser/chrome -e DUSK_CDP_HOST=container -e DUSK_BROWSER_SANDBOX=0 \
             -v "$PWD:/src" -w /src dusk-runtime:s4 \
-            node node_modules/vitest/vitest.mjs run server/browser/cdp/s4- server/browser/checklist.e2e server/browser/passkey-wall.e2e server/browser/viewers/viewers.e2e server/browser/viewers/stream-v2.e2e --reporter=verbose --silent=false
+            node node_modules/vitest/vitest.mjs run server/browser/cdp/s4- server/browser/checklist.e2e server/browser/passkey-wall.e2e server/browser/viewers/viewers.e2e server/browser/viewers/stream-v2.e2e server/demo-recorder/browser.e2e server/demo-recorder/devtools-page.e2e --reporter=verbose --silent=false

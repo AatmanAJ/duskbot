@@ -47,7 +47,7 @@ export function desktopDemoSeat(tools: DesktopTools, target: string, taps: Deskt
     tap(tap) {
       taps.listen(target, tap ? (raw) => {
         probe.note(raw);
-        void tap.input(raw);
+        void tap.input(raw).then((landed) => landed?.());
       } : null);
     },
     where: () => "",

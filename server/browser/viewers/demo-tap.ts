@@ -3,7 +3,8 @@ import { keyDescription, US_KEYBOARD } from "../cdp/keyboard.ts";
 
 /** Hears what a person does in a browser while they show a task in it, before the page gets it. */
 export interface DemoTap {
-  input(raw: RawInput): Promise<void>;
+  /** Settles once the input is recorded. What it answers, if anything, is called when the input has reached the page. */
+  input(raw: RawInput): Promise<(() => void) | void>;
 }
 
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);

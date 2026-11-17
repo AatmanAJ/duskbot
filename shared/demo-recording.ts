@@ -173,6 +173,8 @@ export interface DemoRecording {
   skillName?: string;
   routineId?: string;
   error?: string;
+  /** The showing ran past what one recording holds, so its last part is missing. */
+  truncated?: boolean;
 }
 
 /** One set of values for a plan's blanks: a file, or a row of a table. */

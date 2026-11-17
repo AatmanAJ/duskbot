@@ -232,6 +232,7 @@ export function DemoReview({ recording, botName, holding, onClose }: { recording
             {plan.compiledBy === "engine" ? t("showOnce.review.fromModel", { name: botName }) : t("showOnce.review.fromOutline")}
             {recording.accessibility === "none" ? ` ${t("showOnce.review.blind", { name: botName })}` : ""}
             {recording.framesSkipped > 0 ? ` ${count("showOnce.review.framesSkipped", recording.framesSkipped)}` : ""}
+            {recording.truncated ? ` ${t("showOnce.review.truncated")}` : ""}
           </p>
         </div>
 
@@ -414,7 +415,7 @@ export function DemoRecorder({ bot, surface, holding, threadId, onTake, asked = 
             <span role="status" className="shrink-0 text-[12px] font-medium text-ink">{t("showOnce.recording")}</span>
             <span className="min-w-0 flex-1 truncate text-[12px] text-ink-secondary">{count("showOnce.actions", live.eventCount)}</span>
             <button type="button" className={smallButtonCls} disabled={busy} onClick={() => void act(() => demos.cancel(bot.id))}>{t("showOnce.discard")}</button>
-            <button type="button" className={cn(smallButtonCls, "bg-ink text-app enabled:hover:bg-ink/85 disabled:bg-ink/15 disabled:text-ink/30")} disabled={busy || live.eventCount === 0} onClick={() => void stop()}>{t("showOnce.stop")}</button>
+            <button type="button" className={cn(smallButtonCls, "bg-ink text-app enabled:hover:bg-ink/85 disabled:bg-ink/15 disabled:text-ink/30")} disabled={busy} onClick={() => void stop()}>{t("showOnce.stop")}</button>
           </> : live ? <>
             <Loader2 size={14} className="shrink-0 animate-spin text-ink" aria-hidden="true" />
             <span role="status" className="min-w-0 flex-1 truncate text-[12px] text-ink">{t("showOnce.compiling")}</span>

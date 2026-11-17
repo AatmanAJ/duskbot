@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DemoPlan } from "../../shared/demo-recording.ts";
 import { connectCdp, type Cdp } from "../browser-sites.ts";
 import { sandboxDisabled } from "../browser/chrome/host-setup.ts";
+import { credentialStoreFlags } from "../browser/egress/gate.ts";
 import { FixtureServer } from "../browser/cdp/testing/fixtures.ts";
 import { CHROME, testRoot } from "../browser/cdp/testing/real-chrome.ts";
 import { until } from "../browser/testing/real-service.ts";
@@ -45,7 +46,7 @@ suite("a task shown over a DevTools socket, on real Chrome", () => {
     frames = mkdtempSync(join(testRoot(), "dusk-demo-devtools-frames-"));
     chrome = spawn(CHROME!, [
       "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check", "--window-size=1280,800",
-      ...(sandboxDisabled(process.env) ? ["--no-sandbox"] : []), "about:blank",
+      ...credentialStoreFlags(), ...(sandboxDisabled(process.env) ? ["--no-sandbox"] : []), "about:blank",
     ], { stdio: "ignore" });
     const active = join(profile, "DevToolsActivePort");
     await until(() => existsSync(active) && readFileSync(active, "utf8").trim().split("\n").length >= 2, (ready) => ready, hostTimeout(60_000));
@@ -201,7 +202,7 @@ suite("a task shown over a DevTools socket, on real Chrome", () => {
 
     expect(await seat.probe.context()).toMatchObject({ title: "Expenses · Harbor Expenses" });
     expect((await seat.screen.frame())!.type).toBe("image/jpeg");
-    expect(seat.where()).toBe(`${fx.url("/portal.html")}?signedIn=1`);
+    expect(seat.where()).toBe("");
     expect(opened).toBe(1);
     expect(gated).toBe(0);
 
@@ -211,6 +212,13 @@ suite("a task shown over a DevTools socket, on real Chrome", () => {
     expect(await seat.surface.perform({ do: "click", role: "button", name: "New expense" })).toEqual({ ok: true });
     expect(gated).toBe(2);
     expect((await seat.surface.observe()).texts).toContain("New expense");
+
+    const { targetId } = await cdp.send("Target.createTarget", { url: `${fx.url("/portal.html")}?layout=shifted` }) as { targetId: string };
+    const followed = await until(async () => (await seat.probe.context().catch(() => ({ url: "" }))).url ?? "", (url) => url.endsWith("layout=shifted"), hostTimeout(20_000));
+    expect(followed).toContain("layout=shifted");
+    await cdp.send("Target.closeTarget", { targetId });
+    await until(async () => (await seat.probe.context().catch(() => ({ url: "" }))).url ?? "", (url) => url.endsWith("signedIn=1"), hostTimeout(20_000));
+    expect(opened).toBe(1);
 
     seat.close!();
     expect(closed).toBe(1);

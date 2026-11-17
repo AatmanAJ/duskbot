@@ -97,7 +97,7 @@ describe("the Record button", () => {
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos`, body: { surface: "browser" } });
     expect(strip()!.dataset.demoRecorder).toBe("recording");
     expect(strip()!.textContent).toContain("Recording");
-    expect(button("Stop and review", host)!.disabled).toBe(true);
+    expect(button("Stop and review", host)!.disabled).toBe(false);
     await act(async () => { publishDemoChange({ botId, recording: { ...live, eventCount: 1 } }); });
     expect(strip()!.textContent).toContain("1 action");
     await act(async () => { publishDemoChange({ botId, recording: { ...live, eventCount: 7 } }); });
