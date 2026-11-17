@@ -168,7 +168,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const macFrom = useMacEmpty();
   const [macPrompt, dismissMacPrompt] = useMacEmptyPrompt(macFrom);
   useProductScreen(state.appSettingsOpen ? "/settings" : state.pluginsOpen ? "/apps" : group ? "/rooms/:id" : bot ? (state.activeView === "files" ? "/bots/:id/files" : "/bots/:id") : "/", group?.id ?? bot?.id);
-  useBrowserPanelReveal({ bot, active: state.activeView === "chat", dispatch });
+  useBrowserPanelReveal({ bot, active: state.activeView === "chat", panel: state.settingsOpen ? state.botSettingsSection ?? null : null, dispatch });
   useComputerPanelActivity({ bot, active: state.activeView === "chat", settingsOpen: state.settingsOpen, targetKey: `${bot?.vpsAlias}:${bot?.section}:${state.config?.vps?.sshAlias}:${state.config?.vps?.mode}:${state.config?.vps?.independentScreens}`, dispatch });
   const roomPanelOpen = useRoomPanelShown({ group, state, simple: !remoteClient });
   // The sidebar only folds when the person folds it: a side panel opening beside it never collapses it, as in Grok Bot.

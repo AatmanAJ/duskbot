@@ -1,29 +1,45 @@
 import { useEffect, useRef } from "react";
 import { writeComputerPanelView } from "@/lib/computer-panel-view";
-import { useLocalBrowser } from "@/lib/local-browser";
+import { listenLiveFrames } from "@/lib/live-events";
 import type { Action, Bot } from "@/state/store";
+import { toolSurfaceKind } from "../../shared/tool-surface";
 
-/** The bot's browser on this computer opening during a turn opens the panel's Computer tab on it, once per turn, so the
- * person sees the bot browse without looking for it. Only in the desktop app, which shows that browser. */
-export function useBrowserPanelReveal({ bot, active, dispatch }: {
-  bot: Pick<Bot, "id" | "threadId" | "busy" | "browser"> | undefined;
+type BrowserStart = { kind: string; event?: { type?: string; itemType?: string; title?: string; threadId?: string; turnId?: string } };
+
+/** The turn's first browser call starting, from the live turn stream; null for any other frame. */
+export function browserCallStart(frame: BrowserStart): { threadId: string; turnId: string } | null {
+  const event = frame.kind === "runtime" ? frame.event : undefined;
+  if (event?.type !== "item.started" || event.itemType !== "tool" || !event.threadId || !event.title) return null;
+  return toolSurfaceKind(event.title) === "browser" ? { threadId: event.threadId, turnId: event.turnId ?? "" } : null;
+}
+
+/** The bot starting to browse in a turn opens the panel's Computer tab on its browser, once per turn, so the person sees
+ * it without looking for it. Another panel tab the person has open is left as it is. Desktop app only: it shows that
+ * browser. */
+export function useBrowserPanelReveal({ bot, active, panel, dispatch }: {
+  bot: Pick<Bot, "id" | "threadId" | "browser"> | undefined;
   active: boolean;
+  /** the bot panel's open tab, or null while it is closed */
+  panel: string | null;
   dispatch: (action: Action) => void;
 }) {
-  const desktop = typeof window !== "undefined" && Boolean(window.duskDesktop) && window.duskDesktop?.remoteClient?.active !== true;
-  const watching = Boolean(desktop && active && bot?.busy && bot.browser !== false);
-  const { open, known } = useLocalBrowser(bot?.id ?? "", bot?.threadId, watching);
-  // per turn: whether its browser was open when first seen, and whether this turn already opened the panel
-  const turn = useRef<{ key: string; wasOpen: boolean; revealed: boolean } | null>(null);
-  useEffect(() => {
-    if (!watching || !bot) { turn.current = null; return; }
-    if (!known) return;
-    const key = `${bot.id}\n${bot.threadId ?? ""}`;
-    if (turn.current?.key !== key) { turn.current = { key, wasOpen: open, revealed: false }; return; }
-    if (!open) { turn.current.wasOpen = false; return; }
-    if (turn.current.wasOpen || turn.current.revealed) return;
-    turn.current.revealed = true;
-    writeComputerPanelView(bot.id, "browser");
-    dispatch({ type: "toggleComputer", open: true });
-  }, [watching, known, open, bot?.id, bot?.threadId, dispatch]);
+  const current = useRef({ bot, active, panel });
+  current.current = { bot, active, panel };
+  const revealed = useRef(new Set<string>());
+  useEffect(() => listenLiveFrames({
+    onFrame: (frame) => {
+      const start = browserCallStart(frame as BrowserStart);
+      if (!start) return;
+      const { bot: selected, active: chatShown, panel: tab } = current.current;
+      const desktop = Boolean(window.duskDesktop) && window.duskDesktop?.remoteClient?.active !== true;
+      if (!desktop || !chatShown || !selected || selected.browser === false || selected.threadId !== start.threadId) return;
+      const turn = `${start.threadId}\n${start.turnId}`;
+      if (revealed.current.has(turn)) return;
+      revealed.current.add(turn);
+      if (revealed.current.size > 200) revealed.current.delete(revealed.current.values().next().value!);
+      if (tab !== null && tab !== "computer") return;
+      writeComputerPanelView(selected.id, "browser");
+      dispatch({ type: "toggleComputer", open: true });
+    },
+  }), [dispatch]);
 }
