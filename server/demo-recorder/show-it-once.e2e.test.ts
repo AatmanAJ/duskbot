@@ -28,7 +28,7 @@ const SECRET = "Quartz-Zebra!42&real";
 suite("Show it once in a real browser", () => {
   let real: RealService;
   let portal: ExpensePortal;
-  const target: BrowserTarget = { session: "bot-show-it-once", key: "bot-show-it-once" };
+  const target: BrowserTarget = { session: "show-it-once-1", key: "bot:show-it-once-1" };
 
   beforeAll(async () => {
     portal = await ExpensePortal.start({ password: SECRET });
