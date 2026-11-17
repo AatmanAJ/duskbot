@@ -1,5 +1,5 @@
 // A one-on-one turn its AI's usage limit refused, with no other AI to carry it, waits for the reset and then carries on
-// by itself on the same AI: the person sees one calm line saying until when. Held turns are saved, so a restart keeps
+// by itself on the same AI: the card above the composer says until when, and the chat itself stays as it was. Held turns are saved, so a restart keeps
 // them. A known reset wakes the turn 30 s after it; an unknown one is checked against plan usage every 15 minutes. The
 // person's Stop, a new message of theirs, or a change of AI ends the wait. Resumes are bounded: a turn refused again
 // after its reset backs off and is told, and after MAX_RESUMES the wait ends for good.
@@ -8,10 +8,10 @@ import { readFileSync } from "node:fs";
 import { writeFileAtomic } from "../atomic.ts";
 import { batchNote } from "./batch-continue.ts";
 import { counts, type Checklist } from "../batch-checklist.ts";
-import { resetClock } from "../limit-failover.ts";
 import { quoteInNote } from "../peer-provenance.ts";
 import { serverLine } from "../server-lines.ts";
 import type { RuntimeEvent } from "../contracts.ts";
+import type { LimitHoldState } from "../../shared/wire.ts";
 
 export const AFTER_RESET_MS = 30_000;
 export const UNKNOWN_RESET_RECHECK_MS = 15 * 60_000;
@@ -69,12 +69,13 @@ export interface LimitHoldDeps {
   busy(botId: string, threadId: string): boolean;
   checklist?(botId: string, threadId: string): Checklist | null;
   resume(turn: Readonly<HeldTurn>, note: string): Promise<unknown>;
-  /** "quiet": a recovery line, not a status row; "paused": the status row saying until when the turn waits. */
-  line(threadId: string, text: string, style?: "quiet" | "paused"): void;
-  /** The turn stopped waiting here (it resumed, was stopped or gave up): its "paused" rows say so no longer. */
+  /** A status row the person reads: the wait ended without the turn going on. */
+  line(threadId: string, text: string): void;
+  /** The turn waits: the card above the composer says until when, with Stop waiting; nothing is added to the chat. */
+  paused(threadId: string, state: LimitHoldState): void;
+  /** The turn stopped waiting here (it resumed, was stopped or gave up): the card says so no longer. */
   waitEnded?(threadId: string): void;
   language?(threadId: string): string | undefined;
-  timeZone?(): string | undefined;
 }
 
 export function resumeNote(held: Pick<HeldTurn, "engineName" | "request">, list: Checklist | null): string {
@@ -107,9 +108,8 @@ export function createLimitHold(deps: LimitHoldDeps) {
   const timers = new Map<string, { cancel(): void }>();
   let started = false;
 
-  const say = (threadId: string, key: Parameters<typeof serverLine>[1], params?: Record<string, string | number>, style?: "quiet" | "paused") =>
-    deps.line(threadId, serverLine(deps.language?.(threadId), key, params), style);
-  const clock = (at: number) => resetClock(at, deps.timeZone?.(), now());
+  const say = (threadId: string, key: Parameters<typeof serverLine>[1], params?: Record<string, string | number>) =>
+    deps.line(threadId, serverLine(deps.language?.(threadId), key, params));
 
   const save = (): void => {
     if (!deps.file) return;
@@ -149,9 +149,7 @@ export function createLimitHold(deps: LimitHoldDeps) {
 
   const wakeFor = (resetsAt: number | null, at: number) => (resetsAt !== null && resetsAt > at ? resetsAt + AFTER_RESET_MS : at + UNKNOWN_RESET_RECHECK_MS);
 
-  const pausedLine = (turn: HeldTurn) => turn.resetsAt !== null
-    ? say(turn.threadId, "server.limitHold.paused", { time: clock(turn.resetsAt), engine: turn.engineName }, "paused")
-    : say(turn.threadId, "server.limitHold.pausedUnknown", { engine: turn.engineName }, "paused");
+  const pausedLine = (turn: HeldTurn) => deps.paused(turn.threadId, turn.resetsAt !== null ? { resetsAt: turn.resetsAt } : {});
 
   /** The limit is over: the turn carries on, unless the person or the conversation moved on. */
   const wake = async (turn: HeldTurn): Promise<void> => {
@@ -188,7 +186,6 @@ export function createLimitHold(deps: LimitHoldDeps) {
     deps.waitEnded?.(turn.threadId);
     turn.resumes += 1;
     save();
-    say(turn.threadId, "server.limitHold.resuming", { engine: turn.engineName }, "quiet");
     try {
       await deps.resume(turn, resumeNote(turn, deps.checklist?.(turn.botId, turn.threadId) ?? null));
     } catch (error) {
@@ -217,7 +214,7 @@ export function createLimitHold(deps: LimitHoldDeps) {
         Object.assign(known, { resetsAt, wakeAt: Math.max(backoff, resetsAt !== null ? resetsAt + AFTER_RESET_MS : 0) });
         save();
         arm(known);
-        say(input.threadId, "server.limitHold.retry", { engine: known.engineName, time: clock(known.wakeAt) }, "paused");
+        deps.paused(input.threadId, { retryAt: known.wakeAt, ...(resetsAt !== null ? { resetsAt } : {}) });
         return known;
       }
       if (known && known.engine === input.engine) {
@@ -240,11 +237,9 @@ export function createLimitHold(deps: LimitHoldDeps) {
       return turn;
     },
 
-    /** Ends the wait. "stop": the person pressed Stop, and hears it ended. Others end it quietly. */
-    cancel(threadId: string, why: "stop" | "superseded" | "gone"): boolean {
-      const turn = drop(threadId);
-      if (turn && why === "stop") say(threadId, "server.limitHold.stopped");
-      return Boolean(turn);
+    /** Ends the wait: the person pressed Stop, sent another message, or chose another way on. */
+    cancel(threadId: string): boolean {
+      return Boolean(drop(threadId));
     },
 
     held(threadId: string): HeldTurn | undefined {

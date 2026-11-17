@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { Checklist } from "../batch-checklist.ts";
 import type { RuntimeEvent } from "../contracts.ts";
+import type { LimitHoldState } from "../../shared/wire.ts";
 import { AFTER_RESET_MS, AFTER_START_MS, createLimitHold, MAX_HOLD_MS, MAX_RESUMES, resumeNote, UNKNOWN_RESET_RECHECK_MS, type HeldTurn } from "./limit-hold.ts";
 
 const START = Date.parse("2026-11-17T10:00:00Z");
@@ -45,7 +46,8 @@ function harness(options: { file?: string; time?: ReturnType<typeof fakeTime>; b
   const time = options.time ?? fakeTime();
   const blocked = options.blocked ?? new Map<string, number | null>();
   const resets = options.resets ?? new Map<string, number | null>();
-  const lines: Array<{ threadId: string; text: string; quiet?: boolean }> = [];
+  const lines: Array<{ threadId: string; text: string }> = [];
+  const paused: Array<{ threadId: string; state: LimitHoldState }> = [];
   const resumed: Array<{ turn: HeldTurn; note: string }> = [];
   const ended: string[] = [];
   let engine: string | undefined = "claude";
@@ -64,13 +66,13 @@ function harness(options: { file?: string; time?: ReturnType<typeof fakeTime>; b
     busy: () => busy,
     checklist: () => list,
     resume: async (turn, note) => { if (resumeFails) throw new Error("engine would not start"); resumed.push({ turn: { ...turn }, note }); },
-    line: (threadId, text, style) => lines.push({ threadId, text, ...(style === "quiet" ? { quiet: true } : {}) }),
+    line: (threadId, text) => lines.push({ threadId, text }),
+    paused: (threadId, state) => paused.push({ threadId, state }),
     waitEnded: (threadId) => ended.push(threadId),
-    timeZone: () => "UTC",
   });
   hold.start();
   return {
-    hold, time, lines, resumed, blocked, resets, ended,
+    hold, time, lines, paused, resumed, blocked, resets, ended,
     refreshes: () => refreshes,
     setEngine: (id: string | undefined) => { engine = id; },
     setBusy: (value: boolean) => { busy = value; },
@@ -83,11 +85,12 @@ const completed = (threadId: string, ok: boolean): RuntimeEvent =>
   ({ type: "turn.completed", threadId, ok, provider: "claudeAgent", createdAt: new Date(START).toISOString() }) as RuntimeEvent;
 
 describe("holding a turn at a usage limit", () => {
-  it("says until when it is paused, and carries on 30 s after a known reset on the same engine", async () => {
+  it("shows until when it is paused only on the card, and carries on 30 s after a known reset with no line in the chat", async () => {
     const h = harness();
     const reset = START + 2 * HOUR;
     h.hold.hold({ botId: "kai", threadId: "t1", engine: "claude", engineName: "Claude", resetsAt: reset, request: "Email the 40 leads" });
-    expect(h.lines).toEqual([{ threadId: "t1", text: "Paused until 12:00 PM, your Claude limit resets then." }]);
+    expect(h.paused).toEqual([{ threadId: "t1", state: { resetsAt: reset } }]);
+    expect(h.lines).toEqual([]);
     expect(h.time.pending()).toEqual([2 * HOUR + AFTER_RESET_MS]);
     await h.time.advance(2 * HOUR + AFTER_RESET_MS - 1);
     expect(h.resumed).toHaveLength(0);
@@ -96,7 +99,7 @@ describe("holding a turn at a usage limit", () => {
     expect(h.resumed[0]!.turn).toMatchObject({ botId: "kai", threadId: "t1", engine: "claude", resumes: 1 });
     expect(h.ended).toEqual(["t1"]);
     expect(h.resumed[0]!.note).toContain('The person\'s request was: "Email the 40 leads"');
-    expect(h.lines.at(-1)).toEqual({ threadId: "t1", text: "Your Claude limit has reset, continuing where it stopped.", quiet: true });
+    expect(h.lines).toEqual([]);
     h.hold.onEvent(completed("t1", true));
     expect(h.hold.list()).toEqual([]);
   });
@@ -114,7 +117,7 @@ describe("holding a turn at a usage limit", () => {
     const h = harness();
     h.blocked.set("claude", START + HOUR);
     h.hold.hold({ botId: "kai", threadId: "t1", engine: "claude", engineName: "Claude" });
-    expect(h.lines[0]!.text).toBe("Paused: your Claude limit is reached. Checking every 15 minutes and continuing once it resets.");
+    expect(h.paused).toEqual([{ threadId: "t1", state: {} }]);
     await h.time.advance(UNKNOWN_RESET_RECHECK_MS);
     expect(h.refreshes()).toBe(1);
     expect(h.resumed).toHaveLength(0);
@@ -132,10 +135,7 @@ describe("holding a turn at a usage limit", () => {
     h.hold.hold({ botId: "kai", threadId: "t1", engine: "claude", engineName: "Claude" });
     h.resets.set("claude", START + 3 * HOUR);
     await h.time.advance(UNKNOWN_RESET_RECHECK_MS);
-    expect(h.lines.map((line) => line.text)).toEqual([
-      "Paused: your Claude limit is reached. Checking every 15 minutes and continuing once it resets.",
-      "Paused until 1:00 PM, your Claude limit resets then.",
-    ]);
+    expect(h.paused.map((entry) => entry.state)).toEqual([{}, { resetsAt: START + 3 * HOUR }]);
     expect(h.time.pending()).toEqual([3 * HOUR + AFTER_RESET_MS - UNKNOWN_RESET_RECHECK_MS]);
   });
 
@@ -166,23 +166,23 @@ describe("holding a turn at a usage limit", () => {
     expect(after.time.pending()).toEqual([AFTER_START_MS]);
   });
 
-  it("Stop ends the wait and says so; nothing resumes", async () => {
+  it("Stop ends the wait and clears the card, with no line in the chat; nothing resumes", async () => {
     const h = harness();
     h.hold.hold({ botId: "kai", threadId: "t1", engine: "claude", engineName: "Claude", resetsAt: START + HOUR });
-    expect(h.hold.cancel("t1", "stop")).toBe(true);
-    expect(h.lines.at(-1)!.text).toBe("Stopped waiting for the limit to reset.");
+    expect(h.hold.cancel("t1")).toBe(true);
+    expect(h.lines).toEqual([]);
     expect(h.ended).toEqual(["t1"]);
     await h.time.advance(2 * HOUR);
     expect(h.resumed).toHaveLength(0);
     expect(h.time.pending()).toEqual([]);
-    expect(h.hold.cancel("t1", "stop")).toBe(false);
+    expect(h.hold.cancel("t1")).toBe(false);
   });
 
   it("a new message from the person ends the wait quietly", () => {
     const h = harness();
     h.hold.hold({ botId: "kai", threadId: "t1", engine: "claude", engineName: "Claude", resetsAt: START + HOUR });
-    h.hold.cancel("t1", "superseded");
-    expect(h.lines).toHaveLength(1);
+    h.hold.cancel("t1");
+    expect(h.lines).toEqual([]);
     expect(h.hold.list()).toEqual([]);
   });
 
@@ -237,8 +237,8 @@ describe("never looping", () => {
       const again = h.hold.hold({ botId: "kai", threadId: "t1", engine: "claude", engineName: "Claude" });
       if (resume < MAX_RESUMES) {
         expect(again).not.toBeNull();
-        expect(h.lines.at(-1)!.text).toMatch(/^Claude still refused after its reset, so this tries again at /);
         waits.push(h.time.pending().at(-1)!);
+        expect(h.paused.at(-1)!.state).toEqual({ retryAt: h.time.now() + waits.at(-1)! });
       } else {
         expect(again).toBeNull();
         expect(h.lines.at(-1)!.text).toBe("Claude is still at its limit, so this stopped waiting. Send a message to try again.");
@@ -270,7 +270,7 @@ describe("never looping", () => {
     const h = harness();
     h.hold.hold({ botId: "kai", threadId: "t1", engine: "claude", engineName: "Claude", resetsAt: START + HOUR });
     h.hold.hold({ botId: "kai", threadId: "t1", engine: "claude", engineName: "Claude", resetsAt: START + HOUR });
-    expect(h.lines).toHaveLength(1);
+    expect(h.paused).toHaveLength(1);
     expect(h.time.pending()).toHaveLength(1);
   });
 

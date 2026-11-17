@@ -397,20 +397,25 @@ it("with no other AI and the default wait, holds the turn with one calm line, ke
     await control("send", "--bot", bot.id, "--task", threadId, "--text", "Write the quarterly report");
     expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("failed");
     const held = await messagesOf(api, threadId);
-    expect(noticeLines(held)).toEqual([expect.stringMatching(/^notice: Paused until .+, your Verification fixture limit resets then\.$/)]);
+    // the chat stays as it was: the card above the composer says until when, from the failed row's state
+    expect(noticeLines(held)).toEqual([]);
+    expect(recoveryLines(held)).toEqual([]);
+    expect(held.find((message) => message.tool?.name?.startsWith("error:")).tool.limitHold).toEqual({ resetsAt: resetsAt * 1000 });
     const saved = JSON.parse(readFileSync(join(dataDir, "limit-held-turns.json"), "utf8"));
-    expect(saved).toEqual([expect.objectContaining({ botId: bot.id, threadId, engine: "claude", resetsAt: resetsAt * 1000, resumes: 0, request: "Write the quarterly report" })]);
+    expect(saved).toEqual([expect.objectContaining({ botId: bot.id, threadId, engine: "claude", engineName: "Claude", resetsAt: resetsAt * 1000, resumes: 0, request: "Write the quarterly report" })]);
 
     await restart();
     lift();
     await expect.poll(() => claudePrompts().length, { timeout: 60_000, interval: 500 }).toBe(2);
     const resumedPrompt = JSON.stringify(claudePrompts()[1]);
-    expect(resumedPrompt).toContain("cut off because Verification fixture's usage limit was reached");
+    expect(resumedPrompt).toContain("cut off because Claude's usage limit was reached");
     expect(resumedPrompt).toContain("Write the quarterly report");
     await expect.poll(async () => (await messagesOf(api, threadId)).findLast((message) => message.role === "bot" && message.kind === "text")?.text, { timeout: 30_000 })
       .toBe("hello from fake claude");
     const after = await messagesOf(api, threadId);
-    expect(recoveryLines(after)).toEqual(["recovery: Your Verification fixture limit has reset, continuing where it stopped."]);
+    expect(recoveryLines(after)).toEqual([]);
+    expect(noticeLines(after)).toEqual([]);
+    expect(after.find((message) => message.tool?.name?.startsWith("error:")).tool.limitHold).toBeUndefined();
     await expect.poll(() => JSON.parse(readFileSync(join(dataDir, "limit-held-turns.json"), "utf8")), { timeout: 10_000 }).toEqual([]);
     evidence.push({ held, after });
   });
@@ -424,8 +429,11 @@ it("Stop ends a held turn: nothing runs after the reset", async () => {
     const threadId = bot.activeTaskId;
     await control("send", "--bot", bot.id, "--task", threadId, "--text", "Write the quarterly report");
     expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("failed");
+    expect((await messagesOf(api, threadId)).find((message) => message.tool?.name?.startsWith("error:")).tool.limitHold).toBeDefined();
     await api("POST", `/api/bots/${bot.id}/interrupt`, { threadId });
-    expect(noticeLines(await messagesOf(api, threadId)).at(-1)).toBe("notice: Stopped waiting for the limit to reset.");
+    const stopped = await messagesOf(api, threadId);
+    expect(stopped.find((message) => message.tool?.name?.startsWith("error:")).tool.limitHold).toBeUndefined();
+    expect(noticeLines(stopped)).toEqual([]);
     lift();
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, resetsAt * 1000 - Date.now()) + 4_000));
     expect(claudePrompts()).toHaveLength(1);

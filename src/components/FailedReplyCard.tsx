@@ -4,6 +4,8 @@ import { botEngine, claudeUpdateTarget } from "@/lib/failed-turn";
 import { blockerDetail, canOfferSignIn, currentFailureWords, failedReplyDetail, failedReplyKind, failedReplyTitle, mostActionable, restartAlreadyDid, trailingRows } from "@/lib/failed-reply";
 import { statusActivity } from "@/lib/activity-runs";
 import { lowerFirst } from "@/lib/lower-first";
+import { resetTime } from "@/lib/limit-resets";
+import { providerName } from "@/lib/simple-model-menu";
 import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
 import { useStore, type Message, type ModelSelection } from "@/state/store";
 import { failedTurnCause } from "../../shared/failed-turn";
@@ -98,12 +100,16 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
     setClosed((n) => n + 1);
   };
   // the turn waits for its AI's limit to reset and carries on by itself: no failure to fix, only a wait to stop
-  const held = notices.findLast((m) => m.tool?.limitHold === true);
+  const held = lead?.kind === "usage_limit" ? tool?.limitHold : undefined;
   const heldBotId = lead?.bot?.id ?? ownBotId;
-  if (held && (!lead || lead.kind === "usage_limit")) {
+  if (held) {
+    const ai = lead?.engine ? providerName(lead.engine) : t("failedReply.limitHold.anAi");
+    const title = held.retryAt ? t("failedReply.limitHold.retry", { ai, time: resetTime(held.retryAt) })
+      : held.resetsAt ? t("failedReply.limitHold.paused", { ai, time: resetTime(held.resetsAt) })
+      : t("failedReply.limitHold.pausedUnknown", { ai });
     return (
       <div className="mb-2 w-full px-5" data-failed-reply="" data-limit-hold="">
-        <ChatErrorCard tone="info" icon="batteryFull" title={noticeText(held)} onDismiss={close}
+        <ChatErrorCard tone="info" icon="batteryFull" title={title} onDismiss={close}
           actions={heldBotId && threadId && (
             <button type="button" onClick={() => dispatch({ type: "interrupt", botId: heldBotId, threadId })} className={QUIET_CARD_ACTION}>{t("failedReply.stopWaiting")}</button>
           )} />

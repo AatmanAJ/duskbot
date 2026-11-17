@@ -18,6 +18,7 @@ import type { WorkOrigin } from "./peer-provenance.ts";
 import type { BotRecord, Message, Store, TaskRecord } from "./store.ts";
 import type { TurnStops } from "./turn-outcome.ts";
 import { signedOutStop, type LimitTakeover, type TakeoverScope } from "./host/limit-takeover.ts";
+import { aiProductName } from "./limit-resets.ts";
 import { serverLine } from "./server-lines.ts";
 
 export interface QuotaSwitchEngine {
@@ -291,13 +292,14 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
     if (!limited || !backup) return false;
     const language = deps.language?.(threadId);
     const rootId = rootOf(threadId, request);
+    const limitedName = aiProductName(limited, limited.instanceId), backupName = aiProductName(backup, backup.instanceId);
     store.appendMessage(threadId, { role: "bot", kind: "options", card: {
-      title: serverLine(language, "server.limitHold.askTitle", { engine: nameOf(limited) }),
-      subtitle: serverLine(language, "server.limitHold.askSubtitle", { engine: nameOf(limited), backup: nameOf(backup) }),
-      options: [nameOf(backup), serverLine(language, "server.limitHold.askWait")],
+      title: serverLine(language, "server.limitHold.askTitle", { engine: limitedName }),
+      subtitle: serverLine(language, "server.limitHold.askSubtitle", { engine: limitedName, backup: backupName }),
+      options: [backupName, serverLine(language, "server.limitHold.askWait")],
       fixedOptions: true,
       requestId: randomUUID(),
-      quotaSwitch: { engines: [{ instanceId: backup.instanceId, name: nameOf(backup) }], ...(request.messageId ? { messageId: request.messageId } : {}),
+      quotaSwitch: { engines: [{ instanceId: backup.instanceId, name: backupName }], ...(request.messageId ? { messageId: request.messageId } : {}),
         ...(rootId ? { rootId } : {}), wait: resetsAt ? { resetsAt } : {} },
     } });
     return true;

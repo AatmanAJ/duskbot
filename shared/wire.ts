@@ -529,8 +529,8 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
     name: string; ok?: boolean; spoken?: string; setup?: boolean; terminal?: boolean; summary?: string;
     /** A notice whose way out is signing in to an AI: the chat offers Sign in beside it. */
     signIn?: boolean;
-    /** notice rows: the turn waits for its AI's usage limit to reset and carries on by itself; Stop ends the wait. */
-    limitHold?: boolean;
+    /** error rows: the turn waits for its AI's usage limit to reset and carries on by itself; Stop ends the wait. */
+    limitHold?: LimitHoldState;
     input?: string; output?: string; clipped?: boolean;
     /** What the call works on, as its live status said it: the chip's and the "Now" card's specific words. `whose`: the person whose own app or MCP server the call used. */
     step?: import("./turn-progress.ts").LiveStep; whose?: { person: string; app: string };
@@ -762,6 +762,9 @@ export interface OptionCardData extends WaitCardField, AccessRequestCardField, O
 
 /** Kept on the card so the offer survives a restart. `engines` follow the card's options; `messageId` is the
  * message to resend, `rootId` the failed request's job-runtime root. */
+/** A held turn as its card shows it: when the limit resets, when known, and when a resumed turn refused again tries next. */
+export interface LimitHoldState { resetsAt?: number; retryAt?: number }
+
 export const LIMIT_MODES = ["wait", "ask", "free"] as const;
 export type LimitMode = (typeof LIMIT_MODES)[number];
 
