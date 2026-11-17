@@ -570,6 +570,8 @@ describe("grok's profile menu", () => {
     expect(items[0]).toMatchObject({ label: "Ada Lovelace", labelNote: "Plus", subtitle: "ada@qa.dusk.test", title: "ada@qa.dusk.test", large: true });
     expect(items[1]).toMatchObject({ key: "mobile", separatorBefore: true });
     expect(items.at(-1)).toMatchObject({ label: "Sign out", separatorBefore: true });
+    const trial = grokProfileMenuItems({ ...base, accounts: { view: { active: { ...active, plan: { status: "active", tier: "starter", trial: true } } }, openSheet: null, signOut, add: vi.fn(), editAvatar: vi.fn() } as never });
+    expect(trial[0]).toMatchObject({ labelNote: "Plus trial" });
     expect(items.some((item) => item.label === "Account and sign out")).toBe(false);
     items[0]!.onSelect();
     expect(onDashboard).toHaveBeenCalledOnce();

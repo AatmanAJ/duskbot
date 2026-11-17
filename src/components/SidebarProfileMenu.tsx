@@ -552,7 +552,7 @@ export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback
   const who: MenuAccountHeader | null = header ?? (active ? { name: active.name, email: active.email, plan: accountPlanText(active.plan), face: <UserFace account={active} size={32} /> } : null);
   const named = who?.name?.trim();
   const top: SidebarMenuItem[] = who
-    ? [{ key: "who", label: named || who.email, ...(who.plan ? { labelNote: who.plan.replace(/^dusk cloud · /, "") } : {}), title: who.email, ...(named ? { subtitle: who.email } : {}), icon: who.face, large: true, onSelect: onDashboard ?? accounts.openSheet ?? onSettings }]
+    ? [{ key: "who", label: named || who.email, ...(who.plan ? { labelNote: who.plan.replace(/^dusk cloud · /, "").replace(/ free trial$/, " trial") } : {}), title: who.email, ...(named ? { subtitle: who.email } : {}), icon: who.face, large: true, onSelect: onDashboard ?? accounts.openSheet ?? onSettings }]
     // nobody signed in here: Sign in, first, where the account would be; it continues in the browser for its context (the
     // account context redirect), where this app can; otherwise the sheet that signs in right there
     : signOut ? [] : [{ key: "sign-in", label: t("accounts.signIn"), icon: icon("person"), onSelect: typeof window !== "undefined" && window.duskDesktop?.cloudAccount?.continueInBrowser ? () => openSignIn() : accounts.view ? () => accounts.add() : onAddAccount }];
