@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createAppUpdater, mirrorUrl, squirrelInstaller, zipUrl } from "../../electron/app-update.mjs";
+import { createAppUpdater, squirrelInstaller, zipUrl } from "../../electron/app-update.mjs";
 
 const arg = (name, fallback) => { const at = process.argv.indexOf(`--${name}`); return at > 0 ? process.argv[at + 1] : fallback; };
 const from = arg("from", "0.2.14"), keep = process.argv.includes("--keep"), arch = process.arch;
