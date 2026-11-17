@@ -26,7 +26,7 @@ import { dropSentTurn, followSendReceipt, noteSentTurn } from "./sent-turn";
 import { applySendReceipt } from "./send-receipt";
 import { foldSnapshotOntoStreamed, patchedGroups, roomAnswers, snapshotPatch } from "./room-frames";
 import { savedStateAction, type SavedOwner, type SavedSnapshot } from "./saved-state";
-import { heldTranscript, keepBotNavigation, keepGroupNavigation, navigatedSince, visibleMessages } from "./snapshot-navigation";
+import { heldTranscript, keepBotNavigation, keepGroupNavigation, navigatedSince, openElsewhere, visibleMessages } from "./snapshot-navigation";
 import { createTranscriptCache, indexedDbShelf, reconcileTranscript, type CachedTranscript } from "./transcript-cache";
 import { TranscriptShelfScope } from "./transcript-scope";
 export { shownTranscript, visibleMessages } from "./snapshot-navigation";
@@ -928,7 +928,9 @@ export function reducer(state: AppState, action: Action): AppState {
         bots: action.bots.map((sent) => {
           const previous = state.bots.find((candidate) => candidate.id === sent.id);
           const bot = heldTranscript(previous, { ...sent, messages: sent.messages ?? [] }, !action.loadedThreads || action.loadedThreads.includes(sent.threadId));
-          return keepBotNavigation(previous, previous ? { ...bot, tasks: mergeTaskStamps(previous.tasks, bot.tasks) } : bot,
+          const merged = previous ? { ...bot, tasks: mergeTaskStamps(previous.tasks, bot.tasks) } : bot;
+          if (openElsewhere(previous, sent)) return { ...keepBotNavigation(previous, merged, true, action.taskIdsAtStart), transcriptStale: true };
+          return keepBotNavigation(previous, merged,
             action.preserveNavigation === true && navigatedSince(previous, action.navigationSince, state.transcriptGeneration), action.taskIdsAtStart);
         }),
         groups: action.groups.map((group) => {
