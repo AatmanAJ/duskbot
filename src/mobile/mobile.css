@@ -41,6 +41,8 @@
 }
 
 .dusk-mobile .mobile-page { box-shadow: -12px 0 32px rgb(10 10 12 / .10); }
+/* the list under an open chat is out of sight: its working dots and other loops hold still until it shows again */
+.dusk-mobile .mobile-nav > [inert] * { animation-play-state: paused !important; }
 
 .dusk-mobile :focus-visible {
   outline: none;
