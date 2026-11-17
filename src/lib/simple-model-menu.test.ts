@@ -370,7 +370,7 @@ describe("OpenCode's free models", () => {
 
   it("notes a provider found on this computer under its heading, and only that one", () => {
     const built = menu([claude({ found: true }), codex]);
-    expect(built.groups.map((group) => group.note)).toEqual(["Found on this computer. Pick a model to use it.", undefined]);
+    expect(built.groups.map((group) => group.note)).toEqual(["Found here. Pick a model to use it.", undefined]);
   });
 
   describe("starred models", () => {

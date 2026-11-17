@@ -214,6 +214,7 @@ export function ModelPicker({
   label,
   size = "md",
   asRow,
+  withThinking = false,
 }: {
   bot: Bot;
   threadId?: string;
@@ -223,7 +224,10 @@ export function ModelPicker({
   size?: "sm" | "md";
   /** A settings row (label left, model right, a chevron) whose menu the caller presents, in a sheet of its own. */
   asRow?: { className: string; present: (menu: { open: boolean; close: () => void; content: ReactNode }) => ReactNode };
+  /** A contained picker whose place has no thinking control of its own: its menu sets the level too. */
+  withThinking?: boolean;
 }) {
+  const ownThinking = !contained || withThinking;
   const { state, dispatch: storeDispatch, refreshInstances, refreshModels: refreshInstanceModels } = useStore();
   const [open, setOpen] = useState(false);
   const { bot, dispatch } = useAiSwitch({ bot: shown, threadId, contained, dispatch: storeDispatch, setOpen: (next) => (next ? openMenu() : setOpen(false)) });
@@ -485,7 +489,7 @@ export function ModelPicker({
     const nextSelection = modelSelectionForPick(selection, instance, model);
     // A model with reasoning levels keeps the menu open, so its level can be set next without opening it again;
     // picking a variant row already sets that level.
-    if (to === "all" || variant !== undefined || contained || !offersReasoning(state, instance, nextSelection, threadId ?? bot.threadId)) close(true);
+    if (to === "all" || variant !== undefined || !ownThinking || !offersReasoning(state, instance, nextSelection, threadId ?? bot.threadId)) close(true);
     else refocusAfterPick();
   };
 
@@ -521,7 +525,7 @@ export function ModelPicker({
     dispatch({ type: "setModel", botId: bot.id, threadId, ...(threadId && updatesBotDefault ? { updateBotDefault: true } : {}),
       selection: effort ? { ...model, effort } : model, ...(working && threadId ? { nextTurn: true } : {}) });
   };
-  const thinking: SimpleThinking | null = contained ? null
+  const thinking: SimpleThinking | null = !ownThinking ? null
     : variantChoices(state, selection, threadId ?? bot.threadId) ? {
       variants: (
         <ModelVariantRow compact quiet bot={shown} threadId={threadId} updateBotDefault={Boolean(threadId) && updatesBotDefault} className="px-2 py-1"

@@ -2801,7 +2801,7 @@
   "model.picker.recent": "Recent",
   "model.picker.disconnect": "Disconnect {name}",
   "model.picker.disconnected": "{name} disconnected",
-  "model.picker.found": "Found on this computer. Pick a model to use it.",
+  "model.picker.found": "Found here. Pick a model to use it.",
   "model.simple.back": "Back",
   "model.simple.clearSearch": "Clear search",
   "model.simple.thinkingLevel": "{level} thinking. Higher is slower but more careful.",

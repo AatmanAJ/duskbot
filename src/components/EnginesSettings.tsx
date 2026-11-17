@@ -470,8 +470,11 @@ export function EnginesSettings({ simple = false, more }: { simple?: boolean; mo
   const renderEngine = (instance: InstanceInfo, bare = false) => {
     const group = groupOf(instance);
     return group
-      ? <AccountsCard group={group} accounts={groups.get(group)!} bare={bare}
-        advanced={<><FoundProvider instance={instance} /><EngineAdvanced instance={instance} /><DisconnectProvider instance={instance} /></>} />
+      ? <>
+        {bare && <FoundProvider instance={instance} />}
+        <AccountsCard group={group} accounts={groups.get(group)!} bare={bare}
+          advanced={<>{!bare && <FoundProvider instance={instance} />}<EngineAdvanced instance={instance} /><DisconnectProvider instance={instance} /></>} />
+      </>
       : <EngineRow instance={instance} bare={bare} />;
   };
 
