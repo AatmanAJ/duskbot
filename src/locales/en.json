@@ -9289,5 +9289,7 @@
   "showOnce.run.status.running": "Working",
   "showOnce.run.status.done": "Done",
   "showOnce.run.status.failed": "Failed",
-  "showOnce.run.status.skipped": "Skipped"
+  "showOnce.run.status.skipped": "Skipped",
+  "showOnce.menu": "Show a task once…",
+  "showOnce.takeFailed": "Could not take control of this screen. Try again."
 }

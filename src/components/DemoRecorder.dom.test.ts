@@ -56,9 +56,9 @@ afterEach(() => { act(() => root.unmount()); host.remove(); document.body.innerH
 
 let bots = 0;
 /** Each test shows its own bot a task, so one test's recordings are not another's. */
-const mount = async (holding: boolean, botId = `bot-${++bots}-${Math.round(performance.now())}`) => {
+const mount = async (holding: boolean, botId = `bot-${++bots}-${Math.round(performance.now())}`, more: { onTake?: () => void; asked?: number } = {}) => {
   listed = listed.map((each) => ({ ...each, botId }));
-  await act(async () => { root.render(createElement(DemoRecorder, { bot: { id: botId, name: "Nova" }, surface: "browser", holding })); });
+  await act(async () => { root.render(createElement(DemoRecorder, { bot: { id: botId, name: "Nova" }, surface: "browser", holding, ...more })); });
   await act(async () => { await Promise.resolve(); });
   return botId;
 };
@@ -107,6 +107,32 @@ describe("the Record button", () => {
     expect(review()).toBeTruthy();
     expect(review()!.textContent).toContain("These steps were written straight from what you showed");
     expect(document.querySelectorAll("[data-demo-step]")).toHaveLength(3);
+  });
+
+  it("takes and keeps control before it starts, so the screen stays the person's while they show the task", async () => {
+    const taken: string[] = [];
+    const botId = await mount(true, undefined, { onTake: () => taken.push("take") });
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 0, plan: undefined }) });
+    await press(button("Record", host));
+
+    expect(taken).toEqual(["take"]);
+    expect(strip()!.dataset.demoRecorder).toBe("recording");
+  });
+
+  it("starts from the browser's menu without control: it takes control, then records once it has it", async () => {
+    const taken: string[] = [];
+    const onTake = () => taken.push("take");
+    const botId = await mount(false, undefined, { onTake, asked: 0 });
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 0, plan: undefined }) });
+    expect(strip()).toBeNull();
+    await mount(false, botId, { onTake, asked: 1 });
+
+    expect(taken).toEqual(["take"]);
+    expect(button("Record", host)!.disabled).toBe(true);
+    expect(calls.some((call) => call.method === "POST")).toBe(false);
+    await mount(true, botId, { onTake, asked: 1 });
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos` });
+    expect(strip()!.dataset.demoRecorder).toBe("recording");
   });
 
   it("throws the recording away on Discard", async () => {

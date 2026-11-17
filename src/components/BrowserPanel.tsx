@@ -63,6 +63,7 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
   const [fullscreen, setFullscreen] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [passkeyDismissed, setPasskeyDismissed] = useState("");
+  const [recordAsked, setRecordAsked] = useState(0);
   const floating = useBrowserPictureInPicture();
   const pageVisible = usePageVisible();
   const panel = useRef<HTMLDivElement>(null);
@@ -320,11 +321,12 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
         onPip={togglePip}
         onType={() => { setMasked(false); setShowTyping(true); }}
         onSecret={() => { setMasked(true); setShowTyping(true); }}
+        onRecord={connected && !heldElsewhere ? () => setRecordAsked((asked) => asked + 1) : undefined}
         onReconnect={reconnect}
         onRestart={restart}
       />}
     />
-    <DemoRecorder bot={bot} surface="browser" holding={connected && you} />
+    <DemoRecorder bot={bot} surface="browser" holding={connected && you} onTake={takeControl} asked={recordAsked} />
     {error && <div role="alert" className="flex shrink-0 items-center justify-between gap-2 border-b border-transparent px-3 py-2 text-[12px] text-danger"><span>{error}</span>{!connected && <button className="shrink-0 underline" onClick={reconnect}>{t("browser.panel.reconnect")}</button>}</div>}
     {takeStatus === "stale" && <div role="status" className="shrink-0 border-b border-transparent px-3 py-1.5 text-[12px] text-accent-text">{t("browser.control.stale", { name: bot.name })}</div>}
     {passkeyWall && passkeyDismissed !== nav.url && <PasskeyNotice wall={passkeyWall} botName={bot.name} onDismiss={() => setPasskeyDismissed(nav.url)} />}

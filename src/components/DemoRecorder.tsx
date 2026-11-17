@@ -345,12 +345,18 @@ export function DemoRun({ run, botName, onDismiss }: { run: DemoReplayRun; botNa
   );
 }
 
+const TAKE_TIMEOUT_MS = 12_000;
+
 /**
  * Show it once, on one of a bot's screens: Record while the person holds it, the steps to review when they stop, and
- * the replay as it runs. `holding` says the person has taken control here.
+ * the replay as it runs. `holding` says the person has taken control here; `onTake` takes it and keeps it, which Record
+ * does first so the screen stays theirs for as long as they are showing the task. A change of `asked` starts a recording
+ * from elsewhere, such as a menu.
  */
-export function DemoRecorder({ bot, surface, holding, threadId }: { bot: { id: string; name: string }; surface: DemoSurface; holding: boolean; threadId?: string }) {
+export function DemoRecorder({ bot, surface, holding, threadId, onTake, asked = 0 }: { bot: { id: string; name: string }; surface: DemoSurface; holding: boolean; threadId?: string; onTake?: () => void; asked?: number }) {
   const state = useBotDemos(bot.id);
+  const [taking, setTaking] = useState(false);
+  const heard = useRef(asked);
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -361,13 +367,34 @@ export function DemoRecorder({ bot, surface, holding, threadId }: { bot: { id: s
   const ready = state.recordings.filter((recording) => recording.status === "ready" && recording.plan);
   const run = Object.values(state.runs).find((each) => each.id !== dismissed && ready.some((recording) => recording.id === each.recordingId));
   const review = reviewing ? ready.find((recording) => recording.id === reviewing) : undefined;
-  const canRecord = state.surfaces[surface] && holding && !live;
+  const canRecord = state.surfaces[surface] && (holding || taking) && !live;
 
   const act = async (work: () => Promise<DemoRecording | void>): Promise<DemoRecording | void> => {
     setBusy(true);
     setError("");
     try { return await work(); } catch (cause) { setError(friendlyError(cause)); } finally { setBusy(false); }
   };
+  const begin = () => {
+    if (live || taking || !state.surfaces[surface]) return;
+    setError("");
+    onTake?.();
+    setTaking(true);
+  };
+  useEffect(() => {
+    if (!taking) return;
+    if (holding) {
+      setTaking(false);
+      void act(() => demos.start(bot.id, surface, threadId));
+      return;
+    }
+    const late = setTimeout(() => { setTaking(false); setError(t("showOnce.takeFailed")); }, TAKE_TIMEOUT_MS);
+    return () => clearTimeout(late);
+  }, [taking, holding]);
+  useEffect(() => {
+    if (asked === heard.current) return;
+    heard.current = asked;
+    begin();
+  }, [asked]);
   const stop = async () => {
     const stopped = await act(() => demos.stop(bot.id));
     if (!stopped) return;
@@ -376,7 +403,7 @@ export function DemoRecorder({ bot, surface, holding, threadId }: { bot: { id: s
   };
 
   if (!state.loaded || (!state.surfaces[surface] && !ready.length && !live)) return null;
-  if (!holding && !live && !run && !ready.length && !error) return null;
+  if (!holding && !taking && !live && !run && !ready.length && !error) return null;
 
   return (
     <div data-demo-recorder={live?.status ?? (run ? "replay" : "idle")} className="shrink-0 border-b border-transparent bg-inset/60">
@@ -387,14 +414,14 @@ export function DemoRecorder({ bot, surface, holding, threadId }: { bot: { id: s
             <span role="status" className="shrink-0 text-[12px] font-medium text-ink">{t("showOnce.recording")}</span>
             <span className="min-w-0 flex-1 truncate text-[12px] text-ink-secondary">{count("showOnce.actions", live.eventCount)}</span>
             <button type="button" className={smallButtonCls} disabled={busy} onClick={() => void act(() => demos.cancel(bot.id))}>{t("showOnce.discard")}</button>
-            <button type="button" className={cn(smallButtonCls, "bg-ink text-app enabled:hover:bg-ink/85")} disabled={busy || live.eventCount === 0} onClick={() => void stop()}>{t("showOnce.stop")}</button>
+            <button type="button" className={cn(smallButtonCls, "bg-ink text-app enabled:hover:bg-ink/85 disabled:bg-ink/15 disabled:text-ink/30")} disabled={busy || live.eventCount === 0} onClick={() => void stop()}>{t("showOnce.stop")}</button>
           </> : live ? <>
             <Loader2 size={14} className="shrink-0 animate-spin text-ink" aria-hidden="true" />
             <span role="status" className="min-w-0 flex-1 truncate text-[12px] text-ink">{t("showOnce.compiling")}</span>
           </> : <>
             {canRecord ? (
-              <button type="button" data-demo-record className={smallButtonCls} disabled={busy} title={t("showOnce.recordTitle", { name: bot.name })} onClick={() => void act(() => demos.start(bot.id, surface, threadId))}>
-                <span aria-hidden="true" className="size-2 rounded-full bg-danger" />{t("showOnce.record")}
+              <button type="button" data-demo-record className={smallButtonCls} disabled={busy || taking} title={t("showOnce.recordTitle", { name: bot.name })} onClick={begin}>
+                {taking ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <span aria-hidden="true" className="size-2 rounded-full bg-danger" />}{t("showOnce.record")}
               </button>
             ) : null}
             <span className="min-w-0 flex-1 truncate text-[12px] text-ink-secondary">{canRecord ? t("showOnce.recordHint", { name: bot.name }) : ""}</span>

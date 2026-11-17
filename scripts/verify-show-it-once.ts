@@ -1,5 +1,6 @@
-// Show it once in the real Browser panel on dusk bot's own Chrome driver, always in a disposable fixture home. The
-// fake expense portal and its receipts are served beside the panel, so a task can be shown and done again by hand.
+// Show it once in the real Browser panel, always in a disposable fixture home: on dusk bot's own Chrome driver, or
+// with DUSK_VERIFY_ENGINE=agent-browser (and DUSK_VERIFY_BROWSER_BINARY) on the default engine. The fake expense portal
+// and its receipts are served beside the panel, so a task can be shown and done again by hand.
 import { chmodSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +11,8 @@ import { mountPreview, parkUntilSignal, type MountedPreview } from "./testing/pr
 
 const executablePath = process.env.DUSK_VERIFY_BROWSER_CHROME;
 if (!executablePath) throw new Error("Set DUSK_VERIFY_BROWSER_CHROME to an installed Chrome or Chrome for Testing binary.");
+const engine = process.env.DUSK_VERIFY_ENGINE === "agent-browser" ? "agent-browser" : "chrome";
+if (engine === "agent-browser" && !process.env.DUSK_VERIFY_BROWSER_BINARY) throw new Error("Set DUSK_VERIFY_BROWSER_BINARY to an installed agent-browser binary.");
 const PORTAL = fileURLToPath(new URL("../server/demo-recorder/fixtures/expense-portal/", import.meta.url));
 
 /** The new engine drives Chrome itself, but the app still asks for agent-browser before it shows a browser: this stands in for it. */
@@ -40,9 +43,10 @@ try {
     ],
   });
   // A bot's browser reaches nothing on this computer unless it is named: only the page served beside the panel.
-  await send("/api/config", "PATCH", { features: { browser: true }, browserEngine: { engine: "chrome", egress: { allow: [`127.0.0.1:${new URL(ui.previewUrl).port}`] } } });
+  await send("/api/config", "PATCH", { features: { browser: true }, browserEngine: { engine, egress: { allow: [`127.0.0.1:${new URL(ui.previewUrl).port}`] } } });
   console.log(JSON.stringify({
     ...fixture.info,
+    engine,
     botId: bots[0]!.id,
     previewUrl: ui.previewUrl,
     portal: `${new URL("/__harbor/portal.html", ui.previewUrl).href}?signedIn=1`,
