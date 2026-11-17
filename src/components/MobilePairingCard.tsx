@@ -350,7 +350,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   );
 
   const backBar = (to: Flow | null) => to && (
-    <div className="flex h-11 items-center">
+    <div className="-ms-1.5 flex h-11 items-center">
       <button type="button" data-pairing-back="" onClick={() => go(to)}
         className="inline-flex min-h-11 items-center gap-0.5 rounded-full py-1 pe-3 ps-1.5 text-[13px] leading-[18px] text-ink-secondary transition-colors hover:bg-ink/[0.06] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none">
         <ChevronLeft size={16} strokeWidth={1.5} aria-hidden="true" className="rtl:-scale-x-100" />{t(to === "platform" ? "settings.phone.otherPhone" : "common.back")}
@@ -495,10 +495,12 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
 
   // one page of the flow, its own way back sliding with it
   const page = (at: string, live: boolean) => (
-    <div className={cn("mx-auto flex w-full flex-col gap-2 pb-2", at === "link" ? "max-w-[400px]" : "max-w-[560px]")}>
-      {at === "link" ? <>{backBar("platform")}{(cloudHome ? cloudLink : localLink)(live)}</>
-        : at === "platform" ? <>{backBar(hasPhones ? "home" : null)}{platformStep(live)}</>
-        : at === "done" ? doneStep(live) : loadingStep}
+    // the way back sits at the pane's left edge; the step itself keeps its centered column
+    <div className="flex w-full flex-col gap-2 pb-2">
+      {at === "link" ? backBar("platform") : at === "platform" ? backBar(hasPhones ? "home" : null) : null}
+      <div className={cn("mx-auto w-full", at === "link" ? "max-w-[400px]" : "max-w-[560px]")}>
+        {at === "link" ? (cloudHome ? cloudLink : localLink)(live) : at === "platform" ? platformStep(live) : at === "done" ? doneStep(live) : loadingStep}
+      </div>
     </div>
   );
 
