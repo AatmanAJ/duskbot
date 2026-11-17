@@ -718,8 +718,10 @@ export function createAuth(options: AuthOptions) {
       } else if (method === "POST" && path === R.appDeleteAccount) {
         const found = appSession(req);
         if (!found) return fail(401, "invalid_token");
-        // the app's "Start fresh" ends the clouds now too, not at the paid period's end
-        await deleteAccount(found.account, { email: data.email, cancelBilling: true, destroyDesktopsNow: data.destroyDesktopsNow === true });
+        // the phone app's own Delete account. Older desktop apps sent this from "Start fresh" (with destroyDesktopsNow), which
+        // cancelled a plan or trial as part of a local reset: that is refused, account deletion is done on the account page
+        if (data.destroyDesktopsNow !== undefined) return fail(409, "delete_on_account_page");
+        await deleteAccount(found.account, { email: data.email, cancelBilling: true });
         json({ ok: true });
       } else if (path === R.deviceLookup && method === "GET") {
         const viewer = requireWeb(req, { mutation: false });

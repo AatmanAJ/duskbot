@@ -317,9 +317,6 @@ export interface CloudAccountClient {
   enrollGrant(): Promise<{ enrollToken: string; dashboardUrl: string } | null>;
   /** Takes a workspace this account owns off its dashboard; true once gone, null when signed out or unanswered. */
   unlinkWorkspace(workspaceId: string): Promise<true | null>;
-  freshClouds(): Array<{ id: string; name: string }>;
-  cancelCloudPlan(cloudId: string): Promise<void>;
-  deleteAccountNow(email: string): Promise<void>;
   setAvatar(choice: string | null): Promise<true | null>;
   /** A five-minute signed grant for the link service (apps/link-service/src/grant.mjs); null when signed out. */
   linkGrant(): Promise<string | null>;

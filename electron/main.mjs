@@ -3080,31 +3080,15 @@ function railChanged() { chromeRail.refresh(); rail.changed(); void localUi?.ref
 const accountPages = [() => (mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents }) ? mainWindow.webContents : null), () => ({ send: channel => chromeRail.send(channel) })];
 const accountRing = createDesktopRing({ allowed: accountApp, active: cloudAccountStore, savedStore: () => createCloudAccountStore({ file: path.join(app.getPath("userData"), cloudTarget(process.env).saved), encryption: signInEncryption }), stash: () => jsonFile(path.join(app.getPath("userData"), cloudTarget(process.env).places)), client: ensureCloudAccount, origin: cloudTarget(process.env).origin, makeClient: ({ store, onState }) => createCloudAccountClient({ store, onState, platform: process.platform, deviceName: os.hostname().slice(0, 100) || "my computer", appVersion: app.getVersion(), origin: cloudTarget(process.env).origin, custom: cloudTarget(process.env).custom, openBrowser: url => shell.openExternal(url) }), saved: () => environmentsState, persist: persistEnvironments, session: () => session.defaultSession, mine: () => myCloud(), leaveWindow: () => (mainWindow && !mainWindow.isDestroyed() && !senderIsLocal({ sender: mainWindow.webContents }) ? navigateMainWindow(rendererOrigin()) : null), rows: () => railList(), holding: () => oneHome.holding(), letGo: () => { homeWindow.accountLeaving(); homePlaces.remember(null); }, settled: () => showHome(), tell: () => { accounts.tell(); railChanged(); }, log: slog }); const accounts = installAccounts({ ipcMain, ownPage: event => chromeRail.owns(event) || cloudPageAsking(event) === "local", ownPlace: event => cloudPageAsking(event) === "cloud" || ownCloudPage(event) !== null || (homeWindow.homePage(event) && homeWindow.shown()?.kind !== "team"), placePage: event => cloudPageAsking(event) !== null || ownCloudPage(event) !== null || homeWindow.homePage(event) || (Boolean(ownHome?.home()) && activeEnvironment(environmentsState)?.origin === ownHome.home().origin && workspaceSenderAllowed(event, mainWindow?.webContents, environmentsState, rendererOrigin())), account: () => (accountApp() ? cloudAccount : null), client: ensureCloudAccount, ring: accountRing, holdSheet: open => chromeRail.holdOpen(open), tellSheet: () => chromeRail.send("accounts:open-sheet"), tell: () => { for (const page of accountPages) page()?.send("accounts:changed"); } });
 
-// Start fresh: the bot panel's reset (electron/start-fresh.mjs). Only from this computer's own page or My Cloud's, never a
-// team's or a page a server sent, and never in remote access. Every step acts as this app's own sign-ins, never the page's.
-const startFreshServers = () => environmentsState.environments
-  .filter(env => env.kind === "remote" && env.origin && !env.team && !env.cloud && !env.home && env.origin !== myCloud())
-  .map(env => ({ id: env.id, name: env.name, origin: env.origin, ...(vpsLink.servers().find(server => server.id === env.id)?.uninstall ? { uninstall: vpsLink.servers().find(server => server.id === env.id).uninstall } : {}) }));
+// Start fresh: this computer's reset (electron/start-fresh.mjs). Only from this computer's own page or My Cloud's, never a
+// team's or a page a server sent, and never in remote access. It signs this computer out and clears what is kept here;
+// the account, its plan, its clouds and linked servers are never deleted from here (the website's account page does that).
 const startFresh = createStartFresh({
-  servers: startFreshServers,
-  async wipeServer(server) {
-    const response = await session.defaultSession.fetch(`${server.origin}/api/start-fresh`, { method: "POST", credentials: "include", headers: { origin: server.origin, "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(20_000) });
-    if (response.status === 202) return "wiped";
-    if (response.status === 403) return "not-owner";
-    if (response.status === 404) throw Object.assign(new Error("dusk bot on this server is too old to delete from here."), { code: "too_old" });
-    if (response.status === 401) throw Object.assign(new Error("This app isn't signed in to this server anymore."), { code: "signed_out" });
-    throw Object.assign(new Error(`The server answered ${response.status}.`), { code: "server" });
-  },
-  async unlinkServer(server) {
-    if (!(await vpsLink.forgetServer(server.id))) await forgetEnvironment(server.id, false, true, { quiet: true });
-  },
   account: () => {
     if (!accountApp() || !cloudAccount || cloudAccount.state().status !== "connected") return null;
     const email = cloudAccount.state().account?.email;
-    return email ? { email, clouds: cloudAccount.freshClouds() } : null;
+    return email ? { email } : null;
   },
-  cancelPlan: id => ensureCloudAccount().cancelCloudPlan(id),
-  deleteAccount: email => ensureCloudAccount().deleteAccountNow(email),
   signOut: () => ensureCloudAccount().signOut().then(() => {}),
   async removeAiKeys() {
     for (const name of fs.readdirSync(path.dirname(CREDENTIALS_FILE)).filter(name => name === "credentials.bin" || name.startsWith("credentials.bin.unreadable-"))) {

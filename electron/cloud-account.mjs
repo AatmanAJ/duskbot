@@ -188,8 +188,6 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
   let profile = null;
   /** The plan's own Cloud that Cancel and Keep act on, as the last verified session names it. */
   let renewalCloud = null;
-  // start fresh asked the Admin to delete this account and got no answer: a 401 next time means it went through
-  let deleteAsked = false;
   let offerCache = null, offerPending = null, waking = false;
   /** The checkout this app opened, its address kept here for Reopen and Copy link: never published, never asked for again. */
   let opened = null;
@@ -703,33 +701,6 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
         const result = await request("", { path: "/v1/app/workspace-unlink", method: "POST", body: { workspaceId }, token: signedIn.token });
         return result?.ok === true ? true : null;
       } catch (error) { if (signInEnded(error)) await refresh().catch(() => {}); return null; }
-    },
-    /** Start fresh's own clouds: the dusk cloud computers this account owns, in no team, whose plans it cancels. */
-    freshClouds() {
-      const current = state();
-      if (current.status !== "connected" || !Array.isArray(current.clouds)) return [];
-      return current.clouds.filter(cloud => cloud.managed && cloud.role === "owner" && cloud.teamId === null).map(cloud => ({ id: cloud.id, name: cloud.name }));
-    },
-    /** Start fresh: renewal off for one of this account's clouds; a cloud with no plan (never paid, already ended) has
-     * nothing to cancel. The Admin answers 404 for a cloud of someone else's. */
-    async cancelCloudPlan(cloudId) {
-      const signedIn = grant;
-      if (!signedIn) throw Object.assign(new Error("Signed out."), { code: "signed_out" });
-      try { await request(`clouds/${encodeURIComponent(cloudId)}/cancel`, { method: "POST", body: {}, token: signedIn.token, timeoutMs: 60_000 }); }
-      catch (error) { if (error?.status === 409 && error?.code === "not_subscribed") return; throw error; }
-    },
-    /** Start fresh: deletes this account (its plans cancelled first by the Admin, its clouds destroyed now). A 401 after this
-     * app already asked once means the first ask went through and only its answer was lost. */
-    async deleteAccountNow(email) {
-      const signedIn = grant ?? issued;
-      if (!signedIn) throw Object.assign(new Error("Signed out."), { code: "signed_out" });
-      try { await request("", { path: "/v1/app/delete-account", method: "POST", body: { email, destroyDesktopsNow: true }, token: signedIn.token, timeoutMs: 60_000 }); }
-      catch (error) {
-        if (error?.status === 401 && deleteAsked) return;
-        deleteAsked = deleteAsked || error?.status === undefined || error.status >= 500;
-        throw error;
-      }
-      deleteAsked = false;
     },
     /** A five-minute signed grant for the link service, so a VPS setup session belongs to this account; null when signed out. */
     async linkGrant() {
