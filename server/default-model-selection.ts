@@ -127,6 +127,15 @@ export function freeBackupOverConnected(
   return Boolean(on && freeFallback(on)) && connectedAiReady(instances, context);
 }
 
+/** A bot or conversation the app itself put on the free backup moves to a connected AI; one the person put there stays. */
+export function leavesFreeBackup(
+  instances: readonly SelectableInstance[],
+  owner: { modelSelection?: ModelSelection; modelChosen?: true },
+  context: DefaultSelectionContext = {},
+): boolean {
+  return owner.modelChosen !== true && freeBackupOverConnected(instances, owner.modelSelection, context);
+}
+
 /** An explicit effort or variant wins; an engine without the level sends none rather than failing turn 1. */
 export function withNewBotEffort(
   selection: ModelSelection,

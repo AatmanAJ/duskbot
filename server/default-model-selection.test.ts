@@ -3,7 +3,7 @@ import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 
 import type { EngineAccess, ModelCatalog, ModelSelection, ProviderSnapshot } from "./contracts.ts";
-import { freeBackupOverConnected, readyToRun, selectDefaultModelSelection, withInstanceConfig, withNewBotEffort, type SelectableInstance } from "./default-model-selection.ts";
+import { freeBackupOverConnected, leavesFreeBackup, readyToRun, selectDefaultModelSelection, withInstanceConfig, withNewBotEffort, type SelectableInstance } from "./default-model-selection.ts";
 import { ManagedDesktopPolicy } from "./managed-policy.ts";
 
 const codex = {
@@ -160,6 +160,13 @@ describe("new bot default: one ranking with the welcome, tested AIs first", () =
     expect(selectDefaultModelSelection([openCodeFree, claudeOut], saved)).toEqual(saved);
     expect(freeBackupOverConnected([openCodeFree, claudeReady], saved)).toBe(true);
     expect(freeBackupOverConnected([openCodeFree, claudeReady], { instanceId: "claude", model: "claude-default" })).toBe(false);
+  });
+
+  it("moves a bot the app put on the free backup to a connected AI, never one the person put there", () => {
+    const free = { instanceId: "opencodeGo", model: "opencode/deepseek-v4-free" };
+    expect(leavesFreeBackup([openCodeFree, claudeReady], { modelSelection: free })).toBe(true);
+    expect(leavesFreeBackup([openCodeFree, claudeReady], { modelSelection: free, modelChosen: true })).toBe(false);
+    expect(leavesFreeBackup([openCodeFree, claudeReady], { modelSelection: undefined })).toBe(false);
   });
 
   it("moves a free pick the catalog no longer lists onto the free model there is now, not to setup", () => {
