@@ -16,6 +16,8 @@ const FAKE_CODEX = join(SERVER_DIR, "testing", "fake-codex-app-server.ts");
 const PORT = workerPort(18800, 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
 const posixOnly = describe.skipIf(process.platform === "win32");
+/** a stored picture is read only when its bytes start as one */
+const png = (text: string) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(text)]);
 
 posixOnly("mid-turn steering e2e", () => {
   let child: ChildProcess;
@@ -411,8 +413,8 @@ posixOnly("mid-turn steering e2e", () => {
       mkdirSync(attachments, { recursive: true });
       const firstImagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174000.png");
       const secondImagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174001.png");
-      writeFileSync(firstImagePath, "first png");
-      writeFileSync(secondImagePath, "second png");
+      writeFileSync(firstImagePath, png("first png"));
+      writeFileSync(secondImagePath, png("second png"));
       const firstAttachedText = `look at this\n\n<attached-image path="${firstImagePath}" name="first.png" />`;
       const secondAttachedText = `and this\n\n<attached-image path="${secondImagePath}" name="second.png" />`;
       try {
@@ -464,11 +466,11 @@ posixOnly("mid-turn steering e2e", () => {
       expect(followUp.message.content.map((block: any) => block.type === "text" ? { ...block, text: withoutTurnClock(block.text) } : block)).toEqual([
         {
           type: "image",
-          source: { type: "base64", media_type: "image/png", data: "[image data: 12 base64 chars]" },
+          source: { type: "base64", media_type: "image/png", data: "[image data: 24 base64 chars]" },
         },
         {
           type: "image",
-          source: { type: "base64", media_type: "image/png", data: "[image data: 16 base64 chars]" },
+          source: { type: "base64", media_type: "image/png", data: "[image data: 24 base64 chars]" },
         },
         { type: "text", text: "look at this\n\n\n\nand this\n\n" },
       ]);
@@ -489,7 +491,7 @@ posixOnly("mid-turn steering e2e", () => {
     const attachments = join(home, ".duskbot", "attachments");
     mkdirSync(attachments, { recursive: true });
     const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174006.png");
-    writeFileSync(imagePath, "steered png");
+    writeFileSync(imagePath, png("steered png"));
     const imageText = `and look at this\n\n<attached-image path="${imagePath}" name="shot.png" />`;
     let second: Awaited<ReturnType<typeof api>>;
     try {
@@ -515,7 +517,7 @@ posixOnly("mid-turn steering e2e", () => {
     ).at(-1)?.msg;
     expect(steerRow.uuid).toEqual(expect.any(String));
     expect(steerRow.message.content).toEqual([
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 16 base64 chars]" } },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 28 base64 chars]" } },
       { type: "text", text: "and look at this\n\n" },
     ]);
   }, 40_000);
@@ -542,7 +544,7 @@ posixOnly("mid-turn steering e2e", () => {
     const attachments = join(home, ".duskbot", "attachments");
     mkdirSync(attachments, { recursive: true });
     const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174004.png");
-    writeFileSync(imagePath, "room png");
+    writeFileSync(imagePath, png("room png"));
     const imageText = `look at the room screenshot\n\n<attached-image path="${imagePath}" name="shot.png" />`;
     const firstReceipt = await person("POST", `/api/groups/${room.id}/messages`, { text: imageText });
     expect((await getGroup())?.working).toBe(true);
@@ -573,7 +575,7 @@ posixOnly("mid-turn steering e2e", () => {
       .filter((row) => row.dir === "out" && row.source === "claude.sdk.message")
       .at(-1)?.msg;
     expect(followUp.message.content).toEqual([
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 12 base64 chars]" } },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 24 base64 chars]" } },
       expect.objectContaining({ type: "text" }),
     ]);
     const textBlock = followUp.message.content.find((block: any) => block.type === "text").text;
@@ -967,7 +969,7 @@ posixOnly("mid-turn steering e2e", () => {
     const attachments = join(home, ".duskbot", "attachments");
     mkdirSync(attachments, { recursive: true });
     const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174005.png");
-    writeFileSync(imagePath, "clip png");
+    writeFileSync(imagePath, png("clip png"));
     const imageText = `look at the clip\n\n<attached-image path="${imagePath}" name="clip.png" />`;
 
     const person = await asPairedPerson();
@@ -1016,7 +1018,7 @@ posixOnly("mid-turn steering e2e", () => {
       const attachments = join(home, ".duskbot", "attachments");
       mkdirSync(attachments, { recursive: true });
       const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174007.png");
-      writeFileSync(imagePath, "room steer png");
+      writeFileSync(imagePath, png("room steer png"));
       const imageText = `what about this one\n\n<attached-image path="${imagePath}" name="room.png" />`;
       const person = await asPairedPerson();
       const queued = await person("POST", `/api/groups/${room.id}/messages`, { text: imageText });
@@ -1047,7 +1049,7 @@ posixOnly("mid-turn steering e2e", () => {
     ).at(-1)?.msg;
     expect(steerRow.uuid).toEqual(expect.any(String));
     expect(steerRow.message.content).toEqual([
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 20 base64 chars]" } },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "[image data: 32 base64 chars]" } },
       { type: "text", text: "what about this one\n\n" },
     ]);
   }, 40_000);
@@ -1066,7 +1068,7 @@ posixOnly("mid-turn steering e2e", () => {
     const attachments = join(home, ".duskbot", "attachments");
     mkdirSync(attachments, { recursive: true });
     const imagePath = join(attachments, "123e4567-e89b-42d3-a456-426614174008.png");
-    writeFileSync(imagePath, "codex png");
+    writeFileSync(imagePath, png("codex png"));
     const imageText = `see this\n\n<attached-image path="${imagePath}" name="codex.png" />`;
     const queued = await api("POST", `/api/bots/${created.id}/messages`, { text: imageText });
     expect(queued.status).toBe(202);
