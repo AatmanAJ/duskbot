@@ -60,3 +60,19 @@ it("a plan that isn't active never says setup is trying again: it says what to c
   expect(host.querySelector('[aria-current="step"]'), "no step spins while nothing is being made").toBeNull();
   expect(opened).toBe(0);
 });
+
+it("the making screen is never a dead end: this computer's chat stays one press away while the cloud is waiting or failed", async () => {
+  for (const kind of ["waiting", "failed"] as const) {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const onHere = vi.fn();
+    await act(async () => root.render(createElement(MakingView, { making: { kind }, opening: false, openFailed: false, onOpen: () => {}, onHere })));
+    const here = host.querySelector<HTMLButtonElement>("[data-funnel-use-here]");
+    expect(here, kind).not.toBeNull();
+    await act(async () => here!.click());
+    expect(onHere).toHaveBeenCalledOnce();
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});

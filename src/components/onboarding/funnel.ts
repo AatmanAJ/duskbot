@@ -72,8 +72,8 @@ export function cloudOwned(account: Parameters<typeof cloudBought>[0] & {
   status?: string; entitlement?: { plan: string; status: string }; renewal?: unknown; trial?: unknown;
 } | null): boolean {
   if (account?.status !== "connected") return false;
-  if (cloudBought(account)) return true;
-  return account.entitlement?.plan === "pro" && account.entitlement.status === "active" && Boolean(account.renewal || account.trial);
+  // only a purchase or a cloud being made or ready: a plan with no cloud behind it still gets the place step
+  return cloudBought(account);
 }
 
 interface AiTileInstance {

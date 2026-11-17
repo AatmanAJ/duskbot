@@ -464,8 +464,8 @@ describe("on the desktop app", () => {
     expect(document.body.querySelector("[data-funnel-back]"), "no way back to the purchase").toBeNull();
   });
 
-  it("a plan on trial counts, also for a run resumed on the checkout; without a plan the place still shows", async () => {
-    const bridge = cloudBridge({ status: "connected", clouds: [], entitlement: { plan: "pro", status: "active", expiresAt: null, version: 1 }, trial: { state: "active", endsAt: 1, amount: 1500 } });
+  it("a trial whose cloud is being made counts, also for a run resumed on the checkout; a plan with no cloud behind it still shows the place", async () => {
+    const bridge = cloudBridge({ status: "connected", clouds: [{ id: "c1", primary: true, runsOn: "cloud", status: "setting_up" }], entitlement: { plan: "pro", status: "active", expiresAt: null, version: 1 }, trial: { state: "active", endsAt: 1, amount: 1500 } });
     desktop({ cloudAccount: bridge });
     localStorage.setItem("dusk.onboarding.welcomeDraft", JSON.stringify({ version: WELCOME_VERSION, beat: "checkout", cloud: true }));
     await show();
@@ -474,10 +474,10 @@ describe("on the desktop app", () => {
     await act(async () => root.unmount());
     root = createRoot(host);
     localStorage.clear();
-    desktop({ cloudAccount: cloudBridge({ status: "connected", clouds: [], entitlement: { plan: "free", status: "inactive", expiresAt: null, version: 1 } }) });
+    desktop({ cloudAccount: cloudBridge({ status: "connected", clouds: [], entitlement: { plan: "pro", status: "active", expiresAt: null, version: 1 }, trial: { state: "active", endsAt: 1, amount: 1500 } }) });
     await show();
     await toPlace();
-    expect(title()).toBe("Where should your bots live?");
+    expect(title(), "no cloud behind the plan: never sent on to a cloud that isn't coming").toBe("Where should your bots live?");
   });
 
   it("dusk cloud's tile says only the free days while there is a trial", async () => {

@@ -84,6 +84,9 @@ export function MakingView({ making, opening, openFailed, onOpen, onPlan, onHere
         </div>
       ) : making.kind === "payment" && onPlan ? (
         <button type="button" data-primary="" data-funnel-plan-page="" onClick={onPlan} className={PRIMARY}>{t("funnel.making.planPage")}</button>
+      ) : (making.kind === "waiting" || making.kind === "failed") && onHere ? (
+        // never a dead end: a cloud that isn't coming yet still leaves this computer's chat one press away
+        <button type="button" data-funnel-use-here="" onClick={onHere} className={QUIET}>{t("funnel.making.here")}</button>
       ) : undefined}
     >
       <div data-funnel-making={making.kind} className="flex w-full max-w-[360px] flex-col gap-3 text-start">
