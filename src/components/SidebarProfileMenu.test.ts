@@ -279,12 +279,12 @@ describe("profileMenuItems", () => {
     expect(items.find((item) => item.key === "account")!.label).toBe("dusk bot Cloud");
   });
 
-  it("ends Support with delete and fresh install in a developer build, never over the chat", async () => {
+  it("ends Support with start fresh in a developer build, never over the chat", async () => {
     vi.stubEnv("VITE_DUSK_DEV_TOOLS", "");
     try {
       const support = build().find((item) => item.key === "support")!.submenu!;
       expect(support.map((item) => item.key)).toEqual(["help", "feedback", "shortcuts", "about", "dev-fresh-install"]);
-      expect(support.at(-1)!.label).toBe("Dev: delete and fresh install");
+      expect(support.at(-1)!.label).toBe("Dev: start fresh on this computer");
     } finally {
       vi.stubEnv("VITE_DUSK_DEV_TOOLS", "0");
     }
