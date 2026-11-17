@@ -157,8 +157,8 @@ export function Composer({
   const singleRow = useMediaQuery(PHONE_LAYOUT);
   // On a wider screen: one pill holding a round +, the field, the mic and one round button in the bot's colour.
   const simpleDock = !singleRow;
-  // a phone's return key is its send key: a software keyboard has no modifier to hold
-  const storedSendKey = useSendKey(); const sendKey = phoneApp() ? "enter" : storedSendKey; const followUpDefault = useFollowUpDefault();
+  // a software keyboard has no shift to hold for a new line, so a phone's return adds one and Send sends
+  const storedSendKey = useSendKey(); const sendKey = phoneApp() ? "mod-enter" : storedSendKey; const followUpDefault = useFollowUpDefault();
   const sendLabel = sendKeyLabel(sendKey);
   const threadId = group?.threadId ?? bot?.threadId ?? "";
   const currentGroupTask = group?.tasks?.find((task) => task.threadId === threadId);
@@ -1200,7 +1200,7 @@ export function Composer({
         )}
         {live && callShown && bot && !group && <CallButton bot={bot} placement="composer" fill={singleRow ? undefined : slot.fill} ink={slot.ink} inverse={singleRow} />}
         {filled && !locked && !phoneVoice && (
-          <ComposerSendButton compact={simpleDock} waits={!held && busy && !steersNow} label={sendNames.label} title={sendNames.title} look={slot.button}
+          <ComposerSendButton compact={simpleDock} waits={!held && busy && !steersNow && !phoneApp()} label={sendNames.label} title={sendNames.title} look={slot.button}
             disabled={(held && !singleRow) || attachmentPending || unsentUpload} onSend={(alternate) => { if (!held) send(followUpFor(alternate)); }} onChoose={send}
             menu={undefined} />
           )}

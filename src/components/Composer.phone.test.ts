@@ -106,24 +106,43 @@ describe("the phone composer", () => {
     }
   });
 
-  it("in the phone app, return is labelled send and sends, whatever send key the desktop chose", () => {
-    setSendKey("mod-enter");
+  it("in the phone app, return adds a new line and only Send sends, whatever send key the desktop chose", () => {
+    setSendKey("enter");
     document.documentElement.dataset.mobileApp = "ios";
     try {
       render({ bot });
       const field = container.querySelector("textarea")!;
-      expect(field.getAttribute("enterkeyhint")).toBe("send");
+      expect(field.getAttribute("enterkeyhint")).toBe("enter");
       restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "", attachments: [] });
       flushSync(() => {
         const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
         setValue.call(field, "ship it");
         field.dispatchEvent(new Event("input", { bubbles: true }));
       });
-      flushSync(() => { field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+      const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      flushSync(() => { field.dispatchEvent(enter); });
+      expect(enter.defaultPrevented).toBe(false);
+      expect(fixture.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "send" }));
+      click(container.querySelector("[data-composer-send]"));
       expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "send", text: "ship it" }));
     } finally {
       delete document.documentElement.dataset.mobileApp;
-      setSendKey("enter");
+    }
+  });
+
+  it("in the phone app, while the bot works a typed message gets the same labelled Send, with no clock and no follow-up menu", () => {
+    document.documentElement.dataset.mobileApp = "ios";
+    try {
+      restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "and also this", attachments: [] });
+      render({ bot: { ...bot, busy: true } });
+      const send = container.querySelector<HTMLElement>("[data-composer-send]")!;
+      expect(send.dataset.composerSend).toBe("");
+      expect(send.getAttribute("aria-label")).toBeTruthy();
+      expect(container.querySelector("[data-composer-follow-up]")).toBeNull();
+      expect(container.querySelector("[data-composer-stop]")).toBeNull();
+      expect(composerButtons(container.querySelector("[data-composer-actions]"))?.buttons.map((b) => b.kind)).toEqual(["mic", "send"]);
+    } finally {
+      delete document.documentElement.dataset.mobileApp;
     }
   });
 
