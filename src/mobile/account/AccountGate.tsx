@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { LoadingMascot } from "../Illustration";
+import { MascotLoader } from "@/components/MascotLoader";
 import type { SignInVerify } from "@/components/account-gate/bridge";
 import { problemLine } from "@/components/cloud-buy/SignInScreen";
 import { t } from "@/lib/i18n";
@@ -152,6 +152,6 @@ export function AccountGate({ children }: { children: ReactNode }) {
       problem, signedIn: () => { setAccount(client.account()); setProblem(undefined); },
     },
   }), [account, origin, wanted, client, platform.kind, platform.appleSignIn, problem]);
-  if (wanted && restoring) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><LoadingMascot /></div>;
+  if (wanted && restoring) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader /></div>;
   return <AccountContext value={context}>{children}</AccountContext>;
 }

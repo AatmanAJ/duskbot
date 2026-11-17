@@ -367,7 +367,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       </div>
       <AnimatePresence>{state.appSettingsOpen && <SettingsModal key="settings" />}</AnimatePresence>
       {cloudAddOpened.current && <CloudAddDialog />}
-      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} text={t(loading.text)} />
+      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} first={loading.text === "app.loading.updating" ? t(loading.text) : undefined} />
       <CloudHowTo />
       <CloudSetup viewer={viewer} welcomeShown={welcomeOnScreen} />
       <WelcomeKeeper viewer={viewer} />

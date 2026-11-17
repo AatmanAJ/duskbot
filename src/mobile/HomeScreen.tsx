@@ -3,6 +3,7 @@ import { motion, useTransform, type MotionValue } from "motion/react";
 import { BellDot, Check, MonitorSmartphone, Pin, PinOff, Plus, RotateCcw, Search, Star, UserRound } from "../icons";
 import { api, retryLoad, useStore, type Bot, type Group } from "@/state/store";
 import { BotAvatar, MausAvatar } from "@/components/Avatar";
+import { MascotLoader } from "@/components/MascotLoader";
 import { GroupAvatar, useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
 import { useMobileAccount } from "./account/AccountGate";
@@ -82,9 +83,12 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   }, [state.bots, state.groups, state.instances]);
 
   useListFlip(listRef, `${pinned.length}|${entries.map((entry) => entry.id).join(",")}`);
-  const sawSkeleton = useRef(!state.hydrated);
+  // the loader hops away as the chats arrive under it; it never comes back once gone
+  const [listIn, setListIn] = useState(state.hydrated === true);
+  const [loaderGone, setLoaderGone] = useState(state.hydrated === true);
+  const sawLoader = useRef(!state.hydrated);
   const reveal = useCallback((el: HTMLDivElement | null) => {
-    if (el && sawSkeleton.current) { sawSkeleton.current = false; revealOnce(el); }
+    if (el && sawLoader.current) { sawLoader.current = false; revealOnce(el); }
   }, []);
 
   const primary = pinned[0];
@@ -132,12 +136,10 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         >
           <div ref={listRef} style={{ paddingTop: LIST_TOP }} className="pb-[calc(var(--m-safe-bottom)+24px)]">
             {state.hydrated && <ConnectionProblemCard notice={live.notice} place={live.place} trying={live.trying} onRetry={live.retry} />}
-            {!state.hydrated ? (state.loadFailed ? (
+            {!state.hydrated || !listIn ? (state.loadFailed ? (
               <EmptyState tone="error" art="signpost" className="pt-16" title={t("mobile.home.loadFailedTitle")} body={t(offline ? "mobile.home.loadFailedOffline" : "mobile.home.loadFailedBody")}
                 action={{ label: t("mobile.home.retry"), icon: <RotateCcw size={17} aria-hidden />, onClick: retryLoad }} />
-            ) : state.loadWaking ? (
-              <EmptyState mascot="blue" className="pt-20" title={t("mobile.home.wakingTitle")} body={t("mobile.home.wakingBody")} />
-            ) : <HomeSkeleton />) : pinned.length + entries.length === 0 ? (
+            ) : null) : pinned.length + entries.length === 0 ? (
               <EmptyState mascot="blue" className="pt-20" title={t("mobile.home.emptyTitle")} body={t("mobile.home.emptyBody")}
                 action={{ label: t("mobile.home.emptyAction"), icon: <Plus size={18} aria-hidden />, onClick: () => onOpenSheet({ kind: "create" }) }} />
             ) : (
@@ -176,6 +178,11 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         </PullToRefresh>
       </div>
 
+      {!loaderGone && !state.loadFailed && (
+        <div data-home-loader="" className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center">
+          <MascotLoader leaving={state.hydrated === true} waking={state.loadWaking === true} onExit={() => setListIn(true)} onGone={() => setLoaderGone(true)} />
+        </div>
+      )}
       <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-0 z-[5] h-[calc(var(--m-safe-top)+72px)] bg-gradient-to-b from-app from-60% to-transparent transition-opacity duration-150", scrolled ? "opacity-100" : "opacity-0")} />
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-3" style={{ paddingTop: BAR_TOP }}>
         <RoundButton floating label={t("mobile.home.you")} onClick={() => onOpenSheet({ kind: "settings" })} className="pointer-events-auto overflow-visible">
@@ -297,21 +304,5 @@ function RowFace({ entry }: { entry: Entry }) {
         </span>
       </span>
     </span>
-  );
-}
-
-function HomeSkeleton() {
-  return (
-    <div aria-hidden className="px-4">
-      <div className="flex gap-4 pb-4 pt-1">
-        {[0, 1, 2, 3].map((i) => <div key={i} className="flex w-[84px] flex-col items-center gap-2"><div className="size-[76px] rounded-full bg-ink/[0.06]" /><div className="h-3 w-12 rounded-full bg-ink/[0.06]" /></div>)}
-      </div>
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="flex min-h-[76px] items-center gap-3.5 px-0.5">
-          <div className="size-[52px] shrink-0 rounded-full bg-ink/[0.06]" />
-          <div className="flex-1 space-y-2"><div className="h-3.5 w-1/3 rounded-full bg-ink/[0.07]" /><div className="h-3 w-2/3 rounded-full bg-ink/[0.05]" /></div>
-        </div>
-      ))}
-    </div>
   );
 }
