@@ -9,6 +9,7 @@ export const selectSettingsOpen = (state: AppState) => state.settingsOpen;
 export const selectError = (state: AppState) => state.error;
 export const selectNotice = (state: AppState) => state.notice;
 export const selectFocusMessage = (state: AppState) => state.focusMessage;
+export const selectPendingQueued = (state: AppState) => state.pendingQueued;
 
 const drawnBot = (bot: Bot) =>
   [bot.id, bot.name, bot.hidden, bot.color, bot.mascotBody, bot.mascotExpression, bot.mascotFaceColor, bot.avatarUrl, bot.avatarCrop, bot.avatarZoom, bot.avatarFocusX, bot.avatarFocusY].join("\u0001");

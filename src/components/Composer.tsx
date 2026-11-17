@@ -6,7 +6,8 @@ import { CARD_ACTION, ChatErrorCard } from "./ChatErrorBanner";
 import { OpenVoiceSettings } from "./OpenVoiceSettings";
 import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { Mic } from "../icons";
-import { useStore, visibleMessages, currentTaskBot, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
+import { useDispatch, useStoreSelector, visibleMessages, currentTaskBot, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
+import { selectBots, selectConfig, selectInstances, selectPendingQueued } from "@/state/store-selectors";
 import { cn } from "@/lib/cn";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { useMenuMotion } from "./MenuMotion";
@@ -149,7 +150,11 @@ export function Composer({
 }) {
   const bot = profile ? currentTaskBot(profile) : undefined;
   const locked = setupLocked || Boolean(bot?.awaitingThreadSnapshot);
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const instances = useStoreSelector(selectInstances);
+  const config = useStoreSelector(selectConfig);
+  const bots = useStoreSelector(selectBots);
+  const pendingQueued = useStoreSelector(selectPendingQueued);
   const { threads, currentBotId } = useThreadRefs();
   // On a phone the composer is a dock: a round + (attach and every other tool), then one pill with the field and the mic.
   const singleRow = useMediaQuery(PHONE_LAYOUT);
@@ -166,7 +171,7 @@ export function Composer({
     ? members?.find((member) => member.id === groupBusyBotId)?.modelSelection.instanceId
     : bot?.modelSelection.instanceId;
   const canSteer =
-    state.instances.find((i) => i.instanceId === steerInstanceId)?.capabilities?.queueing === true;
+    instances.find((i) => i.instanceId === steerInstanceId)?.capabilities?.queueing === true;
   // Visible branch only: an approval left on an abandoned branch must not block the composer.
   const approvals = pendingApprovals(group ? group.messages : bot ? visibleMessages(bot) : []);
   const approval = approvals[0];
@@ -175,7 +180,7 @@ export function Composer({
   const approvalBot = group
     ? members?.find((member) => member.id === approval?.message.from?.botId) ??
       members?.find((member) => member.id === groupBusyBotId)
-    : state.bots.find((one) => one.id === approval?.message.inbox?.from.botId) ?? bot;
+    : bots.find((one) => one.id === approval?.message.inbox?.from.botId) ?? bot;
   const busyName = group
     ? (members?.find((b) => b.id === groupBusyBotId)?.name ??
       (groupWorking ? t("composer.busy.team") : t("composer.busy.aBot")))
@@ -309,7 +314,7 @@ export function Composer({
   const botSupportsImages = (candidate?: Bot) =>
     Boolean(
       candidate &&
-        state.instances.find((i) => i.instanceId === candidate.modelSelection.instanceId)?.capabilities?.images,
+        instances.find((i) => i.instanceId === candidate.modelSelection.instanceId)?.capabilities?.images,
     );
   const imageTargetsSupport = (message: string, mode: "chat" | "goal") => {
     if (!group) return botSupportsImages(bot);
@@ -327,8 +332,8 @@ export function Composer({
   const slash = composerSlashTrigger(text, caret);
   const locale = activeLocale();
   const slashSkills = useSlashSkills(group ? undefined : bot?.id, threadId, Boolean(slash) && slash?.start !== dismissedSlashAt);
-  const canLearn = skillAuthoringEnabled(state.config) &&
-    (group ? (members ?? []).some((member) => supportsAgents(state.instances, member)) : supportsAgents(state.instances, bot));
+  const canLearn = skillAuthoringEnabled(config) &&
+    (group ? (members ?? []).some((member) => supportsAgents(instances, member)) : supportsAgents(instances, bot));
   // the other AI tools' skills wait behind one More row for each / typed
   const [slashMoreAt, setSlashMoreAt] = useState<number | null>(null);
   const slashMoreOpen = slash !== null && slashMoreAt === slash.start;
@@ -350,7 +355,7 @@ export function Composer({
         description: t("composer.command.learnDesc"),
       });
     }
-    if (builtIns && !group && supportsAgents(state.instances, bot)) available.push({
+    if (builtIns && !group && supportsAgents(instances, bot)) available.push({
       kind: "command",
       id: "setup",
       label: "/setup",
@@ -359,7 +364,7 @@ export function Composer({
     return slashMenuRows(available, skillSlashCommands(slashSkills), slash.query, slashMoreOpen, () => ({
       label: t("composer.commands.more"), description: t("composer.commands.moreHint"),
     }));
-  }, [slash, dismissedSlashAt, group, bot, canLearn, state.instances, locale, slashSkills, slashMoreOpen]);
+  }, [slash, dismissedSlashAt, group, bot, canLearn, instances, locale, slashSkills, slashMoreOpen]);
   const commandPickerOpen = commandCandidates.length > 0;
 
   const mention = mentionQueryAt(text, caret); const teammates = useTeammates(); const viewer = useViewerEmail();
@@ -370,11 +375,11 @@ export function Composer({
           ...(!group.dm ? [{ id: "__everyone__", name: "everyone" }] : []),
           ...(members ?? []).map((member) => ({ id: member.id, name: member.name, bot: member })),
         ]
-      : state.bots
+      : bots
           .filter((member) => member.id !== bot?.id && !member.hidden && !hiddenFromSidebar(member, viewer))
           .map((member) => ({ id: member.id, name: member.name, bot: member }));
     return mentionChoicesForQuery([...pool, ...teammateChoices(teammates.people), DEVS_CHOICE], mention.query);
-  }, [mention, dismissedAt, state.bots, bot?.id, group, members, teammates, viewer]);
+  }, [mention, dismissedAt, bots, bot?.id, group, members, teammates, viewer]);
   const mentionEveryoneCount = (members ?? []).filter((member) => !member.hidden).length;
   const mentionPickerOpen = candidates.length > 0;
   const commandMotion = useMenuMotion(commandPickerOpen);
@@ -443,8 +448,8 @@ export function Composer({
     requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(learn.length, learn.length); });
   };
 
-  const pendingCount = (state.pendingQueued[threadId] ?? []).length;
-  const queuedMessages = state.pendingQueued[threadId] ?? [];
+  const pendingCount = (pendingQueued[threadId] ?? []).length;
+  const queuedMessages = pendingQueued[threadId] ?? [];
   const canSteerQueued = composerCanSteerQueuedMessages(
     busy,
     locked,
@@ -709,7 +714,7 @@ export function Composer({
         ...(points ? { pointed: points.pointed } : {}), ...(followUp ? { followUp } : {}),
         onError: () => { points?.restore(); restoreDraft(sentDraft); }, onSettled,
       });
-      directMessageSent(state.instances, bot.modelSelection?.instanceId, busy && followUp !== "steer");
+      directMessageSent(instances, bot.modelSelection?.instanceId, busy && followUp !== "steer");
     }
     setText("");
     setAttachments([]); picks.clear();
@@ -943,7 +948,7 @@ export function Composer({
         <NotesWaitingLine botId={group ? undefined : bot?.id} />
         <QueuedComposerMessages
           items={queuedMessages}
-          oneThreadPerBot={state.config?.cloudStarter === true}
+          oneThreadPerBot={config?.cloudStarter === true}
           onSeePlans={() => dispatch({ type: "toggleAppSettings", open: true, section: "cloudAccount" })}
           onSteer={canSteerQueued ? steerQueued : undefined}
           steerInterrupts={!canSteer}
@@ -992,7 +997,7 @@ export function Composer({
           // grok keeps 80px clear at the field's end for its mic and voice buttons, whether or not the mic shows
           wrapperClassName={cn(singleRow ? undefined : simpleDock ? cn(stacked ? "order-first basis-full" : locked && "me-9") : cn("@max-[30rem]/composer:order-first @max-[30rem]/composer:basis-full", stacked && "order-first basis-full"), recording && "hidden")}
           inputRef={inputRef}
-          peers={[...(group ? members ?? [] : state.bots.filter((member) => member.id !== bot?.id)), ...teammates.peers]}
+          peers={[...(group ? members ?? [] : bots.filter((member) => member.id !== bot?.id)), ...teammates.peers]}
           everyone={Boolean(group && !group.dm)}
           dir="auto"
           rows={1}
