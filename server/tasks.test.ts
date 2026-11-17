@@ -18,6 +18,7 @@ afterEach(async () => {
   // freshStore resets the module graph, so this closes the same SQLite module instance the fresh Store used.
   const { closeMessageDb } = await import("./message-db.ts");
   closeMessageDb();
+  (await import("./registry-rows.ts")).closeRegistryDbs();
   vi.unstubAllEnvs();
   rmSync(home, { recursive: true, force: true });
 });

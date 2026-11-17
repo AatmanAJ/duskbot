@@ -14,6 +14,7 @@ import { freePortBlock } from "./testing/ports.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { ownTurnText } from "./testing/room-handoff-agent.ts";
 import { withAnswer } from "./testing/your-computer.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const RERUN_NOTE = "dusk bot restarted while your previous turn here was running";
@@ -184,7 +185,7 @@ it("R2 a member's coordinate_bots reuses its turn's root, and a Chief's Full rea
   expect((await f.api("PATCH", `/api/bots/${f.clive.id}`, { chiefOfStaff: true })).status).toBe(200);
   // Full on the Chief is the operator's grant, seeded on the stored record while the server is down.
   await f.restart("SIGTERM", {}, () => {
-    const stored = JSON.parse(readFileSync(join(f.dataDir, "bots.json"), "utf8"));
+    const stored = readSavedBots<any>(f.dataDir);
     const chief = stored.find((candidate: any) => candidate.id === f.clive.id);
     chief.approvalMode = "full"; chief.autoApprove = false;
     writeFileSync(join(f.dataDir, "bots.json"), JSON.stringify(stored, null, 2));

@@ -12,6 +12,7 @@ import { capturePrompt, parseCandidates, CAPTURE_MARKER } from "./memory-capture
 import { parseMemoryEntries } from "./memory-entries.ts";
 import { createMemoryUpkeep, type UpkeepBot, type UpkeepEngine } from "./memory-upkeep.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { buildRecall } from "./recall.ts";
 import { listLearnedFacts } from "./profile-learned.ts";
 import { ensureWorkspace, readMemoryTopic, workspaceDir, writeMemoryFile, writeMemoryTopic, WORKSPACES_DIR } from "./workspace.ts";
@@ -22,7 +23,7 @@ const notebookLines = (botId: string, botName: string, text: string): NotebookLi
   parseMemoryEntries(text).filter((entry) => !entry.struck).map((entry) => ({ botId, botName, entry }));
 
 beforeEach(() => {
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
   rmSync(WORKSPACES_DIR, { recursive: true, force: true });
 });

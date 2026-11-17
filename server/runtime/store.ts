@@ -1,7 +1,7 @@
 // The record travels whole in the json column and is validated on every read: a row from another build is refused, never half-read.
 import { chmodSync, closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
 import { z } from "zod";
 import { rollbackKeeping } from "../sqlite-rollback.ts";
 
@@ -159,6 +159,32 @@ const SCHEMA = `
 
 type Row = Record<string, unknown>;
 
+/**
+ * A row read before in exactly this text skips the parse and the schema check: the coordinator reads every live row on
+ * each turn event and each bot frame. Every read still returns its own copy.
+ */
+const MAX_CHECKED_READS = 2_000;
+
+class AssignmentReads {
+  private readonly checked = new Map<string, { json: string; assignment: Assignment }>();
+
+  read(row: Row): Assignment {
+    const id = String(row.id);
+    const json = String(row.json);
+    const known = this.checked.get(id);
+    if (known?.json === json) return structuredClone(known.assignment);
+    const assignment = readAssignment(row);
+    // Live rows are read again and again; finished ones rarely. Starting over past this keeps it small.
+    if (this.checked.size >= MAX_CHECKED_READS) this.checked.clear();
+    this.checked.set(id, { json, assignment: structuredClone(assignment) });
+    return assignment;
+  }
+
+  clear(): void {
+    this.checked.clear();
+  }
+}
+
 function readAssignment(row: Row): Assignment {
   let parsed: unknown;
   try {
@@ -230,6 +256,15 @@ export function openRuntimeStore(path: string): RuntimeStore {
     pruneRows: db.prepare("DELETE FROM assignments WHERE root_id = ?"),
   };
 
+  const reads = new AssignmentReads();
+  // The filters make a handful of distinct queries; each is compiled once.
+  const queries = new Map<string, StatementSync>();
+  const prepared = (sql: string): StatementSync => {
+    let statement = queries.get(sql);
+    if (!statement) queries.set(sql, statement = db.prepare(sql));
+    return statement;
+  };
+
   let depth = 0;
   function transaction<T>(fn: () => T): T {
     if (depth > 0) {
@@ -271,18 +306,18 @@ export function openRuntimeStore(path: string): RuntimeStore {
     path,
     get(id) {
       const row = statements.get.get(id) as Row | undefined;
-      return row ? readAssignment(row) : undefined;
+      return row ? reads.read(row) : undefined;
     },
     children(id) {
-      return (statements.children.all(id) as Row[]).map(readAssignment);
+      return (statements.children.all(id) as Row[]).map((row) => reads.read(row));
     },
     root(id) {
       const row = statements.get.get(id) as Row | undefined;
       if (!row) return undefined;
-      const a = readAssignment(row);
+      const a = reads.read(row);
       if (a.rootId === a.id) return a;
       const rootRow = statements.get.get(a.rootId) as Row | undefined;
-      return rootRow ? readAssignment(rootRow) : undefined;
+      return rootRow ? reads.read(rootRow) : undefined;
     },
     all(filter = {}) {
       const where: string[] = [];
@@ -297,7 +332,7 @@ export function openRuntimeStore(path: string): RuntimeStore {
       if (filter.roots) where.push("parent_id IS NULL");
       if (filter.openSince !== undefined) { where.push("(finished_at IS NULL OR finished_at >= ?)"); params.push(filter.openSince); }
       const sql = `SELECT id, json FROM assignments${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at, rowid`;
-      return (db.prepare(sql).all(...params) as Row[]).map(readAssignment);
+      return (prepared(sql).all(...params) as Row[]).map((row) => reads.read(row));
     },
     insert(a, event) {
       transaction(() => {
@@ -329,7 +364,7 @@ export function openRuntimeStore(path: string): RuntimeStore {
       if (where.length === 0) return [];
       if (undeliveredOnly) where.push("delivered_at IS NULL");
       const sql = `SELECT * FROM inbox WHERE ${where.join(" AND ")} ORDER BY created_at, rowid`;
-      return (db.prepare(sql).all(...params) as Row[]).map(readInbox);
+      return (prepared(sql).all(...params) as Row[]).map(readInbox);
     },
     markDelivered(ids, at) {
       if (ids.length === 0) return;
@@ -346,6 +381,7 @@ export function openRuntimeStore(path: string): RuntimeStore {
           statements.pruneInbox.run(rootId);
           removed += Number(statements.pruneRows.run(rootId).changes);
         }
+        if (removed) reads.clear();
         return removed;
       });
     },

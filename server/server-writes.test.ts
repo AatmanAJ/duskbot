@@ -1,5 +1,5 @@
-// Whole-file saves of bots.json and routines.json: fewer writes, and at every point the server yields to the event loop
-// (where a crash or an exit can land) the files hold what one write per change would have left.
+// Saves of the bot registry (its rows, then bots.json) and routines.json: fewer writes, and at every point the server
+// yields to the event loop (where a crash or an exit can land) the disk holds what one write per change would have left.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -10,7 +10,8 @@ vi.mock("node:fs", { spy: true });
 vi.resetModules();
 const fs = await import("node:fs");
 const { DATA_DIR } = await import("./config.ts");
-const { batchSaves } = await import("./save-batch.ts");
+const { batchSaves, flushDeferredSaves } = await import("./save-batch.ts");
+const { closeRegistryDbs } = await import("./registry-rows.ts");
 const { Store } = await import("./store.ts");
 const { RoutineManager } = await import("./routines.ts");
 type RuntimeEvent = import("./contracts.ts").RuntimeEvent;
@@ -21,28 +22,35 @@ const writesOf = (name: string) => vi.mocked(fs.renameSync).mock.calls.filter(([
 const reads = (name: string) => vi.mocked(fs.readFileSync).mock.calls.filter(([path]) => basename(String(path)) === name).length;
 const bots = () => readFileSync(join(DATA_DIR, "bots.json"), "utf8");
 
-describe("bots.json saves", () => {
+describe("bot registry saves", () => {
   beforeEach(() => {
     // Not the whole folder: on Windows the open messages database holds it.
-    rmSync(join(DATA_DIR, "bots.json"), { force: true });
+    closeRegistryDbs();
+    for (const name of ["bots.json", "registry.db", "registry.db-wal", "registry.db-shm"]) rmSync(join(DATA_DIR, name), { force: true });
     vi.mocked(fs.renameSync).mockClear();
   });
+  // This file's own copy of the module graph holds its own databases.
+  afterEach(() => { flushDeferredSaves(); closeRegistryDbs(); });
 
-  it("are compact, and skip an unchanged save without reading the file back", () => {
+  it("are compact; a thread change writes its rows, bots.json follows once, and an unchanged save writes nothing", () => {
     const store = new Store(selection);
     const bot = store.createBot({ name: "Pepper" });
     expect(bots()).not.toContain("\n");
-    store.patchTask(bot.id, bot.threadId, { lastContextModel: "claude:claude-sonnet-5" });
     const writes = writesOf("bots.json");
+    store.patchTask(bot.id, bot.threadId, { lastContextModel: "claude:claude-sonnet-5" });
+    store.setResumeCursor(bot.id, "claude", "session-1", bot.threadId);
+    expect(writesOf("bots.json")).toBe(writes);
+    flushDeferredSaves();
+    expect(writesOf("bots.json")).toBe(writes + 1);
     const before = reads("bots.json");
     store.patchTask(bot.id, bot.threadId, { lastContextModel: "claude:claude-sonnet-5" });
     store.setResumeCursor(bot.id, "claude", "session-1", bot.threadId);
-    store.setResumeCursor(bot.id, "claude", "session-1", bot.threadId);
+    flushDeferredSaves();
     expect(writesOf("bots.json")).toBe(writes + 1);
     expect(reads("bots.json")).toBe(before);
   });
 
-  it("land once per batch, and the file holds every change when the batch returns", () => {
+  it("land once per batch, and the disk holds every change when the batch returns", () => {
     const store = new Store(selection);
     const bot = store.createBot({ name: "Pepper" });
     const writes = writesOf("bots.json");
@@ -56,7 +64,8 @@ describe("bots.json saves", () => {
       store.patchTask(bot.id, bot.threadId, { unread: true });
       expect(writesOf("bots.json")).toBe(writes);
     });
-    expect(writesOf("bots.json")).toBe(writes + 1);
+    // bots.json follows the rows a moment later
+    expect(writesOf("bots.json")).toBe(writes);
     // A crash here, with no exit handler run, starts from exactly this.
     const task = new Store(selection).taskByThread(bot.id, bot.threadId)!;
     expect(task).toMatchObject({ title: "Plan the offsite", askedAt: 1_000, unread: true, lastInstanceId: "claude", resumeCursors: { claude: "session-1" } });
@@ -76,11 +85,16 @@ describe("bots.json saves", () => {
     const store = new Store(selection);
     const bot = store.createBot({ name: "Pepper" });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // the rows fail, so the save falls back to bots.json, and that fails too
+    const rows = (store as unknown as { rows: { commit: () => void } }).rows;
+    rows.commit = () => { throw new Error("disk I/O error"); };
     vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw Object.assign(new Error("disk full"), { code: "ENOSPC" }); });
-    // a title saves at the end of the running pass (saveSoon); askedAt, used here before, now saves within a second
+    // a title saves at the end of the running pass (saveSoon)
     batchSaves(() => store.patchTask(bot.id, bot.threadId, { title: "Batched" }));
     expect(error).toHaveBeenCalled();
     error.mockRestore();
+    warn.mockRestore();
     expect(new Store(selection).taskByThread(bot.id, bot.threadId)?.title).not.toBe("Batched");
     store.patchTask(bot.id, bot.threadId, { title: "Next" });
     expect(new Store(selection).taskByThread(bot.id, bot.threadId)?.title).toBe("Next");

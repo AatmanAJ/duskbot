@@ -68,7 +68,7 @@ describe("the first run's list of what this Mac holds", () => {
     expect(claudeFind).toMatchObject({ source: "claudeCode", summary: "40 notes about you, 1 bot, 2 skills, and 1 tool", lastUsed: NOW - 2 * 3_600_000, strong: true });
     expect(finds.find((find) => find.id === "bots:hermes agent")).toMatchObject({ summary: "6 notes about you, 2 bots, 3 skills, and 2 paused routines", lastUsed: NOW - DAY, strong: true });
     expect(finds.map((find) => find.id)).not.toContain("bots:grok-bot");
-    expect(localFinds(plan(grok), DETECTION, { grokExports: true }).map((find) => find.id), "Settings, which may read Downloads, lists Grok bot's saved files")
+    expect(localFinds(plan(grok), DETECTION, { grokExports: true, now: NOW }).map((find) => find.id), "Settings, which may read Downloads, lists Grok bot's saved files")
       .toContain("bots:grok-bot");
   });
 
@@ -106,7 +106,7 @@ describe("bringing the chosen in", () => {
     }));
     f.api.mockResolvedValue({ ok: true });
     f.runBotMove.mockResolvedValue([{ app: {}, report: { bots: [{ id: "a", memories: 0, notes: 0 }, { id: "b", memories: 0, notes: 0 }], moved: [], unreadable: [], failed: [] } }]);
-    const finds = localFinds(plan(app("OpenClaw", ["Atlas", "Juno"])), DETECTION).filter((find) => find.id !== "setup:cursor" && find.id !== "setup:codex");
+    const finds = localFinds(plan(app("OpenClaw", ["Atlas", "Juno"])), DETECTION, { now: NOW }).filter((find) => find.id !== "setup:cursor" && find.id !== "setup:codex");
     const run = bringChosen(finds, { dispatch: vi.fn(), firstBotId: "dusk", client: { detect: vi.fn(), apply }, memory: true });
     expect(bringRunNow()).toEqual({ kind: "working", ids: finds.map((find) => find.id), brought: [] });
     await run;
@@ -121,7 +121,7 @@ describe("bringing the chosen in", () => {
   it("names a failure and keeps what did come in", async () => {
     const apply = vi.fn(async () => { throw new Error("offline"); });
     f.runBotMove.mockResolvedValue([{ app: {}, report: { bots: [{ id: "a" }], moved: [], unreadable: [], failed: [] } }]);
-    await bringChosen(localFinds(plan(app("OpenClaw", ["Atlas"])), DETECTION), { dispatch: vi.fn(), firstBotId: null, client: { detect: vi.fn(), apply } });
+    await bringChosen(localFinds(plan(app("OpenClaw", ["Atlas"])), DETECTION, { now: NOW }), { dispatch: vi.fn(), firstBotId: null, client: { detect: vi.fn(), apply } });
     expect(bringRunNow()).toMatchObject({ kind: "done", failed: true, line: "Brought in 1 bot. Some of it couldn't come in. Try again from settings → general → import." });
     expect(bringRunNow(), "a failed find stays one to import again").toMatchObject({ brought: [] });
   });
@@ -130,7 +130,7 @@ describe("bringing the chosen in", () => {
     const apply = vi.fn(async () => ({ skills: { added: ["pdf"], present: [], skipped: [], filesLeftOut: 0, review: [] }, tools: { added: [], present: [], skipped: [] } }));
     f.api.mockResolvedValue({ ok: true });
     f.runBotMove.mockResolvedValue([{ app: {}, report: { bots: [{ id: "a" }], moved: [], unreadable: [], failed: [] } }]);
-    const finds = localFinds(plan(app("OpenClaw", ["Atlas"])), DETECTION);
+    const finds = localFinds(plan(app("OpenClaw", ["Atlas"])), DETECTION, { now: NOW });
     const openclaw = finds.find((find) => find.id === "bots:openclaw")!;
     await bringChosen([openclaw], { dispatch: vi.fn(), firstBotId: null, client: { detect: vi.fn(), apply } });
     expect(apply, "only that app").not.toHaveBeenCalled();

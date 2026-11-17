@@ -12,7 +12,7 @@ import { PASS, type RouteHandler } from "./table.ts";
 
 export interface ComputerFramesRouteDeps {
   cfg: AppConfig;
-  store: Pick<Store, "bots">;
+  store: Pick<Store, "bots" | "bot">;
   teamComputers: Pick<TeamComputers, "list">;
   computerControl: Pick<ComputerControl, "snapshot">;
   computerProviderConfigTransitions: Pick<Set<RemoteComputerProvider>, "has">;
@@ -84,7 +84,7 @@ export function createComputerFramesRoutes(deps: ComputerFramesRouteDeps, frames
       return inventory.instances.flatMap((instance) => {
         if (!instance.ownerBotId || instance.state === "removing") return [];
         const team = teamFor(instance.ownerBotId);
-        const bot = store.bots.find((candidate) => candidate.id === instance.ownerBotId);
+        const bot = store.bot(instance.ownerBotId) ?? undefined;
         const alias = team ? vpsSshAlias(cfg) : vpsSshAliasForBot(cfg, bot);
         if (!alias || alias !== instance.vpsAlias) return [];
         const boxId = `computer:vps:${alias}:${instance.ownerBotId}`;

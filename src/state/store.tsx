@@ -80,6 +80,7 @@ import { olderRunsSince, ROUTINE_RUNS_WINDOW_MS, trimRoutineRuns, withOlderRouti
 import { reconcileSnapshotQueues, rememberConsumedQueueId, replaceBotQueues } from "./queue-receipts";
 import { useSelectedTranscript } from "./use-selected-transcript";
 import { useTranscriptCache } from "./use-transcript-cache";
+import { createLiveBotPatches } from "./live-bot-patches";
 
 export type { MausColor } from "@/lib/mascot";
 export type { RoutineRunCardData } from "../../shared/routine-run";
@@ -3140,6 +3141,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       : null;
     let hydrationFallback = bootChat ? undefined : setTimeout(hydrate, 1_000);
 
+    /** A whole bot from the stream; one it shows open is read here, on a copy, since patched bots share threads. */
+    const showLiveBot = (received: BotAnnouncement) => {
+      let bot = received;
+      const selected = stateRef.current.bots.find((candidate) => candidate.id === bot.id);
+      const shown = selected?.switchingTo ?? selected?.threadId;
+      const selectedTask = bot.tasks?.find((task) => task.threadId === shown);
+      if (bot.id === stateRef.current.selectedId && stateRef.current.activeView === "chat" && chatInFront() &&
+          (selectedTask?.unread || (!bot.tasks && bot.unread))) {
+        bot = { ...bot, tasks: bot.tasks?.map((task) => task === selectedTask ? { ...task, unread: false } : task) };
+        bot.unread = botShowsUnread(bot);
+        fetch(`/api/bots/${bot.id}/read`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: shown }) }).catch(() => {});
+      }
+      rawDispatch({
+        type: "botPatched",
+        bot: withTaskWrites({ ...bot, ...botPatchQueue.overlayFor(bot.id) }),
+      });
+    };
+    const rereading = new Set<string>();
+    const livePatches = createLiveBotPatches<BotAnnouncement>({
+      current: (botId) => stateRef.current.bots.find((candidate) => candidate.id === botId),
+      resync: (botId) => {
+        if (rereading.has(botId)) return;
+        rereading.add(botId);
+        void api<{ bots: BotAnnouncement[] }>("/api/bots?messages=0").then(({ bots }) => {
+          const bot = bots.find((candidate) => candidate.id === botId);
+          // a whole frame that came first is newer than this read
+          if (bot && livePatches.newer(bot)) showLiveBot(livePatches.whole(bot));
+        }).catch(() => {}).finally(() => rereading.delete(botId));
+      },
+    });
     handleFrame = (frame) => {
       // a preference changed at this place, maybe at another of the person's
       if ((frame as { kind: string }).kind === "ui-prefs") { void pullSyncedPrefs(); return; }
@@ -3188,19 +3219,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "bot": {
           const bot = frame.bot as BotAnnouncement;
-          const selected = stateRef.current.bots.find((candidate) => candidate.id === bot.id);
-          const shown = selected?.switchingTo ?? selected?.threadId;
-          const selectedTask = bot.tasks?.find((task) => task.threadId === shown);
-          if (bot.id === stateRef.current.selectedId && stateRef.current.activeView === "chat" && chatInFront() &&
-              (selectedTask?.unread || (!bot.tasks && bot.unread))) {
-            if (selectedTask) selectedTask.unread = false;
-            bot.unread = botShowsUnread(bot);
-            fetch(`/api/bots/${bot.id}/read`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: shown }) }).catch(() => {});
-          }
-          rawDispatch({
-            type: "botPatched",
-            bot: withTaskWrites({ ...bot, ...botPatchQueue.overlayFor(bot.id) }),
-          });
+          livePatches.whole(bot);
+          showLiveBot(bot);
+          break;
+        }
+        case "bot.patch":
+        case "task.patch": {
+          const bot = livePatches.patch(frame);
+          if (bot) showLiveBot(bot);
           break;
         }
         case "group": {
@@ -3283,6 +3309,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rawDispatch({ type: "dataSheet", sheet: frame.sheet });
           break;
         case "bot.deleted":
+          livePatches.deleted(frame.botId);
           botPatchQueue.cancel(frame.botId);
           rawDispatch({ type: "deleteBot", botId: frame.botId });
           break;
@@ -3321,6 +3348,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         publishMissedFrames();
         // Frames buffered before a non-resumable stream belong to an abandoned generation, and so do the turns they named.
         pendingFrames.splice(0);
+        livePatches.reset();
         forgetLiveTurns(); forgetTurnStatuses(); forgetLiveReplies();
         return hydrate();
       },

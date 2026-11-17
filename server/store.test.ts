@@ -22,6 +22,7 @@ import type { ModelSelection } from "./contracts.ts";
 import * as mdb from "./message-db.ts";
 import { peerAllowKey } from "./peer-approval-key.ts";
 import { Store, toWireTask, type BotRecord } from "./store.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import type { TeamSetupRequest } from "../shared/team-setup.ts";
 import { SECTION_CONTEXTS_FILE } from "./section-context.ts";
 
@@ -371,6 +372,7 @@ describe("Store", () => {
     const reloaded = new Store(selection);
     expect(reloaded.taskByThread(bot.id, bot.threadId)).toMatchObject({ surface: "local", surfaceSource: "user" });
     expect(toWireTask(reloaded.taskByThread(bot.id, bot.threadId)!, selection())).not.toHaveProperty("surfaceSource");
+    flushDeferredSaves();
     const saved = JSON.parse(readFileSync(join(DATA_DIR, "bots.json"), "utf8")) as any[];
     expect(saved[0].tasks[0]).toMatchObject({ surface: "local", surfaceSource: "user" });
   });
@@ -396,6 +398,7 @@ describe("Store", () => {
     expect(store.taskByThread(bot.id, legacyMismatch.threadId)).toMatchObject({ surface: "local" });
     expect(store.taskByThread(bot.id, autoMatch.threadId)).toMatchObject({ surface: "vm" });
     expect(changes).toHaveBeenCalledTimes(1);
+    flushDeferredSaves();
     const saved = JSON.parse(readFileSync(join(DATA_DIR, "bots.json"), "utf8")) as any[];
     const savedCleared = saved[0].tasks.find((task: any) => task.threadId === autoMismatch.threadId);
     expect(savedCleared).not.toHaveProperty("surface");
@@ -415,16 +418,19 @@ describe("Store", () => {
     const bot = store.createBot({}, { seedMessages: false });
     store.setResumeCursor(bot.id, "claude", { sessionId: "s-1" }, bot.threadId);
     store.patchTask(bot.id, bot.threadId, { lastContextModel: "claude-sonnet-5" });
+    flushDeferredSaves();
     const saved = statSync(file).ino;
     const events: unknown[] = [];
     store.onChange((change) => events.push(change));
 
     store.setResumeCursor(bot.id, "claude", { sessionId: "s-1" }, bot.threadId);
     store.patchTask(bot.id, bot.threadId, { lastContextModel: "claude-sonnet-5" });
+    flushDeferredSaves();
     expect(statSync(file).ino).toBe(saved);
     expect(events).toEqual([{ type: "bot", botId: bot.id }]);
 
     store.setResumeCursor(bot.id, "claude", { sessionId: "s-2" }, bot.threadId);
+    flushDeferredSaves();
     expect(statSync(file).ino).not.toBe(saved);
     expect(new Store(selection).taskByThread(bot.id, bot.threadId)?.resumeCursors).toEqual({ claude: { sessionId: "s-2" } });
   });
@@ -439,6 +445,7 @@ describe("Store", () => {
     writeFileSync(file, JSON.stringify(edited, null, 2));
 
     store.setResumeCursor(bot.id, "claude", { sessionId: "s-2" }, bot.threadId);
+    flushDeferredSaves();
     expect(JSON.parse(readFileSync(file, "utf8"))[0].name).toBe("Original");
   });
 
@@ -1709,13 +1716,17 @@ describe("Store", () => {
     expect(reloaded.activePath(bot.threadId).map((m) => m.text)).not.toContain("v1");
   });
 
-  it("tolerates a corrupt bots.json by starting empty", () => {
+  it("tolerates a corrupt bots.json: back from the rows that matched the last good one, or empty without them", () => {
     const store = new Store(selection);
-    store.createBot();
+    const bot = store.createBot();
     writeFileSync(join(DATA_DIR, "bots.json"), "{not json");
+    expect(new Store(selection).bot(bot.id)?.name).toBe(bot.name);
 
-    const reloaded = new Store(selection);
-    expect(reloaded.bots).toEqual([]);
+    closeRegistryDbs();
+    for (const name of ["registry.db", "registry.db-wal", "registry.db-shm"]) rmSync(join(DATA_DIR, name), { force: true });
+    writeFileSync(join(DATA_DIR, "bots.json"), "{not json");
+    rmSync(join(DATA_DIR, "bots.json.last-good"), { force: true });
+    expect(new Store(selection).bots).toEqual([]);
   });
 
   it("busy is wiped even when bots.json says otherwise", () => {

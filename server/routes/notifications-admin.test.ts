@@ -7,6 +7,7 @@ import type { NotificationLogEntry } from "../../shared/notification.ts";
 import { DATA_DIR } from "../config.ts";
 import { json, readBody } from "../harness/http.ts";
 import { closeMessageDb, insertNotificationLog, recentNotificationLog } from "../message-db.ts";
+import { closeRegistryDbs } from "../registry-rows.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { SessionRecord } from "../sessions.ts";
 import { createNotificationRoutes, readThreadNotifications } from "./notifications.ts";
@@ -30,7 +31,7 @@ const sample: NotificationLogEntry = { id: "done", at: 1, kind: "done", botId: "
 let server: Server | undefined;
 
 beforeEach(() => {
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
   mkdirSync(DATA_DIR, { recursive: true });
   for (const entry of [sample, { ...sample, id: "spend", kind: "spend" as const, body: "$12 of $20 spent this month" },

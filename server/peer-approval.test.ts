@@ -13,6 +13,7 @@ import {
   type ApprovalBus,
 } from "./peer-approval.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import type { Notification } from "./notify.ts";
 import { Store, type BotRecord } from "./store.ts";
 
@@ -40,7 +41,7 @@ describe("peer approval card lifecycle", () => {
   afterEach(() => {
     cancelPeerApprovalsFor(from.id);
     vi.useRealTimers();
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
   });
 

@@ -122,8 +122,12 @@ it("Clive sets up multi-provider teams at Ask with no card, keeps existing threa
     const room = (await control("new-channel", "--name", "Chief review", "--members", chief.id)).channel;
     unlinkSync(gate);
     await control("send-channel", "--channel", room.id, "--task", room.activeTaskId, "--text", "@Clive Add a helper for this room.");
-    await expect.poll(() => JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).pid, { timeout: 15_000 }).not.toBe(previousPid);
-    const groupDump = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")); previousPid = groupDump.pid;
+    const roomTurnDump = () => {
+      const dump = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"));
+      return dump.pid !== previousPid && JSON.stringify(dump.prompt).includes("Add a helper for this room") ? dump : null;
+    };
+    await expect.poll(roomTurnDump, { timeout: 15_000 }).toBeTruthy();
+    const groupDump = roomTurnDump(); previousPid = groupDump.pid;
     const roomPick = await api("POST", "/api/internal/create-bot", { name: "RoomHelper", role: "Room helper", instructions: "Help the room.", suggestion: true, greet: false },
       201, groupDump.mcpConfig.mcpServers.agents.env.DUSK_COMMS_TOKEN);
     expect(roomPick).toMatchObject({ state: "applied", applied: true });

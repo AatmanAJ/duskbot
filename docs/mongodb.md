@@ -79,4 +79,5 @@ Import a data folder of JSON files once: `node apps/dashboard/scripts/import-jso
 | composio broker installs, triggers, events | Cloudflare D1 `duskbot-composio` | stays (runs on Workers, cannot reach a loopback DB) |
 | link-service sessions and tunnels | `link-service/src/store.mjs` JSON | stays for now (ephemeral) |
 | companion, self-hosted bot | local files on the user's machine | stays (user-side data) |
+| a harness's bot registry rows (`registry.db`, beside `bots.json`) | local `node:sqlite` file on the user's machine ([live-updates.md](live-updates.md)) | stays (user-side data) |
 | sealed cloud backups, secrets files, error spool | files under `DUSK_DASHBOARD_DATA` | blobs and keys stay on disk |

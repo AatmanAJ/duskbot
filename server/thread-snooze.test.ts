@@ -1,5 +1,4 @@
-import { readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { launchVerificationServer, type VerificationServer } from "../scripts/control-dusk.ts";
@@ -7,6 +6,7 @@ import { DATA_DIR } from "./config.ts";
 import type { ModelSelection } from "./contracts.ts";
 import { flushDeferredSaves } from "./save-batch.ts";
 import { Store } from "./store.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 describe("thread snooze through an isolated HTTP fixture", () => {
   let fixture: VerificationServer;
@@ -20,7 +20,7 @@ describe("thread snooze through an isolated HTTP fixture", () => {
   };
   const taskOf = async (botId: string, threadId: string) => (await api("GET", "/api/bots?messages=1")).body.bots
     .find((bot: any) => bot.id === botId).tasks.find((task: any) => task.threadId === threadId);
-  const persistedTask = (botId: string, threadId: string) => JSON.parse(readFileSync(join(fixture.info.dataDir, "bots.json"), "utf8"))
+  const persistedTask = (botId: string, threadId: string) => readSavedBots<any>(fixture.info.dataDir)
     .find((bot: any) => bot.id === botId).tasks.find((task: any) => task.threadId === threadId);
 
   beforeAll(async () => {

@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { expect, it } from "vitest";
 import { launchVerificationServer } from "../scripts/control-dusk.ts";
 import type { WireBot } from "../shared/wire.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 it("saves, reads and resets facial feature color through the isolated HTTP routes", async () => {
   const fixture = await launchVerificationServer();
@@ -24,7 +23,7 @@ it("saves, reads and resets facial feature color through the isolated HTTP route
     for (const mascotFaceColor of ["white", "black", null]) {
       expect((await api("PATCH", path, { mascotFaceColor })).bot.mascotFaceColor).toBe(mascotFaceColor);
       expect((await api("GET", "/api/bots")).bots.find((value: { id: string }) => value.id === bot.id)?.mascotFaceColor).toBe(mascotFaceColor);
-      const saved = JSON.parse(readFileSync(join(fixture.info.dataDir, "bots.json"), "utf8"));
+      const saved = readSavedBots<any>(fixture.info.dataDir);
       expect(saved.find((value: { id: string }) => value.id === bot.id).mascotFaceColor).toBe(mascotFaceColor);
     }
     await api("PATCH", path, { mascotFaceColor: "red" }, 400);

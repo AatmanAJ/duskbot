@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk, verificationServerEnvironment } from "../scripts/control-dusk.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 async function withFixture(mode: "happy" | "hang", run: (helpers: {
   api(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<{ status: number; body: any }>;
@@ -43,7 +44,7 @@ it("validates, saves, clears and creates owner tool selections through the isola
       expect((await api("PATCH", path, { toolScope })).status).toBe(400);
     }
     expect((await api("PATCH", path, { toolScope: { allow: [] } })).body.bot.toolScope).toEqual({ allow: [] });
-    const persisted = JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8"));
+    const persisted = readSavedBots<any>(dataDir);
     expect(persisted.find((row: { id: string }) => row.id === bot.id).toolScope).toEqual({ allow: [] });
     expect((await api("PATCH", path, { title: "Unrelated edit" })).body.bot.toolScope).toEqual({ allow: [] });
     expect((await api("PATCH", path, { toolScope: null })).body.bot).not.toHaveProperty("toolScope");
@@ -70,7 +71,7 @@ it.each(["explicit", "inherited"] as const)("persists the %s tool selection befo
       const name = `Interrupted ${source} scope fixture`;
       const result = await api("POST", "/api/bots", { name, ...(source === "explicit" ? { settings: { toolScope } } : {}) });
       expect(result.status).toBe(500);
-      const saved = JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8"));
+      const saved = readSavedBots<any>(dataDir);
       expect(saved.find((bot: { name: string }) => bot.name === name)?.toolScope).toEqual(toolScope);
       const live = await api("GET", "/api/bots?messages=0");
       expect(live.body.bots.find((bot: { name: string }) => bot.name === name)?.toolScope).toEqual(toolScope);

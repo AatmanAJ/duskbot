@@ -12,6 +12,7 @@ import {
 import { parseMemoryEntries } from "./memory-entries.ts";
 import { flushMemoryJournal, readMemoryJournal } from "./memory-journal.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import type { Message } from "./store.ts";
 import { createMemoryUpkeep, NO_DREAM_ENGINE, type UpkeepBot, type UpkeepEngine } from "./memory-upkeep.ts";
 import { ensureWorkspace, readMemoryTopic, workspaceDir, writeMemoryFile, WORKSPACES_DIR } from "./workspace.ts";
@@ -245,7 +246,7 @@ describe("dreaming in the upkeep loop", () => {
 
   beforeEach(() => {
     dreamer = undefined;
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     rmSync(WORKSPACES_DIR, { recursive: true, force: true });
     answers = [];

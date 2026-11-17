@@ -68,6 +68,7 @@ function snapshot(): string {
 async function installation(from?: string) {
   if (from) {
     (await import("./message-db.ts")).closeMessageDb();
+    (await import("./registry-rows.ts")).closeRegistryDbs();
     home = from;
   } else {
     home = mkdtempSync(join(tmpdir(), "dusk-org-library-"));
@@ -128,6 +129,7 @@ async function installation(from?: string) {
 afterEach(async () => {
   const { closeMessageDb } = await import("./message-db.ts");
   closeMessageDb();
+  (await import("./registry-rows.ts")).closeRegistryDbs();
   vi.unstubAllEnvs();
   vi.useRealTimers();
   for (const dir of homes.splice(0)) rmSync(dir, { recursive: true, force: true });

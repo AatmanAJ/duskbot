@@ -4,6 +4,8 @@ export interface ReplayFrame {
   frame: string | null;
   clientFrame: string | null;
   payload: Record<string, unknown> | null;
+  /** What a protocol 2 stream gets instead of `frame` for a bot frame: a patch, or "" when the bot did not change. */
+  patchFrame?: string;
   /** Only this person's streams get it (a Team Cloud's room as they read it). */
   person?: string;
 }
@@ -16,7 +18,7 @@ export const REPLAY_MAX_CHARS = 8_000_000;
 function retainedChars(entry: ReplayFrame): number {
   const frame = entry.frame?.length ?? 0;
   const clientFrame = entry.clientFrame !== entry.frame ? entry.clientFrame?.length ?? 0 : 0;
-  return frame + clientFrame + (entry.payload ? frame : 0);
+  return frame + clientFrame + (entry.payload ? frame : 0) + (entry.patchFrame?.length ?? 0);
 }
 
 /** Kinds that mean something only live: the buffer keeps their sequence slot, so resume-gap detection still works, and
@@ -37,7 +39,7 @@ export class ReplayBuffer {
   }
 
   push(entry: ReplayFrame): void {
-    const kept = LIVE_ONLY.has(entry.kind) ? { ...entry, frame: null, clientFrame: null, payload: null } : entry;
+    const kept = LIVE_ONLY.has(entry.kind) ? { ...entry, frame: null, clientFrame: null, payload: null, patchFrame: undefined } : entry;
     this.frames.push(kept);
     this.chars += retainedChars(kept);
     while (this.frames.length > 1 && (this.frames.length > this.maxFrames || this.chars > this.maxChars)) {

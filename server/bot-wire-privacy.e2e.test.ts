@@ -1,7 +1,7 @@
 // BotWirePrivateKeys enforces the projection at compile time, but a `...rest` spread carrying a private key out does not
 // fail typecheck, so this pins it at runtime against the real server with the private field live on the stored record.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 
 // Library store import is root-explicit, so the spawned server’s DATA_DIR never has to match this process.
 import { installLibrarySkill } from "./skill-library.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
@@ -97,7 +98,7 @@ describe("bot wire privacy against the real server", () => {
 
     // Seed the server-private field the way a flag-off-on-flag-on cycle or
     // an applied pending-assignments sweep leaves it behind on disk.
-    const bots = JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[];
+    const bots = readSavedBots<any>(data) as any[];
     bots.find((bot) => bot.id === botId)!.assignedSkills = ["some-library-skill"];
     writeFileSync(join(data, "bots.json"), JSON.stringify(bots, null, 2));
 
@@ -112,7 +113,7 @@ describe("bot wire privacy against the real server", () => {
 
     // The field was live on the record in the server that produced those
     // payloads, the assertion above was not checking an empty bot.
-    const stored = (JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[]).find((bot) => bot.id === botId)!;
+    const stored = (readSavedBots<any>(data) as any[]).find((bot) => bot.id === botId)!;
     expect(stored.assignedSkills).toEqual(["some-library-skill"]);
   });
 
@@ -133,7 +134,7 @@ describe("bot wire privacy against the real server", () => {
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const botId = created.body.bot.id as string;
     await stop();
-    const bots = JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[];
+    const bots = readSavedBots<any>(data) as any[];
     bots.find((bot) => bot.id === botId)!.assignedSkills = ["route-library-skill"];
     writeFileSync(join(data, "bots.json"), JSON.stringify(bots, null, 2));
 

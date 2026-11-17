@@ -10,6 +10,7 @@ import { MERGE_MARKER, mergeLoser, mergePairs, mergePrompt, parseMerge } from ".
 import { createMemoryUpkeep } from "./memory-upkeep.ts";
 import { TIDY_MARKER } from "./memory-tidy.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import {
   appendMemoryArchive, compactMemoryTopic, ensureWorkspace, foldOldLogs, listMemoryLogs, listMemoryTopics, memoryTopicIndex, readMemoryLog, readMemoryTopic,
   workspaceDir, writeMemoryFile, writeMemoryLog, writeMemoryTopic, WORKSPACES_DIR,
@@ -18,7 +19,7 @@ import {
 const BOT = "consolidate-bot";
 
 beforeEach(() => {
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
   rmSync(WORKSPACES_DIR, { recursive: true, force: true });
 });

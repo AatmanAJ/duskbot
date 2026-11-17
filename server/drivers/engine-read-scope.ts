@@ -7,11 +7,12 @@ import { basename, join, resolve } from "node:path";
 
 import { boxUploadsDir, taskWorkspaceIds, under } from "../bot-box/plan.ts";
 import { spillDir } from "../mcp-gate-config.ts";
+import { REGISTRY_DB_FILES } from "../registry-rows.ts";
 
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 /** Hidden even before they exist, so a warm engine process does not miss one made after it started. */
-const ALWAYS_HIDDEN_DATA = ["config.json", "messages.db", "runtime.db", "bots.json", "engine-homes", "providers", "ssh", "people", "browser"];
+const ALWAYS_HIDDEN_DATA = ["config.json", "messages.db", "runtime.db", "bots.json", ...REGISTRY_DB_FILES, "engine-homes", "providers", "ssh", "people", "browser"];
 // a server installed before the rename keeps its old folder names until its installer runs again
 const INSTALL_FAMILIES = ["duskbot", LEGACY.devName].flatMap((name) => [["/var/lib", name], ["/etc", name], ["/run", name]] as const);
 

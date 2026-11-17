@@ -2,11 +2,12 @@ import { rmSync } from "node:fs";
 import { beforeEach, expect, it } from "vitest";
 import { DATA_DIR } from "./config.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { createMemoryUpkeep } from "./memory-upkeep.ts";
 import { writeMemoryTopic, readMemoryTopic, ensureWorkspace } from "./workspace.ts";
 import { buildRecall } from "./recall.ts";
 import { TIDY_MARKER } from "./memory-tidy.ts";
-beforeEach(() => { closeMessageDb(); rmSync(DATA_DIR, { recursive: true, force: true }); });
+beforeEach(() => { closeMessageDb(); closeRegistryDbs(); rmSync(DATA_DIR, { recursive: true, force: true }); });
 const bot = { id: "learning", name: "Editor" };
 
 it("reconciles a correction in a two-entry project topic, retaining the old version in the file", async () => {

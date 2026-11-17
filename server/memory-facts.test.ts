@@ -4,13 +4,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { DATA_DIR } from "./config.ts";
 import { annotateFact, factsOf, parseFactFile, syncAboutFacts, syncWorkspaceFacts } from "./memory-facts.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { writeMemoryFile, writeMemoryTopic, WORKSPACES_DIR } from "./workspace.ts";
 
 const BOT = "facts-bot";
 const TODAY = "2026-11-15";
 
 beforeEach(() => {
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
   rmSync(WORKSPACES_DIR, { recursive: true, force: true });
 });

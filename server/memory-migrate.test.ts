@@ -6,10 +6,11 @@ import { DATA_DIR } from "./config.ts";
 import { aboutOwner, factsOf } from "./memory-facts.ts";
 import { BACKUP_DIR, MIGRATION_FILE, migrateMemory } from "./memory-migrate.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { appendMemoryLog, workspaceDir, writeMemoryFile, writeMemoryTopic, WORKSPACES_DIR } from "./workspace.ts";
 
 beforeEach(() => {
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
   rmSync(WORKSPACES_DIR, { recursive: true, force: true });
 });

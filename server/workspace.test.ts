@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { DATA_DIR } from "./config.ts";
 import { closeMessageDb, recallMemory } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 
 import {
   appendMemoryLog,
@@ -45,7 +46,7 @@ const BOT = "bot-workspace-test";
 describe("workspace", () => {
   beforeEach(() => {
     // The search index lives in the messages database; wiping the workspaces without it would leave stale rows.
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     rmSync(WORKSPACES_DIR, { recursive: true, force: true });
     rmSync(TASK_WORKSPACES_DIR, { recursive: true, force: true });

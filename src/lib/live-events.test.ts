@@ -98,10 +98,10 @@ afterEach(() => { vi.useRealTimers(); resetCloudPowerForTests(); });
 
 describe("live events URL", () => {
   it("builds cold and resumable stream URLs", () => {
-    expect(liveEventsUrl()).toBe("/api/events");
-    expect(liveEventsUrl({ since: "ab12cd34:9" })).toBe("/api/events?since=ab12cd34%3A9");
-    expect(liveEventsUrl({ since: "ab12cd34:9", screens: false })).toBe("/api/events?since=ab12cd34%3A9&screens=off");
-    expect(liveEventsUrl({ screens: true })).toBe("/api/events");
+    expect(liveEventsUrl()).toBe("/api/events?protocol=2");
+    expect(liveEventsUrl({ since: "ab12cd34:9" })).toBe("/api/events?protocol=2&since=ab12cd34%3A9");
+    expect(liveEventsUrl({ since: "ab12cd34:9", screens: false })).toBe("/api/events?protocol=2&since=ab12cd34%3A9&screens=off");
+    expect(liveEventsUrl({ screens: true })).toBe("/api/events?protocol=2");
   });
 });
 
@@ -129,7 +129,7 @@ describe("a stream that starts from a snapshot already drawn", () => {
     const onFrame = vi.fn();
     const onSnapshotRequired = vi.fn(async () => true);
     const stop = openLiveEvents({ since: "ab12cd34:9", onFrame, onSnapshotRequired }, test.platform);
-    expect(test.sources[0].url).toMatch(/^\/api\/events\?since=ab12cd34%3A9(&|$)/);
+    expect(test.sources[0].url).toMatch(/^\/api\/events\?protocol=2&since=ab12cd34%3A9(&|$)/);
     test.sources[0].message({ kind: "hello", cursor: "ab12cd34:10", resumed: true });
     test.sources[0].message({ kind: "message" }, "ab12cd34:10");
     expect(onSnapshotRequired).not.toHaveBeenCalled();
@@ -169,7 +169,7 @@ describe("live events supervisor", () => {
     test.setNow(1_900);
     vi.advanceTimersByTime(500);
     expect(test.sources).toHaveLength(2);
-    expect(test.sources[1].url).toBe("/api/events?since=run00000%3A4&screens=off");
+    expect(test.sources[1].url).toBe("/api/events?protocol=2&since=run00000%3A4&screens=off");
     expect(test.sources[0].close).toHaveBeenCalledOnce();
     stop();
   });
@@ -211,19 +211,19 @@ describe("live events supervisor", () => {
     test.sources[0].message({ kind: "message" }, "oldrun00:10");
     test.sources[0].error();
     vi.advanceTimersByTime(100);
-    expect(test.sources[1].url).toBe("/api/events?since=oldrun00%3A10&screens=off");
+    expect(test.sources[1].url).toBe("/api/events?protocol=2&since=oldrun00%3A10&screens=off");
 
     test.sources[1].message({ kind: "hello", resumed: true, cursor: "oldrun00:13" });
     test.sources[1].error();
     vi.advanceTimersByTime(100);
-    expect(test.sources[2].url).toBe("/api/events?since=oldrun00%3A10&screens=off");
+    expect(test.sources[2].url).toBe("/api/events?protocol=2&since=oldrun00%3A10&screens=off");
 
     test.sources[2].message({ kind: "hello", resumed: false, cursor: "newrun00:7" });
     test.sources[2].message({ kind: "message", value: "behind failed snapshot" }, "newrun00:8");
     snapshotResolutions.shift()?.(false);
     await Promise.resolve();
     vi.advanceTimersByTime(100);
-    expect(test.sources[3].url).toBe("/api/events?since=oldrun00%3A10&screens=off");
+    expect(test.sources[3].url).toBe("/api/events?protocol=2&since=oldrun00%3A10&screens=off");
 
     test.sources[3].message({ kind: "hello", resumed: false, cursor: "newrun00:8" });
     test.sources[3].message({ kind: "message", value: "after snapshot" }, "newrun00:9");
@@ -231,7 +231,7 @@ describe("live events supervisor", () => {
     await Promise.resolve();
     test.sources[3].error();
     vi.advanceTimersByTime(100);
-    expect(test.sources[4].url).toBe("/api/events?since=newrun00%3A9&screens=off");
+    expect(test.sources[4].url).toBe("/api/events?protocol=2&since=newrun00%3A9&screens=off");
     expect(frames).toEqual([
       { kind: "message" },
       { kind: "message", value: "behind failed snapshot" },
@@ -396,7 +396,7 @@ describe("a Cloud home that goes to sleep", () => {
     expect(test.sources).toHaveLength(1);
     markCloudAwake();
     expect(test.sources).toHaveLength(2);
-    expect(test.sources[1].url).toBe("/api/events?since=run00000%3A4&screens=off");
+    expect(test.sources[1].url).toBe("/api/events?protocol=2&since=run00000%3A4&screens=off");
     stop();
   });
 
@@ -438,7 +438,7 @@ describe("a Cloud home that goes to sleep", () => {
     loading.sources[0].message(sleeping, "run00000:5");
     expect(cloudAsleep()).toBe(true);
     markCloudAwake();
-    expect(loading.sources[1].url).toBe("/api/events?screens=off");
+    expect(loading.sources[1].url).toBe("/api/events?protocol=2&screens=off");
     stopLoading();
   });
 
@@ -481,7 +481,7 @@ describe("live screens", () => {
   it("leave screens out until a view that draws them listens, then reopen from the cursor both ways", async () => {
     const test = harness();
     const stop = openLiveEvents({ onFrame: vi.fn(), onSnapshotRequired: async () => true }, test.platform);
-    expect(test.sources[0].url).toBe("/api/events?screens=off");
+    expect(test.sources[0].url).toBe("/api/events?protocol=2&screens=off");
     test.sources[0].open();
     test.sources[0].message({ kind: "hello", resumed: true, cursor: "run00000:3" });
     test.sources[0].message({ kind: "message" }, "run00000:4");
@@ -492,7 +492,7 @@ describe("live screens", () => {
     const viewer = listenLiveFrames({ screens: true, onFrame: () => {} });
     const second = listenLiveFrames({ screens: true, onFrame: () => {} });
     await Promise.resolve();
-    expect(test.sources.map((source) => source.url)).toEqual(["/api/events?screens=off", "/api/events?since=run00000%3A4"]);
+    expect(test.sources.map((source) => source.url)).toEqual(["/api/events?protocol=2&screens=off", "/api/events?protocol=2&since=run00000%3A4"]);
     expect(test.sources[0].close).toHaveBeenCalledOnce();
 
     viewer();
@@ -500,7 +500,7 @@ describe("live screens", () => {
     expect(test.sources).toHaveLength(2);
     second();
     await Promise.resolve();
-    expect(test.sources[2].url).toBe("/api/events?since=run00000%3A4&screens=off");
+    expect(test.sources[2].url).toBe("/api/events?protocol=2&since=run00000%3A4&screens=off");
     quiet();
     stop();
   });

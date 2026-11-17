@@ -1,5 +1,6 @@
 // EventSource hides SSE comment keepalives, so liveness comes from the server's visible `ping` frame.
 import type { ServerFrame } from "../../shared/wire";
+import { liveEventsParams } from "../../shared/live-protocol";
 import { asleepAnswer, BACKGROUND_HEADERS, cloudAsleep, markCloudAsleep, noteCloudAwake, onCloudPower, sleepingFrame } from "./cloud-power";
 import { recordBotTextMessage, recordRuntimeEvent } from "./voice-latency-probe";
 import { noteTurnEvent } from "@/state/turn-status";
@@ -63,7 +64,7 @@ export interface LiveEventsHandlers {
 
 /** `screens: false` asks the server to leave out live screen frames. */
 export function liveEventsUrl(options?: { since?: string | null; screens?: boolean }): string {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams(liveEventsParams());
   if (options?.since) params.set("since", options.since);
   if (options?.screens === false) params.set("screens", "off");
   const query = params.toString();

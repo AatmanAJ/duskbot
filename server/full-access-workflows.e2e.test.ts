@@ -9,6 +9,7 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 it("applies requested Full Access workflows through MCP without duplicate approvals, and the same changes apply in an Ask task with Undo", async () => {
   const fixture = await launchVerificationServer({}, undefined, undefined, undefined, { scripted: true });
@@ -110,7 +111,7 @@ it("applies requested Full Access workflows through MCP without duplicate approv
     // This is fixture setup, not a production grant endpoint or bypass flag.
     // Stop the exact owned server before changing its disposable persisted data.
     await waitForExit(fixture.child, { signal: "SIGTERM" });
-    const savedBots = JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8"));
+    const savedBots = readSavedBots<any>(dataDir);
     const savedChief = savedBots.find((bot: any) => bot.id === chief.id);
     savedChief.approvalMode = "full"; savedChief.autoApprove = false;
     for (const task of savedChief.tasks) {
@@ -243,7 +244,7 @@ it("applies requested Full Access workflows through MCP without duplicate approv
     expect((await bots()).find(bot => bot.id === inverse.id)).toMatchObject({ title: "Applied from Full task", approvalMode: "ask" });
     expect(await unanswered(chief.activeTaskId)).toHaveLength(0);
     expect(providerTurns()).toHaveLength(7);
-    const persisted = JSON.parse(readFileSync(join(dataDir, "bots.json"), "utf8"));
+    const persisted = readSavedBots<any>(dataDir);
     expect(persisted.find((bot: any) => bot.id === chief.id)).toMatchObject({ title: "Monthly reporting Chief", approvalMode: "full" });
     expect(persisted.find((bot: any) => bot.id === chief.id).tasks.find((task: any) => task.threadId === ask.threadId).approvalMode).toBe("ask");
     expect(persisted.find((bot: any) => bot.id === inverse.id)).toMatchObject({ title: "Applied from Full task", approvalMode: "ask" });

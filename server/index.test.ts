@@ -5843,7 +5843,7 @@ describe("harness HTTP API", () => {
       const firstCard = (await first.json()) as { messageId: string };
 
       // A second connection holds the database write lock, so the fresh card's append fails mid-request.
-      const lockDb = new DatabaseSync(join(home, ".duskbot", "messages.db"));
+      const lockDb = new DatabaseSync(join(home, ".duskbot", "messages.db"), { timeout: 10_000 });
       lockDb.exec("BEGIN IMMEDIATE");
       try {
         const failed = await request("needed for the second task");

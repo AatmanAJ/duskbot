@@ -67,6 +67,8 @@ export interface ThreadRouteDeps {
   loopback: { trust: ResolveOptions["loopbackTrust"]; localBrowsers: boolean };
   /** The event stream's cursor now: a client that drew this snapshot resumes the stream from it instead of reading it again. */
   streamCursor?(): string;
+  /** A client read every bot: the stream sends each bot's next frame whole, so no patch lands on what it read. */
+  snapshotRead?(): void;
   desktopMutationToken(): string | undefined;
   companionMutationToken(): string | undefined;
   cliOwnerToken(): string | undefined;
@@ -113,6 +115,7 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
     if (method === "GET" && path === "/api/bots") {
       try { groupUsageReader.refresh(); } catch { }
       const cursor = deps.streamCursor?.();
+      deps.snapshotRead?.();
       const limit = pageSize(url.searchParams.get("messages"));
       if (limit === null) return json(res, 400, { error: "messages must be a non-negative whole number" });
       // tasks stays explicit: clients expect [] where wireBot() would omit the key.

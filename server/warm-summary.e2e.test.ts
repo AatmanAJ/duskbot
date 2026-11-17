@@ -9,6 +9,7 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { request } from "../scripts/mcp-server.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 const COMPACT_MS = 6_000;
 
@@ -35,7 +36,7 @@ async function setup(extra: NodeJS.ProcessEnv) {
     const thread = bot.activeTaskId as string;
     // A 1M-window model, as on the trial: dusk bot's own fold would wait for 180k, so Claude Code's comes first.
     await cli("set-model", "--bot", bot.id, "--instance", "claude", "--model", "claude-opus-5-5");
-    const task = () => JSON.parse(readFileSync(join(session.info.dataDir, "bots.json"), "utf8"))
+    const task = () => readSavedBots<any>(session.info.dataDir)
       .find((b: any) => b.id === bot.id).tasks.find((t: any) => t.threadId === thread);
     /** The time from a send to the bot's reply being in the conversation. */
     const send = async (text: string) => {

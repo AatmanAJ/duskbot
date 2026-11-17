@@ -3,17 +3,18 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { DATA_DIR } from "./config.ts";
 import { closeMessageDb, closeMessageSearch, deleteThread, insertMessage, searchMessages, searchMessagesAsync } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { MessageSearchWorker } from "./message-search-worker.ts";
 
 beforeEach(async () => {
   await closeMessageSearch();
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
   mkdirSync(DATA_DIR, { recursive: true });
   insertMessage("a", { id: "m1", at: 1, role: "user", kind: "text", text: "Literal 10%_\\ path. Hello 世界. " + "long ".repeat(100) + "needle" });
   insertMessage("b", { id: "m2", at: 2, role: "bot", kind: "activity", tool: { name: "Run HELLO migration", ok: true } });
 });
-afterEach(async () => { await closeMessageSearch(); closeMessageDb(); });
+afterEach(async () => { await closeMessageSearch(); closeMessageDb(); closeRegistryDbs(); });
 
 it("preserves literal search, tool names, snippets, order, limits and thread scope", async () => {
   for (const query of ["hello", "10%_\\", "世界", "needle", "absent", "  "]) {
@@ -42,7 +43,7 @@ it("interrupts pending scans before maintenance and reopens against the new data
   const pending = expect(searchMessagesAsync("hello")).rejects.toMatchObject({ status: 503 });
   await closeMessageSearch();
   await pending;
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
   mkdirSync(DATA_DIR, { recursive: true });
   insertMessage("replacement", { id: "m", at: 1, role: "user", kind: "text", text: "hello replacement" });

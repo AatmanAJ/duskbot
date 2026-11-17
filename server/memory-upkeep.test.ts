@@ -11,6 +11,7 @@ import { flushMemoryJournal, readMemoryJournal } from "./memory-journal.ts";
 import { applyTidy, contradictionBudget, contradictionCandidates, parseContradictions, planTidy } from "./memory-tidy.ts";
 import { createMemoryUpkeep, MAX_PENDING_THREADS, NO_TEXT_ENGINE, type UpkeepBot, type UpkeepEngine } from "./memory-upkeep.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { aboutMeLine, appendAboutMe, clearForgotten, commitLearned, listLearnedFacts, planLearned, rememberForgotten, removeLearned } from "./profile-learned.ts";
 import { ensureWorkspace, readMemoryTopic, workspaceDir, writeMemoryFile, writeMemoryTopic, WORKSPACES_DIR } from "./workspace.ts";
 
@@ -256,7 +257,7 @@ describe("the upkeep loop", () => {
   });
 
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     rmSync(WORKSPACES_DIR, { recursive: true, force: true });
     answers = [];

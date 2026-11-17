@@ -1,13 +1,14 @@
 // real server and fake claude cli with no VPS connected: cloud computers are VPS-only, so asking for one names the missing VPS.
 // a restartable home lets a test seed an automatic pin.
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { freePortBlock } from "./testing/ports.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { readSavedBots } from "./registry-rows.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -48,10 +49,10 @@ describe("a cloud computer that can't start, against the real server", () => {
     async () => (await apiOk("GET", "/api/bots?messages=0")).bots.find((bot: any) => bot.id === botId),
     (bot: any) => bot && !bot.busy, "idle bot");
   const savedTask = (botId: string, threadId: string) =>
-    (JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[])
+    (readSavedBots<any>(data) as any[])
       .find((bot: any) => bot.id === botId)?.tasks.find((task: any) => task.threadId === threadId);
   const editSavedBot = (botId: string, edit: (bot: any) => void) => {
-    const bots = JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[];
+    const bots = readSavedBots<any>(data) as any[];
     edit(bots.find((bot: any) => bot.id === botId));
     writeFileSync(join(data, "bots.json"), JSON.stringify(bots, null, 2));
   };
