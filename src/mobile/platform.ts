@@ -26,6 +26,20 @@ export type CameraPermission = "granted" | "denied" | "prompt";
 export interface CameraSession {
   stop(): Promise<void>;
   torch?: { set(on: boolean): Promise<void> };
+  /** The system drew the whole scanner itself (iPhone, VisionKit): the page shows none of its own. */
+  fullScreen?: boolean;
+  /** A read code is being redeemed: a full screen scanner pauses and says so. */
+  busy?(on: boolean, label?: string): void;
+}
+
+/** The page's words for a scanner the system draws full screen. */
+export interface ScanOverlay {
+  title: string;
+  hint: string;
+  close: string;
+  torch: string;
+  /** buttons under the viewfinder; `icon` is an SF Symbol */
+  actions: { key: string; title: string; icon?: string }[];
 }
 
 export interface CameraScanner {
@@ -33,7 +47,14 @@ export interface CameraScanner {
   request(): Promise<CameraPermission>;
   /** The OS settings page for this app, where a refused camera is turned back on. */
   openSettings?(): Promise<void>;
-  start(options: { onCode: (text: string) => void; onError?: (message: string) => void; video?: HTMLVideoElement | null }): Promise<CameraSession>;
+  start(options: {
+    onCode: (text: string) => void;
+    onError?: (message: string) => void;
+    video?: HTMLVideoElement | null;
+    overlay?: ScanOverlay;
+    /** a button of the overlay, or "close" */
+    onAction?: (key: string) => void;
+  }): Promise<CameraSession>;
 }
 
 /** Everything the phone layer asks of the device. The native app supplies Capacitor plugins; the web preview and a

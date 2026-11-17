@@ -18,7 +18,7 @@ const keystore = SecureStorage as unknown as {
 };
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform } from "@/mobile/platform";
+import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform, ScanOverlay } from "@/mobile/platform";
 import type { GlassBridge, GlassEvent, GlassState } from "@/mobile/native-glass";
 import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
@@ -31,11 +31,13 @@ interface QrScannerPlugin {
   checkPermissions(): Promise<{ camera: string }>;
   requestPermissions(): Promise<{ camera: string }>;
   openSettings(): Promise<void>;
-  startScan(): Promise<void>;
+  startScan(options?: { overlay?: ScanOverlay }): Promise<{ fullScreen?: boolean } | undefined>;
   stopScan(): Promise<void>;
   isTorchAvailable(): Promise<{ available: boolean }>;
   setTorch(options: { on: boolean }): Promise<void>;
+  setBusy(options: { busy: boolean; label?: string }): Promise<void>;
   addListener(event: "codeScanned", listener: (event: { text?: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "scannerAction", listener: (event: { key?: string }) => void): Promise<PluginListenerHandle>;
 }
 const QrScanner = registerPlugin<QrScannerPlugin>("QrScanner");
 /** The app's own Sign in with Apple (ios/App/App/AppleSignInPlugin.swift): AuthenticationServices, no SDK. */
@@ -182,8 +184,10 @@ export interface ScanDriver {
   permission(): Promise<string>;
   request(): Promise<string>;
   openSettings(): Promise<void>;
-  listen(onCode: (text: string | undefined) => void, onError: (message: string) => void): Promise<PluginListenerHandle[]>;
-  start(): Promise<void>;
+  listen(onCode: (text: string | undefined) => void, onError: (message: string) => void, onAction?: (key: string) => void): Promise<PluginListenerHandle[]>;
+  /** with an overlay a scanner may draw the whole screen itself, and says so */
+  start(overlay?: ScanOverlay): Promise<{ fullScreen?: boolean } | void>;
+  busy?(on: boolean, label?: string): Promise<void>;
   stop(): Promise<void>;
   torchAvailable(): Promise<boolean>;
   torch(on: boolean): Promise<void>;
@@ -193,8 +197,12 @@ const iosScanner: ScanDriver = {
   permission: async () => (await QrScanner.checkPermissions()).camera,
   request: async () => (await QrScanner.requestPermissions()).camera,
   openSettings: () => QrScanner.openSettings(),
-  listen: async (onCode) => [await QrScanner.addListener("codeScanned", ({ text }) => onCode(text))],
-  start: () => QrScanner.startScan(),
+  listen: async (onCode, _onError, onAction) => [
+    await QrScanner.addListener("codeScanned", ({ text }) => onCode(text)),
+    await QrScanner.addListener("scannerAction", ({ key }) => { if (typeof key === "string") onAction?.(key); }),
+  ],
+  start: async (overlay) => (await QrScanner.startScan(overlay ? { overlay } : undefined)) ?? undefined,
+  busy: (busy, label) => QrScanner.setBusy({ busy, label }),
   stop: () => QrScanner.stopScan(),
   torchAvailable: async () => (await QrScanner.isTorchAvailable()).available,
   torch: (on) => QrScanner.setTorch({ on }),
@@ -208,7 +216,7 @@ const androidScanner: ScanDriver = {
     await BarcodeScanner.addListener("barcodesScanned", ({ barcodes }) => onCode(barcodes[0]?.rawValue)),
     await BarcodeScanner.addListener("scanError", ({ message }) => onError(message)),
   ],
-  start: () => BarcodeScanner.startScan({ formats: [BarcodeFormat.QrCode] }),
+  start: async () => { await BarcodeScanner.startScan({ formats: [BarcodeFormat.QrCode] }); },
   stop: () => BarcodeScanner.stopScan(),
   torchAvailable: async () => (await BarcodeScanner.isTorchAvailable()).available,
   torch: (on) => (on ? BarcodeScanner.enableTorch() : BarcodeScanner.disableTorch()),
@@ -220,7 +228,7 @@ export function scannerCamera(driver: ScanDriver, scanning: (on: boolean) => voi
     permission: async () => cameraPermission(await driver.permission()),
     request: async () => cameraPermission(await driver.request()),
     openSettings: () => driver.openSettings(),
-    async start({ onCode, onError }) {
+    async start({ onCode, onError, overlay, onAction }) {
       let handles: PluginListenerHandle[] = [];
       const deliver = distinctCodes(onCode);
       let stopped = false;
@@ -245,11 +253,20 @@ export function scannerCamera(driver: ScanDriver, scanning: (on: boolean) => voi
       };
       try {
         scanning(true);
-        handles = await driver.listen((text) => { if (!stopped) deliver(text); }, (message) => { if (!stopped) onError?.(message); });
-        await driver.start();
-        const available = await driver.torchAvailable();
+        handles = await driver.listen(
+          (text) => { if (!stopped) deliver(text); },
+          (message) => { if (!stopped) onError?.(message); },
+          (key) => { if (!stopped) onAction?.(key); },
+        );
+        const fullScreen = Boolean((await driver.start(overlay))?.fullScreen);
+        // the system's own scanner covers the page, which stays as it is under it
+        if (fullScreen) scanning(false);
+        const available = !fullScreen && await driver.torchAvailable();
+        const busy = driver.busy;
         return {
           stop,
+          fullScreen,
+          busy: fullScreen && busy ? (on, label) => { if (!stopped) void busy(on, label).catch(() => {}); } : undefined,
           torch: available ? {
             set(on) {
               if (stopped) return Promise.resolve();

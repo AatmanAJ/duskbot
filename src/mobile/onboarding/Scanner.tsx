@@ -31,18 +31,41 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
   const [unavailable, setUnavailable] = useState(false);
   const [seen, setSeen] = useState(false);
   const [frame] = useState(frameSize);
+  // an iPhone may draw the whole scanner natively; until it says, the page draws nothing of its own over the camera
+  const [mode, setMode] = useState<"pending" | "web" | "native">(platform.kind === "ios" ? "pending" : "web");
   const read = useRef(onCode);
   read.current = onCode;
+  const actions = useRef({ onClose, onEnterCode, onPaste });
+  actions.current = { onClose, onEnterCode, onPaste };
+  const native = mode === "native";
 
   useEffect(() => {
     let stopped = false;
     const camera = platform.camera;
     if (!camera) { setUnavailable(true); return; }
+    let fullScreen = false;
     const starting = lastStop.catch(() => {}).then(() => stopped ? null : camera.start({
       video: videoRef.current,
+      overlay: {
+        title: t("mobile.onboarding.scanTitle"),
+        hint: t("mobile.onboarding.scanHint"),
+        close: t("mobile.sheet.close"),
+        torch: t("mobile.onboarding.torch"),
+        actions: [
+          { key: "code", title: t("mobile.onboarding.enterCode"), icon: "keyboard" },
+          { key: "paste", title: t("mobile.onboarding.pasteLink"), icon: "link" },
+        ],
+      },
+      onAction: (key) => {
+        if (stopped) return;
+        if (key === "close") actions.current.onClose();
+        else if (key === "code") actions.current.onEnterCode();
+        else if (key === "paste") actions.current.onPaste();
+      },
       onCode: (text) => {
         if (stopped) return;
-        haptic("medium");
+        // the system's scanner gives its own haptic as it reads
+        if (!fullScreen) haptic("medium");
         setSeen(true);
         read.current(text);
       },
@@ -51,8 +74,11 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
     void starting.then((live) => {
       if (!live) return;
       session.current = live;
-      if (!stopped && live.torch) setTorch(false);
-    }).catch(() => { if (!stopped) setUnavailable(true); });
+      fullScreen = Boolean(live.fullScreen);
+      if (stopped) return;
+      setMode(fullScreen ? "native" : "web");
+      if (live.torch) setTorch(false);
+    }).catch(() => { if (!stopped) { setUnavailable(true); setMode("web"); } });
     return () => {
       stopped = true;
       session.current = null;
@@ -60,6 +86,10 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
       lastStop = starting.then((live) => live?.stop()).then(() => new Promise((resolve) => setTimeout(resolve, 250))).catch(() => {});
     };
   }, [platform]);
+
+  useEffect(() => {
+    if (native) session.current?.busy?.(busy, t("mobile.onboarding.linking"));
+  }, [native, busy]);
 
   const toggleTorch = () => {
     const live = session.current;
@@ -77,7 +107,8 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
       role="dialog" aria-modal="true" aria-label={t("mobile.onboarding.scanTitle")}
     >
       {platform.kind === "web" && <video ref={videoRef} className="absolute inset-0 size-full object-cover" muted playsInline autoPlay aria-hidden />}
-      {unavailable && <div aria-hidden className="absolute inset-0 bg-[#121212]" />}
+      {(unavailable || mode !== "web") && <div aria-hidden className="absolute inset-0 bg-[#121212]" />}
+      {mode === "web" && <>
 
       <div className="absolute left-1/2 top-[44%] -translate-x-1/2 -translate-y-1/2" style={{ width: frame, height: frame }}>
         <div aria-hidden className="absolute inset-0 rounded-[44px]" style={{ boxShadow: "0 0 0 200vmax rgb(6 8 14 / 0.64)" }} />
@@ -127,6 +158,7 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
           <button type="button" onClick={onPaste} className="mobile-press flex h-11 items-center gap-2 rounded-full bg-white/[0.14] px-4 text-[15px] font-medium text-white backdrop-blur-md"><Link2 size={17} />{t("mobile.onboarding.pasteLink")}</button>
         </div>
       </motion.div>
+      </>}
     </motion.div>
   );
 }
