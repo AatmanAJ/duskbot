@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -59,8 +59,7 @@ describe("action receipts", () => {
     for (const name of ["2026-01.jsonl", "2026-09.jsonl", "notes.txt"]) writeFileSync(join(dataDir, "receipts", name), "{}\n");
     const receipts = createActionReceipts({ dataDir, botOf: () => "bot-1", mark: () => true, now: () => Date.parse("2026-11-12T00:00:00Z") });
     receipts.record("t1", "GMAIL_SEND_EMAIL");
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(readdirSync(join(dataDir, "receipts")).sort()).toEqual(["2026-11.jsonl", "notes.txt"]);
+    await expect.poll(() => readdirSync(join(dataDir, "receipts")).sort()).toEqual(["2026-11.jsonl", "notes.txt"]);
   });
 
   it("marks a reply that claims a send its turn has no receipt for", () => {
@@ -78,7 +77,7 @@ describe("action receipts", () => {
     h.send({ type: "item.completed", itemType: "assistant_text", text: "Sent it to Priya." });
     h.send({ type: "turn.completed", ok: true });
     expect(h.marks).toEqual([]);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await expect.poll(() => existsSync(join(h.dataDir, "receipts")) && readdirSync(join(h.dataDir, "receipts")).length).toBe(1);
     const file = readdirSync(join(h.dataDir, "receipts"))[0]!;
     expect(JSON.parse(readFileSync(join(h.dataDir, "receipts", file), "utf8").trim())).toMatchObject({ botId: "bot-1", threadId: "t1", kind: "send", what: "GMAIL_SEND_EMAIL" });
   });
