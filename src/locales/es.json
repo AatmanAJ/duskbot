@@ -59,6 +59,8 @@
   "server.retry.why.signIn": "Se estaba renovando la sesión de la IA.",
   "server.retry.why.other": "La IA no respondió correctamente.",
   "server.claude.approvalChannel": "No se pudo iniciar esta respuesta: dusk bot no pudo abrir el canal privado que usa para pedir tu aprobación. Inténtalo de nuevo y, si sigue pasando, reinicia dusk bot.",
+  "server.batch.continuing": "Continuando: {progress}, con el resto",
+  "server.batch.paused": "En pausa en {progress}: el sitio pidió ir más despacio, sigue en unos {minutes} min",
   "server.reports.sent": "Enviado al equipo de Dusk (informe {report}). El equipo de dusk lo recibe por correo electrónico.",
   "server.reports.sentReply": "Enviado al equipo de Dusk (informe {report}). El equipo de dusk lo recibe por correo electrónico y responderá a {contact}.",
   "server.reports.sentLater": "Enviado al equipo de Dusk (informe {report}) después de que un intento anterior no saliera. El equipo de dusk lo recibe por correo electrónico.",

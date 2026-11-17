@@ -66,6 +66,8 @@
   "server.retry.why.signIn": "AIのログイン情報を更新していました。",
   "server.retry.why.other": "AIが正しく応答しませんでした。",
   "server.claude.approvalChannel": "返信を開始できませんでした。dusk bot が、あなたに承認をお願いするための専用の接続を開けませんでした。もう一度お試しください。繰り返し起きる場合は、dusk bot を再起動してください。",
+  "server.batch.continuing": "続行中：{progress}、残りを進めています",
+  "server.batch.paused": "{progress} で一時停止：サイトから速度を落とすよう求められました。約 {minutes} 分後に再開します",
   "server.reports.sent": "Dusk チームに送信しました（レポート {report}）。dusk チームがメールで受け取ります。",
   "server.reports.sentReply": "Dusk チームに送信しました（レポート {report}）。dusk チームがメールで受け取り、{contact} に返信します。",
   "server.reports.sentLater": "前回の送信がうまくいかなかったため、改めて Dusk チームに送信しました（レポート {report}）。dusk チームがメールで受け取ります。",

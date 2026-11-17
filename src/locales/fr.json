@@ -29,6 +29,8 @@
   "server.retry.why.signIn": "La connexion au compte de l’IA était en cours de renouvellement.",
   "server.retry.why.other": "L’IA n’a pas répondu correctement.",
   "server.claude.approvalChannel": "Cette réponse n’a pas pu démarrer : dusk bot n’a pas pu ouvrir le canal privé qui lui permet de te demander ton accord. Réessaie et, si le problème persiste, redémarre dusk bot.",
+  "server.batch.continuing": "Ça continue : {progress}, on passe au reste",
+  "server.batch.paused": "En pause à {progress} : le site demande de ralentir, reprise dans environ {minutes} min",
   "server.reports.sent": "Envoyé à l'équipe Dusk (rapport {report}). L'équipe dusk le reçoit par e-mail.",
   "server.reports.sentReply": "Envoyé à l'équipe Dusk (rapport {report}). L'équipe dusk le reçoit par e-mail et répondra à {contact}.",
   "server.reports.sentLater": "Envoyé à l'équipe Dusk (rapport {report}) après l'échec d'une tentative précédente. L'équipe dusk le reçoit par e-mail.",

@@ -59,6 +59,8 @@
   "server.retry.why.signIn": "AI 的登入狀態當時正在更新。",
   "server.retry.why.other": "AI 沒有正常回覆。",
   "server.claude.approvalChannel": "無法開始回覆：dusk bot 無法開啟用來徵求你同意的私人通道。請重試，如果問題持續發生，請重新啟動 dusk bot。",
+  "server.batch.continuing": "繼續中：{progress}，正在處理其餘項目",
+  "server.batch.paused": "在 {progress} 暫停：網站要求放慢速度，約 {minutes} 分鐘後繼續",
   "server.reports.sent": "已傳送給 Dusk 團隊（回報 {report}）。dusk 團隊會透過電子郵件收到。",
   "server.reports.sentReply": "已傳送給 Dusk 團隊（回報 {report}）。dusk 團隊會透過電子郵件收到，並回覆到 {contact}。",
   "server.reports.sentLater": "先前的一次嘗試沒有成功，現已傳送給 Dusk 團隊（回報 {report}）。dusk 團隊會透過電子郵件收到。",

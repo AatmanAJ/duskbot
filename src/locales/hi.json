@@ -29,6 +29,8 @@
   "server.retry.why.signIn": "AI का साइन-इन रीफ़्रेश हो रहा था।",
   "server.retry.why.other": "AI ने ठीक से जवाब नहीं दिया।",
   "server.claude.approvalChannel": "यह जवाब शुरू नहीं हो सका: dusk bot आपकी मंज़ूरी माँगने के लिए इस्तेमाल होने वाला निजी चैनल नहीं खोल सका। फिर से कोशिश करें, और अगर ऐसा बार-बार हो, तो dusk bot को रीस्टार्ट करें।",
+  "server.batch.continuing": "जारी है: {progress}, बाकी पर काम चल रहा है",
+  "server.batch.paused": "{progress} पर रुका: साइट ने धीमा होने को कहा, लगभग {minutes} मिनट में फिर शुरू",
   "server.reports.sent": "Dusk टीम को भेज दिया गया (रिपोर्ट {report})। dusk टीम को यह ईमेल से मिलेगी।",
   "server.reports.sentReply": "Dusk टीम को भेज दिया गया (रिपोर्ट {report})। dusk टीम को यह ईमेल से मिलेगी और वह {contact} पर जवाब देगी।",
   "server.reports.sentLater": "पिछली कोशिश सफल न होने के बाद Dusk टीम को भेज दिया गया (रिपोर्ट {report})। dusk टीम को यह ईमेल से मिलेगी।",

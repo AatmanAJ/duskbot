@@ -33,6 +33,8 @@
   "server.retry.why.signIn": "Die Anmeldung bei der KI wurde gerade erneuert.",
   "server.retry.why.other": "Die KI hat nicht richtig geantwortet.",
   "server.claude.approvalChannel": "Diese Antwort konnte nicht gestartet werden: dusk bot konnte den privaten Kanal nicht öffnen, über den du um Zustimmung gebeten wirst. Versuch es erneut. Wenn das weiterhin passiert, starte dusk bot neu.",
+  "server.batch.continuing": "Weiter: {progress}, der Rest folgt",
+  "server.batch.paused": "Pausiert bei {progress}: die Seite bat um Pause, weiter in etwa {minutes} Min.",
   "server.reports.sent": "An das Dusk-Team gesendet (Bericht {report}). Das dusk-Team bekommt ihn per E-Mail.",
   "server.reports.sentReply": "An das Dusk-Team gesendet (Bericht {report}). Das dusk-Team bekommt ihn per E-Mail und antwortet dir an {contact}.",
   "server.reports.sentLater": "An das Dusk-Team gesendet (Bericht {report}), nachdem ein früherer Versuch nicht geklappt hat. Das dusk-Team bekommt ihn per E-Mail.",

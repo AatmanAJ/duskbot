@@ -66,6 +66,8 @@
   "server.retry.why.signIn": "Trwało odświeżanie logowania do AI.",
   "server.retry.why.other": "AI nie odpowiedziała prawidłowo.",
   "server.claude.approvalChannel": "Nie udało się rozpocząć tej odpowiedzi: dusk bot nie mógł otworzyć prywatnego kanału, którego używa, by poprosić Cię o zgodę. Spróbuj ponownie, a jeśli problem będzie się powtarzał, uruchom ponownie dusk bot.",
+  "server.batch.continuing": "Kontynuuję: {progress}, reszta w toku",
+  "server.batch.paused": "Wstrzymano przy {progress}: strona poprosiła o zwolnienie, wznowienie za około {minutes} min",
   "server.reports.sent": "Wysłano do zespołu Dusk (zgłoszenie {report}). Zespół dusk dostanie je e-mailem.",
   "server.reports.sentReply": "Wysłano do zespołu Dusk (zgłoszenie {report}). Zespół dusk dostanie je e-mailem i odpowie na adres {contact}.",
   "server.reports.sentLater": "Wysłano do zespołu Dusk (zgłoszenie {report}) po nieudanej wcześniejszej próbie. Zespół dusk dostanie je e-mailem.",

@@ -94,6 +94,8 @@
   "server.retry.why.signIn": "AI 服务的登录状态正在刷新。",
   "server.retry.why.other": "AI 没有正常回复。",
   "server.claude.approvalChannel": "无法开始回复：dusk bot 无法打开用于征求你同意的专用通道。请重试，如果问题一直出现，请重启 dusk bot。",
+  "server.batch.continuing": "继续中：{progress}，正在处理其余项目",
+  "server.batch.paused": "在 {progress} 暂停：网站要求放慢速度，约 {minutes} 分钟后继续",
   "server.reports.sent": "已发送给 Dusk 团队（报告 {report}）。dusk 团队会通过邮件收到。",
   "server.reports.sentReply": "已发送给 Dusk 团队（报告 {report}）。dusk 团队会通过邮件收到，并回复到 {contact}。",
   "server.reports.sentLater": "之前的一次尝试没有成功，现已发送给 Dusk 团队（报告 {report}）。dusk 团队会通过邮件收到。",

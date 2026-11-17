@@ -60,6 +60,8 @@
   "server.retry.why.signIn": "Yapay zekanın oturumu yenileniyordu.",
   "server.retry.why.other": "Yapay zeka düzgün bir yanıt vermedi.",
   "server.claude.approvalChannel": "Bu yanıt başlatılamadı: dusk bot onayını istemek için kullandığı özel kanalı açamadı. Tekrar dene. Sorun devam ederse dusk bot uygulamasını yeniden başlat.",
+  "server.batch.continuing": "Devam ediliyor: {progress}, kalanlar üzerinde çalışılıyor",
+  "server.batch.paused": "{progress} noktasında duraklatıldı: site yavaşlamayı istedi, yaklaşık {minutes} dk sonra devam edecek",
   "server.reports.sent": "Dusk ekibine gönderildi (rapor {report}). dusk ekibi e-postayla alıyor.",
   "server.reports.sentReply": "Dusk ekibine gönderildi (rapor {report}). dusk ekibi e-postayla alıyor ve {contact} adresine yanıt verecek.",
   "server.reports.sentLater": "Önceki bir deneme başarısız olduktan sonra Dusk ekibine gönderildi (rapor {report}). dusk ekibi e-postayla alıyor.",

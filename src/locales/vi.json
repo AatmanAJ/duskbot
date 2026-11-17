@@ -60,6 +60,8 @@
   "server.retry.why.signIn": "Phiên đăng nhập của AI đang được làm mới.",
   "server.retry.why.other": "AI đã không trả lời đúng cách.",
   "server.claude.approvalChannel": "Không thể bắt đầu phản hồi này: dusk bot không mở được kênh riêng dùng để xin bạn chấp thuận. Hãy thử lại. Nếu tình trạng này tiếp diễn, hãy khởi động lại dusk bot.",
+  "server.batch.continuing": "Đang tiếp tục: {progress}, làm nốt phần còn lại",
+  "server.batch.paused": "Tạm dừng ở {progress}: trang yêu cầu chậm lại, tiếp tục sau khoảng {minutes} phút",
   "server.reports.sent": "Đã gửi cho đội Dusk (báo cáo {report}). Đội dusk sẽ nhận qua email.",
   "server.reports.sentReply": "Đã gửi cho đội Dusk (báo cáo {report}). Đội dusk sẽ nhận qua email và trả lời tới {contact}.",
   "server.reports.sentLater": "Đã gửi cho đội Dusk (báo cáo {report}) sau khi một lần thử trước đó không thành công. Đội dusk sẽ nhận qua email.",
