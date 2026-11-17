@@ -2,6 +2,7 @@
 import { applyCloudAiSignIns } from "./cloud-ai-signins.ts";
 import { aliasLegacyCookies, aliasLegacyHeaders, fromLegacyPath } from "../electron/legacy-names.mjs";
 import { BOOT_CLOUD_SECRETS } from "./cloud-secrets-boot.ts";
+import { wslPortShareWarning } from "./wsl-port-share.ts";
 import { reserveGmailDrafts } from "./gmail-draft-policy.ts";
 import { createGmailDrafts } from "./host/gmail-drafts.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -16602,6 +16603,7 @@ server.listen(PORT, "127.0.0.1", async () => {
   engineProgressReady = true;
   companyRuntimeReady();
   console.log(`duskbot server on http://127.0.0.1:${PORT}`);
+  void wslPortShareWarning(PORT).then((warning) => { if (warning) console.warn(warning); }, () => {});
   startFreeBackupPreinstall(process.env, () => void freeBackupInstalled());
   personWaits.boot(); browserSweep.start(); if (!sealedFixture()) browserPart.start(); autoInstallBrowserEngine(); startCloudTeamPolicy({ cloudHome: CLOUD_HOME, dataDir: DATA_DIR, managed: managedPolicy, sessions }); moveFreeze.hold(() => appTriggers.start(), () => void appTriggers.stop()); startCloudHomeConnectedApps({ cloudHome: CLOUD_HOME !== null, dataDir: DATA_DIR, cloudGrant: CLOUD_ENV.DUSK_CLOUD_CONNECTED_APPS_GRANT, apply: (access) => { composio.setManagedBrokerAccess(access); broadcast({ kind: "config", ...configStatus() }); } });
   void afterFirstEngineRead().then(() => { if (builtInBrowserEnabled(cfg)) chromeLauncher.start(); }); void updateState?.boot()?.catch((error) => console.warn("[update] self-test failed to run:", error)); if (updateState) routineHost.rerunFree(updateState.takeFreeReruns());
