@@ -482,6 +482,8 @@ export function createBillingService(options: BillingServiceOptions) {
     const first = sub.status === "pending" || sub.cloudId !== null && clouds.get(sub.cloudId)?.status === "checkout";
     if (event.type === "active" || event.type === "renewed") {
       const trialStarts = first && checkout.trialDays !== undefined && sub.trialEndsAt === undefined && sub.currentPeriodEnd === null;
+      // a paid renewal ends a trial, even one charged early (a renewal moved forward)
+      if (event.type === "renewed" && sub.trialEndsAt !== undefined && sub.trialEndsAt > now()) { sub.trialEndsAt = now(); if (sub.currentPeriodEnd !== null && sub.currentPeriodEnd > now()) sub.currentPeriodEnd = now(); }
       sub.status = "active"; period(sub, event.nextBillingAt); if (event.type === "active") sub.cancelAtPeriodEnd = event.cancelAtPeriodEnd; checkout.status = "completed";
       // dodo sends subscription.active at checkout with next_billing_date at the trial's end: that first period is the trial
       if (trialStarts && sub.currentPeriodEnd !== null) { sub.currentPeriodStart = now(); sub.trialEndsAt = sub.currentPeriodEnd; }

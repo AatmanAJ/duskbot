@@ -885,6 +885,16 @@ describe("plan switching", () => {
     time = trialEnd; deliver(provider.renew(sub.providerSubscriptionId!));
     expect(store.state.invoices.at(-1)!.amountCents).toBe(2000);
   });
+  it("a renewal charged before the trial's end ends the trial: the next switch is prorated, not free", async () => {
+    trialFirst();
+    const { sub } = await buy(plus()); time += day;
+    provider.subscriptions.get(sub.providerSubscriptionId!)!.nextBillingAt = time;
+    deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(sub.trialEndsAt).toBe(time); expect(sub.currentPeriodStart).toBe(time); expect(sub.currentPeriodEnd).toBeGreaterThan(time + 27 * day);
+    time += 15 * day;
+    const { preview } = await switchTo(sub, pro());
+    expect(preview.timing).toBe("now"); expect(preview.chargeNowCents).toBeGreaterThan(0); expect(provider.changeCalls.at(-1)?.mode).toBe("keep_cycle");
+  });
   it("plus to pro after the trial: charged now for the days left only, the billing date stays, and the provider's amount is the one shown", async () => {
     const { sub } = await buy(plus()); const end = sub.currentPeriodEnd!;
     time = sub.currentPeriodStart! + (end - sub.currentPeriodStart!) * 0.25;
