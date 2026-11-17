@@ -345,7 +345,7 @@ const uploadAvatar = async (mime = "image/png"): Promise<string> => {
   const response = await fetch(`${BASE}/api/attachments`, {
     method: "POST",
     headers: { "content-type": mime },
-    body: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    body: new Uint8Array(mime === "image/webp" ? Buffer.from("RIFF\0\0\0\0WEBPVP8 ", "latin1") : Buffer.from("89504e470d0a1a0a", "hex")),
   });
   expect(response.status).toBe(201);
   const saved = (await response.json()) as { path: string };
@@ -4062,6 +4062,24 @@ describe("harness HTTP API", () => {
     });
     expect(wrongType.status).toBe(400);
 
+    // a PNG whose first byte was decoded as UTF-8 text on the way, as a phone sent one
+    const damaged = await fetch(`${BASE}/api/attachments`, {
+      method: "POST",
+      headers: { "content-type": "image/png" },
+      body: new Uint8Array(Buffer.from("\xef\xbf\xbdPNG\r\n\x1a\n0000", "latin1")),
+    });
+    expect(damaged.status).toBe(400);
+    expect(((await damaged.json()) as { error: string }).error).toMatch(/damaged/);
+
+    // a real picture under the wrong label is kept as what it is
+    const relabelled = await fetch(`${BASE}/api/attachments`, {
+      method: "POST",
+      headers: { "content-type": "image/jpeg" },
+      body: new Uint8Array(png),
+    });
+    expect(relabelled.status).toBe(201);
+    expect(((await relabelled.json()) as { mime: string; path: string })).toMatchObject({ mime: "image/png", path: expect.stringMatching(/\.png$/) });
+
     const saved = await fetch(`${BASE}/api/attachments`, {
       method: "POST",
       headers: { "content-type": "image/png" },
@@ -4110,7 +4128,7 @@ describe("harness HTTP API", () => {
     const conflictingRetry = await fetch(`${BASE}/api/attachments?uploadId=${uploadId}`, {
       method: "POST",
       headers: { "content-type": "image/png" },
-      body: new Uint8Array([1, 2, 3]),
+      body: new Uint8Array([...png, 0]),
     });
     expect(conflictingRetry.status).toBe(409);
 
