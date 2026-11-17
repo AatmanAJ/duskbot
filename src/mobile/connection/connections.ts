@@ -158,6 +158,8 @@ export function createConnectionStore(platform: MobilePlatform): ConnectionStore
 export type ConnectionsApi = {
   connections: MobileConnectionRecord[];
   activeId: string | null;
+  /** the saved list has been read once */
+  loaded: boolean;
   switchTo(id: string): Promise<void>;
   remove(id: string): Promise<void>;
   refresh(): Promise<void>;
@@ -168,13 +170,14 @@ export function useConnections(): ConnectionsApi {
   const store = useMemo(() => createConnectionStore(platform), [platform]);
   const [connections, setConnections] = useState<MobileConnectionRecord[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const refresh = useCallback(async () => {
     const records = await store.list();
     const id = await platform.prefs.get(ACTIVE_KEY);
     setConnections(records);
     setActiveId(id);
   }, [platform, store]);
-  useEffect(() => { void refresh().catch(() => {}); }, [refresh]);
+  useEffect(() => { void refresh().catch(() => {}).finally(() => setLoaded(true)); }, [refresh]);
   const switchTo = useCallback(async (id: string) => {
     await store.setActive(id);
     window.location.reload();
@@ -185,5 +188,5 @@ export function useConnections(): ConnectionsApi {
     if (wasActive) window.location.reload();
     else await refresh();
   }, [platform, store, refresh]);
-  return { connections, activeId, switchTo, remove, refresh };
+  return { connections, activeId, loaded, switchTo, remove, refresh };
 }

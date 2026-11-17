@@ -221,6 +221,22 @@ describe("own clouds", () => {
     await signIn(); fetcher.mockResolvedValueOnce(response({ error }, status));
     expect(await client.pairCloud({ id: "c1", origin: "https://d1.dusk.bot" })).toEqual({ outcome });
   });
+  it("lists the account's own clouds and its teams' clouds from one session read", async () => {
+    await signIn();
+    fetcher.mockResolvedValueOnce(response({ clouds: [listed()], teams: [{ id: "t0123", name: "Acme team", role: "member", machine: { state: "ready", origin: "https://t0123.dusk.bot", power: { state: "asleep" } } }, { id: "bad id!", machine: { state: "ready" } }] }));
+    expect(await client.places()).toEqual({
+      clouds: [expect.objectContaining({ id: "c0123456789abcdef01234567" })],
+      teams: [{ id: "t0123", name: "Acme team", status: "ready", origin: "https://t0123.dusk.bot", asleep: true }],
+    });
+  });
+  it("pairs with a team's cloud through that team's pairing route", async () => {
+    await signIn();
+    fetcher.mockResolvedValueOnce(response({ cloudContractVersion: 1, origin: "https://t1.dusk.bot", code: "ABCD-EFGH-JKLM", expiresAt: Date.now() + 300_000 }));
+    expect(await client.pairTeamCloud({ id: "t1", origin: "https://t1.dusk.bot" })).toMatchObject({ outcome: "paired" });
+    expect(fetcher.mock.calls[0][0]).toBe(`${origin}/api/cloud/desktop/teams/t1/pairing`);
+    fetcher.mockResolvedValueOnce(response({ error: "not_found" }, 404));
+    expect(await client.pairTeamCloud({ id: "t1", origin: "https://t1.dusk.bot" })).toEqual({ outcome: "unavailable" });
+  });
   it("wakes the primary cloud with a click intent", async () => {
     expect(await client.wakeCloud()).toBe(false);
     await signIn(); fetcher.mockResolvedValueOnce(response({ state: "waking" }));

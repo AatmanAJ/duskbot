@@ -6,7 +6,7 @@ import { t } from "@/lib/i18n";
 import type { CloudSignInStart } from "../../../electron/cloud-account.mjs";
 import type { OAuthProvider } from "../../../shared/account-api";
 import { usePlatform, type MobilePlatform } from "../platform";
-import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AuthResult, type CloudPairResult, type MobileAccount, type MobileCloud, type PhoneCodeResult } from "./account-client";
+import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AccountPlaces, type AuthResult, type CloudPairResult, type MobileAccount, type MobileCloud, type MobileTeamCloud, type PhoneCodeResult } from "./account-client";
 import { setTurnSource } from "../transport/direct-rtc";
 import { chosenAccountOrigin } from "./environment";
 
@@ -16,6 +16,7 @@ type AccountContextValue = { account: MobileAccount | null; origin: string;
   /** deletes the account from the app; false when it could not be done (nothing changed) */
   deleteAccount(): Promise<boolean>; enrollGrant(): Promise<{ enrollToken: string; dashboardUrl: string } | null>;
   clouds(): Promise<MobileCloud[] | null>; pairCloud(cloud: MobileCloud): Promise<CloudPairResult>; wakeCloud(): Promise<boolean>;
+  places(): Promise<AccountPlaces | null>; pairTeamCloud(cloud: MobileTeamCloud): Promise<CloudPairResult>;
   /** what the sign-in screen asks of the account service */
   signIn: {
     providers(): Promise<OAuthProvider[]>; emailStart(email: string): Promise<CloudSignInStart>; emailVerify(code: string): Promise<SignInVerify>;
@@ -131,6 +132,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
     },
     enrollGrant: () => client.enrollGrant(),
     clouds: () => client.clouds(), pairCloud: cloud => client.pairCloud(cloud), wakeCloud: () => client.wakeCloud(),
+    places: () => client.places(), pairTeamCloud: cloud => client.pairTeamCloud(cloud),
     signIn: {
       providers: async () => providersFor(platform.kind, await client.providers()),
       emailStart: email => client.emailStart(email), emailVerify: code => client.emailVerify(code), cancelEmail: () => client.cancelEmail(),

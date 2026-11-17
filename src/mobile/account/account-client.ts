@@ -19,6 +19,10 @@ export function mobileFace(account: unknown): Pick<MobileAccount, "avatarUrl" | 
   return { ...(photo ? { avatarUrl: photo } : {}), ...(choice ? { avatar: choice } : {}) };
 }
 export type MobileCloud = { id: string; name: string; status: string; origin: string | null; primary: boolean; asleep: boolean };
+/** a team's dusk cloud this account is a member of, as the session lists it */
+export type MobileTeamCloud = { id: string; name: string; status: string; origin: string | null; asleep: boolean };
+/** what the account has, beyond any computer this phone linked itself */
+export type AccountPlaces = { clouds: MobileCloud[]; teams: MobileTeamCloud[] };
 export type CloudPairGrant = { origin: string; code: string; expiresAt: number };
 export type CloudPairResult = { outcome: "paired"; grant: CloudPairGrant } | { outcome: "asleep" | "unavailable" | "signed-out" | "failed" };
 type StoredGrant = { origin: string; token: string; expiresAt: number; account: MobileAccount; deviceId: string };
@@ -73,6 +77,21 @@ export function parseOwnClouds(input: unknown): MobileCloud[] {
     clouds.push({ id: entry.id, name, status: entry.status, origin: httpsOrigin(entry.origin), primary: entry.primary === true, asleep });
   }
   return clouds.sort((a, b) => Number(b.primary) - Number(a.primary));
+}
+
+export function parseTeamClouds(input: unknown): MobileTeamCloud[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  const teams: MobileTeamCloud[] = [];
+  for (const entry of input.slice(0, MAX_CLOUDS)) {
+    if (!object(entry) || typeof entry.id !== "string" || !CLOUD_ID.test(entry.id) || seen.has(entry.id) || !object(entry.machine) || typeof entry.machine.state !== "string") continue;
+    seen.add(entry.id);
+    const machine = entry.machine, status = entry.machine.state;
+    const name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim().slice(0, 40) : "team cloud";
+    const asleep = status === "ready" && object(machine.power) && (machine.power.state === "asleep" || machine.power.state === "waking");
+    teams.push({ id: entry.id, name, status, origin: httpsOrigin(machine.origin), asleep });
+  }
+  return teams;
 }
 
 export function parsePairGrant(input: unknown, origin: string | null, now = Date.now()): CloudPairGrant | null {
@@ -135,6 +154,19 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
     if (stamp !== generation) { await platform.secrets.remove(SECRET); return false; }
     grant = next; attempt = null; analytics();
     return true;
+  };
+  const pairing = async (path: string, body: unknown, cloudOrigin: string | null): Promise<CloudPairResult> => {
+    if (!grant) return { outcome: "signed-out" };
+    try {
+      const paired = parsePairGrant(await request(path, "POST", body, grant.token), cloudOrigin);
+      return paired ? { outcome: "paired", grant: paired } : { outcome: "failed" };
+    } catch (error) {
+      if (!(error instanceof AccountRequestError) || error.opaque) return { outcome: "failed" };
+      if (error.status === 401) return { outcome: "signed-out" };
+      if (error.status === 409 && error.code === "not_running") return { outcome: "asleep" };
+      if (error.status === 409 || error.status === 404) return { outcome: "unavailable" };
+      return { outcome: "failed" };
+    }
   };
   return {
     account: () => grant?.account ?? null,
@@ -300,19 +332,20 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
         return object(value) ? parseOwnClouds(value.clouds) : [];
       } catch { return null; }
     },
-    async pairCloud(cloud: Pick<MobileCloud, "id" | "origin">): Promise<CloudPairResult> {
-      if (!grant) return { outcome: "signed-out" };
+    /** the account's own clouds and its teams' clouds, from one session read; null when signed out or unreadable */
+    async places(): Promise<AccountPlaces | null> {
+      if (!grant) return null;
       try {
-        const value = await request(CLOUD_PAIRING, "POST", { cloudId: cloud.id }, grant.token);
-        const paired = parsePairGrant(value, cloud.origin);
-        return paired ? { outcome: "paired", grant: paired } : { outcome: "failed" };
-      } catch (error) {
-        if (!(error instanceof AccountRequestError) || error.opaque) return { outcome: "failed" };
-        if (error.status === 401) return { outcome: "signed-out" };
-        if (error.status === 409 && error.code === "not_running") return { outcome: "asleep" };
-        if (error.status === 409 || error.status === 404) return { outcome: "unavailable" };
-        return { outcome: "failed" };
-      }
+        const value = await request(ACCOUNT_ROUTES.appSession, "GET", undefined, grant.token);
+        return object(value) ? { clouds: parseOwnClouds(value.clouds), teams: parseTeamClouds(value.teams) } : { clouds: [], teams: [] };
+      } catch { return null; }
+    },
+    pairCloud(cloud: Pick<MobileCloud, "id" | "origin">): Promise<CloudPairResult> {
+      return pairing(CLOUD_PAIRING, { cloudId: cloud.id }, cloud.origin);
+    },
+    /** a pairing grant for a team's cloud; the service signs it only for a current member */
+    pairTeamCloud(cloud: Pick<MobileTeamCloud, "id" | "origin">): Promise<CloudPairResult> {
+      return pairing(`/api/cloud/desktop/teams/${encodeURIComponent(cloud.id)}/pairing`, {}, cloud.origin);
     },
     /** Wakes the account's primary Cloud, the one the wake route answers for. */
     async wakeCloud(): Promise<boolean> {
