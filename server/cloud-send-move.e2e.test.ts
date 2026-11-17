@@ -257,7 +257,15 @@ it("a move carries everything, apps and keys first, and its check finds every ro
 
 it("a move run again changes nothing on My Cloud, and its check still finds everything there", async () => {
   const manifest = async () => (await fx.onCloud("GET", "/api/cloud-send/manifest")).body;
-  const before = await manifest();
+  // My Cloud folds the built-in bot's chat into its own in the background, so the baseline waits for it to settle.
+  let last = "";
+  await expect.poll(async () => {
+    const now = JSON.stringify(await manifest());
+    const settled = now === last && await idle(fx.onCloud);
+    last = now;
+    return settled;
+  }, { timeout: 60_000, interval: 500 }).toBe(true);
+  const before = JSON.parse(last);
   const again = await fx.move({ final: true });
   expect(again.result).toMatchObject({ bots: [], updatedBots: [], skills: 0, logins: 0, onePassword: false, settings: [], failed: [], chats: { conversations: 0, messages: 0, left: 0 },
     moved: 0, memory: 0, files: { sent: 0, kept: 0 }, conversationSettings: 0 });
