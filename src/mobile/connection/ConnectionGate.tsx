@@ -34,16 +34,14 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   const [celebrate, setCelebrate] = useState<{ name: string; sequence: number } | null>(null);
   const [entered, setEntered] = useState(false);
   const [adding, setAdding] = useState(0);
-  // "dusk:sign-in" (Settings, signed out) opens the same sheet at the dusk cloud sign-in
+  // "dusk:sign-in" (Settings, signed out) opens the dusk cloud sign-in
   const [addingStep, setAddingStep] = useState<"welcome" | "signin">("welcome");
   // a dusk cloud's qr opens the app at that sign-in, its email filled in
   const [signInEmail, setSignInEmail] = useState<{ email: string; code?: string; sequence: number } | null>(null);
   useEffect(() => {
-    const open = () => { setAddingStep("welcome"); setAdding((n) => n + 1); };
     const signIn = () => { setAddingStep("signin"); setAdding((n) => n + 1); };
-    window.addEventListener("dusk:link-another", open);
     window.addEventListener("dusk:sign-in", signIn);
-    return () => { window.removeEventListener("dusk:link-another", open); window.removeEventListener("dusk:sign-in", signIn); };
+    return () => window.removeEventListener("dusk:sign-in", signIn);
   }, []);
   // the app never reads the shelf shared by every workspace again; it may still hold an unlinked one's chats
   useEffect(() => { if (platform.native) void forgetTranscriptShelf(null); }, [platform]);
@@ -163,7 +161,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   const onboarding = state.kind !== "ready" || (forcePair && !entered);
   if (state.kind === "loading" && !incoming && !forcePair) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MausAvatar color="green" size={56} state="idle" animated={false} personality={false} /></div>;
   if (state.kind === "offline" && !forcePair) {
-    if (!incoming && adding === 0) return <>{success}<Unreachable record={state.record} others={state.others} attempts={state.attempts} trying={state.trying} onRetry={retry} onSwitch={switchTo} onLink={() => setAdding((n) => n + 1)} /></>;
+    if (!incoming && adding === 0) return <>{success}<Unreachable record={state.record} others={state.others} attempts={state.attempts} trying={state.trying} onRetry={retry} onSwitch={switchTo} /></>;
     return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;
   }
   if (onboarding) {
