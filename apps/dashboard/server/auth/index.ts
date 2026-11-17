@@ -189,7 +189,8 @@ export function createAuth(options: AuthOptions) {
   }
   function lookup(token: string, web: boolean) {
     sweep();
-    const session = state.sessions.find(item => item.tokenHash === hash(token) && (item.kind === "web") === web);
+    const tokenHash = hash(token);
+    const session = state.sessions.find(item => item.tokenHash === tokenHash && (item.kind === "web") === web);
     const owner = session && account(session.accountId);
     return session && owner ? { account: owner, session } : null;
   }
