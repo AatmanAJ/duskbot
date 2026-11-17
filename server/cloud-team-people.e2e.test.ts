@@ -8,6 +8,9 @@ import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { launchCloudSendFixture, type CloudSendFixture, type CloudTeamFixture } from "../scripts/testing/cloud-send-fixture.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const OLIVE = { email: "olive@acme.test", role: "owner" as const };
 const ADA = { email: "ada@acme.test", role: "admin" as const };

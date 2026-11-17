@@ -8,6 +8,9 @@ import { BOT_HTML_CSP } from "../shared/app-frame/csp.ts";
 import { CSP_META_PREFIX } from "../shared/app-frame/document.ts";
 import { APP_SAMPLES } from "../shared/app-samples.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("shows, replaces and serves a bot's page, and carries its context and its message to the engine", async () => {
   const gates = mkdtempSync(join(tmpdir(), "dusk-chat-apps-"));

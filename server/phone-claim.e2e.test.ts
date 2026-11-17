@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { openMcp, type McpEntry } from "./testing/fake-mcp-client.ts";
 import { freePortBlock } from "./testing/ports.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 
@@ -60,49 +61,15 @@ const noPhoneConflict = async (...botIds: string[]) => {
   }
 };
 
-// Speak just enough MCP to one spawned phone proxy: initialize, then tools/call frames, collected by id.
-async function withPhoneProxy<T>(spec: any, run: (call: (name: string) => Promise<any>) => Promise<T>): Promise<T> {
-  // Node acts as an inert cross-platform ADB; never discover or contact a real attached phone.
-  const proxy = spawn(spec.command, spec.args, { cwd: fixtureHome,
-    env: { ...process.env, ...spec.env, HOME: fixtureHome, USERPROFILE: fixtureHome, DUSK_ADB_PATH: process.execPath },
-    stdio: ["pipe", "pipe", "ignore"] });
+// One connection to a turn's phone mount on the harness's MCP host, as its engine reaches it: initialize, then tools/call.
+async function withPhoneMount<T>(spec: McpEntry, run: (call: (name: string) => Promise<any>) => Promise<T>): Promise<T> {
+  const connection = openMcp(spec);
   try {
-    const responses = new Map<number, any>();
-    const wakes: Array<() => void> = [];
-    let buffer = "";
-    proxy.stdout!.on("data", (chunk: Buffer) => {
-      buffer += chunk.toString("utf8");
-      let newline: number;
-      while ((newline = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, newline);
-        buffer = buffer.slice(newline + 1);
-        if (!line.trim()) continue;
-        try {
-          const message = JSON.parse(line);
-          if (message.id !== undefined) {
-            responses.set(message.id, message);
-            for (const wake of wakes.splice(0)) wake();
-          }
-        } catch {}
-      }
-    });
-    const send = (id: number, method: string, params: unknown) =>
-      proxy.stdin!.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-    const awaitResponse = async (id: number) => until(() => {
-      if (responses.has(id)) return responses.get(id);
-      if (proxy.exitCode !== null) throw new Error(`phone proxy exited early: ${proxy.exitCode}`);
-      return null;
-    }, Boolean);
-    send(1, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "phone-claim-test", version: "1" } });
-    await awaitResponse(1);
-    proxy.stdin!.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
-    let nextId = 2;
-    return await run(async (name: string) => {
-      send(nextId, "tools/call", { name, arguments: {} });
-      return awaitResponse(nextId++);
-    });
+    await connection.call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "phone-claim-test", version: "1" } });
+    await connection.notify("notifications/initialized");
+    return await run((name: string) => connection.call("tools/call", { name, arguments: {} }));
   } finally {
-    proxy.kill("SIGKILL");
+    await connection.close();
   }
 }
 
@@ -122,9 +89,12 @@ beforeAll(async () => {
   } } }));
   const port = await freePortBlock([0, 1]);
   base = `http://127.0.0.1:${port}`;
+  // Node is an inert cross-platform adb, run in the fixture's home where `devices` answers: the phone server, answered
+  // inside the harness, never discovers or contacts a real attached phone.
   child = spawn(process.execPath, [join(ROOT, "server/index.ts")], {
-    cwd: ROOT, env: {
-      PATH: process.env.PATH, HOME: fixtureHome, USERPROFILE: fixtureHome, DUSK_DATA_DIR: data,
+    cwd: fixtureHome, env: {
+      PATH: process.env.PATH, HOME: fixtureHome, USERPROFILE: fixtureHome, DUSK_DATA_DIR: data, DUSK_ADB_PATH: process.execPath,
+      DUSK_SKILLS_DIR: join(ROOT, "skills"),
       APPDATA: join(fixtureHome, "appdata"), LOCALAPPDATA: join(fixtureHome, "localappdata"),
       TEMP: fixtureHome, TMP: fixtureHome, TMPDIR: fixtureHome,
       DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1), DUSK_STATIC_DIR: ui,
@@ -170,7 +140,7 @@ describe("Lazy phone claim on the real server", () => {
     rmSync(finishFile, { force: true });
     const holder = await makeBot("Old retained phone caller");
     const spec = await holdDirectTurn(holder.id, "read my phone");
-    await withPhoneProxy(spec, async (oldCall) => {
+    await withPhoneMount(spec, async (oldCall) => {
       expect((await oldCall("status")).result.isError).toBeUndefined();
       writeFileSync(finishFile, "finish");
       await idle(holder.id);
@@ -180,7 +150,7 @@ describe("Lazy phone claim on the real server", () => {
       rmSync(finishFile, { force: true });
       const next = await makeBot("New phone caller");
       const nextSpec = await holdDirectTurn(next.id, "read my phone");
-      await withPhoneProxy(nextSpec, async (newCall) => {
+      await withPhoneMount(nextSpec, async (newCall) => {
         expect((await newCall("status")).result.isError).toBeUndefined();
         const response = await oldCall("status");
         expect(response.result.isError, JSON.stringify(response)).toBe(true);
@@ -192,7 +162,7 @@ describe("Lazy phone claim on the real server", () => {
     rmSync(finishFile, { force: true });
     const holder = await makeBot("Android words holder");
     const holderSpec = await holdDirectTurn(holder.id, "help me review this android build log");
-    expect(holderSpec.env.DUSK_PHONE_TOKEN).toBeTruthy();
+    expect(holderSpec).toMatchObject({ type: "http", url: `${base}/api/internal/mcp-host/phone`, headers: { Authorization: expect.stringMatching(/^Bearer \S+$/) } });
     await busy(holder.id);
 
     const roomBot = await makeBot("Room phone words");
@@ -231,18 +201,15 @@ describe("Lazy phone claim on the real server", () => {
     const other = await makeBot("Concurrent phone caller");
     const otherSpec = await holdDirectTurn(other.id, "open uber on my phone");
 
-    await withPhoneProxy(holderSpec, async (call) => {
+    await withPhoneMount(holderSpec, async (call) => {
       const status = await call("status");
       expect(status.result.isError).toBeUndefined();
       expect(status.result.content[0].text).toContain("available");
     });
-    const claim = (token: string) => fetch(base + "/api/internal/phone/claim", {
-      method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{}",
-    });
-    expect((await claim(holderSpec.env.DUSK_PHONE_TOKEN)).status).toBe(200);
-    expect((await claim(otherSpec.env.DUSK_PHONE_TOKEN)).status).toBe(409);
+    // The holder's claim stands across its calls; the other's is refused while it does (the claim route's 409, below).
+    await withPhoneMount(holderSpec, async (call) => expect((await call("status")).result.isError).toBeUndefined());
 
-    await withPhoneProxy(otherSpec, async (call) => {
+    await withPhoneMount(otherSpec, async (call) => {
       const blocked = await call("status");
       expect(blocked.result).toMatchObject({ isError: true });
       expect(blocked.result.content[0].text).toBe("Another thread is using the phone. This call was not performed. Pause phone work until that thread finishes, then read the screen again before acting.");

@@ -1035,6 +1035,7 @@ beforeAll(async () => {
   child = spawn(process.execPath, ["--import", browserPrelude, join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
     env: {
+      DUSK_MCP_HOST: "0",
       ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
       ...(process.env.PATHEXT ? { PATHEXT: process.env.PATHEXT } : {}),
       ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
@@ -1166,6 +1167,7 @@ describe("harness HTTP API", () => {
       const serverChild = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
         cwd: ROOT,
         env: {
+          DUSK_MCP_HOST: "0",
           ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
           ...(process.env.PATHEXT ? { PATHEXT: process.env.PATHEXT } : {}),
           ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
@@ -1457,6 +1459,7 @@ describe("harness HTTP API", () => {
     const contender = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: ROOT,
       env: {
+        DUSK_MCP_HOST: "0",
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
         DUSK_DATA_DIR: join(home, ".duskbot"),
@@ -3458,6 +3461,7 @@ describe("harness HTTP API", () => {
     const isolatedChild = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: ROOT,
       env: {
+        DUSK_MCP_HOST: "0",
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
         HOME: isolatedHome,
@@ -3684,6 +3688,7 @@ describe("harness HTTP API", () => {
     const isolatedChild = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: ROOT,
       env: {
+        DUSK_MCP_HOST: "0",
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
         HOME: isolatedHome,
@@ -4718,6 +4723,7 @@ describe("harness HTTP API", () => {
     const isolatedChild = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
       cwd: ROOT,
       env: {
+        DUSK_MCP_HOST: "0",
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         ...(process.env.PATHEXT ? { PATHEXT: process.env.PATHEXT } : {}),
         ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),

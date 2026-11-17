@@ -10,6 +10,8 @@ import { AGENTS_MCP_ENV } from "./agents-mcp-env.ts";
 import { OWN_APPS_SERVER } from "../../shared/own-apps.ts";
 import { shareToolBudget, TOOL_LIMIT_ENV, TOOL_LIMIT_HEADER } from "../tool-count-limit.ts";
 import { agentsToolList } from "./agents-mcp.ts";
+import type { MountLease } from "../mcp-host/mounts.ts";
+import { hostMcpServers } from "./engine-mcp-host.ts";
 
 export interface TurnStdioMcpServer {
   name: string;
@@ -85,6 +87,9 @@ export type AcpMcpServer = { name: string; command: string; args: string[]; env:
 
 const HARNESS_KINDS = ["browser", "computer", "data", "email", "device"] as const;
 
+/** turnStdioMcpServers's own slots: a custom server of the same name was dropped there, so these are the harness's. */
+const BUILT_IN_SLOTS = new Set(["agents", "composio", OWN_APPS_SERVER, "browser", "data", "email", "device", "computer"]);
+
 /** dusk bot's own server behind a stdio proxy, as its HTTP endpoint on this server; null for any other server (the
  * person's, or one wrapped in a tool-selection gate). */
 export function ownMcpOverHttp(server: TurnStdioMcpServer): { url: string; headers: Record<string, string> } | null {
@@ -110,11 +115,21 @@ export function ownMcpOverHttp(server: TurnStdioMcpServer): { url: string; heade
  * reaches servers by URL (`http`) gets dusk bot's own as endpoints of this server instead of a proxy process each.
  * `engine` is the driver kind, whose provider may limit each tool's schema; `toolBudget`, how many MCP tools the model's
  * provider takes in all. */
-export function acpMcpServers(turn: SendTurnInput, options: { http?: boolean; engine?: string; toolBudget?: number } = {}): AcpMcpServer[] {
+export function acpMcpServers(turn: SendTurnInput, options: { http?: boolean; engine?: string; toolBudget?: number; lease?: MountLease } = {}): AcpMcpServer[] {
   const schemaProfile = toolSchemaProfileFor({ engine: options.engine })?.id;
-  return turnStdioMcpServers(turn, { schemaProfile, toolBudget: options.toolBudget }).map((server) => {
+  const pairs = (record: Record<string, string>) => Object.entries(record).map(([name, value]) => ({ name, value: String(value) }));
+  const servers = turnStdioMcpServers(turn, { schemaProfile, toolBudget: options.toolBudget });
+  // With the harness's MCP host, the agent is handed a mount's bearer, never the turn capability behind it.
+  if (options.http && options.lease) {
+    const own = new Set(servers.filter((server) => !Object.hasOwn(turn.integrations?.custom ?? {}, server.name) || BUILT_IN_SLOTS.has(server.name)).map((server) => server.name));
+    const hosted = hostMcpServers({ servers: Object.fromEntries(servers.map(({ name, ...spec }) => [name, spec])), own, threadId: turn.threadId, lease: options.lease }).servers;
+    return servers.map((server) => {
+      const entry = hosted[server.name] as { type?: string; url?: string; headers?: Record<string, string> };
+      return entry.type === "http" ? { type: "http", name: server.name, url: entry.url!, headers: pairs(entry.headers ?? {}) } : { ...server, env: pairs(server.env) };
+    });
+  }
+  return servers.map((server) => {
     const own = options.http ? ownMcpOverHttp(server) : null;
-    const pairs = (record: Record<string, string>) => Object.entries(record).map(([name, value]) => ({ name, value: String(value) }));
     return own ? { type: "http", name: server.name, url: own.url, headers: pairs(own.headers) } : { ...server, env: pairs(server.env) };
   });
 }

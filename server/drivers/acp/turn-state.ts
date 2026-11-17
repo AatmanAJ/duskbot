@@ -1,6 +1,7 @@
 // What the ACP driver keeps for each thread: its session on an agent process (alone or shared with other threads'
 // sessions) and the turn running in it.
 import type { RequestOutcome, SendTurnInput } from "../../contracts.ts";
+import type { MountLease } from "../../mcp-host/mounts.ts";
 import type { spawnCli } from "../../procs.ts";
 import { errorReplyFailure, type ErrorReplyFailure } from "../engine-errors.ts";
 import type { AcpConfig } from "./core.ts";
@@ -39,6 +40,8 @@ export interface AcpTurn {
 }
 
 export interface AcpSession {
+  /** The holds on the MCP host's mounts whose bearers this session was given in session/new or session/load. */
+  hostLease?: MountLease;
   child: ReturnType<typeof spawnCli>;
   host: AcpHost;
   acp: AcpLink;

@@ -8,6 +8,9 @@ import { expect, it } from "vitest";
 
 import { launchVerificationServer } from "../scripts/control-dusk.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const FAKE_MCP = fileURLToPath(new URL("./testing/fake-mcp-server.ts", import.meta.url));
 

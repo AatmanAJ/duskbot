@@ -9,6 +9,9 @@ import { launchVerificationServer, runControlDusk, type VerificationServer } fro
 import { AUTOMATION_REPLY_PROMPT } from "./system-prompt.ts";
 import { launchRestartableServer } from "./testing/restartable-server.ts";
 import { openSse, type SseRecorder } from "./testing/sse.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 let fixture: VerificationServer | undefined;
 let events: SseRecorder | undefined;

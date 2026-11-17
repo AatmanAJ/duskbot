@@ -16,6 +16,9 @@ import { readHandoffs } from "./testing/handoff-rows.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { openSse } from "./testing/sse.ts";
 import { withoutTurnClock } from "./testing/turn-clock-text.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const count = (text: string, needle: string) => text.split(needle).length - 1;
 

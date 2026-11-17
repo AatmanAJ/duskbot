@@ -6,6 +6,9 @@ import { expect, it } from "vitest";
 
 import { launchVerificationServer } from "../scripts/control-dusk.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("keeps a real routine waiting until both concurrent broker approvals settle and cancels it once", async () => {
   const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "hang" });

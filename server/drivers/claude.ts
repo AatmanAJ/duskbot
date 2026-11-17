@@ -50,9 +50,12 @@ import { createOrgModelBlocks, modelSwapNotice, withOrgBlocks } from "./claude-m
 import { engineHomes } from "../engine-homes/engine-homes.ts";
 import { TEAM_TOOLS_FAILED, failedCustomMcp, teamToolsFailed } from "./team-tools.ts";
 import { armIdleClose, engineIdleMs, sessionIdlePolicy, stopIdleClose } from "./session-idle.ts";
+import { hostClaudeMcpServers } from "./engine-mcp-host.ts";
+import { mcpHost } from "../mcp-host/host.ts";
+import type { MountLease } from "../mcp-host/mounts.ts";
 import { promptHalves, withVolatileNote } from "./prompt-split.ts"; import { CLAUDE_OWN_MEMORY_OFF } from "./claude-own-memory.ts";
 import { versionAtLeast } from "./acp/version-probe.ts";
-import { CLAUDE_FLAG_FLOORS, claudeCliSupports, parseClaudeCliVersion, type ClaudeCliVersion } from "./claude-cli-version.ts";
+import { CLAUDE_FLAG_FLOORS, claudeCliHttpMcp, claudeCliSupports, parseClaudeCliVersion, type ClaudeCliVersion } from "./claude-cli-version.ts";
 export { CLAUDE_FLAG_FLOORS, claudeCliSupports, parseClaudeCliVersion, type ClaudeCliVersion } from "./claude-cli-version.ts";
 import {
   applyClaudeInject,
@@ -826,6 +829,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
     interface Session {
       child: ReturnType<typeof spawnCli>;
       broker?: Awaited<ReturnType<typeof createPermissionBroker>>;
+      /** Its holds on the MCP host's mounts, given back when it closes. */
+      hostLease: MountLease | null;
       elicit: ReturnType<typeof claudeElicitations>;
       mcpConfigPath: string | null;
       systemPromptPath: string | null;
@@ -894,6 +899,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       const broker = s.broker;
       s.broker = undefined;
       broker?.close();
+      s.hostLease?.release();
       s.elicit.close();
       appendNative(threadId, { dir: "out", source: "claude.session", msg: { close: why } });
       // stdin EOF is the CLI's exit signal; give it a moment, then insist
@@ -911,7 +917,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       if (s.idleTimer) clearTimeout(s.idleTimer);
       const held = (warmHolds.get(threadId) ?? 0) - Date.now();
       s.idleTimer = armIdleClose(`${instanceId}\0${threadId}`, Math.min(2_147_483_647, Math.max(engineIdleMs(threadId, sessionIdle), held)), { close: () => closeSession(threadId, "idle"),
-        idle: () => sessions.get(threadId) === s && !s.closing && !s.turn && !active.has(threadId) && (warmHolds.get(threadId) ?? 0) <= Date.now() });
+        idle: () => sessions.get(threadId) === s && !s.closing && !s.turn && !active.has(threadId) && (warmHolds.get(threadId) ?? 0) <= Date.now(),
+        pid: () => s.child.pid });
     };
     // Keep-warm pings and warm summaries fork a thread's session with its live launch contract (claude-warm-summary.ts).
     const forks = claudeForks({ cli: config.cli, contracts: warmContracts, holds: warmHolds, armIdle, supports: (flag) => cliVersion === null || claudeCliSupports(cliVersion, flag),
@@ -1129,6 +1136,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       allowed.push("mcp__dusk", ...gateQueryTools(mcpServers));
       // A guest pre-allows only harness tools; anything else (the browser can open file:) asks.
       if (turn.guestConfined) allowed.splice(0, allowed.length, ...allowed.filter((name) => name === "mcp__dusk" || name === "mcp__agents"));
+      const duskRelay = (path: string) => ({ command: process.execPath, args: [PERM_PROXY_PATH, path], env: permissionEnv, alwaysLoad: true });
+      const { lease: hostLease, hosted: hostedNames, duskServer, pingDusk } = hostClaudeMcpServers({
+        servers: mcpServers, botOwned, threadId, duskRelay, socketPath, enabled: mcpHost.enabled(turnEnvironment) && claudeCliHttpMcp(cliVersion),
+      });
       // The MCP config carries credentials and argv is readable via `ps`: a 0600 file, removed at settle.
       let mcpConfigPath: string | null = null;
       if (Object.keys(mcpServers).length) {
@@ -1199,6 +1210,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
 
       const live = sessions.get(threadId);
       if (!turn.sessionReset && live && !live.turn && !live.closing && live.child.exitCode === null && live.argsKey === argsKey && (!sessionId || sessionId === live.sessionId)) {
+        // The live process holds the same mounts.
+        hostLease?.release();
         if (live.idleTimer) clearTimeout(live.idleTimer);
         live.turn = { turnId, input: turn, retryAbort, settled: false, sawStreamDelta: false, awaitingInit: true, pendingSteers: new Set(), deferred: null, continuationGrace: null, continuationSilence: null };
         active.set(threadId, { stop: () => {
@@ -1234,6 +1247,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       const cleanupUnownedLaunch = () => {
         broker?.close();
         broker = undefined;
+        hostLease?.release();
         if (mcpConfigPath) {
           try {
             rmSync(dirname(mcpConfigPath), { recursive: true, force: true });
@@ -1304,9 +1318,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
           }).catch((error: unknown) => {
             throw new Error(serverLine(conversationLanguage(threadId), "server.claude.approvalChannel"), { cause: error });
           });
-          if (broker.socketPath !== socketPath && mcpConfigPath) {
-            mcpServers.dusk = { command: process.execPath, args: [PERM_PROXY_PATH, broker.socketPath], env: permissionEnv, alwaysLoad: true };
-          }
+          if (broker.socketPath !== socketPath && mcpConfigPath) mcpServers.dusk = duskServer(broker.socketPath);
+          if (hostedNames.has("dusk")) mcpHost.restartBroker(broker.socketPath);
         }
 
         // Write once, only after the broker has selected its real endpoint.
@@ -1332,7 +1345,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
 
       let child: ReturnType<typeof spawnCli>;
       try {
-        child = spawnCli(config.cli, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], box: { ...(broker ? { rw: [broker.socketPath] } : {}), ...(hookTokenPath ? { ro: [dirname(hookTokenPath)] } : {}) } }, "bot");
+        child = spawnCli(config.cli, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], box: { ...(broker && !hostedNames.has("dusk") ? { rw: [broker.socketPath] } : {}), ...(hookTokenPath ? { ro: [dirname(hookTokenPath)] } : {}) } }, "bot");
       } catch (error) {
         cleanupUnownedLaunch();
         throw error;
@@ -1343,6 +1356,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
           args: [...args], env: { ...env }, cwd, system: launchSystem ?? null,
           mcpServers: mcpConfigPath ? JSON.parse(JSON.stringify(mcpServers)) : null,
           settings: authSettingsPath ? JSON.parse(JSON.stringify(settings)) : null,
+          ...(pingDusk ? { pingDusk } : {}),
         });
       }
       let markClosed!: () => void;
@@ -1350,6 +1364,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         closed: new Promise<void>((resolve) => { markClosed = resolve; }),
         child,
         broker,
+        hostLease,
         // A CLI that already exited needs no answer: the write is skipped, like writeUser's.
         elicit: claudeElicitations((frame) => new Promise<boolean>((resolve) => {
           const { stdin } = session.child;
@@ -1863,6 +1878,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         }
         if (session.idleTimer) clearTimeout(session.idleTimer);
         session.broker?.close();
+        session.hostLease?.release();
         session.elicit.close();
         if (session.mcpConfigPath) {
           try {

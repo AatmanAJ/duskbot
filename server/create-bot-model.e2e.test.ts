@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { launchVerificationServer } from "../scripts/control-dusk.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("Chief creation uses the workspace default or a validated explicit model without inheriting permissions", async () => {
   const temp = mkdtempSync(join(tmpdir(), "dusk-create-model-"));

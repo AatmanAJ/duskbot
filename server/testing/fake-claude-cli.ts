@@ -10,6 +10,8 @@
 //   FAKE_CLAUDE_RATE_LIMIT  JSON rate_limit_info reported in a `rate_limit_event` after init
 //   FAKE_CLAUDE_LIMITED_FILE  path: while it exists, every turn plays usage-limit with the file's JSON rate_limit_info
 //   FAKE_CLAUDE_MCP_FAILED  comma list of MCP servers init reports as failed (`mcp_servers`)
+//   FAKE_CLAUDE_MCP_STARTUP  1: connect and keep every --mcp-config server from launch, as the real CLI does
+//     (fake-claude-mcp-startup.ts); FAKE_CLAUDE_MCP_STARTUP_LOG  path: one JSON line per server it connected
 //   FAKE_CLAUDE_ANSWER_MODEL  the `model` of its assistant frames, as when the CLI answers with another model than asked
 //   FAKE_CLAUDE_RELEASE  with hang: the turn ends normally once this file exists; a scripted call's `hold` ends then too
 //   FAKE_CLAUDE_DUMP  path for the latest turn's {argv, env, cwd, prompt, systemPrompt, mcpConfig}
@@ -98,6 +100,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, readFileSync, renameS
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { runRoomHandoffAgent } from "./room-handoff-agent.ts";
+import { connectLaunchMcpServers } from "./fake-claude-mcp-startup.ts";
 
 const mode = process.env.FAKE_CLAUDE_MODE ?? "happy";
 const streamCadence = (() => {
@@ -291,6 +294,7 @@ const argAfter = (flag: string): string | null => {
   const i = argv.indexOf(flag);
   return i === -1 ? null : (argv[i + 1] ?? null);
 };
+if (process.env.FAKE_CLAUDE_MCP_STARTUP === "1" && argv.includes("--input-format")) connectLaunchMcpServers(argAfter("--mcp-config"));
 
 const answerModel = process.env.FAKE_CLAUDE_ANSWER_MODEL;
 const out = (obj: any) => process.stdout.write(JSON.stringify(answerModel && obj.type === "assistant" && !obj.message?.model ? { ...obj, message: { ...obj.message, model: answerModel } } : obj) + "\n");

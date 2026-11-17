@@ -7,6 +7,9 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { childEnv } from "./testing/dusk-env.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 type McpServer = { command: string; args: string[]; env: Record<string, string> };
 type Answer = { id: number; result?: { content?: Array<{ text: string }>; isError?: boolean }; error?: { code: number; message: string } };

@@ -14,6 +14,9 @@ import { BROWSER_HANDED_OVER, browserBusyText } from "./host/browser-seats.ts";
 import { createTeamVpsFixture } from "../scripts/testing/team-vps-fixture.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const HOST = "dusk-t-0123456789ab.fly.dev";
@@ -112,7 +115,7 @@ await import(${JSON.stringify(pathToFileURL(join(SERVER_DIR, "testing", "fake-ac
     };
     this.child = spawn(process.execPath, ["--import", prelude, join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
-      env: { PATH: process.env.PATH, HOME: this.home, USERPROFILE: this.home, DUSK_DATA_DIR: this.dataDir, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1), ...roleEnv, ...this.extraEnv },
+      env: { PATH: process.env.PATH, HOME: this.home, USERPROFILE: this.home, DUSK_MCP_HOST: "0", DUSK_DATA_DIR: this.dataDir, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1), ...roleEnv, ...this.extraEnv },
       stdio: ["ignore", "pipe", "pipe"],
     });
     this.child.stdout?.on("data", (chunk) => { this.log += chunk; });

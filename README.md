@@ -151,7 +151,7 @@ Sign in once with the AI you already pay for and every bot can use it. Give each
 | On your machine | Ollama and LM Studio |
 | Anything else | A custom ACP agent or provider |
 
-Sign-in engines run their own tool loop and get dusk bot's tools (browser, computer, files, apps, memory, other bots) through an MCP server mounted for each turn. API keys and local models run in dusk bot's own loop. One-click apps cover GitHub, Notion, Linear, Airtable, Todoist, Trello, ClickUp, HubSpot, Jira, Shopify, Stripe and Cloudflare, plus Gmail with an app password. dusk bot is an MCP server too: `duskbot mcp`. See [Composio](docs/composio.md), [custom MCP servers](docs/custom-mcp-servers.md) and [dusk bot as an MCP server](docs/mcp-server.md).
+Sign-in engines run their own tool loop and get dusk bot's tools (browser, computer, files, apps, memory, other bots) through an MCP server mounted for each turn. API keys and local models run in dusk bot's own loop. One-click apps cover GitHub, Notion, Linear, Airtable, Todoist, Trello, ClickUp, HubSpot, Jira, Shopify, Stripe and Cloudflare, plus Gmail with an app password. dusk bot is an MCP server too: `duskbot mcp`. See [Composio](docs/composio.md), [custom MCP servers](docs/custom-mcp-servers.md), [dusk bot as an MCP server](docs/mcp-server.md) and [the MCP host](docs/mcp-host.md), which answers dusk bot's own servers inside the app instead of a process per server per bot.
 
 ## Vault and moving in
 

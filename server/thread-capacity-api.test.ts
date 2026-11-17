@@ -10,6 +10,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { launchVerificationServer, type VerificationServer } from "../scripts/control-dusk.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 import { openSse } from "./testing/sse.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 describe("per-bot thread capacity through an isolated HTTP fixture", () => {
   let fixture: VerificationServer;

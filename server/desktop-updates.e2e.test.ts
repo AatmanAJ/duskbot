@@ -13,6 +13,9 @@ import { HOST_WHILE_UPDATING, LOCAL_VM_UPDATING, LOCAL_VM_UPDATING_PROBLEM, VPS_
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 import { VPS_CONTAINER_LABEL, VPS_MANAGED_LABEL, vpsContainerName } from "./vps-computer.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const OLD_DESKTOP = { containers: ["shared"], outdated: ["shared"], imageMissing: true, holdPull: true };
@@ -107,7 +110,7 @@ describe.skipIf(process.platform === "win32")("a bot's old desktop after an app 
       "--import", pathToFileURL(join(ROOT, "server/testing/desktop-parent.mjs")).href, join(ROOT, "server/index.ts")], {
       cwd: ROOT, env: {
         PATH: dirname(process.execPath), ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-        HOME: home, USERPROFILE: home, DUSK_DATA_DIR: data,
+        HOME: home, USERPROFILE: home, DUSK_MCP_HOST: "0", DUSK_DATA_DIR: data,
         APPDATA: join(home, "appdata"), LOCALAPPDATA: join(home, "localappdata"),
         TEMP: home, TMP: home, TMPDIR: home,
         DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(port + 1), DUSK_STATIC_DIR: join(home, "static"), DUSK_TEST_VM_STATE: stateFile,

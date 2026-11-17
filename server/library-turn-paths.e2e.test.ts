@@ -2,6 +2,9 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { expect, it } from "vitest";
 import { launchVerificationServer } from "../scripts/control-dusk.ts";
 import { callTool, toolCallContextFromEnv } from "./drivers/agents-call.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("installs and updates a shared skill through bot tools, retaining readable prompt paths and refusing stale revisions", async () => {
   const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "hang" });

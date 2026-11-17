@@ -60,8 +60,8 @@ export function resolveAdbPath(env: NodeJS.ProcessEnv = process.env, platform = 
   return null;
 }
 
-async function runAdb(args: string[], options: { binary?: boolean; timeoutMs?: number } = {}): Promise<Buffer> {
-  const adb = resolveAdbPath();
+async function runAdb(env: NodeJS.ProcessEnv, args: string[], options: { binary?: boolean; timeoutMs?: number } = {}): Promise<Buffer> {
+  const adb = resolveAdbPath(env);
   if (!adb) throw new Error("Android platform tools are unavailable. Reopen dusk bot or install adb.");
   return new Promise((resolve, reject) => {
     const child = spawn(adb, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
@@ -117,14 +117,14 @@ export function parseDevices(output: string): Device[] {
   return devices;
 }
 
-async function usbDevices() {
-  if (!resolveAdbPath()) return [];
-  return parseDevices((await runAdb(["devices", "-l"])).toString("utf8")).filter((device) => device.connection === "usb");
+async function usbDevices(env: NodeJS.ProcessEnv) {
+  if (!resolveAdbPath(env)) return [];
+  return parseDevices((await runAdb(env, ["devices", "-l"])).toString("utf8")).filter((device) => device.connection === "usb");
 }
 
-async function readySerial(requested?: unknown): Promise<string> {
-  const devices = await usbDevices();
-  const serial = typeof requested === "string" && requested ? requested : process.env.PH_ANDROID_SERIAL;
+async function readySerial(env: NodeJS.ProcessEnv, requested?: unknown): Promise<string> {
+  const devices = await usbDevices(env);
+  const serial = typeof requested === "string" && requested ? requested : env.PH_ANDROID_SERIAL;
   const candidates = serial ? devices.filter((device) => device.serial === serial) : devices;
   if (!candidates.length) throw new Error("No physical USB Android device is connected");
   if (candidates.length > 1 && !serial) throw new Error("Multiple USB Android devices are connected; pass serial");
@@ -134,8 +134,8 @@ async function readySerial(requested?: unknown): Promise<string> {
   return device.serial;
 }
 
-async function onDevice(serial: string, args: string[], binary = false) {
-  return runAdb(["-s", serial, ...args], { binary });
+async function onDevice(env: NodeJS.ProcessEnv, serial: string, args: string[], binary = false) {
+  return runAdb(env, ["-s", serial, ...args], { binary });
 }
 
 function normalize(value: string) {
@@ -169,8 +169,8 @@ export function findPackages(name: string, packages: string[]) {
   return [];
 }
 
-async function launchablePackages(serial: string) {
-  const output = await onDevice(serial, [
+async function launchablePackages(env: NodeJS.ProcessEnv, serial: string) {
+  const output = await onDevice(env, serial, [
     "shell", "cmd", "package", "query-activities", "--brief",
     "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER",
   ]);
@@ -209,15 +209,15 @@ export function parseUiNodes(xml: string): UiNode[] {
   return nodes;
 }
 
-async function readNodes(serial: string) {
-  const streamed = (await onDevice(serial, ["shell", "uiautomator", "dump", "/dev/tty"])).toString("utf8");
+async function readNodes(env: NodeJS.ProcessEnv, serial: string) {
+  const streamed = (await onDevice(env, serial, ["shell", "uiautomator", "dump", "/dev/tty"])).toString("utf8");
   const streamedStart = streamed.indexOf("<?xml");
   if (streamedStart >= 0) return parseUiNodes(streamed.slice(streamedStart));
 
   const remotePath = "/data/local/tmp/dusk-window.xml";
-  await onDevice(serial, ["shell", "uiautomator", "dump", remotePath]);
-  const saved = (await onDevice(serial, ["shell", "cat", remotePath])).toString("utf8");
-  void onDevice(serial, ["shell", "rm", "-f", remotePath]).catch(() => undefined);
+  await onDevice(env, serial, ["shell", "uiautomator", "dump", remotePath]);
+  const saved = (await onDevice(env, serial, ["shell", "cat", remotePath])).toString("utf8");
+  void onDevice(env, serial, ["shell", "rm", "-f", remotePath]).catch(() => undefined);
   const savedStart = saved.indexOf("<?xml");
   return parseUiNodes(savedStart >= 0 ? saved.slice(savedStart) : saved);
 }
@@ -277,37 +277,37 @@ export function createPhoneClaim(
   };
 }
 
-async function callTool(name: string, args: Json): Promise<ToolResult> {
+async function callTool(env: NodeJS.ProcessEnv, name: string, args: Json): Promise<ToolResult> {
   if (name === "status") {
-    const adb = resolveAdbPath();
-    const devices = adb ? await usbDevices() : [];
+    const adb = resolveAdbPath(env);
+    const devices = adb ? await usbDevices(env) : [];
     return textResult(JSON.stringify({ available: Boolean(adb), devices }, null, 2));
   }
-  const serial = await readySerial(args.serial);
-  if (name === "read_screen") return textResult(nodeLines(await readNodes(serial)));
+  const serial = await readySerial(env, args.serial);
+  if (name === "read_screen") return textResult(nodeLines(await readNodes(env, serial)));
   if (name === "screenshot") {
-    const png = await onDevice(serial, ["exec-out", "screencap", "-p"], true);
+    const png = await onDevice(env, serial, ["exec-out", "screencap", "-p"], true);
     if (!png.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) throw new Error("Android returned an invalid screenshot");
     return { content: [{ type: "text", text: `Android screenshot from ${serial}` }, { type: "image", data: png.toString("base64"), mimeType: "image/png" }] };
   }
   if (name === "list_apps") {
-    const packages = await launchablePackages(serial);
+    const packages = await launchablePackages(env, serial);
     const query = typeof args.query === "string" ? args.query : "";
     return textResult((query ? findPackages(query, packages) : packages).join("\n") || "No matching launchable app found");
   }
   if (name === "open_app") {
     const appName = String(args.name ?? "").trim();
     if (!appName) throw new Error("name is required");
-    const matches = findPackages(appName, await launchablePackages(serial));
+    const matches = findPackages(appName, await launchablePackages(env, serial));
     if (matches.length !== 1) throw new Error(matches.length ? `App name is ambiguous: ${matches.join(", ")}` : `No installed launchable app matches ${JSON.stringify(appName)}`);
-    await onDevice(serial, ["shell", "monkey", "-p", matches[0], "-c", "android.intent.category.LAUNCHER", "1"]);
+    await onDevice(env, serial, ["shell", "monkey", "-p", matches[0], "-c", "android.intent.category.LAUNCHER", "1"]);
     return textResult(`Opened ${appName} (${matches[0]})`);
   }
   if (name === "tap_text") {
     const query = String(args.text ?? "").trim().toLowerCase();
     if (!query) throw new Error("text is required");
     const exact = args.exact === true;
-    const hits = (await readNodes(serial)).filter((node) => {
+    const hits = (await readNodes(env, serial)).filter((node) => {
       const labels = [node.text, node.description].filter(Boolean).map((value) => value.toLowerCase());
       return labels.some((label) => exact ? label === query : label.includes(query));
     });
@@ -315,18 +315,18 @@ async function callTool(name: string, args: Json): Promise<ToolResult> {
     const hit = hits[index];
     if (!hit) throw new Error(`No visible Android text matches ${JSON.stringify(args.text)}`);
     const [x1, y1, x2, y2] = hit.bounds;
-    await onDevice(serial, ["shell", "input", "tap", String(Math.round((x1 + x2) / 2)), String(Math.round((y1 + y2) / 2))]);
+    await onDevice(env, serial, ["shell", "input", "tap", String(Math.round((x1 + x2) / 2)), String(Math.round((y1 + y2) / 2))]);
     return textResult(`Tapped ${JSON.stringify(hit.text || hit.description)}`);
   }
   if (name === "tap") {
     const x = Number(args.x); const y = Number(args.y);
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 10000 || y > 10000) throw new Error("Invalid Android coordinates");
-    await onDevice(serial, ["shell", "input", "tap", String(Math.round(x)), String(Math.round(y))]);
+    await onDevice(env, serial, ["shell", "input", "tap", String(Math.round(x)), String(Math.round(y))]);
     return textResult(`Tapped ${Math.round(x)},${Math.round(y)}`);
   }
   if (name === "swipe") {
     const direction = String(args.direction ?? "");
-    const size = (await onDevice(serial, ["shell", "wm", "size"])).toString("utf8");
+    const size = (await onDevice(env, serial, ["shell", "wm", "size"])).toString("utf8");
     const match = /(\d+)x(\d+)/.exec(size);
     if (!match) throw new Error("Could not read Android screen size");
     const width = Number(match[1]); const height = Number(match[2]);
@@ -338,57 +338,62 @@ async function callTool(name: string, args: Json): Promise<ToolResult> {
     };
     const point = points[direction];
     if (!point) throw new Error("Invalid swipe direction");
-    await onDevice(serial, ["shell", "input", "swipe", ...point.map((value) => String(Math.round(value))), "260"]);
+    await onDevice(env, serial, ["shell", "input", "swipe", ...point.map((value) => String(Math.round(value))), "260"]);
     return textResult(`Swiped ${direction}`);
   }
   if (name === "type_text") {
     const value = String(args.text ?? "");
     if (!value || value.length > 256 || !SAFE_TEXT.test(value)) throw new Error("Android text supports only basic ASCII text up to 256 characters");
-    await onDevice(serial, ["shell", "input", "text", value.replaceAll(" ", "%s")]);
+    await onDevice(env, serial, ["shell", "input", "text", value.replaceAll(" ", "%s")]);
     return textResult("Typed text into the focused Android field");
   }
   if (name === "press") {
     const key = String(args.key ?? "").toLowerCase();
     if (!KEYCODES[key]) throw new Error("Unsupported Android key");
-    await onDevice(serial, ["shell", "input", "keyevent", KEYCODES[key]]);
+    await onDevice(env, serial, ["shell", "input", "keyevent", KEYCODES[key]]);
     return textResult(`Pressed ${key}`);
   }
   throw new Error(`Unknown phone tool: ${name}`);
 }
 
-const send = (message: Json) => process.stdout.write(`${JSON.stringify(message)}\n`);
-const ok = (id: unknown, result: unknown) => send({ jsonrpc: "2.0", id, result });
-const rpcError = (id: unknown, code: number, message: string) => send({ jsonrpc: "2.0", id, error: { code, message } });
+const ok = (id: unknown, result: unknown): Json => ({ jsonrpc: "2.0", id, result });
+const rpcError = (id: unknown, code: number, message: string): Json => ({ jsonrpc: "2.0", id, error: { code, message } });
 
-async function handle(message: Json, ensureClaim: () => Promise<ClaimOutcome>) {
-  const id = message.id;
-  const method = message.method;
-  const params = (message.params ?? {}) as Json;
-  if (method === "initialize") return ok(id, { protocolVersion: String(params.protocolVersion ?? "2024-11-05"), capabilities: { tools: {} }, serverInfo: { name: "duskbot-phone", version: "1" } });
-  if (method === "notifications/initialized" || method === "notifications/cancelled") return;
-  if (method === "ping") return ok(id, {});
-  if (method === "tools/list") return ok(id, { tools: TOOLS });
-  if (method === "tools/call") {
-    const name = String(params.name ?? "");
-    if (!TOOLS.some((tool) => tool.name === name)) return rpcError(id, -32602, `Unknown tool: ${name}`);
-    const claim = await ensureClaim();
-    if (!claim.ok) return ok(id, textResult(claim.message, true));
-    try {
-      return ok(id, await callTool(name, (params.arguments ?? {}) as Json));
-    } catch (error) {
-      return ok(id, textResult(error instanceof Error ? error.message : String(error), true));
+/** The phone server's answers for the environment its relay would be started with (DUSK_ADB_PATH, PH_ANDROID_SERIAL,
+ * DUSK_HARNESS_URL and DUSK_PHONE_TOKEN for the per-call claim). */
+export function phoneMcp(env: NodeJS.ProcessEnv, ensureClaim: () => Promise<ClaimOutcome> = createPhoneClaim(env)): (message: Json) => Promise<Json | undefined> {
+  return async (message) => {
+    const id = message.id;
+    const method = message.method;
+    const params = (message.params ?? {}) as Json;
+    if (method === "initialize") return ok(id, { protocolVersion: String(params.protocolVersion ?? "2024-11-05"), capabilities: { tools: {} }, serverInfo: { name: "duskbot-phone", version: "1" } });
+    if (method === "notifications/initialized" || method === "notifications/cancelled") return undefined;
+    if (method === "ping") return ok(id, {});
+    if (method === "tools/list") return ok(id, { tools: TOOLS });
+    if (method === "tools/call") {
+      const name = String(params.name ?? "");
+      if (!TOOLS.some((tool) => tool.name === name)) return rpcError(id, -32602, `Unknown tool: ${name}`);
+      const claim = await ensureClaim();
+      if (!claim.ok) return ok(id, textResult(claim.message, true));
+      try {
+        return ok(id, await callTool(env, name, (params.arguments ?? {}) as Json));
+      } catch (error) {
+        return ok(id, textResult(error instanceof Error ? error.message : String(error), true));
+      }
     }
-  }
-  if (id !== undefined) rpcError(id, -32601, `Method not found: ${String(method)}`);
+    return id !== undefined ? rpcError(id, -32601, `Method not found: ${String(method)}`) : undefined;
+  };
 }
 
 if (process.argv[1] && existsSync(process.argv[1]) && /phone-proxy\.(?:ts|js)$/.test(process.argv[1])) {
-  const ensureClaim = createPhoneClaim();
+  const answer = phoneMcp(process.env);
+  const send = (message: Json) => process.stdout.write(`${JSON.stringify(message)}\n`);
   const lines = createInterface({ input: process.stdin, terminal: false });
   lines.on("line", (line) => {
     try {
       const message = JSON.parse(line) as Json;
-      void handle(message, ensureClaim).catch((error) => rpcError(message.id, -32603, error instanceof Error ? error.message : String(error)));
+      void answer(message).then((reply) => { if (reply) send(reply); },
+        (error) => send(rpcError(message.id, -32603, error instanceof Error ? error.message : String(error))));
     } catch {}
   });
 }

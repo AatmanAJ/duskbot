@@ -15,6 +15,9 @@ import { launchCloudSendFixture, type CloudSendFixture, type CloudTeamFixture } 
 import { personKey } from "./person-key.ts";
 import { startBrokerFake, type BrokerFake } from "./testing/broker-fake.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 const CLEO = { email: "cleo@acme.test", role: "owner" as const };
 const BEN = { email: "ben@acme.test", role: "member" as const };

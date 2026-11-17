@@ -11,6 +11,9 @@ import { launchCloudSendFixture } from "../scripts/testing/cloud-send-fixture.ts
 import { createTeamVpsFixture } from "../scripts/testing/team-vps-fixture.ts";
 import { openSse } from "./testing/sse.ts";
 import { vpsContainerName } from "./vps-computer.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 async function harness(options: Parameters<typeof createTeamVpsFixture>[0] & { host?: boolean } = {}) {
   const { host, ...vpsOptions } = options;

@@ -11,6 +11,9 @@ import { launchVerificationServer, runControlDusk, type VerificationServer } fro
 import { handleToolCall, request } from "../scripts/mcp-server.ts";
 import { readHandoffs } from "./testing/handoff-rows.ts";
 import { memoryDate } from "./workspace.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 describe("independent bot tasks through the isolated control surface", () => {
   let session: VerificationServer;

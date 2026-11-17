@@ -174,6 +174,8 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     // FAKE_CLAUDE_DUMP stays the launcher's: assertions read fixtureDumpPath.
     if ((key.startsWith("FAKE_CLAUDE_") || key.startsWith("FAKE_CODEX_TEXT_") || key.startsWith("FAKE_CODEX_COMMAND") || key === "FAKE_ACP_HANG_ON") && key !== "FAKE_CLAUDE_DUMP" && value) childEnv[key] = value;
   }
+  // "0" keeps the fixture's engines on stdio relays (server/mcp-host); unset, they reach the MCP host as the app's do.
+  if ((parentEnv.DUSK_MCP_HOST ?? process.env.DUSK_MCP_HOST) === "0") childEnv.DUSK_MCP_HOST = "0";
   // Enables POST /api/testing/org-library; the route does not exist without it.
   if (parentEnv.DUSK_TEST_ORG_LIBRARY_KEY) childEnv.DUSK_TEST_ORG_LIBRARY_KEY = parentEnv.DUSK_TEST_ORG_LIBRARY_KEY;
   // One log line per browser call and preview frame.

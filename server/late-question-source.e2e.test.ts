@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import { connect, type Socket } from "node:net";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("does not retarget a deleted room asker's late answer to the current speaker", async () => {
   const fixture = await launchVerificationServer({ ...process.env, FAKE_CLAUDE_MODE: "hang" });

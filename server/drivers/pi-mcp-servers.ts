@@ -5,10 +5,14 @@ import type { SendTurnInput } from "../contracts.ts";
 import { appMountFor, customServerGate, gateServer, mcpStdioServer } from "../mcp-gate-config.ts";
 import { remoteMcpSpec } from "../mcp-http.ts";
 import { SPAWNED_PROXIES } from "../proxy-paths.ts";
+import { mcpHost } from "../mcp-host/host.ts";
+import type { MountLease } from "../mcp-host/mounts.ts";
+import { hostMcpServers } from "./engine-mcp-host.ts";
 
 const NODE_ENV_FLAG = { ELECTRON_RUN_AS_NODE: "1" };
 
-export function buildMcpServers(turn: SendTurnInput): Record<string, unknown> | null {
+/** With `lease`, dusk bot's own servers are mounts of the harness's MCP host, which the extension reaches by URL. */
+export function buildMcpServers(turn: SendTurnInput, lease?: MountLease): Record<string, unknown> | null {
   const parsed = parseToolScope(turn.toolScope);
   if (!parsed.ok) throw new Error(parsed.error);
   const servers: Record<string, unknown> = {};
@@ -45,5 +49,19 @@ export function buildMcpServers(turn: SendTurnInput): Record<string, unknown> | 
     const original = server as { scope?: string };
     servers[name] = { ...stdio, ...(original.scope ? { scope: original.scope } : {}), ...(directory ? { directory: true } : {}) };
   }
-  return Object.keys(servers).length ? servers : null;
+  if (!Object.keys(servers).length) return null;
+  if (!lease) return servers;
+  const own = new Set(Object.keys(servers).filter((name) => !Object.hasOwn(turn.integrations?.custom ?? {}, name)));
+  return hostMcpServers({ servers, own, threadId: turn.threadId, lease, keep: ["scope", "directory"] }).servers;
+}
+
+/** buildMcpServers on the host when it is on, with the lease the turn gives back when its pi process is gone. */
+export function hostedPiMcpServers(turn: SendTurnInput, env: Record<string, string | undefined>): { servers: Record<string, unknown> | null; lease?: MountLease } {
+  const lease = mcpHost.enabled(env) ? mcpHost.lease() : undefined;
+  try {
+    return { servers: buildMcpServers(turn, lease), ...(lease ? { lease } : {}) };
+  } catch (err) {
+    lease?.release();
+    throw err;
+  }
 }

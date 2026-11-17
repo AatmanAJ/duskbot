@@ -1,6 +1,7 @@
 // pi's MCP client: pi core ships none ("does not include built-in MCP"), so this extension, loaded with
 // `-e`, mounts every server in the DUSK_MCP_CONFIG file as pi tools. dusk bot's proxies speak raw
-// JSON-RPC 2.0 over stdio, one frame per line, without Content-Length framing.
+// JSON-RPC 2.0 over stdio, one frame per line, without Content-Length framing; a server with a `url` is one of
+// dusk bot's own, answered in the harness over Streamable HTTP, with no process of its own.
 import { Type, type TObjectOptions, type TSchema, type TSchemaOptions } from "typebox";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -11,9 +12,12 @@ import { REMOTE_MCP_STARTUP_MS } from "../mcp-http.ts";
 import { AGENTS_TOOL_TIMEOUT_SECONDS } from "./agents-tool-limit.ts";
 
 interface McpServerDef {
-  command: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** A server dusk bot answers itself, reached over Streamable HTTP with these headers (server/mcp-host). */
+  url?: string;
+  headers?: Record<string, string>;
   /** "local-computer" marks the user's real desktop: every tool on it is gated behind a permission card. */
   scope?: string;
   directory?: boolean;
@@ -27,6 +31,8 @@ interface McpConfig {
   /** Register the ask_user tool: the driver sets it when the turn may ask. */
   askUser?: boolean;
 }
+
+type McpFrame = { id?: unknown; method?: unknown; error?: { message?: string }; result?: unknown };
 
 interface McpTool {
   name: string;
@@ -89,7 +95,8 @@ const TOOL_OUTPUT_MAX_LINES = 2_000;
 const TOOL_NAME_MAX_LENGTH = 64;
 
 export class StdioMcp {
-  private child: ChildProcessWithoutNullStreams;
+  private child: ChildProcessWithoutNullStreams | undefined;
+  private readonly http: { url: string; headers: Record<string, string>; stop: AbortController } | undefined;
   private buf = "";
   private nextId = 1;
   private disposed = false;
@@ -99,7 +106,11 @@ export class StdioMcp {
 
   constructor(def: McpServerDef) {
     this.remote = def.directory === true;
-    this.child = spawn(def.command, def.args ?? [], {
+    if (def.url) {
+      this.http = { url: def.url, headers: def.headers ?? {}, stop: new AbortController() };
+      return;
+    }
+    this.child = spawn(def.command!, def.args ?? [], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...def.env },
     });
@@ -124,8 +135,9 @@ export class StdioMcp {
     if (this.disposed) return;
     this.disposed = true;
     this.failAll(err);
+    this.http?.stop.abort();
     try {
-      this.child.kill();
+      this.child?.kill();
     } catch {}
   }
 
@@ -140,38 +152,72 @@ export class StdioMcp {
         this.closeWithError(new Error(`MCP frame exceeded ${MCP_MAX_FRAME_BYTES} bytes`));
         return;
       }
-      let msg: { id?: unknown; method?: unknown; error?: { message?: string }; result?: unknown };
+      let msg: McpFrame;
       try {
         msg = JSON.parse(line);
       } catch {
         continue;
       }
-      if (typeof msg.id === "number" && this.pending.has(msg.id)) {
-        const p = this.pending.get(msg.id)!;
-        this.pending.delete(msg.id);
-        if (msg.error) p.reject(new Error(msg.error.message ?? "MCP error"));
-        else p.resolve(msg.result);
-        continue;
-      }
-      if (msg.id !== undefined && typeof msg.method === "string") {
-        try {
-          this.write({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "Client method not supported" } });
-        } catch (err) {
-          this.closeWithError(err instanceof Error ? err : new Error(String(err)));
-          return;
-        }
-      }
+      if (!this.onFrame(msg)) return;
     }
     if (Buffer.byteLength(this.buf, "utf8") > MCP_MAX_FRAME_BYTES) {
       this.closeWithError(new Error(`MCP frame exceeded ${MCP_MAX_FRAME_BYTES} bytes without a newline`));
     }
   }
 
+  /** False once the client has closed. */
+  private onFrame(msg: McpFrame): boolean {
+    if (typeof msg.id === "number" && this.pending.has(msg.id)) {
+      const p = this.pending.get(msg.id)!;
+      this.pending.delete(msg.id);
+      if (msg.error) p.reject(new Error(msg.error.message ?? "MCP error"));
+      else p.resolve(msg.result);
+      return true;
+    }
+    if (msg.id !== undefined && typeof msg.method === "string") {
+      try {
+        this.write({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "Client method not supported" } });
+      } catch (err) {
+        this.closeWithError(err instanceof Error ? err : new Error(String(err)));
+        return false;
+      }
+    }
+    return true;
+  }
+
   private write(frame: unknown): void {
-    if (this.disposed || this.child.stdin.destroyed || !this.child.stdin.writable) {
+    if (this.http) {
+      if (this.disposed) throw new Error("MCP client is closed");
+      void this.post(frame as { id?: unknown });
+      return;
+    }
+    if (this.disposed || !this.child || this.child.stdin.destroyed || !this.child.stdin.writable) {
       throw new Error("MCP server stdin is closed");
     }
     this.child.stdin.write(JSON.stringify(frame) + "\n");
+  }
+
+  /** One frame over Streamable HTTP: the answer comes back as JSON or as an event stream of frames. */
+  private async post(frame: { id?: unknown }): Promise<void> {
+    const http = this.http!;
+    const fail = (message: string) => {
+      const waiter = typeof frame.id === "number" ? this.pending.get(frame.id) : undefined;
+      if (waiter) { this.pending.delete(frame.id as number); waiter.reject(new Error(message)); }
+    };
+    try {
+      const response = await fetch(http.url, { method: "POST", signal: http.stop.signal, body: JSON.stringify(frame),
+        headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...http.headers } });
+      const text = await response.text();
+      if (Buffer.byteLength(text, "utf8") > MCP_MAX_FRAME_BYTES) return fail(`MCP frame exceeded ${MCP_MAX_FRAME_BYTES} bytes`);
+      if (!response.ok) return fail(`MCP server answered HTTP ${response.status}`);
+      if (!text.trim()) return;
+      const frames = (response.headers.get("content-type") ?? "").includes("text/event-stream")
+        ? text.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => JSON.parse(line.slice(5)) as McpFrame)
+        : [JSON.parse(text) as McpFrame].flat();
+      for (const answer of frames) if (!this.onFrame(answer)) return;
+    } catch (err) {
+      fail(err instanceof Error ? err.message : String(err));
+    }
   }
 
   private call(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
@@ -291,8 +337,9 @@ export class StdioMcp {
     if (this.disposed) return;
     this.disposed = true;
     this.failAll(new Error("MCP client disposed"));
+    this.http?.stop.abort();
     try {
-      this.child.kill();
+      this.child?.kill();
     } catch {}
   }
 }
@@ -655,7 +702,7 @@ export default async function (pi: PiExtensionApi): Promise<void> {
 
   const mounts = await Promise.all(
     serverEntries.map(async ([serverName, def]) => {
-      if (!def || typeof def.command !== "string" || !def.command.trim()) return { serverName };
+      if (!def || ((typeof def.command !== "string" || !def.command.trim()) && typeof def.url !== "string")) return { serverName };
       let client: StdioMcp | undefined;
       try {
         client = new StdioMcp(def);

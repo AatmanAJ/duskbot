@@ -3,17 +3,17 @@
 // data folder, its events, transcripts, usage spans and logs), every answer it gave, every tool result and its own log.
 // The file secret is found only in its private file; the ref secret only in the MCP server settings it was saved into.
 import { randomBytes } from "node:crypto";
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
 import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { cloudHomeConfiguration, cloudPairingSignature } from "./cloud-home.ts";
 import { cloudHomeChildEnvironments, spawnWithSecrets } from "./cloud-home-start.ts";
 import { sealCardSecret } from "../src/lib/card-seal.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { openMcp, type McpConnection, type McpEntry } from "./testing/fake-mcp-client.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
@@ -29,7 +29,7 @@ let child: ChildProcess;
 let log = "";
 let owner = "";
 const said: string[] = [];
-const proxies: ChildProcess[] = [];
+const connections: McpConnection[] = [];
 
 async function api(method: string, path: string, body?: unknown) {
   const response = await fetch(`${base}${path}`, {
@@ -64,19 +64,13 @@ async function pairOwner(): Promise<string> {
 async function proxyFor(start: () => Promise<void>) {
   const dump = join(home, "spawn.json");
   await start();
-  let agents: { command: string; args: string[]; env: Record<string, string> } | undefined;
+  let agents: McpEntry | undefined;
   await expect.poll(() => {
     try { agents = JSON.parse(readFileSync(dump, "utf8")).mcpConfig.mcpServers.agents; return true; } catch { return false; }
   }, { timeout: 15_000 }).toBe(true);
-  const proxy = spawn(agents!.command, agents!.args, { env: { PATH: process.env.PATH, HOME: home, ...agents!.env }, stdio: ["pipe", "pipe", "pipe"] });
-  proxies.push(proxy);
-  const replies = new Map<number, (value: any) => void>();
-  createInterface({ input: proxy.stdout! }).on("line", (line) => { const message = JSON.parse(line); replies.get(message.id)?.(message.result); replies.delete(message.id); });
-  let next = 0;
-  const request = (method: string, params: unknown): Promise<any> => new Promise((resolve) => {
-    const id = ++next; replies.set(id, resolve);
-    proxy.stdin!.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
-  });
+  const connection = openMcp(agents!);
+  connections.push(connection);
+  const request = async (method: string, params: unknown): Promise<any> => (await connection.call(method, params)).result;
   await request("initialize", { protocolVersion: "2024-11-05" });
   return {
     call: async (name: string, args: unknown = {}) => {
@@ -127,7 +121,7 @@ await import(${JSON.stringify(pathToFileURL(join(SERVER_DIR, "testing", "fake-cl
 }, hostTimeout(30_000));
 
 afterAll(async () => {
-  for (const proxy of proxies) proxy.kill();
+  for (const connection of connections) await connection.close();
   if (child) await waitForExit(child, { signal: "SIGTERM" });
   if (home) await removeTempDir(home);
 });

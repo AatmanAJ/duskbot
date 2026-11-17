@@ -13,6 +13,9 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, verificationServerEnvironment } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 import { openSse, type SseRecorder } from "./testing/sse.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("denies a never-list command a grant would have allowed, at a saved command and at Full access, and leaves a person's card alone", async () => {
   const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "hang" });

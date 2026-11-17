@@ -11,6 +11,9 @@ import { createHarnessClient } from "./drivers/agents-client.ts";
 import { pdfFixture } from "./testing/pdf-fixture.ts";
 import { freePortBlock } from "./testing/ports.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
+import { keepStdioRelays } from "./testing/stdio-relays.ts";
+
+keepStdioRelays();
 
 it("extracts an uploaded multi-page PDF through the supported bot tool and isolates other conversations", async () => {
   const home = mkdtempSync(join(tmpdir(), "dusk-pdf-http-"));

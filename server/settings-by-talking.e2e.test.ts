@@ -1,23 +1,21 @@
 // A person changes settings by asking their bot: from inside the bot's own running turn, through the mounted agents
 // proxy, the bot renames itself and changes its colour and reply style, switches its own model, sets the person's theme
 // and makes and then changes a routine. Each change is read back from the server.
-import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { createInterface } from "node:readline";
 import { expect, it } from "vitest";
 import { z } from "zod";
 
 import { launchVerificationServer, runControlDusk } from "../scripts/control-dusk.ts";
-import { waitForExit } from "./testing/cleanup.ts";
+import { openMcp, type McpConnection } from "./testing/fake-mcp-client.ts";
 
 type Reply = { isError?: boolean; content: Array<{ text: string }> };
 const mountSchema = z.object({ mcpConfig: z.object({ mcpServers: z.object({
-  agents: z.object({ command: z.string(), args: z.array(z.string()), env: z.record(z.string(), z.string()) }),
+  agents: z.object({ type: z.literal("http"), url: z.string().endsWith("/api/internal/mcp-host/agents"), headers: z.record(z.string(), z.string()) }),
 }) }) });
 
 it("a bot changes its own settings, the person's theme and a routine from inside its own turn", async () => {
   const fixture = await launchVerificationServer({ ...process.env, FAKE_CLAUDE_MODE: "hang" });
-  const proxies: ChildProcess[] = [];
+  const connections: McpConnection[] = [];
   const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
     const response = await fetch(`${fixture.info.url}${path}`, { method, headers: { "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     expect(response.ok, `${method} ${path}`).toBe(true);
@@ -29,27 +27,16 @@ it("a bot changes its own settings, the person's theme and a routine from inside
     await control(["send", "--bot", bot.id, "--text", "Call yourself Scout Prime, go teal, keep replies short, and use a different model."]);
     await expect.poll(() => existsSync(fixture.fixtureDumpPath), { timeout: 15_000 }).toBe(true);
     const mounted = mountSchema.parse(JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8"))).mcpConfig.mcpServers.agents;
-    const proxy = spawn(mounted.command, mounted.args, {
-      cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"],
-      env: { ...mounted.env, HOME: fixture.info.dataDir, USERPROFILE: fixture.info.dataDir, ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
-    });
-    proxies.push(proxy);
-    const pending = new Map<number, (result: Reply) => void>();
-    let nextId = 0;
-    createInterface({ input: proxy.stdout! }).on("line", (line) => {
-      const reply = JSON.parse(line) as { id: number; result: Reply };
-      pending.get(reply.id)?.(reply.result);
-    });
-    const tool = (name: string, args: Record<string, unknown>) => new Promise<string>((resolve, reject) => {
-      const id = ++nextId;
-      const timer = setTimeout(() => reject(new Error(`${name} did not answer`)), 10_000);
-      pending.set(id, (result) => {
-        clearTimeout(timer);
-        if (result.isError) reject(new Error(`${name}: ${JSON.stringify(result)}`));
-        else resolve(result.content.map((item) => item.text).join("\n"));
-      });
-      proxy.stdin!.write(JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } }) + "\n");
-    });
+    const connection = openMcp(mounted);
+    connections.push(connection);
+    await connection.call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "settings-by-talking", version: "1" } });
+    const tool = async (name: string, args: Record<string, unknown>) => {
+      const timeout = new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error(`${name} did not answer`)), 10_000).unref());
+      const reply = await Promise.race([connection.call("tools/call", { name, arguments: args }), timeout]);
+      const result = reply.result as Reply | undefined;
+      if (!result || result.isError) throw new Error(`${name}: ${JSON.stringify(reply)}`);
+      return result.content.map((item) => item.text).join("\n");
+    };
     const self = async () => (await api<{ bots: Array<Record<string, any>> }>("GET", "/api/bots?messages=0")).bots.find((one) => one.id === bot.id)!;
     expect((await self()).busy).toBe(true);
 
@@ -74,7 +61,7 @@ it("a bot changes its own settings, the person's theme and a routine from inside
     expect((await self()).busy).toBe(true);
     await control(["interrupt", "--bot", bot.id]);
   } finally {
-    for (const proxy of proxies) await waitForExit(proxy, { signal: "SIGTERM" });
+    for (const connection of connections) await connection.close();
     await fixture.close();
   }
 }, 90_000);
