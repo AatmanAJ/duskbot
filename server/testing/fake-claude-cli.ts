@@ -9,6 +9,7 @@
 //     api_error_status; FAKE_CLAUDE_NO_TERMINAL_REASON=1: the result has no terminal_reason, only stop_reason "stop_sequence"
 //   FAKE_CLAUDE_RATE_LIMIT  JSON rate_limit_info reported in a `rate_limit_event` after init
 //   FAKE_CLAUDE_LIMITED_FILE  path: while it exists, every turn plays usage-limit with the file's JSON rate_limit_info
+//   FAKE_CLAUDE_API_ERROR_FILE  path: while it exists, every turn plays api-error with the file's text
 //   FAKE_CLAUDE_MCP_FAILED  comma list of MCP servers init reports as failed (`mcp_servers`)
 //   FAKE_CLAUDE_ANSWER_MODEL  the `model` of its assistant frames, as when the CLI answers with another model than asked
 //   FAKE_CLAUDE_RELEASE  with hang: the turn ends normally once this file exists; a scripted call's `hold` ends then too
@@ -1005,8 +1006,10 @@ const playTurn = (prompt: JsonValue, late = false) => {
     finishIfDone();
     return;
   }
-  if (mode === "api-error" || resumedError) {
-    const text = process.env.FAKE_CLAUDE_API_ERROR ?? "API Error: 529 Overloaded. This is a server-side issue, usually temporary.";
+  const apiErrorFile = process.env.FAKE_CLAUDE_API_ERROR_FILE;
+  const filedError = apiErrorFile && existsSync(apiErrorFile) ? readFileSync(apiErrorFile, "utf8") : null;
+  if (mode === "api-error" || resumedError || filedError !== null) {
+    const text = filedError ?? process.env.FAKE_CLAUDE_API_ERROR ??"API Error: 529 Overloaded. This is a server-side issue, usually temporary.";
     out({ type: "assistant", message: { model: "<synthetic>", stop_reason: "stop_sequence", content: [{ type: "text", text }] }, error: process.env.FAKE_CLAUDE_API_ERROR_KIND ?? "unknown", is_api_error_message: true });
     const status = Number(process.env.FAKE_CLAUDE_API_ERROR_STATUS) || undefined;
     out({ type: "result", subtype: "success", is_error: true, stop_reason: "stop_sequence", ...(process.env.FAKE_CLAUDE_NO_TERMINAL_REASON === "1" ? {} : { terminal_reason: "api_error" }), ...(status ? { api_error_status: status } : {}), result: text });

@@ -339,7 +339,7 @@ import { TurnStops, outwardActions, stoppedTurnOutcome, turnEvidence } from "./t
 import { replaysTranscriptNatively } from "./runtime/capabilities.ts";
 import { buildRecoveryText, buildTurnContext, engineIsFresh } from "./turn-context.ts";
 import { Handoffs, handedStateUsable, isContextMessage, recordHanded, renderUnseen, sessionStart, unseenMessages, withUnseenMessages, type ContextMessage } from "./delta-context.ts";
-import { extractReplayImages, extractTurnImages } from "./turn-images.ts";
+import { engineRefusedImage, extractReplayImages, extractTurnImages } from "./turn-images.ts";
 import { callTitleExcerpt } from "./thread-title.ts";
 import { generateThreadTitle, llmThreadTitlesEnabled } from "./thread-title-generate.ts";
 import { stallLimitMs, TurnWatchdog } from "./turn-watchdog.ts";
@@ -7494,6 +7494,10 @@ bus.subscribe((event: RuntimeEvent) => {
         break;
       }
       landParkedFiles(false); // above the failure row, which stays the last, retryable line
+      if (bot && engineRefusedImage(event.message)) {
+        imageRefusedThreads.add(event.threadId);
+        store.patchTask(bot.id, event.threadId, { resumeCursors: {} });
+      }
       if (introTurns.has(event.threadId)) break;
       // any failure on OpenCode's free backup is fixed by connecting an AI; the app says so unless one is connected by then
       pushMessage({ role: "bot", kind: "activity", tool: failedTurnTool(event.message, { ...event,
@@ -8399,6 +8403,9 @@ const titleRegenerations = new Set<string>();
 /** Intro turns in flight, by thread: claimed before any await, so two windows or a retry start one; a failure row is
  * never shown in one, the fixed hello is. */
 const introTurns = new Set<string>();
+/** Threads whose engine refused a picture it could not decode: the next turn starts a new engine session and replays the
+ * chat with its earlier pictures left out, so one bad picture cannot fail every turn after it. */
+const imageRefusedThreads = new Set<string>();
 
 async function introApps(bot: BotRecord, instance: ProviderInstance): Promise<string[] | null> {
   if (!instance.adapter.capabilities.composioMcp || bot.composio === false || !composio.configured(cfg)) return [];
@@ -8839,7 +8846,7 @@ async function beginTurn(
         userNameFor(threadId),
       ), personLine ? activeMessages : [], skipTranscript, userNameFor(threadId)), lineLabels(threadId));
       const replay = usesNativeImageInput
-        ? extractReplayImages(selection.inline, turnImages)
+        ? extractReplayImages(selection.inline, turnImages, { withoutImages: imageRefusedThreads.delete(threadId) })
         : { transcript: selection.inline, images: [] };
       const decideContext = (config: string) => {
         // A Codex thread keeps the last effort it was sent and no turn can clear it, so one holding a level is rebuilt, not resumed.
