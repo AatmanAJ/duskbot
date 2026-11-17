@@ -664,9 +664,10 @@ export class Store {
       }
     }
     const text = JSON.stringify(bots.map(({ busy: _busy, activity: _activity, ...bot }) => ({ ...bot, tasks: bot.tasks?.map(persistedTask) })));
-    // Rows first: if bots.json then fails, the rows name a file that never landed, so the next start reads the old one.
+    // Rows first: if bots.json then fails, the rows still match the file before it, so the next start reads the rows.
     this.rows.writeAll(bots, text);
     this.botsFile.write(text);
+    this.rows.fileWritten(text);
   }
 
   /** Writes bots.json now from what the rows hold: before a reader of the file (a backup, a move) or at shutdown. */

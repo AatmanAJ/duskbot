@@ -118,6 +118,29 @@ it("reads the rows a server killed without closing left behind, while bots.json 
   expect(saved.find((bot) => bot.id === botId)?.tasks.find((task) => task.threadId === threadId)?.title).toBe("Saved before the kill");
 });
 
+it("starts from the rows when the last bots.json write never landed, and still from a bots.json written by anyone else", () => {
+  const store = new Store(selection);
+  const bot = store.createBot({ name: "Unlanded" }, { seedMessages: false });
+  store.flushRegistry();
+  const before = readFileSync(join(DATA_DIR, "bots.json"), "utf8");
+  const task = store.createTask(bot.id, "Saved in the rows", false)!;
+  store.flushRegistry();
+  closeRegistryDbs();
+  // the write that followed the rows was cut off (a rename Windows refused, a kill), leaving the file this process wrote before
+  writeFileSync(join(DATA_DIR, "bots.json"), before);
+  const threads = (bots: Array<{ id: string; tasks?: Array<{ threadId: string }> }>) =>
+    bots.find((one) => one.id === bot.id)?.tasks?.map((one) => one.threadId) ?? [];
+  expect(threads(readSavedBots(DATA_DIR))).toContain(task.threadId);
+  expect(threads(new Store(selection).bots)).toContain(task.threadId);
+  closeRegistryDbs();
+
+  // a bots.json this server never wrote (a restore, a hand edit) is still the one that wins
+  const edited = (JSON.parse(before) as Array<{ id: string; name: string }>).map((one) => one.id === bot.id ? { ...one, name: "Edited" } : one);
+  writeFileSync(join(DATA_DIR, "bots.json"), JSON.stringify(edited));
+  expect(readSavedBots<{ id: string; name: string }>(DATA_DIR).find((one) => one.id === bot.id)?.name).toBe("Edited");
+  expect(new Store(selection).bots.find((one) => one.id === bot.id)?.name).toBe("Edited");
+});
+
 it("waits for a lock another process still holds on the rows, rather than reading the older bots.json", async () => {
   const store = new Store(selection);
   const bot = store.createBot({ name: "Locked" }, { seedMessages: false });

@@ -1,8 +1,10 @@
 // The bot registry kept one row per bot and per thread (registry.db), so a thread change writes that thread's row and
 // not the whole registry. bots.json stays the file everything else reads (backups, moves, the sentinel, earlier builds
 // after a rollback): a full save rewrites it, and a thread change schedules one a moment later. The database records
-// the hash of the bots.json it last wrote, and is used at start only when that file is still there unchanged; any other
-// bots.json (a restore, a hand edit, an earlier build that ran in between) is read and becomes the rows.
+// the hash of the bots.json it last wrote, and of the one this process last got onto disk before it, and is used at start
+// only when one of them is still there unchanged (rows are written before the file, so a bots.json whose write failed or
+// was cut off leaves the one before it); any other bots.json (a restore, a hand edit, an earlier build that ran in
+// between) is read and becomes the rows.
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -98,6 +100,8 @@ export class RegistryRows<Bot, Task> {
   private readonly log: (line: string) => void;
   private written = new Map<string, WrittenBot>();
   private order: string[] = [];
+  /** The hash of the bots.json this process knows is on disk. */
+  private landed: string | undefined;
   private generation = 0;
   private off = false;
 
@@ -116,6 +120,7 @@ export class RegistryRows<Bot, Task> {
     try {
       // a bots.json that could not be read gives way to rows that last matched a good one
       const rows = this.readRows(hash === UNREADABLE ? null : hash);
+      if (hash !== UNREADABLE) this.landed = hash;
       if (rows && (hash !== UNREADABLE || rows.length)) return { bots: rows, fromRows: true };
       this.replace(read.records, hash);
     } catch (error) {
@@ -161,10 +166,16 @@ export class RegistryRows<Bot, Task> {
       for (const id of this.written.keys()) if (!ids.includes(id)) changes.removeBots.push(id);
       if (!sameList(ids, this.order)) changes.order = ids;
       changes.mirror = registryFileHash(text);
+      changes.landed = this.landed;
       this.commit(changes, true);
     } catch (error) {
       this.turnOff(error);
     }
+  }
+
+  /** bots.json now holds `text`. */
+  fileWritten(text: string): void {
+    this.landed = registryFileHash(text);
   }
 
   /** Off for the rest of the run; the rows stop matching any bots.json, so the next start reads the file. */
@@ -172,7 +183,7 @@ export class RegistryRows<Bot, Task> {
     if (this.off) return;
     this.off = true;
     this.log(`[store] the registry's rows (${REGISTRY_DB_NAME}) failed and are off until restart; bots.json is saved whole: ${(error as Error).message}`);
-    try { this.statement("DELETE FROM meta WHERE key = 'mirror'").run(); } catch { /* the next bots.json written no longer matches them anyway */ }
+    try { this.statement("DELETE FROM meta WHERE key IN ('mirror', 'landed')").run(); } catch { /* the next bots.json written no longer matches them anyway */ }
   }
 
   private holdsOnlyWritten(): boolean {
@@ -200,6 +211,7 @@ export class RegistryRows<Bot, Task> {
     for (const bot of bots) this.diffBot(bot, changes);
     changes.order = bots.map(this.shape.idOf);
     changes.mirror = hash;
+    this.landed = hash;
     this.generation = connect(this.file).generation;
     this.commit(changes, false);
   }
@@ -251,7 +263,10 @@ export class RegistryRows<Bot, Task> {
             .run(task.botId, task.threadId, task.json);
         }
         if (changes.order) this.setMeta("order", JSON.stringify(changes.order));
-        if (changes.mirror !== undefined) this.setMeta("mirror", changes.mirror);
+        if (changes.mirror !== undefined) {
+          this.setMeta("mirror", changes.mirror);
+          this.setMeta("landed", changes.landed ?? changes.mirror);
+        }
         db.exec("COMMIT");
       } catch (error) {
         try { db.exec("ROLLBACK"); } catch { /* nothing open */ }
@@ -285,7 +300,7 @@ export class RegistryRows<Bot, Task> {
 function readRowsMatching(db: DatabaseSync, hash: string | null): { bots: unknown[]; written: Map<string, WrittenBot>; order: string[] } | null {
   const get = (key: string) => (db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined)?.value;
   const mirror = get("mirror");
-  if (mirror === undefined || (hash !== null && mirror !== hash)) return null;
+  if (mirror === undefined || (hash !== null && mirror !== hash && get("landed") !== hash)) return null;
   const order = JSON.parse(get("order") ?? "[]") as string[];
   const botRows = new Map((db.prepare("SELECT id, json, threads FROM bots").all() as Array<{ id: string; json: string; threads: string }>).map((row) => [row.id, row]));
   const taskRows = new Map<string, Map<string, string>>();
@@ -343,6 +358,7 @@ class Changes {
   clear = false;
   order: string[] | undefined;
   mirror: string | undefined;
+  landed: string | undefined;
   bots: Array<{ id: string; json: string; threads: string[] | null }> = [];
   removeBots: string[] = [];
   tasks: Array<{ botId: string; threadId: string; json: string }> = [];
