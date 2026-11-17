@@ -707,7 +707,15 @@ export function createDashboardApp(options: DashboardAppOptions) {
     }
     const mutation = MUTATIONS.includes(method);
     const appleCallback = method === "POST" && path === "/v1/auth/oauth/apple/callback" && req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() === "application/x-www-form-urlencoded";
-    if (mutation && !isAppCorsRoute(path) && !appleCallback && path !== TRACK_PATH && path !== APP_EVENTS_PATH) {
+    // the app sends feedback here itself when its server can't: no cookie is read, and the route keeps its own hourly limits
+    const reportRoute = path === BUG_REPORT_PATH;
+    if (reportRoute) {
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("access-control-allow-headers", "content-type");
+      res.setHeader("access-control-allow-methods", "POST, OPTIONS");
+      if (method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+    }
+    if (mutation && !isAppCorsRoute(path) && !reportRoute && !appleCallback && path !== TRACK_PATH && path !== APP_EVENTS_PATH) {
       if (req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !== "application/json") fail(403, "forbidden", "JSON is required.");
       if (req.headers.origin !== undefined && req.headers.origin !== publicUrl) fail(403, "forbidden", "Origin is not allowed.");
     }
