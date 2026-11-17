@@ -9,8 +9,8 @@ export const PULSE_SERIES = { cpu: "var(--viz-visitors)", mem: "var(--viz-renewa
 const PAD = { top: 8, right: 4, bottom: 22, left: 34 };
 /** how quickly the window's right edge follows a change in how late samples arrive */
 const LAG_EASE_MS = 1500;
-/** the hover guide and markers glide this fast from one sample to the next */
-const SNAP = "transform 90ms var(--ease-out)";
+/** half the widest hover time label ("119 s ago" in 11px mono), so it never runs past the plot */
+const STAMP_HALF = 30;
 
 type Point = [number, number];
 
@@ -69,7 +69,6 @@ export function PulseChart({ samples: given, lag, empty, compact = false, sleepi
   const clip = useId().replace(/:/g, "");
   const reduced = useReducedMotion() ?? false;
   const slide = useRef<SVGGElement>(null);
-  // hover lives in refs and is drawn imperatively each frame; react only hears about it when the hovered sample changes
   const [hoverT, setHoverT] = useState<number | null>(null);
   const hoverRef = useRef<number | null>(null);
   const overlay = useRef<SVGGElement>(null);
@@ -90,8 +89,10 @@ export function PulseChart({ samples: given, lag, empty, compact = false, sleepi
   live.current = { ...live.current, t0, scale, lag, newest, reduced, samples, inner, ready, y };
   const edge = () => live.current.reduced ? live.current.newest : Date.now() - live.current.shown;
   const draw = () => {
-    const { samples, scale, inner, ready, reduced, y } = live.current, g = overlay.current, x = pointer.current;
-    const hit = x === null || !ready ? null : nearestSample(samples, edge() - (PAD.left + inner - x) / scale);
+    const { samples, scale, inner, ready, y } = live.current, g = overlay.current, x = pointer.current;
+    const at = (px: number) => edge() - (PAD.left + inner - px) / scale;
+    const within = samples.filter((s) => s.t >= at(PAD.left) && s.t <= at(PAD.left + inner));
+    const hit = x === null || !ready ? null : nearestSample(within, at(Math.max(PAD.left, Math.min(PAD.left + inner, x))));
     const t = hit?.t ?? null;
     if (t !== hoverRef.current) { hoverRef.current = t; setHoverT(t); }
     if (!g || !hit) {
@@ -100,11 +101,11 @@ export function PulseChart({ samples: given, lag, empty, compact = false, sleepi
       return;
     }
     const sx = (PAD.left + inner - (edge() - hit.t) * scale).toFixed(2);
-    // appearing snaps into place; moving between samples glides
-    const transition = reduced || shown.current !== g ? "none" : SNAP;
-    const [guide, mem, cpu] = g.children as unknown as [SVGElement, SVGElement, SVGElement];
-    guide.style.transition = mem.style.transition = cpu.style.transition = transition;
+    const [guide, mem, cpu, stamp] = g.children as unknown as [SVGElement, SVGElement, SVGElement, SVGTextElement];
     guide.style.transform = `translate(${sx}px,0px)`;
+    stamp.style.transform = `translate(${Math.max(PAD.left + STAMP_HALF, Math.min(PAD.left + inner - STAMP_HALF, Number(sx))).toFixed(2)}px,0px)`;
+    const label = ago(Date.now() - hit.t);
+    if (stamp.textContent !== label) stamp.textContent = label;
     mem.style.transform = `translate(${sx}px,${y(hit.mem).toFixed(2)}px)`;
     cpu.style.transform = `translate(${sx}px,${y(hit.cpu).toFixed(2)}px)`;
     if (shown.current !== g) g.style.opacity = "1";
@@ -130,7 +131,6 @@ export function PulseChart({ samples: given, lag, empty, compact = false, sleepi
     return () => cancelAnimationFrame(frame);
   }, [reduced, samples.length >= 2, inner]);
   useEffect(() => () => cancelAnimationFrame(pending.current), []);
-  // one draw per frame however many pointer events arrive; the slide loop also redraws while the chart moves
   const track = (x: number | null) => {
     pointer.current = x;
     if (!pending.current) pending.current = requestAnimationFrame(() => { pending.current = 0; draw(); });
@@ -144,13 +144,12 @@ export function PulseChart({ samples: given, lag, empty, compact = false, sleepi
           <span key={key} className="inline-flex items-center gap-2 text-13 font-medium text-ink-2">
             <span className="h-[3px] w-3.5 rounded-full" style={{ background: PULSE_SERIES[key] }} aria-hidden />
             {key === "cpu" ? "cpu" : "memory"}
-            <span className="num swap text-ink">{current ? percent(current[key]) : "-"}</span>
+            <span className="num swap inline-block min-w-[3ch] text-ink">{current ? percent(current[key]) : "-"}</span>
           </span>
         ))}
-        <span className="num ms-auto text-12 font-medium text-ink-4" aria-hidden>{hover ? ago(Date.now() - hover.t) : ""}</span>
       </div>
       <div ref={box} className="relative mt-3">
-        <svg width="100%" height={H} viewBox={`0 0 ${Math.max(1, width)} ${H}`} role="img" className="block touch-pan-y"
+        <svg width="100%" height={H} viewBox={`0 0 ${Math.max(1, width)} ${H}`} role="img" className="block touch-pan-y overflow-visible"
           aria-label={sleeping ? "asleep, so no cpu or memory right now" : latest ? `cpu ${percent(latest.cpu)}, memory ${percent(latest.mem)} of capacity, over the last two minutes` : "cpu and memory, no samples yet"}
           onPointerMove={(e) => track(e.clientX - e.currentTarget.getBoundingClientRect().left)} onPointerLeave={() => track(null)}>
           <defs>
@@ -163,8 +162,10 @@ export function PulseChart({ samples: given, lag, empty, compact = false, sleepi
               <text x={PAD.left - 8} y={BASE - TALL * f + 4} textAnchor="end" className="fill-ink-4 font-mono text-[11px]">{f ? `${f * 100}%` : "0"}</text>
             </g>
           ))}
-          <text x={PAD.left} y={H - 6} className="fill-ink-4 font-mono text-[11px]">2 min ago</text>
-          <text x={PAD.left + inner} y={H - 6} textAnchor="end" className="fill-ink-4 font-mono text-[11px]">now</text>
+          <g opacity={hover ? 0 : 1}>
+            <text x={PAD.left} y={H - 6} className="fill-ink-4 font-mono text-[11px]">2 min ago</text>
+            <text x={PAD.left + inner} y={H - 6} textAnchor="end" className="fill-ink-4 font-mono text-[11px]">now</text>
+          </g>
           {sleeping && width > 0 && (["mem", "cpu"] as const).map((key) => (
             <line key={key} x1={PAD.left} x2={PAD.left + inner} y1={BASE - (key === "cpu" ? 1 : 3)} y2={BASE - (key === "cpu" ? 1 : 3)} stroke={PULSE_SERIES[key]} strokeOpacity={0.45} strokeWidth={2} strokeLinecap="round" />
           ))}
@@ -175,11 +176,14 @@ export function PulseChart({ samples: given, lag, empty, compact = false, sleepi
                 <path d={paths.mem} fill="none" stroke={PULSE_SERIES.mem} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
                 <path d={paths.cpu} fill="none" stroke={PULSE_SERIES.cpu} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
               </g>
-              <g ref={overlay} opacity={0} aria-hidden>
-                <line x1={0} x2={0} y1={PAD.top} y2={BASE} stroke="var(--line-2)" />
-                <circle r={4} fill="var(--pop)" stroke={PULSE_SERIES.mem} strokeWidth={2} />
-                <circle r={4} fill="var(--pop)" stroke={PULSE_SERIES.cpu} strokeWidth={2} />
-              </g>
+            </g>
+          )}
+          {ready && (
+            <g ref={overlay} opacity={0} pointerEvents="none" aria-hidden>
+              <line x1={0} x2={0} y1={PAD.top} y2={BASE} stroke="var(--line-2)" />
+              <circle r={4} fill="var(--pop)" stroke={PULSE_SERIES.mem} strokeWidth={2} />
+              <circle r={4} fill="var(--pop)" stroke={PULSE_SERIES.cpu} strokeWidth={2} />
+              <text x={0} y={H - 6} textAnchor="middle" className="fill-ink-2 font-mono text-[11px]" />
             </g>
           )}
         </svg>
