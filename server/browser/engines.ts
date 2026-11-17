@@ -18,6 +18,9 @@ import { browserLanguage, browserTimeZone, languageList } from "./chrome/wrapper
 import { displayScreen } from "./display.ts";
 import type { Download } from "./cdp/downloads.ts";
 import { BrowserService, type BrowserServiceOptions, type BrowserTarget } from "./service.ts";
+import { browserDemoSeat } from "../demo-recorder/browser-source.ts";
+import type { DemoSeat } from "../demo-recorder/host.ts";
+import { liveDemoSeat } from "../demo-recorder/live-seat.ts";
 import { LiveV1 } from "./viewers/live-v1.ts";
 import { StreamV2, type StreamRequest } from "./viewers/stream-v2.ts";
 
@@ -328,10 +331,12 @@ export class LiveRouter {
     return true;
   }
 
-  /** The browser a task can be shown in and done again in; null on agent-browser, whose pages cannot be read this way. */
-  demo({ session, spec }: SessionSpec): { target: BrowserTarget; service: BrowserService } | null {
+  /** The seat a task is shown at, and done again at, in this session's browser, on whichever engine runs it. */
+  demoSeat({ session, spec }: SessionSpec): DemoSeat {
     const target = chromeTarget(session, spec);
-    return target ? { target, service: this.#chrome.service } : null;
+    if (!target) return liveDemoSeat(this.#old, session);
+    const service = this.#chrome.service;
+    return browserDemoSeat({ page: () => service.demoPage(session), still: () => service.demoStill(session), act: (work) => service.demoAct(target, work) }, (tap) => { service.demoTap(session, tap); });
   }
 
   fileChooserOffered({ session, spec }: SessionSpec, owner: string, chooserId: string): boolean {

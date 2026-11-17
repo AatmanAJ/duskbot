@@ -9,7 +9,8 @@ import { threadOfTabLabel } from "./browser-thread-tabs.ts";
 import { readFileSync } from "node:fs";
 import { browserDaemonFile, closeBrowserSession } from "./browser-engine.ts";
 import { DialogWatch, localDevToolsUrl } from "./browser-dialogs.ts";
-import type { Cdp, CdpListeners } from "./browser-sites.ts";
+import { connectCdp, type Cdp, type CdpListeners } from "./browser-sites.ts";
+import { liveDemoInputOf, type DemoTap } from "./browser/viewers/demo-tap.ts";
 import { relay } from "./browser-relay.ts";
 import { HOLD_LIMITS, HoldClock, type HoldLimits } from "./browser/hold.ts";
 import { BROWSER_HELD_ELSEWHERE } from "../shared/browser-held.ts";
@@ -709,8 +710,19 @@ export class BrowserLive {
     viewer.res.flushHeaders();
   }
 
+  /** What hears a person's input in a session's browser while they show a task there. */
+  readonly demoTaps = new Map<string, DemoTap>();
+  demoShared<T>(session: string, work: () => Promise<T>): Promise<T> { return this.runtime.withSharedInput(session, false, work); }
+  async demoCdp(session: string): Promise<{ cdp: Cdp; url(): string } | null> {
+    const viewer = [...this.viewers.values()].find((each) => each.session === session && each.port && !attachesToChrome(each.spec.env ?? {}));
+    const address = viewer?.port && this.devTools ? localDevToolsUrl(await this.devTools.url(viewer.port).catch(() => null)) : null;
+    return viewer && address ? { cdp: await (this.devTools?.connect ?? connectCdp)(address, 10_000, {}), url: () => viewer.url ?? "" } : null;
+  }
+
   private async input(viewer: Viewer, message: ObjectValue): Promise<void> {
     if (!viewer.port) throw new BrowserLiveError("The browser stream is not connected.", 409);
+    const shown = this.demoTaps.get(viewer.session), did = shown ? liveDemoInputOf(message) : null;
+    if (shown && did) await shown.input(did);
     let command: ObjectValue;
     const { type, eventType, ...fields } = message;
     const key = String(fields.code || fields.key);

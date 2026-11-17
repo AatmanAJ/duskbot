@@ -397,12 +397,12 @@ const modifierBit = (key: string): number => (key in MODIFIER_BITS ? MODIFIER_BI
 
 /** Trusted key events for one page. Every event goes through Input.dispatchKeyEvent. */
 export class Keyboard {
-  readonly #session: CdpSession;
+  readonly #session: Pick<CdpSession, "send">;
   readonly #mac: boolean;
   readonly #pressed = new Set<string>();
   #modifiers = 0;
 
-  constructor(session: CdpSession, { mac }: { mac: boolean }) {
+  constructor(session: Pick<CdpSession, "send">, { mac }: { mac: boolean }) {
     this.#session = session;
     this.#mac = mac;
   }

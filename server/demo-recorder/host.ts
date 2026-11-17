@@ -22,6 +22,8 @@ export interface DemoSeat {
   tap(tap: DemoTap | null): void;
   /** The address or window in front, for finding a saved sign-in. */
   where(): string;
+  /** Lets go of what the seat holds open, once the showing or the doing again is over. */
+  close?(): void;
 }
 
 /** `Who` is the person asking, as the server knows them: each sees their own browser of a bot. */
@@ -88,7 +90,9 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
   }
 
   function leave(botId: string): void {
-    seats.get(botId)?.tap(null);
+    const seat = seats.get(botId);
+    seat?.tap(null);
+    seat?.close?.();
     seats.delete(botId);
   }
 
@@ -124,7 +128,10 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
       const seat = await seatFor(botId, recording.surface, recording.threadId ?? null, who);
       if (refused(seat)) return seat;
       const items = await readDemoInputs(files, plan.blanks, { engine: deps.engine(botId) });
-      if (!items.length) return { status: 422, error: "Those files hold nothing to read inputs from." };
+      if (!items.length) {
+        seat.close?.();
+        return { status: 422, error: "Those files hold nothing to read inputs from." };
+      }
       const run: DemoReplayRun = {
         id: randomUUID(),
         recordingId,
@@ -172,9 +179,11 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
           }
         }
         run.status = stop.signal.aborted ? "stopped" : "done";
+        seat.close?.();
         tell();
       }, () => {
         run.status = "stopped";
+        seat.close?.();
         tell();
         deps.log?.("demo replay: the run ended on an error");
       });

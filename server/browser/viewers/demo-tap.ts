@@ -33,3 +33,23 @@ export function demoInputOf(message: Record<string, unknown>): RawInput | null {
   if (message.type === "navigate") return typeof message.url === "string" && message.url ? { type: "open", url: message.url.slice(0, 2_000) } : null;
   return null;
 }
+
+/** The same for the older view's messages, which name their events as the DevTools protocol does. */
+export function liveDemoInputOf(message: Record<string, unknown>): RawInput | null {
+  const modifiers = Number.isInteger(message.modifiers) && num(message.modifiers) > 0 && num(message.modifiers) < 16 ? num(message.modifiers) : 0;
+  if (message.type === "input_mouse") {
+    const point = { x: num(message.x), y: num(message.y) };
+    if (message.eventType === "mouseWheel") return { type: "wheel", ...point, deltaX: num(message.deltaX), deltaY: num(message.deltaY) };
+    if (message.eventType === "mouseMoved") return { type: "pointer", action: "move", ...point };
+    const button = BUTTONS.find((each) => each === message.button);
+    if (!button || (message.eventType !== "mousePressed" && message.eventType !== "mouseReleased")) return null;
+    return { type: "pointer", action: message.eventType === "mousePressed" ? "down" : "up", ...point, button, clickCount: Math.max(1, Math.trunc(num(message.clickCount) || 1)) };
+  }
+  if (message.type !== "input_keyboard") return null;
+  const text = typeof message.text === "string" && message.text.length > 0 ? message.text : undefined;
+  if (message.eventType === "char") return text ? { type: "text", text: text.slice(0, 10_000) } : null;
+  const key = typeof message.key === "string" ? message.key.slice(0, 64) : "";
+  if (!key || (message.eventType !== "keyDown" && message.eventType !== "keyUp")) return null;
+  if (message.eventType === "keyUp") return { type: "key", action: "up", key };
+  return { type: "key", action: "down", key, ...(text ? { text: text.slice(0, 16) } : {}), ...(modifiers ? { modifiers } : {}) };
+}
