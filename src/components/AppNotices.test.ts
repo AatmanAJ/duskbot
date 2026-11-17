@@ -19,6 +19,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
     return [f.values[index], (next: unknown) => { f.values[index] = typeof next === "function" ? (next as (value: unknown) => unknown)(f.values[index]) : next; }]; },
   useEffect: (effect: EffectCallback) => { f.effects.push(effect); },
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
+  useRef: (current: unknown) => ({ current }),
 }));
 vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }), api: vi.fn().mockResolvedValue({}),
   CLOUD_LINK_SETTINGS: { type: "toggleAppSettings", open: true, section: "cloudAccount", cloudLink: true } }));
@@ -30,9 +31,11 @@ vi.mock("./mascot-view", () => ({ DuskMark: () => null }));
 vi.mock("./Avatar", async original => ({ ...await original<typeof import("./Avatar")>(), MausAvatar: () => null }));
 vi.mock("@/components/EngineLibrary", () => ({ engineReady: (instance: { snapshot: { state: string; authenticated?: boolean } }) =>
   instance.snapshot.state === "available" && instance.snapshot.authenticated !== false }));
+const sleep = vi.hoisted(() => ({ found: null as null | { botId: string; name: string; wokeAt: number } }));
+vi.mock("@/lib/asleep-work", async original => ({ ...await original<typeof import("@/lib/asleep-work")>(), useAsleepWork: () => sleep.found }));
 import { AppNotices } from "./AppNotices";
 import { TwoPlacesCard } from "./TwoPlacesCard";
-import { CLOUD_INTRO, GROK_MOVE_NOTICE, localDay, WHATS_NEW_NOTICE } from "@/lib/notices";
+import { ASLEEP_NOTICE, CLOUD_INTRO, GROK_MOVE_NOTICE, localDay, WHATS_NEW_NOTICE } from "@/lib/notices";
 import { track } from "@/lib/analytics";
 import { api } from "@/state/store";
 
@@ -215,6 +218,18 @@ describe("the card after the update", () => {
     (window.duskDesktop as Record<string, unknown>).organization = { state: async () => ({ status: "connected", organization: { id: "o", name: "Acme" } }), onState: () => () => {} };
     const org = await launch();
     expect(org).not.toContain(INTRO); expect(org).not.toContain(STAR);
+  });
+
+  it("a bot working when this computer slept: dusk cloud offered once, counted as its own upsell", async () => {
+    sleep.found = { botId: "q", name: "Quill", wokeAt: NOW };
+    launchCardsSeen();
+    expect(await launch()).toContain("Quill paused while this Mac slept");
+    expect(track).toHaveBeenCalledWith("upsell_shown", { source: "app_asleep" });
+    press("Get dusk cloud"); await flush();
+    expect(f.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "openCloudAdd", source: "app_asleep" }));
+    expect(track).toHaveBeenCalledWith("upsell_click", expect.objectContaining({ source: "app_asleep" }));
+    expect(hints()).toContain(ASLEEP_NOTICE);
+    sleep.found = null;
   });
 
   it("Start free trial opens the Add a Cloud dialog from the card, and the card is done for good", async () => {

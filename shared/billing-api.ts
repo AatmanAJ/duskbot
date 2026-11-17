@@ -122,7 +122,7 @@ export interface Quote {
 }
 
 /** where a checkout started; anything else an older client sends is recorded as "other" */
-export const CHECKOUT_SOURCES = ["app_card", "app_howto", "app_menu", "app_settings", "app_routines", "app_pages", "app_whats_new_pro", "app_whats_new_team", "app_onboarding", "app_computer_move", "app_sidebar", "app_invested", "app_always_on", "app_mobile", "app_bot_panel",
+export const CHECKOUT_SOURCES = ["app_card", "app_howto", "app_menu", "app_settings", "app_routines", "app_pages", "app_whats_new_pro", "app_whats_new_team", "app_onboarding", "app_computer_move", "app_sidebar", "app_invested", "app_always_on", "app_mobile", "app_bot_panel", "app_late_routine", "app_asleep",
   "dash_home", "dash_billing", "dash_cloud", "dash_onboarding", "dash_routines", "dash_license", "dash_start", "dash_free_sheet", "dash_sidebar", "dash_invested", "dash_workspaces", "other"] as const;
 export type CheckoutSource = (typeof CHECKOUT_SOURCES)[number];
 export const checkoutSource = (value: unknown): CheckoutSource | null =>

@@ -8515,6 +8515,8 @@
   "routines.late.body": "It was due at {due} and ran at {ran}. Routines on this {device} wait while it sleeps. On dusk cloud they run on time, day and night.",
   "routines.late.bodyMissed": "It was due at {due}, while this {device} was off. On dusk cloud, routines run on time, day and night.",
   "routines.late.start": "Get dusk cloud",
+  "notices.asleep.title": "{name} paused while this {device} slept",
+  "notices.asleep.body": "Bots on this {device} stop when it sleeps. On dusk cloud they keep working, day and night.",
   "routines.cloudUpsell.alwaysOn": "Always available",
   "routines.cloudUpsell.getCloud": "Get dusk cloud",
   "routines.cloudUpsell.titleEvent": "This runs only while your {device} is awake",
