@@ -968,3 +968,23 @@ test("My Cloud opened from this computer before the move: the move ending re-hom
   assert.equal(w.went.length, 1, "the move ending loads nothing again");
   assert.deepEqual(w.home.current(), { kind: "cloud", origin: CLOUD });
 });
+
+test("My Cloud opened from this computer's page loads under that page's picture until it has drawn; not drawn in time, this computer's page comes back", async () => {
+  const held = [];
+  const w = world({ journal: null, state: connected(), url: `${LOCAL}/`, deps: { holdPaint: async (load) => { held.push("hold"); await load(); return true; } } });
+  await w.home.openCloud();
+  assert.deepEqual(held, ["hold"], "the load ran under the hold");
+  assert.equal(new URL(w.url).origin, CLOUD);
+  assert.deepEqual(w.local, []);
+
+  const slow = world({ journal: null, state: connected(), url: `${LOCAL}/`, deps: { holdPaint: async (load) => { await load(); return false; } } });
+  await slow.home.openCloud();
+  assert.deepEqual(slow.local, [true], "this computer's page is back, never a blank window");
+  assert.equal(slow.url, `${LOCAL}/`);
+  assert.equal(slow.home.current().kind, "computer");
+
+  const moved = world({ state: connected(), url: `${CLOUD}/`, deps: { holdPaint: async () => { throw new Error("never asked"); } } });
+  moved.window.webContents.getURL = () => "about:blank";
+  await moved.home.show();
+  assert.equal(new URL(moved.url).origin, CLOUD, "a window not on this computer's page loads as before");
+});

@@ -104,7 +104,7 @@ import { createAccountErrors } from "./account-errors.mjs";
 import { CHECKOUT_SOURCES, cloudMenuSublabel, cloudTarget, createCloudAccountClient, createCloudAccountStore } from "./cloud-account.mjs"; import { isAppLink } from "./cloud-signin.mjs";
 import { ACCOUNT_PAGES, installCloudPlanIpc } from "./cloud-plan-ipc.mjs";
 import { cloudLinkOpensSheet, colorDotIcons, createCloudLook, createCloudReadyNotice, installCloudBuy, lookFile } from "./cloud-buy.mjs";
-import { createAccountEnroll } from "./account-enroll.mjs"; import { cloudMoveLinkWorkspace, createServerEnroll } from "./server-enroll.mjs"; import { accountGateRequired, installAccountGate } from "./account-gate.mjs"; import { carryWelcomeToCloud } from "./cloud-welcome-carry.mjs";
+import { createAccountEnroll } from "./account-enroll.mjs"; import { cloudMoveLinkWorkspace, createServerEnroll } from "./server-enroll.mjs"; import { accountGateRequired, installAccountGate } from "./account-gate.mjs"; import { carryWelcomeToCloud } from "./cloud-welcome-carry.mjs"; import { holdUntilPainted, PAINTED_SCRIPT } from "./paint-hold.mjs";
 import { createTrialNotices } from "./cloud-trial-notice.mjs";
 import { createDesktopPrefs, DESKTOP_PORTS, jsonFile, registerDesktopPrefs, writeFileDurably } from "./desktop-prefs.mjs";
 import { installMacPermissions } from "./mac-permissions.mjs";
@@ -2185,6 +2185,33 @@ async function connectCloudHome(open = null) {
 }
 /** A new cloud's first run starts from what this computer knows. Once the window shows the cloud (a new one can take
  * minutes to load the first time), its own session carries it once. */
+/** A still picture of the window's page over the window, until the page it loads next has drawn (paint-hold.mjs). */
+function holdMainWindowPaint(load) {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  if (!win) return Promise.resolve(load()).then(() => true, () => false);
+  return holdUntilPainted({
+    load,
+    painted: () => (win.isDestroyed() ? Promise.resolve(false) : win.webContents.executeJavaScript(PAINTED_SCRIPT, true).then(Boolean, () => false)),
+    cover: async () => {
+      const image = await win.webContents.capturePage();
+      if (image.isEmpty() || win.isDestroyed()) return null;
+      const view = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: false } });
+      const { width, height } = win.getContentBounds();
+      view.setBounds({ x: 0, y: 0, width, height });
+      const fit = () => { if (!win.isDestroyed()) { const size = win.getContentBounds(); view.setBounds({ x: 0, y: 0, width: size.width, height: size.height }); } };
+      win.on("resize", fit);
+      await view.webContents.loadURL(`data:text/html,${encodeURIComponent(`<html style="margin:0;height:100%;background:url(data:image/jpeg;base64,${image.toJPEG(90).toString("base64")}) 0 0/100% 100% no-repeat"></html>`)}`);
+      if (win.isDestroyed()) { view.webContents.close(); return null; }
+      win.contentView.addChildView(view);
+      return () => {
+        win.removeListener("resize", fit);
+        if (!win.isDestroyed()) win.contentView.removeChildView(view);
+        view.webContents.close();
+      };
+    },
+  });
+}
+
 const welcomedClouds = new Set();
 const CARRY_BEFORE_OPEN_MS = 8_000;
 /** Before the window first loads My Cloud (its session already in the window's cookie): what this computer knows goes
@@ -3133,7 +3160,7 @@ trailMain = installTrailMain({ ipcMain, app, dialog, shell, powerMonitor, Browse
   linkPath: event => { const origin = activePageOrigin(event); return origin ? vpsLink.pathAt(origin) : null; } });
 // Teams from the verified session as places this window shows (home-places.mjs): the one to open next time, and its lines.
 const homePlaces = createHomePlaces({ store: jsonFile(path.join(app.getPath("userData"), "home-place.json")), environments: () => environmentsState, persist: persistEnvironments, makeId: randomUUID, homeOrigin: myCloud, log: slog });
-const homeWindow = createHomeWindow({ cloudRoute: WELCOMED_ROUTE, beforeOpen: welcomeBeforeOpen, clean: cleanWorkspace, journal: () => oneHome.journal() ?? vpsCloudMove?.homeJournal() ?? null, frozen: oneHome.marker, account: () => (accountApp() ? cloudAccount : null), restored: cloudAccountRestored,
+const homeWindow = createHomeWindow({ cloudRoute: WELCOMED_ROUTE, beforeOpen: welcomeBeforeOpen, holdPaint: holdMainWindowPaint, clean: cleanWorkspace, journal: () => oneHome.journal() ?? vpsCloudMove?.homeJournal() ?? null, frozen: oneHome.marker, account: () => (accountApp() ? cloudAccount : null), restored: cloudAccountRestored,
   window: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null), ensureWindow: () => { if (!mainWindow || mainWindow.isDestroyed()) createWindow({ deferNavigation: true }); },
   localOrigin: rendererOrigin, cookieFetch: (...args) => session.defaultSession.fetch(...args), power: cloudPower, splash: () => startupScreen, lastInput: oneHome.lastInput, rehomed: () => talk.homeChanged(), log: slog,
   hosts: () => session.defaultSession, readyStore: jsonFile(path.join(app.getPath("userData"), "cloud-ready.json")), ownMove: () => ownHome?.underWay() ?? null, ownAway: () => ownHome?.away() === true, lastSeen: createLastSeenStore({ file: path.join(app.getPath("userData"), "cloud-last-seen.bin"), encryption: cloudEncryption }),

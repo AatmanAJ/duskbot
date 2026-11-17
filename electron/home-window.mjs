@@ -224,6 +224,7 @@ export function routeOf(url, origin) {
  *   ownAway?(): boolean,
  *   log?(line: string): void,
  *   beforeOpen?(origin: string): Promise<unknown>,
+ *   holdPaint?(load: () => Promise<unknown>): Promise<boolean>,
  * }} deps `ownMove()`: the move to a server of the person's own (own-home-main.mjs), whose freeze is never My Cloud's.
  * `ownAway()`: that move is done, so this computer's own view is the clean workspace.
  * `hosts`: the window's Electron session, for its own resolver and host cache. `readyStore`: when My Cloud
@@ -245,7 +246,10 @@ export function createHomeWindow(deps) {
     cloudRoute = null,
     /** run once My Cloud's session is in the window's cookie and before the window moves there: its page then reads what
      * this computer carried (cloud-welcome-carry.mjs) on its first load */
-    beforeOpen = async () => {} } = deps;
+    beforeOpen = async () => {},
+    /** loads My Cloud from this computer's page with that page still on screen until My Cloud's has drawn
+     * (paint-hold.mjs); false when it didn't draw in time */
+    holdPaint = (load) => Promise.resolve(load()).then(() => true, () => true) } = deps;
   let home = { kind: "computer" }, screen = null, status = null, opens = 0, retry = null, tries = 0, loaded = null, newer = false, repairing = null;
   /** My Cloud asked for before the move made it home (`{ open }`), until its page loads or the person goes elsewhere;
    * `naming`: since when, and how often, a brand-new My Cloud's name was not found. */
@@ -526,9 +530,18 @@ export function createHomeWindow(deps) {
       openedAsServer = !asHome && place.kind === "cloud" ? origin : null;
       // A page that never finishes loading is the offline screen after OPEN_MS, which looks again by itself and has Try again.
       let slow = null;
-      const loaded = await Promise.race([Promise.resolve(go(cloudHomeConnectUrl({ origin, grant }, now(), open === "phone" ? "phone" : null, place.kind === "cloud" && open !== "phone" ? cloudRoute : null), origin, place)).then(() => true, () => true),
+      const fromHere = place.kind === "cloud" && !blank && originOf(win.webContents.getURL()) === originOf(localOrigin());
+      const load = () => go(cloudHomeConnectUrl({ origin, grant }, now(), open === "phone" ? "phone" : null, place.kind === "cloud" && open !== "phone" ? cloudRoute : null), origin, place);
+      const loaded = await Promise.race([fromHere ? holdPaint(load) : Promise.resolve(load()).then(() => true, () => true),
         new Promise((done) => { slow = timers.set(() => done(false), OPEN_MS); })]);
       timers.clear(slow);
+      // opened from this computer's own page before any move: that page comes back, with its own Try again
+      if (!loaded && fromHere && !asHome) {
+        log("home: My Cloud didn't draw in time; this computer's page is back");
+        screen = null; status = null; shown = null; away = false; openedAsServer = null; asked = null;
+        await showLocal(true);
+        return;
+      }
       if (!loaded) { log(`home: ${otherPlace(place) ? place.name : "My Cloud"} didn't load in ${OPEN_MS / 1000} s`); return unreachable(place, token); }
       if (place.kind === "cloud") { clearRenewal(); power.woke(); wakeIntent = null; }
       else if (place.kind === "team") renewLater(place, grant || !session?.expiresAt ? TEAM_RENEW_MS : session.expiresAt - now() - TEAM_RENEW_EARLY_MS);
