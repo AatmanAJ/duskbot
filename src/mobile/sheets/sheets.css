@@ -20,8 +20,8 @@
 }
 .dusk-mobile .mobile-panel-sheet [data-panel-avatar] > span:first-child { filter: none; }
 
-/* tabs read as tabs at phone size: 15px, the unselected ones a darker grey */
-.dusk-mobile .mobile-panel-sheet [data-panel-tabs] [role="tab"] { min-height: 40px; font-size: 15px; font-weight: 600; }
+/* tabs read as tabs at phone size: 15px at a medium weight, the unselected ones a darker grey */
+.dusk-mobile .mobile-panel-sheet [data-panel-tabs] [role="tab"] { min-height: 40px; font-size: 15px; font-weight: 500; }
 .dusk-mobile .mobile-panel-sheet [data-panel-tabs] [role="tab"][aria-selected="false"] { color: color-mix(in srgb, var(--color-ink) 62%, transparent); }
 
 /* a card's empty slot (a usage meter with nothing to report) takes no room */
@@ -32,3 +32,4 @@
 .dusk-mobile .mobile-panel-sheet [data-panel-tabpanel] > p,
 .dusk-mobile .mobile-panel-sheet [data-panel-page-view] > p,
 .dusk-mobile .mobile-panel-sheet [data-settings-footnote] { font-size: 15px; line-height: 22px; color: color-mix(in srgb, var(--color-ink) 64%, transparent); }
+
