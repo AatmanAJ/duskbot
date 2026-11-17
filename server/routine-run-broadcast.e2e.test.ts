@@ -152,4 +152,29 @@ posixOnly("a routine run's task on the event stream", () => {
       stream.close();
     }
   }, 60_000);
+
+  it("leaves the bot's chat unread when a routine that reports there replies in it", async () => {
+    const created = await api("POST", "/api/bots", { name: "Check Heron" });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const bot = created.body.bot as { id: string; threadId: string };
+    expect((await api("PATCH", `/api/bots/${bot.id}`, { modelSelection: { instanceId: "grok", model: "fake-model" } })).status).toBe(200);
+    const routine = await api("POST", "/api/routines", {
+      name: "Build check", botId: bot.id, prompt: "Check the build.", enabled: false,
+      schedule: { type: "interval", everyMinutes: 20, anchorAt: Date.now() + 86_400_000 },
+      resultsThreadId: bot.threadId,
+    });
+    expect(routine.status, JSON.stringify(routine.body)).toBe(201);
+    expect((await api("POST", `/api/routines/${routine.body.routine.id}/run`)).status).toBeLessThan(300);
+
+    const settled = await waitFor(async () => {
+      const messages = (await api("GET", `/api/threads/${bot.threadId}/messages`)).body.messages ?? [];
+      const started = messages.findIndex((m: any) => m.routineStart);
+      const replied = started >= 0 && messages.slice(started).some((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal);
+      const task = (await api("GET", "/api/bots")).body.bots.find((b: any) => b.id === bot.id)
+        ?.tasks.find((t: { threadId: string }) => t.threadId === bot.threadId);
+      return replied && task && !task.busy && task.activity === "idle" ? task : null;
+    });
+    expect(settled, log.slice(-2_000)).not.toBeNull();
+    expect(settled.unread).toBe(true);
+  }, 60_000);
 });
