@@ -251,6 +251,9 @@ export function createHomeWindow(deps) {
   let shown = null, opening = null, renewal = null, updatingAt = null;
   /** The window shows a place or this computer's screen, which this computer's page replaces once home is here again. */
   let away = false;
+  /** The person chose this computer (This Mac) while My Cloud is home: a fresh workspace here, never the frozen copy the
+   * bots moved out of, until they ask for a place again. */
+  let here = false;
   /** My Cloud asleep: what the person did that wakes it (`type`, `click`, `send`), until its page opens; and the message they
    *  sent from the asleep screen, held for My Cloud's page to send once (`takeHeld`). */
   let wakeIntent = null, held = null;
@@ -524,8 +527,13 @@ export function createHomeWindow(deps) {
    * remembered from last time. */
   async function show({ open = null, place = null } = {}) {
     const token = ++opens;
+    if (place) here = false;
     const current = await refresh();
     if (!wanted(token)) return;
+    if (here && current.kind !== "computer") {
+      if (await showHere(token)) return;
+      if (!wanted(token)) return;
+    }
     // This computer's own copy is the server again before anything of the person's Cloud opens.
     if (!current.clean && clean?.active()) { await clean.leave(); if (!wanted(token)) return; }
     // Nobody signed in has nothing to open but the clean workspace; the place stays remembered for when they're back.
@@ -570,6 +578,18 @@ export function createHomeWindow(deps) {
     ensureWindow();
     if (current.kind === "signin") { clearRetry(); return toScreen({ screen: "signin", ...(current.other ? { other: true } : {}) }); }
     return connect({ kind: "cloud", origin: current.origin }, token, open);
+  }
+
+  /** This computer's clean workspace, started fresh (its own first bot), in place of the place shown; false when it can't
+   * start, and the window shows home as before. */
+  async function showHere(token) {
+    if (!clean || !(await clean.enter())) { here = false; log("home: this computer's fresh workspace could not start"); return false; }
+    if (!wanted(token)) return true;
+    clearRetry(); clearRenewal();
+    screen = null; status = null; shown = null; opening = null; asked = null; naming = null; away = false;
+    const win = window();
+    await showLocal(Boolean(win && !win.isDestroyed() && originOf(win.webContents.getURL()) !== localOrigin()));
+    return true;
   }
 
   /** The place's session in this window ended: a new one by itself, back where the page was. */
@@ -661,6 +681,14 @@ export function createHomeWindow(deps) {
     shown: () => shown,
     /** The person asked again (the screen's timer, back online, or the window focused). */
     retry: () => show(),
+    /** This Mac chosen while My Cloud is home: its fresh workspace; throws when it can't start. */
+    async openHere() {
+      here = true;
+      await show();
+      if (!here) throw new Error("dusk bot could not start a fresh workspace on this computer.");
+    },
+    /** This Mac is what the window shows by the person's choice. */
+    here: () => here,
     /** The screen's one button: this device's dusk cloud sign-in, again. A sign-in already open in the browser opens
      * again; one with an account My Cloud isn't (`other`) ends first, so the browser can sign in another; one that is still
      * good only looks again. */
@@ -690,7 +718,7 @@ export function createHomeWindow(deps) {
     /** The signed-in account is about to change: nothing under way for the one leaving goes on, and the next show() takes
      * the window off whatever it shows of that account. */
     accountLeaving() {
-      opens++;
+      opens++; here = false;
       clearRetry(); clearRenewal();
       asked = null; naming = null; shown = null; opening = null; screen = null; status = null; wakeIntent = null; held = null;
       away = away || !shows(localOrigin());

@@ -3172,7 +3172,7 @@ ipcMain.handle("environments:forget", localWorkspaceOnly("environments:forget", 
 // Once My Cloud is home the switcher lists only whole places, and shows only when there is more than My Cloud.
 const homeAlone = () => Boolean(homeWindow.cloudOrigin()) && !otherPlaces(environmentsState, homeWindow.cloudOrigin());
 ipcMain.handle("workspaces:state", workspaceOnly(event => ({ ...workspaceSummary(environmentsState), ...(homeAlone() && homeWindow.homePage(event) ? { home: true } : {}) })));
-ipcMain.handle("workspaces:line", workspaceOnly(event => (cleanWorkspace.active() && senderIsLocal(event) ? cleanLine() : homePlaces.line())));
+ipcMain.handle("workspaces:line", workspaceOnly(event => (cleanWorkspace.active() && senderIsLocal(event) && !homeWindow.here() ? cleanLine() : homePlaces.line())));
 function cleanLine() {
   const place = cleanWorkspace.marker().place;
   if (typeof place === "string" && place) return { kind: "clean", place };
@@ -3192,8 +3192,8 @@ ipcMain.handle("workspaces:menu", workspaceOnly(async (_event, from) => {
       ...cloudMenuOptions(from === "howto" ? "app_howto" : "app_menu"),
       ...(homeWindow.cloudOrigin() && cloudOffersAllowed() ? { onAddCloud: () => void ensureCloudAccount().webHandoff({ page: "cloud" }).catch(error => slog(`add cloud: ${error?.message ?? error}`)) } : {}),
       kindIcon: placeKindIcon,
-      // with My Cloud home, this computer stays one tap away, unless all it has is the frozen copy the bots moved out of
-      ...(cleanWorkspace.showable() ? { onLocal: () => void workspaceMenuAction(() => (!cleanWorkspace.showable() ? showHome() : activeEnvironment(environmentsState) ? switchEnvironment(LOCAL_ID) : (homePlaces.remember(null), persistEnvironments(withActive(environmentsState, LOCAL_ID), "chosen"), navigateMainWindow(rendererOrigin())))) } : {}),
+      // with My Cloud home, this computer stays one tap away: once its bots moved it opens fresh (its own first bot), never the frozen copy that refuses every send
+      onLocal: () => void workspaceMenuAction(() => (cleanWorkspace.marker().frozen ? homeWindow.openHere() : activeEnvironment(environmentsState) ? switchEnvironment(LOCAL_ID) : (homePlaces.remember(null), persistEnvironments(withActive(environmentsState, LOCAL_ID), "chosen"), navigateMainWindow(rendererOrigin())))),
       localShown: Boolean(mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents })),
       ...(await placesMenuOptions({ homeOrigin: homeWindow.cloudOrigin(), cloud: cloudHomeEntry(), home: oneHome.away() || ownHome?.away() === true, platform: process.platform, port: SERVER_PORT })),
     });
