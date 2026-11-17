@@ -1040,3 +1040,49 @@ describe("plan switching", () => {
     expect(preview.timing).toBe("now"); expect(sub.cart.desktop.region).toBe("fsn1");
   });
 });
+
+describe("a deleted account's email signing up again", () => {
+  async function deleteAfterBuying() {
+    const { sub } = await buy(desktopOnly());
+    const customerId = store.state.customers.find(row => row.accountId === owner.id)!.providerCustomerId!;
+    await service.closeAccount(owner, { destroyDesktopsNow: true }); service.accountDeleted(owner.id);
+    return { sub, customerId };
+  }
+  const again = { id: "owner_again", email: owner.email };
+  async function payAgain(customerId: string) {
+    const answer = await service.checkout(again, { kind: "cart", cart: desktopOnly() });
+    const checkout = store.state.checkouts.find(row => row.id === answer.checkoutId)!;
+    // dodo keeps one customer per email, so the new account's checkout lands on the deleted account's customer
+    provider.sessions.get(checkout.providerSessionId!)!.customerId = customerId;
+    deliver(provider.complete(checkout.providerSessionId!));
+  }
+  it("pays with the customer dodo kept for that email and gets the plan; the deleted rows no longer hold it", async () => {
+    const { customerId } = await deleteAfterBuying();
+    expect(store.state.customers.filter(row => row.providerCustomerId === customerId)).toEqual([]);
+    await payAgain(customerId);
+    expect(service.subscriptions(again.id)).toEqual([expect.objectContaining({ status: "active" })]);
+    expect(store.state.customers.filter(row => row.providerCustomerId === customerId).map(row => row.accountId)).toEqual([again.id]);
+  });
+  it("rebinds a customer an older build left on the deleted account, and warns on any refused event", async () => {
+    const { customerId } = await deleteAfterBuying();
+    store.state.customers.find(row => row.accountId.startsWith("anon_"))!.providerCustomerId = customerId;
+    await payAgain(customerId);
+    expect(service.subscriptions(again.id)).toEqual([expect.objectContaining({ status: "active" })]);
+    expect(store.state.customers.filter(row => row.providerCustomerId === customerId).map(row => row.accountId)).toEqual([again.id]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    deliver([signed("payment.succeeded", { payment_id: "pay_x", subscription_id: "sub_x", customer: { customer_id: "cus_x" }, total_amount: 1, currency: "USD", metadata: { checkoutId: "chk_unknown" } })]);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^billing: WARN payment\.succeeded pay_x .*not applied/));
+    expect(warn.mock.calls.flat().join(" ")).not.toContain(owner.email);
+  });
+  it("recovers a paid subscription whose webhook never applied from the provider", async () => {
+    const answer = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    const checkout = store.state.checkouts.find(row => row.id === answer.checkoutId)!;
+    const [, active] = provider.complete(checkout.providerSessionId!);
+    const data = JSON.parse(active.body.toString("utf8")).data;
+    Object.assign(provider, { list: async (resource: string) => resource === "subscriptions" ? [{ ...data, addons: undefined, created_at: new Date(time).toISOString() }] : [] });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await service.recoverUnapplied()).toEqual({ recovered: 1 });
+    expect(service.subscriptions(owner.id)).toEqual([expect.objectContaining({ status: "active" })]);
+    expect(await service.recoverUnapplied()).toEqual({ recovered: 0 });
+  });
+});
