@@ -3217,8 +3217,8 @@
   "connect.stage.preparing": "Getting {name} ready…",
   "connect.stage.installing": "Getting {name} ready…",
   "connect.stage.download": "Installing {name} on the computer your bots run on",
-  "connect.stage.downloadSize": "Installing {name} on the computer your bots run on, about {mb}\u00a0MB",
-  "connect.stage.downloaded": "{received} of {total}\u00a0MB",
+  "connect.stage.downloadSize": "Installing {name} on the computer your bots run on, about {mb} MB",
+  "connect.stage.downloaded": "{received} of {total} MB",
   "connect.stage.settingUp": "Setting up…",
   "connect.stage.percent": "{percent}%",
   "connect.stage.opening": "Opening {name} sign-in…",
@@ -9395,5 +9395,11 @@
   "mobile.settings.versionOn": "Version {version} on {environment} servers",
   "mobile.settings.servers": "Servers",
   "mobile.settings.serversHint": "Switching signs this phone out of its dusk account",
-  "mobile.settings.serversConfirm": "Tap again to switch and sign out"
+  "mobile.settings.serversConfirm": "Tap again to switch and sign out",
+  "mobile.settings.cancel": "Cancel",
+  "mobile.settings.deleteAccount": "Delete account",
+  "mobile.settings.deleteTitle": "Delete your dusk bot account?",
+  "mobile.settings.deleteNow": "This deletes the account {email} right away, for good, and signs it out on every device. A paid plan on the account is cancelled and does not renew, and what it keeps for you is deleted 30 days after its paid time ends. Chats kept on your own computer stay there.",
+  "mobile.settings.deleteConfirm": "Delete my account",
+  "mobile.settings.deleteFailed": "Couldn't delete the account. Check your connection and try again."
 }

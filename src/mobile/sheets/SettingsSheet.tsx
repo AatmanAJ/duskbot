@@ -28,15 +28,16 @@ import { NotificationsSheet } from "./NotificationsSheet";
 import { RoutinesSheet } from "./RoutinesSheet";
 import { ConnectorsSheet } from "./ConnectorsSheet";
 import { VaultSheet } from "./VaultSheet";
+import { DeleteAccountPage } from "./DeleteAccountPage";
 import { SettingsRow, SettingsSection, SettingsSwitch } from "./SettingsRow";
 import { PixelArt } from "../Illustration";
 import type { SheetPageProps } from "./registry";
 
 /** The account rows Settings shows. The account dashboard sells plans, so the store apps never link to it (App Store
- * guideline 3.1.1, Play payments policy); a signed-in account can be signed out here, and a phone with no account (a
- * paired computer needs none) is offered the sign-in that finds a dusk cloud. */
-export function accountRows(input: { native: boolean; signedIn: boolean; offered?: boolean }): { dashboard: boolean; signOut: boolean; signIn: boolean } {
-  return { dashboard: !input.native, signOut: input.signedIn, signIn: Boolean(input.offered) && !input.signedIn };
+ * guideline 3.1.1, Play payments policy); a signed-in account can be signed out and deleted here (App Store 5.1.1(v)), and a
+ * phone with no account (a paired computer needs none) is offered the sign-in that finds a dusk cloud. */
+export function accountRows(input: { native: boolean; signedIn: boolean; offered?: boolean }): { dashboard: boolean; signOut: boolean; deleteAccount: boolean; signIn: boolean } {
+  return { dashboard: !input.native, signOut: input.signedIn, deleteAccount: input.signedIn, signIn: Boolean(input.offered) && !input.signedIn };
 }
 
 /** A label a person would recognise for where these bots live: never an address like 127.0.0.1:5331 or a URL. */
@@ -71,13 +72,14 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-type SettingsPage = "language" | "voice" | "notifications" | "routines" | "connectors" | "vault";
+type SettingsPage = "language" | "voice" | "notifications" | "routines" | "connectors" | "vault" | "delete";
 const SETTINGS_PAGES: readonly string[] = ["language", "voice", "notifications", "routines", "connectors", "vault"];
 
 /** Settings is a stack inside one sheet, as iOS Settings: the grouped list, and each page pushed over it with the
  * system's slide and edge swipe back. Notifications, routines, apps and the vault are the same pages the rest of the
  * app opens as sheets, drawn here as pages, so nothing in Settings leaves it. */
 export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet, open, onClose, onOpenSheet, onOpenChat }) => {
+  const account = useMobileAccount();
   const [page, setPage] = useState<SettingsPage | null>(SETTINGS_PAGES.includes(sheet.page ?? "") ? sheet.page as SettingsPage : null);
   const pop = useCallback(() => setPage(null), []);
   const stack = useMemo(() => ({ back: pop }), [pop]);
@@ -87,6 +89,7 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
     : page === "connectors" ? <ConnectorsSheet sheet={{ kind: "connectors" }} {...pageProps} />
     : page === "vault" ? <VaultSheet sheet={{ kind: "vault" }} {...pageProps} />
     : page === "language" ? <LanguagePage />
+    : page === "delete" && account?.account ? <DeleteAccountPage email={account.account.email} onDelete={account.deleteAccount} onCancel={pop} onDone={onClose} />
     : page === "voice" ? <Sheet open onClose={pop} title={t("settings.voice.title")}><div data-settings-look="simple" className={`flex flex-col gap-6 px-4 pt-2 ${SIMPLE_BUTTONS}`}><VoiceInputSettings /></div></Sheet>
     : null;
   return (
@@ -229,6 +232,11 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
         </SettingsSection>
       )}
       {rows.dashboard && !state.config?.cloudHome && <CloudCard onOpen={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}
+      {rows.deleteAccount && (
+        <button type="button" data-settings-delete-account onClick={() => { haptic("light"); push("delete"); }} className="mx-auto mt-4 block min-h-11 px-4 text-center text-[13px] text-danger">
+          {t("mobile.settings.deleteAccount")}
+        </button>
+      )}
     </div>
   );
 }

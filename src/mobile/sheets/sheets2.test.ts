@@ -58,8 +58,8 @@ describe("settings account rows", () => {
     expect(accountRows({ native: false, signedIn: false }).dashboard).toBe(true);
   });
 
-  it("a signed-in phone can sign out, and never offers to delete the account", () => {
-    expect(accountRows({ native: true, signedIn: true })).toEqual({ dashboard: false, signOut: true, signIn: false });
+  it("a signed-in phone can sign out and delete the account", () => {
+    expect(accountRows({ native: true, signedIn: true })).toEqual({ dashboard: false, signOut: true, deleteAccount: true, signIn: false });
     expect(accountRows({ native: true, signedIn: false }).signOut).toBe(false);
   });
 
