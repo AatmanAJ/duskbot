@@ -812,6 +812,7 @@ export function createBillingService(options: BillingServiceOptions) {
     const sub = cloudId ? state.subscriptions.find(sub => sub.accountId === account.id && sub.cloudId === cloudId) : null;
     saveFeedback(account, cloudId, sub?.id ?? null, surveyOf(input.survey));
   }
+  const onTrial = (sub: StoredSubscription) => sub.trialEndsAt !== undefined && now() < sub.trialEndsAt;
   /** `interval`: the operator may also move a plan between monthly and yearly (dodo: change-plan to the other interval's product) */
   function changeAllowed(account: AccountRef, sub: StoredSubscription, cart: Cart, interval = false) {
     if (sub.status !== "active" || sub.currentPeriodEnd === null || sub.currentPeriodEnd <= now()) fail(409, "not_subscribed");
@@ -822,6 +823,9 @@ export function createBillingService(options: BillingServiceOptions) {
       if (open) throw new BillingError(409, "checkout_open", open.url);
     }
     if (sameCart(sub.cart, cart)) fail(409, "already_on_plan");
+    // dodo (2026-11) ends a trial on change-plan and bills the new plan at once: a smaller plan or dropping the cloud
+    // on a trial would charge someone who meant to pay less, so on a trial only the cancel ends it
+    if (onTrial(sub) && quote(cart, config).totalCents < sub.totalCents) fail(409, "trial_change");
     if (cart.interval !== sub.cart.interval && !interval || (cart.desktop.kind !== "none" && sub.cart.desktop.kind !== "none" && desktopPlan(cart).placement !== desktopPlan(sub.cart).placement && !(sub.cloudId && clouds.movable?.(sub.cloudId, desktopPlan(cart))))
       || (cart.desktop.kind !== "none" && sub.cart.desktop.kind !== "none" && cart.desktop.region !== sub.cart.desktop.region)) fail(409, "plan_change_unavailable");
     if (cart.desktop.kind !== "none" && sub.cart.desktop.kind === "none") cap(account.id);

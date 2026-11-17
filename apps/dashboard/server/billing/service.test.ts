@@ -869,4 +869,16 @@ describe("free trial", () => {
     time += 3 * day; deliver(provider.expire(sub.providerSubscriptionId!));
     expect(store.state.subscriptions[0].status).toBe("ended");
   });
+  it("pro on a trial (cloud and work license) never drops to a smaller plan through the provider: only the cancel ends it, unbilled", async () => {
+    const { sub } = await buy(preset(2));
+    expect(sub).toMatchObject({ trialEndsAt: time + 3 * day, cart: { license: { kind: "solo" }, desktop: { kind: "shared_m" } } });
+    const licenseOnly: Cart = { interval: "month", license: { kind: "solo" }, desktop: { kind: "none" } };
+    for (const cart of [licenseOnly, preset(1)]) expect(() => service.previewChange(owner, sub.id, cart)).toThrow(expect.objectContaining({ code: "trial_change" }));
+    expect(provider.changeCalls).toHaveLength(0);
+    expect(store.state.subscriptions[0].pendingChange).toBeUndefined();
+    await service.cancel(owner, sub.id, { answer: "unused" });
+    expect(provider.cancelCalls.at(-1)).toEqual({ subscriptionId: sub.providerSubscriptionId, cancel: true });
+    expect(store.state.subscriptions[0]).toMatchObject({ status: "active", cancelAtPeriodEnd: true, currentPeriodEnd: time + 3 * day });
+    expect(store.state.invoices.every(invoice => invoice.amountCents === 0)).toBe(true);
+  });
 });

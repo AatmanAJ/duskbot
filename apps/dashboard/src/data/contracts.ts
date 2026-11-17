@@ -150,6 +150,8 @@ export interface Subscription {
   amountUsd: number;
   currentPeriodEnd: number;
   cancelAt: number | null;
+  /** a free trial: nothing has been charged, and the first charge comes then unless the plan is cancelled */
+  trialEndsAt?: number;
 }
 
 export interface PaymentMethod { brand: string; last4: string; expMonth: number; expYear: number }
