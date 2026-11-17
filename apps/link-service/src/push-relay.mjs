@@ -28,10 +28,10 @@ function collapseId(threadId) {
   return value;
 }
 
-/** the message a workspace asks to push, or null; the bot's name is cut to what a lock screen shows */
 /** The Android channel a quiet push goes to; the phone app creates it at low importance, which makes no sound. */
 const QUIET_CHANNEL = "dusk-quiet";
 
+/** the message a workspace asks to push, or null; the bot's name is cut to what a lock screen shows */
 export function pushMessage(value) {
   if (!value || typeof value !== "object") return null;
   const { id, kind, botId, threadId, groupId } = value;

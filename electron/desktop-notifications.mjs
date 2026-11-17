@@ -32,7 +32,7 @@ const ids = (value) => new Set(Array.isArray(value) ? value.slice(0, MAX_BOTS).f
  *   now?: () => number }} deps
  * `window`: the main window, if any. `mayNotify`: the same rule that lets its page use `new Notification`. `reveal`: raises
  * the window. `openPlace`: main's own switch to the place at an origin. `systemQuiet`: whether the system's Do Not Disturb
- * is on (system-quiet.mjs).
+ * is on.
  */
 export function installDesktopNotifications({ ipcMain, Notification, nativeImage, fetch, window, mayNotify, reveal, openPlace, systemQuiet = async () => false, now = Date.now }) {
   // Electron drops a notification's handlers once nothing holds it, so each is held until it is replaced or dismissed.

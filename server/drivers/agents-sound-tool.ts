@@ -1,5 +1,3 @@
-// The agents catalog's set_notification_sound tool: whether the notice for this turn's reply makes a sound. The harness reads
-// the choice from the engine's report of the call (server/harness/status-calls.ts), so the call itself only answers.
 import type { NotificationSound } from "../../shared/notification.ts";
 import type { ToolCallResult } from "./agents-call.ts";
 
