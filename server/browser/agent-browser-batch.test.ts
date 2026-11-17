@@ -168,7 +168,7 @@ describe("settled reads on the agent-browser engine", () => {
     const { call, calls } = engine([check, check, page()]);
     const started = Date.now();
     const result = await call("agent_browser_snapshot");
-    expect(texts(result)[0]).toMatch(/^The site ran a Cloudflare bot check first; it cleared by itself after [12] s\.$/);
+    expect(texts(result)[0]).toMatch(/^Bot check: cleared \(Cloudflare\)\. The site ran a Cloudflare bot check first; it cleared by itself after [12] s\.$/);
     expect(texts(result)[1]).toBe(`- button "Pay" [ref=e1]`);
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(calls().map((entry) => entry.name)).toEqual(["probe", "probe", "probe", "agent_browser_wait_for_load", "probe", "agent_browser_snapshot"]);

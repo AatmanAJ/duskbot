@@ -33,6 +33,8 @@ export interface PageProbe {
   /** The document's HTTP status, 0 when unknown. */
   status?: number;
   host?: string;
+  /** A check widget on the page already holds its answer token. */
+  answered?: boolean;
 }
 
 const MARKERS = ["#challenge-running", "#challenge-stage", "#challenge-form", "#cf-challenge-running", ".cf-browser-verification", "#cf-error-details",
@@ -56,6 +58,8 @@ export const PROBE_EXPRESSION = `(() => {
     selectors: ${JSON.stringify(MARKERS)}.filter((selector) => document.querySelector(selector) !== null),
     status: (() => { try { return performance.getEntriesByType("navigation")[0]?.responseStatus || 0; } catch { return 0; } })(),
     host: location.hostname.slice(0, 253),
+    answered: [...document.querySelectorAll('input[name="cf-turnstile-response"], textarea[name="g-recaptcha-response"], textarea[name="h-captcha-response"]')]
+      .some((field) => typeof field.value === "string" && field.value.length > 0),
   };
 })()`;
 
@@ -63,7 +67,16 @@ const has = (probe: PageProbe, selector: (typeof MARKERS)[number]) => probe.sele
 const anyUrl = (urls: readonly string[], pattern: RegExp) => urls.some((url) => pattern.test(url));
 /** A check widget a person answers: Turnstile, reCAPTCHA or hCaptcha, not an invisible one. */
 const CHECK_WIDGET = /^https:\/\/(?:challenges\.cloudflare\.com\/|(?:www\.google\.com|www\.recaptcha\.net)\/recaptcha\/|(?:[\w-]+\.)?hcaptcha\.com\/)/u;
-const widgetShown = (frames: readonly string[]) => frames.some((url) => CHECK_WIDGET.test(url) && !/[?&]size=invisible\b/u.test(url));
+export const widgetShown = (frames: readonly string[]) => frames.some((url) => CHECK_WIDGET.test(url) && !/[?&]size=invisible\b/u.test(url));
+
+/** The widget whose frame is the checkbox a person ticks ("verify you are human"), or null for any other frame. */
+export function checkboxVendor(url: string): string | null {
+  if (/[?&]size=invisible\b/u.test(url)) return null;
+  if (/^https:\/\/challenges\.cloudflare\.com\//u.test(url)) return "Cloudflare Turnstile";
+  if (/^https:\/\/(?:www\.google\.com|www\.recaptcha\.net)\/recaptcha\/(?:api2|enterprise)\/anchor\b/u.test(url)) return "reCAPTCHA";
+  if (/^https:\/\/(?:[\w-]+\.)?hcaptcha\.com\/.*[#&?]frame=checkbox\b/u.test(url)) return "hCaptcha";
+  return null;
+}
 /** What a bot wall says, in any vendor's or site's words; only read on a short page, where it is the page's point. */
 const BOT_WALL = new RegExp([
   "unusual traffic", "automated (?:queries|requests|traffic|access)", "are you a (?:robot|human)", "(?:i'm|i am|you're|you are) not a robot",
@@ -132,7 +145,20 @@ export interface SettleReport {
   challenge?: Challenge & { cleared: boolean; waitedMs: number };
   /** Skeletons or spinners were still showing when the wait ran out. */
   stillBusy?: boolean;
+  /** A "verify you are human" checkbox on the page, and whether it holds its answer token now. */
+  checkbox?: { vendor: string; answered: boolean };
 }
+
+export interface SettleOptions {
+  deadline: number;
+  fresh?: boolean;
+  now?: () => number;
+  cleared?: Set<string>;
+}
+
+/** Turnstile often ticks itself within a few seconds of showing. */
+export const CHECKBOX_TOKEN_WAIT_MS = 3_000;
+const TOKEN_POLL_MS = 500;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -155,10 +181,34 @@ const turnstileShown = (reader: PageReader, probe: PageProbe | null) => [...read
 /** A nearly empty document with nothing to act on: an app that has not drawn itself yet. */
 const unpainted = (probe: PageProbe) => probe.controls === 0 && probe.textLength < 200;
 
-/** Waits out a self-clearing check, then loading placeholders, never past `deadline`. */
-/** `cleared`: the hosts whose check already cleared in this browser; a check there is waited out briefly, then reported. */
-export async function settlePage(target: SettleTarget | PageReader, { deadline, fresh = false, now = Date.now, cleared }: { deadline: number; fresh?: boolean; now?: () => number; cleared?: Set<string> }): Promise<SettleReport> {
+/**
+ * Waits out a self-clearing check, then loading placeholders, never past `deadline`. A "verify you are human" checkbox
+ * still waiting on someone gets a moment to answer itself. `cleared`: the hosts whose check already cleared in this
+ * browser; a check there is waited out briefly, then reported.
+ */
+export async function settlePage(target: SettleTarget | PageReader, options: SettleOptions): Promise<SettleReport> {
   const reader = "probe" in target ? target : cdpReader(target);
+  const { report, probe } = await waitOut(reader, options);
+  const check = report.challenge;
+  if (!probe || reader.stopped?.() === true || (check && (check.cleared || check.state !== "needs-user"))) return report;
+  const checkbox = await tokenWait(reader, probe, options);
+  if (checkbox) report.checkbox = checkbox;
+  return report;
+}
+
+async function tokenWait(reader: PageReader, first: PageProbe, { deadline, now = Date.now }: SettleOptions): Promise<SettleReport["checkbox"]> {
+  const vendor = [...first.iframes, ...reader.frameUrls()].map(checkboxVendor).find((found) => found !== null) ?? null;
+  if (!vendor) return undefined;
+  const until = Math.min(deadline, now() + CHECKBOX_TOKEN_WAIT_MS);
+  let probe = first;
+  while (probe.answered !== true && now() + TOKEN_POLL_MS <= until && reader.stopped?.() !== true) {
+    await sleep(TOKEN_POLL_MS);
+    probe = await reader.probe() ?? probe;
+  }
+  return { vendor, answered: probe.answered === true };
+}
+
+async function waitOut(reader: PageReader, { deadline, fresh = false, now = Date.now, cleared }: SettleOptions): Promise<{ report: SettleReport; probe: PageProbe | null }> {
   const stopped = () => reader.stopped?.() === true;
   const report: SettleReport = {};
   let probe = await reader.probe();
@@ -179,46 +229,82 @@ export async function settlePage(target: SettleTarget | PageReader, { deadline, 
     if (current) {
       const state = current.vendor === "Cloudflare" && current.state === "checking" && turnstileShown(reader, probe) ? "needs-user" : current.state;
       report.challenge = { ...current, state, cleared: false, waitedMs: now() - started };
-      return report;
+      return { report, probe };
     }
     report.challenge = { ...met, cleared: true, waitedMs: now() - started };
     if (host) cleared?.add(host);
     await reader.loaded(Math.max(0, Math.min(5_000, deadline - now()))).catch(() => undefined);
     probe = await reader.probe();
   }
-  if (!probe || stopped() || !(probe.busy || (fresh && unpainted(probe)))) return report;
+  if (!probe || stopped() || !(probe.busy || (fresh && unpainted(probe)))) return { report, probe };
   const busyUntil = Math.min(deadline, now() + BUSY_WAIT_MS);
   const emptyUntil = Math.min(deadline, now() + EMPTY_WAIT_MS);
   let signature = `${probe.nodes}:${probe.textLength}`;
   let quietSince = now();
   while (now() + BUSY_POLL_MS <= busyUntil) {
     await sleep(BUSY_POLL_MS);
-    if (stopped()) return report;
+    if (stopped()) return { report, probe };
     const next = await reader.probe();
     if (!next) continue;
     const nextSignature = `${next.nodes}:${next.textLength}`;
     if (nextSignature !== signature) { signature = nextSignature; quietSince = now(); }
     probe = next;
     const waiting = next.busy || now() - quietSince < QUIET_MS || (fresh && unpainted(next) && now() < emptyUntil);
-    if (!waiting) return report;
+    if (!waiting) return { report, probe };
   }
   if (probe.busy) report.stillBusy = true;
-  return report;
+  return { report, probe };
 }
 
 /** What a bot does about a check or block that did not clear: never solve it, let dusk bot's recovery run, ask last. */
 export const BLOCKED_NEXT = "Never click it, solve it or try to hide that you are a bot. Do not wait or reload yourself: call request_sign_in with the site and human_check true now. " +
   "dusk bot waits it out, reloads once and tries the person's own connection before anyone is asked, and tells you what to do next.";
 
-/** The report as one line of a tool's answer, or null when there is nothing to say. */
-export function settleNote(report: SettleReport): string | null {
+/** Where a page's bot check stands, as every page read reports it. */
+export type CheckStatus = "cleared" | "checking" | "needs one click" | "needs you" | "blocked";
+
+/** The centre of a "verify you are human" checkbox in the page's viewport, in the CSS pixels the click tool takes. */
+export interface CheckboxPoint {
+  x: number;
+  y: number;
+}
+
+/** The page's bot check, or null on a page that showed none. `point`: the one checkbox click offered, if any. */
+export function checkStatus(report: SettleReport, point: CheckboxPoint | null = null): { status: CheckStatus; vendor: string | null } | null {
+  const check = report.challenge;
+  const box = report.checkbox;
+  const named = (vendor: string | undefined) => (vendor && vendor !== "Site" ? vendor : box?.vendor ?? null);
+  if (check?.cleared) return { status: "cleared", vendor: named(check.vendor) };
+  if (check && check.state !== "needs-user") return { status: check.state, vendor: named(check.vendor) };
+  if (!check && !box) return null;
+  if (box?.answered) return { status: check ? "checking" : "cleared", vendor: named(check?.vendor) };
+  return { status: point ? "needs one click" : "needs you", vendor: named(check?.vendor) };
+}
+
+/** What a bot may do about a checkbox it was offered: one click on it, and nothing more. */
+function oneClick(point: CheckboxPoint): string {
+  return `The checkbox is at ${Math.round(point.x)},${Math.round(point.y)}. You may click that point once with agent_browser_click (x and y), then read the page again. ` +
+    "Never click it a second time, answer a puzzle it shows or try to hide that you are a bot: if the check is still there after that one click, call request_sign_in with the site and human_check true.";
+}
+
+/** The report as one line of a tool's answer, or null when there is nothing to say. `point`: the checkbox click offered. */
+export function settleNote(report: SettleReport, point: CheckboxPoint | null = null): string | null {
   const lines: string[] = [];
+  const status = checkStatus(report, point);
+  if (status) lines.push(`Bot check: ${status.status}${status.vendor ? ` (${status.vendor})` : ""}.`);
   const check = report.challenge;
   if (check) {
     const waited = `${Math.round(check.waitedMs / 1_000)} s`;
     const what = check.vendor === "Site" ? "bot check" : `${check.vendor} bot check`;
     if (check.cleared) lines.push(`The site ran a ${what} first; it cleared by itself after ${waited}.`);
-    else lines.push(`The site still shows a ${check.state === "blocked" ? "bot block" : what} after ${waited}. ${BLOCKED_NEXT}`);
+    else if (status?.status === "checking" && report.checkbox?.answered) lines.push("Its checkbox ticked itself and the site is letting the browser through: read the page again in a moment.");
+    else lines.push(`The site still shows a ${check.state === "blocked" ? "bot block" : what} after ${waited}. ${status?.status === "needs one click" && point ? oneClick(point) : BLOCKED_NEXT}`);
+  } else if (status?.status === "cleared") {
+    lines.push("The page's checkbox ticked itself.");
+  } else if (status) {
+    // a checkbox beside the page's own content, such as on a sign-up form: it stands only between the bot and submitting
+    lines.push(`The page has a "verify you are human" checkbox, which matters only to submit its form. ${point && status.status === "needs one click"
+      ? oneClick(point) : "If you must submit it, call request_sign_in with the site and human_check true; never solve it or try to hide that you are a bot."}`);
   }
   if (report.stillBusy) lines.push(`Parts of the page were still loading after ${BUSY_WAIT_MS / 1_000} s (placeholders or spinners). If what you need is missing, wait for it and read again.`);
   return lines.length ? lines.join(" ") : null;

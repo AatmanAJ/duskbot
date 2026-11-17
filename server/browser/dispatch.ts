@@ -13,7 +13,9 @@ import type { PointerReporter } from "./cdp/actions.ts";
 import { navigable } from "./cdp/page.ts";
 import type { Screenshot } from "./cdp/screencast.ts";
 import { resolveElement } from "./cdp/selectors.ts";
-import { settleNote, settlePage } from "./cdp/settle.ts";
+import { checkboxPoint } from "./cdp/checkbox.ts";
+import { CONSENT_LOOK_MS, consentNote, rejectConsent } from "./cdp/consent.ts";
+import { checkStatus, settleNote, settlePage, type CheckboxPoint } from "./cdp/settle.ts";
 import { MAX_VISIBLE_TEXT_LENGTH } from "./cdp/snapshot.ts";
 import { runBatch } from "./batch.ts";
 import { PersonHoldAnswer } from "../browser-refusals.ts";
@@ -70,6 +72,8 @@ export interface ToolContext {
   secretNote?(): string | null;
   saveScreenshot(data: Buffer, pageUrl: string): string;
   downloads(): Download[];
+  /** Whether cookie banners on `tab` are answered for the bot: a tab it opened, never one a person opened or holds. */
+  answersConsent?(tab: Tab): boolean;
   /** Throws once the call may no longer act, such as when its turn ended; a batch checks it between steps. */
   checkpoint?(): void;
 }
@@ -178,6 +182,11 @@ async function openedNote(context: ToolContext, tab: Tab, known: ReadonlySet<str
   return opened.map((candidate) => `The page opened a new tab ${candidate.id} at ${sanitizeUrl(candidate.page.url()) || candidate.page.url()}${candidate === front ? ", now in front" : ""}; take a snapshot to act on it.`).join(" ");
 }
 
+/** Where a tab the bot opened is: in front, or beside the one a person holds, which stays in front. */
+function frontNote(context: ToolContext): string {
+  return context.control.owner === null ? "It is in front;" : `It opened beside ${context.control.heldTabs().map((held) => held.id).join(", ")}, which the person holds and which stays in front;`;
+}
+
 /** A call waits on a held tab until its reads after would no longer fit, and stops with its turn. */
 function holdWait(context: ToolContext): HoldWait {
   return { until: context.deadline - FOLLOW_UP_MS, ...(context.checkpoint ? { checkpoint: context.checkpoint } : {}) };
@@ -219,7 +228,37 @@ async function settled(context: ToolContext, tab: Tab, fresh: boolean): Promise<
   let cleared = clearedChecks.get(context.browser);
   if (!cleared) clearedChecks.set(context.browser, cleared = new Set());
   const report = await settlePage({ frames: tab.page.frames, loaded: (timeoutMs) => tab.page.lifecycle.waitFor("load", { timeoutMs }) }, { deadline: context.deadline - FOLLOW_UP_MS, fresh, cleared });
-  return settleNote(report);
+  const point = checkStatus(report)?.status === "needs you" && report.checkbox ? await offeredClick(context, tab) : null;
+  const consent = context.answersConsent?.(tab) ? await answeredConsent(tab) : null;
+  return [settleNote(report, point), consent].filter(Boolean).join(" ") || null;
+}
+
+/** The sites in each browser whose checkbox click was offered: a bot gets one, and after it the person is asked. */
+const offeredClicks = new WeakMap<object, Set<string>>();
+
+async function offeredClick(context: ToolContext, tab: Tab): Promise<CheckboxPoint | null> {
+  let offered = offeredClicks.get(context.browser);
+  if (!offered) offeredClicks.set(context.browser, offered = new Set());
+  let host = "";
+  try { host = new URL(tab.page.url()).hostname; } catch {}
+  if (!host || offered.has(host)) return null;
+  const point = await checkboxPoint(tab.page.frames);
+  if (point) offered.add(host);
+  return point;
+}
+
+/** Each document's cookie banner is looked for on reads in its first seconds, and answered once. */
+const consentLooks = new WeakMap<Tab, { loaderId: string | null; since: number; done: boolean }>();
+
+async function answeredConsent(tab: Tab): Promise<string | null> {
+  const loaderId = tab.page.lifecycle.loaderId;
+  let look = consentLooks.get(tab);
+  if (!look || look.loaderId !== loaderId) consentLooks.set(tab, look = { loaderId, since: Date.now(), done: false });
+  if (look.done || Date.now() - look.since > CONSENT_LOOK_MS || tab.page.url() === "about:blank") return null;
+  const pressed = await rejectConsent(tab.page.frames);
+  if (!pressed) return null;
+  look.done = true;
+  return consentNote(pressed);
 }
 
 async function snapshotResult(context: ToolContext, tab: Tab, { includeImage = false, save = false, fresh = false }: { includeImage?: boolean; save?: boolean; fresh?: boolean } = {}): Promise<ToolResult> {
@@ -456,7 +495,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
         return act(context, tab, async () => {
           await tab.page.bringToFront();
           if (address) await tab.page.navigate(address, { readiness: "load", timeoutMs: remaining(context) });
-          return textResult(`Opened ${tab.id} at ${sanitizeUrl(tab.page.url()) || tab.page.url()}. It is in front; take a snapshot to act on it.`);
+          return textResult(`Opened ${tab.id} at ${sanitizeUrl(tab.page.url()) || tab.page.url()}. ${frontNote(context)} take a snapshot to act on it.`);
         });
       }
       if (!which) return errorResult(`Pass tab for ${action}.`);
@@ -464,7 +503,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       if (action === "close") return bot(context, tab, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
       return bot(context, tab, async () => {
         await tab.page.bringToFront();
-        return textResult(`${tab.id} is in front: ${pageLabel(describe(tab))}. Take a snapshot to act on it.`);
+        return textResult(`${context.control.owner === null ? `${tab.id} is in front` : `You work in ${tab.id}`}: ${pageLabel(describe(tab))}. Take a snapshot to act on it.`);
       });
     }
     case "agent_browser_close": {

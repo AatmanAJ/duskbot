@@ -100,6 +100,8 @@ export class ProfileState {
   reopened: Reopened = null;
   /** The person clicked or typed beside the bot since its last call: its next answer says so. */
   personActed = false;
+  /** Tabs a person opened from a view: their cookie banners are theirs to answer. */
+  readonly personTabs = new WeakSet<Tab>();
   /** The next start opens one blank tab rather than the last session's. */
   fresh = false;
 
@@ -119,6 +121,14 @@ export class ProfileState {
   active(): Tab | null {
     const page = this.run?.browser.activePage;
     return (page && this.tabs.byPage(page)) ?? this.tabs.list().at(-1) ?? null;
+  }
+
+  /** The bot opened `tab` (its browser's last session counts as its own), or a page in such a tab did: never one a person opened or holds. */
+  botOpened(tab: Tab): boolean {
+    if (this.personTabs.has(tab) || this.control.holds(tab)) return false;
+    if (tab.origin === "agent" || tab.origin === "restored") return true;
+    const opener = tab.origin === "page" && tab.openerTabId ? this.tabs.get(tab.openerTabId) : undefined;
+    return opener !== undefined && opener !== tab && this.botOpened(opener);
   }
 
   /** The bot's tab: the one in front, or while a person holds that one, the tab the bot last used if it is free. */
@@ -547,6 +557,7 @@ export class BrowserService {
       secretNote: () => this.#holds.note(profile.session),
       saveScreenshot: (data, pageUrl) => this.#saveScreenshot(profile, data, pageUrl),
       downloads: () => run.browser.downloads?.list() ?? [],
+      answersConsent: (tab) => profile.botOpened(tab),
     };
   }
 
@@ -753,6 +764,7 @@ export class BrowserService {
       release: (owner: string, releaseInput: (tab: Tab) => Promise<boolean>) => profile.control.release(owner, releaseInput),
       openTab: async (url: string | null, owner: string) => {
         const tab = await this.#openTab(profile, "person");
+        profile.personTabs.add(tab);
         if (profile.control.owner === owner) {
           profile.control.adopt(tab, { person: true });
           profile.run?.browser.pin(tab.page);
