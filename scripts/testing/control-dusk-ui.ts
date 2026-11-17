@@ -82,9 +82,6 @@ export function sessionEnv(handle: SessionEnv, parentEnv: NodeJS.ProcessEnv = pr
     AGENT_BROWSER_HEADLESS: "1",
     AGENT_BROWSER_NO_WEBMCP: "1",
     AGENT_BROWSER_ARGS: credentialStoreFlags().join("\n"),
-    // The first load of a cold Vite preview compiles the app on demand; on a loaded CI runner that outran
-    // agent-browser's default navigation timeout. Every verb of a session carries this, so the launch never drifts.
-    AGENT_BROWSER_DEFAULT_TIMEOUT: "60000",
   };
   for (const [key, value] of Object.entries(parentEnv)) {
     if (value && PLATFORM_ENV.includes(key.toUpperCase())) env[key.toUpperCase()] = value;
