@@ -57,7 +57,7 @@ async function chatScreen({ page, home, chat }: Stage, scheme: Scheme) {
 
   const long = (own: boolean) => g.bubbles.filter((b: any) => b.own === own && b.lines >= 2);
   const short = g.bubbles.filter((b: any) => b.chars <= 20);
-  check(where, "a long bot reply spans at least 90% of the column", long(false).length > 0 && long(false).every((b: any) => b.width >= 0.9), long(false));
+  check(where, "a long bot reply wraps like a chat bubble, 60% to 85% of the column", long(false).length > 0 && long(false).every((b: any) => b.width >= 0.6 && b.width <= 0.86), long(false));
   check(where, "a short bubble fits its text on one line", short.length > 0 && short.every((b: any) => b.lines === 1 && b.width < 0.6), short);
   check(where, "the composer shows add, the message field and the microphone, nothing else", g.controls.length === 3 && /add|attach|\+/.test(g.controls[0]) && g.controls[1] === "textarea" && /dictat|voice|mic|speak/.test(g.controls[2]), g.controls);
   check(where, "the top bar has back, the name pill and the computer", g.nav.length === 3 && /back/.test(g.nav[0]) && /nova/.test(g.nav[1]) && /computer/.test(g.nav[2]), g.nav);

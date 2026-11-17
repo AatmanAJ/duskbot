@@ -98,8 +98,8 @@ describe("message width on the phone, on the rendered chat", () => {
     for (const row of rows()) expect(bubbleOf(row)).toBeTruthy();
   });
 
-  it("lets a bot reply span the column", () => {
-    for (const row of rows().filter((el) => el.classList.contains("items-start"))) expect(phone(bubbleOf(row), "max-width")).toBe("100%");
+  it("stops a bot reply at 85% of the column, like a chat bubble", () => {
+    for (const row of rows().filter((el) => el.classList.contains("items-start"))) expect(phone(bubbleOf(row), "max-width")).toBe("85%");
   });
 
   it("stops your own bubble at 85%", () => {
