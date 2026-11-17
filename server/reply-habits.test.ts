@@ -52,3 +52,13 @@ it("ends on the result, not a habitual offer, whatever an app's own notes say", 
     expect(habits).not.toContain("at most one concrete offer");
   }
 });
+
+it("tells bots the chat draws mermaid diagrams and charts, styled by the app", () => {
+  for (const quick of [false, true]) {
+    const habits = replyHabitsPrompt(quick);
+    expect(habits).toContain("put it in a fenced mermaid code block and the chat draws it in your message");
+    expect(habits).toContain("pie or xychart-beta");
+    expect(habits).toContain("leave out colours, styles, classDef, init settings and click links");
+    expect(habits).not.toContain(String.fromCharCode(0x2014));
+  }
+});

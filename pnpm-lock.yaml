@@ -60,6 +60,9 @@ importers:
       croner:
         specifier: 10.0.1
         version: 10.0.1
+      dompurify:
+        specifier: 3.4.17
+        version: 3.4.17
       imapflow:
         specifier: 2.10.0
         version: 2.10.0
