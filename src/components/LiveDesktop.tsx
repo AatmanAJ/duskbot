@@ -1,11 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Hand, Loader2, Minimize2, RefreshCw, Send } from "../icons";
 import type RFB from "@novnc/novnc";
 import { cn } from "@/lib/cn";
 import { copyText } from "@/lib/copy-text";
-import { connectDesktop, isPasteShortcut, pasteOnDesktop, typeOnDesktop } from "@/lib/desktop-connection";
+import { connectDesktop, desktopSize, isPasteShortcut, keyOnDesktop, pasteOnDesktop, pointerOnDesktop, typeOnDesktop } from "@/lib/desktop-connection";
 import { t } from "@/lib/i18n";
 import { isMacPlatform } from "@/lib/keyboard-shortcuts";
+import { PlatformContext } from "@/mobile/platform";
+import { ScreenTrackpad, type RemoteInput } from "@/mobile/ScreenTrackpad";
 import { BotPointer } from "./BotPointer";
 import { ComputerFullscreen } from "./ComputerFullscreen";
 import { Icon } from "./Icon";
@@ -68,6 +70,14 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
   const sized = useRef(onScreenSize);
   sized.current = onScreenSize;
   const [aspect, setAspect] = useState<number | undefined>(undefined);
+  const platform = useContext(PlatformContext);
+  const phoneKeyboard = useRef<HTMLInputElement>(null);
+  const remoteInput = useMemo<RemoteInput>(() => ({
+    size: () => rfb.current && desktopSize(rfb.current),
+    pointer: (x, y, mask) => { if (rfb.current) pointerOnDesktop(rfb.current, x, y, mask); },
+    key: (keysym, code) => { if (rfb.current) keyOnDesktop(rfb.current, keysym, code); },
+    text: (typed) => { if (rfb.current && !rfb.current.viewOnly) typeOnDesktop(rfb.current, typed); },
+  }), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -201,6 +211,7 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
   );
 
   const launching = useLaunchFeedback(screen, !viewOnly && connection === "connected");
+  const phoneTrackpad = Boolean(platform) && originalViewer && expanded && !viewOnly && connection === "connected";
 
   const desktopFrame = (
       <div className={cn("relative h-full w-full overflow-hidden", expanded ? "bg-black" : "bg-inset")}>
@@ -209,6 +220,7 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
         )}
         <div ref={screen} role="application" aria-label={label} data-live-desktop-screen="" data-watching={viewOnly ? "" : undefined} className="absolute inset-0" />
         {botId && viewOnly && connection === "connected" && <BotPointer host={screen} botId={botId} />}
+        {phoneTrackpad && <ScreenTrackpad screen={screen} input={remoteInput} keyboard={phoneKeyboard} haptic={platform?.haptic} label={label} />}
         {launching && (
           <span data-launch-spinner="" aria-hidden="true" className="pointer-events-none absolute z-[3] size-7 -translate-x-1/2 -translate-y-1/2" style={{ left: launching.x, top: launching.y }}>
             <span className="absolute inset-0 rounded-full border-2 border-white/25 border-t-white/90 drop-shadow-[0_0_2px_rgb(0_0_0/0.6)] motion-safe:animate-spin" />
@@ -240,6 +252,7 @@ export function LiveDesktop({ target, threadId, botId, name, poster, expanded, o
     <div data-live-desktop="" data-state={connection} data-view-only={viewOnly ? "true" : undefined}
       data-expanded={expanded ? "true" : undefined} className="relative h-full w-full">
       <ComputerFullscreen embedded expanded={expanded} label={label} aspect={aspect} onExit={() => onExpandedChange(false)}
+        onKeyboard={phoneTrackpad ? () => phoneKeyboard.current?.focus({ preventScroll: true }) : undefined}
         frame={desktopFrame} note={null} control={viewOnly
           ? { held: false, onTake: onTakeControl, busy: connection !== "connected" || handingBack || taking, pending: taking }
           : { held: true, onDone: onHandBack, asked, busy: handingBack }} />

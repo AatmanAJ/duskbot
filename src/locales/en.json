@@ -6112,6 +6112,7 @@
   "desktopViewer.title": "Desktop viewer",
   "desktopViewer.reconnect": "Reconnect",
   "desktopViewer.keyboard": "Keyboard",
+  "desktopViewer.rotate": "Rotate screen",
   "desktopViewer.text": "Text to type on the desktop",
   "desktopViewer.send": "Send text",
   "desktopViewer.connecting": "Connecting to the desktop…",

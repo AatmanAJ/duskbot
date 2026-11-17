@@ -1,11 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
-import { Loader2 } from "../icons";
+import { Loader2, RotateCw } from "../icons";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { reducedMotion } from "@/lib/onboarding";
+import { PlatformContext, type MobilePlatform } from "@/mobile/platform";
 import { useCaptionChrome, useDesktopCapabilities } from "./DesktopCapabilities";
 import { Icon } from "./Icon";
 import { useDialogKeys } from "./ui/GrokDialog";
@@ -37,7 +38,7 @@ function useWatchHint(active: boolean) {
 
 /** Grok's full computer view: the bot's screen on a dark cover, Exit fullscreen in the top right, and the control pill
  * under the frame. Without a frame it shows `note` (waking up, connecting, or what is in the way). */
-export function ComputerFullscreen({ label, onExit, frame, note, control, alert, embedded = false, expanded = true, aspect = 16 / 10 }: {
+export function ComputerFullscreen({ label, onExit, frame, note, control, alert, onKeyboard, embedded = false, expanded = true, aspect = 16 / 10 }: {
   label: string;
   /** The screen's width over its height, so the frame meets it edge to edge; bot desktops are 16:10. */
   aspect?: number;
@@ -46,6 +47,8 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
   note: ReactNode;
   control: ScreenControl | null;
   alert?: string | null;
+  /** On a phone: opens the phone's keyboard to type on the screen. */
+  onKeyboard?: () => void;
   embedded?: boolean;
   expanded?: boolean;
 }) {
@@ -86,6 +89,8 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
   const exit = t("desktopViewer.exitFullscreen");
   const watching = Boolean(control && !control.held && control.onTake);
   const hint = useWatchHint(watching);
+  const platform = useContext(PlatformContext);
+  const phone = platform && !inline ? platform : null;
 
   const content = (
     <div
@@ -95,10 +100,12 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
       aria-label={label}
       tabIndex={-1}
       data-computer-fullscreen={inline ? undefined : ""}
-      className={inline ? "relative flex size-full flex-col outline-none" : "fixed inset-0 z-[65] flex flex-col bg-[rgb(20,20,20)] outline-none"}
+      className={cn(inline ? "relative flex size-full flex-col outline-none" : "fixed inset-0 z-[65] flex flex-col bg-[rgb(20,20,20)] outline-none",
+        phone && "pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]")}
     >
       {!inline && <ComputerViewerKeys box={box} onExit={onExit} />}
-      {!inline && <div {...dragProps} className={cn("flex h-11 shrink-0 items-center justify-end pr-2", macInset ? "pl-[88px]" : "pl-2")}>
+      {phone && <PhoneViewerBar platform={phone} onExit={() => close.current()} onKeyboard={onKeyboard} />}
+      {!inline && !phone && <div {...dragProps} className={cn("flex h-11 shrink-0 items-center justify-end pr-2", macInset ? "pl-[88px]" : "pl-2")}>
         <button
           type="button"
           style={noDragStyle}
@@ -112,12 +119,12 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
         </button>
       </div>}
       <div className={cn("flex min-h-0 flex-1 flex-col", !inline && "p-2")}>
-        <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center [container-type:size]">
+        <div className={cn("relative flex min-h-0 flex-1 flex-col items-center justify-center [container-type:size]", phone && "[--computer-bar:52px] landscape:[--computer-bar:0px]")}>
           {frame ? (
             <div
               data-computer-frame=""
               className={cn("relative overflow-hidden", inline ? "size-full" : "rounded-[6px] bg-white/4")}
-              style={inline ? undefined : { width: `min(100cqw, calc((100cqh - ${control ? BAR : 0}px) * ${aspect}))`, aspectRatio: String(aspect) }}
+              style={inline ? undefined : { width: `min(100cqw, calc((100cqh - ${control ? phone ? "var(--computer-bar)" : `${BAR}px` : "0px"}) * ${aspect}))`, aspectRatio: String(aspect) }}
               onPointerDown={watching ? hint.bump : undefined}
             >
               {frame}
@@ -126,7 +133,7 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
             <div data-computer-note="" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">{note}</div>
           )}
           {!inline && control && (
-            <div className="flex shrink-0 items-center justify-center" style={{ height: BAR }}>
+            <div className={cn("flex shrink-0 items-center justify-center", phone && "landscape:pointer-events-none landscape:absolute landscape:inset-x-0 landscape:bottom-1 landscape:h-auto! [&>*]:pointer-events-auto")} style={{ height: BAR }}>
               <ControlPill control={control} hint={hint} />
             </div>
           )}
@@ -136,6 +143,54 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
     </div>
   );
   return embedded ? host ? <><div ref={mount} className="size-full" />{createPortal(content, host)}</> : content : createPortal(content, document.body);
+}
+
+const landscapeQuery = () => typeof matchMedia === "function" ? matchMedia("(orientation: landscape)") : null;
+const subscribeLandscape = (listener: () => void) => {
+  const query = landscapeQuery();
+  query?.addEventListener("change", listener);
+  return () => query?.removeEventListener("change", listener);
+};
+const isLandscape = () => landscapeQuery()?.matches ?? false;
+
+const phoneButton = "pointer-events-auto flex size-11 cursor-pointer items-center justify-center rounded-full text-white/85 transition-[background-color] duration-[120ms] ease-[ease] active:bg-white/12 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white/70";
+
+/** The phone's way out of the screen, below the status bar, and the screen's own tools: turn it sideways and type. The
+ * phone may turn while the screen is open. */
+function PhoneViewerBar({ platform, onExit, onKeyboard }: { platform: MobilePlatform; onExit: () => void; onKeyboard?: () => void }) {
+  const landscape = useSyncExternalStore(subscribeLandscape, isLandscape, () => false);
+  const exit = useRef(onExit);
+  exit.current = onExit;
+  useEffect(() => {
+    platform.orientation?.allowLandscape(true);
+    const unback = platform.onBack?.(() => { exit.current(); return true; });
+    return () => {
+      unback?.();
+      platform.orientation?.allowLandscape(false);
+    };
+  }, [platform]);
+  const back = t("common.back");
+  const rotate = t("desktopViewer.rotate");
+  const keyboard = t("desktopViewer.keyboard");
+  return (
+    <div data-computer-phone-bar="" className="pointer-events-none flex h-11 shrink-0 items-center justify-between px-1 landscape:absolute landscape:inset-y-0 landscape:left-[env(safe-area-inset-left)] landscape:right-[env(safe-area-inset-right)] landscape:z-10 landscape:h-auto landscape:items-start landscape:py-1">
+      <button type="button" onClick={onExit} aria-label={back} title={back} data-computer-exit="" className={phoneButton}>
+        <Icon name="chevron-left" size={22} />
+      </button>
+      <div className="flex items-center gap-1 landscape:flex-col">
+        {platform.orientation && (
+          <button type="button" onClick={() => platform.orientation?.rotate(landscape ? "portrait" : "landscape")} aria-label={rotate} title={rotate} data-computer-rotate="" className={phoneButton}>
+            <RotateCw size={18} aria-hidden="true" />
+          </button>
+        )}
+        {onKeyboard && (
+          <button type="button" onClick={onKeyboard} aria-label={keyboard} title={keyboard} data-computer-keyboard="" className={phoneButton}>
+            <Icon name="keyboard" size={18} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export const SCREEN_GROW_MS = 240;

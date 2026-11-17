@@ -59,6 +59,11 @@ export interface CameraScanner {
 
 /** Everything the phone layer asks of the device. The native app supplies Capacitor plugins; the web preview and a
  * plain browser get the fallbacks in `webPlatform`. Capability flags, never user-agent guesses. */
+export interface OrientationBridge {
+  allowLandscape(on: boolean): void;
+  rotate(to: "portrait" | "landscape"): void;
+}
+
 export interface MobilePlatform {
   kind: "ios" | "android" | "web";
   native: boolean;
@@ -105,6 +110,8 @@ export interface MobilePlatform {
   glass?: GlassBridge;
   /** The system's own context menu over the page's items, where the app has it. */
   menu?: MenuBridge;
+  /** The phone may turn sideways while a remote screen is open; everywhere else the app stays upright. */
+  orientation?: OrientationBridge;
   deviceName(): string;
   appVersion: string;
 }
