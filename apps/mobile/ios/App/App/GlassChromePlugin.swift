@@ -395,7 +395,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         button.configuration = config
         button.tintColor = prominent ? accent : nil
         button.enumerateEventHandlers { action, _, event, _ in if let action { button.removeAction(action, for: event) } }
-        button.addAction(UIAction { [weak self] _ in self?.emit(["type": "button", "index": index]) }, for: .touchUpInside)
+        button.addAction(UIAction { [weak self] _ in self?.emit(["type": "button", "index": index, "kind": kind]) }, for: .touchUpInside)
     }
 
     private func show(_ view: UIView, _ visible: Bool, _ shown: inout Bool) {

@@ -44,7 +44,7 @@ export interface GlassState {
 
 export type GlassEvent =
   | { type: "tap"; target: "back" | "title" | "right" | "plus" }
-  | { type: "button"; index: number }
+  | { type: "button"; index: number; kind?: GlassButtonKind }
   | { type: "text"; text: string }
   | { type: "submit" }
   | { type: "focus"; focused: boolean }
@@ -137,8 +137,9 @@ export function darkGround(hex: string | null): boolean | null {
 
 /** The composer's action buttons in order, each with its native twin; null when one has none (the page keeps its own composer then). */
 export function composerButtons(actions: Element | null): { buttons: GlassButton[]; elements: HTMLElement[] } | null {
-  // in the order they are drawn, not written: a working bot's Stop sits last with `order`
-  const elements = actions ? [...actions.querySelectorAll<HTMLElement>("button")].sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left) : [];
+  // in the order they are laid out, not written (a working bot's Stop sits last with `order`), and not as drawn mid-swap:
+  // a control springing in carries a transform
+  const elements = actions ? [...actions.querySelectorAll<HTMLElement>("button")].sort((a, b) => a.offsetLeft - b.offsetLeft) : [];
   const buttons: GlassButton[] = [];
   for (const el of elements) {
     const kind = buttonKind(el);
@@ -328,7 +329,8 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
           else click(nav()?.querySelector(`[data-glass=${event.target}]`));
           break;
         }
-        case "button": click(elements[event.index]); break;
+        // the control the native one stood in for, by kind: the page's set may have moved on since that frame
+        case "button": click((event.kind && elements.find((el) => buttonKind(el) === event.kind)) || elements[event.index]); break;
         case "text": {
           fromNative = event.text;
           toNative = null;

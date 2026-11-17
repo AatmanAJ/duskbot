@@ -238,6 +238,20 @@ describe("useNativeGlass", () => {
     expect(keys.mock.results[0]?.value).toBe("Enter");
   });
 
+  it("presses the control a native tap stood in for, even after the page's set moved on", () => {
+    const { send, $ } = mount();
+    const stop = document.createElement("button");
+    stop.setAttribute("data-composer-stop", "slot");
+    $("mic").after(stop);
+    runFrame();
+    const pressed = { mic: vi.fn(), stop: vi.fn() };
+    $("mic").addEventListener("click", pressed.mic);
+    stop.addEventListener("click", pressed.stop);
+    send({ type: "button", index: 0, kind: "stop" });
+    expect(pressed.stop).toHaveBeenCalledTimes(1);
+    expect(pressed.mic).not.toHaveBeenCalled();
+  });
+
   it("sends the page's own edits to the native field, never echoing what was typed there", () => {
     const { glass, send, $ } = mount();
     runFrame();
