@@ -18,7 +18,9 @@ const keystore = SecureStorage as unknown as {
 };
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform, OrientationBridge, ScanOverlay } from "@/mobile/platform";
+import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform, OrientationBridge, ScanOverlay, TurnActivityBridge } from "@/mobile/platform";
+import type { NativeAction } from "@/mobile/phone-actions";
+import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
 import type { GlassBridge, GlassEvent, GlassState } from "@/mobile/native-glass";
 import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
@@ -111,6 +113,34 @@ interface OrientationPlugin {
   rotate(options: { to: "portrait" | "landscape" }): Promise<void>;
 }
 const DuskOrientation = registerPlugin<OrientationPlugin>("DuskOrientation");
+
+/** ActivityKit and the Live Activity's buttons (ios/App/App/TurnActivityPlugin.swift). */
+interface TurnActivityPlugin {
+  start(options: { attributes: TurnActivityAttributes; state: TurnActivityState }): Promise<{ id?: string }>;
+  update(options: { id: string; state: TurnActivityState }): Promise<void>;
+  end(options: { id: string; state: TurnActivityState; now?: boolean }): Promise<void>;
+  list(): Promise<{ activities: Array<{ id: string; botId: string; threadId: string; startedAt: number }> }>;
+  lineKey(): Promise<{ key?: string }>;
+  addListener(event: "token", listener: (event: { id: string; threadId: string; token: string; startedAt: number }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "startToken", listener: (event: { token: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "action", listener: (event: NativeAction) => void): Promise<PluginListenerHandle>;
+}
+const DuskTurnActivity = registerPlugin<TurnActivityPlugin>("DuskTurnActivity");
+
+function turnActivityBridge(): TurnActivityBridge {
+  return {
+    async start(attributes, state) { return (await DuskTurnActivity.start({ attributes, state })).id ?? null; },
+    update: (id, state) => DuskTurnActivity.update({ id, state }),
+    end: (id, state, now) => DuskTurnActivity.end({ id, state, ...(now ? { now } : {}) }),
+    list: async () => (await DuskTurnActivity.list()).activities,
+    onToken: (listener) => unsubscribe([DuskTurnActivity.addListener("token", listener)]),
+    onStartToken: (listener) => unsubscribe([DuskTurnActivity.addListener("startToken", ({ token }) => listener(token))]),
+    lineKey: async () => (await DuskTurnActivity.lineKey()).key ?? null,
+  };
+}
+
+/** a push the bot host sent, as opposed to one from an older link that put its ids at the top level */
+const fromBotHost = (data: Record<string, unknown>) => ["dusk", "omb"].some((key) => data[key] && typeof data[key] === "object");
 
 export function orientationBridge(plugin: OrientationPlugin): OrientationBridge {
   return {
@@ -397,6 +427,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: SECRET_PREFIX + key, sync: false }); },
   };
   const speech = Capacitor.isPluginAvailable("DuskSpeech");
+  const turnActivityOn = kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity");
   registerPhoneVoice({
     os: kind,
     speech: speech ? phoneSpeech(DuskSpeech) : undefined,
@@ -527,9 +558,19 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       }
     },
     onNotificationOpen(listener) {
-      return unsubscribe([PushNotifications.addListener("pushNotificationActionPerformed", ({ notification }) => {
-        listener(notificationTarget(notification.data ?? {}));
+      return unsubscribe([PushNotifications.addListener("pushNotificationActionPerformed", ({ actionId, notification }) => {
+        const data = notification.data ?? {};
+        if (actionId === "tap" && !fromBotHost(data)) listener(notificationTarget(data));
       })]);
     },
+    onPhoneAction(listener) {
+      const handles = [PushNotifications.addListener("pushNotificationActionPerformed", ({ actionId, inputValue, notification }) => {
+        const data = notification.data ?? {};
+        if (actionId !== "tap" || fromBotHost(data)) listener({ actionId, ...(inputValue ? { inputValue } : {}), data });
+      })];
+      if (kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity")) handles.push(DuskTurnActivity.addListener("action", listener));
+      return unsubscribe(handles);
+    },
+    turnActivity: turnActivityOn ? turnActivityBridge() : undefined,
   };
 }

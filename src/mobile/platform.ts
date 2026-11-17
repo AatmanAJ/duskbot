@@ -1,5 +1,7 @@
 import { createContext, useContext } from "react";
 import type { MobileOpenTarget } from "../../shared/mobile-link";
+import type { TurnActivityAttributes, TurnActivityState } from "../../shared/phone-activity";
+import type { NativeAction } from "./phone-actions";
 import { friendlyError } from "@/lib/plain-error";
 import type { GlassBridge } from "./native-glass";
 import type { MenuBridge } from "./native-menu";
@@ -64,6 +66,22 @@ export interface OrientationBridge {
   rotate(to: "portrait" | "landscape"): void;
 }
 
+export interface TurnActivityBridge {
+  /** the activity's id, or null when the person turned Live Activities off */
+  start(attributes: TurnActivityAttributes, state: TurnActivityState): Promise<string | null>;
+  update(id: string, state: TurnActivityState): Promise<void>;
+  /** stays a few minutes; `now` takes it away at once */
+  end(id: string, state: TurnActivityState, now?: boolean): Promise<void>;
+  /** the ones running, the ones a push started among them */
+  list(): Promise<Array<{ id: string; botId: string; threadId: string; startedAt: number }>>;
+  /** each activity's push token, as the system issues or renews it */
+  onToken(listener: (token: { id: string; threadId: string; token: string; startedAt: number }) => void): () => void;
+  /** the push-to-start token (iOS 17.2 and later) */
+  onStartToken(listener: (token: string) => void): () => void;
+  /** the X25519 public key (base64url) the done line is sealed to, or null when the phone shows no previews */
+  lineKey(): Promise<string | null>;
+}
+
 export interface MobilePlatform {
   kind: "ios" | "android" | "web";
   native: boolean;
@@ -106,6 +124,11 @@ export interface MobilePlatform {
    * the system's question: a phone not yet asked resolves null. */
   registerPush?(options?: { prompt?: boolean }): Promise<{ token: string; platform: "apns" | "fcm" } | null>;
   onNotificationOpen?(listener: (target: MobileOpenTarget) => void): () => void;
+  /** A push's button, its reply field, a tap on a push from the bot host, or a Live Activity's button; one that arrived
+   * before a listener waits for the first. */
+  onPhoneAction?(listener: (action: NativeAction) => void): () => void;
+  /** The iPhone's Live Activities (ActivityKit), where the system allows them. */
+  turnActivity?: TurnActivityBridge;
   /** The chat header and composer drawn in the OS's own glass, where the app has it. */
   glass?: GlassBridge;
   /** The system's own context menu over the page's items, where the app has it. */

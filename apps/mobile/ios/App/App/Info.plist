@@ -36,6 +36,10 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>DuskKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)bot.dusk.shared</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CAPACITOR_DEBUG</key>

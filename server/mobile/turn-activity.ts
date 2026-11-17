@@ -119,7 +119,7 @@ export function createTurnActivities(deps: {
         return;
       }
       const line = event.type === "done" && context.reply ? replyFirstLine(context.reply) : "";
-      for (const activity of [...list]) {
+      for (const activity of list) {
         let sealed: string | undefined;
         if (line && activity.key) {
           try { sealed = sealTurnLine(activity.key, line); } catch { sealed = undefined; }

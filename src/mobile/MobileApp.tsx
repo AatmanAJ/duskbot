@@ -28,6 +28,8 @@ import { t } from "@/lib/i18n";
 import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useNativeGlass } from "./native-glass";
 import { useChatHaptics } from "./use-chat-haptics";
+import { usePhoneActions } from "./use-phone-actions";
+import { useTurnActivities } from "./use-turn-activities";
 import { useOutbox } from "./outbox";
 import { installPress } from "./press";
 import { MessageHold } from "./MessageHold";
@@ -47,8 +49,15 @@ function Shell() {
   usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language));
   useKeyboardSync(platform, rootRef);
   useKeyboardDismiss(platform, rootRef);
+  const startTurnActivity = useTurnActivities(platform, state);
+  const shownChat = useRef(chatId);
+  shownChat.current = chatId;
   // notifications are asked for when they mean something: once a message is on its way and its reply will follow
-  useChatHaptics(state, chatId, useCallback(() => { if (platform.native) void registerPushForConnection(platform, { prompt: true }); }, [platform]));
+  useChatHaptics(state, chatId, useCallback(() => {
+    if (platform.native) void registerPushForConnection(platform, { prompt: true });
+    const bot = latest.current.bots.find((one) => one.id === shownChat.current);
+    if (bot) startTurnActivity(bot);
+  }, [platform, startTurnActivity]));
   useOutbox();
   useEffect(() => { const root = rootRef.current; return root ? installPress(root) : undefined; }, []);
   // a bot's reply someone finds harmful or wrong goes to a person at dusk bot, with the reply in the mail they send
@@ -133,6 +142,7 @@ function Shell() {
     return true;
   }), [platform, openTarget, dispatch]);
   useEffect(() => platform.onNotificationOpen?.(openTarget), [platform, openTarget]);
+  usePhoneActions(platform, state, dispatch, openTarget);
 
   useEffect(() => platform.onBack?.(() => {
     if (closeTopSheet()) return true;
