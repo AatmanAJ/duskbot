@@ -1,7 +1,7 @@
 // A stand-in for the kind of site Show it once is for: an old corporate expense portal, drawn by its server one page at
 // a time, with tables for layout, labels that belong to nothing, and element ids that change on every load. Run it alone
 // with `node --experimental-strip-types server/demo-recorder/testing/expense-portal.ts --port 4780`.
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -61,6 +61,10 @@ const STYLE = `
 `;
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/gu, (char) => `&#${char.charCodeAt(0)};`);
+
+function generatedIdPart(): string {
+  return String(randomInt(100_000, 1_000_000));
+}
 
 function parseCookies(header: string | undefined): Record<string, string> {
   const cookies: Record<string, string> = {};
@@ -182,7 +186,7 @@ export class ExpensePortal {
   }
 
   #loginPage(error = ""): string {
-    const junk = randomBytes(3).toString("hex");
+    const junk = generatedIdPart();
     return this.#page("Sign in", `${error ? `<div class="err" role="alert">${escapeHtml(error)}</div>` : ""}
 <form method="post" action="/login">
 <table class="frm">
@@ -202,7 +206,7 @@ export class ExpensePortal {
   }
 
   #formPage(session: Session, values: Partial<Draft> = {}, error = ""): string {
-    const junk = randomBytes(3).toString("hex");
+    const junk = generatedIdPart();
     const id = (name: string) => `ctl00_${junk}_${name}`;
     const options = PORTAL_CATEGORIES.map((category) => `<option value="${category}"${values.category === category ? " selected" : ""}>${category}</option>`).join("");
     const paid = Object.entries(PAID_WITH).map(([value, label]) =>

@@ -41,6 +41,12 @@ describe("the fake expense portal in the fake browser", () => {
     expect(portal.filed).toEqual([]);
   });
 
+  it("changes only digits in its ids, so no load spells a word like 2fa that makes fill_login read a code box", async () => {
+    const { portal, browser } = await fixture();
+    await browser.goto(portal.url("/login"));
+    expect([...browser.document.querySelectorAll("input[id]")].map((input) => input.id)).toEqual([expect.stringMatching(/^ctl00_\d{6}_uid$/u), expect.stringMatching(/^ctl00_\d{6}_pw$/u)]);
+  });
+
   it("refuses a report with a missing value, and renames its button once redesigned", async () => {
     const { portal, browser } = await fixture();
     await browser.goto(portal.url("/login"));
