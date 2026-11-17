@@ -27,6 +27,8 @@ export interface FunnelAccount {
   /** emails a magic link; absent where the bridge can't (the code is typed here instead) */
   magicLink?(email: string): Promise<void>;
   cancelBrowser(): Promise<void>;
+  /** signs this app out of the dusk bot account, so another can sign in; absent where the bridge can't */
+  signOut?(): Promise<void>;
   onChange(callback: () => void): () => void;
 }
 
@@ -57,6 +59,7 @@ export function funnelAccount(desktop: Window["duskDesktop"] = window.duskDeskto
       browser: async (provider) => { await gate.browser(provider); },
       ...(gate.magicLink ? { magicLink: async (email: string) => { await gate.magicLink!(email); } } : {}),
       cancelBrowser: async () => { await gate.cancel(); },
+      ...(cloud?.signOut ? { signOut: async () => { await cloud.signOut(); } } : {}),
       onChange: (callback) => gate.onChange(() => callback()),
     };
   }
@@ -79,6 +82,7 @@ export function funnelAccount(desktop: Window["duskDesktop"] = window.duskDeskto
       emailCancel: async () => { await cloud.signInCancel?.(); },
       browser: async () => { await cloud.begin(); },
       cancelBrowser: async () => { await cloud.cancel(); },
+      ...(cloud.signOut ? { signOut: async () => { await cloud.signOut(); } } : {}),
       onChange: (callback) => cloud.onState(() => callback()),
     };
   }
