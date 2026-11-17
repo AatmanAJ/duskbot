@@ -42,10 +42,11 @@ export function withInstanceConfig<T extends SelectableInstance>(instances: read
 }
 
 /** A provider the app found by itself (a CLI on this computer and its sign-in) that the person never chose and nothing uses.
- * A key or an address the person typed is a choice; OpenCode's free backup is the app's own default. */
+ * A key, an address or a CLI path someone set is a choice; OpenCode's free backup is the app's own default. */
 function onlyFound(instance: SelectableInstance, config: InstanceConfigMap[string] | undefined, inUse: (instanceId: string) => boolean): boolean {
   if (config?.chosen === true || instance.access === "api" || instance.access === "custom" || freeFallback(instance)) return false;
-  return !inUse(instance.instanceId);
+  const cli = (config?.config as { cli?: unknown } | undefined)?.cli;
+  return !(typeof cli === "string" && cli.trim()) && !inUse(instance.instanceId);
 }
 
 /** A custom endpoint brings its own credential, so its sign-in state does not count. */

@@ -412,6 +412,7 @@ describe("a provider found on this computer", () => {
     expect(marked({})).toEqual(["claude"]);
     expect(marked({ claude: { driver: "claudeAgent", chosen: true } })).toEqual([]);
     expect(marked({}, (id) => id === "claude")).toEqual([]);
+    expect(marked({ claude: { driver: "claudeAgent", config: { cli: "/opt/claude" } } })).toEqual([]);
     expect(withInstanceConfig([claude] as SelectableInstance[], {}).some((instance) => instance.found)).toBe(false);
   });
 
