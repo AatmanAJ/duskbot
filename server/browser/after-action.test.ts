@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { newElements } from "./after-action.ts";
+import { around, newElements } from "./after-action.ts";
 import { coverAdvice, samplePoints } from "./cdp/cover.ts";
 import { sliderNumber } from "./cdp/slider.ts";
+import { errorsNote } from "./page-errors.ts";
+
+describe("the error line after an action", () => {
+  it("names a new error first, then one still showing, and says nothing without errors", () => {
+    expect(errorsNote([], ["We couldn't find that account."])).toBe("The page now shows an error: \"We couldn't find that account.\". Read it before anything else: repeating the same action will not get past it.");
+    expect(errorsNote(["Required"], ["Required"])).toBe("The page still shows an error: \"Required\".");
+    expect(errorsNote(["Old"], ["Old", "New"])).toMatch(/now shows an error: "New".*Still showing: "Old"\./u);
+    expect(errorsNote(["Gone"], [])).toBeNull();
+  });
+});
 
 const TREE = [
   "- heading \"Inbox\" [level=1]",
@@ -39,6 +49,29 @@ describe("what an action brought up", () => {
     expect(found.count).toBe(60);
     expect(found.text.split("\n")).toHaveLength(42);
     expect(found.text).toMatch(/and 20 more; take a snapshot/);
+  });
+});
+
+describe("where a text scrolled to sits", () => {
+  const FEED = [
+    "- heading \"Home\" [level=1]",
+    "- article:",
+    "  - text: \"@sora · 17h\"",
+    "  - text: Ceramics studio tour next week",
+    "  - button \"Like\" [ref=e40]",
+    "- article:",
+    "  - text: \"@lena_k · 42h\"",
+    "  - text: Went to my first ceramics class last night",
+    "  - button \"Reply\" [ref=e51]",
+    "  - button \"Like\" [ref=e52]",
+  ].join("\n");
+
+  it("shows the whole item holding the text, with its refs", () => {
+    expect(around(FEED, "first ceramics class")).toBe(["- article:", "  - text: \"@lena_k · 42h\"", "  - text: Went to my first ceramics class last night", "  - button \"Reply\" [ref=e51]", "  - button \"Like\" [ref=e52]"].join("\n"));
+  });
+
+  it("says nothing when the text is not in the tree", () => {
+    expect(around(FEED, "pottery")).toBeNull();
   });
 });
 

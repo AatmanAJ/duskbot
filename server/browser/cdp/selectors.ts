@@ -10,9 +10,16 @@ import { liveRef } from "./relocate.ts";
  * name; `name*=` matches part of it) or `text=Save` (`text="Save"` is exact).
  * Refs from a snapshot reach iframes and closed shadow roots.
  */
-export type Selector = { engine: "css"; css: string } | { engine: "role"; role: string; name?: string; partial: boolean } | { engine: "text"; text: string; exact: boolean };
+export type Selector = { engine: "css"; css: string } | { engine: "role"; role: string; name?: string; partial: boolean; edge?: "start" | "end" } | { engine: "text"; text: string; exact: boolean };
 
-const ROLE = /^role=([a-zA-Z]+)\s*(?:\[\s*name\s*(\*?)=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\s*\])?$/;
+const ROLE = /^role=([a-zA-Z]+)\s*(?:\[\s*name\s*([*^$]?)=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\s*\])?$/;
+
+/** name= is the exact name, name*= part of it, name^= its start and name$= its end, as in CSS attribute selectors. */
+function nameMatch(operator: string | undefined): { partial: boolean; edge?: "start" | "end" } {
+  if (operator === "^") return { partial: true, edge: "start" };
+  if (operator === "$") return { partial: true, edge: "end" };
+  return { partial: operator === "*" };
+}
 
 export function parseSelector(input: string): Selector {
   const selector = input.trim();
@@ -21,7 +28,7 @@ export function parseSelector(input: string): Selector {
     const match = ROLE.exec(selector);
     if (!match) throw new DriverError("invalid-selector", `Cannot read the role selector ${selector}. Write it as role=button[name="Save"].`);
     const raw = match[3] ?? match[4];
-    return { engine: "role", role: match[1]!.toLowerCase(), ...(raw === undefined ? {} : { name: raw.replace(/\\(.)/g, "$1") }), partial: match[2] === "*" };
+    return { engine: "role", role: match[1]!.toLowerCase(), ...(raw === undefined ? {} : { name: raw.replace(/\\(.)/g, "$1") }), ...nameMatch(match[2]) };
   }
   if (selector.startsWith("text=")) {
     const text = selector.slice(5).trim();
@@ -94,7 +101,11 @@ async function queryRole(frames: FrameTree, selector: Extract<Selector, { engine
   const wanted = selector.partial && selector.name !== undefined ? selector.name.toLowerCase() : null;
   return nodes
     .filter((node) => !node.ignored && typeof node.backendDOMNodeId === "number")
-    .filter((node) => wanted === null || String(node.name?.value ?? "").toLowerCase().includes(wanted))
+    .filter((node) => {
+      if (wanted === null) return true;
+      const name = String(node.name?.value ?? "").toLowerCase();
+      return selector.edge === "start" ? name.startsWith(wanted) : selector.edge === "end" ? name.endsWith(wanted) : name.includes(wanted);
+    })
     .map((node) => node.backendDOMNodeId!);
 }
 
@@ -102,14 +113,14 @@ async function queryRole(frames: FrameTree, selector: Extract<Selector, { engine
 const ROLE_WORDS = new Set(["button", "link", "textbox", "searchbox", "checkbox", "radio", "combobox", "listbox", "option", "menuitem", "menu", "tab", "switch",
   "slider", "spinbutton", "heading", "dialog", "status", "alert", "img", "row", "cell", "gridcell", "navigation", "region", "article", "list", "listitem",
   "table", "grid", "tabpanel", "treeitem", "form", "banner", "main", "complementary"]);
-const ROLEISH = /^([a-z]+)(?:\[\s*name\s*(\*?)=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\s*\])?$/u;
+const ROLEISH = /^([a-z]+)(?:\[\s*name\s*([*^$]?)=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\s*\])?$/u;
 
 function asRole(selector: Selector): Extract<Selector, { engine: "role" }> | null {
   if (selector.engine !== "css") return null;
   const match = ROLEISH.exec(selector.css.trim());
   if (!match || !ROLE_WORDS.has(match[1]!)) return null;
   const name = match[3] ?? match[4];
-  return { engine: "role", role: match[1]!, ...(name === undefined ? {} : { name: name.replace(/\\(.)/gu, "$1") }), partial: match[2] === "*" };
+  return { engine: "role", role: match[1]!, ...(name === undefined ? {} : { name: name.replace(/\\(.)/gu, "$1") }), ...nameMatch(match[2]) };
 }
 
 /** Every match (CSS and text return a count instead of nodes when there is more than one). */

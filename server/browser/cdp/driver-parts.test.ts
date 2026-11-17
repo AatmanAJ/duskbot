@@ -140,6 +140,8 @@ describe("selectors", () => {
     expect(parseSelector('role=button[name="Save draft"]')).toEqual({ engine: "role", role: "button", name: "Save draft", partial: false });
     expect(parseSelector("role=link[name*='docs']")).toEqual({ engine: "role", role: "link", name: "docs", partial: true });
     expect(parseSelector("role=textbox")).toEqual({ engine: "role", role: "textbox", partial: false });
+    expect(parseSelector('role=row[name^="Priya Raman"]')).toEqual({ engine: "role", role: "row", name: "Priya Raman", partial: true, edge: "start" });
+    expect(parseSelector('role=link[name$="docs"]')).toEqual({ engine: "role", role: "link", name: "docs", partial: true, edge: "end" });
     expect(parseSelector('text="Sign in"')).toEqual({ engine: "text", text: "Sign in", exact: true });
     expect(parseSelector("text=sign")).toEqual({ engine: "text", text: "sign", exact: false });
     expect(() => parseSelector("role=button[label=x]")).toThrow(/role selector/);
