@@ -348,7 +348,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     const targets = devices.filter((device) => device.push);
     if (!targets.length) return;
     const sessions = new Map(deps.sessions.list().map((session) => [session.id, session]));
-    const message: PushMessage = { id: notification.id, kind: notification.kind, title: notification.title, botId: notification.botId, botName: notification.botName, threadId: notification.threadId, ...(notification.groupId ? { groupId: notification.groupId } : {}) };
+    const message: PushMessage = { id: notification.id, kind: notification.kind, title: notification.title, botId: notification.botId, botName: notification.botName, threadId: notification.threadId, ...(notification.groupId ? { groupId: notification.groupId } : {}), ...(notification.silent ? { silent: true as const } : {}) };
     await Promise.all(targets.map((device) => {
       const session = sessions.get(device.sessionId);
       if (!session || (options.adminOnly && !session.scopes.includes("admin")) || !device.push) return;
