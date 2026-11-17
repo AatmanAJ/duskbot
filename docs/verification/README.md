@@ -83,6 +83,7 @@ Use only mapped, tested commands:
 - [Claude coordination and turn-scoped tools](claude-tool-lifecycle.md)
 - [Codex bot instructions](codex-instructions.md)
 - [Codex browser routing and native search](codex-browser-routing.md)
+- [Show it once: record a task in the browser, save it as a skill, replay it over a folder](show-it-once.md)
 - [Codex helper event isolation](codex-helpers.md)
 - [Qwen model route selection](qwen-models.md)
 - [Team backups](team-backups.md)

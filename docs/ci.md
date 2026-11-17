@@ -267,6 +267,11 @@ options and a code, and no passkey registered) and
 answered by an upload, a dropdown list drawn by the viewer, a download served
 to it, the page's cursor and copied text).
 
+It also runs `server/demo-recorder/show-it-once.e2e.test.ts`: a person holding
+the browser files one expense in the fixture portal with real mouse and key
+events, the recording is compiled into a skill, and the replay files the
+other eleven from the fixture's input files, on every platform's Chrome.
+
 - The job uses the runner's installed Google Chrome (`DUSK_CDP_E2E=1`) on the
   same platforms as the vitest shards: Linux, and Windows where a PR runs it,
   on PRs, all three in the full lane. Pushes to main and merge groups leave it
@@ -290,7 +295,8 @@ to it, the page's cursor and copied text).
   suites.
 - Locally: `DUSK_CDP_CHROME=<chrome executable> pnpm exec vitest run
   server/browser/cdp/s4- server/browser/checklist.e2e server/browser/passkey-wall.e2e
-  server/browser/viewers/viewers.e2e server/browser/viewers/stream-v2.e2e` (or
+  server/browser/viewers/viewers.e2e server/browser/viewers/stream-v2.e2e
+  server/demo-recorder/show-it-once.e2e` (or
   `DUSK_CDP_E2E=1` for the installed Google Chrome). Without either the suites
   skip. `DUSK_CDP_TEST_TMP` moves the throwaway profiles.
 - `pnpm bench:browser-stream` measures the panel's stream on the installed
