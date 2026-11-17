@@ -205,6 +205,15 @@ export function Dock({ bridge }: { bridge: AmbientBridge }) {
     if (!live.current.slidOut) return y >= t - d.ear && y <= t + h.get() + d.ear && x >= edge - EDGE;
     return y >= t - d.ear - GRACE && y <= t + h.get() + d.ear + GRACE && x >= columnLeft - GRACE;
   }, [overCard, top, h, d.ear, edge, columnLeft]);
+  // what takes clicks: only what is drawn (the sliver at rest, the column and the card once out); the edge zone and the
+  // grace around them still hear the pointer, but a click there lands in the app underneath
+  const solid = useCallback((x: number, y: number) => {
+    if (!anyBots.current) return false;
+    const { slidOut: outNow, cardShown: showing, cardY: cy, cardH: ch } = live.current;
+    if (showing && x >= cardLeft && x <= cardLeft + CARD_W && y >= cy && y <= cy + ch) return true;
+    const t = top.get();
+    return y >= t - d.ear && y <= t + h.get() + d.ear && x >= (outNow ? columnLeft : edge - d.sliver);
+  }, [cardLeft, top, h, d.ear, d.sliver, edge, columnLeft]);
 
   // a visit: from the column coming out to it going away. Its first card waits for intent; after that, moving from bot
   // to bot moves the card at once.
@@ -261,7 +270,7 @@ export function Dock({ bridge }: { bridge: AmbientBridge }) {
       chosen.current = false;
       landing.current = null;
     }, HIDE_MS);
-  });
+  }, undefined, solid);
   const lastPoint = useRef({ x: 0, y: 0 });
   useEffect(() => {
     const move = (event: MouseEvent) => {
