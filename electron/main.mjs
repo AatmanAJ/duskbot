@@ -6,7 +6,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildErrorPage, desktopViewerErrorPage, RENDERER_CRASHES, windowCrashedPage } from "./error-pages.mjs";
+import { buildErrorPage, desktopViewerErrorPage, RENDERER_CRASHES, serverPageAction, serverProblemReportUrl, windowCrashedPage } from "./error-pages.mjs";
+import { pickServerPort, strandedServerOn } from "./server-port.mjs";
 import { startCua, stopCua, registerCuaIpc, setCuaStateListener, grantLocalComputer } from "./cua.mjs";
 import { finishSpeech, speechBusy, startSpeech, stopSpeech } from "./speech.mjs";
 import { installTalk, isTalkPanel } from "./talk-main.mjs";
@@ -430,7 +431,6 @@ const serverSupervisor = createServerSupervisor({
     serverProc = proc;
     serverReady = true;
     setLocalOrigin(confirmedRendererOrigin());
-    serverStartConflictOnly = false;
     slog(`server ready pid=${proc.pid} port=${SERVER_PORT}`);
     syncUsageSignals();
     syncManagedComposioCredentials(); includedX.serverStarted(); includedPages.serverStarted(); railChanged(); ambientSurfaces.refresh();
@@ -458,6 +458,8 @@ const serverSupervisor = createServerSupervisor({
   onExhausted() {
     slog("server recovery paused after repeated failures; quit and reopen to retry");
     if (earlyVpsOpened && activeRemote(environmentsState)?.id === earlyVpsOpened && mainWindow && !mainWindow.isDestroyed()) return;
+    serverFailure = "crashed";
+    if (app.isPackaged && !desktopRemoteAccess && showsLocalPage(mainWindow)) return void serverFailurePage(mainWindow);
     dialog.showErrorBox(
       "The bot server stopped",
       "Automatic recovery could not restart the background server. Quit and reopen dusk bot to try again. Interrupted chat turns were not resent.\n\n" +
@@ -981,7 +983,40 @@ async function gatherDiagnostics() {
   });
 }
 
-let serverStartConflictOnly = false;
+/** Why the background server isn't up (a key of SERVER_FAILURES), once it failed. */
+let serverFailure = "timeout";
+let serverRestarting = null;
+
+function showsLocalPage(win) {
+  if (!win || win.isDestroyed()) return false;
+  try { return new URL(win.webContents.getURL()).origin === rendererOrigin(); } catch { return false; }
+}
+
+function serverFailurePage(win, { starting = false } = {}) {
+  if (!win || win.isDestroyed()) return;
+  serverUnavailableWindows.add(win);
+  void win.loadURL(buildErrorPage({ reason: serverFailure, logDir: LOG_DIR, starting })).catch(() => {});
+}
+
+/** Try again on the failure page: the server starts once more in this same app; the page comes back if it fails again. */
+function restartLocalServer(win) {
+  if (serverRestarting || serverReady || desktopRemoteAccess || !app.isPackaged) return serverRestarting;
+  serverFailurePage(win, { starting: true });
+  serverRestarting = startServerPackaged().catch((error) => {
+    slog(`server restart failed: ${error?.message ?? error}`);
+    return false;
+  }).then((ok) => {
+    serverRestarting = null;
+    if (!ok) serverFailurePage(win);
+    return ok;
+  });
+  return serverRestarting;
+}
+
+function runServerPageAction(action, win) {
+  if (action === "retry") return void restartLocalServer(win);
+  void shell.openExternal(serverProblemReportUrl({ reason: serverFailure, version: app.getVersion(), platform: process.platform, arch: process.arch })).catch(() => {});
+}
 
 function syncSavedSecretsKey(proc) {
   try {
@@ -1425,22 +1460,32 @@ async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmen
   return { proc: null, reason: stopped ? identity.outcome : "stuck-child", abort: !stopped };
 }
 
+const SERVER_START_TRIES = 4;
+
+/** Starts this computer's server on the first free desktop port (another program's port is skipped at once, a server an
+ * earlier launch left behind is stopped first), else on a port the system picks. A server that never answers on a free
+ * port is not a port problem, so it is not tried again elsewhere. */
 async function startServerPackaged() {
-  let everyPortForeignOwned = true;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    for (const port of DESKTOP_PORTS) {
-      if (desktopShutdownStarted) return false;
-      const started = await startServerOn(port);
-      if (started.proc) {
-        SERVER_PORT = port;
-        if (serverSupervisor.ready(started.proc)) return true;
-      }
-      if (started.abort) return false;
-      if (started.reason !== "foreign-owner") everyPortForeignOwned = false;
+  const skipped = new Set();
+  let told = false;
+  for (let attempt = 0; attempt < SERVER_START_TRIES; attempt++) {
+    if (desktopShutdownStarted) return false;
+    const { port, busy } = await pickServerPort(DESKTOP_PORTS.filter((candidate) => !skipped.has(candidate)), {
+      stranded: (candidate) => strandedServerOn(candidate, { execPath: process.execPath }),
+      log: slog,
+    });
+    if (busy.length && !told) { told = true; startupScreen?.status("Another app is using dusk bot's port, so it's opening on a free one"); }
+    for (const taken of busy) skipped.add(taken);
+    const started = await startServerOn(port);
+    if (started.proc) {
+      SERVER_PORT = port;
+      if (serverSupervisor.ready(started.proc)) return true;
     }
-    await new Promise((r) => setTimeout(r, 2500));
+    if (started.abort) return false;
+    skipped.add(port);
+    serverFailure = started.reason === "timeout" ? "timeout" : started.reason === "foreign-owner" ? "ports" : "stopped";
+    if (started.reason === "timeout") return false;
   }
-  serverStartConflictOnly = everyPortForeignOwned;
   return false;
 }
 
@@ -1813,6 +1858,24 @@ installWorkspaceSwitchIpc({ ipcMain, workspaceSwitch, window: mainWindowAlive })
 function navigateMainWindow(url) {
   if (!mainWindow || mainWindow.isDestroyed()) return Promise.resolve(false);
   return servePlaceFrom(url).then(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.loadURL(url).then(() => true, () => false) : false));
+}
+
+/** A page at this computer's address while its server isn't up: whatever else answers there (another install on the
+ * same port) or nothing at all would stand in for it. */
+function localPageNeedsServer(url) {
+  if (!app.isPackaged || desktopRemoteAccess || serverReady) return false;
+  try { return new URL(url).origin === rendererOrigin(); } catch { return false; }
+}
+
+/** Opens a page of this computer once its server answers (the port it lands on may differ), else the failure page. */
+async function openLocalPageWhenServed(url) {
+  const { pathname, search, hash } = new URL(url);
+  const starting = localRuntimeStarting ?? serverRestarting;
+  if (starting) await Promise.resolve(starting).catch(() => {});
+  if (serverReady) return navigateMainWindow(`${rendererOrigin()}${pathname}${search}${hash}`);
+  const win = mainWindowAlive();
+  if (win && !win.webContents.getURL().startsWith("data:")) serverFailurePage(win);
+  return false;
 }
 
 let rememberedHome = null;
@@ -2360,6 +2423,13 @@ function createWindow({ deferNavigation = false } = {}) {
     try {
       origin = new URL(url).origin;
     } catch {}
+    // only this app's own data: page carries these buttons; a page at any server's origin can't reach them
+    const action = serverPageAction(url);
+    if (action) {
+      event.preventDefault();
+      if (win.webContents.getURL().startsWith("data:")) runServerPageAction(action, win);
+      return;
+    }
     if (workspaceNavigationAllowed(url, environmentsState, rendererOrigin())) return;
     event.preventDefault();
     slog(`blocked navigation to ${origin ?? "an invalid address"}`);
@@ -2532,11 +2602,11 @@ function createWindow({ deferNavigation = false } = {}) {
   if (!serverReady && (desktopRemoteAccess || (app.isPackaged && !remote))) serverUnavailableWindows.add(win);
   if (deferNavigation) return win;
   if (desktopRemoteAccess) {
-    win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}` : buildErrorPage({ allPortsOccupied: serverStartConflictOnly, logDir: LOG_DIR }));
+    win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}` : buildErrorPage({ reason: serverFailure, logDir: LOG_DIR }));
   } else if (remote) {
     void localUiReady.then(() => win.loadURL(remote.origin)).catch(() => {});
   } else if (app.isPackaged) {
-    win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}` : buildErrorPage({ allPortsOccupied: serverStartConflictOnly, logDir: LOG_DIR }));
+    win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}` : buildErrorPage({ reason: serverFailure, logDir: LOG_DIR }));
   } else {
     win.loadURL(DEV_URL);
   }
@@ -3058,7 +3128,7 @@ const homeWindow = createHomeWindow({ cloudRoute: WELCOMED_ROUTE, clean: cleanWo
   hosts: () => session.defaultSession, readyStore: jsonFile(path.join(app.getPath("userData"), "cloud-ready.json")), ownMove: () => ownHome?.underWay() ?? null, ownAway: () => ownHome?.away() === true, lastSeen: createLastSeenStore({ file: path.join(app.getPath("userData"), "cloud-last-seen.bin"), encryption: cloudEncryption }),
   remembered: homePlaces.remembered, remember: homePlaces.remember, left: homePlaces.left, drop: homePlaces.drop,
   publish: view => { if (mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents })) mainWindow.webContents.send("home:state-changed", view); },
-  go: (url, origin, place) => { if (place?.kind === "team" || place?.kind === "own") { activatePlace(place); if (place.kind === "team") teamProfileSeeds.opened(place.origin); } else if (origin) activateCloud(origin); return navigateMainWindow(url); },
+  go: (url, origin, place) => { if (!origin && !place && localPageNeedsServer(url)) return openLocalPageWhenServed(url); if (place?.kind === "team" || place?.kind === "own") { activatePlace(place); if (place.kind === "team") teamProfileSeeds.opened(place.origin); } else if (origin) activateCloud(origin); return navigateMainWindow(url); },
   showLocal: leaving => {
     if (!mainWindow || mainWindow.isDestroyed()) return createWindow();
     if (!leaving) return;
