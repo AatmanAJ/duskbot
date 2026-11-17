@@ -194,13 +194,13 @@ function Chat({ platform }: { platform: MobilePlatform }) {
           createElement("span", { "data-glass-avatar": "" }),
           createElement("span", { "data-glass-name": "" }, "Manager")),
         createElement("button", { "data-glass": "right", id: "right" })),
-      createElement("div", { "data-tour": "composer", id: "shell" },
+      createElement("div", { "data-grok-inset": "", id: "dock" }, createElement("div", { "data-tour": "composer", id: "shell" },
         createElement("button", { id: "plus" }, createElement("span", { "data-composer-plus": "" })),
         createElement("div", null,
           createElement("div", { "data-composer-row": "" },
             createElement("textarea", { id: "field", placeholder: "Message Manager", enterKeyHint: "send", defaultValue: "" }),
             createElement("div", { "data-composer-actions": "" },
-              createElement("button", { "data-voice-mic": "start", "aria-label": "Dictate", id: "mic" }))))))));
+              createElement("button", { "data-voice-mic": "start", "aria-label": "Dictate", id: "mic" })))))))));
 }
 
 describe("useNativeGlass", () => {
@@ -371,6 +371,25 @@ describe("useNativeGlass", () => {
     expect(glass.blur).toHaveBeenCalled();
     expect(glass.clear).toHaveBeenCalled();
     expect(document.documentElement.dataset.nativeGlassComposer).toBeUndefined();
+  });
+
+  it("keeps the composer's gap while the page rides the keyboard down, so the native one follows the keyboard alone", () => {
+    const { glass, $ } = mount();
+    const root = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    // the keyboard is up and settled: the layout ends at its top
+    root.style.setProperty("--m-kb", "300px");
+    place($("shell"), 10, 460, 370, 48);
+    for (let i = 0; i < 31; i += 1) runFrame();
+    expect(glass.update.mock.lastCall![0].composer?.gap).toBe(36);
+    // it starts to hide: the layout takes the space back at once and the dock is drawn where it was, riding down from there
+    root.style.setProperty("--m-kb", "0px");
+    $("dock").style.transform = "matrix(1, 0, 0, 1, 0, -300)";
+    for (let i = 0; i < 31; i += 1) runFrame();
+    expect(glass.update.mock.calls.map((call) => call[0].composer?.gap)).not.toContain(336);
+    $("dock").style.transform = "matrix(1, 0, 0, 1, 0, -120)";
+    place($("shell"), 10, 640, 370, 48);
+    for (let i = 0; i < 31; i += 1) runFrame();
+    expect(glass.update.mock.lastCall![0].composer?.gap).toBe(36);
   });
 
   it("raises the native field when the page focuses its own", () => {

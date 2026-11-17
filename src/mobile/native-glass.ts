@@ -288,6 +288,16 @@ function readHeader(nav: Element, dx: number): GlassHeader | null {
   };
 }
 
+/** How far the keyboard ride lifts the composer's dock right now (negative is up), mid-transition too. */
+export function keyboardRide(shell: Element): number {
+  const dock = shell.closest("[data-grok-inset]");
+  if (!dock) return 0;
+  const matrix = /^matrix(3d)?\((.*)\)$/.exec(getComputedStyle(dock).transform);
+  if (!matrix) return 0;
+  const parts = matrix[2]!.split(",").map(Number);
+  return (matrix[1] ? parts[13] : parts[5]) || 0;
+}
+
 function readComposer(shell: HTMLElement, baseline: number, dx: number): { composer: GlassComposer; elements: HTMLElement[]; field: HTMLTextAreaElement | null } | null {
   if (hasStrips(shell)) return null;
   const field = shell.querySelector<HTMLTextAreaElement>("textarea");
@@ -301,7 +311,7 @@ function readComposer(shell: HTMLElement, baseline: number, dx: number): { compo
   return {
     composer: {
       frame,
-      gap: round(baseline - (frame.y + frame.h)),
+      gap: round(baseline - (frame.y + frame.h - keyboardRide(shell))),
       plus: Boolean(plus),
       plusLabel: plus?.closest("button")?.getAttribute("aria-label") ?? plus?.getAttribute("aria-label") ?? "",
       placeholder: field?.placeholder ?? "",
@@ -420,11 +430,9 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       const left = chatEl?.closest(".mobile-page")?.getBoundingClientRect().left ?? 0;
       const title = navEl?.querySelector("[data-glass=title]");
       const header = chatEl && navEl && title && !covered(title, chatEl) ? readHeader(navEl, left) : null;
-      const moving = root.dataset.kbMoving !== undefined;
       const kb = parseFloat(root.style.getPropertyValue("--m-kb")) || 0;
       const baseline = window.innerHeight - Math.max(safeBottom, kb);
       const read = chatEl && shellEl && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline, left) : null;
-      if (read && moving && last?.composer) read.composer.gap = last.composer.gap;
       elements = read?.elements ?? [];
       field = read?.field ?? null;
       const styles = getComputedStyle(root);
