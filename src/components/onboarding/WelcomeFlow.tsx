@@ -154,7 +154,7 @@ export function WelcomeFlow({
   const saved = initialBeat ?? draft?.beat;
   // every first run asks for an account (sign up or sign in); skipping stays possible but quiet, except where the install
   // requires one
-  const accountStep = Boolean(account) && !firstKnown.current?.signedIn;
+  const accountStep = Boolean(account) && (!firstKnown.current?.signedIn || firstKnown.current.website === "open");
   const stepsFor = (picked: FunnelPath | null) => funnelSteps({ account: accountStep, desktop, bring: offersMove,
     path: picked, hello: window.duskDesktop?.remoteClient?.active !== true, phone: phoneAppPrompted(), permissions, cloudBring });
   const steps = stepsFor(path);
@@ -234,13 +234,6 @@ export function WelcomeFlow({
   const next = useCallback(() => go(nextStep(steps, at), "next"), [go, steps, at]);
   const back = previousStep(steps, at, { paid });
 
-  // signing in in the browser comes back here by itself
-  const signedOutSeen = useRef(false);
-  useEffect(() => {
-    if (at !== "account" || !known) return;
-    if (!known.signedIn) signedOutSeen.current = true;
-    else if (signedOutSeen.current) { signedOutSeen.current = false; next(); }
-  }, [at, known, next]);
 
   // dusk cloud: straight to the browser for the account, the plan and the checkout, with this screen waiting beside it.
   // Paid, the AI comes next while the Cloud is made. A window that can't buy here opens the plans page and goes on.
@@ -293,6 +286,32 @@ export function WelcomeFlow({
     if (step) setAt(step); else toChat();
   };
   const chooseMac = () => { track("onboarding_place", { choice: "mac" }); toMac(); };
+
+  // signing in in the browser comes back here by itself. A new account first takes the website's own first steps (name,
+  // plan) and this step waits on them; then the app carries on from what was picked there: this computer goes past the
+  // place, a plan waits on its checkout here, and a paid one skips both (owned, above)
+  const signedOutSeen = useRef(false);
+  const websiteSeen = useRef(false);
+  useEffect(() => {
+    if (at !== "account" || !known) return;
+    if (!known.signedIn) { signedOutSeen.current = true; return; }
+    if (known.website === "open") { websiteSeen.current = true; return; }
+    if (!signedOutSeen.current && !websiteSeen.current) return;
+    signedOutSeen.current = false;
+    const picked = websiteSeen.current && desktop ? known.website : undefined;
+    websiteSeen.current = false;
+    if (picked === "free") { track("onboarding_place", { choice: "mac", via: "website" }); toMac(); return; }
+    if (picked === "cloud" && window.duskDesktop?.cloudAccount) {
+      track("onboarding_place", { choice: "cloud", via: "website" });
+      setPath("cloud");
+      setCheckoutStart(false);
+      setFrom("next");
+      setAt("checkout");
+      return;
+    }
+    next();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [at, known, next]);
 
   const bring = (find: LocalFind) => {
     track("onboarding_bring", { apps: 1 });

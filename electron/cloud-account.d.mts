@@ -44,6 +44,10 @@ export interface CloudAccountState {
   adding?: { cloudId: string | null; name: string; color: import("./cloud-list.mjs").CloudSwatch | null; tier: string | null; startedAt: number; link?: true; done?: true };
   /** A payment dusk cloud received and is still linking to this account. */
   purchase?: import("./cloud-home.mjs").CloudPurchase;
+  /** Connected: "open" while the website takes this new account through its first steps (name, plan), which the app's
+   * first run waits on; then where those steps put the bots, "free" (this computer) or "cloud" (a plan picked). Absent
+   * for an account whose first steps ended before, and from an Admin older than it. */
+  websiteSetup?: "open" | "free" | "cloud";
   /** Connected: the free trial on this account's Cloud, when the Admin says (display only). */
   trial?: import("./cloud-home.mjs").CloudTrial;
   /** Connected: what this account may buy now (the session's `offer`), for wording only. */
