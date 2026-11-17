@@ -32,6 +32,8 @@ const SCANS = {
   journeys: [...SITE_EVENTS, "identify"],
   funnel: Object.keys(EVENTS).filter(name => name !== "site_section"),
   app: Object.keys(EVENTS).filter(name => name.startsWith("app_")),
+  /** retention reads signed-in people's events only, and the site's tracker never records an account */
+  retention: Object.entries(EVENTS).filter(([, spec]) => spec.source !== "site").map(([name]) => name),
 } as const;
 const face = (account: { avatarUrl?: string; avatar?: string }) => ({ ...(account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}), ...(account.avatar ? { avatar: account.avatar } : {}) });
 
@@ -315,7 +317,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
 
   async function retentionRoute() {
     const time = now();
-    const events = await sink.scan(time - 120 * DAY, time + 60_000);
+    const events = await sink.scan(time - 120 * DAY, time + 60_000, SCANS.retention);
     const p = people();
     const days = activeDays(events);
     const cohorts = retention(p.signups, days, time);
