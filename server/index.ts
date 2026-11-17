@@ -108,6 +108,7 @@ import type { VpsLifecycleResource, VpsLifecycleTarget, VpsLifecycleStage } from
 import { closeVpsBrowser } from "./vps-browser-close.ts";
 import { NO_EXEC_COMPUTER, VPS_EXEC_CHANGED, vpsContainerExec, withVpsGuestFile } from "./vps-exec.ts";
 import { closeVpsBrowserConnections } from "./vps-connections.ts";
+import { containerMemory, createMemoryGate, outOfMemoryText } from "./vps-container-health.ts";
 import { compareVpsContainerStarts } from "./vps-container-start.ts";
 import { createSharedScreenBroker, independentScreenExecArgs, type IndependentScreenLease, type ScreenContainer } from "./shared-desktop-screens.ts";
 import { createVpsScreenRuntime } from "./vps-screen.ts";
@@ -6010,6 +6011,7 @@ type BotScreen = { container: ScreenContainer; lease: IndependentScreenLease };
 const botScreens = new Map<string, BotScreen>();
 const humanScreenLeases = new Map<string, IndependentScreenLease>();
 const screenRuntime = createVpsScreenRuntime();
+const memoryGate = createMemoryGate();
 const vpsScreens = createSharedScreenBroker({ ...screenRuntime, maxScreens: () => Math.min(vpsDefaults().maxScreens, knownScreenCapacity(vpsSshAlias(cfg))), idleTimeoutMs: () => 0,
   onError: error => console.warn(`Independent screen cleanup failed: ${redactSecretsInText(error instanceof Error ? error.message : String(error))}`), revoke: (container, target) => {
   const current = botScreens.get(target.botId);
@@ -6455,11 +6457,25 @@ async function teamComputersPayload(): Promise<TeamComputersPayload> {
   };
 }
 
+const LIFECYCLE_SETTLE_MS = 60_000;
+/** A short lifecycle action (sleep, wake, restart) ends within a minute: a turn waits it out instead of failing at once. */
+async function lifecycleSettles(owners: string[], current: () => boolean): Promise<boolean> {
+  const until = Date.now() + LIFECYCLE_SETTLE_MS;
+  while (owners.some(owner => remoteComputerLifecycleBusyOwners.has(owner))) {
+    if (!current()) throw new DirectTurnSetupCancelled("Turn ended while its computer was being changed");
+    if (Date.now() >= until) return false;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  return true;
+}
+
 async function mountTeamVps(computer: TeamComputerRecord, botId: string, owner: TurnOwner, canMount: boolean, opts: { onClaimed: (capture: () => Promise<{ png: string; format: string }>) => void; onRejected: (failure: string, error?: unknown) => void }): Promise<NonNullable<SendTurnInput["integrations"]>["localComputer"]> {
   if (!canMount) throw new Error("This model cannot use the team's VPS computer; choose a model provider with computer tools");
   const target = teamComputerVpsTarget(cfg, computer);
   if (!vpsSshAlias(target.config)) throw new Error("Connect a VPS in Settings before using the team's computer");
-  if (remoteComputerLifecycleBusyOwners.has(target.ownerId) || remoteComputerLifecycleBusyOwners.has(botId)) throw new Error("The team computer is being changed; wait for it to finish");
+  if (!await lifecycleSettles([target.ownerId, botId], () => activeInternalGenerationByThread.get(owner.threadId) === owner.generation)) {
+    throw new Error("The shared computer is still restarting, starting or going to sleep after a minute; try again shortly, or restart it in Settings > Computers if this repeats");
+  }
   const turn = { owner, computerId: computer.id, botId };
   teamComputerTurns.set(owner.threadId, turn);
   vpsThreadStarted(target.ownerId, owner.threadId);
@@ -6484,6 +6500,12 @@ async function mountTeamVps(computer: TeamComputerRecord, botId: string, owner: 
   const targetCfg = { vps: { sshAlias: remote.sshAlias } };
   await rememberVpsReady(target.ownerId, remote, true);
   if (!remote.container_id) throw new Error("The shared VPS computer identity could not be verified");
+  if (vpsDefaults().independentScreens && !screenConnection(botId, target.ownerId, remote.sshAlias)) {
+    const containerId = remote.container_id, alias = remote.sshAlias;
+    const full = await memoryGate.pressure(containerId, () => containerMemory((args, timeoutMs) => vps.defaultRunner(vps.vpsDockerArgs(alias, args), { timeoutMs }), containerId));
+    requireCurrent();
+    if (full) throw new Error(outOfMemoryText(full));
+  }
   const screenLease = vpsDefaults().independentScreens ? await ensureBotScreen(botId, { ownerId: target.ownerId, sshAlias: remote.sshAlias, containerId: remote.container_id }, "turn", () => teamComputerTurns.get(owner.threadId) === turn && activeInternalGenerationByThread.get(owner.threadId) === owner.generation && !remoteComputerLifecycleBusyOwners.has(target.ownerId)) : undefined;
   const mounted = { generation: owner.generation, botId, ownerId: target.ownerId, config: targetCfg, containerId: remote.container_id, ...(screenLease ? { screenLease } : {}) };
   turnVpsTargets.set(owner.threadId, mounted);
@@ -6845,6 +6867,38 @@ function claimManagedVpsMutation(containerName: string): () => void {
     throw Object.assign(new Error("this VPS computer is in use: stop its bot's work first"), { status: 409 });
   }
   return claimBotComputerLifecycle(owner.id);
+}
+
+/** Restarts a VPS computer that bots may still be stuck on: the escape for a desktop out of memory or not answering. */
+async function restartManagedVpsComputer(containerName: string): Promise<vps.VpsComputerStatus> {
+  const shared = teamComputers.list().find(computer => vps.vpsContainerName(teamComputerOwner(computer.id)) === containerName);
+  const bot = shared ? undefined : store.bots.find(candidate => vps.vpsContainerName(candidate.id) === containerName);
+  if (!shared && !bot) throw Object.assign(new Error("No bot or team computer owns this VPS computer"), { status: 404 });
+  const { ownerId, config } = shared ? teamComputerVpsTarget(cfg, shared) : { ownerId: bot!.id, config: vpsConfigForBot(cfg, bot!) };
+  const alias = vpsSshAlias(config);
+  if (!alias) throw Object.assign(new Error("Connect a VPS in Settings before restarting this computer"), { status: 409 });
+  const release = claimBotComputerLifecycle(ownerId);
+  try {
+    const known = knownVpsComputers.get(vpsIdleKey(ownerId, alias));
+    if (known) {
+      await vpsScreens.closeContainer(known).catch(error => console.warn(`Closing screens before a restart failed: ${redactSecretsInText(error instanceof Error ? error.message : String(error))}`));
+      memoryGate.forget(known.containerId);
+    }
+    computerStateChanged(ownerId, alias, "starting");
+    await vps.vpsComputerAction("stop", config, ownerId).catch((error: unknown) => {
+      if ((error as { status?: number }).status !== 409 || !/not running/i.test(error instanceof Error ? error.message : "")) throw error;
+    });
+    if (known) { vpsLifecycle.cancel(known); knownVpsComputers.delete(vpsIdleKey(ownerId, alias)); }
+    const status = await vps.vpsComputerAction("provision", config, ownerId);
+    if (!status.ready) throw Object.assign(new Error(status.problem ?? "The computer stopped but did not start again; retry"), { status: 409 });
+    await rememberVpsReady(ownerId, status, true);
+    if (shared) teamComputers.setProblem(shared.id);
+    computerStateChanged(ownerId, alias, "ready");
+    return status;
+  } catch (error) {
+    computerStateChanged(ownerId, alias, "failed", error instanceof Error ? error.message : String(error));
+    throw error;
+  } finally { release(); }
 }
 
 function localVmTargetForBot(botId: string): LocalVmTarget {
@@ -13532,7 +13586,7 @@ ROUTES.push(createComputerRoutes({
   localVmPayload, localVmInventoryPayload, existingPerBotLocalVmCount, teamComputersPayload, teamComputerInUse,
   managedVpsOwners, providerTransitionMessage, botHasActiveTurn, botComputerControlKey, botComputerControlSnapshot,
   computerPreviewBot, computerPreviewSurface, claimTeamComputerLifecycle, claimBotComputerLifecycle,
-  claimManagedVpsMutation, prepareTeamComputerAssignment: async computer => {
+  claimManagedVpsMutation, restartManagedVpsComputer, prepareTeamComputerAssignment: async computer => {
     for (const [botId, screen] of botScreens) if (screen.container.ownerId === teamComputerOwner(computer.id)) await retireBotScreen(botId);
   }, recheckDesktopViewers: () => desktopViewer.recheck(),
 }));

@@ -222,6 +222,13 @@ export function vpsComputerRemovePlan(instance: VpsComputerInventoryInstance): C
   };
 }
 
+export function vpsComputerRestartPlan(instance: VpsComputerInventoryInstance): ComputerActionPlan {
+  return {
+    confirmation: t("vm.confirm.restartVps", { name: instance.ownerName ?? "" }),
+    request: jsonPostRequest(`/api/computers/vps/${encodeURIComponent(instance.name)}/restart`, {}),
+  };
+}
+
 export function confirmComputerAction(
   plan: ComputerActionPlan,
   confirm: (message: string) => boolean,
@@ -469,6 +476,7 @@ export function LocalComputerSection() {
   const [vpsError, setVpsError] = useState<string | null>(null);
   const [vpsUnavailableReason, setVpsUnavailableReason] = useState<string | null>(null);
   const [vpsRemovingName, setVpsRemovingName] = useState<string | null>(null);
+  const [vpsRestartingName, setVpsRestartingName] = useState<string | null>(null);
   const [vpsRefreshKey, setVpsRefreshKey] = useState(0);
   const [announcement, setAnnouncement] = useState("");
 
@@ -695,6 +703,24 @@ export function LocalComputerSection() {
     }
   };
 
+  const restartVpsComputer = async (instance: VpsComputerInventoryInstance) => {
+    const request = confirmComputerAction(vpsComputerRestartPlan(instance), (message) => window.confirm(message));
+    if (!request) return;
+    setVpsRestartingName(instance.name);
+    setVpsError(null);
+    try {
+      const response = await fetch(...request);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? t("vm.vpsRestartError"));
+      await refreshVpsInventory();
+      setAnnouncement(t("vm.announce.vpsRestarted", { name: instance.ownerName ?? "" }));
+    } catch (e) {
+      setVpsError(friendlyError(e));
+    } finally {
+      setVpsRestartingName(null);
+    }
+  };
+
   const removeVpsComputer = async (instance: VpsComputerInventoryInstance) => {
     const shortId = vpsComputerShortId(instance.name);
     const request = confirmComputerAction(
@@ -850,10 +876,12 @@ export function LocalComputerSection() {
           aliases={vpsAliases}
           loading={vpsLoading}
           removingName={vpsRemovingName}
+          restartingName={vpsRestartingName}
           error={vpsError}
           unavailableReason={vpsUnavailableReason}
           onRefresh={() => setVpsRefreshKey((key) => key + 1)}
           onRemove={(instance) => void removeVpsComputer(instance)}
+          onRestart={(instance) => void restartVpsComputer(instance)}
         />
       </RowsCard>
 

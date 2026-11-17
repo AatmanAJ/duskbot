@@ -587,7 +587,7 @@ esac
     const stop = fixture();
     const stopped = await vpsComputerAction("stop", CONFIG, BOT_ID, stop.runner);
     expect(stopped.container).toBe("stopped");
-    expect(stop.calls.some(({ args }) => args[2] === "stop" && args[3] === CONTAINER_ID)).toBe(true);
+    expect(stop.calls.some(({ args }) => args[2] === "stop" && args.slice(3).join(" ") === `--time 10 ${CONTAINER_ID}`)).toBe(true);
     expect(stop.calls.some(({ args }) => ["rm", "system", "reboot", "shutdown"].includes(args[2]!))).toBe(false);
   });
 

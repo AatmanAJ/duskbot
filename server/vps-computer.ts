@@ -29,6 +29,7 @@ import {
   MANAGED_LABEL,
 } from "./container-computer.ts";
 import { PIDS_LIMIT, raisePidsLimit } from "./container-limits.ts";
+import { forceStopContainer, type DockerCall } from "./vps-container-health.ts";
 import { admitVpsDesktop, desktopLimitArgs, desktopLimits, desktopUpdateArgs, type VpsDesktopLimits } from "./vps-capacity.ts";
 import {
   BOT_DESKTOP_IMAGE, botDesktopIsHardened, botDesktopLabelsMatch, botDesktopMountsAreSafe, botDesktopNetworkIsPrivate,
@@ -1023,7 +1024,11 @@ export async function removeManagedVpsComputer(
     }
     try {
       // The immutable ID, not the name: a same-name replacement must not receive this removal.
-      await runner(vpsDockerArgs(alias, ["rm", "-f", containerId]), { timeoutMs: 2 * 60_000 });
+      const docker: DockerCall = (args, timeoutMs) => runner(vpsDockerArgs(alias, args), { timeoutMs });
+      await docker(["rm", "-f", containerId], 60_000).catch(async () => {
+        await forceStopContainer(docker, containerId);
+        await docker(["rm", "-f", containerId], 60_000);
+      });
     } catch (error) {
       invalidateVpsStatus(key);
       const detail = (error instanceof Error ? error.message : String(error))
@@ -1152,7 +1157,7 @@ export async function vpsComputerAction(
       } else {
         if (before.container !== "running") throw Object.assign(new Error("The VPS container is not running"), { status: 409 });
         assertUsableContainer(before);
-        await run(["stop", containerRef]);
+        await forceStopContainer(run, containerRef);
       }
       return await (action === "stop" ? computeVpsComputerStatus(cfg, botId, runner) : waitForVpsReady(cfg, botId, guardedRunner));
     } finally {
