@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AppUpdateState } from "../../electron/app-update.mjs";
 import { closeFeedback, useFeedbackOpen } from "@/lib/feedback-sheet";
-import { RailSpot, SidebarSpot, type SpotCta } from "./SidebarSpot";
+import { RailSpot, SidebarSpot, UpdatedNote, type SpotCta } from "./SidebarSpot";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -195,5 +195,21 @@ describe("the sidebar's feedback and update spot", () => {
       await hear({ ready: null, available: null, progress: null, mode: "self" });
       expect(spot()?.dataset.sidebarSpot).toBe("cta");
     });
+  });
+});
+
+describe("the updated note", () => {
+  it("goes away on its own a few seconds after launch", () => {
+    vi.useFakeTimers();
+    const seen = vi.fn();
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    act(() => root.render(createElement(UpdatedNote, { version: "0.2.16", seen })));
+    act(() => { vi.advanceTimersByTime(4_000); });
+    expect(seen).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(1_500); });
+    expect(seen).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+    vi.useRealTimers();
   });
 });

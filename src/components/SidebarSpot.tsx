@@ -209,9 +209,9 @@ export function RailSpot({ bridge }: { bridge?: AppUpdateBridge }) {
   );
 }
 
-const NOTE_MS = 20_000;
+const NOTE_MS = 5_000;
 
-function UpdatedNote({ version, seen }: { version: string; seen: () => void }) {
+export function UpdatedNote({ version, seen }: { version: string; seen: () => void }) {
   const said = useRef(seen);
   said.current = seen;
   useEffect(() => {
