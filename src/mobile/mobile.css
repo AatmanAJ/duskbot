@@ -176,7 +176,20 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-
   opacity: 0;
   pointer-events: none;
 }
-/* a phone's column is already narrow: a bot reply spans it, your own bubble stops at 85% */
+/* a phone's column is already narrow: a bot reply spans it, your own bubble stops at 85%. the actions pill holds no
+   room in the row for that, it rises over the bubble's top corner when a tap brings it up */
+.dusk-mobile [data-mobile-chat] [data-message-row] :has(> [data-testid="message-actions"]) { position: relative; }
+.dusk-mobile [data-mobile-chat] [data-message-row] [data-testid="message-actions"] {
+  position: absolute;
+  bottom: calc(100% - 6px);
+  inset-inline-start: 0;
+  z-index: 2;
+  transform-origin: left bottom;
+}
+.dusk-mobile [data-mobile-chat] [data-message-row] [data-testid="message-actions"].flex-row-reverse {
+  inset-inline: auto 0;
+  transform-origin: right bottom;
+}
 .dusk-mobile [data-mobile-chat] [data-chat-bubble][class*="100%-82px"] { max-width: 100%; }
 .dusk-mobile [data-mobile-chat] [data-message-row].items-end [data-chat-bubble][class*="100%-82px"] { max-width: 85%; }
 
