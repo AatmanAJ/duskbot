@@ -7,6 +7,7 @@
 //   node apps/mobile/scripts/asc.mjs metadata                listing, categories, age rating, review notes (store/app-store.json)
 //   node apps/mobile/scripts/asc.mjs screenshots <dir> [type] replace the en-US screenshots (default APP_IPHONE_67)
 //   node apps/mobile/scripts/asc.mjs free                    price Free (USD 0), every territory but mainland China
+//   node apps/mobile/scripts/asc.mjs new-version <x.y>       open the next App Store version (Prepare for Submission)
 //   node apps/mobile/scripts/asc.mjs submit [--yes]          check everything App Review needs; --yes attaches the newest
 //                                                            valid build to the version and submits it
 //
@@ -115,6 +116,16 @@ async function editableVersion(appId) {
   const local = (res.included ?? []).find((one) => one.type === "appStoreVersionLocalizations" && one.attributes.locale === "en-US");
   if (!local) throw new Error("the version has no en-US localization");
   return { version, local };
+}
+
+/** opens the next App Store version; App Store Connect carries the live version's text and screenshots over to it */
+async function newVersion(versionString) {
+  if (!/^\d+(\.\d+){1,2}$/.test(versionString ?? "")) throw new Error("usage: new-version <x.y>");
+  const one = await app();
+  const open = (await call("GET", `/v1/apps/${one.id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,DEVELOPER_REJECTED,REJECTED,METADATA_REJECTED&limit=5`)).data;
+  if (open.length) { console.log(`version ${open[0].attributes.versionString} is already open (${open[0].attributes.appStoreState})`); return; }
+  const { data } = await call("POST", "/v1/appStoreVersions", { data: { type: "appStoreVersions", attributes: { platform: "IOS", versionString }, relationships: { app: { data: { type: "apps", id: one.id } } } } });
+  console.log(`opened version ${data.attributes.versionString} (${data.attributes.appStoreState})`);
 }
 
 /** applies apps/mobile/store/app-store.json: name, subtitle, privacy URL, categories, age rating, the version's text and URLs, review notes */
@@ -303,7 +314,8 @@ const run = {
   metadata: () => metadata(rest[0] ?? new URL("../store/app-store.json", import.meta.url).pathname),
   screenshots: () => screenshots(rest[0], rest[1] ?? "APP_IPHONE_67"),
   submit: () => submit(rest.includes("--yes")),
+  "new-version": () => newVersion(rest[0]),
   free: () => free(),
 }[verb];
-if (!run) { console.error("usage: node apps/mobile/scripts/asc.mjs status | testflight [email...] | testflight-public [limit] | get <path> | dist-cert <csr> <out.cer> | store-profile <certId> <out.mobileprovision> [name] | metadata [app-store.json] | screenshots <dir> [displayType] | free | submit [--yes]"); process.exit(2); }
+if (!run) { console.error("usage: node apps/mobile/scripts/asc.mjs status | testflight [email...] | testflight-public [limit] | get <path> | dist-cert <csr> <out.cer> | store-profile <certId> <out.mobileprovision> [name] | metadata [app-store.json] | screenshots <dir> [displayType] | free | new-version <x.y> | submit [--yes]"); process.exit(2); }
 run().catch((error) => { console.error(`error: ${error.message}`); process.exit(1); });
