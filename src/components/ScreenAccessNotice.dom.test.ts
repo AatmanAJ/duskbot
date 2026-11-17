@@ -19,7 +19,8 @@ vi.mock("./DesktopCapabilities", async (importOriginal) => ({
 }));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 
-const { ScreenAccessNotice } = await import("./ScreenAccessNotice");
+const { ScreenAccessNotice, noteScreenAccessAsked } = await import("./ScreenAccessNotice");
+const ask = async (threadId: string, at?: number) => { await act(async () => noteScreenAccessAsked(threadId, at)); };
 const { FailedReplyCard } = await import("./FailedReplyCard");
 const { trailingRows } = await import("@/lib/failed-reply");
 
@@ -49,8 +50,18 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root?.unmount()); root = null; });
 
 describe("screen access for a bot on this Mac", () => {
+  it("shows nothing on a plain turn, only once the bot asks for screen control here", async () => {
+    await render(createElement(ScreenAccessNotice, { bot: { ...onMac, threadId: "plain" } }));
+    expect(document.querySelector("[data-screen-access]")).toBeNull();
+    await ask("other-thread");
+    expect(document.querySelector("[data-screen-access]")).toBeNull();
+    await ask("plain");
+    expect(document.querySelector("[data-screen-access]")).not.toBeNull();
+  });
+
   it("says it plainly with one Allow access that opens the permissions modal, and a close", async () => {
-    await render(createElement(ScreenAccessNotice, { bot: onMac }));
+    await render(createElement(ScreenAccessNotice, { bot: { ...onMac, threadId: "modal" } }));
+    await ask("modal");
     expect(document.body.textContent).toContain("dusk bot needs screen access to use this Mac");
     expect(document.body.textContent).not.toMatch(/CuaDriver|Open screen/);
     expect(actions()).toEqual(["Allow access"]);
@@ -62,18 +73,22 @@ describe("screen access for a bot on this Mac", () => {
     expect(retry).toHaveBeenCalled();
   });
 
-  it("shows nothing once access is on, or for a bot that does not work on this Mac", async () => {
-    await render(createElement(ScreenAccessNotice, { bot: { ...onMac, id: "auto", computer: undefined } }));
-    expect(document.querySelector("[data-screen-access]")).toBeNull();
+  it("goes away as soon as access is on", async () => {
+    await render(createElement(ScreenAccessNotice, { bot: { ...onMac, threadId: "granted" } }));
+    await ask("granted");
+    expect(document.querySelector("[data-screen-access]")).not.toBeNull();
     fixture.localMessage = "";
-    await render(createElement(ScreenAccessNotice, { bot: { ...onMac, id: "granted" } }));
+    await render(createElement(ScreenAccessNotice, { bot: { ...onMac, threadId: "granted" } }));
     expect(document.querySelector("[data-screen-access]")).toBeNull();
   });
 
-  it("closed, it stays closed", async () => {
-    await render(createElement(ScreenAccessNotice, { bot: { ...onMac, id: "closer" } }));
+  it("closed, it stays closed until the bot asks again", async () => {
+    await render(createElement(ScreenAccessNotice, { bot: { ...onMac, threadId: "closer" } }));
+    await ask("closer", 1);
     await act(async () => document.querySelector<HTMLButtonElement>("[data-chat-error] button[aria-label]")!.click());
     expect(document.querySelector("[data-screen-access]")).toBeNull();
+    await ask("closer", 2);
+    expect(document.querySelector("[data-screen-access]")).not.toBeNull();
   });
 
   it("a turn lost to screen access before the fix shows the same card, not Open screen", async () => {

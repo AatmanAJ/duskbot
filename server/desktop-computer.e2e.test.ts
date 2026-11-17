@@ -207,8 +207,17 @@ describe("this computer belongs to the desktop app's own server", () => {
     expect(sent.mcpConfig?.mcpServers?.browser).toBeDefined();
     const prompt = JSON.stringify(sent);
     expect(prompt).toContain("go straight to your built-in browser and do it; never say you cannot open a website");
-    expect(prompt).toContain("controlling a computer's apps is part of dusk cloud plans");
+    expect(prompt).toContain("controlling a computer's apps also comes with dusk cloud plans");
     expect(prompt).not.toMatch(/notice above the message box, and the person|allow it from the notice/);
+    expect(prompt).toContain("macOS has not given dusk bot Screen Recording on this Mac yet");
+    expect(prompt).toContain("Never call it for web work");
+    const agents = sent.mcpConfig.mcpServers.agents;
+    expect(agents.env.DUSK_SCREEN_ACCESS).toBe("1");
+    const asked = await fetch(`${base}/api/internal/request-screen-access`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${agents.env.DUSK_COMMS_TOKEN}` },
+      body: JSON.stringify({ reason: "Open Keynote" }),
+    });
+    expect(await asked.json()).toEqual({ shown: true, missing: ["Screen Recording"] });
     writeFileSync(finishFile, "finish");
     await idle(bot.id, task.threadId);
     const lines = (await rows(task.threadId)).join("\n");

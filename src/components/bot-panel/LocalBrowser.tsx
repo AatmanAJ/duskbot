@@ -21,6 +21,7 @@ import { buttonCls } from "./rows";
 import { BOT_PANEL_ID } from "./side-panel";
 import { permissionsMissing, type MacPermissionsBridge } from "@/lib/mac-permissions";
 import { MacPermissionsDialog } from "../onboarding/PermissionsStep";
+import { useScreenAccessMissing } from "../ScreenAccessNotice";
 
 const NO_NAV: BrowserNav = { url: "", loading: false, canGoBack: false, canGoForward: false };
 /** What a new browser and a new tab open on. */
@@ -386,10 +387,13 @@ export function LocalBrowserSection({ bot, after, askFirst = null }: {
   // what the bot needs on this Mac and lacks is asked for first; once all of it is on, the browser opens
   const [asking, setAsking] = useState(false);
   const [checking, setChecking] = useState(false);
+  // the helper a copy run from source drives this Mac through reports its own grants
+  const helperMissing = useScreenAccessMissing();
   const start = () => {
     if (!askFirst) { openBrowser(); return; }
+    if (helperMissing) { setAsking(true); return; }
     setChecking(true);
-    void askFirst.status().then((status) => (permissionsMissing(status) ? setAsking(true) : openBrowser()), () => openBrowser()).finally(() => setChecking(false));
+    void askFirst.status().then((status) => (permissionsMissing(status) ? setAsking(true) : openBrowser()), () => setAsking(true)).finally(() => setChecking(false));
   };
   const ended = (kind: "closed" | "ended") => () => {
     belowTop.current = below.current?.getBoundingClientRect().top ?? null;

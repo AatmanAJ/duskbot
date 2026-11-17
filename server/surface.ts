@@ -42,16 +42,19 @@ const NO_BROWSER_NOTE =
 const OFF_NOTE =
   " This bot's \"Works on\" setting is Off, so no computer and no built-in browser are mounted this turn: you cannot open a page, click, or type on any screen. If the user asks for something that needs one, tell them Works on is Off in this bot's settings, never claim you are opening a browser you do not have.";
 
-const DESKTOP_APPS_LINE =
-  " Only a task that truly needs a computer's own desktop apps, or files outside the browser, is out of reach this turn: for that, say in one short sentence that controlling a computer's apps is part of dusk cloud plans, on your own cloud computer";
-const NO_PERMISSION_TALK = " Never mention permissions, screen access, System Settings or the notice above the message box, and never claim to have used this computer's screen.";
+const NO_PERMISSION_TALK = " Never explain permissions or System Settings yourself, and never claim to have used this computer's screen.";
 
-/** A bot on this computer whose screen control the OS has not granted yet: it chats and works in its browser as usual. */
-export function screenAccessMissingNote(browser: boolean): string {
+/** A bot on this computer whose screen control the OS has not granted yet: it chats and works in its browser as usual.
+ * `missing`: the grants macOS still withholds, by name; `ask`: request_screen_access is mounted. */
+export function screenAccessMissingNote(browser: boolean, missing: readonly string[] = [], ask = false): string {
+  const withheld = missing.length ? ` (macOS has not given dusk bot ${missing.join(" or ")} on this Mac yet)` : "";
+  const desktop = ` Only a task that truly needs this computer's own desktop apps, or files outside the browser, needs screen control${withheld}.`
+    + (ask ? " For such a task, call request_screen_access with a one-line reason: the person sees one way to allow it. Never call it for web work." : "")
+    + " Then say in one short sentence that controlling a computer's apps also comes with dusk cloud plans, on your own cloud computer"
+    + (browser ? ", and offer to do it in your built-in browser when that could work." : ".");
   return browser
-    ? " Your built-in browser is available this turn and is the default for everything on the web: opening a site, searching, reading pages, filling in forms, signing in. When the person asks you to open a site or do anything a browser can do, go straight to your built-in browser and do it; never say you cannot open a website. Control of this computer's desktop apps is not available."
-      + DESKTOP_APPS_LINE + ", and that here you can use your built-in browser; offer to do it in the browser when that could work." + NO_PERMISSION_TALK
-    : " Control of this computer's desktop apps is not available this turn. Answer and chat normally, with web search and page fetches for lookups." + DESKTOP_APPS_LINE + "." + NO_PERMISSION_TALK;
+    ? " Your built-in browser is available this turn and is the default for everything on the web: opening a site, searching, reading pages, filling in forms, signing in. When the person asks you to open a site or do anything a browser can do, go straight to your built-in browser and do it; never say you cannot open a website. Control of this computer's desktop apps is not available." + desktop + NO_PERMISSION_TALK
+    : " Control of this computer's desktop apps is not available this turn. Answer and chat normally, with web search and page fetches for lookups." + desktop + NO_PERMISSION_TALK;
 }
 
 export function computerSkippedNote(cause: string): string {
@@ -180,7 +183,7 @@ const CONNECTED_APP_FIRST =
 
 /** Reading the web is quicker through search and fetch; acting on a site belongs where the person can watch and take over. */
 const BROWSER_FIRST =
-  " Find and read information with web search and page fetches: lookups, prices, summaries and comparisons need no browser. Use your built-in browser for anything interactive: filling in forms, signing in, clicking through a site, pages that need JavaScript or a login, and anything the person may want to watch or take over. Never do interactive work in another browser, with curl scripts or with a Playwright, Puppeteer or Selenium script of your own, and never make local files or drafts in place of work the person asked for on a website you can reach. Do as much of the task as you can; ask the person only for what only they can do: a sign-in, approving a payment, or a real decision. dusk bot keeps this conversation's pages in a tab of its own and closes it a couple of minutes after the task is done; open a second tab only to keep two pages side by side, and never close the whole browser: other conversations' tabs live in it. Show what you did with pictures, not long descriptions: every agent_browser_screenshot you take is also posted in the chat for the person (up to four a turn), so take one at the moments that matter: a form filled in, just before you send or submit, the result, and when you stop at a sign-in. To have them sign in, call request_sign_in, which posts a sign-in card, instead of giving directions.";
+  " Find and read information with web search and page fetches: lookups, prices, summaries and comparisons need no browser. Use your built-in browser for anything interactive: filling in forms, signing in, clicking through a site, pages that need JavaScript or a login, and anything the person may want to watch or take over. Never do interactive work in another browser, with curl scripts or with a Playwright, Puppeteer or Selenium script of your own, and never make local files or drafts in place of work the person asked for on a website you can reach. Do as much of the task as you can; ask the person only for what only they can do: a sign-in, approving a payment, or a real decision. dusk bot keeps this conversation's pages in a tab of its own and closes it a couple of minutes after the task is done; open a second tab only to keep two pages side by side, and never close the whole browser: other conversations' tabs live in it. Before saying what a page shows or that something is already open, read the current page once instead of trusting earlier in the chat; if it is not there, open it. Show what you did with pictures, not long descriptions: every agent_browser_screenshot you take is also posted in the chat for the person (up to four a turn), so take one at the moments that matter: a form filled in, just before you send or submit, the result, and when you stop at a sign-in. To have them sign in, call request_sign_in, which posts a sign-in card, instead of giving directions.";
 
 /** Where the person watches the built-in browser: the Computer tab shows it only in the app on the computer it runs on. */
 const BROWSER_IN_COMPUTER_TAB =

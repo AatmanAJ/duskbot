@@ -1029,6 +1029,9 @@ export type ServerFrame =
    * computer (absent: a Local VM). */
   | { kind: "computer"; botId: string; state: "provisioning" | "waking"; place?: "cloud" }
   | { kind: "computer-state"; botId: string; resourceKey: string; state: "starting" | "ready" | "stopped" | "failed"; problem?: string }
+  /** A bot on this Mac asked for screen control (request_screen_access): the chat shows the Allow access notice. `missing`
+   * names the macOS grants still off. */
+  | { kind: "screen-access"; botId: string; threadId: string; missing: string[]; reason?: string }
   | { kind: "computer-control"; botId: string; held: boolean; helpReason: string | null; help?: ComputerHelpRef | null }
   /** The desktop app's built-in browser is still downloading (server/app-parts.ts): `botIds` are the bots that needed it
    * since, whose chats show one progress line until `phase` is "ready". */

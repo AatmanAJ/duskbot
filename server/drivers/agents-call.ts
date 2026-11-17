@@ -626,6 +626,13 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       text: `The person was asked to sign in to ${host} on ${where}. Your turn ends now. The card already says what to do, so do not repeat it: write nothing more, or at most one short line, then stop. dusk bot resumes you when they finish or decline. Never ask for the password or a code in chat.`,
     };
   }
+  if (name === "request_screen_access") {
+    const reason = typeof args.reason === "string" ? args.reason.trim().slice(0, 200) : "";
+    if (!reason) return { text: "request_screen_access needs reason: one short line on what you need the screen for.", isError: true };
+    const r = await api("/api/internal/request-screen-access", { method: "POST", body: JSON.stringify({ fromBotId: BOT_ID, fromThreadId: THREAD_ID, reason }) });
+    if (r.shown !== true) return { text: "dusk bot can already control this Mac's screen, or this conversation does not work on it: carry on with the tools you have." };
+    return { text: "The person now sees a notice to let dusk bot control this Mac. Do not explain permissions or settings. Carry on with what you can do without it, such as your built-in browser, or say in one short line that you will go on once it is allowed, then stop." };
+  }
   if (name === "fill_login") {
     const username = typeof args.username === "string" ? args.username.trim().slice(0, 512) : "";
     const r = await api("/api/internal/fill-login", {

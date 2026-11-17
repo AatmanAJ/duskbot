@@ -491,6 +491,19 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "request_screen_access",
+    description:
+      "Only when a task truly needs this Mac's own desktop apps or screen, never for web work (your built-in browser does that): shows the person one way to let dusk bot control this Mac. Then carry on with what you can do without it, or say in one short line that you will go on once it is allowed.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        reason: { type: "string", minLength: 1, maxLength: 200, description: "One short line on what you need the screen for." },
+      },
+      required: ["reason"],
+    },
+  },
+  {
     name: "fill_login",
     description:
       "Sign in with a login the person saved in dusk bot or in their connected 1Password. Call it on the login page, in your browser or desktop Chromium: dusk bot types the username, password and any one-time code itself, submits each step, and says where the page went; you never see the password. A login fills only on its own site. None saved: request_credential login first.",
@@ -897,6 +910,7 @@ function catalogTools(profile: CatalogProfile) {
     (profile.botId === WATCHER_OPTIONS_CARD_BOT_ID || !WATCHER_TOOL_NAMES.has(tool.name)) &&
     (profile.memoryEnabled !== false || (tool.name !== "memory_update" && tool.name !== "memory_log")) &&
     (profile.computerSelection === true || tool.name !== "select_computer") &&
+    (profile.screenAccess === true || tool.name !== "request_screen_access") &&
     (profile.slack === true || !SLACK_TOOL_NAMES.has(tool.name)) &&
     (profile.room !== true || !ROOM_REFUSED_TOOL_NAMES.has(tool.name)) &&
     (profile.pageReader === true || tool.name !== READ_PAGES_TOOL) &&

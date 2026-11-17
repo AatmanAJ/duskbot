@@ -246,6 +246,14 @@ describe("the compact browser in the Computer tab", () => {
     expect(q("[data-local-browser=live]")).not.toBeNull();
   });
 
+  it("asks first too when the app cannot read this Mac's permissions", async () => {
+    f.open = false;
+    const askFirst = { status: () => Promise.reject(new Error("No handler registered")), request: () => Promise.reject(new Error("No handler registered")) };
+    await act(async () => { root.render(createElement(LocalBrowserSection, { bot: BOT, askFirst })); });
+    await click("[data-local-browser-action=start]");
+    expect(document.body.querySelector("[data-mac-permissions-dialog]")).not.toBeNull();
+  });
+
   it("starts at once when this Mac already allows everything", async () => {
     f.open = false;
     const granted = { supported: true as const, screen: "granted" as const, accessibility: "granted" as const };
