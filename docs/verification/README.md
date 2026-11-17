@@ -207,6 +207,10 @@ The [page health and recorded browser steps check](browser-steps.md) drives the
 real engine against a fixture page with failing requests and page errors, and
 reads the recorded steps back through the server.
 
+The [Show it once recipe](show-it-once.md) records a task on a fake expense
+portal in the real Browser panel on either engine, checks that a typed password
+reaches no file, log or picture, and files the other receipts from it.
+
 The [Local VM resume fixture](local-vm-resume.md) checks idle stop, restart
 recovery, guarded resume and the stopped-to-ready Computer panel flow.
 

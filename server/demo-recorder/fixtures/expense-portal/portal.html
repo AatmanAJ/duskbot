@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harbor Expenses</title>
+<style>
+  :root {
+    --ink: #14181f; --muted: #5d6675; --line: #dfe3ea; --paper: #f5f6f8; --card: #ffffff;
+    --accent: #0f5c4a; --accent-ink: #ffffff; --warn: #9a3412; --ok-bg: #e6f4ef; --ok-ink: #0b4a3b;
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-size: 15px; line-height: 1.45; }
+  header.bar { display: flex; align-items: center; gap: 16px; padding: 12px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header.bar .brand { font-weight: 650; letter-spacing: -0.01em; }
+  header.bar .brand span { color: var(--accent); }
+  header.bar nav { margin-left: auto; display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
+  main { max-width: 860px; margin: 28px auto; padding: 0 24px; }
+  h1 { font-size: 22px; letter-spacing: -0.015em; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  .card + .card { margin-top: 16px; }
+  label { display: block; font-size: 13px; font-weight: 550; margin-bottom: 6px; }
+  input, select, textarea { width: 100%; font: inherit; color: inherit; padding: 9px 11px; border: 1px solid #c9cfd9; border-radius: 7px; background: #fff; }
+  input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  textarea { min-height: 72px; resize: vertical; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  .grid .wide { grid-column: 1 / -1; }
+  .stack > * + * { margin-top: 14px; }
+  button { font: inherit; font-weight: 550; padding: 9px 14px; border-radius: 7px; border: 1px solid #c9cfd9; background: #fff; color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row.end { justify-content: flex-end; margin-top: 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); padding: 18px 8px; }
+  .notice { background: var(--ok-bg); color: var(--ok-ink); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-weight: 550; }
+  .error { color: var(--warn); font-size: 13px; margin-top: 6px; }
+  .banner { background: #fff7e6; border-bottom: 1px solid #f1dfb5; padding: 10px 24px; font-size: 13px; display: flex; gap: 12px; align-items: center; }
+  .banner button { margin-left: auto; padding: 5px 10px; font-size: 13px; }
+  .signin { max-width: 380px; margin: 64px auto; }
+  .shifted main { max-width: 1040px; display: grid; grid-template-columns: 260px 1fr; gap: 24px; }
+  .shifted aside { font-size: 13px; color: var(--muted); }
+  .shifted .grid { grid-template-columns: 1fr; }
+  .overlay { position: fixed; inset: 0; background: rgba(20, 24, 31, 0.45); display: grid; place-items: center; }
+  .overlay .card { max-width: 420px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const layout = params.get("layout") || "standard";
+  const shifted = layout === "shifted" || layout === "renamed";
+  const renamed = layout === "renamed";
+  const words = renamed
+    ? { merchant: "Vendor", amount: "Total (USD)", date: "Purchase date", category: "Expense type", notes: "Memo", submit: "Send for approval", create: "Add expense" }
+    : { merchant: "Merchant", amount: "Amount", date: "Date", category: "Category", notes: "Notes", submit: "Submit expense", create: "New expense" };
+  const categories = ["Meals", "Travel", "Software", "Office supplies", "Other"];
+  const account = { email: "sam@harbor.test", password: "harbor-demo-pass" };
+  const kept = (() => { try { return JSON.parse(sessionStorage.getItem("harbor") || "{}"); } catch { return {}; } })();
+  const state = {
+    signedIn: params.get("signedIn") === "1" || kept.signedIn === true,
+    view: "list",
+    expenses: Array.isArray(kept.expenses) ? kept.expenses : [],
+    notice: "",
+    error: "",
+    draft: {},
+    surveyOpen: renamed || params.get("survey") === "1",
+  };
+  const keep = () => { try { sessionStorage.setItem("harbor", JSON.stringify({ signedIn: state.signedIn, expenses: state.expenses })); } catch {} };
+  const salt = shifted ? Math.random().toString(36).slice(2, 8) : "";
+  const id = (name) => (shifted ? `f-${salt}-${name.split("").reverse().join("")}` : name);
+  const escape = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const money = (value) => `$${Number(value).toFixed(2)}`;
+  const app = document.getElementById("app");
+
+  const field = (name, control, wide) =>
+    `<div class="${wide ? "wide" : ""}"><label for="${id(name)}">${words[name]}</label>${control}</div>`;
+
+  const controls = () => {
+    const merchant = field("merchant", `<input id="${id("merchant")}" name="${shifted ? "m1" : "merchant"}" type="text" autocomplete="off" required>`);
+    const amount = field("amount", `<input id="${id("amount")}" name="${shifted ? "a1" : "amount"}" type="text" inputmode="decimal" autocomplete="off" required>`);
+    const date = field("date", `<input id="${id("date")}" name="${shifted ? "d1" : "date"}" type="text" placeholder="YYYY-MM-DD" autocomplete="off" required>`);
+    const category = field("category", `<select id="${id("category")}" name="${shifted ? "c1" : "category"}">${categories.map((c) => `<option>${c}</option>`).join("")}</select>`);
+    const notes = field("notes", `<textarea id="${id("notes")}" name="${shifted ? "n1" : "notes"}"></textarea>`, true);
+    return shifted ? [date, amount, category, merchant, notes] : [merchant, amount, date, category, notes];
+  };
+
+  const signIn = () => `
+    <div class="signin card stack">
+      <div><h1>Sign in to Harbor</h1><p class="sub">Expenses for the Harbor team.</p></div>
+      <form id="signin" class="stack" autocomplete="off">
+        <div><label for="email">Work email</label><input id="email" name="email" type="email" autocomplete="username" required></div>
+        <div><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
+        ${state.error ? `<div class="error" role="alert">${escape(state.error)}</div>` : ""}
+        <div class="row end"><button class="primary" type="submit">Sign in</button></div>
+      </form>
+    </div>`;
+
+  const list = () => `
+    ${state.notice ? `<div class="notice" role="status">${escape(state.notice)}</div>` : ""}
+    <div class="row" style="margin-bottom:16px">
+      <div><h1>Expenses</h1><p class="sub" style="margin:0">${state.expenses.length} submitted this month</p></div>
+      ${shifted ? "" : `<button class="primary" id="create" style="margin-left:auto" type="button">${words.create}</button>`}
+    </div>
+    <div class="card">
+      ${state.expenses.length === 0 ? `<div class="empty">No expenses yet.</div>` : `
+      <table aria-label="Submitted expenses">
+        <thead><tr><th>Reference</th><th>${words.merchant}</th><th>${words.date}</th><th>${words.category}</th><th class="num">${words.amount}</th></tr></thead>
+        <tbody>${state.expenses.map((e) => `<tr><td>${e.ref}</td><td>${escape(e.merchant)}</td><td>${escape(e.date)}</td><td>${escape(e.category)}</td><td class="num">${money(e.amount)}</td></tr>`).join("")}</tbody>
+      </table>`}
+    </div>`;
+
+  const form = () => `
+    <h1>${words.create}</h1>
+    <p class="sub">Enter the receipt as it is printed.</p>
+    <form id="expense" class="card" novalidate>
+      <div class="grid">${controls().join("")}</div>
+      ${state.error ? `<div class="error" role="alert">${escape(state.error)}</div>` : ""}
+      <div class="row end">
+        <button type="button" id="cancel">Cancel</button>
+        <button class="primary" type="submit">${words.submit}</button>
+      </div>
+    </form>`;
+
+  const shell = (body) => `
+    <div class="${shifted ? "shifted" : ""}">
+      ${shifted ? `<div class="banner" role="note">Quarter close is Friday. Submit receipts by 5 pm.${state.view === "list" ? `<button class="primary" id="create" type="button">${words.create}</button>` : ""}</div>` : ""}
+      <header class="bar"><div class="brand">Harbor <span>Expenses</span></div><nav><span>${account.email}</span><button type="button" id="signout">Sign out</button></nav></header>
+      <main>${shifted ? `<aside><strong>Policy</strong><p>Meals up to $75 a day. Attach a receipt for anything over $25.</p></aside>` : ""}<section>${body}</section></main>
+      ${state.surveyOpen ? `<div class="overlay"><div class="card stack" role="dialog" aria-label="Quick survey"><strong>How is the new expense form?</strong><p class="sub" style="margin:0">One question, ten seconds.</p><div class="row end"><button type="button" id="dismiss">Not now</button></div></div></div>` : ""}
+    </div>`;
+
+  function render() {
+    keep();
+    app.innerHTML = !state.signedIn ? signIn() : shell(state.view === "form" ? form() : list());
+    document.title = !state.signedIn ? "Sign in · Harbor Expenses" : state.view === "form" ? `${words.create} · Harbor Expenses` : "Expenses · Harbor Expenses";
+    bind();
+    if (state.view === "form") {
+      for (const [name, kept] of Object.entries(state.draft)) {
+        const control = app.querySelector(`#${CSS.escape(id(name))}`);
+        if (control && kept) control.value = kept;
+      }
+    }
+  }
+
+  function bind() {
+    const on = (selector, event, handler) => { const el = app.querySelector(selector); if (el) el.addEventListener(event, handler); };
+    on("#signin", "submit", (event) => {
+      event.preventDefault();
+      const data = new FormData(event.target);
+      if (data.get("email") === account.email && data.get("password") === account.password) { state.signedIn = true; state.error = ""; }
+      else state.error = "That email and password do not match.";
+      render();
+    });
+    on("#create", "click", () => { state.view = "form"; state.notice = ""; state.error = ""; state.draft = {}; render(); });
+    on("#cancel", "click", () => { state.view = "list"; state.error = ""; render(); });
+    on("#signout", "click", () => { state.signedIn = false; state.view = "list"; render(); });
+    on("#dismiss", "click", () => { state.surveyOpen = false; render(); });
+    on("#expense", "submit", (event) => {
+      event.preventDefault();
+      if (state.surveyOpen) return;
+      const value = (name) => (app.querySelector(`#${CSS.escape(id(name))}`).value || "").trim();
+      state.draft = Object.fromEntries(["merchant", "amount", "date", "category", "notes"].map((name) => [name, value(name)]));
+      const amount = Number(value("amount").replace(/[$,\s]/g, ""));
+      if (!value("merchant")) state.error = `${words.merchant} is required.`;
+      else if (!Number.isFinite(amount) || amount <= 0) state.error = `${words.amount} must be a number above zero.`;
+      else if (!/^\d{4}-\d{2}-\d{2}$/.test(value("date"))) state.error = `${words.date} must look like 2026-11-03.`;
+      else {
+        const ref = `EXP-${String(1001 + state.expenses.length)}`;
+        state.expenses.push({ ref, merchant: value("merchant"), amount, date: value("date"), category: value("category"), notes: value("notes") });
+        state.notice = `Expense ${ref} submitted: ${value("merchant")}, ${money(amount)}`;
+        state.view = "list";
+        state.error = "";
+      }
+      render();
+    });
+  }
+
+  window.harbor = { state, layout };
+  render();
+})();
+</script>
+</body>
+</html>

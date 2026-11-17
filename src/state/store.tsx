@@ -42,6 +42,7 @@ import { sameModelSelection } from "../../shared/thread-model";
 import type { BotBodyId, StoredBodyId } from "../../shared/bot-body";
 import { openCreateBot } from "@/lib/create-bot-request";
 import { publishBotPointer } from "@/lib/bot-pointer";
+import { publishDemoChange } from "@/lib/demo-events";
 import { StoreRefContext } from "./store-ref-context";
 import type { QuestionRequestCardData } from "../../shared/ask-question";
 import type { ProfileRequestCardData } from "../../shared/profile-request";
@@ -3269,6 +3270,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "computer-pointer":
           publishBotPointer(frame);
+          break;
+        case "demo":
+          publishDemoChange(frame);
           break;
         case "computer-control":
           rawDispatch({

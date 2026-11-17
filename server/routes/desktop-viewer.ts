@@ -171,6 +171,9 @@ export function createDesktopViewer(deps: {
   /** A Cloud home's power: a person's key or pointer input on any screen path (relay or direct) is someone using the
    * home; an open screen is a hint like the app's focus. */
   presence?: { input(): void; watching(): void };
+  /** Hears one viewer's bytes on `target`, whole RFB client messages from its opening on, for as long as it stays: a
+   * task a person is showing on that screen (server/demo-recorder). Asked once for each viewer that joins. */
+  tap?: (target: string) => ((bytes: Buffer) => void) | undefined;
 }) {
   const upgrades = deps.upgrades ?? createUpgrades();
   const ownGate = deps.upgrades === undefined;
@@ -257,7 +260,7 @@ export function createDesktopViewer(deps: {
     if (!match[2]) return json(res, 200, { password: connection.password });
     // the viewer may ask the server to answer the desktop's handshake (see rfb-handshake.ts): VPS desktops only
     const serverHandshake = url.searchParams.get("rfb") === "server" && match[1].startsWith("vps/");
-    if (direct) return answerDirect(deps.direct!, offer, connection, serverHandshake, () => live() && holds(), register, req, res, json);
+    if (direct) return answerDirect(deps.direct!, offer, connection, serverHandshake, () => live() && holds(), register, req, res, json, deps.tap?.(match[1]!));
     if (!upgrade || !pending) return json(res, 426, { error: "WebSocket upgrade required" });
     const key = req.headers["sec-websocket-key"];
     if (req.headers.upgrade?.toLowerCase() !== "websocket" || req.headers["sec-websocket-version"] !== "13"
@@ -318,7 +321,8 @@ export function createDesktopViewer(deps: {
       }
       connection.touch?.();
       const seen = screenPresence(deps.presence);
-      watchFrames(socket, head, (payload) => seen.bytes(payload));
+      const heard = deps.tap?.(match[1]!);
+      watchFrames(socket, head, (payload) => { seen.bytes(payload); heard?.(payload); });
       seen.tick();
       recheck = setInterval(() => {
         if (!live() || !holds()) upgrade.close();
@@ -331,7 +335,8 @@ export function createDesktopViewer(deps: {
   /** Answers the app's offer and dials the desktop while ICE connects, so the first picture follows the channel at once;
    * the channel is joined to the desktop when both are up, then checked like a socket. */
   async function answerDirect(direct: ScreenDirect, offer: unknown, connection: DesktopConnection, serverHandshake: boolean, valid: () => boolean,
-    register: (viewer: Viewer, key: IncomingMessage) => void, req: IncomingMessage, res: Parameters<RouteHandler>[0]["res"], json: Parameters<RouteHandler>[0]["json"]) {
+    register: (viewer: Viewer, key: IncomingMessage) => void, req: IncomingMessage, res: Parameters<RouteHandler>[0]["res"], json: Parameters<RouteHandler>[0]["json"],
+    heard?: (bytes: Buffer) => void) {
     let ended = false;
     let release: (() => void) | undefined;
     let recheck: ReturnType<typeof setInterval> | undefined;
@@ -359,7 +364,7 @@ export function createDesktopViewer(deps: {
         const seen = screenPresence(deps.presence);
         bridgeScreen(open, dialled.remote, {
           head: dialled.rest?.raw ?? dialled.head, opening: dialled.opening, payload: dialled.rest?.payload, skip: dialled.opening ? VIEWER_OPENING : 0,
-          input: (bytes) => seen.bytes(bytes),
+          input: (bytes) => { seen.bytes(bytes); heard?.(bytes); },
         }, close);
         connection.touch?.();
         seen.tick();

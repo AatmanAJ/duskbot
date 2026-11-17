@@ -25,6 +25,7 @@ import { isRemoteScreenshotContention } from "@/lib/remote-desktop";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { BotRoutines } from "./routines/BotRoutines";
 import { BrowserPanel } from "./BrowserPanel";
+import { DemoRecorder } from "./DemoRecorder";
 import { usePanelPage, type PanelPage } from "@/lib/page-open";
 const loadLiveDesktop = () => import("./LiveDesktop").then((module) => ({ default: module.LiveDesktop }));
 const LiveDesktop = lazy(loadLiveDesktop);
@@ -1529,6 +1530,7 @@ export function ComputerPanel({
           </div>
         )}
 
+        {phase === "vm" && <div className="mt-3 overflow-hidden rounded-xl empty:hidden"><DemoRecorder bot={bot} surface="computer" holding={control.held && takeover.here} onTake={() => void takeControl()} /></div>}
         {(cloudPreviewReady || phase === "vm") && (
           <div className="mt-3 flex gap-2" data-testid="computer-actions">
             {!control.held && !bannerTakesControl && (

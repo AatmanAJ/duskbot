@@ -265,7 +265,12 @@ options and a code, and no passkey registered) and
 (the panel's WebSocket stream through its routes: a 1600x1000 panel getting a
 1600x1000 page and 3200x2000 frames on a 2x screen, the page's file picker
 answered by an upload, a dropdown list drawn by the viewer, a download served
-to it, the page's cursor and copied text).
+to it, the page's cursor and copied text), and
+`server/demo-recorder/browser.e2e.test.ts` with
+`server/demo-recorder/devtools-page.e2e.test.ts` (a task shown once through a
+person's view, and over a DevTools client as the default engine's browser is
+reached: the typed password kept nowhere and black in the stored pictures, and
+the task done again on a rearranged page).
 
 - The job uses the runner's installed Google Chrome (`DUSK_CDP_E2E=1`) on the
   same platforms as the vitest shards: Linux, and Windows where a PR runs it,
@@ -290,7 +295,8 @@ to it, the page's cursor and copied text).
   suites.
 - Locally: `DUSK_CDP_CHROME=<chrome executable> pnpm exec vitest run
   server/browser/cdp/s4- server/browser/checklist.e2e server/browser/passkey-wall.e2e
-  server/browser/viewers/viewers.e2e server/browser/viewers/stream-v2.e2e` (or
+  server/browser/viewers/viewers.e2e server/browser/viewers/stream-v2.e2e
+  server/demo-recorder/browser.e2e server/demo-recorder/devtools-page.e2e` (or
   `DUSK_CDP_E2E=1` for the installed Google Chrome). Without either the suites
   skip. `DUSK_CDP_TEST_TMP` moves the throwaway profiles.
 - `pnpm bench:browser-stream` measures the panel's stream on the installed

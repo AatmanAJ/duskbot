@@ -1,0 +1,5 @@
+Merchant: Fieldnote Books
+Amount: 27.90
+Date: 2026-11-06
+Category: Office supplies
+Notes: Notebooks

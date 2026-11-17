@@ -29,7 +29,7 @@ const sameSetting = (a: PreviewViewportSetting, b: PreviewViewportSetting) =>
 const item = "flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left hover:bg-inset disabled:cursor-not-allowed disabled:opacity-40";
 const small = "rounded-md border border-transparent p-1 text-ink-secondary hover:bg-inset hover:text-ink disabled:opacity-40";
 
-export function MoreMenu({ stream, ready, typing, setting, zoom, pip, onViewport, onZoom, onPip, onType, onSecret, onReconnect, onRestart }: {
+export function MoreMenu({ stream, ready, typing, setting, zoom, pip, onViewport, onZoom, onPip, onType, onSecret, onRecord, onReconnect, onRestart }: {
   /** Viewport sizes, zoom and picture in picture come with the v2 stream only. */
   stream: boolean;
   /** The person holds the browser, so its page can be sized and zoomed. */
@@ -44,6 +44,8 @@ export function MoreMenu({ stream, ready, typing, setting, zoom, pip, onViewport
   onPip: () => void;
   onType: () => void;
   onSecret: () => void;
+  /** Starts showing the bot a task here; absent where one cannot be shown. */
+  onRecord?: () => void;
   onReconnect: () => void;
   onRestart: () => void;
 }) {
@@ -78,6 +80,7 @@ export function MoreMenu({ stream, ready, typing, setting, zoom, pip, onViewport
           {stream && pip ? <button type="button" role="menuitem" className={item} onClick={run(onPip)}>{pip.open ? t("browser.panel.closeFloating") : t("browser.panel.popOut")}</button> : null}
           <button type="button" role="menuitem" className={item} disabled={!typing} onClick={run(onType)}>{t("browser.panel.typeTextMenu")}</button>
           <button type="button" role="menuitem" className={item} disabled={!typing} onClick={run(onSecret)}>{t("browser.typeSecret")}</button>
+          {onRecord ? <button type="button" role="menuitem" className={item} onClick={run(onRecord)}>{t("showOnce.menu")}</button> : null}
         </>)}
         {section(<>
           <button type="button" role="menuitem" className={item} onClick={run(onReconnect)}>{t("browser.panel.reconnectView")}</button>

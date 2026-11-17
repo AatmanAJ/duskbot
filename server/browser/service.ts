@@ -16,6 +16,7 @@ import { SecretHolds, type SecretHold } from "../browser-secret-hold.ts";
 import { scrubBrowserResult } from "../browser-tool-shape.ts";
 import type { FillLoginDeps } from "../login-fill.ts";
 import type { Backend, OpenedBrowser } from "./backends.ts";
+import type { PointerReporter } from "./cdp/actions.ts";
 import type { CdpBrowser } from "./cdp/browser.ts";
 import type { Download } from "./cdp/downloads.ts";
 import { isUnanswered } from "./cdp/errors.ts";
@@ -29,7 +30,9 @@ import { errorResult, shapeResult, textResult, withParts, type ToolResult } from
 import { TabRegistry, type Tab } from "./tabs.ts";
 import { RECENT_TABS_LIMIT, within, type ClosingTab } from "../browser-recent-tabs.ts";
 import { parseToolCall, RESTART_TOOL, TOOL_LIST } from "./tools.ts";
+import type { Screenshot } from "./cdp/screencast.ts";
 import { ViewerHub, type Viewer, type ViewerOptions, type ViewerOutput } from "./viewers/core.ts";
+import type { DemoTap } from "./viewers/demo-tap.ts";
 
 /** One profile's browser as the server names it: the session (bot-<id>, a profile's partition, guest-…) and its key. */
 export interface BrowserTarget {
@@ -99,6 +102,8 @@ export class ProfileState {
   personActed = false;
   /** The next start opens one blank tab rather than the last session's. */
   fresh = false;
+  /** The recording of a task a person is showing in this browser. */
+  demo: DemoTap | null = null;
 
   constructor(target: BrowserTarget, dataDir: string, hub: (profile: ProfileState) => ViewerHub, takeoverMs: number) {
     this.key = target.key;
@@ -644,6 +649,37 @@ export class BrowserService {
     return profile.hub.attach(options, push);
   }
 
+  /** Sets, or with null ends, the recording that hears what a person does in this session's browser. */
+  demoTap(session: string, tap: DemoTap | null): boolean {
+    const profile = this.#bySession(session);
+    if (profile) profile.demo = tap;
+    return profile !== undefined;
+  }
+
+  /** The page in front of this session's browser as it is now; never starts the browser. */
+  demoPage(session: string): CdpPage | null {
+    const profile = this.#bySession(session);
+    return profile?.run && !profile.run.closing ? profile.active()?.page ?? null : null;
+  }
+
+  /** A picture of that page. A scaled capture repaints the views' screencasts, so they pause around it. */
+  async demoStill(session: string): Promise<Screenshot | null> {
+    const profile = this.#bySession(session);
+    const tab = profile?.run && !profile.run.closing ? profile.active() : null;
+    return profile && tab ? profile.hub.paused(tab, () => tab.page.screenshot({ format: "jpeg", quality: 70 })) : null;
+  }
+
+  /** One action of a task being done again, run as the bot's own are: in turn with them, and refused while a person holds the browser. */
+  async demoAct<T>(target: BrowserTarget, work: (page: CdpPage, pointer: PointerReporter | undefined) => Promise<T>): Promise<T> {
+    const profile = this.profile(target);
+    await this.running(profile);
+    const tab = profile.active() ?? await this.#openTab(profile, "agent");
+    profile.lastUsed = Date.now();
+    const done = await this.#lanes.run(profile.key, async () => ({ value: await profile.control.agent(tab, () => work(tab.page, profile.hub.pointer(tab))) }), this.#options.laneWaitMs);
+    if (!done) throw new Error(LANE_BUSY);
+    return done.value;
+  }
+
   heldBy(session: string): string | null {
     return this.#bySession(session)?.control.owner ?? null;
   }
@@ -730,6 +766,7 @@ export class BrowserService {
         await profile.hub.fit();
         profile.hub.tabsChanged();
       },
+      demo: () => profile.demo,
       personActed: () => { profile.personActed = true; },
       personTyped: (tab: Tab) => { this.#holds.personTyped(profile.session, tab.page.url(), PERSON_TYPED_ON_PAGE, tab.page.targetId); },
       download: (id: string): Download | undefined => profile.run?.browser.downloads?.list().find((download) => download.id === id),

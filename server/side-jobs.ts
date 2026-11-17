@@ -38,7 +38,8 @@ export function helperSelection(cfg: HelperConfig, env: Record<string, string | 
 /** "room-routing": Dusk deciding who answers a group message, on the engine's quick model. */
 /** "turn-beat": the short ack and progress lines sent while a turn works (turn-beats.ts), on the engine's quick model. */
 /** "frustration-summary": an abstract line about a chat that went badly, for usage-signals.ts; scrubbed before it leaves. */
-export type SideJob = "compaction" | "memory" | "skill-review" | "setup-suggestions" | "representative" | "status-reply" | "room-routing" | "turn-beat" | "frustration-summary";
+/** "demo-steps": a task a person showed once, turned into steps and read out of files; text in, JSON out, never tools. */
+export type SideJob = "compaction" | "memory" | "skill-review" | "setup-suggestions" | "representative" | "status-reply" | "room-routing" | "turn-beat" | "frustration-summary" | "demo-steps";
 
 export type SideJobInstance = Pick<ProviderInstance, "instanceId" | "driverKind" | "enabled" | "generateText" | "generateMemoryText" | "models" | "quickModelsUsable"> & {
   adapter: { capabilities: Pick<ProviderAdapter["capabilities"], "agentsMcp"> };
@@ -79,7 +80,7 @@ type TextCall = (prompt: string, options?: TextGenerationOptions) => Promise<str
 
 /** Jobs someone is waiting on, and the representative, which must never get tools, run only on a one-off text call:
  * generateMemoryText starts a whole agent process. */
-const ONE_OFF_ONLY: ReadonlySet<SideJob> = new Set(["compaction", "setup-suggestions", "representative", "status-reply", "room-routing", "frustration-summary"]);
+const ONE_OFF_ONLY: ReadonlySet<SideJob> = new Set(["compaction", "setup-suggestions", "representative", "status-reply", "room-routing", "frustration-summary", "demo-steps"]);
 
 function ownCall(job: SideJob, instance: SideJobInstance): TextCall | undefined {
   const call = ONE_OFF_ONLY.has(job) ? instance.generateText : instance.generateText ?? instance.generateMemoryText;

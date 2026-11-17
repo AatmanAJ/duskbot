@@ -1,0 +1,13 @@
+TIDEWATER HOTEL
+Receipt
+
+Vendor: Tidewater Hotel
+Purchased on: 2026-11-13
+Type: Travel
+Memo: One night, client visit
+
+Subtotal   $195.04
+Tax        $16.96
+TOTAL      $212.00
+
+Thank you.

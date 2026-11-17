@@ -16,13 +16,13 @@ export interface Point {
 
 /** Trusted mouse input in the page's viewport (CSS pixels); every event goes through Input.dispatchMouseEvent. */
 export class Mouse {
-  readonly #session: CdpSession;
+  readonly #session: Pick<CdpSession, "send">;
   readonly #keyboard: Keyboard;
   #x = 0;
   #y = 0;
   #buttons = 0;
 
-  constructor(session: CdpSession, keyboard: Keyboard) {
+  constructor(session: Pick<CdpSession, "send">, keyboard: Keyboard) {
     this.#session = session;
     this.#keyboard = keyboard;
   }

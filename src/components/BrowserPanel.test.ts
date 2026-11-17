@@ -13,6 +13,7 @@ const fixture = vi.hoisted(() => ({
 }));
 vi.mock("@/state/store", async (importOriginal) => ({ ...await importOriginal<typeof import("@/state/store")>(), api: fixture.api, useStore: () => ({ state: fixture.state }) }));
 vi.mock("./BrowserProfilesManager", () => ({ BrowserProfilesManager: () => null }));
+vi.mock("./DemoRecorder", () => ({ DemoRecorder: () => null }));
 const { BrowserPanel, LiveBrowser } = await import("./BrowserPanel");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

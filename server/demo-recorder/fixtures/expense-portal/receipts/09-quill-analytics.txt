@@ -1,0 +1,13 @@
+QUILL ANALYTICS
+Receipt
+
+Vendor: Quill Analytics
+Purchased on: 2026-11-10
+Type: Software
+Memo: Reporting seat
+
+Subtotal   $81.88
+Tax        $7.12
+TOTAL      $89.00
+
+Thank you.

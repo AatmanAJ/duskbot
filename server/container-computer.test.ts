@@ -22,6 +22,7 @@ import {
   WORKSPACE_LABEL,
   containerComputerAction,
   containerComputerFrame,
+  containerCuaCall,
   containerComputerMcp,
   containerComputerScreenshot,
   containerComputerStatus,
@@ -921,6 +922,33 @@ describe("Cua integration", () => {
 
     expect(frame).toEqual({ png: png.toString("base64"), format: "png" });
     expect(frame.png.startsWith("data:")).toBe(false);
+  });
+
+  it("calls one tool of the driver with its arguments and hands back the driver's answer", async () => {
+    const listCall = `${driverExec} call list_windows {"on_screen_only":true} --socket ${CUA_SOCKET}`;
+    const fake = runner({
+      "/usr/bin/which docker": "docker\n",
+      "/usr/bin/which podman": new Error("missing"),
+      "docker info --format {{.ServerVersion}}": "29\n",
+      [`docker image inspect ${IMAGE}`]: preparedImageInspect(),
+      [`docker inspect ${CONTAINER}`]: readyInspect(),
+      [versionProbe]: `cua-driver ${CUA_DRIVER_VERSION}\n`,
+      [statusProbe]: "running\n",
+      [healthProbe]: JSON.stringify({ schema_version: "1", overall: "ok", checks: [] }),
+      [readinessProbe]: "{}\n",
+      [readinessRead]: validPng.toString("base64"),
+      [listCall]: JSON.stringify({ windows: [{ pid: 7, window_id: 3, title: "Ledger" }] }),
+    });
+
+    expect(await containerCuaCall("list_windows", { on_screen_only: true }, undefined, fake.run, "linux")).toEqual({ windows: [{ pid: 7, window_id: 3, title: "Ledger" }] });
+    expect(fake.calls).toContain(listCall);
+  });
+
+  it("refuses a driver call while the Local VM is not ready", async () => {
+    const fake = runner({ "/usr/bin/which docker": new Error("missing"), "/usr/bin/which podman": new Error("missing") });
+
+    await expect(containerCuaCall("list_windows", {}, undefined, fake.run, "linux")).rejects.toMatchObject({ status: 409 });
+    expect(fake.calls.some((call) => call.includes("list_windows"))).toBe(false);
   });
 });
 

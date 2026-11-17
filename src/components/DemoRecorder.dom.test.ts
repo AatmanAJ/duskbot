@@ -1,0 +1,518 @@
+// @vitest-environment happy-dom
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { DemoPlan, DemoRecording, DemoReplayRun } from "../../shared/demo-recording";
+import { publishDemoChange } from "@/lib/demo-events";
+import { DemoRecorder } from "./DemoRecorder";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const plan = (): DemoPlan => ({
+  title: "Submit expense · Harbor Expenses",
+  summary: "Shown once on Harbor Expenses.",
+  compiledBy: "outline",
+  blanks: [
+    { name: "merchant", label: "Merchant", kind: "text", example: "Blue Door Coffee" },
+    { name: "amount", label: "Amount", kind: "number", example: "18.40" },
+    { name: "password", label: "Password", kind: "secret" },
+  ],
+  steps: [
+    { id: "s1", title: "Click New expense", goal: "Click the \"New expense\" button.", actions: [{ do: "click", role: "button", name: "New expense" }], check: { kind: "text", text: "New expense" }, frame: "f00000000000000000001", events: [1] },
+    { id: "s2", title: "Enter Merchant", goal: "Type {{merchant}} into the \"Merchant\" field.", actions: [{ do: "fill", role: "textbox", name: "Merchant", value: "{{merchant}}" }], check: { kind: "field", role: "textbox", name: "Merchant", value: "{{merchant}}" }, events: [2] },
+    { id: "s3", title: "Click Submit expense", goal: "Click the \"Submit expense\" button.", actions: [{ do: "click", role: "button", name: "Submit expense" }], check: { kind: "text", text: "Expense * submitted: {{merchant}}, ${{amount}}" }, events: [3] },
+  ],
+});
+
+const recording = (more: Partial<DemoRecording> = {}): DemoRecording => ({
+  id: "demo-11111111-1111-4111-8111-111111111111", botId: "bot-1", surface: "browser", accessibility: "dom", status: "ready", createdAt: 10, durationMs: 42_000, eventCount: 9,
+  frames: [{ id: "f00000000000000000001", width: 1280, height: 800, type: "image/png", masked: false }], framesSkipped: 0, plan: plan(), ...more,
+});
+
+interface Call { method: string; path: string; body: unknown }
+let calls: Call[];
+let listed: DemoRecording[];
+let answers: Record<string, (body: unknown) => unknown>;
+let host: HTMLDivElement, root: Root;
+
+beforeEach(() => {
+  calls = [];
+  listed = [];
+  answers = {};
+  vi.stubGlobal("fetch", vi.fn(async (path: string, init: RequestInit = {}) => {
+    const method = (init.method ?? "GET").toUpperCase();
+    const body = typeof init.body === "string" ? JSON.parse(init.body) as unknown : undefined;
+    calls.push({ method, path, body });
+    const answer = answers[`${method} ${path}`];
+    const payload = answer ? answer(body) : method === "GET" && path.endsWith("/demos") ? { recordings: listed, recording: false, surfaces: { browser: true, computer: false } } : { ok: true };
+    return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+  }));
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+});
+afterEach(() => { act(() => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
+
+let bots = 0;
+/** Each test shows its own bot a task, so one test's recordings are not another's. */
+const mount = async (holding: boolean, botId = `bot-${++bots}-${Math.round(performance.now())}`, more: { onTake?: () => void; asked?: number; frame?: boolean } = {}) => {
+  listed = listed.map((each) => ({ ...each, botId }));
+  await act(async () => { root.render(createElement(DemoRecorder, { bot: { id: botId, name: "Nova" }, surface: "browser", holding, ...more })); });
+  await act(async () => { await Promise.resolve(); });
+  return botId;
+};
+const strip = () => host.querySelector<HTMLElement>("[data-demo-recorder]");
+const button = (words: string, within: ParentNode = document.body) => [...within.querySelectorAll("button")].find((each) => each.textContent?.trim() === words);
+const press = async (element: Element | undefined | null) => { expect(element, "nothing to press").toBeTruthy(); await act(async () => { (element as HTMLElement).click(); }); await act(async () => { await Promise.resolve(); }); };
+const type = async (field: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field) as object, "value")!.set!;
+    setter.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+const labelled = <T extends HTMLElement = HTMLInputElement>(label: string) => document.querySelector<T>(`[aria-label="${label}"]`)!;
+const review = () => document.querySelector<HTMLElement>("[data-demo-review]");
+
+const start = async () => { await press(button("Show Nova a task", host)); await press(button("Start showing", host)); };
+
+describe("showing a task", () => {
+  it("is offered wherever the bot's screen can be recorded, and says what will happen before anything is", async () => {
+    await mount(false);
+    await press(button("Show Nova a task", host));
+
+    expect(strip()!.dataset.demoRecorder).toBe("intro");
+    expect(strip()!.textContent).toContain("Do it once, the way you normally would. Nova watches, then writes it down as steps it can repeat.");
+    expect(strip()!.textContent).toContain("Passwords are never kept, in text or in pictures.");
+    expect(calls.some((call) => call.method === "POST")).toBe(false);
+    await press(button("Not now", host));
+    expect(strip()!.dataset.demoRecorder).toBe("idle");
+  });
+
+  it("starts a recording, counts what the person does, and stops into the review", async () => {
+    const botId = await mount(true);
+    const live = recording({ botId, status: "recording", eventCount: 0, plan: undefined });
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: live });
+    answers[`POST /api/bots/${botId}/demos/stop`] = () => ({ recording: recording({ botId }) });
+    await start();
+
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos`, body: { surface: "browser" } });
+    expect(strip()!.dataset.demoRecorder).toBe("recording");
+    expect(strip()!.querySelector("[role=status]")!.textContent).toBe("Nova is watching");
+    expect(button("Done", host)!.disabled).toBe(false);
+    await act(async () => { publishDemoChange({ botId, recording: { ...live, eventCount: 1 } }); });
+    expect(strip()!.querySelector("[data-demo-actions]")!.textContent).toBe("1 action");
+    await act(async () => { publishDemoChange({ botId, recording: { ...live, eventCount: 7 } }); });
+    expect(strip()!.querySelector("[data-demo-actions]")!.textContent).toBe("7 actions");
+
+    await press(button("Done", host));
+    expect(review()).toBeTruthy();
+    expect(review()!.textContent).toContain("3 steps · 3 inputs · One step for each thing you did");
+    expect(document.querySelectorAll("[data-demo-step]")).toHaveLength(3);
+  });
+
+  it("calls the task what the person called it before they showed it", async () => {
+    const botId = await mount(true);
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 0, plan: undefined }) });
+    answers[`POST /api/bots/${botId}/demos/stop`] = () => ({ recording: recording({ botId }) });
+    await press(button("Show Nova a task", host));
+    await type(host.querySelector<HTMLInputElement>("[data-demo-intro] input")!, "File an expense");
+    await press(button("Start showing", host));
+
+    expect(strip()!.textContent).toContain("File an expense · 0 actions");
+    await press(button("Done", host));
+    expect(labelled("Task name").value).toBe("File an expense");
+    expect(document.querySelector("[data-demo-save-state]")!.textContent).toBe("Not saved yet");
+  });
+
+  it("takes and keeps control before it starts, so the screen stays the person's while they show the task", async () => {
+    const taken: string[] = [];
+    const botId = await mount(true, undefined, { onTake: () => taken.push("take") });
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 0, plan: undefined }) });
+    await start();
+
+    expect(taken).toEqual(["take"]);
+    expect(strip()!.dataset.demoRecorder).toBe("recording");
+  });
+
+  it("opens from the browser's menu without control: it takes control on Start, then records once it has it", async () => {
+    const taken: string[] = [];
+    const onTake = () => taken.push("take");
+    const botId = await mount(false, undefined, { onTake, asked: 0 });
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 0, plan: undefined }) });
+    await mount(false, botId, { onTake, asked: 1 });
+
+    expect(strip()!.dataset.demoRecorder).toBe("intro");
+    expect(taken).toEqual([]);
+    await press(button("Start showing", host));
+    expect(taken).toEqual(["take"]);
+    expect(host.querySelector<HTMLButtonElement>("[data-demo-start]")!.disabled).toBe(true);
+    expect(calls.some((call) => call.method === "POST")).toBe(false);
+    await mount(true, botId, { onTake, asked: 1 });
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos` });
+    expect(strip()!.dataset.demoRecorder).toBe("recording");
+  });
+
+  it("says what it last saw, looks away at a password, takes a step back and pauses", async () => {
+    const botId = await mount(true, undefined, { frame: true });
+    const live = recording({ botId, status: "recording", eventCount: 2, plan: undefined, seeing: { kind: "type", name: "Amount", chars: 3 } });
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: live });
+    answers[`POST /api/bots/${botId}/demos/undo`] = () => ({ recording: { ...live, eventCount: 1, seeing: { kind: "click", name: "Amount" } } });
+    answers[`POST /api/bots/${botId}/demos/pause`] = (body) => ({ recording: { ...live, eventCount: 1, ...((body as { paused: boolean }).paused ? { paused: true } : {}) } });
+    await start();
+    const dock = () => host.querySelector<HTMLElement>("[data-demo-dock]")!;
+    const seeing = () => host.querySelector("[data-demo-seeing]")!.textContent;
+
+    expect([dock().dataset.demoDock, seeing()]).toEqual(["watching", "Typing into Amount"]);
+    expect(host.querySelector<HTMLElement>("[data-demo-frame]")!.dataset.demoFrame).toBe("watching");
+    await act(async () => { publishDemoChange({ botId, recording: { ...live, seeing: { kind: "type", name: "Password", secure: true, chars: 16 } } }); });
+    expect([dock().dataset.demoDock, strip()!.querySelector("[role=status]")!.textContent, seeing()]).toEqual(["away", "Nova is looking away", "Password: 16 characters typed, none kept"]);
+
+    await press(button("Undo step", host));
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos/undo` });
+    expect(seeing()).toBe("Pressed Amount");
+    await press(button("Pause", host));
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos/pause`, body: { paused: true } });
+    expect([dock().dataset.demoDock, strip()!.querySelector("[role=status]")!.textContent, seeing()]).toEqual(["paused", "Paused", "Nothing you do now is written down."]);
+    expect(host.querySelector("[data-demo-frame]")).toBeNull();
+    expect(button("Undo step", host)!.disabled).toBe(true);
+    await press(button("Carry on", host));
+    expect(calls.at(-1)).toMatchObject({ body: { paused: false } });
+    expect(dock().dataset.demoDock).toBe("watching");
+  });
+
+  it("throws the recording away on Discard", async () => {
+    const botId = await mount(true);
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 2, plan: undefined }) });
+    await start();
+    await press(button("Discard", host));
+    await act(async () => { publishDemoChange({ botId, removed: recording().id }); });
+
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos/cancel` });
+    expect(button("Show Nova a task", host)).toBeTruthy();
+  });
+
+  it("says so when a recording could not be turned into steps", async () => {
+    const botId = await mount(true);
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 1, plan: undefined }) });
+    answers[`POST /api/bots/${botId}/demos/stop`] = () => ({ recording: recording({ botId, status: "failed", plan: undefined, error: "Nothing was recorded." }) });
+    await start();
+    await press(button("Done", host));
+
+    expect(host.querySelector("[role=alert]")!.textContent).toBe("That recording could not be used. Nothing was recorded.");
+    expect(review()).toBeNull();
+  });
+});
+
+describe("reviewing the steps", () => {
+  const opened = async (more: Partial<DemoRecording> = {}) => {
+    listed = [recording(more)];
+    const botId = await mount(false);
+    await press(button("Shown tasks: 1", host));
+    await press([...host.querySelectorAll("li button")].find((each) => each.textContent?.includes("Submit expense · Harbor Expenses")));
+    expect(review()).toBeTruthy();
+    return botId;
+  };
+  const steps = () => [...document.querySelectorAll<HTMLElement>("[data-demo-step]")];
+  const open = (label: string) => press(labelled<HTMLButtonElement>(label));
+  const chip = (name: string) => document.querySelector<HTMLElement>(`[data-demo-blank=${name}]`);
+
+  it("reads each step as a sentence, and opens one to its picture, goal and check", async () => {
+    await opened();
+
+    expect(steps().map((step) => step.querySelector("button")!.textContent)).toEqual(["Click the \"New expense\" button.", "Type merchant into the \"Merchant\" field.", "Click the \"Submit expense\" button."]);
+    expect(steps()[1]!.querySelector("[data-demo-token]")!.textContent).toBe("merchant");
+    expect(document.querySelector("[role=img]")).toBeNull();
+
+    await open("Step 1: Click New expense");
+    expect(labelled("Title of step 1").value).toBe("Click New expense");
+    expect(steps()[0]!.querySelector<HTMLElement>("[role=img]")!.style.backgroundImage).toContain(`/api/demos/${recording().id}/frames/f00000000000000000001`);
+    expect(steps()[0]!.querySelector("[role=img]")!.getAttribute("aria-label")).toBe("The screen at step 1");
+    expect(steps()[0]!.textContent).toContain("Check: The screen shows “New expense”");
+
+    await open("Step 2: Enter Merchant");
+    expect(labelled("Title of step 1")).toBeNull();
+    expect(steps()[1]!.textContent).toContain("Check: “Merchant” holds {{merchant}}");
+    expect(steps()[1]!.querySelector("[role=img]")).toBeNull();
+  });
+
+  it("renames an input in every step that uses it, and refuses a name that is taken", async () => {
+    await opened();
+    await press(chip("merchant")!.querySelector("button"));
+    const rename = labelled("Rename the input merchant");
+    await type(rename, "vendor");
+    await act(async () => { rename.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+
+    expect(chip("vendor")).toBeTruthy();
+    expect(steps()[1]!.querySelector("[data-demo-token]")!.textContent).toBe("vendor");
+    await open("Step 2: Enter Merchant");
+    expect(labelled<HTMLTextAreaElement>("Goal of step 2").value).toBe("Type {{vendor}} into the \"Merchant\" field.");
+
+    const again = labelled("Rename the input vendor");
+    await type(again, "amount");
+    await act(async () => { again.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+    expect(chip("vendor")!.querySelector("[role=alert]")!.textContent).toBe("Another input is already called amount.");
+    expect(labelled("Rename the input vendor").value).toBe("vendor");
+  });
+
+  it("keeps an input's value the same every time, and never offers that for a secret", async () => {
+    await opened();
+    expect(chip("password")!.textContent).toContain("Filled from a saved sign-in. Never recorded.");
+    await press(chip("password")!.querySelector("button"));
+    expect(button("Always use this", chip("password")!)).toBeUndefined();
+    await press(chip("merchant")!.querySelector("button"));
+    await press(button("Always use this", chip("merchant")!));
+
+    expect(chip("merchant")).toBeNull();
+    await open("Step 2: Enter Merchant");
+    expect(labelled<HTMLTextAreaElement>("Goal of step 2").value).toBe("Type Blue Door Coffee into the \"Merchant\" field.");
+  });
+
+  it("moves and removes steps from the open step", async () => {
+    await opened();
+    const order = () => steps().map((step) => step.dataset.demoStep);
+    await open("Step 3: Click Submit expense");
+    await press(labelled<HTMLButtonElement>("Move step 3 up"));
+    expect(order()).toEqual(["s1", "s3", "s2"]);
+    await open("Step 1: Click New expense");
+    expect(labelled<HTMLButtonElement>("Move step 1 up").disabled).toBe(true);
+    await press(labelled<HTMLButtonElement>("Remove step 1"));
+    expect(order()).toEqual(["s3", "s2"]);
+  });
+
+  it("saves the edited steps, then the skill, and offers Save again only once something has changed", async () => {
+    const botId = await opened();
+    const id = recording().id;
+    let saved: DemoPlan | null = null;
+    answers[`PUT /api/demos/${id}/plan`] = (body) => { saved = (body as { plan: DemoPlan }).plan; return { recording: recording({ botId, plan: saved }) }; };
+    answers[`POST /api/demos/${id}/skill`] = () => ({ recording: recording({ botId, plan: saved!, skillName: "harbor-expense" }) });
+    const save = () => document.querySelector<HTMLButtonElement>("[data-demo-save]")!;
+    const state = () => document.querySelector("[data-demo-save-state]")!.textContent;
+    await open("Step 1: Click New expense");
+    await type(labelled("Title of step 1"), "Start a new expense");
+    expect(state()).toBe("Not saved yet");
+    await press(button("Save as skill"));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.path}`)).toEqual([`PUT /api/demos/${id}/plan`, `POST /api/demos/${id}/skill`]);
+    expect(saved!.steps[0]!.title).toBe("Start a new expense");
+    expect(review()!.querySelector("[role=status]")!.textContent).toBe("Nova can do this now. Saved as the skill harbor-expense.");
+    expect([save().textContent, save().disabled, state()]).toEqual(["Saved", true, "Saved as harbor-expense"]);
+
+    await type(labelled("Title of step 1"), "Open a new expense");
+    expect([save().textContent, save().disabled, state()]).toEqual(["Save changes", false, "Changes not saved"]);
+  });
+
+  it("does not save a step whose goal names an input that is not there", async () => {
+    await opened();
+    await open("Step 1: Click New expense");
+    await type(labelled<HTMLTextAreaElement>("Goal of step 1"), "Click it for {{nobody}}.");
+    await press(button("Save as skill"));
+
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
+    expect(review()!.querySelector("[role=alert]")!.textContent).toBe("Step 1: There is no input called nobody.");
+  });
+
+  it("makes a routine with what it runs on, once: the routine takes the button's place", async () => {
+    const botId = await opened({ skillName: "harbor-expense" });
+    const id = recording().id;
+    answers[`POST /api/demos/${id}/routine`] = () => ({ recording: recording({ botId, skillName: "harbor-expense", routineId: "routine-1" }) });
+    await press(button("Make it a routine"));
+    const create = button("Create routine")!;
+    expect(create.disabled).toBe(true);
+    const source = [...document.querySelectorAll<HTMLLabelElement>("label")].find((each) => each.textContent?.startsWith("What it runs on"))!.querySelector("input")!;
+    await type(source, "The new files in my receipts folder");
+    await press(button("Create routine"));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${id}/routine`, body: { name: "Submit expense · Harbor Expenses", source: "The new files in my receipts folder" } });
+    const routine = document.querySelector<HTMLElement>("[data-demo-routine]")!;
+    expect(routine.dataset.demoRoutine).toBe("added");
+    expect(routine.textContent).toContain("Routine added");
+    expect(button("Make it a routine")).toBeUndefined();
+    expect(button("Create routine")).toBeUndefined();
+  });
+
+  it("never offers a second routine for a task that has one", async () => {
+    await opened({ skillName: "harbor-expense", routineId: "routine-1" });
+
+    expect(document.querySelector<HTMLElement>("[data-demo-routine]")!.dataset.demoRoutine).toBe("added");
+    expect(button("Make it a routine")).toBeUndefined();
+    expect([document.querySelector<HTMLButtonElement>("[data-demo-save]")!.textContent, document.querySelector<HTMLButtonElement>("[data-demo-save]")!.disabled]).toEqual(["Saved", true]);
+  });
+
+  it("asks about a date typed on the day it was shown, and can make it always today's", async () => {
+    const dated = (): DemoPlan => {
+      const base = plan();
+      return { ...base, blanks: [...base.blanks, { name: "date", label: "Date", kind: "date", example: "2026-11-02" }], steps: [...base.steps, { ...base.steps[1]!, id: "s4", title: "Enter Date", goal: "Type {{date}} into the \"Date\" field." }] };
+    };
+    await opened({ createdAt: new Date(2026, 10, 2, 12).getTime(), plan: dated() });
+    const question = () => document.querySelector<HTMLElement>("[data-demo-question=date]");
+
+    expect(question()!.textContent).toContain("Nova is not sure about Date");
+    expect(steps()[3]!.contains(question())).toBe(true);
+    await press(button("Always today’s date", question()!));
+    expect(question()).toBeNull();
+    expect(chip("date")!.textContent).toContain("Today’s date");
+    expect(document.querySelector("[data-demo-save-state]")!.textContent).toBe("Not saved yet");
+    await press(chip("date")!.querySelector("button"));
+    await press(button("Read it each time", chip("date")!));
+    expect(chip("date")!.textContent).toContain("2026-11-02");
+    await press(button("It changes each time", question()!));
+    expect(question()).toBeNull();
+  });
+
+  it("does not ask about a date that was not the day it was shown", async () => {
+    const base = plan();
+    await opened({ createdAt: new Date(2026, 10, 17, 12).getTime(), plan: { ...base, blanks: [...base.blanks, { name: "date", label: "Date", kind: "date", example: "2026-11-02" }], steps: [...base.steps, { ...base.steps[1]!, id: "s4", title: "Enter Date", goal: "Type {{date}} into the \"Date\" field." }] } });
+    expect(document.querySelector("[data-demo-question]")).toBeNull();
+  });
+
+  it("tries it once with the values it was shown, waiting on anything that gets stuck", async () => {
+    const botId = await opened();
+    const id = recording().id;
+    answers[`POST /api/demos/${id}/replay`] = () => ({ run: { id: "run-try", recordingId: id, status: "running", done: 0, failed: 0, items: [] } });
+    await press(document.querySelector("[data-demo-try]"));
+
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${id}/replay`, body: { ask: true, items: [{ id: "try-1", label: "A try with your values", values: { merchant: "Blue Door Coffee", amount: "18.40" }, missing: [] }] } });
+    expect(review()).toBeNull();
+    expect(strip()!.dataset.demoRecorder).toBe("replay");
+    expect(botId).toBeTruthy();
+  });
+
+  it("shows what was read from the files, lets a value be put right, and leaves out what still lacks one", async () => {
+    await opened();
+    const id = recording().id;
+    answers[`POST /api/demos/${id}/inputs`] = () => ({ items: [
+      { id: "1-a", label: "a.txt", values: { merchant: "Lumen Rail", amount: "64.00" }, missing: [] },
+      { id: "2-b", label: "b.txt", values: { merchant: "Kestrel Cloud" }, missing: ["amount"] },
+    ] });
+    answers[`POST /api/demos/${id}/replay`] = () => ({ run: { id: "run-2", recordingId: id, status: "running", done: 0, failed: 0, items: [] } });
+    const picker = review()!.querySelector<HTMLInputElement>("input[type=file]")!;
+    Object.defineProperty(picker, "files", { configurable: true, value: [new File(["Merchant: Lumen Rail"], "a.txt", { type: "text/plain" }), new File(["Merchant: Kestrel Cloud"], "b.txt", { type: "text/plain" })] });
+    await act(async () => { picker.dispatchEvent(new Event("change", { bubbles: true })); });
+    for (let turns = 0; turns < 6; turns++) await act(async () => { await Promise.resolve(); });
+    const rows = () => [...document.querySelectorAll<HTMLElement>("[data-demo-file]")].map((row) => row.dataset.demoFile);
+    const run = () => document.querySelector<HTMLButtonElement>("[data-demo-files-run]")!;
+
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${id}/inputs`, body: { files: [{ name: "a.txt", content: "Merchant: Lumen Rail" }, { name: "b.txt", content: "Merchant: Kestrel Cloud" }] } });
+    expect(document.querySelector("[data-demo-files]")!.closest("[role=dialog]")!.textContent).toContain("Submit expense · Harbor Expenses, for 2 files");
+    expect([rows(), run().textContent]).toEqual([["ready", "lacking"], "Run 1, skip 1"]);
+    expect(calls.some((call) => call.path.endsWith("/replay"))).toBe(false);
+    await type(labelled("amount for b.txt"), "120.00");
+    expect([rows(), run().textContent]).toEqual([["ready", "ready"], "Run 2"]);
+    await press(run());
+    await act(async () => { await Promise.resolve(); });
+
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${id}/replay`, body: { ask: true, items: [{ id: "1-a", values: { amount: "64.00" } }, { id: "2-b", values: { merchant: "Kestrel Cloud", amount: "120.00" }, missing: [] }] } });
+    expect(document.querySelector("[data-demo-files]")).toBeNull();
+    expect(review()).toBeNull();
+  });
+
+  it("switches the saved skill off and on for the bot", async () => {
+    const botId = await opened({ skillName: "harbor-expense" });
+    const card = () => document.querySelector<HTMLElement>("[data-demo-skill]")!;
+    expect([card().dataset.demoSkill, card().textContent]).toEqual(["on", expect.stringContaining("Nova can do this now")]);
+    await press(card().querySelector("[role=switch]"));
+
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", path: `/api/bots/${botId}/skills/harbor-expense`, body: { enabled: false } });
+    expect([card().dataset.demoSkill, card().textContent]).toEqual(["off", expect.stringContaining("Off for Nova")]);
+  });
+
+  it("starts a fresh showing from the review", async () => {
+    await opened();
+    await press(button("Show it again"));
+
+    expect(review()).toBeNull();
+    expect(strip()!.dataset.demoRecorder).toBe("intro");
+  });
+
+  it("will not run on files while the person still holds the browser, and says why", async () => {
+    listed = [recording()];
+    await mount(true);
+    await press(button("Shown tasks: 1", host));
+    await press([...host.querySelectorAll("li button")].find((each) => each.textContent?.includes("Submit expense")));
+
+    expect(document.querySelector<HTMLButtonElement>("[data-demo-run-choose]")!.disabled).toBe(true);
+    expect(review()!.textContent).toContain("Hand control back first: Nova does it in its own browser.");
+  });
+});
+
+describe("doing it again", () => {
+  const run = (more: Partial<DemoReplayRun> = {}): DemoReplayRun => ({
+    id: "run-1", recordingId: recording().id, status: "running", done: 1, failed: 0,
+    items: [
+      { id: "a", label: "02-lumen-rail.json", status: "done", values: {}, missing: [], byBot: 0 },
+      { id: "b", label: "03-papertrail-supply.txt", status: "running", values: {}, missing: [], byBot: 1, step: "Enter Amount" },
+      { id: "c", label: "04-kestrel-cloud.txt", status: "waiting", values: {}, missing: [], byBot: 0 },
+    ],
+    ...more,
+  });
+
+  it("shows how far it is with a mark for each file, what it is on, and stops when asked", async () => {
+    listed = [recording()];
+    const botId = await mount(false);
+    await act(async () => { publishDemoChange({ botId, run: run() }); });
+
+    expect(strip()!.dataset.demoRecorder).toBe("replay");
+    expect(strip()!.querySelector("[role=status]")!.textContent).toBe("Nova is doing it again · 2 of 3");
+    expect(strip()!.querySelector("[data-demo-run-marks]")!.children).toHaveLength(3);
+    expect(strip()!.textContent).toContain("03-papertrail-supply.txt · Enter Amount");
+    await press(button("Stop", host));
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${recording().id}/replay/stop` });
+  });
+
+  it("waits on a file that gets stuck, to be skipped or tried again", async () => {
+    listed = [recording()];
+    const botId = await mount(false);
+    await act(async () => { publishDemoChange({ botId, run: run({ asking: { item: "b", step: "Click Submit expense", note: "The screen says: Date must look like 2026-11-03." } }) }); });
+    const dock = () => host.querySelector<HTMLElement>("[data-demo-run]")!;
+
+    expect([dock().dataset.demoRun, dock().querySelector("[role=status]")!.textContent]).toEqual(["asking", "Nova needs a hand"]);
+    expect(dock().textContent).toContain("2 of 3 · 03-papertrail-supply.txt · Click Submit expense");
+    expect(dock().querySelector("[data-demo-stuck]")!.textContent).toBe("The screen says: Date must look like 2026-11-03. Take control to clear what is in the way, hand it back, then try again.");
+    await press(button("Try again", host));
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${recording().id}/replay/decide`, body: { decision: "retry" } });
+    await press(button("Skip this one", host));
+    expect(calls.at(-1)).toMatchObject({ body: { decision: "skip" } });
+
+    await mount(true, botId);
+    expect(host.querySelector<HTMLButtonElement>("[data-demo-retry]")!.disabled).toBe(true);
+  });
+
+  it("lists each file with what happened to it", async () => {
+    listed = [recording()];
+    const botId = await mount(false);
+    await act(async () => {
+      publishDemoChange({ botId, run: run({ status: "done", done: 1, failed: 1, items: [
+        { id: "a", label: "02-lumen-rail.json", status: "done", values: {}, missing: [], byBot: 2 },
+        { id: "b", label: "bad-date.txt", status: "failed", values: {}, missing: [], byBot: 0, step: "Click Submit expense", note: "The screen says: Date must look like 2026-11-03." },
+        { id: "c", label: "scrap.txt", status: "skipped", values: {}, missing: ["merchant", "date"], byBot: 0 },
+      ] }) });
+    });
+
+    expect(strip()!.querySelector("[role=status]")!.textContent).toBe("Done: 1 of 3. 2 need a look");
+    await act(async () => {
+      publishDemoChange({ botId, run: run({ status: "done", done: 1, failed: 1, items: [
+        { id: "a", label: "02-lumen-rail.json", status: "done", values: {}, missing: [], byBot: 2 },
+        { id: "b", label: "bad-date.txt", status: "failed", values: {}, missing: [], byBot: 0, step: "Click Submit expense", note: "The screen says: Date must look like 2026-11-03." },
+      ] }) });
+    });
+    expect(strip()!.querySelector("[role=status]")!.textContent).toBe("Done: 1 of 2. 1 needs a look");
+    await act(async () => {
+      publishDemoChange({ botId, run: run({ status: "done", done: 1, failed: 1, items: [
+        { id: "a", label: "02-lumen-rail.json", status: "done", values: {}, missing: [], byBot: 2 },
+        { id: "b", label: "bad-date.txt", status: "failed", values: {}, missing: [], byBot: 0, step: "Click Submit expense", note: "The screen says: Date must look like 2026-11-03." },
+        { id: "c", label: "scrap.txt", status: "skipped", values: {}, missing: ["merchant", "date"], byBot: 0 },
+      ] }) });
+    });
+    await press(button("Show files", host));
+    const rows = [...host.querySelectorAll<HTMLElement>("[data-demo-run-item]")].map((row) => [row.dataset.demoRunItem, row.textContent]);
+    expect(rows[0]).toEqual(["done", expect.stringContaining("Nova stepped in for 2 steps")]);
+    expect(rows[1]).toEqual(["failed", expect.stringContaining("Click Submit expense: The screen says: Date must look like 2026-11-03.")]);
+    expect(rows[2]).toEqual(["skipped", expect.stringContaining("No value found for merchant, date")]);
+    await press(button("Close", host));
+    expect(strip()!.dataset.demoRecorder).toBe("idle");
+  });
+});
