@@ -3,7 +3,8 @@ import { pullSyncedPrefs } from "@/lib/synced-prefs";
 import { storeApp } from "@/lib/store-app";
 import { aiSendAllowed } from "@/lib/ai-consent-gate";
 import { trailAction } from "@/lib/trail-actions";
-import { cloudAsleep, cloudWaking, onCloudPower } from "../lib/cloud-power";
+import { cloudAsleep, onCloudPower } from "../lib/cloud-power";
+import { cloudWakingLoad, WAKING_LOAD_MS } from "./waking-load";
 import { chatInFront } from "@/lib/chat-in-front";
 import { answerOf, api, ApiError, snapshotArrays } from "./api";
 import { sendOutbox } from "./send-outbox";
@@ -2074,16 +2075,6 @@ export interface PeripheralSnapshotLoad<Key extends string = string> {
 
 function normalizeSnapshotFailure(cause: unknown): Error {
   return cause instanceof Error ? cause : new Error(String(cause));
-}
-
-const WAKING_LOAD_MS = 120_000;
-
-/** The first snapshot failed because the person's dusk cloud sleeps or is still starting, not because it broke. */
-export function cloudWakingLoad(error: unknown): boolean {
-  if (cloudAsleep() || cloudWaking()) return true;
-  if (!(error instanceof ApiError)) return false;
-  const code = (error.body as { error?: unknown } | undefined)?.error;
-  return code === "waking" || code === "asleep" || error.status === 502 || error.status === 504;
 }
 
 export async function loadSnapshotBoundary<Key extends string>(

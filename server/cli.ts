@@ -542,24 +542,7 @@ export async function runLogout(options: CliOptions, io: CliIo = defaultIo()): P
 }
 
 export async function runBrowser(options: CliOptions, io: CliIo = defaultIo()): Promise<number> {
-  if (options.browserAction === "setup") {
-    const { sandboxBlocked, setUpBrowserHost } = await import("./browser/chrome/host-setup.ts");
-    const { writeFileSync } = await import("node:fs");
-    const { execFile } = await import("node:child_process");
-    return setUpBrowserHost({
-      platform: process.platform,
-      isRoot: () => process.getuid?.() === 0,
-      installLibraries: () => runBrowser({ ...options, browserAction: "install", withDeps: true }, io),
-      sandboxBlocked: () => sandboxBlocked(),
-      exists: existsSync,
-      writeProfile: (path, text) => writeFileSync(path, text, { mode: 0o644 }),
-      loadProfile: (path) => new Promise((done, fail) => {
-        execFile("apparmor_parser", ["-r", path], { timeout: 30_000 }, (error, _stdout, stderr) => error ? fail(new Error(`apparmor_parser: ${String(stderr).trim() || error.message}`)) : done());
-      }),
-      log: io.log,
-      error: io.error,
-    });
-  }
+  if (options.browserAction === "setup") return (await import("./browser/chrome/host-setup.ts")).setUpThisHost(() => runBrowser({ ...options, browserAction: "install", withDeps: true }, io), io);
   const { browserEngineStatus, describeBrowserEngine, ensureChrome, installAgentBrowserBinary, resolveAgentBrowserBinary } = await import("./browser-engine.ts");
   const status = browserEngineStatus({ dataDir: options.dataDir });
   if (options.browserAction === "status") {

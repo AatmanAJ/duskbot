@@ -11,7 +11,7 @@
 // without its own sandbox and the container is the isolation boundary.
 
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 export const SETUP_COMMAND = "sudo duskbot browser setup";
@@ -152,4 +152,21 @@ export async function setUpBrowserHost(deps: HostSetupDeps): Promise<number> {
   }
   deps.log(`wrote ${APPARMOR_PROFILE_PATH}; the browser's sandbox is allowed for ${SYSTEM_CHROME}`);
   return 0;
+}
+
+/** `duskbot browser setup` on this machine: its real root check, files and apparmor_parser. */
+export function setUpThisHost(installLibraries: () => Promise<number>, io: Pick<HostSetupDeps, "log" | "error">): Promise<number> {
+  return setUpBrowserHost({
+    platform: process.platform,
+    isRoot: () => process.getuid?.() === 0,
+    installLibraries,
+    sandboxBlocked: () => sandboxBlocked(),
+    exists: existsSync,
+    writeProfile: (path, text) => writeFileSync(path, text, { mode: 0o644 }),
+    loadProfile: (path) => new Promise((done, fail) => {
+      execFile("apparmor_parser", ["-r", path], { timeout: 30_000 }, (error, _stdout, stderr) => error ? fail(new Error(`apparmor_parser: ${String(stderr).trim() || error.message}`)) : done());
+    }),
+    log: io.log,
+    error: io.error,
+  });
 }
