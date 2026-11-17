@@ -70,6 +70,15 @@ function translatedBy(element: HTMLElement | null): number {
   }
 }
 
+/** React attaches an ancestor's ref after this list's layout effects run, so on mount the scroller is found from the list. */
+function scrollerOf(list: HTMLElement | null): HTMLElement | null {
+  for (let node = list?.parentElement ?? null; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return node;
+  }
+  return null;
+}
+
 function VirtualRows({ rows, viewport }: { rows: readonly DrawnRow[]; viewport: TranscriptViewport }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [geometry, setGeometry] = useState({ margin: 0, gap: 16 });
@@ -84,7 +93,7 @@ function VirtualRows({ rows, viewport }: { rows: readonly DrawnRow[]; viewport: 
   const startAtEnd = useRef(viewport.startAtEnd).current;
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     count: rows.length,
-    getScrollElement: () => viewport.scrollRef.current,
+    getScrollElement: () => viewport.scrollRef.current ?? scrollerOf(listRef.current),
     estimateSize: (index) => rows[index]?.estimate ?? 80,
     getItemKey: keyOf,
     overscan: OVERSCAN_ROWS,
@@ -95,12 +104,18 @@ function VirtualRows({ rows, viewport }: { rows: readonly DrawnRow[]; viewport: 
 
   // Where the list starts inside the scroller and the gap between its rows; both follow the layout around it.
   useLayoutEffect(() => {
-    const list = listRef.current, scroller = viewport.scrollRef.current;
+    const list = listRef.current, scroller = viewport.scrollRef.current ?? scrollerOf(list);
     if (!list || !scroller) return;
     const margin = list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - translatedBy(viewport.columnRef.current);
     const gap = Number.parseFloat(getComputedStyle(list).rowGap) || 0;
     if (Math.abs(margin - geometry.margin) > 0.5 || gap !== geometry.gap) setGeometry({ margin: Math.round(margin), gap });
   });
+
+  // the scroller still reads 0 here: a transcript that opens at its newest row mounts that row's neighbours, not the top
+  useLayoutEffect(() => {
+    if (startAtEnd && rows.length) virtualizer.scrollToIndex(rows.length - 1, { align: "end" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the list mounts
+  }, []);
 
   const focusIndex = useMemo(
     () => viewport.focusMessageId ? rows.findIndex((row) => row.messageIds.includes(viewport.focusMessageId!)) : -1,
