@@ -556,8 +556,6 @@ export function demoRecordingScript(take: string): string {
   return TEMPLATE.replaceAll("INITIAL_TAKE", JSON.stringify(takeId(take)));
 }
 
-export const DEMO_PAGE_SCRIPT = demoRecordingScript("default");
-
 /** One request to the document's recorder, from whatever script world the expression runs in; `absent` where a
  * document has none. The answer is the recorder's own JSON text. */
 function call(request: Record<string, unknown>, absent: string): string {
@@ -582,7 +580,7 @@ function call(request: Record<string, unknown>, absent: string): string {
 
 /** Answers a `DemoDrain` as JSON: what the person did since the last read of the recording `take`. A document that was
  * not recording for `take` starts now, with nothing from before. `installed` is false where the script is absent. */
-export function demoDrainExpression(take = "default"): string {
+export function demoDrainExpression(take: string): string {
   return call({ do: "drain", take: takeId(take) }, `JSON.stringify({ installed: false, url: location.href, title: document.title, events: [] })`);
 }
 
