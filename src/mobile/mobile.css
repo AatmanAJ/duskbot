@@ -160,6 +160,19 @@ html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-u
   .dusk-mobile [data-mobile-chat] [data-testid="message-actions"] { scale: 1; }
 }
 
+/* with the system's context menu (iOS 26) a message's actions live in that menu: the bar leaves the row, still there
+   for VoiceOver and for the menu to read, and the bubble takes the room it held */
+html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-testid="message-actions"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  opacity: 0;
+  pointer-events: none;
+}
+html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-chat-bubble][class*="100%-82px"] { max-width: min(var(--chat-bubble-max), var(--chat-bubble-pct)); }
+
 /* the room's setup form is drawn at desktop density; on a phone its labels and hints read at the shell's sizes */
 .dusk-mobile [data-testid="room-setup"] .text-\[13px\] { font-size: 15px; line-height: 20px; }
 .dusk-mobile [data-testid="room-setup"] .text-\[12px\] { font-size: 13px; line-height: 18px; }

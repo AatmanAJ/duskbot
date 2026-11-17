@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 import type { MobileOpenTarget } from "../../shared/mobile-link";
 import { friendlyError } from "@/lib/plain-error";
 import type { GlassBridge } from "./native-glass";
+import type { MenuBridge } from "./native-menu";
 
 export type HapticKind = "light" | "soft" | "medium" | "selection" | "error" | "success";
 
@@ -81,6 +82,8 @@ export interface MobilePlatform {
   onNotificationOpen?(listener: (target: MobileOpenTarget) => void): () => void;
   /** The chat header and composer drawn in the OS's own glass, where the app has it. */
   glass?: GlassBridge;
+  /** The system's own context menu over the page's items, where the app has it. */
+  menu?: MenuBridge;
   deviceName(): string;
   appVersion: string;
 }

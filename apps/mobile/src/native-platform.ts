@@ -20,6 +20,7 @@ const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
 import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform } from "@/mobile/platform";
 import type { GlassBridge, GlassEvent, GlassState } from "@/mobile/native-glass";
+import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
 import { registerPhoneVoice } from "@/lib/voice-input/device";
 import { appLinkFromUniversal, type MobileOpenTarget } from "../../../shared/mobile-link";
@@ -79,6 +80,26 @@ export function glassBridge(plugin: GlassPlugin): GlassBridge {
     blur: () => quiet(plugin.blur()),
     clear: () => quiet(plugin.clear()),
     onEvent: (listener) => unsubscribe([plugin.addListener("glass", listener)]),
+  };
+}
+
+/** The app's own context menu over page items (ios/App/App/NativeMenuPlugin.swift), iOS 26 and later. */
+interface MenuPlugin {
+  supported(): Promise<{ supported: boolean }>;
+  arm(options: NativeMenuArm): Promise<void>;
+  disarm(options: { id?: string }): Promise<void>;
+  resolve(options: { id: string; content: NativeMenuContent }): Promise<void>;
+  addListener(event: "menu", listener: (event: NativeMenuEvent) => void): Promise<PluginListenerHandle>;
+}
+const DuskMenu = registerPlugin<MenuPlugin>("DuskMenu");
+
+export function menuBridge(plugin: MenuPlugin): MenuBridge {
+  const quiet = (work: Promise<unknown>) => { void work.catch(() => {}); };
+  return {
+    arm: (options) => quiet(plugin.arm(options)),
+    disarm: (id) => quiet(plugin.disarm({ id })),
+    resolve: (id, content) => quiet(plugin.resolve({ id, content })),
+    onEvent: (listener) => unsubscribe([plugin.addListener("menu", listener)]),
   };
 }
 
@@ -328,11 +349,12 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     const timer = setTimeout(() => { console.warn(`startup: ${label} did not answer`); resolve(undefined); }, 2000);
     work.then(resolve, () => resolve(undefined)).finally(() => clearTimeout(timer));
   });
-  const [info, launch, , glass] = await Promise.all([
+  const [info, launch, , glass, menu] = await Promise.all([
     bounded(App.getInfo(), "app info"),
     bounded(App.getLaunchUrl(), "launch url"),
     bounded(overlayReady ?? Promise.resolve(), "status bar"),
     kind === "ios" && Capacitor.isPluginAvailable("DuskGlass") ? bounded(DuskGlass.supported(), "glass") : undefined,
+    kind === "ios" && Capacitor.isPluginAvailable("DuskMenu") ? bounded(DuskMenu.supported(), "menu") : undefined,
   ]);
   let pendingLaunchUrl = launch?.url;
   const secrets: MobilePlatform["secrets"] = {
@@ -357,6 +379,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     appVersion: info?.version || __APP_VERSION__,
     deviceName: () => kind === "ios" ? "iPhone" : "Android phone",
     glass: glass?.supported ? glassBridge(DuskGlass) : undefined,
+    menu: menu?.supported ? menuBridge(DuskMenu) : undefined,
     haptic(type) {
       void (async () => {
         switch (type) {

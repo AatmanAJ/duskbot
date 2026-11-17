@@ -16,7 +16,8 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { threadRefUrl } from "@/lib/thread-refs";
 import { RoundButton } from "./RoundButton";
-import { ContextMenu, useLongPress, type ContextAction } from "./ContextMenu";
+import { ContextMenu, useLongPress, type ContextAction, type NativePress } from "./ContextMenu";
+import { useNativeHold, type HeldMenu } from "./native-menu";
 import { PullToRefresh } from "./PullToRefresh";
 import { revealOnce, useListFlip } from "./list-motion";
 import { refreshSnapshot } from "./refresh";
@@ -107,6 +108,14 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
     return list;
   }, [dispatch, onOpenSheet, platform]);
 
+  const hold = useNativeHold(platform.menu, "chat");
+  const latestActions = useRef(actionsFor);
+  latestActions.current = actionsFor;
+  const native = useMemo(() => hold && ((entry: Entry): NativePress => ({
+    press: (el) => hold.press(el, () => heldChatMenu(entry, latestActions.current(entry))),
+    cancel: () => hold.cancel(),
+  })), [hold]);
+
   const openMenu = useCallback((entry: Entry, rect: DOMRect, source: HTMLElement | null, pinnedTile = false) => setMenu({ entry, rect, pinnedTile, source }), []);
 
   return (
@@ -137,7 +146,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                   <h2 id="home-pinned" className="px-5 pb-1 text-[13px] font-semibold text-ink-secondary">{t("sidebar.section.pinned")}</h2>
                   <div className="no-scrollbar flex gap-3 overflow-x-auto px-3 pb-2 pt-1">
                     {pinned.map((bot) => (
-                      <PinnedTile key={bot.id} bot={bot} onOpen={onOpenChat} onMenu={(rect, source) => openMenu(botEntry(bot, state), rect, source, true)} />
+                      <PinnedTile key={bot.id} bot={bot} onOpen={onOpenChat} onMenu={(rect, source) => openMenu(botEntry(bot, state), rect, source, true)} native={native?.(botEntry(bot, state))} />
                     ))}
                   </div>
                   </section>
@@ -148,7 +157,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                   <ul role="list" aria-label={t("mobile.home.chats")} className="px-2">
                     {entries.map((entry) => (
                       <li key={entry.id} data-flip-key={entry.id}>
-                        <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} />
+                        <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
                       </li>
                     ))}
                   </ul>
@@ -193,6 +202,17 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   );
 }
 
+const CHAT_SYMBOLS: Record<string, string> = { read: "checkmark.message", unread: "message.badge", profile: "person.crop.circle", desktop: "desktopcomputer" };
+
+/** A chat's actions for the system menu, each running the same action the page's own menu does. */
+function heldChatMenu(entry: Entry, actions: ContextAction[]): HeldMenu {
+  const pinned = entry.kind === "bot" && entry.bot.pinned;
+  return {
+    content: { items: actions.map((action) => ({ key: action.key, title: action.label, icon: action.key === "pin" ? (pinned ? "pin.slash" : "pin") : CHAT_SYMBOLS[action.key], danger: action.danger, disabled: action.disabled })) },
+    select: (key) => actions.find((action) => action.key === key)?.onSelect(),
+  };
+}
+
 function botEntry(bot: Bot, state: ReturnType<typeof useStore>["state"]): Entry {
   return { kind: "bot", id: bot.id, bot, at: lastAt(bot), preview: botPreview(bot, sidebarPreviewMessages(bot), state.instances), unread: botShowsUnread(bot) };
 }
@@ -209,9 +229,9 @@ function RefreshMark({ bot, progress, refreshing }: { bot?: Bot; progress: Motio
   );
 }
 
-const PinnedTile = memo(function PinnedTile({ bot, onOpen, onMenu }: { bot: Bot; onOpen: (id: string) => void; onMenu: (rect: DOMRect, source: HTMLElement | null) => void }) {
+const PinnedTile = memo(function PinnedTile({ bot, onOpen, onMenu, native }: { bot: Bot; onOpen: (id: string) => void; onMenu: (rect: DOMRect, source: HTMLElement | null) => void; native?: NativePress }) {
   const ref = useRef<HTMLButtonElement>(null);
-  useLongPress(ref, (rect) => onMenu(rect, ref.current));
+  useLongPress(ref, (rect) => onMenu(rect, ref.current), true, native);
   return (
     <button ref={ref} type="button" onClick={(event) => { holdPressed(event.currentTarget); onOpen(bot.id); }} className="mobile-press flex w-[84px] shrink-0 flex-col items-center gap-1.5 rounded-[20px] py-1" aria-label={botShowsUnread(bot) ? t("mobile.home.unreadChat", { name: bot.name }) : bot.name}>
       <PinnedTileFace bot={bot} />
@@ -237,9 +257,9 @@ function PinnedTileFace({ bot }: { bot: Bot }) {
   );
 }
 
-const HomeRow = memo(function HomeRow({ entry, onOpen, onMenu }: { entry: Entry; onOpen: (id: string) => void; onMenu: (entry: Entry, rect: DOMRect, source: HTMLElement | null) => void }) {
+const HomeRow = memo(function HomeRow({ entry, onOpen, onMenu, native }: { entry: Entry; onOpen: (id: string) => void; onMenu: (entry: Entry, rect: DOMRect, source: HTMLElement | null) => void; native?: (entry: Entry) => NativePress }) {
   const ref = useRef<HTMLButtonElement>(null);
-  useLongPress(ref, (rect) => onMenu(entry, rect, ref.current));
+  useLongPress(ref, (rect) => onMenu(entry, rect, ref.current), true, native?.(entry));
   const name = entry.kind === "bot" ? entry.bot.name : entry.group.name;
   return (
     <button
