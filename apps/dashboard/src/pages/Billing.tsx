@@ -347,11 +347,13 @@ export function BillingPage() {
   const openLicense = (license: LicenseId = owned && owned.license !== "personal" ? owned.license : "starter", n = owned?.members ?? 1) => setLicenseSheet({ license, members: n });
   const onCloud = ownDesk !== "none";
   const movable = Boolean(clouds?.length && clouds.every((c) => c.provider === "managed"));
+  const waiting = billing.subscription?.scheduled ?? null;
   const card = (id: Tier, i: number) => {
     const name = bundleOf(catalog, id)?.name ?? id;
     if (id === "free") return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={current(id)} action="your plan" onChoose={null} disabled={false} />;
-    // only a managed cloud can move to a dedicated machine on its own; any other moves by hand
-    if (id === "team" && !current(id) && movable) return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={false} action={direct.label(id, `switch to ${name}`)} onChoose={() => void direct.choose("team")} disabled={direct.busy !== null} busy={direct.busy === id} note={direct.note(id)} />;
+    if (waiting && waiting.bundle === id) return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={false} action={`yours from ${shortDate(waiting.at)}`} onChoose={null} disabled />;
+    // a running plan switches to team itself, its cloud resized in place
+    if (id === "team" && !current(id) && (movable || owned)) return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={false} action={direct.label(id, `switch to ${name}`)} onChoose={() => void direct.choose("team")} disabled={direct.busy !== null} busy={direct.busy === id} note={direct.note(id)} />;
     if (id === "team" && !current(id)) return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={false} action="talk to us" href={`${CONTACT}?subject=${encodeURIComponent("move to team")}`} onChoose={null} disabled={false} />;
     const label = current(id) ? "your plan" : !owned && trialAction(catalog) || `${onCloud ? "switch to" : "get"} ${name}`;
     return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={current(id)} action={current(id) ? label : direct.label(id, label)} onChoose={id === "team" ? null : () => void direct.choose(id)} disabled={current(id) || direct.busy !== null} busy={direct.busy === id} note={current(id) ? null : direct.note(id)} trial={!current(id) && !owned ? catalog.trialDays : undefined} />;
