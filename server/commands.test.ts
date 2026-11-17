@@ -4,13 +4,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { runCommand, commandReceipt } from "./commands.ts";
 import { DATA_DIR } from "./config.ts";
 import { closeMessageDb, insertMessage, readThread } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import type { Message } from "./store.ts";
 
 const msg = (id: string, text: string): Message => ({ id, role: "bot", kind: "text", text, at: 1 });
 
 describe("runCommand", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     mkdirSync(DATA_DIR, { recursive: true });
   });
@@ -62,7 +63,7 @@ describe("runCommand", () => {
 
   it("survives a restart", () => {
     runCommand({ kind: "launch.acquire", key: "ticket-9" }, () => ({ slot: 3 }));
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     let applied = 0;
     const again = runCommand({ kind: "launch.acquire", key: "ticket-9" }, () => {
       applied += 1;
@@ -76,7 +77,7 @@ describe("runCommand", () => {
 
 describe("runCommand nesting", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     mkdirSync(DATA_DIR, { recursive: true });
   });

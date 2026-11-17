@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DATA_DIR } from "./config.ts";
 import { closeMessageDb, recallMatchTerm, recallTerms } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { buildRecall, enoughMatches, RECALL_CLOSE, RECALL_NONE, RECALL_OPEN, recallQuery, renderRecall } from "./recall.ts";
 import { appendMemoryLog, loadMemory, searchMemoryFiles, writeMemoryFile, writeMemoryTopic, WORKSPACES_DIR } from "./workspace.ts";
 
@@ -76,7 +77,7 @@ describe("the recalled block", () => {
 
 describe("recall from memory files", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     rmSync(WORKSPACES_DIR, { recursive: true, force: true });
   });
@@ -183,7 +184,7 @@ describe("recall from memory files", () => {
 
 describe("recall across memory layers (a Team Cloud)", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     rmSync(WORKSPACES_DIR, { recursive: true, force: true });
   });

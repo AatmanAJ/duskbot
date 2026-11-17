@@ -9,6 +9,7 @@ import { DATA_DIR, type AppConfig } from "../config.ts";
 import type { EmailHeader } from "../connected-reads.ts";
 import { ensureDefaultBot } from "../default-bot.ts";
 import { closeMessageDb } from "../message-db.ts";
+import { closeRegistryDbs } from "../registry-rows.ts";
 import { checkRunsLeft, CHECK_RUNS_PER_DAY } from "../routine-check-pacing.ts";
 import { RoutineManager, type Routine, type RoutineRun } from "../routines.ts";
 import { Store, type BotRecord } from "../store.ts";
@@ -83,7 +84,7 @@ function existingInstall() {
 
 describe("Dusk keeps an eye on the day", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
   });
 
@@ -292,7 +293,7 @@ describe("Dusk keeps an eye on the day", () => {
     const routine = kindRecord(deps(here), "routine", watch.id)!;
 
     // My Cloud: its own Dusk and its own watch, then this computer's bots, then its automations, as a move sends them.
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     const cloud = start();
     cloud.store.seedIfEmpty();

@@ -10,12 +10,13 @@ import { aboutOwner, factsOf } from "./memory-facts.ts";
 import { botMemoryUpdate, UNVERIFIED_TOPIC } from "./memory-forget.ts";
 import { createMemoryUpkeep } from "./memory-upkeep.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { ensureWorkspace, readMemoryTopic, workspaceDir, writeMemoryFile, writeMemoryTopic, WORKSPACES_DIR } from "./workspace.ts";
 
 const BOT = "v2-writes";
 
 beforeEach(() => {
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
   rmSync(WORKSPACES_DIR, { recursive: true, force: true });
 });

@@ -6,6 +6,7 @@ import { DATA_DIR, loadConfig, parseConfigPatch, parseStoredConfig } from "./con
 import type { TextGenerationOptions } from "./contracts.ts";
 import { createMemoryUpkeep, NO_TEXT_ENGINE, type UpkeepBot } from "./memory-upkeep.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { createSideJobs, helperSelection, type SideJobBot, type SideJobInstance, type SideJobsDeps } from "./side-jobs.ts";
 import { ensureWorkspace, workspaceDir, WORKSPACES_DIR } from "./workspace.ts";
 
@@ -548,7 +549,7 @@ describe("memory upkeep through the resolver", () => {
   const turns = [{ person: "I'm vegetarian", bot: "Noted." }];
 
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     rmSync(WORKSPACES_DIR, { recursive: true, force: true });
   });

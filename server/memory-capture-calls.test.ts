@@ -10,6 +10,7 @@ import { flushMemoryJournal, readMemoryJournal } from "./memory-journal.ts";
 import { ORGANIZE_MARKER } from "./memory-organize.ts";
 import { CAPTURE_MAX_TURNS, createMemoryUpkeep, MODEL_TIMEOUT_MS, type UpkeepBot } from "./memory-upkeep.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { readMemoryTopic, workspaceDir, WORKSPACES_DIR } from "./workspace.ts";
 
 const TODAY = "2026-09-25";
@@ -165,7 +166,7 @@ describe("capture calls", () => {
   };
 
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     rmSync(WORKSPACES_DIR, { recursive: true, force: true });
     bots = [LEAD, HELPER];

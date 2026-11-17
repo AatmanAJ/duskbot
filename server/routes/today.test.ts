@@ -4,13 +4,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { SEES_EVERYTHING, VisibleSet } from "../bot-visibility.ts";
 import { DATA_DIR } from "../config.ts";
 import { closeMessageDb } from "../message-db.ts";
+import { closeRegistryDbs } from "../registry-rows.ts";
 import { requiredScope, type RequestAuth } from "../request-auth.ts";
 import { Store } from "../store.ts";
 import { createTodayRoutes } from "./today.ts";
 import { PASS, type RouteContext } from "./table.ts";
 
 beforeEach(() => {
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
 });
 

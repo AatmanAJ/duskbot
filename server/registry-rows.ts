@@ -314,14 +314,17 @@ export function readSavedBots<Bot = Record<string, unknown>>(dataDir: string): B
   };
   const file = join(dataDir, REGISTRY_DB_NAME);
   if (!existsSync(file)) return fromFile();
-  let db: DatabaseSync;
-  try { db = new DatabaseSync(file, { readOnly: true }); } catch { return fromFile(); }
+  const hash = registryFileHash(text);
+  const read = (readOnly: boolean) => {
+    const db = new DatabaseSync(file, { readOnly });
+    try { return readRowsMatching(db, hash)?.bots as Bot[] | undefined; } finally { db.close(); }
+  };
   try {
-    return (readRowsMatching(db, registryFileHash(text))?.bots as Bot[] | undefined) ?? fromFile();
+    return read(true) ?? fromFile();
   } catch {
-    return fromFile();
-  } finally {
-    db.close();
+    // SQLite: a read-only connection cannot replay the write-ahead log a writer killed without closing left behind
+    // (SQLITE_READONLY_RECOVERY), as stopping a server on Windows does; a normal connection replays it and writes nothing else.
+    try { return read(false) ?? fromFile(); } catch { return fromFile(); }
   }
 }
 

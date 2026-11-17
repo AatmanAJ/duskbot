@@ -7,6 +7,7 @@ import type { ModelSelection, ProviderAdapter, ProviderSnapshot } from "./contra
 import { createCoordinator, type Coordinator, type HostTurnResult } from "./coordinator.ts";
 import { PROBE_TIMEOUT_MS } from "./engine-install.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { createQuotaSwitch, NOT_NOW, quotaSwitchEnabled, type QuotaRequest, type QuotaSwitch, type QuotaSwitchDeps, type QuotaSwitchEngine } from "./quota-switch.ts";
 import { Store, type BotRecord, type Message } from "./store.ts";
 import { toolFailureMessage } from "./drivers/tool-failure.ts";
@@ -169,7 +170,7 @@ describe("quota switch", () => {
   });
 
   afterEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
   });
 

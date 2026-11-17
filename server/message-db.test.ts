@@ -29,6 +29,7 @@ import { closeMessageDb,
   searchMessages,
   setActiveLeaf,
   updateMessage, describeMissingFts5 } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import type { NotificationLogEntry } from "../shared/notification.ts";
 import { withPeerProvenance } from "./peer-provenance.ts";
 import { Store, type Message } from "./store.ts";
@@ -47,7 +48,7 @@ const msg = (id: string, text: string, extra: Partial<Message> = {}): Message =>
 
 describe("message-db", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     mkdirSync(DATA_DIR, { recursive: true });
   });
@@ -58,7 +59,7 @@ describe("message-db", () => {
     setActiveLeaf("t1", "m2");
     updateMessage("t1", msg("m1", "hello, edited"));
 
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     const thread = readThread("t1", legacy("t1"));
     expect(thread.messages.map((m) => m.text)).toEqual(["hello, edited", "world"]);
     expect(thread.activeLeafId).toBe("m2");
@@ -102,7 +103,7 @@ describe("message-db", () => {
   it("migrates known legacy transcripts at Store startup so search sees unopened tasks", () => {
     const initial = new Store(selection);
     const bot = initial.createBot({}, { seedMessages: false });
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     for (const suffix of ["", "-wal", "-shm"]) rmSync(join(DATA_DIR, `messages.db${suffix}`), { force: true });
     writeFileSync(legacy(bot.threadId), JSON.stringify([msg("old", "find this unopened legacy conversation")]));
 
@@ -262,7 +263,7 @@ describe("message-db", () => {
     insertMessage("dm", msg("m-old", relayed));
     insertMessage("dm", msg("m-user", "please get the pricing audit emailed to me"));
     insertMessage("dm", msg("m-bot", "I saw a [Message from @Scout, another bot in this dusk bot workspace] earlier about the pricing audit", { role: "bot" }));
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     const raw = new DatabaseSync(join(DATA_DIR, "messages.db"));
     raw.prepare("INSERT INTO messages (thread_id, id, at, role, kind, text, json) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run("dm", "m-ask", Date.now(), "user", "text", relayed,
@@ -315,7 +316,7 @@ describe("message-db", () => {
   it("recall indexes rows that predate the index", () => {
     // simulate a database written before messages_fts existed
     insertMessage("t-old", msg("m1", "legacy row about the quarterly forecast"));
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     const raw = new DatabaseSync(join(DATA_DIR, "messages.db"));
     raw.exec("DROP TRIGGER messages_fts_ai; DROP TRIGGER messages_fts_ad; DROP TRIGGER messages_fts_au; DROP TABLE messages_fts");
     raw.prepare("INSERT INTO messages (thread_id, id, at, role, kind, text, json) VALUES (?, ?, ?, ?, ?, ?, ?)")
@@ -409,7 +410,7 @@ describe("message-db", () => {
     store.appendMessage(bot.threadId, { role: "bot", kind: "text", text: "reply" });
     const fork = store.branchMessage(bot.threadId, first.id, "edited")!;
 
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     const reloaded = new Store(selection);
     const path = reloaded.activePath(bot.threadId);
     expect(path.at(-1)?.id).toBe(fork.id);
@@ -420,7 +421,7 @@ describe("message-db", () => {
 
 describe("latestPersonLineAts", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     mkdirSync(DATA_DIR, { recursive: true });
   });
@@ -441,7 +442,7 @@ describe("latestPersonLineAts", () => {
 
 describe("messages_thread_at", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     mkdirSync(DATA_DIR, { recursive: true });
   });
@@ -452,7 +453,7 @@ describe("messages_thread_at", () => {
         insertMessage(`thread-${thread}`, msg(`m-${thread}-${n}`, "hello from the bot", { role: "bot", at: n }));
       }
     }
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     const raw = new DatabaseSync(join(DATA_DIR, "messages.db"));
     const planOf = (sql: string) => raw.prepare(`EXPLAIN QUERY PLAN ${sql}`).all()
       .map((row) => String((row as { detail: string }).detail))
@@ -493,7 +494,7 @@ describe("describeMissingFts5", () => {
 
 describe("recall of digest rows", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     mkdirSync(DATA_DIR, { recursive: true });
   });
@@ -511,7 +512,7 @@ describe("recall of digest rows", () => {
 
 describe("notification_log", () => {
   beforeEach(() => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
     mkdirSync(DATA_DIR, { recursive: true });
   });
@@ -536,7 +537,7 @@ describe("notification_log", () => {
   });
 
   it("keeps the one person a notification is for, in a feed made before that was recorded too", () => {
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     for (const suffix of ["", "-wal", "-shm"]) rmSync(join(DATA_DIR, `messages.db${suffix}`), { force: true });
     const old = new DatabaseSync(join(DATA_DIR, "messages.db"));
     old.exec("CREATE TABLE notification_log (id TEXT PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, bot_id TEXT NOT NULL, bot_name TEXT NOT NULL, thread_id TEXT NOT NULL, group_id TEXT, title TEXT NOT NULL, body TEXT NOT NULL, avatar_url TEXT, read INTEGER NOT NULL DEFAULT 0)");

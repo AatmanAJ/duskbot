@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DATA_DIR } from "./config.ts";
 import type { ModelSelection } from "./contracts.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { Store } from "./store.ts";
 import { THREAD_IDLE_MS } from "./thread-cache.ts";
 
@@ -21,7 +22,7 @@ describe("Store message cache", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    closeMessageDb();
+    closeMessageDb(); closeRegistryDbs();
     rmSync(DATA_DIR, { recursive: true, force: true });
   });
 

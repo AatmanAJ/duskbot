@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { beforeEach, expect, it } from "vitest";
 
 import { DATA_DIR } from "./config.ts";
-import { closeRegistryDbs, REGISTRY_DB_NAME } from "./registry-rows.ts";
+import { closeRegistryDbs, readSavedBots, REGISTRY_DB_NAME } from "./registry-rows.ts";
 import { flushDeferredSaves } from "./save-batch.ts";
 import { Store } from "./store.ts";
 
@@ -98,4 +98,22 @@ it("drops rows another writer left that bots.json no longer has", () => {
   expect(kept).toContain("Other");
   const fresh = new Store(selection);
   expect(JSON.parse(readFileSync(join(DATA_DIR, "bots.json"), "utf8")).map((bot: { name: string }) => bot.name)).toEqual(fresh.bots.map((bot) => bot.name));
+});
+
+it("reads the rows a server killed without closing left behind, while bots.json is behind", async () => {
+  // A child process saves, then is killed with its database still open, as stopping a server on Windows does.
+  const script = `
+    process.env.DUSK_DATA_DIR = ${JSON.stringify(DATA_DIR)};
+    const { Store } = await import(${JSON.stringify(new URL("./store.ts", import.meta.url).href)});
+    const store = new Store(() => ({ instanceId: "claude", model: "claude-sonnet-5" }));
+    const bot = store.createBot({ name: "Killed" }, { seedMessages: false });
+    const task = store.createTask(bot.id, "Saved before the kill", false);
+    process.stdout.write(JSON.stringify({ botId: bot.id, threadId: task.threadId }));
+    process.kill(process.pid, "SIGKILL");`;
+  const { spawnSync } = await import("node:child_process");
+  const run = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", script], { encoding: "utf8", env: { ...process.env, DUSK_DATA_DIR: DATA_DIR } });
+  const { botId, threadId } = JSON.parse(run.stdout) as { botId: string; threadId: string };
+  expect(readFileSync(join(DATA_DIR, "bots.json"), "utf8")).not.toContain(threadId);
+  const saved = readSavedBots<{ id: string; tasks: Array<{ threadId: string; title: string }> }>(DATA_DIR);
+  expect(saved.find((bot) => bot.id === botId)?.tasks.find((task) => task.threadId === threadId)?.title).toBe("Saved before the kill");
 });

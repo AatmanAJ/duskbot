@@ -5,6 +5,7 @@ import type { NeedsYouItem } from "../shared/today.ts";
 import { SEES_EVERYTHING, VisibleSet, routineVisible } from "./bot-visibility.ts";
 import { DATA_DIR } from "./config.ts";
 import { closeMessageDb } from "./message-db.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import { Store, type Message } from "./store.ts";
 import { todayReport, type TodaySources, type TodayViewer } from "./today.ts";
 
@@ -14,7 +15,7 @@ const at = (hour: number, minute = 0, second = 0) => new Date(2026, 9, 17, hour,
 const HOUR = 3_600_000;
 
 beforeEach(() => {
-  closeMessageDb();
+  closeMessageDb(); closeRegistryDbs();
   rmSync(DATA_DIR, { recursive: true, force: true });
 });
 
