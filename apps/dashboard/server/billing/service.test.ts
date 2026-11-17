@@ -558,7 +558,7 @@ describe("repeated starts", () => {
     for (let i = 0; i < 17; i++) { time += 2_000; expect(await service.checkout(owner, { kind: "cart", cart: license }, { source: "dash_license" })).toEqual(first); }
     expect(create).toHaveBeenCalledTimes(1);
     expect(store.state.checkouts.map(checkout => checkout.status)).toEqual(["open"]);
-    expect(store.state.ledger.filter(row => row.type === "checkout.started")).toHaveLength(1);
+    expect(store.state.ledger?.filter(row => row.type === "checkout.started")).toHaveLength(1);
     // a desktop plan keeps the cloud it reserved
     const other = { id: "acct_desk", email: "desk@example.test" };
     const desk = await service.checkout(other, { kind: "cart", cart: desktopOnly(), name: "Home" });

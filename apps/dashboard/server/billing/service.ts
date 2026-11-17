@@ -672,7 +672,7 @@ export function createBillingService(options: BillingServiceOptions) {
     // the same plan again within a minute, from any surface (a double click, a click that seemed to do nothing, a
     // retry loop) gets the page just made, never another provider session
     const name = typeof item.name === "string" ? item.name.trim() : item.name, cloudOf = open?.cloudId ? clouds.get(open.cloudId) : null;
-    const reused = input.operator ? null : open && open.url && open.createdAt > now() - CHECKOUT_REUSE_MS && sameCart(open.cart, cart)
+    const reused = input.operator ? null : open && open.url && open.createdAt > now() - CHECKOUT_REUSE_MS && open.cart && sameCart(open.cart, cart)
       && (!open.cloudId || ((name === undefined || cloudOf?.name === name) && (item.color === undefined || cloudOf?.color === item.color))) ? open : null;
     const started = (within: number) => state.checkouts.filter(checkout => checkout.accountId === account.id && checkout.createdAt > now() - within).length;
     if (!reused && (started(3_600_000) >= config.checkoutsPerHour || started(CHECKOUT_BURST.windowMs) >= CHECKOUT_BURST.count)) fail(429, "rate_limited");

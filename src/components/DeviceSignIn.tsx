@@ -237,7 +237,7 @@ export function DeviceSignIn({ instanceId, browserPkce = false, provider = "code
     setBusy(true);
     setError(null);
     try {
-      const next: DeviceSignInStatus = browserPkce ? (await api(`${base}/start`, { method: "POST" })).auth : await startDeviceSignIn(api, base);
+      const next: DeviceSignInStatus = browserPkce || provider !== "codex" ? (await api(`${base}/start`, { method: "POST" })).auth : await startDeviceSignIn(api, base);
       setAuth(next);
       if (next.phase === "succeeded") await refresh();
       else if (next.phase === "waiting") {
