@@ -27,6 +27,11 @@ let jev: Server;
 let openrouter: Server | undefined;
 let home = "";
 let data = "";
+const deciderRows = (): any[] => {
+  const dir = join(data, "decider-log");
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).flatMap((name) => readFileSync(join(dir, name), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)));
+};
 let base = "";
 let output = "";
 let engineDump = "";
@@ -404,10 +409,9 @@ describe("Auto rooms ask the decision model who answers", { timeout: 90_000 }, (
         .toEqual([bots.Maya!.id, bots.Theo!.id, bots.Ravi!.id, "__everyone__"]);
       expect(jevRequests.every((jevRequest) => jevRequest.auth !== `Bearer ${OR_KEY}`)).toBe(true);
 
+      await expect.poll(() => deciderRows().some((row) => row.provider === "openrouter" && row.model === MODEL && row.seam === "roomRouting" && row.ok && row.choice === bots.Theo!.id)).toBe(true);
       const dir = join(data, "decider-log");
       const log = readdirSync(dir).map((name) => readFileSync(join(dir, name), "utf8")).join("");
-      const rows = log.trim().split("\n").map((line) => JSON.parse(line));
-      expect(rows.some((row) => row.provider === "openrouter" && row.model === MODEL && row.seam === "roomRouting" && row.ok && row.choice === bots.Theo!.id)).toBe(true);
       expect(log).not.toContain(OR_KEY);
       expect(log).not.toContain("pricing page");
       expect(output).not.toContain(OR_KEY);
@@ -418,9 +422,7 @@ describe("Auto rooms ask the decision model who answers", { timeout: 90_000 }, (
       const { replies } = await round(room.id, "Who owns the invoice emails?");
       expect(replies.map((reply) => reply.from!.name)).toEqual(["Ravi"]);
       expect(replies[0]!.routedBy).toBeUndefined();
-      const dir = join(data, "decider-log");
-      const rows = readdirSync(dir).map((name) => readFileSync(join(dir, name), "utf8")).join("").trim().split("\n").map((line) => JSON.parse(line));
-      expect(rows.some((row) => row.provider === "openrouter" && !row.ok && row.reason === "http_error" && row.status === 402)).toBe(true);
+      await expect.poll(() => deciderRows().some((row) => row.provider === "openrouter" && !row.ok && row.reason === "http_error" && row.status === 402)).toBe(true);
     });
 
     it("a decisions model is tested through the Decisions API, and saved with its API", async () => {
