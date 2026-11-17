@@ -223,6 +223,7 @@ export function routeOf(url, origin) {
  *   ownMove?(): { phase: string, name: string } | null,
  *   ownAway?(): boolean,
  *   log?(line: string): void,
+ *   beforeOpen?(origin: string): Promise<unknown>,
  * }} deps `ownMove()`: the move to a server of the person's own (own-home-main.mjs), whose freeze is never My Cloud's.
  * `ownAway()`: that move is done, so this computer's own view is the clean workspace.
  * `hosts`: the window's Electron session, for its own resolver and host cache. `readyStore`: when My Cloud
@@ -241,11 +242,16 @@ export function createHomeWindow(deps) {
     splash = () => null, lastInput = () => 0, publish = () => {}, rehomed = () => {}, versionEveryMs = VERSION_EVERY_MS, quietMs = QUIET_MS,
     now = Date.now, timers = DEFAULT_TIMERS, hosts = () => null, readyStore = null, ownMove = () => null, ownAway = () => false, lastSeen = null, log = () => {},
     /** where My Cloud opens (a path of its own, e.g. WELCOMED_ROUTE), or null for its home page */
-    cloudRoute = null } = deps;
+    cloudRoute = null,
+    /** run once My Cloud's session is in the window's cookie and before the window moves there: its page then reads what
+     * this computer carried (cloud-welcome-carry.mjs) on its first load */
+    beforeOpen = async () => {} } = deps;
   let home = { kind: "computer" }, screen = null, status = null, opens = 0, retry = null, tries = 0, loaded = null, newer = false, repairing = null;
   /** My Cloud asked for before the move made it home (`{ open }`), until its page loads or the person goes elsewhere;
    * `naming`: since when, and how often, a brand-new My Cloud's name was not found. */
   let asked = null, naming = null;
+  /** My Cloud's origin while this window shows the page it loaded there as a saved server (before a move made it home). */
+  let openedAsServer = null;
   const clock = createReadyClock({ store: readyStore, now });
   /** The place the window was last sent to (My Cloud, or a team's Cloud), and the one being opened now. */
   let shown = null, opening = null, renewal = null, updatingAt = null;
@@ -449,7 +455,11 @@ export function createHomeWindow(deps) {
     const origin = place.origin;
     // Only a window this opened as home is left as it is: one that shows My Cloud as a saved server (opened from the
     // switcher before the move) is opened again as home, and goes home with it if My Cloud ends.
-    if (shows(origin) && away && !screen && !open) {
+    // My Cloud this window itself loaded a moment ago, before a move made it home: the move ending re-homes the window
+    // without loading the page a second time.
+    const loadedHere = place.kind === "cloud" && openedAsServer === origin;
+    if (shows(origin) && (away || loadedHere) && !screen && !open) {
+      if (loadedHere) { away = home.kind !== "computer"; openedAsServer = null; }
       shown = place;
       if (place.kind === "team" && !renewal) renewLater(place, TEAM_RENEW_MS);
       return;
@@ -502,9 +512,18 @@ export function createHomeWindow(deps) {
           return unreachable(place, token);
         }
       }
+      // My Cloud signs in into the window's cookie first, so the window loads its page once, straight onto its own route
+      // (no sign-in page between), with what this computer carries already there
+      if (place.kind === "cloud") {
+        if (grant && await redeem(origin, grant)) grant = null;
+        if (!wanted(token)) return;
+        if (!grant) await Promise.resolve(beforeOpen(origin)).catch(() => {});
+        if (!wanted(token)) return;
+      }
       // My Cloud opened before the move made it home is a saved server the window shows, as the Server menu opens one.
       const asHome = otherPlace(place) || home.kind !== "computer";
       screen = null; status = null; tries = 0; away = asHome; shown = asHome ? place : null;
+      openedAsServer = !asHome && place.kind === "cloud" ? origin : null;
       // A page that never finishes loading is the offline screen after OPEN_MS, which looks again by itself and has Try again.
       let slow = null;
       const loaded = await Promise.race([Promise.resolve(go(cloudHomeConnectUrl({ origin, grant }, now(), open === "phone" ? "phone" : null, place.kind === "cloud" && open !== "phone" ? cloudRoute : null), origin, place)).then(() => true, () => true),
@@ -572,7 +591,7 @@ export function createHomeWindow(deps) {
       clearRetry(); screen = null; status = null; shown = null;
       const win = window();
       const leaving = away || Boolean(win && !win.isDestroyed() && !originOf(win.webContents.getURL()));
-      away = false;
+      away = false; openedAsServer = null;
       return showLocal(leaving);
     }
     ensureWindow();
@@ -586,7 +605,7 @@ export function createHomeWindow(deps) {
     if (!clean || !(await clean.enter())) { here = false; log("home: this computer's fresh workspace could not start"); return false; }
     if (!wanted(token)) return true;
     clearRetry(); clearRenewal();
-    screen = null; status = null; shown = null; opening = null; asked = null; naming = null; away = false;
+    screen = null; status = null; shown = null; opening = null; asked = null; naming = null; away = false; openedAsServer = null;
     const win = window();
     await showLocal(Boolean(win && !win.isDestroyed() && originOf(win.webContents.getURL()) !== localOrigin()));
     return true;

@@ -3306,6 +3306,8 @@
   "funnel.making.planPage": "Open your plan page",
   "funnel.making.progress": "Cloud setup",
   "funnel.making.open": "Open chat",
+  "funnel.making.retry": "Try again",
+  "funnel.making.here": "Use this computer for now",
   "funnel.making.openFailed": "Couldn't open your cloud. Try again.",
   "helperIntro.improve": "Share anonymous usage statistics and crash reports to help improve dusk bot. Never your messages, files or keys.",
   "onboarding.shell.noBots": "No bots yet",

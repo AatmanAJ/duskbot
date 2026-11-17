@@ -8,6 +8,7 @@ import { openSignIn } from "@/lib/sign-in-sheet";
 
 import { nextShortcutBot, shortcutBots, shownBotIds } from "@/lib/sidebar-shortcut-order";
 import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
+import { LateCloudPlan } from "@/components/onboarding/LateCloudPlan";
 import { IslandIntroHost } from "@/components/onboarding/IslandIntroHost";
 import { CloudTimeZoneSync } from "@/components/CloudTimeZone";
 import { useWarmChatImages } from "@/components/use-warm-chat-images";
@@ -415,6 +416,7 @@ function Application({ children }: { children?: ReactNode }) {
           <Shell viewer={viewer} />
         </ThreadRefsProvider>
         <WelcomeGate viewer={viewer} />
+        <LateCloudPlan viewer={viewer} />
         <BotsElsewhere />
         <IslandIntroHost />
         <CloudTimeZoneSync viewer={viewer} />

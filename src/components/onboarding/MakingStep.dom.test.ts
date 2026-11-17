@@ -1,17 +1,39 @@
 // @vitest-environment happy-dom
 import { createElement } from "react";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { MakingView } from "./MakingStep";
 
-it("once the cloud is ready, Open chat is a live button while the chat opens by itself, never a grey disabled one", () => {
-  const html = renderToStaticMarkup(createElement(MakingView, { making: { kind: "ready" }, opening: true, openFailed: false, onOpen: () => {} }));
+it("a ready cloud opens by itself with no button; only a failed open offers Try again and this computer's own chat", () => {
+  const render = (openFailed: boolean) => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(createElement(MakingView, { making: { kind: "ready" }, opening: false, openFailed, onOpen: () => {}, onHere: () => {} }));
+    return host;
+  };
+  const opening = render(false);
+  expect(opening.textContent).toContain("Your cloud is ready");
+  expect(opening.querySelector("button"), "no Open chat while it opens by itself").toBeNull();
+  const failed = render(true);
+  expect(failed.querySelector("[data-funnel-open-cloud]")?.textContent).toBe("Try again");
+  expect(failed.querySelector("[data-funnel-use-here]")?.textContent).toBe("Use this computer for now");
+  expect(failed.querySelector('[role="alert"]')?.textContent).toMatch(/Couldn't open your cloud/);
+});
+
+it("the checklist ticks one step at a time when the Admin jumps ahead", async () => {
+  vi.useFakeTimers();
+  const { useStepwise, STEP_TICK_MS } = await import("./MakingStep");
+  const seen: number[] = [];
+  function Probe({ target }: { target: number }) { seen.push(useStepwise(target)); return null; }
   const host = document.createElement("div");
-  host.innerHTML = html;
-  const button = host.querySelector<HTMLButtonElement>("[data-funnel-open-cloud]")!;
-  expect(button.textContent).toBe("Open chat");
-  expect(button.disabled).toBe(false);
-  expect(button.getAttribute("aria-busy")).toBe("true");
+  const root = createRoot(host);
+  await act(async () => root.render(createElement(Probe, { target: 0 })));
+  await act(async () => root.render(createElement(Probe, { target: 4 })));
+  for (let i = 0; i < 4; i++) await act(async () => { vi.advanceTimersByTime(STEP_TICK_MS); });
+  expect([...new Set(seen)]).toEqual([0, 1, 2, 3, 4]);
+  root.unmount();
+  vi.useRealTimers();
 });
 
 it("a ready cloud carries its address, and a page that can't be reached isn't one that answers", async () => {

@@ -80,6 +80,7 @@ export function world({ clean = null, journal = done(), marker = null, state = c
     journal: () => w.journal,
     frozen: async () => w.marker,
     ownMove: () => w.ownMove,
+    beforeOpen: async (origin) => { w.calls.push(`before-open ${origin} ${w.url ?? ""}`.trim()); },
     ...deps,
     account: () => account,
     window: () => w.window,
