@@ -42,7 +42,7 @@ import { sameModelSelection } from "../../shared/thread-model";
 import type { BotBodyId, StoredBodyId } from "../../shared/bot-body";
 import { openCreateBot } from "@/lib/create-bot-request";
 import { publishBotPointer } from "@/lib/bot-pointer";
-import { publishDemoChange } from "@/lib/demo-recorder";
+import { publishDemoChange } from "@/lib/demo-events";
 import { StoreRefContext } from "./store-ref-context";
 import type { QuestionRequestCardData } from "../../shared/ask-question";
 import type { ProfileRequestCardData } from "../../shared/profile-request";

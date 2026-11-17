@@ -142,6 +142,7 @@ import { canManage, canReach, hasTeamAuthority, livePeerRoster, livePeerRosterBl
 import {
   containerComputerAction,
   containerComputerFrame,
+  containerCuaCall,
   containerComputerMcp,
   containerComputerStatus,
   containerExec,
@@ -631,7 +632,7 @@ import { createScreenDirect, directPortRange } from "./screen-direct.ts";
 import { createScreenTransportAgentRoutes } from "./routes/screen-transport-agent.ts";
 import { createDirectSockets } from "./routes/direct-sockets.ts";
 import { createBrowserViewerRoutes } from "./routes/browser-viewers.ts";
-import { createDemoRecordingRoutes } from "./routes/demo-recordings.ts"; import { createDemoHost } from "./demo-recorder/host.ts"; import { createDemoRecorder } from "./demo-recorder/recorder.ts"; import { resvgMasker } from "./demo-recorder/mask.ts"; import type { DemoChange } from "../shared/demo-recording.ts";
+import { createDemoRecordingRoutes } from "./routes/demo-recordings.ts"; import { createDemoHost } from "./demo-recorder/host.ts"; import { createDesktopTaps, desktopDemoSeat, desktopFrame } from "./demo-recorder/desktop-seat.ts"; import { createDemoRecorder } from "./demo-recorder/recorder.ts"; import { resvgMasker } from "./demo-recorder/mask.ts"; import type { DemoChange } from "../shared/demo-recording.ts";
 import { localDesktopTarget, localVmViewerStatus } from "./desktop-viewer-targets.ts";
 import { viewerTargetId } from "../shared/desktop-viewer.ts";
 import { createComputerPreviews } from "./computer-previews.ts";
@@ -4858,8 +4859,10 @@ function audienceChanged(): void {
 const upgrades = createUpgrades();
 // the live screen peer to peer (WebRTC) where the network lets it, the relay otherwise; DUSK_SCREEN_DIRECT=off turns it off
 const screenDirect = createScreenDirect({ ports: directPortRange(process.env.DUSK_SCREEN_DIRECT_PORTS), log: (line) => console.log(line) });
+const desktopDemoTaps = createDesktopTaps();
 const desktopViewer = createDesktopViewer({
   upgrades,
+  tap: (target) => desktopDemoTaps.tap(target),
   direct: screenDirect,
   // a Cloud home: input on a screen (relay or direct) is someone using it, an open screen a hint like the app's focus
   presence: { input: () => cloudPower?.noteActivity(), watching: () => cloudPower?.noteFocus() },
@@ -13525,6 +13528,16 @@ const demoHost = createDemoHost<RequestAuth>({
     const browser = audience ? await browserIntegration(bot.id, bot.browserProfile, undefined, audience) : null;
     return browser ? browserLive.demoSeat(browser) : { status: 503, error: "Install the browser first." };
   },
+  computer: async (botId, threadId) => {
+    const bot = store.bot(botId);
+    if (!bot) return { status: 404, error: "no such bot" };
+    if (await computerPreviewSurface(bot, threadId ?? bot.threadId) !== "vm") return { status: 409, error: "A task can be shown on a bot's Local VM for now. This bot's computer is somewhere else." };
+    const target = localVmTargetForStatus(bot.id, threadId ?? undefined);
+    return desktopDemoSeat({
+      call: (tool, args) => containerCuaCall(tool, args, target),
+      frame: async () => desktopFrame((await containerComputerFrame(undefined, undefined, target)).png),
+    }, viewerTargetId(target), desktopDemoTaps);
+  },
   secret: (botId, blank, where) => {
     const host = URL.canParse(where) ? new URL(where).hostname : "";
     const login = host && /pass/i.test(`${blank.name} ${blank.label}`) ? logins.usableFor(host, botId)[0] : undefined;
@@ -13538,7 +13551,10 @@ const demoHost = createDemoHost<RequestAuth>({
   }),
 });
 ROUTES.push(createDemoRecordingRoutes({ host: demoHost, recorder: demoRecorder, botExists: (id) => Boolean(store.bot(id)), changed: demoChanged,
-  surfaces: (botId) => ({ browser: builtInBrowserEnabled(cfg) && store.bot(botId)?.browser !== false, computer: false }) }));
+  surfaces: async (botId) => {
+    const bot = store.bot(botId);
+    return { browser: builtInBrowserEnabled(cfg) && bot?.browser !== false, computer: Boolean(bot) && await computerPreviewSurface(bot!, bot!.threadId).then((surface) => surface === "vm", () => false) };
+  } }));
 const internalToolRoutes = createInternalToolRoutes({ engineLimits: { instances: () => registry.instances(), configs: () => instanceConfigs(cfg), status: (instanceId) => registry.knownSnapshot(instanceId), load: (accounts) => loadPlanUsage({ accounts }), audienceOf: (threadId) => teamHost.audienceOf(threadId), guestDriven: cloudGuestDriven, dataDir: DATA_DIR }, helpers: { decider, extractor }, notifications: { bot: (id) => store.bot(id), team: sharedMembership, broadcast }, xResearch: { credential: () => researchCredential(cfg.treg?.key), botEnabled: (botId) => store.bot(botId)?.xResearch !== false, cloudHome: CLOUD_HOME !== null, researchOff: () => researchAvailability.refused() } }); const waitRoutes = createWaitRoutes({ waits: botWaits, cloudHome: Boolean(CLOUD_HOME), sleeps: Boolean(CLOUD_HOME) && CLOUD_TEAM === null }); ROUTES.push(createXConnectorRoutes({ credential: () => researchCredential(cfg.treg?.key), included: () => xCredential(), unavailable: () => xResearchStatus().unavailable === true }));
 
 // Live calls: the client holds the WebRTC audio; the key never leaves the harness, which creates the session.

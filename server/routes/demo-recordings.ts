@@ -11,7 +11,7 @@ export interface DemoRecordingRouteDeps {
   recorder: DemoRecorder;
   botExists(botId: string): boolean;
   /** Which of a bot's screens a task can be shown on here. */
-  surfaces(botId: string): { browser: boolean; computer: boolean };
+  surfaces(botId: string): Promise<{ browser: boolean; computer: boolean }>;
   changed(change: DemoChange): void;
 }
 
@@ -47,7 +47,7 @@ export function createDemoRecordingRoutes(deps: DemoRecordingRouteDeps): RouteHa
       const botId = bot[1]!;
       if (!deps.botExists(botId)) return json(res, 404, { error: "no such bot" });
       if (!bot[2] && method === "GET") {
-        return json(res, 200, { recordings: recorder.list(botId), recording: recorder.recording(botId), surfaces: deps.surfaces(botId) });
+        return json(res, 200, { recordings: recorder.list(botId), recording: recorder.recording(botId), surfaces: await deps.surfaces(botId) });
       }
       if (method !== "POST") return PASS;
       if (bot[2] === "cancel") {

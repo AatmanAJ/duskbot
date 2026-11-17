@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DemoPlan, DemoRecording, DemoReplayRun } from "../../shared/demo-recording";
-import { publishDemoChange } from "@/lib/demo-recorder";
+import { publishDemoChange } from "@/lib/demo-events";
 import { DemoRecorder } from "./DemoRecorder";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

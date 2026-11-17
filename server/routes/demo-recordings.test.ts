@@ -47,7 +47,7 @@ async function serve(options: { turn?: (text: string) => Promise<string> } = {})
     ...(options.turn ? { turn: (_botId, _threadId, text) => options.turn!(text) } : {}),
     changed: (change) => changes.push(change),
   });
-  const routes = [createDemoRecordingRoutes({ host, recorder, botExists: (id) => id.startsWith("bot-"), surfaces: () => ({ browser: true, computer: false }), changed: (change) => changes.push(change) })];
+  const routes = [createDemoRecordingRoutes({ host, recorder, botExists: (id) => id.startsWith("bot-"), surfaces: async () => ({ browser: true, computer: false }), changed: (change) => changes.push(change) })];
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const auth = { kind: "loopback", scopes: ["admin"] } as unknown as RequestAuth;

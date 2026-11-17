@@ -1063,6 +1063,15 @@ export async function containerComputerFrame(
   }
 }
 
+/** One call of a tool of the Local VM's computer driver, and its answer as the driver prints it. */
+export async function containerCuaCall(tool: string, args: Record<string, unknown>, target: LocalVmTarget = SHARED_LOCAL_VM_TARGET, runner: CommandRunner = sh, platform: NodeJS.Platform = process.platform): Promise<unknown> {
+  const cached = runner === sh ? screenshotStatusCache.get(target.key) : undefined;
+  const status = cached && cached.expiresAt > Date.now() ? cached.status : await containerComputerStatus(runner, platform, target);
+  if (!status.ready || !status.runtime) throw Object.assign(new Error(status.problem ?? "The Local VM is not ready"), { status: 409 });
+  const { stdout } = await runner(status.runtime, cuaExecArgs(["call", tool, JSON.stringify(args), "--socket", CUA_SOCKET], { container: target.containerName }), 30_000);
+  return JSON.parse(stdout) as unknown;
+}
+
 export async function containerComputerScreenshot(
   runner: CommandRunner = sh,
   platform: NodeJS.Platform = process.platform,

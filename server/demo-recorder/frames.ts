@@ -36,6 +36,19 @@ export interface FrameStoreOptions {
   maxBytes?: number;
 }
 
+/** A PNG's or a JPEG's width and height, from its header (PNG 1.2 IHDR; ITU T.81 markers SOF0 to SOF2). */
+export function imageSize(data: Buffer): { width: number; height: number; type: ScreenFrame["type"] } | null {
+  if (data.length > 24 && data.readUInt32BE(0) === 0x89504e47) return { width: data.readUInt32BE(16), height: data.readUInt32BE(20), type: "image/png" };
+  if (data[0] !== 0xff || data[1] !== 0xd8) return null;
+  for (let at = 2; at + 9 < data.length;) {
+    if (data[at] !== 0xff) return null;
+    const marker = data[at + 1]!;
+    if (marker >= 0xc0 && marker <= 0xc2) return { height: data.readUInt16BE(at + 5), width: data.readUInt16BE(at + 7), type: "image/jpeg" };
+    at += 2 + data.readUInt16BE(at + 2);
+  }
+  return null;
+}
+
 export const FRAME_ID = /^f[a-f0-9]{20}$/;
 const MAX_BYTES = 150 * 1024 * 1024;
 const MAX_FRAME_BYTES = 12 * 1024 * 1024;

@@ -3,7 +3,7 @@ import { Mouse } from "../browser/cdp/input.ts";
 import { Keyboard } from "../browser/cdp/keyboard.ts";
 import { createDomProbe, createDomSurface, type PageEvaluate } from "./accessibility/dom.ts";
 import type { AccessibilityProbe, ScreenSource } from "./capture.ts";
-import type { ScreenFrame } from "./frames.ts";
+import { imageSize, type ScreenFrame } from "./frames.ts";
 import type { ReplaySurface } from "./replay.ts";
 
 const WORLD = "dusk-demo";
@@ -14,17 +14,6 @@ interface TargetInfo {
   targetId: string;
   type: string;
   url: string;
-}
-
-/** Width and height from a JPEG's start-of-frame segment (ITU T.81, markers SOF0 to SOF2). */
-export function jpegSize(data: Buffer): { width: number; height: number } | null {
-  for (let at = 2; at + 9 < data.length;) {
-    if (data[at] !== 0xff) return null;
-    const marker = data[at + 1]!;
-    if (marker >= 0xc0 && marker <= 0xc2) return { height: data.readUInt16BE(at + 5), width: data.readUInt16BE(at + 7) };
-    at += 2 + data.readUInt16BE(at + 2);
-  }
-  return null;
 }
 
 /**
@@ -89,7 +78,7 @@ export class DevToolsPage {
     const shot = await this.#send("Page.captureScreenshot", { format: "jpeg", quality: 70 });
     if (typeof shot.data !== "string") return null;
     const data = Buffer.from(shot.data, "base64");
-    const size = jpegSize(data);
+    const size = imageSize(data);
     const shown = metrics.cssVisualViewport?.clientWidth;
     if (!size || !shown) return null;
     return { data, type: "image/jpeg", width: size.width, height: size.height, scale: size.width / shown };

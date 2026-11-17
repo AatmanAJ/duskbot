@@ -1,76 +1,21 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import type { DemoPlan, DemoRecording, DemoReplayRun, DemoSurface } from "../../shared/demo-recording";
-import { api } from "@/state/api";
+import { botDemos, forgetDemoRecording, keepDemoRecording, keepDemoRun, NO_DEMOS, subscribeDemos, updateBotDemos, type BotDemos, type DemoSurfaces } from "@/lib/demo-events";
+import { api } from "@/state/store";
 
-export interface DemoSurfaces {
-  browser: boolean;
-  computer: boolean;
-}
-
-/** What the app knows of the tasks shown to one bot. */
-export interface BotDemos {
-  loaded: boolean;
-  recordings: DemoRecording[];
-  /** The latest replay of each recording, by recording id. */
-  runs: Record<string, DemoReplayRun>;
-  surfaces: DemoSurfaces;
-}
-
-const EMPTY: BotDemos = { loaded: false, recordings: [], runs: {}, surfaces: { browser: false, computer: false } };
-
-// kept out of the app store: a recording changes with every click the person shows, and only its own panel draws it
-const bots = new Map<string, BotDemos>();
-const listeners = new Set<() => void>();
-
-function update(botId: string, change: (demos: BotDemos) => BotDemos): void {
-  bots.set(botId, change(bots.get(botId) ?? EMPTY));
-  for (const listener of listeners) listener();
-}
-
-const newestFirst = (recordings: DemoRecording[]) => [...recordings].sort((a, b) => b.createdAt - a.createdAt);
-const isRecording = (value: unknown): value is DemoRecording => typeof value === "object" && value !== null && typeof (value as DemoRecording).id === "string" && typeof (value as DemoRecording).botId === "string";
-const isRun = (value: unknown): value is DemoReplayRun => typeof value === "object" && value !== null && typeof (value as DemoReplayRun).recordingId === "string" && Array.isArray((value as DemoReplayRun).items);
-
-function keep(recording: DemoRecording): void {
-  update(recording.botId, (demos) => ({ ...demos, recordings: newestFirst([recording, ...demos.recordings.filter((each) => each.id !== recording.id)]) }));
-}
-
-function keepRun(botId: string, run: DemoReplayRun): void {
-  update(botId, (demos) => ({ ...demos, runs: { ...demos.runs, [run.recordingId]: run } }));
-}
-
-function forget(botId: string, id: string): void {
-  update(botId, (demos) => {
-    const { [id]: _gone, ...runs } = demos.runs;
-    return { ...demos, recordings: demos.recordings.filter((each) => each.id !== id), runs };
-  });
-}
-
-/** A `demo` frame from the server. */
-export function publishDemoChange(frame: { botId?: unknown; recording?: unknown; run?: unknown; removed?: unknown }): void {
-  const { botId, recording, run, removed } = frame;
-  if (typeof botId !== "string") return;
-  if (isRecording(recording) && recording.botId === botId) keep(recording);
-  if (isRun(run)) keepRun(botId, run);
-  if (typeof removed === "string") forget(botId, removed);
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
+export type { BotDemos, DemoSurfaces } from "@/lib/demo-events";
 
 /** The tasks shown to a bot, read once when a panel first asks and kept current by the server's frames. */
 export function useBotDemos(botId: string): BotDemos {
-  const demos = useSyncExternalStore(subscribe, () => bots.get(botId) ?? EMPTY, () => EMPTY);
+  const demos = useSyncExternalStore(subscribeDemos, () => botDemos(botId), () => NO_DEMOS);
   useEffect(() => {
     let active = true;
     void api<{ recordings: DemoRecording[]; surfaces: DemoSurfaces }>(`/api/bots/${botId}/demos`).then((answer) => {
       if (!active) return;
-      update(botId, (now) => ({ ...now, loaded: true, recordings: newestFirst(answer.recordings), surfaces: answer.surfaces }));
+      updateBotDemos(botId, (now) => ({ ...now, loaded: true, recordings: [...answer.recordings].sort((a, b) => b.createdAt - a.createdAt), surfaces: answer.surfaces }));
     }).catch(() => {
-      if (active) update(botId, (now) => ({ ...now, loaded: true }));
+      if (active) updateBotDemos(botId, (now) => ({ ...now, loaded: true }));
     });
     return () => { active = false; };
   }, [botId]);
@@ -81,7 +26,7 @@ const json = (method: string, body?: unknown): RequestInit => ({ method, ...(bod
 
 async function recordingFrom(path: string, init: RequestInit): Promise<DemoRecording> {
   const { recording } = await api<{ recording: DemoRecording }>(path, init);
-  keep(recording);
+  keepDemoRecording(recording);
   return recording;
 }
 
@@ -94,11 +39,11 @@ export const demos = {
   saveRoutine: (id: string, name: string, source: string) => recordingFrom(`/api/demos/${id}/routine`, json("POST", { source, ...(name.trim() ? { name: name.trim() } : {}) })),
   async remove(recording: DemoRecording) {
     await api(`/api/demos/${recording.id}`, json("DELETE"));
-    forget(recording.botId, recording.id);
+    forgetDemoRecording(recording.botId, recording.id);
   },
   async replay(recording: DemoRecording, files: Array<{ name: string; content: string }>) {
     const { run } = await api<{ run: DemoReplayRun }>(`/api/demos/${recording.id}/replay`, json("POST", { files }));
-    keepRun(recording.botId, run);
+    keepDemoRun(recording.botId, run);
     return run;
   },
   stopReplay: (id: string) => api(`/api/demos/${id}/replay/stop`, json("POST")),

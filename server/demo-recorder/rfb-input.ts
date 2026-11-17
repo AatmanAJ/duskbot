@@ -55,13 +55,36 @@ function messageSize(bytes: Buffer): number {
   return -1;
 }
 
+const VERSION = /^RFB 003\.00[78]\n$/;
+const VERSION_BYTES = 12;
+const SECURITY_NONE = 1;
+const SECURITY_VNC = 2;
+const VNC_RESPONSE_BYTES = 16;
+
+/**
+ * How many bytes of a viewer's opening handshake come before its first message (RFC 6143 section 7.1, versions 3.7 and
+ * 3.8): its version, the security type it chose, the response to a VNC challenge when it chose that, and its ClientInit.
+ * 0 when the bytes do not begin a handshake, null while more bytes are needed, -1 for a security type this cannot follow.
+ */
+function handshakeSize(bytes: Buffer): number | null {
+  if (bytes.length < 4) return null;
+  if (bytes.toString("latin1", 0, 4) !== "RFB ") return 0;
+  if (bytes.length < VERSION_BYTES + 1) return null;
+  if (!VERSION.test(bytes.toString("latin1", 0, VERSION_BYTES))) return -1;
+  const security = bytes[VERSION_BYTES]!;
+  if (security !== SECURITY_NONE && security !== SECURITY_VNC) return -1;
+  return VERSION_BYTES + 1 + (security === SECURITY_VNC ? VNC_RESPONSE_BYTES : 0) + 1;
+}
+
 /**
  * Reads a person's clicks and keys out of the remote framebuffer protocol their viewer speaks (RFC 6143, client
- * messages 4 and 5). `skip` is how many bytes of the opening handshake come first.
+ * messages 4 and 5). `skip` is how many bytes of the opening handshake come first; left out, a handshake at the start
+ * of the bytes is recognised and passed over.
  */
 export function createRfbDecoder(onInput: (raw: RawInput) => void, options: { skip?: number } = {}): RfbDecoder {
   let pending: Buffer = Buffer.alloc(0);
   let skip = Math.max(0, options.skip ?? 0);
+  let opening = options.skip === undefined;
   let lost = false;
   let mask = 0;
   let at: { x: number; y: number } | null = null;
@@ -106,6 +129,20 @@ export function createRfbDecoder(onInput: (raw: RawInput) => void, options: { sk
         if (!rest.length) return;
       }
       pending = pending.length ? Buffer.concat([pending, rest]) : rest;
+      if (opening) {
+        const size = handshakeSize(pending);
+        if (size === null) return;
+        if (size < 0) {
+          lost = true;
+          pending = Buffer.alloc(0);
+          return;
+        }
+        opening = false;
+        skip = size;
+        const skipped = Math.min(skip, pending.length);
+        skip -= skipped;
+        pending = pending.subarray(skipped);
+      }
       while (pending.length) {
         const size = messageSize(pending);
         if (size < 0 || size > LARGEST_MESSAGE) {
