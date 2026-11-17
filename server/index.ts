@@ -674,10 +674,8 @@ import { connectorRequestItems } from "./connector-request-items.ts";
 import { onThreadSeen, personAsks as personAskAt, sawThread } from "./thread-presence.ts"; import { createWarmSummaryHost, HARNESS_IDLE_FRACTION } from "./host/warm-summary-host.ts";
 
 let recheckRemoteViewers = () => {};
-const PORT = harnessPort();
-const WEBHOOK_PORT = Number(process.env.DUSK_WEBHOOK_PORT || PORT + 1);
-const WEBHOOK_PUBLIC_URL = process.env.DUSK_WEBHOOK_PUBLIC_URL || undefined;
-const STATIC_DIR = process.env.DUSK_STATIC_DIR || null;
+const PORT = harnessPort(), WEBHOOK_PORT = Number(process.env.DUSK_WEBHOOK_PORT || PORT + 1);
+const WEBHOOK_PUBLIC_URL = process.env.DUSK_WEBHOOK_PUBLIC_URL || undefined, STATIC_DIR = process.env.DUSK_STATIC_DIR || null;
 
 ensureDirs();
 // Acquire before any durable identity, sessions, config or Store state is loaded.
@@ -729,8 +727,7 @@ const appLanguage = (): string | undefined => cfg.language ?? CLOUD_TEAM?.langua
 if (CLOUD_HOME) repairMovedWorkspacePaths(DATA_DIR);
 if (CLOUD_PERSONAL) sessions.requireAdmin(CLOUD_PERSONAL_REFUSAL);
 /** Owner-written routines and owner-started runs: the only routine turns that act for the owner. The file keeps its old name. */
-const cloudRoutineAuthors = CLOUD_HOME ? createCloudRoutineAuthors(join(DATA_DIR, "lending-routines.json")) : null;
-const ownerStartedRoutineRuns = new Set<string>();
+const cloudRoutineAuthors = CLOUD_HOME ? createCloudRoutineAuthors(join(DATA_DIR, "lending-routines.json")) : null, ownerStartedRoutineRuns = new Set<string>();
 if (CLOUD_HOME) readMemoryOnlyFromRegularFiles();
 if (CLOUD_HOME) {
   // no engine or tool this server starts inherits the signing secret.
@@ -744,8 +741,7 @@ await startBotBoxAtBoot({ dataDir: DATA_DIR, port: PORT }); // The bot box (serv
 if (CLOUD_HOME && Object.keys(CLOUD_SECRETS).length === 0) {
   console.warn("cloud home: its secrets came in this process's environment, which anything running as the same user can read in /proc; start it with cloud-home-start");
 }
-const threadStarters = new ThreadStarters(join(DATA_DIR, "thread-starters.json"));
-const commandAllowlist = new CommandAllowlistStore(join(DATA_DIR, "command-allowlist.json"));
+const threadStarters = new ThreadStarters(join(DATA_DIR, "thread-starters.json")), commandAllowlist = new CommandAllowlistStore(join(DATA_DIR, "command-allowlist.json"));
 // Every saved login value is scrubbed from whatever a bot or a transcript can read.
 const logins = new LoginStore({ dataDir: DATA_DIR });
 const emailService = createEmailService({ dataDir: DATA_DIR, publicOnly: Boolean(CLOUD_HOME), refusal: CLOUD_TEAM ? "Email isn't on a Team Cloud yet: every bot there would read the same mailbox." : null }); addHeldSecretScrubber((text) => emailService.scrub(text));
@@ -773,8 +769,7 @@ const onePassword = new OnePasswordLogins({
 });
 if (logins.onePasswordToken()) void onePassword.refresh();
 const botLogins = new BotLogins(logins, onePassword);
-const SESSION_COOKIE = sessionCookieName(PORT, ENVIRONMENT_ID);
-const DESKTOP_MANAGED = process.env.DUSK_DESKTOP_PARENT === "1";
+const SESSION_COOKIE = sessionCookieName(PORT, ENVIRONMENT_ID), DESKTOP_MANAGED = process.env.DUSK_DESKTOP_PARENT === "1";
 const LOOPBACK = resolveLoopbackTrust({ desktopManaged: DESKTOP_MANAGED, cloudHome: Boolean(CLOUD_HOME), fromSource: import.meta.url.endsWith(".ts") });
 // The CLI's per-launch secret comes on stdin, never an env var: every engine this server starts inherits its environment.
 let cliOwnerToken: string | undefined;
@@ -823,8 +818,7 @@ const supportsApprovalMode = createApprovalModeSupport(registry);
 registerEnginesBinDir();
 
 // Set only when a turn is admitted, never on queue or steer, so a second person's words cannot re-book the first person's turn.
-const turnTriggers = new Map<string, UsageTrigger>();
-const NOBODY_PROFILE: MemberProfile = { name: "", email: "", aboutMe: "" };
+const turnTriggers = new Map<string, UsageTrigger>(), NOBODY_PROFILE: MemberProfile = { name: "", email: "", aboutMe: "" };
 
 /** What a signed-in person is called on their lines, cards and reactions: their address or device label, and on a Team
  * Cloud the name they chose first. */
