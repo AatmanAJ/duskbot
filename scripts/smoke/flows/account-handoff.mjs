@@ -131,7 +131,7 @@ await runFlow(flow, async () => {
     await until(async () => /your link is ready/i.test(await browser.text()), { timeout: 30_000, what: "the link's page" });
     await web("link-ready");
     await browser.click("sign in");
-    await until(async () => /what should we call you/i.test(await browser.text()), { timeout: 60_000, what: "the website's name step" })
+    await until(async () => /what should we call you|what.s your name/i.test(await browser.text()), { timeout: 60_000, what: "the website's name step" })
       .catch(async (error) => { await web("stuck"); throw new Error(`${error.message} (at ${await browser.url()}: ${(await browser.text()).replace(/\s+/g, " ").slice(0, 200)})`); });
     mark("website name step", "web");
     await web("name");
