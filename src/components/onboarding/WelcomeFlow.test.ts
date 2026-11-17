@@ -358,15 +358,16 @@ describe("on the desktop app", () => {
   });
 
   const cloudBridge = (start: Record<string, unknown>) => {
-    let listener: ((next: unknown) => void) | null = null;
+    const listeners = new Set<(next: unknown) => void>();
     const bridge = {
       now: start as unknown,
       state: vi.fn(async () => bridge.now), refresh: vi.fn(async () => bridge.now), cancel: vi.fn(async () => bridge.now),
-      onState: (cb: (next: unknown) => void) => { listener = cb; return () => {}; },
+      openPage: vi.fn(async () => ({ opened: true })),
+      onState: (cb: (next: unknown) => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; },
       continueInBrowser: vi.fn(async () => ({ outcome: "opened", state: bridge.now })),
       offer: vi.fn(async () => ({ plans: [{ tier: "starter", amount: 1500, trialDays: 7 }, { tier: "pro", amount: 2900, trialDays: 7 }], recommended: "pro" })),
       holdSignIns: vi.fn(async () => ({ outcome: "held" })), connectHome: vi.fn(async () => ({ status: "connected" })),
-      tell: async (next: unknown) => { bridge.now = next; await act(async () => { listener?.(next); }); await settle(); },
+      tell: async (next: unknown) => { bridge.now = next; await act(async () => { for (const listener of [...listeners]) listener(next); }); await settle(); },
     };
     return bridge;
   };
@@ -416,6 +417,51 @@ describe("on the desktop app", () => {
     expect(step()).toBe("ai");
     expect(bridge.continueInBrowser, "no checkout").not.toHaveBeenCalled();
     expect(document.body.querySelector("[data-funnel-back]"), "no way back to the place").toBeNull();
+  });
+
+  /** signed in from the account step to a new account, which the website now takes through its first steps */
+  const viaWebsite = async () => {
+    const bridge = cloudBridge({ status: "signed-out" });
+    let gateState = { required: false, blocked: false, status: "signed-out" };
+    let gateChanged = () => {};
+    desktop({ cloudAccount: bridge, accountGate: { state: async () => gateState, options: async () => ({ providers: ["google"], recovery: true }),
+      onChange: (cb: () => void) => { gateChanged = cb; return () => {}; } } });
+    await show();
+    await press("Get started");
+    expect(step()).toBe("account");
+    // one client behind both: the gate reads connected once the session read (with websiteSetup) is in
+    await bridge.tell({ status: "connected", account: { email: "sam@qa.dusk.test" }, clouds: [], websiteSetup: "open" });
+    gateState = { required: false, blocked: false, status: "connected" };
+    await act(async () => { gateChanged(); });
+    await settle();
+    expect(step(), "waits while the website's first steps are open").toBe("account");
+    expect(text()).toContain("Finish setting up in your browser");
+    await press("Open the browser again");
+    expect(bridge.openPage).toHaveBeenCalledWith("home");
+    return bridge;
+  };
+
+  it("a new account picking this computer on the website goes past where bots live, to the AI", async () => {
+    const bridge = await viaWebsite();
+    await bridge.tell({ status: "connected", account: { email: "sam@qa.dusk.test" }, clouds: [], websiteSetup: "free" });
+    expect(step()).toBe("ai");
+    expect(bridge.continueInBrowser, "no checkout").not.toHaveBeenCalled();
+  });
+
+  it("a new account picking a plan on the website waits on its checkout here, then skips to the AI once paid", async () => {
+    const bridge = await viaWebsite();
+    await bridge.tell({ status: "connected", account: { email: "sam@qa.dusk.test" }, clouds: [], websiteSetup: "cloud" });
+    expect(step()).toBe("checkout");
+    expect(bridge.continueInBrowser, "the website already opened the checkout").not.toHaveBeenCalled();
+    await bridge.tell({ status: "connected", account: { email: "sam@qa.dusk.test" }, websiteSetup: "cloud", clouds: [{ id: "c1", primary: true, runsOn: "cloud", status: "setting_up", origin: "https://c1.dusk.test" }] });
+    expect(step()).toBe("ai");
+  });
+
+  it("a new account that paid on the website before the app looked skips where bots live and the checkout", async () => {
+    const bridge = await viaWebsite();
+    await bridge.tell({ status: "connected", account: { email: "sam@qa.dusk.test" }, websiteSetup: "cloud", clouds: [{ id: "c1", primary: true, runsOn: "cloud", status: "setting_up", origin: "https://c1.dusk.test" }] });
+    expect(step()).toBe("ai");
+    expect(document.body.querySelector("[data-funnel-back]"), "no way back to the purchase").toBeNull();
   });
 
   it("a plan on trial counts, also for a run resumed on the checkout; without a plan the place still shows", async () => {

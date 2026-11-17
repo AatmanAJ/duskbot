@@ -77,3 +77,42 @@ it("waiting on a magic link says plainly where the link went and what opening it
   expect(host.textContent).toContain("We sent a link to ada@example.com. Open it to finish signing in.");
   await act(async () => root.unmount());
 });
+
+it("a new account taking the website's first steps waits here, reads the account again, and opens the browser again on a press", async () => {
+  let current: FunnelAccountState = { signedIn: true, email: "ada@example.com", required: false, browser: false, website: "open" };
+  const listeners = new Set<() => void>();
+  const account: FunnelAccount = {
+    ...fakeAccount(),
+    state: async () => current,
+    refresh: vi.fn(async () => {}),
+    reopenWebsite: vi.fn(async () => {}),
+    onChange: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
+  };
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  await act(async () => root.render(createElement(Host, { account })));
+  expect(host.textContent).toContain("Finish setting up in your browser");
+  expect(host.querySelector("[data-primary]"), "no way on while the website's steps are open").toBeNull();
+  window.dispatchEvent(new Event("focus"));
+  expect(account.refresh).toHaveBeenCalled();
+  await act(async () => host.querySelector<HTMLButtonElement>("[data-funnel-account-website-again]")!.click());
+  expect(account.reopenWebsite).toHaveBeenCalledOnce();
+  current = { ...current, website: "free" };
+  await act(async () => listeners.forEach((listener) => listener()));
+  expect(host.textContent).not.toContain("Finish setting up in your browser");
+  await act(async () => root.unmount());
+});
+
+it("the website's first steps reach the funnel from the cloud account, with a way to read it again and reopen the page", async () => {
+  const cloud = { state: vi.fn(async () => ({ status: "connected", account: { id: "a", email: "ada@example.com" }, websiteSetup: "open" })), refresh: vi.fn(async () => ({})),
+    openPage: vi.fn(async () => ({ opened: true })), begin: vi.fn(), cancel: vi.fn(), onState: vi.fn(() => () => {}), signInStart: vi.fn(), signInVerify: vi.fn() };
+  const gate = { state: vi.fn(async () => ({ status: "connected", required: false, blocked: false })), signInStart: vi.fn(), signInVerify: vi.fn(), signInCancel: vi.fn(), browser: vi.fn(), cancel: vi.fn(), reopen: vi.fn(), onChange: vi.fn(() => () => {}) };
+  for (const bridge of [{ accountGate: gate, cloudAccount: cloud }, { cloudAccount: cloud }]) {
+    const account = funnelAccount(bridge as never)!;
+    expect((await account.state()).website).toBe("open");
+    await account.reopenWebsite!();
+    await account.refresh!();
+  }
+  expect(cloud.openPage).toHaveBeenCalledWith("home");
+  expect(cloud.refresh).toHaveBeenCalledTimes(2);
+});
