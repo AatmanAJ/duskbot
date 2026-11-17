@@ -1402,7 +1402,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
             avatar={
-              <WorkingMascot bot={bot} size={phoneApp() ? 30 : 24} seed={presenceSeed} />
+              <WorkingMascot bot={bot} size={phoneApp() ? 30 : 22} seed={presenceSeed} />
             }
             simple
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}
