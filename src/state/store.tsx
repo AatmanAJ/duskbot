@@ -497,7 +497,7 @@ export interface InstanceInfo {
   aiTest?: import("../../shared/ai-ranking").AiTestState;
   /** Why it didn't answer, in plain words, when it said (signed out, a used-up limit…). */
   aiTestError?: string;
-  models: { default: string; options: Array<{ id: string; label: string; custom?: boolean; loaded?: boolean; provider?: string; variants?: ModelVariantOption[]; orgBlocked?: true }> };
+  models: { default: string; options: Array<{ id: string; label: string; custom?: boolean; loaded?: boolean; provider?: string; variants?: ModelVariantOption[]; effortLevels?: readonly EffortLevel[]; orgBlocked?: true }> };
   capabilities?: {
     computerMcp?: boolean;
     agentsMcp?: boolean;
@@ -507,6 +507,8 @@ export interface InstanceInfo {
     browserMcp?: boolean;
     images?: boolean;
     effortLevels?: readonly EffortLevel[];
+    /** only a model listing its own `effortLevels` takes a level */
+    effortByModel?: boolean;
     modelVariants?: boolean;
     queueing?: boolean;
     localComputerMcp?: boolean;

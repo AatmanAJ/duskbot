@@ -1,6 +1,7 @@
 // xAI API driver over the OpenAI chat-completions contract, with the shared retry policy.
 import type { ProviderDriver } from "../contracts.ts";
 import { createOpenAIChatRuntime } from "./openai-chat.ts";
+import { xaiEffortLevels } from "./api-effort.ts";
 
 const DRIVER_KIND = "grok";
 const DEFAULT_URL = "https://api.x.ai/v1";
@@ -47,6 +48,7 @@ export const GrokDriver: ProviderDriver<GrokConfig> = {
       apiUrl: config.url,
       tools: config.tools,
       models: () => MODELS,
+      effort: { levels: ["low", "medium", "high", "xhigh"], forModel: xaiEffortLevels },
       requestBody: (model, messages, stream) => ({ model, messages, stream }),
       httpErrorLabel: "xAI",
       missingKeyError: `Save an xAI API key in Settings → API keys, or set ${config.apiKeyEnv}.`,

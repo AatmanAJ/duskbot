@@ -1,5 +1,12 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { AppState, InstanceInfo, ModelSelection } from "@/state/store";
+import type { EffortLevel } from "../../shared/wire";
+
+/** The thinking levels `model` takes on `instance`: the engine's own, or the model's where only some of its models think. */
+export function effortLevelsFor(instance: InstanceInfo | undefined, model: string): readonly EffortLevel[] | undefined {
+  if (!instance?.capabilities?.effortByModel) return instance?.capabilities?.effortLevels;
+  return instance.models.options.find((option) => option.id === model)?.effortLevels;
+}
 
 /** ACP variant ids are opaque; their model/session declares the available choices. */
 export function variantChoices(state: Pick<AppState, "instances" | "modelVariantSessions">, selection: ModelSelection, threadId: string | undefined) {
@@ -16,7 +23,7 @@ export function variantChoices(state: Pick<AppState, "instances" | "modelVariant
 export function offersReasoning(state: Pick<AppState, "instances" | "modelVariantSessions">, instance: InstanceInfo, next: ModelSelection, threadId: string | undefined): boolean {
   return instance.capabilities?.modelVariants
     ? Boolean(variantChoices(state, next, threadId))
-    : Boolean(instance.capabilities?.effortLevels?.length);
+    : Boolean(effortLevelsFor(instance, next.model)?.length);
 }
 
 /**

@@ -27,6 +27,7 @@ describe("GrokDriver turns (fake fetch)", () => {
   let script: Array<{ status?: number; sse?: string }> = [];
   let calls = 0;
   let requestedModels: string[] = [];
+  let bodies: Array<Record<string, unknown>> = [];
 
   const create = async () => {
     instance = await GrokDriver.create({
@@ -45,8 +46,10 @@ describe("GrokDriver turns (fake fetch)", () => {
     previousFetch = globalThis.fetch;
     calls = 0;
     requestedModels = [];
+    bodies = [];
     globalThis.fetch = (async (_url, init) => {
-      requestedModels.push((JSON.parse(String(init?.body)) as { model: string }).model);
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      requestedModels.push((bodies.at(-1) as { model: string }).model);
       const step = script.shift();
       calls++;
       if (!step || step.sse !== undefined) return sseResponse(step?.sse ?? SSE_BODY("done from fake grok"));
@@ -94,7 +97,7 @@ describe("GrokDriver turns (fake fetch)", () => {
       .map((line) => JSON.parse(line) as { dir: string; msg: { model?: string } });
     expect(entries.find((entry) => entry.dir === "out")?.msg.model).toBe("grok-4.7");
     expect(requestedModels).toEqual(["grok-4.7"]);
-    expect(instance.models.options).toContainEqual({ id: "grok-4.7", label: "Grok 4.7", contextWindow: 500_000 });
+    expect(instance.models.options).toContainEqual(expect.objectContaining({ id: "grok-4.7", label: "Grok 4.7", contextWindow: 500_000 }));
   });
 
   it("smoke: offers ask_user and returns the person's reply verbatim", async () => {
@@ -200,6 +203,21 @@ describe("GrokDriver turns (fake fetch)", () => {
       stopReason: "interrupted",
     });
   }, 20_000);
+
+  it("sends the bot's thinking level only to a model that takes one, and lists levels on those models alone", async () => {
+    await create();
+    expect(instance.adapter.capabilities).toMatchObject({ effortLevels: ["low", "medium", "high", "xhigh"], effortByModel: true });
+    const levels = Object.fromEntries(instance.models.options.map((option) => [option.id, option.effortLevels]));
+    expect(levels).toEqual({ "grok-4.7": ["low", "medium", "high", "xhigh"], "grok-4": undefined, "grok-4-fast": undefined, "grok-3-mini": ["low", "high"] });
+
+    await instance.adapter.sendTurn({ threadId: "t-effort", text: "hi", model: "grok-4.7", effort: "low" });
+    await recorder.until((e) => e.type === "turn.completed" && e.threadId === "t-effort");
+    await instance.adapter.sendTurn({ threadId: "t-fast", text: "hi", model: "grok-4-fast", effort: "low" });
+    await recorder.until((e) => e.type === "turn.completed" && e.threadId === "t-fast");
+    await instance.adapter.sendTurn({ threadId: "t-default", text: "hi", model: "grok-4.7" });
+    await recorder.until((e) => e.type === "turn.completed" && e.threadId === "t-default");
+    expect(bodies.map((body) => body.reasoning_effort)).toEqual(["low", undefined, undefined]);
+  });
 
   it("declares no interactive channels this engine cannot honor", async () => {
     script = [];

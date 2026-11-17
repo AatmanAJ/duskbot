@@ -535,6 +535,7 @@ export class ProviderRegistry {
             browserMcp: inst.adapter.capabilities.browserMcp === true,
             images: inst.adapter.capabilities.images === true,
             effortLevels: inst.adapter.capabilities.effortLevels,
+            effortByModel: inst.adapter.capabilities.effortByModel === true,
             modelVariants: inst.adapter.capabilities.modelVariants === true,
             queueing: inst.adapter.capabilities.queueing === true,
             localComputerMcp: inst.adapter.capabilities.localComputerMcp === true,

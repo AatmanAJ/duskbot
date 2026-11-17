@@ -4,6 +4,7 @@
 import type { Completion, OpenAIChatMessage } from "./openai-chat.ts";
 import type { ChatContentPart } from "./chat-images.ts";
 import type { ChatToolDefinition } from "./chat-mcp-tools.ts";
+import type { EffortLevel } from "../contracts.ts";
 import { ChatProtocolError, ChatToolCalls, object } from "./openai-chat-protocol.ts";
 import { noReplyError } from "./openai-chat-final.ts";
 
@@ -115,6 +116,7 @@ export function responsesRequest(input: {
   tools: readonly ChatToolDefinition[];
   replay: (message: OpenAIChatMessage) => ResponseItem[] | undefined;
   summaries: boolean;
+  effort?: EffortLevel;
 }): Record<string, unknown> {
   const instructions = input.messages.filter((message) => message.role === "system" && typeof message.content === "string")
     .map((message) => message.content).join("\n\n");
@@ -124,7 +126,7 @@ export function responsesRequest(input: {
     store: false,
     ...(instructions ? { instructions } : {}),
     input: input.messages.flatMap((message) => inputItems(message, input.replay(message))),
-    ...(input.summaries ? { reasoning: { summary: "auto" } } : {}),
+    ...(input.summaries || input.effort ? { reasoning: { ...(input.effort ? { effort: input.effort } : {}), ...(input.summaries ? { summary: "auto" } : {}) } } : {}),
     tools: input.tools.map(({ function: { name, description, parameters } }) => ({ type: "function", name, description, parameters, strict: false })),
   };
 }

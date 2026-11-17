@@ -27,7 +27,7 @@ import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
 import { appendNative } from "./native.ts";
 import { classifyError, computeBackoff, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
-import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts";
+import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
 import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
 import { toolSchemaProfileFor } from "../tool-schema-profile.ts";
@@ -130,6 +130,8 @@ interface RuntimeOptions<Config> {
   /** A model on this machine or network: read a tool call it wrote as text, stop it repeating itself, and send it back
    * to fix a failed call instead of ending the turn on it. */
   localModel?: boolean;
+  /** Which models take a reasoning effort, and at which levels; any other model is sent none. */
+  effort?: ModelEffort;
 }
 
 const usageFrom = (usage: CompletionJson["usage"]): Usage | null =>
@@ -273,7 +275,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     signal?: AbortSignal,
     onDelta?: (delta: string, kind: "assistant_text" | "reasoning_text") => void,
     tools: ChatToolDefinition[] = [],
-    onUsage?: TextGenerationOptions["onUsage"],
+    onUsage?: TextGenerationOptions["onUsage"], requestedEffort?: SendTurnInput["effort"],
   ): Promise<Completion> => {
     const timeoutController = new AbortController();
     let idleTimer: NodeJS.Timeout | null = null;
@@ -292,12 +294,12 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         ? AbortSignal.any([signal, timeoutController.signal])
         : timeoutController.signal;
 
-      const served = options.servedModel ? await options.servedModel(model) : model;
+      const served = options.servedModel ? await options.servedModel(model) : model, effort = chosenEffort(options.effort, model, requestedEffort);
       const payload = JSON.stringify(route === "responses"
-        ? responsesRequest({ model: served, messages, tools, replay: (message) => responseOutputs.get(message), summaries: routes.summaries(model) })
+        ? responsesRequest({ model: served, messages, tools, replay: (message) => responseOutputs.get(message), summaries: routes.summaries(model), ...(effort ? { effort } : {}) })
         : {
           ...options.requestBody(served, messages, stream),
-          ...(route === "chat-reasoning-off" ? { reasoning_effort: "none" } : {}),
+          ...(route === "chat-reasoning-off" ? { reasoning_effort: "none" } : effort ? { reasoning_effort: effort } : {}),
           ...(tools.length ? { tools } : {}),
         });
       const send = options.timeoutMs > FETCH_LIMIT_MS ? fetchPastLimit : fetch;
@@ -472,7 +474,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     signal?: AbortSignal,
     onDelta?: (delta: string, kind: "assistant_text" | "reasoning_text") => void,
     tools: ChatToolDefinition[] = [],
-    onUsage?: TextGenerationOptions["onUsage"],
+    onUsage?: TextGenerationOptions["onUsage"], effort?: SendTurnInput["effort"],
   ): Promise<Completion> => {
     for (;;) {
       let replied = false;
@@ -480,7 +482,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         return await completeOn(routes.routeFor(model, tools.length > 0), messages, model, stream, signal, onDelta && ((text, kind) => {
           replied = true;
           onDelta(text, kind);
-        }), tools, onUsage);
+        }), tools, onUsage, effort);
       } catch (error) {
         if (!(error instanceof ModelRouteRefused) || replied || signal?.aborted) throw error;
         if (!routes.advance(model, error.refusal)) throw new ChatProtocolError(noRouteLeft(error.message));
@@ -657,7 +659,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 if (streamKind === "assistant_text" && text.trim()) answerStreamed = true;
                 const shown = holdback && streamKind === "assistant_text" ? holdback.feed(text) : text;
                 if (shown) delta(shown, streamKind);
-              }, tools.definitions);
+              }, tools.definitions, undefined, turn.effort);
               // A reply cut off at the token limit may be a call cut short; running half of one is worse than saying so.
               const written = holdback && !completion.toolCalls.length && completion.finishReason !== "length" ? textToolCalls(completion.text, tools.definitions) : null;
               unreadable = written?.kind === "unreadable" && !askedAgain;
@@ -937,9 +939,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     driverKind: options.driverKind,
     displayName: input.displayName,
     enabled: input.enabled,
-    get models() {
-      return options.models();
-    },
+    get models() { return options.effort ? withModelEfforts(options.models(), options.effort) : options.models(); },
     ...(options.refreshModels ? { refreshModels: options.refreshModels } : {}),
     snapshot: async () => {
       if (!options.apiKey) return { state: "unavailable", reason: options.unavailableReason };
@@ -955,7 +955,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         dataMcp: options.tools !== false,
         emailMcp: options.tools !== false,
         deviceMcp: options.tools !== false,
-        queueing: true,
+        queueing: true, ...(options.effort ? { effortLevels: options.effort.levels, effortByModel: true } : {}),
         ...(options.tools !== false ? { askTool: { kind: "native" as const, name: ASK_USER_TOOL } } : {}),
         guestTurns: "confined" },
       sendTurn,
