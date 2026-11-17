@@ -12,7 +12,9 @@ import { useCart } from "../data/quote";
 import { longDate, shortDate, usd } from "../lib/format";
 import { navigate, useLocation } from "../lib/router";
 import { planIntent } from "../lib/site";
-import { Badge, cx, PageHeader, Skeleton } from "../ui/kit";
+import { Badge, Card, cx, PageHeader } from "../ui/kit";
+import { Mascot } from "../ui/Mascot";
+import { PlansSkeleton } from "../ui/plans-skeleton";
 import meadow from "../art/p-meadow.webp";
 import peaks from "../art/p-peaks.webp";
 import sky from "../art/p-sky.webp";
@@ -104,6 +106,23 @@ function OpenApp() {
         <p className="mt-0.5 text-13 text-ink-3">your cloud is getting ready. dusk bot picks it up by itself, so open it now or later.</p>
       </div>
       <a href={APP_CLOUD_LINK} data-open-app-link="" className="press hover-btn inline-flex h-10 shrink-0 items-center rounded-full bg-btn px-4.5 text-14 font-medium text-ink">open dusk bot</a>
+    </div>
+  );
+}
+
+/** back from paying, having come from the app: one clear end to the browser's part, with the way back */
+function AllSet({ onStay }: { onStay(): void }) {
+  return (
+    <div role="status" data-all-set="" className="mx-auto max-w-[460px] pt-10 max-sm:pt-4">
+      <div className="flex justify-center"><span className="peek inline-flex"><Mascot color="blue" size={64} state="happy" track /></span></div>
+      <Card className="enter relative -mt-4">
+        <h1 className="text-20 font-medium text-ink">you're all set</h1>
+        <p className="mt-1.5 text-14 leading-[1.55] text-ink-3">go back to dusk bot. your cloud is getting ready, and dusk bot picks it up by itself.</p>
+        <div className="mt-6 flex flex-wrap items-center gap-4">
+          <a href={APP_CLOUD_LINK} data-open-app-link="" className="press hover-btn inline-flex h-10 items-center rounded-full bg-ink px-4.5 text-14 font-medium text-bg">open dusk bot</a>
+          <button type="button" onClick={onStay} className={quiet}>see your plan</button>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -293,6 +312,7 @@ export function BillingPage() {
   const [back, setBack] = useState<Back | null>(() => backFromCheckout(query));
   // back from the payment page at all (paid or not), and whether the app sent the person here
   const [returned] = useState(() => query.has("subscription_id") || query.has("payment_id"));
+  const [stayed, setStayed] = useState(false);
   useEffect(() => {
     markFromApp(query);
     // buying from the app: the cloud is what comes next, not a workspace to connect
@@ -329,15 +349,9 @@ export function BillingPage() {
   }, [catalog, billing, want]);
 
   if (error && (!catalog || !billing)) return <div><PageHeader title="plans and billing" /><LoadError error={error} retry={refresh} /></div>;
-  if (!catalog || billing === null) {
-    return (
-      <div aria-busy="true" aria-label="loading">
-        <Skeleton className="h-8 w-40" />
-        <Skeleton className="mt-3 h-5 w-96 max-w-full" />
-        <div className="mt-8 grid gap-3 lg:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-[520px] !rounded-card" />)}</div>
-      </div>
-    );
-  }
+  // paid from the app: the browser's part is over, so it says so and points back, before the plans have even loaded
+  if (fromApp() && returned && back === null && !stayed) return <AllSet onStay={() => setStayed(true)} />;
+  if (!catalog || billing === null) return <PlansSkeleton />;
 
   const ownDesk = owned?.desktop ?? "none";
   const current = (id: Tier) => (id === "free" ? ownDesk === "none" : bundleOf(catalog, id)?.desktop === ownDesk);
