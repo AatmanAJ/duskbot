@@ -1,0 +1,62 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="stage" content="1600x900">
+<link rel="stylesheet" href="kit.css">
+<style>
+  .title { position: absolute; left: 56px; top: 40px; }
+  .side { position: absolute; left: 930px; top: 52px; width: 614px; }
+  .wash { top: 214px; height: 660px; padding: 30px 30px 30px; }
+  .top { display: flex; align-items: center; gap: 14px; }
+  .wash .sub { font-size: 21px; margin-top: 6px; }
+  .wall { margin-top: 18px; height: 494px; padding: 16px 18px; overflow: hidden; font: 500 5.55px/1.36 var(--mono); color: #9a9aa2; word-break: break-all; }
+  .wall .on { background: var(--t-lemon); color: var(--ink); box-shadow: -6px 0 0 #fff, -10px 0 0 var(--pink); }
+  .wall .k { color: #5e5e68; }
+  pre { margin-top: 18px; padding: 22px 24px; font: 500 19.5px/1.5 var(--mono); color: var(--ink); white-space: pre; }
+  pre .k { color: #6b6b75; } pre .s { color: #1d5fd0; } pre .n { color: #b8327a; }
+  pre .on { background: var(--t-lemon); }
+  .big { position: absolute; left: 906px; top: 712px; display: flex; align-items: flex-end; gap: 18px; }
+  .big .cut { font-size: 150px; }
+  .big p { font-size: 32px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1; padding-bottom: 14px; }
+</style></head>
+<body><div class="stage" id="stage"></div>
+<script src="clock.js"></script><script src="vendor/crowd.js"></script><script src="kit.js"></script><script src="data/streams.js"></script>
+<script>
+const stage = K.$("#stage");
+const S = window.STREAMS, whole = S.samples.wholeMatch, patch = S.samples.taskPatch;
+const thread = patch.frame.threadId;
+K.el("div", { class: "h2 title", html: 'one thread<br>went busy.' }, stage);
+K.el("div", { class: "sub side", text: "everything each protocol sent for that one change, byte for byte: the same moment in the same recording." }, stage);
+
+const left = K.el("div", { class: "wash", style: "left:56px;width:830px" }, stage);
+const lt = K.el("div", { class: "top" }, left);
+K.el("div", { class: "h3", text: "protocol 1" }, lt);
+K.el("span", { class: "live grey", html: `<i></i>${whole.bytes.toLocaleString("en-US")} bytes` }, lt);
+K.el("div", { class: "sub", text: `the whole bot and all ${whole.frame.bot.tasks.length} of its threads, to change one.` }, left);
+const wall = K.el("div", { class: "fig wall" }, left);
+const { tasks, ...own } = whole.frame.bot;
+const esc = (s) => s.replace(/\/var\/folders\/[^"]*?\/T\//g, "/tmp/").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const line = (o) => esc(JSON.stringify(o)).replace(/"([a-zA-Z]+)":/g, '<span class="k">"$1"</span>:');
+wall.innerHTML = `{"kind":"bot","bot":${line(own).slice(0, -1)},"tasks":[<br>` +
+  tasks.map((t) => t.threadId === thread ? `<span class="on">${esc(JSON.stringify(t))}</span>` : line(t)).join(",<br>") + `]},"seq":${whole.frame.seq}}`;
+
+const right = K.el("div", { class: "wash", style: "left:906px;width:638px;height:470px" }, stage);
+const rt = K.el("div", { class: "top" }, right);
+K.el("div", { class: "h3", text: "protocol 2" }, rt);
+K.el("span", { class: "live", html: `<i></i>${patch.bytes} bytes` }, rt);
+K.el("div", { class: "sub", text: "one task.patch: the fields that changed." }, right);
+const f = patch.frame;
+K.el("pre", { class: "fig", html: [
+  `{ <span class="k">"kind"</span>: <span class="s">"task.patch"</span>,`,
+  `  <span class="k">"botId"</span>: <span class="s">"${f.botId}"</span>,`,
+  `  <span class="k">"threadId"</span>: <span class="s">"${f.threadId}"</span>,`,
+  `  <span class="k">"base"</span>: <span class="n">${f.base}</span>, <span class="k">"rev"</span>: <span class="n">${f.rev}</span>,`,
+  `  <span class="k">"fields"</span>: {`,
+  ...Object.entries(f.fields).map(([k, v], i, a) => `    <span class="on"><span class="k">"${k}"</span>: <span class="${typeof v === "string" ? "s" : "n"}">${JSON.stringify(v)}</span></span>${i < a.length - 1 ? "," : ""}`),
+  `  },`,
+  `  <span class="k">"seq"</span>: <span class="n">${f.seq}</span> }`,
+].join("\n") }, right);
+const big = K.el("div", { class: "big" }, stage);
+K.el("div", { class: "cut", text: `${Math.round(whole.bytes / patch.bytes)}×` }, big);
+K.el("p", { html: "smaller, for<br>the same change" }, big);
+K.bot(stage, "pip", { x: 1470, y: 216, size: 64, seed: 3, stand: true, state: "working" });
+window.SCENE = { duration: 1, still: 1, update() {} };
+</script></body></html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="stage" content="1600x900">
+<link rel="stylesheet" href="kit.css">
+<style>
+  .title { position: absolute; left: 56px; top: 40px; }
+  .title .h2 { font-size: 66px; }
+  .title .sub { margin-top: 14px; font-size: 21px; width: 430px; }
+  .wash { left: 56px; top: 420px; width: 430px; padding: 26px 24px 24px; }
+  .wash .top { display: flex; align-items: center; justify-content: space-between; }
+  .wash .lab { font: 500 16px/1.3 var(--mono); color: var(--ink-3); }
+  .counts { margin-top: 16px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .counts .row { min-height: 56px; font-size: 20px; }
+  .counts .row .px { font-size: 34px; line-height: 1; }
+  .counts .row.zero { background: var(--t-lime); box-shadow: none; }
+  .win { left: 520px; top: 132px; width: 1024px; }
+  .win-body { height: 640px; }
+  .foot { position: absolute; left: 520px; top: 836px; font: 500 15px/1.3 var(--mono); color: var(--ink-3); }
+</style></head>
+<body><div class="stage" id="stage"></div>
+<script src="clock.js"></script><script src="vendor/crowd.js"></script><script src="kit.js"></script><script src="data/app.js"></script>
+<script>
+const stage = K.$("#stage"), A = window.APP;
+const title = K.el("div", { class: "title" }, stage);
+K.el("div", { class: "h2", html: 'eight threads,<br>only <span class="hl lime">patches.</span>' }, title);
+K.el("div", { class: "sub", text: "the real app, built from this branch, on an isolated fake-engine fixture. the counts are the frames this window received." }, title);
+
+const wash = K.el("div", { class: "wash" }, stage);
+const head = K.el("div", { class: "top" }, wash);
+K.el("div", { class: "h3", text: "this window got" }, head);
+const clock = K.el("span", { class: "live", html: "<i></i>0.0 s" }, head);
+const counts = K.el("div", { class: "fig counts" }, wash);
+const KINDS = [["task.patch", "a thread's changed fields"], ["bot.patch", "a bot's changed fields"], ["message.patch", "streamed reply text"], ["bot", "whole bots"]];
+const rows = KINDS.map(([kind, what]) => {
+  const r = K.el("div", { class: `row${kind === "bot" ? " zero" : ""}` }, counts);
+  K.el("span", { html: `<b class="mono" style="font-size:18px">${kind}</b><small>${what}</small>` }, r);
+  const n = K.el("span", { class: "px", text: "0" }, r);
+  return { kind, n };
+});
+K.el("div", { class: "lab", style: "margin-top:16px", html: `snapshot reads (<span style="color:var(--ink)">GET /api/bots</span>): ${A.snapshotReads.length}, at boot` }, wash);
+K.bot(stage, "loaf", { x: 430, y: 432, size: 62, seed: 4, stand: true, state: "working" });
+
+const win = K.el("div", { class: "win" }, stage);
+const bar = K.el("div", { class: "win-bar" }, win);
+K.el("div", { class: "lights", html: "<i></i><i></i><i></i>" }, bar);
+K.el("div", { class: "win-title", text: "dusk bot" }, bar);
+K.el("div", { class: "win-note", text: "protocol=2" }, bar);
+const body = K.el("div", { class: "win-body" }, win);
+const shot = K.el("img", { src: `../recording/app/${A.shots[0].file}` }, body);
+const preload = A.shots.map((s) => K.el("img", { src: `../recording/app/${s.file}`, style: "display:none" }, stage));
+K.el("div", { class: "foot", text: "6 bots × 30 threads · each bot's open thread plus a second on nova and quill · /api/events?protocol=2" }, stage);
+const fade = K.el("div", { class: "fade", style: "opacity:0" }, stage);
+
+const T0 = 1.0, END = A.shots.at(-1).t;
+let shown = -1;
+window.SCENE = {
+  duration: 12.4, still: 11.0,
+  update(t) {
+    K.reveal(title, t, 0.05, { dy: 34 });
+    K.reveal(wash, t, 0.3, { dy: 34 });
+    K.reveal(win, t, 0.4, { dy: 46, dur: 0.7 });
+    const d = Math.min(END, t - T0);
+    let i = 0;
+    while (i + 1 < A.shots.length && A.shots[i + 1].t <= d) i++;
+    if (i !== shown) { shot.src = `../recording/app/${A.shots[i].file}`; shown = i; }
+    clock.innerHTML = `<i></i>${Math.max(0, d).toFixed(1)} s`;
+    for (const r of rows) r.n.textContent = String(A.tap.filter((f) => f.t >= 0 && f.t <= d && f.kind === r.kind).length);
+    fade.style.opacity = K.span(t, 11.9, 12.4);
+  },
+};
+</script></body></html>

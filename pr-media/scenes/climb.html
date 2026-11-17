@@ -1,0 +1,104 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="stage" content="1600x900">
+<link rel="stylesheet" href="kit.css">
+<style>
+  .title { position: absolute; left: 56px; top: 40px; }
+  .side { position: absolute; left: 930px; top: 52px; width: 614px; }
+  .poster { left: 56px; right: 56px; top: 250px; bottom: 26px; }
+  .poster > img.bg { object-position: center top; }
+  .ledge { position: absolute; bottom: 0; z-index: 2; }
+  .ledge i { position: absolute; left: 0; right: 0; }
+  .ledge .lip { top: 0; height: 12px; background: var(--lime); }
+  .ledge .face { top: 12px; bottom: 0; background: repeating-linear-gradient(180deg, #34d16a 0 18px, #2cc35f 18px 36px); }
+  .ghost { position: absolute; z-index: 1; height: 12px; background: repeating-linear-gradient(90deg, var(--pink) 0 8px, transparent 8px 14px); }
+  .tagn { position: absolute; z-index: 3; transform: translateX(-50%); font: 600 19px/1 var(--pixel); color: #fff; padding: 5px 8px 6px; border-radius: 8px; background: rgba(19, 19, 22, 0.55); white-space: nowrap; }
+  .tagn.undone { background: var(--pink); } .tagn.relock { background: var(--yellow); color: var(--ink); }
+  .sea { position: absolute; left: 0; right: 0; bottom: 0; height: 54px; z-index: 3; background: var(--blue); }
+  .bar0 { position: absolute; left: 22px; bottom: 4px; z-index: 4; height: 40px; }
+  .cap { position: absolute; z-index: 6; right: 24px; top: 22px; width: 520px; padding: 20px 24px 22px; background: #fff; border-radius: var(--r-l); box-shadow: var(--lift); }
+  .cap .lab { font: 500 15px/1.3 var(--mono); color: var(--ink-3); display: flex; justify-content: space-between; }
+  .cap .h3 { margin-top: 8px; font-size: 26px; }
+  .cap .px { font-size: 52px; line-height: 0.9; margin-top: 10px; }
+  .cap .why { margin-top: 8px; font-size: 17px; line-height: 1.35; color: var(--text); }
+</style></head>
+<body><div class="stage" id="stage"></div>
+<script src="clock.js"></script><script src="vendor/crowd.js"></script><script src="kit.js"></script>
+<script>
+const stage = K.$("#stage");
+K.el("div", { class: "h2 title", html: 'climbed down<br>to <span class="hl lime">zero.</span>' }, stage);
+K.el("div", { class: "sub side", html: 'the hill climb\'s own score log, <span class="m code">.hill-climb/perf3-registry</span>. lower is better, the bar is 0. pink steps were undone; yellow ones changed the check.' }, stage);
+const EV = [
+  { k: "base", tag: "0", score: 8.227, h: "baseline", why: "bytes, harness cpu, lookups and save time, scored against their bars." },
+  { k: "kept", tag: "1", score: 4.895, h: "indexed registry", why: "bot and thread owners by map, checked against the live list." },
+  { k: "kept", tag: "2", score: 3.183, h: "protocol 2 patches", why: "bot.patch and task.patch from a per-bot diff, whole frames for old clients." },
+  { k: "kept", tag: "3", score: 1.235, h: "per-row thread saves", why: "registry.db rows; bots.json follows within 2 s." },
+  { k: "undone", tag: "4", score: 2.778, h: "runtime store reuse", why: "no gain the check could see: cpu swung 2× with machine load. undone." },
+  { k: "relock", tag: "R", score: 0.2775, h: "relock: calibrated cpu", why: "cpu scaled by a fixed reference workload, 3 rounds. re-measured, not a gain." },
+  { k: "kept", tag: "5", score: 0.223, h: "runtime store reuse, again", why: "the same idea, now measurable on the fixed check." },
+  { k: "undone", tag: "6", score: 0.309, h: "coordinator cache", why: "a small real cpu gain, inside the ±8% noise. undone." },
+  { k: "relock", tag: "R", score: 0, h: "relock: cpu no-regression", why: "a profile showed −15% cpu was below this design's floor. re-measured, not a gain." },
+  { k: "kept", tag: "7", score: 0, h: "review fixes", why: "three persistence bugs from an independent review, fixed." },
+  { k: "kept", tag: "8", score: 0, h: "full-suite fixes", why: "tests that read saved bots read them as the next start would." },
+  { k: "kept", tag: "9", score: 0, h: "windows test cleanup", why: "registry.db released where tests release messages.db." },
+];
+const poster = K.el("div", { class: "poster" }, stage);
+K.el("img", { class: "bg", src: K.ART + "p-sky.webp" }, poster);
+K.cloud(poster, { kind: "pink", x: 380, y: 30, w: 150 });
+const W = 1488, H = 624, TOPY = 180, BOT = 112, SLOT = W / EV.length;
+const yOf = (s) => BOT + Math.sqrt(s / 8.227) * (H - TOPY - BOT);
+let level = EV[0].score;
+const items = EV.map((e, i) => {
+  if (e.k !== "undone") level = e.score;
+  const x = i * SLOT;
+  const led = K.el("div", { class: "ledge", style: `left:${x}px;width:${SLOT + 1}px;height:${yOf(level)}px` }, poster);
+  K.el("i", { class: "lip" }, led); K.el("i", { class: "face" }, led);
+  let ghost = null;
+  if (e.k === "undone") ghost = K.el("div", { class: "ghost", style: `left:${x + 10}px;width:${SLOT - 20}px;bottom:${yOf(e.score)}px` }, poster);
+  const tag = K.el("div", { class: `tagn ${e.k}`, text: e.tag, style: `left:${x + SLOT / 2}px;bottom:${Math.max(yOf(level), e.k === "undone" ? yOf(e.score) : 0) - 46}px` }, poster);
+  return { e, led, ghost, tag, x: x + SLOT / 2, stand: e.k === "undone" ? yOf(e.score) : yOf(level) };
+});
+K.el("div", { class: "sea" }, poster);
+K.el("div", { class: "chip bar0", html: '<span class="live blue"><i></i>the bar</span>score 0' }, poster);
+const cap = K.el("div", { class: "cap" }, poster);
+const capLab = K.el("div", { class: "lab" }, cap);
+const capH = K.el("div", { class: "h3" }, cap);
+const capN = K.el("div", { class: "px" }, cap);
+const capWhy = K.el("div", { class: "why" }, cap);
+const pip = K.bot(poster, "pip", { size: 54, seed: 3, stand: true });
+pip.svg.style.zIndex = 5;
+const fade = K.el("div", { class: "fade", style: "opacity:0" }, stage);
+const T0 = 1.0, STEP = 0.8;
+let shown = -1;
+
+window.SCENE = {
+  duration: 12.8, still: 11.6,
+  update(t) {
+    K.reveal(poster, t, 0.1, { dy: 30, dur: 0.7 });
+    const f = Math.max(0, (t - T0) / STEP);
+    const i = Math.min(EV.length - 1, Math.floor(f));
+    items.forEach((it, j) => {
+      const on = j <= i ? 1 : 0.0;
+      it.led.style.opacity = on; it.tag.style.opacity = on;
+      if (it.ghost) it.ghost.style.opacity = on;
+    });
+    const hop = K.clamp((f - i) / 0.45);
+    const prev = items[Math.max(0, i - 1)], cur = items[i];
+    const p = i === 0 ? 1 : K.out(hop);
+    const x = K.lerp(prev.x, cur.x, p);
+    const ground = PH - K.lerp(prev.stand, cur.stand, p) - Math.sin(Math.PI * (i === 0 ? 1 : hop)) * 46;
+    pip.place(x, ground + 4);
+    if (i !== shown) {
+      shown = i;
+      const e = EV[i];
+      capLab.innerHTML = `<span>${e.k === "base" ? "baseline" : e.k === "relock" ? "relock" : `step ${e.tag}`}</span><span>${e.k === "undone" ? "undone" : e.k === "relock" ? "check changed" : e.k === "kept" ? "kept" : ""}</span>`;
+      capH.textContent = e.h;
+      capN.textContent = e.score.toFixed(3);
+      capN.style.color = e.k === "undone" ? K.COL.pink : "";
+      capWhy.textContent = e.why;
+      if (i > 0) pip.react(e.k === "undone" ? "dizzy" : "boing");
+    }
+    fade.style.opacity = K.span(t, 12.3, 12.8);
+  },
+};
+const PH = H;
+</script></body></html>

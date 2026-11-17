@@ -1,0 +1,42 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="stage" content="1600x900">
+<link rel="stylesheet" href="kit.css">
+<style>
+  .title { position: absolute; left: 56px; top: 40px; }
+  .side { position: absolute; left: 930px; top: 52px; width: 614px; }
+  .wash { width: 734px; height: 300px; padding: 30px 32px; }
+  .wash .top { display: flex; align-items: center; justify-content: space-between; }
+  .wash .lab { font: 500 16px/1.3 var(--mono); color: var(--ink-3); }
+  .wash .big { margin-top: 10px; display: flex; align-items: flex-end; gap: 20px; }
+  .wash .cut { font-size: 140px; }
+  .wash .big .px.flat { font-size: 140px; line-height: 0.9; color: #b9b9bf; }
+  .wash .big p { font-size: 25px; font-weight: 500; letter-spacing: -0.025em; line-height: 1.15; padding-bottom: 10px; }
+  .ba { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .ba .m { font: 500 17px/1 var(--mono); background: #fff; }
+  .ba .m s { color: var(--ink-3); }
+</style></head>
+<body><div class="stage" id="stage"></div>
+<script src="clock.js"></script><script src="vendor/crowd.js"></script><script src="kit.js"></script>
+<script>
+const stage = K.$("#stage");
+K.el("div", { class: "h2 title", html: 'before and after,<br><span class="hl lime">same machine.</span>' }, stage);
+K.el("div", { class: "sub side", text: "main at dbfefd93d against this branch, median of 3 runs. harness cpu didn't move, and nothing here claims it did." }, stage);
+const CARDS = [
+  { n: "7.7×", label: "fewer bytes on<br>the live stream", note: "8 threads streaming, 3 rounds", ba: [["4.00 MB", "0.52 MB"], ["800 KB/s", "104 KB/s"]] },
+  { n: "21×", label: "faster bot and<br>thread lookups", note: "30 bots × 100 threads, 20 rooms", ba: [["4.41 µs", "0.21 µs"], "botByThread alone 51×"] },
+  { n: "22.7×", label: "faster saves of<br>a thread change", note: "a thread rename, median and p90", ba: [["6.19 ms", "0.27 ms"], ["p90 10.3 ms", "p90 3.0 ms"]] },
+  { n: "1×", flat: true, label: "harness cpu:<br>no real change", note: "8 threads streaming, calibrated", ba: [["1,360 ms", "1,334 ms"], "within ±8% noise"] },
+];
+CARDS.forEach((c, i) => {
+  const w = K.el("div", { class: "wash", style: `left:${56 + (i % 2) * 754}px;top:${246 + Math.floor(i / 2) * 320}px` }, stage);
+  const head = K.el("div", { class: "top" }, w);
+  K.el("span", { class: "lab", text: c.note }, head);
+  const big = K.el("div", { class: "big" }, w);
+  K.el("div", { class: c.flat ? "px flat" : "cut", text: c.n }, big);
+  K.el("p", { html: c.label }, big);
+  const ba = K.el("div", { class: "ba" }, w);
+  c.ba.forEach((x) => K.el("span", { class: "m", html: Array.isArray(x) ? `<s>${x[0]}</s> → ${x[1]}` : x }, ba));
+});
+K.bot(stage, "hoot", { x: 1480, y: 252, size: 58, seed: 6, stand: true });
+window.SCENE = { duration: 1, still: 1, update() {} };
+</script></body></html>

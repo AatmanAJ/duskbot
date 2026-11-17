@@ -1,0 +1,56 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="stage" content="1600x900">
+<link rel="stylesheet" href="kit.css">
+<style>
+  .title { position: absolute; left: 56px; top: 40px; }
+  .side { position: absolute; left: 930px; top: 52px; width: 614px; }
+  .wash { left: 56px; top: 228px; width: 500px; height: 646px; padding: 26px 24px; }
+  .wash .sub { font-size: 20px; margin-top: 4px; }
+  .list { margin-top: 16px; padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+  .list .row { min-height: 54px; font-size: 20px; }
+  .list .who { position: relative; width: 34px; height: 34px; flex: none; }
+  .list .mono { font-size: 16px; color: var(--ink-3); }
+  .zero { margin-top: 22px; display: flex; align-items: flex-end; gap: 18px; }
+  .zero .cut { font-size: 150px; }
+  .zero p { font-size: 25px; font-weight: 500; letter-spacing: -0.025em; line-height: 1.15; padding-bottom: 12px; }
+  .win { left: 580px; top: 228px; width: 964px; }
+  .win-body { height: 602px; }
+  .chip { z-index: 5; box-shadow: var(--lift), 0 0 0 1.5px var(--line); }
+</style></head>
+<body><div class="stage" id="stage"></div>
+<script src="clock.js"></script><script src="vendor/crowd.js"></script><script src="kit.js"></script><script src="data/app.js"></script>
+<script>
+const stage = K.$("#stage"), A = window.APP;
+K.el("div", { class: "h2 title", html: 'six replies landed.<br><span class="hl lime">zero whole bots.</span>' }, stage);
+K.el("div", { class: "sub side", text: "every row in the sidebar moved by patches: a status, a preview, an unread dot. the only whole read was the snapshot at boot." }, stage);
+
+const wash = K.el("div", { class: "wash" }, stage);
+K.el("div", { class: "h3", text: "what each row cost" }, wash);
+K.el("div", { class: "sub", text: "task.patch and bot.patch frames, while filming" }, wash);
+const list = K.el("div", { class: "fig list" }, wash);
+const BOTS = [["nova", "Nova"], ["quill", "Quill"], ["rivet", "Rivet"], ["tally", "Tally"], ["echo", "Echo"], ["juno", "Juno"]];
+const BODY = { nova: "pip", quill: "kit", rivet: "wisp", tally: "loaf", echo: "goo", juno: "bruin" };
+for (const [id, name] of BOTS) {
+  const frames = A.tap.filter((f) => f.t >= 0 && /^(task|bot)\.patch$/.test(f.kind) && f.who?.[0] === `media-${id}`);
+  const bytes = frames.reduce((s, f) => s + f.bytes, 0);
+  const r = K.el("div", { class: "row" }, list);
+  K.bot(K.el("span", { class: "who" }, r), BODY[id], { size: 34, seed: 2 });
+  K.el("span", { html: `<b>${name}</b> <span class="mono">${frames.length} patches</span>` }, r);
+  K.el("span", { class: "mono", style: "color:var(--ink)", text: `${bytes.toLocaleString("en-US")} B` }, r);
+}
+const zero = K.el("div", { class: "zero" }, wash);
+K.el("div", { class: "cut", text: String(A.tap.filter((f) => f.t >= 0 && f.kind === "bot").length) }, zero);
+K.el("p", { html: "whole bots sent<br>to this window" }, zero);
+
+const win = K.el("div", { class: "win" }, stage);
+const bar = K.el("div", { class: "win-bar" }, win);
+K.el("div", { class: "lights", html: "<i></i><i></i><i></i>" }, bar);
+K.el("div", { class: "win-title", text: "dusk bot" }, bar);
+K.el("div", { class: "win-note", text: "protocol=2" }, bar);
+K.el("div", { class: "win-body", html: '<img src="../data/app-after@2x.png">' }, win);
+K.el("div", { class: "chip", style: "left:786px;top:640px", html: '<span class="live"><i></i>task.patch · bot.patch</span>status, preview, unread dot' }, stage);
+K.el("div", { class: "chip", style: "left:1080px;top:786px", html: `<span class="live blue"><i></i>GET /api/bots</span>${A.snapshotReads.length} read, at boot` }, stage);
+K.pointer(stage, { label: "you", colour: K.COL.pink }).move(1000, 560);
+K.bot(stage, "pip", { x: 1490, y: 232, size: 62, seed: 3, stand: true, state: "working" });
+window.SCENE = { duration: 1, still: 1, update() {} };
+</script></body></html>

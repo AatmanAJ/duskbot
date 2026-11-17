@@ -1,0 +1,53 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="stage" content="1600x900">
+<link rel="stylesheet" href="kit.css">
+<style>
+  .title { position: absolute; left: 56px; top: 40px; }
+  .side { position: absolute; left: 930px; top: 52px; width: 614px; }
+  .col { position: absolute; top: 278px; width: 352px; }
+  .pic { position: relative; height: 270px; border-radius: var(--r-l); overflow: hidden; background: var(--sky); }
+  .pic img.bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+  .pic .status { position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #fff; border-radius: 16px; }
+  .pic .status img { width: 34px; height: 34px; image-rendering: pixelated; }
+  .pic .status b { display: block; font-size: 18px; font-weight: 550; line-height: 1.2; }
+  .pic .status small { display: block; font-size: 15px; color: var(--ink-3); line-height: 1.2; }
+  .pic .status .live { margin-left: auto; font-size: 13px; padding: 3px 9px; }
+  .col .h3 { margin-top: 22px; font-size: 26px; }
+  .col p { margin-top: 8px; font-size: 20px; line-height: 1.45; color: var(--text); letter-spacing: -0.01em; }
+  .col .frames { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .foot { position: absolute; left: 56px; bottom: 34px; font: 500 15px/1.3 var(--mono); color: var(--ink-3); }
+</style></head>
+<body><div class="stage" id="stage"></div>
+<script src="clock.js"></script><script src="vendor/crowd.js"></script><script src="kit.js"></script>
+<script>
+const stage = K.$("#stage");
+K.el("div", { class: "h2 title", html: 'old clients<br><span class="hl">don\'t notice.</span>' }, stage);
+K.el("div", { class: "sub side", html: 'a client asks for patches with <span class="m code">protocol=2</span>. anything that doesn\'t ask gets the whole frames it always got, plus a <span class="m code">rev</span> it ignores.' }, stage);
+const COLS = [
+  { art: "p-meadow.webp", icon: "s-computer.webp", name: "desktop, phone", note: "src/lib/live-events.ts", pill: ["patches", ""], h: "the apps",
+    p: "ask for protocol 2. the phone gets it through the companion, which passes the query and frames along.", frames: ["task.patch", "bot.patch"] },
+  { art: "p-sky.webp", icon: "s-server.webp", name: "cli, scripts", note: "talk server, old builds", pill: ["whole", "grey"], h: "older clients",
+    p: "never ask, so nothing changes for them. a locked end-to-end test checks it against a real server.", frames: ["bot"] },
+  { art: "p-peaks.webp", icon: "kit/p-briefcase.webp", name: "team cloud", note: "per-person streams", pill: ["whole", "grey"], h: "shared workspaces",
+    p: "keep whole frames, narrowed for each viewer exactly as before. patches only go where the whole view would.", frames: ["bot"] },
+  { art: "strip-sky.webp", icon: "s-signpost.webp", name: "old server", note: "with a new app", pill: ["whole", "amber"], h: "mixed versions",
+    p: "an older server ignores the parameter and sends protocol 1, which the new app still reads.", frames: ["bot"] },
+];
+const cols = COLS.map((c, i) => {
+  const col = K.el("div", { class: "col", style: `left:${56 + i * 376}px` }, stage);
+  const pic = K.el("div", { class: "pic" }, col);
+  K.el("img", { class: "bg", src: K.ART + c.art, style: "object-position:center 60%" }, pic);
+  const st = K.el("div", { class: "status" }, pic);
+  K.el("img", { src: K.ART + c.icon }, st);
+  K.el("span", { html: `<b>${c.name}</b><small>${c.note}</small>` }, st);
+  K.el("span", { class: `live ${c.pill[1]}`, html: `<i></i>${c.pill[0]}` }, st);
+  K.el("div", { class: "h3", text: c.h }, col);
+  K.el("p", { text: c.p }, col);
+  const fr = K.el("div", { class: "frames" }, col);
+  c.frames.forEach((f) => K.el("span", { class: "m code", text: f }, fr));
+  return col;
+});
+K.bot(stage, "kit", { x: 300, y: 286, size: 58, seed: 5, stand: true });
+K.el("div", { class: "foot", text: "server/live-wire-compat.e2e.test.ts · locked for the whole climb" }, stage);
+window.SCENE = { duration: 1, still: 1, update() {} };
+</script></body></html>

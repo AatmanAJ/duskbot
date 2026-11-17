@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="stage" content="1600x900">
+<link rel="stylesheet" href="kit.css">
+<style>
+  .poster { left: 40px; right: 40px; top: 30px; bottom: 30px; }
+  .card { left: 130px; right: 130px; top: 70px; padding: 44px 52px 40px; z-index: 3; }
+  .card .h2 { font-size: 62px; }
+  .card .sub { margin-top: 10px; font-size: 22px; }
+  .items { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px 56px; }
+  .item { display: flex; gap: 18px; align-items: flex-start; }
+  .item img { width: 44px; height: 44px; image-rendering: pixelated; flex: none; margin-top: 2px; }
+  .item b { display: block; font-size: 21px; font-weight: 550; letter-spacing: -0.015em; }
+  .item p { font-size: 18px; line-height: 1.4; color: var(--text); letter-spacing: -0.005em; }
+  .item p .m { height: 28px; font-size: 16px; padding: 0 7px; border-radius: 7px; vertical-align: 1px; }
+</style></head>
+<body><div class="stage" id="stage"></div>
+<script src="clock.js"></script><script src="vendor/crowd.js"></script><script src="kit.js"></script>
+<script>
+const stage = K.$("#stage");
+const poster = K.el("div", { class: "poster" }, stage);
+K.el("img", { class: "bg", src: K.ART + "wide-sails.webp" }, poster);
+K.cloud(poster, { kind: "pink", x: 40, y: 40, w: 170 });
+K.cloud(poster, { kind: "lemon", x: 1330, y: 120, w: 120 });
+const card = K.el("div", { class: "card" }, stage);
+K.el("div", { class: "h2", html: 'the rows are a cache. <span class="hl blue">bots.json</span> still wins.' }, card);
+K.el("div", { class: "sub", html: 'threads save as rows in <span class="m code">registry.db</span>. bots.json follows within 2 s, and one the rows didn\'t write always wins.' }, card);
+const items = K.el("div", { class: "items" }, card);
+const ITEMS = [
+  ["s-parcel.webp", "first start of this build", "the rows don't match, so bots.json is read and every row written in one transaction. nothing renamed or deleted."],
+  ["s-notebook.webp", "normal running", 'rows on every change. bots.json within 2 s, at shutdown and before backups.'],
+  ["s-plug.webp", "a crash", "at most 2 s of per-turn bookkeeping (resume cursors, usage, unread marks) is missing from bots.json. the rows have it."],
+  ["s-clock.webp", "rollback to an older build", "it reads bots.json, which is current after a clean shutdown."],
+  ["s-signpost.webp", "forward again", "the older build's bots.json doesn't match the rows' hash, so it's imported. nothing it did is lost."],
+  ["s-books.webp", "restore, move, hand edit", "the same: that bots.json wins and becomes the rows."],
+  ["kit/p-shield.webp", "the rows fail", "corrupt, locked, deleted or full: rows switch off for the run and every save writes bots.json whole, as before."],
+  ["kit/p-folder.webp", "removing the feature", 'delete <span class="m code">registry.db*</span>. the next start imports bots.json.'],
+];
+ITEMS.forEach(([icon, b, p]) => {
+  const it = K.el("div", { class: "item" }, items);
+  K.el("img", { src: K.ART + icon }, it);
+  K.el("div", { html: `<b>${b}</b><p>${p}</p>` }, it);
+});
+const W = 1520;
+["pip", "kit", "goo", "puff", "mochi"].forEach((n, i) => K.bot(poster, n, { x: 140 + i * 300 + (i % 2) * 60, y: 812 - (i % 2) * 20, size: 46, seed: 20 + i, stand: true }));
+window.SCENE = { duration: 1, still: 1, update() {} };
+</script></body></html>

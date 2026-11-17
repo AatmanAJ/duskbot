@@ -1,0 +1,102 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="stage" content="1600x900">
+<link rel="stylesheet" href="kit.css">
+<style>
+  .title { position: absolute; left: 56px; top: 40px; }
+  .side { position: absolute; left: 930px; top: 52px; width: 614px; }
+  .speed { margin-top: 18px; display: inline-flex; }
+  .wash { top: 246px; width: 734px; height: 628px; padding: 30px 30px 28px; }
+  .top { display: flex; align-items: center; gap: 14px; }
+  .wash .sub { font-size: 21px; margin-top: 6px; }
+  .fig.box { margin-top: 20px; height: 380px; padding: 16px 18px; position: relative; overflow: hidden; }
+  .file { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px 10px; }
+  .bot { display: flex; flex-direction: column; gap: 1px; }
+  .bot i { display: block; height: 2px; border-radius: 1px; background: #e4e4e1; }
+  .bot i.done { background: var(--pink); }
+  .bot i.hit { background: var(--ink); height: 3px; }
+  .steps { position: absolute; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 8px; }
+  .steps span { font: 500 15px/1 var(--mono); padding: 8px 11px; border-radius: 9px; background: var(--wash); color: var(--ink-3); }
+  .steps span.on { background: var(--ink); color: #fff; }
+  .steps span.ok { background: #ffe3ee; color: #c2185b; }
+  .tbl { display: flex; flex-direction: column; gap: 7px; }
+  .tbl .row { min-height: 46px; font: 500 16px/1 var(--mono); color: var(--ink-3); gap: 18px; }
+  .tbl .row.h { box-shadow: none; min-height: 28px; font-size: 14px; }
+  .tbl .row.on { background: var(--t-lemon); color: var(--ink); box-shadow: none; }
+  .tbl .row > span:nth-child(1) { width: 120px; } .tbl .row > span:nth-child(2) { width: 150px; }
+  .tbl .row > :last-child { margin-left: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .meter { margin-top: 22px; display: flex; align-items: flex-end; justify-content: space-between; }
+  .meter .lab { font: 500 17px/1.3 var(--mono); color: var(--ink-3); }
+  .meter .px { font-size: 60px; line-height: 0.9; }
+</style></head>
+<body><div class="stage" id="stage"></div>
+<script src="clock.js"></script><script src="vendor/crowd.js"></script><script src="kit.js"></script>
+<script>
+const stage = K.$("#stage");
+K.el("div", { class: "h2 title", html: 'rename one<br><span class="hl purple">thread.</span>' }, stage);
+const side = K.el("div", { class: "side" }, stage);
+K.el("div", { class: "sub", text: "median save time for one thread rename on the bench: 30 bots × 100 threads." }, side);
+K.el("span", { class: "live grey speed", html: "<i></i>time slowed a thousand times" }, side);
+const MS_BEFORE = 6.19, MS_AFTER = 0.27;
+
+function card(x, name, pill, pillClass, sub, what) {
+  const c = K.el("div", { class: "wash", style: `left:${x}px` }, stage);
+  const head = K.el("div", { class: "top" }, c);
+  K.el("div", { class: "h3", text: name }, head);
+  K.el("span", { class: `live ${pillClass}`, html: `<i></i>${pill}` }, head);
+  K.el("div", { class: "sub", text: sub }, c);
+  const box = K.el("div", { class: "fig box" }, c);
+  const meter = K.el("div", { class: "meter" }, c);
+  const l = K.el("div", {}, meter);
+  K.el("div", { class: "lab", text: "one save" }, l);
+  const num = K.el("div", { class: "px", text: "0.00 ms" }, l);
+  K.el("div", { class: "lab", style: "text-align:right", html: what }, meter);
+  return { c, box, num };
+}
+const A = card(56, "before", "bots.json", "grey", "the whole file is written again, then synced and swapped in.", "written<br>30 bots · 3,000 threads");
+const B = card(810, "after", "registry.db", "", "one row changes. bots.json follows within 2 s.", "written<br>1 row");
+
+const file = K.el("div", { class: "file" }, A.box);
+const lines = [];
+const r = K.rng(4);
+for (let b = 0; b < 30; b++) {
+  const col = K.el("div", { class: "bot" }, file);
+  for (let t = 0; t < 100 / 4; t++) lines.push(K.el("i", { style: `width:${55 + r() * 45}%` }, col));
+}
+const HIT = 17 * 25 + 10;
+const steps = K.el("div", { class: "steps" }, A.box);
+const STEPS = [["write bots.json.tmp", 0, 0.78], ["fsync", 0.78, 0.94], ["rename", 0.94, 1]].map(([label, a, b]) => ({ el: K.el("span", { text: label }, steps), a, b }));
+
+const tbl = K.el("div", { class: "tbl" }, B.box);
+const hdr = K.el("div", { class: "row h" }, tbl);
+["bot", "thread", "row"].forEach((h) => K.el("span", { text: h }, hdr));
+const ROWS = [["media-quill", "media-quill-t16", '{"title":"Invoice cleanup 16",…}'], ["media-quill", "media-quill-t17", '{"title":"Bug triage 17",…}'],
+  ["media-quill", "media-quill-t18", '{"title":"Data import 18",…}'], ["media-quill", "media-quill-t19", '{"title":"Release notes 19",…}'], ["media-quill", "media-quill-t20", '{"title":"Weekly report 20",…}']];
+const rows = ROWS.map((cells) => { const row = K.el("div", { class: "row" }, tbl); const s = cells.map((c) => K.el("span", { text: c }, row)); return { row, s }; });
+const NEW = '{"title":"Q4 launch plan",…}';
+const ptr = K.pointer(stage, { label: "you", colour: K.COL.purple });
+const renamed = K.el("div", { class: "chip line", html: 'Bug triage 17 <span class="mono">→</span> Q4 launch plan', style: "left:540px;top:180px;opacity:0;z-index:6" }, stage);
+const fade = K.el("div", { class: "fade", style: "opacity:0" }, stage);
+const GO = 1.8;
+
+window.SCENE = {
+  duration: 10.2, still: 8.4,
+  update(t) {
+    K.reveal(A.c, t, 0.15, { dy: 34 }); K.reveal(B.c, t, 0.3, { dy: 34 });
+    K.pop(renamed, t, 1.2, { from: 0.8 });
+    ptr.move(K.lerp(720, 760, K.out(K.span(t, 0.8, 1.4))), K.lerp(150, 206, K.out(K.span(t, 0.8, 1.4))));
+    ptr.el.style.opacity = K.clamp(K.span(t, 0.8, 1)) * (1 - K.span(t, 9.2, 9.6));
+    const ms = Math.max(0, t - GO);
+    const a = Math.min(MS_BEFORE, ms), p = a / MS_BEFORE;
+    const written = Math.floor(K.clamp(p / 0.78) * lines.length);
+    lines.forEach((l, i) => { l.className = i === HIT && t > GO ? "hit" : i < written ? "done" : ""; });
+    STEPS.forEach((s) => { s.el.className = p >= s.b && p > 0 ? "ok" : p >= s.a && p > 0 ? "on" : ""; });
+    A.num.textContent = `${a.toFixed(2)} ms`;
+    const b = Math.min(MS_AFTER, ms);
+    B.num.textContent = `${b.toFixed(2)} ms`;
+    const done = b >= MS_AFTER;
+    rows[1].row.classList.toggle("on", t > GO);
+    rows[1].s[2].textContent = done ? NEW : ROWS[1][2];
+    fade.style.opacity = K.span(t, 9.7, 10.2);
+  },
+};
+</script></body></html>

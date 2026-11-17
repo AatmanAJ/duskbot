@@ -1,0 +1,90 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="stage" content="1600x900">
+<link rel="stylesheet" href="kit.css">
+<style>
+  .title { position: absolute; left: 56px; top: 40px; }
+  .side { position: absolute; left: 930px; top: 52px; width: 614px; }
+  .speed { margin-top: 18px; display: inline-flex; }
+  .wash { top: 246px; width: 734px; height: 628px; padding: 30px 30px 28px; }
+  .top { display: flex; align-items: center; gap: 14px; }
+  .wash .sub { font-size: 21px; margin-top: 6px; }
+  .feed { margin-top: 20px; height: 352px; padding: 12px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; }
+  .feed .row { flex: none; min-height: 58px; font-size: 20px; }
+  .feed .row .who { position: relative; width: 38px; height: 38px; flex: none; }
+  .feed .row .mono { font-size: 17px; color: var(--ink-3); }
+  .feed .row .bytes { font: 500 19px/1 var(--mono); color: var(--ink); }
+  .meter { margin-top: 22px; display: flex; align-items: flex-end; justify-content: space-between; }
+  .meter .lab { font: 500 17px/1.3 var(--mono); color: var(--ink-3); }
+  .meter .px { font-size: 60px; line-height: 0.9; }
+  .track { margin-top: 12px; height: 16px; border-radius: 8px; background: #e7e7e3; overflow: hidden; }
+  .track i { display: block; height: 100%; border-radius: 8px; }
+  .verdict { position: absolute; left: 930px; top: 172px; z-index: 5; transform-origin: 0 50%; }
+</style></head>
+<body><div class="stage" id="stage"></div>
+<script src="clock.js"></script><script src="vendor/crowd.js"></script><script src="kit.js"></script><script src="data/streams.js"></script>
+<script>
+const stage = K.$("#stage");
+const S = window.STREAMS;
+K.el("div", { class: "h2 title", html: 'the same burst,<br><span class="hl">78× lighter.</span>' }, stage);
+const side = K.el("div", { class: "side" }, stage);
+K.el("div", { class: "sub", text: "eight threads stream at once. both streams were recorded together from one isolated fixture, then replayed here at their real timing." }, side);
+const speed = K.el("span", { class: "live grey speed", html: "<i></i>replay 0.5×" }, side);
+const ROWS = [["nova", "pip"], ["quill", "kit"], ["rivet", "wisp"], ["tally", "loaf"], ["echo", "goo"], ["juno", "bruin"], ["nova", "pip"], ["quill", "kit"]];
+const BOTKINDS = new Set([0, 1, 2]);
+const FULL = S.totals.p1bot;
+function side_(x, frames, { name, pill, pillClass, sub, colour }) {
+  const w = K.el("div", { class: "wash", style: `left:${x}px` }, stage);
+  const top = K.el("div", { class: "top" }, w);
+  K.el("div", { class: "h3", text: name }, top);
+  K.el("span", { class: `live ${pillClass}`, html: `<i></i>${pill}` }, top);
+  K.el("div", { class: "sub", text: sub }, w);
+  const feed = K.el("div", { class: "fig feed" }, w);
+  const meter = K.el("div", { class: "meter" }, w);
+  const left = K.el("div", {}, meter);
+  K.el("div", { class: "lab", text: "bot updates sent" }, left);
+  const num = K.el("div", { class: "px", text: "0 B" }, left);
+  const right = K.el("div", { class: "lab", style: "text-align:right" }, meter);
+  const track = K.el("div", { class: "track" }, w);
+  const fill = K.el("i", { style: `background:${colour};width:0` }, track);
+  const bot = frames.filter((f) => BOTKINDS.has(f[1]) && f[3] >= 0);
+  return { feed, num, right, fill, frames, bot, rows: [], shown: 0 };
+}
+const A = side_(56, S.protocol1, { name: "protocol 1", pill: "older clients", pillClass: "grey", sub: "a bot that changes goes out whole, with all 40 of its threads.", colour: K.COL.pink });
+const B = side_(810, S.protocol2, { name: "protocol 2", pill: "the apps", pillClass: "", sub: "only what changed goes out, against the revision it came from.", colour: K.COL.green });
+function addRow(sd, f) {
+  const [t, k, bytes, row] = f;
+  const [name, body] = ROWS[row];
+  const kind = S.kinds[k];
+  const r = K.el("div", { class: "row" }, sd.feed);
+  const who = K.el("span", { class: "who" }, r);
+  K.bot(who, body, { size: 38, seed: row + 1 });
+  K.el("span", { html: `<b>${name}</b> <span class="mono">${kind === "bot" ? "whole bot · 40 threads" : kind}</span>` }, r);
+  K.el("span", { class: "bytes", text: `${bytes.toLocaleString("en-US")} B` }, r);
+  sd.rows.push(r);
+  while (sd.rows.length > 7) sd.rows.shift().remove();
+}
+const verdict = K.el("div", { class: "chip line verdict", html: `<b style="font-weight:600">78.4× less bot traffic</b><span class="mono">bot updates ${K.fmtBytes(S.totals.p1bot)} → ${K.fmtBytes(S.totals.p2bot)}</span>`, style: "opacity:0" }, stage);
+const fade = K.el("div", { class: "fade", style: "opacity:0" }, stage);
+const T0 = 0.9, SLOW = 2.4;
+const dataAt = (t) => { const tau = t - T0; return tau < 0 ? -1 : tau < SLOW ? tau * 0.5 : SLOW * 0.5 + (tau - SLOW); };
+let lastD = -1;
+
+window.SCENE = {
+  duration: 12.2, still: 9.8,
+  update(t) {
+    const d = dataAt(t);
+    speed.innerHTML = `<i></i>replay ${t - T0 < SLOW ? "0.5" : "1"}× · ${Math.max(0, d).toFixed(2)} s`;
+    for (const sd of [A, B]) {
+      while (sd.shown < sd.bot.length && sd.bot[sd.shown][0] <= d) addRow(sd, sd.bot[sd.shown++]);
+      let bytes = 0, all = 0;
+      for (const f of sd.frames) if (f[0] <= d) { all += f[2]; if (BOTKINDS.has(f[1])) bytes += f[2]; }
+      sd.num.textContent = K.fmtBytes(bytes);
+      sd.right.innerHTML = `whole stream<br>${K.fmtBytes(all)}`;
+      sd.fill.style.width = `${Math.max(bytes ? 0.6 : 0, (100 * bytes) / FULL)}%`;
+    }
+    K.pop(verdict, t, 9.4, { from: 0.85 });
+    speed.style.opacity = 1 - K.span(t, 9.3, 9.45);
+    fade.style.opacity = K.span(t, 11.7, 12.2);
+  },
+};
+</script></body></html>
