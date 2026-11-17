@@ -80,7 +80,7 @@ if (params.get("card") === "cloud-mac") {
     getCapabilities: async () => capabilities,
     cloudAccount: { state: async () => account, onState: () => () => undefined, offer: async () => GALLERY_OFFER, sheet: async () => undefined,
       connectHome: async () => undefined, openDashboard: async () => undefined },
-    cloudSendPage: { keepHere: async () => ({ shown: false, moved: false }), setKeepHere: async () => ({ shown: false, moved: false }) },
+    cloudSendPage: { keepHere: async () => ({ shown: false, moved: false }), setKeepHere: async () => ({ shown: false, moved: false }), notice: async () => null, onNotice: () => () => undefined },
     macPermissions: { status: async () => ({ supported: true, ...grants }), request: async (kind: "screen" | "accessibility") => { grants[kind] = "granted"; return { supported: true, ...grants }; } },
   } });
 }

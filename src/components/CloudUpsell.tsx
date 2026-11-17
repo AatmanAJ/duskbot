@@ -70,7 +70,7 @@ export function useSidebarSwitchCta(covered = false): SpotCta | null {
   return {
     id: "cloud-switch",
     title: t("runsOn.switchCloud"),
-    art: "server",
+    art: "clock",
     closeLabel: t("cloudUpsell.hide"),
     onStart: () => void openHome().catch(() => {}),
     onClose: () => { switchClosed = true; setClosed(true); },
