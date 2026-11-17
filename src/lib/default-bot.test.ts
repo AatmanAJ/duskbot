@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chiefChoices, chiefFor, chiefStepFits, createChiefPatch, hiddenFromSidebar, INTRO_CHIPS, introAsks, introChips, myDefaultBot, someoneElsesDefaultBot } from "./default-bot";
+import { chiefChoices, chiefFor, chiefStepFits, createChiefPatch, hiddenFromSidebar, INTRO_CHIPS, introAsks, introAsksOffered, introChips, myDefaultBot, someoneElsesDefaultBot } from "./default-bot";
 import { partitionSidebarBots } from "./sidebar-layout";
 import type { DefaultBotFields } from "../../shared/default-bot";
 
@@ -64,6 +64,12 @@ describe("what Dusk offers to set up", () => {
     expect(introAsks(["gmail"])).toEqual(["day", "inboxNow", "week"]);
     expect(introAsks(["googlecalendar", "github"])).toEqual(["today", "inbox", "week"]);
     expect(introAsks(["outlook"])).toEqual(["today", "inboxNow", "week"]);
+  });
+
+  it("offers the first jobs on OpenCode's free backup too, never with no AI", () => {
+    expect(introAsksOffered("own")).toBe(true);
+    expect(introAsksOffered("backup")).toBe(true);
+    expect(introAsksOffered("none")).toBe(false);
   });
 
   it("never offers a bot (the sidebar's + adds one), nor nags a person who is set up or a Team Cloud member", () => {

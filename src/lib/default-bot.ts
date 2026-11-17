@@ -128,6 +128,12 @@ export function introAsks(apps: readonly string[]): IntroAsk[] {
   ];
 }
 
+/** The first jobs show while any AI answers, OpenCode's free backup included (most new people start on it); none while
+ * the bot has no AI to send them to. */
+export function introAsksOffered(ai: "own" | "backup" | "none"): boolean {
+  return ai !== "none";
+}
+
 let welcoming: string | null = null;
 const welcomingListeners = new Set<() => void>();
 

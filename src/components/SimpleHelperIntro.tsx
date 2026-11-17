@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { phoneAppPrompted } from "@/lib/feature-flags";
-import { DEFAULT_BOT_NAME, introAsks, introChips, introStaged, stageIntro, useWelcomingBot } from "@/lib/default-bot";
+import { DEFAULT_BOT_NAME, introAsks, introAsksOffered, introChips, introStaged, stageIntro, useWelcomingBot } from "@/lib/default-bot";
 import { activeLocale, t } from "@/lib/i18n";
 import { detectSetupWithin, localSetupImport, setupImportApi } from "@/lib/setup-import";
 import { api, useStore, type Bot, type InstanceInfo, type Message } from "@/state/store";
@@ -183,7 +183,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
     phoneApp: phoneAppPrompted(),
     importFound: look.importFound,
   });
-  const ready = !answered && onScreen && shown >= ALL && facts !== null && ai === "own";
+  const ready = !answered && onScreen && shown >= ALL && facts !== null && introAsksOffered(ai);
   const typing = staged && ai !== "none" && shown === 4 && Boolean(bot);
   return (
     <div data-helper-intro={message.id} className="flex w-full flex-col items-start gap-1">
