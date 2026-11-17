@@ -9,6 +9,8 @@ export interface SelectableInstance {
   capabilities?: { effortLevels?: readonly EffortLevel[]; modelVariants?: boolean };
   access?: EngineAccess;
   enabled?: boolean;
+  /** Found on this computer, never chosen by the person: offered in every list, never picked on its own. */
+  found?: true;
 }
 
 export interface DefaultSelectionContext {
@@ -29,12 +31,21 @@ const best = (instances: readonly SelectableInstance[], context: DefaultSelectio
 
 /** The saved config's enabled switch and picker group win over what the driver reports. */
 /** Every list a person or the server chooses a model from passes here, so a hidden provider drops out of all of them. */
-export function withInstanceConfig<T extends SelectableInstance>(instances: readonly T[], configs: InstanceConfigMap): T[] {
-  return instances.filter((instance) => configs[instance.instanceId]?.hidden !== true).map((instance) => ({
-    ...instance,
-    enabled: configs[instance.instanceId]?.enabled ?? instance.enabled,
-    ...(configs[instance.instanceId]?.access ? { access: configs[instance.instanceId].access } : {}),
-  }));
+export function withInstanceConfig<T extends SelectableInstance>(instances: readonly T[], configs: InstanceConfigMap,
+  inUse?: (instanceId: string) => boolean): T[] {
+  return instances.filter((instance) => configs[instance.instanceId]?.hidden !== true).map((instance) => {
+    const config = configs[instance.instanceId];
+    const { found: _found, ...rest } = instance;
+    const described = { ...rest, enabled: config?.enabled ?? instance.enabled, ...(config?.access ? { access: config.access } : {}) } as T;
+    return inUse && onlyFound(described, config, inUse) ? { ...described, found: true as const } : described;
+  });
+}
+
+/** A provider the app found by itself (a CLI on this computer and its sign-in) that the person never chose and nothing uses.
+ * A key or an address the person typed is a choice; OpenCode's free backup is the app's own default. */
+function onlyFound(instance: SelectableInstance, config: InstanceConfigMap[string] | undefined, inUse: (instanceId: string) => boolean): boolean {
+  if (config?.chosen === true || instance.access === "api" || instance.access === "custom" || freeFallback(instance)) return false;
+  return !inUse(instance.instanceId);
 }
 
 /** A custom endpoint brings its own credential, so its sign-in state does not count. */
@@ -80,7 +91,7 @@ export function selectDefaultModelSelection(
     if (selection.effort && !instance.capabilities?.effortLevels?.includes(selection.effort)) delete selection.effort;
     return selection;
   }
-  const available = instances.filter((instance) => instance.enabled !== false && instance.snapshot.state === "available" && context.refusal?.(instance) === undefined && defaultModel(instance));
+  const available = instances.filter((instance) => !instance.found && instance.enabled !== false && instance.snapshot.state === "available" && context.refusal?.(instance) === undefined && defaultModel(instance));
   const ready = available.filter((instance) => readyToRun(instance, context));
   const company = context.company;
   const personal = company && instances.some((instance) => company(instance.instanceId))
@@ -98,7 +109,7 @@ const keyOnly = (instance: SelectableInstance) => instance.access === "api" || i
  * only a saved key makes ready counts once its test message answered. */
 export function connectedAiReady(instances: readonly SelectableInstance[], context: DefaultSelectionContext = {}): boolean {
   return instances.some((instance) => {
-    if (freeFallback(instance) || !readyToRun(instance, context) || !defaultModel(instance)) return false;
+    if (instance.found || freeFallback(instance) || !readyToRun(instance, context) || !defaultModel(instance)) return false;
     const answered = context.answered?.(instance);
     return answered === true || (answered === undefined && !keyOnly(instance));
   });

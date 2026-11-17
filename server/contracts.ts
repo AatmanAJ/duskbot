@@ -91,6 +91,9 @@ export interface InstanceConfig {
   enabled?: boolean;
   /** Left out of every model list, picker and automatic choice; the engine itself (its CLI and sign-in) is untouched. */
   hidden?: boolean;
+  /** The person said to use this provider. One found on this computer (its CLI and sign-in) without it is offered, never
+   * picked on its own; one a bot, a conversation or the default already uses counts as chosen. */
+  chosen?: boolean;
   /** Picker group over the driver's default: an `openai-compat` instance on a provider's own key is "api". */
   access?: EngineAccess;
   config?: unknown;

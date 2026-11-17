@@ -2577,7 +2577,38 @@ function controlIntegration(
 }
 
 function selectableInstances<T extends SelectableInstance>(instances: readonly T[]): T[] {
-  return withInstanceConfig(instances, instanceConfigs(cfg));
+  const used = providersInUse();
+  return withInstanceConfig(instances, instanceConfigs(cfg), (instanceId) => used.has(instanceId) || managedDesktop.owns(instanceId));
+}
+
+/** The providers a bot, its backups, a conversation or a saved default runs on. */
+function providersInUse(): Set<string> {
+  const used = new Set<string>();
+  const add = (selection: { instanceId?: string } | null | undefined) => { if (selection?.instanceId) used.add(selection.instanceId); };
+  add(cfg.defaultModelSelection);
+  add(cfg.newBotDefaults?.profile.modelSelection);
+  for (const bot of store.bots) {
+    add(bot.modelSelection);
+    bot.fallback?.forEach(add);
+    for (const task of store.tasks(bot.id)) add(task.modelSelection);
+  }
+  return used;
+}
+
+/** Disconnecting a provider: every bot, backup, conversation and default on it moves to the AI a new bot would get now. */
+async function releaseProvider(instanceId: string): Promise<void> {
+  const others = selectableInstances(await registry.describe()).filter((instance) => instance.instanceId !== instanceId);
+  const pick = await defaultSelection(null, others.filter((instance) => readyToRun(instance, selectionContext)));
+  const next = pick.instanceId ? withNewBotEffort(pick, cfg.newBots?.effort, registry.get(pick.instanceId)?.adapter.capabilities.effortLevels) : pick;
+  if (cfg.defaultModelSelection?.instanceId === instanceId && next.instanceId) saveConfig({ defaultModelSelection: next });
+  for (const bot of [...store.bots]) {
+    if (bot.fallback?.some((candidate) => candidate.instanceId === instanceId)) {
+      store.patchBot(bot.id, { fallback: bot.fallback.filter((candidate) => candidate.instanceId !== instanceId) });
+    }
+    if (bot.modelSelection.instanceId === instanceId) store.applyModelDefault(bot.id, next);
+    const onIt = store.tasks(bot.id).filter((task) => task.modelSelection?.instanceId === instanceId).map((task) => task.threadId);
+    if (onIt.length) store.followBotModel(bot.id, onIt);
+  }
 }
 
 async function defaultSelection(saved: ModelSelection | null = cfg.defaultModelSelection ?? null, instances?: readonly SelectableInstance[]) {
@@ -13387,6 +13418,7 @@ ROUTES.push(createInstanceRoutes({
   providerConfigBusy: { get: () => providerConfigBusy, set: (busy) => { providerConfigBusy = busy; } },
   providerInstancesChanging, describeInstances, persistProviderInstance, configStatus, broadcast, testCliBinary,
   cliProbeEnvironment, threadBusy, botForThread, activeGroupTurnForBot, checkInstance: testedAi.check, cloudHome: placeFromEnv(process.env) === "cloud",
+  releaseProvider,
 }));
 const modelCatalog = new ModelCatalogStore({ dataDir: DATA_DIR });
 ROUTES.push(createModelProviderRoutes({
