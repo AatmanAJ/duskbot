@@ -255,6 +255,7 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
       if (found.refused) return found.refused;
       const { recording, plan } = found;
       if (!deps.routines) return { error: "Routines are not available here." };
+      if (recording.routineId) return { error: "This task already has a routine. Change it with the bot's other routines." };
       const source = options.source.trim();
       if (!source) return { error: "Say what the routine should run on: a folder, a file, or a list." };
       if (!recording.skillName) {

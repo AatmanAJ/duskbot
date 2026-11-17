@@ -75,16 +75,19 @@ const type = async (field: HTMLInputElement | HTMLTextAreaElement, value: string
 const labelled = <T extends HTMLElement = HTMLInputElement>(label: string) => document.querySelector<T>(`[aria-label="${label}"]`)!;
 const review = () => document.querySelector<HTMLElement>("[data-demo-review]");
 
-describe("the Record button", () => {
-  it("shows only while the person holds the browser", async () => {
-    await mount(false);
-    expect(strip()).toBeNull();
-    await act(async () => root.unmount());
-    root = createRoot(host);
-    await mount(true);
+const start = async () => { await press(button("Show Nova a task", host)); await press(button("Start showing", host)); };
 
-    expect(button("Record", host)).toBeTruthy();
-    expect(strip()!.textContent).toContain("Do the task once here. Nova keeps it as steps it can repeat.");
+describe("showing a task", () => {
+  it("is offered wherever the bot's screen can be recorded, and says what will happen before anything is", async () => {
+    await mount(false);
+    await press(button("Show Nova a task", host));
+
+    expect(strip()!.dataset.demoRecorder).toBe("intro");
+    expect(strip()!.textContent).toContain("Do it once, the way you normally would. Nova watches, then writes it down as steps it can repeat.");
+    expect(strip()!.textContent).toContain("Passwords are never kept, in text or in pictures.");
+    expect(calls.some((call) => call.method === "POST")).toBe(false);
+    await press(button("Not now", host));
+    expect(strip()!.dataset.demoRecorder).toBe("idle");
   });
 
   it("starts a recording, counts what the person does, and stops into the review", async () => {
@@ -92,43 +95,59 @@ describe("the Record button", () => {
     const live = recording({ botId, status: "recording", eventCount: 0, plan: undefined });
     answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: live });
     answers[`POST /api/bots/${botId}/demos/stop`] = () => ({ recording: recording({ botId }) });
-    await press(button("Record", host));
+    await start();
 
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos`, body: { surface: "browser" } });
     expect(strip()!.dataset.demoRecorder).toBe("recording");
-    expect(strip()!.textContent).toContain("Recording");
-    expect(button("Stop and review", host)!.disabled).toBe(false);
+    expect(strip()!.querySelector("[role=status]")!.textContent).toBe("Nova is watching");
+    expect(button("Done", host)!.disabled).toBe(false);
     await act(async () => { publishDemoChange({ botId, recording: { ...live, eventCount: 1 } }); });
-    expect(strip()!.textContent).toContain("1 action");
+    expect(strip()!.querySelector("[data-demo-actions]")!.textContent).toBe("1 action");
     await act(async () => { publishDemoChange({ botId, recording: { ...live, eventCount: 7 } }); });
-    expect(strip()!.textContent).toContain("7 actions");
+    expect(strip()!.querySelector("[data-demo-actions]")!.textContent).toBe("7 actions");
 
-    await press(button("Stop and review", host));
+    await press(button("Done", host));
     expect(review()).toBeTruthy();
-    expect(review()!.textContent).toContain("These steps were written straight from what you showed");
+    expect(review()!.textContent).toContain("3 steps · 3 inputs · One step for each thing you did");
     expect(document.querySelectorAll("[data-demo-step]")).toHaveLength(3);
+  });
+
+  it("calls the task what the person called it before they showed it", async () => {
+    const botId = await mount(true);
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 0, plan: undefined }) });
+    answers[`POST /api/bots/${botId}/demos/stop`] = () => ({ recording: recording({ botId }) });
+    await press(button("Show Nova a task", host));
+    await type(host.querySelector<HTMLInputElement>("[data-demo-intro] input")!, "File an expense");
+    await press(button("Start showing", host));
+
+    expect(strip()!.textContent).toContain("File an expense · 0 actions");
+    await press(button("Done", host));
+    expect(labelled("Task name").value).toBe("File an expense");
+    expect(document.querySelector("[data-demo-save-state]")!.textContent).toBe("Not saved yet");
   });
 
   it("takes and keeps control before it starts, so the screen stays the person's while they show the task", async () => {
     const taken: string[] = [];
     const botId = await mount(true, undefined, { onTake: () => taken.push("take") });
     answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 0, plan: undefined }) });
-    await press(button("Record", host));
+    await start();
 
     expect(taken).toEqual(["take"]);
     expect(strip()!.dataset.demoRecorder).toBe("recording");
   });
 
-  it("starts from the browser's menu without control: it takes control, then records once it has it", async () => {
+  it("opens from the browser's menu without control: it takes control on Start, then records once it has it", async () => {
     const taken: string[] = [];
     const onTake = () => taken.push("take");
     const botId = await mount(false, undefined, { onTake, asked: 0 });
     answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 0, plan: undefined }) });
-    expect(strip()).toBeNull();
     await mount(false, botId, { onTake, asked: 1 });
 
+    expect(strip()!.dataset.demoRecorder).toBe("intro");
+    expect(taken).toEqual([]);
+    await press(button("Start showing", host));
     expect(taken).toEqual(["take"]);
-    expect(button("Record", host)!.disabled).toBe(true);
+    expect(host.querySelector<HTMLButtonElement>("[data-demo-start]")!.disabled).toBe(true);
     expect(calls.some((call) => call.method === "POST")).toBe(false);
     await mount(true, botId, { onTake, asked: 1 });
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos` });
@@ -138,20 +157,20 @@ describe("the Record button", () => {
   it("throws the recording away on Discard", async () => {
     const botId = await mount(true);
     answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 2, plan: undefined }) });
-    await press(button("Record", host));
+    await start();
     await press(button("Discard", host));
     await act(async () => { publishDemoChange({ botId, removed: recording().id }); });
 
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos/cancel` });
-    expect(button("Record", host)).toBeTruthy();
+    expect(button("Show Nova a task", host)).toBeTruthy();
   });
 
   it("says so when a recording could not be turned into steps", async () => {
     const botId = await mount(true);
     answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: recording({ botId, status: "recording", eventCount: 1, plan: undefined }) });
     answers[`POST /api/bots/${botId}/demos/stop`] = () => ({ recording: recording({ botId, status: "failed", plan: undefined, error: "Nothing was recorded." }) });
-    await press(button("Record", host));
-    await press(button("Stop and review", host));
+    await start();
+    await press(button("Done", host));
 
     expect(host.querySelector("[role=alert]")!.textContent).toBe("That recording could not be used. Nothing was recorded.");
     expect(review()).toBeNull();
@@ -167,75 +186,99 @@ describe("reviewing the steps", () => {
     expect(review()).toBeTruthy();
     return botId;
   };
+  const steps = () => [...document.querySelectorAll<HTMLElement>("[data-demo-step]")];
+  const open = (label: string) => press(labelled<HTMLButtonElement>(label));
+  const chip = (name: string) => document.querySelector<HTMLElement>(`[data-demo-blank=${name}]`);
 
-  it("shows each step with its picture, goal and check", async () => {
+  it("reads each step as a sentence, and opens one to its picture, goal and check", async () => {
     await opened();
-    const steps = [...document.querySelectorAll<HTMLElement>("[data-demo-step]")];
 
-    expect(steps.map((step) => step.querySelector<HTMLInputElement>("input")!.value)).toEqual(["Click New expense", "Enter Merchant", "Click Submit expense"]);
-    expect(steps[0]!.querySelector<HTMLElement>("[role=img]")!.style.backgroundImage).toContain(`/api/demos/${recording().id}/frames/f00000000000000000001`);
-    expect(steps[0]!.querySelector("[role=img]")!.getAttribute("aria-label")).toBe("The screen at step 1");
-    expect(steps[0]!.textContent).toContain("Check: The screen shows “New expense”");
-    expect(steps[1]!.textContent).toContain("Check: “Merchant” holds {{merchant}}");
-    expect(steps[1]!.querySelector("[role=img]")).toBeNull();
+    expect(steps().map((step) => step.querySelector("button")!.textContent)).toEqual(["Click the \"New expense\" button.", "Type merchant into the \"Merchant\" field.", "Click the \"Submit expense\" button."]);
+    expect(steps()[1]!.querySelector("[data-demo-token]")!.textContent).toBe("merchant");
+    expect(document.querySelector("[role=img]")).toBeNull();
+
+    await open("Step 1: Click New expense");
+    expect(labelled("Title of step 1").value).toBe("Click New expense");
+    expect(steps()[0]!.querySelector<HTMLElement>("[role=img]")!.style.backgroundImage).toContain(`/api/demos/${recording().id}/frames/f00000000000000000001`);
+    expect(steps()[0]!.querySelector("[role=img]")!.getAttribute("aria-label")).toBe("The screen at step 1");
+    expect(steps()[0]!.textContent).toContain("Check: The screen shows “New expense”");
+
+    await open("Step 2: Enter Merchant");
+    expect(labelled("Title of step 1")).toBeNull();
+    expect(steps()[1]!.textContent).toContain("Check: “Merchant” holds {{merchant}}");
+    expect(steps()[1]!.querySelector("[role=img]")).toBeNull();
   });
 
   it("renames an input in every step that uses it, and refuses a name that is taken", async () => {
     await opened();
+    await press(chip("merchant")!.querySelector("button"));
     const rename = labelled("Rename the input merchant");
     await type(rename, "vendor");
     await act(async () => { rename.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
 
-    expect(document.querySelector("[data-demo-blank=vendor]")).toBeTruthy();
+    expect(chip("vendor")).toBeTruthy();
+    expect(steps()[1]!.querySelector("[data-demo-token]")!.textContent).toBe("vendor");
+    await open("Step 2: Enter Merchant");
     expect(labelled<HTMLTextAreaElement>("Goal of step 2").value).toBe("Type {{vendor}} into the \"Merchant\" field.");
-    expect(document.querySelectorAll("[data-demo-step]")[2]!.textContent).toContain("{{vendor}}");
 
     const again = labelled("Rename the input vendor");
     await type(again, "amount");
     await act(async () => { again.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
-    expect(document.querySelector("[data-demo-blank=vendor] [role=alert]")!.textContent).toBe("Another input is already called amount.");
+    expect(chip("vendor")!.querySelector("[role=alert]")!.textContent).toBe("Another input is already called amount.");
     expect(labelled("Rename the input vendor").value).toBe("vendor");
   });
 
   it("keeps an input's value the same every time, and never offers that for a secret", async () => {
     await opened();
-    expect(document.querySelector("[data-demo-blank=password]")!.textContent).toContain("Filled from a saved sign-in. Never recorded.");
-    expect(button("Always use this", document.querySelector("[data-demo-blank=password]")!)).toBeUndefined();
-    await press(button("Always use this", document.querySelector("[data-demo-blank=merchant]")!));
+    expect(chip("password")!.textContent).toContain("Filled from a saved sign-in. Never recorded.");
+    await press(chip("password")!.querySelector("button"));
+    expect(button("Always use this", chip("password")!)).toBeUndefined();
+    await press(chip("merchant")!.querySelector("button"));
+    await press(button("Always use this", chip("merchant")!));
 
-    expect(document.querySelector("[data-demo-blank=merchant]")).toBeNull();
+    expect(chip("merchant")).toBeNull();
+    await open("Step 2: Enter Merchant");
     expect(labelled<HTMLTextAreaElement>("Goal of step 2").value).toBe("Type Blue Door Coffee into the \"Merchant\" field.");
   });
 
-  it("moves and removes steps with the buttons", async () => {
+  it("moves and removes steps from the open step", async () => {
     await opened();
-    const titles = () => [...document.querySelectorAll<HTMLElement>("[data-demo-step]")].map((step) => step.dataset.demoStep);
+    const order = () => steps().map((step) => step.dataset.demoStep);
+    await open("Step 3: Click Submit expense");
     await press(labelled<HTMLButtonElement>("Move step 3 up"));
-    expect(titles()).toEqual(["s1", "s3", "s2"]);
+    expect(order()).toEqual(["s1", "s3", "s2"]);
+    await open("Step 1: Click New expense");
     expect(labelled<HTMLButtonElement>("Move step 1 up").disabled).toBe(true);
     await press(labelled<HTMLButtonElement>("Remove step 1"));
-    expect(titles()).toEqual(["s3", "s2"]);
+    expect(order()).toEqual(["s3", "s2"]);
   });
 
-  it("saves the edited steps, then the skill, and says what it was saved as", async () => {
+  it("saves the edited steps, then the skill, and offers Save again only once something has changed", async () => {
     const botId = await opened();
     const id = recording().id;
     let saved: DemoPlan | null = null;
     answers[`PUT /api/demos/${id}/plan`] = (body) => { saved = (body as { plan: DemoPlan }).plan; return { recording: recording({ botId, plan: saved }) }; };
-    answers[`POST /api/demos/${id}/skill`] = (body) => ({ recording: recording({ botId, plan: saved!, skillName: (body as { name?: string }).name === "Harbor expense" ? "harbor-expense" : "other" }) });
+    answers[`POST /api/demos/${id}/skill`] = () => ({ recording: recording({ botId, plan: saved!, skillName: "harbor-expense" }) });
+    const save = () => document.querySelector<HTMLButtonElement>("[data-demo-save]")!;
+    const state = () => document.querySelector("[data-demo-save-state]")!.textContent;
+    await open("Step 1: Click New expense");
     await type(labelled("Title of step 1"), "Start a new expense");
-    const name = [...document.querySelectorAll<HTMLLabelElement>("label")].find((each) => each.textContent?.startsWith("Skill name"))!.querySelector("input")!;
-    await type(name, "Harbor expense");
+    expect(state()).toBe("Not saved yet");
     await press(button("Save as skill"));
     await act(async () => { await Promise.resolve(); });
 
     expect(calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.path}`)).toEqual([`PUT /api/demos/${id}/plan`, `POST /api/demos/${id}/skill`]);
     expect(saved!.steps[0]!.title).toBe("Start a new expense");
-    expect(review()!.querySelector("[role=status]")!.textContent).toBe("Saved as the skill harbor-expense. It is on for this bot.");
+    expect(review()!.querySelector("[role=status]")!.textContent).toBe("Nova can do this now. Saved as the skill harbor-expense.");
+    expect([save().textContent, save().disabled, state()]).toEqual(["Saved", true, "Saved as harbor-expense"]);
+
+    await type(labelled("Title of step 1"), "Open a new expense");
+    expect([save().textContent, save().disabled, state()]).toEqual(["Save changes", false, "Changes not saved"]);
   });
 
   it("does not save a step whose goal names an input that is not there", async () => {
     await opened();
+    await open("Step 1: Click New expense");
     await type(labelled<HTMLTextAreaElement>("Goal of step 1"), "Click it for {{nobody}}.");
     await press(button("Save as skill"));
 
@@ -243,11 +286,11 @@ describe("reviewing the steps", () => {
     expect(review()!.querySelector("[role=alert]")!.textContent).toBe("Step 1: There is no input called nobody.");
   });
 
-  it("saves a routine with what it runs on", async () => {
+  it("makes a routine with what it runs on, once: the routine takes the button's place", async () => {
     const botId = await opened({ skillName: "harbor-expense" });
     const id = recording().id;
     answers[`POST /api/demos/${id}/routine`] = () => ({ recording: recording({ botId, skillName: "harbor-expense", routineId: "routine-1" }) });
-    await press(button("Save as routine"));
+    await press(button("Make it a routine"));
     const create = button("Create routine")!;
     expect(create.disabled).toBe(true);
     const source = [...document.querySelectorAll<HTMLLabelElement>("label")].find((each) => each.textContent?.startsWith("What it runs on"))!.querySelector("input")!;
@@ -256,17 +299,29 @@ describe("reviewing the steps", () => {
     await act(async () => { await Promise.resolve(); });
 
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${id}/routine`, body: { name: "Submit expense · Harbor Expenses", source: "The new files in my receipts folder" } });
-    expect(review()!.querySelector("[role=status]")!.textContent).toContain("Saved as a routine");
+    const routine = document.querySelector<HTMLElement>("[data-demo-routine]")!;
+    expect(routine.dataset.demoRoutine).toBe("added");
+    expect(routine.textContent).toContain("Routine added");
+    expect(button("Make it a routine")).toBeUndefined();
+    expect(button("Create routine")).toBeUndefined();
   });
 
-  it("will not run on files while the person still holds the browser", async () => {
+  it("never offers a second routine for a task that has one", async () => {
+    await opened({ skillName: "harbor-expense", routineId: "routine-1" });
+
+    expect(document.querySelector<HTMLElement>("[data-demo-routine]")!.dataset.demoRoutine).toBe("added");
+    expect(button("Make it a routine")).toBeUndefined();
+    expect([document.querySelector<HTMLButtonElement>("[data-demo-save]")!.textContent, document.querySelector<HTMLButtonElement>("[data-demo-save]")!.disabled]).toEqual(["Saved", true]);
+  });
+
+  it("will not run on files while the person still holds the browser, and says why", async () => {
     listed = [recording()];
     await mount(true);
     await press(button("Shown tasks: 1", host));
     await press([...host.querySelectorAll("li button")].find((each) => each.textContent?.includes("Submit expense")));
 
-    expect(button("Run on files")!.disabled).toBe(true);
-    expect(button("Run on files")!.title).toBe("Hand control back first: Nova does it in its own browser.");
+    expect(document.querySelector<HTMLButtonElement>("[data-demo-run-choose]")!.disabled).toBe(true);
+    expect(review()!.textContent).toContain("Hand control back first: Nova does it in its own browser.");
   });
 });
 
@@ -281,13 +336,14 @@ describe("doing it again", () => {
     ...more,
   });
 
-  it("shows how far it is and what it is on, and stops when asked", async () => {
+  it("shows how far it is with a mark for each file, what it is on, and stops when asked", async () => {
     listed = [recording()];
     const botId = await mount(false);
     await act(async () => { publishDemoChange({ botId, run: run() }); });
 
     expect(strip()!.dataset.demoRecorder).toBe("replay");
-    expect(strip()!.querySelector("[role=status]")!.textContent).toBe("Doing it again · 2 of 3");
+    expect(strip()!.querySelector("[role=status]")!.textContent).toBe("Nova is doing it again · 2 of 3");
+    expect(strip()!.querySelector("[data-demo-run-marks]")!.children).toHaveLength(3);
     expect(strip()!.textContent).toContain("03-papertrail-supply.txt · Enter Amount");
     await press(button("Stop", host));
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${recording().id}/replay/stop` });

@@ -161,6 +161,17 @@ describe("showing a bot a task over the routes", () => {
     expect((await on.call("POST", `/api/demos/${recording.id}/routine`, { name: "No source" })).status).toBe(400);
   });
 
+  it("makes one routine for a task, and refuses a second", async () => {
+    const on = await serve();
+    const recording = await recorded(on);
+    expect((await on.call("POST", `/api/demos/${recording.id}/routine`, { source: "the files in ~/Receipts/new" })).status).toBe(201);
+
+    const again = await on.call<{ error?: string }>("POST", `/api/demos/${recording.id}/routine`, { source: "the files in ~/Receipts/new" });
+    expect(again.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(again.body)).toContain("already has a routine");
+    expect(on.routines).toHaveLength(1);
+  });
+
   it("does the task again for a folder of files and reports each as it goes", async () => {
     const on = await serve();
     const recording = await recorded(on);

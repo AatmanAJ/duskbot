@@ -56,20 +56,24 @@ Add `DUSK_VERIFY_ENGINE=agent-browser` and
 engine. The launcher prints the preview URL, the portal's address and the
 folder of receipts. Open only the printed preview URL.
 
-1. Enter the printed portal address. Press **Record**: the pill reads "You
-   have control" and stays so, and the strip counts each thing you do.
+1. Enter the printed portal address. Press **Show Nova a task**: a card says
+   what will happen and takes a name for the task. Press **Start showing**: the
+   pill reads "You have control" and stays so, and the bar under the page
+   reads "Nova is watching" and counts each thing you do.
 2. Press **New expense**, fill Merchant, Amount, Date and Notes from the first
    receipt, choose a Category, and press **Submit expense**.
-3. Press **Stop and review**. The steps appear with a picture drawn in close
-   on where each happened. Rename an input, move a step up and back, then
-   **Save as skill**: the line under the steps names the skill.
-4. Press **Hand back**, open **Shown tasks**, the recording, then **Run on
-   files** and choose the other eleven receipts. The bot's pointer moves
-   through the form for each, the strip counts to 11 of 11, and the portal
-   lists twelve expenses.
-5. Record the sign-in page with a made-up password. The password field is
+3. Press **Done**. Each step reads as a sentence with its inputs marked; open
+   one for its picture, goal and check. Rename an input, move a step up and
+   back, then **Save as skill**: the button reads **Saved** and stays off until
+   something changes. **Make it a routine** takes what it runs on, and is
+   replaced by "Routine added" once there is one.
+4. Press **Hand back**, open **Shown tasks**, the recording, then **Choose
+   files** and pick the other eleven receipts. The bot's pointer moves through
+   the form for each, the bar fills one mark for each file and counts to 11 of
+   11, and the portal lists twelve expenses.
+5. Show the sign-in page with a made-up password. The password field is
    black in that recording's pictures and `trace.json` under the printed data
    folder holds only how many characters were typed.
 
 Stop the launcher with Ctrl-C. A Local VM desktop needs Docker: take control in
-the Computer panel, press **Record** there, and the same review opens.
+the Computer panel, press **Show Nova a task** there, and the same review opens.
