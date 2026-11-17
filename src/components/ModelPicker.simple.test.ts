@@ -630,6 +630,20 @@ describe("the model picker in Simple mode", () => {
     expect(after.html).toContain(">Scout now uses GPT-5.6</div>");
   });
 
+  it("keeps a replying bot's AI when a connect finishes mid-reply: signing in is not picking", () => {
+    fixture.instances = [claude(), { ...codex, snapshot: { state: "available", version: "1.0.0", authenticated: false }, authentication: { method: "device-code" } } as InstanceInfo];
+    const forBot = { ...bot(), busy: true };
+    const opened = open(forBot);
+    notConnected(opened).onConnect(notConnected(opened).rows.find((one) => one.tile === "chatgpt")!);
+    fixture.instances = [claude(), codex];
+    dialog(render(forBot))!.props.onConnected!("chatgpt");
+    expect(fixture.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "setModel" }));
+    const after = render(forBot);
+    expect(dialog(after)).toBeUndefined();
+    expect(after.html).toContain(">ChatGPT is connected</div>");
+    expect(after.html).not.toContain("now uses");
+  });
+
   it("hands a missing engine to its card in Connect an AI, and one with no card to the model directory", () => {
     const missing: InstanceInfo = { ...cursor, snapshot: { state: "unavailable", reason: "`cursor-agent` isn't installed" } };
     fixture.instances = [claude(), missing];

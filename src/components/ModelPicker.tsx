@@ -500,13 +500,16 @@ export function ModelPicker({
     close(false);
     setHandoff({ tile: row.tile, scope });
   };
-  /** The handed-over connect finished: its suggested model becomes this bot's (or every bot's), with a short toast. */
+  /** The handed-over connect finished: its suggested model becomes this bot's (or every bot's), with a short toast. A bot
+   * that is replying keeps its AI: a sign-in is not a pick, so the reply and its queued follow-ups stay where they were
+   * and the person picks the new AI from the menu when they want it. */
   const connected = (tileId: AiTileId) => {
     const to = handoff?.scope ?? "bot";
     setHandoff(null);
     const tile = aiTiles(state.instances, engineReady).find((one) => one.id === tileId);
     const instance = tile?.candidates.find(engineReady);
     if (!tile || !instance) return;
+    if (working) return setToast({ text: t("model.picker.connectedName", { name: tile.label }), tone: "done" });
     const options = instance.models.options;
     const model = (options.find((option) => option.id === instance.models.default) ?? options.find((option) => !option.custom) ?? options[0])?.id;
     if (!model) return setToast({ text: t("model.picker.connectedName", { name: tile.label }), tone: "done" });
