@@ -2,6 +2,8 @@ import { killCliTree, spawnCli } from "./procs.ts";
 import { scrubHeldSecrets } from "../shared/redact.ts";
 import { DEFAULT_BROWSER_RESULT_BUDGET, describePageChange, OBSERVE_PAGE_SCRIPT, parsePageState, READ_OPEN_PAGE_ONLY, readsAroundBrowser, scrubBrowserResult, shapeBrowserToolResult, slimBrowserToolList, stripHarnessOwnedArguments, type PageState } from "./browser-tool-shape.ts";
 import { BrowserLanes } from "./browser-lane.ts";
+import { AGENT_CLOSE_FAILED, BROWSER_CLOSING, BROWSER_CONTROL_REFUSAL, BROWSER_INTERRUPTED, BROWSER_RESTART_TOOL, LANE_BUSY, LAUNCH_CHANGED, PERSON_RESTART_STOPPED, RESTART_BUSY, browserRefusal } from "./browser-refusals.ts";
+export { BROWSER_CONTROL_REFUSAL, BROWSER_RESTART_TOOL, browserRefusal };
 import { trail } from "./trail.ts";
 import { PageSizes, type PageSize } from "./browser-page-size.ts";
 import { SECRET_ON_PAGE, SecretHolds, type SecretHold } from "./browser-secret-hold.ts";
@@ -26,12 +28,10 @@ export interface BrowserSpawnSpec {
   env: Record<string, string | undefined>;
 }
 
-export const BROWSER_CONTROL_REFUSAL = "Browser tools are paused while a person controls this browser. Wait for them to hand control back; do not try another browser or execution tool.";
 /** Told to the bot when a page script is refused on a page the person typed into beside it. */
 export const PERSON_TYPED_ON_PAGE = "The person typed on this page while you worked, maybe a password, so agent_browser_eval is refused here for now. Read the page with agent_browser_snapshot or agent_browser_get_text instead.";
 /** The bot's next answer after the person used its browser beside it. */
 export const PERSON_ACTED = "The person also used this browser since your last browser call (they can click and type in it while you work), so the page may have changed: check it before relying on earlier @eN refs, and do not undo what they did.";
-export const BROWSER_RESTART_TOOL = "restart_browser";
 const BROWSER_RESTART_TOOL_SPEC = {
   name: BROWSER_RESTART_TOOL,
   description: "Close and restart your browser. Use this only when a browser tool says the browser must be restarted, or it stays busy after a call that did not answer. Every open tab is closed and unsaved page state such as form input is lost; sign-ins stay unless it is a temporary browser. Afterwards open the page you need again and check whether the interrupted action already happened before repeating it.",
@@ -63,11 +63,8 @@ const RELAYED_TOOL_SPECS = [
 ];
 type RelayedToolSpec = (typeof RELAYED_TOOL_SPECS)[number];
 const RELAYED_TOOLS: ReadonlyMap<string, RelayedToolSpec> = new Map(RELAYED_TOOL_SPECS.map((spec) => [spec.name, spec]));
-const BROWSER_INTERRUPTED = `The browser engine is stuck. Press Restart in the Browser panel, or call ${BROWSER_RESTART_TOOL}, before using browser tools again.`;
 const idleClosedNote = (saves: boolean) => `Your browser sat unused and was closed to free memory; this call opened it again. Pages you had open are gone (${saves ? "saved sign-ins are kept" : "it is a temporary browser, so its sign-ins are gone too"}), so open the page you need again before using earlier @eN refs.`;
-const PERSON_RESTART_STOPPED = "The person restarted your browser from the Browser panel while this call ran, so it stopped. Pages you had open are gone: open the page you need again, and check whether this action already happened before repeating it.";
-const PERSON_RESTARTED ="The person restarted your browser from the Browser panel; this call ran in the fresh browser. Pages you had open are gone, so open the page you need again before using earlier @eN refs, and check whether an interrupted action already happened before repeating it.";
-const LANE_BUSY = "Your previous browser call is still running; wait for it to finish, then call again.";
+const PERSON_RESTARTED = "The person restarted your browser from the Browser panel; this call ran in the fresh browser. Pages you had open are gone, so open the page you need again before using earlier @eN refs, and check whether an interrupted action already happened before repeating it.";
 /** One bot call, lane wait included, answers within `callBudgetMs`; the engine's action keeps `followUpReserveMs` of it for the reads after. */
 export const BROWSER_CALL_DEFAULTS = { requestTimeoutMs: 120_000, laneWaitMs: 30_000, callBudgetMs: HARNESS_CALL_BUDGET_MS, followUpReserveMs: 15_000 } as const;
 const RESTART_COST = "a restart closes every tab and loses page state such as form input";
@@ -426,7 +423,7 @@ export class BrowserRuntime {
     const gate = this.gate(session);
     if (gate.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
     if (gate.uncertain) throw new Error(BROWSER_INTERRUPTED);
-    if (gate.closing) throw new Error("The browser is closing. Try again shortly.");
+    if (gate.closing) throw new Error(BROWSER_CLOSING);
     gate.agents++;
     try {
       const result = await fn();
@@ -483,6 +480,10 @@ export class BrowserRuntime {
         : this.agentRequest(session, spec, method, params, deadline, beforeDispatch, ctx);
       const work = method !== "tools/call" || toolNameOf(params) === BROWSER_RESTART_TOOL || gate.uncertain ? request() : this.lanes.run(session, request, this.options.laneWaitMs, toolNameOf(params) ?? "browser");
       result = await this.withinBudget(session, method, toolNameOf(params) ?? "browser", work, deadline);
+    } catch (error) {
+      const refusal = method === "tools/call" ? browserRefusal(error) : null;
+      if (refusal === null) throw error;
+      result = { isError: true, content: [{ type: "text", text: refusal }] };
     } finally { gate.calls--; gate.lastUsed = Date.now(); }
     if (method !== "tools/call") return result;
     if (result === null || result === undefined) return scrubBrowserResult({ isError: true, content: [{ type: "text", text: LANE_BUSY }] }, this.scrub);
@@ -514,7 +515,7 @@ export class BrowserRuntime {
   private async agentRequest(session: string, spec: BrowserSpawnSpec, method: "tools/list" | "tools/call", params: unknown, deadline: number, beforeDispatch?: () => void, ctx?: StepContext): Promise<unknown> {
     if (method !== "tools/list" && method !== "tools/call") throw new Error("Unsupported browser method.");
     // tools/list skips withAgentAction, so it must refuse the closing window itself or its client outlives restart().
-    if (method !== "tools/call" && this.gate(session).closing) throw new Error("The browser is closing. Try again shortly.");
+    if (method !== "tools/call" && this.gate(session).closing) throw new Error(BROWSER_CLOSING);
     if (method === "tools/call" && params && typeof params === "object" && (params as { name?: unknown }).name === BROWSER_RESTART_TOOL) {
       beforeDispatch?.();
       await this.agentRestart(session, () => this.closeBrowser(session, spec));
@@ -779,7 +780,7 @@ export class BrowserRuntime {
   private connect(session: string, spec: BrowserSpawnSpec): ClientEntry {
     const key = launchSettingsKey(spec);
     const existing = this.clients.get(session);
-    if (existing && existing.key !== key) throw new Error("Browser launch settings changed. Close the browser before reconnecting.");
+    if (existing && existing.key !== key) throw new Error(LAUNCH_CHANGED);
     if (existing) return existing;
     const client = new BrowserClient(spec, this.options.requestTimeoutMs, this.options.idleMs, this.options.maxPending, () => {
       if (this.clients.get(session)?.client === client) this.clients.delete(session);
@@ -924,7 +925,7 @@ export class BrowserRuntime {
   async withSharedInput<T>(session: string, acted: boolean, fn: () => Promise<T>): Promise<T> {
     const gate = this.gate(session);
     if (gate.owner !== null) throw new Error("Another person controls this browser.");
-    if (gate.closing) throw new Error("The browser is closing. Try again shortly.");
+    if (gate.closing) throw new Error(BROWSER_CLOSING);
     if (gate.uncertain) throw new Error(BROWSER_INTERRUPTED);
     if (acted) { gate.personActed = true; this.steps?.personTook(session); }
     gate.lastUsed = Date.now();
@@ -1021,7 +1022,7 @@ export class BrowserRuntime {
   async restart(session: string, owner: string, closeBrowser: () => Promise<void>): Promise<void> {
     if (!owner) throw new Error("Browser recovery requires an owner.");
     const gate = this.gate(session);
-    if (gate.closing || gate.releasing || gate.humans) throw new Error("The browser is busy. Wait for current work to finish before restarting.");
+    if (gate.closing || gate.releasing || gate.humans) throw new Error(RESTART_BUSY);
     if (gate.owner !== null && gate.owner !== owner) throw new Error("Another person controls this browser.");
     gate.owner = owner;
     gate.ready = false;
@@ -1055,12 +1056,12 @@ export class BrowserRuntime {
   async agentRestart(session: string, closeBrowser: () => Promise<boolean>): Promise<void> {
     const gate = this.gate(session);
     if (gate.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
-    if (gate.closing || gate.releasing || gate.agents || gate.humans) throw new Error("The browser is busy. Wait for current work to finish before restarting.");
+    if (gate.closing || gate.releasing || gate.agents || gate.humans) throw new Error(RESTART_BUSY);
     gate.ready = false;
     gate.closing = true;
     this.changed(gate);
     try {
-      if (!await closeBrowser()) throw new Error("The browser could not be closed. Ask the person to press Restart in the Browser panel of dusk bot on their computer, or to restart dusk bot.");
+      if (!await closeBrowser()) throw new Error(AGENT_CLOSE_FAILED);
       this.steps?.forget(session);
       this.threadTabs.forget(session);
       this.launch?.stopped(session);

@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import type { BrowserLive } from "../browser-live.ts";
-import type { BrowserRuntime, BrowserSpawnSpec } from "../browser-runtime.ts";
+import { browserRefusal, type BrowserRuntime, type BrowserSpawnSpec } from "../browser-runtime.ts";
 import type { StepContext } from "../browser-steps.ts";
 import type { FillLoginDeps } from "../login-fill.ts";
 import { LocalBackend } from "./backends.ts";
@@ -235,6 +235,8 @@ export class RuntimeRouter {
       result = await (target ? this.#chrome.service.agentRpc(target, method, params, dispatch) : this.#old.agentRpc(session, spec, method, params, dispatch, ctx));
     } catch (error) {
       if (error instanceof ClaimRefused) return { isError: true, content: [{ type: "text", text: error.message }] };
+      const refusal = method === "tools/call" ? browserRefusal(error) : null;
+      if (refusal !== null) return { isError: true, content: [{ type: "text", text: refusal }] };
       throw error;
     }
     if (method !== "tools/call") return result;

@@ -24,6 +24,27 @@ function deferred<T = void>() {
   return { promise, resolve };
 }
 afterEach(async () => { await Promise.all(runtimes.splice(0).map((value) => value.closeAll())); });
+/** A refusal the bot reads as its call's result, never a thrown error the route turns into a 500. */
+const refusedWith = (pattern: RegExp) => ({ isError: true, content: [{ type: "text", text: expect.stringMatching(pattern) }] });
+
+describe("a browser refusal", () => {
+  it("is the call's result for a refusal by design, and stays an error for a fault", async () => {
+    const { browserRefusal, BROWSER_CONTROL_REFUSAL } = await import("./browser-runtime.ts");
+    expect(browserRefusal(new Error(BROWSER_CONTROL_REFUSAL))).toBe(BROWSER_CONTROL_REFUSAL);
+    expect(browserRefusal(new Error("The browser is closing. Try again shortly."))).toMatch(/closing/);
+    expect(browserRefusal(new Error("This browser cannot upload here."))).toMatch(/cannot upload/);
+    expect(browserRefusal(new TypeError("Cannot read properties of undefined"))).toBeNull();
+    expect(browserRefusal(Object.assign(new Error("Browser access changed while connecting."), { status: 409 }))).toBeNull();
+    expect(browserRefusal(new TransportError("The browser did not answer in time."))).toBeNull();
+  });
+
+  it("answers a call made while a person controls the browser at once, as an isError result", async () => {
+    const value = runtime();
+    await value.take("held", "person");
+    await expect(value.agentRpc("held", { command: "node", args: [], env: {} }, "tools/call", { name: "agent_browser_get_url", arguments: {} }))
+      .resolves.toMatchObject(refusedWith(/paused while a person controls this browser/));
+  });
+});
 
 describe("browser takeover gate", () => {
   it("immediately blocks shared-session reads and writes, while unrelated sessions work", async () => {
@@ -300,7 +321,7 @@ describe("server-owned browser MCP runtime", () => {
       await value.agentRpc("signin", daemon.spec, "tools/call", { name: "agent_browser_get_url", arguments: {} });
       await value.take("signin", "person");
       for (const name of ["agent_browser_screenshot", "agent_browser_snapshot", "agent_browser_get_text"]) {
-        await expect(value.agentRpc("signin", daemon.spec, "tools/call", { name, arguments: {} })).rejects.toThrow(/paused while a person controls this browser/);
+        await expect(value.agentRpc("signin", daemon.spec, "tools/call", { name, arguments: {} })).resolves.toMatchObject(refusedWith(/paused while a person controls this browser/));
       }
       const capture = vi.fn(async () => "frame");
       await expect(value.previewFrame("signin", capture)).rejects.toThrow(/paused/);
@@ -414,14 +435,14 @@ describe("server-owned browser MCP runtime", () => {
       let taking: Promise<boolean> | undefined;
       const refused = value.agentRpc("s", daemon.spec, "tools/call", { name: "agent_browser_fill", arguments: { selector: "@e3", text: "ada" } },
         () => { taking ??= value.take("s", "owner"); });
-      await expect(refused).rejects.toThrow(/paused/);
+      await expect(refused).resolves.toMatchObject(refusedWith(/paused/));
       await expect(taking).resolves.toBe(false);
       expect(daemon.calls()).toEqual([]);
       value.release("s", "owner");
       // Received: the engine is still running the command when the take lands.
       writeFileSync(daemon.busy, "busy");
       const running = value.agentRpc("s", daemon.spec, "tools/call", { name: "agent_browser_get_url" });
-      const discarded = expect(running).rejects.toThrow(/paused/);
+      const discarded = expect(running).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: expect.stringMatching(/paused/) })]) });
       await vi.waitFor(() => expect(daemon.calls()).toEqual(["agent_browser_get_url"]));
       const waited = value.take("s", "owner");
       rmSync(daemon.busy);
@@ -536,7 +557,7 @@ describe("server-owned browser MCP runtime", () => {
     const other = await value.agentRpc("two", spec(), "tools/list", {}) as { pid: number };
     expect(other.pid).not.toBe(list.pid);
     await value.take("one", "owner");
-    await expect(value.agentRpc("one", spec(), "tools/call", { name: "echo" })).rejects.toThrow(/paused/);
+    await expect(value.agentRpc("one", spec(), "tools/call", { name: "echo" })).resolves.toMatchObject(refusedWith(/paused/));
     await expect(value.agentRpc("one", spec(), "tools/list", {})).resolves.toMatchObject({ tools: [{ name: "echo" }, { name: BROWSER_UPLOAD_TOOL }, { name: BROWSER_HOVER_TOOL }, { name: "agent_browser_batch" }, { name: "restart_browser" }] });
   });
 
@@ -574,7 +595,7 @@ describe("server-owned browser MCP runtime", () => {
     const value = runtime({ relayCommand });
     await value.agentRpc("s", spec(), "tools/list", {});
     await value.take("s", "owner");
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: BROWSER_HOVER_TOOL, arguments: { selector: "#menu" } })).rejects.toThrow(/paused/);
+    await expect(value.agentRpc("s", spec(), "tools/call", { name: BROWSER_HOVER_TOOL, arguments: { selector: "#menu" } })).resolves.toMatchObject(refusedWith(/paused/));
     expect(relayCommand).not.toHaveBeenCalled();
   });
 
@@ -610,7 +631,7 @@ describe("server-owned browser MCP runtime", () => {
     const value = runtime({ closeBrowser: async () => false });
     await value.agentRpc("s", spec(), "tools/list", {});
     await expect(value.agentRpc("s", spec(), "tools/call", { name: "crash" })).resolves.toMatchObject({ isError: true });
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" })).rejects.toThrow(/could not be closed/);
+    await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" })).resolves.toMatchObject(refusedWith(/could not be closed/));
     await expect(value.agentRpc("s", spec(), "tools/call", { name: "echo" })).resolves.toMatchObject({
       isError: true,
       content: [{ text: expect.stringMatching(/Restart/) }],
@@ -770,7 +791,7 @@ describe("server-owned browser MCP runtime", () => {
     const value = runtime({ closeBrowser });
     await value.agentRpc("s", spec(), "tools/list", {});
     await value.take("s", "person");
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" })).rejects.toThrow(/paused/);
+    await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" })).resolves.toMatchObject(refusedWith(/paused/));
     value.release("s", "person");
     const revoked = () => { throw new Error("capability revoked"); };
     await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" }, revoked)).rejects.toThrow(/revoked/);
@@ -1242,7 +1263,7 @@ describe("around each bot call (browser-steps.ts)", () => {
       void taking.catch(() => {});
     });
     value = runtime({ steps, applyViewport });
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: "echo" }, undefined, ctx)).rejects.toThrow(/paused/);
+    await expect(value.agentRpc("s", spec(), "tools/call", { name: "echo" }, undefined, ctx)).resolves.toMatchObject(refusedWith(/paused/));
     expect(applyViewport).toHaveBeenCalledTimes(2);
     expect(seen).toEqual([false, true]);
     seen = [];

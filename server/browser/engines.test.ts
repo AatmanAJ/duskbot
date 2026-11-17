@@ -151,6 +151,15 @@ describe("the runtime router", () => {
     expect(old.agentRpc).toHaveBeenCalledTimes(2);
   });
 
+  it("answers an engine's refusal by design as the call's isError result, and lets a fault through for a 500", async () => {
+    const { chrome, runtime } = engines();
+    const { BROWSER_CONTROL_REFUSAL } = await import("../browser-runtime.ts");
+    chrome.service.agentRpc.mockRejectedValueOnce(new Error(BROWSER_CONTROL_REFUSAL));
+    await expect(runtime.agentRpc("s", CHROME, "tools/call", { name: "agent_browser_get_url" })).resolves.toEqual({ isError: true, content: [{ type: "text", text: BROWSER_CONTROL_REFUSAL }] });
+    chrome.service.agentRpc.mockRejectedValueOnce(new TypeError("boom"));
+    await expect(runtime.agentRpc("s", CHROME, "tools/call", { name: "agent_browser_get_url" })).rejects.toThrow("boom");
+  });
+
   it("asks afterClaim once beforeDispatch has claimed, and its refusal reaches neither engine", async () => {
     const order: string[] = [];
     let refuse: string | null = null;

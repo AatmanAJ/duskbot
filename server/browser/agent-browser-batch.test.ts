@@ -154,7 +154,7 @@ describe("a batch on the agent-browser engine", () => {
     expect(texts(result).at(-1)).toBe(BROWSER_CONTROL_REFUSAL);
     expect(calls().map((entry) => entry.name)).not.toContain("agent_browser_press");
     expect(calls().map((entry) => entry.name)).not.toContain("agent_browser_snapshot");
-    await expect(call("agent_browser_batch", { steps: [{ do: "press", key: "Enter" }] })).rejects.toThrow(BROWSER_CONTROL_REFUSAL);
+    await expect(call("agent_browser_batch", { steps: [{ do: "press", key: "Enter" }] })).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: BROWSER_CONTROL_REFUSAL })]) });
     expect(calls().map((entry) => entry.name)).not.toContain("agent_browser_press");
   });
 });
@@ -195,7 +195,7 @@ describe("settled reads on the agent-browser engine", () => {
     const started = Date.now();
     await runtime.take("s", "person");
     expect(Date.now() - started).toBeLessThan(2_000);
-    await expect(reading).rejects.toThrow(BROWSER_CONTROL_REFUSAL);
+    await expect(reading).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: BROWSER_CONTROL_REFUSAL })]) });
     expect(calls().map((entry) => entry.name)).not.toContain("agent_browser_snapshot");
   });
 });

@@ -505,7 +505,7 @@ import { WebhookManager } from "./webhooks.ts";
 import { tieAutomationsToBots } from "./bot-automations.ts"; import { WaitManager } from "./waits.ts"; import { cancelWaitFromCard, createWaitHost, waitRunChat } from "./wait-host.ts"; import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts"; import { createWaitRoutes, findWaitPeer, hostWaitRefusal, waitSourceRefusal, type WaitRouteContext } from "./routes/waits.ts";
 import type { WebhookTrigger } from "../shared/webhooks.ts";
 import { AGENTS_NODE_FLAG, SPAWNED_PROXIES } from "./proxy-paths.ts";
-import { currentTrailId, startServerTrail, trail, withRequestTrail } from "./trail.ts"; import { traceRuntimeEvents } from "./trail-events.ts";
+import { currentTrailId, startServerTrail, trail, trailError, withRequestTrail } from "./trail.ts"; import { traceRuntimeEvents } from "./trail-events.ts";
 import { agentsProxyLaunch, agentsToolBridgeEnv, applyAgentsBridge, bridgedToolTitle, turnEngine } from "./agents-bridge-switch.ts"; import { agentsServerEnv, COMPUTER_OFF_REFUSAL, computerPickRefusal, directTurnKind, roomSkillsRefusal, type TurnKind } from "./agents-turn.ts";
 import { harnessMcpTokenEnv } from "./harness-mcp-token.ts";
 import {
@@ -14277,7 +14277,10 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
           if (body.method === "tools/call" && !claimTurnResource(internalCapability, `browser:${browser.session}`)) {
             throw Object.assign(new Error("another thread is using this browser: pause browser work until that thread finishes"), { status: 409 });
           }
-        }, stepContext(bot, internalCapability, () => liveTurnByThread.get(internalCapability.threadId) ?? null));
+        }, stepContext(bot, internalCapability, () => liveTurnByThread.get(internalCapability.threadId) ?? null)).catch((error: unknown) => {
+          if (typeof (error as { status?: unknown })?.status !== "number") trailError("browser.mcp", error, { method: body.method, call: typeof params?.name === "string" ? params.name : undefined });
+          throw error;
+        });
         requireActiveInternalCapability(); if (body.method === "tools/call") { browserSeats.used(internalCapability, browser.session); if (!(result as { isError?: boolean })?.isError) noteVpsTurnActivity(internalCapability); }
         if (body.method === "tools/call") browserChat.used(internalCapability.threadId);
         if (body.method === "tools/call" && (params?.name === "agent_browser_screenshot" || params?.name === BATCH_TOOL)) {
