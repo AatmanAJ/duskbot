@@ -8973,6 +8973,8 @@
   "bring.aboutYouOne": "1 note about you",
   "bring.aboutYou": "{count} notes about you",
   "bring.alsoHere": "Also on this {device}",
+  "bring.onThis": "On this {device}",
+  "bring.showMore": "Show {count} more",
   "bring.bringIt": "Bring it in",
   "bring.summaryDays": "{summary}. Used on {count} of the last 30 days.",
   "notices.bring.title": "{app} already knows you",

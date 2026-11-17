@@ -251,8 +251,8 @@ describe("persistence patches", () => {
 });
 
 describe("the first run's screens", () => {
-  it("is the welcome, where bots live, the account, dusk cloud's checkout, the AI, bringing things in, the phone and the cloud being made, in that order", () => {
-    expect(BEAT_ORDER).toEqual(["welcome", "account", "place", "checkout", "ai", "bring", "phone", "making", "permissions"]);
+  it("is the welcome, the AI, the account, where bots live, dusk cloud's checkout, bringing things in, the phone, the cloud being made and the permissions, in that order", () => {
+    expect(BEAT_ORDER).toEqual(["welcome", "ai", "account", "place", "checkout", "bring", "phone", "making", "permissions"]);
   });
 
   it("resumes the saved screen while it is offered, else starts at the first", () => {
