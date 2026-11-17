@@ -11,6 +11,8 @@ import { Icon } from "./Icon";
 export interface SidebarMenuItem {
   key: string;
   label: string;
+  /** a quiet word after the label on its own line, like the account's plan */
+  labelNote?: string;
   subtitle?: string;
   note?: string;
   icon?: React.ReactNode;
@@ -159,7 +161,7 @@ function MenuRows({
             )}
             {item.subtitle || item.note ? (
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className={cn(item.wrap ? "break-words" : "truncate", item.large && "font-medium leading-[18px]")}>{item.label}</span>
+                <span className={cn(item.wrap ? "break-words" : "truncate", item.large && "font-medium leading-[18px]")}>{item.label}{item.labelNote && <span className="font-normal text-ink-secondary"> · {item.labelNote}</span>}</span>
                 {item.subtitle && <span className="truncate text-[12px] font-normal leading-4 text-ink-secondary">{item.subtitle}</span>}
                 {item.note && <span className="text-[12px] font-normal leading-snug text-ink-tertiary">{item.note}</span>}
               </span>

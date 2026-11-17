@@ -567,7 +567,7 @@ describe("grok's profile menu", () => {
     const active = { id: "acc-1", email: "ada@qa.dusk.test", name: "Ada Lovelace", plan: { status: "active", tier: "starter" } };
     const items = grokProfileMenuItems({ ...base, onSettings, onDashboard, accounts: { view: { active }, openSheet: null, signOut, add: vi.fn(), editAvatar: vi.fn() } as never });
     expect(items.map((item) => item.key)).toEqual(["who", "mobile", "dashboard", "support", "settings", "log-out"]);
-    expect(items[0]).toMatchObject({ label: "Ada Lovelace", subtitle: "ada@qa.dusk.test · dusk cloud · Plus", title: "ada@qa.dusk.test", large: true });
+    expect(items[0]).toMatchObject({ label: "Ada Lovelace", labelNote: "dusk cloud · Plus", subtitle: "ada@qa.dusk.test", title: "ada@qa.dusk.test", large: true });
     expect(items[1]).toMatchObject({ key: "mobile", separatorBefore: true });
     expect(items.at(-1)).toMatchObject({ label: "Sign out", separatorBefore: true });
     expect(items.some((item) => item.label === "Account and sign out")).toBe(false);
@@ -576,7 +576,7 @@ describe("grok's profile menu", () => {
     items.at(-1)!.onSelect();
     expect(signOut).toHaveBeenCalledWith("acc-1");
     const free = grokProfileMenuItems({ ...base, accounts: { view: { active: { id: "acc-2", email: "bo@qa.dusk.test", plan: { status: "free" } } }, openSheet: null, signOut, add: vi.fn() } as never });
-    expect(free[0]).toMatchObject({ key: "who", label: "bo@qa.dusk.test", subtitle: "Free" });
+    expect(free[0]).toMatchObject({ key: "who", label: "bo@qa.dusk.test", labelNote: "Free" });
     const unknown = grokProfileMenuItems({ ...base, accounts: { view: { active: { id: "acc-3", email: "cy@qa.dusk.test" } }, openSheet: null, signOut, add: vi.fn() } as never });
     expect(unknown[0]?.subtitle).toBeUndefined();
   });
@@ -586,7 +586,7 @@ describe("grok's profile menu", () => {
     const header = { email: "ada@qa.dusk.test", plan: "dusk cloud · Pro", face: null };
     const items = grokProfileMenuItems({ ...base, header, accounts: { view: null, openSheet, signOut: vi.fn(), add: vi.fn() } as never });
     expect(items.map((item) => item.key)).toEqual(["who", "mobile", "support", "settings", "log-out"]);
-    expect(items[0]).toMatchObject({ label: "ada@qa.dusk.test", subtitle: "dusk cloud · Pro" });
+    expect(items[0]).toMatchObject({ label: "ada@qa.dusk.test", labelNote: "dusk cloud · Pro" });
     items.at(-1)!.onSelect();
     expect(openSheet).toHaveBeenCalledOnce();
     const lent = grokProfileMenuItems({ ...base, header, accounts: { view: null, openSheet: null, signOut: vi.fn(), add: vi.fn() } as never });
