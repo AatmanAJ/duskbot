@@ -46,7 +46,6 @@ const PRIMARY_BUTTON = "ui-button ui-button-pill ui-button-primary h-8 min-h-8 g
  * skills and tools come along quietly; only the memory is offered. */
 function MemorySource({ find, state, busy, said, onImport }: { find: LocalFind; state: RowState; busy: boolean; said: string | null; onImport: () => void }) {
   const done = state === "done";
-  const days = Math.min(find.activeDays ?? 0, 30);
   return (
     <div data-bring-find={find.id} data-bring-hero="" data-bring-state={state} className="flex flex-col gap-4 rounded-[20px] bg-ink/[0.035] p-5 text-start">
       <div className="flex min-w-0 items-start gap-3.5">
@@ -58,10 +57,7 @@ function MemorySource({ find, state, busy, said, onImport }: { find: LocalFind; 
               <Check size={15} aria-hidden="true" className="mt-[3px] shrink-0" />{said ?? t("bring.imported")}
             </span>
           ) : (
-            <>
-              <span data-bring-topics="" className="text-pretty text-[14px] leading-5 text-ink-secondary">{knowsLine(find)}</span>
-              <span className="mt-1 text-[13px] leading-[18px] text-ink-tertiary">{t("bring.usedDays", { count: days })}</span>
-            </>
+            <span data-bring-topics="" className="text-pretty text-[14px] leading-5 text-ink-secondary">{knowsLine(find)}</span>
           )}
         </span>
       </div>
