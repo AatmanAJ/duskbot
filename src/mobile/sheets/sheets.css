@@ -33,3 +33,9 @@
 .dusk-mobile .mobile-panel-sheet [data-panel-page-view] > p,
 .dusk-mobile .mobile-panel-sheet [data-settings-footnote] { font-size: 15px; line-height: 22px; color: color-mix(in srgb, var(--color-ink) 64%, transparent); }
 
+/* in a light skin the computer tab's 6%-ink fills (the browser's frame, its closed note) are the page's own grey: they
+   take the white segment fill the Details tab's rows sit on. Dark skins already lift them off the page */
+:root:not([data-skin="grok-dark"], [data-skin="midnight"], [data-skin="dusk"], [data-skin="foundry"], [data-skin="graphite"], [data-skin="halloween"])
+  .dusk-mobile .mobile-panel-sheet [data-panel-tabpanel="computer"] [class*="bg-[color-mix(in_srgb,var(--color-composer),var(--color-ink)_6%)]"] {
+  background-color: var(--color-menu);
+}
