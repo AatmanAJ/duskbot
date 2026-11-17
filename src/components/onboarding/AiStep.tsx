@@ -16,7 +16,7 @@ import type { WelcomeAiNow } from "./welcome-ai";
 /** `onNext` says how the person went on (an AI connected, the free model, or later), for the funnel's numbers. `cloud`:
  * the person's dusk cloud is being made meanwhile, which the line says. `auto`: an AI that already works is used without
  * asking; off: the person always picks an AI here, never a "found" screen. */
-export function AiStep({ tested, cloud = false, auto = true, computerAis = [], onNext }: { tested: WelcomeAiNow | null; cloud?: boolean; auto?: boolean;
+export function AiStep({ tested, cloud = false, computerAis = [], onNext }: { tested: WelcomeAiNow | null; cloud?: boolean; auto?: boolean;
   /** on a cloud the desktop app set up: the AIs signed in on that computer, by instance id */
   computerAis?: readonly string[]; onNext: (how: "connected" | "free" | "later") => void }) {
   const { state } = useStore();
