@@ -146,6 +146,12 @@ jobs:
         # before Vitest starts so a cold download cannot consume the fixture
         # timeout.
         run: node --input-type=commonjs -e "require('electron')"
+      - name: Let Chrome build its sandbox on this runner
+        # Ubuntu 24.04 blocks unprivileged user namespaces, so the browser
+        # suites' Chrome for Testing dies with "No usable sandbox". Chrome's
+        # own documented fix for 23.10+; the sandbox itself stays on.
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run tests
         # The github-actions reporter turns each failure into an annotation
         # on the PR, so the failing test and its assertion are readable
