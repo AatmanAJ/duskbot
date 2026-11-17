@@ -78,6 +78,36 @@ describe("disconnecting a provider", () => {
     expect(fixture.calls).toContainEqual({ path: "/api/instances/grok", body: { hidden: true } });
   });
 
+  const confirmButton = (label: string) => [...document.querySelectorAll<HTMLButtonElement>("button")]
+    .find((button) => button.textContent === label && !button.hasAttribute("data-disconnect-engine"))!;
+
+  it("signs out first where dusk bot can, so the signed-in app cannot bring it back", async () => {
+    flushSync(() => root.render(createElement(DisconnectProvider, { instance: instance({ authentication: { method: "device-code", signOut: true } }) })));
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-disconnect-engine="grok"]')!.click());
+    expect(document.body.textContent).toContain("dusk bot signs out of Grok");
+    flushSync(() => confirmButton("Disconnect").click());
+    await settle();
+    expect(fixture.calls.map((call) => call.path)).toEqual(["/api/instances/grok/auth/sign-out", "/api/instances/grok"]);
+    expect(fixture.calls[1]).toEqual({ path: "/api/instances/grok", body: { hidden: true } });
+  });
+
+  it("keeps the sign-in when asked and only hides the provider", async () => {
+    flushSync(() => root.render(createElement(DisconnectProvider, { instance: instance({ authentication: { method: "device-code", signOut: true } }) })));
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-disconnect-engine="grok"]')!.click());
+    flushSync(() => confirmButton("Keep sign-in").click());
+    await settle();
+    expect(fixture.calls).toEqual([{ path: "/api/instances/grok", body: { hidden: true } }]);
+  });
+
+  it("only hides a provider it cannot sign out of, and offers no second choice", async () => {
+    flushSync(() => root.render(createElement(DisconnectProvider, { instance: instance({}) })));
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-disconnect-engine="grok"]')!.click());
+    expect(document.querySelector("[data-confirm-alternative]")).toBeNull();
+    flushSync(() => confirmButton("Disconnect").click());
+    await settle();
+    expect(fixture.calls).toEqual([{ path: "/api/instances/grok", body: { hidden: true } }]);
+  });
+
   it("is not offered for a provider the organization runs", () => {
     flushSync(() => root.render(createElement(DisconnectProvider, { instance: instance({ readOnly: true }) })));
     expect(host.querySelector("[data-disconnect-engine]")).toBeNull();

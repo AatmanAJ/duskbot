@@ -3,6 +3,7 @@ import type { InstanceConfigMap } from "../contracts.ts";
 import type { DataContext } from "../data-context.ts";
 import type { ProviderRegistry } from "../harness/registry.ts";
 import { resolvePeerComms, type ApprovalBus } from "../peer-approval.ts";
+import { connectedOnly } from "../default-model-selection.ts";
 import { createQuotaSwitch, type QuotaRequest, type QuotaSwitchDeps } from "../quota-switch.ts";
 import type { BotRecord, Message } from "../store.ts";
 import type { UsageTrigger } from "../usage-ledger.ts";
@@ -33,7 +34,8 @@ export function createQuotaSwitchHost(deps: QuotaSwitchHostDeps) {
   } = deps;
 
   const quotaSwitch = createQuotaSwitch({
-    store, coordinator, registry, turnStops, takeover, limitMode, hold, language,
+    store, coordinator, turnStops,
+    registry: { instances: () => connectedOnly(registry.instances(), providerConfigs()) }, takeover, limitMode, hold, language,
     access: instanceId => providerConfigs()[instanceId]?.access ?? registry.access(instanceId),
     refusal: policyModelRefusal,
     gate: (thread, selection) => checkedTaskModelSwitch(thread, selection, false, false, true),

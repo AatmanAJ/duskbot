@@ -291,20 +291,30 @@ export function FoundProvider({ instance }: { instance: InstanceInfo }) {
   );
 }
 
-/** Out of every list and every automatic choice until Reconnect; bots on it move to another AI. Its app and sign-in stay. */
+/** Out of every list and every automatic choice until Reconnect; bots on it move to another AI. Where dusk bot can sign
+ * out of it, Disconnect does that too, so a signed-in app on this computer cannot bring it back; Keep sign-in only hides it. */
 export function DisconnectProvider({ instance }: { instance: InstanceInfo }) {
   const { refreshInstances } = useStore();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (instance.readOnly) return null;
-  const disconnect = () => {
+  const path = `/api/instances/${encodeURIComponent(instance.instanceId)}`;
+  const signsOut = instance.authentication?.signOut === true && instance.snapshot.authenticated === true;
+  const disconnect = async (signOut: boolean) => {
     setBusy(true);
     setError(null);
-    api(`/api/instances/${encodeURIComponent(instance.instanceId)}`, { method: "PATCH", body: JSON.stringify({ hidden: true }) })
-      .then(() => { setConfirming(false); return Promise.resolve(refreshInstances()).catch(() => {}); })
-      .catch((e: unknown) => { setConfirming(false); setError(friendlyError(e)); })
-      .finally(() => setBusy(false));
+    try {
+      if (signOut) await api(`${path}/auth/sign-out`, { method: "POST" });
+      await api(path, { method: "PATCH", body: JSON.stringify({ hidden: true }) });
+      setConfirming(false);
+      await Promise.resolve(refreshInstances()).catch(() => {});
+    } catch (cause) {
+      setConfirming(false);
+      setError(friendlyError(cause));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <RowsCard>
@@ -315,8 +325,10 @@ export function DisconnectProvider({ instance }: { instance: InstanceInfo }) {
       </ItemRow>
       {error && <NoteRow tone="danger">{error}</NoteRow>}
       <ConfirmDialog open={confirming} title={t("engines.disconnectTitle", { name: instance.displayName })}
-        body={t("engines.disconnectBody", { name: instance.displayName })} confirmLabel={t("engines.disconnect")} tone="neutral" pending={busy}
-        onCancel={() => { if (!busy) setConfirming(false); }} onConfirm={disconnect} />
+        body={t(signsOut ? "engines.disconnectSignOutBody" : "engines.disconnectBody", { name: instance.displayName })}
+        confirmLabel={t("engines.disconnect")} tone="neutral" pending={busy}
+        alternative={signsOut ? { label: t("engines.disconnectKeepSignIn"), onClick: () => void disconnect(false) } : undefined}
+        onCancel={() => { if (!busy) setConfirming(false); }} onConfirm={() => void disconnect(signsOut)} />
     </RowsCard>
   );
 }
