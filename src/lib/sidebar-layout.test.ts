@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  botActivityAt,
+  byRecentActivity,
   activeBotsFirst,
   BOT_CHATS_SECTION_ID,
   BOTS_SECTION_ID,
@@ -321,3 +323,19 @@ describe("active bots first", () => {
     expect(parts.sectionedBots).toEqual(["w1", "h1", "w2"]);
   });
 });
+
+describe("bots by recent activity", () => {
+  const bot = (id: string, at: number, extra: object = {}) => ({ id, tasks: [{ createdAt: 1, lastThreadOrderAt: at }], ...extra });
+
+  it("reads a bot's newest conversation, never a routine run or an archived one", () => {
+    expect(botActivityAt({ tasks: [{ createdAt: 5, updatedAt: 9 }, { createdAt: 2, lastThreadOrderAt: 20, routineRunId: "r" }, { createdAt: 3, lastThreadOrderAt: 30, archivedAt: 1 }] })).toBe(9);
+    expect(botActivityAt({ tasks: [], createdAt: 4 })).toBe(4);
+  });
+
+  it("puts a bot with something new first, then the most recent, and keeps the given order on a tie", () => {
+    const bots = [bot("a", 10), bot("b", 30), bot("c", 20, { unread: true }), bot("d", 30)];
+    const order = byRecentActivity(bots, (one) => Boolean((one as { unread?: boolean }).unread), botActivityAt).map((one) => one.id);
+    expect(order).toEqual(["c", "b", "d", "a"]);
+  });
+});
+

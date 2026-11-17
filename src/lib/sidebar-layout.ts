@@ -142,6 +142,27 @@ export function activeBotsFirst<T>(parts: { pinnedBots: T[]; sectionedBots: T[];
   return { pinnedBots: first(parts.pinnedBots), sectionedBots: first(parts.sectionedBots), unsectionedBots: first(parts.unsectionedBots) };
 }
 
+type ActivityTask = { createdAt?: number; updatedAt?: number; lastThreadOrderAt?: number; routineRunId?: string; archivedAt?: number };
+
+/** When a bot last had something new in a conversation the person sees: what moves a thread to the top, else its last
+ * change, else when it began. */
+export function botActivityAt(bot: { tasks?: readonly ActivityTask[]; createdAt?: number }): number {
+  let latest = 0;
+  for (const task of bot.tasks ?? []) {
+    if (task.routineRunId || task.archivedAt !== undefined) continue;
+    latest = Math.max(latest, task.lastThreadOrderAt ?? task.updatedAt ?? task.createdAt ?? 0);
+  }
+  return latest || bot.createdAt || 0;
+}
+
+/** Bots with something for the person (unread, or waiting on them) first, then the most recently active; ties keep the
+ * order they came in. */
+export function byRecentActivity<T>(bots: readonly T[], attention: (bot: T) => boolean, at: (bot: T) => number): T[] {
+  const keyed = bots.map((bot, index) => ({ bot, index, attention: attention(bot), at: at(bot) }));
+  keyed.sort((a, b) => Number(b.attention) - Number(a.attention) || b.at - a.at || a.index - b.index);
+  return keyed.map((entry) => entry.bot);
+}
+
 export function partitionSidebarGroups<T extends SidebarGroup>(groups: T[]) {
   const botChats = groups.filter((group) => Boolean(group.dm));
   const rooms = groups.filter((group) => !group.dm);

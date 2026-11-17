@@ -65,7 +65,7 @@ import { ModelDirectory } from "./models/ModelDirectory";
 import { AiCards } from "./onboarding/AiCards";
 import { reportsUsage, useEngineLimits } from "@/lib/limit-resets";
 import {
-  ExperimentalFeaturesRow, FollowUpRow, LanguageRow, QuickUpdatesRow, SendKeyRow, TalkingStyleRow,
+  BotOrderRow, ExperimentalFeaturesRow, FollowUpRow, LanguageRow, QuickUpdatesRow, SendKeyRow, TalkingStyleRow,
 } from "./AppSettingsRows";
 
 export type Has = (id: AppSettingsSection) => boolean;
@@ -209,6 +209,7 @@ export function GeneralPane({ has, remoteActive }: { has: Has; remoteActive: boo
           <AccentRow />
           <TalkingStyleRow />
           <LanguageRow simple />
+          <BotOrderRow />
           <AmbientRows />
         </SettingsRows>
       </SettingsGroup>

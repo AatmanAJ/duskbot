@@ -33,8 +33,9 @@ import { NEW_GROUP_EVENT } from "@/lib/new-group-request";
 import { RenameTitle } from "./RenameTitle";
 import { navigateThreadMenu } from "./BotProjects";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
-import { setSidebarDensity, useSidebarDensity, usePinnedCircles, useUniversalPins, type SidebarDensity } from "@/lib/sidebar-preferences";
-import { BOT_CHATS_SECTION_ID, BOTS_SECTION_ID, CHANNELS_SECTION_ID, PINNED_SECTION_ID, activeBotsFirst, partitionSidebarBots, partitionSidebarGroups, pinnedCircleThreadListVisible, sidebarSectionLabel, userSectionId, userSectionName } from "@/lib/sidebar-layout";
+import { setSidebarDensity, useSidebarBotOrder, useSidebarDensity, usePinnedCircles, useUniversalPins, type SidebarDensity } from "@/lib/sidebar-preferences";
+import { botShowsUnread } from "@/lib/bot-unread";
+import { BOT_CHATS_SECTION_ID, BOTS_SECTION_ID, CHANNELS_SECTION_ID, PINNED_SECTION_ID, activeBotsFirst, botActivityAt, byRecentActivity, partitionSidebarBots, partitionSidebarGroups, pinnedCircleThreadListVisible, sidebarSectionLabel, userSectionId, userSectionName } from "@/lib/sidebar-layout";
 import { stepKey } from "@/lib/sidebar-bot-drop";
 import { botRowDropClass, useSidebarBotDrag, type BotRowDrag } from "./SidebarBotDrag";
 import { useSidebarSections } from "./SidebarSections";
@@ -895,6 +896,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
     : undefined;
 
   const q = query.trim().toLowerCase();
+  const botOrder = useSidebarBotOrder();
   useActivityReorder(sidebarRef, !q);
   useNamesReturn(sidebarRef, rail);
   const sections = useSidebarSections({ simple, rail, density, query: q, label: sectionLabel, sidebarRef });
@@ -917,12 +919,18 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
   const parts = partitionSidebarBots(botDrag.preview(matchingBots), { universalPins, viewerEmail, welcoming: useWelcomingBot() });
   const mainBotId = myDefaultBot(state.bots, viewerEmail)?.id ?? parts.unsectionedChief?.id ?? parts.sectionChiefs[0]?.id;
   // grok keeps its main bot a row like any other, in its own section, marked with a star
-  const saved = simpleDesk
+  const placed = simpleDesk
     ? { ...parts, primary: null, unsectionedChief: null, unsectionedBots: parts.unsectionedChief ? [parts.unsectionedChief, ...parts.unsectionedBots] : parts.unsectionedBots }
     : { ...parts, primary: null };
-  // The lists a bot is dragged in show the saved order, as Discord's channels do: a bot stays where it was put, busy or
-  // not. Pins, which are not dragged, still put working bots first.
-  const { pinnedBots } = activeBotsFirst(saved, (bot) => {
+  // By recent activity, a bot with something new comes first in its list, pinned ones still above the rest. In the
+  // person's own order, the lists a bot is dragged in show it as Discord's channels do: a bot stays where it was put,
+  // busy or not, and pins, which are not dragged, still put working bots first.
+  const recentOrder = botOrder === "recent";
+  const recent = <T extends Bot>(bots: T[]) => byRecentActivity(bots, (bot) => botShowsUnread(bot) || sidebarBotStatus(bot, state.pendingQueued).waiting, botActivityAt);
+  const saved = recentOrder
+    ? { ...placed, pinnedBots: recent(placed.pinnedBots), sectionedBots: recent(placed.sectionedBots), unsectionedBots: recent(placed.unsectionedBots) }
+    : placed;
+  const { pinnedBots } = recentOrder ? saved : activeBotsFirst(saved, (bot) => {
     const { waiting, working } = sidebarBotStatus(bot, state.pendingQueued);
     return waiting || working;
   });
@@ -939,7 +947,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
   for (const group of sectionedRooms) {
     if (!sectionNames.includes(group.section!)) sectionNames.push(group.section!);
   }
-  const drops = botDrag.arrange({ enabled: sections.interactive && !phone, main: saved.unsectionedBots, sectioned: saved.sectionedBots, departments: sectionNames, bots: state.bots, taken: departmentNames(state) });
+  const drops = botDrag.arrange({ enabled: sections.interactive && !phone && !recentOrder, main: saved.unsectionedBots, sectioned: saved.sectionedBots, departments: sectionNames, bots: state.bots, taken: departmentNames(state) });
   const naturalSectionIds = [
     ...(pinnedBots.length > 0 && !universalPins && !simpleDesk ? [PINNED_SECTION_ID] : []),
     ...(unsectionedRooms.length > 0 ? [CHANNELS_SECTION_ID] : []),
