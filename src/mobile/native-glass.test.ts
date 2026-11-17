@@ -3,7 +3,8 @@ import { createElement, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
+import { buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, restingFrame, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
+import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
 
 const rects = new WeakMap<Element, DOMRect>();
@@ -37,6 +38,15 @@ describe("rects", () => {
     const el = document.createElement("div");
     place(el, 12.26, 59.74, 44, 44);
     expect(frameOf(el)).toEqual({ x: 12.5, y: 59.5, w: 44, h: 44 });
+  });
+
+  it("measures a control where it rests: off its page's offset, and at full size while a press scales it", () => {
+    const el = document.createElement("button");
+    Object.defineProperty(el, "offsetWidth", { value: 44 });
+    Object.defineProperty(el, "offsetHeight", { value: 44 });
+    // pressed to .96 around its centre, on a page 200px into its slide
+    place(el, 212 + 0.88, 59 + 0.88, 42.24, 42.24);
+    expect(restingFrame(el, 200)).toEqual({ x: 12, y: 59, w: 44, h: 44 });
   });
 
   it("is covered when something outside the chat is on top of it, not when the chat's own content is", () => {
@@ -165,16 +175,19 @@ function fakeGlass() {
     focus: vi.fn(),
     blur: vi.fn(),
     clear: vi.fn(),
+    slide: vi.fn<(path: SlidePath | null) => void>(),
     onEvent: (fn: (event: GlassEvent) => void) => { listener = fn; return () => { listener = null; }; },
   } satisfies GlassBridge;
   return { glass, send: (event: GlassEvent) => listener?.(event) };
 }
 
+let slideGlass: (path: SlidePath | null) => void = () => {};
+
 function Chat({ platform }: { platform: MobilePlatform }) {
   const ref = useRef<HTMLDivElement>(null);
-  useNativeGlass(platform, ref, true);
+  slideGlass = useNativeGlass(platform, ref, true);
   return createElement("div", { ref, className: "dusk-mobile" },
-    createElement("div", { "data-mobile-chat": "", id: "chat" },
+    createElement("div", { className: "mobile-page", id: "page" }, createElement("div", { "data-mobile-chat": "", id: "chat" },
       createElement("nav", { "data-glass-nav": "" },
         createElement("button", { "data-glass": "back", id: "back" }),
         createElement("button", { "data-glass": "title", id: "title" },
@@ -187,7 +200,7 @@ function Chat({ platform }: { platform: MobilePlatform }) {
           createElement("div", { "data-composer-row": "" },
             createElement("textarea", { id: "field", placeholder: "Message Manager", enterKeyHint: "send", defaultValue: "" }),
             createElement("div", { "data-composer-actions": "" },
-              createElement("button", { "data-voice-mic": "start", "aria-label": "Dictate", id: "mic" })))))));
+              createElement("button", { "data-voice-mic": "start", "aria-label": "Dictate", id: "mic" }))))))));
 }
 
 describe("useNativeGlass", () => {
@@ -249,6 +262,43 @@ describe("useNativeGlass", () => {
     runFrame();
     expect(glass.update).toHaveBeenCalledTimes(sent + 1);
     expect(glass.update.mock.lastCall![0].header?.back.x).toBe(100);
+  });
+
+  it("sends frames where they rest on the page and the page's offset, and nothing while the native side plays a slide", () => {
+    const { glass, $ } = mount();
+    const slideBy = (dx: number) => {
+      place($("page"), dx, 0, 390, 844);
+      place($("back"), 12 + dx, 59, 44, 44);
+      place($("title"), 120 + dx, 59, 150, 44);
+      place($("right"), 334 + dx, 59, 44, 44);
+      place($("shell"), 10 + dx, 760, 370, 48);
+    };
+    slideBy(390);
+    runFrame();
+    expect(glass.update.mock.lastCall![0]).toMatchObject({ offset: 390, header: { back: { x: 12 } }, composer: { frame: { x: 10 } } });
+    const sent = glass.update.mock.calls.length;
+    $("page").dataset.moving = "";
+    slideGlass({ duration: 400, points: [390, 200, 0] });
+    expect(glass.slide).toHaveBeenCalledWith({ duration: 400, points: [390, 200, 0] });
+    for (const dx of [300, 120, 30]) { slideBy(dx); runFrame(); }
+    expect(glass.update).toHaveBeenCalledTimes(sent + 1);
+    expect(glass.update.mock.lastCall![0]).toMatchObject({ offset: 0, header: { back: { x: 12 } } });
+    // a finger takes the page: the slide stops and the page is followed every frame
+    slideGlass(null);
+    expect(glass.slide).toHaveBeenLastCalledWith(null);
+    slideBy(40);
+    runFrame();
+    slideBy(60);
+    runFrame();
+    expect(glass.update.mock.calls.slice(-2).map(([state]) => state.offset)).toEqual([40, 60]);
+  });
+
+  it("sends the avatar before the header that shows it", () => {
+    const { glass } = mount();
+    runFrame();
+    const avatarAt = glass.setAvatar.mock.invocationCallOrder[0];
+    const headerAt = glass.update.mock.invocationCallOrder[0];
+    expect(avatarAt).toBeLessThan(headerAt!);
   });
 
   it("drops the native chrome while a sheet covers the chat", () => {

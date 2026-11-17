@@ -38,6 +38,10 @@ const INSTRUMENT = `(() => {
   const tick = (t) => { perf.frames.push(t); requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
   try { new PerformanceObserver((list) => { for (const e of list.getEntries()) perf.longtasks.push([e.startTime, e.duration]); }).observe({ type: "longtask", buffered: true }); } catch {}
+  perf.shifts = [];
+  try { new PerformanceObserver((list) => { for (const e of list.getEntries()) perf.shifts.push([e.startTime, e.value]); }).observe({ type: "layout-shift", buffered: true }); } catch {}
+  perf.fonts = [];
+  document.fonts?.addEventListener("loadingdone", (e) => { for (const face of e.fontfaces) perf.fonts.push([performance.now(), face.family]); });
   const realFetch = window.fetch;
   window.fetch = function (input, init) {
     const url = typeof input === "string" ? input : input.url;
@@ -71,7 +75,7 @@ const INSTRUMENT = `(() => {
     },
   };
   const glass = (kind) => (state) => perf.glass.push([performance.now(), kind, state === undefined ? 0 : JSON.stringify(state).length]);
-  window.__perfGlass = { update: glass("update"), setText: glass("text"), setAvatar: glass("avatar"), focus() {}, blur() {}, clear: glass("clear"), onEvent: (fn) => { perf.emit = fn; return () => {}; } };
+  window.__perfGlass = { update: glass("update"), setText: glass("text"), setAvatar: glass("avatar"), focus() {}, blur() {}, clear: glass("clear"), slide: glass("slide"), onEvent: (fn) => { perf.emit = fn; return () => {}; } };
   // the pushed page's position each frame, for when a slide starts and lands
   // read as drawn only while it may move (an inline transform changed, or keyframes run), so a resting page is not restyled
   let inline = null, x = null;
@@ -145,6 +149,7 @@ async function measure(stage: Stage, label: string, act: () => Promise<void>, se
       requestUrls: p.fetches.map(([, u, d]) => u.split("?")[0] + " " + Math.round(d) + "ms"),
       glassUpdates: p.glass.filter(([, k]) => k === "update").length,
       glassAvatars: p.glass.filter(([, k]) => k === "avatar").length,
+      glassSlides: p.glass.filter(([, k]) => k === "slide").length,
       glassBytes: p.glass.reduce((n, [, , b]) => n + b, 0),
     };
   })()`);
@@ -210,7 +215,7 @@ try {
   await stage.page.until(`window.__perf && ${row("Nova")}`, 30_000);
   await delay(3000);
   await stage.page.send("Emulation.setCPUThrottlingRate", { rate: RATE });
-  const cold = await stage.page.evaluate(`(() => { const nav = performance.getEntriesByType("navigation")[0]; const fcp = performance.getEntriesByName("first-contentful-paint")[0]; return { domContentLoaded: Math.round(nav.domContentLoadedEventEnd), firstContentfulPaint: Math.round(fcp?.startTime ?? -1), requests: window.__perf.fetches.length }; })()`);
+  const cold = await stage.page.evaluate(`(() => { const nav = performance.getEntriesByType("navigation")[0]; const fcp = performance.getEntriesByName("first-contentful-paint")[0]; const p = window.__perf; return { domContentLoaded: Math.round(nav.domContentLoadedEventEnd), firstContentfulPaint: Math.round(fcp?.startTime ?? -1), requests: p.fetches.length, layoutShift: Math.round(p.shifts.reduce((n, [, v]) => n + v, 0) * 1000) / 1000, shifts: p.shifts.length, fontsLoadedAt: p.fonts.map(([t, f]) => f + " " + Math.round(t)) }; })()`);
   console.log(`cold start (unthrottled): ${JSON.stringify(cold)}`);
   results.push({ label: "cold start (unthrottled)", ...cold });
 

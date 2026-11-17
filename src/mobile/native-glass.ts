@@ -1,4 +1,5 @@
-import { useEffect, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
+import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
 
 /** A rect in css px from the top left of the screen, which on the phone is the native view's own point space. */
@@ -35,6 +36,8 @@ export interface GlassComposer {
 
 export interface GlassState {
   dark: boolean;
+  /** how far the chat's page sits right of where it rests, in px; every frame in here is where its element rests */
+  offset: number;
   /** the chat is open but something covers its chrome: the page draws its own at once, so the native one goes at once */
   handoff: boolean;
   accent: string;
@@ -59,6 +62,9 @@ export interface GlassBridge {
   focus(): void;
   blur(): void;
   clear(): void;
+  /** The chat's page starts a slide along `path`: the header and composer play the same path natively from this frame,
+   * with no frame updates in between. null stops them where they are. */
+  slide(path: SlidePath | null): void;
   onEvent(listener: (event: GlassEvent) => void): () => void;
 }
 
@@ -67,6 +73,17 @@ const round = (n: number) => Math.round(n * 2) / 2;
 export function frameOf(el: Element): GlassFrame {
   const box = el.getBoundingClientRect();
   return { x: round(box.left), y: round(box.top), w: round(box.width), h: round(box.height) };
+}
+
+/** Where a control rests on its page: `dx` (the page's own offset) comes off, and a press scaling it keeps its box, so
+ * the native twin never shrinks with the page's unseen one. */
+export function restingFrame(el: Element, dx: number): GlassFrame {
+  const box = el.getBoundingClientRect();
+  const w = (el as HTMLElement).offsetWidth || box.width;
+  const h = (el as HTMLElement).offsetHeight || box.height;
+  const cx = box.left + box.width / 2 - dx;
+  const cy = box.top + box.height / 2;
+  return { x: round(cx - w / 2), y: round(cy - h / 2), w: round(w), h: round(h) };
 }
 
 /** Covered by something drawn over the chat (a sheet, a context menu, a dialog): the topmost element at its centre is outside the chat. */
@@ -231,15 +248,15 @@ function spoken(strip: Element | null): string {
   return [...strip.childNodes].filter((node) => !(node instanceof Element && (node.matches(".sr-only") || node.querySelector("canvas, svg")))).map((node) => node.textContent ?? "").join(" ").trim();
 }
 
-function readHeader(nav: Element): GlassHeader | null {
+function readHeader(nav: Element, dx: number): GlassHeader | null {
   const back = nav.querySelector("[data-glass=back]");
   const title = nav.querySelector("[data-glass=title]");
   const right = nav.querySelector<HTMLElement>("[data-glass=right]");
   if (!back || !title) return null;
   return {
-    back: frameOf(back),
-    title: frameOf(title),
-    right: right ? frameOf(right) : null,
+    back: restingFrame(back, dx),
+    title: restingFrame(title, dx),
+    right: right ? restingFrame(right, dx) : null,
     name: title.querySelector("[data-glass-name]")?.textContent ?? "",
     live: Boolean(right?.querySelector("[data-glass-live]")),
     backLabel: back.getAttribute("aria-label") ?? "",
@@ -248,7 +265,7 @@ function readHeader(nav: Element): GlassHeader | null {
   };
 }
 
-function readComposer(shell: HTMLElement, baseline: number): { composer: GlassComposer; elements: HTMLElement[]; field: HTMLTextAreaElement | null } | null {
+function readComposer(shell: HTMLElement, baseline: number, dx: number): { composer: GlassComposer; elements: HTMLElement[]; field: HTMLTextAreaElement | null } | null {
   if (hasStrips(shell)) return null;
   const field = shell.querySelector<HTMLTextAreaElement>("textarea");
   const actions = composerButtons(shell.querySelector("[data-composer-actions]"));
@@ -256,7 +273,7 @@ function readComposer(shell: HTMLElement, baseline: number): { composer: GlassCo
   const voiceStrip = shell.querySelector("[data-composer-voice]");
   const recording = Boolean(voiceStrip) || Boolean(field?.closest(".hidden"));
   if (!field && !recording) return null;
-  const frame = frameOf(shell);
+  const frame = restingFrame(shell, dx);
   const plus = shell.querySelector("[data-composer-plus]");
   return {
     composer: {
@@ -294,10 +311,26 @@ function cssPx(root: HTMLElement, expression: string): number {
   return value;
 }
 
-/** While a chat is open, the native glass draws its header and composer: every frame the page's own chrome is measured
- * and anything that moved goes to the native side, which also takes the taps and typing and hands them back here. The
- * page's chrome stays in place, transparent, so its layout, menus and focus all keep working. */
-export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTMLElement | null>, chatOpen: boolean) {
+/** While a chat is open, the native glass draws its header and composer: the page's own chrome is measured where it rests
+ * on its page and anything that changed goes to the native side, which also takes the taps and typing and hands them
+ * back here. The page's chrome stays in place, transparent, so its layout, menus and focus all keep working. A slide of
+ * the page goes over as one message (the returned function, for NavStack's `onSlide`), so the native chrome plays the
+ * page's own path instead of following it frame by frame; only a finger dragging the page is followed. */
+export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTMLElement | null>, chatOpen: boolean): (path: SlidePath | null) => void {
+  const slideRef = useRef<{ until: number; to: number } | null>(null);
+  const onSlide = useCallback((path: SlidePath | null) => {
+    const glass = platform.glass;
+    if (!glass) return;
+    if (!path) {
+      if (!slideRef.current) return;
+      slideRef.current = null;
+      glass.slide(null);
+      return;
+    }
+    slideRef.current = { until: performance.now() + path.duration, to: path.points.at(-1) ?? 0 };
+    glass.slide(path);
+  }, [platform]);
+
   useEffect(() => {
     const glass = platform.glass;
     const root = rootRef.current;
@@ -312,6 +345,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     let seq = 0;
     let avatar: string | null | undefined;
     let avatarAt = 0;
+    let avatarName: string | null = null;
     let nativeFocused = false;
     let safeBottom = cssPx(root, "var(--m-safe-bottom)");
 
@@ -344,29 +378,49 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
         seq += 1;
         glass.setText(field.value, seq);
       }
-      const sliding = root.querySelector(".mobile-page[data-moving]") !== null;
+      const now = performance.now();
+      // a slide holds its target until the page says it stopped: its compositor may land a frame after this clock
+      const pageMoving = root.querySelector(".mobile-page[data-moving]") !== null;
+      const slide = slideRef.current && (now < slideRef.current.until || pageMoving) ? slideRef.current : null;
+      if (!slide) slideRef.current = null;
+      // a page the native side is sliding on its own needs no frames; only a finger dragging it does
+      const dragged = !slide && pageMoving;
       if (fresh > 0) fresh -= 1;
-      else if (!sliding && count % IDLE_EVERY !== 0) return;
+      else if (!dragged && count % IDLE_EVERY !== 0) return;
       const chatEl = chat();
       const navEl = nav();
       const shellEl = shell();
+      const left = chatEl?.closest(".mobile-page")?.getBoundingClientRect().left ?? 0;
       const title = navEl?.querySelector("[data-glass=title]");
-      const header = chatEl && navEl && title && !covered(title, chatEl) ? readHeader(navEl) : null;
+      const header = chatEl && navEl && title && !covered(title, chatEl) ? readHeader(navEl, left) : null;
       const moving = root.dataset.kbMoving !== undefined;
       const kb = parseFloat(root.style.getPropertyValue("--m-kb")) || 0;
       const baseline = window.innerHeight - Math.max(safeBottom, kb);
-      const read = chatEl && shellEl && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline) : null;
+      const read = chatEl && shellEl && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline, left) : null;
       if (read && moving && last?.composer) read.composer.gap = last.composer.gap;
       elements = read?.elements ?? [];
       field = read?.field ?? null;
       const styles = getComputedStyle(root);
       const next: GlassState = {
         dark: darkGround(cssHex(styles.getPropertyValue("--color-app"))) ?? (html.dataset.skin === "grok-dark" || root.dataset.scheme === "dark"),
+        // with nothing drawn natively (a sheet over the chat, scaling the page back) the offset has nothing to move
+        offset: slide ? slide.to : header || read ? round(left) : last?.offset ?? round(left),
         accent: styles.getPropertyValue("--color-accent").trim(),
         header,
         composer: read?.composer ?? null,
         handoff: Boolean(chatEl) && (!header || !read),
       };
+      // the pill's picture goes before the update that shows it: a chat's header never arrives with the last chat's
+      // avatar, and a new name brings its avatar along. A drawn one is checked again once a second, never mid-slide;
+      // one not drawn yet, soon
+      const renamed = Boolean(header) && header!.name !== avatarName;
+      const avatarDue = renamed || avatar === undefined || (avatar === null ? now - avatarAt > 100 : !slide && !dragged && now - avatarAt > AVATAR_MS);
+      if (header && avatarDue) {
+        avatarAt = now;
+        avatarName = header.name;
+        const drawn = rasterAvatar(navEl!.querySelector("[data-glass-avatar]"));
+        if (drawn !== avatar) { avatar = drawn; glass.setAvatar(drawn); }
+      }
       flag("nativeGlassHeader", Boolean(header));
       flag("nativeGlassComposer", Boolean(next.composer));
       if (!sameState(last, next)) {
@@ -377,14 +431,6 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
         toNative = field.value;
         seq += 1;
         glass.setText(field.value, seq);
-      }
-      const now = performance.now();
-      // an avatar not drawn yet is asked for again soon; a drawn one is checked once a second, never mid-slide
-      const avatarDue = avatar === undefined || (avatar === null ? now - avatarAt > 100 : !sliding && now - avatarAt > AVATAR_MS);
-      if (header && avatarDue) {
-        avatarAt = now;
-        const next = rasterAvatar(navEl!.querySelector("[data-glass-avatar]"));
-        if (next !== avatar) { avatar = next; glass.setAvatar(next); }
       }
     };
 
@@ -441,7 +487,10 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       delete root.dataset.glassFocused;
       delete html.dataset.nativeGlassHeader;
       delete html.dataset.nativeGlassComposer;
+      slideRef.current = null;
       glass.clear();
     };
   }, [platform, rootRef, chatOpen]);
+
+  return onSlide;
 }

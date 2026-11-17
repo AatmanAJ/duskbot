@@ -18,12 +18,20 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "focus", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "blur", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "clear", returnType: CAPPluginReturnNone),
+        CAPPluginMethod(name: "slide", returnType: CAPPluginReturnNone),
     ]
 
     private var chrome: AnyObject?
 
+    /// The page asks once at startup: the chrome is built then, hidden, so the first chat opened never waits for its
+    /// glass views to be made.
     @objc func supported(_ call: CAPPluginCall) {
-        if #available(iOS 26.0, *) { call.resolve(["supported": true]) } else { call.resolve(["supported": false]) }
+        if #available(iOS 26.0, *) {
+            withChrome { _ in }
+            call.resolve(["supported": true])
+        } else {
+            call.resolve(["supported": false])
+        }
     }
 
     @available(iOS 26.0, *)
@@ -70,6 +78,16 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func clear(_ call: CAPPluginCall) {
         guard #available(iOS 26.0, *) else { return }
         withChrome { $0.apply([:]) }
+    }
+
+    @objc func slide(_ call: CAPPluginCall) {
+        guard #available(iOS 26.0, *) else { return }
+        let path = call.options["path"] as? [String: Any]
+        let points = (path?["points"] as? [Any] ?? []).compactMap { ($0 as? NSNumber).map { CGFloat($0.doubleValue) } }
+        let duration = ((path?["duration"] as? NSNumber)?.doubleValue ?? 0) / 1000
+        withChrome { chrome in
+            if points.isEmpty { chrome.stopSlide() } else { chrome.slide(points, duration: duration) }
+        }
     }
 }
 
@@ -222,7 +240,19 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private var reportedHeight: CGFloat = 0
     private var accent = UIColor.systemBlue
     private var avatar: UIImage?
+    private var avatarData: String?
     private var name = ""
+    private var titleRect: CGRect?
+
+    /// the chat page's distance right of where it rests: the header and composer sit on it, so they move with it
+    private var offset: CGFloat = 0
+    private var slideEnd: CFTimeInterval = 0
+    private var sliding: Bool { CACurrentMediaTime() < slideEnd }
+    private static let slideKey = "page-slide"
+
+    /// from the composer's bottom to the line it rests on: the home indicator's edge, or the keyboard's top
+    private var gap: CGFloat = 8
+    private var keyboardOverlap: CGFloat = 0
 
     init(host: UIView, emit: @escaping ([String: Any]) -> Void) {
         self.host = host
@@ -285,10 +315,77 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         leading = composer.leadingAnchor.constraint(equalTo: host.leadingAnchor)
         width = composer.widthAnchor.constraint(equalToConstant: 300)
         height = composer.heightAnchor.constraint(equalToConstant: Self.capsuleHeight)
-        bottom = composer.bottomAnchor.constraint(equalTo: host.keyboardLayoutGuide.topAnchor, constant: -8)
+        bottom = composer.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -gap)
         NSLayoutConstraint.activate([leading, width, height, bottom])
 
         NotificationCenter.default.addObserver(self, selector: #selector(contentSizeChanged), name: UIContentSizeCategory.didChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+    }
+
+    private func restingBottom() -> CGFloat {
+        -(max(host?.safeAreaInsets.bottom ?? 0, keyboardOverlap) + gap)
+    }
+
+    /// The composer rides the keyboard in the keyboard's own animation: the duration and curve its notification carries.
+    @objc private func keyboardWillChangeFrame(_ note: Notification) {
+        guard let host, let info = note.userInfo, let end = (info[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+        guard let window = host.window else { return }
+        let local = host.convert(end, from: window.screen.coordinateSpace)
+        let overlap = max(0, host.bounds.maxY - local.minY)
+        guard overlap != keyboardOverlap else { return }
+        keyboardOverlap = overlap
+        bottom.constant = restingBottom()
+        let duration = (info[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
+        let curve = (info[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+        guard composerShown, duration > 0 else {
+            UIView.performWithoutAnimation { host.layoutIfNeeded() }
+            return
+        }
+        UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction]) {
+            host.layoutIfNeeded()
+        }
+    }
+
+    // MARK: riding on the page
+
+    private func setOffset(_ x: CGFloat) {
+        offset = x
+        let moved = CGAffineTransform(translationX: x, y: 0)
+        for view in [header, composer] where view.transform != moved { view.transform = moved }
+    }
+
+    /// Plays the page's own slide: the same positions, one per 60 Hz frame and linear between, which is what the page
+    /// hands its compositor in the same frame. Both views share one transaction, so they start together.
+    func slide(_ points: [CGFloat], duration: TimeInterval) {
+        guard let to = points.last else { return }
+        guard points.count > 1, duration > 0 else {
+            stopSlide()
+            setOffset(to)
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for view in [header, composer] {
+            view.layer.removeAnimation(forKey: Self.slideKey)
+            let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
+            animation.values = points.map { NSNumber(value: Double($0)) }
+            animation.duration = duration
+            animation.calculationMode = .linear
+            animation.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+            view.layer.add(animation, forKey: Self.slideKey)
+        }
+        setOffset(to)
+        CATransaction.commit()
+        slideEnd = CACurrentMediaTime() + duration
+    }
+
+    /// A finger took the page mid-slide: the chrome stays where it is drawn, and follows the page's frames from here.
+    func stopSlide() {
+        guard sliding else { return }
+        let drawn = (header.layer.presentation()?.value(forKeyPath: "transform.translation.x") as? NSNumber).map { CGFloat($0.doubleValue) }
+        for view in [header, composer] { view.layer.removeAnimation(forKey: Self.slideKey) }
+        slideEnd = 0
+        setOffset(drawn ?? offset)
     }
 
     private func round(_ button: UIButton, symbol: String, label: String, action: @escaping () -> Void) {
@@ -308,8 +405,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             composer.overrideUserInterfaceStyle = style
         }
         if let hex = state["accent"] as? String, let color = UIColor(cssHex: hex) { accent = color }
+        if let x = (state["offset"] as? NSNumber).map({ CGFloat($0.doubleValue) }), !sliding { setOffset(x) }
         let handing = state["handoff"] as? Bool ?? false
-        instant = handing || handoff
+        // off its resting place the chrome is riding a page in or out: it comes and goes with the page, never fades
+        instant = handing || handoff || sliding || abs(offset) > 0.5
         handoff = handing
         applyHeader(state["header"] as? [String: Any])
         applyComposer(state["composer"] as? [String: Any])
@@ -345,23 +444,37 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         } else {
             right.isHidden = true
         }
+        titleRect = titleFrame.rect
+        layoutPill()
+        show(header, true, &headerShown)
+    }
+
+    private func layoutPill() {
+        guard let titleRect else { return }
         let side: CGFloat = 16 + 44 + 8
         let maxWidth = max(80, (host?.bounds.width ?? 390) - side * 2)
         let fitted = pill.sizeThatFits(CGSize(width: maxWidth, height: 44))
         let pillWidth = min(maxWidth, ceil(fitted.width))
-        pill.frame = CGRect(x: titleFrame.rect.midX - pillWidth / 2, y: titleFrame.rect.midY - 22, width: pillWidth, height: 44)
-        show(header, true, &headerShown)
+        let frame = CGRect(x: titleRect.midX - pillWidth / 2, y: titleRect.midY - 22, width: pillWidth, height: 44)
+        if pill.frame != frame { pill.frame = frame }
     }
 
+    /// name and avatar swap in one go, with no crossfade: a new chat's pill is drawn before its header shows
     private func refreshPill() {
         var title = AttributedString(name)
         title.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        pill.configuration?.attributedTitle = title
-        pill.configuration?.baseForegroundColor = .label
-        pill.configuration?.image = avatar
+        UIView.performWithoutAnimation {
+            pill.configuration?.attributedTitle = title
+            pill.configuration?.baseForegroundColor = .label
+            pill.configuration?.image = avatar
+            pill.layoutIfNeeded()
+        }
+        layoutPill()
     }
 
     func setAvatar(_ data: String?) {
+        guard data != avatarData else { return }
+        avatarData = data
         avatar = data.flatMap(Self.image(fromDataURL:)).map { Self.pixelScaled($0, to: CGSize(width: 30, height: 30)) }
         refreshPill()
     }
@@ -374,7 +487,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         }
         leading.constant = frame.rect.minX
         width.constant = frame.rect.width
-        if let gap = (data["gap"] as? NSNumber)?.doubleValue { bottom.constant = -CGFloat(max(0, gap)) }
+        if let gap = (data["gap"] as? NSNumber)?.doubleValue { self.gap = CGFloat(max(0, gap)) }
+        let resting = restingBottom()
+        if bottom.constant != resting { bottom.constant = resting }
         plus.isHidden = !(data["plus"] as? Bool ?? true)
         if let label = data["plusLabel"] as? String, !label.isEmpty { plus.accessibilityLabel = label }
         placeholder.text = data["placeholder"] as? String ?? ""
@@ -532,21 +647,37 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         text.isScrollEnabled = fitted > maxText
         let pad = (Self.capsuleHeight - line) / 2
         let h = max(Self.capsuleHeight, textHeight + pad * 2)
+        // the discs sit on the capsule's bottom edge and the field fills it: they move in the capsule's own animation, or
+        // a wrapping line drops them to the new bottom at once while the capsule is still growing toward it
+        let place = { [self] in
+            let discY = h - Self.inset - Self.disc
+            plus.frame = CGRect(x: Self.inset, y: discY, width: Self.disc, height: Self.disc)
+            text.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: h - pad * 2)
+            placeholder.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: line)
+            voice.frame = placeholder.frame
+            var x = w - Self.inset
+            for (button, kind) in zip(actions, actionKinds).reversed() {
+                let bw = Self.actionWidth(kind)
+                x -= bw
+                button.frame = CGRect(x: x, y: discY, width: bw, height: Self.disc)
+                x -= 6
+            }
+        }
         if height.constant != h {
             height.constant = h
-            if animated { UIView.animate(springDuration: 0.3, bounce: 0) { self.host?.layoutIfNeeded() } } else { host?.layoutIfNeeded() }
-        }
-        let discY = h - Self.inset - Self.disc
-        plus.frame = CGRect(x: Self.inset, y: discY, width: Self.disc, height: Self.disc)
-        text.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: h - pad * 2)
-        placeholder.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: line)
-        voice.frame = placeholder.frame
-        var x = w - Self.inset
-        for (button, kind) in zip(actions, actionKinds).reversed() {
-            let bw = Self.actionWidth(kind)
-            x -= bw
-            button.frame = CGRect(x: x, y: discY, width: bw, height: Self.disc)
-            x -= 6
+            if animated && composerShown && host?.window != nil {
+                UIView.animate(springDuration: 0.3, bounce: 0, initialSpringVelocity: 0, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                    self.host?.layoutIfNeeded()
+                    place()
+                }
+            } else {
+                UIView.performWithoutAnimation {
+                    host?.layoutIfNeeded()
+                    place()
+                }
+            }
+        } else {
+            place()
         }
         if h != reportedHeight {
             reportedHeight = h

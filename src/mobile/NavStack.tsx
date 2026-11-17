@@ -13,6 +13,8 @@ const PUSH = { stiffness: 380, damping: 39 };
 const LOAD_WAIT_MS = 150;
 
 type Run = { stop: () => void };
+/** A page slide as the compositor plays it: positions in px, one per 60 Hz frame, linear between them. */
+export type SlidePath = { duration: number; points: number[] };
 
 /** Resolves once a freshly mounted page has painted, and its transcript has loaded or `LOAD_WAIT_MS` has passed. */
 function whenPainted(el: HTMLElement, signal: { cancelled: boolean }): Promise<void> {
@@ -40,7 +42,7 @@ function useWidth(): number {
 
 /** The page, the list under it and its dim, moved together as keyframes the compositor plays: a busy page thread (a chat
  * mounting, a reply streaming) never stalls the slide. On landing or `stop` the motion values take over where it is. */
-function slideLayers(layers: { page: HTMLElement; base: HTMLElement | null; dim: HTMLElement | null }, x: MotionValue<number>, width: number, path: { duration: number; points: number[] }, onDone: () => void): Run {
+function slideLayers(layers: { page: HTMLElement; base: HTMLElement | null; dim: HTMLElement | null }, x: MotionValue<number>, width: number, path: SlidePath, onDone: () => void, onStopped?: () => void): Run {
   const options: KeyframeAnimationOptions = { duration: path.duration, fill: "forwards", easing: "linear" };
   const runs = [
     layers.page.animate(path.points.map((p) => ({ transform: `translateX(${p}px)` })), options),
@@ -62,13 +64,14 @@ function slideLayers(layers: { page: HTMLElement; base: HTMLElement | null; dim:
     stop: () => {
       if (over) return;
       hand(new DOMMatrixReadOnly(getComputedStyle(layers.page).transform).m41);
+      onStopped?.();
     },
   };
 }
 
 /** Two layers: the list, and a page pushed over it. The page follows the finger back to the list from anywhere on it
  * (a horizontal scroller inside keeps its own drag), and a release finishes or returns by where the flick would land. */
-export function NavStack({ base, page, pageKey, onBack, onSettled }: {
+export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide }: {
   base: ReactNode;
   /** The pushed page, or null for the list alone. */
   page: ReactNode | null;
@@ -76,6 +79,9 @@ export function NavStack({ base, page, pageKey, onBack, onSettled }: {
   onBack: () => void;
   /** The pushed page is fully in (true) or gone (false). */
   onSettled?: (shown: boolean) => void;
+  /** Each slide the page starts, with the path it plays, so native layers riding on the page play the same one in the
+   * same frame; null when a slide stops short (a finger took the page). */
+  onSlide?: (path: SlidePath | null) => void;
 }) {
   const width = useWidth();
   const x = useMotionValue(width);
@@ -91,6 +97,8 @@ export function NavStack({ base, page, pageKey, onBack, onSettled }: {
   const dimRef = useRef<HTMLDivElement>(null);
   const settled = useRef(onSettled);
   settled.current = onSettled;
+  const slid = useRef(onSlide);
+  slid.current = onSlide;
   if (page) lastPage.current = page;
 
   // the page's older rows wait while it moves: they mount once it lands, and never for a page on its way out
@@ -130,7 +138,9 @@ export function NavStack({ base, page, pageKey, onBack, onSettled }: {
       run.current = settleTo(x, target, velocity, finish, curve);
       return;
     }
-    run.current = slideLayers({ page, base: baseRef.current, dim: dimRef.current }, x, width, springPath(x.get(), target, velocity, curve), finish);
+    const path = springPath(x.get(), target, velocity, curve);
+    run.current = slideLayers({ page, base: baseRef.current, dim: dimRef.current }, x, width, path, finish, () => slid.current?.(null));
+    slid.current?.(path);
   }, [x, pageOpacity, width]);
 
   // the page mounts offscreen with its newest rows, and slides once it has painted them
@@ -178,6 +188,8 @@ export function NavStack({ base, page, pageKey, onBack, onSettled }: {
     claim: (s) => s.dx > 0 && !ownsDrag(s.target) && !canScroll(s.target, pageRef.current!, "x", -1),
     onStart: () => {
       run.current?.stop();
+      // a slide that already landed is over for the chrome too: from here it follows the finger
+      slid.current?.(null);
       sliding.current = true;
       setMoving(true);
       const active = document.activeElement;

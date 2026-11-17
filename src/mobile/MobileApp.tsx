@@ -169,7 +169,7 @@ function Shell() {
   const [glassHeld, setGlassHeld] = useState(false);
   if ((bot || group) && !glassHeld) setGlassHeld(true);
   const pageSettled = useCallback((shown: boolean) => { if (!shown) setGlassHeld(false); releasePressed(); }, []);
-  useNativeGlass(platform, rootRef, Boolean(bot || group) || glassHeld);
+  const slideGlass = useNativeGlass(platform, rootRef, Boolean(bot || group) || glassHeld);
 
   const page = bot || group ? (
     <ChatScreen
@@ -190,6 +190,7 @@ function Shell() {
         pageKey={page ? chatId : null}
         onBack={() => setChatId(null)}
         onSettled={pageSettled}
+        onSlide={slideGlass}
       />
       <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); openChat(id); }} />
       <ConnectAppsHost />
