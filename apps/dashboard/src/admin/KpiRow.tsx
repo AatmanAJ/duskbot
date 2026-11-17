@@ -164,7 +164,7 @@ export function KpiRow({ cards }: { cards: KpiCard[] }) {
             <div ref={(el) => { if (el) lifts.current.set(id, el); else lifts.current.delete(id); }} className={cx("group relative h-full rounded-[16px]", dragging === id ? "z-10 cursor-grabbing" : "cursor-grab")}
               style={{ boxShadow: dragging === id ? "var(--pop-shadow)" : undefined }}>
               <Kpi label={id} card={card} tint={tint} />
-              <div className="absolute right-1.5 top-1.5 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100 has-[[aria-expanded=true]]:opacity-100 [@media(hover:none)]:opacity-100">
+              <div className="absolute right-1.5 top-1.5 opacity-0 transition-opacity duration-150 has-[:focus-visible]:opacity-100 group-hover:opacity-100 has-[[aria-expanded=true]]:opacity-100">
                 <RowMenu label={`${id} card options`} items={items} />
               </div>
             </div>
