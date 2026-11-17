@@ -85,14 +85,42 @@ describe("the compact browser in the Computer tab", () => {
     expect(f.sent.at(-1)).toEqual({ type: "tabNew", url: "https://www.google.com/" });
   });
 
-  it("opens a new browser on Google once, as its own step: a failure there is never a toast", async () => {
+  it("opens a browser the person started on Google once, as its own step: a failure there is never a toast", async () => {
+    f.open = false;
     await render();
+    await click("[data-local-browser-action=start]");
     await message({ type: "tabs", tabs: [{ tabId: "t1", title: "", url: "about:blank", active: true }] });
     expect(f.sent).toEqual([{ type: "navigate", url: "https://www.google.com/" }]);
     expect(f.surface!.quietNotice?.("The browser could not do that. Try again."), "its own step's failure").toBe(true);
     expect(f.surface!.quietNotice?.("The browser could not do that. Try again."), "a person's next one shows").toBe(false);
     await message({ type: "tabs", tabs: [{ tabId: "t1", title: "", url: "about:blank", active: true }] });
     expect(f.sent, "only once").toHaveLength(1);
+  });
+
+  it("never navigates the bot's own browser, revealed, shown again or between tabs", async () => {
+    // the bot's browser revealed as its turn starts: a blank tab is the one it is about to load
+    await render();
+    await message({ type: "tabs", tabs: [{ tabId: "t1", title: "", url: "about:blank", active: true }] });
+    await message({ type: "tabs", tabs: [{ tabId: "t1", title: "X", url: "https://x.com/home", active: true }] });
+    // shown again after the panel closed, or the Computer tab was left: a tab mid-load may report no address
+    act(() => root.unmount());
+    root = createRoot(host);
+    await render();
+    await message({ type: "tabs", tabs: [{ tabId: "t1", title: "", url: "", active: true }] });
+    await message({ type: "tabs", tabs: [{ tabId: "t1", title: "X", url: "https://x.com/home", active: true }, { tabId: "t2", title: "", url: "about:blank", active: false }] });
+    await click("[data-local-browser-action=expand]");
+    await click('[data-local-browser-tab="t1"]');
+    expect(f.sent.filter((input) => (input as { type: string }).type === "navigate")).toEqual([]);
+  });
+
+  it("shows the dusk cloud card only at the panel's own width, never under the expanded browser", async () => {
+    await render();
+    await message({ type: "tabs", tabs: TABS });
+    expect(q("[data-cta]")).not.toBeNull();
+    await click("[data-local-browser-action=expand]");
+    expect(q("[data-cta]")).toBeNull();
+    await click("[data-local-browser-action=expand]");
+    expect(q("[data-cta]")).not.toBeNull();
   });
 
   it("leaves a browser that already has pages where it is", async () => {

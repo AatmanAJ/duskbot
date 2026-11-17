@@ -86,8 +86,10 @@ export interface MorphFrom { top: number; left: number; width: number; height: n
  * width the page is too small to aim at, so a click on it expands. What it last showed is kept, so coming back paints at
  * once and goes live after.
  */
-export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
+export function LocalBrowserLive({ bot, from, started = false, onClosed, onEnded }: {
   bot: Bot; from?: MorphFrom | null;
+  /** The person started this browser with Start browser, so a browser with nothing open yet shows the start page. */
+  started?: boolean;
   /** The person closed it. */
   onClosed: () => void;
   /** The browser closed while shown (idle, or elsewhere). */
@@ -106,7 +108,7 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
   const [tabs, setTabs] = useState<readonly StripTab[]>(() => fixtureTabs() ?? (from ? [] : keptView(key).tabs ?? []));
   // the tabs this connection's browser announced: until then a tab id may be the last session's, which it refuses
   const [heard, setHeard] = useState(false);
-  const opening = useRef<{ quiet: boolean; done: boolean }>({ quiet: false, done: false });
+  const opening = useRef<{ quiet: boolean; done: boolean }>({ quiet: false, done: !started });
   const [nav, setNav] = useState<BrowserNav>(NO_NAV);
   const [picked, setPicked] = useState<string | null>(null);
   const [closingTabs, setClosingTabs] = useState<ReadonlySet<string>>(() => new Set());
@@ -404,11 +406,12 @@ export function LocalBrowserSection({ bot, after, askFirst = null }: {
   }, [live]);
 
   const from = override?.kind === "started" ? override.from : null;
+  const wide = usePanelWidth() > PANEL_NARROW;
   return (
     <>
-      {live ? <LocalBrowserLive key={`${bot.id}\n${bot.threadId ?? ""}`} bot={bot} from={from} onClosed={ended("closed")} onEnded={ended("ended")} />
+      {live ? <LocalBrowserLive key={`${bot.id}\n${bot.threadId ?? ""}`} bot={bot} from={from} started={override?.kind === "started"} onClosed={ended("closed")} onEnded={ended("ended")} />
         : known || late || override ? <LocalBrowserClosed bot={bot} pill={pill} starting={checking} onStart={start} /> : null}
-      <div ref={below} className="mt-3 empty:hidden">{(known || late) && after}</div>
+      <div ref={below} className="mt-3 empty:hidden">{(known || late) && !wide && after}</div>
       {asking && askFirst && <MacPermissionsDialog bridge={askFirst} onClose={() => setAsking(false)} onAllowed={openBrowser}
         relaunch={typeof window.duskDesktop?.relaunch === "function" ? () => void window.duskDesktop!.relaunch!() : null} />}
     </>
