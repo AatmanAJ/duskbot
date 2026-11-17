@@ -258,7 +258,9 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-chat-bubble][class*
 .dusk-mobile [data-mobile-chat] [data-grok-inset] [data-tour="composer"] button:not([role="menuitem"]):is([data-composer-send], [data-voice-mic], [data-composer-stop], :has(> [data-composer-plus])) {
   width: 36px; height: 36px; min-width: 36px; min-height: 36px;
 }
-.dusk-mobile [data-mobile-chat] [data-composer-stop-ghost] { width: 36px; height: 36px; }
+/* the mic's held spot draws at the discs' size, or the empty bar stands taller than a typed one */
+.dusk-mobile [data-mobile-chat] [data-composer-stop-ghost],
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-mic-spacer] { width: 36px; height: 36px; min-width: 36px; }
 /* desktop's hold-the-spot swap: Stop turns in where the mic was, the mic springs in beside it, and when the turn ends
    the stop disc fades out over the mic's glyph popping back (keyframes in src/styles/composer.css) */
 .dusk-mobile [data-mobile-chat] [data-composer-stop="slot"] .composer-stop-glyph { animation: composer-stop-in 260ms var(--composer-glyph-ease); }

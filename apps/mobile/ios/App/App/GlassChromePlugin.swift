@@ -417,7 +417,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     // MARK: layout
 
-    private func layoutComposer() {
+    /// `animated` false when the page set the text (a send clearing it): the page re-pins the chat to the new height in
+    /// the same frame, so the capsule must not spring there behind it
+    private func layoutComposer(animated: Bool = true) {
         let w = width.constant
         let line = text.font?.lineHeight ?? 20
         let side = Self.inset + Self.disc + 8
@@ -432,7 +434,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         let h = max(Self.capsuleHeight, textHeight + pad * 2)
         if height.constant != h {
             height.constant = h
-            UIView.animate(springDuration: 0.3, bounce: 0) { self.host?.layoutIfNeeded() }
+            if animated { UIView.animate(springDuration: 0.3, bounce: 0) { self.host?.layoutIfNeeded() } } else { host?.layoutIfNeeded() }
         }
         let discY = h - Self.inset - Self.disc
         plus.frame = CGRect(x: Self.inset, y: discY, width: Self.disc, height: Self.disc)
@@ -466,7 +468,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         if text.text != value {
             text.text = value
             updatePlaceholder()
-            layoutComposer()
+            layoutComposer(animated: false)
         }
     }
 

@@ -1,5 +1,6 @@
 import { createContext, memo, startTransition, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType, type Dispatch, type Ref, type RefObject } from "react";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
+import { phoneApp } from "@/lib/store-app";
 import { ThreadLinkContext } from "@/components/ThreadLinkMenu";
 import { ChevronLeft, ChevronRight, Copy, Monitor, RefreshCw, Square, Webhook } from "../icons";
 import { WorkingDots } from "@/components/WorkingIndicator";
@@ -413,7 +414,8 @@ const Bubble = memo(function Bubble({
     const parts = own.current;
     if (parts.entered || !entrance || !parts.bubble) return;
     parts.entered = true;
-    if (entrance === "grow") growFromMascot(parts.bubble, reduced);
+    // on the phone the words come with the bubble, so no frame shows an empty one where the typing line just was
+    if (entrance === "grow") growFromMascot(parts.bubble, reduced, phoneApp());
     else void morphFromComposer(parts.bubble, parts.fill, message.sendId).then(() => setFilling(false));
   }, [entrance, reduced, message.sendId]);
 
@@ -1132,11 +1134,14 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const importing = useNotesWork(bot.id);
   const presenceVisible = !stopCut && (hold.typing || (waiting && mountDue) || teammatesWorking || Boolean(importing));
   // the bubble the line hangs under keeps its pinched corner until the line has finished leaving, as grok's does
-  const presenceShown = useLingering(presenceVisible, 140);
+  const presenceLingers = useLingering(presenceVisible, 140);
   const paintedMessages = useFirstPaintRows(transcriptKey, windowedMessages, Boolean(focus && !focus.consumed) || laterCount > 0, scrollRef, following);
   const lastShownRow = windowedMessages.findLast((message) => !quietRow(message, showToolCalls));
   const lastRowIsBubble = Boolean(lastShownRow && isBotTextRow(lastShownRow, bot.id));
   const presenceUnderBubble = lastRowIsBubble;
+  // on the phone a landing reply takes the typing line's place in the same frame: the line fading on under it, pushed
+  // below the new bubble, read as a flicker
+  const presenceShown = presenceLingers && !(phoneApp() && !presenceVisible && lastRowIsBubble);
   // grok keeps the status line's slot at the end of the conversation whether it shows or not, so it never moves a row
   const statusSlot = windowedMessages.length > 0 || busy;
   const announcement = useMemo((): TranscriptSnapshot => {
