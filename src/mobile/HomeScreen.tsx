@@ -42,6 +42,16 @@ export function releasePressed() {
 type Entry =
   | { kind: "bot"; id: string; bot: Bot; at: number; preview: string; unread: boolean }
   | { kind: "group"; id: string; group: Group; members: Bot[]; at: number; preview: string; unread: boolean };
+type BotEntry = Extract<Entry, { kind: "bot" }>;
+
+/** Nothing the row shows differs: its memoised row can keep last render's output (a reply streaming into one chat
+ * rebuilds the store's lists, and every row with them). */
+function sameEntry(a: Entry, b: Entry): boolean {
+  if (a.kind !== b.kind || a.id !== b.id || a.at !== b.at || a.preview !== b.preview || a.unread !== b.unread) return false;
+  if (a.kind === "bot") return a.bot === (b as BotEntry).bot;
+  const other = b as Extract<Entry, { kind: "group" }>;
+  return a.group === other.group && a.members.length === other.members.length && a.members.every((member, i) => member === other.members[i]);
+}
 
 const BAR_TOP = "calc(var(--m-safe-top) + 6px)";
 const LIST_TOP = "calc(var(--m-safe-top) + 64px)";
@@ -65,7 +75,17 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   const [scrolled, setScrolled] = useState(false);
   const [menu, setMenu] = useState<{ entry: Entry; rect: DOMRect; pinnedTile: boolean; source: HTMLElement | null } | null>(null);
 
-  const { pinned, entries } = useMemo(() => {
+  const kept = useRef(new Map<string, Entry>());
+  const { pinned, pinnedEntries, entries } = useMemo(() => {
+    const previous = kept.current;
+    const next = new Map<string, Entry>();
+    const keep = <T extends Entry>(entry: T): T => {
+      const key = `${entry.kind}:${entry.id}`;
+      const old = previous.get(key);
+      const use = old && sameEntry(old, entry) ? old as T : entry;
+      next.set(key, use);
+      return use;
+    };
     const parts = partitionSidebarBots(state.bots);
     const { primary } = withPrimaryTile(parts, state.bots.find((bot) => bot.defaultBot && !bot.hidden)?.id);
     const top = [...(primary ? [primary] : []), ...parts.pinnedBots.filter((bot) => bot.id !== primary?.id)];
@@ -79,7 +99,10 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
       }),
     ];
     rows.sort((a, b) => b.at - a.at);
-    return { pinned: top, entries: rows };
+    const tiles = top.map((bot) => keep(botEntry(bot, state.instances)));
+    const listed = rows.map(keep);
+    kept.current = next;
+    return { pinned: top, pinnedEntries: tiles, entries: listed };
   }, [state.bots, state.groups, state.instances]);
 
   useListFlip(listRef, `${pinned.length}|${entries.map((entry) => entry.id).join(",")}`);
@@ -148,8 +171,8 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                   <section aria-labelledby="home-pinned" data-no-swipe>
                   <h2 id="home-pinned" className="px-5 pb-1 text-[13px] font-semibold text-ink-secondary">{t("sidebar.section.pinned")}</h2>
                   <div className="no-scrollbar flex gap-3 overflow-x-auto px-3 pb-2 pt-1">
-                    {pinned.map((bot) => (
-                      <PinnedTile key={bot.id} bot={bot} onOpen={onOpenChat} onMenu={(rect, source) => openMenu(botEntry(bot, state), rect, source, true)} native={native?.(botEntry(bot, state))} />
+                    {pinnedEntries.map((entry) => (
+                      <PinnedTile key={entry.id} entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
                     ))}
                   </div>
                   </section>
@@ -220,8 +243,8 @@ function heldChatMenu(entry: Entry, actions: ContextAction[]): HeldMenu {
   };
 }
 
-function botEntry(bot: Bot, state: ReturnType<typeof useStore>["state"]): Entry {
-  return { kind: "bot", id: bot.id, bot, at: lastAt(bot), preview: botPreview(bot, sidebarPreviewMessages(bot), state.instances), unread: botShowsUnread(bot) };
+function botEntry(bot: Bot, instances: ReturnType<typeof useStore>["state"]["instances"]): BotEntry {
+  return { kind: "bot", id: bot.id, bot, at: lastAt(bot), preview: botPreview(bot, sidebarPreviewMessages(bot), instances), unread: botShowsUnread(bot) };
 }
 
 function RefreshMark({ bot, progress, refreshing }: { bot?: Bot; progress: MotionValue<number>; refreshing: boolean }) {
@@ -236,9 +259,10 @@ function RefreshMark({ bot, progress, refreshing }: { bot?: Bot; progress: Motio
   );
 }
 
-const PinnedTile = memo(function PinnedTile({ bot, onOpen, onMenu, native }: { bot: Bot; onOpen: (id: string) => void; onMenu: (rect: DOMRect, source: HTMLElement | null) => void; native?: NativePress }) {
+const PinnedTile = memo(function PinnedTile({ entry, onOpen, onMenu, native }: { entry: BotEntry; onOpen: (id: string) => void; onMenu: (entry: Entry, rect: DOMRect, source: HTMLElement | null, pinnedTile: boolean) => void; native?: (entry: Entry) => NativePress }) {
   const ref = useRef<HTMLButtonElement>(null);
-  useLongPress(ref, (rect) => onMenu(rect, ref.current), true, native);
+  const bot = entry.bot;
+  useLongPress(ref, (rect) => onMenu(entry, rect, ref.current, true), true, native?.(entry));
   return (
     <button ref={ref} type="button" onClick={(event) => { holdPressed(event.currentTarget); onOpen(bot.id); }} className="mobile-press flex w-[84px] shrink-0 flex-col items-center gap-1.5 rounded-[20px] py-1" aria-label={botShowsUnread(bot) ? t("mobile.home.unreadChat", { name: bot.name }) : bot.name}>
       <PinnedTileFace bot={bot} />
