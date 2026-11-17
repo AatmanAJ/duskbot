@@ -83,8 +83,8 @@ export const SIGNALS = {
   browser_download_failed: { source: "any", props: { reason: oneOf(...DOWNLOAD_FAIL_REASONS) } },
   /** a process of the desktop app went away: which, and Electron's reason word */
   crash: { source: "app", props: { kind: oneOf(...CRASH_KINDS), reason: code } },
-  /** the app's own update failed at this stage */
-  update_failed: { source: "app", props: { stage: oneOf(...UPDATE_FAIL_STAGES) } },
+  /** the app's own update failed at this stage, and why as a short code word (an http status, "stalled", "translocated") */
+  update_failed: { source: "app", props: { stage: oneOf(...UPDATE_FAIL_STAGES), reason: code } },
   /** the first start of a newer version of the app: installed by its own updater, or by hand (a download, a reinstall) */
   app_updated: { source: "app", props: { how: oneOf("self", "manual") } },
   /** Settings closed: whether anything changed while it was open, and for how long it was open */

@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AppUpdateState } from "../../electron/app-update.mjs";
 import { closeFeedback, useFeedbackOpen } from "@/lib/feedback-sheet";
-import type { ServerUpdateCheck } from "@/lib/server-update";
 import { RailSpot, SidebarSpot, type SpotCta } from "./SidebarSpot";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -16,18 +15,17 @@ const bridge = {
   state: vi.fn(async () => now),
   restart: vi.fn(async () => true),
   download: vi.fn(async () => "0.2.7" as string | null),
+  open: vi.fn(async () => true),
+  move: vi.fn(async () => true),
   onState: vi.fn((cb: (state: AppUpdateState) => void) => { tell = cb; return () => {}; }),
 };
 const openExternal = vi.fn(async () => true);
-let server: ServerUpdateCheck = { current: "0.2.6", install: "desktop", available: false };
-const check = vi.fn(async () => server);
 let opened = false;
 function Probe() { opened = useFeedbackOpen(); return null; }
 
 let host: HTMLDivElement, root: Root;
 beforeEach(() => {
   now = { ready: null, available: null, progress: null, mode: "self" };
-  server = { current: "0.2.6", install: "desktop", available: false };
   (window as unknown as { duskDesktop: unknown }).duskDesktop = { appUpdate: bridge, openExternal };
   host = document.createElement("div");
   document.body.append(host);
@@ -37,7 +35,7 @@ afterEach(() => { act(() => root.unmount()); host.remove(); vi.clearAllMocks(); 
 
 const spot = () => host.querySelector<HTMLButtonElement>("[data-sidebar-spot]");
 const mount = async (component: typeof SidebarSpot | typeof RailSpot = SidebarSpot) => {
-  await act(async () => { root.render([createElement(component, { key: "spot", check }), createElement(Probe, { key: "probe" })]); });
+  await act(async () => { root.render([createElement(component, { key: "spot" }), createElement(Probe, { key: "probe" })]); });
 };
 const hear = async (state: AppUpdateState) => { await act(async () => { tell(state); }); };
 
@@ -63,7 +61,6 @@ describe("the sidebar's feedback and update spot", () => {
     expect(spot()?.textContent).toBe("Restart to update0.2.7");
     await act(async () => { spot()!.click(); });
     expect(bridge.restart).toHaveBeenCalledTimes(1);
-    expect(check).not.toHaveBeenCalled();
     await hear({ ready: null, available: null, progress: null, mode: "self" });
     expect(spot()?.dataset.sidebarSpot).toBe("feedback");
   });
@@ -78,26 +75,61 @@ describe("the sidebar's feedback and update spot", () => {
     expect(bridge.restart).toHaveBeenCalledTimes(1);
   });
 
-  it("on Windows and Linux: Update available with its version, which opens the download page", async () => {
-    now = { ready: null, available: null, progress: null, mode: "notice" };
-    server = { current: "0.2.6", install: "desktop", latest: "0.2.7", available: true, releaseUrl: "https://dusk.bot/download" };
+  it("a download that failed says so and offers dusk.bot, instead of trying again in silence", async () => {
+    now = { ready: null, available: "0.2.7", progress: null, mode: "self" };
+    bridge.download.mockImplementationOnce(async () => { tell({ ready: null, available: "0.2.7", progress: null, checking: false, failed: true, mode: "self" }); return null; });
     await mount();
-    expect(check).toHaveBeenCalled();
-    expect(spot()?.dataset.appUpdateState).toBe("download-page");
-    expect(spot()?.textContent).toBe("Update available0.2.7");
     await act(async () => { spot()!.click(); });
-    expect(openExternal).toHaveBeenCalledWith("https://dusk.bot/download");
+    expect(spot()?.dataset.appUpdateState).toBe("failed");
+    expect(spot()?.textContent).toBe("Download from dusk.bot0.2.7");
+    await act(async () => { spot()!.click(); });
+    expect(bridge.open).toHaveBeenCalledTimes(1);
+    expect(bridge.download).toHaveBeenCalledTimes(1);
+  });
+
+  it("a dropped connection shows the paused download with how far it got, then picks up", async () => {
+    await mount();
+    await hear({ ready: null, available: "0.2.7", progress: 0.42, retrying: true, checking: true, mode: "self" });
+    expect(spot()?.dataset.appUpdateState).toBe("retrying");
+    expect(spot()?.textContent).toBe("Download paused, retrying42%");
+    expect(spot()?.getAttribute("aria-busy")).toBe("true");
+    await hear({ ready: null, available: "0.2.7", progress: 0.43, retrying: false, checking: true, mode: "self" });
+    expect(spot()?.textContent).toBe("Downloading update43%");
+  });
+
+  it("a press shows the check at once, even before a version is known", async () => {
+    now = { ready: null, available: "0.2.7", progress: null, mode: "self" };
+    bridge.download.mockImplementationOnce(() => new Promise(() => {}));
+    await mount();
+    await act(async () => { spot()!.click(); });
+    await hear({ ready: null, available: null, progress: null, checking: true, mode: "self" });
+    expect(spot()?.dataset.appUpdateState).toBe("checking");
+    expect(spot()?.textContent).toBe("Checking for updates");
+  });
+
+  it("a mac running from Downloads or a disk image is asked to move to Applications", async () => {
+    now = { ready: null, available: "0.2.7", progress: null, blocked: "move", mode: "self" };
+    await mount();
+    expect(spot()?.dataset.appUpdateState).toBe("move");
+    expect(spot()?.textContent).toBe("Move to Applications to update0.2.7");
+    await act(async () => { spot()!.click(); });
+    expect(bridge.move).toHaveBeenCalledTimes(1);
+    expect(bridge.download).not.toHaveBeenCalled();
+  });
+
+  it("on Windows and Linux: Download with its version, which opens that installer", async () => {
+    now = { ready: null, available: "0.2.7", progress: null, mode: "notice", manual: { version: "0.2.7", url: "https://dusk.bot/releases/0.2.7/DuskBot-0.2.7-setup.exe" } };
+    await mount();
+    expect(spot()?.dataset.appUpdateState).toBe("manual");
+    expect(spot()?.textContent).toBe("Download 0.2.7");
+    await act(async () => { spot()!.click(); });
+    expect(bridge.open).toHaveBeenCalledTimes(1);
     expect(bridge.download).not.toHaveBeenCalled();
     expect(bridge.restart).not.toHaveBeenCalled();
   });
 
-  it("stays Give feedback when the download page has nothing newer, or names somewhere else", async () => {
-    now = { ready: null, mode: "notice" };
-    await mount();
-    expect(spot()?.dataset.sidebarSpot).toBe("feedback");
-    await act(async () => { root.unmount(); });
-    root = createRoot(host);
-    server = { current: "0.2.6", install: "desktop", latest: "0.2.7", available: true, releaseUrl: "https://example.com/download" };
+  it("stays Give feedback when nothing newer is out", async () => {
+    now = { ready: null, available: null, mode: "notice", manual: null };
     await mount();
     expect(spot()?.dataset.sidebarSpot).toBe("feedback");
   });
@@ -130,7 +162,7 @@ describe("the sidebar's feedback and update spot", () => {
       const [on, setOn] = useState(true);
       const cta: SpotCta | null = on ? { id: "cloud", title: "Keep your bots working", hint: "On dusk cloud, they keep replying", art: "clock", closeLabel: "Hide",
         onStart: started, onClose: () => setOn(false) } : null;
-      return createElement(SidebarSpot, { check, cta });
+      return createElement(SidebarSpot, { cta });
     }
     const mountOffer = async () => { await act(async () => { root.render([createElement(WithOffer, { key: "spot" }), createElement(Probe, { key: "probe" })]); }); };
     const close = () => host.querySelector<HTMLButtonElement>("[data-spot-cta-close]");

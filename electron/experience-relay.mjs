@@ -52,6 +52,6 @@ export function updateFailStage(message) {
   if (/ answered \d{3}$|download/i.test(text)) return "download";
   if (/manifest|signed|release .* has no zip/i.test(text)) return "manifest";
   if (/checksum|SHA256|sha-?256/i.test(text)) return "checksum";
-  if (/fetch|network|HTTP|ENOTFOUND|ECONN|ETIMEDOUT|abort|socket/i.test(text)) return "download";
+  if (/fetch|network|HTTP|ENOTFOUND|ECONN|ETIMEDOUT|abort|socket|terminated|stalled/i.test(text)) return "download";
   return "other";
 }

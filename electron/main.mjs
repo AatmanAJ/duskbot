@@ -91,7 +91,7 @@ import {
 import capabilitiesModule from "./capabilities.cjs";
 import environmentsModule from "./environments.cjs";
 import localOriginModule from "./local-origin.cjs";
-import { aboutPanelOptions, buildApplicationMenu } from "./menu.mjs"; import { installDesktopBots } from "./desktop-bots.mjs"; import { installReloadKeys } from "./reload-keys.mjs"; import { startDesktopErrorReporting } from "./desktop-errors.mjs"; import { createUpdateNotice } from "./update-notice.mjs"; import { createAppUpdater, developerIdSigned, quietNow, squirrelInstaller, justUpdated } from "./app-update.mjs"; import { quietSignals } from "./update-when-quiet-main.mjs"; import { createDemoUpdater, demoUpdateFlag } from "./app-update-demo.mjs";
+import { aboutPanelOptions, buildApplicationMenu } from "./menu.mjs"; import { installDesktopBots } from "./desktop-bots.mjs"; import { installReloadKeys } from "./reload-keys.mjs"; import { startDesktopErrorReporting } from "./desktop-errors.mjs"; import { createUpdateNotice } from "./update-notice.mjs"; import { createAppUpdater, developerIdSigned, quietNow, squirrelInstaller, justUpdated, updatePlace, DOWNLOAD_PAGE } from "./app-update.mjs"; import { quietSignals } from "./update-when-quiet-main.mjs"; import { createDemoUpdater, demoUpdateFlag } from "./app-update-demo.mjs";
 import { acquireDataDirLease } from "./data-dir-lease.mjs";
 import { offerMoveToApplications } from "./move-to-applications.mjs";
 import { switchLocalEnvironment } from "./environment-switch.mjs";
@@ -3664,13 +3664,13 @@ process.once("SIGTERM", requestSignalQuit);
 
 // the mac app installs its own updates when it is Developer ID signed (electron/app-update.mjs); elsewhere, and on an
 // unsigned build, the notice says a release is out
-let appUpdater = null, appUpdatedTo = null;
-const appUpdateState = () => ({ ...(appUpdater?.state() ?? { ready: null, available: null, progress: null }), mode: appUpdater ? "self" : app.isPackaged ? "notice" : "dev", updated: appUpdatedTo });
+let appUpdater = null, appUpdatedTo = null, appUpdateMode = app.isPackaged ? "notice" : "dev";
+const appUpdateState = () => ({ ...(appUpdater?.state() ?? { ready: null, available: null, progress: null }), mode: appUpdateMode, updated: appUpdatedTo });
 const tellAppUpdate = () => { if (mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents })) mainWindow.webContents.send("app-update:changed", appUpdateState()); };
 function startDemoUpdates() {
   const flag = demoUpdateFlag(app.getPath("userData"));
   if (!fs.existsSync(flag)) return;
-  appUpdater = createDemoUpdater({ flag, relaunch: relaunchAfterDesktopRemoteChange, onState: tellAppUpdate });
+  appUpdater = createDemoUpdater({ flag, relaunch: relaunchAfterDesktopRemoteChange, onState: tellAppUpdate }); appUpdateMode = "self";
   appUpdater.start();
 }
 function startAppUpdates(notice) {
@@ -3680,19 +3680,28 @@ function startAppUpdates(notice) {
     appUpdatedTo = app.getVersion();
     try { productEvents.action("app_updated", { how: installedHere() ? "self" : "manual" }); } catch {}
   }
-  if (process.platform !== "darwin") { notice.start(); return; }
+  const onFailed = (message, info) => productEvents.action("update_failed", { stage: info?.stage ?? updateFailStage(message), reason: info?.reason });
+  if (process.platform !== "darwin") {
+    notice.start();
+    appUpdater = createAppUpdater({ current: app.getVersion(), arch: process.arch, dir: updateDir, installs: false, platform: process.platform, appImage: Boolean(process.env.APPIMAGE), fallback: { check: async () => null }, log: slog, onState: tellAppUpdate, onFailed, intervalMs: 6 * 60 * 60_000 });
+    appUpdater.start();
+    return;
+  }
   const bundle = path.resolve(path.dirname(app.getPath("exe")), "..", "..");
   const signals = quietSignals({ focused: () => Boolean(BrowserWindow.getFocusedWindow()), powerMonitor, window: () => mainWindow, lastInput: () => oneHome.lastInput(), local: localServerRequest, place: () => null,
     cloudFetch: (...args) => session.defaultSession.fetch(...args), asleep: () => true, busy: () => (speechBusy() ? "dictation" : null) });
-  appUpdater = createAppUpdater({ current: app.getVersion(), arch: process.arch, dir: updateDir, signed: () => developerIdSigned(bundle),
-    installer: squirrelInstaller({ autoUpdater }), quiet: () => quietNow(signals), fallback: notice, log: slog, onState: tellAppUpdate,
-    onFailed: (message) => productEvents.action("update_failed", { stage: updateFailStage(message) }) });
+  appUpdateMode = "self";
+  appUpdater = createAppUpdater({ current: app.getVersion(), arch: process.arch, dir: updateDir, signed: () => developerIdSigned(bundle), blocked: async () => updatePlace(bundle),
+    installer: squirrelInstaller({ autoUpdater }), quiet: () => quietNow(signals), fallback: notice, log: slog, onState: tellAppUpdate, onFailed });
   appUpdater.start();
   powerMonitor.on("resume", () => appUpdater?.soon?.());
 }
 ipcMain.handle("app-update:state", localOnly("app-update:state", appUpdateState));
 ipcMain.handle("app-update:restart", localOnly("app-update:restart", () => appUpdater?.restart() ?? false));
 ipcMain.handle("app-update:download", localOnly("app-update:download", () => appUpdater?.check() ?? null));
+// only the link main found for this release (an installer on dusk.bot or the downloads repo), or the download page
+ipcMain.handle("app-update:open", localOnly("app-update:open", () => { const url = appUpdater?.state().manual?.url; void shell.openExternal(typeof url === "string" && /^https:\/\/(dusk\.bot|github\.com)\//.test(url) ? url : DOWNLOAD_PAGE); return true; }));
+ipcMain.handle("app-update:move", localOnly("app-update:move", () => { try { return app.moveToApplicationsFolder(); } catch (error) { slog(`app update: could not move to Applications (${error instanceof Error ? error.message : String(error)})`); void shell.openExternal(DOWNLOAD_PAGE); return false; } }));
 ipcMain.handle("app-update:seen", localOnly("app-update:seen", () => { if (appUpdatedTo) { appUpdatedTo = null; tellAppUpdate(); } }));
 
 app.on("before-quit", (e) => {

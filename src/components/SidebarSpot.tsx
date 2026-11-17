@@ -4,14 +4,15 @@ import { Check } from "lucide-react";
 import { X } from "../icons";
 
 import { openExternalLink } from "@/lib/app-links";
+import { productName } from "@/lib/brand";
 import { cn } from "@/lib/cn";
 import { openFeedback } from "@/lib/feedback-sheet";
 import { t } from "@/lib/i18n";
-import type { ServerUpdateCheck } from "@/lib/server-update";
-import { api } from "@/state/api";
 
 import type { AppUpdateBridge, AppUpdateState } from "../../electron/app-update.mjs";
 import { Art, type ArtName } from "./ui/Art";
+
+const DOWNLOAD_PAGE = "https://dusk.bot/download";
 
 function ownBridge() {
   return window.duskDesktop?.remoteClient?.active === true ? undefined : window.duskDesktop?.appUpdate;
@@ -22,40 +23,41 @@ function restartInto(bridge: AppUpdateBridge, setRestarting: (on: boolean) => vo
   void bridge.restart().then(ok => { if (!ok) setRestarting(false); }, () => setRestarting(false));
 }
 
-const NOTICE_EVERY_MS = 60 * 60_000;
-const askServer = () => api<ServerUpdateCheck>("/api/updates/check", { background: true, timeoutMs: 20_000 });
-
-/** The download page's newer release, for an app that can't install its own ("notice": Windows, Linux, an unsigned mac). */
-function useNoticeRelease(on: boolean, check: () => Promise<ServerUpdateCheck>): { version: string; url: string } | null {
-  const [release, setRelease] = useState<{ version: string; url: string } | null>(null);
-  useEffect(() => {
-    if (!on) { setRelease(null); return; }
-    let active = true;
-    const look = () => void check().then((answer) => {
-      if (!active) return;
-      const url = answer.releaseUrl;
-      setRelease(answer.available && answer.install === "desktop" && answer.latest && url?.startsWith("https://dusk.bot/") ? { version: answer.latest, url } : null);
-    }, () => {});
-    look();
-    const timer = window.setInterval(look, NOTICE_EVERY_MS);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [on, check]);
-  return release;
-}
-
 export type SpotState =
   | { kind: "feedback" }
+  | { kind: "checking"; version: null }
   | { kind: "restart"; version: string; restarting: boolean }
   | { kind: "available"; version: string }
   | { kind: "downloading"; version: string; percent: number | null }
-  | { kind: "download-page"; version: string };
+  | { kind: "retrying"; version: string; percent: number | null }
+  | { kind: "failed"; version: string }
+  | { kind: "move"; version: string }
+  | { kind: "manual"; version: string };
+
+/** what the spot shows for main's update state; `asked`: the person pressed it, and the download it started has not failed */
+export function spotFor(update: AppUpdateState, asked: boolean, restarting: boolean): SpotState {
+  const ready = update.ready;
+  if (ready) return { kind: "restart", version: ready, restarting };
+  const version = update.available ?? null;
+  const percent = update.progress == null ? null : Math.round(update.progress * 100);
+  if (version && update.blocked === "move") return { kind: "move", version };
+  if (update.manual) return { kind: "manual", version: update.manual.version };
+  if (version) {
+    if (update.retrying) return { kind: "retrying", version, percent };
+    if (percent !== null || asked) return { kind: "downloading", version, percent };
+    if (update.failed && !update.checking) return { kind: "failed", version };
+    return { kind: "available", version };
+  }
+  if (asked) return { kind: "checking", version: null };
+  return { kind: "feedback" };
+}
 
 /**
  * The sidebar's one spot above the account row: Give feedback, until this computer's app has an update. A mac that installs
- * its own (electron/app-update.mjs) downloads it on a click and restarts into it once ready; an app that can't (Windows,
- * Linux, an unsigned build) opens the download page.
+ * its own (electron/app-update.mjs) downloads it on a press and restarts into it once ready; one that can't says what to
+ * do (move to Applications, or download from dusk.bot), and Windows and Linux download their installer.
  */
-export function useSidebarSpot(bridge: AppUpdateBridge | undefined = ownBridge(), check: () => Promise<ServerUpdateCheck> = askServer) {
+export function useSidebarSpot(bridge: AppUpdateBridge | undefined = ownBridge()) {
   const [update, setUpdate] = useState<AppUpdateState>({ ready: null });
   const [asked, setAsked] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -67,27 +69,22 @@ export function useSidebarSpot(bridge: AppUpdateBridge | undefined = ownBridge()
     void bridge.state().then(state => { if (active && !heard) setUpdate(state); }, () => {});
     return () => { active = false; unsubscribe(); };
   }, [bridge]);
-  const notice = useNoticeRelease(Boolean(bridge) && update.mode === "notice", check);
   const ready = update.ready;
-  const version = ready ?? update.available ?? null;
-  const progress = ready ? null : update.progress ?? null;
   useEffect(() => {
     if (!bridge || !asked || !ready) return;
     setAsked(false);
     restartInto(bridge, setRestarting);
   }, [bridge, asked, ready]);
 
-  let spot: SpotState = { kind: "feedback" };
-  if (bridge && ready) spot = { kind: "restart", version: ready, restarting };
-  else if (bridge && version) spot = progress !== null || asked ? { kind: "downloading", version, percent: progress === null ? null : Math.round(progress * 100) } : { kind: "available", version };
-  else if (notice) spot = { kind: "download-page", version: notice.version };
+  const spot: SpotState = bridge ? spotFor(update, asked, restarting) : { kind: "feedback" };
 
   const act = () => {
     if (spot.kind === "feedback") return openFeedback();
-    if (spot.kind === "download-page") return void openExternalLink(notice!.url);
     if (!bridge) return;
     if (spot.kind === "restart") return restartInto(bridge, setRestarting);
-    if (spot.kind === "downloading") return;
+    if (spot.kind === "failed" || spot.kind === "manual") return void (bridge.open ? bridge.open() : openExternalLink(DOWNLOAD_PAGE));
+    if (spot.kind === "move") return void bridge.move?.();
+    if (spot.kind !== "available") return;
     setAsked(true);
     void bridge.download?.().then(found => { if (!found) setAsked(false); }, () => setAsked(false));
   };
@@ -102,8 +99,12 @@ const BLUE = "bg-accent text-accent-ink hover:bg-[color-mix(in_srgb,var(--color-
 
 function spotWords(spot: Exclude<SpotState, { kind: "feedback" }>): { title: string; end: ReactNode; hint?: string } {
   if (spot.kind === "restart") return { title: t("appUpdate.restart"), end: spot.version, hint: t("appUpdate.title", { version: spot.version }) };
-  if (spot.kind === "download-page") return { title: t("appUpdate.availableShort"), end: spot.version, hint: t("appUpdate.downloadPage", { version: spot.version }) };
+  if (spot.kind === "checking") return { title: t("appUpdate.checking"), end: null };
   if (spot.kind === "downloading") return { title: t("appUpdate.downloadingShort"), end: spot.percent === null ? spot.version : t("appUpdate.percent", { percent: spot.percent }) };
+  if (spot.kind === "retrying") return { title: t("appUpdate.retrying"), end: spot.percent === null ? spot.version : t("appUpdate.percent", { percent: spot.percent }), hint: t("appUpdate.retryingHint") };
+  if (spot.kind === "failed") return { title: t("appUpdate.failed"), end: spot.version, hint: t("appUpdate.failedHint", { version: spot.version }) };
+  if (spot.kind === "move") return { title: t("appUpdate.move"), end: spot.version, hint: t("appUpdate.moveHint", { app: productName() }) };
+  if (spot.kind === "manual") return { title: t("appUpdate.manual", { version: spot.version }), end: null, hint: t("appUpdate.manualHint", { version: spot.version }) };
   return { title: t("appUpdate.available", { version: spot.version }), end: null };
 }
 
@@ -125,10 +126,8 @@ const CARD = cn("flex h-10 w-full items-center gap-2.5 rounded-full px-3.5 text-
 export const SPOT_CARD = cn(CARD, TONAL);
 
 /** Give feedback, the update, or an offer: the same one-line card each time, so the spot only changes state. */
-export function SidebarSpot({ className, bridge, check, cta = null }: {
-  className?: string; bridge?: AppUpdateBridge; check?: () => Promise<ServerUpdateCheck>; cta?: SpotCta | null;
-}) {
-  return <SpotView className={className} state={useSidebarSpot(bridge ?? ownBridge(), check)} cta={cta} />;
+export function SidebarSpot({ className, bridge, cta = null }: { className?: string; bridge?: AppUpdateBridge; cta?: SpotCta | null }) {
+  return <SpotView className={className} state={useSidebarSpot(bridge ?? ownBridge())} cta={cta} />;
 }
 
 export function SpotView({ className, state, cta = null }: { className?: string; state: ReturnType<typeof useSidebarSpot>; cta?: SpotCta | null }) {
@@ -166,12 +165,12 @@ export function SpotCtaCard({ cta }: { cta: SpotCta }) {
 
 function UpdateCard({ spot, act, className }: { spot: Exclude<SpotState, { kind: "feedback" }>; act: () => void; className: string }) {
   const { title, end, hint } = spotWords(spot);
-  const busy = spot.kind === "downloading" || (spot.kind === "restart" && spot.restarting);
+  const busy = spot.kind === "downloading" || spot.kind === "retrying" || spot.kind === "checking" || (spot.kind === "restart" && spot.restarting);
   return (
     <button
       type="button"
       data-sidebar-spot="update"
-      data-app-update={spot.version}
+      data-app-update={spot.version ?? undefined}
       data-app-update-state={spot.kind}
       title={hint}
       aria-busy={busy || undefined}
@@ -179,7 +178,7 @@ function UpdateCard({ spot, act, className }: { spot: Exclude<SpotState, { kind:
       onClick={act}
       className={cn(className, "@container relative isolate overflow-hidden", BLUE)}
     >
-      {spot.kind === "downloading" && spot.percent !== null && (
+      {(spot.kind === "downloading" || spot.kind === "retrying") && spot.percent !== null && (
         <span aria-hidden="true" data-app-update-progress="" className="absolute inset-0 -z-10 origin-left bg-[color-mix(in_srgb,var(--color-accent)_80%,black)] transition-transform duration-300 ease-out motion-reduce:transition-none"
           style={{ transform: `scaleX(${spot.percent / 100})` }} />
       )}
@@ -191,17 +190,17 @@ function UpdateCard({ spot, act, className }: { spot: Exclude<SpotState, { kind:
 }
 
 /** The collapsed sidebar's form of the same spot: one round button over the account's. */
-export function RailSpot({ bridge, check }: { bridge?: AppUpdateBridge; check?: () => Promise<ServerUpdateCheck> }) {
-  const { spot, act } = useSidebarSpot(bridge ?? ownBridge(), check);
+export function RailSpot({ bridge }: { bridge?: AppUpdateBridge }) {
+  const { spot, act } = useSidebarSpot(bridge ?? ownBridge());
   const label = spot.kind === "feedback" ? t("giveFeedback.card") : spotWords(spot).title;
   return (
     <button
       type="button"
       data-sidebar-spot={spot.kind === "feedback" ? "feedback" : "update"}
       data-art-hover=""
-      aria-label={spot.kind === "feedback" ? label : `${label}, ${spot.version}`}
+      aria-label={spot.kind === "feedback" || !spot.version ? label : `${label}, ${spot.version}`}
       title={label}
-      aria-busy={spot.kind === "downloading" || undefined}
+      aria-busy={spot.kind === "downloading" || spot.kind === "retrying" || spot.kind === "checking" || undefined}
       onClick={act}
       className={cn("flex size-9 shrink-0 items-center justify-center rounded-full", PRESS, FOCUS, spot.kind === "feedback" ? TONAL : BLUE)}
     >
