@@ -21,8 +21,12 @@ export function mobileFace(account: unknown): Pick<MobileAccount, "avatarUrl" | 
 export type MobileCloud = { id: string; name: string; status: string; origin: string | null; primary: boolean; asleep: boolean };
 /** a team's dusk cloud this account is a member of, as the session lists it */
 export type MobileTeamCloud = { id: string; name: string; status: string; origin: string | null; asleep: boolean };
+/** one of the account's computers (a Mac, a pc or a server it linked), as the service lists it */
+export type MobileComputer = { id: string; name: string; kind: "vps" | "mac" | "linux" | "windows"; presence: "online" | "asleep" | "offline"; environmentId: string | null };
 /** what the account has, beyond any computer this phone linked itself */
-export type AccountPlaces = { clouds: MobileCloud[]; teams: MobileTeamCloud[] };
+export type AccountPlaces = { clouds: MobileCloud[]; teams: MobileTeamCloud[]; computers: MobileComputer[] };
+/** `asleep`: the computer is not online to answer; `unavailable`: it answered but made no pairing a phone can use */
+export type ComputerPairResult = { outcome: "paired"; link: string } | { outcome: "asleep" | "unavailable" | "limited" | "signed-out" | "failed" };
 export type CloudPairGrant = { origin: string; code: string; expiresAt: number };
 export type CloudPairResult = { outcome: "paired"; grant: CloudPairGrant } | { outcome: "asleep" | "unavailable" | "signed-out" | "failed" };
 type StoredGrant = { origin: string; token: string; expiresAt: number; account: MobileAccount; deviceId: string };
@@ -94,6 +98,32 @@ export function parseTeamClouds(input: unknown): MobileTeamCloud[] {
   return teams;
 }
 
+const WORKSPACE_ID = /^ws_[A-Za-z0-9_-]{1,64}$/;
+const COMPUTER_KINDS: readonly string[] = ["vps", "mac", "linux", "windows"];
+const PRESENCE: readonly string[] = ["online", "asleep", "offline"];
+const MAX_COMPUTERS = 50;
+
+export function parseComputers(input: unknown): MobileComputer[] {
+  if (!object(input) || input.v !== 1 || !Array.isArray(input.computers)) return [];
+  const seen = new Set<string>();
+  const computers: MobileComputer[] = [];
+  for (const entry of input.computers.slice(0, MAX_COMPUTERS)) {
+    if (!object(entry) || typeof entry.id !== "string" || !WORKSPACE_ID.test(entry.id) || seen.has(entry.id)) continue;
+    if (typeof entry.kind !== "string" || !COMPUTER_KINDS.includes(entry.kind) || typeof entry.presence !== "string" || !PRESENCE.includes(entry.presence)) continue;
+    seen.add(entry.id);
+    const name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim().slice(0, 40) : entry.kind === "vps" ? "server" : "computer";
+    const environmentId = typeof entry.environmentId === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(entry.environmentId) ? entry.environmentId : null;
+    computers.push({ id: entry.id, name, kind: entry.kind as MobileComputer["kind"], presence: entry.presence as MobileComputer["presence"], environmentId });
+  }
+  return computers;
+}
+
+/** the computer's pairing link, only a v2 phone link whose grant is still live */
+export function parseComputerPair(input: unknown, now = Date.now()): string | null {
+  if (!object(input) || input.v !== 1 || typeof input.link !== "string" || input.link.length > 8192 || !/^duskbot:\/\/pair\?m=[A-Za-z0-9_-]+$/.test(input.link)) return null;
+  return expiry(input.expiresAt) && input.expiresAt > now && input.expiresAt <= now + MAX_GRANT_MS + 60_000 ? input.link : null;
+}
+
 export function parsePairGrant(input: unknown, origin: string | null, now = Date.now()): CloudPairGrant | null {
   if (!object(input) || input.cloudContractVersion !== 1 || !httpsOrigin(input.origin) || (origin !== null && input.origin !== origin)) return null;
   if (typeof input.code !== "string" || !GRANT_CODE.test(input.code)) return null;
@@ -143,7 +173,8 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
     }
     let result: unknown;
     try { result = JSON.parse(text); } catch { throw new AccountRequestError(response.status, undefined, true); }
-    if (!response.ok) throw new AccountRequestError(response.status, object(result) && typeof result.error === "string" ? result.error : undefined);
+    // the /v1 routes answer { error: text, code }; the Admin contract's /api/cloud routes { error: code }
+    if (!response.ok) throw new AccountRequestError(response.status, object(result) ? typeof result.code === "string" ? result.code : typeof result.error === "string" ? result.error : undefined : undefined);
     return result;
   };
   const adopt = async (value: unknown, stamp: number): Promise<boolean> => {
@@ -332,13 +363,31 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
         return object(value) ? parseOwnClouds(value.clouds) : [];
       } catch { return null; }
     },
-    /** the account's own clouds and its teams' clouds, from one session read; null when signed out or unreadable */
+    /** the account's own clouds, its teams' clouds and its computers; null when signed out or the session is unreadable.
+     * a service without the computers list answers none */
     async places(): Promise<AccountPlaces | null> {
       if (!grant) return null;
+      const token = grant.token;
       try {
-        const value = await request(ACCOUNT_ROUTES.appSession, "GET", undefined, grant.token);
-        return object(value) ? { clouds: parseOwnClouds(value.clouds), teams: parseTeamClouds(value.teams) } : { clouds: [], teams: [] };
+        const [value, computers] = await Promise.all([request(ACCOUNT_ROUTES.appSession, "GET", undefined, token),
+          request(ACCOUNT_ROUTES.appComputers, "GET", undefined, token).then(parseComputers, () => [])]);
+        return object(value) ? { clouds: parseOwnClouds(value.clouds), teams: parseTeamClouds(value.teams), computers } : { clouds: [], teams: [], computers };
       } catch { return null; }
+    },
+    /** a one-time pairing link from one of the account's computers, asked of it through the service while it is online */
+    async pairComputer(computer: Pick<MobileComputer, "id">): Promise<ComputerPairResult> {
+      if (!grant) return { outcome: "signed-out" };
+      try {
+        const link = parseComputerPair(await request(ACCOUNT_ROUTES.appComputerPair(computer.id), "POST", {}, grant.token));
+        return link ? { outcome: "paired", link } : { outcome: "failed" };
+      } catch (error) {
+        if (!(error instanceof AccountRequestError) || error.opaque) return { outcome: "failed" };
+        if (error.status === 401) return { outcome: "signed-out" };
+        if (error.status === 429) return { outcome: "limited" };
+        if (error.status === 409 && error.code === "computer_offline") return { outcome: "asleep" };
+        if (error.status === 409 || error.status === 404) return { outcome: "unavailable" };
+        return { outcome: "failed" };
+      }
     },
     pairCloud(cloud: Pick<MobileCloud, "id" | "origin">): Promise<CloudPairResult> {
       return pairing(CLOUD_PAIRING, { cloudId: cloud.id }, cloud.origin);
