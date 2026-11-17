@@ -18,6 +18,8 @@ import { CARD_ACTION, ChatErrorCard } from "./ChatErrorBanner";
 // the card's second way on, next to its one main action: the same pill, without the fill until hovered
 const QUIET_CARD_ACTION = "ui-button ui-button-sm ui-button-pill border-transparent bg-transparent text-ink-secondary hover:bg-ink/[0.06] hover:text-ink";
 import { ClaudeUpdatePrompt } from "./ClaudeUpdatePrompt";
+import { ScreenAccessCard, useScreenAccessMissing } from "./ScreenAccessNotice";
+import { isThisComputerNotReady } from "../../shared/your-computer";
 import { aiRunsOnServer } from "./ComposerSignInNotice";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { useLimitResetContinue } from "./EngineUsage";
@@ -94,6 +96,7 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   const leadBotId = lead?.bot?.id ?? ownBotId;
   const resume = useLimitResetContinue(leadBotId, threadId, lead?.kind === "usage_limit" ? tool?.limitResetsAt : undefined);
   const signInNotice = notices.find((m) => m.tool?.setup === true || m.tool?.signIn === true);
+  const screenAccessMissing = useScreenAccessMissing();
   const close = () => {
     for (const item of items) dismissed.add(item.message.id);
     for (const notice of notices) dismissed.add(notice.id);
@@ -131,6 +134,10 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
       </div>
     );
   }
+
+  // a turn lost to screen access before the bot chatted without it: the one way on is allowing it
+  const placeCause = lead.kind === "place" ? tool.place?.params.cause : undefined;
+  if (screenAccessMissing && typeof placeCause === "string" && isThisComputerNotReady(placeCause)) return <ScreenAccessCard onDismiss={close} />;
 
   if (lead.kind === "no_ai") {
     // no AI of the person's own yet: the first reply is the way to connect one, not an error

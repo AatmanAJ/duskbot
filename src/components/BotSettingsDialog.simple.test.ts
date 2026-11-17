@@ -809,7 +809,10 @@ describe("the Computer tab", () => {
     expect(ready.html).toContain('data-cloud-hop="laptop"');
     const moved = cta(cloudBot(), "moved", desktop);
     expect(moved.html).toContain(">Switch to dusk cloud<");
-    expect(moved.html).toContain(">Scout is on dusk cloud<");
+    expect(moved.html).toContain(">Keep Scout working<");
+    expect(moved.html).toContain("On dusk cloud, Scout keeps replying even when this");
+    expect(moved.html).not.toContain("is on dusk cloud");
+    expect(moved.html).not.toContain("keeps working while");
     click(find(moved, "data-panel-action", "move-cloud"));
     expect(openHome).toHaveBeenCalledTimes(1);
     expect(fixture.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "openCloudAdd" }));

@@ -257,13 +257,12 @@ export function CloudCtaCard({ bot, group, stage, cloudDesktop }: { bot: Bot; gr
     else openCloudMove("cloud");
   };
   const label = t(step === "get" ? "runsOn.getCloud" : step === "switch" ? "runsOn.switchCloud" : step === "moving" ? "runsOn.movingCloud" : "runsOn.moveDuskCloud");
-  // the cloud's page is open to switch to while the bots still work here: still the offer's words, with the switch
-  const there = stage === "moved";
+  // these bots work on this computer, so the card is always the offer, with the switch once the account has a cloud
   const vars = { name: bot.name, device };
   return cloudCta({
-    bots, anchor: "dusk-cloud", step, there: there || step === "moving", asleep: step === "get", hopping, setHopping,
-    title: t(many ? (there ? "runsOn.cta.groupTitleThere" : "runsOn.cta.groupTitle") : there ? "runsOn.cta.titleThere" : "runsOn.cta.title", vars),
-    body: t(many ? (there ? "runsOn.cta.groupBodyThere" : "runsOn.cta.groupBody") : there ? "runsOn.cta.bodyThere" : "runsOn.cta.body", vars),
+    bots, anchor: "dusk-cloud", step, there: step === "moving", asleep: step === "get", hopping, setHopping,
+    title: t(many ? "runsOn.cta.groupTitle" : "runsOn.cta.title", vars),
+    body: t(many ? "runsOn.cta.groupBody" : "runsOn.cta.body", vars),
     action: act, label, disabled: step === "moving",
   });
 }

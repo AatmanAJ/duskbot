@@ -34,6 +34,7 @@ import { CHATGPT_USAGE_URL, ManageUsageLink } from "./ChatGptPlanStatus";
 import { CODEX_USAGE_URL, codexUsageLimitReached } from "../../shared/codex-usage-limit";
 import { ClaudeUpdatePrompt } from "./ClaudeUpdatePrompt";
 import { MacCuaRecoveryActions } from "./MacCuaRecoveryActions";
+import { ScreenAccessNotice } from "./ScreenAccessNotice";
 import { macCuaPermissionMessage, missingMacCuaPermissions } from "@/lib/mac-cua-permissions";
 import { claudeUpdateTarget, failedTurnCause, signedOutEngine } from "@/lib/failed-turn";
 import { plainErrorLine } from "@/lib/plain-error";
@@ -1446,6 +1447,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
       <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
       <div className="pointer-events-auto"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
       {canWrite !== false && !trailing?.failures.length && !trailing?.notices.length && <div className="pointer-events-auto"><ComposerSignInNotice bot={bot} /></div>}
+      {!trailing?.failures.length && <div className="pointer-events-auto"><ScreenAccessNotice bot={bot} /></div>}
       {liveCallEnabled() && <LiveCallBar bot={bot} />}
       {canWrite === false ? (
         <NewConversationInstead bot={bot} onNew={() => dispatch({ type: "newTask", botId: bot.id })} />

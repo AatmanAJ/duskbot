@@ -2181,6 +2181,8 @@
   "chat.error.cantUseThisMac": "I can't use this Mac right now.",
   "chat.error.cantUseThisComputer": "I can't use this computer right now.",
   "chat.error.openScreen": "Open screen",
+  "screenAccess.title": "dusk bot needs screen access to use this Mac",
+  "screenAccess.allow": "Allow access",
   "chat.error.notTheAppsServer": "This copy of the app wasn't started by the desktop app, so it can't use your screen. Let the bot work in its own browser or on a cloud desktop instead.",
   "error.plain.unreachable": "Couldn't reach {app}. Check that it's running, then try again.",
   "error.plain.rateLimited": "Too many requests right now. Wait a moment, then try again.",
