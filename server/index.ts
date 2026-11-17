@@ -2601,7 +2601,7 @@ async function releaseProvider(instanceId: string): Promise<void> {
   const pick = await defaultSelection(null, others.filter((instance) => readyToRun(instance, selectionContext)));
   const next = pick.instanceId ? withNewBotEffort(pick, cfg.newBots?.effort, registry.get(pick.instanceId)?.adapter.capabilities.effortLevels) : pick;
   if (cfg.defaultModelSelection?.instanceId === instanceId && next.instanceId) saveConfig({ defaultModelSelection: next });
-  for (const bot of [...store.bots]) {
+  for (const bot of store.bots) {
     if (bot.fallback?.some((candidate) => candidate.instanceId === instanceId)) {
       store.patchBot(bot.id, { fallback: bot.fallback.filter((candidate) => candidate.instanceId !== instanceId) });
     }
