@@ -91,6 +91,9 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
   const hint = useWatchHint(watching);
   const platform = useContext(PlatformContext);
   const phone = platform && !inline ? platform : null;
+  const landscape = useSyncExternalStore(subscribeLandscape, isLandscape, () => false);
+  // a sideways phone's picture fills the height: the pill moves out of it into the side column with the buttons
+  const sideControl = Boolean(phone && landscape && control);
 
   const content = (
     <div
@@ -104,7 +107,8 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
         phone && "pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]")}
     >
       {!inline && <ComputerViewerKeys box={box} onExit={onExit} />}
-      {phone && <PhoneViewerBar platform={phone} onExit={() => close.current()} onKeyboard={onKeyboard} />}
+      {phone && <PhoneViewerBar platform={phone} landscape={landscape} onExit={() => close.current()} onKeyboard={onKeyboard}
+        control={sideControl && control ? <ControlPill control={control} hint={hint} compact /> : null} />}
       {!inline && !phone && <div {...dragProps} className={cn("flex h-11 shrink-0 items-center justify-end pr-2", macInset ? "pl-[88px]" : "pl-2")}>
         <button
           type="button"
@@ -119,12 +123,12 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
         </button>
       </div>}
       <div className={cn("flex min-h-0 flex-1 flex-col", !inline && "p-2")}>
-        <div className={cn("relative flex min-h-0 flex-1 flex-col items-center justify-center [container-type:size]", phone && "[--computer-bar:52px] landscape:[--computer-bar:0px]")}>
+        <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center [container-type:size]">
           {frame ? (
             <div
               data-computer-frame=""
               className={cn("relative overflow-hidden", inline ? "size-full" : "rounded-[6px] bg-white/4")}
-              style={inline ? undefined : { width: `min(100cqw, calc((100cqh - ${control ? phone ? "var(--computer-bar)" : `${BAR}px` : "0px"}) * ${aspect}))`, aspectRatio: String(aspect) }}
+              style={inline ? undefined : { width: `min(100cqw, calc((100cqh - ${control && !sideControl ? BAR : 0}px) * ${aspect}))`, aspectRatio: String(aspect) }}
               onPointerDown={watching ? hint.bump : undefined}
             >
               {frame}
@@ -132,8 +136,8 @@ export function ComputerFullscreen({ label, onExit, frame, note, control, alert,
           ) : (
             <div data-computer-note="" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">{note}</div>
           )}
-          {!inline && control && (
-            <div className={cn("flex shrink-0 items-center justify-center", phone && "landscape:pointer-events-none landscape:absolute landscape:inset-x-0 landscape:bottom-1 landscape:h-auto! [&>*]:pointer-events-auto")} style={{ height: BAR }}>
+          {!inline && control && !sideControl && (
+            <div className="flex shrink-0 items-center justify-center" style={{ height: BAR }}>
               <ControlPill control={control} hint={hint} />
             </div>
           )}
@@ -157,8 +161,14 @@ const phoneButton = "pointer-events-auto flex size-11 cursor-pointer items-cente
 
 /** The phone's way out of the screen, below the status bar, and the screen's own tools: turn it sideways and type. The
  * phone may turn while the screen is open. */
-function PhoneViewerBar({ platform, onExit, onKeyboard }: { platform: MobilePlatform; onExit: () => void; onKeyboard?: () => void }) {
-  const landscape = useSyncExternalStore(subscribeLandscape, isLandscape, () => false);
+function PhoneViewerBar({ platform, landscape, onExit, onKeyboard, control }: {
+  platform: MobilePlatform;
+  landscape: boolean;
+  onExit: () => void;
+  onKeyboard?: () => void;
+  /** Sideways, the control pill sits at the foot of the tools column. */
+  control?: ReactNode;
+}) {
   const exit = useRef(onExit);
   exit.current = onExit;
   useEffect(() => {
@@ -177,7 +187,7 @@ function PhoneViewerBar({ platform, onExit, onKeyboard }: { platform: MobilePlat
       <button type="button" onClick={onExit} aria-label={back} title={back} data-computer-exit="" className={phoneButton}>
         <Icon name="chevron-left" size={22} />
       </button>
-      <div className="flex items-center gap-1 landscape:flex-col">
+      <div className="flex items-center gap-1 landscape:flex-col landscape:self-stretch landscape:items-end">
         {platform.orientation && (
           <button type="button" onClick={() => platform.orientation?.rotate(landscape ? "portrait" : "landscape")} aria-label={rotate} title={rotate} data-computer-rotate="" className={phoneButton}>
             <RotateCw size={18} aria-hidden="true" />
@@ -188,6 +198,7 @@ function PhoneViewerBar({ platform, onExit, onKeyboard }: { platform: MobilePlat
             <Icon name="keyboard" size={18} />
           </button>
         )}
+        {control && <div data-computer-side-control="" className="pointer-events-auto mt-auto pb-1">{control}</div>}
       </div>
     </div>
   );
@@ -212,14 +223,17 @@ function ComputerViewerKeys({ box, onExit }: { box: RefObject<HTMLDivElement | n
   return null;
 }
 
-function ControlPill({ control, hint }: { control: ScreenControl; hint: { count: number; shown: boolean } }) {
+/** `compact` is the sideways phone's: the status shrinks to its icon over the button, to fit the side column. */
+function ControlPill({ control, hint, compact = false }: { control: ScreenControl; hint: { count: number; shown: boolean }; compact?: boolean }) {
   const action = control.held ? control.onDone : control.onTake;
   const secondary = control.held && !control.asked;
+  const status = control.held ? t("computer.inControl") : t("computer.watching");
   return (
-    <div data-computer-control={control.held ? "held" : "watching"} className={cn("flex h-9 items-center gap-2.5 rounded-full bg-menu pl-3", action ? "pr-1" : "pr-3")}>
-      <span aria-live="polite" className={cn("flex items-center gap-1.5 text-[13px] font-medium leading-[18px]", control.held ? "text-ink" : "text-ink/68")}>
+    <div data-computer-control={control.held ? "held" : "watching"} data-compact={compact ? "" : undefined}
+      className={cn(compact ? "flex max-w-[76px] flex-col items-center gap-1.5 rounded-[18px] bg-menu px-1 pt-2 pb-1" : "flex h-9 items-center gap-2.5 rounded-full bg-menu pl-3", !compact && (action ? "pr-1" : "pr-3"))}>
+      <span aria-live="polite" title={compact ? status : undefined} className={cn("flex items-center gap-1.5 text-[13px] font-medium leading-[18px]", control.held ? "text-ink" : "text-ink/68")}>
         <Icon name={control.held ? "window-pointer-arrow" : "eye"} size={16} />
-        {control.held ? t("computer.inControl") : t("computer.watching")}
+        <span className={cn(compact && "sr-only")}>{status}</span>
         {hint.shown && <span className="sr-only">{t("computer.takeControlHint")}</span>}
       </span>
       {action && (
@@ -238,7 +252,8 @@ function ControlPill({ control, hint }: { control: ScreenControl; hint: { count:
             disabled={control.busy}
             aria-busy={control.busy || undefined}
             className={cn(
-              "relative inline-flex h-[26px] cursor-pointer items-center rounded-full px-2 text-[13px] leading-[18px] transition-[background-color] duration-[120ms] ease-[ease] enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-60 motion-reduce:enabled:active:scale-100",
+              "relative inline-flex cursor-pointer items-center rounded-full px-2 text-[13px] leading-[18px] transition-[background-color] duration-[120ms] ease-[ease] enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-60 motion-reduce:enabled:active:scale-100",
+              compact ? "min-h-[26px] justify-center py-1 text-center leading-4 before:absolute before:-inset-x-1 before:-inset-y-2 before:content-['']" : "h-[26px]",
               secondary
                 ? "bg-ink/[0.06] text-ink enabled:hover:bg-ink/[0.1]"
                 : "bg-ink text-app enabled:hover:bg-[color-mix(in_srgb,var(--color-ink)_88.5%,var(--color-menu))]",

@@ -14,8 +14,13 @@ export interface RemoteInput {
   text(text: string): void;
 }
 
-/** The phone's trackpad over a remote screen: touches anywhere on the frame drive a cursor drawn over the picture, and
- * the picture (`screen`) zooms and pans under it. The hidden field takes the phone keyboard's typing. */
+/** The viewer that holds the trackpad: touches anywhere on it, margins included, are trackpad touches. */
+export const TRACKPAD_SURFACE = "[data-computer-fullscreen]";
+/** What keeps its own touches on that surface: the viewer's buttons and the control pill. */
+const OWN_TOUCHES = "button, a, input, textarea, select, [data-computer-control]";
+
+/** The phone's trackpad over a remote screen: touches anywhere on the viewer drive a cursor drawn over the picture,
+ * and the picture (`screen`) zooms and pans under it. The hidden field takes the phone keyboard's typing. */
 export function ScreenTrackpad({ screen, input, keyboard, haptic, label }: {
   screen: RefObject<HTMLElement | null>;
   input: RemoteInput;
@@ -46,6 +51,11 @@ export function ScreenTrackpad({ screen, input, keyboard, haptic, label }: {
     const element = pad.current;
     const picture = screen.current;
     if (!element || !picture) return;
+    const surface = element.closest<HTMLElement>(TRACKPAD_SURFACE) ?? element;
+    // the margins take touches as the picture does: no browser panning, zooming, selecting or callout there
+    const claimed = ["touch-action", "user-select", "-webkit-user-select", "-webkit-touch-callout"];
+    const before = claimed.map((name) => surface.style.getPropertyValue(name));
+    if (surface !== element) for (const name of claimed) surface.style.setProperty(name, "none");
 
     const desktop = () => remote.current.size();
     const cursorAt = () => {
@@ -152,7 +162,8 @@ export function ScreenTrackpad({ screen, input, keyboard, haptic, label }: {
     const handlers = {
       down(event: PointerEvent) {
         if (event.pointerType === "mouse" && event.button !== 0) return;
-        element.setPointerCapture?.(event.pointerId);
+        if (surface !== element && event.target instanceof Element && event.target.closest(OWN_TOUCHES)) return;
+        surface.setPointerCapture?.(event.pointerId);
         run(state.gestures.down(event.pointerId, event.clientX, event.clientY, event.timeStamp));
       },
       move(event: PointerEvent) {
@@ -163,16 +174,17 @@ export function ScreenTrackpad({ screen, input, keyboard, haptic, label }: {
       up(event: PointerEvent) { run(state.gestures.up(event.pointerId, event.timeStamp)); },
       cancel() { run(state.gestures.cancel()); },
     };
-    element.addEventListener("pointerdown", handlers.down);
-    element.addEventListener("pointermove", handlers.move);
-    element.addEventListener("pointerup", handlers.up);
-    element.addEventListener("pointercancel", handlers.cancel);
+    surface.addEventListener("pointerdown", handlers.down);
+    surface.addEventListener("pointermove", handlers.move);
+    surface.addEventListener("pointerup", handlers.up);
+    surface.addEventListener("pointercancel", handlers.cancel);
     return () => {
-      element.removeEventListener("pointerdown", handlers.down);
-      element.removeEventListener("pointermove", handlers.move);
-      element.removeEventListener("pointerup", handlers.up);
-      element.removeEventListener("pointercancel", handlers.cancel);
+      surface.removeEventListener("pointerdown", handlers.down);
+      surface.removeEventListener("pointermove", handlers.move);
+      surface.removeEventListener("pointerup", handlers.up);
+      surface.removeEventListener("pointercancel", handlers.cancel);
       observer.disconnect();
+      if (surface !== element) claimed.forEach((name, index) => surface.style.setProperty(name, before[index]!));
       cancelAnimationFrame(state.raf);
       state.raf = 0;
       clearTimeout(state.hold);
