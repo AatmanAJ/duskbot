@@ -5,6 +5,7 @@ import type { Completion, OpenAIChatMessage } from "./openai-chat.ts";
 import type { ChatContentPart } from "./chat-images.ts";
 import type { ChatToolDefinition } from "./chat-mcp-tools.ts";
 import { ChatProtocolError, ChatToolCalls, object } from "./openai-chat-protocol.ts";
+import { noReplyError } from "./openai-chat-final.ts";
 
 export type ResponseItem = Record<string, unknown>;
 
@@ -240,7 +241,7 @@ export async function readResponsesStream(body: ReadableStream<Uint8Array> | nul
   try {
     while (!ended) {
       const { done: closed, value } = await reader.read();
-      if (closed) throw new ChatProtocolError("Stream ended before completion");
+      if (closed) throw noReplyError("stream_cut");
       handlers.onBytes();
       buffer += decoder.decode(value, { stream: true });
       if (buffer.length > MAX_FRAME_CHARS) throw new ChatProtocolError("provider stream frame exceeded the size limit");

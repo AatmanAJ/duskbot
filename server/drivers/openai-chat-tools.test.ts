@@ -1042,19 +1042,20 @@ describe("structured tool execution boundaries", () => {
   });
 
   it.each([
-    { scenario: "missing choices", body: {} },
-    { scenario: "empty choices", body: { choices: [] } },
-    { scenario: "empty assistant message", body: { choices: [{ message: {}, finish_reason: "stop" }] } },
-    { scenario: "null content without calls", body: { choices: [{ message: { content: null }, finish_reason: "stop" }] } },
-    { scenario: "blank content", body: { choices: [{ message: { content: "   " }, finish_reason: "stop" }] } },
-  ])("rejects a JSON completion with $scenario instead of reporting an empty successful turn", async ({ body }) => {
+    { scenario: "missing choices", body: {}, requests: 1 },
+    { scenario: "empty choices", body: { choices: [] }, requests: 1 },
+    { scenario: "empty assistant message", body: { choices: [{ message: {}, finish_reason: "stop" }] }, requests: 1 },
+    // an empty reply is asked for once more, with a nudge
+    { scenario: "null content without calls", body: { choices: [{ message: { content: null }, finish_reason: "stop" }] }, requests: 2 },
+    { scenario: "blank content", body: { choices: [{ message: { content: "   " }, finish_reason: "stop" }] }, requests: 2 },
+  ])("rejects a JSON completion with $scenario instead of reporting an empty successful turn", async ({ body, requests }) => {
     const f = await fixture((_request, response) => {
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify(body));
     });
     await f.start({ integrations: undefined });
     expect(await f.completed()).toMatchObject({ ok: false });
-    expect(f.requests).toHaveLength(1);
+    expect(f.requests).toHaveLength(requests);
     expect(f.effects()).toEqual([]);
     expect(f.recorder.events.some((event) => event.type === "runtime.error")).toBe(true);
     expect(f.recorder.events.some((event) => event.type === "item.completed" && event.itemType === "assistant_text")).toBe(false);
@@ -1221,17 +1222,18 @@ describe("structured tool execution boundaries", () => {
   });
 
   it.each([
-    { scenario: "duplicate call IDs", frames: [chunk({ tool_calls: [toolCall(), { ...toolCall(), index: 1 }] }, "tool_calls")] },
-    { scenario: "missing call ID", frames: [chunk({ tool_calls: [{ index: 0, type: "function", function: toolCall().function }] }, "tool_calls")] },
-    { scenario: "changed call ID", frames: [chunk({ tool_calls: [toolCall()] }), chunk({ tool_calls: [{ index: 0, id: "a_different_call" }] }, "tool_calls")] },
-    { scenario: "truncated tool completion", frames: [chunk({ tool_calls: [toolCall()] }, "length")] },
-    { scenario: "tool finish without a call", frames: [chunk({}, "tool_calls")] },
-  ])("rejects $scenario before any tool can execute", async ({ frames }) => {
+    // a broken batch ran nothing, so it is asked for once more, with a nudge
+    { scenario: "duplicate call IDs", frames: [chunk({ tool_calls: [toolCall(), { ...toolCall(), index: 1 }] }, "tool_calls")], requests: 2 },
+    { scenario: "missing call ID", frames: [chunk({ tool_calls: [{ index: 0, type: "function", function: toolCall().function }] }, "tool_calls")], requests: 2 },
+    { scenario: "changed call ID", frames: [chunk({ tool_calls: [toolCall()] }), chunk({ tool_calls: [{ index: 0, id: "a_different_call" }] }, "tool_calls")], requests: 1 },
+    { scenario: "truncated tool completion", frames: [chunk({ tool_calls: [toolCall()] }, "length")], requests: 2 },
+    { scenario: "tool finish without a call", frames: [chunk({}, "tool_calls")], requests: 2 },
+  ])("rejects $scenario before any tool can execute", async ({ frames, requests }) => {
     const f = await fixture((_body, response) => sse(response, frames));
     await f.start();
     expect(await f.completed()).toMatchObject({ ok: false });
     expect(f.effects()).toEqual([]);
-    expect(f.requests).toHaveLength(1);
+    expect(f.requests).toHaveLength(requests);
     expect(f.recorder.events.some((event) => event.type === "request.opened")).toBe(false);
     expect(f.recorder.events.some((event) => event.type === "runtime.error")).toBe(true);
   });

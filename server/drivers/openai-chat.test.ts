@@ -761,7 +761,7 @@ describe("createOpenAIChatRuntime stream termination", () => {
   it("reports a stream truncated before finish_reason as an error, not an interrupt", async () => {
     const events = await runTurn('data: {"choices":[{"index":0,"delta":{"content":"Hel"}}]}\n\n');
     expect(events.find((event) => event.type === "runtime.error")).toMatchObject({
-      message: "Stream ended before completion",
+      message: "The model's reply stream closed before it finished. Try again, or switch this bot to another model.", errorCode: "stream_cut",
     });
     expect(events.at(-1)).toMatchObject({ type: "turn.completed", ok: false, stopReason: "error" });
   });
