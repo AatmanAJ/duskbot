@@ -475,7 +475,9 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         if (!session) return;
         if (session.idleTimer) clearTimeout(session.idleTimer);
         session.idleTimer = armIdleClose(`${instanceId}\0${threadId}`, engineIdleMs(threadId, sessionIdle), { close: () => closeSession(threadId, "idle"),
-          idle: () => sessions.get(threadId) === session && !session.closing && !session.current });
+          idle: () => sessions.get(threadId) === session && !session.closing && !session.current,
+          // A process other threads share is no one thread's to measure.
+          pid: () => support.shareProcess ? undefined : session.child.pid });
       };
     // Session allows the driver keeps when the agent offered no `allow_always`: exact operations per
     // thread, for the native session's life. A generic title with no input is never remembered.

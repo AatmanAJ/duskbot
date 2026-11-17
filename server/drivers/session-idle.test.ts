@@ -4,6 +4,7 @@ import { forgetPresence, personAsks, sawThread, seenWithin } from "../thread-pre
 import {
   armIdleClose, engineIdleMs, idleEnginesAllowed, keepWarm, sessionIdlePolicy, SMALL_BOX_IDLE_MS, stopIdleClose, UNWATCHED_IDLE_MS, warmEngineKeys,
 } from "./session-idle.ts";
+import { WarmPool } from "./warm-pool.ts";
 
 const GB = 1024 ** 3;
 const DESKTOP = 16 * GB;
@@ -104,6 +105,7 @@ describe("idle engines on a small box", () => {
     const state = { busy, closed: 0 };
     return { state, warm: { idle: () => !state.busy, close: () => { state.closed += 1; } } };
   };
+  const smallPool = (available: () => number) => new WarmPool({ countCap: () => idleEnginesAllowed(small, available()), budget: () => Infinity, table: async () => [], log: () => {} });
   afterEach(() => { for (const key of warmEngineKeys()) stopIdleClose(key, null); });
 
   it("allows one idle engine once less than half of a small box is free, and any number otherwise", () => {
@@ -113,24 +115,26 @@ describe("idle engines on a small box", () => {
   });
 
   it("closes the engine idle longest when another goes idle and memory is tight, never a busy one", () => {
+    let free = 0.6 * GB;
+    const pool = smallPool(() => free);
     const [a, b, c] = [engine(), engine(true), engine()];
-    keepWarm("a", a.warm, small, () => 0.6 * GB);
-    keepWarm("b", b.warm, small, () => 0.6 * GB);
+    keepWarm("a", a.warm, pool);
+    keepWarm("b", b.warm, pool);
     expect(a.state.closed).toBe(0);
-    keepWarm("c", c.warm, small, () => 0.3 * GB);
+    free = 0.3 * GB;
+    keepWarm("c", c.warm, pool);
     expect([a.state.closed, b.state.closed, c.state.closed]).toEqual([1, 0, 0]);
-    expect(warmEngineKeys()).toEqual(["c"]);
+    expect(pool.keys()).toEqual(["c"]);
   });
 
-  it("keeps every idle engine on a large box, and forgets one once it closes or works again", () => {
+  it("forgets an engine once it closes or works again", () => {
+    const pool = smallPool(() => 0.1 * GB);
     const [a, b] = [engine(), engine()];
-    keepWarm("a", a.warm, { bytes: DESKTOP }, () => 0);
-    keepWarm("b", b.warm, { bytes: DESKTOP }, () => 0);
-    expect([a.state.closed, b.state.closed, warmEngineKeys()]).toEqual([0, 0, []]);
-    keepWarm("a", a.warm, small, () => 0.6 * GB);
-    stopIdleClose("a", null);
-    keepWarm("b", b.warm, small, () => 0.1 * GB);
+    keepWarm("a", a.warm, pool);
+    pool.remove("a");
+    keepWarm("b", b.warm, pool);
     expect(a.state.closed).toBe(0);
+    expect(pool.keys()).toEqual(["b"]);
   });
 
   it("closes on its timer like any idle engine", () => {

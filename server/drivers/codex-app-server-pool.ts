@@ -211,6 +211,7 @@ export class CodexAppServerPool {
     server.idleTimer = armIdleClose(this.idleKey(server), idleMs, {
       idle: () => !server.leased,
       close: () => { if (!server.leased) this.close(server); },
+      pid: () => server.threads.size <= 1 ? server.child.pid : undefined,
     });
   }
 
