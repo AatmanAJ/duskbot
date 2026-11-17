@@ -138,7 +138,7 @@ export function TabStrip({ bot, tabs, selected, wide, ready, onSelect, onClose, 
             <button type="button" data-local-browser-tab-close={tab.tabId} aria-label={t("browser.panel.closeTab", { title: name })} title={t("browser.panel.closeTab", { title: name })}
               disabled={!ready} onClick={() => onClose(tab)}
               className={cn("absolute right-1 top-1/2 flex size-[18px] -translate-y-1/2 cursor-pointer items-center justify-center rounded-[6px] text-ink-secondary opacity-0 transition-opacity duration-[120ms] ease-[ease]",
-                "hover:bg-ink/8 hover:text-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-focus group-hover/tab:opacity-100 group-focus-within/tab:opacity-100 disabled:hidden")}>
+                "hover:bg-ink/8 hover:text-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-focus group-hover/tab:opacity-100 group-focus-within/tab:opacity-100 touch:opacity-100 disabled:hidden")}>
               <X size={11} aria-hidden="true" />
             </button>
           </div>
