@@ -118,7 +118,7 @@ describe("room message actions", () => {
       ],
     };
     const html = markup([reply]);
-    // the inline link to a Markdown file opens its preview first (98765400f1)
+    // the inline link to a Markdown file opens its preview first
     expect(html.match(/title="Preview file: notes\.md"/g)).toHaveLength(1);
     expect(html).toContain(">notes.md<");
     // notes.md is saved from its inline link only, never again as a chip below

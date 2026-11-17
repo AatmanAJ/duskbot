@@ -251,7 +251,7 @@ describe("a message sent while a one-to-one bot works", () => {
     expect(followUps()).toEqual(["steer", "queue"]);
   });
 
-  // the steer/queue/restart menu beside Send went with cdb88375a3: while the bot works it is only voice and send
+  // while the bot works it is only voice and send: no steer, queue or restart menu
   it("offers no menu of ways to send beside Send, only Send itself", () => {
     fixture.instances = [steers];
     render(createElement(Composer, { bot: working }));
