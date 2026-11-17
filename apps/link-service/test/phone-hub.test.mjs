@@ -91,6 +91,36 @@ describe("phone hub without sockets", () => {
   }
   const control = (channel = cid, channelKey = key, r = "controlaaaaa") => ({ channel, frames: [sealFrame(channelKey, channel, "to-vps", { t: "ctl", r, op: "ping" })] });
 
+  it("says once when the channel sync and read are back after failing", async () => {
+    const lines = [];
+    let syncs = 0, reads = 0;
+    hub = createPhoneHub({ base: "http://relay.test", id, token: vps, keys: agentKeys, log: (text) => lines.push(text),
+      sync: async (input) => {
+        syncs += 1;
+        if (syncs === 1) throw new Error("relay unreachable");
+        if (syncs === 2) return { rev: 1, channels: [spec()] };
+        return new Promise((_resolve, reject) => input.signal.addEventListener("abort", () => reject(new Error("stopped")), { once: true }));
+      },
+      fetchImpl: async (url, init) => {
+        if (init.method === "PUT") return new Response('{"ok":true}', { status: 200 });
+        reads += 1;
+        if (reads === 1) return new Response("", { status: 502 });
+        return new Response(new ReadableStream({ start(controller) {
+          controller.enqueue(line({ frames: [] }));
+          init.signal.addEventListener("abort", () => controller.error(new Error("stopped")), { once: true });
+        } }), { headers: { "content-type": "application/x-ndjson" } });
+      },
+    });
+    running = hub.run();
+    await until(() => lines.includes("link: phone channel sync is back after 1 retry") && lines.includes("link: phone channel read is back after 1 retry"));
+    expect(lines.filter((text) => text.startsWith("link: phone channel sync"))).toEqual([
+      "link: phone channel sync retrying (relay unreachable)", "link: phone channel sync is back after 1 retry",
+    ]);
+    expect(lines.filter((text) => text.startsWith("link: phone channel read"))).toEqual([
+      "link: phone channel read retrying", "link: phone channel read is back after 1 retry",
+    ]);
+  });
+
   it("opens each channel separately, drops replays and unknown channels, and seals replies for their owner", async () => {
     await start([spec(), spec(second, anotherKey)]);
     const first = control();

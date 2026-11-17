@@ -2595,16 +2595,17 @@ export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = 
         }
         applied = answer.rev;
         failed = refused;
+        if (failures) log(`link: phone channel sync is back after ${failures} ${failures === 1 ? "retry" : "retries"}`);
         failures = 0;
-      } catch {
+      } catch (error) {
         if (stopped) break;
-        if (!failures) log("link: phone channel sync retrying");
+        if (!failures) log(`link: phone channel sync retrying (${error?.message ?? error})`);
         await wait(Math.min(30_000, 500 * 2 ** Math.min(failures++, 6)));
       }
     }
   }
   async function read() {
-    let failures = 0, ahead = null;
+    let failures = 0, ahead = null, down = 0;
     while (!stopped) {
       const postsBefore = successfulPosts, next = ahead;
       ahead = null;
@@ -2621,6 +2622,7 @@ export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = 
           if (response.status === 404) { stop(); break; }
           throw new Error("phone channel read failed");
         }
+        if (down) { log(`link: phone channel read is back after ${down} ${down === 1 ? "retry" : "retries"}`); down = 0; }
         const beat = beatWatch(response, () => { log("link: the phone channel read went silent; reconnecting"); fetchImpl.reset?.(); });
         beatStop = beat.stop;
         await Promise.race([readChannelBatches(response, ({ channel: cid, frames = [] }) => {
@@ -2639,7 +2641,8 @@ export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = 
         if (stopped) break;
         if (stall.signal.aborted && !heard) { stream.stalled(); continue; }
         failures += 1;
-        if (failures === 1 || failures % 20 === 0) log("link: phone channel read retrying");
+        down += 1;
+        if (down === 1 || down % 20 === 0) log("link: phone channel read retrying");
         if (postsBefore === successfulPosts) {
           pollRetry = new AbortController();
           await delay(spread(Math.min(15_000, 500 * 2 ** Math.min(failures, 5))), undefined, { signal: AbortSignal.any([abort.signal, pollRetry.signal]) }).catch(() => {});

@@ -1358,6 +1358,7 @@ EOF
 Description=Link for dusk bot
 After=network-online.target duskbot.service
 Wants=network-online.target
+PartOf=duskbot.service
 
 [Service]
 User=$LINK_USER
@@ -1382,7 +1383,7 @@ ReadWritePaths=$LINK_HOME
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target duskbot.service
 EOF
   put_file "$UNITS/duskbot-link.service" 0644 && changed=0
   cat > "$TMP/new" <<EOF
