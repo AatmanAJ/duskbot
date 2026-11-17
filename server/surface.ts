@@ -42,9 +42,17 @@ const NO_BROWSER_NOTE =
 const OFF_NOTE =
   " This bot's \"Works on\" setting is Off, so no computer and no built-in browser are mounted this turn: you cannot open a page, click, or type on any screen. If the user asks for something that needs one, tell them Works on is Off in this bot's settings, never claim you are opening a browser you do not have.";
 
-/** A bot on this computer whose screen access the OS has not granted yet: it still chats and browses. */
-export const SCREEN_ACCESS_MISSING_NOTE =
-  " This bot works on this computer, but dusk bot does not have screen access on it yet, so no computer tools are mounted this turn: you cannot see, click or type on this computer's screen or apps. Answer and chat normally, and do web work in your built-in browser if you have it. Only when the request truly needs this computer's screen or its apps, say so in one short line: dusk bot needs screen access on this computer, and the person can allow it from the notice above the message box. Never claim to have used the screen.";
+const DESKTOP_APPS_LINE =
+  " Only a task that truly needs a computer's own desktop apps, or files outside the browser, is out of reach this turn: for that, say in one short sentence that controlling a computer's apps is part of dusk cloud plans, on your own cloud computer";
+const NO_PERMISSION_TALK = " Never mention permissions, screen access, System Settings or the notice above the message box, and never claim to have used this computer's screen.";
+
+/** A bot on this computer whose screen control the OS has not granted yet: it chats and works in its browser as usual. */
+export function screenAccessMissingNote(browser: boolean): string {
+  return browser
+    ? " Your built-in browser is available this turn and is the default for everything on the web: opening a site, searching, reading pages, filling in forms, signing in. When the person asks you to open a site or do anything a browser can do, go straight to your built-in browser and do it; never say you cannot open a website. Control of this computer's desktop apps is not available."
+      + DESKTOP_APPS_LINE + ", and that here you can use your built-in browser; offer to do it in the browser when that could work." + NO_PERMISSION_TALK
+    : " Control of this computer's desktop apps is not available this turn. Answer and chat normally, with web search and page fetches for lookups." + DESKTOP_APPS_LINE + "." + NO_PERMISSION_TALK;
+}
 
 export function computerSkippedNote(cause: string): string {
   const why = cause.trim().replace(/[\s.]+$/, "");

@@ -205,7 +205,10 @@ describe("this computer belongs to the desktop app's own server", () => {
     const sent = await dump();
     expect(sent.mcpConfig?.mcpServers?.computer).toBeUndefined();
     expect(sent.mcpConfig?.mcpServers?.browser).toBeDefined();
-    expect(JSON.stringify(sent)).toContain("does not have screen access on it yet");
+    const prompt = JSON.stringify(sent);
+    expect(prompt).toContain("go straight to your built-in browser and do it; never say you cannot open a website");
+    expect(prompt).toContain("controlling a computer's apps is part of dusk cloud plans");
+    expect(prompt).not.toMatch(/notice above the message box, and the person|allow it from the notice/);
     writeFileSync(finishFile, "finish");
     await idle(bot.id, task.threadId);
     const lines = (await rows(task.threadId)).join("\n");

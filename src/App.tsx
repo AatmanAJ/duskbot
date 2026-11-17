@@ -81,6 +81,7 @@ import { useDesktopNotificationOpens, useExternalChatLinks } from "@/hooks/use-e
 import { useReadShownChatOnFocus } from "@/hooks/use-read-shown-chat";
 import { usePresence } from "@/hooks/use-presence";
 import { useComputerPanelActivity } from "@/hooks/use-computer-panel-activity";
+import { useBrowserPanelReveal } from "@/hooks/use-browser-panel-reveal";
 import { AppEmptyMain } from "@/components/AppEmptyMain";
 import { BootCover } from "@/components/BootCover";
 import { t } from "@/lib/i18n";
@@ -167,6 +168,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const macFrom = useMacEmpty();
   const [macPrompt, dismissMacPrompt] = useMacEmptyPrompt(macFrom);
   useProductScreen(state.appSettingsOpen ? "/settings" : state.pluginsOpen ? "/apps" : group ? "/rooms/:id" : bot ? (state.activeView === "files" ? "/bots/:id/files" : "/bots/:id") : "/", group?.id ?? bot?.id);
+  useBrowserPanelReveal({ bot, active: state.activeView === "chat", dispatch });
   useComputerPanelActivity({ bot, active: state.activeView === "chat", settingsOpen: state.settingsOpen, targetKey: `${bot?.vpsAlias}:${bot?.section}:${state.config?.vps?.sshAlias}:${state.config?.vps?.mode}:${state.config?.vps?.independentScreens}`, dispatch });
   const roomPanelOpen = useRoomPanelShown({ group, state, simple: !remoteClient });
   // The sidebar only folds when the person folds it: a side panel opening beside it never collapses it, as in Grok Bot.
