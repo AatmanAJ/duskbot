@@ -47,7 +47,7 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
                 ? <GroupAvatar members={members} size={30} />
                 : bot && <BotAvatar bot={bot} size={30} state="idle" animated={false} />}
             </span>
-            <span data-glass-name="" className="min-w-0 truncate text-[15px] font-semibold">{name}</span>
+            <span data-glass-name="" className="min-w-0 truncate text-[16px] font-semibold">{name}</span>
           </button>
           <ConnectionPill notice={link.notice === "reconnecting" ? null : link.notice} trying={link.trying} onRetry={link.retry} testId="mobile-chat-cloud-status" className="absolute top-[calc(100%+8px)] h-8 px-3" />
         </div>

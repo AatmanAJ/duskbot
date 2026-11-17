@@ -217,29 +217,29 @@ html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-u
   align-items: flex-end;
   gap: 2px;
   margin-inline: 10px;
-  padding: 7px;
+  padding: 6px;
   border-radius: 26px;
 }
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] > div:has(> [data-composer-row]) {
-  min-height: 34px;
+  min-height: 36px;
   padding: 0 0 0 8px;
   border-radius: 20px;
   background: transparent;
   box-shadow: none;
 }
 .dusk-mobile [data-mobile-chat] [data-composer-plus] {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   color: color-mix(in srgb, var(--color-ink) 82%, transparent);
   background-color: var(--g-tint-quiet);
   transition: scale .2s var(--m-ease-release), background-color .15s ease;
 }
 .dusk-mobile [data-mobile-chat] [data-composer-plus] svg { width: 19px; height: 19px; }
-/* the discs inside the capsule draw at 34px; the coarse-pointer hit area keeps each at 44 */
+/* the discs inside the capsule draw at 36px; the coarse-pointer hit area keeps each at 44 */
 .dusk-mobile [data-mobile-chat] [data-grok-inset] [data-tour="composer"] button:not([role="menuitem"]):is([data-composer-send], [data-voice-mic], [data-composer-stop], :has(> [data-composer-plus])) {
-  width: 34px; height: 34px; min-width: 34px; min-height: 34px;
+  width: 36px; height: 36px; min-width: 36px; min-height: 36px;
 }
-.dusk-mobile [data-mobile-chat] [data-composer-stop-ghost] { width: 34px; height: 34px; }
+.dusk-mobile [data-mobile-chat] [data-composer-stop-ghost] { width: 36px; height: 36px; }
 /* desktop's hold-the-spot swap: Stop turns in where the mic was, the mic springs in beside it, and when the turn ends
    the stop disc fades out over the mic's glyph popping back (keyframes in src/styles/composer.css) */
 .dusk-mobile [data-mobile-chat] [data-composer-stop="slot"] .composer-stop-glyph { animation: composer-stop-in 260ms var(--composer-glyph-ease); }

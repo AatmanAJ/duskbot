@@ -81,6 +81,13 @@ private class PassthroughView: UIView {
     }
 }
 
+/// A 36pt disc that answers the 44pt square around it (HIG minimum hit region).
+private class DiscButton: UIButton {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: min(0, (bounds.width - 44) / 2), dy: min(0, (bounds.height - 44) / 2)).contains(point)
+    }
+}
+
 private struct Frame {
     let rect: CGRect
     init?(_ value: Any?) {
@@ -93,8 +100,8 @@ private struct Frame {
 @available(iOS 26.0, *)
 final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private static let capsuleHeight: CGFloat = 48
-    private static let inset: CGFloat = 7
-    private static let disc: CGFloat = 34
+    private static let inset: CGFloat = 6
+    private static let disc: CGFloat = 36
     private static let maxLines: CGFloat = 5
 
     private weak var host: UIView?
@@ -108,7 +115,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     private let composer = PassthroughView()
     private let capsule = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
-    private let plus = UIButton(configuration: .glass())
+    private let plus = DiscButton(configuration: .glass())
     private let text = UITextView()
     private let placeholder = UILabel()
     private let voice = UILabel()
@@ -283,31 +290,46 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         show(composer, true, &composerShown)
     }
 
+    /// the round button at the end of the pill: the mic at rest, Send once there is text, Stop while the bot works
+    private static let slotKinds: Set<String> = ["mic", "send", "micSend", "stop", "waits"]
+
     private func applyActions(_ buttons: [[String: Any]]) {
         let kinds = buttons.map { $0["kind"] as? String ?? "" }
         if kinds != actionKinds {
-            let leaving = zip(actions, actionKinds).map { ($0, $1) }
-            let wasWorking = actionKinds.contains("stop")
-            actions = kinds.enumerated().map { index, kind in makeAction(kind, index: index) }
-            actions.forEach(capsule.contentView.addSubview)
+            let oldKinds = actionKinds
+            let wasWorking = oldKinds.contains("stop")
+            let working = kinds.contains("stop")
+            // the slot keeps one button and one frame through mic, Send and Stop: only its symbol changes
+            let keep: UIButton? = {
+                guard let last = actions.last, let was = oldKinds.last, let now = kinds.last,
+                      Self.slotKinds.contains(was), Self.slotKinds.contains(now) else { return nil }
+                return last
+            }()
+            let leaving = zip(actions, oldKinds).filter { $0.0 !== keep }
+            actions = kinds.enumerated().map { index, kind in
+                if index == kinds.count - 1, let keep {
+                    configure(keep, kind: kind, index: index)
+                    return keep
+                }
+                let button = DiscButton(configuration: .glass())
+                configure(button, kind: kind, index: index)
+                capsule.contentView.addSubview(button)
+                return button
+            }
             actionKinds = kinds
             layoutComposer()
-            let working = kinds.contains("stop")
             for (button, kind) in leaving {
                 button.isUserInteractionEnabled = false
-                if wasWorking && !working && (kind == "stop" || kind == "mic") {
-                    if kind == "stop" { capsule.contentView.bringSubviewToFront(button) }
-                    ComposerMotion.leave(button, kind: kind) { button.removeFromSuperview() }
+                if wasWorking && !working && kind == "mic" {
+                    ComposerMotion.leave(button) { button.removeFromSuperview() }
                 } else {
                     button.removeFromSuperview()
                 }
             }
-            let had = Set(leaving.map { $0.1 })
-            for (button, kind) in zip(actions, kinds) {
-                if (kind == "send" || kind == "micSend") && !had.contains(kind) { ComposerMotion.popIn(button) }
-                else if kind == "stop" && !wasWorking { ComposerMotion.stopIn(button) }
-                else if kind == "mic" && working && !wasWorking { ComposerMotion.micIn(button) }
-                else if kind == "mic" && wasWorking && !working { ComposerMotion.glyphIn(button) }
+            let had = Set(oldKinds)
+            for (button, kind) in zip(actions, kinds) where button !== keep {
+                if kind == "mic" && working && !wasWorking { ComposerMotion.micIn(button) }
+                else if (kind == "send" || kind == "micSend") && !had.contains(kind) { ComposerMotion.popIn(button) }
             }
         }
         for (button, data) in zip(actions, buttons) {
@@ -316,25 +338,32 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         }
     }
 
-    private func makeAction(_ kind: String, index: Int) -> UIButton {
+    private func configure(_ button: UIButton, kind: String, index: Int) {
         let prominent = kind == "send" || kind == "micSend"
-        let button = UIButton(configuration: prominent ? .prominentGlass() : kind == "followUp" ? .plain() : .glass())
+        var config: UIButton.Configuration = prominent ? .prominentGlass() : kind == "followUp" ? .plain() : .glass()
         let symbol: String
+        let size: CGFloat
+        let weight: UIImage.SymbolWeight
         switch kind {
-        case "mic": symbol = "mic.fill"
-        case "send", "micSend": symbol = "arrow.up"
-        case "stop": symbol = "stop.fill"
-        case "waits": symbol = "clock"
-        case "followUp": symbol = "chevron.up"
-        case "discard": symbol = "xmark"
-        default: symbol = "circle"
+        case "mic": (symbol, size, weight) = ("mic.fill", 17, .semibold)
+        case "send", "micSend": (symbol, size, weight) = ("arrow.up", 16, .bold)
+        // a filled square reads larger than an arrow at the same point size
+        case "stop": (symbol, size, weight) = ("stop.fill", 13, .bold)
+        case "waits": (symbol, size, weight) = ("clock", 16, .semibold)
+        case "followUp": (symbol, size, weight) = ("chevron.up", 15, .semibold)
+        case "discard": (symbol, size, weight) = ("xmark", 15, .semibold)
+        default: (symbol, size, weight) = ("circle", 15, .semibold)
         }
-        button.configuration?.cornerStyle = .capsule
-        button.configuration?.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: prominent ? 16 : 15, weight: prominent ? .bold : .semibold))
-        button.configuration?.baseForegroundColor = prominent ? .white : kind == "mic" ? .secondaryLabel : .label
-        if prominent { button.tintColor = accent }
+        config.cornerStyle = .capsule
+        config.contentInsets = .zero
+        config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: size, weight: weight)
+        config.image = UIImage(systemName: symbol)
+        config.symbolContentTransition = UISymbolContentTransition(UIAccessibility.isReduceMotionEnabled ? .automatic : .replace)
+        config.baseForegroundColor = prominent ? .white : kind == "mic" ? .secondaryLabel : .label
+        button.configuration = config
+        button.tintColor = prominent ? accent : nil
+        button.enumerateEventHandlers { action, _, event, _ in if let action { button.removeAction(action, for: event) } }
         button.addAction(UIAction { [weak self] _ in self?.emit(["type": "button", "index": index]) }, for: .touchUpInside)
-        return button
     }
 
     private func show(_ view: UIView, _ visible: Bool, _ shown: inout Bool) {
@@ -461,24 +490,11 @@ private enum ComposerMotion {
     static let leaveEase = UICubicTimingParameters(controlPoint1: CGPoint(x: 0.4, y: 0), controlPoint2: CGPoint(x: 1, y: 1))
     static var reduced: Bool { UIAccessibility.isReduceMotionEnabled }
 
-    private static func glyph(_ button: UIButton) -> UIView {
-        button.layoutIfNeeded()
-        return button.imageView ?? button
-    }
-
     private static func run(_ duration: TimeInterval, _ timing: UITimingCurveProvider, delay: TimeInterval = 0, _ change: @escaping () -> Void, done: (() -> Void)? = nil) {
         let animator = UIViewPropertyAnimator(duration: duration, timingParameters: timing)
         animator.addAnimations(change)
         if let done { animator.addCompletion { _ in done() } }
         animator.startAnimation(afterDelay: delay)
-    }
-
-    /// composer-stop-in: the square turns in from a quarter turn back, small and soft (260ms)
-    static func stopIn(_ button: UIButton) {
-        let view = glyph(button)
-        view.alpha = 0
-        if !reduced { view.transform = CGAffineTransform(rotationAngle: -.pi / 4).scaledBy(x: 0.4, y: 0.4) }
-        run(0.26, glyphEase) { view.alpha = 1; view.transform = .identity }
     }
 
     /// composer-mic-in: the small mic springs in beside Stop from 10pt toward it (420ms, a few percent of give, 40ms late)
@@ -492,14 +508,6 @@ private enum ComposerMotion {
         }
     }
 
-    /// composer-glyph-in: the glyph that comes back to the round button pops in (200ms)
-    static func glyphIn(_ button: UIButton) {
-        let view = glyph(button)
-        view.alpha = 0
-        if !reduced { view.transform = CGAffineTransform(scaleX: 0.5, y: 0.5) }
-        run(0.2, glyphEase) { view.alpha = 1; view.transform = .identity }
-    }
-
     /// send arriving with the first character: m-pop, from .9 on the release spring
     static func popIn(_ button: UIButton) {
         button.alpha = 0
@@ -508,14 +516,9 @@ private enum ComposerMotion {
         UIView.animate(springDuration: 0.34, bounce: 0.2) { button.alpha = 1; button.transform = .identity }
     }
 
-    /// the turn over: Stop's disc fades and shrinks over the mic coming back (composer-glyph-out, 200ms) and the small
-    /// mic beside it slips back out (composer-mic-out, 150ms)
-    static func leave(_ button: UIButton, kind: String, done: @escaping () -> Void) {
-        if kind == "stop" {
-            run(0.2, glyphEase, { button.alpha = 0; if !reduced { button.transform = CGAffineTransform(scaleX: 0.5, y: 0.5) } }, done: done)
-        } else {
-            run(0.15, leaveEase, { button.alpha = 0; if !reduced { button.transform = CGAffineTransform(translationX: 10, y: 0).scaledBy(x: 0.6, y: 0.6) } }, done: done)
-        }
+    /// the turn over: the small mic beside Stop slips back out (composer-mic-out, 150ms) as the slot turns back
+    static func leave(_ button: UIButton, done: @escaping () -> Void) {
+        run(0.15, leaveEase, { button.alpha = 0; if !reduced { button.transform = CGAffineTransform(translationX: 10, y: 0).scaledBy(x: 0.6, y: 0.6) } }, done: done)
     }
 }
 
