@@ -234,7 +234,8 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-chat-bubble][class*
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
   align-items: flex-end;
   gap: 2px;
-  margin-inline: 10px;
+  /* out to the top bar's 12px edge (the dock pads 16), so the field takes the width the buttons leave, as in Messages */
+  margin-inline: -4px;
   padding: 6px;
   border-radius: 26px;
 }
@@ -281,19 +282,20 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-chat-bubble][class*
   background: linear-gradient(to top, var(--color-app) var(--m-safe-bottom), transparent);
 }
 
-/* send is filled in the accent: it springs in with the first character */
-@keyframes m-pop { from { opacity: 0; scale: .9; } }
-@keyframes m-fade { from { opacity: 0; } }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send]:not(:disabled),
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-voice-mic="send"] {
-  background-color: color-mix(in oklab, var(--color-accent) 86%, black) !important;
-  color: #fafafa !important;
+/* send wears the bot's own button, as on the desktop; the round button holds its spot as the field fills, only its glyph
+   turns, while the mic springs out beside it (composer-mic-in) and slips back in as the field empties (composer-mic-out) */
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] svg { animation: composer-glyph-in 200ms var(--composer-glyph-ease); }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-mic-ghost] {
+  right: 42px;
+  width: 36px;
+  height: 36px;
+  background-color: var(--g-tint-quiet);
+  color: var(--color-ink-secondary);
 }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] { animation: m-pop .34s var(--m-ease-release) both; }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]) { transition: scale .2s var(--m-ease-release), background-color .15s ease; }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active:not(:disabled) { scale: .9; transition-duration: .14s, .15s; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]) { transition: scale .2s var(--m-ease-release); }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active:not(:disabled) { scale: .9; transition-duration: .14s; }
 @media (prefers-reduced-motion: reduce) {
-  .dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] { animation: m-fade .2s ease-out both; }
+  .dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] svg { animation-name: composer-glyph-fade; }
   .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active { scale: 1; }
 }
 .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic="send"]) svg { width: 18px; height: 18px; stroke-width: 2.5; }

@@ -629,6 +629,9 @@ export function Composer({
   const [micTrail, setMicTrail] = useState({ place: micPlace, from: micPlace, swaps: 0 });
   if (micTrail.place !== micPlace) setMicTrail({ place: micPlace, from: micTrail.place, swaps: micTrail.swaps + 1 });
   const micBack = singleRow && micPlace === "end" && micTrail.from === "stop";
+  // a phone's mic comes out of the round button as the field fills and slips back into it as it empties
+  const micOut = singleRow && micPlace === "beside" && micTrail.from === "end";
+  const micIn = singleRow && micPlace === "end" && micTrail.from === "beside";
   const micFocused = useRef(false);
   useLayoutEffect(() => {
     if (micFocused.current && document.activeElement !== micButtonRef.current) micButtonRef.current?.focus({ preventScroll: true });
@@ -1182,7 +1185,7 @@ export function Composer({
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
               simpleDock ? "size-7" : "size-8 max-md:size-10",
-              micPlace === "stop" && "composer-mic-in",
+              (micPlace === "stop" || micOut) && "composer-mic-in",
               micBack && "composer-mic-back",
               recording
                 ? "composer-press bg-ink text-app hover:bg-[color-mix(in_srgb,var(--color-ink)_88.5%,var(--color-menu))] disabled:opacity-40"
@@ -1206,6 +1209,11 @@ export function Composer({
           {micBack && (
             <span aria-hidden="true" data-composer-stop-ghost key={`stop-${micTrail.swaps}`} className="composer-glyph-out pointer-events-none absolute bottom-0 right-0 z-[1] flex size-10 items-center justify-center rounded-full bg-ink text-app">
               <span className="block size-[12px] rounded-[2.5px] bg-current" />
+            </span>
+          )}
+          {micIn && !recording && (
+            <span aria-hidden="true" data-composer-mic-ghost="" key={`mic-in-${micTrail.swaps}`} className="composer-mic-out pointer-events-none absolute inset-y-0 my-auto flex size-10 items-center justify-center rounded-full">
+              <Mic size={16} strokeWidth={1.75} absoluteStrokeWidth className="[&_rect]:fill-current" />
             </span>
           )}
           {ghostGlyph === "stop" && !singleRow && (
