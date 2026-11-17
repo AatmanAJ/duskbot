@@ -125,7 +125,6 @@ async function serve({ attach, current = () => true, download, audience = () => 
     },
     authorize: async () => null,
     current: (_botId, _session, _auth, checked) => { fixture.checked.push(checked); return current(); },
-    restartRefusal: () => null,
   };
   const route = createBrowserViewerRoutes(deps);
   const handle = async (req: IncomingMessage, res: ServerResponse) => {

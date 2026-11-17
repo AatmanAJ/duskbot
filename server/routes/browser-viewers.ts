@@ -47,8 +47,6 @@ export interface BrowserViewerRouteDeps {
   authorize(req: IncomingMessage, auth: RequestAuth): Promise<Failure | null>;
   /** Whether a view opened for `session` still shows the bot's current browser to a live sign-in. */
   current(botId: string, session: string, auth: RequestAuth, audience: Audience): boolean;
-  /** Why a person may not restart this browser now, or null. */
-  restartRefusal(session: string): string | null;
   dataDir: string;
   /** counts a stream that rides the relay, with why it is not direct */
   relayed?(reason: ScreenFallbackReason | null): void;
@@ -170,8 +168,6 @@ export function createBrowserViewerRoutes(deps: BrowserViewerRouteDeps): RouteHa
         const body = await readBody(req, 32_768);
         if (!isCurrent()) return json(res, 409, { error: "This browser session changed. Reopen the browser panel." });
         if (typeof body?.viewerId !== "string") return json(res, 400, { error: "A live browser connection is required." });
-        const refused = body.type === "restart" && deps.restartRefusal(browser.session);
-        if (refused) return json(res, 409, { error: refused });
         return json(res, 200, await deps.viewers.action({ viewerId: body.viewerId, botId: browser.botId, owner, body }));
       }
       return json(res, 405, { error: "method not allowed" });
@@ -185,7 +181,7 @@ export function createBrowserViewerRoutes(deps: BrowserViewerRouteDeps): RouteHa
         session: browser.session, spec: browser.spec, botId: browser.botId, owner, person,
         canOperate: url.searchParams.get("interactive") !== "false",
         params: url.searchParams, req, socket: pending.socket, head: pending.head,
-        isCurrent, restartRefusal: () => deps.restartRefusal(browser.session),
+        isCurrent,
       });
       if (!opened) return json(res, 409, { error: "This browser shows in the live view only." });
       // a stream the app could not take direct says why (server/screen-direct.ts counters); nothing personal

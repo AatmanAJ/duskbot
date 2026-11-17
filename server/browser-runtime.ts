@@ -2,6 +2,7 @@ import { killCliTree, spawnCli } from "./procs.ts";
 import { scrubHeldSecrets } from "../shared/redact.ts";
 import { DEFAULT_BROWSER_RESULT_BUDGET, describePageChange, OBSERVE_PAGE_SCRIPT, parsePageState, READ_OPEN_PAGE_ONLY, readsAroundBrowser, scrubBrowserResult, shapeBrowserToolResult, slimBrowserToolList, stripHarnessOwnedArguments, type PageState } from "./browser-tool-shape.ts";
 import { BrowserLanes } from "./browser-lane.ts";
+import { trail } from "./trail.ts";
 import { PageSizes, type PageSize } from "./browser-page-size.ts";
 import { SECRET_ON_PAGE, SecretHolds, type SecretHold } from "./browser-secret-hold.ts";
 import type { BrowserSteps, StepCall, StepContext } from "./browser-steps.ts";
@@ -64,7 +65,8 @@ type RelayedToolSpec = (typeof RELAYED_TOOL_SPECS)[number];
 const RELAYED_TOOLS: ReadonlyMap<string, RelayedToolSpec> = new Map(RELAYED_TOOL_SPECS.map((spec) => [spec.name, spec]));
 const BROWSER_INTERRUPTED = `The browser engine is stuck. Press Restart in the Browser panel, or call ${BROWSER_RESTART_TOOL}, before using browser tools again.`;
 const idleClosedNote = (saves: boolean) => `Your browser sat unused and was closed to free memory; this call opened it again. Pages you had open are gone (${saves ? "saved sign-ins are kept" : "it is a temporary browser, so its sign-ins are gone too"}), so open the page you need again before using earlier @eN refs.`;
-const PERSON_RESTARTED = "The person restarted your browser from the Browser panel; this call ran in the fresh browser. Pages you had open are gone, so open the page you need again before using earlier @eN refs, and check whether an interrupted action already happened before repeating it.";
+const PERSON_RESTART_STOPPED = "The person restarted your browser from the Browser panel while this call ran, so it stopped. Pages you had open are gone: open the page you need again, and check whether this action already happened before repeating it.";
+const PERSON_RESTARTED ="The person restarted your browser from the Browser panel; this call ran in the fresh browser. Pages you had open are gone, so open the page you need again before using earlier @eN refs, and check whether an interrupted action already happened before repeating it.";
 const LANE_BUSY = "Your previous browser call is still running; wait for it to finish, then call again.";
 /** One bot call, lane wait included, answers within `callBudgetMs`; the engine's action keeps `followUpReserveMs` of it for the reads after. */
 export const BROWSER_CALL_DEFAULTS = { requestTimeoutMs: 120_000, laneWaitMs: 30_000, callBudgetMs: HARNESS_CALL_BUDGET_MS, followUpReserveMs: 15_000 } as const;
@@ -358,15 +360,15 @@ export class BrowserRuntime {
   private launch?: BrowserLaunch;
   private relayCommand?: RelayCommand;
   private steps?: Pick<BrowserSteps, "before" | "after" | "signIn" | "note" | "forget" | "recentFrame" | "personTook">;
-  private lanes = new BrowserLanes();
+  private lanes = new BrowserLanes(({ call, waitedMs, holder }) => trail("browser.lane.busy", { call, waitedMs, holder: holder?.call ?? null, heldMs: holder ? Date.now() - holder.since : null }));
   private threadTabs = new ThreadTabs();
   /** The page size people's views want; the agent-browser live view sets it, and every bot call applies it first. */
   readonly pageSizes = new PageSizes({
     apply: (session, size) => { const spec = this.gates.get(session)?.spec; return spec && this.applyViewport ? this.applyViewport(spec, size) : Promise.resolve(); },
-    lane: (session, work) => this.lanes.run(session, work, this.options.laneWaitMs),
+    lane: (session, work) => this.lanes.run(session, work, this.options.laneWaitMs, "page_size"),
     watched: (session) => { const gate = this.gates.get(session); return Boolean(gate && gate.watchers > 0 && !gate.closing); },
   });
-  private holds = new SecretHolds((session, clear) => this.lanes.run(session, () => this.agentAction(session, clear, false), this.options.laneWaitMs).then((ran) => ran !== null));
+  private holds = new SecretHolds((session, clear) => this.lanes.run(session, () => this.agentAction(session, clear, false), this.options.laneWaitMs, "secret_clear").then((ran) => ran !== null));
   /** Strips held secrets (a filled password, a one-time code) from every tool result before the bot reads it. */
   private scrub: (text: string) => string;
   private onTiming?: (timing: BrowserTiming) => void;
@@ -447,7 +449,7 @@ export class BrowserRuntime {
       });
       const step = await this.steps?.signIn({ session, spec, ctx }, value).catch(() => null);
       return step ? { ...value, text: `${value.text} Recorded as step ${step}.` } : value;
-    }, this.options.laneWaitMs);
+    }, this.options.laneWaitMs, "fill_login");
     if (outcome === null) throw new Error(LANE_BUSY);
     return outcome;
   }
@@ -479,7 +481,7 @@ export class BrowserRuntime {
       const request = () => method === "tools/call" && toolNameOf(params) === BATCH_TOOL
         ? this.agentBatch(session, spec, params, deadline, beforeDispatch, ctx)
         : this.agentRequest(session, spec, method, params, deadline, beforeDispatch, ctx);
-      const work = method !== "tools/call" || toolNameOf(params) === BROWSER_RESTART_TOOL || gate.uncertain ? request() : this.lanes.run(session, request, this.options.laneWaitMs);
+      const work = method !== "tools/call" || toolNameOf(params) === BROWSER_RESTART_TOOL || gate.uncertain ? request() : this.lanes.run(session, request, this.options.laneWaitMs, toolNameOf(params) ?? "browser");
       result = await this.withinBudget(session, method, toolNameOf(params) ?? "browser", work, deadline);
     } finally { gate.calls--; gate.lastUsed = Date.now(); }
     if (method !== "tools/call") return result;
@@ -700,6 +702,10 @@ export class BrowserRuntime {
     try {
       return await this.timed(session, toolName ?? "unknown", phases, () => this.withAgentAction(session, invoke));
     } catch (error) {
+      if ((gate.closing && gate.owner !== null) || gate.reopened === "restart") {
+        if (gate.reopened === "restart") gate.reopened = null;
+        return { isError: true, content: [{ type: "text", text: PERSON_RESTART_STOPPED }] };
+      }
       if (error instanceof Error && error.message === BROWSER_INTERRUPTED) return stuckBrowserToolError();
       if (error instanceof TransportError && gate.uncertain && gate.lostCall !== null) return lostCallToolError(toolName ?? gate.lostCall);
       throw error;
@@ -972,7 +978,7 @@ export class BrowserRuntime {
       const entry = this.connect(session, spec);
       await entry.client.ready;
       return this.threadTabs.close(session, threadId, (name, args) => entry.client.rpc("tools/call", { name, arguments: args }, 10_000));
-    }, this.options.laneWaitMs).catch(() => null);
+    }, this.options.laneWaitMs, "close_thread_tabs").catch(() => null);
     if (outcome === null) return { outcome: "kept", tabs: [] };
     return { outcome: outcome.closed.length > 0 ? "closed" : "none", tabs: outcome.closed };
   }
@@ -1010,12 +1016,12 @@ export class BrowserRuntime {
     }
   }
 
-  /** Never waits through active work or admits human input; a successful native close is its safety barrier. A read that only
-   * checks whether a lost call ended is not such work. */
+  /** A person's restart comes before a bot's call: one in flight is ended by the close and answers that the person restarted.
+   * Never admits human input; a successful native close is its safety barrier. */
   async restart(session: string, owner: string, closeBrowser: () => Promise<void>): Promise<void> {
     if (!owner) throw new Error("Browser recovery requires an owner.");
     const gate = this.gate(session);
-    if (gate.closing || gate.releasing || gate.agents > gate.probes || gate.humans) throw new Error("The browser is busy. Wait for current work to finish before restarting.");
+    if (gate.closing || gate.releasing || gate.humans) throw new Error("The browser is busy. Wait for current work to finish before restarting.");
     if (gate.owner !== null && gate.owner !== owner) throw new Error("Another person controls this browser.");
     gate.owner = owner;
     gate.ready = false;

@@ -183,14 +183,17 @@ describe("browser takeover gate", () => {
     await expect(value.previewFrame("s", capture)).resolves.toBe("frame");
   });
 
-  it("will not restart active actions or another person's held browser", async () => {
+  it("restarts for a person ahead of a bot's action, which then answers paused, but never another person's held browser", async () => {
     const value = runtime();
     const nativeClose = vi.fn(async () => {});
     const busy = deferred();
     const agent = value.withAgentAction("s", () => busy.promise);
-    await expect(value.restart("s", "recovery", nativeClose)).rejects.toThrow(/busy/);
+    const restarting = value.restart("s", "recovery", nativeClose);
     busy.resolve();
-    await agent;
+    await expect(agent).rejects.toThrow(/paused/);
+    await restarting;
+    expect(nativeClose).toHaveBeenCalledOnce();
+    nativeClose.mockClear();
     await value.take("s", "other");
     await expect(value.restart("s", "recovery", nativeClose)).rejects.toThrow(/Another person/);
     expect(nativeClose).not.toHaveBeenCalled();
@@ -951,7 +954,28 @@ describe("server-owned browser MCP runtime", () => {
     }
   });
 
-  it("lets a person restart while a bot only waits to learn whether its lost call ended, never while one acts", async () => {
+  it("ends a bot's call that hangs when a person restarts, with a result that says so, not a busy refusal", async () => {
+    const value = runtime({ requestTimeoutMs: 30_000, callBudgetMs: 60_000 });
+    const daemon = daemonSpec();
+    try {
+      await value.agentRpc("s", daemon.spec, "tools/list", {});
+      const hanging = value.agentRpc("s", daemon.spec, "tools/call", { name: "hang" }) as Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
+      await vi.waitFor(() => expect(daemon.calls()).toContain("hang"));
+      const closeBrowser = vi.fn(async () => { rmSync(daemon.busy, { force: true }); });
+      await value.restart("s", "person", closeBrowser);
+      const stopped = await hanging;
+      expect(stopped.isError).toBe(true);
+      expect(stopped.content.map((part) => part.text).join(" ")).toContain("restarted your browser from the Browser panel while this call ran");
+      expect(value.interrupted("s")).toBe(false);
+      const after = await value.agentRpc("s", daemon.spec, "tools/call", { name: "echo", arguments: { text: "after" } }) as { content: Array<{ text: string }> };
+      expect(after.content.at(-1)?.text).toContain("after");
+    } finally {
+      await value.closeAll();
+      daemon.cleanup();
+    }
+  });
+
+  it("lets a person restart while a bot only waits to learn whether its lost call ended, and while one acts", async () => {
     const value = runtime({ requestTimeoutMs: 250, recoveryCheckMs: 5_000 });
     const daemon = daemonSpec();
     try {
@@ -966,9 +990,10 @@ describe("server-owned browser MCP runtime", () => {
       expect(daemon.calls()).not.toContain("echo");
       const acting = deferred();
       const action = value.withAgentAction("s", () => acting.promise);
-      await expect(value.restart("s", "person", async () => {})).rejects.toThrow(/busy/);
+      const restarting = value.restart("s", "person", async () => {});
       acting.resolve();
-      await action;
+      await expect(action).rejects.toThrow(/paused/);
+      await restarting;
     } finally {
       await value.closeAll();
       daemon.cleanup();

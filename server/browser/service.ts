@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { scrubHeldSecrets } from "../../shared/redact.ts";
 import { BrowserLanes } from "../browser-lane.ts";
+import { trail } from "../trail.ts";
 import { BROWSER_CALL_DEFAULTS, PERSON_ACTED, PERSON_TYPED_ON_PAGE, type BrowserTiming } from "../browser-runtime.ts";
 import { SecretHolds, type SecretHold } from "../browser-secret-hold.ts";
 import { scrubBrowserResult } from "../browser-tool-shape.ts";
@@ -146,7 +147,7 @@ function reopenedNote(reopened: NonNullable<Reopened>, temporary: boolean): stri
 export class BrowserService {
   readonly #options: Required<Pick<BrowserServiceOptions, "callBudgetMs" | "laneWaitMs" | "takeoverMs" | "capacityWaitMs">> & BrowserServiceOptions;
   readonly #profiles = new Map<string, ProfileState>();
-  readonly #lanes = new BrowserLanes();
+  readonly #lanes = new BrowserLanes(({ call, waitedMs, holder }) => trail("browser.lane.busy", { call, waitedMs, holder: holder?.call ?? null, heldMs: holder ? Date.now() - holder.since : null }));
   readonly #holds = new SecretHolds((session, clear) => {
     const profile = this.#bySession(session);
     if (!profile) return Promise.resolve(false);
@@ -419,7 +420,7 @@ export class BrowserService {
     let result: ToolResult | null;
     try {
       const work = () => this.#call(profile, params, deadline, beforeDispatch);
-      const call = name === RESTART_TOOL || profile.control.uncertain ? work() : this.#lanes.run(profile.key, work, this.#options.laneWaitMs);
+      const call = name === RESTART_TOOL || profile.control.uncertain ? work() : this.#lanes.run(profile.key, work, this.#options.laneWaitMs, name);
       result = await this.#withinBudget(profile, name, call, deadline);
     } finally {
       profile.calls--;
