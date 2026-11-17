@@ -133,11 +133,11 @@ describe("what is for sale, as the Admin says", () => {
     vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     expect(planCards(OFFER).map(({ rows: _rows, points: _points, spec: _spec, ...card }) => card)).toEqual([
       { tier: "starter", name: "Plus", price: "$15", popular: false, current: false, promise: "For your own bots",
-        action: "Start free trial", terms: "Free for 7 days, then $15/month + tax where applicable", trialDays: 7 },
+        action: "Start free trial", terms: "7 days free, then $15/month + tax where applicable. Nothing charged until then. Cancel any time.", trialDays: 7 },
       { tier: "pro", name: "Pro", price: "$49", popular: true, current: false, promise: "More power, with a work license",
-        action: "Start free trial", terms: "Free for 7 days, then $49/month + tax where applicable", trialDays: 7 },
+        action: "Start free trial", terms: "7 days free, then $49/month + tax where applicable. Nothing charged until then. Cancel any time.", trialDays: 7 },
       { tier: "max", name: "Max", price: "$99", popular: false, current: false, promise: "The biggest machine, for heavy work",
-        action: "Start free trial", terms: "Free for 7 days, then $99/month + tax where applicable", trialDays: 7 },
+        action: "Start free trial", terms: "7 days free, then $99/month + tax where applicable. Nothing charged until then. Cancel any time.", trialDays: 7 },
     ]);
     expect(planCards({ ...OFFER, recommended: "max" }).map(card => card.popular), "never Pro by itself").toEqual([false, false, true]);
     expect(planCards(noTrial(OFFER)).map(card => [card.action, card.terms])).toEqual([["Get Plus", "$15 + tax where applicable today, then each month"],
@@ -164,7 +164,7 @@ describe("what is for sale, as the Admin says", () => {
 
   it("the person's own plan says Your plan instead of a button; a Personal subscriber sees Personal's own card, only for themselves", () => {
     expect(planCards(OFFER, { current: "pro" }).map(card => [card.tier, card.current, card.action, card.terms])).toEqual([
-      ["starter", false, "Start free trial", "Free for 7 days, then $15/month + tax where applicable"], ["pro", true, null, null], ["max", false, "Start free trial", "Free for 7 days, then $99/month + tax where applicable"]]);
+      ["starter", false, "Start free trial", "7 days free, then $15/month + tax where applicable. Nothing charged until then. Cancel any time."], ["pro", true, null, null], ["max", false, "Start free trial", "7 days free, then $99/month + tax where applicable. Nothing charged until then. Cancel any time."]]);
     const personal: CloudOfferPlan = { tier: "personal", label: "Personal", amount: 2900, allowances: { cpus: 2, cpuKind: "shared", memoryMb: 2048, swapMb: 3072, diskGb: 10, maxDiskGb: 20,
       computers: 15, computerHours: 100, voiceCharacters: 30_000, snapshotDays: 14 } };
     const mine = planCards(OFFER, { current: "personal", own: personal });
@@ -234,8 +234,8 @@ describe("what is for sale, as the Admin says", () => {
   it("says a 1-day trial in the singular, in English and every language, and leaves other lengths as they read", () => {
     const allowances = { cpus: 8, cpuKind: "shared" as const, memoryMb: 8192, diskGb: 10, maxDiskGb: 100, computers: 15, computerHours: 800, voiceCharacters: 90_000, snapshotDays: 14 };
     const terms = (trialDays: number) => planCards({ plans: [{ tier: "team", amount: 16900, trialDays, allowances }], recommended: "team" })[0]!.terms;
-    expect(terms(1)).toBe("Free for 1 day, then $169/month + tax where applicable");
-    expect(terms(3)).toBe("Free for 3 days, then $169/month + tax where applicable");
+    expect(terms(1)).toBe("1 day free, then $169/month + tax where applicable. Nothing charged until then. Cancel any time.");
+    expect(terms(3)).toBe("3 days free, then $169/month + tax where applicable. Nothing charged until then. Cancel any time.");
     const badge = (trialDays: number) => cloudIntroView({ plans: [{ tier: "team", amount: 16900, trialDays }], recommended: "team" })!.badge;
     expect(badge(1)).toBe("Free for 1 day");
     expect(badge(3)).toBe("Free for 3 days");

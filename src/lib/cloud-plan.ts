@@ -200,7 +200,7 @@ export function planPoints(plan: CloudOfferPlan): CloudPlanPoint[] {
   ];
   return points.slice(0, 5);
 }
-/** What a plan's free trial costs and then what it comes to: "Free for 3 days, then $49/month + tax". */
+/** What a plan's free trial costs and then what it comes to: "3 days free, then $49/month + tax ... Cancel any time." */
 export function trialTerms(days: number, price: string): string {
   return days === 1 ? t("cloudBuy.card.trial.one", { price }) : t("cloudBuy.card.trial.many", { days, price });
 }
