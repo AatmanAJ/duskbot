@@ -70,7 +70,7 @@ function BlankChip({ name, onRename }: { name: string; onRename: (to: string) =>
         onChange={(event) => { setDraft(event.target.value); setBad(false); }}
         onBlur={() => void commit()}
         onKeyDown={onKey}
-        className={cn("mx-0.5 h-[22px] rounded-md bg-accent/12 px-1.5 font-mono text-[12px] leading-[18px] text-accent-text outline-none ring-1 ring-inset", bad ? "ring-danger" : "ring-accent/40")}
+        className={cn("mx-0.5 h-[22px] rounded-md bg-accent/12 px-1.5 font-mono text-[12px] leading-[18px] text-accent-text outline-none inset-ring", bad ? "inset-ring-danger" : "inset-ring-accent/40")}
       />
     );
   }

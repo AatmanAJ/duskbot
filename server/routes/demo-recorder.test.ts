@@ -84,7 +84,7 @@ describe("Show it once routes", () => {
     expect(saved.status).toBe(201);
     expect(saved.body).toEqual({ skill: "file-an-expense-report", routineId: "routine-7" });
     expect(state.saved).toEqual(["file-an-expense-report"]);
-    expect(state.routines[0]!.prompt).toContain(INBOX);
+    expect(state.routines[0]!.prompt).toContain(`folder ${JSON.stringify(INBOX)}`);
     expect((await call("GET")).body.draft).toMatchObject({ state: "idle" });
   });
 
