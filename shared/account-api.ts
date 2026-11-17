@@ -116,6 +116,14 @@ export const ACCOUNT_ROUTES = {
   /** bearer desktop app session: a short letters-only code (and its QR) that logs a phone in to this account, single use,
    * PHONE_SIGN_IN_TTL_MS long. the phone redeems it at appPhoneSignIn. */
   phoneSignIn: "/v1/app/phone-sign-in", //      POST {} -> PhoneSignInGrant
+  /** bearer app session: every computer and server this account holds (its dusk clouds' own workspaces left out), with
+   * presence. never another account's. */
+  appComputers: "/v1/app/computers", //         GET -> AppComputersAnswer
+  /** bearer app session: asks one of the account's computers, while it is online, for a one-time phone pairing link, so the
+   * phone links to it without anyone at the computer. 404 for a computer that is not this account's; 409 { code }:
+   * computer_offline (not seen lately, or did not answer in time), computer_unreachable (no route a phone can use, e.g.
+   * phone access is off there), pair_refused (refused or too old to know how); 429 rate_limited. */
+  appComputerPair: (id: string) => `/v1/app/computers/${encodeURIComponent(id)}/pair`, // POST {} -> AppComputerPairAnswer
   /** bearer app session: short-lived Cloudflare TURN credentials for the direct screen path; 503 when TURN is off. */
   screenIce: "/v1/app/screen-ice", //           POST {} -> { v: 1, iceServers, expiresAt }
   /** bearer app session: deletes the account from the app, as deleteAccount does on the website, cancelling any plan
@@ -143,6 +151,17 @@ export const ACCOUNT_ROUTES = {
   /** bearer app session: the person's avatar (shared/user-avatar.ts): "photo", "g:<seed>", or null for the default. */
   appAvatar: "/v1/app/avatar", //               POST { avatar: string | null } -> { avatar: string | null }
 } as const;
+
+/** online: reachable now (it is holding its line to the service); asleep: seen within COMPUTER_ASLEEP_MS, so a laptop
+ * lid or a stopped server; offline: longer than that, or never */
+export type ComputerPresence = "online" | "asleep" | "offline";
+export const COMPUTER_ASLEEP_MS = 24 * 60 * 60_000;
+/** `id` is the workspace id; `environmentId` is the computer's own id (its phone links carry it), null from older apps;
+ * `lastSeenAt` is the last time it spoke to the service, null when never */
+export interface AppComputer { id: string; name: string; kind: "vps" | "mac" | "linux" | "windows"; presence: ComputerPresence; lastSeenAt: number | null; environmentId: string | null }
+export interface AppComputersAnswer { v: 1; computers: AppComputer[] }
+/** `link` is the computer's one-time phone pairing link (shared/mobile-link.ts mobileLinkUrl), dead at `expiresAt` */
+export interface AppComputerPairAnswer { v: 1; link: string; expiresAt: number }
 
 /** a phone sign-in code: letters only (server/sessions.ts PAIRING_CODE_ALPHABET), shown XXXX-XXXX, single use */
 export const PHONE_SIGN_IN_CODE_LENGTH = 8;

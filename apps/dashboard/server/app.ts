@@ -3,9 +3,9 @@ import { request } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
 import { accessSync, constants, readFileSync, realpathSync, statSync } from "node:fs";
-import { APP_COMMAND_ONLINE_MS, CLAIM_TTL_MS, COMMAND_KINDS, appSlug, COMMAND_TTL_MS, DASHBOARD_DISCOVERY_PATH, FAST_REPORT_MS, MAX_REPORT_BYTES, SIGNATURE_SKEW_MS, SLOW_REPORT_MS,
+import { APP_COMMAND_ONLINE_MS, CLAIM_TTL_MS, COMMAND_KINDS, PHONE_PAIR_COMMAND_TTL_MS, appSlug, COMMAND_TTL_MS, DASHBOARD_DISCOVERY_PATH, FAST_REPORT_MS, MAX_REPORT_BYTES, SIGNATURE_SKEW_MS, SLOW_REPORT_MS,
   freshnessOf, parseEnrollRequest, parseWorkspaceReport, signedPayload } from "../../../shared/dashboard-protocol.ts";
-import type { CommandKind, CommandView, ConnectorsAnswer, MachineSample, ReportAnswer, WorkspaceDetail, WorkspaceReport, WorkspaceSummary } from "../../../shared/dashboard-protocol.ts";
+import type { CommandKind, CommandResult, CommandView, ConnectorsAnswer, MachineSample, ReportAnswer, WorkspaceDetail, WorkspaceReport, WorkspaceSummary } from "../../../shared/dashboard-protocol.ts";
 import { PULSE_INTERVAL_MS, PULSE_WINDOW_MS, PulseRing, type PulseAnswer } from "../../../shared/machine-pulse.ts";
 import type { NotificationPrefs } from "../../../shared/account-api.ts";
 import { MCP_CLIENT_METADATA, MCP_CLIENT_METADATA_PATH } from "../../../shared/mcp-client-metadata.ts";
@@ -16,6 +16,7 @@ import { isOpsMade, withoutOps } from "./admin/money-mode.ts";
 import type { Mailer, MailMessage, TestMailbox } from "./auth/mail.ts";
 import type { RoutedMailer } from "./auth/mail-router.ts";
 import { createStore } from "./store.ts";
+import { appComputer, COMPUTER_ID, COMPUTER_PAIR_LIMITS, COMPUTER_PAIR_WAIT_MS, pairAnswer } from "./app-computers.ts";
 import type { Account, StoredCommand, StoredWorkspace } from "./store.ts";
 import { createBilling } from "./billing/index.ts";
 import type { BillingNotice } from "./billing/service.ts";
@@ -61,7 +62,7 @@ import { createSealer, parseSealKey } from "./clouds/seal.ts";
 import { aliasLegacyCookies, aliasLegacyHeaders } from "../../../electron/legacy-names.mjs";
 import { LINK_GRANT_PATH, linkGrantSignerFromEnv, signLinkGrant } from "./link-grant.ts";
 import { screenIceMinterFromEnv } from "./screen-ice.ts";
-import { ACCOUNT_ROUTES } from "../../../shared/account-api.ts";
+import { ACCOUNT_ROUTES, type AppComputersAnswer } from "../../../shared/account-api.ts";
 
 export interface DashboardAppOptions {
   dataDir: string;
@@ -444,6 +445,8 @@ export function createDashboardApp(options: DashboardAppOptions) {
   const pulses = new Map<string, PulseRing>();
   const pulseSenders = new Set<string>();
   const waits = new Map<string, { finish: () => void; cancel: () => void }>();
+  // security: a phone.pair answer carries a one-time grant secret; it lives only here, until the waiting phone takes it
+  const pairWaits = new Map<string, (result: CommandResult | null) => void>();
   let closed = false;
 
   function json(res: ServerResponse, status: number, data: unknown) {
@@ -707,7 +710,15 @@ export function createDashboardApp(options: DashboardAppOptions) {
     }
     const mutation = MUTATIONS.includes(method);
     const appleCallback = method === "POST" && path === "/v1/auth/oauth/apple/callback" && req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() === "application/x-www-form-urlencoded";
-    if (mutation && !isAppCorsRoute(path) && !appleCallback && path !== TRACK_PATH && path !== APP_EVENTS_PATH) {
+    const computersRoute = path === ACCOUNT_ROUTES.appComputers || /^\/v1\/app\/computers\/[^/]+\/pair$/.test(path);
+    if (computersRoute) {
+      // bearer only, never a cookie: any origin may call it, as the session and enroll-grant routes allow
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("access-control-allow-headers", "content-type, authorization, x-dusk-version");
+      res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+      if (method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+    }
+    if (mutation && !isAppCorsRoute(path) && !computersRoute && !appleCallback && path !== TRACK_PATH && path !== APP_EVENTS_PATH) {
       if (req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !== "application/json") fail(403, "forbidden", "JSON is required.");
       if (req.headers.origin !== undefined && req.headers.origin !== publicUrl) fail(403, "forbidden", "Origin is not allowed.");
     }
@@ -736,6 +747,49 @@ export function createDashboardApp(options: DashboardAppOptions) {
       state.workspaces = state.workspaces.filter(item => item !== ws);
       store.changed();
       return json(res, 200, { ok: true, removed: true });
+    }
+    // the phone's list of the account's computers: only its own, never a dusk cloud's workspace (the cloud row covers it)
+    if (method === "GET" && path === ACCOUNT_ROUTES.appComputers) {
+      rate(req, "app-computers", 1200);
+      const found = auth.appSession(req);
+      if (!found) fail(401, "invalid_token", "Session is invalid.");
+      const clouds = new Set(billing.clouds.list(found.account.id, true).map(cloud => billing.clouds.view(cloud).workspaceId));
+      const answer: AppComputersAnswer = { v: 1, computers: state.workspaces.filter(ws => ws.ownerAccountId === found.account.id && !clouds.has(ws.id))
+        .map(ws => appComputer(ws, seen.get(ws.id), now())) };
+      return json(res, 200, answer);
+    }
+    const pairPath = method === "POST" ? /^\/v1\/app\/computers\/([^/]+)\/pair$/.exec(path) : null;
+    if (pairPath) {
+      rate(req, "computer-pair", COMPUTER_PAIR_LIMITS.perIp);
+      const found = auth.appSession(req);
+      if (!found) fail(401, "invalid_token", "Session is invalid.");
+      const id = decodeURIComponent(pairPath[1]!);
+      // security: another account's computer reads as missing, the same as one that does not exist
+      const ws = COMPUTER_ID.test(id) ? state.workspaces.find(item => item.id === id && item.ownerAccountId === found.account.id) : undefined;
+      if (!ws || billing.clouds.list(found.account.id, true).some(cloud => billing.clouds.view(cloud).workspaceId === ws.id)) fail(404, "not_found", "Computer not found.");
+      limitKey(`computer-pair:${found.account.id}`, COMPUTER_PAIR_LIMITS.perAccount);
+      if (now() - (seen.get(ws.id) ?? -Infinity) > APP_COMMAND_ONLINE_MS) fail(409, "computer_offline", "This computer is asleep or offline.");
+      const queue = commands.get(ws.id) ?? [];
+      if (queue.filter(item => item.kind === "phone.pair" && (item.status === "queued" || item.status === "sent")).length >= COMPUTER_PAIR_LIMITS.pendingPerComputer) fail(429, "rate_limited", "Try again in a minute.");
+      const label = [...found.session.name].filter(char => char >= " ").join("").trim().slice(0, 60) || "Phone";
+      const command: StoredCommand = { id: `cmd_${random(16)}`, workspaceId: ws.id, kind: "phone.pair", target: label, issuedAt: now(), expiresAt: now() + PHONE_PAIR_COMMAND_TTL_MS,
+        purgeAt: now() + 2 * COMMAND_TTL_MS, status: "queued", message: null, doneAt: null };
+      queue.push(command);
+      commands.set(ws.id, queue);
+      saveCommands();
+      const result = await new Promise<CommandResult | null>(resolve => {
+        const timer = setTimeout(() => done(null), COMPUTER_PAIR_WAIT_MS);
+        const done = (value: CommandResult | null) => { clearTimeout(timer); pairWaits.delete(command.id); res.off("close", gone); resolve(value); };
+        const gone = () => done(null);
+        pairWaits.set(command.id, done);
+        res.on("close", gone);
+        waits.get(ws.id)?.finish();
+      });
+      if (!result) fail(409, "computer_offline", "This computer did not answer.");
+      const answer = result.ok && result.link ? pairAnswer(result.link, now()) : null;
+      if (answer) return json(res, 200, answer);
+      if (result.reason === "unreachable") fail(409, "computer_unreachable", "A phone cannot reach this computer yet.");
+      fail(409, "pair_refused", "This computer did not make a pairing.");
     }
     // TURN credentials for the direct screen path, minted per signed-in app; the TURN key never leaves this service
     if (method === "POST" && path === ACCOUNT_ROUTES.screenIce) {
@@ -874,6 +928,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
             commandsChanged = true;
             command.status = result.ok ? "done" : "failed"; command.message = result.message; command.doneAt = result.at;
             if (command.kind === "app.connect" && result.ok && result.url) command.url = result.url;
+            if (command.kind === "phone.pair") pairWaits.get(command.id)?.(result);
           }
         }
         if (ws.ownerAccountId && workspaceTurns(ws) > 0) analytics.botReplied(ws.ownerAccountId);
