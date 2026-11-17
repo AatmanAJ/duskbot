@@ -31,7 +31,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if let chrome = self.chrome as? ChatGlassChrome { body(chrome); return }
-            guard let host = self.bridge?.webView else { return }
+            guard let host = self.bridge?.nativeHost else { return }
             let chrome = ChatGlassChrome(host: host) { [weak self] event in self?.notifyListeners("glass", data: event) }
             self.chrome = chrome
             body(chrome)
@@ -222,6 +222,17 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         if let hex = state["accent"] as? String, let color = UIColor(cssHex: hex) { accent = color }
         applyHeader(state["header"] as? [String: Any])
         applyComposer(state["composer"] as? [String: Any])
+        keepOnTop()
+    }
+
+    /// views the system adds to the host later must not land over the chrome and take its taps
+    private func keepOnTop() {
+        guard let host, headerShown || composerShown else { return }
+        let tail = Array(host.subviews.suffix(2))
+        if tail.first !== header || tail.last !== composer {
+            host.bringSubviewToFront(header)
+            host.bringSubviewToFront(composer)
+        }
     }
 
     private func applyHeader(_ data: [String: Any]?) {
