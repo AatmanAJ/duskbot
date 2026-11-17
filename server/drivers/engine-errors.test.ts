@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { engineFailureKind, engineFailureMessage, errorReplyFailure, httpStatusOf, plainFailureMessage, providerReason, stopCause } from "./engine-errors.ts";
+import { claudeLimitFacts } from "./claude-limits.ts";
+import { codexLimitResetsAt } from "./codex-errors.ts";
+import { engineFailureKind, engineFailureMessage, errorReplyFailure, httpStatusOf, limitResetFromWords, plainFailureMessage, providerReason, stopCause } from "./engine-errors.ts";
 import { classifyError } from "./retry.ts";
 
 const reason = (text: string) => classifyError({ text }).reason;
@@ -239,5 +241,43 @@ describe("stopCause", () => {
         expect(engineFailureKind(cause)).toBeNull();
       }
     }
+  });
+});
+
+describe("limitResetFromWords", () => {
+  const NOW = new Date(2026, 10, 17, 10, 0, 0).getTime();
+  const MIN = 60_000;
+
+  it("reads an HTTP Retry-After in seconds or as a date, and omp's retry-after-ms", () => {
+    expect(limitResetFromWords("429 Too Many Requests; Retry-After: 120", NOW)).toBe(NOW + 2 * MIN);
+    expect(limitResetFromWords(`{"headers":{"retry-after":"${new Date(NOW + 7_200_000).toUTCString()}"}}`, NOW)).toBe(NOW + 7_200_000);
+    expect(limitResetFromWords('429 {"error":{}} retry-after-ms=5400000', NOW)).toBe(NOW + 90 * MIN);
+  });
+
+  it("reads x-ratelimit-reset as epoch seconds, epoch ms, an ISO time or a duration", () => {
+    expect(limitResetFromWords(`x-ratelimit-reset: ${Math.round((NOW + 3_600_000) / 1000)}`, NOW)).toBe(NOW + 3_600_000);
+    expect(limitResetFromWords(`x-ratelimit-reset=${NOW + 600_000}`, NOW)).toBe(NOW + 600_000);
+    expect(limitResetFromWords(`x-ratelimit-reset-requests: ${new Date(NOW + 3_600_000).toISOString()}`, NOW)).toBe(NOW + 3_600_000);
+    expect(limitResetFromWords("x-ratelimit-reset-tokens: 1m30s", NOW)).toBe(NOW + 90_000);
+  });
+
+  it("reads a wait in words and a clock time in this computer's time", () => {
+    expect(limitResetFromWords("Usage limit reached. Try again in 2 hours and 5 minutes.", NOW)).toBe(NOW + 125 * MIN);
+    expect(limitResetFromWords("GoUsageLimitError: resets in 40m", NOW)).toBe(NOW + 40 * MIN);
+    expect(limitResetFromWords("You've hit your limit, it resets at 3:40 PM", NOW)).toBe(new Date(2026, 10, 17, 15, 40).getTime());
+    expect(limitResetFromWords("You've hit your limit · resets 9am", NOW)).toBe(new Date(2026, 10, 18, 9, 0).getTime());
+  });
+
+  it("names no reset when the words name none, or one already past", () => {
+    expect(limitResetFromWords("You've hit your weekly limit · resets Oct 12 at 2:30pm (Asia/Calcutta)", NOW)).toBeUndefined();
+    expect(limitResetFromWords("Usage limit reached.", NOW)).toBeUndefined();
+    expect(limitResetFromWords(`retry-after: ${new Date(NOW - 3_600_000).toUTCString()}`, NOW)).toBeUndefined();
+    expect(limitResetFromWords("Retry-After: 0", NOW)).toBeUndefined();
+  });
+
+  it("agrees with the engines' own readers: Claude's rate-limit event and Codex's words", () => {
+    expect(claudeLimitFacts({ window: "five_hour", resetsAt: (NOW + 3_600_000) / 1000 })).toEqual({ limit: "engine", limitResetsAt: NOW + 3_600_000 });
+    expect(codexLimitResetsAt("You've hit your usage limit. Try again at 3:40 PM.", NOW)).toBe(new Date(2026, 10, 17, 15, 40).getTime());
+    expect(limitResetFromWords("You've hit your usage limit. Try again at 3:40 PM.", NOW)).toBe(new Date(2026, 10, 17, 15, 40).getTime());
   });
 });

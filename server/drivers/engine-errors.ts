@@ -128,6 +128,62 @@ export function engineFailureMessage(
   }
 }
 
+const DURATION_PART = /(\d+(?:\.\d+)?)\s*(d|days?|h|hrs?|hours?|m|mins?|minutes?|s|secs?|seconds?)(?![a-z])/gi;
+const UNIT_MS: Record<string, number> = { d: 86_400_000, h: 3_600_000, m: 60_000, s: 1_000 };
+
+function durationMs(text: string): number | undefined {
+  let total = 0, found = false;
+  for (const [, amount, unit] of text.matchAll(DURATION_PART)) {
+    total += Number(amount) * UNIT_MS[unit!.toLowerCase().replace(/^(?:hrs?|hours?)$/, "h").replace(/^(?:mins?|minutes?)$/, "m").replace(/^(?:secs?|seconds?)$/, "s").replace(/^days?$/, "d")]!;
+    found = true;
+  }
+  return found && total > 0 ? total : undefined;
+}
+
+/** `x-ratelimit-reset` is epoch seconds, epoch ms, an ISO time or a duration ("1m30s"), depending on the provider. */
+function headerResetAt(value: string, now: number): number | undefined {
+  const trimmed = value.trim();
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    const number = Number(trimmed);
+    if (number > 1e12) return number;
+    if (number > 1e9) return number * 1000;
+    return now + number * 1000;
+  }
+  const parsed = Date.parse(trimmed);
+  if (Number.isFinite(parsed)) return parsed;
+  const span = durationMs(trimmed);
+  return span === undefined ? undefined : now + span;
+}
+
+/** A clock time in this computer's local time: today, or tomorrow once today's has passed. */
+function clockResetAt(hour: number, minute: number, meridiem: string | undefined, now: number): number | undefined {
+  if (hour > 23 || minute > 59 || (meridiem && (hour < 1 || hour > 12))) return undefined;
+  const hours = meridiem ? (hour % 12) + (meridiem.toLowerCase() === "pm" ? 12 : 0) : hour;
+  const at = new Date(now).setHours(hours, minute, 0, 0);
+  return at > now ? at : at + 86_400_000;
+}
+
+/** When a limit refusal's own words say it resets, for engines whose structured reset was not read: an HTTP
+ * `Retry-After` (seconds or an HTTP date), `retry-after-ms`, `x-ratelimit-reset*`, "try again in 2h 5m", "resets in 40
+ * minutes", "resets at 3:40 PM", "resets 3pm". Undefined when they name none, or one already past. */
+export function limitResetFromWords(text: string, now = Date.now()): number | undefined {
+  const pick = (at: number | undefined) => (at !== undefined && Number.isFinite(at) && at > now ? Math.round(at) : undefined);
+  const ms = /\bretry-after-ms[=:]\s*(\d+)/i.exec(text);
+  if (ms) return pick(now + Number(ms[1]));
+  const header = /\bx-ratelimit-reset(?:-[a-z]+)?["']?\s*[:=]\s*["']?([^"',;\n]+)/i.exec(text);
+  if (header) return pick(headerResetAt(header[1]!, now));
+  const retryAfter = /\bretry-after["']?\s*[:=]\s*["']?([^"';\n]+)/i.exec(text);
+  if (retryAfter) {
+    const value = retryAfter[1]!.trim();
+    return pick(/^\d+$/.test(value) ? now + Number(value) * 1000 : Date.parse(value));
+  }
+  const within = /\b(?:try again|resets?|available again|retry)\s+in\s+((?:\d+(?:\.\d+)?\s*[a-z]+[\s,]*(?:and\s+)?){1,4})/i.exec(text);
+  if (within) return pick((() => { const span = durationMs(within[1]!); return span === undefined ? undefined : now + span; })());
+  const clock = /\b(?:try again|resets?)\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i.exec(text);
+  if (clock && (clock[2] !== undefined || clock[3] !== undefined)) return pick(clockResetAt(Number(clock[1]), Number(clock[2] ?? 0), clock[3], now));
+  return undefined;
+}
+
 /** When a usage limit resets, in `timeZone` with its name, or in UTC when the zone is unknown. */
 export function limitResetTime(epochMs: number, timeZone = hostTimeZone()): string {
   try {

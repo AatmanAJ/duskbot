@@ -21,6 +21,8 @@ export interface BatchContinueDeps {
   read(botId: string, threadId: string): Checklist | null;
   /** Something waits on the person, a message of theirs is queued, or the thread is busy again. */
   held(threadId: string): boolean;
+  /** The turn that just ended was refused by its AI's usage limit: the wait for the reset carries the list on. */
+  limited?(threadId: string, turnId?: string): boolean;
   carryOn(botId: string, threadId: string, note: string): Promise<unknown>;
   /** The quiet line the person sees: "12 of 94 sent, continuing with the rest". */
   line(threadId: string, line: BatchLine): void;
@@ -77,7 +79,7 @@ export function createBatchContinue(deps: BatchContinueDeps) {
       if (!state) return;
       const pausedUntil = pauses.get(threadId) ?? 0;
       pauses.delete(threadId);
-      if (event.type === "session.exited" || NO_CARRY_ON.has(event.stopReason ?? "")) { threads.delete(threadId); return; }
+      if (event.type === "session.exited" || NO_CARRY_ON.has(event.stopReason ?? "") || (!event.ok && deps.limited?.(threadId, event.turnId))) { threads.delete(threadId); return; }
       const list = openList(state.botId, threadId);
       if (!list) { threads.delete(threadId); return; }
       const progressed = closed(list) > state.closedAtStart;

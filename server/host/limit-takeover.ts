@@ -15,7 +15,8 @@ import { classifyError } from "../drivers/retry.ts";
 import { billsEachUse, failoverLine, limitBackupAllowed, signedOutLine, type LimitFailover } from "../limit-failover.ts";
 import { LimitNotices, limitNoticeText, signedOutNoticeText } from "../limit-notices.ts";
 import { UNNAMED_LIMIT_MS } from "../limit-resets.ts";
-import type { ModelSelection } from "../../shared/wire.ts";
+import type { LimitMode, ModelSelection } from "../../shared/wire.ts";
+import { freeFallback } from "../../shared/ai-ranking.ts";
 
 /** What a usage limit refused (the runtime error's `limit`): the account on that engine, one model's own window, or
  * one model's extra usage credits. */
@@ -54,6 +55,8 @@ export interface LimitTakeoverDeps {
   resetAt?(instanceId: string): number | null;
   /** The backups the person chose for this bot, or for every bot. */
   chosen(botId: string): ModelSelection[];
+  /** What the bot does at a limit no chosen backup takes: only "free" lets the free model carry on by itself. */
+  limitMode?(botId: string): LimitMode;
   /** The backups a signed-out AI's turns (and a turn its provider failed) go to, as for a turn its AI never started: the bot's own list, or the
    * installation's one backup while Automatic recovery is on. `chosen` when not given. */
   signedOutChosen?(botId: string): ModelSelection[];
@@ -208,11 +211,23 @@ export function createLimitTakeover(deps: LimitTakeoverDeps) {
     for (const selection of startup ? deps.signedOutChosen?.(botId) ?? deps.chosen(botId) : deps.chosen(botId)) add(selection);
     // A provider's hiccup moves a turn only to a backup the person chose.
     if (scope === "signed-out" || scope === "provider") return out;
+    const free = (deps.limitMode?.(botId) ?? "wait") === "free";
+    if (free) { const pick = freeSelection(from, scope, approval); if (pick) add(pick); }
     const others = engines.filter((engine) => engine.instanceId !== from.instanceId && engine.access !== "api" && !billsEachUse(deps.configs()[engine.instanceId])
-      && usable(engines, current, { instanceId: engine.instanceId, model: engine.models.default }, scope, approval));
+      && (free || !freeFallback(engine)) && usable(engines, current, { instanceId: engine.instanceId, model: engine.models.default }, scope, approval));
     const pick = selectDefaultModelSelection(others, undefined, deps.context);
     if (pick.instanceId && pick.model) add(pick);
     return out;
+  }
+
+  /** The free model that may carry on while `from` is limited, or null. */
+  function freeSelection(from: ModelSelection, scope: TakeoverScope = "engine", approval?: ApprovalMode): ModelSelection | null {
+    const engines = deps.engines();
+    const current = engines.find((engine) => engine.instanceId === from.instanceId);
+    if (!current) return null;
+    const free = engines.find((engine) => engine.instanceId !== from.instanceId && freeFallback(engine)
+      && usable(engines, current, { instanceId: engine.instanceId, model: engine.models.default }, scope, approval));
+    return free ? { instanceId: free.instanceId, model: free.models.default } : null;
   }
 
   const label = (selection: ModelSelection, from: ModelSelection) => (selection.instanceId === from.instanceId
@@ -255,6 +270,7 @@ export function createLimitTakeover(deps: LimitTakeoverDeps) {
 
   return {
     backups,
+    freeSelection,
     /** This model alone, held by its own limit; null when it is not. */
     modelHeld,
     /** This model's own limit refused a turn: it is held until the reset the limit named, an hour when it named none,

@@ -127,3 +127,27 @@ describe("carrying an unfinished list on", () => {
     expect(note).toContain("and 9 more");
   });
 });
+
+describe("a list whose turn its AI's usage limit refused", () => {
+  it("is left to the wait for the reset, which carries the list on, instead of starting into the same limit", () => {
+    let list = startChecklist(null, { title: "DMs", items: people(5), verb: "sent" });
+    const notes: string[] = [];
+    const timers: Array<() => void> = [];
+    const guard = createBatchContinue({
+      botOf: () => "bot1", read: () => list, held: () => false, line: () => {},
+      limited: (_threadId, turnId) => turnId === "limited-turn",
+      carryOn: async (_bot, _thread, note) => { notes.push(note); },
+      later: (run) => timers.push(run),
+    });
+    guard.onEvent(started());
+    list = tick(list, ["@person1"], "done").list;
+    guard.onEvent({ ...completed(false, "quota"), turnId: "limited-turn" } as RuntimeEvent);
+    for (const run of timers.splice(0)) run();
+    expect(notes).toEqual([]);
+    guard.onEvent(started());
+    list = tick(list, ["@person2"], "done").list;
+    guard.onEvent({ ...completed(false), turnId: "other-turn" } as RuntimeEvent);
+    for (const run of timers.splice(0)) run();
+    expect(notes).toHaveLength(1);
+  });
+});

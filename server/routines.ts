@@ -110,6 +110,8 @@ export interface RoutineRun {
   /** A queued run starts no earlier than this. */
   retryAt?: number;
   retried?: RoutineRetryCause;
+  /** Starts it waited for its AI's usage limit to reset, apart from its one retry. */
+  limitWaits?: number;
   /** When its current wait began; read only while the run is waiting. */
   waitingSince?: number;
   asked?: RoutineRunAsk;

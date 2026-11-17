@@ -31,9 +31,9 @@ export function billsEachUse(config?: Pick<InstanceConfig, "environment" | "acce
   return config?.access === "api" || PAY_PER_USE_KEYS.some((key) => Boolean(config?.environment?.[key]?.trim()));
 }
 
-export function resetClock(at: number, timeZone = hostTimeZone()): string {
+export function resetClock(at: number, timeZone = hostTimeZone(), now = Date.now()): string {
   try {
-    const sameDay = new Date(at).toDateString() === new Date().toDateString();
+    const sameDay = new Date(at).toDateString() === new Date(now).toDateString();
     return new Date(at).toLocaleString("en-US", { ...(sameDay ? {} : { weekday: "short" }), hour: "numeric", minute: "2-digit", timeZone });
   } catch {
     return new Date(at).toISOString().slice(11, 16) + " UTC";

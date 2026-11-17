@@ -412,3 +412,21 @@ describe("a model whose provider failed a turn before it did anything", () => {
     expect(instance.heldAtStart(KAI, OPUS)).toBeNull();
   });
 });
+
+describe("the bot's choice at a limit", () => {
+  const FREE = engine("zen", "opencodeGo", ["big-pickle"], { snapshot: { state: "available", authenticated: true, freeFallback: true } as TakeoverEngine["snapshot"] });
+
+  it("waits by default: the free model never carries on by itself, while a backup the person chose still does", () => {
+    expect(takeover({ engines: () => [CLAUDE, FREE] }).instance.backups("kai", on("claude", "claude-opus-5-5"))).toEqual([]);
+    expect(takeover({ engines: () => [CLAUDE, FREE], limitMode: () => "ask" }).instance.backups("kai", on("claude", "claude-opus-5-5"))).toEqual([]);
+    expect(takeover({ engines: () => [CLAUDE, FREE], chosen: () => [on("zen", "big-pickle")] }).instance.backups("kai", on("claude", "claude-opus-5-5")))
+      .toEqual([on("zen", "big-pickle")]);
+  });
+
+  it("set to the free model: it comes right after the chosen backups", () => {
+    const { instance } = takeover({ engines: () => [CLAUDE, CODEX, FREE], limitMode: () => "free" });
+    expect(instance.backups("kai", on("claude", "claude-opus-5-5"))).toEqual([on("zen", "big-pickle"), on("codex", "gpt-6")]);
+    expect(instance.freeSelection(on("claude", "claude-opus-5-5"))).toEqual(on("zen", "big-pickle"));
+    expect(takeover({ engines: () => [CLAUDE, CODEX] }).instance.freeSelection(on("claude", "claude-opus-5-5"))).toBeNull();
+  });
+});

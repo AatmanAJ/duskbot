@@ -389,6 +389,9 @@ export interface WireBot extends DefaultBotFields, BotAccessFields {
   phoneApps?: import("./phone-apps.ts").PhoneApps;
   /** Ordered backups used only by opt-in, pre-prompt startup recovery. */
   fallback?: Array<{ instanceId: string; model: string }>;
+  /** What a turn does when its AI's usage limit refuses it and no backup can take over: "wait" (absent) holds it and
+   * carries on by itself at the reset, "ask" offers the free model or the wait on a card, "free" moves to the free model. */
+  limitMode?: LimitMode;
   /** Whether this bot gets the app's built-in browser. */
   browser?: boolean;
   /** Record a screenshot and a short note of each browser action, kept with
@@ -526,6 +529,8 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
     name: string; ok?: boolean; spoken?: string; setup?: boolean; terminal?: boolean; summary?: string;
     /** A notice whose way out is signing in to an AI: the chat offers Sign in beside it. */
     signIn?: boolean;
+    /** notice rows: the turn waits for its AI's usage limit to reset and carries on by itself; Stop ends the wait. */
+    limitHold?: boolean;
     input?: string; output?: string; clipped?: boolean;
     /** What the call works on, as its live status said it: the chip's and the "Now" card's specific words. `whose`: the person whose own app or MCP server the call used. */
     step?: import("./turn-progress.ts").LiveStep; whose?: { person: string; app: string };
@@ -757,10 +762,15 @@ export interface OptionCardData extends WaitCardField, AccessRequestCardField, O
 
 /** Kept on the card so the offer survives a restart. `engines` follow the card's options; `messageId` is the
  * message to resend, `rootId` the failed request's job-runtime root. */
+export const LIMIT_MODES = ["wait", "ask", "free"] as const;
+export type LimitMode = (typeof LIMIT_MODES)[number];
+
 export interface QuotaSwitchCardData {
   engines: Array<{ instanceId: string; name: string }>;
   messageId?: string;
   rootId?: string;
+  /** The option after `engines` waits for the limit to reset instead; `resetsAt` when the engine said. */
+  wait?: { resetsAt?: number };
 }
 
 export interface SecretRequestCardData {

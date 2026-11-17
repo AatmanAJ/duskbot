@@ -2,11 +2,14 @@
 // so a bot's own shell with decline-only service trust can never switch the engine or resend the person's message.
 // A request the job runtime still holds is never sent again: the runtime reruns its root itself.
 import { approvalModeFor, modelSwitchNeedsAsk } from "../shared/approval-mode.ts";
-import type { QuotaSwitchCardData } from "../shared/wire.ts";
+import { randomUUID } from "node:crypto";
+
+import type { LimitMode, QuotaSwitchCardData } from "../shared/wire.ts";
 import { recoveryCapabilityError } from "./automatic-recovery.ts";
 import type { EngineAccess, ModelCatalog, ModelSelection, ProviderAdapter, ProviderSnapshot } from "./contracts.ts";
 import type { Coordinator } from "./coordinator.ts";
 import { readyToRun, selectDefaultModelSelection, type SelectableInstance } from "./default-model-selection.ts";
+import { limitResetFromWords } from "./drivers/engine-errors.ts";
 import { providerFailure } from "./drivers/provider-failover.ts";
 import { classifyError } from "./drivers/retry.ts";
 import { PROBE_TIMEOUT_MS } from "./engine-install.ts";
@@ -15,6 +18,7 @@ import type { WorkOrigin } from "./peer-provenance.ts";
 import type { BotRecord, Message, Store, TaskRecord } from "./store.ts";
 import type { TurnStops } from "./turn-outcome.ts";
 import { signedOutStop, type LimitTakeover, type TakeoverScope } from "./host/limit-takeover.ts";
+import { serverLine } from "./server-lines.ts";
 
 export interface QuotaSwitchEngine {
   instanceId: string;
@@ -42,7 +46,12 @@ export interface QuotaSwitchDeps {
   registry: { instances(): QuotaSwitchEngine[] };
   turnStops: Pick<TurnStops, "failureCause"> & Partial<Pick<TurnStops, "read">>;
   /** Which AIs carry on while one is limited or signed out, and the one notice for each stretch of either. */
-  takeover?: Pick<LimitTakeover, "backups" | "tell" | "moved"> & Partial<Pick<LimitTakeover, "holdProvider">>;
+  takeover?: Pick<LimitTakeover, "backups" | "tell" | "moved"> & Partial<Pick<LimitTakeover, "holdProvider" | "freeSelection">>;
+  /** What the bot does at a limit no backup takes: "wait" (the default), "ask" or "free". */
+  limitMode?: (botId: string) => LimitMode;
+  /** Holds the person's turn until its AI's limit resets, then carries it on there; false when it cannot wait. */
+  hold?: (input: { botId: string; threadId: string; from: ModelSelection; resetsAt?: number; request?: string }) => boolean;
+  language?: (threadId: string) => string | undefined;
   /** A custom endpoint brings its own credential, so its sign-in state does not count. */
   access?: (instanceId: string) => EngineAccess | undefined;
   refusal?: (engine: QuotaSwitchEngine) => string | undefined;
@@ -68,6 +77,9 @@ export interface QuotaSwitch {
 export type QuotaAnswer = "answered" | "rejected" | "unavailable";
 
 export const NOT_NOW = "Not now";
+
+/** A limit that resets on a clock: an engine's window or one model's. Credits and sign-ins wait for the person. */
+const RESETS: ReadonlySet<TakeoverScope> = new Set<TakeoverScope>(["engine", "model"]);
 
 const ENDED: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
 
@@ -218,7 +230,7 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       const providerUntil = scope === "provider" ? deps.takeover?.holdProvider?.(from) : undefined;
       // DUSK_QUOTA_SWITCH=0: nothing carries on by itself; the person still hears once that the bot waits.
       const backups = enabled() ? deps.takeover?.backups(bot.id, from, scope, approvalModeFor(thread)) ?? [] : [];
-      const resetsAt = scope === "signed-out" ? undefined : scope === "provider" ? providerUntil : flags?.limitResetsAt;
+      const resetsAt = scope === "signed-out" ? undefined : scope === "provider" ? providerUntil : flags?.limitResetsAt ?? (RESETS.has(scope) ? limitResetFromWords(cause ?? "") : undefined);
       // A sign-out is told once, first and without a backup's name: what the person must do is sign in again.
       const told = scope === "signed-out" ? deps.takeover?.tell(thread, from, { scope }) : undefined;
       if (told) notice(threadId, told, true, true);
@@ -229,25 +241,39 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       const own = !internal && request && !request.stopped && request.origin?.kind === "user"
         && (!request.turnId || !event.turnId || request.turnId === event.turnId);
       const relayed = request?.messageId && store.messagesFor(threadId).find((message) => message.id === request.messageId)?.peerAsk;
-      if (!own || !request || relayed || !enabled() || openCard(threadId)) {
+      if (!own || !request || relayed || openCard(threadId)) {
         tell(backups[0]);
         return null;
       }
-      const build = { threadId, stale: false };
-      building.add(build);
-      try {
-        if (scope === "provider" && request.messageId) {
-          rerun.add(request.messageId);
-          if (rerun.size > 500) rerun.delete(rerun.values().next().value!);
-        }
-        for (const selection of backups) {
-          if (await continueOn(bot.id, threadId, selection, request, build, resetsAt, scope)) {
-            tell(selection);
-            return null;
+      if (enabled()) {
+        const build = { threadId, stale: false };
+        building.add(build);
+        try {
+          if (scope === "provider" && request.messageId) {
+            rerun.add(request.messageId);
+            if (rerun.size > 500) rerun.delete(rerun.values().next().value!);
           }
+          for (const selection of backups) {
+            if (await continueOn(bot.id, threadId, selection, request, build, resetsAt, scope)) {
+              tell(selection);
+              return null;
+            }
+          }
+        } finally {
+          building.delete(build);
         }
-      } finally {
-        building.delete(build);
+      }
+      if (RESETS.has(scope) && store.taskByThread(bot.id, threadId)) {
+        const quoted = request.origin?.kind === "user" ? request.origin.request : undefined;
+        const free = enabled() && (deps.limitMode?.(bot.id) ?? "wait") === "ask" ? deps.takeover?.freeSelection?.(from, scope, approvalModeFor(thread)) : null;
+        if (free && askFirst(threadId, from, free, request, resetsAt)) {
+          tell();
+          return null;
+        }
+        if (deps.hold?.({ botId: bot.id, threadId, from, ...(resetsAt ? { resetsAt } : {}), ...(quoted ? { request: quoted } : {}) })) {
+          tell();
+          return null;
+        }
       }
       tell();
       return null;
@@ -255,6 +281,26 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       console.warn(`quota switch: could not continue ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
+  };
+
+  /** The bot is set to ask: one card offers the free model now or the wait for the reset. */
+  const askFirst = (threadId: string, from: ModelSelection, free: ModelSelection, request: QuotaRequest, resetsAt?: number): boolean => {
+    const engines = deps.registry.instances();
+    const limited = engines.find((engine) => engine.instanceId === from.instanceId);
+    const backup = engines.find((engine) => engine.instanceId === free.instanceId);
+    if (!limited || !backup) return false;
+    const language = deps.language?.(threadId);
+    const rootId = rootOf(threadId, request);
+    store.appendMessage(threadId, { role: "bot", kind: "options", card: {
+      title: serverLine(language, "server.limitHold.askTitle", { engine: nameOf(limited) }),
+      subtitle: serverLine(language, "server.limitHold.askSubtitle", { engine: nameOf(limited), backup: nameOf(backup) }),
+      options: [nameOf(backup), serverLine(language, "server.limitHold.askWait")],
+      fixedOptions: true,
+      requestId: randomUUID(),
+      quotaSwitch: { engines: [{ instanceId: backup.instanceId, name: nameOf(backup) }], ...(request.messageId ? { messageId: request.messageId } : {}),
+        ...(rootId ? { rootId } : {}), wait: resetsAt ? { resetsAt } : {} },
+    } });
+    return true;
   };
 
   const turnSucceeded = (bot: BotRecord, threadId: string): void => {
@@ -356,6 +402,15 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
     const index = behavior === "answer" && typeof message === "string" ? card.options.indexOf(message) : -1;
     const chosen = index >= 0 ? offer.engines[index] : undefined;
     const bot = store.botByThread(threadId);
+    if (offer.wait && index === offer.engines.length && bot) {
+      store.patchMessage(threadId, cardMessage.id, { card: { ...card, answered: "answer", answeredText: message as string } });
+      const thread = store.projectBotForTask(bot.id, threadId);
+      const request = deps.request(threadId);
+      const quoted = request?.origin?.kind === "user" ? request.origin.request : undefined;
+      const held = thread && deps.hold?.({ botId: bot.id, threadId, from: thread.modelSelection, ...(offer.wait.resetsAt ? { resetsAt: offer.wait.resetsAt } : {}),
+        ...(quoted ? { request: quoted } : {}) });
+      return Promise.resolve(held ? "answered" : "unavailable");
+    }
     if (!chosen || !bot) {
       store.patchMessage(threadId, cardMessage.id, { card: { ...card, answered: "answer", answeredText: NOT_NOW } });
       return Promise.resolve(behavior === "answer" ? "answered" : "rejected");

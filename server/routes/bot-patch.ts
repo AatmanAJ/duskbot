@@ -4,7 +4,7 @@ import { normalizeConnectorScopes } from "../../shared/connector-scopes.ts";
 import { normalizeOutboundPolicy } from "../../shared/outbound.ts";
 import { normalizePhoneApps } from "../../shared/phone-apps.ts";
 import { parseToolScope, toolScopeWidens } from "../../shared/tool-scope.ts";
-import { isMausColor, MAUS_COLOR_NAMES, type WireBot, type WireGroup } from "../../shared/wire.ts";
+import { isMausColor, LIMIT_MODES, MAUS_COLOR_NAMES, type LimitMode, type WireBot, type WireGroup } from "../../shared/wire.ts";
 import { validateBotCwd } from "../bot-cwd.ts";
 import { parseBotProfilePatch } from "../bot-profile.ts";
 import { accessFromVisibility } from "../../shared/bot-access.ts";
@@ -237,6 +237,10 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
           chain.push({ instanceId: row.instanceId, model });
         }
         patch.fallback = chain;
+      }
+      if (body.limitMode !== undefined) {
+        if (body.limitMode !== null && !(LIMIT_MODES as readonly unknown[]).includes(body.limitMode)) return json(res, 400, { error: "limitMode must be wait, ask or free" });
+        patch.limitMode = body.limitMode === null || body.limitMode === "wait" ? undefined : body.limitMode as LimitMode;
       }
       // null clears back to every connected app.
       if (body.connectorScopes !== undefined) {

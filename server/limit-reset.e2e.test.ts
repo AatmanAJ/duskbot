@@ -385,3 +385,49 @@ it.each([
     evidence.push({ messages, notified });
   });
 }, 180_000);
+
+const noticeLines = (messages: any[]) => messages.filter((message) => message.tool?.name?.startsWith("notice:")).map((message) => message.tool.name as string);
+
+it("with no other AI and the default wait, holds the turn with one calm line, keeps it across a restart and carries on after the reset", async () => {
+  await withLimitFixture({ codex: false }, async ({ api, control, limit, lift, claudePrompts, restart, evidence, dataDir }) => {
+    const resetsAt = Math.floor(Date.now() / 1000) + 20;
+    limit(resetsAt);
+    const { bot } = await control("new-bot", "--name", "Scout");
+    const threadId = bot.activeTaskId;
+    await control("send", "--bot", bot.id, "--task", threadId, "--text", "Write the quarterly report");
+    expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("failed");
+    const held = await messagesOf(api, threadId);
+    expect(noticeLines(held)).toEqual([expect.stringMatching(/^notice: Paused until .+, your Verification fixture limit resets then\.$/)]);
+    const saved = JSON.parse(readFileSync(join(dataDir, "limit-held-turns.json"), "utf8"));
+    expect(saved).toEqual([expect.objectContaining({ botId: bot.id, threadId, engine: "claude", resetsAt: resetsAt * 1000, resumes: 0, request: "Write the quarterly report" })]);
+
+    await restart();
+    lift();
+    await expect.poll(() => claudePrompts().length, { timeout: 60_000, interval: 500 }).toBe(2);
+    const resumedPrompt = JSON.stringify(claudePrompts()[1]);
+    expect(resumedPrompt).toContain("cut off because Verification fixture's usage limit was reached");
+    expect(resumedPrompt).toContain("Write the quarterly report");
+    await expect.poll(async () => (await messagesOf(api, threadId)).findLast((message) => message.role === "bot" && message.kind === "text")?.text, { timeout: 30_000 })
+      .toBe("hello from fake claude");
+    const after = await messagesOf(api, threadId);
+    expect(recoveryLines(after)).toEqual(["recovery: Your Verification fixture limit has reset, continuing where it stopped."]);
+    await expect.poll(() => JSON.parse(readFileSync(join(dataDir, "limit-held-turns.json"), "utf8")), { timeout: 10_000 }).toEqual([]);
+    evidence.push({ held, after });
+  });
+}, 180_000);
+
+it("Stop ends a held turn: nothing runs after the reset", async () => {
+  await withLimitFixture({ codex: false }, async ({ api, control, limit, lift, claudePrompts }) => {
+    const resetsAt = Math.floor(Date.now() / 1000) + 8;
+    limit(resetsAt);
+    const { bot } = await control("new-bot", "--name", "Scout");
+    const threadId = bot.activeTaskId;
+    await control("send", "--bot", bot.id, "--task", threadId, "--text", "Write the quarterly report");
+    expect((await control("wait", "--bot", bot.id, "--task", threadId, "--timeout", "30")).status).toBe("failed");
+    await api("POST", `/api/bots/${bot.id}/interrupt`, { threadId });
+    expect(noticeLines(await messagesOf(api, threadId)).at(-1)).toBe("notice: Stopped waiting for the limit to reset.");
+    lift();
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, resetsAt * 1000 - Date.now()) + 4_000));
+    expect(claudePrompts()).toHaveLength(1);
+  });
+}, 120_000);
