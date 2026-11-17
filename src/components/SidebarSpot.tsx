@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { GROK_HOVER_TINT } from "./SidebarSimpleTop";
 import { Check } from "lucide-react";
+import { X } from "../icons";
 
 import { openExternalLink } from "@/lib/app-links";
 import { cn } from "@/lib/cn";
@@ -10,7 +11,7 @@ import type { ServerUpdateCheck } from "@/lib/server-update";
 import { api } from "@/state/api";
 
 import type { AppUpdateBridge, AppUpdateState } from "../../electron/app-update.mjs";
-import { Art } from "./ui/Art";
+import { Art, type ArtName } from "./ui/Art";
 
 function ownBridge() {
   return window.duskDesktop?.remoteClient?.active === true ? undefined : window.duskDesktop?.appUpdate;
@@ -106,19 +107,59 @@ function spotWords(spot: Exclude<SpotState, { kind: "feedback" }>): { title: str
   return { title: t("appUpdate.available", { version: spot.version }), end: null };
 }
 
-/** Give feedback or the update, the same card either way, so the spot only changes state. */
-export function SidebarSpot({ className, bridge, check }: { className?: string; bridge?: AppUpdateBridge; check?: () => Promise<ServerUpdateCheck> }) {
-  const { spot, act, updated, seen } = useSidebarSpot(bridge ?? ownBridge(), check);
-  const card = cn("flex h-10 w-full items-center gap-2.5 rounded-full px-3.5 text-start", PRESS, FOCUS);
+/** Something worth a press that takes Give feedback's place while it applies (the dusk cloud nudge, lib/cloud-nudge.ts).
+ * Its own close ends it, and Give feedback comes back. An update always goes first. */
+export interface SpotCta {
+  /** names the offer on the card, `data-spot-cta` */
+  id: string;
+  title: string;
+  hint?: string;
+  art: ArtName;
+  closeLabel: string;
+  onStart: () => void;
+  onClose: () => void;
+}
+
+const CARD = cn("flex h-10 w-full items-center gap-2.5 rounded-full px-3.5 text-start", PRESS, FOCUS);
+/** the feedback card's look, for a card that sits beside the spot (SidebarBrowserCard) */
+export const SPOT_CARD = cn(CARD, TONAL);
+
+/** Give feedback, the update, or an offer: the same one-line card each time, so the spot only changes state. */
+export function SidebarSpot({ className, bridge, check, cta = null }: {
+  className?: string; bridge?: AppUpdateBridge; check?: () => Promise<ServerUpdateCheck>; cta?: SpotCta | null;
+}) {
+  return <SpotView className={className} state={useSidebarSpot(bridge ?? ownBridge(), check)} cta={cta} />;
+}
+
+export function SpotView({ className, state, cta = null }: { className?: string; state: ReturnType<typeof useSidebarSpot>; cta?: SpotCta | null }) {
+  const { spot, act, updated, seen } = state;
   return (
     <div className={className}>
       {updated && spot.kind === "feedback" && <UpdatedNote version={updated} seen={seen} />}
-      {spot.kind === "feedback" ? (
-        <button type="button" data-sidebar-spot="feedback" data-art-hover="" onClick={act} className={cn(card, TONAL)}>
-          <Art name="bubbles" className="h-5 w-5 shrink-0 object-contain" />
-          <span className="min-w-0 flex-1 truncate text-[14px] font-medium leading-5 text-ink">{t("giveFeedback.card")}</span>
-        </button>
-      ) : <UpdateCard spot={spot} act={act} className={card} />}
+      {spot.kind !== "feedback" ? <UpdateCard spot={spot} act={act} className={CARD} />
+        : cta ? <SpotCtaCard cta={cta} />
+        : (
+          <button type="button" data-sidebar-spot="feedback" data-art-hover="" onClick={act} className={cn(CARD, TONAL)}>
+            <Art name="bubbles" className="h-5 w-5 shrink-0 object-contain" />
+            <span className="min-w-0 flex-1 truncate text-[14px] font-medium leading-5 text-ink">{t("giveFeedback.card")}</span>
+          </button>
+        )}
+    </div>
+  );
+}
+
+/** the offer as the feedback card's twin, with a close at its end; the close sits beside the card's button, never in it */
+export function SpotCtaCard({ cta }: { cta: SpotCta }) {
+  return (
+    <div data-sidebar-spot="cta" data-spot-cta={cta.id} className="relative">
+      <button type="button" data-spot-cta-start="" data-art-hover="" title={cta.hint} onClick={cta.onStart} className={cn(CARD, TONAL, "pe-10")}>
+        <Art name={cta.art} className="h-5 w-5 shrink-0 object-contain" />
+        <span className="min-w-0 flex-1 truncate text-[14px] font-medium leading-5 text-ink">{cta.title}</span>
+      </button>
+      <button type="button" data-spot-cta-close="" aria-label={cta.closeLabel} title={cta.closeLabel} onClick={cta.onClose}
+        className="absolute end-1.5 top-1/2 flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-ink/56 transition-[background-color,color] duration-[120ms] ease-[ease] hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus">
+        <X size={13} aria-hidden="true" />
+      </button>
     </div>
   );
 }

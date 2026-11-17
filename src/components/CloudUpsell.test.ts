@@ -47,7 +47,7 @@ beforeEach(() => {
   });
 });
 
-describe("the sidebar dusk cloud card", () => {
+describe("the dusk cloud offer in the sidebar's spot", () => {
   it("says Keep your bots working, the bot panel's pitch made small, with no nap in it", async () => {
     const html = await launch();
     expect(html).toContain("Keep your bots working");
@@ -59,7 +59,7 @@ describe("the sidebar dusk cloud card", () => {
   it("switches to their own numbers once someone is invested, counted as app_invested, once per account", async () => {
     f.state.bots = bots(3);
     const html = await launch();
-    expect(html).toContain("data-invested");
+    expect(html).toContain('data-spot-cta="cloud-invested"');
     expect(html).toContain("good crew of bots");
     expect(html).toContain("dusk cloud keeps them working, even when your Mac is off.");
     expect(track).toHaveBeenCalledWith("upsell_shown", { source: "app_invested" });
@@ -67,7 +67,7 @@ describe("the sidebar dusk cloud card", () => {
     expect(f.state.config.onboarding.hintsSeen).toContain("cloud-invested-v1");
     expect(await settle(), "holds for the rest of the launch").toContain("good crew of bots");
     today(1);
-    expect(await launch(), "the next launch is back to the plain card").not.toContain("data-invested");
+    expect(await launch(), "the next launch is back to the plain card").toContain('data-spot-cta="cloud"');
   });
 
   it("quotes messages and routines too", async () => {
@@ -85,7 +85,7 @@ describe("the sidebar dusk cloud card", () => {
     const buttons: any[] = [];
     const walk = (node: any) => { if (!node || typeof node !== "object") return; if (node.type === "button") buttons.push(node); [node.props?.children].flat().forEach(walk); };
     walk(element.type(element.props));
-    buttons.find(button => button.props["data-sidebar-cloud-start"] === "").props.onClick();
+    buttons.find(button => button.props["data-spot-cta-start"] === "").props.onClick();
     expect(f.dispatch).toHaveBeenCalledWith({ type: "openCloudAdd", source: "app_invested", signIn: true });
     expect(track).toHaveBeenCalledWith("upsell_click", { source: "app_invested", ms: expect.any(Number) });
     expect(await settle(), "clicked: this showing is over").toBe("");
@@ -110,7 +110,7 @@ describe("the sidebar dusk cloud card", () => {
     today(30, { shown: 1, lastShownAt: Date.now() - 3600_000 });
     expect(await launch()).toBe("");
     today(30, { shown: 1, lastShownAt: Date.now() - 3 * 3600_000 - 1 });
-    expect(await launch(), "a busy day earns another, three hours on").toContain("data-sidebar-cloud-card");
+    expect(await launch(), "a busy day earns another, three hours on").toContain("data-spot-cta");
     today(30, { shown: 3, lastShownAt: Date.now() - 5 * 3600_000 });
     expect(await launch(), "three at most").toBe("");
   });
@@ -135,6 +135,6 @@ describe("the sidebar dusk cloud card", () => {
 
   it("waits below every threshold", async () => {
     f.state.bots = [...bots(1, 25), ...bots(1, 24)];
-    expect(await launch()).not.toContain("data-invested");
+    expect(await launch()).not.toContain("cloud-invested");
   });
 });

@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AppUpdateState } from "../../electron/app-update.mjs";
 import { closeFeedback, useFeedbackOpen } from "@/lib/feedback-sheet";
 import type { ServerUpdateCheck } from "@/lib/server-update";
-import { RailSpot, SidebarSpot } from "./SidebarSpot";
+import { RailSpot, SidebarSpot, type SpotCta } from "./SidebarSpot";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -121,5 +121,47 @@ describe("the sidebar's feedback and update spot", () => {
     expect(spot()?.getAttribute("aria-label")).toBe("Restart to update, 0.2.7");
     await act(async () => { spot()!.click(); });
     expect(bridge.restart).toHaveBeenCalledTimes(1);
+  });
+
+  describe("an offer in Give feedback's place", () => {
+    const started = vi.fn();
+    /** the footer's side: the offer holds until its close ends it, as the dusk cloud nudge does */
+    function WithOffer() {
+      const [on, setOn] = useState(true);
+      const cta: SpotCta | null = on ? { id: "cloud", title: "Keep your bots working", hint: "On dusk cloud, they keep replying", art: "clock", closeLabel: "Hide",
+        onStart: started, onClose: () => setOn(false) } : null;
+      return createElement(SidebarSpot, { check, cta });
+    }
+    const mountOffer = async () => { await act(async () => { root.render([createElement(WithOffer, { key: "spot" }), createElement(Probe, { key: "probe" })]); }); };
+    const close = () => host.querySelector<HTMLButtonElement>("[data-spot-cta-close]");
+
+    it("shows the offer as the same one-line card, and its press is the offer's", async () => {
+      await mountOffer();
+      expect(spot()?.dataset.sidebarSpot).toBe("cta");
+      expect(spot()?.dataset.spotCta).toBe("cloud");
+      expect(host.textContent).toBe("Keep your bots working");
+      expect(host.querySelector("[data-sidebar-spot='feedback']")).toBeNull();
+      await act(async () => { host.querySelector<HTMLButtonElement>("[data-spot-cta-start]")!.click(); });
+      expect(started).toHaveBeenCalledTimes(1);
+      expect(opened).toBe(false);
+    });
+
+    it("its close is a named button beside the card, and closing brings Give feedback back", async () => {
+      await mountOffer();
+      expect(close()?.getAttribute("aria-label")).toBe("Hide");
+      expect(close()?.closest("[data-spot-cta-start]")).toBeNull();
+      await act(async () => { close()!.click(); });
+      expect(started).not.toHaveBeenCalled();
+      expect(spot()?.dataset.sidebarSpot).toBe("feedback");
+      expect(spot()?.textContent).toBe("Give feedback");
+    });
+
+    it("an update goes first, and the offer is back once it's gone", async () => {
+      await mountOffer();
+      await hear({ ready: "0.2.7", available: "0.2.7", progress: null, mode: "self" });
+      expect(spot()?.dataset.sidebarSpot).toBe("update");
+      await hear({ ready: null, available: null, progress: null, mode: "self" });
+      expect(spot()?.dataset.sidebarSpot).toBe("cta");
+    });
   });
 });

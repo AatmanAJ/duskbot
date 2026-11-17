@@ -15,8 +15,7 @@ import { saveWelcomeDraft } from "../../src/lib/welcome-draft";
 import { BEAT_ORDER, type BeatId } from "../../src/lib/onboarding";
 import { useStore } from "../../src/state/store";
 import { CloudReady } from "../../src/components/CloudSetup";
-import { AppUpdatePill } from "../../src/components/AppUpdatePill";
-import { SidebarCloudNudge } from "../../src/components/CloudUpsell";
+import { SidebarSpot, SpotCtaCard } from "../../src/components/SidebarSpot";
 import type { CloudOffer } from "../../electron/cloud-home.mjs";
 import { useSidebarFooterSlot } from "../../src/lib/sidebar-footer-slot";
 import { auditLayout } from "./chat-gallery/layout-audit";
@@ -78,10 +77,10 @@ function Cards() {
   }, []);
   // ?card=app-update-available / -downloading / -ready: the sidebar's update pill, where it sits above the account row
   const update = APP_UPDATE[params.get("card") ?? ""];
-  if (update && slot) return createPortal(<AppUpdatePill bridge={update} />, slot);
+  if (update && slot) return createPortal(<SidebarSpot bridge={update} />, slot);
   if (params.get("card") === "cloud-ready") return <CloudReady slot={slot} onDone={() => undefined} />;
-  // ?card=cloud-nudge: the sidebar's dusk cloud card, as a scheduled showing puts it above the account row
-  if (params.get("card") === "cloud-nudge" && slot) return createPortal(<SidebarCloudNudge invested={null} onDismiss={() => undefined} onStart={() => undefined} />, slot);
+  // ?card=cloud-nudge: the dusk cloud offer as a scheduled showing puts it in the spot above the account row
+  if (params.get("card") === "cloud-nudge" && slot) return createPortal(<SpotCtaCard cta={{ id: "cloud", title: "Keep your bots working", art: "clock", closeLabel: "Hide", onStart: () => undefined, onClose: () => undefined }} />, slot);
   // ?card=toast-done / toast-error: a passing toast, held on screen
   if (params.get("card") === "toast-done") return <Toast text="Pepper is ready to use" action={{ label: "Undo", onClick: () => undefined }} timeoutMs={600_000} onDone={() => undefined} />;
   if (params.get("card") === "toast-error") return <Toast tone="error" text="Couldn't save Pepper's name. Try again." timeoutMs={600_000} onDone={() => undefined} />;
