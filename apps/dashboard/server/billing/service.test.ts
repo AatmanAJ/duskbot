@@ -964,6 +964,15 @@ describe("plan switching", () => {
     await switchTo(sub, team());
     expect(sub.scheduledChange).toBeUndefined(); expect(sub.cart).toEqual(team());
   });
+  it("a renewal moved earlier brings a scheduled change with it", async () => {
+    const { sub } = await buy(pro()); await switchTo(sub, plus());
+    const early = time + 2 * day;
+    await service.moveRenewal(owner, sub.id, early);
+    expect(sub.scheduledChange?.at).toBe(early);
+    provider.subscriptions.get(sub.providerSubscriptionId!)!.nextBillingAt = time + day;
+    time += day; deliver(provider.renew(sub.providerSubscriptionId!));
+    expect(sub).toMatchObject({ cart: plus(), totalCents: 2000 }); expect(sub.scheduledChange).toBeUndefined();
+  });
   it("a renewal of the old plan past the date drops a scheduled change the provider let go", async () => {
     const { sub } = await buy(pro()); await switchTo(sub, plus());
     provider.subscriptions.get(sub.providerSubscriptionId!)!.scheduled = null;

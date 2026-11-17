@@ -474,7 +474,8 @@ export function createBillingService(options: BillingServiceOptions) {
     const changing = ["plan_changed", "active", "renewed"].includes(event.type) && event.status === "active";
     if (sub.pendingChange && changing && matchesProduct(event, sub.pendingChange.products)) applyChange(sub, sub.pendingChange, checkout.email, event.nextBillingAt);
     // a scheduled change lands with the renewal that bills it; a renewal of the old plan past its date means the provider dropped it
-    if (sub.scheduledChange && changing && now() >= sub.scheduledChange.at - SCHEDULED_EARLY_MS && matchesProduct(event, sub.scheduledChange.products)) applyChange(sub, sub.scheduledChange, checkout.email);
+    // a renewal billing the scheduled plan is the switch, whenever it comes (a renewal moved earlier brings it forward)
+    if (sub.scheduledChange && changing && (event.type === "renewed" || now() >= sub.scheduledChange.at - SCHEDULED_EARLY_MS) && matchesProduct(event, sub.scheduledChange.products)) applyChange(sub, sub.scheduledChange, checkout.email);
     else if (sub.scheduledChange && event.type === "renewed" && event.nextBillingAt !== null && event.nextBillingAt > sub.scheduledChange.at && !matchesProduct(event, sub.scheduledChange.products)) {
       console.warn(`billing: subscription ${sub.id} renewed on its old plan; its scheduled change was dropped by the provider`);
       delete sub.scheduledChange;
@@ -977,6 +978,7 @@ export function createBillingService(options: BillingServiceOptions) {
     const before = copy(state);
     try {
       sub.currentPeriodEnd = until;
+      if (sub.scheduledChange) sub.scheduledChange.at = until;
       if (sub.currentPeriodStart === null || sub.currentPeriodStart >= until) sub.currentPeriodStart = Math.min(sub.currentPeriodStart ?? now(), now());
       sub.updatedAt = now(); sub.version++;
       refreshLicense(sub, state.checkouts.find(checkout => checkout.id === sub.checkoutId)?.email ?? account.email);
