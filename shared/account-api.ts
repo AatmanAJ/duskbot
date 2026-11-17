@@ -261,7 +261,7 @@ export interface AppSessionIdentity {
 /** the error answer of the /v1 routes: { error: human text, code }. the Admin contract v1 routes (/api/cloud/*) answer
  * { error: code } instead, as the shipped apps read it. */
 export type AccountErrorCode =
-  | "billing_active"
+  | "billing_active" | "delete_on_account_page"
   | "invalid_request" | "invalid_email" | "wrong_code" | "invalid_code" | "expired" | "rate_limited" | "signup_closed"
   | "used" | "signed_out" | "confirm" | "other_account" | "invalid_token" | "forbidden" | "csrf" | "not_found" | "last_identity" | "identity_taken"
   | "authorization_pending" | "slow_down" | "access_denied" | "expired_token" | "invalid_grant" | "provider_unavailable" | "failed";

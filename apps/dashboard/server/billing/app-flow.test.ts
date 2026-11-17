@@ -308,7 +308,7 @@ it("refuses an older desktop's Start fresh account delete, so a local reset neve
 
   // what an older desktop's Start fresh sent: refused, the account, its plan and its cloud all stay
   const token = f.token();
-  expect(await f.request("/v1/app/delete-account", { email: owner.email, destroyDesktopsNow: true }, token)).toMatchObject({ status: 409, data: { error: "delete_on_account_page" } });
+  expect(await f.request("/v1/app/delete-account", { email: owner.email, destroyDesktopsNow: true }, token)).toMatchObject({ status: 409, data: { code: "delete_on_account_page" } });
   expect(await f.request("/v1/app/delete-account", { email: owner.email, destroyDesktopsNow: false }, token)).toMatchObject({ status: 409 });
   expect((await f.session()).account).toMatchObject({ id: owner.id });
   expect(f.billing.fake!.cancelCalls).toEqual([]);
