@@ -28,6 +28,12 @@ function spread(seed: string, periodMs: number): string {
   return `-${(h >>> 0) % periodMs}ms`;
 }
 
+/** The sprite's drawn size nearest `wanted` at which each of its `grid` pixels covers a whole number of screen pixels. */
+export function crispSize(wanted: number, grid: number, dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1): number {
+  const ratio = Math.max(1, Math.round(dpr));
+  return (Math.max(1, Math.round((wanted / grid) * ratio)) * grid) / ratio;
+}
+
 /** The bot's own pixel mascot at work, small enough to sit before a word: it bobs, blinks and glances side to side.
  * Each part moves on its own HTML layer by transform alone, so the loop stays on the compositor. */
 export function WorkingMascot({ bot, size, eyes, seed = "", className }: { bot: WorkingBot; size: number; eyes?: string; seed?: string; className?: string }) {
@@ -35,7 +41,7 @@ export function WorkingMascot({ bot, size, eyes, seed = "", className }: { bot: 
   const body = bodyShapeFor(wornBody(bot.mascotBody, bot.color, dressed));
   const shape = useMemo(() => shapeOf(body), [body]);
   const fit = bodyFit(body);
-  const drawn = Math.round(size * fit.scale);
+  const drawn = crispSize(size * fit.scale, shape.G);
   const box = { width: drawn, height: drawn, left: Math.round((size - drawn) / 2 + fit.x * size), top: Math.round((size - drawn) / 2 + fit.y * size) };
   const view = `0 0 ${shape.G} ${shape.G}`;
   const key = `${bot.id ?? ""}|${seed}`;

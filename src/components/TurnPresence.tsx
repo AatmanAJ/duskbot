@@ -245,7 +245,7 @@ export function TurnPresence({
   const step = useStatusLabel(label ? [label] : now, label ? `label:${label}` : phase ?? now?.[0] ?? "", seed, since, mounted && simpleStatus, label ? NOTHING : fun);
   if (!mounted) return null;
   const status = simpleStatus ? (
-    <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[14px] leading-[22px]" data-turn-status>
+    <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[15px] leading-[22px]" data-turn-status>
       <span className="grid min-w-0">
         {step && <StepPhrase key={step.key} text={step.text} hover={hover} />}
       </span>

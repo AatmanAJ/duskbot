@@ -45,7 +45,7 @@ export function sidebarWorkingWord(status: LiveStatus | null, label: string | un
 type WorkingRowBot = Pick<Bot, "id" | "threadId" | "tasks" | "color" | "mascotBody" | "mascotFaceColor">;
 
 /** A working row's preview: the bot's tiny mascot at work and one short word. */
-export function SidebarWorkingWord({ bot, last, size = 14, className }: { bot: WorkingRowBot; last?: Message; size?: number; className?: string }) {
+export function SidebarWorkingWord({ bot, last, size = 16, className }: { bot: WorkingRowBot; last?: Message; size?: number; className?: string }) {
   const threadId = workingThreadId(bot);
   const live = useTurnLive(threadId);
   const word = sidebarWorkingWord(live.status, live.label, threadId === bot.threadId ? last : undefined);

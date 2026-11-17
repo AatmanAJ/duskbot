@@ -91,7 +91,7 @@ describe("the working line", () => {
     expect(mascot()).not.toBeNull();
     expect(statusLine()).toBe("Thinking");
     const working = mascot()!.querySelector("[data-working-mascot]") as HTMLElement;
-    expect(working.style.width).toBe("20px");
+    expect(working.style.width).toBe("24px");
     expect(working.querySelector(".working-mascot-bob .working-mascot-glance .working-mascot-blink"), "it bobs, glances and blinks").not.toBeNull();
     expect(mascot()!.querySelector("[data-dusk-mark]"), "no engine-drawn mark, so no dots").toBeNull();
     const row = mascot()!.firstElementChild as HTMLElement;

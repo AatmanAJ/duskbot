@@ -373,3 +373,4 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
 }
 .dusk-mobile [data-mobile-chat] [data-chat-bubble]:not([class*="rounded-es-"]):not([class*="rounded-ee-"]) { border-radius: 19px; }
 .dusk-mobile [data-mobile-chat] [data-chat-bubble] :is(.chat-text, .chat-md, p, li, blockquote, td, th) { font-size: inherit; line-height: inherit; }
+.dusk-mobile [data-mobile-chat] .turn-label-slot { font-size: 17px; }

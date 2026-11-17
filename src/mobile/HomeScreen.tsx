@@ -203,7 +203,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
 
       {!loaderGone && !state.loadFailed && (
         <div data-home-loader="" className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center">
-          <MascotLoader leaving={state.hydrated === true} waking={state.loadWaking === true} onExit={() => setListIn(true)} onGone={() => setLoaderGone(true)} />
+          <MascotLoader naps={false} leaving={state.hydrated === true} waking={state.loadWaking === true} onExit={() => setListIn(true)} onGone={() => setLoaderGone(true)} />
         </div>
       )}
       <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-0 z-[5] h-[calc(var(--m-safe-top)+72px)] bg-gradient-to-b from-app from-60% to-transparent transition-opacity duration-150", scrolled ? "opacity-100" : "opacity-0")} />
@@ -323,7 +323,7 @@ function RowFace({ entry }: { entry: Entry }) {
         <span className="mt-0.5 flex items-center gap-2">
           <span className={cn("min-w-0 flex-1 truncate text-[14px] leading-5", entry.unread ? "text-ink" : "text-ink-secondary")}>
             {entry.kind === "bot" && working && !entry.bot.waitingForTeammates && entry.bot.activity !== "waiting-on-you"
-              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} size={16} />
+              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} size={20} />
               : entry.preview || " "}
           </span>
         </span>
