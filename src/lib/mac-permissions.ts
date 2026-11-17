@@ -22,6 +22,17 @@ export function macPermissionsBridge(): MacPermissionsBridge | null {
   return desktop.macPermissions ?? null;
 }
 
+const PANES: Record<MacPermission, string> = { accessibility: "Privacy_Accessibility", screen: "Privacy_ScreenCapture" };
+
+/** System Settings at this permission's own list, where any app (dusk bot or its helper) is turned on. */
+export async function openMacPermissionPane(kind: MacPermission): Promise<void> {
+  const desktop = typeof window === "undefined" ? undefined : window.duskDesktop;
+  try {
+    if (desktop?.permOpenSettings) { await desktop.permOpenSettings(kind); return; }
+  } catch {}
+  await desktop?.openExternal?.(`x-apple.systempreferences:com.apple.preference.security?${PANES[kind]}`).catch(() => {});
+}
+
 export function permissionsMissing(status: MacPermissionStatus | null): boolean {
   if (!status?.supported) return false;
   return MAC_PERMISSIONS.some((kind) => status[kind] !== "granted");

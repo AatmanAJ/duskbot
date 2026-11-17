@@ -3291,6 +3291,7 @@
   "funnel.permissions.allowed": "Allowed",
   "funnel.permissions.reopenLine": "Turned on screen recording? Reopen {app} to finish.",
   "funnel.permissions.reopen": "Reopen",
+  "funnel.permissions.helperLine": "Turn on {helper} in the list that opens, then come back here.",
   "funnel.permissions.later": "Later",
   "funnel.permissions.done": "Done",
   "funnel.permissions.noteTitle": "{app}",

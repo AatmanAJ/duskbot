@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check } from "../../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { MAC_PERMISSIONS, screenNeedsReopen, type MacPermission, type MacPermissionStatus, type MacPermissionsBridge } from "@/lib/mac-permissions";
+import { MAC_PERMISSIONS, openMacPermissionPane, screenNeedsReopen, type MacPermission, type MacPermissionState, type MacPermissionStatus, type MacPermissionsBridge } from "@/lib/mac-permissions";
+import { macCuaPermissionHelper, missingMacCuaPermissions } from "@/lib/mac-cua-permissions";
+import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { Art, type ArtName } from "../ui/Art";
 import { GrokDialog, mdPrimaryCls } from "../ui/GrokDialog";
 import { PRIMARY, QUIET, StepArt, StepFrame } from "./FunnelSteps";
@@ -25,8 +27,15 @@ export function MacPermissionList({ bridge, relaunch, onStatus }: {
 }) {
   const [status, setStatus] = useState<MacPermissionStatus | null>(null);
   const [busy, setBusy] = useState<MacPermission | null>(null);
+  // panes opened for a helper's grant: it is then theirs to turn on in System Settings
+  const [opened, setOpened] = useState<ReadonlySet<MacPermission>>(new Set());
   const live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
+  // a copy run from source drives this Mac through a helper app, so the grants that count are the helper's, as it reports them
+  const { capabilities } = useDesktopCapabilities();
+  const local = capabilities.localComputer;
+  const helper = local?.available === false ? macCuaPermissionHelper(local.message) : null;
+  const helperMissing = helper ? missingMacCuaPermissions(local?.message) : [];
 
   const read = useCallback(() => {
     void bridge.status().then((next) => { if (live.current) setStatus(next); }, () => {});
@@ -34,24 +43,35 @@ export function MacPermissionList({ bridge, relaunch, onStatus }: {
   useEffect(() => {
     read();
     const timer = setInterval(read, PERMISSIONS_POLL_MS);
-    window.addEventListener("focus", read);
-    return () => { clearInterval(timer); window.removeEventListener("focus", read); };
-  }, [read]);
+    // back from System Settings: the helper looks again for what was turned on there
+    const back = () => { read(); if (helper) void window.duskDesktop?.localControl?.retry?.().catch(() => {}); };
+    window.addEventListener("focus", back);
+    return () => { clearInterval(timer); window.removeEventListener("focus", back); };
+  }, [read, helper]);
 
   const ask = async (kind: MacPermission) => {
     setBusy(kind);
     try {
-      const next = await bridge.request(kind);
-      if (live.current) setStatus(next);
-    } catch {
-      read();
+      if (helper) {
+        await openMacPermissionPane(kind);
+        if (live.current) setOpened((now) => new Set(now).add(kind));
+        return;
+      }
+      const next = await bridge.request(kind).catch(() => null);
+      // an app whose main process cannot read or ask (one started before this bridge) still gets the pane
+      if (!next?.supported) await openMacPermissionPane(kind);
+      else if (live.current) setStatus(next);
     } finally {
       if (live.current) setBusy(null);
+      read();
     }
   };
 
   const shown = status?.supported ? status : null;
-  const granted = shown ? MAC_PERMISSIONS.filter((kind) => shown[kind] === "granted").length : 0;
+  const stateOf = (kind: MacPermission): MacPermissionState => helper
+    ? helperMissing.includes(kind) ? opened.has(kind) ? "asked" : "missing" : "granted"
+    : shown?.[kind] ?? "missing";
+  const granted = MAC_PERMISSIONS.filter((kind) => stateOf(kind) === "granted").length;
   const told = useRef(onStatus);
   told.current = onStatus;
   useEffect(() => { told.current?.(granted); }, [granted]);
@@ -61,7 +81,7 @@ export function MacPermissionList({ bridge, relaunch, onStatus }: {
       <ul className="flex w-full max-w-[420px] flex-col gap-1.5 text-start">
         {MAC_PERMISSIONS.map((kind) => {
           const row = ROWS[kind];
-          const state = shown?.[kind] ?? "missing";
+          const state = stateOf(kind);
           return (
             <li key={kind} data-permission={kind} data-permission-state={state}
               className="flex min-h-14 items-center gap-3.5 rounded-2xl bg-ink/[0.035] py-2.5 pe-2.5 ps-4">
@@ -75,7 +95,7 @@ export function MacPermissionList({ bridge, relaunch, onStatus }: {
                   <Check size={18} aria-hidden="true" />
                 </span>
               ) : (
-                <button type="button" data-permission-ask={kind} disabled={busy !== null || !shown}
+                <button type="button" data-permission-ask={kind} disabled={busy === kind}
                   aria-label={`${t(state === "asked" ? "funnel.permissions.openSettings" : "funnel.permissions.allow")}: ${t(row.name)}`}
                   onClick={() => void ask(kind)}
                   className="ui-button ui-button-pill min-h-9 shrink-0 whitespace-nowrap bg-ink/[0.07] px-4 hover:bg-ink/[0.11] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100">
@@ -86,7 +106,12 @@ export function MacPermissionList({ bridge, relaunch, onStatus }: {
           );
         })}
       </ul>
-      {screenNeedsReopen(shown) && (
+      {helper && helperMissing.length > 0 && (
+        <p data-permissions-helper="" className="mt-4 max-w-[420px] text-center text-[13px] leading-[18px] text-ink-secondary">
+          {t("funnel.permissions.helperLine", { helper })}
+        </p>
+      )}
+      {!helper && screenNeedsReopen(shown) && (
         <p data-permissions-reopen="" className="mt-4 flex max-w-[420px] flex-wrap items-center justify-center gap-x-1 text-[13px] leading-[18px] text-ink-secondary">
           {t("funnel.permissions.reopenLine")}
           {relaunch && <button type="button" onClick={relaunch} className={cn(QUIET, "min-h-0 px-1.5 py-0.5 text-ink underline-offset-2 hover:underline")}>{t("funnel.permissions.reopen")}</button>}
