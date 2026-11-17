@@ -8,7 +8,7 @@ export const KEEP_WORDS: ReadonlySet<string> = new Set([
   "PowerShell", "Qwen", "Reddit", "Safari", "Slack", "Stripe", "Tailscale", "Telegram", "Terminal", "Twitter", "Ubuntu",
   "Unsloth", "Venice", "Vercel", "Wayland", "Whop", "Windows", "Windsurf", "Xorg", "Accessibility", "Downloads",
   // people and places
-  "Milind", "Omkar", "Karan", "Bansal", "Europe", "Lisbon",
+  "Karan", "Bansal", "Europe", "Lisbon",
   // days, months, languages
   "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
   "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December",
