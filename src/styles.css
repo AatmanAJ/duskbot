@@ -1303,11 +1303,11 @@ a.link-pill:focus-visible {
   margin-top: 10px;
 }
 /* A card under its own bot's bubble (and a bubble under its card) sits 12px below it, not the 16px between senders. */
-[data-simple-rows] > [data-tuck] > :first-child {
+:is([data-simple-rows], [data-simple-rows] > [data-virtual-rows]) > [data-tuck] > :first-child {
   margin-top: -4px;
 }
 /* Hand-off rows one after another sit 4px apart, one short list. */
-[data-simple-rows] > [data-handoff-next] > :first-child {
+:is([data-simple-rows], [data-simple-rows] > [data-virtual-rows]) > [data-handoff-next] > :first-child {
   margin-top: -12px;
 }
 /* Arabic and Hebrew script needs the taller line the rest of the app gives it. */

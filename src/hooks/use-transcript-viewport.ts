@@ -12,17 +12,13 @@ import {
 } from "react";
 import { BOTTOM_FOLLOW_THRESHOLD, shouldResumeBottomFollow, useBottomFollowResize } from "@/lib/bottom-follow";
 import { useFocusMessage } from "@/lib/focus-message";
-import {
-  TRANSCRIPT_WINDOW_SIZE,
-  expandWindowStart,
-  focusWindowRange,
-  followWindowStart,
-  resolveTranscriptWindow,
-  tailWindowStart,
-} from "@/lib/transcript-window";
 import { reducedMotion } from "@/lib/onboarding";
 import { useArrivalFlow } from "@/hooks/use-arrival-flow";
-import { useStore } from "@/state/store";
+import { useDispatch, useStoreSelector, type AppState } from "@/state/store";
+import type { TranscriptViewport } from "@/components/TranscriptRows";
+
+const selectFocusMessage = (state: AppState) => state.focusMessage;
+const NO_ROWS: readonly string[] = [];
 
 export const AUTO_EXPAND_TOP_THRESHOLD = 250;
 
@@ -35,6 +31,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   pinOn,
   transcriptShown = true,
   hasMore = false,
+  keepMounted = NO_ROWS,
 }: {
   ownerId: string;
   threadId: string;
@@ -42,8 +39,11 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   pinOn: DependencyList;
   transcriptShown?: boolean;
   hasMore?: boolean;
+  /** Messages whose rows stay mounted while scrolled away (a bubble being edited). */
+  keepMounted?: readonly string[];
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const focusMessage = useStoreSelector(selectFocusMessage);
   const scrollRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   // wraps the transcript column: it clips the column while arrivals move it, so the scroll range never includes them
@@ -57,35 +57,6 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   const touchY = useRef(0);
 
   const transcriptKey = `${ownerId}:${threadId}`;
-  const tailStart = tailWindowStart(messages.length);
-  const [transcriptWindow, setTranscriptWindow] = useState<{
-    key: string;
-    start: number;
-    end: number | null;
-  }>(() => ({
-    key: transcriptKey,
-    start: tailStart,
-    end: null,
-  }));
-  const switched = transcriptWindow.key !== transcriptKey;
-  const nextStart = switched
-    ? tailStart
-    : follow && transcriptWindow.end === null
-      ? followWindowStart(messages, transcriptWindow.start)
-      : transcriptWindow.start;
-  if (switched || nextStart !== transcriptWindow.start) {
-    setTranscriptWindow({ key: transcriptKey, start: nextStart, end: null });
-  }
-  const {
-    visible: windowedMessages,
-    hiddenCount,
-    laterCount,
-    startIndex,
-    endIndex,
-  } = useMemo(
-    () => resolveTranscriptWindow(messages, transcriptWindow.start, TRANSCRIPT_WINDOW_SIZE, transcriptWindow.end),
-    [messages, transcriptWindow.start, transcriptWindow.end],
-  );
 
   const setBottomFollow = useCallback((next: boolean) => {
     followRef.current = next;
@@ -96,16 +67,14 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   useEffect(() => setBottomFollow(true), [transcriptKey, setBottomFollow]);
 
   const appliedFocus = useRef<number | null>(null);
+  const pendingFocus = focusMessage && !focusMessage.consumed && focusMessage.threadId === threadId ? focusMessage : null;
   useEffect(() => {
-    const focus = state.focusMessage;
-    if (!focus || focus.consumed || focus.threadId !== threadId || appliedFocus.current === focus.nonce) return;
-    const targetIndex = messages.findIndex((message) => message.id === focus.messageId);
-    if (targetIndex < 0) return;
+    const focus = pendingFocus;
+    if (!focus || appliedFocus.current === focus.nonce) return;
+    if (!messages.some((message) => message.id === focus.messageId)) return;
     appliedFocus.current = focus.nonce;
-    const range = focusWindowRange(messages.length, targetIndex);
     setBottomFollow(false);
-    setTranscriptWindow({ key: transcriptKey, start: range.start, end: range.end });
-  }, [threadId, messages, setBottomFollow, state.focusMessage, transcriptKey]);
+  }, [messages, setBottomFollow, pendingFocus]);
   useFocusMessage(threadId, messages.length > 0);
 
   // Shift scrollTop by the growth after commit (scroll anchoring is off here); a switch drops the capture.
@@ -132,7 +101,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     el.scrollTop += el.scrollHeight - captured.height;
     previousScrollTop.current = el.scrollTop;
     expandingRef.current = false;
-  }, [transcriptWindow.start, oldestId, transcriptKey]);
+  }, [oldestId, transcriptKey]);
 
   // `follow` is omitted on purpose: re-arming only arms future content and never scrolls. Before paint, so an opened
   // chat's first frame is already at its newest row; a switch re-arms following here rather than a frame later.
@@ -141,24 +110,13 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     if (seenNewest.current.key !== transcriptKey) setBottomFollow(true);
     const el = scrollRef.current;
     // a search jump into this thread places the transcript itself
-    const focus = state.focusMessage;
-    if (!el || !followRef.current || (focus && !focus.consumed && focus.threadId === threadId && appliedFocus.current !== focus.nonce)) return;
+    if (!el || !followRef.current || (pendingFocus && appliedFocus.current !== pendingFocus.nonce)) return;
     el.scrollTo({ top: el.scrollHeight });
     previousScrollTop.current = el.scrollTop;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pinOn is the caller's dependency list
   }, [transcriptKey, messages.length, ...pinOn]);
 
-  const showEarlier = () => {
-    holdRowForPrepend();
-    const start = expandWindowStart(startIndex);
-    setTranscriptWindow((w) => ({ ...w, start }));
-  };
-  const showLater = () => {
-    setBottomFollow(false);
-    const nextEnd = Math.min(messages.length, endIndex + TRANSCRIPT_WINDOW_SIZE);
-    setTranscriptWindow((w) => ({ ...w, end: nextEnd >= messages.length ? null : nextEnd }));
-  };
-  const olderPending = Boolean(state.loadingOlder[threadId]);
+  const olderPending = useStoreSelector((state) => Boolean(state.loadingOlder[threadId]));
   const loadOlder = () => {
     holdRowForPrepend();
     dispatch({ type: "loadOlderMessages", threadId });
@@ -169,18 +127,11 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   }, [olderPending]);
 
   const triggerAutoEarlier = useCallback(() => {
-    if (expandingRef.current) return;
-    if (hiddenCount > 0) {
-      expandingRef.current = true;
-      holdRowForPrepend();
-      const start = expandWindowStart(startIndex);
-      setTranscriptWindow((w) => ({ ...w, start }));
-    } else if (hasMore && !olderPending) {
-      expandingRef.current = true;
-      holdRowForPrepend();
-      dispatch({ type: "loadOlderMessages", threadId });
-    }
-  }, [hiddenCount, startIndex, hasMore, olderPending, threadId, dispatch, transcriptKey]);
+    if (expandingRef.current || !hasMore || olderPending) return;
+    expandingRef.current = true;
+    holdRowForPrepend();
+    dispatch({ type: "loadOlderMessages", threadId });
+  }, [hasMore, olderPending, threadId, dispatch, transcriptKey]);
 
   useEffect(() => {
     const sentinel = topSentinelRef.current;
@@ -217,32 +168,30 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     const el = scrollRef.current;
     return Boolean(el && el.scrollHeight - el.clientHeight >= 1);
   };
-  // Rows that draw nothing (hidden tool steps) can leave a window too short to scroll while earlier ones exist.
-  const canScrollUp = () => canScroll() || hiddenCount > 0 || Boolean(hasMore);
+  // Rows that draw nothing (hidden tool steps) can leave a transcript too short to scroll while earlier pages exist.
+  const canScrollUp = () => canScroll() || Boolean(hasMore);
   const atEnd = () => {
     const el = scrollRef.current;
     return !el || el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_FOLLOW_THRESHOLD;
   };
   const jumpToLatest = () => {
     setBottomFollow(true);
-    setTranscriptWindow({ key: transcriptKey, start: tailStart, end: null });
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: reducedMotion() ? "auto" : "smooth" });
     });
   };
 
-  // the person's own new message brings the transcript back to the latest, however far up or windowed it was
+  // the person's own new message brings the transcript back to the latest, however far up it was
   const newest = messages.at(-1);
   const seenNewest = useRef({ key: transcriptKey, id: newest?.id });
   const latestJump = useRef(jumpToLatest);
   latestJump.current = jumpToLatest;
-  const windowed = transcriptWindow.end !== null;
   useEffect(() => {
     const seen = seenNewest.current;
     seenNewest.current = { key: transcriptKey, id: newest?.id };
     if (seen.key !== transcriptKey || seen.id === newest?.id || newest?.role !== "user") return;
-    if (!followRef.current || windowed) latestJump.current();
-  }, [transcriptKey, newest?.id, newest?.role, windowed]);
+    if (!followRef.current) latestJump.current();
+  }, [transcriptKey, newest?.id, newest?.role]);
 
   const scrollHandlers = {
     onPointerDown: (e: PointerEvent<HTMLDivElement>) => {
@@ -297,6 +246,12 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
 
   useArrivalFlow({ scrollRef, clipRef, columnRef: transcriptRef, transcriptKey, following: follow });
 
+  const focusMessageId = pendingFocus?.messageId ?? null;
+  const viewport = useMemo<TranscriptViewport>(
+    () => ({ scrollRef, columnRef: transcriptRef, transcriptKey, startAtEnd: focusMessageId === null, focusMessageId, keepMounted }),
+    [transcriptKey, focusMessageId, keepMounted],
+  );
+
   return {
     scrollRef,
     clipRef,
@@ -304,13 +259,9 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     topSentinelRef,
     transcriptKey,
     following: follow,
-    windowedMessages,
-    hiddenCount,
-    laterCount,
+    viewport,
     olderPending,
-    hasEarlier: hiddenCount > 0 || Boolean(hasMore),
-    showEarlier,
-    showLater,
+    hasEarlier: Boolean(hasMore),
     loadOlder,
     jumpToLatest,
     scrollHandlers,

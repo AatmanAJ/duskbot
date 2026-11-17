@@ -28,6 +28,23 @@ export interface TranscriptRow {
   estimate: number;
 }
 
+const LINE_PX = 22;
+const CHARS_PER_LINE = 72;
+
+/** A guess at a row's height before it is measured: a bubble's by its text, a card's and a step's by their kind. */
+export function estimateRowHeight(messages: readonly { kind: string; text?: string; attachments?: readonly unknown[] }[]): number {
+  let height = 0;
+  for (const message of messages) {
+    if (message.kind === "text") {
+      const text = message.text ?? "";
+      const lines = text.split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / CHARS_PER_LINE)), 0);
+      height += 20 + Math.min(lines, 60) * LINE_PX + (message.attachments?.length ? 120 : 0);
+    } else if (message.kind === "activity" || message.kind === "digest" || message.kind === "compaction") height += 28;
+    else height += 140;
+  }
+  return Math.max(24, Math.min(height, 1600));
+}
+
 type RowElement = ReactElement<{ className?: string; style?: CSSProperties; "data-index"?: number; ref?: unknown }>;
 type DrawnRow = TranscriptRow & { element: RowElement };
 

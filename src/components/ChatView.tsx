@@ -1,4 +1,4 @@
-import { createContext, memo, startTransition, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType, type Dispatch, type Ref, type RefObject } from "react";
+import { createContext, memo, startTransition, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType, type Dispatch, type ReactNode, type Ref, type RefObject } from "react";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { ThreadLinkContext } from "@/components/ThreadLinkMenu";
 import { ChevronLeft, ChevronRight, Copy, Monitor, RefreshCw, Square, Webhook } from "../icons";
@@ -14,7 +14,6 @@ import { useCaptionChrome, useDesktopCapabilities } from "@/components/DesktopCa
 import {
   currentTaskBot,
   shownTranscript,
-  useStore,
   formatTime,
   openRoomThread,
   openThread,
@@ -27,7 +26,11 @@ import {
   type AppState,
   awayFromMainThread,
   openBot,
+  useDispatch,
+  useStoreSelector,
 } from "@/state/store";
+import { botById, storeIndex } from "@/state/store-index";
+import { sameDrawnBots, selectBots, selectConfig, selectError, selectInstances, selectNotice, selectSettingsOpen } from "@/state/store-selectors";
 import { EngineSetup } from "./EngineSetup";
 import { CHATGPT_USAGE_URL, ManageUsageLink } from "./ChatGptPlanStatus";
 import { CODEX_USAGE_URL, codexUsageLimitReached } from "../../shared/codex-usage-limit";
@@ -104,6 +107,7 @@ import { DigestChip } from "./DigestChip";
 import { WeeklyLimitLine } from "./usage/WeeklyLimitLine";
 import { ChatHeadRole, chiefOfStaffBadge } from "./BotRole";
 import { ChatHeadPill } from "./ChatHeadPill"; import { useStoreRef } from "@/state/store-ref";
+import { estimateRowHeight, TranscriptRows, TranscriptViewportContext, VIRTUAL_TRANSCRIPT_FROM, type TranscriptRow } from "./TranscriptRows";
 import { ELEVATED_FLOAT, ELEVATED_HOVER } from "./elevated";
 import { ModelPicker } from "./ModelPicker";
 import { ChatHeaderMenu, ChatMoreMenu } from "./ChatMoreMenu"; import { TeamOwnHelperHeader, TeamPrivateFirstLine, TeamPrivateHeader, TeamSharedHeader } from "./TeamPrivateChatsLine";
@@ -180,15 +184,12 @@ function useChatRows(): ChatRows {
   return rows;
 }
 
-const drawnBot = (bot: Bot) =>
-  [bot.id, bot.name, bot.hidden, bot.color, bot.mascotBody, bot.mascotExpression, bot.mascotFaceColor, bot.avatarUrl, bot.avatarCrop, bot.avatarZoom, bot.avatarFocusX, bot.avatarFocusY].join("\u0001");
-
-function useDrawnBots(bots: readonly Bot[]): readonly Bot[] {
-  const signature = bots.map(drawnBot).join("\u0002");
-  const cache = useRef({ signature, bots });
-  if (cache.current.signature !== signature) cache.current = { signature, bots };
-  return cache.current.bots;
-}
+const NOT_EDITING: readonly string[] = [];
+/** Some bot or room shows the thread, open or among its tasks. */
+const threadShown = (state: AppState, threadId: string) => {
+  const index = storeIndex(state);
+  return index.botByOpenThread.has(threadId) || index.botsByTaskThread.has(threadId) || index.groupByThread.has(threadId);
+};
 
 export function ErrorRow({
   message,
@@ -258,10 +259,11 @@ function PlaceFailedRow({ place, botId, threadId, onRetry }: {
   threadId?: string;
   onRetry?: () => void;
 }) {
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const config = useStoreSelector(selectConfig);
+  const bot = useStoreSelector((state) => botById(state, botId));
   const { capabilities } = useDesktopCapabilities();
-  const seat = usePlaceSeat(state.config, capabilities.host.platform);
-  const bot = state.bots.find((candidate) => candidate.id === botId);
+  const seat = usePlaceSeat(config, capabilities.host.platform);
   const view = placeRowViewFor(place, seat, lowerFirst(worksOnSimpleLabel(bot?.computer, capabilities.host.platform)));
   const id = view.action?.id;
   const onClick = !id ? undefined
@@ -841,140 +843,148 @@ const MessagesList = memo(function MessagesList({
     dividerPlaced = true;
     return <NewMessagesDivider fading={unreadDividerFading} tint={bubbleStyle ? `var(--identity-${botColor})` : undefined} grokTint={botColor ? grokAccentText(botColor) : undefined} />;
   };
-  return (
-    <>
-      {items.map((item, i) => {
-        const previous = items[i - 1];
-        const prev = previous && (previous.kind === "message" ? previous.message : previous.messages.at(-1));
-        const first = item.kind === "message" ? item.message : item.messages[0];
-        const run = exchanges.runAt.get(i);
-        const collapsed = run !== undefined && !exchanges.isOpen(run);
-        if (run && i !== run.start && collapsed) return null;
-        const leads = run !== undefined && i === run.start;
-        const newDay = needsStamp(prev, first);
-        const divider = dividerAbove(leads ? run.items.flatMap(transcriptRows) : transcriptRows(item));
-        const lead = leads && (
-          <>
-            {divider}
-            {newDay && <DaySeparator at={first.at} today={today} prev={prev} next={first} />}
-            <PeerExchangeLine summary={run.summary} bots={bots} expanded={!collapsed} onToggle={() => exchanges.toggle(run)} />
-          </>
-        );
-        if (lead && collapsed) return <div key={run.id} className="contents" data-mid={first.id}>{lead}</div>;
-        const stamp = !lead && newDay && <DaySeparator at={first.at} today={today} prev={prev} next={first} />;
-        const dividerRow = lead ? null : divider;
-        if (item.kind === "turn" || item.kind === "run") {
-          if (!showToolCalls) return (lead || dividerRow) && <div key={item.id} className="contents">{lead}{dividerRow}</div>;
-          const forceOpen = item.messages.some((step) => step.id === focusedId);
-          const steps = item.messages.map((step) => <div key={step.id} className="contents" data-mid={step.id}><ActivityChip message={step} place={place} /></div>);
+  const drawItem = (item: TranscriptItem, i: number): ReactNode => {
+    const previous = items[i - 1];
+    const prev = previous && (previous.kind === "message" ? previous.message : previous.messages.at(-1));
+    const first = item.kind === "message" ? item.message : item.messages[0];
+    const run = exchanges.runAt.get(i);
+    const collapsed = run !== undefined && !exchanges.isOpen(run);
+    if (run && i !== run.start && collapsed) return null;
+    const leads = run !== undefined && i === run.start;
+    const newDay = needsStamp(prev, first);
+    const divider = dividerAbove(leads ? run.items.flatMap(transcriptRows) : transcriptRows(item));
+    const lead = leads && (
+      <>
+        {divider}
+        {newDay && <DaySeparator at={first.at} today={today} prev={prev} next={first} />}
+        <PeerExchangeLine summary={run.summary} bots={bots} expanded={!collapsed} onToggle={() => exchanges.toggle(run)} />
+      </>
+    );
+    if (lead && collapsed) return <div key={run.id} className="contents" data-mid={first.id}>{lead}</div>;
+    const stamp = !lead && newDay && <DaySeparator at={first.at} today={today} prev={prev} next={first} />;
+    const dividerRow = lead ? null : divider;
+    if (item.kind === "turn" || item.kind === "run") {
+      if (!showToolCalls) return (lead || dividerRow) && <div key={item.id} className="contents">{lead}{dividerRow}</div>;
+      const forceOpen = item.messages.some((step) => step.id === focusedId);
+      const steps = item.messages.map((step) => <div key={step.id} className="contents" data-mid={step.id}><ActivityChip message={step} place={place} /></div>);
+      return (
+        <div key={item.id} className="contents">
+          {lead}
+          {dividerRow}
+          {stamp}
+          {item.kind === "turn"
+            ? <TurnNarrationRun label={item.label} title={t("chat.run.showSteps")} forceOpen={forceOpen}>{steps}</TurnNarrationRun>
+            : <ActivityRun messages={item.messages} forceOpen={forceOpen}>{steps}</ActivityRun>}
+        </div>
+      );
+    }
+    const m = item.message;
+    const row = (() => {
+      // the chat talks in bubbles: stops, finished steps and settled cards leave no technical rows behind
+      if (isCancelledTranscriptRow(m)) return null;
+      switch (richRowKind(m)) {
+        case "secret":
+          return m.secret ? <SecretRequestCard botId={botId} color={botColor} threadId={threadId} message={m} /> : null;
+        case "signin":
+          return m.signIn ? <SignInRequestCard botId={botId} botName={botName} color={botColor} threadId={threadId} message={m} /> : null;
+        case "connector":
+          return m.connector ? <ConnectorCard botId={botId} color={botColor} threadId={threadId} message={m} hideNote={m.id !== lastConnectorId} /> : null;
+        case "options":
+          // grok keeps an answered question in place and folds a decided permission to one grey line; the rest leave no row
+          if (m.card && settledCardGoes(m)) return showsSettledChange(m.card) ? <SettledChangeEvent bot={{ name: botName }} message={m} threadId={threadId} /> : null;
+          return optionsCardRow({ message: m, transcript, botId, botName, botColor: bots.find((one) => one.id === m.inbox?.from.botId)?.color ?? botColor, threadId, asker: bots.find((one) => one.id === (m.inbox?.from.botId ?? botId)) });
+        case "widget":
+        case "app":
+          return <RichMessageRow botId={botId} botName={botName} threadId={threadId} message={m} />;
+        case "routine.run":
+          return <RoutineRunRow message={m} botId={botId} />;
+        case "call":
+          return m.call ? <CallRecordRow message={m} transcript={transcript} botName={botName} threadId={threadId} busy={busy} hasMore={hasMore} /> : null;
+        case "activity": {
+          if (m.peerResume) return null;
+          if (m.dataResult) return <DataResultChip message={m} />;
+          if (isStatusActivity(m)) return <StatusActivityRow message={m} />;
+          if (m.tool && failedTurnCause(m.tool.name) !== null) {
+            // a reply that never came is said once, in the card above the composer
+            if (!m.tool.partial) return null;
+            return (
+              <FailedTurnRow
+                tool={m.tool}
+                engine={engine}
+                botId={botId}
+                threadId={threadId}
+                onRetry={m.id === lookups.retryableId && canRetryLast ? onRegenerate : undefined}
+              />
+            );
+          }
+          if (!showToolCalls && !m.comm && !m.threadRef && !m.relay && !m.dataResult) return null;
+          return <ActivityChip message={m} place={place} />;
+        }
+        case "digest":
+          return showToolCalls ? <DigestChip message={m} /> : null;
+        case "compaction":
+          return null;
+        case "screen":
+          return showToolCalls ? <ScreenFrame threadId={threadId} message={m} /> : null;
+        default: {
+          if (m.publishedPage) return <PublishedPageCard message={m} />;
+          const peer = peerLine(m) ?? peerRequest(m, botId);
+          const user = m.role === "user" && !peer;
+          if (user && routineStartName(m) !== null) return null;
+          if (!user && isPureLeakedSystemHarnessMessage(m.text) && !m.attachments?.length) return null;
           return (
-            <div key={item.id} className="contents">
-              {lead}
-              {dividerRow}
-              {stamp}
-              {item.kind === "turn"
-                ? <TurnNarrationRun label={item.label} title={t("chat.run.showSteps")} forceOpen={forceOpen}>{steps}</TurnNarrationRun>
-                : <ActivityRun messages={item.messages} forceOpen={forceOpen}>{steps}</ActivityRun>}
-            </div>
+            <Bubble
+              message={m}
+              emerging={m.id === emergingId}
+              eagerAttachments={m.id === newestMessageId || m.id === newestUserMessageId}
+              joinAbove={rowJoins[i]?.above}
+              joinBelow={rowJoins[i]?.below}
+              editing={editingId === m.id}
+              pinned={m.id === pinnedMessageId}
+              versions={lookups.editVersions(m)}
+              onStartEdit={onStartEdit}
+              onCancelEdit={onCancelEdit}
+              onSubmitEdit={onSubmitEdit}
+              onRegenerate={m.id === lastBotTextId && !m.automation ? onRegenerate : undefined}
+              replyTarget={lookups.replyTarget(m)}
+              onReply={onReply}
+              underExchangeLine={run !== undefined}
+            />
           );
         }
-        const m = item.message;
-        const row = (() => {
-          // the chat talks in bubbles: stops, finished steps and settled cards leave no technical rows behind
-          if (isCancelledTranscriptRow(m)) return null;
-          switch (richRowKind(m)) {
-            case "secret":
-              return m.secret ? <SecretRequestCard botId={botId} color={botColor} threadId={threadId} message={m} /> : null;
-            case "signin":
-              return m.signIn ? <SignInRequestCard botId={botId} botName={botName} color={botColor} threadId={threadId} message={m} /> : null;
-            case "connector":
-              return m.connector ? <ConnectorCard botId={botId} color={botColor} threadId={threadId} message={m} hideNote={m.id !== lastConnectorId} /> : null;
-            case "options":
-              // grok keeps an answered question in place and folds a decided permission to one grey line; the rest leave no row
-              if (m.card && settledCardGoes(m)) return showsSettledChange(m.card) ? <SettledChangeEvent bot={{ name: botName }} message={m} threadId={threadId} /> : null;
-              return optionsCardRow({ message: m, transcript, botId, botName, botColor: bots.find((one) => one.id === m.inbox?.from.botId)?.color ?? botColor, threadId, asker: bots.find((one) => one.id === (m.inbox?.from.botId ?? botId)) });
-            case "widget":
-            case "app":
-              return <RichMessageRow botId={botId} botName={botName} threadId={threadId} message={m} />;
-            case "routine.run":
-              return <RoutineRunRow message={m} botId={botId} />;
-            case "call":
-              return m.call ? <CallRecordRow message={m} transcript={transcript} botName={botName} threadId={threadId} busy={busy} hasMore={hasMore} /> : null;
-            case "activity": {
-              if (m.peerResume) return null;
-              if (m.dataResult) return <DataResultChip message={m} />;
-              if (isStatusActivity(m)) return <StatusActivityRow message={m} />;
-              if (m.tool && failedTurnCause(m.tool.name) !== null) {
-                // a reply that never came is said once, in the card above the composer
-                if (!m.tool.partial) return null;
-                return (
-                  <FailedTurnRow
-                    tool={m.tool}
-                    engine={engine}
-                    botId={botId}
-                    threadId={threadId}
-                    onRetry={m.id === lookups.retryableId && canRetryLast ? onRegenerate : undefined}
-                  />
-                );
-              }
-              if (!showToolCalls && !m.comm && !m.threadRef && !m.relay && !m.dataResult) return null;
-              return <ActivityChip message={m} place={place} />;
-            }
-            case "digest":
-              return showToolCalls ? <DigestChip message={m} /> : null;
-            case "compaction":
-              return null;
-            case "screen":
-              return showToolCalls ? <ScreenFrame threadId={threadId} message={m} /> : null;
-            default: {
-              if (m.publishedPage) return <PublishedPageCard message={m} />;
-              const peer = peerLine(m) ?? peerRequest(m, botId);
-              const user = m.role === "user" && !peer;
-              if (user && routineStartName(m) !== null) return null;
-              if (!user && isPureLeakedSystemHarnessMessage(m.text) && !m.attachments?.length) return null;
-              return (
-                <Bubble
-                  message={m}
-                  emerging={m.id === emergingId}
-                  eagerAttachments={m.id === newestMessageId || m.id === newestUserMessageId}
-                  joinAbove={rowJoins[i]?.above}
-                  joinBelow={rowJoins[i]?.below}
-                  editing={editingId === m.id}
-                  pinned={m.id === pinnedMessageId}
-                  versions={lookups.editVersions(m)}
-                  onStartEdit={onStartEdit}
-                  onCancelEdit={onCancelEdit}
-                  onSubmitEdit={onSubmitEdit}
-                  onRegenerate={m.id === lastBotTextId && !m.automation ? onRegenerate : undefined}
-                  replyTarget={lookups.replyTarget(m)}
-                  onReply={onReply}
-                  underExchangeLine={run !== undefined}
-                />
-              );
-            }
-          }
-        })();
-        if (!row) return (lead || dividerRow) && <div key={m.id} className="contents">{lead}{dividerRow}</div>;
-        const tucked = layout.tucks[i] && !exchanges.closedAbove(i);
-        return (
-          // a send keeps its row when the server's copy replaces the optimistic one, so it never mounts or rises twice
-          <div key={m.sendId ? `send:${m.sendId}` : m.id} className="contents" data-mid={m.id} data-tuck={tucked ? "" : undefined}>
-            {lead}
-            {dividerRow}
-            {stamp}
-            {m.inbox && <InboxCaption message={m} />}
-            {row}{m.inbox?.answers && <InboxAnswers message={m} />}{m.inbox && <InboxCardSlot threadId={threadId} messageId={m.id} />}{m.setupOffer && <SetupOffer botId={botId} threadId={threadId} message={m} transcript={transcript} />}
-          </div>
-        );
-      })}
-    </>
-  );
+      }
+    })();
+    if (!row) return (lead || dividerRow) && <div key={m.id} className="contents">{lead}{dividerRow}</div>;
+    const tucked = layout.tucks[i] && !exchanges.closedAbove(i);
+    return (
+      // a send keeps its row when the server's copy replaces the optimistic one, so it never mounts or rises twice
+      <div key={m.sendId ? `send:${m.sendId}` : m.id} className="contents" data-mid={m.id} data-tuck={tucked ? "" : undefined}>
+        {lead}
+        {dividerRow}
+        {stamp}
+        {m.inbox && <InboxCaption message={m} />}
+        {row}{m.inbox?.answers && <InboxAnswers message={m} />}{m.inbox && <InboxCardSlot threadId={threadId} messageId={m.id} />}{m.setupOffer && <SetupOffer botId={botId} threadId={threadId} message={m} transcript={transcript} />}
+      </div>
+    );
+  };
+  const rows: TranscriptRow[] = items.map((item, i) => {
+    const run = exchanges.runAt.get(i);
+    const shown = run && i === run.start ? run.items.flatMap(transcriptRows) : transcriptRows(item);
+    return { element: drawItem(item, i), messageIds: shown.map((row) => row.id), estimate: estimateRowHeight(shown) };
+  });
+  return <TranscriptRows rows={rows} />;
 });
 
 export function ChatView({ bot: profile }: { bot: Bot }) {
   const bot = useMemo(() => shownTranscript(currentTaskBot(profile)), [profile]);
   const transcriptPending = profile.transcriptLoaded === false;
-  const { state, dispatch } = useStore();
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const config = useStoreSelector(selectConfig);
+  const instances = useStoreSelector(selectInstances);
+  const settingsOpen = useStoreSelector(selectSettingsOpen);
+  const chatError = useStoreSelector(selectError);
+  const notice = useStoreSelector(selectNotice);
   const remoteClient = window.duskDesktop?.remoteClient?.active === true;
   const { dragProps: headerDragProps, noDragStyle: headerNoDragStyle } = useCaptionChrome();
   const composerDockRef = useRef<HTMLDivElement>(null);
@@ -984,9 +994,10 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const simpleHead = !remoteClient;
   const canWrite = useCanWriteIn(bot.threadId, bot.yourAccess);
 
-  const browserPart = browserPartFor(state.browserPart, bot.id);
-  const computerStarting = computerStartLine(state.computerStarts[bot.id], bot.name); useScreensWhile(Boolean(computerStarting));
-  const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
+  const browserPart = useStoreSelector((state) => browserPartFor(state.browserPart, bot.id));
+  const computerStart = useStoreSelector((state) => state.computerStarts[bot.id]);
+  const computerStarting = computerStartLine(computerStart, bot.name); useScreensWhile(Boolean(computerStarting));
+  const mascotMotion = useStoreSelector((state) => state.mascotMotion?.botId === bot.id ? state.mascotMotion : null);
   const [findOpen, setFindOpen] = useState(false);
   const { replyTo, selectReply, clearReply, consumeReply, restoreReply } = useReplyDraft(
     bot.threadId,
@@ -1021,6 +1032,8 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const lookups = useMemo(() => transcriptLookups(allMessages, messages), [allMessages, messages]);
   const liveTools = useLiveToolIds(messages, bot);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editingRows = useMemo(() => editingId ? [editingId] : NOT_EDITING, [editingId]);
   const {
     scrollRef,
     clipRef,
@@ -1028,11 +1041,8 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
     topSentinelRef,
     transcriptKey,
     following,
-    windowedMessages,
-    hiddenCount,
-    laterCount,
+    viewport,
     olderPending,
-    showLater,
     jumpToLatest,
     scrollHandlers,
   } = useTranscriptViewport({
@@ -1041,6 +1051,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
     messages,
     pinOn: [bot.busy, composerDock.pad],
     hasMore: bot.hasMore,
+    keepMounted: editingRows,
   });
   useTimestampPeek(scrollRef);
 
@@ -1050,11 +1061,11 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   );
   const unreadDivider = useUnreadDivider({ threadId: bot.threadId, messages, following });
 
-  const bots = useDrawnBots(state.bots);
+  const bots = useStoreSelector(selectBots, sameDrawnBots);
   const teammates = useTeammates(); const mentionPeers = useMemo(() => [...bots.filter((peer) => peer.id !== bot.id), ...teammates.peers], [bots, bot.id, teammates]);
-  const focus = state.focusMessage?.threadId === bot.threadId ? state.focusMessage : null;
-  const showToolCalls = showToolCallsEnabled(state.config);
-  const tts = state.config?.tts;
+  const focus = useStoreSelector((state) => state.focusMessage?.threadId === bot.threadId ? state.focusMessage : null);
+  const showToolCalls = showToolCallsEnabled(config);
+  const tts = config?.tts;
   const localVoice = localSystemVoiceActive();
   const locale = activeLocale();
   const busy = Boolean(bot.busy);
@@ -1071,14 +1082,13 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   }, [colorMine, bot.color]);
   const hasMore = Boolean(bot.hasMore);
   const reactor = useReactor();
-  const speakerViewer = state.config?.team && reactor !== "user" ? reactor : null;
+  const speakerViewer = config?.team && reactor !== "user" ? reactor : null;
   const rows = useMemo<ChatRows>(
-    () => ({ botId: bot.id, threadId: bot.threadId, botName: bot.name, botColor: bot.color, voiceId: bot.voice, tts, localVoice, hasMore, bots, mentionPeers, mentionPerson: { profileName: state.config?.profile?.name }, focus, showToolCalls, locale, dispatch, bubbleStyle, conversational: isConversational(bot.replyStyle), canReact: canWrite !== false, openedAt, speakerViewer }),
-    [bot.id, bot.threadId, bot.name, bot.color, bot.voice, tts, localVoice, hasMore, bots, mentionPeers, state.config?.profile?.name, focus, showToolCalls, locale, dispatch, bubbleStyle, bot.replyStyle, canWrite, openedAt, speakerViewer],
+    () => ({ botId: bot.id, threadId: bot.threadId, botName: bot.name, botColor: bot.color, voiceId: bot.voice, tts, localVoice, hasMore, bots, mentionPeers, mentionPerson: { profileName: config?.profile?.name }, focus, showToolCalls, locale, dispatch, bubbleStyle, conversational: isConversational(bot.replyStyle), canReact: canWrite !== false, openedAt, speakerViewer }),
+    [bot.id, bot.threadId, bot.name, bot.color, bot.voice, tts, localVoice, hasMore, bots, mentionPeers, config?.profile?.name, focus, showToolCalls, locale, dispatch, bubbleStyle, bot.replyStyle, canWrite, openedAt, speakerViewer],
   );
-  const currentTask = bot.tasks?.find((task) => task.threadId === bot.threadId), place = effectivePlace(bot, currentTask), team = state.config?.team, privateChat = Boolean(team) && currentTask?.private === true, ownHelper = Boolean(team) && !privateChat && Boolean(bot.defaultBot?.person), sharedChat = Boolean(team) && !privateChat && !ownHelper;
+  const currentTask = bot.tasks?.find((task) => task.threadId === bot.threadId), place = effectivePlace(bot, currentTask), team = config?.team, privateChat = Boolean(team) && currentTask?.private === true, ownHelper = Boolean(team) && !privateChat && Boolean(bot.defaultBot?.person), sharedChat = Boolean(team) && !privateChat && !ownHelper;
 
-  const [editingId, setEditingId] = useState<string | null>(null);
   useEffect(() => setEditingId(null), [bot.id, bot.threadId]);
   const startEdit = useCallback((id: string) => setEditingId(id), []);
   const cancelEdit = useCallback(() => setEditingId(null), []);
@@ -1133,12 +1143,13 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const presenceVisible = !stopCut && (hold.typing || (waiting && mountDue) || teammatesWorking || Boolean(importing));
   // the bubble the line hangs under keeps its pinched corner until the line has finished leaving, as grok's does
   const presenceShown = useLingering(presenceVisible, 140);
-  const paintedMessages = useFirstPaintRows(transcriptKey, windowedMessages, Boolean(focus && !focus.consumed) || laterCount > 0, scrollRef, following);
-  const lastShownRow = windowedMessages.findLast((message) => !quietRow(message, showToolCalls));
+  // a transcript long enough to mount only what is on screen paints that at once, so it never starts out as a short one
+  const paintedMessages = useFirstPaintRows(transcriptKey, messages, Boolean(focus && !focus.consumed) || messages.length >= VIRTUAL_TRANSCRIPT_FROM, scrollRef, following);
+  const lastShownRow = messages.findLast((message) => !quietRow(message, showToolCalls));
   const lastRowIsBubble = Boolean(lastShownRow && isBotTextRow(lastShownRow, bot.id));
   const presenceUnderBubble = lastRowIsBubble;
   // grok keeps the status line's slot at the end of the conversation whether it shows or not, so it never moves a row
-  const statusSlot = windowedMessages.length > 0 || busy;
+  const statusSlot = messages.length > 0 || busy;
   const announcement = useMemo((): TranscriptSnapshot => {
     const approval = pendingApprovals(messages)[0];
     return {
@@ -1177,7 +1188,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // while the turn runs its notices are the working row's to say, not the chat's too; once it ends, what it left is one
   // card above the composer
   const trailing = useTrailingRows(messages, !bot.busy);
-  const rescuing = useRescueGrace(Boolean(bot.busy), mayTakeOver(bot, state.instances), `${bot.id}:${bot.threadId}`);
+  const rescuing = useRescueGrace(Boolean(bot.busy), mayTakeOver(bot, instances), `${bot.id}:${bot.threadId}`);
   const answering = answeringModel(profile, bot.threadId, bot.modelSelection);
   const folded = useMemo(() => {
     const ids = new Set(foldedNoticeIds(trailing));
@@ -1205,7 +1216,8 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // A run inside its own results conversation (a wait finishing in this chat) is no execution thread: no banner.
   const routineExecution = routineRun && (routineRun.resultsThreadId ?? routineRun.sourceThreadId) !== bot.threadId ? routineRun : undefined;
   const resultsThreadId = routineExecution?.resultsThreadId ?? routineExecution?.sourceThreadId;
-  const canOpenResults = resultsThreadId && [...state.bots, ...state.groups].some((owner) => owner.threadId === resultsThreadId || owner.tasks?.some((task) => task.threadId === resultsThreadId));
+  const resultsShown = useStoreSelector((state) => Boolean(resultsThreadId) && threadShown(state, resultsThreadId!));
+  const canOpenResults = resultsThreadId && resultsShown;
 
   return (
     <ThreadLinkContext value={threadLink}>
@@ -1230,13 +1242,13 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               // grok's header mark is a still image
               avatar={{ state: "idle", motion: mascotMotion?.kind ?? "none", motionKey: mascotMotion?.nonce ?? 0, animated: false }}
               privacy={privateChat ? { kind: "private" } : ownHelper ? { kind: "ownHelper" } : sharedChat && team ? { kind: "shared", team: team.name, onlyPeopleAdded: bot.onlyPeopleAdded } : null}
-              onToggle={() => dispatch({ type: "toggleSettings", open: !state.settingsOpen })}
+              onToggle={() => dispatch({ type: "toggleSettings", open: !settingsOpen })}
             />
           ) : (
             <button
               type="button"
               data-chathead-pill data-tour="bot-pill"
-              aria-expanded={state.settingsOpen} aria-controls={state.settingsOpen ? "bot-panel" : undefined}
+              aria-expanded={settingsOpen} aria-controls={settingsOpen ? "bot-panel" : undefined}
               onClick={() => dispatch({ type: "toggleSettings" })}
               title={t("chat.openProfile")}
               aria-label={t("chat.openProfileAria", { name: bot.name })}
@@ -1283,7 +1295,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           {phone && <UsageAlert engine={bot.modelSelection?.instanceId} />}
           {/* Simple mode chooses the model in the bot panel's Details, as its header is the bot's pill alone. */}
           {!phone && !simpleHead && <ModelPicker key={bot.threadId} bot={bot} threadId={bot.threadId} />}
-          {liveCallEnabled() && <LiveCallChip currentBotId={bot.id} onOpen={(botId, threadId) => openThread(dispatch, { botId, threadId }, state)} />}
+          {liveCallEnabled() && <LiveCallChip currentBotId={bot.id} onOpen={(botId, threadId) => openThread(dispatch, { botId, threadId }, store.state())} />}
           {/* Grok's header is the bot's pill alone: the pill opens the panel, whose Computer tab shows the bot's screen. */}
           {!phoneMenu && !simpleHead && <button
             data-tour="computer"
@@ -1305,7 +1317,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
       {privateChat && team && <TeamPrivateFirstLine key={team.id} team={team} />}
       {routineExecution && <div className="mx-5 mb-2 flex min-h-8 flex-wrap items-center gap-1 rounded-[14px] bg-composer py-1 pe-1 ps-3 text-[12px] leading-4 text-ink-secondary ring-[0.5px] ring-transparent">
         <span className="min-w-0 flex-1 truncate">{t("routines.executionDetails", { name: routineExecution.routineName })}</span>
-        {canOpenResults && resultsThreadId && <button type="button" onClick={() => openThread(dispatch, { botId: bot.id, threadId: resultsThreadId }, state)} className="h-6 rounded-full px-2 text-ink transition-colors hover:bg-ink/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">{t("routines.results.back")}</button>}
+        {canOpenResults && resultsThreadId && <button type="button" onClick={() => openThread(dispatch, { botId: bot.id, threadId: resultsThreadId }, store.state())} className="h-6 rounded-full px-2 text-ink transition-colors hover:bg-ink/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">{t("routines.results.back")}</button>}
         <button type="button" onClick={() => dispatch({ type: "openRoutine", routineId: routineExecution.routineId, botId: bot.id })} className="h-6 rounded-full px-2 transition-colors hover:bg-ink/[0.06] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">{t("routines.inline.open")}</button>
       </div>}
       {findOpen && <ChatFindBar threadId={bot.threadId} onClose={() => setFindOpen(false)} />}
@@ -1355,11 +1367,11 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
               <span>{t("chat.loadingEarlier")}</span>
             </div>
-          ) : hiddenCount > 0 || bot.hasMore ? (
+          ) : bot.hasMore ? (
             <div ref={topSentinelRef} className="h-2 w-full pointer-events-none" aria-hidden="true" />
           ) : null}
-          {windowedMessages.length === 0 && !bot.busy && !transcriptPending && <EmptyChat bot={bot} />}
-          <ChatRowsContext.Provider value={rows}><LiveToolsContext value={liveTools}><ChatBusyContext value={busy}><FoldedNoticesContext value={folded}>
+          {messages.length === 0 && !bot.busy && !transcriptPending && <EmptyChat bot={bot} />}
+          <TranscriptViewportContext value={viewport}><ChatRowsContext.Provider value={rows}><LiveToolsContext value={liveTools}><ChatBusyContext value={busy}><FoldedNoticesContext value={folded}>
             <MessagesList
               messages={paintedMessages}
               transcript={messages}
@@ -1371,7 +1383,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               lastBotTextId={lastBotTextId}
               emergingId={null}
               canRetryLast={!bot.busy && Boolean(lastUserMessage)}
-              engine={state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)}
+              engine={instances.find((i) => i.instanceId === bot.modelSelection.instanceId)}
               unreadDividerId={unreadDivider.messageId}
               unreadDividerFading={unreadDivider.fading}
               onStartEdit={startEdit}
@@ -1381,18 +1393,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               onReply={selectReply}
               seamId={lastRowIsBubble && presenceShown ? lastShownRow?.id ?? null : null}
             />
-          </FoldedNoticesContext></ChatBusyContext></LiveToolsContext></ChatRowsContext.Provider>
-          {laterCount > 0 && (
-            // clear of the jump-to-latest button, which floats over the transcript's last 40px while this shows
-            <div className="mb-10 flex justify-center">
-              <button
-                onClick={showLater}
-                className="ui-pill"
-              >
-                {t("chat.showLater", { count: laterCount })}
-              </button>
-            </div>
-          )}
+          </FoldedNoticesContext></ChatBusyContext></LiveToolsContext></ChatRowsContext.Provider></TranscriptViewportContext>
           {browserPart && (
             <div className="flex justify-start">
               <BrowserPartLine part={browserPart} />
@@ -1457,14 +1458,14 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
       {canWrite !== false && !rescuing && !trailing?.failures.length && !(lastShownRow && codexUsageLimitReached(`${lastShownRow.text ?? ""} ${lastShownRow.tool?.name ?? ""}`)) && (
         // empty, it takes no room: its padding coming and going with a turn moved the whole chat 8px
         <div className="pointer-events-auto px-5 pb-2 empty:hidden">
-          <WeeklyLimitLine onSeeUsage={() => dispatch(openSettings("usage"))} error={state.error} clearError={clearLimitError} />
+          <WeeklyLimitLine onSeeUsage={() => dispatch(openSettings("usage"))} error={chatError} clearError={clearLimitError} />
           <UsageBanner engine={answering.instanceId} onSeeUsage={() => dispatch(openSettings("usage"))} />
         </div>
       )}
       {/* grok says what went wrong, or a passing note, in one quiet line just above the message box; at the top it ran
           into the transcript's first time stamp */}
-      <div className="pointer-events-auto"><ChatNotice notice={state.notice} /></div>
-      <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
+      <div className="pointer-events-auto"><ChatNotice notice={notice} /></div>
+      <div className="pointer-events-auto"><ChatErrorBanner message={chatError} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
       <div className="pointer-events-auto"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
       {canWrite !== false && !trailing?.failures.length && !trailing?.notices.length && <div className="pointer-events-auto"><ComposerSignInNotice bot={bot} /></div>}
       {liveCallEnabled() && <LiveCallBar bot={bot} />}
