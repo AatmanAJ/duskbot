@@ -11,5 +11,6 @@ export declare function notchOf(display: DisplayLike, platform: string): { width
 export declare function islandLayout(display: DisplayLike, options?: { platform?: string; size?: string }): {
   window: Rect; collapsed: { kind: "notch" | "pill"; width: number; height: number; top: number; notch: number }; tile: number; size: "small" | "medium" | "large";
 };
+export declare function dockEdge(display: DisplayLike): number;
 export declare function dockLayout(display: DisplayLike): { window: Rect; body: number; top: number };
 export declare function pickDisplay<T extends DisplayLike>(displays: T[], choice: string, options?: { primary?: T | null; cursor?: { x: number; y: number } | null }): T | null;

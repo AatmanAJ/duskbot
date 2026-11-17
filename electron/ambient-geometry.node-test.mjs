@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DOCK, ISLAND_SIZES, ISLAND_WINDOW, PILL_TOP, dockLayout, islandLayout, notchOf, pickDisplay } from "./ambient-geometry.mjs";
+import { DOCK, ISLAND_SIZES, ISLAND_WINDOW, PILL_TOP, dockEdge, dockLayout, islandLayout, notchOf, pickDisplay } from "./ambient-geometry.mjs";
 
 const display = (fields) => ({ id: 1, internal: false, label: "", bounds: { x: 0, y: 0, width: 1512, height: 982 }, workArea: { x: 0, y: 37, width: 1512, height: 945 }, ...fields });
 const builtIn = display({ id: 1, internal: true, label: "Built-in Liquid Retina XDR Display" });
@@ -45,6 +45,21 @@ test("the dock is a strip against the right edge of the work area, as tall as it
   // a Dock pinned to the right leaves a narrower work area; the bot dock stays left of it
   const pinned = { ...external, workArea: { ...external.workArea, width: 2480 } };
   assert.equal(dockLayout(pinned).window.x + dockLayout(pinned).window.width, 1512 + 2480 + DOCK.overhang);
+});
+
+test("an auto-hidden Dock or taskbar on the right does not hold the dock off the screen's edge", () => {
+  // macOS leaves 4 pt of the work area free beside an auto-hidden Dock, Windows 2 px beside an auto-hidden taskbar
+  for (const strip of [1, 2, 4, 8]) {
+    for (const scale of [1, 1.25, 1.5, 2]) {
+      const hidden = { ...external, scaleFactor: scale, workArea: { ...external.workArea, width: external.bounds.width - strip } };
+      const { window } = dockLayout(hidden);
+      assert.equal(dockEdge(hidden), 1512 + 2560, `${strip} ${scale}x`);
+      assert.equal(window.x + window.width, 1512 + 2560 + DOCK.overhang, `${strip} ${scale}x`);
+    }
+  }
+  // a Dock that shows keeps its place
+  const shown = { ...external, workArea: { ...external.workArea, width: 2560 - 48 } };
+  assert.equal(dockEdge(shown), 1512 + 2560 - 48);
 });
 
 test("the dock never stops short of the screen's edge, whatever the scale or a fractional work area", () => {
