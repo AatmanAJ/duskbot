@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { DemoTarget } from "../../shared/demo-recording.ts";
 import type { DemoDrain, RawDemoEvent } from "./events.ts";
 import {
-  DEMO_MARK, DEMO_PAGE_SCRIPT, demoActExpression, demoDrainExpression, demoFindExpression, demoPageStateExpression, demoUnmarkExpression,
+  DEMO_MARK, demoActExpression, demoDrainExpression, demoFindExpression, demoPageStateExpression, demoRecordingScript, demoUnmarkExpression,
   type DemoFound, type DemoPageState,
 } from "./page-script.ts";
+
+const TAKE = "take-1";
 
 const cleanup: Array<() => unknown> = [];
 afterEach(async () => { for (const step of cleanup.splice(0)) await step(); });
@@ -18,12 +20,12 @@ function page(html: string, { install = true, url = "https://portal.example/expe
   const window = new Window({ url, settings: { disableJavaScriptEvaluation: false } });
   window.document.body.innerHTML = html;
   cleanup.push(() => window.happyDOM.close());
-  if (install) window.eval(DEMO_PAGE_SCRIPT);
+  if (install) window.eval(demoRecordingScript(TAKE));
   const $ = (selector: string) => window.document.querySelector(selector) as unknown as Field;
   return {
     window,
     $,
-    drain: () => JSON.parse(window.eval(demoDrainExpression()) as string) as DemoDrain,
+    drain: () => JSON.parse(window.eval(demoDrainExpression(TAKE)) as string) as DemoDrain,
     click: (selector: string) => $(selector).dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, clientX: 412, clientY: 96 })),
     /** Types as a browser delivers it: a key and an input event for each character. */
     type: (selector: string, text: string) => {
@@ -58,13 +60,13 @@ describe("the recorder script in a page", () => {
   it("is absent until it is installed, and installing it again records each thing once", () => {
     const { window, drain, click } = page("<button>Save draft</button>", { install: false });
     expect(drain()).toMatchObject({ installed: false, events: [] });
-    window.eval(DEMO_PAGE_SCRIPT);
+    window.eval(demoRecordingScript(TAKE));
     const first = drain();
     expect(first.installed).toBe(true);
     expect(first.url).toBe("https://portal.example/expenses/new");
     expect(first.events).toHaveLength(1);
     expect(first.events[0]).toMatchObject({ type: "open", url: "https://portal.example/expenses/new" });
-    window.eval(DEMO_PAGE_SCRIPT);
+    window.eval(demoRecordingScript(TAKE));
     click("button");
     const second = drain();
     expect(of(second.events, "click")).toHaveLength(1);
