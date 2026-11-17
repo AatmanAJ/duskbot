@@ -59,7 +59,7 @@ import { peerLine, peerRequest, type PeerLine } from "@/lib/peer-message";
 import { showWorkingDots } from "@/lib/turn-tail";
 import { useNotesWork } from "@/lib/notes-arrival";
 import { useTypingHold } from "@/hooks/use-typing-hold";
-import { glideColumn, OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
+import { OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
 import { growFromMascot, hasSendLaunch, morphFromComposer } from "./bubble-entrance";
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
@@ -70,10 +70,7 @@ import { lastNonReceipt } from "@/lib/receipts";
 import { routineStartName } from "./RoutineStartLine"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
 import { followSentTurn, sentTurn, useSentTurn } from "@/state/sent-turn";
 import { forgetLateRow, isLateRow, isSettledRow, noteLateRow, noteSettledRow, useStopPress, type StopPress } from "@/lib/stop-turn";
-import { replacedLiveReply, shownReplyText } from "@/state/live-reply";
-import { phoneApp } from "@/lib/store-app";
-import { revealedWords, revealStep, wordCount, REVEAL_SPAN_MS } from "@/lib/text-reveal";
-import { LiveReplyBubble } from "./LiveReplyBubble";
+import { shownReplyText } from "@/state/live-reply";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { TranscriptStaging } from "./transcript-staging";
 import { LiveToolsContext, useLiveToolIds } from "@/hooks/use-live-tool-ids";
@@ -383,9 +380,7 @@ const Bubble = memo(function Bubble({
   );
   const join: BubbleJoin = { above: joinAbove, below: joinBelow };
   // only rows that arrive while the conversation is open slide in; a reply that streamed in is already in place
-  // on the phone a reply that streamed in was already on screen in its live bubble: it takes that bubble's place
-  const tookOver = !user && phoneApp() && replacedLiveReply(message.id);
-  const fresh = !emerging && message.at > openedAt && !isSettledRow(message.id) && !tookOver;
+  const fresh = !emerging && message.at > openedAt && !isSettledRow(message.id);
   const reply = useReplySegments(conversational && !user && !peer && !replyTarget && message.kind === "text", text);
   const split = reply.segments.length > 1;
   // each table of a reply draws as its own card between the reply's prose bubbles
@@ -413,24 +408,12 @@ const Bubble = memo(function Bubble({
     const plain = !webhookView && !hasAttachments && Boolean(visibleText.trim()) && !emojiOnly(visibleText);
     return plain && !reduced && hasSendLaunch(message.sendId) ? "morph" : null;
   });
-  // the phone reveals a reply's words a step apart; one that took over a live bubble carries on from what it showed
-  const [reveal, setReveal] = useState<{ from: number; step: number } | undefined>(() => {
-    if (user || reduced || message.kind !== "text" || !phoneApp()) return undefined;
-    const total = wordCount(text);
-    const from = tookOver && message.at > openedAt ? revealedWords(threadId) ?? total : entrance === "grow" ? 0 : total;
-    return from < total ? { from, step: revealStep(total - from) } : undefined;
-  });
-  useEffect(() => {
-    if (!reveal) return;
-    const timer = setTimeout(() => setReveal(undefined), Math.max(REVEAL_SPAN_MS, reveal.step * wordCount(text)) + 600);
-    return () => clearTimeout(timer);
-  }, [reveal]);
   const [filling, setFilling] = useState(entrance === "morph");
   useLayoutEffect(() => {
     const parts = own.current;
     if (parts.entered || !entrance || !parts.bubble) return;
     parts.entered = true;
-    if (entrance === "grow") growFromMascot(parts.bubble, reduced, Boolean(reveal));
+    if (entrance === "grow") growFromMascot(parts.bubble, reduced);
     else void morphFromComposer(parts.bubble, parts.fill, message.sendId).then(() => setFilling(false));
   }, [entrance, reduced, message.sendId]);
 
@@ -584,7 +567,7 @@ const Bubble = memo(function Bubble({
               ) : text && mediaSplit ? (
                 <div data-chat-bubble="simple" className={cn("w-fit max-w-full", SIMPLE_BOT_BUBBLE, join && joinedCorners("start", join))}><ChatMarkdown text={text} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} /></div>
               ) : text ? (
-                <ChatMarkdown text={text} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} reveal={reveal} />
+                <ChatMarkdown text={text} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} />
               ) : null}
               {group && (mediaChips
                 ? <div className="relative mt-[26px]">{mediaChips}<AttachmentGallery media={message.media} images={group.images} files={group.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} /></div>
@@ -1033,8 +1016,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   else if (pressedOn.current?.at !== press.at) pressedOn.current = { at: press.at, ids: new Set(visible.map((message) => message.id)) };
   const shownMessages = useMemo(() => withoutLateRows(visible, press, pressedOn.current?.ids), [visible, press]);
   // each new bot bubble waits for its "Typing…" beat on the status line before it lands; a Stop lets what was said land now
-  // the phone shows a reply as it streams, so a bubble that took over from it has nothing to wait for
-  const hold = useTypingHold(`${bot.id}:${bot.threadId ?? ""}`, shownMessages, bot.id, Boolean(bot.busy), phoneApp() ? replacedLiveReply : undefined);
+  const hold = useTypingHold(`${bot.id}:${bot.threadId ?? ""}`, shownMessages, bot.id, Boolean(bot.busy));
   const messages = stopCut ? shownMessages : hold.rows;
   const lookups = useMemo(() => transcriptLookups(allMessages, messages), [allMessages, messages]);
   const liveTools = useLiveToolIds(messages, bot);
@@ -1061,8 +1043,6 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
     hasMore: bot.hasMore,
   });
   useTimestampPeek(scrollRef);
-  // a streaming reply's new line: the scroll already moved to the end, so the column is drawn where it was and glides up
-  const glideUp = useCallback((px: number) => glideColumn(transcriptRef.current, clipRef.current, px), [transcriptRef, clipRef]);
 
   const lastBotTextId = useMemo(
     () => [...messages].reverse().find((m) => m.role === "bot" && m.kind === "text")?.id,
@@ -1426,7 +1406,6 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               </div>
             </div>
           )}
-          {phoneApp() && !stopCut && bot.threadId && <LiveReplyBubble threadId={bot.threadId} mentionPeers={mentionPeers} onGrow={following ? glideUp : undefined} />}
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"} onMouseEnter={() => setMarkEmphasized(true)} onMouseLeave={() => setMarkEmphasized(false)} onClick={() => markRef.current?.poke?.()}>
           {(presenceVisible || presenceShown) && <TurnPresence
             avatar={
