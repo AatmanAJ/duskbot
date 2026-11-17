@@ -25,6 +25,8 @@ export interface FunnelFacts {
   cloudBring?: boolean;
   /** this Mac still lacks a permission a bot needs to use it (Accessibility, Screen Recording, Notifications) */
   permissions?: boolean;
+  /** a cloud the desktop app set up: that computer's first run already had the one AI step, and its sign-ins came along */
+  aiAsked?: boolean;
 }
 
 /** The screens this person gets, in order: the hello, an AI, then the account (when there is none yet), then on the
@@ -41,6 +43,7 @@ export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
     if (step === "phone") return Boolean(facts.phone) && facts.desktop && !cloud;
     if (step === "making") return cloud;
     if (step === "permissions") return facts.desktop && Boolean(facts.permissions) && !cloud;
+    if (step === "ai") return !facts.aiAsked;
     return true;
   });
 }

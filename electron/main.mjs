@@ -104,7 +104,7 @@ import { createAccountErrors } from "./account-errors.mjs";
 import { CHECKOUT_SOURCES, cloudMenuSublabel, cloudTarget, createCloudAccountClient, createCloudAccountStore } from "./cloud-account.mjs"; import { isAppLink } from "./cloud-signin.mjs";
 import { ACCOUNT_PAGES, installCloudPlanIpc } from "./cloud-plan-ipc.mjs";
 import { cloudLinkOpensSheet, colorDotIcons, createCloudLook, createCloudReadyNotice, installCloudBuy, lookFile } from "./cloud-buy.mjs";
-import { createAccountEnroll } from "./account-enroll.mjs"; import { cloudMoveLinkWorkspace, createServerEnroll } from "./server-enroll.mjs"; import { accountGateRequired, installAccountGate } from "./account-gate.mjs"; import { carryWelcomeToCloud } from "./cloud-welcome-carry.mjs"; import { holdUntilPainted, PAINTED_SCRIPT } from "./paint-hold.mjs";
+import { createAccountEnroll } from "./account-enroll.mjs"; import { cloudMoveLinkWorkspace, createServerEnroll } from "./server-enroll.mjs"; import { accountGateRequired, installAccountGate } from "./account-gate.mjs"; import { carryWelcomeToCloud } from "./cloud-welcome-carry.mjs"; import { carriedEngines, localAiSignIns } from "./ai-signins-carry.mjs"; import { holdUntilPainted, PAINTED_SCRIPT } from "./paint-hold.mjs";
 import { createTrialNotices } from "./cloud-trial-notice.mjs";
 import { createDesktopPrefs, DESKTOP_PORTS, jsonFile, registerDesktopPrefs, writeFileDurably } from "./desktop-prefs.mjs";
 import { installMacPermissions } from "./mac-permissions.mjs";
@@ -2219,7 +2219,7 @@ const CARRY_BEFORE_OPEN_MS = 8_000;
 async function welcomeBeforeOpen(origin) {
   if (!origin || desktopRemoteAccess || welcomedClouds.has(origin)) return;
   welcomedClouds.add(origin);
-  const carried = carryWelcomeToCloud({ origin, fetch: (...args) => session.defaultSession.fetch(...args), localRequest: localServerRequest, log: slog })
+  const carried = carryWelcomeToCloud({ origin, fetch: (...args) => session.defaultSession.fetch(...args), localRequest: localServerRequest, handoff: what => oneHome.handoff(what), log: slog })
     .then((changed) => { slog(`cloud welcome: ${changed ? "carried from this computer before it opened" : "nothing to carry"}`); return true; }, () => false);
   const done = await Promise.race([carried, new Promise(resolve => setTimeout(() => resolve(false), CARRY_BEFORE_OPEN_MS))]);
   if (!done) welcomedClouds.delete(origin);
@@ -2233,7 +2233,7 @@ async function welcomedOnCloud() {
     if (waited >= 6 * 60_000) { welcomedClouds.delete(origin); return; }
     await new Promise(done => setTimeout(done, 3_000));
   }
-  const changed = await carryWelcomeToCloud({ origin, fetch: (...args) => session.defaultSession.fetch(...args), localRequest: localServerRequest, log: slog });
+  const changed = await carryWelcomeToCloud({ origin, fetch: (...args) => session.defaultSession.fetch(...args), localRequest: localServerRequest, handoff: what => oneHome.handoff(what), log: slog });
   slog(`cloud welcome: ${changed ? "carried from this computer" : "nothing to carry"}`);
   if (!changed || !showsCloud()) return;
   // a page from an older cloud still showing its own welcome
@@ -3029,12 +3029,13 @@ ipcMain.handle("cloud-account:openTeam", localWorkspaceOnly("cloud-account:openT
 // Cancel trial / Cancel plan and Keep my plan: the page sends the survey's words only; the Cloud is the verified session's own.
 ipcMain.handle("cloud-account:cancelPlan", localWorkspaceOnly("cloud-account:cancelPlan", (_event, survey) => ensureCloudAccount().cancelPlan(survey)));
 ipcMain.handle("cloud-account:keepPlan", localWorkspaceOnly("cloud-account:keepPlan", () => ensureCloudAccount().keepPlan()));
-// a ChatGPT plan's login on this Mac, for the account's own Cloud being made; the Claude sign-in is never held by dusk bot's servers
-ipcMain.handle("cloud-account:holdSignIns", localWorkspaceOnly("cloud-account:holdSignIns", async () => {
-  const file = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "auth.json");
-  let auth = null;
-  try { auth = await fs.promises.readFile(file, "utf8"); JSON.parse(auth); } catch { auth = null; }
-  return ensureCloudAccount().holdSignIns(auth ? [{ kind: "codex-auth", auth }] : []);
+// this computer's CLI logins kept in a file, for the account's own Cloud being made; keychain logins (Claude Code among them) stay here
+ipcMain.handle("cloud-account:holdSignIns", localWorkspaceOnly("cloud-account:holdSignIns", async () => ensureCloudAccount().holdSignIns(await localAiSignIns())));
+ipcMain.handle("cloud-account:carriedAis", localWorkspaceOnly("cloud-account:carriedAis", async () => {
+  const read = async (route) => { try { const response = await localServerRequest(route, { signal: AbortSignal.timeout(10_000) }); return response.ok ? await response.json() : null; } catch { return null; } };
+  const [items, listed, connections] = await Promise.all([localAiSignIns(), read("/api/instances"), read("/api/cloud-connections")]);
+  const keyEngines = (Array.isArray(connections?.connections) ? connections.connections : []).filter(item => item?.kind === "key" && Array.isArray(item.for)).flatMap(item => item.for);
+  return { instanceIds: carriedEngines(listed?.instances, items.map(item => item.kind), keyEngines) };
 }));
 ipcMain.handle("organization:settings-opened", localWorkspaceOnly("organization:settings-opened", () => organizationEntry.settingsOpened()));
 ipcMain.handle("organization:state", localWorkspaceOnly("organization:state", () => ensureManagedDesktop().state()));

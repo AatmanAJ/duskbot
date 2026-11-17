@@ -20,6 +20,7 @@
   "cloudAccount.begin",
   "cloudAccount.cancel",
   "cloudAccount.cancelPlan",
+  "cloudAccount.carriedAis",
   "cloudAccount.checkout",
   "cloudAccount.connectHome",
   "cloudAccount.connectHomeForPhone",

@@ -187,6 +187,8 @@ export interface CloudAccountBridge {
   keepPlan?(): Promise<CloudRenewalResult>;
   /** The first run on dusk cloud: this computer's AI sign-ins, held for the account's own Cloud until it runs. */
   holdSignIns?(): Promise<CloudHeldSignIns>;
+  /** The first run on dusk cloud: the AIs signed in here (instance ids) whose sign-in goes along to the account's own Cloud. Absent on an older app. */
+  carriedAis?(): Promise<{ instanceIds: string[] }>;
   onState(callback: (state: CloudAccountState) => void): () => void;
   files?: import("./cloud-sync.mjs").CloudFilesBridge;
 }
@@ -366,7 +368,7 @@ export interface CloudAccountClient {
   cancelPlan(survey: unknown): Promise<CloudRenewalResult>;
   /** POST /api/cloud/desktop/clouds/<the session's own Cloud>/keep. */
   keepPlan(): Promise<CloudRenewalResult>;
-  holdSignIns(items: Array<{ kind: "codex-auth"; auth: string }>): Promise<CloudHeldSignIns>;
+  holdSignIns(items: Array<import("../shared/ai-signins.ts").AiSignIn>): Promise<CloudHeldSignIns>;
   /** POST /api/cloud/desktop/room: Not now on the room card for the session's own Cloud; false when it couldn't be said. */
   roomNotNow(id: string): Promise<boolean>;
   /** POST /api/cloud/desktop/resize-now: the bigger size after an upgrade goes at once. */

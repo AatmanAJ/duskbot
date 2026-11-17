@@ -604,6 +604,7 @@ const bridge = {
     cancelPlan: survey => ipcRenderer.invoke("cloud-account:cancelPlan", survey ?? null),
     keepPlan: () => ipcRenderer.invoke("cloud-account:keepPlan"),
     holdSignIns: () => ipcRenderer.invoke("cloud-account:holdSignIns"),
+    carriedAis: () => ipcRenderer.invoke("cloud-account:carriedAis"),
     onState: cb => {
       const handler = (_event, state) => cb(state);
       ipcRenderer.on("cloud-account:state-changed", handler);

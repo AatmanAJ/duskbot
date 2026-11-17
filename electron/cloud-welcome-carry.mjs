@@ -1,8 +1,10 @@
 // A new dusk cloud opened from this computer runs the app's first run there, with what this computer already knows: the
-// person's name, picture and About me fill what the cloud lacks, and the AIs signed in here are named so the cloud can
-// offer the same ones (sign-ins stay on each machine). The cloud's own "welcome to dusk cloud" is marked done, since the
-// first run replaces it. All of it goes over this window's own signed-in session with the cloud, once; the hints the
+// person's name, picture and About me fill what the cloud lacks, the AIs signed in here are named so the cloud can
+// offer the same ones, and the AI keys saved here go along sealed, so those AIs work there without asking again (CLI
+// logins go through the Admin's hold instead). The cloud's own "welcome to dusk cloud" is marked done, since the first
+// run replaces it. All of it goes over this window's own signed-in session with the cloud, once; the hints the
 // cloud already has are kept. A cloud whose welcome already ended is left alone.
+import { cloudSealer } from "./cloud-seal.mjs";
 import { uploadPicture } from "./team-profile-seed.mjs";
 
 export const CLOUD_WELCOME_DONE = "cloud-welcome-done";
@@ -46,13 +48,36 @@ export function profileForCloud(mine, theirs) {
   return patch;
 }
 
+const KEY_ID = /^key:\w{1,40}$/u;
+const keyIds = (listed) => (Array.isArray(listed?.connections) ? listed.connections : [])
+  .filter((item) => item?.kind === "key" && typeof item.id === "string" && KEY_ID.test(item.id)).map((item) => ({ id: item.id, label: String(item.label ?? item.id) }));
+
+/** The AI keys saved here that the cloud has none of, sealed for it as the move sends them; a key already there wins.
+ * `handoff` asks this computer's server for one key over its private port. Answers the labels that went. */
+export async function carryAiKeys({ call, localJson, handoff, log = () => {} }) {
+  const theirs = await call("GET", "/api/cloud-connections").catch(() => null);
+  if (!theirs?.ok) return [];
+  const have = new Set(keyIds(theirs.body).map((item) => item.id));
+  const sealer = cloudSealer({ call });
+  const carried = [];
+  for (const item of keyIds(await localJson("/api/cloud-connections")).filter((one) => !have.has(one.id))) {
+    const config = (await handoff({ kind: "connection", id: item.id }).catch(() => null))?.connection?.config;
+    if (!config || typeof config !== "object" || Array.isArray(config)) continue;
+    const saved = await sealer.config("PATCH", config).catch(() => null);
+    if (saved?.ok) carried.push(item.label);
+    else log(`cloud welcome: the ${item.label} key didn't go (${saved?.status ?? "no answer"})`);
+  }
+  return carried;
+}
+
 /**
  * Carries this computer's first-run facts to the cloud at `origin`, once. `fetch` carries this window's cookies (the
  * page's own session with the cloud); `localRequest` is this computer's server. The profile goes first, so the cloud's
- * first run already has the name when it reads the hints. Answers true when the record changed, false when there was
- * nothing to do or the cloud didn't answer.
+ * first run already has the name when it reads the hints, and the AI keys go last. `handoff`: this computer's server's
+ * private port, for the keys; without it they stay. Answers true when the record changed, false when there was nothing
+ * to do or the cloud didn't answer.
  */
-export async function carryWelcomeToCloud({ origin, fetch, localRequest, log = () => {} }) {
+export async function carryWelcomeToCloud({ origin, fetch, localRequest, handoff = null, log = () => {} }) {
   if (!origin) return false;
   const cloud = (route, init = {}) => fetch(`${origin}${route}`, { credentials: "include", cache: "no-store", redirect: "error", ...init,
     headers: { accept: "application/json", origin, ...init.headers }, signal: AbortSignal.timeout(20_000) });
@@ -79,6 +104,14 @@ export async function carryWelcomeToCloud({ origin, fetch, localRequest, log = (
     }
     const wrote = await cloud("/api/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ onboarding: patch }) });
     if (!wrote.ok) { log(`cloud welcome: not marked (${wrote.status})`); return false; }
+    if (handoff) {
+      const call = async (method, route, body) => {
+        const answer = await cloud(route, { method, ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }) });
+        return { ok: answer.ok, status: answer.status, body: await answer.json().catch(() => null) };
+      };
+      const keys = await carryAiKeys({ call, localJson, handoff, log }).catch(() => []);
+      if (keys.length) log(`cloud welcome: carried the ${keys.join(", ")} key${keys.length > 1 ? "s" : ""}`);
+    }
     return true;
   } catch (error) {
     log(`cloud welcome: not marked (${error?.message ?? error})`);
