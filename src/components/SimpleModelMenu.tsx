@@ -365,7 +365,7 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
                     <button type="button" data-picker-disconnect={group.instance.instanceId}
                       aria-label={t("model.picker.disconnect", { name: group.provider })} title={t("model.picker.disconnect", { name: group.provider })}
                       onClick={() => props.onDisconnect!(group.instance, group.provider)}
-                      className="me-1 flex size-6 shrink-0 items-center justify-center rounded-[6px] text-ink-tertiary opacity-0 transition-opacity hover:bg-ink/[0.08] hover:text-ink focus:bg-ink/[0.08] focus:text-ink focus:opacity-100 group-hover/heading:opacity-100 motion-reduce:transition-none touch:size-8 touch:opacity-100">
+                      className="me-1 flex size-6 shrink-0 items-center justify-center rounded-[6px] text-ink-tertiary opacity-0 transition-opacity hover:bg-ink/[0.08] hover:text-ink focus:bg-ink/[0.08] focus:text-ink focus-visible:opacity-100 group-hover/heading:opacity-100 motion-reduce:transition-none touch:size-8 touch:opacity-100">
                       <Link2Off size={14} strokeWidth={MENU_STROKE} aria-hidden="true" />
                     </button>
                   )}
