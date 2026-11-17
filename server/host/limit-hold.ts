@@ -285,7 +285,7 @@ export function createLimitHold(deps: LimitHoldDeps) {
 
     stop(): void {
       started = false;
-      for (const threadId of [...timers.keys()]) disarm(threadId);
+      for (const threadId of timers.keys()) disarm(threadId);
     },
   };
 }

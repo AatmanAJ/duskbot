@@ -72,7 +72,7 @@ export const widgetShown = (frames: readonly string[]) => frames.some((url) => C
 /** The widget whose frame is the checkbox a person ticks ("verify you are human"), or null for any other frame. */
 export function checkboxVendor(url: string): string | null {
   if (/[?&]size=invisible\b/u.test(url)) return null;
-  if (/^https:\/\/challenges\.cloudflare\.com\//u.test(url)) return "Cloudflare Turnstile";
+  if (url.startsWith("https://challenges.cloudflare.com/")) return "Cloudflare Turnstile";
   if (/^https:\/\/(?:www\.google\.com|www\.recaptcha\.net)\/recaptcha\/(?:api2|enterprise)\/anchor\b/u.test(url)) return "reCAPTCHA";
   if (/^https:\/\/(?:[\w-]+\.)?hcaptcha\.com\/.*[#&?]frame=checkbox\b/u.test(url)) return "hCaptcha";
   return null;
