@@ -3,7 +3,7 @@ import { pullSyncedPrefs } from "@/lib/synced-prefs";
 import { storeApp } from "@/lib/store-app";
 import { aiSendAllowed } from "@/lib/ai-consent-gate";
 import { trailAction } from "@/lib/trail-actions";
-import { cloudAsleep, onCloudPower } from "../lib/cloud-power";
+import { cloudAsleep, cloudWaking, onCloudPower } from "../lib/cloud-power";
 import { chatInFront } from "@/lib/chat-in-front";
 import { answerOf, api, ApiError, snapshotArrays } from "./api";
 import { sendOutbox } from "./send-outbox";
@@ -625,6 +625,8 @@ export interface AppState {
   hydrated?: true;
   /** the first chat snapshot failed; it is being asked for again (`retryLoad` asks now) */
   loadFailed?: true;
+  /** the first chat snapshot is waiting for the person's dusk cloud to wake; asked for again every moment meanwhile */
+  loadWaking?: true;
   error: string | null;
   notice: { kind: "thread-gone" | "bot-gone" | "steer-images" | "note"; botName: string | null; text?: string;
     /** an AI found on this computer the note offers to turn on */
@@ -803,6 +805,7 @@ export type Action =
   | { type: "interrupt"; botId: string; threadId?: string; onError?: () => void }
   | { type: "connected"; value: boolean }
   | { type: "loadFailed" }
+  | { type: "loadWaking" }
   | { type: "error"; message: string | null }
   | { type: "notice"; notice: AppState["notice"] }
   | { type: "revealThread"; threadId: string }
@@ -948,6 +951,7 @@ export function reducer(state: AppState, action: Action): AppState {
         selectedId,
         hydrated: true as const,
         loadFailed: undefined,
+        loadWaking: undefined,
         backgroundThreadEvents: {},
         loadingOlder: {},
         transcriptGeneration: {},
@@ -1469,7 +1473,9 @@ export function reducer(state: AppState, action: Action): AppState {
     case "connected":
       return { ...state, connected: action.value };
     case "loadFailed":
-      return state.hydrated || state.loadFailed ? state : { ...state, loadFailed: true };
+      return state.hydrated || state.loadFailed ? state : { ...state, loadFailed: true, loadWaking: undefined };
+    case "loadWaking":
+      return state.hydrated || state.loadWaking ? state : { ...state, loadWaking: true, loadFailed: undefined };
     case "error":
       return {
         ...(action.message && state.selectedId
@@ -2068,6 +2074,16 @@ export interface PeripheralSnapshotLoad<Key extends string = string> {
 
 function normalizeSnapshotFailure(cause: unknown): Error {
   return cause instanceof Error ? cause : new Error(String(cause));
+}
+
+const WAKING_LOAD_MS = 120_000;
+
+/** The first snapshot failed because the person's dusk cloud sleeps or is still starting, not because it broke. */
+export function cloudWakingLoad(error: unknown): boolean {
+  if (cloudAsleep() || cloudWaking()) return true;
+  if (!(error instanceof ApiError)) return false;
+  const code = (error.body as { error?: unknown } | undefined)?.error;
+  return code === "waking" || code === "asleep" || error.status === 502 || error.status === 504;
 }
 
 export async function loadSnapshotBoundary<Key extends string>(
@@ -3087,12 +3103,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       resumeId: readLastConversation() ?? undefined,
     });
     const selectedPath = () => chatSnapshotPath(stateRef.current.selectedId || readLastConversation() || "");
+    let chatError: unknown;
     const loadAll = async (): Promise<boolean> => {
       const marks = beginLoad();
+      chatError = undefined;
       const chat = () =>
         readSnapshot<ChatSnapshot>(selectedPath()).then((answer) => snapshotArrays(answer, "bots")).then((answer) => {
           if (alive) applyChat(answer, marks);
-        });
+        }, (error: unknown) => { chatError = error; throw error; });
       const peripherals = peripheralParts.map((part) => ({
         key: part.key,
         load: () => loadPeripheral(part, true),
@@ -3107,7 +3125,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Hydrate only after the stream's hello; queue frames during the REST snapshot and apply them on top.
     let hydrated = false;
     let hydrationPromise: Promise<boolean> | null = null;
-    let loadRetry: ReturnType<typeof setTimeout> | undefined, loadAttempts = 0;
+    let loadRetry: ReturnType<typeof setTimeout> | undefined, loadAttempts = 0, wakingSince = 0;
     let rehydrateRequested = false;
     const pendingFrames: ServerFrame[] = [];
     let handleFrame: (frame: ServerFrame) => void;
@@ -3125,12 +3143,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } while (alive && rehydrateRequested);
         if (!alive) return false;
         if (!loaded) {
+          // a dusk cloud waking up answers nothing useful for a while: keep asking every moment, not as a failure
+          if (cloudWakingLoad(chatError) && Date.now() - (wakingSince ||= Date.now()) < WAKING_LOAD_MS) {
+            rawDispatch({ type: "loadWaking" });
+            clearTimeout(loadRetry);
+            loadRetry = setTimeout(() => { if (!hydrated) void hydrate(); }, 1_500);
+            return false;
+          }
+          wakingSince = 0;
           rawDispatch({ type: "loadFailed" });
           clearTimeout(loadRetry);
           loadRetry = setTimeout(() => { if (!hydrated) void hydrate(); }, Math.min(30_000, 2_000 * 2 ** Math.min(loadAttempts++, 4)));
           return false;
         }
-        loadAttempts = 0;
+        loadAttempts = 0; wakingSince = 0;
         hydrated = true;
         for (const frame of pendingFrames.splice(0)) handleFrame(frame);
         return true;

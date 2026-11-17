@@ -7911,6 +7911,8 @@
   "mobile.home.loadFailedTitle": "Your chats didn't load",
   "mobile.home.loadFailedBody": "Your computer didn't answer this time. It keeps trying by itself, or you can try again now.",
   "mobile.home.loadFailedOffline": "This phone is offline. Your chats load as soon as it's back online.",
+  "mobile.home.wakingTitle": "Waking your cloud",
+  "mobile.home.wakingBody": "It was asleep to save power. Your chats open in a moment.",
   "mobile.home.refreshing": "Refreshing",
   "mobile.home.search": "Search",
   "mobile.home.unreadChat": "{name}, unread",
