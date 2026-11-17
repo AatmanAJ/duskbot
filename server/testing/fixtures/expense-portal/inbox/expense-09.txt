@@ -1,0 +1,8 @@
+﻿Report date: 11/07/2026
+Merchant: FedEx Office
+Category: Other
+Amount (USD): 12.99
+Paid with: Personal card
+Billable to client: no
+Notes: Printed workshop handouts
+Receipt: receipts/receipt-09.txt

@@ -854,6 +854,12 @@ export class BrowserRuntime {
 
   heldBy(session: string): string | null { return this.gates.get(session)?.owner ?? null; }
 
+  /** A person holds the browser and the bot's last action in it has finished. */
+  heldReady(session: string): boolean {
+    const gate = this.gates.get(session);
+    return Boolean(gate && gate.owner !== null && gate.ready && gate.agents === 0);
+  }
+
   /** An interrupted action left the browser's state unknown until the engine answers again or the browser restarts. */
   interrupted(session: string): boolean { return this.gates.get(session)?.uncertain === true; }
 

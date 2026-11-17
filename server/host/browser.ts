@@ -45,6 +45,7 @@ import type { EngineBrowsers } from "../engine-memory.ts";
 import { augmentedPath } from "../env-path.ts";
 import { harnessMcpTokenEnv } from "../harness-mcp-token.ts";
 import type { FillLoginDeps } from "../login-fill.ts";
+import { demoPortOf, type DemoPagePort } from "../demo-recorder/ports.ts";
 import { AGENTS_NODE_FLAG, SPAWNED_PROXIES } from "../proxy-paths.ts";
 import { diskUsedPercent, guardDisk, ScratchLedger, sweepScratch } from "../scratch.ts";
 import type { Store } from "../store.ts";
@@ -368,6 +369,26 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     }
     return { engine: (args) => inRunningBrowser(spec.command, env, args), ...relayInput(spec, session) };
   }
+  /** Show it once on whichever engine runs the session: fill_login's reads and typing, with a read that starts no
+   * process on the built-in engine (a recording reads the page several times a second) and what each engine adds. */
+  function demoPort(session: string, spec: Spec, env: NodeJS.ProcessEnv): DemoPagePort {
+    const target = chromeTarget(session, spec);
+    const chrome = target ? chromeEngine.loginDeps(session) : null;
+    if (target && chrome) return demoPortOf(chrome, chromeEngine.service.demoExtras(target));
+    const evaluate = async (script: string): Promise<Record<string, unknown> | null> => {
+      const answer = await relayCommand(spec, session, { action: "evaluate", script }, 10_000);
+      return answer.success ? { result: answer.data?.result ?? null } : null;
+    };
+    return demoPortOf({
+      engine: (args) => (args[0] === "eval" && typeof args[1] === "string" ? evaluate(args[1]) : inRunningBrowser(spec.command, env, args)),
+      ...relayInput(spec, session),
+    }, {
+      upload: async (selector, paths) => {
+        const answer = await relayCommand(spec, session, { action: "upload", selector, files: [...paths] }, 30_000);
+        if (!answer.success) throw new Error("The browser did not take the file.");
+      },
+    });
+  }
   function browserSystemPrompt(profile: string | undefined): string {
     return onChrome(profile) ? CHROME_BROWSER_SYSTEM_PROMPT : BUILT_IN_BROWSER_SYSTEM_PROMPT;
   }
@@ -524,7 +545,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
   return {
     browserRuntime, browserLive, usedBrowserSessions, browserSweep, temporaryBrowserSessions, browserIdleMs: idleMs,
     currentBrowserSession, forgetTemporaryBrowser, myChromeAvailable, usesMyChrome, browserSessionSpec, browserIntegration,
-    browserReady, hostBrowserUsable, currentBrowserSpec, browserRunning, loginInput, browserSystemPrompt, signedInSitesRefusal, closeBrowser, browserEngineSwitched,
+    browserReady, hostBrowserUsable, currentBrowserSpec, browserRunning, loginInput, demoPort, browserSystemPrompt, signedInSitesRefusal, closeBrowser, browserEngineSwitched,
     eraseDeletedBrowser, engineSummary, engineBrowsers, browserAudience, browserSessionsOf, signedInSitesTarget, uploadPaths,
     eraseAudienceBrowsers,
   };

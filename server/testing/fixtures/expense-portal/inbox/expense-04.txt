@@ -1,0 +1,8 @@
+Report date: 11/04/2026
+Merchant: Tartine Bakery
+Category: Meals
+Amount (USD): 27.80
+Paid with: Personal card
+Billable to client: no
+Notes: Team breakfast
+Receipt: receipts/receipt-04.txt

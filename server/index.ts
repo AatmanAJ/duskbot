@@ -450,12 +450,16 @@ import { BoxDiskNotes, clearBoxScratch } from "./box-scratch.ts";
 import { vpsConfigForBot, vpsSshAliasForBot } from "./vps-hosts.ts";
 import { ROUTINE_RESTARTED, RoutineManager, type RoutineRun, type RoutineRunOn, type RoutineRunTrigger } from "./routines.ts"; import { routineRunsFor } from "./routine-run-window.ts"; import { batchSaves, flushDeferredSaves } from "./save-batch.ts";
 import { BROWSER_UPLOAD_TOOL, browserRuntimeEnv } from "./browser-runtime.ts"; import { BATCH_TOOL } from "./browser/tools.ts";
-import { BrowserUploadRefusal, uploadableFiles } from "./browser-upload.ts";
+import { BrowserUploadRefusal, readableFolder, uploadableFiles } from "./browser-upload.ts";
 import { listSignedInSites, signOutOfSites } from "./browser-sites.ts";
 import { HeldSecrets, LoginStore } from "./login-store.ts";
 import { OnePasswordLogins, onePasswordUnavailable, sdkOnePasswordClient, type OnePasswordSdk } from "./onepassword.ts";
 import { nativeRequire } from "./data/engine.ts";
 import { createFillLoginTurn } from "./host/fill-login-turn.ts";
+import { createShowItOnce, demoRecordingOf, saveDemoSkill } from "./host/show-it-once.ts";
+import { createSkillReplayTurn } from "./host/skill-replay-turn.ts";
+import { ReplayInterrupted } from "./demo-recorder/replay.ts";
+import { openBoxLoginPage } from "./box-login-page.ts";
 import { createDesktopLogin, DESKTOP_FILL_BUSY } from "./host/desktop-login.ts";
 import { createSignInRequests } from "./host/sign-in-requests.ts";
 import { createHumanCheckWatch, readHumanCheckPage, reloadHumanCheckPage } from "./host/human-check-watch.ts";
@@ -613,6 +617,8 @@ import { createDeciderRoutes } from "./routes/decider.ts"; import { createCloudS
 import { createUpdateCheckRoutes, serverUpdateChecker } from "./routes/update-check.ts"; import { createFeedbackRoutes } from "./routes/feedback.ts"; import { createTimeZoneRoutes } from "./routes/time-zone.ts";
 import { createBrowserSiteRoutes } from "./routes/browser-sites.ts";
 import { createInternalSignInRoutes } from "./routes/sign-in.ts";
+import { createDemoRecorderRoutes } from "./routes/demo-recorder.ts";
+import { createInternalSkillReplayRoutes } from "./routes/skill-replay.ts";
 import { createInternalMcpRoutes } from "./routes/internal-mcp.ts";
 import { createInternalThreadRoutes } from "./routes/internal-threads.ts";
 import { createBrowserEvidenceRoutes } from "./routes/browser-evidence.ts";
@@ -2416,7 +2422,7 @@ async function botBoxChrome(botId: string, turn?: { threadId: string; generation
 const {
   browserRuntime, browserLive, usedBrowserSessions, browserSweep, temporaryBrowserSessions,
   currentBrowserSession, forgetTemporaryBrowser, myChromeAvailable, usesMyChrome, browserSessionSpec, browserIntegration,
-  browserReady, hostBrowserUsable, currentBrowserSpec, browserRunning, loginInput, browserSystemPrompt, closeBrowser, browserEngineSwitched, eraseDeletedBrowser, engineSummary, browserSessionsOf, signedInSitesTarget, uploadPaths, eraseAudienceBrowsers,
+  browserReady, hostBrowserUsable, currentBrowserSpec, browserRunning, loginInput, demoPort, browserSystemPrompt, closeBrowser, browserEngineSwitched, eraseDeletedBrowser, engineSummary, browserSessionsOf, signedInSitesTarget, uploadPaths, eraseAudienceBrowsers,
 } = createBrowserHost({ cfg, store: () => store, boxChrome: botBoxChrome, turnResources, activeInternalGenerationByThread, mintInternalCapability: capability => mintInternalCapability({ ...capability,
   ...(teamComputerTurns.get(capability.threadId) ? { teamComputerId: teamComputerTurns.get(capability.threadId)!.computerId } : {}),
   ...(turnVpsTargets.get(capability.threadId)?.screenLease ? { screenGeneration: turnVpsTargets.get(capability.threadId)!.screenLease!.target.generation } : {}),
@@ -10045,6 +10051,7 @@ async function deleteBotWithLifecycle(botId: string, revalidate: () => void = ()
           lastReply.delete(bot.threadId);
           cancelPeerApprovalsFor(bot.id);
           computerControl.forget(bot.id);
+          showItOnce.forget(bot.id);
           computerControlRevision.delete(bot.id);
           const target = perBotLocalVmTarget(bot.id);
           localVmIdles.get(target.key)?.cancel();
@@ -12652,6 +12659,56 @@ const { fillLoginForTurn } = createFillLoginTurn({
   stepContext: (bot, turn) => stepContext(bot, turn, () => liveTurnByThread.get(turn.threadId) ?? null),
   desktop: (bot, capability: InternalCapability) => desktopLogin.openDesktopLogin(bot, capability),
   loginRejected: (botId, threadId, rejection) => secretCards.loginRejected(botId, threadId, rejection),
+});
+
+const showItOnce = createShowItOnce({
+  browser: async (botId) => {
+    const bot = store.bot(botId);
+    return bot && bot.browser !== false && bot.computer !== "off" && builtInBrowserEnabled(cfg) ? botBrowserTarget(bot, bot.threadId) : null;
+  },
+  browserHeld: (session) => browserRuntime.heldBy(session) !== null,
+  browserReady: (session) => browserRuntime.heldReady(session),
+  browserPort: (browser) => demoPort(browser.session, browser.spec, browser.env),
+  computerHeld: (botId) => botComputerControlSnapshot(botId).held,
+  boxChrome: (botId) => botBoxChrome(botId),
+  openBox: (url) => openBoxLoginPage(url),
+  namer: (botId) => {
+    const job = sideJobs.text("demo-naming", botId);
+    return job ? (prompt) => job.generateText(prompt, { timeoutMs: 20_000 }) : null;
+  },
+  saveSkill: saveDemoSkill,
+  createRoutine: (botId, routine) => {
+    try {
+      const made = withRoutineWriter(CLOUD_NOBODY_KEY, () => routines!.create({ ...routine, botId, enabled: false, schedule: { type: "daily", time: "09:00", weekdays: [1, 2, 3, 4, 5] } }));
+      return { id: made.id };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  },
+  changed: (draft) => broadcast({ kind: "demo-recording", botId: draft.botId, draft }, { adminOnly: true }),
+  scrub: (text) => heldSecrets.scrub(text),
+  log: (line) => console.info(line),
+});
+ROUTES.push(createDemoRecorderRoutes({ recorder: showItOnce, botExists: (botId) => Boolean(store.bot(botId)) }));
+const { replayForTurn } = createSkillReplayTurn<InternalCapability>({
+  place: signInPlace, current: (bot, threadId) => botForThread(bot.id, threadId) ?? bot, builtInBrowserOn: () => builtInBrowserEnabled(cfg),
+  target: botBrowserTarget, claim: claimTurnResource,
+  inLane: (browser, work, ctx) => browserRuntime.withSecretInput(browser.session, browser.spec, work, ctx),
+  held: (browser) => browserRuntime.heldBy(browser.session) !== null,
+  port: (browser) => demoPort(browser.session, browser.spec, browser.env),
+  loginInput: (browser) => loginInput(browser.session, browser.spec, browser.env),
+  recording: (bot, skill) => demoRecordingOf(bot.id, skill, bot.assignedSkills),
+  logins: botLogins, onePasswordTrouble: () => botLogins.onePassword.status().error, remember: (value, kind) => heldSecrets.remember(value, kind),
+  uploadable: async (bot, turn, file, browser) => {
+    const upload = uploadableFiles([file], messageFileRootsForThread(bot.id, turn.threadId));
+    if ("error" in upload) return null;
+    if (!browser) return upload.files[0] ?? null;
+    try { return (await uploadPaths([{ file: upload.files[0]!, name: null }], browser.session, browser.spec))[0] ?? null; } catch { return null; }
+  },
+  readableFolder: (bot, turn, folder) => readableFolder(folder, messageFileRootsForThread(bot.id, turn.threadId)),
+  stillActive: (turn) => { if (!internalCapabilityIsActive(turn)) throw new ReplayInterrupted("the turn ended"); },
+  stepContext: (bot, turn) => stepContext(bot, turn, () => liveTurnByThread.get(turn.threadId) ?? null),
+  desktop: (bot, capability) => desktopLogin.openDesktopLogin(bot, capability),
 });
 
 async function localVmPayload(target: LocalVmTarget, auth: RequestAuth) {
@@ -15463,6 +15520,9 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
       if (await dispatchRoutes([createInternalSignInRoutes({
         readBody: readInternalBody,
         request: (site, reason, check) => requestSignIn(internalSender, internalCapability.threadId, site, reason, Boolean(check), check?.otherRoutes),
+      })], { req, res, url, path, method, auth, json, readBody })) return;
+      if (await dispatchRoutes([createInternalSkillReplayRoutes({
+        readBody: readInternalBody, replay: (args) => replayForTurn(internalSender, internalCapability, args), stillActive: requireActiveInternalCapability,
       })], { req, res, url, path, method, auth, json, readBody })) return;
       if (method === "POST" && path === "/api/internal/fill-login") {
         const body = await readInternalBody();

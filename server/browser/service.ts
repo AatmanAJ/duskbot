@@ -15,10 +15,12 @@ import { BROWSER_CALL_DEFAULTS, PERSON_ACTED, PERSON_TYPED_ON_PAGE, type Browser
 import { SecretHolds, type SecretHold } from "../browser-secret-hold.ts";
 import { scrubBrowserResult } from "../browser-tool-shape.ts";
 import type { FillLoginDeps } from "../login-fill.ts";
+import type { DemoPortExtras } from "../demo-recorder/ports.ts";
 import type { Backend, OpenedBrowser } from "./backends.ts";
 import type { CdpBrowser } from "./cdp/browser.ts";
 import type { Download } from "./cdp/downloads.ts";
 import { isUnanswered } from "./cdp/errors.ts";
+import { WORLD_NAME } from "./cdp/frames.ts";
 import type { CdpPage } from "./cdp/page.ts";
 import { browserRoot, profileDir, profileHash, profileKind, removeProfile, workspaceId } from "./chrome/profile.ts";
 import { BROWSER_CONTROL_REFUSAL, ProfileControl, type TakeResult } from "./control.ts";
@@ -634,6 +636,25 @@ export class BrowserService {
       insertText: (text) => tab().page.keyboard.insertText(text),
       press: async (key) => { await tab().page.press(key); },
       click: async (selector) => { await tab().page.click({ selector }); },
+    };
+  }
+
+  /** Show it once on the tab in front: going to an address, giving a file picker its files, and a script for every new document. */
+  demoExtras(target: BrowserTarget): DemoPortExtras {
+    const profile = this.profile(target);
+    const page = () => {
+      const active = profile.run ? profile.active() : null;
+      if (!active) throw new Error("The browser has no page open.");
+      return active.page;
+    };
+    return {
+      open: async (url) => { await page().navigate(url); },
+      upload: async (selector, paths) => { await page().upload(paths, { selector }); },
+      everyDocument: async (script) => {
+        const tab = page();
+        const { identifier } = await tab.session.send<{ identifier: string }>("Page.addScriptToEvaluateOnNewDocument", { source: script, worldName: WORLD_NAME, runImmediately: true });
+        return () => { void tab.session.send("Page.removeScriptToEvaluateOnNewDocument", { identifier }).catch(() => undefined); };
+      },
     };
   }
 

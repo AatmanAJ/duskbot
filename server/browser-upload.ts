@@ -25,6 +25,18 @@ function inside(root: string, file: string): boolean {
   return path !== "" && !path.startsWith("..") && !isAbsolute(path);
 }
 
+/** A folder a bot may read a run's input files from: one of the conversation's folders or a folder inside one, as its
+ * real path; null for anything else, a secrets folder included. */
+export function readableFolder(folder: string, roots: readonly string[]): string | null {
+  const path = folder.startsWith("~/") ? join(homedir(), folder.slice(2)) : folder;
+  if (!isAbsolute(path)) return null;
+  let real: string;
+  try { real = realpathSync.native(path); } catch { return null; }
+  const allowed = roots.flatMap((root) => realRoot(root) ?? []);
+  if (!allowed.some((root) => root === real || inside(root, real)) || inSecretFolder(real)) return null;
+  try { return statSync(real).isDirectory() ? real : null; } catch { return null; }
+}
+
 /** A page may receive only the person's attachments and the bot's own folders; symlinks are followed before the check. */
 export function uploadableFiles(files: unknown, roots: readonly string[]): { files: string[] } | { error: string } {
   if (!Array.isArray(files) || files.length === 0 || files.length > MAX_FILES || !files.every((file) => typeof file === "string" && file)) {

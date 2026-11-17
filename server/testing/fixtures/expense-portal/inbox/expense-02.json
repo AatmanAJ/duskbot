@@ -1,0 +1,10 @@
+{
+  "Report date": "11/03/2026",
+  "Merchant": "Lyft",
+  "Category": "Travel",
+  "Amount (USD)": "42.15",
+  "Paid with": "Company card",
+  "Billable to client": "yes",
+  "Notes": "Airport to client office",
+  "Receipt": "receipts/receipt-02.txt"
+}
