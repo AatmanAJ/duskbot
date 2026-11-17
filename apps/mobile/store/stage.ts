@@ -203,14 +203,18 @@ function startProxy(target: string, threads: () => ReturnType<typeof scripted> |
   return new Promise((done) => server.listen(0, "127.0.0.1", () => done((server.address() as net.AddressInfo).port)));
 }
 
-function startVite(apiPort: number, port: number): Promise<void> {
-  const child = spawn(join(repoRoot, "node_modules/.bin/vite"), ["--config", "apps/mobile/store/vite.config.ts"], {
+/** How the phone app is served: vite's dev server by default; perf.ts serves a production build instead. */
+export interface Serve { args: string[]; ready: string }
+const DEV_SERVER: Serve = { args: ["--config", "apps/mobile/store/vite.config.ts"], ready: "ready in" };
+
+function startVite(apiPort: number, port: number, serve: Serve): Promise<void> {
+  const child = spawn(join(repoRoot, "node_modules/.bin/vite"), serve.args, {
     cwd: repoRoot, env: { ...process.env, DUSK_PORT: String(apiPort), DUSK_MOBILE_PORT: String(port) }, stdio: ["ignore", "pipe", "inherit"],
   });
   children.add(child);
   return new Promise((done, fail) => {
     let text = "";
-    child.stdout!.on("data", (chunk) => { text += chunk; if (text.includes("ready in")) done(); });
+    child.stdout!.on("data", (chunk) => { text += chunk; if (text.includes(serve.ready)) done(); });
     child.once("exit", () => fail(new Error("vite exited")));
   });
 }
@@ -224,7 +228,7 @@ export const click = async (page: HeadlessPage, expression: string) => {
 export type Scheme = "light" | "dark";
 export type Stage = Awaited<ReturnType<typeof startStage>>;
 
-export async function startStage() {
+export async function startStage(serve: Serve = DEV_SERVER) {
   const fixture = await launchFixture();
   console.log(`fixture ${fixture}`);
   const seeded = await seed(fixture);
@@ -233,7 +237,7 @@ export async function startStage() {
   threads = scripted(seeded);
   await startLiveTurns(fixture, seeded);
   const vitePort = await freePort();
-  await startVite(proxy, vitePort);
+  await startVite(proxy, vitePort, serve);
   const base = `http://127.0.0.1:${vitePort}`;
   console.log(`phone app ${base}`);
 
