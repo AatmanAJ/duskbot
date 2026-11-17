@@ -10,6 +10,7 @@ import { APP_SETTINGS_TOOL_DEFINITIONS } from "./agents-app-settings-tool.ts";
 import { DEVS_TOOL_DEFINITIONS } from "./agents-devs-tools.ts";
 import { HELPER_TOOL_DEFINITIONS } from "./agents-helper-tools.ts";
 import { USAGE_LIMITS_TOOL_DEFINITION } from "./agents-usage-tool.ts";
+import { CHECKLIST_TOOL_DEFINITION } from "./agents-checklist-tool.ts";
 import { WAIT_TOOL_DEFINITIONS, WAIT_TOOL_NAMES } from "./agents-wait-tools.ts";
 import { DUSK_TOOL_DEFINITIONS } from "./agents-dusk-tools.ts";
 import { PERSON_TOOL_DEFINITIONS } from "./agents-person-tools.ts";
@@ -243,6 +244,7 @@ const TOOL_DEFINITIONS = [
     inputSchema: { type: "object", properties: {} },
   },
   USAGE_LIMITS_TOOL_DEFINITION,
+  CHECKLIST_TOOL_DEFINITION,
   {
     name: "list_rooms",
     description:

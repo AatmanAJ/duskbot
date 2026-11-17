@@ -290,6 +290,8 @@
   "server.finish.plan": "Continuing: {open} of {total} steps left",
   "server.finish.ack": "Continuing: applying your correction",
   "server.finish.next": "Continuing: finishing the job",
+  "server.batch.continuing": "Continuing: {progress}, working through the rest",
+  "server.batch.paused": "Paused at {progress}: the site asked to slow down, continuing in about {minutes} min",
   "server.reconnect.carryOn": "Reconnected, carrying on",
   "server.spend.botCap": "{bot} reached its weekly cap. Its routines wait until its last 7 days are back under it, or until you raise it in usage. It still answers you.",
   "server.spend.routineCap": "Paused “{routine}”: it reached its weekly cap. Raise the cap in usage or turn it back on to run it again.",

@@ -17,6 +17,7 @@ import { callResearchTool, RESEARCH_TOOL_NAMES } from "./agents-research-tools.t
 import { callReadPages, READ_PAGES_TOOL } from "./agents-read-pages.ts";
 import { callHelperTool, HELPER_TOOL_NAMES } from "./agents-helper-tools.ts";
 import { callUsageLimitsTool, USAGE_LIMITS_TOOL } from "./agents-usage-tool.ts";
+import { callChecklistTool, CHECKLIST_TOOL } from "./agents-checklist-tool.ts";
 import { callWaitTool, WAIT_TOOL_NAMES } from "./agents-wait-tools.ts";
 import { callDuskTool, DUSK_TOOL_NAMES } from "./agents-dusk-tools.ts";
 import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
@@ -254,6 +255,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (TRIGGER_TOOL_NAMES.has(name)) return callTriggerTool(name, args, context);
   if (WAIT_TOOL_NAMES.has(name)) return callWaitTool(name, args, context);
   if (name === USAGE_LIMITS_TOOL) return callUsageLimitsTool(context);
+  if (name === CHECKLIST_TOOL) return callChecklistTool(args, context);
   if (name === STATUS_TOOL) return callStatusTool();
   if (name === SEND_MESSAGE_TOOL) return callSendMessageTool();
   if (name === "tool_result_read") {

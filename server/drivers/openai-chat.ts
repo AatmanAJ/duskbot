@@ -16,6 +16,7 @@ import { toolDetailPreview } from "../tool-summary.ts";
 import { ChatToolSessionError, chatToolNotices, mountChatTools, type ChatToolDefinition, type ChatToolSession, type ChatToolResult } from "./chat-mcp-tools.ts";
 import { noteToolBudget } from "../tool-budgets.ts";
 import { assertImageTransport, chatImageBudget, chatToolImages, chatUserContent, type ChatContentPart } from "./chat-images.ts";
+import { trimBrowserContext } from "./chat-context-trim.ts";
 import { promptHalves, volatileContextNote, withContextNote } from "./prompt-split.ts";
 import { createChatToolApproval, refusal } from "./chat-tool-approval.ts";
 import { chatToolBatches } from "./chat-tool-batches.ts";
@@ -628,6 +629,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           unread = turnEntry.asides.splice(0);
           if (unread.length) messages.push({ role: "user", content: unread.join("\n\n") });
           turnEntry.ending = round === MAX_CHAT_ROUNDS - 1;
+          if (round > 0) retainImages.release(trimBrowserContext(messages));
           native("out", options.nativeLog.outgoing(turn, messages, model, tools.definitions));
           let attempt = 0;
           let resized = false;
