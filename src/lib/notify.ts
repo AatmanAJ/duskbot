@@ -1,7 +1,7 @@
 import type { Notification } from "../../shared/notification";
 import { chatInFront } from "./chat-in-front";
-import { finishedNotificationsEnabled } from "./notification-preferences";
-import { play } from "./ui-sounds";
+import { finishedNotificationsEnabled, notificationDings } from "./notification-preferences";
+import { play, soundChoice, SYSTEM_SOUND } from "./ui-sounds";
 
 export type NotifyFrame = Notification;
 
@@ -48,6 +48,7 @@ export function showNotification(
   if (Notification.permission !== "granted") return;
 
   const title = placeName ? `${placeName} · ${frame.title}` : frame.title;
+  const ding = notificationDings(frame);
   const options: NotificationOptions = {
     body: frame.body,
     ...buildNotificationOptions({ id: frame.botId, avatarUrl }),
@@ -55,7 +56,7 @@ export function showNotification(
     silent: true,
   };
   const shownByPage = () => {
-    play();
+    if (ding) play();
     new Notification(title, options).onclick = () => {
       window.focus();
       onOpen({ botId: frame.botId, threadId: frame.threadId });
@@ -63,8 +64,10 @@ export function showNotification(
   };
   const desktop = window.duskDesktop?.desktopNotifications;
   if (!desktop) return shownByPage();
+  const systemSound = ding && soundChoice() === SYSTEM_SOUND;
+  const chime = ding && !systemSound;
   void desktop.show({
-    title, body: frame.body, tag: options.tag, silent: options.silent === true, picture: options.icon, botId: frame.botId, threadId: frame.threadId,
+    title, body: frame.body, tag: options.tag, silent: !systemSound, chime, picture: options.icon, botId: frame.botId, threadId: frame.threadId,
     ...(ASKS.has(frame.kind) ? { ask: true } : {}),
-  }).then((shown) => { if (shown) play(); else shownByPage(); }, shownByPage);
+  }).then((shown) => { if (shown === true && chime) play(); else if (!shown) shownByPage(); }, shownByPage);
 }

@@ -28,6 +28,9 @@ function collapseId(threadId) {
   return value;
 }
 
+/** The Android channel a quiet push goes to; the phone app creates it at low importance, which makes no sound. */
+const QUIET_CHANNEL = "dusk-quiet";
+
 /** the message a workspace asks to push, or null; the bot's name is cut to what a lock screen shows */
 export function pushMessage(value) {
   if (!value || typeof value !== "object") return null;
@@ -36,7 +39,7 @@ export function pushMessage(value) {
   if (groupId !== undefined && (typeof groupId !== "string" || !ID.test(groupId))) return null;
   const botName = typeof value.botName === "string" ? [...value.botName].filter((char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127).join("").trim().slice(0, 80) : "";
   if (!botName) return null;
-  return { id, kind, botId, botName, threadId, ...(groupId !== undefined ? { groupId } : {}) };
+  return { id, kind, botId, botName, threadId, ...(groupId !== undefined ? { groupId } : {}), ...(value.silent === true ? { silent: true } : {}) };
 }
 
 export function createPushRelay({ env = process.env, now = Date.now, fetch: fetchImpl = fetch, http2Connect = connect, readFile = readFileSync, log = () => {} } = {}) {
@@ -108,8 +111,8 @@ export function createPushRelay({ env = process.env, now = Date.now, fetch: fetc
         try { reason = JSON.parse(body).reason; } catch {}
         finish(status === 400 && (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") ? "gone" : "failed");
       });
-      const { botName, ...data } = message;
-      request.end(JSON.stringify({ aps: { alert: { title: botName, body: "New message" }, sound: "default", "thread-id": message.threadId }, omb: data }));
+      const { botName, silent, ...data } = message;
+      request.end(JSON.stringify({ aps: { alert: { title: botName, body: "New message" }, ...(silent ? {} : { sound: "default" }), "thread-id": message.threadId }, omb: data }));
     });
   }
 
@@ -133,10 +136,10 @@ export function createPushRelay({ env = process.env, now = Date.now, fetch: fetc
 
   async function sendFcm(token, message) {
     const access = await fcmToken();
-    const { botName, ...data } = message;
+    const { botName, silent, ...data } = message;
     const response = await fetchImpl(`${env.DUSK_FCM_HOST ?? "https://fcm.googleapis.com"}/v1/projects/${encodeURIComponent(fcm.projectId)}/messages:send`, {
       method: "POST", headers: { authorization: `Bearer ${access}`, "content-type": "application/json" },
-      body: JSON.stringify({ message: { token, notification: { title: botName, body: "New message" }, data, android: { collapse_key: message.threadId, priority: "high" } } }),
+      body: JSON.stringify({ message: { token, notification: { title: botName, body: "New message" }, data, android: { collapse_key: message.threadId, priority: "high", ...(silent ? { notification: { channel_id: QUIET_CHANNEL } } : {}) } } }),
       signal: AbortSignal.timeout(10_000),
     });
     if (response.status === 200) return "sent";

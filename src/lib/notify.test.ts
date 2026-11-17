@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const sounds = vi.hoisted(() => ({ enabled: true, finished: true }));
-const uiSounds = vi.hoisted(() => ({ play: vi.fn() }));
+const sounds = vi.hoisted(() => ({ finished: true, choice: "chime-b" }));
+const uiSounds = vi.hoisted(() => ({ play: vi.fn(), soundChoice: () => sounds.choice, SYSTEM_SOUND: "system" }));
 vi.mock("./ui-sounds", () => uiSounds);
-vi.mock("./notification-preferences", () => ({
-  notificationSoundsEnabled: () => sounds.enabled,
+vi.mock("./notification-preferences", async (actual) => ({
+  ...(await actual<typeof import("./notification-preferences")>()),
   finishedNotificationsEnabled: () => sounds.finished,
 }));
+
+import { setNotificationSoundMode } from "./notification-preferences";
 
 import {
   buildNotificationOptions,
@@ -43,8 +45,9 @@ function installNotification(permission: NotificationPermission, focused = false
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  sounds.enabled = true;
   sounds.finished = true;
+  sounds.choice = "chime-b";
+  setNotificationSoundMode("bot");
   uiSounds.play.mockClear();
 });
 
@@ -164,7 +167,7 @@ describe("desktop notifications", () => {
 
 describe("on the desktop app, where main shows the banner so its click outlives the page", () => {
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-  function installBridge(answer: () => Promise<boolean>) {
+  function installBridge(answer: () => Promise<boolean | "hushed">) {
     const installed = installNotification("granted");
     const show = vi.fn(answer);
     vi.stubGlobal("window", { focus: vi.fn(), duskDesktop: { desktopNotifications: { show } } });
@@ -176,7 +179,7 @@ describe("on the desktop app, where main shows the banner so its click outlives 
     showNotification(frame, vi.fn(), "/api/attachments/face.png");
     await flush();
     expect(show).toHaveBeenCalledWith({
-      title: frame.title, body: frame.body, tag: "duskbot:bot-1", silent: true, picture: "/api/attachments/face.png", botId: "bot-1", threadId: "thread-1",
+      title: frame.title, body: frame.body, tag: "duskbot:bot-1", silent: true, chime: true, picture: "/api/attachments/face.png", botId: "bot-1", threadId: "thread-1",
     });
     expect(notices).toHaveLength(0);
   });
@@ -228,11 +231,82 @@ describe("notification sounds", () => {
   });
 
   it("posts silently when sounds are muted on this computer, keeping the banner", () => {
-    sounds.enabled = false;
+    setNotificationSoundMode("never");
     const { notices } = installNotification("granted");
     showNotification(frame, vi.fn());
     expect(notices).toHaveLength(1);
     expect(notices[0]?.options).toMatchObject({ body: frame.body, silent: true });
+    expect(uiSounds.play).not.toHaveBeenCalled();
+  });
+
+  it("shows a notice the bot sent quietly with no ping, and still pings the next one", () => {
+    const { notices } = installNotification("granted");
+    showNotification({ ...frame, silent: true }, vi.fn());
+    expect(notices).toHaveLength(1);
+    expect(uiSounds.play).not.toHaveBeenCalled();
+    showNotification({ ...frame, kind: "question" }, vi.fn());
+    expect(uiSounds.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays every notice, quiet ones too, when the person chose always", () => {
+    setNotificationSoundMode("always");
+    installNotification("granted");
+    showNotification({ ...frame, silent: true }, vi.fn());
+    expect(uiSounds.play).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("notification sounds on the desktop app", () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+  function installBridge(answer: boolean | "hushed" = true) {
+    installNotification("granted");
+    const show = vi.fn(async (_note: { silent?: boolean; chime?: boolean }) => answer);
+    vi.stubGlobal("window", { focus: vi.fn(), duskDesktop: { desktopNotifications: { show } } });
+    return show;
+  }
+  const sent = (show: ReturnType<typeof installBridge>) => show.mock.calls.map(([note]) => ({ silent: note.silent, chime: note.chime }));
+
+  it("chimes for a loud notice once main has shown it, and keeps the OS banner itself silent", async () => {
+    const show = installBridge();
+    showNotification(frame, vi.fn());
+    await flush();
+    expect(sent(show)).toEqual([{ silent: true, chime: true }]);
+    expect(uiSounds.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for no chime for a quiet notice, and plays none", async () => {
+    const show = installBridge();
+    showNotification({ ...frame, silent: true }, vi.fn());
+    await flush();
+    expect(sent(show)).toEqual([{ silent: true, chime: false }]);
+    expect(uiSounds.play).not.toHaveBeenCalled();
+  });
+
+  it("plays no chime while main says the system's Do Not Disturb is on", async () => {
+    installBridge("hushed");
+    showNotification(frame, vi.fn());
+    await flush();
+    expect(uiSounds.play).not.toHaveBeenCalled();
+  });
+
+  it("lets the OS banner make the sound when the person chose the system's, and only for a loud notice", async () => {
+    sounds.choice = "system";
+    const show = installBridge();
+    showNotification(frame, vi.fn());
+    showNotification({ ...frame, silent: true }, vi.fn());
+    await flush();
+    expect(sent(show)).toEqual([{ silent: false, chime: false }, { silent: true, chime: false }]);
+    expect(uiSounds.play).not.toHaveBeenCalled();
+  });
+
+  it("keeps every banner silent and plays nothing when the person chose never", async () => {
+    setNotificationSoundMode("never");
+    sounds.choice = "system";
+    const show = installBridge();
+    showNotification({ ...frame, kind: "approval" }, vi.fn());
+    await flush();
+    expect(sent(show)).toEqual([{ silent: true, chime: false }]);
+    expect(uiSounds.play).not.toHaveBeenCalled();
   });
 });
 

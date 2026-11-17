@@ -1,7 +1,7 @@
 import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { connect, constants, type ClientHttp2Session } from "node:http2";
-import type { PushService } from "../../shared/mobile-link.ts";
+import { QUIET_PUSH_CHANNEL, type PushService } from "../../shared/mobile-link.ts";
 
 /** What a push carries: never a message body, so a lock screen shows who wrote, not what. */
 export interface PushMessage {
@@ -12,6 +12,8 @@ export interface PushMessage {
   botName: string;
   threadId: string;
   groupId?: string;
+  /** Shown without a sound: no APNs `sound`, and Android's low-importance channel. */
+  silent?: true;
 }
 
 export interface PushTarget {
@@ -158,7 +160,7 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
         finish(status === 400 && (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") ? "gone" : "failed");
       });
       request.end(JSON.stringify({
-        aps: { alert: { title: message.botName, body: "New message" }, sound: "default", "thread-id": message.threadId },
+        aps: { alert: { title: message.botName, body: "New message" }, ...(message.silent ? {} : { sound: "default" }), "thread-id": message.threadId },
         dusk: messageData(message),
       }));
     });
@@ -198,7 +200,7 @@ export function createPushSender(env: NodeJS.ProcessEnv = process.env, deps: {
       method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({ message: {
         token: target.token, notification: { title: message.botName, body: "New message" }, data: messageData(message),
-        android: { collapse_key: message.threadId, priority: "high" },
+        android: { collapse_key: message.threadId, priority: "high", ...(message.silent ? { notification: { channel_id: QUIET_PUSH_CHANNEL } } : {}) },
       } }),
       signal: AbortSignal.timeout(10_000),
     });

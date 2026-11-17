@@ -32,6 +32,10 @@ export type MobilePlatform = (typeof MOBILE_PLATFORMS)[number];
 export const PUSH_SERVICES = ["apns", "fcm"] as const;
 export type PushService = (typeof PUSH_SERVICES)[number];
 
+/** The Android notification channel a quiet push (a notification with `silent`) is posted to. The phone app creates it at
+ * low importance, which Android shows without a sound; a phone that has not made it falls back to the default channel. */
+export const QUIET_PUSH_CHANNEL = "dusk-quiet";
+
 /** One way to reach the workspace, in the order the phone should try them. */
 export type MobileTransport =
   /** The workspace's own HTTPS origin. `spki`: base64 sha256 of the leaf key, pinned when the certificate is self-made. */

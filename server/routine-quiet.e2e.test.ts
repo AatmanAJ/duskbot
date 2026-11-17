@@ -70,7 +70,7 @@ describe("a quiet routine", () => {
     page = { ...page, body: page.body.replace("Version 1.0", "Version 1.1 adds dark mode") };
     const changed = await f.runNow(routine.id);
     expect(changed.status).toBe("completed");
-    expect(f.usageRows()).toHaveLength(1);
+    await expect.poll(() => f.usageRows().length, { timeout: 10_000 }).toBe(1);
     const dump = JSON.parse(readFileSync(session!.fixtureDumpPath, "utf8"));
     expect(JSON.stringify(dump)).toContain("changed since the last check");
     expect(JSON.stringify(dump)).toContain("Version 1.1 adds dark mode");

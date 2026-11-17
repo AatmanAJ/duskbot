@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { t } from "@/lib/i18n";
 import {
+  NOTIFICATION_SOUND_MODES,
   setFinishedNotifications,
-  setNotificationSounds,
+  setNotificationSoundMode,
   useFinishedNotifications,
-  useNotificationSounds,
+  useNotificationSoundMode,
+  type NotificationSoundMode,
 } from "@/lib/notification-preferences";
 import { requestNotificationPermission } from "@/lib/notify";
-import { chooseSound, chosenSound, play, UI_SOUND_NAMES, type UiSoundName } from "@/lib/ui-sounds";
+import { chooseSound, chosenSound, play, soundChoice, SYSTEM_SOUND, systemSoundAvailable, UI_SOUND_NAMES, type SoundChoice, type UiSoundName } from "@/lib/ui-sounds";
 import type { LocaleKey } from "@/locales";
 import { SettingRow, Switch } from "./SettingsPrimitives";
 import { SettingsSelect } from "./SettingsSelect";
@@ -66,16 +68,30 @@ export function DeviceNotificationsRow() {
   );
 }
 
+const MODE_LABELS: Record<NotificationSoundMode, LocaleKey> = {
+  bot: "settings.notificationSound.modeBot",
+  always: "settings.notificationSound.modeAlways",
+  never: "settings.notificationSound.modeNever",
+};
+
+/** Per device: whether a bot's quiet notices (a receipt, a routine's "done") stay quiet, or the person's rule wins. */
 function NotificationSoundsRow() {
-  const enabled = useNotificationSounds();
+  const mode = useNotificationSoundMode();
   return (
-    <SettingRow icon="speaker" title={t("settings.notificationSound.playTitle")}>
-      <Switch
-        checked={enabled}
+    <SettingRow
+      icon="speaker"
+      title={t("settings.notificationSound.playTitle")}
+      subtitle={mode === "bot" ? t("settings.notificationSound.modeBotSubtitle") : undefined}
+    >
+      <SettingsSelect
+        value={mode}
         aria-label={t("settings.notificationSounds.play")}
-        onClick={() => {
-          setNotificationSounds(!enabled);
-          if (!enabled) play(chosenSound(), { force: true });
+        options={NOTIFICATION_SOUND_MODES.map((value) => ({ value, label: t(MODE_LABELS[value]) }))}
+        onChange={(event) => {
+          const next = NOTIFICATION_SOUND_MODES.find((candidate) => candidate === event.target.value);
+          if (!next) return;
+          setNotificationSoundMode(next);
+          if (mode === "never" && next !== "never" && soundChoice() !== SYSTEM_SOUND) play(chosenSound(), { force: true });
         }}
       />
     </SettingRow>
@@ -90,23 +106,29 @@ const SOUND_LABELS: Record<UiSoundName, LocaleKey> = {
   "chime-b": "settings.notificationSound.chimeB",
 };
 
-/** Grok's ping picker: which of its five pings plays, heard once as it is chosen. Hidden while sounds are off. */
+/** Grok's ping picker: which of its five pings plays, heard once as it is chosen, or on the desktop app the system's own
+ * banner sound, which follows Do Not Disturb. Hidden while sounds are off. */
 export function NotificationSoundPickerRow() {
-  const enabled = useNotificationSounds();
-  const [sound, setSound] = useState<UiSoundName>(chosenSound);
-  if (!enabled) return null;
+  const mode = useNotificationSoundMode();
+  const [sound, setSound] = useState<SoundChoice>(soundChoice);
+  if (mode === "never") return null;
+  const choices: SoundChoice[] = systemSoundAvailable() ? [SYSTEM_SOUND, ...UI_SOUND_NAMES] : [...UI_SOUND_NAMES];
   return (
-    <SettingRow icon="note" title={t("settings.notificationSound.title")}>
+    <SettingRow
+      icon="note"
+      title={t("settings.notificationSound.title")}
+      subtitle={sound === SYSTEM_SOUND ? t("settings.notificationSound.systemSubtitle") : undefined}
+    >
       <SettingsSelect
         value={sound}
         aria-label={t("settings.notificationSound.title")}
-        options={UI_SOUND_NAMES.map((name) => ({ value: name, label: t(SOUND_LABELS[name]) }))}
+        options={choices.map((name) => ({ value: name, label: t(name === SYSTEM_SOUND ? "settings.notificationSound.system" : SOUND_LABELS[name]) }))}
         onChange={(event) => {
-          const name = UI_SOUND_NAMES.find((candidate) => candidate === event.target.value);
+          const name = choices.find((candidate) => candidate === event.target.value);
           if (!name) return;
           chooseSound(name);
           setSound(name);
-          play(name, { force: true });
+          if (name !== SYSTEM_SOUND) play(name, { force: true });
         }}
       />
     </SettingRow>

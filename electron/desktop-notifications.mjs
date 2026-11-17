@@ -28,11 +28,13 @@ const ids = (value) => new Set(Array.isArray(value) ? value.slice(0, MAX_BOTS).f
  *   mayNotify: (contents: unknown, url: string) => boolean,
  *   reveal: () => void,
  *   openPlace: (origin: string) => unknown,
+ *   systemQuiet?: () => Promise<boolean>,
  *   now?: () => number }} deps
  * `window`: the main window, if any. `mayNotify`: the same rule that lets its page use `new Notification`. `reveal`: raises
- * the window. `openPlace`: main's own switch to the place at an origin.
+ * the window. `openPlace`: main's own switch to the place at an origin. `systemQuiet`: whether the system's Do Not Disturb
+ * is on.
  */
-export function installDesktopNotifications({ ipcMain, Notification, nativeImage, fetch, window, mayNotify, reveal, openPlace, now = Date.now }) {
+export function installDesktopNotifications({ ipcMain, Notification, nativeImage, fetch, window, mayNotify, reveal, openPlace, systemQuiet = async () => false, now = Date.now }) {
   // Electron drops a notification's handlers once nothing holds it, so each is held until it is replaced or dismissed.
   const live = new Map();
   /** Per origin, the bots its page last said wait on the person. */
@@ -72,7 +74,7 @@ export function installDesktopNotifications({ ipcMain, Notification, nativeImage
   ipcMain.handle("desktop-notifications:show", async (event, note) => {
     const origin = askingOrigin(event);
     if (!origin || !Notification.isSupported() || !note || typeof note !== "object") return false;
-    const { title, body, tag, silent, picture, botId, threadId, ask } = note;
+    const { title, body, tag, silent, chime, picture, botId, threadId, ask } = note;
     if (!text(title) || !ID.test(String(botId)) || !ID.test(String(threadId))) return false;
     const key = `${origin}\n${text(tag) || threadId}`;
     const image = await pictureOf(origin, picture);
@@ -85,7 +87,7 @@ export function installDesktopNotifications({ ipcMain, Notification, nativeImage
     shown.on("close", () => { if (live.get(key) === entry) live.delete(key); });
     shown.on("click", () => { if (live.get(key) === entry) live.delete(key); bring(origin, { botId, threadId }); });
     shown.show();
-    return true;
+    return chime === true && await systemQuiet().catch(() => false) ? "hushed" : true;
   });
 
   // `waiting`: the bots this page shows waiting on the person; `settled`: the ones it has loaded that do not. A bot in

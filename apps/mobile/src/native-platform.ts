@@ -21,7 +21,7 @@ import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState }
 import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform } from "@/mobile/platform";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
 import { registerPhoneVoice } from "@/lib/voice-input/device";
-import { appLinkFromUniversal, type MobileOpenTarget } from "../../../shared/mobile-link";
+import { appLinkFromUniversal, QUIET_PUSH_CHANNEL, type MobileOpenTarget } from "../../../shared/mobile-link";
 
 /** The app's own scanner on ios (ios/App/App/QrScannerPlugin.swift): the ML Kit plugin ships for CocoaPods only, and this
  * project links its plugins as Swift packages. */
@@ -416,6 +416,8 @@ export async function nativePlatform(): Promise<MobilePlatform> {
         const asked = (await PushNotifications.checkPermissions()).receive;
         if (asked === "denied" || (asked !== "granted" && !options?.prompt)) return null;
         if (asked !== "granted" && (await PushNotifications.requestPermissions()).receive !== "granted") return null;
+        // Android 8+ takes a notification's sound from its channel, so a quiet push names one made at low importance.
+        if (kind === "android") await PushNotifications.createChannel({ id: QUIET_PUSH_CHANNEL, name: "Quiet updates", importance: 2 }).catch(() => {});
         return await new Promise<{ token: string; platform: "apns" | "fcm" } | null>((resolve) => {
           const handles: PendingHandle[] = [];
           let settled = false;

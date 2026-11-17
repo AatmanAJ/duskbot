@@ -82,6 +82,28 @@ describe("push relay", () => {
     expect(requests[0].body).toEqual({ aps: { alert: { title: "Nova", body: "New message" }, sound: "default", "thread-id": "t1" }, omb: { id: "n1", kind: "mention", botId: "b1", threadId: "t1" } });
   });
 
+  it("sends a quiet push without a sound on APNs and to the low-importance channel on FCM, and never as data", async () => {
+    const requests = [];
+    const http2Connect = () => {
+      const session = Object.assign(new EventEmitter(), { closed: false, destroyed: false, unref() {}, close() {}, destroy() {} });
+      session.request = () => {
+        const stream = Object.assign(new EventEmitter(), { setEncoding() {}, close() {} });
+        stream.end = (body) => { requests.push(JSON.parse(body)); queueMicrotask(() => { stream.emit("response", { ":status": 200 }); stream.emit("end"); }); };
+        return stream;
+      };
+      return session;
+    };
+    await start(createPushRelay({ env: { DUSK_APNS_KEY_FILE: "/keys/apns.p8", DUSK_APNS_KEY_ID: "key", DUSK_APNS_TEAM_ID: "team", DUSK_APNS_TOPIC: "com.example.omb", DUSK_FCM_SERVICE_ACCOUNT_FILE: "/keys/account.json", DUSK_FCM_HOST: "https://fcm.example" }, http2Connect, fetch: fakeFetch(), readFile }));
+    const quiet = { ...message, silent: true };
+    expect(await (await post({ service: "apns", token: "abcdef0123456789", message: quiet })).json()).toEqual({ outcome: "sent" });
+    expect(requests[0]).toEqual({ aps: { alert: { title: "Nova", body: "New message" }, "thread-id": "t1" }, omb: { id: "n1", kind: "mention", botId: "b1", threadId: "t1" } });
+    expect(await (await post({ service: "fcm", token: "fixture-token", message: quiet })).json()).toEqual({ outcome: "sent" });
+    const sent = JSON.parse(calls.find((one) => one.url.startsWith("https://fcm.example")).body).message;
+    expect(sent.android).toEqual({ collapse_key: "t1", priority: "high", notification: { channel_id: "dusk-quiet" } });
+    expect(sent.data).toEqual({ id: "n1", kind: "mention", botId: "b1", threadId: "t1" });
+    expect(pushMessage({ ...message, silent: "yes" })).not.toHaveProperty("silent");
+  });
+
   it("refuses bad input and limits pushes per device token", async () => {
     await start(createPushRelay({ env: { DUSK_FCM_SERVICE_ACCOUNT_FILE: "/keys/account.json", DUSK_FCM_HOST: "https://fcm.example" }, fetch: fakeFetch(), readFile }));
     expect((await post({ service: "sms", token: "fixture-token", message })).status).toBe(400);

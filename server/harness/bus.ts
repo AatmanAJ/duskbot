@@ -10,6 +10,7 @@ import { capThreadLog, currentThreadLogCap } from "../thread-log-rotation.ts";
 import { newId, type ProviderAdapter, type ProviderInstance, type RuntimeEvent, type RuntimeEventListener } from "../contracts.ts";
 import { LiveSteps } from "./live-steps.ts";
 import { ProgressGate } from "./progress-gate.ts";
+import type { NotificationSound } from "../../shared/notification.ts";
 import { TurnStatus } from "./status-calls.ts";
 
 const INCOMPLETE_LOG_MESSAGE =
@@ -120,6 +121,7 @@ export class EventBus {
       }
       return;
     }
+    if (raw.type === "turn.started") this.status.turnStarted(raw.threadId);
     if (raw.type === "turn.started" || isTerminalEvent(raw)) this.status.forget(raw.threadId);
     const event = this.steps.observe(raw, isTerminalEvent(raw));
     if (event.type === "item.started") this.status.derive(event);
@@ -139,6 +141,16 @@ export class EventBus {
     if (pending) this.flushThread(event.threadId);
     this.write(event);
     this.steps.announce(event);
+  }
+
+  /** The sound the bot chose with set_notification_sound for the notice of the thread's latest turn, if it chose one. */
+  notificationSound(threadId: string): NotificationSound | undefined {
+    return this.status.notificationSound(threadId);
+  }
+
+  /** A turn is being dispatched on the thread: a choice of sound from an earlier turn no longer applies. */
+  turnDispatched(threadId: string): void {
+    this.status.turnStarted(threadId);
   }
 
   flush(): Promise<void> {

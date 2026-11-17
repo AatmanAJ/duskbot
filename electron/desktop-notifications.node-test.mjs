@@ -5,11 +5,12 @@ import { createRequire } from "node:module";
 import test from "node:test";
 
 import { installDesktopNotifications } from "./desktop-notifications.mjs";
+import { createSystemQuiet } from "./system-quiet.mjs";
 
 const CLOUD = "https://studio.example.com", COMPUTER = "http://127.0.0.1:8799";
 const NOTE = { title: "Scout resumed", body: "Results in", tag: "duskbot:scout", botId: "scout", threadId: "work-thread" };
 
-function world({ shown = CLOUD, supported = true, mayNotify = true, picture = async () => null } = {}) {
+function world({ shown = CLOUD, supported = true, mayNotify = true, picture = async () => null, systemQuiet } = {}) {
   const banners = [], log = [];
   class Banner extends EventEmitter {
     closed = false;
@@ -36,6 +37,7 @@ function world({ shown = CLOUD, supported = true, mayNotify = true, picture = as
     fetch: async (url) => { asked.push(url); const body = await picture(url); return { ok: body !== null, arrayBuffer: async () => new TextEncoder().encode(body ?? "").buffer }; },
     window: () => ({ isDestroyed: () => false, webContents }), mayNotify: () => mayNotify,
     reveal: () => log.push("reveal"), openPlace: (origin) => log.push(`place ${origin}`), now: () => at.now,
+    ...(systemQuiet ? { systemQuiet } : {}),
   });
   const fromPage = { sender: webContents, senderFrame: mainFrame };
   return { ...installed, at, banners, log, asked, fromPage, webContents, show: (note = NOTE, event = fromPage) => handler(event, note), asks: (asks, event = fromPage) => report(event, asks) };
@@ -217,4 +219,49 @@ test("only an ask closes this way, and only for the place whose page reports it"
   await w.show({ ...NOTE, tag: "other", ask: true });
   w.asks({ waiting: [], settled: ["scout"] }, { sender: {}, senderFrame: {} });
   assert.equal(w.banners[1].closed, false, "not this window's page");
+});
+
+test("the OS banner makes a sound only when the page asks for the system's, and is silent otherwise", async () => {
+  const w = world();
+  await w.show({ ...NOTE, silent: true });
+  await w.show({ ...NOTE, tag: "loud", silent: false });
+  await w.show({ ...NOTE, tag: "old page" });
+  assert.deepEqual(w.banners.map((banner) => banner.options.silent), [true, false, false]);
+});
+
+test("a chime the page means to play is hushed while the system's Do Not Disturb is on, and the banner still shows", async () => {
+  let quiet = true, asked = 0;
+  const w = world({ systemQuiet: async () => { asked += 1; return quiet; } });
+  assert.equal(await w.show({ ...NOTE, silent: true, chime: true }), "hushed");
+  quiet = false;
+  assert.equal(await w.show({ ...NOTE, silent: true, chime: true }), true);
+  assert.equal(await w.show({ ...NOTE, silent: true }), true, "no chime meant: the system is not asked");
+  assert.equal(asked, 2);
+  assert.equal(w.banners.length, 3);
+});
+
+test("Do Not Disturb is read on Linux from GNOME's banners or the notification server's Inhibited, and nowhere else", async () => {
+  const answering = (answers) => {
+    const calls = [];
+    return { calls, execFile: (file, _args, options, done) => { calls.push([file, options.timeout]); const answer = answers[file]; setImmediate(() => (answer instanceof Error ? done(answer, "") : done(null, answer ?? ""))); } };
+  };
+  let now = 0;
+  const gnome = answering({ gsettings: "false\n", gdbus: new Error("no such name") });
+  const quiet = createSystemQuiet({ platform: "linux", execFile: gnome.execFile, now: () => now });
+  assert.equal(await quiet(), true);
+  assert.equal(await quiet(), true);
+  assert.equal(gnome.calls.length, 2, "asked once, then held for a while");
+  now += 60_000;
+  await quiet();
+  assert.equal(gnome.calls.length, 4, "asked again once the answer is old");
+  assert.ok(gnome.calls.every(([, timeout]) => timeout <= 1_000));
+
+  assert.equal(await createSystemQuiet({ platform: "linux", execFile: answering({ gsettings: "true", gdbus: "(<true>,)" }).execFile })(), true);
+  assert.equal(await createSystemQuiet({ platform: "linux", execFile: answering({ gsettings: "true", gdbus: "(<false>,)" }).execFile })(), false);
+  assert.equal(await createSystemQuiet({ platform: "linux", execFile: () => { throw new Error("ENOENT"); } })(), false);
+  for (const platform of ["darwin", "win32"]) {
+    const other = answering({ gsettings: "false" });
+    assert.equal(await createSystemQuiet({ platform, execFile: other.execFile })(), false);
+    assert.equal(other.calls.length, 0);
+  }
 });

@@ -70,6 +70,7 @@ Use only mapped, tested commands:
 - [Chat widgets](widgets.md)
 - [The Inbox on every plan](inbox.md)
 - [Reactions](reactions.md)
+- [Notification sounds: quiet receipts, loud asks](notification-sounds.md)
 - [Slack bots: own apps, Socket Mode, threaded replies](slack-bots.md)
 - [Chat widgets: prompts to try with a real bot](widget-prompts.md)
 - [Phone web app installation and safe areas](phone-web-app.md)

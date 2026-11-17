@@ -247,8 +247,10 @@ export const TRIGGER_PROMPT =
 export const AUTOMATION_REPLY_PROMPT =
   " Only your final reply leaves this run: it is posted in your chat with the person under this automation's name, and your steps stay here. Write it for them, in plain words. If nothing needs their attention this time, reply with just NOTHING NEW and nothing is posted. If you need something only they can give, such as a decision or a missing detail, end with a line that starts with NEEDS INPUT: and the question; they answer in that chat. Ask in words, not with show_widget: they do not see this conversation.";
 export const READ_ONLY_ROUTINE_EXECUTION_PROMPT = " Execute this automation now within its read-and-draft limits.";
+export const ROUTINE_SOUND_PROMPT =
+  " This run's report shows without a sound, so the person is not woken by a receipt. If it needs them or is a result they asked to hear about at once, call set_notification_sound with ding.";
 export const ROUTINE_EXECUTION_PROMPT =
-  " Execute this routine now: use coordinate_bots for required handoffs rather than merely announcing that you will wait; after an accepted hand-off, end this turn for automatic resumption, and report a concrete blocker if no handoff is possible." + AUTOMATION_COMPLETION_PROMPT;
+  " Execute this routine now: use coordinate_bots for required handoffs rather than merely announcing that you will wait; after an accepted hand-off, end this turn for automatic resumption, and report a concrete blocker if no handoff is possible." + AUTOMATION_COMPLETION_PROMPT + ROUTINE_SOUND_PROMPT;
 export const NOT_YET_PROMPT =
   " If what this run needs has not arrived yet (an email, a file, a reply, a page update), start your reply with \"Not yet:\" and say in one line what is missing. dusk bot checks again later by itself, so do not report it as done or failed.";
 export const LEARN_PROMPT =

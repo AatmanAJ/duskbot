@@ -27,6 +27,7 @@ import { callDevsTool, DEVS_TOOL_NAMES } from "./agents-devs-tools.ts";
 import { STATUS_TOOL } from "../../shared/turn-progress.ts";
 import { callStatusTool } from "./agents-status-tool.ts";
 import { callSendMessageTool, SEND_MESSAGE_TOOL } from "./agents-send-message-tool.ts";
+import { callNotificationSoundTool, NOTIFICATION_SOUND_TOOL } from "./agents-sound-tool.ts";
 
 export interface ToolCallContext {
   botId: string;
@@ -256,6 +257,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (name === USAGE_LIMITS_TOOL) return callUsageLimitsTool(context);
   if (name === STATUS_TOOL) return callStatusTool();
   if (name === SEND_MESSAGE_TOOL) return callSendMessageTool();
+  if (name === NOTIFICATION_SOUND_TOOL) return callNotificationSoundTool();
   if (name === "tool_result_read") {
     if (typeof args.id !== "string" || !/^r-[0-9a-f-]{36}$/.test(args.id) ||
       (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || Number(args.offset) < 0))) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { STATUS_LABEL_MAX } from "../../shared/turn-progress.ts";
 import type { RuntimeEvent } from "../contracts.ts";
-import { isStatusToolName, sentMessageText, statusCallText, statusLabel, TurnStatus } from "./status-calls.ts";
+import { isStatusToolName, notificationSoundCall, sentMessageText, statusCallText, statusLabel, TurnStatus } from "./status-calls.ts";
 
 describe("statusLabel", () => {
   it("reads the bot's words as a status line label", () => {
@@ -71,5 +71,35 @@ describe("send_message calls", () => {
     expect(sentMessageText("send_message", "{}")).toBeUndefined();
     expect(sentMessageText("Bash", JSON.stringify({ text: "x" }))).toBeNull();
     expect(status.hides({ type: "turn.progress", threadId: "th", activity: "tool", tool: "mcp__agents__send_message" } as never)).toBe(true);
+  });
+});
+
+describe("set_notification_sound calls", () => {
+  const started = (title: string, input: unknown, threadId = "th") => ({
+    eventId: "e", provider: "claudeAgent", threadId, turnId: "t1", createdAt: "2026-11-17T00:00:00.000Z", type: "item.started", itemType: "tool",
+    itemId: `c-${title}`, title, input: typeof input === "string" ? input : JSON.stringify(input),
+  }) as unknown as RuntimeEvent;
+
+  it("reads the choice in every engine's spelling, a bridged call and a preview cut short included", () => {
+    expect(notificationSoundCall("set_notification_sound", JSON.stringify({ sound: "quiet" }))).toBe("quiet");
+    expect(notificationSoundCall("mcp__agents__set_notification_sound", { sound: "ding" })).toBe("ding");
+    expect(notificationSoundCall("mcp__agents__use_tool", JSON.stringify({ name: "set_notification_sound", arguments: { sound: "quiet" } }))).toBe("quiet");
+    expect(notificationSoundCall("mcp__agents__use_tool", '{"name":"set_notification_sound","arguments":{"sound":"ding"')).toBe("ding");
+    expect(notificationSoundCall("set_notification_sound", JSON.stringify({ sound: "loud" }))).toBeUndefined();
+    expect(notificationSoundCall("mcp__agents__use_tool", JSON.stringify({ name: "send_message", arguments: { text: "x" } }))).toBeNull();
+    expect(notificationSoundCall("Bash", JSON.stringify({ sound: "quiet" }))).toBeNull();
+  });
+
+  it("holds the latest choice for the thread past its turn's end, never shows the call as a step, and drops it when the next turn starts", () => {
+    const status = new TurnStatus();
+    expect(status.take(started("mcp__agents__set_notification_sound", { sound: "ding" }))).toEqual({});
+    expect(status.take(started("mcp__agents__set_notification_sound", { sound: "quiet" }))).toEqual({});
+    expect(status.take({ ...started("mcp__agents__set_notification_sound", { sound: "quiet" }), type: "item.completed", ok: true } as unknown as RuntimeEvent)).toEqual({});
+    status.forget("th");
+    expect(status.notificationSound("th")).toBe("quiet");
+    expect(status.notificationSound("other")).toBeUndefined();
+    expect(status.hides({ type: "turn.progress", threadId: "th", activity: "tool", tool: "mcp__agents__set_notification_sound" } as never)).toBe(true);
+    status.turnStarted("th");
+    expect(status.notificationSound("th")).toBeUndefined();
   });
 });
