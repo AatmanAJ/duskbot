@@ -175,7 +175,7 @@ export const BrowserToolbar = forwardRef<HTMLInputElement, {
       <button type="button" data-local-browser-action="reload" className={ICON_BUTTON} disabled={!ready} aria-label={nav.loading ? t("browser.panel.loadingReload") : t("browser.panel.reload")} title={t("screenLoad.reload")} onClick={onReload}>
         {nav.loading ? <Loader2 size={16} aria-hidden="true" className="motion-safe:animate-spin" /> : <RotateCw size={16} aria-hidden="true" />}
       </button>
-      <label className="ms-0.5 flex h-8 min-w-0 flex-1 cursor-text items-center gap-1.5 rounded-[10px] bg-composer px-2.5 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-focus">
+      <label className="ms-0.5 flex h-8 min-w-0 flex-1 cursor-text items-center gap-1.5 rounded-[10px] bg-composer px-2.5">
         {secure && !editing && <Lock size={12} aria-hidden="true" className="shrink-0 text-ink/40" />}
         <input ref={ref} data-local-browser-address="" aria-label={t("browser.panel.address")} readOnly={!ready} spellCheck={false} autoComplete="off"
           value={editing ? draft : addressText(nav.url)}
