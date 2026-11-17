@@ -71,6 +71,7 @@ Use only mapped, tested commands:
 - [The Inbox on every plan](inbox.md)
 - [Reactions](reactions.md)
 - [Slack bots: own apps, Socket Mode, threaded replies](slack-bots.md)
+- [Task fidelity: right place, right route, draft first](task-fidelity.md)
 - [Chat widgets: prompts to try with a real bot](widget-prompts.md)
 - [Phone web app installation and safe areas](phone-web-app.md)
 - [Phone sync: pairing, relay and companion routes](mobile-sync.md)
