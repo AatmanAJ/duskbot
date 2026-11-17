@@ -226,8 +226,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     /** Set once the turn stops taking rounds: a later steer goes to the next turn instead. */
     ending: boolean;
   }>();
-  const reasoningReplayRejected = new Set<string>();
-  const routes = createModelRoutes(options.apiUrl);
+  const reasoningReplayRejected = new Set<string>(), routes = createModelRoutes(options.apiUrl);
   /** Beside the messages, not on them, so encrypted reasoning never reaches a Chat Completions body, a log or a handoff. */
   const responseOutputs = new WeakMap<OpenAIChatMessage, ResponseItem[]>();
   const assistantReply = (model: string, completion: Completion, content: string | null, toolCalls?: ChatToolCall[]): OpenAIChatMessage => {
@@ -631,8 +630,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           turnEntry.ending = round === MAX_CHAT_ROUNDS - 1;
           if (round > 0) retainImages.release(trimBrowserContext(messages));
           native("out", options.nativeLog.outgoing(turn, messages, model, tools.definitions));
-          let attempt = 0;
-          let resized = false;
+          let attempt = 0, resized = false;
           let completion: Completion;
           for (;;) {
             let streamed = false;
