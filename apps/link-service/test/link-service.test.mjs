@@ -429,6 +429,29 @@ describe("a linked server's own update", () => {
     expect(readFileSync(join(staged, `${sha}.tgz`)).equals(bytes)).toBe(true);
     expect(statSync(join(staged, "ready.json")).mode & 0o777).toBe(0o600);
   });
+
+  // a server left on an old build said nothing at all about why, check after check (#8)
+  it("the agent logs what each check found, once each time it changes", async () => {
+    const lines = [];
+    const quiet = await linked();
+    rmSync(join(dir, "data", "packages"), { recursive: true, force: true });
+    const none = createServerUpdater({ base, id: quiet.id, token: quiet.token, dir: join(dir, `server-release-${quiet.id}`), current: async () => "1.1.0", log: (line) => lines.push(line) });
+    expect(await none.check()).toBeNull();
+    expect(await none.check()).toBeNull();
+    expect(lines).toEqual(["link: no server build is published on the link service (it answered 404); the server stays as it is"]);
+
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const signing = `test-vps:${privateKey.export({ format: "der", type: "pkcs8" }).toString("base64url")}`;
+    const keys = [`test-vps:${createPublicKey(privateKey).export({ format: "jwk" }).x}`];
+    const bytes = Buffer.from("current server build ".repeat(300));
+    publish(bytes, { signature: signRelease({ kind: "vps-package", name: "duskbot", version: "1.2.0", sha256: sha256hex(bytes), signedAt: 1 }, signing) });
+    const { id, token } = await linked();
+    lines.length = 0;
+    const current = createServerUpdater({ base, id, token, dir: join(dir, `server-release-${id}`), keys, current: async () => "1.2.0", log: (line) => lines.push(line) });
+    expect(await current.check()).toBeNull();
+    expect(await current.check()).toBeNull();
+    expect(lines).toEqual(["link: server 1.2.0 is up to date (the link service offers 1.2.0)"]);
+  });
 });
 
 describe("relay tunnel", () => {
