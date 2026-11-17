@@ -42,6 +42,10 @@ const NO_BROWSER_NOTE =
 const OFF_NOTE =
   " This bot's \"Works on\" setting is Off, so no computer and no built-in browser are mounted this turn: you cannot open a page, click, or type on any screen. If the user asks for something that needs one, tell them Works on is Off in this bot's settings, never claim you are opening a browser you do not have.";
 
+/** A bot on this computer whose screen access the OS has not granted yet: it still chats and browses. */
+export const SCREEN_ACCESS_MISSING_NOTE =
+  " This bot works on this computer, but dusk bot does not have screen access on it yet, so no computer tools are mounted this turn: you cannot see, click or type on this computer's screen or apps. Answer and chat normally, and do web work in your built-in browser if you have it. Only when the request truly needs this computer's screen or its apps, say so in one short line: dusk bot needs screen access on this computer, and the person can allow it from the notice above the message box. Never claim to have used the screen.";
+
 export function computerSkippedNote(cause: string): string {
   const why = cause.trim().replace(/[\s.]+$/, "");
   return ` This turn answers a Team incidents report and your computer could not be prepared for it (${why}), so no computer is mounted: you cannot open, click or check anything on it this turn. Act through your teammates, or tell the person what only they can fix, never claim to have checked that computer yourself.`;

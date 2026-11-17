@@ -190,6 +190,28 @@ describe("this computer belongs to the desktop app's own server", () => {
     expect((await rows(task.threadId)).filter(line => line === "Open Chrome on this computer.")).toHaveLength(1);
   });
 
+  itHost("a bot on this computer without screen permission still replies, with its browser and no screen tools", async () => {
+    writeFileAtomic(join(home, "user-data", "cua-connection.json"), JSON.stringify({
+      mode: "unavailable", reason: "Screen Recording required for CuaDriver; turn on CuaDriver in System Settings > Privacy & Security",
+    }));
+    const browser = join(home, "agent-browser");
+    writeFileSync(browser, "#!/bin/sh\necho '{\"success\":true,\"data\":{\"sessions\":[]}}'\n", { mode: 0o755 });
+    await start(true, { DUSK_AGENT_BROWSER_PATH: browser });
+    const { bot } = await apiOk("POST", "/api/bots", { name: "No Permission Bot" });
+    await apiOk("PATCH", `/api/bots/${bot.id}`, { computer: "local" });
+    const { task } = await apiOk("POST", `/api/bots/${bot.id}/tasks`, {});
+    resetTurn();
+    await apiOk("POST", `/api/bots/${bot.id}/messages`, { text: "hi", threadId: task.threadId });
+    const sent = await dump();
+    expect(sent.mcpConfig?.mcpServers?.computer).toBeUndefined();
+    expect(sent.mcpConfig?.mcpServers?.browser).toBeDefined();
+    expect(JSON.stringify(sent)).toContain("does not have screen access on it yet");
+    writeFileSync(finishFile, "finish");
+    await idle(bot.id, task.threadId);
+    const lines = (await rows(task.threadId)).join("\n");
+    expect(lines).not.toMatch(/can't use this computer yet|failed/i);
+  });
+
   itHost("Stop during helper startup prevents a late ready grant from starting the turn", async () => {
     const grantFile = join(home, "user-data", "cua-connection.json");
     writeFileAtomic(grantFile, "null");
