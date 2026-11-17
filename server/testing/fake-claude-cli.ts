@@ -44,7 +44,8 @@
 //   FAKE_CLAUDE_TOOL_CALLS_BY_TURN  JSON array, one FAKE_CLAUDE_TOOL_CALLS list per reply of FAKE_CLAUDE_REPLIES (by its REPLY_STATE)
 //   FAKE_CLAUDE_SCRIPT  JSON array of steps each happy turn plays in order instead of its replies and tool calls:
 //     {"text": "..."} is an assistant message of its own, {"tool": {name, input?, ok?, output?}} a tool_use answered by its
-//     tool_result (output default "ok"), {"waitMs": n} a pause; e.g. an ack, set_status with a search, a plan, a wait, a result
+//     tool_result (output default "ok"), {"waitMs": n} a pause; e.g. an ack, set_status with a search, a plan, a wait, a result;
+//     {"ifSteered": "..."} reads the messages steered in so far and says its text, only when there were any
 //   FAKE_CLAUDE_STREAM_CADENCE  "chars:ms" (happy mode): stream each scripted reply as
 //     text_delta chunks of `chars` chars every `ms` ms before its assistant message, after FAKE_CLAUDE_TOOL_CALLS_FILE's calls
 //   FAKE_CLAUDE_USES_CLOUD_COMPUTER  1: claim the mounted computer's control gate before continuing
@@ -183,7 +184,7 @@ const parseToolCalls = (raw: string | undefined): ScriptedToolCall[] | null => {
   }
 };
 const scriptedToolCallsAtStart = parseToolCalls(process.env.FAKE_CLAUDE_TOOL_CALLS);
-type ScriptStep = { text: string } | { tool: ScriptedToolCall } | { waitMs: number };
+type ScriptStep = { text: string } | { tool: ScriptedToolCall } | { waitMs: number } | { ifSteered: string };
 const turnScript = ((): ScriptStep[] | null => {
   const raw = process.env.FAKE_CLAUDE_SCRIPT;
   if (!raw) return null;
@@ -192,6 +193,7 @@ const turnScript = ((): ScriptStep[] | null => {
   if (!Array.isArray(parsed)) throw new Error("FAKE_CLAUDE_SCRIPT must be a JSON array of steps");
   return parsed.map((step, index): ScriptStep => {
     if (typeof step?.text === "string") return { text: step.text };
+    if (typeof step?.ifSteered === "string") return { ifSteered: step.ifSteered };
     if (Number.isSafeInteger(step?.waitMs) && step.waitMs >= 0) return { waitMs: step.waitMs };
     const call = typeof step?.tool?.name === "string" ? parseToolCalls(JSON.stringify([step.tool]))?.[0] : undefined;
     if (call) return { tool: call };
@@ -872,6 +874,13 @@ const playScript = (steps: ScriptStep[], usage: object, done: () => void) => {
     const step = steps[index];
     if (!step) return done();
     if ("waitMs" in step) return void setTimeout(() => next(index + 1), step.waitMs);
+    if ("ifSteered" in step) {
+      if (!steered.length) return next(index + 1);
+      steered = [];
+      replaySteered();
+      out({ type: "assistant", message: { id: `msg-script-${process.pid}-${++toolUseCount}`, content: [{ type: "text", text: step.ifSteered }], usage } });
+      return next(index + 1);
+    }
     if ("text" in step) {
       out({ type: "assistant", message: { id: `msg-script-${process.pid}-${++toolUseCount}`, content: [{ type: "text", text: step.text }], usage } });
       return next(index + 1);

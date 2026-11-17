@@ -564,6 +564,10 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
    * context folded in mid-turn, never a new request. The text is stored
    * enveloped exactly as injected. */
   aside?: boolean;
+  /** bot text rows: the quick reply to a person's message sent while a
+   * turn worked, written outside that turn (no turnId), so it never takes
+   * the turn's result, receipts or "Worked for" fold. */
+  sideReply?: boolean;
   /** A user-role message that arrived through the server's HTTP API
    * ("api"), or a request a person spoke on a Live call ("call"). */
   via?: "api" | "call";

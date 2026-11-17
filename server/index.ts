@@ -658,7 +658,7 @@ import { createReconnectResume } from "./host/reconnect-resume.ts"; import { mcp
 import { createFinishGuard } from "./host/finish-guard.ts"; import { createLimitHold } from "./host/limit-hold.ts"; import { createBatchContinue } from "./host/batch-continue.ts"; import { checklistDir, readChecklist } from "./batch-checklist.ts"; import { createChecklistRoutes } from "./routes/checklist.ts"; import { createActionReceipts } from "./host/action-receipts.ts";
 import { createBrowserLoops } from "./host/browser-loops.ts";
 import { createBotMessageRoutes } from "./routes/bot-messages.ts";
-import { clearInternalTurn, isInternalTurn, markInternalTurn } from "./internal-turns.ts"; import { createFirstReplyRescue } from "./first-reply-rescue.ts"; import { createTurnBeats } from "./turn-beats.ts";
+import { clearInternalTurn, isInternalTurn, markInternalTurn } from "./internal-turns.ts"; import { createFirstReplyRescue } from "./first-reply-rescue.ts"; import { createTurnBeats } from "./turn-beats.ts"; import { createSideReplies, repliesWhileWorking, type SideRequest, type SideSendFacts } from "./host/side-replies.ts";
 import { createReactionRoutes } from "./routes/reactions.ts";
 import { createReactions, withReactionNotes, type Reactor } from "./reactions.ts";
 import { createPersonReplies } from "./person-replies.ts";
@@ -5419,6 +5419,7 @@ const sideJobs = createSideJobs({
   instance: (instanceId) => registry.get(instanceId),
   refusal: (instance) => policyModelRefusal(instance), smallModels: quickFallback,
   helper: cacheUntilConfigChanges((config) => helperSelection(config)),
+  freeBackup: () => registry.instances().find((instance) => instance.enabled && registry.lastSnapshot(instance.instanceId)?.freeFallback === true) ?? null,
   book: bookTurnUsage,
   log: (line) => console.log(line),
 });
@@ -8028,6 +8029,45 @@ const firstReplyRescue = createFirstReplyRescue({ store, botForThread, speaker: 
   engineName: (instanceId) => engineName(instanceId), quiet: (threadId) => isInternalTurn(threadId) || activeRoutineRunForThread(threadId) !== null,
   live: (threadId, turnId) => liveTurns.running(threadId) === turnId, requests: directRequestOwners });
 bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) liveTurns.onEvent(event); }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) firstReplyRescue.onEvent(event); }); const turnBeatWriter = (botId: string, threadId: string) => { const id = runningTurnEngines.get(threadId)?.instanceId ?? botForThread(botId, threadId)?.modelSelection.instanceId; const instance = id ? registry.get(id) : undefined; return instance ? sideJobs.text("turn-beat", botId, { instance }) : null; }; const turnBeats = createTurnBeats({ enabled: () => quickUpdatesEnabled(cfg), writer: (botId, threadId) => turnBeatWriter(botId, threadId)?.generateText ?? null, bot: (botId) => store.bot(botId), live: (threadId, turnId) => liveTurns.running(threadId) === turnId, log: (line) => console.info(line), post: ({ threadId, turnId, text }) => { const owner = directRequestOwners.get(threadId); store.appendMessage(threadId, { role: "bot", kind: "text", text, turnId, ...(owner?.messageId && !owner.stopped && owner.turnId === turnId ? { requestMessageId: owner.messageId } : {}) }); } }); bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) turnBeats.onEvent(event); });
+interface SideSend extends SideRequest { at: number; replyToId?: string; dataContext?: DataContext; sender?: ResolvedSender; trigger: UsageTrigger; mentions?: string[] }
+const sideQueue = (send: SideSend, prompt: string) => {
+  queueSteeredMessage(send.botId, send.threadId, send.text, { prompt, rowId: send.messageId, first: true, queuedAt: send.at, replyToId: send.replyToId, dataContext: send.dataContext, sender: send.sender, trigger: send.trigger, mentions: send.mentions });
+  queueMicrotask(drainQueuedSends);
+};
+const sideSteer = async (send: SideSend, prompt: string): Promise<SteerOutcome> => {
+  const target = handoffs.current(send.threadId), instanceId = runningTurnEngines.get(send.threadId)?.instanceId;
+  const outcome = await steerThread(send.threadId, prompt).catch((): SteerOutcome => "indeterminate");
+  if (outcome !== "refused") handoffs.steered(send.threadId, target, instanceId, send.messageId);
+  return outcome;
+};
+const sideReplies = createSideReplies<SideSend>({
+  writer: (botId, threadId) => { const id = runningTurnEngines.get(threadId)?.instanceId ?? botForThread(botId, threadId)?.modelSelection.instanceId; const instance = id ? registry.get(id) : undefined; return instance ? sideJobs.text("side-reply", botId, { instance })?.generateText ?? null : null; },
+  bot: (botId) => store.bot(botId),
+  transcript: (threadId) => store.activePath(threadId),
+  checklist: (botId, threadId) => { const dir = checklistDir(TASK_WORKSPACES_DIR, botId, threadId); return dir ? readChecklist(dir) : null; },
+  busy: (botId, threadId) => threadBusy(botId, threadId),
+  canSteer: canSteerThread,
+  steer: sideSteer,
+  queueNext: sideQueue,
+  stop: (send) => stopThreadForPerson(send.botId, send.threadId),
+  redirect: async (send, prompt) => { sideQueue(send, prompt); await restartForPerson(send.botId, send.threadId, send.trigger); },
+  post: (threadId, text) => void store.appendMessage(threadId, { role: "bot", kind: "text", text, sideReply: true }),
+  fallback: async (send) => {
+    if (canSteerThread(send.threadId) && await sideSteer(send, send.prompt) !== "refused") {
+      personFirst.wait(send.threadId, { requeue: (note) => sideQueue(send, note ? `${send.prompt}\n\n${note}` : send.prompt) });
+      return;
+    }
+    sideQueue(send, send.prompt);
+    personFirst.wait(send.threadId, {});
+  },
+  log: (line) => console.info(line),
+});
+bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) sideReplies.onEvent(event); });
+const sideSendFacts = (botId: string, threadId: string, send: Pick<SideSendFacts, "personsOwn" | "spoken" | "images" | "followUp">): SideSendFacts => ({
+  ...send, room: Boolean(store.groupByThread(threadId)), oneOnOne: oneOnOne(threadId) === botId,
+  waitingOnPerson: watchdog.waiting(threadId) || Boolean(computerSelectionTurns.get(threadId)?.selected),
+  quickUpdates: quickUpdatesEnabled(cfg), writer: sideReplies.available(botId, threadId),
+});
 
 // Registered after the main fold, so busy is already false here; not gated on event.ok, since queued messages are the user's own words.
 bus.subscribe((event: RuntimeEvent) => {
@@ -8202,6 +8242,17 @@ async function acceptDirectSend(
         let steered: SteerOutcome = "refused";
         const steerInput = extractTurnImages(text);
         const carriesImages = steerInput.images.length > 0;
+        if (repliesWhileWorking(sideSendFacts(botId, threadId, { personsOwn: personsOwn && !relayed, spoken: Boolean(via), images: carriesImages, followUp }))) {
+          if (personPresent) clearUnattended(threadId);
+          const message = store.appendMessage(threadId, {
+            role: "user", kind: "text", text, replyToId: replyTo?.id, sendId, ...(dataContext ? { dataContext } : {}), steered: true, sender,
+          });
+          store.setTaskAskedAt(botId, threadId, message.at);
+          askCards.movedOn(threadId);
+          if (lineSettlesSignIn(text)) signInSettle.answerInChat(botId, threadId);
+          void sideReplies.handle({ botId, threadId, messageId: message.id, text, prompt: queuedPrompt, at: message.at, replyToId: replyTo?.id, dataContext, sender, trigger, mentions });
+          return { ok: true as const, steered: true as const, threadId, message };
+        }
         const steerTarget = handoffs.current(threadId);
         const busyAdmission = admit("direct-busy", {
           carriesImages,
