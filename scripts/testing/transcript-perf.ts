@@ -91,9 +91,9 @@ async function settle(api: Context["api"], botId: string, timeoutMs = 180_000) {
   throw new Error("the bot did not settle");
 }
 
-async function send(context: Context, text: string) {
-  await context.api("POST", `/api/bots/${context.botId}/messages`, { text, sendId: randomUUID() });
-  await settle(context.api, context.botId);
+async function send(context: Context, text: string, botId = context.botId) {
+  await context.api("POST", `/api/bots/${botId}/messages`, { text, sendId: randomUUID() });
+  await settle(context.api, botId);
 }
 
 async function threadCount(context: Context): Promise<number> {
@@ -217,7 +217,18 @@ async function streamScenario(runs: number) {
     }
     const { bots } = await context.api("GET", "/api/bots?messages=12") as { bots: Array<{ id: string; messages?: Array<{ role: string; kind: string; text?: string }> }> };
     const tail = bots.find((bot) => bot.id === context.botId)?.messages?.map((message) => `${message.role}:${message.kind}:${message.text?.length ?? 0}`);
-    return { history: await threadCount(context), tail, readings };
+    // another bot works while Pepper's chat stays open: its frames reach the sidebar, not this transcript
+    const other = await runControlDusk(["new-bot", "--name", "Quill", "--url", context.fixture.info.url]) as { bot: { id: string } };
+    await sleep(3_000);
+    const background = [];
+    for (let run = 0; run < runs; run++) {
+      await context.evaluate(`window.__duskPerf.reset(); true`);
+      await send(context, `Background turn ${run + 1}: run the build and summarise.`, other.bot.id);
+      await sleep(1_500);
+      background.push(await context.evaluate(`window.__duskPerf.read()`));
+      note(`stream: background run ${run + 1} done`);
+    }
+    return { history: await threadCount(context), tail, readings, background };
   });
 }
 

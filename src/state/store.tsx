@@ -2578,6 +2578,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let hydrationFallback = bootChat ? undefined : setTimeout(hydrate, 1_000);
 
     handleFrame = (frame) => {
+      // frames that arrive together render together; a person's own action (the wrapped dispatch) renders at once
+      const rawDispatch = store.dispatchBatched;
       // a preference changed at this place, maybe at another of the person's
       if ((frame as { kind: string }).kind === "ui-prefs") { void pullSyncedPrefs(); return; }
       if (frame.kind === "config") bumpPeripheralVersion("config", "instances");
@@ -2728,7 +2730,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Rendered at once: the next bot frame decides auto-speak from stateRef.
           if (framed) {
             spokenReplyStream.onLiveCall(framed.call);
-            flushSync(() => rawDispatch({ type: "liveCall", call: framed.call }));
+            flushSync(() => store.dispatch({ type: "liveCall", call: framed.call }));
           }
           break;
         }

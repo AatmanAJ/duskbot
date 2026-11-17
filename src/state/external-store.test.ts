@@ -47,6 +47,48 @@ describe("createExternalStore", () => {
   });
 });
 
+describe("dispatchBatched", () => {
+  it("applies at once and tells readers once for a run of actions", () => {
+    const runs: Array<() => void> = [];
+    const store = createExternalStore(reduce, { count: 0, label: "a", items: [] }, (run) => runs.push(run));
+    let calls = 0;
+    store.subscribe(() => calls++);
+    store.dispatchBatched({ type: "count" });
+    store.dispatchBatched({ type: "count" });
+    store.dispatchBatched({ type: "same" });
+    expect(store.getState().count).toBe(2);
+    expect(calls).toBe(0);
+    expect(runs).toHaveLength(1);
+    runs[0]!();
+    expect(calls).toBe(1);
+  });
+
+  it("is told at once by a plain dispatch, which leaves the scheduled run nothing to say", () => {
+    const runs: Array<() => void> = [];
+    const store = createExternalStore(reduce, { count: 0, label: "a", items: [] }, (run) => runs.push(run));
+    let calls = 0;
+    store.subscribe(() => calls++);
+    store.dispatchBatched({ type: "count" });
+    store.dispatch({ type: "same" });
+    expect(calls).toBe(1);
+    runs[0]!();
+    expect(calls).toBe(1);
+  });
+
+  it("reaches React on the next task by default", async () => {
+    const store = createExternalStore(reduce, { count: 0, label: "a", items: [] });
+    let seen = 0;
+    function Count() { seen = useSyncSelector(store.subscribe, store.getState, (state: State) => state.count); return null; }
+    flushSync(() => root.render(createElement(Count)));
+    store.dispatchBatched({ type: "count" });
+    store.dispatchBatched({ type: "count" });
+    expect(seen).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    flushSync(() => {});
+    expect(seen).toBe(2);
+  });
+});
+
 describe("useSyncSelector", () => {
   it("renders a reader again only when its selection changes", () => {
     const store = createExternalStore(reduce, { count: 0, label: "a", items: [] });

@@ -7,15 +7,48 @@ export interface ExternalStore<State, Action> {
   getState(): State;
   /** Returns the unsubscribe. Listeners run after every dispatch that changed the state. */
   subscribe(listener: Listener): () => void;
+  /** Applies the action and tells readers at once, with anything a batched dispatch left waiting. */
   dispatch(action: Action): void;
+  /**
+   * Applies the action at once but tells readers once, on the next task, for every batched action until then: frames
+   * that arrive together render together, as React's own default-priority updates did.
+   */
+  dispatchBatched(action: Action): void;
+}
+
+/** The next task, not a microtask: frames from separate network events still fall in one batch. */
+function nextTask(run: () => void): void {
+  if (typeof MessageChannel === "function") {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      run();
+    };
+    channel.port2.postMessage(null);
+  } else {
+    setTimeout(run, 0);
+  }
 }
 
 export function createExternalStore<State, Action>(
   reducer: (state: State, action: Action) => State,
   initial: State,
+  schedule: (run: () => void) => void = nextTask,
 ): ExternalStore<State, Action> {
   let state = initial;
+  let unheard = false;
+  let scheduled = false;
   const listeners = new Set<Listener>();
+  const notify = () => {
+    unheard = false;
+    for (const listener of listeners) listener();
+  };
+  const apply = (action: Action) => {
+    const next = reducer(state, action);
+    if (Object.is(next, state)) return false;
+    state = next;
+    return true;
+  };
   return {
     getState: () => state,
     subscribe(listener) {
@@ -23,10 +56,17 @@ export function createExternalStore<State, Action>(
       return () => { listeners.delete(listener); };
     },
     dispatch(action) {
-      const next = reducer(state, action);
-      if (Object.is(next, state)) return;
-      state = next;
-      for (const listener of listeners) listener();
+      if (apply(action) || unheard) notify();
+    },
+    dispatchBatched(action) {
+      if (!apply(action)) return;
+      unheard = true;
+      if (scheduled) return;
+      scheduled = true;
+      schedule(() => {
+        scheduled = false;
+        if (unheard) notify();
+      });
     },
   };
 }
