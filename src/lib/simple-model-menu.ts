@@ -82,6 +82,8 @@ export interface SimpleMenu {
   follow: boolean;
   /** The person's starred models that can be picked now, in the order they starred them. */
   starred: MenuStarredRow[];
+  /** The models picked last that can be picked now, newest first: never the current one, never a starred one. */
+  recent: MenuStarredRow[];
   /** Providers with models to pick now. */
   groups: MenuGroup[];
   /** Providers listed here that still need a sign-in or a setup before they have models: a Connect row each. */
@@ -107,7 +109,11 @@ export interface SimpleMenuInput {
   searchAll?: boolean;
   /** The person's starred models (starKey), in starred order. */
   starred?: readonly string[];
+  /** The models picked last on this device (starKey), newest first. */
+  recent?: readonly string[];
 }
+
+export const RECENT_SHOWN = 3;
 
 /** dusk bot's own free model: OpenCode ready through its free models alone, with no login of the person's own. */
 export const isFreeModel = (instance: InstanceInfo | undefined): boolean => Boolean(instance && freeFallback(instance));
@@ -203,7 +209,7 @@ function heading(instance: InstanceInfo, listed: readonly InstanceInfo[]): Pick<
   if (instance.access === "api") return { label: `${provider} · ${t("model.simple.apiKey")}`, provider };
   const several = family !== undefined && listed.filter((other) => signInFamily(other) === family).length > 1;
   const account = several && instance.displayName !== provider ? instance.displayName : undefined;
-  return { label: account ? `${provider} · ${account}` : provider, provider, account };
+  return { label: account ? `${provider} · ${account}` : provider, provider, ...(account ? { account } : {}), ...(instance.found ? { note: t("model.picker.found") } : {}) };
 }
 
 function currentRow(input: SimpleMenuInput): MenuCurrent {
@@ -323,8 +329,8 @@ export function simpleModelMenu(input: SimpleMenuInput): SimpleMenu {
   const waits = (group: MenuGroup) => group.body.kind === "signIn" || group.body.kind === "setUp";
   const groups = built.filter((group) => !waits(group));
 
-  // starred models of providers that have models to pick now, in the order they were starred
-  const starredRows = query ? [] : starred.flatMap((key): MenuStarredRow[] => {
+  // starred and recent models of providers that have models to pick now
+  const pickable = (key: string): MenuStarredRow[] => {
     for (const instance of ordered) {
       if (instance.policy || needsCli(instance)) continue;
       const all = models.get(instance.instanceId)!.all as ModelChoice[];
@@ -335,11 +341,15 @@ export function simpleModelMenu(input: SimpleMenuInput): SimpleMenu {
       }
     }
     return [];
-  });
+  };
+  const starredRows = query ? [] : starred.flatMap(pickable);
+  const recentRows = query ? [] : (input.recent ?? []).filter((key) => !starred.includes(key)).flatMap(pickable)
+    .filter((one) => !one.row.current).slice(0, RECENT_SHOWN);
 
   return {
     current: query ? null : currentRow(input),
     starred: starredRows,
+    recent: recentRows,
     follow: !query && bot.follows === false,
     groups,
     connect: built.filter(waits),

@@ -24,7 +24,9 @@ import { SimpleModelMenu, type PickerScope, type SimpleThinking } from "./Simple
 import { aiTiles, type AiTileId } from "./onboarding/funnel";
 import { ConnectAiDialog } from "./onboarding/ConnectAi";
 import { Toast } from "./ui/Toast";
-import { useStarredModels } from "@/lib/starred-models";
+import { starKey, useStarredModels } from "@/lib/starred-models";
+import { noteRecentModels, useRecentModels } from "@/lib/recent-models";
+import { friendlyError } from "@/lib/plain-error";
 import { modelMenuKey, modelMenuPointerMove } from "./model-menu-keys";
 import { offersReasoning, useRefocusAfterPick, variantChoices } from "./model-picker-reasoning";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
@@ -245,6 +247,7 @@ export function ModelPicker({
     all?: { instance: InstanceInfo; model: string; variant?: string } } | null>(null);
   const [handoff, setHandoff] = useState<{ tile: AiTileId; scope: PickerScope } | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: "done" | "error" } | null>(null);
+  const [disconnecting, setDisconnecting] = useState<{ instance: InstanceInfo; provider: string; busy?: boolean } | null>(null);
   const [placement, setPlacement] = useState<PickerPlacement | null>(null);
   const [changedBotModel, setChangedBotModel] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -476,7 +479,9 @@ export function ModelPicker({
   const pick = (instance: InstanceInfo, model: string, variant?: string) => {
     if (instance.policy) return;
     const to = mayChangeBot ? scope : "bot";
+    const was = selection.instanceId ? [starKey(selection.instanceId, selection.model, selection.variant)] : [];
     if (commit(instance, model, variant, to) === "asked") return close(false);
+    noteRecentModels(...was, starKey(instance.instanceId, model, variant));
     const nextSelection = modelSelectionForPick(selection, instance, model);
     // A model with reasoning levels keeps the menu open, so its level can be set next without opening it again;
     // picking a variant row already sets that level.
@@ -601,6 +606,7 @@ export function ModelPicker({
   );
 
   const { starred, toggle: toggleStarred } = useStarredModels();
+  const recent = useRecentModels();
   const simpleMenu = simpleModelMenu({
     instances,
     listed: pickerInstances,
@@ -612,6 +618,7 @@ export function ModelPicker({
     loading: loadingInstances,
     refreshing: refreshingId,
     starred,
+    recent,
   });
 
   // only the owner connects a provider; the rows stay out of a search, which looks through the models there are
@@ -651,6 +658,7 @@ export function ModelPicker({
       onCheckAgain={(instance) => refreshModels(instance.instanceId)}
       onMore={mayChangeBot && !remote ? openDirectory : undefined}
       onResetVariant={resetVariant}
+      onDisconnect={mayChangeBot ? (instance, provider) => { close(false); setDisconnecting({ instance, provider }); } : undefined}
       scope={mayChangeBot ? { value: scope, onChange: setScope } : undefined}
       where={state.config?.cloudHome ? t("model.picker.onCloud") : undefined}
       notConnected={connectRows.length > 0 ? { rows: connectRows, onConnect: connect } : undefined}
@@ -739,6 +747,26 @@ export function ModelPicker({
           </button>
         </div>
       )}
+      <ConfirmDialog
+        open={disconnecting !== null}
+        title={t("engines.disconnectTitle", { name: disconnecting?.provider ?? "" })}
+        body={t("engines.disconnectBody", { name: disconnecting?.provider ?? "" })}
+        tone="neutral"
+        confirmLabel={t("engines.disconnect")}
+        pending={disconnecting?.busy}
+        onCancel={() => { if (!disconnecting?.busy) setDisconnecting(null); }}
+        onConfirm={() => {
+          if (!disconnecting || disconnecting.busy) return;
+          const { instance, provider } = disconnecting;
+          setDisconnecting({ ...disconnecting, busy: true });
+          void api(`/api/instances/${encodeURIComponent(instance.instanceId)}`, { method: "PATCH", body: JSON.stringify({ hidden: true }) })
+            .then(() => {
+              setToast({ text: t("model.picker.disconnected", { name: provider }), tone: "done" });
+              return refreshInstances().catch(() => {});
+            }, (cause: unknown) => setToast({ text: friendlyError(cause), tone: "error" }))
+            .finally(() => setDisconnecting(null));
+        }}
+      />
       <ConfirmDialog
         open={pendingSwitch !== null}
         title={t("model.providerSwitch.title")}

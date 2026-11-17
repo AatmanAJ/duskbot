@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { InstanceInfo, ModelSelection } from "@/state/store";
 import { starKey, toggleStar, parseStarred } from "./starred-models";
+import { withRecent } from "./recent-models";
 import { answeringModelName, isAutoFreeModel, modelName, providerName, simpleModelMenu, SIMPLE_SEARCH_AFTER } from "./simple-model-menu";
 
 vi.hoisted(() => {
@@ -347,6 +348,29 @@ describe("OpenCode's free models", () => {
     expect(rows(built, 1)).toEqual(["Free model"]);
     expect(body(built, 1)).toMatchObject({ total: 0, toggle: null });
     expect(menu([unmarked], { selection: onFree("opencode/alpha") }).groups).toEqual([]);
+  });
+
+  describe("recent models", () => {
+    it("lists the last picks newest first, never the current one or a starred one, at most three", () => {
+      const recent = [starKey("claude", "sonnet-5"), starKey("codex", "gpt-5.5"), starKey("claude", "opus-5"), starKey("claude", "haiku-5"),
+        starKey("claude", "fable-5"), starKey("claude", "gone")];
+      const built = menu([claude(), codex], { recent, starred: [starKey("claude", "opus-5")] });
+      expect(built.recent.map((entry) => [entry.provider, entry.row.label])).toEqual([["OpenAI", "GPT-5.5"], ["Claude", "Haiku 5"], ["Claude", "Fable 5"]]);
+    });
+
+    it("stays out of a search", () => {
+      expect(menu([claude(), codex], { recent: [starKey("codex", "gpt-5.5")], query: "gpt", searchAll: true }).recent).toEqual([]);
+    });
+
+    it("keeps the newest first and only a few", () => {
+      expect(withRecent(withRecent(["a", "b"], "b"), "c")).toEqual(["c", "b", "a"]);
+      expect(withRecent(["a", "b", "c", "d", "e", "f"], "g")).toHaveLength(6);
+    });
+  });
+
+  it("notes a provider found on this computer under its heading, and only that one", () => {
+    const built = menu([claude({ found: true }), codex]);
+    expect(built.groups.map((group) => group.note)).toEqual(["Found on this computer. Pick a model to use it.", undefined]);
   });
 
   describe("starred models", () => {

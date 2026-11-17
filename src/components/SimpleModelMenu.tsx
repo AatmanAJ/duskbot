@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { AnimatePresence } from "motion/react";
-import { Check, ChevronDown, ChevronRight, ChevronUp, Loader2, LogIn, Plus, RefreshCw, Search, Star, X } from "../icons";
+import { Check, ChevronDown, ChevronRight, ChevronUp, History, Link2Off, Loader2, LogIn, Plus, RefreshCw, Search, Star, X } from "../icons";
 import type { Bot, InstanceInfo } from "@/state/store";
 import type { EffortLevel } from "../../shared/wire";
 import type { MenuGroup, MenuModelRow, NotConnectedRow, SimpleMenu } from "@/lib/simple-model-menu";
@@ -33,6 +33,8 @@ export interface SimpleMenuActions {
   /** Opens the model directory (more providers, API keys, local models); left out where they live on another computer. */
   onMore?: () => void;
   onResetVariant?: () => void;
+  /** Disconnects a provider from its heading; left out where the person can't. */
+  onDisconnect?: (instance: InstanceInfo, provider: string) => void;
 }
 
 /** This bot's model, or every bot's and the default for new ones. */
@@ -66,7 +68,8 @@ function RowLines({ label, children }: { label: ReactNode; children?: ReactNode 
   );
 }
 
-function MenuModel({ instance, row, onPick, onToggleStar }: { instance: InstanceInfo; row: MenuModelRow; onPick: SimpleMenuActions["onPick"]; onToggleStar?: SimpleMenuActions["onToggleStar"] }) {
+/** `provider` names the row's provider by its mark, where rows of several providers share a list. */
+function MenuModel({ instance, row, provider, onPick, onToggleStar }: { instance: InstanceInfo; row: MenuModelRow; provider?: string; onPick: SimpleMenuActions["onPick"]; onToggleStar?: SimpleMenuActions["onToggleStar"] }) {
   const { option } = row;
   const reason = row.blocked ? t("model.orgBlocked") : undefined;
   const name = row.label;
@@ -78,13 +81,13 @@ function MenuModel({ instance, row, onPick, onToggleStar }: { instance: Instance
         data-org-blocked={row.blocked || undefined}
         disabled={row.blocked}
         aria-pressed={row.current}
-        aria-label={[option.label, option.provider, reason].filter(Boolean).join(" · ")}
-        title={[option.label, option.provider, reason ?? modelBlurb(option)].filter(Boolean).join(" · ")}
+        aria-label={[option.label, option.provider, provider, reason].filter(Boolean).join(" · ")}
+        title={[option.label, option.provider, provider, reason ?? modelBlurb(option)].filter(Boolean).join(" · ")}
         tabIndex={-1}
         onClick={() => onPick(instance, row.model ?? option.id, row.variant)}
         className={cn(SIMPLE_MENU_ROW, !row.blocked && !row.auto && onToggleStar && "pr-8")}
       >
-        <Gutter />
+        <Gutter>{provider && <InstanceProviderMark instance={instance} size={14} subtle />}</Gutter>
         <RowLines label={row.label}>
           {row.route && <span data-simple-route className={SIMPLE_MENU_META}>{row.route}</span>}
           {reason && <span data-simple-org-blocked className={SIMPLE_MENU_META}>{reason}</span>}
@@ -313,7 +316,7 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
               </RowLines>
             </button>
           )}
-          {top && (menu.starred.length > 0 || menu.groups.length > 0) && <div role="separator" className={MENU_SEPARATOR} />}
+          {top && (menu.starred.length > 0 || menu.recent.length > 0 || menu.groups.length > 0) && <div role="separator" className={MENU_SEPARATOR} />}
 
           <AnimatePresence initial={false}>
             {menu.starred.length > 0 && (
@@ -326,7 +329,7 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
                   <AnimatePresence initial={false}>
                     {menu.starred.map(({ instance, provider, row }) => (
                       <Unfold key={row.star} still={still}>
-                        <MenuModel instance={instance} row={menu.groups.length > 1 ? { ...row, route: provider } : row} onPick={props.onPick} onToggleStar={props.onToggleStar} />
+                        <MenuModel instance={instance} row={row} provider={menu.groups.length > 1 ? provider : undefined} onPick={props.onPick} onToggleStar={props.onToggleStar} />
                       </Unfold>
                     ))}
                   </AnimatePresence>
@@ -335,15 +338,37 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
             )}
           </AnimatePresence>
 
+          {menu.recent.length > 0 && (
+            <div role="group" aria-labelledby={`${idPrefix}-recent`} data-picker-recent="" className={cn("flex flex-col gap-0.5", menu.groups.length > 0 && "mb-1")}>
+              <div id={`${idPrefix}-recent`} className={MENU_LABEL}>
+                <Gutter><History size={14} strokeWidth={MENU_STROKE} aria-hidden="true" className="text-ink-tertiary" /></Gutter>
+                <span className="min-w-0 truncate">{t("model.picker.recent")}</span>
+              </div>
+              {menu.recent.map(({ instance, provider, row }) => (
+                <MenuModel key={row.star} instance={instance} row={row} provider={menu.groups.length > 1 ? provider : undefined} onPick={props.onPick} onToggleStar={props.onToggleStar} />
+              ))}
+            </div>
+          )}
+
           {menu.groups.map((group, index) => {
             const labelId = `${idPrefix}-group-${index}`;
             const expanded = group.body.kind === "models" && group.body.toggle === "less";
             return (
               <div key={group.instance.instanceId} role="group" aria-labelledby={labelId} data-simple-provider={group.instance.instanceId}
                 className={cn("flex flex-col gap-0.5", index > 0 && "mt-1")}>
-                <div id={labelId} className={cn(MENU_LABEL, expanded && "sticky top-0 z-[1] -mx-1.5 bg-menu px-3.5")}>
-                  <Gutter><InstanceProviderMark instance={group.instance} size={14} subtle /></Gutter>
-                  <span className="min-w-0 truncate">{group.label}</span>
+                <div className={cn("group/heading flex items-end", expanded && "sticky top-0 z-[1] -mx-1.5 bg-menu px-1.5")}>
+                  <div id={labelId} className={cn(MENU_LABEL, "min-w-0 flex-1")}>
+                    <Gutter><InstanceProviderMark instance={group.instance} size={14} subtle /></Gutter>
+                    <span className="min-w-0 truncate">{group.label}</span>
+                  </div>
+                  {props.onDisconnect && !group.instance.policy && !group.instance.readOnly && (
+                    <button type="button" data-picker-disconnect={group.instance.instanceId}
+                      aria-label={t("model.picker.disconnect", { name: group.provider })} title={t("model.picker.disconnect", { name: group.provider })}
+                      onClick={() => props.onDisconnect!(group.instance, group.provider)}
+                      className="me-1 flex size-6 shrink-0 items-center justify-center rounded-[6px] text-ink-tertiary opacity-0 transition-opacity hover:bg-ink/[0.08] hover:text-ink focus:bg-ink/[0.08] focus:text-ink focus:opacity-100 group-hover/heading:opacity-100 motion-reduce:transition-none touch:size-8 touch:opacity-100">
+                      <Link2Off size={14} strokeWidth={MENU_STROKE} aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
                 {group.note && <p className={cn(MENU_NOTE, "pl-8 pt-0")}>{group.note}</p>}
                 <GroupBody group={group} props={props} />

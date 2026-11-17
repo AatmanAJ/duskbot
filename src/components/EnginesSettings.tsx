@@ -180,17 +180,6 @@ function EngineAdvanced({ instance }: { instance: InstanceInfo }) {
       .finally(() => setSwitching(false));
   };
 
-  /** Out of every model list until Unhide; the CLI and its sign-in stay as they are. Refused while something uses it. */
-  const hide = () => {
-    if (switching || updating) return;
-    setSwitching(true);
-    setError(null);
-    api(`/api/instances/${encodeURIComponent(instance.instanceId)}`, { method: "PATCH", body: JSON.stringify({ hidden: true }) })
-      .then(() => Promise.resolve(refreshInstances()).catch(() => {}))
-      .catch((e: unknown) => setError(friendlyError(e)))
-      .finally(() => setSwitching(false));
-  };
-
   const updateClaude = () => {
     if (switching || updating) return;
     setUpdating(true);
@@ -224,11 +213,6 @@ function EngineAdvanced({ instance }: { instance: InstanceInfo }) {
         )}
       </ItemRow>
       <NavRow data-settings-open="engine-cli" title={t("engines.setCli")} hint={t("settings.s2.engine.setCliHint")} disabled={updating} onClick={() => setOpen(true)} />
-      <ItemRow title={t("settings.s2.engine.hideTitle")} hint={t("settings.s2.engine.hideHint")}>
-        <button type="button" className="ui-button" data-hide-engine={instance.instanceId} onClick={hide} disabled={switching || updating} title={t("engines.hideHint")}>
-          {t("engines.hide")}
-        </button>
-      </ItemRow>
       {updatedVersion && <NoteRow>{t("engines.claudeUpdated", { version: updatedVersion })}</NoteRow>}
       {error && <NoteRow tone="danger">{error}</NoteRow>}
       {open && (
@@ -281,6 +265,62 @@ function AntigravityAccountAction({ instance, action }: { instance: InstanceInfo
   </>;
 }
 
+/** A provider dusk bot found here by itself: it is offered, never used, until the person says so. */
+export function FoundProvider({ instance }: { instance: InstanceInfo }) {
+  const { refreshInstances } = useStore();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!instance.found) return null;
+  const use = () => {
+    setBusy(true);
+    setError(null);
+    api(`/api/instances/${encodeURIComponent(instance.instanceId)}`, { method: "PATCH", body: JSON.stringify({ chosen: true }) })
+      .then(() => Promise.resolve(refreshInstances()).catch(() => {}))
+      .catch((e: unknown) => setError(friendlyError(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <RowsCard>
+      <ItemRow title={t("engines.found.title")} hint={t("engines.found.hint", { name: instance.displayName })}>
+        <button type="button" className="ui-button ui-button-primary" data-use-found={instance.instanceId} disabled={busy} onClick={use}>
+          {busy ? t("engines.found.using") : t("engines.found.use")}
+        </button>
+      </ItemRow>
+      {error && <NoteRow tone="danger">{error}</NoteRow>}
+    </RowsCard>
+  );
+}
+
+/** Out of every list and every automatic choice until Reconnect; bots on it move to another AI. Its app and sign-in stay. */
+export function DisconnectProvider({ instance }: { instance: InstanceInfo }) {
+  const { refreshInstances } = useStore();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (instance.readOnly) return null;
+  const disconnect = () => {
+    setBusy(true);
+    setError(null);
+    api(`/api/instances/${encodeURIComponent(instance.instanceId)}`, { method: "PATCH", body: JSON.stringify({ hidden: true }) })
+      .then(() => { setConfirming(false); return Promise.resolve(refreshInstances()).catch(() => {}); })
+      .catch((e: unknown) => { setConfirming(false); setError(friendlyError(e)); })
+      .finally(() => setBusy(false));
+  };
+  return (
+    <RowsCard>
+      <ItemRow title={t("engines.disconnect")} hint={t("engines.disconnectHint")}>
+        <button type="button" className="ui-button" data-disconnect-engine={instance.instanceId} disabled={busy} onClick={() => setConfirming(true)}>
+          {t("engines.disconnect")}
+        </button>
+      </ItemRow>
+      {error && <NoteRow tone="danger">{error}</NoteRow>}
+      <ConfirmDialog open={confirming} title={t("engines.disconnectTitle", { name: instance.displayName })}
+        body={t("engines.disconnectBody", { name: instance.displayName })} confirmLabel={t("engines.disconnect")} tone="neutral" pending={busy}
+        onCancel={() => { if (!busy) setConfirming(false); }} onConfirm={disconnect} />
+    </RowsCard>
+  );
+}
+
 function EngineRow({ instance, bare = false }: { instance: InstanceInfo; bare?: boolean }) {
   const policy = instance.policy && <NoteRow><span className="text-ink">{t("policy.managedBy", { organization: instance.policy.organizationName })}</span> · {instance.policy.reason}</NoteRow>;
   if (instance.readOnly) return <EngineCard instance={instance} bare={bare}>
@@ -296,6 +336,7 @@ function EngineRow({ instance, bare = false }: { instance: InstanceInfo; bare?: 
       : instance.authentication?.method === "paste-code" ? t("engineSetup.claude.connectedAccount") : null);
   return (
     <EngineCard instance={instance} bare={bare}>
+      <FoundProvider instance={instance} />
       {policy && <RowsCard>{policy}</RowsCard>}
       {!engineReady(instance) && <EngineSetup instance={instance} intent={instance.access === "custom" ? "inject" : "cloud"} unframed rows={bare} />}
       {engineReady(instance) && <ApiKeyEngineManage instance={instance} />}
@@ -318,12 +359,14 @@ function EngineRow({ instance, bare = false }: { instance: InstanceInfo; bare?: 
         </RowsCard>
       )}
       <EngineAdvanced instance={instance} />
+      <DisconnectProvider instance={instance} />
     </EngineCard>
   );
 }
 
 function simpleStatus(instance: InstanceInfo, ready: boolean): string {
   const email = instance.snapshot.authenticated === true ? instance.snapshot.account?.email : undefined;
+  if (ready && instance.found) return t("engines.found.status");
   if (ready) return email ? t("settings.simple.ai.connectedAs", { email }) : t("settings.simple.ai.connected");
   return t("settings.simple.ai.connect");
 }
@@ -352,7 +395,7 @@ function SimpleEngines({ rows, isReady, renderEngine, more }: {
       onClick={() => open(`engine:${instance.instanceId}`, instance.displayName)}
     />
   );
-  if (at === "more-engines") return <><Card>{others.map(row)}</Card><HiddenEngines /></>;
+  if (at === "more-engines") return <Card>{others.map(row)}</Card>;
   void more;
   return (
     <>
@@ -365,11 +408,12 @@ function SimpleEngines({ rows, isReady, renderEngine, more }: {
         <NavRow data-panel-page={CUSTOM_PROVIDER_PAGE} title={t("settings.simple.ai.custom")}
           onClick={() => open(CUSTOM_PROVIDER_PAGE, t("settings.simple.ai.custom"))} />
       </Card>
+      <HiddenEngines />
     </>
   );
 }
 
-/** Providers someone hid: listed apart, folded, each one click from coming back. */
+/** Providers someone disconnected: listed apart, each one click from coming back. */
 export function HiddenEngines() {
   const { state, refreshInstances } = useStore();
   const [hidden, setHidden] = useState<Array<{ instanceId: string; displayName: string }>>([]);
@@ -393,11 +437,11 @@ export function HiddenEngines() {
       .finally(() => setBusy(null));
   };
   return (
-    <div data-hidden-engines="" className="contents"><Card label={t("engines.hiddenTitle", { count: String(hidden.length) })} footnote={t("engines.hiddenHint")}>
+    <div data-hidden-engines="" className="contents"><Card label={t("engines.disconnected.title", { count: String(hidden.length) })} footnote={t("engines.disconnected.hint")}>
       {hidden.map((entry) => (
         <ItemRow key={entry.instanceId} title={entry.displayName}>
           <button type="button" className="ui-button" data-unhide-engine={entry.instanceId} disabled={busy !== null} onClick={() => unhide(entry.instanceId)}>
-            {busy === entry.instanceId ? t("engines.unhiding") : t("engines.unhide")}
+            {busy === entry.instanceId ? t("engines.reconnecting") : t("engines.reconnect")}
           </button>
         </ItemRow>
       ))}
@@ -426,7 +470,8 @@ export function EnginesSettings({ simple = false, more }: { simple?: boolean; mo
   const renderEngine = (instance: InstanceInfo, bare = false) => {
     const group = groupOf(instance);
     return group
-      ? <AccountsCard group={group} accounts={groups.get(group)!} advanced={<EngineAdvanced instance={instance} />} bare={bare} />
+      ? <AccountsCard group={group} accounts={groups.get(group)!} bare={bare}
+        advanced={<><FoundProvider instance={instance} /><EngineAdvanced instance={instance} /><DisconnectProvider instance={instance} /></>} />
       : <EngineRow instance={instance} bare={bare} />;
   };
 
