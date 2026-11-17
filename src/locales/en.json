@@ -28,6 +28,7 @@
   "giveFeedback.sending": "Sending…",
   "giveFeedback.sent": "Sent. Thanks for telling us.",
   "giveFeedback.failed": "That didn't send. Try again.",
+  "giveFeedback.serverTooOld": "This server is too old to take feedback. Update it and try again, or report it at github.com/DuskBotAI/duskbot/issues.",
   "connectedWorkspaces.localTitle": "Environments on this computer",
   "connectedWorkspaces.missing": "Missing",
   "connectedWorkspaces.current": "Current",

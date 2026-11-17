@@ -10,6 +10,8 @@ vi.mock("@/lib/feedback-sheet", async (actual) => ({
     : { ok: true, image: { blob: file, url: `blob:${file.name}` } }),
 }));
 
+import { ApiError } from "@/state/api";
+
 import { FeedbackDialog } from "./FeedbackDialog";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -93,6 +95,19 @@ describe("the Give feedback sheet", () => {
     await act(async () => { sendButton().click(); });
     expect(send).toHaveBeenLastCalledWith("It froze", [expect.objectContaining({ url: "blob:a.png" })]);
     expect(onSent).toHaveBeenCalledTimes(1);
+  });
+
+  // a server older than the feedback route answered "no route: POST /api/feedback", shown as is (#9)
+  it("says the server is too old when it has no feedback route, keeping what was written", async () => {
+    await mount();
+    await type("It froze");
+    send.mockRejectedValueOnce(new ApiError("no route: POST /api/feedback", 404, { error: "no route: POST /api/feedback" }));
+    await act(async () => { sendButton().click(); });
+    const alert = $('[role="alert"]')?.textContent ?? "";
+    expect(alert).toContain("This server is too old to take feedback");
+    expect(alert).not.toContain("no route");
+    expect($<HTMLTextAreaElement>("textarea")!.value).toBe("It froze");
+    expect(sendButton().disabled).toBe(false);
   });
 
   it("Cancel and Escape close it", async () => {

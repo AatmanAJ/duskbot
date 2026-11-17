@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { friendlyError } from "@/lib/plain-error";
+import { ApiError } from "@/state/api";
 import { cn } from "@/lib/cn";
 import { closeFeedback, FEEDBACK_IMAGE_ACCEPT, FEEDBACK_MAX_IMAGES, feedbackImage, sendFeedback, useFeedbackOpen, type FeedbackImage } from "@/lib/feedback-sheet";
 import { t } from "@/lib/i18n";
@@ -63,7 +64,9 @@ export function FeedbackDialog({ onClose, onSent, send = sendFeedback }: { onClo
       await send(text.trim(), images);
       onSent();
     } catch (failed) {
-      setError(failed instanceof Error && failed.message ? friendlyError(failed) : t("giveFeedback.failed"));
+      // a server from before 0.2.13 has no feedback route and answers a bare "no route: POST /api/feedback" (#9)
+      if (failed instanceof ApiError && failed.status === 404) setError(t("giveFeedback.serverTooOld"));
+      else setError(failed instanceof Error && failed.message ? friendlyError(failed) : t("giveFeedback.failed"));
       setSending(false);
     }
   };
