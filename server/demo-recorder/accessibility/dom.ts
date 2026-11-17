@@ -11,6 +11,8 @@ export interface DomDriver {
   open(url: string): Promise<void>;
   clickAt(x: number, y: number): Promise<void>;
   insertText(text: string): Promise<void>;
+  /** Types a secret: the page is then closed to the bot's eyes until the secret is gone from it. */
+  insertSecret?(text: string): Promise<void>;
   press(key: string): Promise<void>;
 }
 
@@ -346,7 +348,7 @@ export function createDomSurface(evaluate: PageEvaluate, driver: DomDriver): Rep
         if (lost) return { ok: false, reason: lost };
         if (focus.wrongKind === true) return { ok: false, reason: sentence(`${quoted(role, name)} does not take text.`) };
         if (focus.focused !== true) return { ok: false, reason: `Could not put the cursor in ${quoted(role, name)}.` };
-        if (action.value.length > 0) await driver.insertText(action.value);
+        if (action.value.length > 0) await (options?.secret && driver.insertSecret ? driver.insertSecret(action.value) : driver.insertText(action.value));
         else if (focus.filled === true) await driver.press("Backspace");
         const after = await ask(FILLED(role, name));
         if ((after.filled === true) !== action.value.length > 0) return { ok: false, reason: sentence(`${quoted(role, name)} did not take the text.`) };

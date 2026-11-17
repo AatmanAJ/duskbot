@@ -9,6 +9,8 @@ export interface ScreenFrame {
   type: "image/png" | "image/jpeg";
   width: number;
   height: number;
+  /** Picture pixels for each unit the screen's boxes and points are measured in; 1 when unset. */
+  scale?: number;
 }
 
 /** Blacks boxes out of a picture and returns it as a PNG. */
@@ -72,7 +74,8 @@ export function createFrameStore(options: FrameStoreOptions): FrameStore {
     async put(frame, secure, accessibility) {
       if (!frame.data.length || frame.data.length > MAX_FRAME_BYTES || !(frame.width > 0 && frame.height > 0)) return skip();
       if (secure === null && accessibility !== "none") return skip();
-      const boxes = (secure ?? []).filter((rect) => onPicture(rect, frame));
+      const scale = frame.scale !== undefined && frame.scale > 0 && Number.isFinite(frame.scale) ? frame.scale : 1;
+      const boxes = (secure ?? []).map((rect) => ({ x: rect.x * scale, y: rect.y * scale, width: rect.width * scale, height: rect.height * scale })).filter((rect) => onPicture(rect, frame));
       let data = frame.data;
       let type = frame.type;
       if (boxes.length) {
@@ -89,7 +92,7 @@ export function createFrameStore(options: FrameStoreOptions): FrameStore {
       const known = kept.get(id);
       if (known) return known;
       if (bytes + data.length > maxBytes) return skip();
-      const record: DemoFrame = { id, width: frame.width, height: frame.height, type, masked: boxes.length > 0 };
+      const record: DemoFrame = { id, width: frame.width, height: frame.height, type, masked: boxes.length > 0, ...(scale !== 1 ? { scale } : {}) };
       mkdirSync(options.dir, { recursive: true, mode: 0o700 });
       writeFileSync(frameFile(options.dir, record), data, { mode: 0o600 });
       bytes += data.length;

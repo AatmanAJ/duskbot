@@ -77,6 +77,8 @@ export interface DemoFrame {
   type: "image/png" | "image/jpeg";
   /** A secure field was blacked out of it. */
   masked: boolean;
+  /** Picture pixels for each unit an event's point is measured in; 1 when unset. */
+  scale?: number;
 }
 
 /** Everything recorded, before it is turned into steps. */
