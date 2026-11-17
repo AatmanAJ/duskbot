@@ -41,6 +41,69 @@ expenses under `server/testing/fixtures/expense-portal/inbox`:
    Google Chrome) and skips without one; CI runs it in the browser driver job
    on macOS, Windows and Linux.
 
+## Through the control surface
+
+`control-dusk ui` ([Chat UI, driven headlessly](chat-ui.md)) can press Record,
+type into the bot's page, stop and save, by accessible name. The fixture's
+browser refuses pages on this computer and no control verb allows one, so this
+recipe records on a public test form instead of the fixture portal; the sign-in
+step, folder runs and uploads stay with the automated checks above.
+
+```sh
+echo '[{"server":"browser","tool":"agent_browser_open","arguments":{"url":"https://httpbin.org/forms/post"}}]' > /tmp/show-it-once-tools.json
+FAKE_CLAUDE_MCP_TOOLS_FILE=/tmp/show-it-once-tools.json FAKE_CLAUDE_TOOL_CALLS='[]' \
+  node --experimental-strip-types scripts/control-dusk.ts ui launch
+```
+
+With the printed `ui` handle as `$H`, `url` as `$U` and `botId` as `$BOT`:
+
+```sh
+pnpm control:dusk ui flag --ui $H --set features.browser=true
+pnpm control:dusk send --bot $BOT --text "Open the order form" --url $U
+pnpm control:dusk wait --bot $BOT --timeout 90 --url $U
+pnpm control:dusk ui click --ui $H --name "Open Pepper's profile"
+pnpm control:dusk ui click --ui $H --name "Computer"
+pnpm control:dusk ui click --ui $H --name "Record"
+pnpm control:dusk ui type --ui $H --name "Pepper’s page" --text "Ada Lovelace"
+pnpm control:dusk ui press --ui $H --keys Tab
+```
+
+`wait` shows `mcp__browser__agent_browser_open` with `ok: true`. After
+**Record** the snapshot has a `region "Recording"`, a `textbox "Pepper’s page"`
+and step 1, `Open httpbin.org/forms/post`. Keys reach the page only while that
+textbox has the focus: the first `ui type` gives it the focus (its text lands
+nowhere), and from then on `ui press --keys Tab` moves through the form and
+`ui type` fills the field in front. Fill the name, telephone and e-mail, press
+Space on a size and on a topping, go back to the e-mail field with `Shift+Tab`
+twice and press Enter. The list then reads: three "Type … into …" steps, "Pick
+“Small” in “Pizza Size”", "Tick “Bacon”" and "Press Enter in “E-mail address:”".
+
+```sh
+pnpm control:dusk ui click --ui $H --name "Stop"
+pnpm control:dusk ui click --ui $H --name "Save as skill"
+```
+
+After **Stop** the typed values are blanks named from the labels
+(`customer_name`, `telephone`, `e_mail_address`, `pizza_size`), and saving
+answers "Saved as the skill …" with its name. Put a `skill_replay` call for
+that name, with other `inputs`, in the tools file, then:
+
+```sh
+pnpm control:dusk send --bot $BOT --text "Order one for Grace" --url $U
+pnpm control:dusk wait --bot $BOT --timeout 120 --url $U
+```
+
+`wait` shows `mcp__agents__skill_replay` with `ok: true`; its result in the
+fixture's `events` folder reads "Did all 7 steps of …", and a turn that calls
+`agent_browser_eval` with `document.body.innerText` shows the form the page
+received holding the new values. **Record another** then starts with one step,
+the page in front, and **Save as routine** refuses a folder that does not exist
+and otherwise sets up a routine that is switched off.
+
+On the plain fixture (`scripts/control-dusk.ts launch`, no browser), a turn
+that calls `skill_replay` settles with the tool's answer in words: "You have
+no enabled skill named …", or that it needs `skill`.
+
 ## By hand, in the real app
 
 `scripts/verify-show-it-once.ts` starts a disposable fixture: the server with
