@@ -2,6 +2,7 @@
  * here is one the server emits in every response and SSE frame that carries
  * the shape. */
 import type { DataBroadcast } from "./data-surface.ts";
+import type { DemoDraft } from "./demo-recording.ts";
 import type { ApprovalMode } from "./approval-mode.ts";
 import type { ToolScope } from "./tool-scope.ts";
 import type { CommandAllowlistCandidate } from "./command-allowlist.ts";
@@ -1013,6 +1014,8 @@ export type ServerFrame =
   | { kind: "computer"; botId: string; state: "provisioning" | "waking"; place?: "cloud" }
   | { kind: "computer-state"; botId: string; resourceKey: string; state: "starting" | "ready" | "stopped" | "failed"; problem?: string }
   | { kind: "computer-control"; botId: string; held: boolean; helpReason: string | null; help?: ComputerHelpRef | null }
+  /** A bot's Show it once recording changed: the whole draft each time, to the workspace's admins only. */
+  | { kind: "demo-recording"; botId: string; draft: DemoDraft }
   /** The desktop app's built-in browser is still downloading (server/app-parts.ts): `botIds` are the bots that needed it
    * since, whose chats show one progress line until `phase` is "ready". */
   | { kind: "browser-part"; phase: "download" | "setup" | "failed" | "ready"; received: number; total: number; botIds: string[] }

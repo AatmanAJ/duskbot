@@ -59,6 +59,8 @@ let lastCredentialBody: any = null;
 let lastSignInBody: any = null;
 let signInAnswer: Record<string, unknown> | null = null;
 let lastFillBody: any = null;
+let lastReplayBody: any = null;
+let replayAnswer: { ok: boolean; text: string } = { ok: true, text: "Did all 13 steps." };
 let fillAnswer: { ok: boolean; text: string } = { ok: true, text: "Filled the username and the password for alice on example.com." };
 let lastRoutineQuery = "";
 let routinesResponse: unknown = {
@@ -334,6 +336,16 @@ beforeAll(async () => {
         lastSignInBody = JSON.parse(data);
         res.writeHead(signInAnswer ? 200 : 201, { "content-type": "application/json" });
         res.end(JSON.stringify(signInAnswer ?? { messageId: "msg-sign-in", site: "example.com", place: "browser" }));
+      });
+      return;
+    }
+    if (req.method === "POST" && req.url === "/api/internal/skill-replay") {
+      let data = "";
+      req.on("data", (c) => (data += c));
+      req.on("end", () => {
+        lastReplayBody = JSON.parse(data);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(replayAnswer));
       });
       return;
     }
@@ -675,6 +687,7 @@ describe("agents-proxy MCP surface", () => {
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server",
     ]);
     const tool = (name: string) => list.result.tools.find((entry: { name: string }) => entry.name === name);
@@ -1188,6 +1201,23 @@ describe("agents-proxy MCP surface", () => {
     expect(lastFillBody).toEqual({ fromBotId: "bot-asker", fromThreadId: "thread-asker-routine", submit: false });
     await callTool("fill_login", { submit: true });
     expect(lastFillBody).toEqual({ fromBotId: "bot-asker", fromThreadId: "thread-asker-routine" });
+  });
+
+  it("replays a shown skill with one run's inputs or a folder, and hands the harness's words through, a stopped run as an error", async () => {
+    const ran = await callTool("skill_replay", { skill: "file-an-expense-report", inputs: { amount: "18.40" } });
+    expect(ran.result.isError).toBeFalsy();
+    expect(ran.result.content[0].text).toBe("Did all 13 steps.");
+    expect(lastReplayBody).toEqual({ fromBotId: "bot-asker", fromThreadId: "thread-asker-routine", skill: "file-an-expense-report", inputs: { amount: "18.40" } });
+    replayAnswer = { ok: false, text: "Stopped at step 12 of 13." };
+    const stopped = await callTool("skill_replay", { skill: "file-an-expense-report", folder: "/work/inbox", skip: ["expense-01.json"], from_step: "s40" });
+    expect(stopped.result.isError).toBe(true);
+    expect(stopped.result.content[0].text).toBe("Stopped at step 12 of 13.");
+    expect(lastReplayBody).toEqual({ fromBotId: "bot-asker", fromThreadId: "thread-asker-routine", skill: "file-an-expense-report", folder: "/work/inbox", skip: ["expense-01.json"], from_step: "s40" });
+    replayAnswer = { ok: true, text: "Did all 13 steps." };
+    lastReplayBody = null;
+    const unnamed = await callTool("skill_replay", { inputs: {} });
+    expect(unnamed.result.isError).toBe(true);
+    expect(lastReplayBody).toBeNull();
   });
 
   it("asks for any other secret by its name, reason and delivery, never its value", async () => {

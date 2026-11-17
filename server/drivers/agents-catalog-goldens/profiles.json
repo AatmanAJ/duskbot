@@ -1,7 +1,7 @@
 {
   "default": {
-    "bytes": 62216,
-    "sha256": "fea752ad68d9889cdc32a3493938dfd5f02a471c43bb7296d72fe60ff3da7e51",
+    "bytes": 63124,
+    "sha256": "1c8b89941d69c00c358604ddb777846d1c09ef4409dfa9feb98c2514683db8e6",
     "tools": [
       "set_status",
       "send_message",
@@ -49,12 +49,13 @@
       "cancel_wait",
       "propose_profile",
       "propose_model",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "voice": {
-    "bytes": 62994,
-    "sha256": "f84858f78e573e631a8b85dd04c3432c2078574895689de5ae6ee2538892aae6",
+    "bytes": 63902,
+    "sha256": "fa0d65083170c518c4b9ec513157f0c089819a16c356e95971fc02e3cac0545d",
     "tools": [
       "set_status",
       "send_message",
@@ -103,12 +104,13 @@
       "cancel_wait",
       "propose_profile",
       "propose_model",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "skills": {
-    "bytes": 65035,
-    "sha256": "a4ca81c4cc2d1399227c91bd488db90922570174563f7457348f6c0044a7839b",
+    "bytes": 65943,
+    "sha256": "9979e2b4c2ddbc40925031be2275391baafa38c3088f3b0ddd25717a82308757",
     "tools": [
       "set_status",
       "send_message",
@@ -158,12 +160,13 @@
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "skills+voice": {
-    "bytes": 65813,
-    "sha256": "8bea0bf12931168332b6fb8b1925547624dcb6b76e451df529064a6cc78eaa1f",
+    "bytes": 66721,
+    "sha256": "9d50460d449764d3b101a117f415d9799ec23b3d343d3f249eb2d24e796dbaec",
     "tools": [
       "set_status",
       "send_message",
@@ -214,12 +217,13 @@
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "non-chief": {
-    "bytes": 54198,
-    "sha256": "66423915aa9b58f74f59d3af9e80caf1e4d251cf4e131d4e673f226e911aae38",
+    "bytes": 55106,
+    "sha256": "5699b73b10953fe71b344d66f8b76eb2d2aee53353d8b5f5690058db54cb3cbb",
     "tools": [
       "set_status",
       "send_message",
@@ -262,12 +266,13 @@
       "cancel_wait",
       "propose_profile",
       "propose_model",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "voice+non-chief": {
-    "bytes": 54976,
-    "sha256": "62c13f242f288ced283690cf40fdff8ff85253c5747531f3401de285fb574f82",
+    "bytes": 55884,
+    "sha256": "e6c91f25adc8f14d107b747d8e0bd8399a66a21e276e60040554fc819401d8e2",
     "tools": [
       "set_status",
       "send_message",
@@ -311,12 +316,13 @@
       "cancel_wait",
       "propose_profile",
       "propose_model",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "skills+non-chief": {
-    "bytes": 57017,
-    "sha256": "6fc5e044536ea5f2791f8f7fdee79c317fdc5c70490e19aa3a0160f965ee2b24",
+    "bytes": 57925,
+    "sha256": "901ff694fe462dd45a5b8908b7963554c1d0c7bacc8e5797759f83bfa5fbda7b",
     "tools": [
       "set_status",
       "send_message",
@@ -361,12 +367,13 @@
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "skills+voice+non-chief": {
-    "bytes": 57795,
-    "sha256": "82d481d53651a81b42dfcd224bc00ae55df3a5aea86c132f4e97fe5d53e0303a",
+    "bytes": 58703,
+    "sha256": "ff0599dbdaa1de7fccaa6f6825d0aad335e9601b5f8a7568233917087d55cbba",
     "tools": [
       "set_status",
       "send_message",
@@ -412,12 +419,13 @@
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "skills+voice+cloud-home": {
-    "bytes": 64834,
-    "sha256": "06122353229eef826daa5328872c8aaf350238192e6805f3859d047511e5f6f8",
+    "bytes": 65742,
+    "sha256": "a50e74030b16df608fe2a8fd989c7d97c1665eabf604e3a9af560fced9c3fdef",
     "tools": [
       "set_status",
       "send_message",
@@ -467,12 +475,13 @@
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "skills+voice+non-chief+cloud-home": {
-    "bytes": 56816,
-    "sha256": "247095b005a290d4c2a2c769d9ef8e5e0e9f33722eea1713193c21b96649ce3f",
+    "bytes": 57724,
+    "sha256": "87b5e29ee468946daadb7095a1bb33236bc11147458818bc54aaec61b92f8372",
     "tools": [
       "set_status",
       "send_message",
@@ -517,12 +526,13 @@
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "skills+voice+x": {
-    "bytes": 70824,
-    "sha256": "a47adf11716f117994ff3aa8348a1bc90ebfad21fad28e5d0bb3bbe4ff27bff2",
+    "bytes": 71732,
+    "sha256": "10d960c13999f319fe41c97e5f7100d130bba70a58f2548646d8e5a996ed84f5",
     "tools": [
       "set_status",
       "send_message",
@@ -578,12 +588,13 @@
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "skills+voice+x+team": {
-    "bytes": 70824,
-    "sha256": "a47adf11716f117994ff3aa8348a1bc90ebfad21fad28e5d0bb3bbe4ff27bff2",
+    "bytes": 71732,
+    "sha256": "10d960c13999f319fe41c97e5f7100d130bba70a58f2548646d8e5a996ed84f5",
     "tools": [
       "set_status",
       "send_message",
@@ -639,12 +650,13 @@
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "default+legacy-switches": {
-    "bytes": 62216,
-    "sha256": "fea752ad68d9889cdc32a3493938dfd5f02a471c43bb7296d72fe60ff3da7e51",
+    "bytes": 63124,
+    "sha256": "1c8b89941d69c00c358604ddb777846d1c09ef4409dfa9feb98c2514683db8e6",
     "tools": [
       "set_status",
       "send_message",
@@ -692,12 +704,13 @@
       "cancel_wait",
       "propose_profile",
       "propose_model",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "default+dusk": {
-    "bytes": 62867,
-    "sha256": "72d42b3c7c88faf7c146045b08d6b8a393cdf6ef546ab12466ba673335f51ae9",
+    "bytes": 63775,
+    "sha256": "8aea7c623fa207a8eaeca35d33028c9cef5dc1246d8621e76bc0eaad5bdeaaef",
     "tools": [
       "set_status",
       "send_message",
@@ -745,14 +758,15 @@
       "cancel_wait",
       "propose_profile",
       "propose_model",
+      "skill_replay",
       "mcp_server",
       "list_unread_notifications",
       "mark_notifications_read"
     ]
   },
   "skills+voice+dusk": {
-    "bytes": 66464,
-    "sha256": "a0b2ba4d35c766a6cbafd3cf43842ad3478182be285c1b9f28028d1416ea4d5b",
+    "bytes": 67372,
+    "sha256": "4e0767561197428e8c52aae972557028269af39bcb7a713996e421d721231066",
     "tools": [
       "set_status",
       "send_message",
@@ -803,14 +817,15 @@
       "propose_model",
       "skills_list",
       "skill_manage",
+      "skill_replay",
       "mcp_server",
       "list_unread_notifications",
       "mark_notifications_read"
     ]
   },
   "default+no-computer-pick": {
-    "bytes": 61009,
-    "sha256": "09cdd71b64e8e7e8b20e88860a0af1cdfb22feaeb69b9956fd8c80f0e40eb6eb",
+    "bytes": 61917,
+    "sha256": "bc9871f489ada14b7812919ceebbe5c878242816546154f49ece01f2ada65ea9",
     "tools": [
       "set_status",
       "send_message",
@@ -857,12 +872,13 @@
       "cancel_wait",
       "propose_profile",
       "propose_model",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "default+room": {
-    "bytes": 53931,
-    "sha256": "a8d77e1b171345f28713f07a121c9b723276cc3be8f9ce785b9529ae548d2762",
+    "bytes": 54839,
+    "sha256": "ea26a83ebc05598d7b95201b92639fd8ccc449b5192c9e71de0a09be7ce1d59f",
     "tools": [
       "set_status",
       "send_message",
@@ -904,12 +920,13 @@
       "delete_trigger",
       "propose_profile",
       "propose_model",
+      "skill_replay",
       "mcp_server"
     ]
   },
   "non-chief+room": {
-    "bytes": 45913,
-    "sha256": "1eb3dcacf08cd9a565e61dff1b8ce3cccce03443d7fe4309200feee77dbd305c",
+    "bytes": 46821,
+    "sha256": "5c5386ae560fa417bc61d68fb95c6b7c6f7088016ebbdf281b58c6fbc0e7fd01",
     "tools": [
       "set_status",
       "send_message",
@@ -946,6 +963,7 @@
       "delete_trigger",
       "propose_profile",
       "propose_model",
+      "skill_replay",
       "mcp_server"
     ]
   }

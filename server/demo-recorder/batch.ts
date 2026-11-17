@@ -28,6 +28,8 @@ export interface BatchOutcome {
 export interface BatchDeps extends Omit<ReplayDeps, "resolveFile" | "fromStep"> {
   /** The full path of a file a record names, relative to the record's own folder, or null when the bot may not read it. */
   resolveFile?(value: string, record: InputRecord): string | null;
+  /** Asked before each record: false leaves it and the rest for another call, as when the call's time is used up. */
+  goOn?(): boolean;
 }
 
 /** A file a record names, kept inside the record's own folder. */
@@ -40,13 +42,17 @@ function besideRecord(value: string, record: InputRecord): string | null {
 
 /** Runs the recording once for each record, in order, and stops at the first one the page did not take. */
 export async function replayBatch(port: DemoPagePort, recording: DemoRecording, records: readonly InputRecord[], deps: BatchDeps = {}): Promise<BatchOutcome> {
-  const { resolveFile = besideRecord, ...replayDeps } = deps;
+  const { resolveFile = besideRecord, goOn, ...replayDeps } = deps;
   const fileBlanks = recording.blanks.filter((blank) => blank.kind === "file").map((blank) => blank.name);
   const items: BatchItem[] = [];
   let notRun: string[] = [];
   for (let at = 0; at < records.length; at++) {
     const record = records[at]!;
     deps.checkpoint?.();
+    if (items.length && goOn && !goOn()) {
+      notRun = records.slice(at).map((later) => later.source);
+      break;
+    }
     const { inputs, missing } = matchInputs(recording.blanks, record);
     if (missing.length) {
       items.push({ source: record.source, ok: false, text: `${record.source} has no value for ${missing.map((name) => `\`${name}\``).join(", ")}, so it was not started.` });
@@ -74,7 +80,8 @@ export async function replayBatch(port: DemoPagePort, recording: DemoRecording, 
   const failed = items.filter((item) => !item.ok);
   const lines = [`Ran "${recording.title}" for ${done.length} of ${records.length} ${records.length === 1 ? "record" : "records"}${done.length ? `: ${done.map((item) => item.source).join(", ")}` : ""}.`];
   for (const item of failed) lines.push("", `${item.source}:`, item.text);
-  if (notRun.length) lines.push("", `Not started: ${notRun.join(", ")}. Once ${failed.at(-1)?.source ?? "the stopped one"} is finished, call ${DEMO_REPLAY_TOOL} again for these.`);
+  const stopped = items.at(-1)?.ok === false ? items.at(-1)!.source : null;
+  if (notRun.length) lines.push("", `Not started: ${notRun.join(", ")}. ${stopped ? `Once ${stopped} is finished, call` : "Call"} ${DEMO_REPLAY_TOOL} again for these.`);
   if (!failed.length) lines.push("Read the page to confirm the last result before you report it.");
   return { ok: failed.length === 0 && notRun.length === 0, items, notRun, text: lines.join("\n") };
 }

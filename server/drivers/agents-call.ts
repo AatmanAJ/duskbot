@@ -632,6 +632,16 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
     });
     return { text: typeof r.text === "string" && r.text ? r.text : "fill_login did not answer. Call request_sign_in instead.", ...(r.ok === true ? {} : { isError: true }) };
   }
+  if (name === "skill_replay") {
+    if (typeof args.skill !== "string" || !args.skill.trim()) {
+      return { text: "skill_replay needs skill: the name of a skill that was shown once, as skills_list shows it.", isError: true };
+    }
+    const r = await api("/api/internal/skill-replay", {
+      method: "POST",
+      body: JSON.stringify({ fromBotId: BOT_ID, fromThreadId: THREAD_ID, skill: args.skill, inputs: args.inputs, folder: args.folder, skip: args.skip, from_step: args.from_step }),
+    });
+    return { text: typeof r.text === "string" && r.text ? r.text : "skill_replay did not answer. Follow the skill's steps by hand.", ...(r.ok === true ? {} : { isError: true }) };
+  }
   if (name === "send_voice_note") {
     if (typeof args.text !== "string" || !args.text.trim()) {
       return { text: "send_voice_note needs text: the short speakable note, at most 1000 characters.", isError: true };
