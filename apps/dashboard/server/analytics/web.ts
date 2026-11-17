@@ -111,21 +111,37 @@ export function mergeSessions(into: Sessions, later: Sessions) {
   }
 }
 
-/** the finished visits on these surfaces, oldest first; the sessions are left as they were */
+/** the finished visits on these surfaces, oldest first; they share the sessions' lists, so sessions are finished once */
 export function visitsFrom(by: Sessions, surfaces: readonly Surface[]): Visit[] {
   const out: Visit[] = [];
-  for (const state of by.values()) {
-    if (!surfaces.includes(state.surface)) continue;
-    const pages = [...state.pages];
-    if (!pages.length && state.opened !== null) pages.push({ path: "/", at: state.opened, pv: null });
-    if (!pages.length) continue;
-    pages.sort((a, b) => a.at - b.at);
-    const { opened: _opened, closedMs, named: _named, ...fields } = state;
-    const engaged = [...state.leaves.values()].reduce((sum, leave) => sum + leave.ms, 0);
-    out.push({ ...fields, pages, goals: [...state.goals], leaves: new Map(state.leaves), entry: pages[0]!.path, exit: pages.at(-1)!.path,
-      engagedMs: closedMs ?? Math.max(engaged, state.end - state.start), bounced: pages.length === 1 && state.goals.length === 0 });
-  }
+  for (const state of by.values()) { const visit = finished(state, surfaces); if (visit) out.push(visit); }
   return out.sort((a, b) => a.start - b.start);
+}
+/** visitsFrom in pieces, letting `pause` hand the event loop back between them */
+export async function visitsFromPaced(by: Sessions, surfaces: readonly Surface[], pause: () => Promise<void>): Promise<Visit[]> {
+  const out: Visit[] = [];
+  let i = 0;
+  for (const state of by.values()) {
+    const visit = finished(state, surfaces);
+    if (visit) out.push(visit);
+    if ((++i & 4095) === 0) await pause();
+  }
+  // visits come in the order of their first event, which is their start: sorting is only ever a check
+  for (let k = 1; k < out.length; k++) if (out[k]!.start < out[k - 1]!.start) return out.sort((a, b) => a.start - b.start);
+  return out;
+}
+function finished(state: Session, surfaces: readonly Surface[]): Visit | null {
+  if (!surfaces.includes(state.surface)) return null;
+  const pages = state.pages;
+  if (!pages.length && state.opened !== null) pages.push({ path: "/", at: state.opened, pv: null });
+  if (!pages.length) return null;
+  pages.sort((a, b) => a.at - b.at);
+  let engaged = 0;
+  for (const leave of state.leaves.values()) engaged += leave.ms;
+  return { session: state.session, visitor: state.visitor, surface: state.surface, start: state.start, end: state.end, host: state.host, keyword: state.keyword, pages, goals: state.goals,
+    leaves: state.leaves, entry: pages[0]!.path, exit: pages.at(-1)!.path, engagedMs: state.closedMs ?? Math.max(engaged, state.end - state.start),
+    bounced: pages.length === 1 && state.goals.length === 0, source: state.source, channel: state.channel, referrer: state.referrer, campaign: state.campaign, ref: state.ref,
+    country: state.country, region: state.region, city: state.city, lat: state.lat, lon: state.lon, device: state.device, os: state.os, browser: state.browser };
 }
 function attribute(visit: Visit, ctx: EventContext) {
   visit.source = ctx.source ?? "direct"; visit.channel = ctx.channel ?? "direct"; visit.referrer = ctx.referrer ?? null;
@@ -180,25 +196,37 @@ export interface People {
 
 const pct = (part: number, whole: number) => whole > 0 ? part / whole : null;
 const accountOf = (identity: Identity, person: string) => person.startsWith("acct_") ? person : identity.accountOf.get(person);
-const median = (values: number[]) => {
+const median = (values: ArrayLike<number>) => {
   if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b), mid = sorted.length >> 1;
+  const sorted = Float64Array.from(values).sort(), mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid]! : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
 };
+
+/** a view's numbers built one visit at a time, so a long list of visits can be fed in pieces */
+export interface Tally<T> { add(visit: Visit): void; result(): T }
+const fed = <T,>(tally: Tally<T>, visits: readonly Visit[]) => { for (const visit of visits) tally.add(visit); return tally.result(); };
 
 export interface Kpis { visitors: number; visits: number; pageviews: number; signups: number; paid: number; waitlist: number; conversion: number | null; bounce: number | null; visitMs: number | null }
 /** the KPI strip for one window; with filters, signups and payments count only people whose visits match */
 export function kpis(visits: readonly Visit[], identity: Identity, people: People, from: number, to: number, filters: Filters = {}): Kpis {
-  const inRange = visits.filter(visit => visit.start >= from && visit.start < to && matches(visit, filters));
-  const visitors = new Set(inRange.map(visit => visit.visitor));
-  const filtered = Object.keys(filters).length > 0;
-  const allowed = filtered ? new Set([...visitors].map(visitor => accountOf(identity, visitor)).filter((id): id is string => !!id)) : null;
-  const count = (map: ReadonlyMap<string, number>) => [...map].filter(([id, at]) => at >= from && at < to && (!allowed || allowed.has(id))).length;
-  const signups = count(people.signups);
+  return fed(kpisTally(identity, people, from, to, filters), visits);
+}
+export function kpisTally(identity: Identity, people: People, from: number, to: number, filters: Filters = {}): Tally<Kpis> {
+  const visitors = new Set<string>(), joined = new Set<string>(), engaged: number[] = [];
+  let count = 0, pageviews = 0, bounced = 0;
   return {
-    visitors: visitors.size, visits: inRange.length, pageviews: inRange.reduce((sum, visit) => sum + visit.pages.length, 0),
-    signups, paid: count(people.paid), waitlist: new Set(inRange.filter(visit => visit.goals.some(goal => goal.goal === "waitlist_join")).map(visit => visit.visitor)).size,
-    conversion: pct(signups, visitors.size), bounce: pct(inRange.filter(visit => visit.bounced).length, inRange.length), visitMs: median(inRange.map(visit => visit.engagedMs)),
+    add(visit) {
+      if (visit.start < from || visit.start >= to || !matches(visit, filters)) return;
+      visitors.add(visit.visitor); count++; pageviews += visit.pages.length; engaged.push(visit.engagedMs);
+      if (visit.bounced) bounced++;
+      if (visit.goals.some(goal => goal.goal === "waitlist_join")) joined.add(visit.visitor);
+    },
+    result() {
+      const allowed = Object.keys(filters).length > 0 ? new Set([...visitors].map(visitor => accountOf(identity, visitor)).filter((id): id is string => !!id)) : null;
+      const counted = (map: ReadonlyMap<string, number>) => [...map].filter(([id, at]) => at >= from && at < to && (!allowed || allowed.has(id))).length;
+      const signups = counted(people.signups);
+      return { visitors: visitors.size, visits: count, pageviews, signups, paid: counted(people.paid), waitlist: joined.size, conversion: pct(signups, visitors.size), bounce: pct(bounced, count), visitMs: median(engaged) };
+    },
   };
 }
 
@@ -209,39 +237,63 @@ export function bucketsOf(from: number, to: number): { size: number; starts: num
   for (let at = from; at < to; at += size) starts.push(at);
   return { size, starts };
 }
-export function series(visits: readonly Visit[], people: People, from: number, to: number, filters: Filters = {}, identity?: Identity) {
+export interface Series { size: number; starts: number[]; visitors: number[]; signups: number[]; paid: number[]; waitlist: number[] }
+export function series(visits: readonly Visit[], people: People, from: number, to: number, filters: Filters = {}, identity?: Identity): Series {
+  return fed(seriesTally(people, from, to, filters, identity), visits);
+}
+export function seriesTally(people: People, from: number, to: number, filters: Filters = {}, identity?: Identity): Tally<Series> {
   const { size, starts } = bucketsOf(from, to);
   const index = (at: number) => Math.floor((at - starts[0]!) / size);
-  const visitors = starts.map(() => new Set<string>()), joined = starts.map(() => new Set<string>()), signups = starts.map(() => 0), paid = starts.map(() => 0);
+  const visitors = starts.map(() => new Set<string>()), joined = starts.map(() => new Set<string>());
   const allowed = Object.keys(filters).length && identity ? new Set<string>() : null;
-  for (const visit of visits) {
-    if (visit.start < from || visit.start >= to || !matches(visit, filters)) continue;
-    visitors[index(visit.start)]?.add(visit.visitor);
-    if (visit.goals.some(goal => goal.goal === "waitlist_join")) joined[index(visit.start)]?.add(visit.visitor);
-    const account = identity ? accountOf(identity, visit.visitor) : undefined;
-    if (allowed && account) allowed.add(account);
-  }
-  for (const [id, at] of people.signups) if (at >= from && at < to && (!allowed || allowed.has(id))) signups[index(at)]! += 1;
-  for (const [id, at] of people.paid) if (at >= from && at < to && (!allowed || allowed.has(id))) paid[index(at)]! += 1;
-  return { size, starts, visitors: visitors.map(set => set.size), signups, paid, waitlist: joined.map(set => set.size) };
+  return {
+    add(visit) {
+      if (visit.start < from || visit.start >= to || !matches(visit, filters)) return;
+      visitors[index(visit.start)]?.add(visit.visitor);
+      if (visit.goals.some(goal => goal.goal === "waitlist_join")) joined[index(visit.start)]?.add(visit.visitor);
+      const account = identity ? accountOf(identity, visit.visitor) : undefined;
+      if (allowed && account) allowed.add(account);
+    },
+    result() {
+      const signups = starts.map(() => 0), paid = starts.map(() => 0);
+      for (const [id, at] of people.signups) if (at >= from && at < to && (!allowed || allowed.has(id))) signups[index(at)]! += 1;
+      for (const [id, at] of people.paid) if (at >= from && at < to && (!allowed || allowed.has(id))) paid[index(at)]! += 1;
+      return { size, starts, visitors: visitors.map(set => set.size), signups, paid, waitlist: joined.map(set => set.size) };
+    },
+  };
 }
 
 export interface BreakdownRow { key: string; visitors: number; signups: number; paid: number }
 /** a ranked card: visitors per value, with the signups and payments of the people those visitors became */
 export function breakdown(visits: readonly Visit[], identity: Identity, people: People, dim: Dimension, from: number, to: number, filters: Filters = {}, limit = 50): BreakdownRow[] {
+  return fed(breakdownTally(identity, people, dim, from, to, filters, limit), visits);
+}
+export function breakdownTally(identity: Identity, people: People, dim: Dimension, from: number, to: number, filters: Filters = {}, limit = 50): Tally<BreakdownRow[]> {
   const rows = new Map<string, { visitors: Set<string>; accounts: Set<string> }>();
-  for (const visit of visits) {
-    if (visit.start < from || visit.start >= to || !matches(visit, filters)) continue;
-    for (const value of valuesOf(visit, dim)) {
-      const row = rows.get(value) ?? rows.set(value, { visitors: new Set(), accounts: new Set() }).get(value)!;
-      row.visitors.add(visit.visitor);
+  return {
+    add(visit) {
+      if (visit.start < from || visit.start >= to || !matches(visit, filters)) return;
       const account = accountOf(identity, visit.visitor);
-      if (account) row.accounts.add(account);
-    }
+      for (const value of valuesOf(visit, dim)) {
+        const row = rows.get(value) ?? rows.set(value, { visitors: new Set(), accounts: new Set() }).get(value)!;
+        row.visitors.add(visit.visitor);
+        if (account) row.accounts.add(account);
+      }
+    },
+    result() {
+      const within = (map: ReadonlyMap<string, number>, ids: Set<string>) => [...ids].filter(id => { const at = map.get(id); return at !== undefined && at >= from && at < to; }).length;
+      return [...rows].map(([key, row]) => ({ key, visitors: row.visitors.size, signups: within(people.signups, row.accounts), paid: within(people.paid, row.accounts) }))
+        .sort((a, b) => b.visitors - a.visitors || b.signups - a.signups || a.key.localeCompare(b.key)).slice(0, limit);
+    },
+  };
+}
+/** feeds visits to tallies, handing the event loop back between pieces */
+export async function feed(visits: readonly Visit[], tallies: ReadonlyArray<Tally<unknown>>, pause: () => Promise<void>) {
+  for (let i = 0; i < visits.length; i++) {
+    const visit = visits[i]!;
+    for (const tally of tallies) tally.add(visit);
+    if ((i & 1023) === 1023) await pause();
   }
-  const within = (map: ReadonlyMap<string, number>, ids: Set<string>) => [...ids].filter(id => { const at = map.get(id); return at !== undefined && at >= from && at < to; }).length;
-  return [...rows].map(([key, row]) => ({ key, visitors: row.visitors.size, signups: within(people.signups, row.accounts), paid: within(people.paid, row.accounts) }))
-    .sort((a, b) => b.visitors - a.visitors || b.signups - a.signups || a.key.localeCompare(b.key)).slice(0, limit);
 }
 
 /** how many people were on the site (the account pages included) in the last five minutes, and in an app; `present` are
@@ -419,7 +471,12 @@ export function funnel(input: FunnelInput) {
   const drop = Object.fromEntries([...dropped].map(([id, list]) => [id, { count: list.length, lastPages: top(list.map(person => person.last.page)), lastEvents: top(list.map(person => person.last.event)), scroll: scrollBuckets(list) }]));
   const sources = new Map<string, Person[]>();
   for (const person of people) (sources.get(person.channel) ?? sources.set(person.channel, []).get(person.channel)!).push(person);
-  const bySource = [...sources].map(([channel, list]) => ({ channel, counts: labels.slice(startAt).map((_, k) => list.filter(person => person.times.slice(startAt, startAt + k + 1).every(at => at !== null && at !== undefined)).length) }))
-    .sort((a, b) => b.counts[0]! - a.counts[0]!);
+  // how many steps in a row from the first each person reached: they count toward every step up to there
+  const depth = (person: Person) => { let k = startAt; while (k < labels.length && person.times[k] !== null && person.times[k] !== undefined) k++; return k - startAt; };
+  const bySource = [...sources].map(([channel, list]) => {
+    const counts = labels.slice(startAt).map(() => 0);
+    for (const person of list) for (let k = depth(person) - 1; k >= 0; k--) counts[k]! += 1;
+    return { channel, counts };
+  }).sort((a, b) => b.counts[0]! - a.counts[0]!);
   return { mode: input.mode, steps, dropoff: drop, bySource };
 }

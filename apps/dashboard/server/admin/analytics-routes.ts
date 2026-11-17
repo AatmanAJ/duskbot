@@ -5,13 +5,13 @@ import type { createBilling } from "../billing/index.ts";
 import type { Analytics } from "../analytics/index.ts";
 import type { StoredEvent } from "../analytics/sink.ts";
 import type { StoredWorkspace } from "../store.ts";
-import { DAY, DIMENSIONS, ONLINE_MS, SURFACES, breakdown, funnel, identityOf, kpis, matches, online, retention, series, visitsFrom, visitsOf, type Dimension, type FunnelFacts, type Filters, type People, type Visit } from "../analytics/web.ts";
+import { DAY, DIMENSIONS, ONLINE_MS, SURFACES, breakdownTally, feed, funnel, identityOf, kpisTally, matches, online, retention, seriesTally, valuesOf, visitsFromPaced, visitsOf, type Dimension, type FunnelFacts, type Filters, type People, type Visit } from "../analytics/web.ts";
 import { BILLING_EVENTS, QUARTER, accountsDigest, appDigest, appDigestOf, appReport, seenDigest, upsellsDigest, visitsDigest, type AccountsDigest, type UpsellsDigest } from "../analytics/digests.ts";
 import { pacer, type Digest } from "../analytics/rollup.ts";
 import { choseCloud, wasPaid, workspaceTurns } from "./metrics.ts";
 import { productDigest, productReportOf } from "./product.ts";
 import { paymentsOf, revenueReport } from "../analytics/revenue.ts";
-import { aligned, newVsReturning, peakHours } from "../analytics/insights.ts";
+import { aligned, firstSeenOf, newVsReturningTally, peakHoursTally } from "../analytics/insights.ts";
 import { billingSteps, firstSourceOf, sessionsOf, spendOf, timeToPayOf, whereOf } from "../analytics/profile.ts";
 import type { StoredSubscription } from "../billing/store.ts";
 import { accountMrr, billingCardOf, livesOf, paysOf, subscriptionReport, type SubscriptionsInput } from "../analytics/subscriptions.ts";
@@ -159,13 +159,24 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     const [{ identity, people: p, sessions }, recent, crawls, notes] = await Promise.all([load(Math.min(from - span, from - 60 * DAY), true), sink.scan(time - ONLINE_MS, time + 60_000),
       sink.crawls(from, to), sink.notes(from - span, to)]);
     const pause = pacer();
-    const all = visitsFrom(sessions, SURFACES), visits = all.filter(visit => surface === "all" || visit.surface === surface);
+    const all = await visitsFromPaced(sessions, SURFACES, pause), visits = all.filter(visit => surface === "all" || visit.surface === surface);
+    const tz = url.searchParams.has("tz") ? Number(url.searchParams.get("tz")) : 0;
+    if (!Number.isInteger(tz) || tz < -900 || tz > 900) throw bad();
+    // every number below in one pass over the visits, a piece at a time
+    const firstSeen = new Map<string, number>();
+    for (let i = 0; i < visits.length; i += 20_000) { firstSeenOf(visits.slice(i, i + 20_000), firstSeen); await pause(); }
+    const tallies = { current: kpisTally(identity, p, from, to, scoped), previous: kpisTally(identity, p, from - span, from, scoped),
+      cards: DIMENSIONS.map(dim => breakdownTally(identity, p, dim, from, to, scoped)), chart: seriesTally(p, from, to, scoped, identity), before: seriesTally(p, from - span, from, scoped, identity),
+      fresh: newVsReturningTally(from, to, scoped, firstSeen), hours: peakHoursTally(from, to, tz, scoped) };
+    await feed(visits, [tallies.current, tallies.previous, ...tallies.cards, tallies.chart, tallies.before, tallies.fresh, tallies.hours], pause);
+    const current = tallies.current.result();
     await pause();
-    const current = kpis(visits, identity, p, from, to, scoped), previous = kpis(visits, identity, p, from - span, from, scoped);
+    const previous = tallies.previous.result();
+    const cards: Record<string, ReturnType<typeof tallies.cards[number]["result"]>> = {};
+    for (const [i, dim] of DIMENSIONS.entries()) { await pause(); cards[dim] = tallies.cards[i]!.result(); }
     await pause();
-    const cards: Record<string, ReturnType<typeof breakdown>> = {};
-    for (const dim of DIMENSIONS) { cards[dim] = breakdown(visits, identity, p, dim, from, to, scoped); await pause(); }
-    const surfaces = Object.fromEntries(SURFACES.map(value => [value, new Set(all.filter(visit => visit.surface === value && visit.start >= from && visit.start < to).map(visit => visit.visitor)).size]));
+    const inWindow = all.filter(visit => visit.start >= from && visit.start < to);
+    const surfaces = Object.fromEntries(SURFACES.map(value => [value, new Set(inWindow.filter(visit => visit.surface === value).map(visit => visit.visitor)).size]));
     const allowed = Object.keys(scoped).length ? new Set(visits.filter(visit => visit.start >= from && visit.start < to && matches(visit, scoped)).map(visit => visit.visitor.startsWith("acct_") ? visit.visitor : identity.accountOf.get(visit.visitor))) : null;
     const accounts = new Map(auth.directory().accounts.map(account => [account.id, account]));
     const marks = (["signup", "paid"] as const).flatMap(kind => [...(kind === "signup" ? p.signups : p.paid)].filter(([id, at]) => at >= from && at < to && (!allowed || allowed.has(id)))
@@ -174,17 +185,15 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     const live = online(recent, time, analytics.presence.list().map(entry => entry.key));
     await pause();
     const money = moneyState();
-    const revenue = revenueReport({ payments: paymentsOf(money), subscriptions: money.subscriptions, visits, identity, from, to, now: now(), filters: scoped,
+    // the revenue cards credit payments to visits, so only an account's visits matter to them
+    const credited: Visit[] = [];
+    for (let i = 0; i < visits.length; i++) { const visit = visits[i]!; if (visit.visitor.startsWith("acct_") || identity.accountOf.has(visit.visitor)) credited.push(visit); if ((i & 16383) === 16383) await pause(); }
+    const revenue = revenueReport({ payments: paymentsOf(money), subscriptions: money.subscriptions, visits: credited, identity, from, to, now: now(), filters: scoped,
       accounts: new Map([...accounts].map(([id, account]) => [id, { email: account.email, createdAt: account.createdAt }])) });
     const count = (values: string[]) => [...values.reduce((map, value) => map.set(value, (map.get(value) ?? 0) + 1), new Map<string, number>())]
       .map(([key, requests]) => ({ key, visitors: requests, signups: 0, paid: 0 })).sort((a, b) => b.visitors - a.visitors).slice(0, 50);
-    await pause();
-    const chart = series(visits, p, from, to, scoped, identity);
-    await pause();
-    const tz = url.searchParams.has("tz") ? Number(url.searchParams.get("tz")) : 0;
-    if (!Number.isInteger(tz) || tz < -900 || tz > 900) throw bad();
-    const insights = { previousVisitors: aligned(series(visits, p, from - span, from, scoped, identity).visitors, chart.starts.length),
-      visitors: newVsReturning(visits, from, to, scoped), hours: peakHours(visits, from, to, tz, scoped) };
+    const chart = tallies.chart.result();
+    const insights = { previousVisitors: aligned(tallies.before.result().visitors, chart.starts.length), visitors: tallies.fresh.result(), hours: tallies.hours.result() };
     // payments are live when the server takes live money, sold or not; before the first sale the chart says no sales
     return { from, to, now: now(), filters, current, previous, surfaces, marks, online: live, series: chart, insights, cards, revenue: { ...revenue, live: revenue.live || serverMode() === "live" }, notes,
       tracked: visits.length > 0, crawlers: { total: crawls.length, bot: count(crawls.map(c => c.bot)), page: count(crawls.map(c => c.path)), kind: count(crawls.map(c => c.kind)) } };
@@ -193,14 +202,14 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
   async function webDetails(dim: Dimension, url: URL) {
     const { from, to } = windowOf(url, now()), { surface, filters, scoped } = webFilters(url);
     const { sessions, identity, people: p } = await load(from, false);
-    const visits = visitsFrom(sessions, SURFACES).filter(visit => surface === "all" || visit.surface === surface);
     const pause = pacer();
-    const rows = [];
-    for (const row of breakdown(visits, identity, p, dim, from, to, scoped, 500)) {
-      const { conversion, bounce, visitMs, pageviews } = kpis(visits, identity, p, from, to, { ...scoped, [dim]: row.key });
-      rows.push({ ...row, conversion, bounce, visitMs, pageviews });
-      await pause();
-    }
+    const visits = (await visitsFromPaced(sessions, SURFACES, pause)).filter(visit => surface === "all" || visit.surface === surface);
+    const ranked = breakdownTally(identity, p, dim, from, to, scoped, 500);
+    await feed(visits, [ranked], pause);
+    const top = ranked.result(), each = new Map(top.map(row => [row.key, kpisTally(identity, p, from, to, { ...scoped, [dim]: row.key })]));
+    // a row's own numbers only ever count visits with its value
+    await feed(visits, [{ add: visit => { if (visit.start < from || visit.start >= to) return; for (const value of valuesOf(visit, dim)) each.get(value)?.add(visit); }, result: () => null }], pause);
+    const rows = top.map(row => { const { conversion, bounce, visitMs, pageviews } = each.get(row.key)!.result(); return { ...row, conversion, bounce, visitMs, pageviews }; });
     return { from, to, dimension: dim, filters, rows };
   }
 
@@ -208,7 +217,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     const { from, to } = windowOf(url, now());
     const mode = url.searchParams.get("mode") === "signups" ? "signups" : "visitors";
     const [{ sessions, identity, identifies, people: p, facts, until }, upsells] = await Promise.all([load(from, true), digestOf(upsellsDigest, from, Math.min(to, now() + 60_000))]);
-    const visits = visitsFrom(sessions, ["site"]), funnelFacts = await funnelFactsOf(facts!, identifies, [from, until]);
+    const visits = await visitsFromPaced(sessions, ["site"], pacer()), funnelFacts = await funnelFactsOf(facts!, identifies, [from, until]);
     return { from, to, ...funnel({ from, to, now: now(), mode, visits, identity, facts: funnelFacts, people: p, cloudChosen: p.cloudChosen, paired: p.paired, replied: p.replied }),
       upsells: upsellRows(upsells, moneyState().subscriptions, from, to) };
   }
@@ -226,7 +235,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     if (!["all", "signups", "customers"].includes(only)) throw bad();
     const q = (url.searchParams.get("q") ?? "").trim().toLowerCase().slice(0, 100);
     const { sessions, identity, people: p } = await load(from - 90 * DAY, false);
-    const visits = visitsFrom(sessions, ["site"]);
+    const visits = await visitsFromPaced(sessions, ["site"], pacer());
     const emails = new Map(auth.directory().accounts.map(account => [account.id, account]));
     const groups = new Map<string, Visit[]>();
     for (const visit of visits) {
@@ -366,7 +375,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
   async function product(url: URL) {
     const { from, to } = windowOf(url, now());
     const [{ sessions, identity, identifies, people: p, facts }, digest] = await Promise.all([load(from, true), digestOf(productDigest, from, Math.min(to, now() + 60_000))]);
-    const flow = funnel({ from, to, now: now(), mode: "visitors", visits: visitsFrom(sessions, ["site"]), identity, facts: await funnelFactsOf(facts!, identifies, null), people: p,
+    const flow = funnel({ from, to, now: now(), mode: "visitors", visits: await visitsFromPaced(sessions, ["site"], pacer()), identity, facts: await funnelFactsOf(facts!, identifies, null), people: p,
       cloudChosen: p.cloudChosen, paired: p.paired, replied: p.replied });
     return productReportOf(digest, from, to, flow.steps);
   }
