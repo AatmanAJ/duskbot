@@ -277,6 +277,14 @@ export function asleepProbe(send: typeof fetch, origin: string, token: string, n
   };
 }
 
+/** CapacitorHttp 8 (`convertBody` in native-bridge.js) sends a Uint8Array or stream body through `TextDecoder`, which turns
+ * every byte above 0x7F into U+FFFD, and a plain Blob as JSON; only a `File` crosses to native http byte for byte, as base64. */
+export async function nativeBody(body: BodyInit | null | undefined, contentType: string | null): Promise<BodyInit | null | undefined> {
+  if (body == null || typeof body === "string" || body instanceof URLSearchParams || body instanceof FormData || body instanceof File) return body;
+  const type = contentType || (body instanceof Blob ? body.type : "") || "application/octet-stream";
+  return new File([await new Response(body).arrayBuffer()], "body", { type });
+}
+
 /** `onGone`: the relay no longer has this phone's channel, so only pairing again brings the workspace back. */
 export function installTransport(transport: PhoneTransport, onGone?: () => void): () => void {
   if (transport.kind === "same-origin") return () => {};
@@ -301,15 +309,18 @@ export function installTransport(transport: PhoneTransport, onGone?: () => void)
   const context = { transport, streamFetch: inPage(transport) ? fetchWorkspace : streamFetch.bind(window) };
   const probeAsleep = transport.kind === "bearer" ? asleepProbe(fetchWorkspace, origin, transport.token ?? "") : undefined;
   installed = context;
-  const patchedFetch: typeof fetch = (input, init) => {
+  const patchedFetch: typeof fetch = async (input, init) => {
     const url = rewriteApiUrl(input instanceof Request ? input.url : String(input), window.location.origin, origin);
     if (!url) return originalFetch.call(window, input, init);
     const request = input instanceof Request ? new Request(input, init) : null;
     const headers = new Headers(request?.headers ?? init?.headers);
     if (!headers.has("Authorization")) headers.set("Authorization", `Bearer ${transport.token ?? ""}`);
+    const body = transport.kind !== "bearer" ? undefined
+      : await nativeBody(request ? request.body && await request.clone().arrayBuffer() : init?.body, headers.get("Content-Type"));
     // redirects must not carry the workspace credential to a different origin, including through native http.
-    const options: RequestInit = { ...(request ? {} : init), headers, credentials: "omit", mode: "cors", redirect: "error" };
-    return fetchWorkspace(request ? new Request(new Request(url, request), options) : url, request ? undefined : options);
+    const options: RequestInit = { ...(request ? {} : init), headers, credentials: "omit", mode: "cors", redirect: "error", ...(body != null && !request ? { body } : {}) };
+    if (request) return fetchWorkspace(new Request(new Request(url, request), options), body != null ? { body } : undefined);
+    return fetchWorkspace(url, options);
   };
   const sources = new Set<BearerEventSource>();
   const PatchedEventSource = new Proxy(OriginalEventSource, {

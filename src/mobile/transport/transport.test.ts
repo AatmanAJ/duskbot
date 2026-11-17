@@ -176,6 +176,25 @@ describe("installed adapters", () => {
     expect(mediaUrl("/api/attachments/image")).toBe("/api/attachments/image");
   });
 
+  it("hands native http image bytes as a File, so none above 0x7F turn into U+FFFD", async () => {
+    const { browser, fetcher } = transportFixture();
+    const restore = installTransport({ kind: "bearer", origin: "https://workspace.test", token: "test-secret" });
+    const png = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0x80);
+    try {
+      await browser.fetch("/api/attachments?uploadId=a", { method: "POST", headers: { "content-type": "image/png" }, body: png });
+      const sent = fetcher.mock.calls[0][1]?.body;
+      expect(sent).toBeInstanceOf(File);
+      expect((sent as File).type).toBe("image/png");
+      expect(new Uint8Array(await (sent as File).arrayBuffer())).toEqual(png);
+      await browser.fetch(new Request("https://localhost/api/attachments", { method: "POST", headers: { "content-type": "image/png" }, body: png }));
+      const fromRequest = fetcher.mock.calls[1][1]?.body;
+      expect(fromRequest).toBeInstanceOf(File);
+      expect(new Uint8Array(await (fromRequest as File).arrayBuffer())).toEqual(png);
+      await browser.fetch("/api/chat", { method: "POST", body: "{\"text\":\"hi\"}" });
+      expect(fetcher.mock.calls[2][1]?.body).toBe("{\"text\":\"hi\"}");
+    } finally { restore(); }
+  });
+
   it("keeps unrelated EventSource URLs native and only adds socket tokens over TLS", () => {
     const { browser, FakeSource } = transportFixture();
     let restore = installTransport({ kind: "bearer", origin: "https://workspace.test", token: "test-secret" });
