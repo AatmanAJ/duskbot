@@ -22,6 +22,7 @@ import type { ModelSelection } from "./contracts.ts";
 import * as mdb from "./message-db.ts";
 import { peerAllowKey } from "./peer-approval-key.ts";
 import { Store, toWireTask, type BotRecord } from "./store.ts";
+import { closeRegistryDbs } from "./registry-rows.ts";
 import type { TeamSetupRequest } from "../shared/team-setup.ts";
 import { SECTION_CONTEXTS_FILE } from "./section-context.ts";
 
@@ -1715,13 +1716,17 @@ describe("Store", () => {
     expect(reloaded.activePath(bot.threadId).map((m) => m.text)).not.toContain("v1");
   });
 
-  it("tolerates a corrupt bots.json by starting empty", () => {
+  it("tolerates a corrupt bots.json: back from the rows that matched the last good one, or empty without them", () => {
     const store = new Store(selection);
-    store.createBot();
+    const bot = store.createBot();
     writeFileSync(join(DATA_DIR, "bots.json"), "{not json");
+    expect(new Store(selection).bot(bot.id)?.name).toBe(bot.name);
 
-    const reloaded = new Store(selection);
-    expect(reloaded.bots).toEqual([]);
+    closeRegistryDbs();
+    for (const name of ["registry.db", "registry.db-wal", "registry.db-shm"]) rmSync(join(DATA_DIR, name), { force: true });
+    writeFileSync(join(DATA_DIR, "bots.json"), "{not json");
+    rmSync(join(DATA_DIR, "bots.json.last-good"), { force: true });
+    expect(new Store(selection).bots).toEqual([]);
   });
 
   it("busy is wiped even when bots.json says otherwise", () => {

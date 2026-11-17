@@ -23,9 +23,12 @@ export const registryFileHash = (text: string | null): string => text === null ?
 interface Connection {
   db: DatabaseSync;
   statements: Map<string, StatementSync>;
+  /** A new number each time the file is opened: a reopened file may not hold what was written to the old one. */
+  generation: number;
 }
 
 const connections = new Map<string, Connection>();
+let opened = 0;
 
 function connect(file: string): Connection {
   const held = connections.get(file);
@@ -45,7 +48,7 @@ function connect(file: string): Connection {
   db.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS bots (id TEXT PRIMARY KEY, json TEXT NOT NULL, threads TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS tasks (bot_id TEXT NOT NULL, thread_id TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY (bot_id, thread_id));`);
-  const connection = { db, statements: new Map<string, StatementSync>() };
+  const connection = { db, statements: new Map<string, StatementSync>(), generation: ++opened };
   connections.set(file, connection);
   return connection;
 }
@@ -77,54 +80,104 @@ export interface RegistryShape<Bot, Task> {
 
 /**
  * The rows of one bots.json. Every write compares against what this process last wrote and sends only the rows that
- * differ, in one transaction.
+ * differ, in one transaction. The rows are never the only copy: any failure to read or write them turns them off for
+ * the rest of the run, and every save then writes bots.json whole, as before they existed.
  */
 export class RegistryRows<Bot, Task> {
   private readonly file: string;
   private readonly shape: RegistryShape<Bot, Task>;
+  private readonly log: (line: string) => void;
   private written = new Map<string, WrittenBot>();
   private order: string[] = [];
+  private generation = 0;
+  private off = false;
 
-  constructor(file: string, shape: RegistryShape<Bot, Task>) {
+  constructor(file: string, shape: RegistryShape<Bot, Task>, log: (line: string) => void = (line) => console.warn(line)) {
     this.file = file;
     this.shape = shape;
+    this.log = log;
   }
 
   /**
-   * The bots to start with: the rows, when the database last wrote the very bots.json `read` found; otherwise the
-   * file's own records, which then replace the rows. `fromRows` says which.
+   * The bots to start with: the rows, when the database last wrote the very bots.json `read` found, or when that file
+   * could not be read at all; otherwise the file's own records, which then replace the rows. `fromRows` says which.
    */
   load(read: RegistryRead<Bot>): { bots: Bot[]; fromRows: boolean } {
     const hash = read.state === "loaded" ? registryFileHash(read.text) : read.state === "missing" ? registryFileHash(null) : UNREADABLE;
-    const rows = hash === UNREADABLE ? null : this.readRows(hash);
-    if (rows) return { bots: rows, fromRows: true };
-    this.replace(read.records, hash);
+    try {
+      // a bots.json that could not be read gives way to rows that last matched a good one
+      const rows = this.readRows(hash === UNREADABLE ? null : hash);
+      if (rows && (hash !== UNREADABLE || rows.length)) return { bots: rows, fromRows: true };
+      this.replace(read.records, hash);
+    } catch (error) {
+      this.turnOff(error);
+    }
     return { bots: read.records, fromRows: false };
   }
 
-  /** One bot's rows, after a change to it or its threads. `durable` waits for the disk itself, as a permission must. */
-  writeBot(bots: readonly Bot[], bot: Bot, durable: boolean): void {
-    const changes = new Changes();
-    this.diffBot(bot, changes);
-    const ids = bots.map(this.shape.idOf);
-    if (!sameList(ids, this.order)) changes.order = ids;
-    this.commit(changes, durable);
+  /**
+   * One bot's rows, after a change to it or its threads. `durable` waits for the disk itself, as a permission must.
+   * False when the rows cannot take it alone (they are off, or the file was replaced): the caller saves everything.
+   */
+  writeBot(bots: readonly Bot[], bot: Bot, durable: boolean): boolean {
+    if (this.off) return false;
+    try {
+      if (connect(this.file).generation !== this.generation) return false;
+      const changes = new Changes();
+      this.diffBot(bot, changes);
+      const ids = bots.map(this.shape.idOf);
+      if (!sameList(ids, this.order)) changes.order = ids;
+      this.commit(changes, durable);
+      return true;
+    } catch (error) {
+      this.turnOff(error);
+      return false;
+    }
   }
 
-  /** Every row, with bots.json now holding `text`. */
+  /** Every row, as bots.json is about to hold `text`. */
   writeAll(bots: readonly Bot[], text: string): void {
-    const changes = new Changes();
-    const ids = bots.map(this.shape.idOf);
-    for (const bot of bots) this.diffBot(bot, changes);
-    for (const id of this.written.keys()) if (!ids.includes(id)) changes.removeBots.push(id);
-    if (!sameList(ids, this.order)) changes.order = ids;
-    changes.mirror = registryFileHash(text);
-    this.commit(changes, true);
+    if (this.off) return;
+    try {
+      const changes = new Changes();
+      // rows this process never wrote (another writer, a replaced file) are rewritten from scratch
+      if (connect(this.file).generation !== this.generation || !this.holdsOnlyWritten()) {
+        changes.clear = true;
+        this.written = new Map();
+        this.order = [];
+        this.generation = connect(this.file).generation;
+      }
+      const ids = bots.map(this.shape.idOf);
+      for (const bot of bots) this.diffBot(bot, changes);
+      for (const id of this.written.keys()) if (!ids.includes(id)) changes.removeBots.push(id);
+      if (!sameList(ids, this.order)) changes.order = ids;
+      changes.mirror = registryFileHash(text);
+      this.commit(changes, true);
+    } catch (error) {
+      this.turnOff(error);
+    }
   }
 
-  private readRows(hash: string): Bot[] | null {
+  /** Off for the rest of the run; the rows stop matching any bots.json, so the next start reads the file. */
+  private turnOff(error: unknown): void {
+    if (this.off) return;
+    this.off = true;
+    this.log(`[store] the registry's rows (${REGISTRY_DB_NAME}) failed and are off until restart; bots.json is saved whole: ${(error as Error).message}`);
+    try { this.statement("DELETE FROM meta WHERE key = 'mirror'").run(); } catch { /* the next bots.json written no longer matches them anyway */ }
+  }
+
+  private holdsOnlyWritten(): boolean {
+    const counts = this.statement("SELECT (SELECT COUNT(*) FROM bots) AS bots, (SELECT COUNT(*) FROM tasks) AS tasks").get() as { bots: number; tasks: number };
+    let tasks = 0;
+    for (const bot of this.written.values()) tasks += bot.tasks.size;
+    return Number(counts.bots) === this.written.size && Number(counts.tasks) === tasks;
+  }
+
+  /** The rows, when they last matched the bots.json whose hash is `hash`; with null, whatever they last matched. */
+  private readRows(hash: string | null): Bot[] | null {
     const get = (key: string) => (this.statement("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined)?.value;
-    if (get("mirror") !== hash) return null;
+    const mirror = get("mirror");
+    if (mirror === undefined || (hash !== null && mirror !== hash)) return null;
     const order = JSON.parse(get("order") ?? "[]") as string[];
     const botRows = new Map((this.statement("SELECT id, json, threads FROM bots").all() as Array<{ id: string; json: string; threads: string }>).map((row) => [row.id, row]));
     const taskRows = new Map<string, Map<string, string>>();
@@ -146,6 +199,7 @@ export class RegistryRows<Bot, Task> {
       this.written.set(id, { json: row.json, threads, tasks: rows });
     }
     this.order = ids;
+    this.generation = connect(this.file).generation;
     return bots;
   }
 
@@ -157,6 +211,7 @@ export class RegistryRows<Bot, Task> {
     for (const bot of bots) this.diffBot(bot, changes);
     changes.order = bots.map(this.shape.idOf);
     changes.mirror = hash;
+    this.generation = connect(this.file).generation;
     this.commit(changes, false);
   }
 

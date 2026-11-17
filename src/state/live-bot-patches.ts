@@ -15,9 +15,16 @@ export interface LiveBotPatchesDeps<Bot extends PatchableBot> {
 export function createLiveBotPatches<Bot extends PatchableBot>(deps: LiveBotPatchesDeps<Bot>) {
   const held = new Map<string, Bot>();
   return {
-    /** A whole bot frame, as the server sent it. */
-    whole(bot: Bot): void {
-      held.set(bot.id, patchBase(bot));
+    /** A whole bot, as the server sent it; what to show, without any page of messages it carried. */
+    whole(bot: Bot): Bot {
+      const base = patchBase(bot);
+      held.set(bot.id, base);
+      return base;
+    },
+    /** Whether `bot` (a read, not a frame) is newer than the bot the stream last sent. */
+    newer(bot: Bot): boolean {
+      const rev = held.get(bot.id)?.rev;
+      return rev === undefined || typeof bot.rev !== "number" || bot.rev > rev;
     },
     deleted(botId: string): void {
       held.delete(botId);

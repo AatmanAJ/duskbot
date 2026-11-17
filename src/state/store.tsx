@@ -3158,15 +3158,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         bot: withTaskWrites({ ...bot, ...botPatchQueue.overlayFor(bot.id) }),
       });
     };
+    const rereading = new Set<string>();
     const livePatches = createLiveBotPatches<BotAnnouncement>({
       current: (botId) => stateRef.current.bots.find((candidate) => candidate.id === botId),
       resync: (botId) => {
+        if (rereading.has(botId)) return;
+        rereading.add(botId);
         void api<{ bots: BotAnnouncement[] }>("/api/bots?messages=0").then(({ bots }) => {
           const bot = bots.find((candidate) => candidate.id === botId);
-          if (!bot) return;
-          livePatches.whole(bot);
-          showLiveBot(bot);
-        }).catch(() => {});
+          // a whole frame that came first is newer than this read
+          if (bot && livePatches.newer(bot)) showLiveBot(livePatches.whole(bot));
+        }).catch(() => {}).finally(() => rereading.delete(botId));
       },
     });
     handleFrame = (frame) => {

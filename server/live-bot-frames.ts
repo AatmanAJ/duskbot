@@ -26,12 +26,12 @@ export class BotFrameLog {
       if (!unchanged) return { bot: { ...bot, rev: base }, delivery: { unchanged: true } };
       this.revs.set(bot.id, base + 1);
       const stamped = { ...bot, rev: base + 1 };
-      this.sent.set(bot.id, patchBase(stamped));
+      this.sent.set(bot.id, sentCopy(stamped));
       return { bot: stamped, delivery: { patch: unchanged } };
     }
     this.revs.set(bot.id, base + 1);
     const stamped = { ...bot, rev: base + 1 };
-    this.sent.set(bot.id, patchBase(stamped));
+    this.sent.set(bot.id, sentCopy(stamped));
     return { bot: stamped, delivery: { whole: true } };
   }
 
@@ -44,6 +44,11 @@ export class BotFrameLog {
   forget(id: string): void {
     this.sent.delete(id);
   }
+}
+
+/** The bot as it went out: a copy, since a wire bot shares nested values with the store's own records. */
+function sentCopy<Bot extends PatchableBot>(bot: Bot): Bot {
+  return JSON.parse(JSON.stringify(patchBase(bot))) as Bot;
 }
 
 /** A frame's bot that can be diffed: an object with an id. */

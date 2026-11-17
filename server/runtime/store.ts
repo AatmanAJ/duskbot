@@ -163,6 +163,8 @@ type Row = Record<string, unknown>;
  * A row read before in exactly this text skips the parse and the schema check: the coordinator reads every live row on
  * each turn event and each bot frame. Every read still returns its own copy.
  */
+const MAX_CHECKED_READS = 2_000;
+
 class AssignmentReads {
   private readonly checked = new Map<string, { json: string; assignment: Assignment }>();
 
@@ -172,6 +174,8 @@ class AssignmentReads {
     const known = this.checked.get(id);
     if (known?.json === json) return structuredClone(known.assignment);
     const assignment = readAssignment(row);
+    // Live rows are read again and again; finished ones rarely. Starting over past this keeps it small.
+    if (this.checked.size >= MAX_CHECKED_READS) this.checked.clear();
     this.checked.set(id, { json, assignment: structuredClone(assignment) });
     return assignment;
   }

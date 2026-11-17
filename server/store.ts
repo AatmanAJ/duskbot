@@ -683,13 +683,15 @@ export class Store {
     if (only) {
       // a deferred write for a bot deleted since then has nothing left to save
       if (!bots.includes(only)) return;
-      this.rows.writeBot(bots, only, durable);
-      this.mirrorBotsLater();
-      return;
+      if (this.rows.writeBot(bots, only, durable)) {
+        this.mirrorBotsLater();
+        return;
+      }
     }
     const text = JSON.stringify(bots.map(({ busy: _busy, activity: _activity, ...bot }) => ({ ...bot, tasks: bot.tasks?.map(persistedTask) })));
-    this.botsFile.write(text);
+    // Rows first: if bots.json then fails, the rows name a file that never landed, so the next start reads the old one.
     this.rows.writeAll(bots, text);
+    this.botsFile.write(text);
   }
 
   /** Writes bots.json now from what the rows hold: before a reader of the file (a backup, a move) or at shutdown. */
