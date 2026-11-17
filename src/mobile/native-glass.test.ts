@@ -229,6 +229,28 @@ describe("useNativeGlass", () => {
     expect(glass.update.mock.calls[1]![0].header?.back.x).toBe(100);
   });
 
+  it("measures a resting chat a few times a second, and every frame once something outside its transcript changes", async () => {
+    const { glass, $ } = mount();
+    const log = document.createElement("div");
+    log.setAttribute("role", "log");
+    $("chat").prepend(log);
+    await new Promise((done) => setTimeout(done, 0));
+    for (let i = 0; i < 31; i += 1) runFrame();
+    const sent = glass.update.mock.calls.length;
+    place($("back"), 100, 59, 44, 44);
+    runFrame();
+    expect(glass.update).toHaveBeenCalledTimes(sent);
+    log.append("a reply streaming in");
+    await new Promise((done) => setTimeout(done, 0));
+    runFrame();
+    expect(glass.update).toHaveBeenCalledTimes(sent);
+    $("shell").dataset.multiline = "";
+    await new Promise((done) => setTimeout(done, 0));
+    runFrame();
+    expect(glass.update).toHaveBeenCalledTimes(sent + 1);
+    expect(glass.update.mock.lastCall![0].header?.back.x).toBe(100);
+  });
+
   it("drops the native chrome while a sheet covers the chat", () => {
     const { glass } = mount();
     runFrame();

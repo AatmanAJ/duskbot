@@ -165,7 +165,11 @@ function Shell() {
   const members = useMemo(() => group ? state.bots.filter((b) => group.memberIds.includes(b.id)) : [], [group, state.bots]);
   useEffect(() => { if (chatId && state.hydrated && !group && !bot) setChatId(null); }, [chatId, state.hydrated, group, bot]);
 
-  useNativeGlass(platform, rootRef, Boolean(bot || group));
+  // the native chrome stays with a chat until its page has slid away, so the page never draws its own on the way out
+  const [glassHeld, setGlassHeld] = useState(false);
+  if ((bot || group) && !glassHeld) setGlassHeld(true);
+  const pageSettled = useCallback((shown: boolean) => { if (!shown) setGlassHeld(false); releasePressed(); }, []);
+  useNativeGlass(platform, rootRef, Boolean(bot || group) || glassHeld);
 
   const page = bot || group ? (
     <ChatScreen
@@ -185,7 +189,7 @@ function Shell() {
         page={page}
         pageKey={page ? chatId : null}
         onBack={() => setChatId(null)}
-        onSettled={releasePressed}
+        onSettled={pageSettled}
       />
       <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); openChat(id); }} />
       <ConnectAppsHost />

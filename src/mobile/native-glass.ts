@@ -275,6 +275,16 @@ function readComposer(shell: HTMLElement, baseline: number): { composer: GlassCo
   };
 }
 
+const FRESH_FRAMES = 30;
+const IDLE_EVERY = 15;
+const AVATAR_MS = 1000;
+
+/** Inside a chat's transcript, whose rows (a reply streaming in) never move the header or the composer. */
+function inTranscript(node: Node): boolean {
+  const el = node instanceof Element ? node : node.parentElement;
+  return Boolean(el?.closest("[role=log]"));
+}
+
 function cssPx(root: HTMLElement, expression: string): number {
   const probe = document.createElement("div");
   probe.style.cssText = `position:absolute;visibility:hidden;height:${expression}`;
@@ -301,7 +311,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     let toNative: string | null = null;
     let seq = 0;
     let avatar: string | null | undefined;
-    let avatarTick = 0;
+    let avatarAt = 0;
     let nativeFocused = false;
     let safeBottom = cssPx(root, "var(--m-safe-bottom)");
 
@@ -309,9 +319,34 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     const nav = () => chat()?.querySelector<HTMLElement>("[data-glass-nav]") ?? null;
     const shell = () => chat()?.querySelector<HTMLElement>('[data-tour="composer"]') ?? null;
 
+    // the page is measured each frame only while something outside the transcript changed in the last half second or a
+    // page slides; otherwise four times a second, so a resting or streaming chat does not restyle every frame for it
+    let fresh = FRESH_FRAMES;
+    let count = 0;
+    const changed = new MutationObserver((records) => {
+      if (records.some((record) => !inTranscript(record.target))) fresh = FRESH_FRAMES;
+    });
+    changed.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    const skinChanged = new MutationObserver(() => { fresh = FRESH_FRAMES; });
+    skinChanged.observe(html, { attributes: true, attributeFilter: ["data-skin", "class", "style"] });
+    const flag = (name: "nativeGlassHeader" | "nativeGlassComposer", on: boolean) => {
+      if (on && html.dataset[name] === undefined) html.dataset[name] = "";
+      else if (!on && html.dataset[name] !== undefined) delete html.dataset[name];
+    };
+
     const tick = () => {
       frame = requestAnimationFrame(tick);
       if (document.hidden) return;
+      count += 1;
+      // what the page itself put in its field (a draft, a cleared send, a picked mention) goes to the native field
+      if (field && field.value !== fromNative && field.value !== toNative) {
+        toNative = field.value;
+        seq += 1;
+        glass.setText(field.value, seq);
+      }
+      const sliding = root.querySelector(".mobile-page[data-moving]") !== null;
+      if (fresh > 0) fresh -= 1;
+      else if (!sliding && count % IDLE_EVERY !== 0) return;
       const chatEl = chat();
       const navEl = nav();
       const shellEl = shell();
@@ -332,19 +367,22 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
         composer: read?.composer ?? null,
         handoff: Boolean(chatEl) && (!header || !read),
       };
-      if (header) html.dataset.nativeGlassHeader = ""; else delete html.dataset.nativeGlassHeader;
-      if (next.composer) html.dataset.nativeGlassComposer = ""; else delete html.dataset.nativeGlassComposer;
+      flag("nativeGlassHeader", Boolean(header));
+      flag("nativeGlassComposer", Boolean(next.composer));
       if (!sameState(last, next)) {
         last = next;
         glass.update(next);
       }
-      // what the page itself put in its field (a draft, a cleared send, a picked mention) goes to the native field
       if (field && field.value !== fromNative && field.value !== toNative) {
         toNative = field.value;
         seq += 1;
         glass.setText(field.value, seq);
       }
-      if (header && (avatar === undefined || ++avatarTick % 30 === 0)) {
+      const now = performance.now();
+      // an avatar not drawn yet is asked for again soon; a drawn one is checked once a second, never mid-slide
+      const avatarDue = avatar === undefined || (avatar === null ? now - avatarAt > 100 : !sliding && now - avatarAt > AVATAR_MS);
+      if (header && avatarDue) {
+        avatarAt = now;
         const next = rasterAvatar(navEl!.querySelector("[data-glass-avatar]"));
         if (next !== avatar) { avatar = next; glass.setAvatar(next); }
       }
@@ -394,6 +432,8 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
+      changed.disconnect();
+      skinChanged.disconnect();
       stop();
       document.removeEventListener("focus", onFocus, true);
       window.removeEventListener("resize", onResize);
