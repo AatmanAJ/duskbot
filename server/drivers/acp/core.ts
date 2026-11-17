@@ -65,7 +65,7 @@ import { commandSummary, toolDetailPreview } from "../../tool-summary.ts";
 import { acpToolEndEvents } from "./tool-items.ts";
 import { AcpHost } from "./host.ts";
 import { exitDetail } from "./exit-report.ts";
-import { endTurn, trackRunningTool, type AcpAskFinish, type AcpSession, type AcpTurn } from "./turn-state.ts";
+import { endTurn, lookupResultArrived, trackRunningTool, type AcpAskFinish, type AcpSession, type AcpTurn } from "./turn-state.ts";
 import { recoveryPromptFor } from "../../resume-recovery.ts";
 import { armIdleClose, engineIdleMs, sessionIdlePolicy, stopIdleClose } from "../session-idle.ts";
 import { classifyError } from "../retry.ts";
@@ -897,7 +897,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             current.state.startupActivity = true;
           }
           if (!current || !current.state.promptSent) return;
-          const u = p.update ?? {};
+          const u = lookupResultArrived(current, p.update ?? {}) ? { ...p.update, status: "completed" } : p.update ?? {};
           const finished = u.status === "completed" || u.status === "failed";
           const toolEnded = (itemId: string | undefined) => {
             current.state.producedItem = true;
@@ -1222,6 +1222,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           runningTools: new Set(),
           unkeyedToolIds: [],
           endedToolIds: new Set(),
+          lookupTools: new Set(),
           interruptTimer: null,
           stopQuietWatch: null,
           flushAssistantText,

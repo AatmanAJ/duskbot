@@ -912,6 +912,32 @@ describe("ACP turns (fake CLI)", () => {
     expect(lastTurn().at(-1)).toMatchObject({ type: "turn.completed", ok: false, stopReason: "empty_turn" });
   });
 
+  it("ends a file read when its result arrives, though the agent sends no finished status until later", async () => {
+    const { report, send, lastTurn } = await reportingThread("lookup-result");
+    report(
+      { sessionUpdate: "tool_call", toolCallId: "vf-1", title: "view_file", kind: "read", status: "pending" },
+      { sessionUpdate: "tool_call_update", toolCallId: "vf-1", status: "in_progress" },
+      { sessionUpdate: "tool_call_update", toolCallId: "vf-1", content: [{ type: "content", content: { type: "text", text: "file text" } }] },
+      // an edit's content is a diff in progress, never its end
+      { sessionUpdate: "tool_call", toolCallId: "ed-1", title: "edit", kind: "edit", status: "pending" },
+      { sessionUpdate: "tool_call_update", toolCallId: "ed-1", content: [{ type: "diff", path: "/w/a.txt", oldText: "a", newText: "b" }] },
+      // the step's late sweep says nothing new about the read
+      { sessionUpdate: "tool_call_update", toolCallId: "vf-1", status: "failed" },
+      { sessionUpdate: "tool_call_update", toolCallId: "ed-1", status: "completed" },
+    );
+    await send("turn 1");
+    const events = lastTurn();
+    const ends = (id: string) => events.flatMap((event, index) =>
+      event.type === "item.completed" && event.itemType === "tool" && event.itemId === id ? [{ index, ok: event.ok }] : []);
+    const readResult = events.findIndex((event) => event.type === "item.output" && event.itemId === "vf-1");
+    const editStart = events.findIndex((event) => event.type === "item.started" && event.itemId === "ed-1");
+    expect(ends("vf-1")).toEqual([{ index: expect.any(Number), ok: true }]);
+    expect(ends("vf-1")[0]!.index).toBeLessThan(editStart);
+    expect(readResult).toBe(-1);
+    expect(ends("ed-1")).toEqual([{ index: expect.any(Number), ok: true }]);
+    expect(ends("ed-1")[0]!.index).toBeGreaterThan(editStart);
+  });
+
   it("fails clearly when an image-capable adapter meets an older ACP runtime", async () => {
     const imagePath = join(scratch, "tiny.png");
     writeFileSync(imagePath, "not-read-before-capability-check");
