@@ -1396,6 +1396,33 @@ describe("OpenCode ready only through its free models", () => {
       .toMatchObject({ authenticated: true, freeFallback: true });
   });
 
+  it("loads the free models when a status read finds it ready after the list read empty (installed after start)", async () => {
+    const scratch = mkdtempSync(join(tmpdir(), "dusk-opencode-late-"));
+    resetOpenCodeModelCache();
+    let installed = false;
+    const loader = vi.fn(async () => (installed ? catalog("opencode/big-pickle", "opencode/grok-code") : { default: "", options: [] }));
+    const instance = await createOpenCodeDriver(loader).create({
+      instanceId: `opencode-late-${Date.now()}`,
+      displayName: "OpenCode",
+      environment: { HOME: scratch, USERPROFILE: scratch, XDG_DATA_HOME: join(scratch, "data"), ...noKeys },
+      enabled: true,
+      config: { cli: FAKE_CLI, fullAuto: false },
+    });
+    try {
+      expect(instance.models.options).toEqual([]);
+      installed = true;
+      expect(await instance.snapshot()).toMatchObject({ state: "available", authenticated: true, freeFallback: true });
+      expect(instance.models.default).toBe("opencode/big-pickle");
+      const calls = loader.mock.calls.length;
+      await instance.snapshot();
+      expect(loader.mock.calls.length).toBe(calls);
+    } finally {
+      await instance.dispose();
+      await removeTempDir(scratch);
+      resetOpenCodeModelCache();
+    }
+  });
+
   it("is a normal AI when OpenCode offers another provider's models", async () => {
     const snapshot = await snapshotWith(catalog("opencode/big-pickle", "openrouter/vendor/model-v2"));
     expect(snapshot.authenticated).toBe(true);

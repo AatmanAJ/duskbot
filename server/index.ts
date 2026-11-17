@@ -2724,6 +2724,14 @@ function followSettledDefault(botId: string, threadId: string, applied: ModelSel
   const stop = store.onChange(() => { if (follow()) stop(); });
 }
 
+/** OpenCode's free backup arrived after start: its model list is read now, and a bot with no AI takes it. */
+async function freeBackupInstalled(): Promise<void> {
+  await Promise.all(registry.instances().filter((instance) => instance.driverKind === "opencodeGo")
+    .map((instance) => registry.refreshModels(instance.instanceId).catch((error) => console.warn(`[engines] OpenCode's model list after its install: ${error instanceof Error ? error.message : String(error)}`))));
+  await recheckUnsetModelSelections();
+  broadcast({ kind: "config", ...configStatus() });
+}
+
 let unsetRecheck: Promise<void> | null = null;
 /** Reads every engine afresh and settles the default again, one at a time: an AI installed or signed in since takes over.
  * The cached statuses stay until the new reads land, so nothing else sees the engines as unknown meanwhile. */
@@ -16581,7 +16589,7 @@ server.listen(PORT, "127.0.0.1", async () => {
   engineProgressReady = true;
   companyRuntimeReady();
   console.log(`duskbot server on http://127.0.0.1:${PORT}`);
-  startFreeBackupPreinstall(process.env, () => { registry.forgetSnapshots(); broadcast({ kind: "config", ...configStatus() }); });
+  startFreeBackupPreinstall(process.env, () => void freeBackupInstalled());
   personWaits.boot(); browserSweep.start(); if (!sealedFixture()) browserPart.start(); autoInstallBrowserEngine(); startCloudTeamPolicy({ cloudHome: CLOUD_HOME, dataDir: DATA_DIR, managed: managedPolicy, sessions }); moveFreeze.hold(() => appTriggers.start(), () => void appTriggers.stop()); startCloudHomeConnectedApps({ cloudHome: CLOUD_HOME !== null, dataDir: DATA_DIR, cloudGrant: CLOUD_ENV.DUSK_CLOUD_CONNECTED_APPS_GRANT, apply: (access) => { composio.setManagedBrokerAccess(access); broadcast({ kind: "config", ...configStatus() }); } });
   void afterFirstEngineRead().then(() => { if (builtInBrowserEnabled(cfg)) chromeLauncher.start(); }); void updateState?.boot()?.catch((error) => console.warn("[update] self-test failed to run:", error)); if (updateState) routineHost.rerunFree(updateState.takeFreeReruns());
   followupsReady = true;

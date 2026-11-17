@@ -33,6 +33,8 @@ const paidModels = new Set<string>();
 const DISCOVERY_TIMEOUT_MS = 20_000;
 const EFFORT_SURVEY_MS = 8_000;
 const DISCOVERY_PROBE_TTL_MS = 30_000;
+/** A ready OpenCode whose model list read empty is read again no sooner than this. */
+const EMPTY_LIST_RETRY_MS = 30_000;
 const discoveryProbeCache = new Map<string, { expiresAt: number; result: Promise<boolean> }>();
 
 export type OpenCodeCatalogLoader = (
@@ -946,8 +948,21 @@ export function createOpenCodeDriver(loadCatalog: OpenCodeCatalogLoader = discov
     async create(input) {
       const instance = await driver.create(input);
       const read = instance.snapshot.bind(instance);
+      // the list read when the instance opened is empty when OpenCode was not installed yet (the free backup downloads after
+      // start) or its first read in a fresh home failed: a read that finds it ready loads the list before it answers
+      let filling: Promise<void> | null = null;
+      let emptyUntil = 0;
+      const fillEmptyList = () => {
+        if (instance.models.options.length || !instance.refreshModels || Date.now() < emptyUntil) return Promise.resolve();
+        filling ??= instance.refreshModels().catch(() => {}).finally(() => {
+          filling = null;
+          if (!instance.models.options.length) emptyUntil = Date.now() + EMPTY_LIST_RETRY_MS;
+        });
+        return filling;
+      };
       instance.snapshot = async () => {
         const snapshot = await read();
+        if (snapshot.state === "available" && snapshot.authenticated === true) await fillEmptyList();
         const own = ownAccess.get(input.instanceId);
         return snapshot.state === "available" && snapshot.authenticated === true && own !== undefined
           && openCodeFreeFallback(own, instance.models) ? { ...snapshot, freeFallback: true } : snapshot;
