@@ -1,4 +1,4 @@
-import { createDecipheriv, diffieHellman, generateKeyPairSync, hkdfSync, createPublicKey } from "node:crypto";
+import { createDecipheriv, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync, type KeyObject } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { activityMessage, pushCategory as relayCategory } from "../../apps/link-service/src/push-relay.mjs";
@@ -19,7 +19,7 @@ function setup(startTargets: Array<ActivityTarget & { deviceId: string }> = []) 
   return { activities, sent };
 }
 
-function openLine(privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"], sealed: string): string {
+function openLine(privateKey: KeyObject, sealed: string): string {
   const raw = Buffer.from(sealed, "base64url");
   const ephemeral = createPublicKey({ key: { kty: "OKP", crv: "X25519", x: raw.subarray(0, 32).toString("base64url") }, format: "jwk" });
   const key = Buffer.from(hkdfSync("sha256", diffieHellman({ privateKey, publicKey: ephemeral }), TURN_LINE_SEAL.salt, TURN_LINE_SEAL.info, 32));

@@ -9,7 +9,7 @@ const user = (id: string, text: string): Message => ({ id, role: "user", kind: "
 const tool = (id: string): Message => ({ id, role: "bot", kind: "activity", tool: { name: "web_search" } } as Message);
 const reply = (id: string, text: string): Message => ({ id, role: "bot", kind: "text", text } as Message);
 const ask = (id: string, requestId: string, requestType: "permission" | "question", answered?: string): Message =>
-  ({ id, role: "bot", kind: "options", card: { title: "", subtitle: "", options: [], requestId, requestType, ...(answered ? { answered } : {}) } } as Message);
+  ({ id, role: "bot", kind: "options", card: { title: "", subtitle: "", options: [], requestId, requestType, ...(answered ? { answered } : {}) } } as unknown as Message);
 const bot = (messages: Message[], activity: Bot["activity"], busy = activity !== "idle"): Bot => ({ id: "b1", threadId: "t1", messages, activity, busy } as Bot);
 const live = (status: TurnLive["status"], ended = false): TurnLive => ({ status, ended });
 
