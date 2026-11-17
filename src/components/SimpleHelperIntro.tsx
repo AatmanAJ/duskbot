@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
-import { phoneAppEnabled } from "@/lib/feature-flags";
+import { phoneAppPrompted } from "@/lib/feature-flags";
 import { DEFAULT_BOT_NAME, introChips, introStaged, stageIntro, useWelcomingBot } from "@/lib/default-bot";
 import { activeLocale, t } from "@/lib/i18n";
 import { detectSetupWithin, localSetupImport, setupImportApi } from "@/lib/setup-import";
@@ -178,7 +178,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
     remote: typeof window !== "undefined" && window.duskDesktop?.remoteClient?.active === true,
     appsConnected: Boolean(look.apps?.length),
     phonePaired: look.phonePaired,
-    phoneApp: phoneAppEnabled(),
+    phoneApp: phoneAppPrompted(),
     importFound: look.importFound,
   });
   const ready = !answered && onScreen && shown >= ALL && facts !== null && ai === "own";

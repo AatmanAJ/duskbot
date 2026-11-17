@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { setEmailGateDone, track } from "@/lib/analytics";
 import { openExternalLink } from "@/lib/app-links";
-import { phoneAppEnabled } from "@/lib/feature-flags";
+import { phoneAppPrompted } from "@/lib/feature-flags";
 import { cn } from "@/lib/cn";
 import { chiefFor, chiefStepFits, createChiefPatch, myDefaultBot, stageIntro, useViewerEmail } from "@/lib/default-bot";
 import { completionPatch, computerAiIds, DEFAULT_ADMIN_ORIGIN, firstRunPatch, markWelcomeFinished, resumeBeat, showWelcome, type BeatId } from "@/lib/onboarding";
@@ -144,7 +144,7 @@ export function WelcomeFlow({
   // requires one
   const accountStep = Boolean(account) && !firstKnown.current?.signedIn;
   const stepsFor = (picked: FunnelPath | null) => funnelSteps({ account: accountStep, desktop, bring: offersMove,
-    path: picked, hello: window.duskDesktop?.remoteClient?.active !== true, phone: phoneAppEnabled(), permissions, cloudBring });
+    path: picked, hello: window.duskDesktop?.remoteClient?.active !== true, phone: phoneAppPrompted(), permissions, cloudBring });
   const steps = stepsFor(path);
 
   const [at, setAt] = useState<FunnelStep>(() => resumeBeat(steps, saved));

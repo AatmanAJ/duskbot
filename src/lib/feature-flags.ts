@@ -11,6 +11,12 @@ export function phoneAppEnabled(): boolean {
   return import.meta.env?.VITE_DUSK_PHONE_APP === "1" || phoneAppByHand();
 }
 
+/** The first run's phone step and the intro's phone chip: only a build that ships the phone app asks for it at the
+ * start; the Advanced switch shows the phone settings without ever prompting. */
+export function phoneAppPrompted(): boolean {
+  return import.meta.env?.VITE_DUSK_PHONE_APP === "1";
+}
+
 const PHONE_APP_KEY = "dusk.phoneApp.manual";
 
 /** Settings → Advanced's own switch for the phone app, for developers and testers; nobody else is asked or shown it. */
