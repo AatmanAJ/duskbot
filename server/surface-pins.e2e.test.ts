@@ -10,7 +10,8 @@ import { writeFileAtomic } from "./atomic.ts";
 import { freePortBlock } from "./testing/ports.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { decodeCuaConnection } from "./local-computer.ts";
-import { readSavedBots } from "./registry-rows.ts";
+import { readSavedBots, REGISTRY_DB_NAME } from "./registry-rows.ts";
+import { DatabaseSync } from "node:sqlite";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -68,6 +69,23 @@ describe("surface pin provenance against the real server", () => {
   const savedTask = (botId: string, threadId: string) =>
     (readSavedBots<any>(data) as any[])
       .find((bot: any) => bot.id === botId)?.tasks.find((task: any) => task.threadId === threadId);
+  /** What a failed read of the saved registry had to go on: the rows, bots.json and what the server said about them. */
+  const savedEvidence = (botId: string) => {
+    let rows: string;
+    try {
+      const db = new DatabaseSync(join(data, REGISTRY_DB_NAME), { readOnly: true });
+      try {
+        const count = (db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE bot_id = ?").get(botId) as { n: number }).n;
+        const mirror = (db.prepare("SELECT value FROM meta WHERE key = 'mirror'").get() as { value: string } | undefined)?.value;
+        rows = `${count} task rows, mirror ${mirror?.slice(0, 12) ?? "none"}`;
+      } finally { db.close(); }
+    } catch (error) {
+      rows = `unreadable (${(error as { errcode?: number }).errcode}: ${(error as Error).message})`;
+    }
+    const file = (JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[]).find((bot) => bot.id === botId);
+    const store = output.split("\n").filter((line) => line.includes("[store]")).join("\n");
+    return `rows: ${rows}; bots.json: ${file ? `${file.tasks?.length ?? 0} tasks` : "no bot"}${store ? `\n${store}` : ""}`;
+  };
   const editSavedBot = (botId: string, edit: (bot: any) => void) => {
     const bots = readSavedBots<any>(data) as any[];
     edit(bots.find((bot: any) => bot.id === botId));
@@ -272,6 +290,8 @@ describe("surface pin provenance against the real server", () => {
       apiOk("POST", `/api/bots/${bot.id}/tasks`, {}),
     ])).map(({ task }) => task);
     await stop();
+    const savedThreads = (readSavedBots<any>(data) as any[]).find((one) => one.id === bot.id)?.tasks.map((task: any) => task.threadId);
+    expect(savedThreads, savedEvidence(bot.id)).toEqual(expect.arrayContaining([own.threadId, delegated.threadId]));
     editSavedBot(bot.id, saved => {
       saved.browserProfile = "guest";
       saved.tasks.find((task: any) => task.threadId === delegated.threadId).openedBy = { botId: "coordinator", name: "Coordinator", kind: "work", at: Date.now() };

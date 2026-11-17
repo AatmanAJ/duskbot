@@ -33,9 +33,11 @@ let opened = 0;
 // Windows releases a killed process's locks on the database and its -shm file a moment after the process has exited.
 const LOCK_WAIT_MS = 5_000;
 const pause = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-// SQLITE_BUSY, SQLITE_LOCKED, and SQLITE_CANTOPEN, which a Windows sharing violation on those files gives.
-const LOCK_ERRORS = new Set([5, 6, 14]);
-const locked = (error: unknown) => LOCK_ERRORS.has((error as { errcode?: number }).errcode ?? -1);
+// node:sqlite reports SQLite's extended result code; its low byte is the primary one. BUSY, LOCKED, READONLY (a log
+// another connection must recover first), IOERR (the Windows lock and shared-memory errors) and CANTOPEN (a Windows
+// sharing violation) pass once the killed process's handles are gone; a corrupt file never does.
+const LOCK_ERRORS = new Set([5, 6, 8, 10, 14]);
+const locked = (error: unknown) => LOCK_ERRORS.has(((error as { errcode?: number }).errcode ?? -1) & 0xff);
 
 function connect(file: string): Connection {
   const held = connections.get(file);

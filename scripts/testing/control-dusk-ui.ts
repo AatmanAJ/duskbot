@@ -92,6 +92,20 @@ export function sessionEnv(handle: SessionEnv, parentEnv: NodeJS.ProcessEnv = pr
 
 /** Run one agent-browser verb with --json and return its `data`. The binary's
  * stderr is never surfaced: it can echo paths and environment. */
+// agent-browser 0.37 gives every action 25s (AGENT_BROWSER_DEFAULT_TIMEOUT) and `open` takes no timeout of its own; a
+// first load that waits on Vite bundling the app's dependencies can outlast that on a busy machine.
+async function openPreview(binary: string, env: NodeJS.ProcessEnv, url: string, budgetMs = 120_000): Promise<void> {
+  const deadline = Date.now() + budgetMs;
+  for (;;) {
+    try {
+      await agentBrowser(binary, env, ["open", url], Math.max(1_000, deadline - Date.now()));
+      return;
+    } catch (error) {
+      if (Date.now() >= deadline || !/Operation timed out/.test(error instanceof Error ? error.message : String(error))) throw error;
+    }
+  }
+}
+
 export function agentBrowser(
   binary: string,
   env: NodeJS.ProcessEnv,
@@ -492,7 +506,7 @@ export async function launchUi(
     const session: SessionEnv = { home: fixture.info.dataDir, session: `dusk-ui-${new URL(fixture.info.url).port}`, chrome };
     const env = sessionEnv(session, parentEnv);
     opened = { binary, env };
-    await agentBrowser(binary, env, ["open", preview.previewUrl], 120_000);
+    await openPreview(binary, env, preview.previewUrl);
     checkpoint();
     const handle: UiHandle = {
       url: fixture.info.url,
