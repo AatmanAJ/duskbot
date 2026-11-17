@@ -31,6 +31,10 @@ const DOES: Partial<Record<DemoStep["kind"], string>> = { fill: "type", select: 
 const fieldOf = (step: DemoStep) => step.target?.name || step.target?.label || step.target?.placeholder || "";
 const exampleOf = (step: DemoStep) => (step.kind === "check" ? (step.checked === false ? "no" : "yes") : step.value ?? "");
 const hostOf = (url: string | undefined) => { try { return new URL(url ?? "").host; } catch { return ""; } };
+/** An address as the AI is shown it: where the page is, without what was asked of it. */
+const withoutQuery = (url: string | undefined) => { try { const parsed = new URL(url ?? ""); return `${parsed.origin}${parsed.pathname}`; } catch { return ""; } };
+/** A line of the prompt's data, which can never hold the marks that end a data section. */
+const asData = (line: string) => line.replace(/<{3,}|>{3,}/gu, " ");
 
 /** A title as one plain line: no line breaks, no marks a document would read as structure. */
 export function demoTitle(words: unknown): string {
@@ -40,8 +44,9 @@ export function demoTitle(words: unknown): string {
 /** What the AI is asked: the steps as data, and names for the values that change from run to run. */
 export function demoNamingPrompt(steps: readonly DemoStep[]): string {
   const valued = steps.filter(demoStepHasValue).slice(0, PROMPT_STEPS_MAX);
-  const lines = valued.map((step) => JSON.stringify({ step: step.id, does: DOES[step.kind], field: fieldOf(step), example: exampleOf(step).slice(0, PROMPT_VALUE_MAX) }));
-  const others = steps.filter((step) => !demoStepHasValue(step)).slice(0, 20).map((step) => demoStepSentence(step).replace(/\s+/gu, " ").slice(0, 160));
+  const lines = valued.map((step) => asData(JSON.stringify({ step: step.id, does: DOES[step.kind], field: fieldOf(step), example: exampleOf(step).slice(0, PROMPT_VALUE_MAX) })));
+  const others = steps.filter((step) => !demoStepHasValue(step)).slice(0, 20)
+    .map((step) => asData(demoStepSentence(step.kind === "open" ? { ...step, url: withoutQuery(step.url) } : step).replace(/\s+/gu, " ").slice(0, 160)));
   const site = hostOf(steps.find((step) => step.kind === "open")?.url) || steps.find((step) => step.kind === "sign-in")?.site || "a website";
   return [
     "A person showed a task once in a web browser so it can be repeated with other values. Name its inputs.",

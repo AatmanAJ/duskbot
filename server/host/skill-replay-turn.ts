@@ -37,6 +37,8 @@ export interface SkillReplayTurnDeps<T extends Turn = Turn> {
   claim(turn: Turn, resource: string): boolean;
   /** Runs `work` as the browser's one action; throws the control refusal while a person holds the browser. */
   inLane(browser: DemoBrowser, work: () => Promise<Answer>, ctx: StepContext): Promise<Answer>;
+  /** Whether a person holds that browser or has asked for it. */
+  held(browser: DemoBrowser): boolean;
   port(browser: DemoBrowser): DemoPagePort;
   loginInput(browser: DemoBrowser): LoginInput;
   /** The recording an enabled skill of this bot holds. */
@@ -102,6 +104,7 @@ export function createSkillReplayTurn<T extends Turn = Turn>(deps: SkillReplayTu
     const common = {
       signIn: vault(bot, input, (hold) => { held = hold ?? held; }),
       checkpoint: () => deps.stillActive(turn),
+      yielded: () => browser !== null && deps.held(browser),
     };
     const fileBlanks = recording.blanks.filter((blank) => blank.kind === "file").map((blank) => blank.name);
 
@@ -197,10 +200,14 @@ export function createSkillReplayTurn<T extends Turn = Turn>(deps: SkillReplayTu
     if (!deps.claim(turn, `browser:${browser.session}`)) {
       return { ok: false, text: `Another conversation is using this browser. Wait until it finishes, then call ${DEMO_REPLAY_TOOL} again.` };
     }
+    // What the run did is told even when the person has the browser by the time it ends: a run reported as never
+    // started would be started again, and file the same things twice.
+    let ran: Answer | undefined;
     try {
-      const answer = await deps.inLane(browser, () => run(bot, turn, recording, args, deps.port(browser), deps.loginInput(browser), browser), deps.stepContext(current, turn));
+      const answer = await deps.inLane(browser, async () => (ran = await run(bot, turn, recording, args, deps.port(browser), deps.loginInput(browser), browser)), deps.stepContext(current, turn));
       return { ok: answer.ok, text: answer.text };
     } catch (error) {
+      if (ran && error instanceof Error && error.message === BROWSER_CONTROL_REFUSAL) return { ok: ran.ok, text: ran.text };
       return failed(error);
     }
   }

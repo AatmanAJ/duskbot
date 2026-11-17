@@ -23,6 +23,8 @@ export interface ShowItOnceDeps {
   browser(botId: string): Promise<DemoBrowser | null>;
   /** Whether a person holds that browser. */
   browserHeld(session: string): boolean;
+  /** Whether the browser is theirs to use now: held, and nothing of the bot's is still running in it. Absent: as soon as it is held. */
+  browserReady?(session: string): boolean;
   browserPort(browser: DemoBrowser): DemoPagePort;
   /** Whether a person holds the bot's computer. */
   computerHeld(botId: string): boolean;
@@ -131,7 +133,7 @@ export function createShowItOnce(deps: ShowItOnceDeps) {
       const browser = await deps.browser(botId).catch(() => null);
       if (!browser) return { error: NO_BROWSER, code: "no-browser" };
       sessions.set(botId, browser.session);
-      if (!deps.browserHeld(browser.session)) {
+      if (!deps.browserHeld(browser.session) || deps.browserReady?.(browser.session) === false) {
         let_go(botId);
         return { error: DEMO_NOT_HELD, code: "not-held" };
       }

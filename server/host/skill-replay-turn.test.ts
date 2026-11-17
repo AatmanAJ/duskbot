@@ -52,6 +52,7 @@ async function fixture(extra: Partial<SkillReplayTurnDeps> = {}) {
     target: async () => ({ session: "s", spec: { command: "browser", env: {} }, env: {} }),
     claim: () => true,
     inLane: (_browser, work) => work(),
+    held: () => false,
     port: () => browser.port(),
     loginInput: () => browser.loginInput(),
     recording: (_bot, skill) => (skill === "file-an-expense-report" ? recording : { error: `You have no enabled skill named "${skill}".` }),
@@ -132,6 +133,31 @@ describe("skill_replay for a turn", () => {
     expect(refused.text).toContain("The person is using this browser right now");
     const off = await fixture({ builtInBrowserOn: () => false });
     expect((await off.replay({ skill: "file-an-expense-report", folder: INBOX })).text).toContain("built-in browser is off");
+  });
+
+  it("stops for a person who takes the browser, says what it filed, and can be told to do only the rest", async () => {
+    let filedWhenTaken = Infinity;
+    const { replay, portal } = await fixture({
+      held: () => portal.filed.length >= filedWhenTaken,
+      // As the browser's own gate answers: the action ran, and the person has the browser by the time it ends.
+      inLane: async (_browser, work) => {
+        await work();
+        if (portal.filed.length >= filedWhenTaken) throw new Error(BROWSER_CONTROL_REFUSAL);
+        throw new Error("the run was expected to be interrupted");
+      },
+    });
+    filedWhenTaken = 2;
+    const answer = await replay({ skill: "file-an-expense-report", folder: INBOX, skip: ["expense-01.json"] });
+    expect(answer.ok).toBe(false);
+    expect(portal.filed.map(withoutId)).toEqual(EXPENSES.slice(1, 3).map(filedAs));
+    expect(answer.text).toContain("for 2 of 11 records: expense-02.json, expense-03.json");
+    expect(answer.text).toContain("The person took the browser, so the run stopped here.");
+    expect(answer.text).toContain('skip ["expense-02.json","expense-03.json","expense-04.txt"]');
+
+    const rest = await fixture();
+    const after = await rest.replay({ skill: "file-an-expense-report", folder: INBOX, skip: ["expense-01.json", "expense-02.json", "expense-03.json"] });
+    expect(after.text).toContain("9 of 9");
+    expect(rest.portal.filed.map(withoutId)).toEqual(EXPENSES.slice(3).map(filedAs));
   });
 
   it("answers within its time, naming the files it did not get to", async () => {

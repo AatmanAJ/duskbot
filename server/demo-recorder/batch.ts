@@ -2,7 +2,7 @@
 import { existsSync, statSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 
-import type { DemoRecording } from "../../shared/demo-recording.ts";
+import { demoQuoted, type DemoRecording } from "../../shared/demo-recording.ts";
 import { matchInputs, type InputRecord } from "./inputs.ts";
 import type { DemoPagePort } from "./ports.ts";
 import { replayDemo, type ReplayDeps, type ReplayOutcome } from "./replay.ts";
@@ -78,10 +78,12 @@ export async function replayBatch(port: DemoPagePort, recording: DemoRecording, 
   }
   const done = items.filter((item) => item.ok);
   const failed = items.filter((item) => !item.ok);
-  const lines = [`Ran "${recording.title}" for ${done.length} of ${records.length} ${records.length === 1 ? "record" : "records"}${done.length ? `: ${done.map((item) => item.source).join(", ")}` : ""}.`];
+  const lines = [`Ran ${demoQuoted(recording.title)} for ${done.length} of ${records.length} ${records.length === 1 ? "record" : "records"}${done.length ? `: ${done.map((item) => item.source).join(", ")}` : ""}.`];
   for (const item of failed) lines.push("", `${item.source}:`, item.text);
   const stopped = items.at(-1)?.ok === false ? items.at(-1)!.source : null;
-  if (notRun.length) lines.push("", `Not started: ${notRun.join(", ")}. ${stopped ? `Once ${stopped} is finished, call` : "Call"} ${DEMO_REPLAY_TOOL} again for these.`);
+  if (notRun.length) {
+    lines.push("", `Not started: ${notRun.join(", ")}. ${stopped ? `Once ${stopped} is finished, call` : "Call"} ${DEMO_REPLAY_TOOL} again for these: the same folder, with skip ${JSON.stringify(items.map((item) => item.source))}.`);
+  }
   if (!failed.length) lines.push("Read the page to confirm the last result before you report it.");
   return { ok: failed.length === 0 && notRun.length === 0, items, notRun, text: lines.join("\n") };
 }

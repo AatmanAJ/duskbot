@@ -1,6 +1,6 @@
 // The values for a run, from the files people really keep: JSON, a table, YAML, or plain "Key: value" lines.
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import Papa from "papaparse";
 import { parse as parseYaml } from "yaml";
 
@@ -24,11 +24,32 @@ const EXTENSIONS = new Set([".json", ".csv", ".tsv", ".yaml", ".yml", ".txt", ".
 
 const withoutMark = (text: string) => (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
 
+/** A value as the page will hold it: its line ends are the page's own. */
+const asTyped = (text: string) => text.replace(/\r\n?/gu, "\n").slice(0, DEMO_VALUE_MAX);
+
 function scalar(value: unknown): string | null {
-  if (typeof value === "string") return value.slice(0, DEMO_VALUE_MAX);
+  if (typeof value === "string") return asTyped(value);
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value === "boolean") return value ? "yes" : "no";
   return null;
+}
+
+/** A number as the file wrote it, so 18.40 and 00742 reach the form unchanged. */
+function numbersAsWritten(_key: string, value: unknown, context?: { source?: string }): unknown {
+  return typeof value === "number" && typeof context?.source === "string" ? context.source : value;
+}
+
+/** A YAML file's values, with each number as its own text: nothing is rewritten on the way to the page. */
+function yamlAsWritten(body: string): unknown {
+  const asText = (typed: unknown, written: unknown): unknown => {
+    if (Array.isArray(typed)) return typed.map((inner, at) => asText(inner, Array.isArray(written) ? written[at] : undefined));
+    if (typed && typeof typed === "object") {
+      const texts = written && typeof written === "object" ? written as Record<string, unknown> : {};
+      return Object.fromEntries(Object.entries(typed).map(([key, inner]) => [key, asText(inner, texts[key])]));
+    }
+    return typeof typed === "number" && typeof written === "string" ? written : typed;
+  };
+  return asText(parseYaml(body), parseYaml(body, { schema: "failsafe" }));
 }
 
 /** The scalar fields of an object; lists, nested objects and nulls are not values a form field takes. */
@@ -60,7 +81,7 @@ function table(fileName: string, text: string, delimiter: string): InputRecord[]
   if (!parsed.meta.fields?.length || !records.length) return { error: `${fileName} has no rows under a header line.` };
   return records.slice(0, INPUT_RECORDS_MAX).map((row, at) => ({
     source: `${fileName} row ${at + 1}`,
-    values: Object.fromEntries(parsed.meta.fields!.filter((field) => field && field.length <= KEY_MAX).map((field) => [field, String(row[field] ?? "").slice(0, DEMO_VALUE_MAX)])),
+    values: Object.fromEntries(parsed.meta.fields!.filter((field) => field && field.length <= KEY_MAX).map((field) => [field, asTyped(String(row[field] ?? ""))])),
   }));
 }
 
@@ -69,9 +90,9 @@ function lines(fileName: string, text: string): InputRecord[] | { error: string 
   for (const raw of text.split(/\r?\n/u)) {
     const line = raw.trim();
     if (!line || line.startsWith("#") || line.startsWith("//")) continue;
-    const match = /^(?:[-*]\s+)?([^:`]{1,80}?)\s*:\s*(.*)$/u.exec(line);
+    const match = /^(?:[-*]\s+)?([^:`]{1,80}?)\s*:\s*(.*)$/u.exec(line.replaceAll("**", ""));
     if (!match) continue;
-    const key = match[1]!.replace(/^\*\*|\*\*$/gu, "").trim();
+    const key = match[1]!.trim();
     if (key) values[key] = match[2]!.trim().slice(0, DEMO_VALUE_MAX);
   }
   if (!Object.keys(values).length) return { error: `${fileName} has no "Key: value" lines.` };
@@ -85,8 +106,8 @@ export function parseInputText(fileName: string, text: string): InputRecord[] | 
   const body = withoutMark(text);
   if (!body.trim()) return { error: `${fileName} is empty.` };
   try {
-    if (extension === ".json") return rows(fileName, JSON.parse(body));
-    if (extension === ".yaml" || extension === ".yml") return rows(fileName, parseYaml(body));
+    if (extension === ".json") return rows(fileName, JSON.parse(body, numbersAsWritten));
+    if (extension === ".yaml" || extension === ".yml") return rows(fileName, yamlAsWritten(body));
     if (extension === ".csv") return table(fileName, body, ",");
     if (extension === ".tsv") return table(fileName, body, "\t");
     return lines(fileName, body);
@@ -132,19 +153,28 @@ const natural = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 
 /**
  * Every record in a folder's own files that holds a value for one of `blanks`, by file name in natural order (expense-2
- * before expense-10). Folders inside it are not read; `except` leaves files out by name.
+ * before expense-10). Folders inside it are not read, and neither is a link to a file outside it; `except` leaves out
+ * files by name and records by their `source`.
  */
 export function readInputFolder(folder: string, blanks: readonly DemoBlank[], options: { except?: readonly string[] } = {}): InputFolder {
   const found: InputFolder = { records: [], skipped: [] };
   const root = resolve(folder);
   if (!existsSync(root) || !statSync(root).isDirectory()) return found;
   const except = new Set(options.except ?? []);
+  let realRoot = root;
+  try { realRoot = realpathSync(root); } catch {}
   const names = readdirSync(root).filter((name) => !name.startsWith(".") && EXTENSIONS.has(extname(name).toLowerCase()) && !except.has(name)).sort(natural.compare);
   for (const name of names) {
     const path = join(root, name);
     let stat: ReturnType<typeof statSync>;
     try { stat = statSync(path); } catch { continue; }
     if (!stat.isFile()) continue;
+    let outside = true;
+    try { const away = relative(realRoot, realpathSync(path)); outside = !away || away.startsWith("..") || isAbsolute(away); } catch {}
+    if (outside) {
+      found.skipped.push({ file: name, reason: `${name} is a link to a file outside the folder.` });
+      continue;
+    }
     if (stat.size > INPUT_FILE_MAX_BYTES) {
       found.skipped.push({ file: name, reason: `${name} is larger than ${INPUT_FILE_MAX_BYTES / 1024 / 1024} MB.` });
       continue;
@@ -154,8 +184,9 @@ export function readInputFolder(folder: string, blanks: readonly DemoBlank[], op
       found.skipped.push({ file: name, reason: parsed.error });
       continue;
     }
-    const useful = parsed.filter((record) => blanks.length === 0 || Object.keys(matchInputs(blanks, record).inputs).length > 0);
-    if (!useful.length) {
+    const matching = parsed.filter((record) => blanks.length === 0 || Object.keys(matchInputs(blanks, record).inputs).length > 0);
+    const useful = matching.filter((record) => !except.has(record.source));
+    if (!matching.length) {
       found.skipped.push({ file: name, reason: `${name} holds no value for this skill's inputs.` });
       continue;
     }

@@ -124,12 +124,18 @@ export function demoBlankMark(name: string): string {
   return `{{${name}}}`;
 }
 
+/** Words from a page or a file inside a sentence: one line in double quotes, so a quote mark or a line break in them
+ * never ends the quotation and never reads as part of the sentence. */
+export function demoQuoted(words: string): string {
+  return JSON.stringify(words);
+}
+
 /** What an element is called in a sentence: the "Submit report" button, the field labelled "Amount". */
 export function demoTargetWords(target: DemoTarget | undefined): string {
   if (!target) return "the page";
   const name = target.name || target.label || target.placeholder || "";
-  const group = target.within && target.within !== name ? ` under "${target.within}"` : "";
-  const quoted = name ? `"${name}"` : "";
+  const group = target.within && target.within !== name ? ` under ${demoQuoted(target.within)}` : "";
+  const quoted = name ? demoQuoted(name) : "";
   switch (target.role) {
     case "button": return quoted ? `the ${quoted} button${group}` : `a button${group}`;
     case "link": return quoted ? `the ${quoted} link${group}` : `a link${group}`;
@@ -151,7 +157,7 @@ export function demoTargetWords(target: DemoTarget | undefined): string {
 /** One step as an instruction a bot or a person can follow, blanks written as {{name}}. */
 export function demoStepSentence(step: DemoStep): string {
   const where = demoTargetWords(step.target);
-  const value = step.blank ? demoBlankMark(step.blank) : `"${step.value ?? ""}"`;
+  const value = step.blank ? demoBlankMark(step.blank) : demoQuoted(step.value ?? "");
   switch (step.kind) {
     case "open": return `Open ${step.url ?? "the page"}.`;
     case "click": return `Click ${where}.`;

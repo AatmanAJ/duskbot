@@ -37,8 +37,8 @@ interface Session {
   state: "recording" | "review";
   startedAt: number;
   capture: DemoCapture | null;
-  /** While recording: the steps the person deleted, and the blanks and values they chose, by step id. */
-  deleted: Set<string>;
+  /** While recording: the steps the person deleted, each with what it held then, and the blanks and values they chose, by step id. */
+  deleted: Map<string, string>;
   blanks: Map<string, string | null>;
   values: Map<string, string>;
   /** Once reviewed: the steps as they will be saved. */
@@ -50,6 +50,9 @@ interface Session {
 }
 
 /** Each bot's recording while it is made and reviewed. In memory on purpose: a draft is a person's unsaved work, and what is saved is a skill. */
+/** What a step holds. A deleted step stays out of the list until the person does it again with something else. */
+const heldBy = (step: DemoStep) => `${step.kind}\n${step.value ?? ""}\n${step.checked ?? ""}`;
+
 export class DemoRecorder {
   readonly #deps: DemoRecorderDeps;
   readonly #sessions = new Map<string, Session>();
@@ -62,7 +65,7 @@ export class DemoRecorder {
   #steps(session: Session): DemoStep[] {
     if (session.state === "review" || !session.capture) return session.steps;
     return normaliseDemo(session.capture.events())
-      .filter((step) => !session.deleted.has(step.id))
+      .filter((step) => session.deleted.get(step.id) !== heldBy(step))
       .map((step) => {
         const blank = session.blanks.get(step.id);
         const value = session.values.get(step.id);
@@ -110,7 +113,7 @@ export class DemoRecorder {
       onEvents: () => { if (this.#sessions.get(botId)?.capture === capture) this.#announce(botId); },
     });
     const session: Session = {
-      place, state: "recording", startedAt: (this.#deps.now ?? Date.now)(), capture, deleted: new Set(), blanks: new Map(), values: new Map(),
+      place, state: "recording", startedAt: (this.#deps.now ?? Date.now)(), capture, deleted: new Map(), blanks: new Map(), values: new Map(),
       steps: [], title: "", named: null, told: "",
     };
     this.#sessions.set(botId, session);
@@ -201,7 +204,10 @@ export class DemoRecorder {
     const found = this.#editable(botId, stepId);
     if ("error" in found) return found;
     if (found.session.state === "review") found.session.steps = found.session.steps.filter((step) => step.id !== stepId);
-    else found.session.deleted.add(stepId);
+    else {
+      const recorded = found.session.capture ? normaliseDemo(found.session.capture.events()).find((step) => step.id === stepId) : undefined;
+      found.session.deleted.set(stepId, heldBy(recorded ?? found.step!));
+    }
     return this.#announce(botId);
   }
 

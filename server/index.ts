@@ -12667,6 +12667,7 @@ const showItOnce = createShowItOnce({
     return bot && bot.browser !== false && bot.computer !== "off" && builtInBrowserEnabled(cfg) ? botBrowserTarget(bot, bot.threadId) : null;
   },
   browserHeld: (session) => browserRuntime.heldBy(session) !== null,
+  browserReady: (session) => browserRuntime.heldReady(session),
   browserPort: (browser) => demoPort(browser.session, browser.spec, browser.env),
   computerHeld: (botId) => botComputerControlSnapshot(botId).held,
   boxChrome: (botId) => botBoxChrome(botId),
@@ -12693,6 +12694,7 @@ const { replayForTurn } = createSkillReplayTurn<InternalCapability>({
   place: signInPlace, current: (bot, threadId) => botForThread(bot.id, threadId) ?? bot, builtInBrowserOn: () => builtInBrowserEnabled(cfg),
   target: botBrowserTarget, claim: claimTurnResource,
   inLane: (browser, work, ctx) => browserRuntime.withSecretInput(browser.session, browser.spec, work, ctx),
+  held: (browser) => browserRuntime.heldBy(browser.session) !== null,
   port: (browser) => demoPort(browser.session, browser.spec, browser.env),
   loginInput: (browser) => loginInput(browser.session, browser.spec, browser.env),
   recording: (bot, skill) => demoRecordingOf(bot.id, skill, bot.assignedSkills),

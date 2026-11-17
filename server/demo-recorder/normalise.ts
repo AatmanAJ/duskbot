@@ -8,6 +8,10 @@ import { demoUrl, sanitiseDemoEvent, type RawDemoEvent, type RawDemoTarget } fro
 const REDIRECT_MS = 3_000;
 /** A page that opens this soon after something was done on the one before was opened by it. */
 const CAUSED_MS = 1_500;
+/** A click, a sent form or Enter may take this long to bring its page; a page that opens later was asked for by hand. */
+const CAUSED_SLOW_MS = 10_000;
+/** A sign-in form shows a password box and at most this many other fields. */
+const SIGN_IN_FIELDS = 2;
 const DOUBLE_CLICK_MS = 500;
 const IMPLIED_CLICK_MS = 150;
 
@@ -62,7 +66,7 @@ export function normaliseDemo(events: readonly RawDemoEvent[]): DemoStep[] {
   let lastOpenAt: number | null = null;
   /** The last thing done on the current page that could have opened the next one. */
   let acted: { type: RawDemoEvent["type"]; key?: string; at: number; inField?: boolean } | null = null;
-  /** What each field was last seen to hold, so an event that says nothing new makes no step. */
+  /** What each field of this page was last seen to hold, so a change event that repeats it makes no step. */
   const held = new Map<string, string>();
 
   const full = () => drafts.length >= DEMO_MAX_STEPS;
@@ -103,7 +107,8 @@ export function normaliseDemo(events: readonly RawDemoEvent[]): DemoStep[] {
       if (first || !drafts.length) {
         add(index, event, { kind: "open", url }, url);
       } else if (acted) {
-        const caused = acted.type === "click" || acted.type === "submit" || (acted.type === "key" && acted.key === "Enter") || event.at - acted.at < CAUSED_MS;
+        const sends = acted.type === "click" || acted.type === "submit" || (acted.type === "key" && acted.key === "Enter");
+        const caused = event.at - acted.at < (sends ? CAUSED_SLOW_MS : CAUSED_MS);
         if (!caused) add(index, event, { kind: "open", url }, url);
       } else if (sinceOpen >= REDIRECT_MS) {
         const last = drafts.at(-1)!;
@@ -111,6 +116,7 @@ export function normaliseDemo(events: readonly RawDemoEvent[]): DemoStep[] {
         else add(index, event, { kind: "open", url }, url);
       }
       acted = null;
+      held.clear();
       return;
     }
 
@@ -157,12 +163,12 @@ export function normaliseDemo(events: readonly RawDemoEvent[]): DemoStep[] {
       return;
     }
 
-    // input and change
     acted = { type: event.type, at: event.at };
     if (target.sensitive) {
       const login = signingIn(event, target);
       if (login) return;
-      if (target.inputType !== "password") {
+      const signsIn = target.inputType === "password" && !target.newPassword && (target.passwords ?? 1) <= 1 && (target.fields ?? 0) <= SIGN_IN_FIELDS;
+      if (!signsIn) {
         if (!since("protected", key)) add(index, event, { kind: "protected", target: wire(target) }, key);
         return;
       }
@@ -220,7 +226,7 @@ export function normaliseDemo(events: readonly RawDemoEvent[]): DemoStep[] {
     }
 
     if (!target.editable || typeof event.value !== "string") return;
-    const unchanged = held.get(key) === event.value;
+    const unchanged = event.type === "change" && held.get(key) === event.value;
     held.set(key, event.value);
     if (unchanged) return;
     const known = since("fill", key);

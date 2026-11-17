@@ -47,6 +47,10 @@ const SOURCE = String.raw`(() => {
   collect(CALL_IN);
   if (collect(CALL_OUT) !== null) return "installed";
   const queue = [];
+  // The recording this document is part of; empty while nobody records, when nothing is kept.
+  let take = "";
+  let carried = null;
+  let opened = false;
   const everPrivate = new WeakSet();
   const formIds = new WeakMap();
   let formCount = 0;
@@ -187,7 +191,7 @@ const SOURCE = String.raw`(() => {
   const privateWords = (el, name, label) => {
     const raw = [el.getAttribute("autocomplete"), el.getAttribute("name"), el.id, el.getAttribute("placeholder"), el.getAttribute("aria-label"), name, label].filter(Boolean).join(" ");
     const words = raw.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[^A-Za-z0-9]+/g, " ").trim().toLowerCase();
-    return SENSITIVE.test(raw) || /(?:^| )(pin|security code|passphrase|pass phrase)(?: |$)/.test(words);
+    return SENSITIVE.test(raw) || /(?:^| )(pin|security code|passphrase|pass phrase|secret|token|auth code|authentication code|authenticator code|access code|login code|2 ?fa code|two factor code|mfa code)(?: |$)/.test(words);
   };
   const isPrivate = (el, name, label) => {
     if (!isControl(el) && !isTextField(el)) return false;
@@ -230,6 +234,12 @@ const SOURCE = String.raw`(() => {
     }
     const form = formOf(el);
     if (form) target.form = form;
+    if (type === "password") {
+      const scope = el.form || (el.closest ? el.closest("form") : null) || document;
+      target.passwords = Array.from(scope.querySelectorAll('input[type="password"]')).filter(visible).length;
+      target.fields = Array.from(scope.querySelectorAll("input, textarea, select")).filter((other) => isControl(other) && typeOf(other) !== "password" && !["submit", "button", "reset", "image", "checkbox", "radio"].includes(typeOf(other)) && visible(other)).length;
+      if (/new-password/i.test(el.getAttribute("autocomplete") || "")) target.newPassword = true;
+    }
     if (isPrivate(el, name, label)) target.sensitive = true;
     if (interactive) target.interactive = true;
     if (isTextField(el)) target.editable = true;
@@ -237,6 +247,7 @@ const SOURCE = String.raw`(() => {
   };
 
   const push = (type, el, extra) => {
+    if (!take) return;
     const event = { at: Date.now(), type, url: location.href };
     if (el) {
       const control = el.closest ? el.closest(INTERACTIVE) : null;
@@ -329,22 +340,37 @@ const SOURCE = String.raw`(() => {
     } catch (error) {}
   }
 
-  // A page that is left before it is read hands what it saw to the next document of the same site.
+  // A page that is left before it is read hands what it saw to the next document of the same site, for the same recording only.
   try {
     const stashed = sessionStorage.getItem(STASH);
     if (stashed) {
       sessionStorage.removeItem(STASH);
-      const events = JSON.parse(stashed);
-      if (Array.isArray(events)) for (const event of events.slice(-MAX_QUEUE)) queue.push(event);
+      const left = JSON.parse(stashed);
+      if (left && typeof left.take === "string" && Array.isArray(left.events)) carried = { take: left.take, events: left.events.slice(-MAX_QUEUE) };
     }
   } catch (error) {}
   addEventListener("pagehide", () => {
-    try { if (queue.length) sessionStorage.setItem(STASH, JSON.stringify(queue)); } catch (error) {}
+    try { if (take && queue.length) sessionStorage.setItem(STASH, JSON.stringify({ take, events: queue })); } catch (error) {}
   });
   addEventListener("beforeunload", () => { leavingAt = Date.now(); });
-  push("open", null);
 
-  // Finding an element again by its words.
+  const listen = (id) => {
+    if (typeof id !== "string" || !id) return;
+    if (take !== id) { take = id; queue.length = 0; opened = false; }
+    if (carried && carried.take === id) queue.unshift(...carried.events);
+    carried = null;
+    if (!opened) { opened = true; lastUrl = location.href; push("open", null); }
+  };
+  const forget = () => {
+    take = "";
+    queue.length = 0;
+    carried = null;
+    opened = false;
+    try { sessionStorage.removeItem(STASH); } catch (error) {}
+    return JSON.stringify({ ok: true });
+  };
+  listen(INITIAL_TAKE);
+
   const loose = (text) => clean(text).replace(/[\s:*]+$/, "").toLowerCase();
   const wordsOf = (el) => { const name = nameOf(el); return { name, label: name ? "" : labelOf(el), placeholder: clean(el.getAttribute("placeholder")) }; };
   const candidates = (role) => Array.from(document.querySelectorAll("*")).filter((el) => roleOf(el) === role && (role === "file" || visible(el)));
@@ -435,12 +461,15 @@ const SOURCE = String.raw`(() => {
     if (action.do === "focus") {
       if (el.scrollIntoView) { try { el.scrollIntoView({ block: "center", inline: "nearest" }); } catch (error) {} }
       el.focus();
+      const scope = el.getRootNode ? el.getRootNode() : document;
+      if ((scope.activeElement || document.activeElement) !== el) return JSON.stringify({ ok: false, reason: "unfocused" });
       if (isTextField(el) && typeof el.select === "function") { try { el.select(); } catch (error) {} }
+      else if (el.isContentEditable === true && typeof getSelection === "function") { try { getSelection().selectAllChildren(el); } catch (error) {} }
       return JSON.stringify({ ok: true, typed: isTextField(el) && !["date", "time", "datetime-local", "month", "week", "color"].includes(typeOf(el)) });
     }
     if (action.do === "read") {
       if (secret) return JSON.stringify({ ok: true, sensitive: true });
-      return JSON.stringify({ ok: true, value: clean0(el.value), checked: el.checked === true });
+      return JSON.stringify({ ok: true, value: valueOf(el), checked: el.checked === true });
     }
     if (secret) return JSON.stringify({ ok: false, reason: "private" });
     if (action.do === "set") {
@@ -471,7 +500,8 @@ const SOURCE = String.raw`(() => {
     passwordField: Array.from(document.querySelectorAll('input[type="password"]')).some((el) => visible(el) && !el.disabled && !el.readOnly),
   });
 
-  const drain = () => {
+  const drain = (id) => {
+    listen(id);
     if (location.href !== lastUrl) push("open", null);
     lastUrl = location.href;
     const events = queue.splice(0, DRAIN_MAX);
@@ -481,7 +511,8 @@ const SOURCE = String.raw`(() => {
   const answerTo = (request) => {
     if (!request || typeof request !== "object") return JSON.stringify({ error: "request" });
     if (request.do === "ping") return JSON.stringify({ ok: true });
-    if (request.do === "drain") return drain();
+    if (request.do === "drain") return drain(request.take);
+    if (request.do === "forget") return forget();
     if (request.do === "state") return state();
     if (request.do === "find") return find(request.target || {}, request.options || {});
     if (request.do === "act") return act(request.nonce, request.action || {});
@@ -499,8 +530,7 @@ const SOURCE = String.raw`(() => {
   return "installed";
 })()`;
 
-/** Installs the recorder in a document once; evaluating it again changes nothing. */
-export const DEMO_PAGE_SCRIPT = SOURCE
+const TEMPLATE = SOURCE
   .replaceAll("SENSITIVE_SOURCE", JSON.stringify(SENSITIVE_FIELD_PATTERN.source))
   .replaceAll("SENSITIVE_FLAGS", JSON.stringify(SENSITIVE_FIELD_PATTERN.flags))
   .replaceAll("GLOBAL", JSON.stringify(GLOBAL))
@@ -514,6 +544,19 @@ export const DEMO_PAGE_SCRIPT = SOURCE
   .replaceAll("TEXT_MAX", String(DEMO_TEXT_MAX))
   .replaceAll("VALUE_MAX", String(DEMO_VALUE_MAX))
   .replaceAll("MARK", JSON.stringify(DEMO_MARK));
+
+const takeId = (take: string) => (/^[\w-]{1,64}$/u.test(take) ? take : "");
+
+/** Puts the recorder in a document, once, to find and act on elements. It keeps nothing of what happens there until a
+ * recording reads it with `demoDrainExpression`. Evaluating it again changes nothing. */
+export const DEMO_LOCATE_SCRIPT = TEMPLATE.replaceAll("INITIAL_TAKE", '""');
+
+/** The same script recording for `take` from the moment it runs: for the documents a recording moves through. */
+export function demoRecordingScript(take: string): string {
+  return TEMPLATE.replaceAll("INITIAL_TAKE", JSON.stringify(takeId(take)));
+}
+
+export const DEMO_PAGE_SCRIPT = demoRecordingScript("default");
 
 /** One request to the document's recorder, from whatever script world the expression runs in; `absent` where a
  * document has none. The answer is the recorder's own JSON text. */
@@ -537,9 +580,15 @@ function call(request: Record<string, unknown>, absent: string): string {
 })()`;
 }
 
-/** Answers a `DemoDrain` as JSON: what the person did since the last read. `installed` is false where the script is absent. */
-export function demoDrainExpression(): string {
-  return call({ do: "drain" }, `JSON.stringify({ installed: false, url: location.href, title: document.title, events: [] })`);
+/** Answers a `DemoDrain` as JSON: what the person did since the last read of the recording `take`. A document that was
+ * not recording for `take` starts now, with nothing from before. `installed` is false where the script is absent. */
+export function demoDrainExpression(take = "default"): string {
+  return call({ do: "drain", take: takeId(take) }, `JSON.stringify({ installed: false, url: location.href, title: document.title, events: [] })`);
+}
+
+/** Ends the recording in this document: the script keeps nothing from then on, and drops what it had not handed over. */
+export function demoForgetExpression(): string {
+  return call({ do: "forget" }, JSON.stringify(JSON.stringify({ ok: false })));
 }
 
 /** What `demoFindExpression` answers, as JSON. */

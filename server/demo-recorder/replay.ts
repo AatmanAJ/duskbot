@@ -5,10 +5,10 @@ import { randomBytes } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
-import { demoStepSentence, demoTargetWords, type DemoRecording, type DemoStep } from "../../shared/demo-recording.ts";
+import { demoQuoted, demoStepSentence, demoTargetWords, type DemoRecording, type DemoStep } from "../../shared/demo-recording.ts";
 import { demoUrl } from "./events.ts";
 import {
-  DEMO_PAGE_SCRIPT, demoActExpression, demoFindExpression, demoPageStateExpression, demoUnmarkExpression,
+  DEMO_LOCATE_SCRIPT, demoActExpression, demoFindExpression, demoPageStateExpression, demoUnmarkExpression,
   type DemoFound, type DemoPageAction, type DemoPageState,
 } from "./page-script.ts";
 import type { DemoPagePort } from "./ports.ts";
@@ -35,6 +35,8 @@ export interface ReplayDeps {
   sleep?: (ms: number) => Promise<void>;
   /** Throws once the run may no longer act, such as when its turn ended. */
   checkpoint?(): void;
+  /** A person has asked for the browser: the run stops before its next step and says where. */
+  yielded?(): boolean;
 }
 
 export interface ReplayOutcome {
@@ -97,7 +99,7 @@ class Run {
   async state(): Promise<DemoPageState | null> {
     let state = await this.#evaluate<DemoPageState>(demoPageStateExpression());
     if (state?.absent) {
-      try { await this.#port.evaluate(DEMO_PAGE_SCRIPT); } catch { return null; }
+      try { await this.#port.evaluate(DEMO_LOCATE_SCRIPT); } catch { return null; }
       state = await this.#evaluate<DemoPageState>(demoPageStateExpression());
     }
     return state;
@@ -141,7 +143,7 @@ class Run {
     }
     if (!last || last.count === 0) return { reason: `The page has no ${words.replace(/^the /u, "")}.` };
     if (last.count > 1) return { reason: `${last.count} elements on the page could be ${words}, so none was touched.` };
-    if (last.option === false) return { reason: `${words[0]!.toUpperCase()}${words.slice(1)} has no option "${step.value ?? ""}".` };
+    if (last.option === false) return { reason: `${words[0]!.toUpperCase()}${words.slice(1)} has no option ${demoQuoted(step.value ?? "")}.` };
     return { reason: `${words[0]!.toUpperCase()}${words.slice(1)} is switched off on the page.` };
   }
 
@@ -208,7 +210,7 @@ class Run {
         }
         case "select": {
           const chosen = await this.#act({ do: "select", value: step.value ?? "" });
-          if (!chosen?.ok) return { ok: false, reason: `The list has no option "${step.value ?? ""}".` };
+          if (!chosen?.ok) return { ok: false, reason: `The list has no option ${demoQuoted(step.value ?? "")}.` };
           break;
         }
         case "choose":
@@ -258,7 +260,7 @@ export async function replayDemo(port: DemoPagePort, recording: DemoRecording, i
   const total = recording.steps.length;
   const start = deps.fromStep ? recording.steps.findIndex((step) => step.id === deps.fromStep) : 0;
   if (start < 0) {
-    return { ok: false, done: [], remaining: [], text: `This skill has no step "${deps.fromStep}". Its steps are ${recording.steps.map((step) => step.id).join(", ")}.` };
+    return { ok: false, done: [], remaining: [], text: `This skill has no step ${demoQuoted(deps.fromStep ?? "")}. Its steps are ${recording.steps.map((step) => step.id).join(", ")}.` };
   }
   const todo = recording.steps.slice(start);
   const missing = [...new Set(todo.map((step) => step.blank).filter((blank): blank is string => Boolean(blank) && !(blank! in inputs)))];
@@ -276,6 +278,20 @@ export async function replayDemo(port: DemoPagePort, recording: DemoRecording, i
     const index = start + at;
     const step = prepared.steps[at]!;
     deps.checkpoint?.();
+    if (deps.yielded?.()) {
+      const remaining = sentences(index);
+      const url = await run.url();
+      const reason = "The person took the browser, so the run stopped here.";
+      const text = [
+        `Stopped before step ${index + 1} of ${total}: ${remaining[0]}`,
+        reason,
+        `${done.length ? `The ${done.length === 1 ? "step" : `${done.length} steps`} before it ${done.length === 1 ? "was" : "were"} done.` : "No step was done."} The page is ${url || "unknown"}.`,
+        "Steps left:",
+        ...remaining.map((sentence, n) => `${index + n + 1}. ${sentence}`),
+        `Wait for them to hand it back and look at the page first: they may have done some of this. Then call ${DEMO_REPLAY_TOOL} again with from_step "${recording.steps[index]!.id}" for the rest.`,
+      ].join("\n");
+      return { ok: false, done, stoppedAt: { step: recording.steps[index]!, index, reason, url }, remaining, text };
+    }
     const result = await run.step(step, prepared.steps[at + 1]);
     if (result.ok) {
       done.push(step.id);
@@ -303,5 +319,5 @@ export async function replayDemo(port: DemoPagePort, recording: DemoRecording, i
     const stopped: DemoStep = result.private ? { id: original.id, kind: "protected", ...(original.target ? { target: original.target } : {}) } : original;
     return { ok: false, done, stoppedAt: { step: stopped, index, reason: result.reason, url }, remaining, text };
   }
-  return { ok: true, done, remaining: [], text: `Did ${done.length === total ? `all ${total} steps` : `steps ${start + 1} to ${total}`} of "${recording.title}". Read the page to confirm the result before you report it.` };
+  return { ok: true, done, remaining: [], text: `Did ${done.length === total ? `all ${total} steps` : `steps ${start + 1} to ${total}`} of ${demoQuoted(recording.title)}. Read the page to confirm the result before you report it.` };
 }

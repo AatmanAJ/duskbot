@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
+
 import { sanitiseDemoEvent, type RawDemoEvent } from "./events.ts";
-import { DEMO_PAGE_SCRIPT, demoDrainExpression } from "./page-script.ts";
+import { demoDrainExpression, demoForgetExpression, demoRecordingScript } from "./page-script.ts";
 import type { DemoPagePort } from "./ports.ts";
 
 export const DEMO_POLL_MS = 300;
@@ -33,6 +35,8 @@ export class DemoCapture {
   readonly #port: Pick<DemoPagePort, "evaluate" | "everyDocument">;
   readonly #options: DemoCaptureOptions;
   readonly #events: RawDemoEvent[] = [];
+  /** Tells this recording's events from anything an earlier one left in a page. */
+  readonly #take = randomUUID();
   #timer: ReturnType<typeof setTimeout> | null = null;
   #running = false;
   #reading: Promise<RawDemoEvent[]> = Promise.resolve([]);
@@ -49,7 +53,7 @@ export class DemoCapture {
     if (this.#running) return;
     this.#running = true;
     if (this.#port.everyDocument) {
-      try { this.#stopDocuments = await this.#port.everyDocument(DEMO_PAGE_SCRIPT); }
+      try { this.#stopDocuments = await this.#port.everyDocument(demoRecordingScript(this.#take)); }
       catch (error) { this.#options.log?.(`show it once: the recorder could not be added to new pages (${error instanceof Error ? error.name : "error"})`); }
     }
     await this.drain();
@@ -67,14 +71,14 @@ export class DemoCapture {
   async #read(): Promise<RawDemoEvent[]> {
     const read: unknown[] = [];
     try {
-      let answer = drained(await this.#port.evaluate(demoDrainExpression()));
+      let answer = drained(await this.#port.evaluate(demoDrainExpression(this.#take)));
       if (answer && !answer.installed) {
-        await this.#port.evaluate(DEMO_PAGE_SCRIPT);
-        answer = drained(await this.#port.evaluate(demoDrainExpression()));
+        await this.#port.evaluate(demoRecordingScript(this.#take));
+        answer = drained(await this.#port.evaluate(demoDrainExpression(this.#take)));
       }
       read.push(...(answer?.events ?? []));
       for (let again = 0; answer?.more && again < MAX_READS; again++) {
-        answer = drained(await this.#port.evaluate(demoDrainExpression()));
+        answer = drained(await this.#port.evaluate(demoDrainExpression(this.#take)));
         read.push(...(answer?.events ?? []));
       }
       this.#failed = false;
@@ -96,7 +100,7 @@ export class DemoCapture {
     return next;
   }
 
-  /** Reads once more and stops; answers everything recorded. */
+  /** Reads once more and stops, after which the page keeps nothing; answers everything recorded. */
   async stop(): Promise<RawDemoEvent[]> {
     if (!this.#running) return this.events();
     this.#running = false;
@@ -105,6 +109,7 @@ export class DemoCapture {
     await this.drain();
     try { this.#stopDocuments?.(); } catch {}
     this.#stopDocuments = null;
+    try { await this.#port.evaluate(demoForgetExpression()); } catch {}
     return this.events();
   }
 

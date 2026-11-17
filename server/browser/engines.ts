@@ -259,6 +259,11 @@ export class RuntimeRouter {
     return this.#chrome.service.heldBy(session) ?? this.#old.heldBy(session);
   }
 
+  /** A person holds the browser and the bot's last action in it has finished. */
+  heldReady(session: string): boolean {
+    return this.#chrome.service.heldBy(session) !== null || this.#old.heldReady(session);
+  }
+
   working(session: string): boolean {
     return this.#chrome.service.working(session) || this.#old.working(session);
   }
