@@ -26,7 +26,12 @@ function PanelSheet({ sheet, open, onClose }: { sheet: Extract<MobileSheet, { ki
     if (state.settingsOpen) wasOpen.current = true;
     else if (wasOpen.current && open) { wasOpen.current = false; onClose(); }
   }, [state.settingsOpen, bot, open, onClose]);
-  useEffect(() => { if (!open && state.settingsOpen) dispatch({ type: "toggleSettings", open: false }); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (open) return;
+    // a sheet closed from the phone (a swipe, the scrim, Back) must not read as the panel closing itself next time it opens
+    wasOpen.current = false;
+    if (state.settingsOpen) dispatch({ type: "toggleSettings", open: false });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Sheet open={open} onClose={onClose} full flush label={bot?.name ?? group?.name ?? t("mobile.sheet.profile")} bodyClassName="mobile-panel-sheet">
