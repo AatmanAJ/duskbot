@@ -71,7 +71,7 @@ function slideLayers(layers: { page: HTMLElement; base: HTMLElement | null; dim:
 
 /** Two layers: the list, and a page pushed over it. The page follows the finger back to the list from anywhere on it
  * (a horizontal scroller inside keeps its own drag), and a release finishes or returns by where the flick would land. */
-export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide }: {
+export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLeave }: {
   base: ReactNode;
   /** The pushed page, or null for the list alone. */
   page: ReactNode | null;
@@ -82,6 +82,8 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide }: {
   /** Each slide the page starts, with the path it plays, so native layers riding on the page play the same one in the
    * same frame; null when a slide stops short (a finger took the page). */
   onSlide?: (path: SlidePath | null) => void;
+  /** The page starts back to the list (a back tap, or a finger taking it), before the slide's first frame. */
+  onLeave?: () => void;
 }) {
   const width = useWidth();
   const x = useMotionValue(width);
@@ -99,6 +101,8 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide }: {
   settled.current = onSettled;
   const slid = useRef(onSlide);
   slid.current = onSlide;
+  const leaving = useRef(onLeave);
+  leaving.current = onLeave;
   if (page) lastPage.current = page;
 
   // the page's older rows wait while it moves: they mount once it lands, and never for a page on its way out
@@ -175,6 +179,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide }: {
     } else if (shownKey) {
       if (preparing.current) { preparing.current.cancelled = true; preparing.current = null; }
       sliding.current = true;
+      leaving.current?.();
       go(width, 0, () => { setShownKey(null); lastPage.current = null; gone(); settled.current?.(false); });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,6 +197,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide }: {
       slid.current?.(null);
       sliding.current = true;
       setMoving(true);
+      leaving.current?.();
       const active = document.activeElement;
       if (active instanceof HTMLElement && pageRef.current?.contains(active)) active.blur();
     },

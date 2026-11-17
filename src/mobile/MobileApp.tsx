@@ -28,7 +28,7 @@ import { HomeScreen, releasePressed } from "./HomeScreen";
 import { panelOpenAction, SheetHost } from "./SheetHost";
 import { closeTopSheet, Sheet } from "./Sheet";
 import { t } from "@/lib/i18n";
-import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
+import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useNativeGlass } from "./native-glass";
 import { useChatHaptics } from "./use-chat-haptics";
 import { usePhoneActions } from "./use-phone-actions";
@@ -182,6 +182,7 @@ function Shell() {
   if ((bot || group) && !glassHeld) setGlassHeld(true);
   const pageSettled = useCallback((shown: boolean) => { if (!shown) setGlassHeld(false); releasePressed(); }, []);
   const slideGlass = useNativeGlass(platform, rootRef, Boolean(bot || group) || glassHeld);
+  const leaveChat = useCallback(() => { if (rootRef.current) dismissKeyboard(platform, rootRef.current); }, [platform]);
 
   const page = bot || group ? (
     <ChatScreen
@@ -203,6 +204,7 @@ function Shell() {
         onBack={() => setChatId(null)}
         onSettled={pageSettled}
         onSlide={slideGlass}
+        onLeave={leaveChat}
       />
       <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); openChat(id); }} />
       <ConnectAppsHost />

@@ -3,7 +3,7 @@ import { createElement, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
+import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import type { KeyboardFrame, MobilePlatform } from "./platform";
 
 let root: Root;
@@ -107,5 +107,25 @@ describe("the phone keyboard", () => {
     expect(document.activeElement).toBe(field());
     (host.querySelector("#bubble") as HTMLElement).click();
     expect(document.activeElement).not.toBe(field());
+  });
+});
+
+describe("leaving a chat", () => {
+  it("puts away the keyboard of the native composer and of a field on the page", () => {
+    const blur = vi.fn();
+    const p = { ...platform(true), glass: { blur } } as unknown as MobilePlatform;
+    flushSync(() => root.render(createElement(Shell, { platform: p })));
+    const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    shell.dataset.glassFocused = "";
+    dismissKeyboard(p, shell);
+    expect(blur).toHaveBeenCalledTimes(1);
+    expect(hideKeyboard).not.toHaveBeenCalled();
+    delete shell.dataset.glassFocused;
+    field().focus();
+    dismissKeyboard(p, shell);
+    expect(document.activeElement).not.toBe(field());
+    expect(hideKeyboard).toHaveBeenCalledTimes(1);
+    dismissKeyboard(p, shell);
+    expect(hideKeyboard).toHaveBeenCalledTimes(1);
   });
 });
