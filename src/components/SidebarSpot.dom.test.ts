@@ -91,7 +91,7 @@ describe("the sidebar's feedback and update spot", () => {
     await mount();
     await hear({ ready: null, available: "0.2.7", progress: 0.42, retrying: true, checking: true, mode: "self" });
     expect(spot()?.dataset.appUpdateState).toBe("retrying");
-    expect(spot()?.textContent).toBe("Download paused, retrying42%");
+    expect(spot()?.textContent).toBe("Retrying download42%");
     expect(spot()?.getAttribute("aria-busy")).toBe("true");
     await hear({ ready: null, available: "0.2.7", progress: 0.43, retrying: false, checking: true, mode: "self" });
     expect(spot()?.textContent).toBe("Downloading update43%");
@@ -111,7 +111,7 @@ describe("the sidebar's feedback and update spot", () => {
     now = { ready: null, available: "0.2.7", progress: null, blocked: "move", mode: "self" };
     await mount();
     expect(spot()?.dataset.appUpdateState).toBe("move");
-    expect(spot()?.textContent).toBe("Move to Applications to update0.2.7");
+    expect(spot()?.textContent).toBe("Move to Applications0.2.7");
     await act(async () => { spot()!.click(); });
     expect(bridge.move).toHaveBeenCalledTimes(1);
     expect(bridge.download).not.toHaveBeenCalled();
