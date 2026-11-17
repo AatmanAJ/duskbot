@@ -540,6 +540,7 @@ import {
   guardTurnDispatch,
   isTurnEventQuarantined,
 } from "./turn-dispatch-guard.ts";
+import { createBrowsersFlush, type BrowsersFlushReply } from "./browser/exit-flush.ts";
 import { createGracefulShutdown } from "./graceful-shutdown.ts";
 import { acquireDataDirLeaseForProcess } from "./data-dir-lease.ts";
 import { environmentDescriptor, loadEnvironmentId, serverVersion } from "./environment.ts"; import { linkProtocolInfo } from "./link-protocol.ts"; import "./error-reporting.ts";
@@ -1451,7 +1452,7 @@ type UtilityParentPort = {
 };
 // Only Electron's utility process supplies parentPort, private to the desktop main process; plain Node leaves it absent.
 const utilityParentPort = (process as NodeJS.Process & { parentPort?: UtilityParentPort }).parentPort;
-type DesktopPrivateMessage = BrowserCleanupWireRequest | CompanionEndpointsRequest | import("./login-handoff.ts").LoginHandoffResult | { type: "duskbot:settings-changed" } | {
+type DesktopPrivateMessage = BrowserCleanupWireRequest | BrowsersFlushReply | CompanionEndpointsRequest | import("./login-handoff.ts").LoginHandoffResult | { type: "duskbot:settings-changed" } | {
   type: "duskbot:browser-control";
   botId: string;
   held: true;
@@ -1515,6 +1516,7 @@ const browserCleanup: BrowserCleanupCoordinator = new BrowserCleanupCoordinator(
     return true;
   },
 });
+const browsersFlush = createBrowsersFlush({ flush: (final) => flushBrowsers(final), reply: (message) => { postDesktopPrivateMessage(message); }, log: (line) => console.warn(line) });
 const phoneSecrets = new PhoneSecretBridge(postDesktopPrivateMessage);
 const companionEndpoints = createCompanionEndpointsBridge(postDesktopPrivateMessage);
 utilityParentPort?.on("message", (event) => {
@@ -1523,6 +1525,7 @@ utilityParentPort?.on("message", (event) => {
     if (applyDesktopMutationTokenMessage(message) || desktopComputer.receive(message) || companionEndpoints.receive(message)) return;
     if (handleDesktopTrustedApprovalMessage(message)) return;
     if (browserCleanup.receive(message)) return;
+    if (browsersFlush.receive(message)) return;
     if (savedSecretsKey?.receive(message)) return;
     if (phoneSecrets.receive(message) || botLogins.receiveHandoff(message, postDesktopPrivateMessage, (what) => cloudConnections.handoff(what))) return;
     if (applyIncludedPagesMessage(message)) return; if (applyIncludedXMessage(message)) return void broadcast({ kind: "config", ...configStatus() });
@@ -2416,7 +2419,7 @@ async function botBoxChrome(botId: string, turn?: { threadId: string; generation
 const {
   browserRuntime, browserLive, usedBrowserSessions, browserSweep, temporaryBrowserSessions,
   currentBrowserSession, forgetTemporaryBrowser, myChromeAvailable, usesMyChrome, browserSessionSpec, browserIntegration,
-  browserReady, hostBrowserUsable, currentBrowserSpec, browserRunning, loginInput, browserSystemPrompt, closeBrowser, browserEngineSwitched, eraseDeletedBrowser, engineSummary, signedInSitesTarget, uploadPaths, eraseAudienceBrowsers,
+  browserReady, hostBrowserUsable, currentBrowserSpec, browserRunning, loginInput, browserSystemPrompt, closeBrowser, browserEngineSwitched, eraseDeletedBrowser, engineSummary, signedInSitesTarget, uploadPaths, eraseAudienceBrowsers, flushBrowsers,
 } = createBrowserHost({ cfg, store: () => store, boxChrome: botBoxChrome, turnResources, activeInternalGenerationByThread, mintInternalCapability: capability => mintInternalCapability({ ...capability,
   ...(teamComputerTurns.get(capability.threadId) ? { teamComputerId: teamComputerTurns.get(capability.threadId)!.computerId } : {}),
   ...(turnVpsTargets.get(capability.threadId)?.screenLease ? { screenGeneration: turnVpsTargets.get(capability.threadId)!.screenLease!.target.generation } : {}),
@@ -16699,7 +16702,8 @@ const gracefulShutdown = createGracefulShutdown({
     async () => { await dataEngine.closeAll().catch((error) => console.warn("data: close failed", error)); },
     async () => {
       const temporaries = [...temporaryBrowserSessions.keys()].map((botId) => forgetTemporaryBrowser(botId));
-      await Promise.all([...temporaries, browserSweep.closeAll()]);
+      // Chrome's own quit, which writes its cookies, starts at once: the shutdown deadline cuts whatever runs after it.
+      await Promise.all([...temporaries, browserSweep.closeAll(), flushBrowsers(false, true)]);
       await browserRuntime.closeAll();
     },
     () => liveCalls.shutdown(),

@@ -198,6 +198,11 @@ export function createBrowserHost(deps: BrowserHostDeps) {
       return agentBrowserSweep.closeAll();
     },
   };
+  /** Quits the bots' browsers so their cookies reach disk. agent-browser's are closed only when the app is surely going:
+   * its runtime keeps a client for a browser closed under it. `pictures` keeps each tab's last screen for Recent tabs. */
+  async function flushBrowsers(final: boolean, pictures = false): Promise<void> {
+    await Promise.all([chromeEngine.service.closeAll({ pictures }), final ? agentBrowserSweep.closeOwned() : undefined]);
+  }
   // The viewer and the agent must address the SAME temporary browser.
   const temporaryBrowserSessions = new Map<string, string>();
   /** The suffix an audience gives a browser's name, remembered so a deletion erases every audience's browser. */
@@ -526,6 +531,6 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     currentBrowserSession, forgetTemporaryBrowser, myChromeAvailable, usesMyChrome, browserSessionSpec, browserIntegration,
     browserReady, hostBrowserUsable, currentBrowserSpec, browserRunning, loginInput, browserSystemPrompt, signedInSitesRefusal, closeBrowser, browserEngineSwitched,
     eraseDeletedBrowser, engineSummary, engineBrowsers, browserAudience, browserSessionsOf, signedInSitesTarget, uploadPaths,
-    eraseAudienceBrowsers,
+    eraseAudienceBrowsers, flushBrowsers,
   };
 }

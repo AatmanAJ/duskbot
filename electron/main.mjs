@@ -29,6 +29,7 @@ import { activateExistingWindow, bringToFront, windowToReveal } from "./single-i
 import { createWindowPlacement } from "./window-placement.mjs";
 import { bootFailureMessage, listeningSignal, pollServerIdentity, SERVER_BOOT_TIMEOUT_MS, SERVER_LISTENING_GRACE_MS } from "./server-boot-probe.mjs";
 import { createServerSupervisor } from "./server-supervisor.mjs";
+import { createBrowsersFlush, installSessionEndFlush } from "./browser-flush.mjs";
 import { serverChildLaunch } from "./server-child-launch.mjs";
 import { savedVpsStartupTarget, startPackagedAlongsideVps, waitForLocalStartup } from "./saved-vps-startup.mjs";
 import { packageUrlFromCommandLine, packageUrlFromDeepLink } from "./package-link.mjs";
@@ -420,6 +421,7 @@ const trustedApprovalMode = createTrustedApprovalModeCoordinator({ randomId: ran
 const desktopMutationToken = randomBytes(32).toString("base64url");
 const desktopLaunchId = randomUUID();
 const companionMutationToken = randomBytes(32).toString("base64url");
+const browsersFlush = createBrowsersFlush({ server: () => serverProc, randomId: randomUUID });
 const serverSupervisor = createServerSupervisor({
   restart: () => startServerOn(SERVER_PORT),
   stop: stopUtilityServer,
@@ -1382,6 +1384,7 @@ async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmen
     if (!serverSupervisor.isCurrent(proc)) return;
     try {
       if (trustedApprovalMode.receive(proc, message)) return;
+      if (browsersFlush.receive(message)) return;
       if (managedDesktopRelay.receive(proc, message)) return;
       if (orgLibrary?.receive(message)) return;
       if (settingsSyncMain?.receive(message) || receivePhoneSecretSave(proc, message) || receiveCompanionEndpoints(proc, message) || oneHome.receive(proc, message)) return;
@@ -3706,6 +3709,8 @@ ipcMain.handle("app-update:open", localOnly("app-update:open", () => { const url
 ipcMain.handle("app-update:move", localOnly("app-update:move", () => { try { return app.moveToApplicationsFolder(); } catch (error) { slog(`app update: could not move to Applications (${error instanceof Error ? error.message : String(error)})`); void shell.openExternal(DOWNLOAD_PAGE); return false; } }));
 ipcMain.handle("app-update:seen", localOnly("app-update:seen", () => { if (appUpdatedTo) { appUpdatedTo = null; tellAppUpdate(); } }));
 
+// powerMonitor is usable only once the app is ready.
+void app.whenReady().then(() => installSessionEndFlush({ app, windows: () => BrowserWindow.getAllWindows(), powerMonitor, flusher: browsersFlush, quit: () => app.quit(), log: slog }));
 app.on("before-quit", (e) => {
   talk.close(); ambientSurfaces.close();
   desktopShutdownStarted = true;
@@ -3720,7 +3725,8 @@ app.on("before-quit", (e) => {
   if (cuaCleanedUp) return;
   e.preventDefault();
   // Cancel a scheduled recovery before yielding.
-  const stoppingServer = Promise.all([serverSupervisor.shutdown(), devServer?.stop() ?? true]).then((all) => all.every(Boolean));
+  const browsersQuit = process.platform === "win32" ? browsersFlush.flush() : Promise.resolve(true);
+  const stoppingServer = browsersQuit.then(() => Promise.all([serverSupervisor.shutdown(), devServer?.stop() ?? true])).then((all) => all.every(Boolean));
   syncCompanionKeepAwake(false, false);
   routineWake.stop();
   try {

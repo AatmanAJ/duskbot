@@ -288,7 +288,7 @@ export class BrowserService {
   }
 
   /** Graceful: Chrome's own quit, so its next start reopens the tabs and keeps session cookies. */
-  async #stop(profile: ProfileState, reopened: Reopened, { erase = false }: { erase?: boolean } = {}): Promise<void> {
+  async #stop(profile: ProfileState, reopened: Reopened, { erase = false, pictures = true }: { erase?: boolean; pictures?: boolean } = {}): Promise<void> {
     if (profile.stopping) return profile.stopping;
     profile.epoch++;
     const run = profile.run;
@@ -298,7 +298,7 @@ export class BrowserService {
       profile.control.changed();
       try {
         if (run) {
-          if (this.#options.onClosing && reopened?.kind !== "restart" && !erase) this.#options.onClosing(profile.session, await this.#closingTabs(profile));
+          if (this.#options.onClosing && reopened?.kind !== "restart" && !erase) this.#options.onClosing(profile.session, await this.#closingTabs(profile, pictures));
           run.closing = true;
           for (const off of run.offs) off();
           profile.hub.stopped(reopened?.kind === "idle" ? "asleep" : "closed");
@@ -318,12 +318,12 @@ export class BrowserService {
     return stopping;
   }
 
-  async #closingTabs(profile: ProfileState): Promise<ClosingTab[]> {
+  async #closingTabs(profile: ProfileState, pictures: boolean): Promise<ClosingTab[]> {
     const active = profile.active();
     const tabs = profile.tabs.list().filter((tab) => !tab.page.closed && tab.page.url() !== "about:blank").slice(0, RECENT_TABS_LIMIT);
     return Promise.all(tabs.map(async (tab) => ({
       title: tab.page.title(), url: tab.page.url(), active: tab === active,
-      image: (await within(tab.page.screenshot({ format: "jpeg", quality: 70 }), 3_000))?.data ?? null,
+      image: pictures ? (await within(tab.page.screenshot({ format: "jpeg", quality: 70 }), 3_000))?.data ?? null : null,
     })));
   }
 
@@ -402,8 +402,9 @@ export class BrowserService {
     }
   }
 
-  async closeAll(): Promise<void> {
-    await Promise.all(this.profiles().map((profile) => this.#stop(profile, null)));
+  /** `pictures: false` when the computer is going down: Chrome's own quit, which writes its cookies, comes first. */
+  async closeAll({ pictures = true }: { pictures?: boolean } = {}): Promise<void> {
+    await Promise.all(this.profiles().map((profile) => this.#stop(profile, null, { pictures })));
   }
 
   // Bot calls.

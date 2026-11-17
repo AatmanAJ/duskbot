@@ -472,6 +472,11 @@ export class BrowserSweep {
   async closeAll(timeoutMs = 4_000): Promise<void> {
     clearInterval(this.#timer);
     this.#timer = undefined;
+    await this.closeOwned(timeoutMs);
+  }
+
+  /** Closes every browser of this data folder through the engine's own close, which writes cookies to disk; the sweep goes on. */
+  async closeOwned(timeoutMs = 4_000): Promise<void> {
     const binaryPath = this.#engine();
     const owned = binaryPath ? await this.#owned(binaryPath, timeoutMs).catch(() => null) : null;
     await Promise.all((owned ?? []).map(async (session) => {
