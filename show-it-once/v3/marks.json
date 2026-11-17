@@ -1,0 +1,22 @@
+{
+ "watching": 1.01,
+ "recording": 6.36,
+ "filled": 20.94,
+ "submitted": 23.16,
+ "review": 24.49,
+ "reviewEnd": 29.86,
+ "saved": 32.01,
+ "handedBack": 34.89,
+ "replayStart": 42.66,
+ "replayDone": 56.19,
+ "stuckAsking": 74.82,
+ "stuckStart": 78.74,
+ "stuckDone": 82.91,
+ "movedStart": 94.66,
+ "movedDone": 98.86,
+ "signedOut": 108.11,
+ "secretRecording": 111.44,
+ "secretTyped": 116.79,
+ "secretReview": 120.17,
+ "secretEnd": 124.11
+}
