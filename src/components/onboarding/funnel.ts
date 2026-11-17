@@ -5,29 +5,43 @@ import { freeFallback } from "../../../shared/ai-ranking";
 export const FUNNEL_STEPS = BEAT_ORDER;
 export type FunnelStep = BeatId;
 
+/** where the bots live, as the person picked it on the place step (none yet before that) */
+export type FunnelPath = "mac" | "cloud";
+
 export interface FunnelFacts {
   /** a dusk bot account can be signed in to from this window, and isn't yet */
   account: boolean;
-  /** this install can't be used without an account */
-  accountRequired?: boolean;
-  /** this is the desktop app's own window */
+  /** this is the desktop app's own window, where bots can live on this Mac, in dusk cloud or on a server */
   desktop: boolean;
+  /** this window can bring in what other AI apps left on this computer (and offer the prompt for ones online) */
+  bring?: boolean;
+  /** where the person put the bots; dusk cloud signs in, picks a plan and pays in the browser, then ends on the cloud */
+  path?: FunnelPath | null;
   /** the hello screen; false for a server opened from the desktop app, whose person has already met dusk bot there */
   hello?: boolean;
+  /** the phone app is offered (phoneAppEnabled) */
+  phone?: boolean;
   /** a cloud the desktop app set up, with that computer's bots or chats to move here */
   cloudBring?: boolean;
+  /** this Mac still lacks a permission a bot needs to use it (Accessibility, Screen Recording, Notifications) */
+  permissions?: boolean;
 }
 
-/** The screens this person gets, in order: the hello, an account only where the window needs one, an AI, then on a cloud
- * the desktop app set up what to bring from that computer. The free model needs no account, so the desktop app asks for
- * one only where the install requires it. */
+/** The screens this person gets, in order: the hello, then the account (when there is none yet), then on the desktop app
+ * where the bots live. This Mac goes on to an AI, what to bring and, last, the Mac's permissions; dusk cloud goes to the browser for its plan and
+ * checkout, then an AI while the cloud is made, then the cloud. */
 export function funnelSteps(facts: FunnelFacts): FunnelStep[] {
+  const cloud = facts.desktop && facts.path === "cloud";
   return FUNNEL_STEPS.filter((step) => {
     if (step === "welcome") return facts.hello !== false;
-    if (step === "account") return facts.account && (!facts.desktop || Boolean(facts.accountRequired));
-    if (step === "ai") return true;
-    if (step === "bring") return Boolean(facts.cloudBring);
-    return false;
+    if (step === "place") return facts.desktop;
+    if (step === "account") return facts.account;
+    if (step === "checkout") return cloud;
+    if (step === "bring") return (facts.desktop && Boolean(facts.bring) && !cloud) || Boolean(facts.cloudBring);
+    if (step === "phone") return Boolean(facts.phone) && facts.desktop && !cloud;
+    if (step === "making") return cloud;
+    if (step === "permissions") return facts.desktop && Boolean(facts.permissions) && !cloud;
+    return true;
   });
 }
 
