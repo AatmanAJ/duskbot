@@ -3,7 +3,7 @@ import { createElement, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BotEditorStore, initialState, StoreProvider, useDispatch, useOptionalStoreSelector, useStore, useStoreSelector, type AppState } from "./store";
+import { BotEditorStore, initialState, ScopedStore, StoreProvider, useDispatch, useOptionalStoreSelector, useStore, useStoreSelector, type Action, type AppState } from "./store";
 
 class FixtureEventSource {
   onopen: (() => void) | null = null;
@@ -78,5 +78,30 @@ describe("store selectors", () => {
     flushSync(() => lone.render(createElement(Strict)));
     expect(String(errors[0])).toContain("useStore outside provider");
     flushSync(() => lone.unmount());
+  });
+
+  it("derive a scoped store over the app's: readers follow both, its actions stand in, and its host does not subscribe", () => {
+    const own: Action[] = [];
+    let seen: string | null = null, hostRenders = 0;
+    function Reader() { seen = useStoreSelector(selectError); return null; }
+    function Host() {
+      hostRenders++;
+      return createElement(ScopedStore, {
+        derive: (state: AppState) => ({ ...state, error: `scoped: ${state.error ?? "none"}` }),
+        actions: { dispatch: (action: Action) => own.push(action) },
+        children: createElement(Reader),
+      });
+    }
+    function Inner() { const dispatch = useDispatch(); inner = dispatch; return null; }
+    let inner: ((action: Action) => void) | null = null;
+    mount([createElement(Host, { key: "h" })]);
+    expect(seen).toBe("scoped: none");
+    const rendered = hostRenders;
+    flushSync(() => store.dispatch({ type: "error", message: "outer" }));
+    expect(seen).toBe("scoped: outer");
+    expect(hostRenders).toBe(rendered);
+    flushSync(() => root.render(createElement(StoreProvider, null, createElement(ScopedStore, { derive: (state: AppState) => state, actions: { dispatch: (action: Action) => own.push(action) }, children: createElement(Inner) }))));
+    inner!({ type: "error", message: null });
+    expect(own).toEqual([{ type: "error", message: null }]);
   });
 });

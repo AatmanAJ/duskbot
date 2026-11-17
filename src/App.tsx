@@ -2,8 +2,10 @@ import { useProductScreen } from "@/lib/product-analytics-app";
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, Menu } from "./icons";
 import { AnimatePresence } from "motion/react";
-import { CLOUD_LINK_SETTINGS, openBot, StoreProvider, useDispatch, useStore, useStoreSelector, type AppState, type Bot, type Group } from "@/state/store";
+import { CLOUD_LINK_SETTINGS, openBot, StoreProvider, useDispatch, useStoreSelector, type AppState, type Bot, type Group } from "@/state/store";
 import { botById, groupById } from "@/state/store-index";
+import { useStoreRef } from "@/state/store-ref";
+import { selectBots, selectConfig, selectGroups } from "@/state/store-selectors";
 import { SignInSheetHost } from "./components/SignInSheet";
 import { openSignIn } from "@/lib/sign-in-sheet";
 
@@ -94,29 +96,39 @@ import { FeedbackHost } from "./components/FeedbackDialog";
 /** What follows the whole state (unread badge, loaders, links, shortcuts) and draws nothing, so the shell around the chat
  * does not render again on every change. */
 function ShellEffects() {
-  const { state, dispatch } = useStore();
-  useCloudLastSeen(state);
-  useHeldSend(state, dispatch);
-  useTeamChats(state.config);
-  const needsYou = needsYouVersion(state.bots, state.groups, state.notifications);
-  useTeamPeopleLoader(state.config, needsYou);
-  useInboxLoader(`${inboxVersion(state.bots) ?? ""}|${needsYou}`);
+  const dispatch = useDispatch();
+  const store = useStoreRef();
+  const bots = useStoreSelector(selectBots);
+  const groups = useStoreSelector(selectGroups);
+  const notifications = useStoreSelector(selectNotifications);
+  const config = useStoreSelector(selectConfig);
+  const hydrated = useStoreSelector(selectHydratedFlag);
+  const selectedId = useStoreSelector(selectSelectedId);
+  const pluginsOpen = useStoreSelector(selectPluginsOpen);
+  const pluginsSurface = useStoreSelector(selectPluginsSurface);
+  const shortcutsOpen = useStoreSelector(selectShortcutsOpen);
+  useCloudLastSeen({ bots, selectedId, hydrated });
+  useHeldSend({ bots, hydrated }, dispatch);
+  useTeamChats(config);
+  const needsYou = needsYouVersion(bots, groups, notifications);
+  useTeamPeopleLoader(config, needsYou);
+  useInboxLoader(`${inboxVersion(bots) ?? ""}|${needsYou}`);
   // A Switch AI pick lands once its stopped turn's chat is idle, wherever the person is by then.
-  useAiSwitchKeeper({ bots: state.bots, dispatch });
-  useWarmChatImages(state.bots);
+  useAiSwitchKeeper({ bots: bots, dispatch });
+  useWarmChatImages(bots);
   const unreadCount =
-    state.bots.filter((bot) => !bot.hidden).reduce((sum, bot) => sum + botUnreadCount(bot), 0) +
-    state.groups.filter((group) => group.unread).length;
+    bots.filter((bot) => !bot.hidden).reduce((sum, bot) => sum + botUnreadCount(bot), 0) +
+    groups.filter((group) => group.unread).length;
   useEffect(() => { // every way into the old Plugins screen opens Connect Apps
-    if (!state.pluginsOpen) return;
-    openConnectApps(connectAppsPageFor(state.pluginsSurface));
+    if (!pluginsOpen) return;
+    openConnectApps(connectAppsPageFor(pluginsSurface));
     dispatch({ type: "togglePlugins", open: false });
-  }, [state.pluginsOpen, state.pluginsSurface, dispatch]);
-  useExternalChatLinks(state, dispatch); useDesktopNotificationOpens(state, dispatch);
-  usePresence(state, dispatch);
+  }, [pluginsOpen, pluginsSurface, dispatch]);
+  useExternalChatLinks(hydrated === true, store.state, dispatch); useDesktopNotificationOpens(hydrated === true, store.state, dispatch);
+  usePresence(hydrated === true, config?.language, store.state, dispatch);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing || state.shortcutsOpen) return;
+      if (e.defaultPrevented || e.isComposing || shortcutsOpen) return;
       if (shouldOpenKeyboardShortcuts(e)) {
         e.preventDefault();
         dispatch({ type: "toggleShortcuts", open: true });
@@ -125,19 +137,19 @@ function ShellEffects() {
 
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
-      const bots = shortcutBots(state.bots.filter((b) => !b.hidden), shownBotIds(document.querySelector("[data-sidebar-root]")));
+      const ordered = shortcutBots(bots.filter((b) => !b.hidden), shownBotIds(document.querySelector("[data-sidebar-root]")));
       const step = e.shiftKey ? botCycleStep(e) : null;
       if (e.key === "n" && !e.shiftKey) {
         e.preventDefault();
         openCreateBot();
       } else if (/^[1-9]$/.test(e.key)) {
-        const target = bots[Number(e.key) - 1];
+        const target = ordered[Number(e.key) - 1];
         if (target) {
           e.preventDefault();
           openBot(dispatch, target);
         }
       } else if (step !== null) {
-        const next = nextShortcutBot(bots, state.selectedId, step);
+        const next = nextShortcutBot(ordered, selectedId, step);
         if (next) {
           e.preventDefault();
           openBot(dispatch, next);
@@ -146,7 +158,7 @@ function ShellEffects() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [state.bots, state.selectedId, state.shortcutsOpen, dispatch]);
+  }, [bots, selectedId, shortcutsOpen, dispatch]);
   useEffect(() => {
     if (window.duskDesktop?.setUnreadCount) window.duskDesktop.setUnreadCount(unreadCount);
     else showBrowserUnread(unreadCount);
@@ -155,6 +167,9 @@ function ShellEffects() {
 }
 
 const selectConnected = (state: AppState) => state.connected;
+const selectNotifications = (state: AppState) => state.notifications;
+const selectHydratedFlag = (state: AppState) => state.hydrated;
+const selectPluginsSurface = (state: AppState) => state.pluginsSurface;
 const selectHydrated = (state: AppState) => state.hydrated === true;
 const selectInstances = (state: AppState) => state.instances;
 const selectActiveView = (state: AppState) => state.activeView;

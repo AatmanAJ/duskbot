@@ -21,26 +21,27 @@ function openChat(state: AppState): string | undefined {
 
 /** Tells the server the person is here and which chat they have open, and opens the chat the answer names: the brief the
  * Chief posted for this arrival. */
-export function usePresence(state: AppState, dispatch: (action: Action) => void): void {
+/** `read` gives the newest state; pings start once `hydrated`. */
+export function usePresence(hydrated: boolean, configLanguage: string | undefined, read: () => AppState, dispatch: (action: Action) => void): void {
   const lastPing = useRef<number | null>(null);
-  const language = shownLanguage(state.config?.language, useLanguageChoice());
-  const latest = useRef({ state, dispatch, language });
-  latest.current = { state, dispatch, language };
+  const language = shownLanguage(configLanguage, useLanguageChoice());
+  const latest = useRef({ read, dispatch, language });
+  latest.current = { read, dispatch, language };
   const sentLanguage = useRef(language);
   const pingNow = useRef<() => void>(() => {});
   useEffect(() => {
-    if (!state.hydrated) return;
+    if (!hydrated) return;
     const ping = (force = false) => {
       const now = Date.now();
       if (!force && !duePing(lastPing.current, now)) return;
       lastPing.current = now;
-      const sentFrom = selection(latest.current.state);
+      const sentFrom = selection(latest.current.read());
       sentLanguage.current = latest.current.language;
-      const body = presenceBody(Intl.DateTimeFormat().resolvedOptions().timeZone, sentLanguage.current, openChat(latest.current.state));
+      const body = presenceBody(Intl.DateTimeFormat().resolvedOptions().timeZone, sentLanguage.current, openChat(latest.current.read()));
       void api("/api/presence/active", { method: "POST", body: JSON.stringify(body) }).then((answer) => {
-        const live = latest.current;
-        const target = existingThreadTarget(openTarget(answer), live.state);
-        if (target && selection(live.state) === sentFrom) openThread(live.dispatch, target, live.state);
+        const live = latest.current, state = live.read();
+        const target = existingThreadTarget(openTarget(answer), state);
+        if (target && selection(state) === sentFrom) openThread(live.dispatch, target, state);
       }, () => {});
     };
     const onActivity = () => ping();
@@ -54,7 +55,7 @@ export function usePresence(state: AppState, dispatch: (action: Action) => void)
       for (const name of ACTIVITY) window.removeEventListener(name, onActivity);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [state.hydrated]);
+  }, [hydrated]);
   useEffect(() => {
     if (language !== sentLanguage.current) pingNow.current();
   }, [language]);

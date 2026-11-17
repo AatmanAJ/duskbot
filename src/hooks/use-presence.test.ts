@@ -28,13 +28,13 @@ const toChief = { ok: true, returned: true, open: { botId: "chief", threadId: "c
 function render(state: AppState, dispatch: (action: Action) => void) {
   fixture.effects = [];
   fixture.refAt = 0;
-  usePresence(state, dispatch);
+  usePresence(state.hydrated === true, state.config?.language, () => state, dispatch);
   return fixture.effects.map((effect) => effect());
 }
 /** A render whose `state.hydrated` is unchanged: React keeps the effect, so it is not run again. */
 function rerender(state: AppState, dispatch: (action: Action) => void) {
   fixture.refAt = 0;
-  usePresence(state, dispatch);
+  usePresence(state.hydrated === true, state.config?.language, () => state, dispatch);
 }
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 

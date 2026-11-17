@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { AppState } from "@/state/store";
+import { useStoreSelector, useStoreShallow, type AppState } from "@/state/store";
 import { haptic } from "./haptics";
 
 type Last = { id: string; optimistic: boolean; userId: string | null; replied: boolean } | null;
@@ -18,7 +18,11 @@ function lastOf(state: AppState, chatId: string | null): Last {
 
 /** The taps a hand expects from a chat: a light one as a message leaves, a soft one as the reply lands in the open chat,
  * an error buzz when something fails, and a selection tick on any switch. */
-export function useChatHaptics(state: AppState, chatId: string | null, onSent?: () => void) {
+const selectError = (state: AppState) => state.error;
+
+export function useChatHaptics(chatId: string | null, onSent?: () => void) {
+  const newest = useStoreShallow((state) => lastOf(state, chatId));
+  const failure = useStoreSelector(selectError);
   const sent = useRef(onSent);
   sent.current = onSent;
   const last = useRef<Last>(null);
@@ -26,19 +30,19 @@ export function useChatHaptics(state: AppState, chatId: string | null, onSent?: 
   const error = useRef<string | null>(null);
 
   useEffect(() => {
-    const next = lastOf(state, chatId);
+    const next = newest;
     const prev = last.current;
     last.current = next;
     if (shownChat.current !== chatId) { shownChat.current = chatId; return; }
     if (!next || next.id === prev?.id) return;
     if (next.optimistic) { haptic("light"); sent.current?.(); }
     else if (next.replied && !(prev?.replied && prev.userId === next.userId)) haptic("soft");
-  }, [state, chatId]);
+  }, [newest, chatId]);
 
   useEffect(() => {
-    if (state.error && state.error !== error.current) haptic("error");
-    error.current = state.error;
-  }, [state.error]);
+    if (failure && failure !== error.current) haptic("error");
+    error.current = failure;
+  }, [failure]);
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {

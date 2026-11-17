@@ -5,7 +5,7 @@ import { startingTemplate, type BotDefaultsAnswer } from "@/lib/new-bot";
 import { type BotSettingsRow, type RoomSettingsRow, type SettingsBotTarget } from "@/lib/open-settings";
 import { responderShortLabel } from "@/lib/room-responder";
 import { shortPath } from "@/lib/short-path";
-import { api, BotEditorStore, useDispatch, useStore, useStoreSelector, useStoreShallow, type Bot, type Group, type ModelSelection } from "@/state/store";
+import { api, ScopedStore, useDispatch, useStoreSelector, useStoreShallow, type Action, type AppState, type Bot, type Group, type ModelSelection } from "@/state/store";
 import { useManagedSkills } from "./bot-settings/SkillsSection";
 import { useBotSettingsDerived } from "./bot-settings/useBotSettingsDerived";
 import { usePlaceChoices } from "./bot-panel/ComputerTab";
@@ -115,7 +115,7 @@ const DEFAULTS_ID = "new-bot-defaults";
 
 /** The model every new bot starts on: the bot model picker over a stand-in bot, its choice saved as the workspace default. */
 function NewBotModelRow() {
-  const parent = useStore();
+  const parentDispatch = useDispatch();
   const [selection, setSelection] = useState<ModelSelection | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -138,18 +138,17 @@ function NewBotModelRow() {
     id: DEFAULTS_ID, threadId: DEFAULTS_ID, name: "", title: "", description: "", soul: "",
     color: "green", notifications: true, unread: false, messages: [], modelSelection: selection,
   };
-  const scoped: ReturnType<typeof useStore> = {
-    ...parent,
-    state: { ...parent.state, bots: [bot, ...parent.state.bots] },
+  const derive = (state: AppState): AppState => ({ ...state, bots: [bot, ...state.bots] });
+  const actions = {
     flushBotPatches: async () => bot,
-    dispatch: (action) => {
+    dispatch: (action: Action) => {
       if (action.type === "setModel" && action.botId === DEFAULTS_ID) save(action.selection);
-      else parent.dispatch(action);
+      else parentDispatch(action);
     },
   };
   return (
     <>
-      <BotEditorStore value={scoped}><ModelSelectRow bot={bot} title={t("settings.newBotModel.title")} /></BotEditorStore>
+      <ScopedStore derive={derive} actions={actions}><ModelSelectRow bot={bot} title={t("settings.newBotModel.title")} /></ScopedStore>
       {error && <p role="alert" className="px-2 pb-1.5 text-[13px] leading-[18px] text-danger">{error}</p>}
     </>
   );

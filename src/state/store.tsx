@@ -50,7 +50,7 @@ import { isUiAction, reduceUi } from "./reducers/ui";
 import { bumpTranscriptGeneration, currentTaskBot, dismissOnboardingCard, openOnboardingCard, openedUnreadDivider, patchCard, patchGroupCard, reconcileModelVariantSessions, taskPatchFields, updateBot, withMascotMotion } from "./reducers/helpers";
 export { currentTaskBot } from "./reducers/helpers";
 import { AppStoreContext, StoreContext, type StoreHandle, type StoreValue } from "./store-context";
-export { StoreContext, useDispatch, useOptionalStore, useOptionalStoreActions, useOptionalStoreSelector, useStore, useStoreActions, useStoreHandle, useStoreSelector, useStoreShallow, type StoreActions, type StoreHandle, type StoreValue } from "./store-context";
+export { ScopedStore, StoreContext, useDispatch, useOptionalStore, useOptionalStoreActions, useOptionalStoreSelector, useStore, useStoreActions, useStoreHandle, useStoreSelector, useStoreShallow, type StoreActions, type StoreHandle, type StoreValue } from "./store-context";
 import type { QuestionRequestCardData } from "../../shared/ask-question";
 import type { ProfileRequestCardData } from "../../shared/profile-request";
 import type { ModelRequestCardData } from "../../shared/model-request";

@@ -1,6 +1,7 @@
-import { createContext, use, useMemo, useSyncExternalStore, type Dispatch } from "react";
+import { createContext, createElement, use, useMemo, useRef, useSyncExternalStore, type Dispatch, type ReactNode } from "react";
 import { shallowEqual, useSyncSelector, type Equality, type Listener } from "./external-store";
 import type { Action, AppState, BotAnnouncement } from "./store";
+import { StoreRefContext } from "./store-ref-context";
 
 export interface StoreActions {
   dispatch: Dispatch<Action>;
@@ -112,4 +113,39 @@ export function useOptionalStore(): StoreValue | null {
   const read = fixed ? () => fixed.state : handle?.getState ?? (() => null);
   const state = useSyncExternalStore(fixed ? noSubscription : handle?.subscribe ?? noSubscription, read, read);
   return useMemo<StoreValue | null>(() => fixed ?? (handle && state && { state, dispatch: handle.dispatch, flushBotPatches: handle.flushBotPatches, refreshInstances: handle.refreshInstances, refreshModels: handle.refreshModels }), [fixed, handle, state]);
+}
+
+/**
+ * A store derived from the one around it: readers inside see `derive(state)` and follow the outer store's changes
+ * through their own selectors, and `actions` stand in for the outer ones (a bot editor's draft takes its own patches).
+ * The component that renders it does not subscribe to anything.
+ */
+export function ScopedStore({ derive, actions, children }: {
+  derive: (state: AppState) => AppState;
+  actions: Partial<StoreActions>;
+  children: ReactNode;
+}) {
+  const parent = useStoreHandle();
+  const latest = useRef({ derive, actions });
+  latest.current = { derive, actions };
+  const handle = useMemo<StoreHandle>(() => {
+    let seen: { state: AppState; derive: (state: AppState) => AppState; derived: AppState } | null = null;
+    const getState = () => {
+      const state = parent.getState(), { derive } = latest.current;
+      if (seen?.state !== state || seen.derive !== derive) seen = { state, derive, derived: derive(state) };
+      return seen.derived;
+    };
+    return {
+      getState,
+      subscribe: parent.subscribe,
+      dispatch: (action) => (latest.current.actions.dispatch ?? parent.dispatch)(action),
+      flushBotPatches: (botId) => (latest.current.actions.flushBotPatches ?? parent.flushBotPatches)(botId),
+      refreshInstances: (options) => (latest.current.actions.refreshInstances ?? parent.refreshInstances)(options),
+      refreshModels: (instanceId) => (latest.current.actions.refreshModels ?? parent.refreshModels)(instanceId),
+    };
+  }, [parent]);
+  const ref = useMemo(() => ({ dispatch: handle.dispatch, state: handle.getState }), [handle]);
+  return createElement(StoreRefContext, { value: ref },
+    createElement(StoreContext.Provider, { value: null },
+      createElement(AppStoreContext, { value: handle }, children)));
 }

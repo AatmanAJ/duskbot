@@ -1,7 +1,7 @@
 import { useProductScreen } from "@/lib/product-analytics-app";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { MotionConfig } from "motion/react";
-import { openBot, openBotThread, openRoomThread, StoreProvider, useDispatch, useStore, useStoreSelector } from "@/state/store";
+import { openBot, openBotThread, openRoomThread, StoreProvider, useDispatch, useStoreSelector } from "@/state/store";
 import { useStoreRef } from "@/state/store-ref";
 import { useTeamChats } from "@/state/team-chats";
 import { useWarmChatImages } from "@/components/use-warm-chat-images";
@@ -35,9 +35,8 @@ import type { MobileSheet } from "./sheets";
 
 function ChatHaptics({ chatId }: { chatId: string | null }) {
   const platform = usePlatform();
-  const { state } = useStore();
   // notifications are asked for when they mean something: once a message is on its way and its reply will follow
-  useChatHaptics(state, chatId, useCallback(() => { if (platform.native) void registerPushForConnection(platform, { prompt: true }); }, [platform]));
+  useChatHaptics(chatId, useCallback(() => { if (platform.native) void registerPushForConnection(platform, { prompt: true }); }, [platform]));
   return null;
 }
 

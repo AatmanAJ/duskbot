@@ -22,7 +22,7 @@ const loaded: AppState = { ...initialState, bots: [scout], selectedId: "scout", 
 /** One render: run its effects in order, as React would after commit. */
 function render(state: AppState, dispatch: (action: Action) => void) {
   fixture.effects = [];
-  useExternalChatLinks(state, dispatch);
+  useExternalChatLinks(state.hydrated === true, () => state, dispatch);
   return fixture.effects.map((effect) => effect());
 }
 
@@ -92,7 +92,7 @@ describe("useDesktopNotificationOpens", () => {
   const ready: AppState = { ...initialState, bots: [work], selectedId: "scout", hydrated: true };
   const opens = (state: AppState, dispatch: (action: Action) => void) => {
     fixture.effects = [];
-    useDesktopNotificationOpens(state, dispatch);
+    useDesktopNotificationOpens(state.hydrated === true, () => state, dispatch);
     return fixture.effects.map((effect) => effect());
   };
 

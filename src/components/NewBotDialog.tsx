@@ -2,7 +2,7 @@ import { ModalLayer } from "./ui/ModalLayer";
 import { useEffect, useRef, useState } from "react";
 import { NavRow } from "./ListRows";
 import { Loader2, Plus, Trash2, X } from "../icons";
-import { api, BotEditorStore, useStore } from "@/state/store";
+import { api, ScopedStore, useDispatch, type Action, type AppState } from "@/state/store";
 import { BotCreationDraft, EMPTY_BOT_DEFAULTS } from "@/lib/bot-creation-draft";
 import { preparedBotTemplate } from "@/lib/create-configured-bot";
 import { BOT_ROLES, roleProfilePatch } from "@/lib/bot-roles";
@@ -38,7 +38,7 @@ const SECTION_KEYS: Record<Section, LocaleKey> = {
 /** The bot editor over the New bot defaults, saved as the template every new bot starts from. Bots themselves are made
  * by Create New Bot (CreateBotDialog). */
 export function BotDefaultsDialog({ onClose }: { onClose: () => void }) {
-  const parent = useStore();
+  const parentDispatch = useDispatch();
   const [, render] = useState(0);
   const [draft, setDraft] = useState(() => new BotCreationDraft(EMPTY_BOT_DEFAULTS, () => render(value => value + 1)));
   const [active, setActive] = useState<Section>("Identity");
@@ -97,18 +97,17 @@ export function BotDefaultsDialog({ onClose }: { onClose: () => void }) {
     }
   };
   const bot = draft.bot;
-  const scopedStore: ReturnType<typeof useStore> = {
-    ...parent,
-    state: { ...parent.state, bots: [bot, ...parent.state.bots], routines: draft.routines, routineRuns: [], routinesLoadState: "ready" },
+  const derive = (state: AppState): AppState => ({ ...state, bots: [bot, ...state.bots], routines: draft.routines, routineRuns: [], routinesLoadState: "ready" });
+  const draftActions = {
     flushBotPatches: async () => bot,
-    dispatch: action => {
+    dispatch: (action: Action) => {
       if (action.type === "updateBot" && action.botId === draft.id) draft.patch(action.patch);
       else if (action.type === "setModel" && action.botId === draft.id) {
         draft.setModel(action.selection);
         if (action.resetApprovalToAsk) draft.patch({ approvalMode: "ask" });
       } else if (action.type === "routinePatched") {}
       else if (action.type === "toggleSettings") {}
-      else parent.dispatch(action);
+      else parentDispatch(action);
     },
   };
   const title = t("newBot.defaults");
@@ -129,9 +128,9 @@ export function BotDefaultsDialog({ onClose }: { onClose: () => void }) {
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
           {!ready && !error && <div role="status" className="flex items-center gap-2 text-[13px] leading-[18px] text-ink/68"><Loader2 size={14} className="animate-spin" />{t("newBot.loading")}</div>}
           {ready && <fieldset disabled={saving} className="min-w-0">
-            <BotEditorStore value={scopedStore}><BotEditorContext.Provider value={{ request: draft.request, draft: true, uploadAvatar: draft.uploadAvatar }}>
+            <ScopedStore derive={derive} actions={draftActions}><BotEditorContext.Provider value={{ request: draft.request, draft: true, uploadAvatar: draft.uploadAvatar }}>
               <DraftSection active={active} draft={draft} />
-            </BotEditorContext.Provider></BotEditorStore>
+            </BotEditorContext.Provider></ScopedStore>
           </fieldset>}
         </div>
       </div>
