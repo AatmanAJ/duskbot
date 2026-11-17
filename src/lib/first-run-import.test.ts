@@ -118,6 +118,32 @@ describe("bringing the chosen in", () => {
     expect(note).toMatchObject({ from: ["OpenClaw", "Claude Code"], skills: 2, tools: 1, memories: 12, instructions: ["Claude Code"], failed: false });
   });
 
+  it("records the bring card as seen once something came in, keeping the hints already saved", async () => {
+    const apply = vi.fn(async () => ({
+      skills: { added: [], present: [], skipped: [], filesLeftOut: 0, review: [] },
+      tools: { added: [], present: [], skipped: [] },
+      memory: { added: 50, sources: ["claudeCode" as const], failed: false },
+    }));
+    f.api.mockImplementation(async (path: string, init?: { method?: string; body?: string }) =>
+      path === "/api/config" && !init ? { onboarding: { hintsSeen: ["met-chief"] } } : { ok: true });
+    const dispatch = vi.fn();
+    const claude = localFinds(null, DETECTION, { now: NOW }).find((find) => find.id === "setup:claudeCode")!;
+    await bringChosen([claude], { dispatch, firstBotId: "dusk", client: { detect: vi.fn(), apply } });
+    await vi.waitFor(() => expect(f.api).toHaveBeenCalledWith("/api/config", expect.objectContaining({ method: "PUT" })));
+    const put = f.api.mock.calls.find(([path, init]) => path === "/api/config" && init?.method === "PUT")!;
+    expect(JSON.parse(put[1].body)).toEqual({ onboarding: { hintsSeen: ["met-chief", "bring-tools-v1"] } });
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith({ type: "configStatus", config: { ok: true } }));
+  });
+
+  it("leaves the bring card due when nothing came in", async () => {
+    const apply = vi.fn(async () => { throw new Error("offline"); });
+    f.api.mockResolvedValue({ ok: true });
+    const claude = localFinds(null, DETECTION, { now: NOW }).find((find) => find.id === "setup:claudeCode")!;
+    await bringChosen([claude], { dispatch: vi.fn(), firstBotId: "dusk", client: { detect: vi.fn(), apply } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(f.api.mock.calls.some(([path]) => path === "/api/config")).toBe(false);
+  });
+
   it("names a failure and keeps what did come in", async () => {
     const apply = vi.fn(async () => { throw new Error("offline"); });
     f.runBotMove.mockResolvedValue([{ app: {}, report: { bots: [{ id: "a" }], moved: [], unreadable: [], failed: [] } }]);
