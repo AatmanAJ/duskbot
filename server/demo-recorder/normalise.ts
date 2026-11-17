@@ -9,6 +9,7 @@ const REDIRECT_MS = 3_000;
 /** A page that opens this soon after something was done on the one before was opened by it. */
 const CAUSED_MS = 1_500;
 const DOUBLE_CLICK_MS = 500;
+const IMPLIED_CLICK_MS = 150;
 
 interface Draft {
   step: DemoStep;
@@ -60,7 +61,9 @@ export function normaliseDemo(events: readonly RawDemoEvent[]): DemoStep[] {
   const drafts: Draft[] = [];
   let lastOpenAt: number | null = null;
   /** The last thing done on the current page that could have opened the next one. */
-  let acted: { type: RawDemoEvent["type"]; key?: string; at: number } | null = null;
+  let acted: { type: RawDemoEvent["type"]; key?: string; at: number; inField?: boolean } | null = null;
+  /** What each field was last seen to hold, so an event that says nothing new makes no step. */
+  const held = new Map<string, string>();
 
   const full = () => drafts.length >= DEMO_MAX_STEPS;
   const add = (index: number, event: RawDemoEvent, step: Omit<DemoStep, "id">, key: string, extra: Partial<Draft> = {}): Draft | null => {
@@ -118,7 +121,7 @@ export function normaliseDemo(events: readonly RawDemoEvent[]): DemoStep[] {
 
     if (event.type === "key") {
       if (event.key === "Tab") return;
-      acted = { type: "key", key: event.key, at: event.at };
+      acted = { type: "key", key: event.key, at: event.at, inField: target?.editable === true };
       const login = signingIn(event, target);
       if (login && event.key === "Enter") {
         login.signIn!.open = false;
@@ -134,6 +137,9 @@ export function normaliseDemo(events: readonly RawDemoEvent[]): DemoStep[] {
 
     if (event.type === "click") {
       if (!target.interactive) return;
+      // Enter in a field sends its form, and the browser reports that as a click on the form's button: the key is the step.
+      const implied = acted?.type === "key" && acted.key === "Enter" && acted.inField === true && event.at - acted.at < IMPLIED_CLICK_MS && target.role === "button";
+      if (implied) return;
       acted = { type: "click", at: event.at };
       if (target.editable) return;
       if (NATIVE_STATEFUL.has(target.role) && nativeControl(target)) return;
@@ -214,6 +220,9 @@ export function normaliseDemo(events: readonly RawDemoEvent[]): DemoStep[] {
     }
 
     if (!target.editable || typeof event.value !== "string") return;
+    const unchanged = held.get(key) === event.value;
+    held.set(key, event.value);
+    if (unchanged) return;
     const known = since("fill", key);
     if (known) {
       known.step.value = event.value;

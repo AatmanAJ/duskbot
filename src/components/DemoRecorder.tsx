@@ -121,6 +121,8 @@ export interface DemoRecorderProps {
   take?: () => void;
   /** Hands back the control `take` took, once the recording has stopped. */
   release?: () => void;
+  /** The Record button's look, where the view around it has its own button style. */
+  buttonClassName?: string;
 }
 
 const SHELL: Record<DemoRecorderVariant, string> = {
@@ -137,7 +139,7 @@ const TAKE_RETRY_MS = 400;
  * save as a skill or a routine. `button` and `panel` are placed by the view that hosts them. Security: nothing here
  * holds a password; a sign-in is one line that names the vault.
  */
-export function useDemoRecorder({ botId, botName, place, canRecord, take, release }: DemoRecorderProps) {
+export function useDemoRecorder({ botId, botName, place, canRecord, take, release, buttonClassName }: DemoRecorderProps) {
   const [draft, setDraft] = useState<DemoDraft>(() => idle(botId));
   const [pending, setPending] = useState<"" | "start" | "stop" | "save">("");
   const [error, setError] = useState("");
@@ -270,7 +272,7 @@ export function useDemoRecorder({ botId, botName, place, canRecord, take, releas
   const starting = pending === "start";
 
   const button = (
-    <button type="button" className={cn(mdSecondaryCls, "gap-1.5")} disabled={starting} onClick={start} data-demo-action="record">
+    <button type="button" className={cn(buttonClassName ?? mdSecondaryCls, "gap-1.5")} disabled={starting} onClick={start} data-demo-action="record">
       {starting ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <span className="size-2 rounded-full bg-danger" aria-hidden="true" />}
       {t("showOnce.record")}
     </button>
@@ -284,20 +286,23 @@ export function useDemoRecorder({ botId, botName, place, canRecord, take, releas
   );
 
   const panel = (variant: DemoRecorderVariant = "drawer"): ReactNode => {
+    const wraps = variant === "side";
     const shell = cn("text-[13px] leading-[18px] text-ink-secondary", SHELL[variant]);
     if (saved) {
       return (
         <section className={shell} aria-label={t("showOnce.review")} data-demo-recorder="saved">
-          <div className={cn("flex items-start gap-2 px-3 py-2.5", variant === "side" && "flex-wrap")}>
+          <div className={cn("flex items-start gap-2 px-3 py-2.5", wraps && "flex-wrap")}>
             <Check size={14} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
-            <div className="min-w-0 flex-1" role="status">
+            <div className={cn("min-w-0 flex-1", wraps && "basis-[calc(100%-22px)]")} role="status">
               <div className="text-ink">{filled("showOnce.saved", { skill: <span className="font-mono text-[12px]">{saved.skill}</span> })}</div>
               <div>{t("showOnce.saved.hint", { name: botName })}</div>
               {saved.routineId && <div>{t("showOnce.saved.routine")}</div>}
               {saved.routineError && <div className="text-danger">{t("showOnce.saved.routineFailed")}</div>}
             </div>
-            {(canRecord || take) && <button type="button" className={smallButtonCls} onClick={start}>{t("showOnce.again")}</button>}
-            <button type="button" className={smallButtonCls} onClick={() => setSaved(null)}>{t("showOnce.done")}</button>
+            <div className={cn("flex shrink-0 gap-2", wraps && "ms-auto")}>
+              {(canRecord || take) && <button type="button" className={smallButtonCls} onClick={start}>{t("showOnce.again")}</button>}
+              <button type="button" className={smallButtonCls} onClick={() => setSaved(null)}>{t("showOnce.done")}</button>
+            </div>
           </div>
         </section>
       );
@@ -343,13 +348,13 @@ export function useDemoRecorder({ botId, botName, place, canRecord, take, releas
         ) : (
           <ol ref={list} className={cn("flex flex-col overflow-y-auto overscroll-contain px-1.5 pb-1 [scrollbar-width:thin]", variant === "side" ? "min-h-0 flex-1" : variant === "drawer" ? "max-h-[min(38vh,300px)]" : "max-h-[300px]")}>
             {draft.steps.map((step, at) => (
-              <li key={step.id} className="group/row flex min-h-[30px] shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-ink/4" data-step-kind={step.kind}>
-                <span className="w-5 shrink-0 text-end text-[12px] tabular-nums text-ink-tertiary" aria-hidden="true">{at + 1}</span>
-                <span className="min-w-0 flex-1 truncate">
+              <li key={step.id} className={cn("group/row flex min-h-[30px] shrink-0 gap-2 rounded-lg px-1.5 py-1 hover:bg-ink/4", wraps ? "items-start" : "items-center")} data-step-kind={step.kind}>
+                <span className={cn("w-5 shrink-0 text-end text-[12px] tabular-nums text-ink-tertiary", wraps && "py-[3px] leading-[22px]")} aria-hidden="true">{at + 1}</span>
+                <span className={cn("min-w-0 flex-1", wraps ? "break-words py-[3px] leading-[22px]" : "truncate")}>
                   {step.kind === "sign-in" && <LockKeyhole size={12} className="me-1 inline-block align-[-1px] text-ink-tertiary" aria-hidden="true" />}
                   <StepLine step={step} onRename={(from, to) => send("/blanks", "POST", { from, to })} />
                 </span>
-                {step.kind === "sign-in" && <span className="shrink-0 rounded bg-ink/6 px-1.5 text-[11px] leading-[18px] text-ink-secondary">{t("showOnce.vault")}</span>}
+                {step.kind === "sign-in" && <span className={cn("shrink-0 rounded bg-ink/6 px-1.5 text-[11px] leading-[18px] text-ink-secondary", wraps && "mt-[5px]")}>{t("showOnce.vault")}</span>}
                 {step.blank && step.kind !== "check" && variant !== "side" && <span className="max-w-[30%] shrink-0 truncate text-[12px] text-ink-tertiary" dir="auto">{step.value}</span>}
                 {demoStepHasValue(step) && (
                   <button
@@ -397,14 +402,14 @@ export function useDemoRecorder({ botId, botName, place, canRecord, take, releas
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button type="button" className={cn(mdSecondaryCls, "me-auto")} disabled={pending === "save"} onClick={() => void discard()}>{t("showOnce.discard")}</button>
               {askFolder ? (
-                <button type="button" className={mdPrimaryCls} disabled={pending === "save" || count === 0} onClick={() => void save("routine")}>
+                <button type="button" className={cn(mdPrimaryCls, wraps && "order-first w-full")} disabled={pending === "save" || count === 0} onClick={() => void save("routine")}>
                   {pending === "save" && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
                   {t("showOnce.folder.save")}
                 </button>
               ) : (
                 <>
                   <button type="button" className={mdSecondaryCls} disabled={pending === "save" || count === 0} onClick={() => setAskFolder(true)}>{t("showOnce.save.routine")}</button>
-                  <button type="button" className={mdPrimaryCls} disabled={pending === "save" || count === 0} onClick={() => void save("skill")}>
+                  <button type="button" className={cn(mdPrimaryCls, wraps && "order-first w-full")} disabled={pending === "save" || count === 0} onClick={() => void save("skill")}>
                     {pending === "save" && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
                     {t(pending === "save" ? "showOnce.saving" : "showOnce.save.skill")}
                   </button>

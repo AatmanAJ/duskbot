@@ -35,7 +35,7 @@ const fixture = await launchVerificationServer({
   FAKE_CLAUDE_MCP_TOOLS_FILE: toolsFile,
   FAKE_CLAUDE_REPLIES: JSON.stringify([
     "The expense portal is open in my browser. Show me one and I will learn it.",
-    "Done. I filed the other 11 expenses from that folder, each from its own file, with its receipt attached. All 12 reports are in the portal now.",
+    "Done. I filed the other 11 expenses from that folder, each from its own file. All 12 reports are in the portal now.",
   ]),
   FAKE_CLAUDE_REPLY_STATE: join(work, "fake-model-replies.state"),
   FAKE_CLAUDE_TOOL_CALLS: "[]",

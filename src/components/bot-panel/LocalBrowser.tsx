@@ -211,6 +211,7 @@ export function LocalBrowserLive({ bot }: { bot: Bot }) {
     botId: bot.id, botName: bot.name, place: "browser", canRecord: false,
     take: () => { setTaking(true); if (!big) toggleBig(); },
     release: () => holdBrowser(false),
+    buttonClassName: buttonCls,
   });
   // Opening big connects the page anew, so the browser is asked for once that view is the one connected.
   useEffect(() => {
