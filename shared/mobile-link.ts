@@ -26,7 +26,7 @@ export const MOBILE_LINK_VERSION = 2;
 export const MOBILE_LOOKUP_SALT = "omb-mobile-v1";
 export const DEFAULT_MOBILE_RELAY = "https://link.dusk.bot";
 /** A grant lives this long; the QR, the deep link and the typed code die together. */
-export const MOBILE_GRANT_TTL_MS = 5 * 60_000;
+export const MOBILE_GRANT_TTL_MS = 10 * 60_000;
 export const MOBILE_PLATFORMS = ["ios", "android", "other"] as const;
 export type MobilePlatform = (typeof MOBILE_PLATFORMS)[number];
 export const PUSH_SERVICES = ["apns", "fcm"] as const;
@@ -345,8 +345,34 @@ export function mobileOpenLink(target: MobileOpenTarget): string {
 /** The hosts whose `/m/` pages the phone app opens itself (the app's associated domains). */
 export const UNIVERSAL_LINK_HOSTS: readonly string[] = ["dusk.bot"];
 
-/** `https://dusk.bot/m/open?...` and `https://dusk.bot/m/pair#...` as the `duskbot://` link each stands for, or null for
- * any other address. A pairing link carries its secret after the `#`, which a browser never sends to the site. */
+/** The desktop's one QR: `https://dusk.bot/m/pair#m=...&c=CODE`. With the app, iOS opens it there (the `m` pairs); without
+ * it, the site's page sends them to the store and shows the typed code. Both ride after the `#`, which no server sees. */
+export function universalPairLink(deepLink: string, code: string | null): string {
+  let query = "";
+  try { query = new URL(deepLink).search.slice(1); } catch {}
+  const typed = code?.replace(/[^a-z0-9]/gi, "").toUpperCase();
+  return `https://${UNIVERSAL_LINK_HOSTS[0]}/m/pair#${query}${typed ? `${query ? "&" : ""}c=${typed}` : ""}`;
+}
+
+/** A dusk cloud's QR: `https://dusk.bot/m/signin#email=...` opens the app at its dusk cloud sign-in, the email filled in. */
+export function universalSignInLink(email?: string | null): string {
+  const value = email?.trim();
+  return `https://${UNIVERSAL_LINK_HOSTS[0]}/m/signin${value ? `#email=${encodeURIComponent(value)}` : ""}`;
+}
+
+/** `duskbot://signin?email=...` (or the https link it stands for): the email to sign in with, "" when it names none. */
+export function parseSignInLink(link: string): { email: string } | null {
+  const app = appLinkFromUniversal(link) ?? link.trim();
+  let url: URL;
+  try { url = new URL(app); } catch { return null; }
+  if (url.protocol !== "duskbot:" || (url.hostname || url.pathname.replace(/^\/+/, "")) !== "signin") return null;
+  const email = (url.searchParams.get("email") ?? "").trim();
+  return { email: email.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(email) ? email : "" };
+}
+
+/** `https://dusk.bot/m/open?...`, `https://dusk.bot/m/pair#...` and `https://dusk.bot/m/signin#...` as the `duskbot://`
+ * link each stands for, or null for any other address. A pairing link carries its secret after the `#`, which a browser
+ * never sends to the site. */
 export function appLinkFromUniversal(link: string): string | null {
   let url: URL;
   try { url = new URL(link.trim()); } catch { return null; }
@@ -357,6 +383,7 @@ export function appLinkFromUniversal(link: string): string | null {
     return `duskbot://open${query ? `?${query}` : ""}`;
   }
   if (url.pathname === "/m/pair" && fragment && !url.search) return `duskbot://pair?${fragment}`;
+  if (url.pathname === "/m/signin" && !url.search) return `duskbot://signin${fragment ? `?${fragment}` : ""}`;
   return null;
 }
 

@@ -19,6 +19,7 @@ const keystore = SecureStorage as unknown as {
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
 import type { AppleCredential, CameraPermission, CameraScanner, MobilePlatform } from "@/mobile/platform";
+import type { GlassBridge, GlassEvent, GlassState } from "@/mobile/native-glass";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
 import { registerPhoneVoice } from "@/lib/voice-input/device";
 import { appLinkFromUniversal, type MobileOpenTarget } from "../../../shared/mobile-link";
@@ -54,6 +55,32 @@ export interface SpeechPlugin {
   addListener(event: "end", listener: (event: { code?: number; reason?: string; session?: number }) => void): Promise<PluginListenerHandle>;
 }
 const DuskSpeech = registerPlugin<SpeechPlugin>("DuskSpeech");
+
+/** The app's own Liquid Glass chat chrome (ios/App/App/GlassChromePlugin.swift), iOS 26 and later. */
+interface GlassPlugin {
+  supported(): Promise<{ supported: boolean }>;
+  update(state: GlassState): Promise<void>;
+  setText(options: { text: string; seq: number }): Promise<void>;
+  setAvatar(options: { data: string | null }): Promise<void>;
+  focus(): Promise<void>;
+  blur(): Promise<void>;
+  clear(): Promise<void>;
+  addListener(event: "glass", listener: (event: GlassEvent) => void): Promise<PluginListenerHandle>;
+}
+const DuskGlass = registerPlugin<GlassPlugin>("DuskGlass");
+
+export function glassBridge(plugin: GlassPlugin): GlassBridge {
+  const quiet = (work: Promise<unknown>) => { void work.catch(() => {}); };
+  return {
+    update: (state) => quiet(plugin.update(state)),
+    setText: (text, seq) => quiet(plugin.setText({ text, seq })),
+    setAvatar: (data) => quiet(plugin.setAvatar({ data })),
+    focus: () => quiet(plugin.focus()),
+    blur: () => quiet(plugin.blur()),
+    clear: () => quiet(plugin.clear()),
+    onEvent: (listener) => unsubscribe([plugin.addListener("glass", listener)]),
+  };
+}
 
 const UNSUPPORTED = new Set(["recognizer-unavailable", "unsupported-locale"]);
 // android has no separate speech permission, so `speech` is absent there
@@ -292,16 +319,20 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   const kind = Capacitor.getPlatform() as "ios" | "android";
   if (kind === "android") {
     overlayReady ??= StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+  } else {
+    // WKWebView draws a form bar (previous, next, Done) over the keyboard; a chat has one field and its own send
+    void Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
   }
   // a plugin that never answers must not hold the first paint: each startup read gets two seconds
   const bounded = <T,>(work: Promise<T>, label: string): Promise<T | undefined> => new Promise((resolve) => {
     const timer = setTimeout(() => { console.warn(`startup: ${label} did not answer`); resolve(undefined); }, 2000);
     work.then(resolve, () => resolve(undefined)).finally(() => clearTimeout(timer));
   });
-  const [info, launch] = await Promise.all([
+  const [info, launch, , glass] = await Promise.all([
     bounded(App.getInfo(), "app info"),
     bounded(App.getLaunchUrl(), "launch url"),
     bounded(overlayReady ?? Promise.resolve(), "status bar"),
+    kind === "ios" && Capacitor.isPluginAvailable("DuskGlass") ? bounded(DuskGlass.supported(), "glass") : undefined,
   ]);
   let pendingLaunchUrl = launch?.url;
   const secrets: MobilePlatform["secrets"] = {
@@ -325,6 +356,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     native: true,
     appVersion: info?.version || __APP_VERSION__,
     deviceName: () => kind === "ios" ? "iPhone" : "Android phone",
+    glass: glass?.supported ? glassBridge(DuskGlass) : undefined,
     haptic(type) {
       void (async () => {
         switch (type) {
@@ -404,6 +436,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     // Capacitor 8 hands a top-level navigation off the app's own origin to the system (Mail for mailto:); the in-app
     // browser view takes web pages only
     openExternal: async (url) => { if (/^https?:/i.test(url)) await Browser.open({ url, presentationStyle: "popover" }); else window.location.href = url; },
+    closeBrowser() { void Browser.close().catch(() => {}); },
     share: async (data) => { await Share.share(data); },
     appleSignIn: kind === "ios" && Capacitor.isPluginAvailable("AppleSignIn") ? async (nonceHash) => {
       try { return await AppleSignIn.signIn({ nonce: nonceHash }); } catch (error) {

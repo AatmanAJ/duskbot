@@ -9,6 +9,17 @@
         <a class="btn light" href="#all">all downloads</a>
       </div>
       <p class="dl-note" data-dl-note>apple silicon · version {{version}}</p>
+      <div class="dl-phone" data-dl-phone hidden>
+        <a class="btn dark" href="{{ios-link}}" data-dl-ios><span class="dl-os">{{os apple}}</span>get it on the app store</a>
+        <p class="dl-note"><span data-dl-ios>for iphone. </span>the full app runs on your computer, so send yourself the link for later.</p>
+        <form class="dl-mail" data-dl-mail>
+          <label class="vh" for="dl-mail-to">your email</label>
+          <div class="dl-mail-row">
+            <input id="dl-mail-to" name="email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength="254" required placeholder="your email">
+            <button class="btn light" type="submit">email me the link</button>
+          </div>
+        </form>
+      </div>
 {{/released}}
 {{^released}}
       <a class="btn dark" href="/waitlist?source=download">join the waitlist</a>

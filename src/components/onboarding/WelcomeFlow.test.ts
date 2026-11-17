@@ -275,6 +275,7 @@ describe("on the desktop app", () => {
   });
 
   it("opens on the hello, then where bots live, the AI, what to bring and the chat, with back and progress", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     desktop({ platform: "linux" });
     await show();
     expect(step(), "Meet dusk bot comes first").toBe("welcome");
@@ -302,8 +303,8 @@ describe("on the desktop app", () => {
     expect(document.body.querySelector(".phone-frame"), "the phone app is hidden").toBeNull();
   });
 
-  it("with the phone app offered, ends on the phone: a code to scan, then the chat", async () => {
-    vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
+  it("with the phone app offered, as every release build now is, ends on the phone: a code to scan, then the chat", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "");
     desktop({ platform: "linux" });
     await show({ initialBeat: "place" });
     expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("2/5");
@@ -359,13 +360,13 @@ describe("on the desktop app", () => {
     return bridge;
   };
 
-  it("dusk cloud's tile says the trial and the price before anything is asked for", async () => {
+  it("dusk cloud's tile says only the free days while there is a trial", async () => {
     desktop({ cloudAccount: cloudBridge({ status: "connected", clouds: [] }) });
     await show();
     await toPlace();
     const tile = document.body.querySelector("[data-funnel-place=cloud]")!;
     expect(tile.textContent).toContain("7 days free");
-    expect(tile.querySelector("[data-funnel-place-note]")?.textContent).toBe("Then from $15/month + tax where applicable.");
+    expect(tile.querySelector("[data-funnel-place-note]")).toBeNull();
   });
 
   it("dusk cloud goes straight to the browser with its intent and waits calmly; back and this Mac are one press away", async () => {
@@ -479,6 +480,49 @@ describe("on the desktop app", () => {
     expect(step()).toBe("account");
   });
 
+  it("keeps Skip for now in the step's footer at full strength, out of the window's top corner", async () => {
+    desktop({ accountGate: { state: async () => ({ required: false, blocked: false, status: "signed-out" }), options: async () => ({ providers: ["google"], recovery: true }), onChange: () => () => {} } });
+    await show({ initialBeat: "account" });
+    const skip = button("Skip for now")!;
+    expect(skip.closest("[data-step-footer]"), "in the footer, where Windows' caption buttons can't cover it").not.toBeNull();
+    expect(skip.className).not.toMatch(/opacity-|absolute/);
+  });
+
+  it("lets a browser sign-in that never comes back go on without an account, and still moves on when it does come back", async () => {
+    const gate = {
+      status: "signed-out", listeners: [] as Array<() => void>,
+      state: vi.fn(async () => ({ required: false, blocked: false, status: gate.status, ...(gate.status === "connecting" ? { browser: "google" } : {}) })),
+      options: vi.fn(async () => ({ providers: ["google"], recovery: true })),
+      browser: vi.fn(async () => { gate.status = "connecting"; }), cancel: vi.fn(async () => ({})),
+      onChange: (listener: () => void) => { gate.listeners.push(listener); return () => {}; },
+    };
+    desktop({ accountGate: gate });
+    await show({ initialBeat: "account" });
+    await press("Continue with Google");
+    expect(text()).toContain("Waiting for your browser");
+    expect(button("Continue without an account"), "a way on beside the waiting line").toBeDefined();
+    await press("Continue without an account");
+    expect(step()).toBe("place");
+    expect(gate.cancel, "the sign-in is left to finish in the browser").not.toHaveBeenCalled();
+
+    // the other way: they come back signed in, and the change event was missed; the window coming to the front reads it
+    await press("Back");
+    await press("Continue with Google");
+    gate.status = "connected";
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    await settle();
+    expect(step()).toBe("place");
+  });
+
+  it("goes back to the sign-ins when the browser didn't open, instead of waiting for it", async () => {
+    desktop({ accountGate: { state: async () => ({ required: false, blocked: false, status: "signed-out" }), options: async () => ({ providers: ["google"], recovery: true }),
+      browser: async () => { throw new Error("no browser"); }, onChange: () => () => {} } });
+    await show({ initialBeat: "account" });
+    await press("Continue with Google");
+    expect(text()).not.toContain("Waiting for your browser");
+    expect(button("Continue with Google")).toBeDefined();
+  });
+
   it("shows Google and Apple with the email from the first frame, never X, and only takes away what the service doesn't offer", async () => {
     let answer: (value: { providers: string[]; recovery: boolean }) => void = () => {};
     desktop({ accountGate: { state: async () => ({ required: false, blocked: false, status: "signed-out" }), options: () => new Promise((done) => { answer = done; }), onChange: () => () => {} } });
@@ -501,6 +545,7 @@ describe("on the desktop app", () => {
       signInVerify: vi.fn(async () => { gate.signedIn = true; return { outcome: "signed-in" }; }),
       signInCancel: vi.fn(async () => {}), browser: vi.fn(async () => ({})), cancel: vi.fn(async () => ({})), reopen: vi.fn(), onChange: () => () => {},
     };
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     desktop({ accountGate: gate });
     await show();
     expect(step(), "the hello comes first").toBe("welcome");
@@ -581,6 +626,7 @@ describe("the bring step: one prompt to copy", () => {
   };
 
   it("is the prompt and its three steps, whatever this computer holds: no app rows, no AI to pick, no answer box", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     desktop();
     await show({ initialBeat: "bring" });
     expect(step()).toBe("bring");
@@ -601,6 +647,7 @@ describe("the bring step: one prompt to copy", () => {
   });
 
   it("copies the prompt, says so, and the first bot's chat starts waiting for the answer", async () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     desktop();
     const writeText = vi.fn(async () => {});
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });

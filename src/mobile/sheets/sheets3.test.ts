@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AppEntry } from "@/components/connect-apps/catalog";
 import type { NotificationLogEntry } from "../../../shared/notification";
-import { CATEGORY_SHOWN, groupApps } from "./ConnectorsSheet";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { AppFace, CATEGORY_SHOWN, groupApps } from "./ConnectorsSheet";
 import { stackByOwner } from "./NotificationsSheet";
 import { searchSnippetText } from "./SearchSheet";
 import { readableWorkspace, settingsIdentity } from "./SettingsSheet";
@@ -87,5 +89,21 @@ describe("page behind a sheet", () => {
     expect(recedeStyle(0)).toBeNull();
     expect(recedeStyle(1)?.transform).toContain("scale(0.9300)");
     expect(recedeStyle(1)?.borderRadius).toBe("14.0px");
+  });
+});
+
+describe("connected apps tile", () => {
+  const face = (icon: AppEntry["icon"]) => renderToStaticMarkup(createElement(AppFace, { entry: { label: "GitHub", icon } }));
+
+  it("draws only the logo when the app has one, never its initial under it", () => {
+    const html = face({ image: "data:image/svg+xml,logo", padded: true });
+    expect(html).toContain("<img");
+    expect(html).not.toMatch(/>G</);
+  });
+
+  it("draws the initial only when there is no logo", () => {
+    const html = face({});
+    expect(html).not.toContain("<img");
+    expect(html.match(/>G</g)).toHaveLength(1);
   });
 });

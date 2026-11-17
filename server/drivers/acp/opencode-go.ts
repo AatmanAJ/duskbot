@@ -644,11 +644,12 @@ export function openCodeFreeFallback(ownAccess: boolean, models: ModelCatalog): 
 }
 
 /** The free models a turn on `model` falls back through when one hangs, OpenCode's own first; null when `model` is no
- * free model. With no access of the person's own every Zen model offered is free. */
+ * free model. Only models the catalog marks free are rungs: the V2 CLI lists its paid models without a login too, and
+ * those answer 402. A catalog that marks none (an older CLI listing only free models) is all free without a login. */
 export function openCodeFreeModelOrder(model: string, ownAccess: boolean, models: ModelCatalog): string[] | null {
-  const keyless = openCodeFreeFallback(ownAccess, models);
-  const free = models.options.filter((option) => option.custom !== true && (keyless || isFreeOpenCodeModel(option.id)))
-    .map((option) => option.id);
+  const offered = models.options.filter((option) => option.custom !== true).map((option) => option.id);
+  const marked = offered.filter(isFreeOpenCodeModel);
+  const free = marked.length === 0 && openCodeFreeFallback(ownAccess, models) ? offered : marked;
   if (!free.includes(model) && !isFreeOpenCodeModel(model)) return null;
   return [...free.filter((id) => id.startsWith("opencode/")), ...free.filter((id) => !id.startsWith("opencode/"))];
 }

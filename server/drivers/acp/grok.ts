@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parse as parseYaml } from "yaml";
 
-import type { ModelCatalog } from "../../contracts.ts";
+import type { ModelCatalog, ProviderErrorCode } from "../../contracts.ts";
 import { harnessHome, splitCliString } from "../../env-path.ts";
 import type { DeviceSignIn } from "../device-auth.ts";
 import { decodeInjectId, hostApiKey, localHost, mergeLocalInject } from "../local-inject.ts";
@@ -69,6 +69,21 @@ function unquote(raw: string): string {
     return value.slice(1, -1).replace(/\\"/g, '"');
   }
   return value;
+}
+
+/** grok 1.0.44 ends a prompt with `{code: -32003, message: "Rate limited", data: "<API error>"}` only after its own 429
+ * retries are spent (`retry_state` "exhausted"), so it is the plan's limit, not a blip; a refused token comes back as
+ * `{code: -32603, message: "Internal error", data: "Unauthorized (401) from …"}` or `data.http_status: 401`. */
+export function classifyGrokError(error: unknown): ProviderErrorCode | undefined {
+  const value = error && typeof error === "object" ? error as { code?: unknown; data?: unknown } : {};
+  if (value.code === -32003) return "quota_or_region_restriction";
+  if (value.code !== -32603) return undefined;
+  const data = value.data;
+  const status = data && typeof data === "object" ? (data as { http_status?: unknown }).http_status : undefined;
+  const text = typeof data === "string" ? data : data && typeof data === "object" && typeof (data as { message?: unknown }).message === "string" ? (data as { message: string }).message : "";
+  if (status === 429) return "quota_or_region_restriction";
+  if (status === 401 || text.startsWith("Unauthorized (401)")) return "invalid_credentials";
+  return undefined;
 }
 
 /** Local slugs from ~/.grok/config.toml, which `grok -m <slug>` accepts, plus the cloud defaults. */
@@ -495,6 +510,7 @@ const support: AcpSupport = {
   pickAuthMethod: (methods) => methods.some((m) => m.id === "cached_token") ? "cached_token" : null,
   authFailure: "fail",
   isAuthenticated: (env) => grokSignedIn(env),
+  classifyError: classifyGrokError,
 
   // `--append-system-prompt`/`--rules` do not reach the agent-stdio system prompt (1.0.0).
   buildPromptText: (turn) => (turn.system ? `${turn.system}\n\n${turn.text}` : turn.text),

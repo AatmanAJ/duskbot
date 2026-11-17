@@ -23,6 +23,7 @@ import { CloudAccountSettings } from "./CloudAccountSettings";
 import { TransferSettings } from "./vps-link/TransferSettings";
 import { vpsLinkAvailable } from "@/lib/vps-link";
 import { Icon } from "./Icon";
+import { SettingGlyph, type SettingGlyphName } from "./ui/SettingGlyph";
 import { SIMPLE_BUTTONS } from "./SettingsPrimitives";
 import { PaneHeader, PanelSections, SubPageContext, WipeStack, type SubPage } from "./ListRows";
 import {
@@ -41,9 +42,14 @@ export { openBotSettings, openSettings, settingsLocation, SETTINGS_PANES, type S
 
 const REMOTE_SECTIONS: readonly AppSettingsSection[] = ["appearance", "companion", "desktopWorkspaces", "looks", "voice"];
 
+const RAIL_GLYPH: Record<SettingsPane, SettingGlyphName> = {
+  general: "gear", voice: "mic", texting: "bubble", computer: "laptop", permissions: "shield", vault: "key",
+  models: "sparkle", bots: "team", usage: "chart", updates: "download", advanced: "sliders",
+};
+
 const RAIL_GROUPS: ReadonlyArray<{ id: string; labelKey: LocaleKey; panes: readonly SettingsPane[] }> = [
   { id: "you", labelKey: "settings.rail.you", panes: ["general", "voice"] },
-  { id: "bots", labelKey: "settings.rail.yourBots", panes: ["computer", "permissions", "vault", "models", "texting", "bots"] },
+  { id: "bots", labelKey: "settings.rail.yourBots", panes: ["computer", "texting", "permissions", "vault", "models", "bots"] },
   { id: "app", labelKey: "settings.rail.thisApp", panes: ["usage", "updates", "advanced"] },
 ];
 
@@ -249,7 +255,7 @@ export function SettingsModal() {
   const remoteAccess: RemoteAccessCards = {
     client: <RemoteComputerSection hideWhenUnavailable />,
     // Security: the server decides who may pair (an owner or admin session), not this gate.
-    pairing: <PhoneLinking remote={remoteActive}>{(phone) => <ServerPairingCard phone={phone} cloudHome={cloudHome} focusRequest={computerPairs ? 0 : phoneFocus} team={state.config?.team?.name} teamPhoneBlocked={state.config?.managedPolicy?.remoteAccess === false ? t("policy.teamRemoteBlocked", { organization: state.config.managedPolicy.organizationName }) : null} simple />}</PhoneLinking>,
+    pairing: <PhoneLinking remote={remoteActive} cloudHome={cloudHome} email={state.config?.profile?.email}>{(phone) => <ServerPairingCard phone={phone} cloudHome={cloudHome} focusRequest={computerPairs ? 0 : phoneFocus} team={state.config?.team?.name} teamPhoneBlocked={state.config?.managedPolicy?.remoteAccess === false ? t("policy.teamRemoteBlocked", { organization: state.config.managedPolicy.organizationName }) : null} simple />}</PhoneLinking>,
     desktopPairing: phoneAppEnabled() || state.config?.team ? null : <ServerPairingCard phone={null} cloudHome={cloudHome} simple />,
     elsewhere: <ServerPairingCard phone={null} cloudHome={cloudHome} elsewhere={{ connect: <RemoteComputerSection hideWhenUnavailable simple /> }} />,
     companion: remoteActive ? null : <CompanionSection profileEmail={state.config?.profile?.email} focusRequest={computerPairs ? phoneFocus : 0} />,
@@ -341,7 +347,7 @@ export function SettingsModal() {
                     onClick={() => go(entry.sections.find(has)!)}
                     className="settings-nav-item"
                   >
-                    <Icon name={entry.icon} size={phone ? 20 : 15} />
+                    <SettingGlyph name={RAIL_GLYPH[entry.id]} size={phone ? 24 : 18} className="-mx-px" mono />
                     <span>{t(entry.labelKey)}</span>
                     <Icon name="chevron-right" size={14} className="settings-nav-chevron" />
                   </button>
@@ -420,8 +426,8 @@ export function SettingsModal() {
 }
 
 /** Linking a phone; the caller lays out the pieces. */
-function PhoneLinking({ remote, children }: { remote: boolean; children: (phone: PhoneParts | null) => ReactNode }) {
-  return <MobilePairingCard remote={remote}>{children}</MobilePairingCard>;
+function PhoneLinking({ remote, cloudHome, email, children }: { remote: boolean; cloudHome: boolean; email?: string; children: (phone: PhoneParts | null) => ReactNode }) {
+  return <MobilePairingCard remote={remote} cloudHome={cloudHome} email={email}>{children}</MobilePairingCard>;
 }
 
 const PHONE_SETTINGS = "(max-width: 639.98px)";

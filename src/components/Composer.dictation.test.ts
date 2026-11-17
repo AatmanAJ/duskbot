@@ -156,6 +156,21 @@ describe("voice input in the real composer", () => {
     expect(container.textContent).not.toContain(t("composer.dictation.failed"));
   });
 
+  it("in the phone app the button that ends listening sends what was heard in one tap", () => {
+    document.documentElement.dataset.mobileApp = "ios";
+    try {
+      start();
+      hear("call the dentist");
+      const send = container.querySelector<HTMLButtonElement>('button[data-voice-mic="send"]')!;
+      expect(send.getAttribute("aria-label")).toBe("Send message");
+      flushSync(() => send.click());
+      expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "send", text: "call the dentist" }));
+      expect(input().value).toBe("");
+    } finally {
+      delete document.documentElement.dataset.mobileApp;
+    }
+  });
+
   it("cancels on Esc: listening stops and nothing lands", () => {
     start();
     hear("never mind");

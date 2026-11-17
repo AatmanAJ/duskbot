@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { api } from "@/state/api";
+import { api, ApiError } from "@/state/api";
 import { usePageVisible } from "./page-visible";
+import { trailError } from "./trail";
 
 export interface ClosedTabView {
   title: string;
@@ -16,6 +17,7 @@ export interface LocalBrowserState {
 }
 
 const POLL_MS = 5_000;
+const RETRY_MS = 1_000;
 const NONE: LocalBrowserState = { open: false, closed: null };
 
 /** The surfaces gallery's stand-in for the server's answer; `tabs`, an open browser's tabs, each with a still page. */
@@ -41,6 +43,20 @@ export function parseLocalBrowser(value: unknown, botId: string, threadId: strin
   } : null;
   return { open: reply?.open === true, closed };
 }
+
+/** The server's answer; a failed ask is tried once more before the panel counts it as nothing open. */
+export async function askLocalBrowser(ask: () => Promise<unknown>, wait: (ms: number) => Promise<void>, signal: AbortSignal): Promise<unknown> {
+  try {
+    return await ask();
+  } catch (error) {
+    if (signal.aborted) throw error;
+    await wait(RETRY_MS);
+    if (signal.aborted) throw error;
+    return ask();
+  }
+}
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** What the Computer tab last knew of a bot's browser, kept while the app runs: leaving the tab, closing the panel or
  * switching bots and coming back shows it at once, and the server's answer and the live page only confirm it. */
@@ -73,15 +89,21 @@ export function useLocalBrowser(botId: string, threadId: string | undefined, ena
     if (!enabled || !visible) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let failing = false;
     const ask = async () => {
       try {
-        const next = parseLocalBrowser(await api(recentPath(botId, threadId), { background: true, signal: controller.signal }), botId, threadId);
+        const answer = await askLocalBrowser(() => api(recentPath(botId, threadId), { background: true, signal: controller.signal }), pause, controller.signal);
+        const next = parseLocalBrowser(answer, botId, threadId);
         if (controller.signal.aborted) return;
+        failing = false;
         keepView(key, { state: next });
         setHeld((current) => current.key === key && current.state && sameState(current.state, next) ? current : { key, state: next });
-      } catch {
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (!failing) trailError("local-browser.poll", error, { bot: botId, status: error instanceof ApiError ? error.status : null });
+        failing = true;
         // an older server without the route, or a blip: the panel keeps what it showed, and counts as answered
-        if (!controller.signal.aborted) setHeld((current) => current.key === key && current.state ? current : { key, state: NONE });
+        setHeld((current) => current.key === key && current.state ? current : { key, state: NONE });
       } finally {
         if (!controller.signal.aborted) timer = setTimeout(() => void ask(), POLL_MS);
       }

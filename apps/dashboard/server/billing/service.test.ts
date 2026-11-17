@@ -8,7 +8,7 @@ import { BILLING_CONFIG } from "./plans.ts";
 import { quote } from "./pricing.ts";
 import { createFakeBillingProvider } from "./fake-provider.ts";
 import { createBillingStore } from "./store.ts";
-import { createBillingService } from "./service.ts";
+import { CHECKOUT_BURST, CHECKOUT_REUSE_MS, createBillingService } from "./service.ts";
 
 const owner = { id: "owner", email: "owner@example.com" }, stranger = { id: "stranger", email: "stranger@example.com" };
 const day = 86_400_000;
@@ -550,9 +550,52 @@ describe("paying again after a plan ended", () => {
   });
 });
 
+describe("repeated starts", () => {
+  it("hands the same page back for the same plan started again within a minute, without another provider session", async () => {
+    const create = vi.spyOn(provider, "createCheckout");
+    const license: Cart = { interval: "month", license: { kind: "solo" }, desktop: { kind: "none" } };
+    const first = await service.checkout(owner, { kind: "cart", cart: license }, { source: "dash_license" });
+    for (let i = 0; i < 17; i++) { time += 2_000; expect(await service.checkout(owner, { kind: "cart", cart: license }, { source: "dash_license" })).toEqual(first); }
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(store.state.checkouts.map(checkout => checkout.status)).toEqual(["open"]);
+    expect(store.state.ledger?.filter(row => row.type === "checkout.started")).toHaveLength(1);
+    // a desktop plan keeps the cloud it reserved
+    const other = { id: "acct_desk", email: "desk@example.test" };
+    const desk = await service.checkout(other, { kind: "cart", cart: desktopOnly(), name: "Home" });
+    expect(await service.checkout(other, { kind: "cart", cart: desktopOnly(), name: "Home" })).toEqual(desk);
+    expect(clouds.order).toHaveBeenCalledTimes(1); expect(clouds.abandon).not.toHaveBeenCalled();
+  });
+  it("hands the page back whichever surface asks again, and makes a fresh one for another plan, name, or once the minute is over", async () => {
+    const first = await service.checkout(owner, { kind: "cart", cart: desktopOnly() }, { source: "app_card" });
+    expect(await service.checkout(owner, { kind: "cart", cart: desktopOnly() }, { source: undefined })).toEqual(first);
+    const otherPlan = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" } }, { source: "dash_billing" });
+    expect(otherPlan.checkoutId).not.toBe(first.checkoutId);
+    const otherName = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_billing" });
+    expect(otherName.checkoutId).not.toBe(otherPlan.checkoutId);
+    time += CHECKOUT_REUSE_MS + 1;
+    const later = await service.checkout(owner, { kind: "cart", cart: { ...desktopOnly(), interval: "year" }, name: "Work" }, { source: "dash_billing" });
+    expect(later.checkoutId).not.toBe(otherName.checkoutId);
+    expect(store.state.checkouts.filter(checkout => checkout.status === "open").map(checkout => checkout.id)).toEqual([later.checkoutId]);
+  });
+  it("stops a burst of new pages from one account well under the hourly limit, and lets it buy again after a while", async () => {
+    const create = vi.spyOn(provider, "createCheckout");
+    const carts = [preset(1), { ...preset(1), interval: "year" as const }, preset(2), { ...preset(2), interval: "year" as const }, licensedDesktop()];
+    for (const cart of carts) { await service.checkout(owner, { kind: "cart", cart }, { source: "made_up" }); time += 1_000; }
+    expect(create).toHaveBeenCalledTimes(CHECKOUT_BURST.count);
+    // the open one again is still handed back; anything new waits
+    expect((await service.checkout(owner, { kind: "cart", cart: licensedDesktop() })).checkoutId).toBe(store.state.checkouts.at(-1)!.id);
+    await expect(service.checkout(owner, { kind: "cart", cart: preset(1) })).rejects.toMatchObject({ code: "rate_limited" });
+    expect(create).toHaveBeenCalledTimes(CHECKOUT_BURST.count);
+    time += CHECKOUT_BURST.windowMs;
+    await service.checkout(owner, { kind: "cart", cart: preset(1) });
+    expect(create).toHaveBeenCalledTimes(CHECKOUT_BURST.count + 1);
+  });
+});
+
 describe("one subscription per plan", () => {
   it("opens a fresh page instead of the unpaid one, frees what it held, and still takes a late payment on the old one", async () => {
     const first = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    time += CHECKOUT_REUSE_MS + 1;
     const again = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
     expect(again.checkoutId).not.toBe(first.checkoutId); expect(again.checkoutUrl).not.toBe(first.checkoutUrl);
     expect(store.state.checkouts.map(checkout => checkout.status)).toEqual(["expired", "open"]);
@@ -565,6 +608,7 @@ describe("one subscription per plan", () => {
   });
   it("closes the unpaid page when the plan is paid on the new one", async () => {
     await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    time += CHECKOUT_REUSE_MS + 1;
     await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
     deliver(provider.complete(store.state.checkouts[1].providerSessionId!));
     await expect(service.checkout(owner, { kind: "cart", cart: desktopOnly() })).rejects.toMatchObject({ code: "already_subscribed" });

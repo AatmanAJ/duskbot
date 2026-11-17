@@ -24,6 +24,7 @@ export function useChatHaptics(state: AppState, chatId: string | null, onSent?: 
   const last = useRef<Last>(null);
   const shownChat = useRef<string | null>(null);
   const error = useRef<string | null>(null);
+  const lastTouch = useRef(-Infinity);
 
   useEffect(() => {
     const next = lastOf(state, chatId);
@@ -42,9 +43,26 @@ export function useChatHaptics(state: AppState, chatId: string | null, onSent?: 
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
-      if (event.target instanceof Element && event.target.closest("[role='switch'], input[type='checkbox']")) haptic("selection");
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      if (target.closest("[role='switch'], input[type='checkbox']")) haptic("selection");
+      else if (target.closest("[data-composer-stop]")) haptic("medium");
+      else if (target.closest("[data-voice-mic='start']")) haptic("light");
+      else if (target.closest("[data-approval-allow]")) haptic("success");
+      else if (target.closest("[data-approval-deny]")) haptic("light");
     };
+    // a long press that brings up a message's actions answers with a tick, as a context menu does
+    const shown = new MutationObserver((records) => {
+      if (records.some((record) => record.target instanceof HTMLElement && record.target.dataset.shown === "true" && lastTouch.current > performance.now() - 900)) haptic("selection");
+    });
+    const onTouch = () => { lastTouch.current = performance.now(); };
+    shown.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-shown"] });
     document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
+    document.addEventListener("touchstart", onTouch, { capture: true, passive: true });
+    return () => {
+      shown.disconnect();
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("touchstart", onTouch, true);
+    };
   }, []);
 }

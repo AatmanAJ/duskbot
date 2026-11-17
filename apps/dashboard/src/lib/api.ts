@@ -79,8 +79,13 @@ async function call<T>(path: string, init?: { method?: string; body?: unknown; s
     if ((error as Error).name === "AbortError") throw error;
     throw new ApiError("can't reach dusk bot. check your connection.", 0, "offline");
   }
-  const data = (await res.json().catch(() => null)) as (T & { error?: string; code?: string; blockers?: DeletionBlocker[] }) | null;
+  let unread: unknown = null;
+  const data = (await res.json().catch((error: unknown) => { unread = error; return null; })) as (T & { error?: string; code?: string; blockers?: DeletionBlocker[] }) | null;
   if (!res.ok) throw new ApiError(lowercase(data?.error) ?? "something went wrong on our side. try again.", res.status, data?.code ?? null, data?.blockers);
+  if (data === null && res.status !== 204) {
+    if ((unread as Error | null)?.name === "AbortError") throw unread;
+    throw new ApiError("something went wrong on our side. try again.", 502, "bad_response");
+  }
   return data as T;
 }
 

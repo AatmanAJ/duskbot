@@ -2090,8 +2090,8 @@ async function connectCloudHome(open = null) {
   void welcomedOnCloud();
   return client.state();
 }
-/** one welcome only: the person met dusk bot here, so My Cloud opens on its chat, not on a second welcome. Once the window
- * shows the cloud (a new one can take minutes to load the first time), its own session marks the record once. */
+/** A new cloud's first run starts from what this computer knows. Once the window shows the cloud (a new one can take
+ * minutes to load the first time), its own session carries it once. */
 const welcomedClouds = new Set();
 async function welcomedOnCloud() {
   const origin = homeWindow.cloudOrigin() ?? cloudAccount?.homeTarget()?.origin ?? null;
@@ -2102,12 +2102,10 @@ async function welcomedOnCloud() {
     if (waited >= 6 * 60_000) { welcomedClouds.delete(origin); return; }
     await new Promise(done => setTimeout(done, 3_000));
   }
-  const changed = await carryWelcomeToCloud({ origin, fetch: (...args) => session.defaultSession.fetch(...args),
-    local: async () => { const response = await localServerRequest("/api/config", { signal: AbortSignal.timeout(10_000) }); return response.ok ? response.json() : null; }, log: slog });
-  // the page itself ends its welcome before it shows (home-window.mjs WELCOMED_ROUTE); this also carries the first run as met,
-  // and loads again a page from an older cloud that still shows the welcome
-  slog(`cloud welcome: ${changed ? "marked done here" : "nothing to mark"}`);
+  const changed = await carryWelcomeToCloud({ origin, fetch: (...args) => session.defaultSession.fetch(...args), localRequest: localServerRequest, log: slog });
+  slog(`cloud welcome: ${changed ? "carried from this computer" : "nothing to carry"}`);
   if (!changed || !showsCloud()) return;
+  // a page from an older cloud still showing its own welcome
   const still = await mainWindow.webContents.executeJavaScript(`Boolean(document.querySelector("[data-welcome-action]"))`).catch(() => false);
   if (still && showsCloud()) mainWindow.webContents.reload();
 }
@@ -3061,7 +3059,7 @@ const chromeRail = createChromeRail({ createView: options => new WebContentsView
 chromeRail.install(ipcMain);
 function railChanged() { chromeRail.refresh(); rail.changed(); void localUi?.refresh(); }
 const accountPages = [() => (mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents }) ? mainWindow.webContents : null), () => ({ send: channel => chromeRail.send(channel) })];
-const accountRing = createDesktopRing({ allowed: accountApp, active: cloudAccountStore, savedStore: () => createCloudAccountStore({ file: path.join(app.getPath("userData"), cloudTarget(process.env).saved), encryption: signInEncryption }), stash: () => jsonFile(path.join(app.getPath("userData"), cloudTarget(process.env).places)), client: ensureCloudAccount, origin: cloudTarget(process.env).origin, makeClient: ({ store, onState }) => createCloudAccountClient({ store, onState, platform: process.platform, deviceName: os.hostname().slice(0, 100) || "my computer", appVersion: app.getVersion(), origin: cloudTarget(process.env).origin, custom: cloudTarget(process.env).custom, openBrowser: url => shell.openExternal(url) }), saved: () => environmentsState, persist: persistEnvironments, session: () => session.defaultSession, mine: () => myCloud(), leaveWindow: () => (mainWindow && !mainWindow.isDestroyed() && !senderIsLocal({ sender: mainWindow.webContents }) ? navigateMainWindow(rendererOrigin()) : null), rows: () => railList(), holding: () => oneHome.holding(), letGo: () => { homeWindow.accountLeaving(); homePlaces.remember(null); }, settled: () => showHome(), tell: () => { accounts.tell(); railChanged(); }, log: slog }); const accounts = installAccounts({ ipcMain, ownPage: event => chromeRail.owns(event) || cloudPageAsking(event) === "local", placePage: event => cloudPageAsking(event) !== null || ownCloudPage(event) !== null || homeWindow.homePage(event) || (Boolean(ownHome?.home()) && activeEnvironment(environmentsState)?.origin === ownHome.home().origin && workspaceSenderAllowed(event, mainWindow?.webContents, environmentsState, rendererOrigin())), account: () => (accountApp() ? cloudAccount : null), client: ensureCloudAccount, ring: accountRing, holdSheet: open => chromeRail.holdOpen(open), tellSheet: () => chromeRail.send("accounts:open-sheet"), tell: () => { for (const page of accountPages) page()?.send("accounts:changed"); } });
+const accountRing = createDesktopRing({ allowed: accountApp, active: cloudAccountStore, savedStore: () => createCloudAccountStore({ file: path.join(app.getPath("userData"), cloudTarget(process.env).saved), encryption: signInEncryption }), stash: () => jsonFile(path.join(app.getPath("userData"), cloudTarget(process.env).places)), client: ensureCloudAccount, origin: cloudTarget(process.env).origin, makeClient: ({ store, onState }) => createCloudAccountClient({ store, onState, platform: process.platform, deviceName: os.hostname().slice(0, 100) || "my computer", appVersion: app.getVersion(), origin: cloudTarget(process.env).origin, custom: cloudTarget(process.env).custom, openBrowser: url => shell.openExternal(url) }), saved: () => environmentsState, persist: persistEnvironments, session: () => session.defaultSession, mine: () => myCloud(), leaveWindow: () => (mainWindow && !mainWindow.isDestroyed() && !senderIsLocal({ sender: mainWindow.webContents }) ? navigateMainWindow(rendererOrigin()) : null), rows: () => railList(), holding: () => oneHome.holding(), letGo: () => { homeWindow.accountLeaving(); homePlaces.remember(null); }, settled: () => showHome(), tell: () => { accounts.tell(); railChanged(); }, log: slog }); const accounts = installAccounts({ ipcMain, ownPage: event => chromeRail.owns(event) || cloudPageAsking(event) === "local", ownPlace: event => cloudPageAsking(event) === "cloud" || ownCloudPage(event) !== null || (homeWindow.homePage(event) && homeWindow.shown()?.kind !== "team"), placePage: event => cloudPageAsking(event) !== null || ownCloudPage(event) !== null || homeWindow.homePage(event) || (Boolean(ownHome?.home()) && activeEnvironment(environmentsState)?.origin === ownHome.home().origin && workspaceSenderAllowed(event, mainWindow?.webContents, environmentsState, rendererOrigin())), account: () => (accountApp() ? cloudAccount : null), client: ensureCloudAccount, ring: accountRing, holdSheet: open => chromeRail.holdOpen(open), tellSheet: () => chromeRail.send("accounts:open-sheet"), tell: () => { for (const page of accountPages) page()?.send("accounts:changed"); } });
 
 // Start fresh: the bot panel's reset (electron/start-fresh.mjs). Only from this computer's own page or My Cloud's, never a
 // team's or a page a server sent, and never in remote access. Every step acts as this app's own sign-ins, never the page's.
@@ -3182,7 +3180,7 @@ function cleanLine() {
 }
 let workspaceMenuOpen = false;
 ipcMain.handle("workspaces:menu", workspaceOnly(async (_event, from) => {
-  if (workspaceMenuOpen || homeAlone()) return;
+  if (workspaceMenuOpen) return;
   workspaceMenuOpen = true;
   try {
     await cloudOffersReady();
@@ -3192,9 +3190,14 @@ ipcMain.handle("workspaces:menu", workspaceOnly(async (_event, from) => {
       onForget: (id) => void workspaceMenuAction(() => forgetEnvironment(id)),
       ...(serverCanMove(environmentsState.activeId) ? { onCloudMove: (id) => void askServerCloudMove(id).catch(error => slog(`cloud move menu: ${error?.message ?? error}`)) } : {}),
       ...cloudMenuOptions(from === "howto" ? "app_howto" : "app_menu"),
+      ...(homeWindow.cloudOrigin() && cloudOffersAllowed() ? { onAddCloud: () => void ensureCloudAccount().webHandoff({ page: "cloud" }).catch(error => slog(`add cloud: ${error?.message ?? error}`)) } : {}),
       kindIcon: placeKindIcon,
+      // with My Cloud home, this computer stays one tap away
+      onLocal: () => void workspaceMenuAction(() => (activeEnvironment(environmentsState) ? switchEnvironment(LOCAL_ID) : (homePlaces.remember(null), persistEnvironments(withActive(environmentsState, LOCAL_ID), "chosen"), navigateMainWindow(rendererOrigin())))),
+      localShown: Boolean(mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents })),
       ...(await placesMenuOptions({ homeOrigin: homeWindow.cloudOrigin(), cloud: cloudHomeEntry(), home: oneHome.away() || ownHome?.away() === true, platform: process.platform, port: SERVER_PORT })),
     });
+    if (!template.length) return;
     // dev runs only (the smoke walkthrough): a native popup can't be clicked headless, so the named row is chosen instead
     const pick = !app.isPackaged ? process.env.DUSK_SMOKE_MENU_PICK : "";
     if (pick) { const row = template.find((item) => item.id === pick); if (row?.click) { row.click(); return; } }

@@ -9,6 +9,7 @@ import { parseCloudOffer, parseCloudSummary, parsePairingGrant, parsePublicOffer
 import { otherOwnClouds, parseCloudList, parseCloudRenewal } from "../../../../electron/cloud-list.mjs";
 import { oneHomeCloud } from "../../../../electron/one-home-main.mjs";
 import { createBilling } from "./index.ts";
+import { CHECKOUT_BURST } from "./service.ts";
 import { createDashboardApp } from "../app.ts";
 import { memoryMailer } from "../auth/mail.ts";
 import { signedPayload } from "../../../../shared/dashboard-protocol.ts";
@@ -204,7 +205,8 @@ it("shows nothing for a checkout left unpaid, lets a new one open, and makes the
   expect(parseCloudList((await f.session()).clouds)).toEqual([]);
   expect(f.client.state().clouds ?? []).toEqual([]);
   expect(f.billing.fakePool?.calls ?? []).toEqual([]);
-  // a new checkout always opens, and retires the old one with its reserved cloud
+  // a new checkout always opens once the first minute is over, and retires the old one with its reserved cloud
+  f.setTime(f.now() + 61_000);
   expect((await f.client.checkout("starter", "app_card")).outcome).toBe("opened");
   expect(f.snapshot().checkouts[0].status).toBe("expired");
   expect(f.billing.clouds.get(first.cloudId!)?.status).toBe("destroyed");
@@ -231,6 +233,8 @@ it("enforces Admin ownership, one-time confirmations, typed bodies, and the desk
   for (const plan of ["personal", "max"]) await refused("upgrade/preview", { plan }, 409, "plan_change_unavailable");
   for (const data of [{ plan: "free" }, { plan: 1 }, { plan: "starter", source: 2 }]) await refused("checkout", data, 400, "invalid_request");
   const checkout = await f.request("checkout", { plan: "starter", source: "app_card", ignored: true, color: 12 }); expect(checkout.status).toBe(200);
+  const twice = await f.request("checkout", { plan: "starter", source: "app_card" }); expect(twice.status).toBe(200); expect(twice.data.url).toBe(checkout.data.url);
+  f.setTime(f.now() + 61_000);
   const again = await f.request("checkout", { plan: "starter", source: "app_card" }); expect(again.status).toBe(200); expect(again.data.url).not.toBe(checkout.data.url);
   const purchase = await f.complete(1), id = purchase.cloudId!;
   await refused("checkout", { plan: "pro", source: "app_card" }, 409, "already_subscribed");
@@ -283,9 +287,9 @@ it("reports Add a Cloud cap and rate blocks in the desktop shape", async () => {
   for (let n = 0; n < BILLING_CONFIG.maxCloudsPerAccount; n++) f.billing.clouds.order({ accountId: f.owner().id, name: `Cloud ${n}`, color: null, region: "fsn1", kind: plan.kind, placement: plan.placement, spec: plan.machine, botComputers: plan.botComputers });
   expect(await f.request("clouds", { tier: "pro", interval: "month", name: "One too many" })).toMatchObject({ status: 409, data: { error: "cap", addBlocked: "cap" } });
   expect(await f.session()).toMatchObject({ canAdd: false, addBlocked: "cap" });
-  // checkouts the provider refused still count toward the hourly limit
+  // checkouts the provider refused still count toward the burst limit
   const refused = vi.spyOn(f.billing.fake!, "createCheckout").mockRejectedValue(new Error("down"));
-  for (let n = 0; n < BILLING_CONFIG.checkoutsPerHour; n++) await expect(f.billing.service.checkout(f.owner(), { kind: "cart", cart: { interval: "month", license: { kind: "solo" }, desktop: { kind: "none" } } })).rejects.toMatchObject({ code: "unavailable" });
+  for (let n = 0; n < CHECKOUT_BURST.count; n++) await expect(f.billing.service.checkout(f.owner(), { kind: "cart", cart: { interval: "month", license: { kind: "solo" }, desktop: { kind: "none" } } })).rejects.toMatchObject({ code: "unavailable" });
   refused.mockRestore();
   expect(await f.request("clouds", { tier: "pro", interval: "month", name: "Rate limited" })).toMatchObject({ status: 429, data: { error: "rate_limited", addBlocked: "rate" } });
 });

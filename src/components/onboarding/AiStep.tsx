@@ -5,22 +5,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, LoaderCircle, RefreshCw } from "../../icons";
 import { engineReady } from "@/components/EngineLibrary";
-import { t } from "@/lib/i18n";
+import { activeLocale, t } from "@/lib/i18n";
 import { useStore } from "@/state/store";
 import { AiCards } from "./AiCards";
 import { ConnectAiDialog } from "./ConnectAi";
-import { aiName, aiTiles, freeModel } from "./funnel";
+import { aiName, aiTileOf, aiTiles, freeModel, type AiTileId } from "./funnel";
 import { PRIMARY, SECONDARY, StepArt, StepFrame } from "./FunnelSteps";
 import type { WelcomeAiNow } from "./welcome-ai";
 
 /** `onNext` says how the person went on (an AI connected, the free model, or later), for the funnel's numbers. `cloud`:
  * the person's dusk cloud is being made meanwhile, which the line says. `auto`: an AI that already works is used without
  * asking (false when the person came back to this step). */
-export function AiStep({ tested, cloud = false, auto = true, onNext }: { tested: WelcomeAiNow | null; cloud?: boolean; auto?: boolean; onNext: (how: "connected" | "free" | "later") => void }) {
+export function AiStep({ tested, cloud = false, auto = true, computerAis = [], onNext }: { tested: WelcomeAiNow | null; cloud?: boolean; auto?: boolean;
+  /** on a cloud the desktop app set up: the AIs signed in on that computer, by instance id */
+  computerAis?: readonly string[]; onNext: (how: "connected" | "free" | "later") => void }) {
   const { state } = useStore();
   const [more, setMore] = useState(false);
   const free = freeModel(state.instances, engineReady);
-  const connected = aiTiles(state.instances, engineReady).filter((tile) => engineReady(tile.instance));
+  const tiles = aiTiles(state.instances, engineReady);
+  const connected = tiles.filter((tile) => engineReady(tile.instance));
+  const used = computerTiles(computerAis, state.instances);
+  const usedLeft = tiles.filter((tile) => used.includes(tile.id) && !engineReady(tile.instance));
+  const sub = usedLeft.length
+    ? t("funnel.ai.subComputer", { ais: new Intl.ListFormat(activeLocale(), { style: "long", type: "conjunction" }).format(usedLeft.map((tile) => tile.label)) })
+    : connected.length ? t("funnel.ai.subMore") : cloud ? t("funnel.ai.subCloud") : t("funnel.ai.sub");
   const { using, goOn, skip } = useFoundAi(auto ? tested : null, onNext);
 
   if (using !== "none") {
@@ -44,12 +52,12 @@ export function AiStep({ tested, cloud = false, auto = true, onNext }: { tested:
   }
 
   return (
-    <StepFrame art={<StepArt art="plug" />} title={t("funnel.ai.title")} sub={connected.length ? t("funnel.ai.subMore") : cloud ? t("funnel.ai.subCloud") : t("funnel.ai.sub")} wide
+    <StepFrame art={<StepArt art="plug" />} title={t("funnel.ai.title")} sub={sub} wide
       footer={<>
         <button type="button" data-primary="" data-funnel-ai-continue="" disabled={connected.length === 0} onClick={() => onNext("connected")} className={PRIMARY}>{t("funnel.next")}</button>
         {connected.length === 0 && <button type="button" data-funnel-later="" onClick={() => onNext(free ? "free" : "later")} className={SECONDARY}>{t("funnel.ai.later")}</button>}
       </>}>
-      <AiCards tested={tested} onMore={() => setMore(true)} />
+      <AiCards tested={tested} onMore={() => setMore(true)} suggested={used} />
 
       {tested?.state === "testing" && (
         <p role="status" data-ai-checking="" className="mt-5 flex items-center gap-2 text-[14px] text-ink-secondary">
@@ -66,6 +74,12 @@ export function AiStep({ tested, cloud = false, auto = true, onNext }: { tested:
       {more && <ConnectAiDialog tested={tested} directory onClose={() => setMore(false)} />}
     </StepFrame>
   );
+}
+
+/** The grid's cards for the AIs signed in on the computer that set this cloud up. */
+export function computerTiles(ids: readonly string[], instances: readonly { instanceId: string; driverKind: string }[]): AiTileId[] {
+  const tiles = ids.map((id) => aiTileOf(instances.find((instance) => instance.instanceId === id) ?? { instanceId: id, driverKind: "" }));
+  return [...new Set(tiles.filter((tile): tile is AiTileId => Boolean(tile)))];
 }
 
 /** On arriving at the step: "checking" while an AI already signed in here gets its test message, "found" once it

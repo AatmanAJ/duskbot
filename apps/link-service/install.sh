@@ -289,6 +289,9 @@ watch_step() {
   _tw=$((COLS - TW - 16 - ${#SUBTXT} - 2))
   while [ ! -f "$TMP/rc" ]; do
     [ ! -f "$TMP/cancelled" ] || on_stop
+    if [ -f "$TMP/sub" ] && read -r _sl < "$TMP/sub" && [ -n "$_sl" ] && [ "$_sl" != "$SUBTXT" ]; then
+      SUBTXT=$_sl SUB="${DIM}${_sl}${R}  " _tw=$((COLS - TW - 16 - ${#_sl} - 2))
+    fi
     _el=$(fmt_ms $(($(now_ms) - PH_T0)))
     X=""
     if [ -f "$PROGRESS" ] && read -r _kind _a _b _c 2>/dev/null <"$PROGRESS"; then
@@ -414,6 +417,8 @@ as_user() { runuser -u "$SVC_USER" -- env HOME="$SVC_HOME" PATH="$SVC_HOME/.loca
 state_get() { [ -f "$STATE/$1" ] && cat "$STATE/$1" || true; }
 state_set() { printf '%s\n' "$2" > "$STATE/$1.tmp" && mv "$STATE/$1.tmp" "$STATE/$1"; }
 progress() { rm -f "$PROGRESS.json"; printf '%s\n' "$*" > "$PROGRESS.tmp" && mv "$PROGRESS.tmp" "$PROGRESS"; }
+# a step names the part it is on now, in place of its title on the spinner line
+sub_label() { printf '%s\n' "$*" > "$TMP/sub.tmp" && mv -f "$TMP/sub.tmp" "$TMP/sub"; }
 
 # no bearer token, link secret or api key ever leaves this script: not into a log, not to the app
 redact() {
@@ -643,7 +648,7 @@ step() { # id function
   title=$(step_title "$1")
   SUBTXT=$title SUB="${DIM}${title}${R}  "
   : > "$LOG"
-  rm -f "$PROGRESS" "$PROGRESS.json"
+  rm -f "$PROGRESS" "$PROGRESS.json" "$TMP/sub"
   STEP_ID=$1 SENT=0 CMD="" STEP_T0=$(now_ms) LAST_SIGNATURE="" LAST_POST=0
   LAST_ACTIVITY=$STEP_T0
   report "$1" running &
@@ -1202,9 +1207,23 @@ do_engines() {
   do_free_backup
 }
 # opencode's pinned build, the free backup ai, so the first message never waits on its download. not fatal: the server
-# tries again at every start (DUSK_PREINSTALL_FREE_BACKUP in its unit)
+# tries again at every start (DUSK_PREINSTALL_FREE_BACKUP in its unit). one bounded try with no terminal: published builds
+# probe an interactive login shell for PATH, which finds the installer's terminal, stops its own process group
+# (SIGTTIN) and the command with it, forever
+FREE_BACKUP_SECS=300
 do_free_backup() {
-  retry as_user "$SVC_HOME/.local/bin/duskbot" free-backup install || echo "the free backup ai is not installed yet; the server tries again when it starts"
+  sub_label "Installing the free backup AI"
+  echo "installing the free backup ai (OpenCode), up to $((FREE_BACKUP_SECS / 60)) minutes"
+  set -- "$SVC_HOME/.local/bin/duskbot" free-backup install
+  if command -v timeout >/dev/null 2>&1; then set -- timeout -k 15 "$FREE_BACKUP_SECS" "$@"; fi
+  if command -v setsid >/dev/null 2>&1; then set -- setsid -w "$@"; fi
+  show "$@"
+  if as_user "$@"; then return 0; else _fb=$?; fi
+  case "$_fb" in
+    124|137) echo "the free backup ai took longer than $((FREE_BACKUP_SECS / 60)) minutes; skipped for now, the server installs it when it starts" ;;
+    *) echo "the free backup ai is not installed yet (exit $_fb); skipped for now, the server installs it when it starts" ;;
+  esac
+  return 0
 }
 
 # writes a file only when it changed; returns 0 when it wrote

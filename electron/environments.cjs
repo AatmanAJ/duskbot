@@ -139,13 +139,16 @@ function placeRow(entry, { myCloud, checked, onSwitch, sublabels, iconFor, kindI
  * `kindIcon`: a template icon per kind of place (computer, cloud, server), used instead where main has them (macOS).
  * `places`: the one line saying which side has which bots, shown first; `copyToCloud`: the send line under the list. `foldSublabels`: Windows and Linux, whose menus size a row by its label alone and clip
  * a sublabel: no sublabels there, and My Cloud's status line joins its name instead. `myCloudId`: My Cloud's saved place, named dusk cloud; `platform`: This Mac or This computer. */
-function workspaceMenuTemplate(state, { onSwitch, onConnect, onForget, onAddCloud, onCloudMove = null, sublabels = {}, iconFor = null, kindIcon = null, places = null, copyToCloud = null, foldSublabels = false, homeOrigin = null, myCloudId = null, platform = null }) {
+function workspaceMenuTemplate(state, { onSwitch, onConnect, onForget, onAddCloud, onCloudMove = null, sublabels = {}, iconFor = null, kindIcon = null, places = null, copyToCloud = null, foldSublabels = false, homeOrigin = null, myCloudId = null, platform = null, onLocal = null, localShown = false }) {
   const active = activeEnvironment(state);
   // the server on screen is the person's own and can move: its move sheet, with the rail gone the menu's to offer
   const move = active && onCloudMove ? [{ id: "workspace-cloud-move", label: `Move “${active.name}” to ${DUSK_CLOUD}…`, click: () => onCloudMove(active.id) }] : [];
   if (homeOrigin) {
-    const rows = homeMenuTemplate(state, { onSwitch, onForget, sublabels, iconFor, kindIcon, foldSublabels, homeOrigin });
-    return move.length ? [...rows, { type: "separator" }, ...move] : rows;
+    const here = onLocal ? [{ id: "workspace-local", label: hereName(platform), type: "radio", checked: localShown === true, ...(kindIcon ? { icon: kindIcon("computer") } : {}), click: onLocal }] : [];
+    const rows = [...here, ...homeMenuTemplate(state, { onSwitch, onForget, sublabels, iconFor, kindIcon, foldSublabels, homeOrigin })];
+    const add = onAddCloud ? [{ id: "workspace-add-cloud", label: "Add dusk cloud…", click: onAddCloud }] : [];
+    const more = [...move, ...add];
+    return more.length ? [...rows, { type: "separator" }, ...more] : rows;
   }
   const isMine = (entry) => entry.id === myCloudId || entry.home === true;
   const localIcon = kindIcon ? kindIcon("computer") : iconFor && cleanColor(state.localColor) ? iconFor(state.localColor) : null;

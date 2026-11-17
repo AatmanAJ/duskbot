@@ -82,7 +82,7 @@ function MenuModel({ instance, row, onPick, onToggleStar }: { instance: Instance
         title={[option.label, option.provider, reason ?? modelBlurb(option)].filter(Boolean).join(" · ")}
         tabIndex={-1}
         onClick={() => onPick(instance, row.model ?? option.id, row.variant)}
-        className={cn(SIMPLE_MENU_ROW, !row.blocked && onToggleStar && "pr-8")}
+        className={cn(SIMPLE_MENU_ROW, !row.blocked && !row.auto && onToggleStar && "pr-8")}
       >
         <Gutter />
         <RowLines label={row.label}>
@@ -91,7 +91,7 @@ function MenuModel({ instance, row, onPick, onToggleStar }: { instance: Instance
         </RowLines>
         {row.current && <Check size={14} className="shrink-0 text-accent" aria-hidden="true" />}
       </button>
-      {!row.blocked && onToggleStar && (
+      {!row.blocked && !row.auto && onToggleStar && (
         <button
           type="button"
           data-star-toggle
@@ -169,7 +169,7 @@ function GroupBody({ group, props }: { group: MenuGroup; props: SimpleModelMenuP
               <button type="button" data-menu-row data-simple-show-all tabIndex={-1} aria-expanded={body.toggle === "less"}
                 onClick={() => props.onToggle(instance)} className={cn(MENU_ROW, "text-ink-secondary hover:text-ink focus:text-ink")}>
                 <Gutter />
-                <span className="min-w-0 flex-1 truncate">{body.toggle === "less" ? t("model.showSuggested") : t("model.showAll", { count: body.total })}</span>
+                <span className="min-w-0 flex-1 truncate">{body.toggle === "less" ? t("model.showSuggested") : t(body.freeToggle ? "model.showAllFree" : "model.showAll", { count: body.total })}</span>
                 {body.toggle === "less"
                   ? <ChevronUp size={16} strokeWidth={MENU_STROKE} className={MENU_TRAILING} aria-hidden="true" />
                   : <ChevronDown size={16} strokeWidth={MENU_STROKE} className={MENU_TRAILING} aria-hidden="true" />}
@@ -239,7 +239,7 @@ function Scope({ scope, labelId }: { scope: NonNullable<SimpleModelMenuProps["sc
   return (
     <div className="flex flex-col">
       <span id={labelId} className="flex h-6 items-end px-2 pb-0.5 text-[12px] font-medium leading-4 text-ink-tertiary">{t("model.picker.scope")}</span>
-      <SlidingPills aria-labelledby={labelId} data-picker-scope value={scope.value} onPick={scope.onChange}
+      <SlidingPills aria-labelledby={labelId} data-picker-scope value={scope.value} onPick={scope.onChange} pillClassName="h-8 px-3 text-[13px] leading-5"
         options={choices.map((choice) => ({ value: choice.value, label: choice.label, title: choice.hint, attrs: { "data-scope-pill": choice.value } }))} />
     </div>
   );
@@ -362,10 +362,18 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
           {props.notConnected && props.notConnected.rows.length > 0 && (
             <NotConnected rows={props.notConnected.rows} onConnect={props.notConnected.onConnect} labelId={`${idPrefix}-not-connected`} />
           )}
+          {/* the way to more providers is the list's last row, so it scrolls with the rest instead of pinning the foot */}
+          {props.onMore && (
+            <button type="button" data-menu-row data-picker-more onClick={props.onMore} className={cn(MENU_ROW, "mt-1")}>
+              <Gutter><Plus size={16} strokeWidth={MENU_STROKE} className={MENU_ICON} aria-hidden="true" /></Gutter>
+              <span className="min-w-0 flex-1 truncate">{t("connectAi.more")}</span>
+              <Forward />
+            </button>
+          )}
         </div>
       </div>
 
-      {(props.thinking || props.onResetVariant || props.scope || props.onMore) && (
+      {(props.thinking || props.onResetVariant || props.scope) && (
         <div data-simple-effort-band className="flex shrink-0 flex-col gap-0.5 border-t-[0.5px] border-transparent p-1.5">
           {props.thinking && <Thinking thinking={props.thinking} labelId={`${idPrefix}-thinking`} />}
           {props.scope && <Scope scope={props.scope} labelId={`${idPrefix}-scope`} />}
@@ -374,16 +382,6 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
               <Gutter />
               <span className="min-w-0 flex-1 truncate">{t("model.variant.session")}</span>
             </button>
-          )}
-          {props.onMore && (
-            <>
-              {(props.thinking || props.scope || props.onResetVariant) && <div role="separator" className={MENU_SEPARATOR} />}
-              <button type="button" data-menu-row data-picker-more onClick={props.onMore} className={MENU_ROW}>
-                <Gutter><Plus size={16} strokeWidth={MENU_STROKE} className={MENU_ICON} aria-hidden="true" /></Gutter>
-                <span className="min-w-0 flex-1 truncate">{t("connectAi.more")}</span>
-                <Forward />
-              </button>
-            </>
           )}
         </div>
       )}

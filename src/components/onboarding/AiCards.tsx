@@ -62,7 +62,7 @@ function Connect({ tile, flow }: { tile: AiTile<InstanceInfo>; flow: ConnectFlow
   );
 }
 
-function AiCard({ tile, connected, arrived, picked, onPick }: { tile: AiTile<InstanceInfo>; connected: boolean; arrived: boolean; picked: boolean; onPick: () => void }) {
+function AiCard({ tile, connected, arrived, picked, suggested, onPick }: { tile: AiTile<InstanceInfo>; connected: boolean; arrived: boolean; picked: boolean; suggested: boolean; onPick: () => void }) {
   if (connected) {
     return (
       <div data-funnel-ai={tile.id} data-connected="" role="listitem" aria-label={t("funnel.ai.connectedName", { name: label(tile) })}
@@ -82,7 +82,10 @@ function AiCard({ tile, connected, arrived, picked, onPick }: { tile: AiTile<Ins
       <button type="button" data-funnel-ai={tile.id} aria-pressed={picked} onClick={onPick}
         className={cn(TILE, "relative flex h-[96px] w-full flex-col items-center justify-center gap-2 px-2", picked && "bg-ink/[0.08] hover:bg-ink/[0.08]")}>
         <span className="grid size-7 place-items-center"><TileMark tile={tile} size={26} /></span>
-        <span className="max-w-full truncate text-[13px] leading-[18px] text-ink">{label(tile)}</span>
+        <span className="flex max-w-full flex-col items-center">
+          <span className="max-w-full truncate text-[13px] leading-[18px] text-ink">{label(tile)}</span>
+          {suggested && <span data-ai-on-computer="" className="max-w-full truncate text-[12px] leading-4 text-ink-tertiary">{t("funnel.ai.onComputer")}</span>}
+        </span>
       </button>
     </div>
   );
@@ -108,8 +111,10 @@ export function connectedAiCards(instances: readonly InstanceInfo[]): AiTileId[]
 /** The grid of popular AIs and, under it, the pressed one's way in. `onMore`: the small link to every other provider and
  * API keys (the model directory). Nothing runs until a card is pressed. `onConnected`: called once when the AI pressed
  * here becomes connected. */
-export function AiCards({ onMore, className, onConnected }: { tested: WelcomeAiNow | null; onMore?: () => void; className?: string;
-  onConnected?: (tile: AiTileId) => void }) {
+export function AiCards({ onMore, className, onConnected, suggested = [] }: { tested: WelcomeAiNow | null; onMore?: () => void; className?: string;
+  onConnected?: (tile: AiTileId) => void;
+  /** cards marked as used on the person's computer */
+  suggested?: readonly AiTileId[] }) {
   const { state, refreshInstances } = useStore();
   const [picked, setPicked] = useState<AiTileId | null>(null);
   const flow = useConnectFlow();
@@ -142,7 +147,7 @@ export function AiCards({ onMore, className, onConnected }: { tested: WelcomeAiN
       <div role="list" aria-label={t("funnel.ai.title")} className="grid w-full grid-cols-2 gap-2.5 @min-[400px]:grid-cols-4">
         {tiles.map((tile) => (
           <AiCard key={tile.id} tile={tile} connected={shown.has(tile.id)} arrived={!firstShown.has(tile.id)} picked={picked === tile.id}
-            onPick={() => pick(tile)} />
+            suggested={suggested.includes(tile.id)} onPick={() => pick(tile)} />
         ))}
       </div>
       <Reveal className="pt-5">

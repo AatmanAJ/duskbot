@@ -4,6 +4,8 @@ import type { CloudSendNotice } from "../../electron/cloud-send.mjs";
 import { MOVE_LINE } from "../../electron/cloud-send-parts.mjs";
 import { Loader2, X } from "../icons";
 import { track } from "@/lib/analytics";
+import { openedFromTheApp } from "@/lib/cloud-welcome";
+import { cloudFirstRunDue, useWelcomeOnScreen } from "@/lib/onboarding";
 import { moveOfferBridge, moveProgress, moveSheetState, offerAsk, type MoveSheetState } from "@/lib/cloud-move-offer";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -31,10 +33,11 @@ export function CloudMoveOffer({ cloudHome = false }: { cloudHome?: boolean }) {
   const declined = useRef(false);
   const shown = useRef<string | null>(null);
   const furthest = useRef(0);
-  const waits = !state.connected || !state.config || state.appSettingsOpen || state.settingsOpen || state.pluginsOpen || state.shortcutsOpen;
+  const welcome = useWelcomeOnScreen() || (cloudHome && cloudFirstRunDue(state.config?.onboarding, openedFromTheApp()));
+  const waits = welcome || !state.connected || !state.config || state.appSettingsOpen || state.settingsOpen || state.pluginsOpen || state.shortcutsOpen;
   const ask = waits ? null : offerAsk(notice);
   const moving = moveSheetState(notice?.move) ?? (startFailed ? "failed" : null);
-  const sheet: MoveSheetState | null = moving === "done" ? "done" : open ? moving ?? (notice?.offer ? "ask" : null) : null;
+  const sheet: MoveSheetState | null = welcome ? null : moving === "done" ? "done" : open ? moving ?? (notice?.offer ? "ask" : null) : null;
 
   useEffect(() => { if (ask === "prompt" && !open && !declined.current) setOpen(true); }, [ask, open]);
   useEffect(() => {

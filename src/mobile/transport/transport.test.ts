@@ -81,7 +81,7 @@ describe("bearer event source", () => {
     expect(message.mock.calls[0][0]).toMatchObject({ type: "message", data: "hello", lastEventId: "9" });
     expect(error).toHaveBeenCalledOnce();
     expect(fetcher).toHaveBeenCalledOnce();
-    expect(fetcher.mock.calls[0]).toEqual(["https://workspace.test/api/events", expect.objectContaining({ credentials: "omit", redirect: "error", headers: { Authorization: "Bearer test-secret", Accept: "text/event-stream", "Cache-Control": "no-cache" } })]);
+    expect(fetcher.mock.calls[0]).toEqual(["https://workspace.test/api/events", expect.objectContaining({ credentials: "omit", redirect: "error", headers: { Authorization: "Bearer test-secret", Accept: "text/event-stream" }, cache: "no-store" })]);
   });
 
   it.each([401, 503])("closes on HTTP %s without retrying", async (status) => {

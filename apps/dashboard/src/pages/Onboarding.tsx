@@ -16,7 +16,7 @@ import { Button, cx, Skeleton } from "../ui/kit";
 import { Mascot, type MascotHandle } from "../ui/Mascot";
 import type { SceneHandle, SceneMood } from "../ui/Scene";
 import { points } from "./Billing";
-import { CHECKOUT_SOON } from "./cloud-offer";
+import { CHECKOUT_SOON, trialAction } from "./cloud-offer";
 import { track, trackOnboardingStep } from "../lib/analytics";
 import { per, planSelection, type PaidPlan } from "./plan-sheet";
 import { fromApp } from "../lib/from-app";
@@ -242,7 +242,7 @@ export function Onboarding() {
             </div>
           )}
           {error && <p id="onb-error" role="alert" className="mt-2.5 text-14 text-bad">{error}</p>}
-          <Button type="submit" variant="primary" className={cx("mt-3", big)} disabled={busy !== null || (direct && !catalog)}>{busy ? <Busy>{direct ? "opening checkout" : "saving"}</Busy> : direct ? "continue to checkout" : "continue"}</Button>
+          <Button type="submit" variant="primary" className={cx("mt-3", big)} disabled={busy !== null || (direct && !catalog)}>{busy ? <Busy>{direct ? "opening checkout" : "saving"}</Busy> : direct ? trialAction(catalog) ?? "continue to checkout" : "continue"}</Button>
         </form>
       ) : step === "plan" ? (
         <div key="plan" className="step-in">
@@ -250,7 +250,7 @@ export function Onboarding() {
           <p className="mb-6 mt-3 text-16 text-ink-2">on dusk cloud they keep working, even when your computer is off.</p>
           {catalog ? <PlanStep catalog={catalog} home={home} setHome={(h) => { setHome(h); setError(null); }} plan={plan} setPlan={(p) => { setPlan(p); setError(null); }} /> : <div className="flex flex-col gap-2" aria-busy="true"><Skeleton className="h-[300px] !rounded-[22px]" /><Skeleton className="h-[72px] !rounded-[18px]" /></div>}
           {error && <p role="alert" className="mt-3 text-14 text-bad">{error}</p>}
-          <Button variant="primary" className={cx("mt-5", big)} onClick={() => void choose(home)} disabled={busy !== null || !catalog}>{busy === "cloud" ? <Busy>opening checkout</Busy> : busy === "done" ? <Busy>opening</Busy> : home === "free" ? "continue with free" : price ? `continue to checkout, ${price.amount}${price.unit}` : "continue to checkout"}</Button>
+          <Button variant="primary" className={cx("mt-5", big)} onClick={() => void choose(home)} disabled={busy !== null || !catalog}>{busy === "cloud" ? <Busy>opening checkout</Busy> : busy === "done" ? <Busy>opening</Busy> : home === "free" ? "continue with free" : trialAction(catalog) ?? (price ? `continue to checkout, ${price.amount}${price.unit}` : "continue to checkout")}</Button>
           <div className="mt-2 flex items-center justify-between">{back("name")}{home === "cloud" && <span className="text-14 text-ink-3">cancel any time</span>}</div>
         </div>
       ) : inApp ? (

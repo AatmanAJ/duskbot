@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform, type AnimationPlaybackControls } from "motion/react";
 import { ChevronLeft, X } from "../icons";
 import { cn } from "@/lib/cn";
@@ -26,9 +26,7 @@ export function closeTopSheet(): boolean {
   return true;
 }
 
-/** A bottom sheet with Grok's 28pt top corners. It follows the finger down from anywhere whose scroller is at its top,
- * rubber-bands up, and on release dismisses or springs back by where the flick would land. */
-export function Sheet({ open, onClose, title, label, children, full = false, back, trailing, bodyClassName, flush = false }: {
+type SheetProps = {
   open: boolean;
   onClose: () => void;
   title?: ReactNode;
@@ -43,7 +41,40 @@ export function Sheet({ open, onClose, title, label, children, full = false, bac
   bodyClassName?: string;
   /** No header row: the content draws its own. */
   flush?: boolean;
-}) {
+};
+
+/** Inside a stack of pages (Settings), a sheet page is pushed in place instead of opening over it: `back` pops it. */
+export const SheetStack = createContext<{ back: () => void } | null>(null);
+
+/** A bottom sheet with Grok's 28pt top corners. It follows the finger down from anywhere whose scroller is at its top,
+ * rubber-bands up, and on release dismisses or springs back by where the flick would land. Inside a SheetStack it is a
+ * page of that stack instead. */
+export function Sheet(props: SheetProps) {
+  const stack = useContext(SheetStack);
+  return stack ? <StackPage {...props} back={props.back ?? stack.back} /> : <ModalSheet {...props} />;
+}
+
+/** One page of a stack inside a sheet: its own header (back, title, an action) over its own scroller. */
+export function StackPage({ title, label, children, back, onClose, trailing, bodyClassName, flush = false }: SheetProps) {
+  return (
+    <section aria-label={label ?? (typeof title === "string" ? title : undefined)} className="flex h-full flex-col bg-app">
+      {!flush && (
+        <div className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-[22px]">
+          {back
+            ? <RoundButton label={t("mobile.sheet.back")} onClick={back} size={44}><ChevronLeft size={20} /></RoundButton>
+            : <RoundButton label={t("mobile.sheet.close")} onClick={onClose} size={44}><X size={18} /></RoundButton>}
+          <div className="min-w-0 flex-1 truncate text-[17px] font-semibold text-ink">{title}</div>
+          {trailing}
+        </div>
+      )}
+      <div className={cn("mobile-sheet-body relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[max(var(--m-safe-bottom),16px)]", bodyClassName)}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function ModalSheet({ open, onClose, title, label, children, full = false, back, trailing, bodyClassName, flush = false }: SheetProps) {
   const [mounted, setMounted] = useState(open);
   const sheetRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -93,6 +124,8 @@ export function Sheet({ open, onClose, title, label, children, full = false, bac
       y.set(height.current);
       go(0, 0);
       sheet.focus({ preventScroll: true });
+      // the content arrives a beat behind the sheet that carries it
+      if (!reduced) bodyRef.current?.animate([{ opacity: 0.25, translate: "0 18px" }, { opacity: 1, translate: "0 0" }], { duration: 340, delay: 30, easing: "cubic-bezier(.22,1,.36,1)", fill: "backwards" });
     } else {
       go(height.current + 24, 0, () => {
         setMounted(false);
@@ -123,8 +156,8 @@ export function Sheet({ open, onClose, title, label, children, full = false, bac
     },
     onMove: (s) => y.set(s.dy > 0 ? s.dy : rubberband(s.dy, 48)),
     onEnd: (s) => {
-      const landing = projectRelease(Math.max(0, y.get()), s.vy, 0.995);
-      if (y.get() > 0 && (landing > height.current * 0.5 || s.vy > 1100)) {
+      const landing = projectRelease(Math.max(0, y.get()), s.vy);
+      if (y.get() > 0 && (landing > height.current * 0.5 || s.vy > 700)) {
         go(height.current + 24, Math.max(s.vy, 0), () => closeRef.current(), true);
       } else {
         go(0, s.vy);

@@ -261,6 +261,7 @@ export function LicenseSheet({ start, source, onClose, onNothingLeft }: { source
     try {
       if (owned) { if (await apply(sel)) { toast(sel.license === "personal" ? "license removed" : "license updated"); onClose(); } }
       else if (await checkout({ source, kind: "plan", selection: sel, bundle: null })) { toast("license active. thanks for backing dusk bot."); onClose(); }
+      else setError("checkout didn't open. try again.");
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   const free = catalog.workFreeUntil && catalog.workFreeUntil > Date.now() ? catalog.workFreeUntil : null;

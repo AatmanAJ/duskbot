@@ -429,7 +429,7 @@ test("once My Cloud is home the switcher lists whole places only: My Cloud first
     { id: "l", kind: "local", name: "Lab", dataDir: "/lab" }], activeId: "c" };
   const switched = [], forgot = [];
   const items = env.workspaceMenuTemplate(state, { onSwitch: (id) => switched.push(id), onConnect() {}, onForget: (id) => forgot.push(id), onAddCloud() {}, places: "x", copyToCloud: { label: "Send" }, homeOrigin: home });
-  assert.deepEqual(items.map((item) => [item.label, item.checked]), [["dusk cloud", true], ["Office", false]]);
+  assert.deepEqual(items.map((item) => [item.label, item.checked]), [["dusk cloud", true], ["Office", false], [undefined, undefined], ["Add dusk cloud…", undefined]]);
   items[1].click();
   assert.deepEqual(switched, ["o"]);
   const away = env.workspaceMenuTemplate({ ...state, activeId: "o" }, { onSwitch() {}, onConnect() {}, onForget: (id) => forgot.push(id), homeOrigin: home });
@@ -521,4 +521,15 @@ test("the places popup wears each place's kind as its icon where main has them (
   assert.deepEqual(kinds.map((item) => [item.label, item.icon, item.checked]), [["This computer", "kind:computer", false], ["dusk cloud", "kind:cloud", false], ["Acme", "kind:cloud", false], ["Office", "kind:server", true]]);
   const dots = env.workspaceMenuTemplate(state, { ...base, iconFor: (color) => `dot:${color}` }).filter((item) => item.type === "radio");
   assert.deepEqual(dots.map((item) => item.icon), ["dot:blue", "dot:teal", undefined, "dot:red"]);
+});
+
+test("with My Cloud home, this computer still leads the switcher and opens on its own handler", () => {
+  const home = "https://dusk-t-1.fly.dev";
+  const state = { environments: [{ id: "c", kind: "remote", name: "My Cloud", origin: home, home: true }], activeId: null };
+  let opened = 0;
+  const items = env.workspaceMenuTemplate(state, { onSwitch() {}, onConnect() {}, onForget() {}, homeOrigin: home, platform: "darwin", onLocal: () => { opened += 1; } });
+  assert.deepEqual(items.map((item) => [item.label, item.checked]), [["This Mac", false], ["dusk cloud", false]]);
+  items[0].click();
+  assert.equal(opened, 1);
+  assert.equal(env.workspaceMenuTemplate(state, { onSwitch() {}, onConnect() {}, onForget() {}, homeOrigin: home, onLocal() {}, localShown: true })[0].checked, true);
 });

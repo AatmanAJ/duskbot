@@ -1,0 +1,109 @@
+import { useCallback, useContext, useState, useSyncExternalStore } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { RotateCcw } from "../../icons";
+import { useStore } from "@/state/store";
+import { WorkingDots } from "@/components/WorkingIndicator";
+import { cloudWaking, markCloudAwake, onCloudWaking } from "@/lib/cloud-power";
+import { retryLiveEventsNow } from "@/lib/live-events";
+import { t } from "@/lib/i18n";
+import { usePlatform } from "../platform";
+import { useOffline } from "../network";
+import { refreshSnapshot } from "../refresh";
+import { PixelArt } from "../Illustration";
+import { spring } from "../motion";
+import { ActiveConnection } from "./active";
+import { useConnections } from "./connections";
+import { useQuietResume } from "./quiet-resume";
+import { placeKind, useConnectionNotice, type ConnectionNotice, type PlaceKind } from "./connection-notice";
+
+export type LivePlace = { name: string; kind: PlaceKind };
+
+/** The phone's live connection as one thing to say, the place it is about, and the one action that helps. */
+export function useLiveConnection(): { notice: ConnectionNotice; place: LivePlace; retry(): void; trying: boolean } {
+  const { state, dispatch } = useStore();
+  const platform = usePlatform();
+  const resuming = useQuietResume(platform);
+  const offline = useOffline();
+  const waking = useSyncExternalStore(onCloudWaking, cloudWaking, () => false);
+  const { notice, restart } = useConnectionNotice({ hydrated: state.hydrated === true, connected: state.connected === true, offline, waking, resuming });
+  const activeId = useContext(ActiveConnection);
+  const { connections } = useConnections();
+  const record = connections.find((connection) => connection.id === activeId);
+  const kind = placeKind(record);
+  const place = { name: record?.label?.trim() || t(kind === "cloud" ? "mobile.connection.yourCloud" : "mobile.connection.yourComputer"), kind };
+  const [trying, setTrying] = useState(false);
+  const retry = useCallback(() => {
+    restart();
+    setTrying(true);
+    markCloudAwake("click");
+    retryLiveEventsNow();
+    void refreshSnapshot(state, dispatch).catch(() => {}).finally(() => setTrying(false));
+  }, [restart, state, dispatch]);
+  return { notice, place, retry, trying };
+}
+
+const PROBLEM: ReadonlySet<ConnectionNotice> = new Set(["stuck", "wake-slow"]);
+export const isConnectionProblem = (notice: ConnectionNotice) => PROBLEM.has(notice);
+
+const sentence = (text: string) => text.charAt(0).toLocaleUpperCase() + text.slice(1);
+
+export function problemCopy(notice: ConnectionNotice, place: LivePlace): { title: string; body: string } {
+  if (notice === "wake-slow") return { title: sentence(t("mobile.connection.wakeSlowTitle", { name: place.name })), body: t("mobile.connection.wakeSlowBody") };
+  return {
+    title: t("mobile.unreachable.title", { name: place.name }),
+    body: t(place.kind === "cloud" ? "mobile.connection.stuckCloud" : "mobile.connection.stuckComputer"),
+  };
+}
+
+/** The floating status: a short word while it reconnects, and once that has gone on too long, a button to try again. */
+export function ConnectionPill({ notice, trying, onRetry, testId, className = "h-11 px-4" }: { notice: ConnectionNotice; trying: boolean; onRetry(): void; testId: string; className?: string }) {
+  if (!notice) return null;
+  const base = `mobile-float bg-composer pointer-events-auto flex min-w-0 items-center gap-2 whitespace-nowrap rounded-full text-[13px] font-medium ${className}`;
+  if (isConnectionProblem(notice)) {
+    return (
+      <button type="button" data-testid={testId} data-notice={notice} disabled={trying} onClick={onRetry} className={`${base} mobile-press text-ink`}>
+        {trying ? <WorkingDots size={3} /> : <RotateCcw size={14} aria-hidden />}
+        {t(trying ? "mobile.connection.trying" : "mobile.connection.notConnected")}
+      </button>
+    );
+  }
+  return (
+    <span role="status" data-testid={testId} data-notice={notice} className={`${base} text-ink-secondary`}>
+      {notice === "offline" ? t("mobile.home.offline") : <><WorkingDots size={3} />{t(notice === "waking" ? "cloudAsleep.waking" : "mobile.home.reconnecting")}</>}
+    </span>
+  );
+}
+
+/** Above the chat list once reconnecting has gone on too long: what is wrong, where, and a way to try again. */
+export function ConnectionProblemCard({ notice, place, trying, onRetry }: { notice: ConnectionNotice; place: LivePlace; trying: boolean; onRetry(): void }) {
+  const reduced = useReducedMotion();
+  const show = isConnectionProblem(notice);
+  const copy = show ? problemCopy(notice, place) : null;
+  return (
+    <AnimatePresence initial={false}>
+      {copy && (
+        <motion.div
+          key="problem"
+          role="alert"
+          data-testid="mobile-connection-problem"
+          initial={reduced ? { opacity: 0 } : { opacity: 0, height: 0 }}
+          animate={reduced ? { opacity: 1 } : { opacity: 1, height: "auto" }}
+          exit={reduced ? { opacity: 0 } : { opacity: 0, height: 0 }}
+          transition={{ ...spring.settle, opacity: { duration: 0.18 } }}
+          className="overflow-hidden"
+        >
+          <div className="mx-3 mb-3 flex items-start gap-3 rounded-[20px] bg-ink/[0.05] px-4 py-4">
+            <PixelArt name={place.kind === "cloud" ? "cloud" : "computer"} size={44} className="mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[16px] font-semibold leading-[22px] text-ink">{copy.title}</p>
+              <p className="mt-0.5 text-[14px] leading-[20px] text-ink-secondary">{copy.body}</p>
+              <button type="button" disabled={trying} onClick={onRetry} className="mobile-press mt-3 inline-flex h-10 items-center gap-2 rounded-full bg-ink px-4 text-[14px] font-semibold text-app disabled:opacity-70">
+                {trying ? <WorkingDots size={3} /> : <RotateCcw size={15} aria-hidden />}{t(trying ? "mobile.connection.trying" : "mobile.home.retry")}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}

@@ -209,7 +209,8 @@ describe("choosing a model with the keyboard", () => {
 
   it("closes when Tab leaves its last stop, and hands focus back to the chip", async () => {
     await openWith("click");
-    document.querySelector<HTMLElement>("[data-picker-more]")!.focus();
+    const stops = [...menu()!.querySelectorAll<HTMLElement>("button:not([disabled]), input, [tabindex=\"0\"]")];
+    stops.at(-1)!.focus();
     expect(press("Tab").defaultPrevented).toBe(true);
     await settle();
     expect(menu()).toBeNull();
@@ -436,4 +437,55 @@ describe("a model the organization turned off", () => {
     expect(fixture.dispatch).not.toHaveBeenCalled();
   });
 
+});
+
+describe("OpenCode's free models in the menu", () => {
+  const freeModels: Option[] = [
+    { id: "opencode/beam-free", label: "Zen · Beam Free" },
+    { id: "opencode/glm-5.3-flash-free", label: "Zen · Glm 5.3 Flash Free" },
+    { id: "opencode/minimax-m3.1-flash-free", label: "Zen · Minimax M3.1 Flash Free" },
+    { id: "opencode/longcat-2.5-free", label: "Zen · Longcat 2.5 Free" },
+    { id: "opencode/claude-opus-5", label: "Zen · Claude Opus 5" },
+    { id: "opencode/gpt-6-sol", label: "Zen · GPT 6 Sol" },
+  ];
+  const openCode = (): InstanceInfo => ({
+    instanceId: "opencodeGo", driverKind: "opencodeGo", displayName: "OpenCode", access: "subscription",
+    snapshot: { state: "available", version: "2.3.0", authenticated: true, freeFallback: true },
+    models: { default: "opencode/beam-free", options: freeModels },
+  });
+  const onFree = (model = "opencode/beam-free"): Bot => ({ ...scout(), modelSelection: { instanceId: "opencodeGo", model } });
+  const group = () => document.querySelector<HTMLElement>('[data-simple-provider="opencodeGo"]')!;
+  const groupRows = () => [...group().querySelectorAll("[data-model-row]")].map((row) => row.textContent);
+  const starToggles = () => group().querySelectorAll("[data-star-toggle]").length;
+
+  beforeEach(() => {
+    fixture.instances = [openCode(), claude(three)];
+  });
+
+  it("reads Free model on the default, then lists the free models by name, never a paid one", async () => {
+    render(onFree());
+    expect(chip().textContent).toContain("Free model");
+    expect(chip().textContent).not.toContain("Beam");
+    await openWith("click");
+    expect(group().textContent).toContain("OpenCode");
+    expect(group().textContent).toContain("Free, no account needed.");
+    expect(groupRows()).toEqual(["Glm 5.3 Flash Free", "Minimax M3.1 Flash Free", "Longcat 2.5 Free"]);
+    expect(group().textContent).not.toMatch(/Claude Opus 5|GPT 6 Sol/);
+    expect(group().querySelector("[data-simple-show-rest]")).toBeNull();
+  });
+
+  it("puts Free model first under a free model picked by name, and picks either", async () => {
+    render(onFree("opencode/glm-5.3-flash-free"));
+    expect(chip().textContent).toContain("Glm 5.3 Flash Free");
+    await openWith("click");
+    expect(groupRows()).toEqual(["Free model", "Minimax M3.1 Flash Free", "Longcat 2.5 Free"]);
+    // named rows take a star, the Free model row doesn't: it follows whichever free model OpenCode lists now
+    expect(starToggles()).toBe(2);
+    const pick = (name: string) => [...group().querySelectorAll<HTMLButtonElement>("[data-model-row] [data-menu-row]")].find((one) => one.textContent === name)!;
+    flushSync(() => pick("Minimax M3.1 Flash Free").click());
+    await settle();
+    expect(fixture.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: "setModel", selection: expect.objectContaining({ instanceId: "opencodeGo", model: "opencode/minimax-m3.1-flash-free" }),
+    }));
+  });
 });

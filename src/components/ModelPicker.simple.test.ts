@@ -192,7 +192,9 @@ describe("the model picker in Simple mode", () => {
     expect(bottom).toMatch(/aria-pressed="true"[^>]*>This bot<\/button>/);
     expect(bottom).toContain(">All bots</button>");
     expect(html).not.toContain("This chat only");
-    expect(bottom).toContain("More providers or use an API key");
+    // more providers is the list's last row now, not pinned in the foot
+    expect(bottom).not.toContain("More providers or use an API key");
+    expect(html).toContain("More providers or use an API key");
     expect(html).not.toContain("Manage AI accounts");
     expect(html).not.toContain(">Quick</button>");
     expect(html).not.toContain("new chats too");

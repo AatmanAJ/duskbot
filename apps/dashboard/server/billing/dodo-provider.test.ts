@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
-import { createDodoProvider } from "./dodo-provider.ts";
+import { checkoutName, createDodoProvider } from "./dodo-provider.ts";
 
 let server: Server, baseUrl: string;
 let requests: Array<{ method: string; url: string; auth: string | undefined; body: unknown }>;
@@ -36,11 +36,36 @@ describe("dodo HTTP provider fixture", () => {
   it("sends checkout auth, metadata and line items", async () => {
     reply = { session_id: "session", checkout_url: "https://test.checkout.dodopayments.com/session/session" };
     expect(await provider().createCheckout(input)).toEqual({ sessionId: "session", url: (reply as { checkout_url: string }).checkout_url });
-    expect(requests[0]).toEqual({ method: "POST", url: "/checkouts", auth: `Bearer ${apiKey}`, body: { product_cart: [{ product_id: "solo", quantity: 1, addons: [{ addon_id: "desktop", quantity: 1 }] }], customer: { email: "owner@example.com" }, return_url: input.returnUrl, metadata: { checkoutId: "chk_1", accountId: "a1" } } });
+    expect(requests[0]).toEqual({ method: "POST", url: "/checkouts", auth: `Bearer ${apiKey}`, body: { product_cart: [{ product_id: "solo", quantity: 1, addons: [{ addon_id: "desktop", quantity: 1 }] }], customer: { email: "owner@example.com", name: "Owner" }, return_url: input.returnUrl, metadata: { checkoutId: "chk_1", accountId: "a1" } } });
     await provider().createCheckout({ ...input, customerId: "cus_1" });
     expect(requests[1].body).toMatchObject({ customer: { customer_id: "cus_1" } });
     await provider().createCheckout({ ...input, trialDays: 3 });
     expect(requests[2].body).toMatchObject({ subscription_data: { trial_period_days: 3 } });
+  });
+  it("fills the checkout's name from the email, and a refused name never stops the checkout", async () => {
+    expect(checkoutName(null, "jane.doe+promo@example.com")).toBe("Jane Doe");
+    expect(checkoutName("  Marwan  E. ", "x@example.com")).toBe("Marwan E.");
+    expect(checkoutName(null, "meena_siddarth72@gmail.com")).toBe("Meena Siddarth");
+    expect(checkoutName(null, "12345@example.com")).toBeNull();
+    expect(checkoutName(null, "a.b@example.com")).toBeNull();
+    reply = { session_id: "s1", checkout_url: "https://test.checkout.dodopayments.com/session/s1" };
+    await provider().createCheckout({ ...input, email: "jane.doe@example.com" });
+    expect(requests[0].body).toMatchObject({ customer: { email: "jane.doe@example.com", name: "Jane Doe" } });
+    // dodo says no to the name: the same checkout goes again without it and opens
+    let calls = 0;
+    server.removeAllListeners("request");
+    server.on("request", async (req, res) => {
+      const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString()); calls++;
+      requests.push({ method: req.method!, url: req.url!, auth: req.headers.authorization, body });
+      const named = Boolean(body.customer?.name);
+      res.writeHead(named ? 422 : 200, { "content-type": "application/json" });
+      res.end(JSON.stringify(named ? { code: "INVALID_REQUEST" } : { session_id: "s2", checkout_url: "https://test.checkout.dodopayments.com/session/s2" }));
+    });
+    expect(await provider().createCheckout({ ...input, email: "jane.doe@example.com" })).toEqual({ sessionId: "s2", url: "https://test.checkout.dodopayments.com/session/s2" });
+    expect(calls).toBe(2);
+    expect(requests.at(-1)!.body).toMatchObject({ customer: { email: "jane.doe@example.com" } });
+    expect((requests.at(-1)!.body as { customer: Record<string, unknown> }).customer).not.toHaveProperty("name");
   });
   it("opens card-only payment method pages, cancels, changes plans and streams private invoices", async () => {
     const p = provider(); reply = { payment_id: "pay_1", client_secret: "secret", expires_on: "2026-11-14T00:00:00Z", payment_link: "https://test.checkout.dodopayments.com/abc" };

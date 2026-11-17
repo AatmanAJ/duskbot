@@ -12,6 +12,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { cn } from "@/lib/cn";
 import type { SkillsLibrarySkillWire } from "../../shared/wire";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 export function filterLibrarySkills(
   skills: readonly SkillsLibrarySkillWire[],
@@ -236,7 +237,8 @@ export function SkillsSection() {
 
       <RowsCard label={t("skills.library.title")} footnote={t("skills.library.subtitle")} data-settings-block="skills-library">
         {loading ? <NoteRow>{t("skills.library.loading")}</NoteRow>
-          : visible.length === 0 ? <NoteRow>{skills.length === 0 ? t("skills.library.empty") : t("skills.library.noMatches")}</NoteRow>
+          : skills.length === 0 ? <ArtState data-art-state="skills-library" art="cap" title={t("empty.skills.title")} className="py-6">{t("empty.skillsLibrary.hint")}</ArtState>
+          : visible.length === 0 ? <NoteRow>{t("skills.library.noMatches")}</NoteRow>
           : visible.map((skill) => (
             <div key={skill.name} className="contents">
               <div className={cn(rowCls, "items-start hover:bg-ink/[0.035]")}>

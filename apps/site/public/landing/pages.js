@@ -24,9 +24,14 @@ for (const b of $$('[data-copy]')) b.addEventListener('click', async () => {
   b.textContent = ok ? 'copied' : 'selected'; b.classList.add('done');
   later(1600, () => { b.textContent = label; b.classList.remove('done'); });
 });
+// people click the command itself, not the button beside it: a click anywhere on it copies, unless they are selecting
+for (const pre of $$('.code > pre')) {
+  const b = $(':scope > .copy', pre.parentElement);
+  if (b) pre.addEventListener('click', () => { if (String(getSelection()).trim() === '') b.click(); });
+}
 
 // download: the big button is a plain link to the file for this computer, so a click starts it at once, and its row in
-// the list is marked yours. on a phone the app cannot be installed, so the button sends this page to your computer
+// the list is marked yours. on a phone the app cannot be installed, so it offers the iphone app and a way to send yourself the link
 const dl = $('[data-dl-page]');
 if (dl) {
   const go = $('[data-dl-go]', dl), label = $('[data-dl-label]', dl), note = $('[data-dl-note]', dl), mark = $('.dl-os', dl);
@@ -34,14 +39,15 @@ if (dl) {
   window.duskBuild?.().then((key) => {
     if (!go) return;
     if (key === 'phone') {
-      label.textContent = 'send this page to my computer';
-      note.textContent = `dusk bot runs on your computer · ${version}`;
-      go.removeAttribute('download');
-      go.addEventListener('click', async (e) => {
+      // on a phone: the iphone app first, and the computer download sent to yourself for later
+      const ph = $('[data-dl-phone]', dl), form = $('[data-dl-mail]', dl);
+      if (!ph) return;
+      $('.dl-cta', dl).hidden = true; note.hidden = true; ph.hidden = false;
+      if (/android/i.test(navigator.userAgent)) for (const x of $$('[data-dl-ios]', ph)) x.hidden = true;
+      form.addEventListener('submit', (e) => {
         e.preventDefault();
-        const link = `${location.origin}/download`;
-        if (navigator.share) { try { await navigator.share({ title: 'dusk bot', url: link }); } catch {} return; }
-        label.textContent = (await copy(link)) ? 'link copied' : link;
+        const to = form.email.value.trim(), link = `${location.origin}/download`;
+        location.href = `mailto:${encodeURIComponent(to).replace('%40', '@')}?subject=${encodeURIComponent('dusk bot for your computer')}&body=${encodeURIComponent(`download dusk bot on your computer: ${link}`)}`;
       });
       return;
     }

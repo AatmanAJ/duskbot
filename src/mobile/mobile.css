@@ -91,6 +91,9 @@ html.mobile-scanning [data-scan-hide] { visibility: hidden; }
 
 /* the phone app's document never scrolls sideways: a focused field or a wide row must not shift the whole screen */
 html[data-mobile-app], html[data-mobile-app] body { overflow: hidden; overscroll-behavior: none; }
+/* an app, not a page: no pinch or double-tap zoom, no text-size jumps, no stray text selection outside what you type */
+html[data-mobile-app] { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-user-select: none; user-select: none; }
+html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-user-select: text; user-select: text; }
 
 /* touch targets the shared desktop components draw smaller than a thumb needs: at least 44px inside the phone shell */
 .dusk-mobile [data-mobile-chat] [data-grok-inset] button:not([role="menuitem"]),
@@ -138,3 +141,143 @@ html[data-mobile-app], html[data-mobile-app] body { overflow: hidden; overscroll
 @media (prefers-reduced-motion: reduce) {
   .dusk-mobile [data-chat-bubble][data-sending], .dusk-mobile [data-chat-bubble][data-sending]::after { animation-duration: .01s; }
 }
+
+/* a message's actions, brought up by a tap or long press, rise as one raised pill out of the bubble's side */
+.dusk-mobile [data-mobile-chat] [data-testid="message-actions"] {
+  padding: 2px 4px;
+  border-radius: 9999px;
+  background-color: var(--color-composer);
+  box-shadow: 0 6px 18px -4px rgb(28 28 28 / .16), 0 1px 3px rgb(28 28 28 / .08);
+  transform-origin: left center;
+  scale: .9;
+  transition: opacity .16s var(--m-ease-out), scale .26s cubic-bezier(.3, 1.12, .4, 1);
+}
+.dusk-mobile [data-mobile-chat] [data-testid="message-actions"].flex-row-reverse { transform-origin: right center; }
+.dusk-mobile [data-mobile-chat] [data-testid="message-actions"][data-shown] { scale: 1; }
+.dusk-mobile [data-mobile-chat] [data-testid="message-actions"] > button svg { width: 18px; height: 18px; }
+[data-skin="grok-dark"] .dusk-mobile [data-mobile-chat] [data-testid="message-actions"] { box-shadow: 0 6px 18px -4px rgb(0 0 0 / .55); }
+@media (prefers-reduced-motion: reduce) {
+  .dusk-mobile [data-mobile-chat] [data-testid="message-actions"] { scale: 1; }
+}
+
+/* the room's setup form is drawn at desktop density; on a phone its labels and hints read at the shell's sizes */
+.dusk-mobile [data-testid="room-setup"] .text-\[13px\] { font-size: 15px; line-height: 20px; }
+.dusk-mobile [data-testid="room-setup"] .text-\[12px\] { font-size: 13px; line-height: 18px; }
+.dusk-mobile [data-testid="room-setup"] .text-\[11px\] { font-size: 12px; line-height: 16px; }
+
+/* glass for the chat's header pills and composer only: blur and a hairline, no highlight or glow */
+.dusk-mobile [data-mobile-chat] {
+  --g-tint: rgb(255 255 255 / .55);
+  --g-tint-press: rgb(255 255 255 / .75);
+  --g-tint-quiet: rgb(24 24 32 / .055);
+  --g-solid: rgb(250 250 252 / .97);
+  --g-rim: rgb(20 20 28 / .08);
+  --g-shadow: 0 8px 24px -12px rgb(30 32 40 / .25);
+}
+[data-skin="grok-dark"] .dusk-mobile [data-mobile-chat], .dusk-mobile[data-scheme="dark"] [data-mobile-chat] {
+  --g-tint: rgb(48 48 52 / .55);
+  --g-tint-press: rgb(72 72 78 / .65);
+  --g-tint-quiet: rgb(255 255 255 / .07);
+  --g-solid: rgb(38 38 42 / .97);
+  --g-rim: rgb(255 255 255 / .07);
+  --g-shadow: 0 8px 24px -12px rgb(0 0 0 / .6);
+}
+.dusk-mobile [data-mobile-chat] .m-glass,
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] {
+  background-color: var(--g-tint);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
+  box-shadow: inset 0 0 0 .5px var(--g-rim), var(--g-shadow);
+  transform: translateZ(0);
+}
+.dusk-mobile [data-mobile-chat] .m-glass.mobile-press:active:not(:disabled) { background-color: var(--g-tint-press); }
+
+/* under the status bar the transcript fades into the page, so text never runs into the clock */
+.dusk-mobile [data-mobile-chat] .m-edge-top {
+  pointer-events: none;
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  background: linear-gradient(to bottom, var(--color-app) calc(100% - 16px), transparent);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .dusk-mobile [data-mobile-chat] :is(.m-glass, [data-tour="composer"]) { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dusk-mobile [data-mobile-chat] :is(.m-glass, [data-tour="composer"]) { background-color: var(--g-solid); }
+}
+@media (forced-colors: active) {
+  .dusk-mobile [data-mobile-chat] .m-glass { background: Canvas; border: 1px solid CanvasText; }
+}
+
+/* the composer is one glass pill: a quiet +, the field, the mic and the bot's send button inside it */
+.dusk-mobile [data-mobile-chat] [data-composer-backdrop] { display: none; }
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] {
+  align-items: flex-end;
+  gap: 2px;
+  margin-inline: 10px;
+  padding: 7px;
+  border-radius: 26px;
+}
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] > div:has(> [data-composer-row]) {
+  min-height: 34px;
+  padding: 0 0 0 8px;
+  border-radius: 20px;
+  background: transparent;
+  box-shadow: none;
+}
+.dusk-mobile [data-mobile-chat] [data-composer-plus] {
+  width: 34px;
+  height: 34px;
+  color: color-mix(in srgb, var(--color-ink) 82%, transparent);
+  background-color: var(--g-tint-quiet);
+  transition: scale .2s var(--m-ease-release), background-color .15s ease;
+}
+.dusk-mobile [data-mobile-chat] [data-composer-plus] svg { width: 19px; height: 19px; }
+/* the discs inside the capsule draw at 34px; the coarse-pointer hit area keeps each at 44 */
+.dusk-mobile [data-mobile-chat] [data-grok-inset] [data-tour="composer"] button:not([role="menuitem"]):is([data-composer-send], [data-voice-mic], [data-composer-stop], :has(> [data-composer-plus])) {
+  width: 34px; height: 34px; min-width: 34px; min-height: 34px;
+}
+.dusk-mobile [data-mobile-chat] :active > [data-composer-plus] { scale: .92; background-color: var(--g-tint-press); transition-duration: .16s, .15s; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] { gap: 6px; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-voice-mic="start"] {
+  background-color: var(--g-tint-quiet);
+  color: var(--color-ink-secondary);
+}
+
+/* under the composer the transcript dims into the home indicator; it rides the keyboard with the dock */
+.dusk-mobile [data-mobile-chat] [data-grok-inset]::before {
+  content: "";
+  position: absolute;
+  inset: -20px 0 calc(-1 * var(--m-safe-bottom)) 0;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--color-app) var(--m-safe-bottom), transparent);
+}
+
+/* send is filled in the accent: it springs in with the first character */
+@keyframes m-pop { from { opacity: 0; scale: .9; } }
+@keyframes m-fade { from { opacity: 0; } }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send]:not(:disabled),
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-voice-mic="send"] {
+  background-color: color-mix(in oklab, var(--color-accent) 86%, black) !important;
+  color: #fafafa !important;
+}
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] { animation: m-pop .34s var(--m-ease-release) both; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]) { transition: scale .2s var(--m-ease-release), background-color .15s ease; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active:not(:disabled) { scale: .9; transition-duration: .14s, .15s; }
+@media (prefers-reduced-motion: reduce) {
+  .dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] { animation: m-fade .2s ease-out both; }
+  .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic]):active { scale: 1; }
+}
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic="send"]) svg { width: 18px; height: 18px; stroke-width: 2.5; }
+
+/* the native glass draws the header and composer over the page: the page's own stay in place, unseen, for layout,
+   menus and focus */
+html[data-native-glass-header] .dusk-mobile [data-glass-nav] [data-glass] { opacity: 0; }
+html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
+  visibility: hidden;
+  height: var(--glass-composer-h, auto) !important;
+}
+html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea { visibility: visible; opacity: 0; caret-color: transparent; }
+html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] :is([role="menu"], [role="listbox"], [data-sidebar-popover-menu], [data-composer-menu]) { visibility: visible; }

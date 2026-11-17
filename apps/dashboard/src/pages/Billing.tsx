@@ -47,12 +47,12 @@ const FREE_POINTS = ["your bots on this computer", "they work while it's awake",
 // the motion brief's (2026-11) enter spring: a card rising into place
 const ENTER = { type: "spring" as const, stiffness: 300, damping: 22 };
 
-function PlanCard({ id, catalog, interval, current, onChoose, href, action, disabled, busy = false, note, i }: { id: Tier; catalog: PlanCatalog; interval: BillingInterval; current: boolean; onChoose: (() => void) | null; href?: string; action: string; disabled: boolean; busy?: boolean; note?: ReactNode; i: number }) {
+function PlanCard({ id, catalog, interval, current, onChoose, href, action, disabled, busy = false, note, trial, i }: { id: Tier; catalog: PlanCatalog; interval: BillingInterval; current: boolean; onChoose: (() => void) | null; href?: string; action: string; disabled: boolean; busy?: boolean; note?: ReactNode; trial?: number; i: number }) {
   const b = bundleOf(catalog, id);
   const paid = id !== "free";
   const monthly = b?.monthly ?? 0;
   const perMonth = interval === "year" ? Math.round(perMonthOn(monthly, interval, catalog)) : monthly;
-  const sub = !paid ? "on your own computer" : interval === "year" ? `per month · ${priceText(monthly, interval, catalog).replace("/yr", "")} billed yearly, + tax where applicable` : "per month, + tax where applicable";
+  const sub = !paid ? "on your own computer" : (trial ? `free for ${trial} ${trial === 1 ? "day" : "days"}, then ` : "") + (interval === "year" ? `per month · ${priceText(monthly, interval, catalog).replace("/yr", "")} billed yearly, + tax where applicable` : "per month, + tax where applicable");
   return (
     <m.article className={cx("surface flex min-w-0 flex-col rounded-card bg-card p-2.5 pb-7", !paid && "max-lg:order-last")} aria-labelledby={`plan-card-${id}`}
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...ENTER, delay: i * 0.045 }}>
@@ -345,7 +345,7 @@ export function BillingPage() {
     if (id === "team" && !current(id) && movable) return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={false} action={direct.label(id, `switch to ${name}`)} onChoose={() => void direct.choose("team")} disabled={direct.busy !== null} busy={direct.busy === id} note={direct.note(id)} />;
     if (id === "team" && !current(id)) return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={false} action="talk to us" href={`${CONTACT}?subject=${encodeURIComponent("move to team")}`} onChoose={null} disabled={false} />;
     const label = current(id) ? "your plan" : !owned && trialAction(catalog) || `${onCloud ? "switch to" : "get"} ${name}`;
-    return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={current(id)} action={current(id) ? label : direct.label(id, label)} onChoose={id === "team" ? null : () => void direct.choose(id)} disabled={current(id) || direct.busy !== null} busy={direct.busy === id} note={current(id) ? null : direct.note(id)} />;
+    return <PlanCard key={id} id={id} i={i} catalog={catalog} interval={interval} current={current(id)} action={current(id) ? label : direct.label(id, label)} onChoose={id === "team" ? null : () => void direct.choose(id)} disabled={current(id) || direct.busy !== null} busy={direct.busy === id} note={current(id) ? null : direct.note(id)} trial={!current(id) && !owned ? catalog.trialDays : undefined} />;
   };
 
   return (

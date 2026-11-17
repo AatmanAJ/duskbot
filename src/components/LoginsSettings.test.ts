@@ -221,7 +221,7 @@ describe("Settings → Logins with My Cloud", () => {
   afterEach(() => { delete (window as { duskDesktop?: unknown }).duskDesktop; });
   const where = (site: string) => document.body.querySelector(`[data-login-row="${site}"] [data-login-where]`)?.textContent;
 
-  it("without My Cloud says nothing of sides; on My Cloud itself says its logins are its own and sends nothing", async () => {
+  it("without My Cloud says nothing of sides; on My Cloud itself shows no line about logins and sends nothing", async () => {
     (window as { duskDesktop?: unknown }).duskDesktop = { cloudLogins: { state: vi.fn().mockResolvedValue({ cloud: null }), send: vi.fn() } };
     fixture.api.mockResolvedValueOnce({ logins: [SHARED_LOGIN], onePassword: OFF });
     await render();
@@ -234,7 +234,7 @@ describe("Settings → Logins with My Cloud", () => {
     fixture.config = { cloudHome: true };
     fixture.api.mockResolvedValueOnce({ logins: [SHARED_LOGIN], onePassword: OFF });
     await render();
-    expect(document.body.querySelector("[data-logins-cloud-own]")!.textContent).toContain("come along when you move your bots here");
+    expect(document.body.textContent).not.toContain("come along when you move your bots here");
     expect(document.body.querySelector("[data-also-cloud]")).toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import type { OAuthProvider } from "../../../shared/account-api";
 import { usePlatform, type MobilePlatform } from "../platform";
 import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AuthResult, type CloudPairResult, type MobileAccount, type MobileCloud } from "./account-client";
 import { setTurnSource } from "../transport/direct-rtc";
+import { chosenAccountOrigin } from "./environment";
 
 type AccountContextValue = { account: MobileAccount | null; origin: string;
   /** this app keeps a dusk account (the native app, or the preview's ?account=1) */
@@ -35,7 +36,7 @@ export function mobileAccountOrigin(native: boolean, params: URLSearchParams): s
       if (url.origin === value && !url.username && !url.password && (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))) return value;
     } catch {}
   }
-  return "https://dusk.bot";
+  return chosenAccountOrigin();
 }
 
 /** The sign-in buttons a phone shows, of those the account service says work. App Store guideline 4.8: an iPhone app
@@ -96,13 +97,19 @@ export function AccountGate({ children }: { children: ReactNode }) {
     if (pendingAuth.current) { ++revision; follow(pendingAuth.current); }
     const stop = platform.onAppUrl?.(url => {
       if (!isAccountAuthUrl(url)) return false;
+      // the browser sheet the sign-in ran in would otherwise stay up over the app on the page it ended at
+      platform.closeBrowser?.();
       ++revision;
       const task = client.handleAuthUrl(url);
       pendingAuth.current = task;
       follow(task);
       return true;
     });
-    if (wanted && !pendingAuth.current) void client.restore().then(value => { if (active && stamp === revision) setAccount(value); }).catch(() => {}).finally(() => { if (active) setRestoring(false); });
+    // the Keychain's sign-in shows at once; the service's check runs behind it and only a gone session signs out
+    if (wanted && !pendingAuth.current) void client.cached().then(value => {
+      if (active && stamp === revision && value) { setAccount(value); setRestoring(false); }
+      return client.restore();
+    }).then(value => { if (active && stamp === revision) setAccount(value); }).catch(() => {}).finally(() => { if (active) setRestoring(false); });
     else if (!pendingAuth.current) setRestoring(false);
     // signed out or deleted somewhere else (the website, another device): the app finds out when it comes back
     const stopResume = wanted ? platform.onResume?.(() => {

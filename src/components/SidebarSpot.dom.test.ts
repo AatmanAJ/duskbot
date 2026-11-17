@@ -45,7 +45,7 @@ describe("the sidebar's feedback and update spot", () => {
   it("is Give feedback until an update comes, and a click opens the feedback sheet", async () => {
     await mount();
     expect(spot()?.dataset.sidebarSpot).toBe("feedback");
-    expect(spot()?.textContent).toBe("Give feedbackTell us what to fix or add");
+    expect(spot()?.textContent).toBe("Give feedback");
     await act(async () => { spot()!.click(); });
     expect(opened).toBe(true);
   });

@@ -142,7 +142,7 @@ describe("bot-first sidebar", () => {
   });
 
   it("keeps Simple mode's collapsed rail to the avatar and fades the Advanced rail's engine badge", () => {
-    fixture.state = { ...fixture.state, instances: [{ instanceId: "fake", driverKind: "claudeAgent", displayName: "Claude" }] as unknown as AppState["instances"] };
+    fixture.state = { ...fixture.state, instances: [{ instanceId: "fake", driverKind: "claudeAgent", displayName: "Claude", snapshot: { state: "available" }, models: { default: "", options: [] } }] as unknown as AppState["instances"] };
     const candidate = { ...bot, tasks: [], projects: [] };
     const rail = renderToStaticMarkup(createElement(BotListItem, rowProps("icons", candidate)));
     expect(rail).not.toContain('data-testid="model-badge"');

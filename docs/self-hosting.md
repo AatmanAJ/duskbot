@@ -29,13 +29,13 @@ picked. Nothing is typed back into the app: no address, no code, no password.
 Cloudflare is the recommended way and the first one the sheet offers.
 
 ```sh
-curl -fsSL https://dusk.bot/s/k3x9m2p/cloudflare | sh   # a quick Cloudflare tunnel (recommended)
-curl -fsSL https://dusk.bot/s/k3x9m2p | sh              # the relay
-curl -fsSL https://dusk.bot/s/k3x9m2p/tailscale | sh    # your tailnet
-curl -fsSL https://dusk.bot/s/k3x9m2p/ssh | sh          # over your SSH port
+curl -fsSL https://dusk.bot/s/<code>/cloudflare | sh   # a quick Cloudflare tunnel (recommended)
+curl -fsSL https://dusk.bot/s/<code> | sh              # the relay
+curl -fsSL https://dusk.bot/s/<code>/tailscale | sh    # your tailnet
+curl -fsSL https://dusk.bot/s/<code>/ssh | sh          # over your SSH port
 ```
 
-`k3x9m2p` is the setup's own code: 7 characters, good only for that setup while it waits for the server or installs,
+`<code>` is the setup's own code, which only the app's sheet shows (copying these examples gives a 404): 7 characters, good only for that setup while it waits for the server or installs,
 and gone once the server is linked, the setup is cancelled or two hours pass. Wrong codes are counted, and an address
 that keeps guessing is refused for the hour. dusk.bot (behind Cloudflare) answers with a tiny script that fetches the
 whole installer from link.dusk.bot and runs it: five tries 2 s apart, every other one over IPv4, the installer run only

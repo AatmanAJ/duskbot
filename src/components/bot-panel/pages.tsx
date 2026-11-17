@@ -8,6 +8,7 @@ import { shortPath } from "@/lib/short-path";
 import { useStore, type Bot } from "@/state/store";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { ServiceIcon } from "../ServiceIcon";
+import { ArtState } from "../ui/Art";
 import { useWorkingFolder } from "../bot-settings/AccessSection";
 import { SkillReviewDialog } from "../bot-settings/SkillsSection";
 import { useBotApps, type BotApp } from "../bot-settings/useBotApps";
@@ -47,14 +48,14 @@ export function AppsPage({ bot, derived }: PageContext) {
       ? t("botPanel.ui.commonChecking")
       : apps.phase === "unknown"
         ? t("botSettings.simple.appsUnknown")
-        : apps.apps.length === 0
-          ? t("botSettings.simple.appsNone")
-          : null;
+        : null;
+  const none = canUseConnectedApps && apps.phase !== "loading" && apps.phase !== "unknown" && apps.apps.length === 0;
 
   return (
     <>
       <Card>
         {note && <NoteRow>{note}</NoteRow>}
+        {none && <ArtState data-art-state="apps" art="plug" title={t("empty.apps.title")} className="py-6">{t("empty.apps.hint", { name: bot.name })}</ArtState>}
         {canUseConnectedApps && apps.apps.map((app) => (
           <div key={app.slug} data-simple-app={app.slug} className={rowCls}>
             <ServiceIcon key={`${app.card.logo}:${app.card.domain}`} card={app.card} className="size-7 shrink-0" />
@@ -103,7 +104,7 @@ export function MemoryPage({ bot }: PageContext) {
         ) : notes === null ? (
           <NoteRow>{t("botPanel.ui.commonChecking")}</NoteRow>
         ) : notes.length === 0 ? (
-          <NoteRow>{t("botPanel.memory.empty")}</NoteRow>
+          <ArtState data-art-state="memory" art="notebook" title={t("empty.memory.title")} className="py-6">{t("empty.memory.hint", { name: bot.name })}</ArtState>
         ) : notes.map((note) => (
           <div key={`${note.path}:${note.line}:${note.text}`} data-memory-note={note.line ?? note.path} className={rowCls}>
             <div className="min-w-0 flex-1 text-[13px] leading-[1.45] text-ink">{note.text}</div>
@@ -140,7 +141,7 @@ export function SkillsPage({ bot }: PageContext) {
         {skills.loading ? (
           <NoteRow>{t("botPanel.ui.skillsLoading")}</NoteRow>
         ) : skills.skills.length === 0 ? (
-          <NoteRow>{t("botSettings.simple.noSkills")}</NoteRow>
+          <ArtState data-art-state="skills" art="cap" title={t("empty.skills.title")} className="py-6">{t("empty.skills.hint", { name: bot.name })}</ArtState>
         ) : skills.skills.map((skill) => (
           <SwitchRow
             key={skill.name}

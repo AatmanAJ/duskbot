@@ -44,9 +44,27 @@ describe("restore", () => {
     fetcher.mockRejectedValue(new TypeError("offline"));
     expect(await client.restore()).toEqual(future ? grant().account : null);
   });
-  it("does not grant offline grace to a server refusal", async () => {
-    secrets.set("dusk.account", JSON.stringify(stored())); fetcher.mockResolvedValue(response({ error: "failed" }, 503));
-    expect(await client.restore()).toBeNull();
+  it.each([[503, { error: "failed" }], [429, { error: "rate_limited" }], [502, "<html>bad gateway</html>"]])("keeps a session that has not run out through a %s from the service", async (status, body) => {
+    secrets.set("dusk.account", JSON.stringify(stored()));
+    fetcher.mockResolvedValue(typeof body === "string" ? new Response(body, { status }) : response(body, status));
+    expect(await client.restore()).toEqual(grant().account); expect(secrets.has("dusk.account")).toBe(true);
+  });
+  it("keeps a session through a captive portal's page that answers 200 with html", async () => {
+    secrets.set("dusk.account", JSON.stringify(stored())); fetcher.mockResolvedValue(new Response("<html>sign in to wifi</html>", { status: 200 }));
+    expect(await client.restore()).toEqual(grant().account);
+  });
+  it("saves the end the service slid the session to, so it stays signed in past the first sign-in's end", async () => {
+    secrets.set("dusk.account", JSON.stringify(stored()));
+    const later = Date.now() + 90 * 86_400_000;
+    fetcher.mockResolvedValue(response({ ...grant(), expiresAt: later }));
+    await client.restore();
+    expect(JSON.parse(secrets.get("dusk.account")!).expiresAt).toBe(later);
+  });
+  it("reads the saved sign-in at once without the network", async () => {
+    secrets.set("dusk.account", JSON.stringify(stored()));
+    expect(await client.cached()).toEqual(grant().account); expect(client.account()).toEqual(grant().account); expect(fetcher).not.toHaveBeenCalled();
+    secrets.set("dusk.account", JSON.stringify(stored({ origin: "https://other.example" })));
+    expect(await createMobileAccount({ platform, origin, fetch: fetcher }).cached()).toBeNull();
   });
   it("rejects malformed stored tokens", async () => {
     secrets.set("dusk.account", JSON.stringify(stored({ token: "bad" })));
@@ -107,7 +125,7 @@ describe("browser sign-in", () => {
     const pending = JSON.parse(secrets.get("dusk.account.pending")!);
     const url = new URL(vi.mocked(platform.openExternal).mock.calls[0][0]);
     expect(url.origin + url.pathname).toBe(`${origin}/v1/auth/app/start`);
-    expect(Object.fromEntries(url.searchParams)).toMatchObject({ provider: "google", code_challenge_method: "S256", redirect_uri: "duskbot://auth", state: pending.state,
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({ provider: "google", code_challenge_method: "S256", redirect_uri: "duskbot://auth", landing: "page", state: pending.state,
       code_challenge: createHash("sha256").update(pending.verifier).digest("base64url") });
     expect(pending.verifier).toHaveLength(43); expect(pending.state).toHaveLength(32);
   });

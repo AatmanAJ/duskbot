@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ContinueInBrowserSheet } from "./SignInSheet";
 import { continueInBrowser } from "@/lib/account-intent";
-import { Check, LogOut, Pencil, Plus, UserRound, X } from "../icons";
-import type { AccountPlanLine, AccountRow, AccountsView, AccountSwitchResult, RailOpenResult } from "../../electron/cloud-account.mjs";
+import { Check, LogOut, Pencil, Plus, X } from "../icons";
+import type { AccountFace, AccountPlanLine, AccountRow, AccountsView, AccountSwitchResult, RailOpenResult } from "../../electron/cloud-account.mjs";
 import { cn } from "@/lib/cn";
 import type { CloudSignInPhase } from "@/lib/cloud-plan";
 import { t } from "@/lib/i18n";
@@ -27,6 +27,8 @@ export interface AccountsAccess {
   add(email?: string): void;
   /** Opens the avatar picker for the account in use, where this app can save one. */
   editAvatar?: () => void;
+  /** A Cloud of the person's own: the account in use (address, face and plan). Null anywhere else. */
+  face?: AccountFace | null;
 }
 
 /** What a click or sign-out that didn't go through says; null when it went through. */
@@ -58,6 +60,7 @@ export function useAccounts(): AccountsAccess & { sheet: { email: string | null;
   const [sheet, setSheet] = useState<{ email: string | null; note: string | null } | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [face, setFace] = useState<AccountFace | null>(null);
   useEffect(() => {
     if (!own) return;
     const read = () => { void bridge!.list().then(setView).catch(() => {}); };
@@ -68,11 +71,13 @@ export function useAccounts(): AccountsAccess & { sheet: { email: string | null;
     if (own || !remote) return;
     let alive = true;
     void remote.offered().then((yes) => { if (alive) setOffered(yes === true); }).catch(() => {});
+    void remote.face?.().then((next) => { if (alive) setFace(next ?? null); }).catch(() => {});
     return () => { alive = false; };
   }, [own, remote]);
   return {
     view: own ? view : null,
     openSheet: !own && offered && remote ? () => { void remote.open().catch(() => {}); } : null,
+    face: own ? null : face,
     noRail: !places.beside && !places.places.length,
     signOut: (id) => setAsking(id),
     add: (email) => setSheet({ email: email ?? "", note: null }),
@@ -119,9 +124,9 @@ export function cloudRowLabel(view: AccountsView | null): string {
 
 /** The You menu's last rows: who is signed in here and Sign out. The other accounts are on the rail, and so is Add another account,
  * in its ＋; with no rail beside this page (nothing to list but This computer, or the person hid it) it is here. On another page,
- * one row that opens the sheet, with no address. Signed out: nothing, as Settings has the sign-in. */
+ * one Sign out row that opens the sheet, with no address. Signed out: nothing, as Settings has the sign-in. */
 export function accountMenuItems({ view, openSheet, noRail, signOut, add, editAvatar }: AccountsAccess): SidebarMenuItem[] {
-  if (openSheet) return [{ key: "accounts-sheet", label: t("accounts.manage"), icon: <UserRound size={18} />, onSelect: openSheet }];
+  if (openSheet) return [{ key: "accounts-sheet", label: t("accounts.signOut"), icon: <LogOut size={18} />, onSelect: openSheet }];
   const active = view?.active;
   if (!active) return [];
   return [

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import en from "../locales/en.json";
 import { describe, expect, it } from "vitest";
 
 import type { MobileDevice } from "../../shared/mobile-link";
@@ -51,6 +52,19 @@ describe("mobile workspace pairing", () => {
 
   it("hands the phone page's pieces to server pairing, with the active workspace flag", () => {
     const source = readFileSync(new URL("./SettingsModal.tsx", import.meta.url), "utf8");
-    expect(source).toMatch(/pairing: <PhoneLinking remote=\{remoteActive\}>\{\(phone\) => <ServerPairingCard phone=\{phone\}/);
+    expect(source).toMatch(/pairing: <PhoneLinking remote=\{remoteActive\} cloudHome=\{cloudHome\} email=\{state\.config\?\.profile\?\.email\}>\{\(phone\) => <ServerPairingCard phone=\{phone\}/);
+  });
+
+  it("sends an iPhone to the App Store app, never to a Home Screen page the qr cannot open", () => {
+    // the qr is a duskbot://pair link only the app opens: a phone without it gets nothing from the camera
+    const words = en as Record<string, string>;
+    for (const key of ["settings.mobile.scanSteps", "mobile.desktop.noStoreApp", "mobile.desktop.appStore"]) {
+      expect(words[key]).toContain("App Store");
+      expect(words[key]).not.toMatch(/home screen/i);
+      expect(words[key]).not.toMatch(/not in the app store|app store and google play soon/i);
+    }
+    const source = readFileSync(new URL("./MobilePairingCard.tsx", import.meta.url), "utf8");
+    expect(source).toContain('data-phone-app-store="" href={storeUrl("ios")}');
+    expect(words["mobile.desktop.storesSoon"]).toBe("Google Play soon");
   });
 });

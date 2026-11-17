@@ -8,6 +8,71 @@ function scroller(root: HTMLElement): HTMLElement | null {
   return root.querySelector<HTMLElement>("[data-mobile-chat] .glass-scroller");
 }
 
+const AT_END_PX = 24;
+const INTERACTIVE = "a, button, input, textarea, select, summary, label, [role=button], [role=menuitem], [contenteditable=true]";
+
+function atEnd(list: HTMLElement): boolean {
+  return list.scrollHeight - list.clientHeight - list.scrollTop <= AT_END_PX;
+}
+
+/** Opening the keyboard is for answering: the transcript goes to its newest row, as a messaging app's does. */
+function toLatest(root: HTMLElement): void {
+  const list = scroller(root);
+  if (list) list.scrollTop = list.scrollHeight;
+}
+
+/** The composer's field, when it holds focus (the keyboard is up for it). */
+function composerField(root: HTMLElement): HTMLElement | null {
+  const active = document.activeElement;
+  return active instanceof HTMLTextAreaElement && root.querySelector("[data-mobile-chat]")?.contains(active) ? active : null;
+}
+
+/** A drag down the transcript, or a tap on it away from a control, puts the keyboard away (UIScrollView's
+ * keyboardDismissMode onDrag, as Messages and WhatsApp do). */
+export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    let start: { x: number; y: number } | null = null;
+    const inTranscript = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest("[data-mobile-chat] .glass-scroller"));
+    const dismiss = () => {
+      if (root.dataset.glassFocused !== undefined) { platform.glass?.blur(); return; }
+      const field = composerField(root);
+      if (!field) return;
+      field.blur();
+      platform.hideKeyboard?.();
+    };
+    const down = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      start = touch && event.touches.length === 1 && inTranscript(event.target) ? { x: touch.clientX, y: touch.clientY } : null;
+    };
+    const move = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!start || !touch) return;
+      const dy = touch.clientY - start.y;
+      if (dy > 16 && dy > Math.abs(touch.clientX - start.x) * 1.5) { start = null; dismiss(); }
+    };
+    const up = () => { start = null; };
+    const tap = (event: MouseEvent) => {
+      if (!inTranscript(event.target) || (event.target as Element).closest(INTERACTIVE)) return;
+      if (window.getSelection()?.toString()) return;
+      dismiss();
+    };
+    root.addEventListener("touchstart", down, { passive: true });
+    root.addEventListener("touchmove", move, { passive: true });
+    root.addEventListener("touchend", up, { passive: true });
+    root.addEventListener("touchcancel", up, { passive: true });
+    root.addEventListener("click", tap);
+    return () => {
+      root.removeEventListener("touchstart", down);
+      root.removeEventListener("touchmove", move);
+      root.removeEventListener("touchend", up);
+      root.removeEventListener("touchcancel", up);
+      root.removeEventListener("click", tap);
+    };
+  }, [platform, rootRef]);
+}
+
 function safeBottom(root: HTMLElement): number {
   const probe = document.createElement("div");
   probe.style.cssText = "position:absolute;visibility:hidden;height:var(--m-safe-bottom)";
@@ -53,6 +118,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       const stop = platform.onKeyboard(({ height, phase }) => {
         if (height > 0) {
           if (phase === "did") { commitShown(height); return; }
+          if (!committed && !root.dataset.keyboard) toLatest(root);
           const shift = Math.max(0, height - Math.max(committed, safeBottom(root)));
           root.dataset.kbMoving = "";
           root.dataset.keyboard = "open";
@@ -85,7 +151,14 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const inset = keyboardInset(window.innerHeight, vv);
+        if (inset && (window.scrollY > 0 || vv.offsetTop > 0)) window.scrollTo(0, 0);
+        if (inset === committed) return;
+        const list = scroller(root);
+        // the newest row stays in view as the keyboard takes its space; opening it goes to the newest row
+        const pin = Boolean(list && (atEnd(list) || (inset > 0 && committed === 0)));
+        committed = inset;
         set(inset, 0);
+        if (pin) toLatest(root);
         if (inset) root.dataset.keyboard = "open";
         else delete root.dataset.keyboard;
         if (inset && (window.scrollY > 0 || vv.offsetTop > 0)) window.scrollTo(0, 0);

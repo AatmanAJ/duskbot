@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, Group } from "@/state/store";
 import { failedComposerSends, rememberFailedComposerSend, restoreComposerDraft } from "@/lib/drafts";
 import { setCallMode } from "@/lib/call-mode";
+import { setSendKey } from "@/lib/send-key";
 
 const fixture = vi.hoisted(() => ({
   dispatch: vi.fn(),
@@ -85,6 +86,37 @@ afterEach(() => {
 vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
 
 describe("the phone composer", () => {
+  it("in the phone app, return is labelled send and sends, whatever send key the desktop chose", () => {
+    setSendKey("mod-enter");
+    document.documentElement.dataset.mobileApp = "ios";
+    try {
+      render({ bot });
+      const field = container.querySelector("textarea")!;
+      expect(field.getAttribute("enterkeyhint")).toBe("send");
+      restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "", attachments: [] });
+      flushSync(() => {
+        const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+        setValue.call(field, "ship it");
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      flushSync(() => { field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+      expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "send", text: "ship it" }));
+    } finally {
+      delete document.documentElement.dataset.mobileApp;
+      setSendKey("enter");
+    }
+  });
+
+  it("outside the phone app a send key that needs a modifier keeps return for a new line", () => {
+    setSendKey("mod-enter");
+    try {
+      render({ bot });
+      expect(container.querySelector("textarea")!.getAttribute("enterkeyhint")).toBe("enter");
+    } finally {
+      setSendKey("enter");
+    }
+  });
+
   it("with live calls off, ends the pill on an inverse mic and offers no call", () => {
     vi.stubEnv("VITE_DUSK_LIVE_CALL", "");
     try {

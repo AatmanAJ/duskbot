@@ -79,6 +79,12 @@ export interface LiveFrameListener {
 
 const liveFrameListeners = new Set<LiveFrameListener>();
 const screenWishListeners = new Set<() => void>();
+const retryListeners = new Set<() => void>();
+
+/** The person asked to try again: every open stream that is not connected tries now, from the shortest wait. */
+export function retryLiveEventsNow(): void {
+  for (const retry of retryListeners) retry();
+}
 const screensWanted = () => [...liveFrameListeners].some((listener) => listener.screens);
 
 export function listenLiveFrames(listener: LiveFrameListener): () => void {
@@ -394,6 +400,12 @@ export function openLiveEvents(
     if (source && cursor && !pendingSnapshot && screensWanted() !== sourceScreens) reconnectNow(false);
   });
   screenWishListeners.add(onScreenWish);
+  const onRetryNow = () => {
+    if (stopped || !platform.isOnline() || cloudAsleep()) return;
+    retryAttempt = 0;
+    if (!source || shouldReconnectLiveEvents(lastHeardAt, platform.now(), staleMs)) reconnectNow(source !== null);
+  };
+  retryListeners.add(onRetryNow);
   connect();
   const staleTimer = setInterval(recover, staleCheckMs);
   // The person is back after the Cloud slept: reconnect at once, which wakes it.
@@ -412,6 +424,7 @@ export function openLiveEvents(
     if (stopped) return;
     stopped = true;
     screenWishListeners.delete(onScreenWish);
+    retryListeners.delete(onRetryNow);
     stopPower();
     clearInterval(staleTimer);
     clearInterval(awakeCheck);

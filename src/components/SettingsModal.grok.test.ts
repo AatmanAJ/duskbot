@@ -80,11 +80,11 @@ const title = (html: string) => html.match(/<h2 id="[^"]*" class="settings-pane-
 describe("Settings, drawn as Grok Bot's", () => {
   it("rails Grok's panes with Models, then Advanced features last, and no Bots pane beside the bot panel", () => {
     const html = open("general");
-    expect(panes(html)).toEqual(["general", "voice", "computer", "vault", "models", "usage", "updates", "advanced"]);
-    expect(html).toContain('data-icon-name="vault"');
-    expect(html).toContain('data-icon-name="chart-bars"');
-    expect(html).toContain('data-icon-name="settings-gear"');
-    expect(html).toContain('data-icon-name="cloud-download"');
+    expect(panes(html)).toEqual(["general", "voice", "computer", "texting", "vault", "models", "usage", "updates", "advanced"]);
+    expect(html).toContain('data-setting-glyph="key"');
+    expect(html).toContain('data-setting-glyph="chart"');
+    expect(html).toContain('data-setting-glyph="gear"');
+    expect(html).toContain('data-setting-glyph="download"');
     expect(current(html)).toBe("general");
     expect(title(html)).toBe("General");
   });
@@ -168,13 +168,16 @@ describe("Settings, drawn as Grok Bot's", () => {
     expect(bots).not.toContain('data-settings-block="profile"');
   });
 
-  it("hides Phone while the phone app is hidden, and a link to the phone lands on General", () => {
+  it("hides Phone only in a build that hides the phone app, and a link to the phone then lands on General", () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     expect(panes(open("companion"))).not.toContain("texting");
     expect(current(open("companion"))).toBe("general");
     expect(current(open("texting"))).toBe("general");
     expect(markers(open("companion"))).not.toContain("pairing");
-    vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
-    expect(panes(open("general"))).toEqual(["general", "voice", "computer", "vault", "models", "texting", "usage", "updates", "advanced"]);
+    // a plain build (production sets no flag) keeps Phone, so a browser user on a cloud can reach the code
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "");
+    expect(panes(open("general"))).toEqual(["general", "voice", "computer", "texting", "vault", "models", "usage", "updates", "advanced"]);
+    expect(current(open("companion"))).toBe("texting");
     const groups = [...open("general").matchAll(/data-settings-rail-group="([^"]+)" class="settings-nav-group"><p aria-hidden="true" class="settings-nav-label">([^<]+)</g)].map((match) => `${match[1]}:${match[2]}`);
     expect(groups).toEqual(["you:You", "bots:Your bots", "app:This app"]);
   });
@@ -219,7 +222,7 @@ describe("Settings, drawn as Grok Bot's", () => {
 
   it("shows a paired remote client General and Computer (Texting while the phone app is offered), with its look in General", () => {
     vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn(), duskDesktop: { remoteClient: { active: true }, environments: {} } });
-    expect(panes(open("general"))).toEqual(["general", "voice", "computer"]);
+    expect(panes(open("general"))).toEqual(["general", "voice", "computer", "texting"]);
     expect(groups(open("general"))).toEqual(["How it looks", "Notifications"]);
     expect(current(open("looks"))).toBe("general");
     expect(current(open("engines"))).toBe("general");

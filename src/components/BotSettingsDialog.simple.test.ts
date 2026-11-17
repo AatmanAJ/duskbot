@@ -26,6 +26,7 @@ const fixture = vi.hoisted(() => {
     api: (() => Promise.resolve({})) as (...args: unknown[]) => Promise<unknown>,
     storeState: {} as Record<string, unknown>,
     otherServer: null as string | null,
+    cloudDesktop: undefined as unknown,
     skills: {
       skills: [] as ManagedSkill[],
       loading: false,
@@ -64,6 +65,10 @@ vi.mock("@/lib/other-server", async (importOriginal) => ({
   useOtherServerName: () => fixture.otherServer,
   desktopShowsOtherServer: () => fixture.otherServer !== null,
 }));
+vi.mock("./bot-panel/CloudDesktop", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./bot-panel/CloudDesktop")>();
+  return { ...original, useCloudDesktop: () => (fixture.cloudDesktop === undefined ? original.useCloudDesktop() : fixture.cloudDesktop) as ReturnType<typeof original.useCloudDesktop> };
+});
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => fixture.ownerOrAdmin }));
 vi.mock("@/lib/app-links", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/app-links")>()),
@@ -593,6 +598,9 @@ describe("the Details tab", () => {
   it("says what routines are while the bot has none, in Grok's words, and lists them once it has some", () => {
     const empty = botTab(makeBot());
     expect(empty.html).toContain(">Routines are recurring tasks this bot runs on a schedule. Ask it in chat to set one up.<");
+    // just the line, no pixel art or title
+    expect(empty.html).not.toContain("data-art-state");
+    expect(empty.html).not.toContain("No routines yet");
     // routines are set up in chat, so the panel offers no button of its own
     expect(empty.html).not.toContain('data-panel-action="new-routine"');
     fixture.storeState = { ...fixture.storeState, routines: [routine()] };
@@ -671,6 +679,8 @@ describe("the Library", () => {
     const rendered = library(makeBot());
     expect(rendered.html).toContain('data-panel-empty="library"');
     expect(rendered.html).toContain(">Pages, files, and apps this bot makes show up here<");
+    expect(rendered.html).not.toContain("data-art-state");
+    expect(rendered.html).not.toContain("Nothing made yet");
     for (const gone of ["memory", "skills", "folder"]) expect(has(rendered, "data-panel-page", gone), gone).toBe(false);
   });
 
@@ -764,6 +774,17 @@ describe("the Computer tab", () => {
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "openCloudAdd", source: "app_bot_panel" });
   });
 
+  it("on this computer still shows a Private desktop bot's own screen, with the dusk cloud offer under it", () => {
+    fixture.otherServer = null;
+    const rendered = computer(makeBot({ computer: "vm" }));
+    expect(rendered.nodes.find((node) => node.props.inline === true)?.props.bot).toMatchObject({ id: "scout" });
+    expect(rendered.html).toContain('data-asleep-mascot=""');
+    expect(rendered.html).toContain(">Scout&#x27;s screen<");
+    const screen = rendered.html.indexOf('data-asleep-mascot=""'), card = rendered.html.indexOf('data-panel-card="dusk-cloud"');
+    expect(card).toBeGreaterThan(screen);
+    expect(has(rendered, "data-local-browser-first")).toBe(false);
+  });
+
   it("in a group chat is one card for all of its bots, in the group's words", () => {
     fixture.otherServer = null;
     const group = [cloudBot(), { ...cloudBot(), id: "nova", name: "Nova" }];
@@ -796,6 +817,19 @@ describe("the Computer tab with a dusk cloud already", () => {
   it("never offers dusk cloud again: only an account with no cloud, or one still at checkout, sees the offer", () => {
     for (const stage of ["ready", "preparing", "moving", "moved", "open", "manage", "coming-back"] as const) expect(hasDuskCloud(stage), stage).toBe(true);
     for (const stage of [null, "buy", "resume", "elsewhere"] as const) expect(hasDuskCloud(stage), String(stage)).toBe(false);
+  });
+
+  it("shows only the screen and the way to the cloud, never a browser above it", () => {
+    fixture.otherServer = null;
+    fixture.cloudDesktop = { view: { step: "move" }, keep: null, openHome: () => Promise.resolve(), dialog: null };
+    try {
+      const rendered = computer(makeBot());
+      expect(rendered.html).not.toContain("data-local-browser-first");
+      expect(rendered.nodes.findIndex((node) => node.props.inline === true)).toBeGreaterThan(-1);
+      expect(rendered.html).toContain('data-panel-cloud-switch=""');
+    } finally {
+      fixture.cloudDesktop = undefined;
+    }
   });
 
   it("says the cloud has its own computer, and Switch to dusk cloud goes there", () => {
@@ -931,7 +965,8 @@ describe("the drill-in pages", () => {
     expect(body("apps").html).toContain("Couldn&#x27;t check your apps just now.");
     fixture.apps = { phase: "ready", apps: [], connectedSlugs: [] };
     const empty = body("apps");
-    expect(empty.html).toContain("No apps connected yet.");
+    expect(empty.html).toContain("No apps connected yet");
+    expect(empty.html).toContain('data-art-state="apps"');
     click(find(empty, "data-panel-link", "add-app"));
     expect((fixture.dispatch as ReturnType<typeof vi.fn>).mock.calls).toEqual([
       [{ type: "togglePlugins", open: true, surface: "apps" }],
@@ -977,7 +1012,7 @@ describe("the drill-in pages", () => {
     expect(body("memory", makeBot({ memoryEnabled: false })).html).toContain("Memory is off for Scout.");
     expect(has(body("memory", makeBot({ memoryEnabled: false })), "data-panel-form", "memory-add")).toBe(false);
     fixture.memory.docs = [memoryDoc("")];
-    expect(body("memory").html).toContain("Nothing remembered yet.");
+    expect(body("memory").html).toContain("Nothing remembered yet");
     fixture.memory = { ...fixture.memory, docs: null, error: true };
     expect(body("memory").html).toContain("Couldn&#x27;t read the memory file just now.");
 
@@ -1023,7 +1058,7 @@ describe("the drill-in pages", () => {
     fixture.skills.working = "triage";
     expect(row(body("skills"), "skill:summarise").props.disabled).toBe(true);
     fixture.skills.skills = [];
-    expect(body("skills").html).toContain("No skills yet.");
+    expect(body("skills").html).toContain('data-art-state="skills"');
   });
 
   it("keeps the bot's own private folder, or a folder chosen with the native picker, saved through the bot route", async () => {

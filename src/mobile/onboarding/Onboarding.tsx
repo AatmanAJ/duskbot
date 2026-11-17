@@ -9,7 +9,7 @@ import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { haptic } from "../haptics";
 import { PixelArt, PixelMascot } from "../Illustration";
 import { usePlatform, type CameraPermission } from "../platform";
-import { PairError, parseTypedPairing, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
+import { PairError, readScanned, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
 import { Scanner } from "./Scanner";
 import { CloudPicker } from "../account/CloudPicker";
 import { MobileSignIn } from "../account/MobileSignIn";
@@ -36,10 +36,16 @@ export function firstStep({ incoming, signedIn, adding, startAt = "welcome" }: {
   return "welcome";
 }
 
-function Failed({ failure }: { failure: Failure }) {
+function Failed({ failure, onSignIn }: { failure: Failure; onSignIn?: () => void }) {
   const key = failure.code === "unreachable" && failure.companion ? "network" : failure.code;
+  // a cloud never takes a code, and a code nobody knows is often a cloud's or a browser's: logging in is the way there
+  const signIn = onSignIn && (failure.code === "sign-in" || failure.code === "unknown");
   return (
-    <ErrorLine>
+    <ErrorLine action={signIn ? (
+      <button type="button" data-failure-sign-in="" onClick={onSignIn} className="mobile-press -ms-2 mt-1 flex min-h-11 items-center rounded-full px-2 text-[15px] font-semibold text-ink underline underline-offset-2">
+        {t("mobile.onboarding.err.signInAction")}
+      </button>
+    ) : null}>
       <span className="block font-semibold">{t(`mobile.onboarding.err.${key}.title` as Parameters<typeof t>[0])}</span>
       <span className="block text-ink-secondary">{t(`mobile.onboarding.err.${key}.body` as Parameters<typeof t>[0], { name: failure.name })}</span>
     </ErrorLine>
@@ -49,9 +55,11 @@ function Failed({ failure }: { failure: Failure }) {
 /** First launch to linked. Pairing with your own computer needs no account (App Store guideline 5.1.1(v)): scan its QR
  * code first, or type its code. Signing in is only for a dusk cloud (the account finds it and pairs with it). The success moment and the hand-off
  * to Home belong to the connection gate. */
-export function Onboarding({ initial = null, reason = null, startAtLink = false, startAt = "welcome", onLinked, onCancel }: {
+export function Onboarding({ initial = null, reason = null, startAtLink = false, startAt = "welcome", email, onLinked, onCancel }: {
   /** where a sheet opened from inside the app starts */
   startAt?: "welcome" | "signin";
+  /** a dusk cloud's qr named the account to sign in with */
+  email?: string;
   initial?: TypedPairing | null;
   /** Linking another computer from inside the app: a way back out. */
   startAtLink?: boolean;
@@ -67,8 +75,11 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   const [confirm, setConfirm] = useState<TypedPairing | null>(initial);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
+  // a failed scan lands on the code screen with an empty field: its way forward is scanning again, not a dead submit
+  const [scanFailed, setScanFailed] = useState(false);
   const [noClouds, setNoClouds] = useState(false);
   const [value, setValue] = useState("");
+  const [signInEmail, setSignInEmail] = useState(email ?? "");
   const locked = useRef(false);
   const fieldId = useId();
 
@@ -76,18 +87,21 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     platform.setStatusBar?.(step === "scan" || document.documentElement.dataset.skin === THEME_SKINS.dark ? "light" : "dark");
   }, [platform, step]);
 
-  const go = (next: Step) => { setFailure(null); setValue(""); setStep(next); };
+  const go = (next: Step) => { setFailure(null); setScanFailed(false); setValue(""); setStep(next); };
 
   const redeem = async (text: string | TypedPairing, from: Step) => {
     if (locked.current) return;
     locked.current = true;
     setBusy(true);
     setFailure(null);
+    setScanFailed(false);
     let payload: TypedPairing | null = typeof text === "string" ? null : text;
     try {
       if (typeof text === "string") {
-        const parsed = parseTypedPairing(text);
-        payload = parsed && "kind" in parsed ? await resolveTypedCode(parsed.code) : parsed;
+        const scanned = readScanned(text);
+        if (scanned?.kind === "store") throw new PairError("store-qr");
+        if (scanned?.kind === "signin") { setSignInEmail(scanned.email); go(signedIn ? "clouds" : "signin"); return; }
+        payload = scanned?.kind === "code" ? await resolveTypedCode(scanned.code) : scanned?.kind === "pair" ? scanned.payload : null;
       }
       if (!payload) throw new PairError("invalid");
       const result = await redeemPairing(payload, platform);
@@ -95,7 +109,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     } catch (error) {
       haptic("error");
       setFailure({ code: error instanceof PairError ? error.code : "unreachable", name: installationName(payload), companion: payload?.transport === "companion" });
-      if (from === "scan") setStep("code");
+      if (from === "scan") { setStep("code"); setScanFailed(true); }
     } finally {
       locked.current = false;
       setBusy(false);
@@ -136,8 +150,8 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
           <StepPane id="welcome">
             <Screen top={close} art={<MascotTrio scale={1.4} />} actions={<>
               <button type="button" data-entry="scan" className={PRIMARY} onClick={() => void openScanner()}><QrCode size={20} />{t("mobile.entry.scan")}</button>
-              <button type="button" data-entry="code" className={TONAL} onClick={() => go("code")}><Keyboard size={20} />{t("mobile.entry.code")}</button>
-              <button type="button" data-entry="signin" className={`${QUIET} gap-2`} onClick={() => go(signedIn ? "clouds" : "signin")}><UserRound size={18} />{t("mobile.entry.signInCloud")}</button>
+              <button type="button" data-entry="signin" className={TONAL} onClick={() => go(signedIn ? "clouds" : "signin")}><UserRound size={20} />{t("mobile.entry.signInCloud")}</button>
+              <button type="button" data-entry="code" className={`${QUIET} gap-2`} onClick={() => go("code")}><Keyboard size={18} />{t("mobile.entry.code")}</button>
             </>}>
               {reason === "revoked" && <ErrorLine>{t("mobile.pair.revoked")}</ErrorLine>}
               <h1 className={`${HEADLINE} ${reason === "revoked" ? "mt-5" : ""}`}>{t(startAtLink ? "mobile.entry.addTitle" : "mobile.entry.title")}</h1>
@@ -150,7 +164,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
         {step === "signin" && (
           <StepPane id="signin">
             <Screen top={back("welcome")} align="top" actions={null}>
-              <MobileSignIn onSignedIn={() => go("clouds")} />
+              <MobileSignIn initialEmail={signInEmail} onSignedIn={() => go("clouds")} />
             </Screen>
           </StepPane>
         )}
@@ -178,7 +192,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
             </>}>
               <h1 className={HEADLINE}>{t("mobile.pair.confirm", { name: installationName(confirm) })}</h1>
               <p className={LINE}>{t("mobile.onboarding.confirmBody")}</p>
-              {failure && <Failed failure={failure} />}
+              {failure && <Failed failure={failure} onSignIn={() => go(signedIn ? "clouds" : "signin")} />}
             </Screen>
           </StepPane>
         )}
@@ -212,7 +226,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
                       onChange={(event) => { setValue(formatCode(event.target.value)); setFailure(null); }}
                       inputMode="text" autoCapitalize="characters" autoCorrect="off" spellCheck={false} autoComplete="one-time-code" placeholder="XXXX-XXXX-XXXX" maxLength={14}
                       aria-invalid={Boolean(failure) || undefined}
-                      className={`${FIELD} h-16 text-center font-mono text-[21px] tracking-[0.12em] placeholder:text-ink/[0.3]`} />
+                      className={`${FIELD} text-center font-mono text-[19px] tracking-[0.1em] placeholder:text-ink/[0.3]`} />
                   ) : (
                     <div className="flex w-full gap-2">
                       <input id={fieldId} autoFocus value={value} disabled={busy} onChange={(event) => { setValue(event.target.value); setFailure(null); }}
@@ -221,11 +235,13 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
                       {platform.readClipboard && <button type="button" onClick={() => void paste()} aria-label={t("mobile.onboarding.pasteFromClipboard")} className="mobile-press flex size-[52px] shrink-0 items-center justify-center rounded-[16px] bg-ink/[0.06] text-ink"><ClipboardPaste size={20} /></button>}
                     </div>
                   )}
-                  {failure && <Failed failure={failure} />}
+                  {failure && <Failed failure={failure} onSignIn={() => go(signedIn ? "clouds" : "signin")} />}
                 </div>
               </div>
               <div className="flex shrink-0 flex-col items-center gap-1 px-6 pb-[calc(var(--m-safe-bottom)+16px)] pt-4">
-                <button type="submit" disabled={busy || !value.trim() || (step === "code" && value.replace(/-/g, "").length < 12)} className={PRIMARY}>{busy ? <WorkingDots /> : t(failure ? "mobile.onboarding.retry" : "mobile.pair.link")}</button>
+                {scanFailed && !value.trim() && !busy
+                  ? <button type="button" data-scan-again="" className={PRIMARY} onClick={() => void openScanner()}><QrCode size={20} />{t("mobile.onboarding.scanAgain")}</button>
+                  : <button type="submit" disabled={busy || !value.trim() || (step === "code" && value.replace(/-/g, "").length < 12)} className={PRIMARY}>{busy ? <WorkingDots /> : t(failure ? "mobile.onboarding.retry" : "mobile.pair.link")}</button>}
                 {step === "code" && <button type="button" className={QUIET} onClick={() => { setValue(""); setFailure(null); setStep("paste"); }}>{t("mobile.onboarding.pasteInstead")}</button>}
               </div>
             </form>

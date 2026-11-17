@@ -26,9 +26,12 @@ import { HomeScreen, releasePressed } from "./HomeScreen";
 import { SheetHost } from "./SheetHost";
 import { closeTopSheet, Sheet } from "./Sheet";
 import { t } from "@/lib/i18n";
-import { useKeyboardSync } from "./keyboard";
+import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
+import { useNativeGlass } from "./native-glass";
 import { useChatHaptics } from "./use-chat-haptics";
 import { useOutbox } from "./outbox";
+import { installPress } from "./press";
+import { MessageHold } from "./MessageHold";
 import { usePlatform } from "./platform";
 import type { MobileSheet } from "./sheets";
 
@@ -44,9 +47,11 @@ function Shell() {
   useWarmChatImages(state.bots);
   usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language));
   useKeyboardSync(platform, rootRef);
+  useKeyboardDismiss(platform, rootRef);
   // notifications are asked for when they mean something: once a message is on its way and its reply will follow
   useChatHaptics(state, chatId, useCallback(() => { if (platform.native) void registerPushForConnection(platform, { prompt: true }); }, [platform]));
   useOutbox();
+  useEffect(() => { const root = rootRef.current; return root ? installPress(root) : undefined; }, []);
   // a bot's reply someone finds harmful or wrong goes to a person at dusk bot, with the reply in the mail they send
   useEffect(() => installAiReport(({ text, messageId }) => {
     void platform.openExternal(supportMail(t("mobile.report.subject"), t("mobile.report.body", { text: text.slice(0, 1500), id: messageId })));
@@ -142,6 +147,8 @@ function Shell() {
   const members = useMemo(() => group ? state.bots.filter((b) => group.memberIds.includes(b.id)) : [], [group, state.bots]);
   useEffect(() => { if (chatId && state.hydrated && !group && !bot) setChatId(null); }, [chatId, state.hydrated, group, bot]);
 
+  useNativeGlass(platform, rootRef, Boolean(bot || group));
+
   const page = bot || group ? (
     <ChatScreen
       bot={bot}
@@ -164,6 +171,7 @@ function Shell() {
       />
       <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); openChat(id); }} />
       <ConnectAppsHost />
+      <MessageHold rootRef={rootRef} />
       <Sheet open={desktopOnly} onClose={() => setDesktopOnly(false)} title={t("mobile.desktopOnly.title")}>
         <div className="px-5 pb-[calc(var(--m-safe-bottom)+16px)]">
           <p className="text-[15px] leading-6 text-ink-secondary">{t("mobile.desktopOnly.body")}</p>

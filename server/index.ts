@@ -3154,7 +3154,7 @@ function previewSystemPrompt(bot: BotRecord) {
     { id: "plan", label: "Surface", text: previewPlan.computer === undefined ? "" : surfacePrompt({
       computer: previewPlan.computer && previewPlan.computer !== "off" && computerPromptKind ? previewPlan.computer : null,
       browser: previewPlan.computer === undefined ? false : previewPlan.browser,
-    }, { note: previewPlan.note, cloudHome: Boolean(CLOUD_HOME) }) },
+    }, { note: previewPlan.note, cloudHome: Boolean(CLOUD_HOME), browserInComputerTab }) },
     { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(syncedFolders(DATA_DIR)) : "" },
     { id: "composio", label: "Connected apps", text: caps?.composioMcp && bot.composio !== false && composio.configured(cfg) ? composioSystemPrompt(bot.connectorTools, previewPlan.computer !== undefined && Boolean(previewPlan.browser)) + describeConnectorScopes(bot.connectorScopes) : "" },
     { id: "email", label: "Email", text: caps?.emailMcp === true ? emailHost.prompt(bot) : "" },
@@ -6889,6 +6889,7 @@ async function localVmInventoryPayload() {
 
 const usageTrace = createTraceRecorder({ dataDir: DATA_DIR });
 const usagePlace = CLOUD_HOME ? "cloud" as const : isThisServerVps("this-server") ? "server" as const : "desktop" as const;
+const browserInComputerTab = usagePlace === "desktop";
 const usageSignals = createUsageSignalsSwitch(DATA_DIR);
 let memoryBucket: { at: number; bucket: number } | null = null;
 /** the bots' memory files' total size as a bucket, read at most every 30 minutes */
@@ -6974,7 +6975,7 @@ function noteUsageTurn(row: Omit<UsageRow, "costSource"> & { costSource?: unknow
   try {
     // side jobs and keep-warm pings are booked too, but they are not turns: they have no traced turn id
     if (!row.turnId || row.trigger.kind === "helper" || !usageSignals.enabled()) return;
-    const record = turnRecord({ driverKind: row.driverKind, status: row.outcome?.status, reason: row.outcome?.reason, startedAt: row.startedAt ? Date.parse(row.startedAt) : undefined,
+    const record = turnRecord({ driverKind: row.driverKind, status: row.outcome?.status, reason: row.outcome?.reason, failure: row.outcome?.failure, startedAt: row.startedAt ? Date.parse(row.startedAt) : undefined,
       endedAt: row.endedAt ? Date.parse(row.endedAt) : undefined, toolNames, trigger: row.trigger, room: Boolean(store.groupByThread(row.threadId)), failedNames: detail.failedNames,
       firstStepAt: detail.firstStepAt, model: row.model, bot: hashId(usageSignals.salt(), row.botId), chat: hashId(usageSignals.salt(), row.threadId) }, usagePlace, Date.now());
     if (!record) return;
@@ -9308,7 +9309,7 @@ async function beginTurn(
         { id: "computer", label: "Computer", text: computerPrompt(computerPromptKind) + (computerPromptKind === "vps" && !integrations.browser && Boolean(integrations.agents) ? savedLoginsPrompt(botLogins.sitesFor(bot.id)) : "") },
         { id: "team-computer", label: "Team computer", text: teamComputerPrompt(teamComputer) },
         { id: "route-traffic", label: "Network", text: computerEgress.prompt() },
-        { id: "plan", label: "Surface", text: surfacePrompt({ computer: mountedComputer, browser: Boolean(integrations.browser) }, { pinned: plan.pinned, note: plan.note + vpsUnavailableNote + vmUpdateNote + (computerSkipped && plan.computer !== "off" ? computerSkippedNote(redactSecretsInText(computerSkipped)) : ""), canSelect: computerSelectionTurns.has(threadId), cloudHome: Boolean(CLOUD_HOME), botOpened: plan.botOpened }) },
+        { id: "plan", label: "Surface", text: surfacePrompt({ computer: mountedComputer, browser: Boolean(integrations.browser) }, { pinned: plan.pinned, note: plan.note + vpsUnavailableNote + vmUpdateNote + (computerSkipped && plan.computer !== "off" ? computerSkippedNote(redactSecretsInText(computerSkipped)) : ""), canSelect: computerSelectionTurns.has(threadId), cloudHome: Boolean(CLOUD_HOME), botOpened: plan.botOpened, browserInComputerTab }) },
         { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(syncedFolders(DATA_DIR)) : "" },
         { id: "composio", label: "Connected apps", text: integrations.composio ? composioSystemPrompt(liveBot?.connectorTools ?? bot.connectorTools, Boolean(integrations.browser)) + describeConnectorScopes((liveBot ?? bot).connectorScopes) : "" },
         { id: "mcp", label: "MCP servers", text: mcpPrompt(bot, integrations.custom ?? {}) }, { id: "to-connect", label: "Connections to make", text: cloudConnections.prompt(liveBot ?? bot) + teamConnections.prompt(threadId, dispatchClaimId, integrations) },
@@ -10439,7 +10440,7 @@ if (homeEgressLink) {
   runHomeEgress({ link: homeEgressLink, report: (value) => computerEgress.report(value), log: (line) => console.warn(line) });
   browserEgress.routeThrough((target) => (homeEgressLink.online() && computerEgress.routesHome(target.host) ? homeEgressLink.open(target.host, target.port) : null));
 }
-ROUTES.push(createHomeEgressLinkRoutes({ link: homeEgressLink, upgrades })); const mobileLink = createMobileLink({ dataDir: DATA_DIR, sessions, workspace: () => ({ name: cfg.computerName || environmentDescriptor({ environmentId: ENVIRONMENT_ID, ...TEAM_LABEL, desktopManaged: DESKTOP_MANAGED }).label, environmentId: ENVIRONMENT_ID, kind: DESKTOP_MANAGED ? "mac" : "server" }), publicOrigin: () => (publicUrl()?.startsWith("https://") ? publicUrl() : null), refusal: () => (CLOUD_HOME ? "Phones sign in to this workspace through its own sign-in." : null), lookupRelay: mobileLookupRelay(), isRead: (id) => recentNotificationLog(200).some((entry) => entry.id === id && entry.read) }); ROUTES.push(async (ctx) => ((await mobileLink.route(ctx)) ? undefined : PASS));
+ROUTES.push(createHomeEgressLinkRoutes({ link: homeEgressLink, upgrades })); const mobileLink = createMobileLink({ dataDir: DATA_DIR, sessions, workspace: () => ({ name: cfg.computerName || environmentDescriptor({ environmentId: ENVIRONMENT_ID, ...TEAM_LABEL, desktopManaged: DESKTOP_MANAGED }).label, environmentId: ENVIRONMENT_ID, kind: DESKTOP_MANAGED ? "mac" : "server" }), publicOrigin: () => (publicUrl()?.startsWith("https://") ? publicUrl() : null), refusal: () => (CLOUD_HOME ? "Phones sign in to this workspace through its own sign-in." : null), lookupRelay: mobileLookupRelay(process.env, DESKTOP_MANAGED), isRead: (id) => recentNotificationLog(200).some((entry) => entry.id === id && entry.read) }); ROUTES.push(async (ctx) => ((await mobileLink.route(ctx)) ? undefined : PASS));
 
 let webhookIngress: WebhookIngress | null = null;
 let webhookIngressError: string | null = null;
@@ -11148,7 +11149,7 @@ async function runClaimedGroupMemberTurn(
     { id: "mcp", label: "MCP servers", text: mcpPrompt(bot, integrations.custom ?? {}) + teamConnections.prompt(threadId, internalGeneration, integrations) },
     { id: "computer", label: "Computer", text: computerPrompt(roomComputerPromptKind) + (roomComputerPromptKind === "vps" && !integrations.browser && Boolean(integrations.agents) ? savedLoginsPrompt(botLogins.sitesFor(bot.id)) : "") },
     { id: "team-computer", label: "Team computer", text: teamComputerPrompt(roomTeamComputer) },
-    { id: "plan", label: "Surface", text: surfacePrompt({ computer: roomTeamComputer ? "cloud" : roomVmTarget ? "vm" : surfaceOfComputerKind(roomComputerKind), browser: Boolean(integrations.browser) }, { note: roomPlan.note, cloudHome: Boolean(CLOUD_HOME) }) },
+    { id: "plan", label: "Surface", text: surfacePrompt({ computer: roomTeamComputer ? "cloud" : roomVmTarget ? "vm" : surfaceOfComputerKind(roomComputerKind), browser: Boolean(integrations.browser) }, { note: roomPlan.note, cloudHome: Boolean(CLOUD_HOME), browserInComputerTab }) },
     { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(syncedFolders(DATA_DIR)) : "" },
     { id: "browser", label: "Browser", text: integrations.browser ? browserPromptFor(bot, Boolean(integrations.agents)) : "" },
     { id: "data", label: "Data", text: integrations.data ? BUILT_IN_DATA_SYSTEM_PROMPT : "" },

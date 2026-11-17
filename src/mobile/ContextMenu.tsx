@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/cn";
 import { haptic } from "./haptics";
-import { dur, ease, prefersReducedMotion, spring, withFade } from "./motion";
+import { feel, prefersReducedMotion, springEasing } from "./motion";
 
 export interface ContextAction {
   key: string;
@@ -17,7 +17,33 @@ export interface ContextAction {
 const HOLD_MS = 430;
 const MOVE_CANCEL = 8;
 
-/** Press and hold: the element sinks to .97 over the hold so the hand feels it coming, then a medium tap and the menu.
+/** The sink under a held finger: in toward the press scale over the whole hold, so the hand feels the menu coming; a
+ * finger that lets go early springs it back. `null` hands the element over to the menu's lift with no release. */
+export function holdSink(el: HTMLElement): (on: boolean | null) => void {
+  let anim: Animation | null = null;
+  const release = springEasing(feel.press.release.stiffness, feel.press.release.damping);
+  return (on) => {
+    if (prefersReducedMotion()) return;
+    const now = anim ? Number(getComputedStyle(el).scale) || 1 : 1;
+    anim?.cancel();
+    anim = null;
+    if (on) {
+      // a tap presses as fast as any button; a hold keeps sinking until the menu takes over
+      const wide = el.getBoundingClientRect().width > 180;
+      const press = wide ? feel.press.wide : feel.press.scale;
+      const deep = press - (wide ? 0.015 : 0.03);
+      anim = el.animate([
+        { scale: "1", easing: "cubic-bezier(.22,1,.36,1)" },
+        { scale: String(press), offset: feel.press.inMs / HOLD_MS, easing: "ease-in-out" },
+        { scale: String(deep) },
+      ], { duration: HOLD_MS, fill: "forwards" });
+    } else if (on === false && now !== 1) {
+      el.animate([{ scale: String(now) }, { scale: "1" }], { duration: release.duration, easing: release.easing });
+    }
+  };
+}
+
+/** Press and hold: the element sinks over the hold so the hand feels it coming, then a medium tap and the menu.
  * A right click or the context-menu key opens it at once (web preview, keyboards). The click that follows a hold is
  * swallowed so the row does not also open. */
 export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: DOMRect) => void, enabled = true) {
@@ -29,16 +55,14 @@ export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: 
     let timer = 0;
     let start: { x: number; y: number } | null = null;
     let fired = false;
-    const reduced = prefersReducedMotion();
-    const sink = (on: boolean) => {
-      el.style.transition = on ? `scale ${HOLD_MS}ms cubic-bezier(.22,1,.36,1)` : "scale .2s cubic-bezier(.28,1.4,.36,1)";
-      el.style.scale = on && !reduced ? "0.97" : "";
-    };
+    el.dataset.longPress = "";
+    const sink = holdSink(el);
     const cancel = () => { window.clearTimeout(timer); timer = 0; start = null; sink(false); };
+    const lift = () => { window.clearTimeout(timer); timer = 0; start = null; sink(null); };
     const fire = () => {
       timer = 0;
       fired = true;
-      sink(false);
+      lift();
       haptic("medium");
       latest.current(el.getBoundingClientRect());
     };
@@ -85,6 +109,7 @@ export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: 
     el.addEventListener("keydown", onKeyDown);
     return () => {
       cancel();
+      delete el.dataset.longPress;
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
@@ -100,95 +125,187 @@ const MENU_W = 250;
 const ROW_H = 46;
 const GAP = 10;
 const MARGIN = 12;
+const BAR_H = 52;
+const SAFE_TOP = 54;
+const SAFE_BOTTOM = 34;
 
-/** iOS's context menu, in our motion: the held item lifts in place over a blurred page, and the actions open from its
- * edge. If the menu would run off screen the item and menu move up together. */
-export function ContextMenu({ open, anchor, preview, actions, label, onClose }: {
+export interface ContextReaction {
+  key: string;
+  label: string;
+  glyph: ReactNode;
+  selected?: boolean;
+}
+
+type Layout = { top: number; left: number; height: number; menuTop: number; menuLeft: number; barTop: number; barLeft: number; barW: number; above: boolean; end: boolean };
+
+/** Where the held item, its reactions and its actions sit: the item where it was, the reactions over it and the actions
+ * under it (or over it near the bottom). If they would run off screen the three move together, and an item taller than
+ * the room left is shown cut to fit, top first. */
+export function placeContextMenu(anchor: { top: number; left: number; width: number; height: number }, rows: number, view: { width: number; height: number }, options: { reactions?: number; end?: boolean } = {}): Layout {
+  const menuH = rows * ROW_H + 12;
+  const barW = options.reactions ? options.reactions * 44 + 12 : 0;
+  const bar = options.reactions ? BAR_H + 8 : 0;
+  const floor = view.height - SAFE_BOTTOM - MARGIN;
+  const ceiling = SAFE_TOP + MARGIN;
+  const room = floor - ceiling - bar - GAP - menuH;
+  const height = Math.max(48, Math.min(anchor.height, room));
+  let top = anchor.top;
+  let above = false;
+  if (top + height + GAP + menuH > floor) {
+    // the actions fit above only with no reactions bar competing for that side
+    if (!bar && top - GAP - menuH > ceiling) above = true;
+    else top = floor - menuH - GAP - height;
+  }
+  if (top - bar < ceiling) top = ceiling + bar;
+  const end = Boolean(options.end);
+  const clampX = (x: number, w: number) => Math.min(Math.max(MARGIN, x), view.width - w - MARGIN);
+  const menuLeft = clampX(end ? anchor.left + anchor.width - MENU_W : anchor.left + (anchor.width > MENU_W * 1.4 ? 16 : 0), MENU_W);
+  const barLeft = clampX(end ? anchor.left + anchor.width - barW : anchor.left, barW);
+  return { top, left: anchor.left, height, menuTop: above ? top - GAP - menuH : top + height + GAP, menuLeft, barTop: top - bar, barLeft, barW, above, end };
+}
+
+/** iOS's context menu, in the phone's feel: the page dims and blurs, the held item lifts out of it on a soft spring,
+ * the reactions open from its top corner and the actions from its bottom one, their items arriving one after another
+ * through a small blur. Letting go settles the item back into its place before the page shows it again. */
+export function ContextMenu({ open, anchor, preview, actions, label, onClose, reactions, onReact, end = false, source, previewClassName, radius = 18 }: {
   open: boolean;
   anchor: DOMRect | null;
   preview: ReactNode;
   actions: ContextAction[];
   label: string;
   onClose: () => void;
+  reactions?: ContextReaction[];
+  onReact?: (key: string) => void;
+  /** the item hugs the right edge (a sent message): menus open from that side */
+  end?: boolean;
+  /** the item on the page, hidden while its lifted copy is shown */
+  source?: HTMLElement | null;
+  previewClassName?: string;
+  /** the held item's corner radius, so its shadow and backing follow its shape */
+  radius?: string | number;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState<{ top: number; left: number; menuTop: number; menuLeft: number; above: boolean; shift: number } | null>(null);
+  const [layout, setLayout] = useState<Layout | null>(null);
+  const hidden = useRef<HTMLElement | null>(null);
+  const reduced = prefersReducedMotion();
+  const barCount = reactions?.length ?? 0;
 
   useLayoutEffect(() => {
     if (!open || !anchor) return;
-    const vh = window.innerHeight, vw = window.innerWidth;
-    const menuH = actions.length * ROW_H + 12;
-    const safeTop = 54, safeBottom = 34;
-    let top = anchor.top;
-    const below = top + anchor.height + GAP + menuH;
-    let above = false;
-    let shift = 0;
-    if (below > vh - safeBottom - MARGIN) {
-      if (anchor.top - GAP - menuH > safeTop + MARGIN) above = true;
-      else { shift = below - (vh - safeBottom - MARGIN); top -= shift; }
-    }
-    const menuLeft = Math.min(Math.max(MARGIN, anchor.left + (anchor.width > MENU_W * 1.4 ? 16 : 0)), vw - MENU_W - MARGIN);
-    const menuTop = above ? top - GAP - menuH : top + anchor.height + GAP;
-    setLayout({ top, left: anchor.left, menuTop, menuLeft, above, shift });
-  }, [open, anchor, actions.length]);
+    setLayout(placeContextMenu(anchor, actions.length, { width: window.innerWidth, height: window.innerHeight }, { reactions: barCount, end }));
+    if (source) { source.style.visibility = "hidden"; hidden.current = source; }
+  }, [open, anchor, actions.length, barCount, end, source]);
+
+  const reveal = () => {
+    if (hidden.current) hidden.current.style.visibility = "";
+    hidden.current = null;
+  };
+  useEffect(() => () => reveal(), []);
 
   useEffect(() => {
     if (!open) return;
-    menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
+    (menuRef.current?.parentElement?.querySelector<HTMLButtonElement>("[role='toolbar'] button, [role='menu'] button:not(:disabled)"))?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, layout]);
+
+  const fadeOut = { duration: feel.exit.fade, ease: [0.22, 1, 0.36, 1] as const };
+  const item = {
+    off: { opacity: 0, y: reduced ? 0 : 6, filter: reduced ? "blur(0px)" : "blur(3px)" },
+    on: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: feel.enter.fade, ease: [0.22, 1, 0.36, 1] as const } },
+  };
+  const glyph = {
+    off: { opacity: 0, scale: reduced ? 1 : 0.5, y: reduced ? 0 : 8, filter: reduced ? "blur(0px)" : "blur(3px)" },
+    on: { opacity: 1, scale: 1, y: 0, filter: "blur(0px)", transition: { type: "spring" as const, stiffness: 600, damping: 30, opacity: { duration: feel.enter.fade } } },
+  };
 
   return createPortal(
-    <AnimatePresence>
+    <AnimatePresence onExitComplete={reveal}>
       {open && anchor && layout && (
         <div className="dusk-mobile-overlay fixed inset-0 z-50" key="context">
           <motion.div
             aria-hidden
-            className="absolute inset-0 bg-[rgb(23_24_26/0.22)] [-webkit-backdrop-filter:blur(5px)] [backdrop-filter:blur(5px)]"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.14 } }}
-            transition={{ duration: 0.18 }}
+            className="absolute inset-0 bg-[rgb(23_24_26/0.22)] [-webkit-backdrop-filter:blur(8px)] [backdrop-filter:blur(8px)]"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: feel.scrim.out } }}
+            transition={{ duration: feel.scrim.in }}
             onClick={onClose}
           />
           <motion.div
             aria-hidden
             className="pointer-events-none absolute"
-            style={{ left: layout.left, top: anchor.top, width: anchor.width, height: anchor.height }}
-            initial={{ scale: 0.97, y: 0 }}
-            animate={{ scale: 1.02, y: layout.top - anchor.top }}
-            exit={{ scale: 1, y: 0, opacity: 0, transition: { duration: 0.12, ease: ease.out } }}
-            transition={withFade(spring.popover)}
+            style={{ left: layout.left, top: anchor.top, width: anchor.width, height: layout.height, transformOrigin: layout.end ? "right center" : "left center" }}
+            initial={{ scale: reduced ? 1 : anchor.width > 180 ? feel.press.wide - 0.015 : feel.press.scale - 0.03, y: 0 }}
+            animate={{ scale: reduced ? 1 : layout.height > 240 ? 1.01 : feel.lift.scale, y: layout.top - anchor.top }}
+            exit={{ scale: 1, y: 0, transition: reduced ? { duration: 0 } : feel.soft }}
+            transition={reduced ? { duration: 0 } : feel.lift.spring}
           >
-            <div className="size-full overflow-hidden rounded-[18px] bg-app shadow-[0_12px_40px_-8px_rgb(10_10_12/0.28)]">{preview}</div>
+            <motion.div
+              className="absolute inset-0 shadow-[0_14px_40px_-10px_rgb(10_10_12/0.30)]"
+              style={{ borderRadius: radius }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: feel.exit.fade } }}
+              transition={{ duration: feel.enter.fade }}
+            />
+            <div className={cn("relative size-full overflow-hidden bg-app", previewClassName)} style={{ borderRadius: radius }}>{preview}</div>
           </motion.div>
+          {reactions && reactions.length > 0 && (
+            <motion.div
+              role="toolbar"
+              aria-label={label}
+              className="absolute flex h-[52px] items-center gap-0 rounded-full bg-menu px-1.5 shadow-[0_12px_40px_-8px_rgb(10_10_12/0.30)]"
+              style={{ left: layout.barLeft, top: layout.barTop, width: layout.barW, transformOrigin: layout.end ? "right bottom" : "left bottom" }}
+              initial={{ opacity: 0, scale: reduced ? 1 : 0.6, y: reduced ? 0 : 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: reduced ? 1 : feel.exit.scale, transition: fadeOut }}
+              transition={{ ...feel.surface, opacity: { duration: feel.enter.fade } }}
+            >
+              <motion.div className="flex items-center" initial="off" animate="on" variants={{ on: { transition: { staggerChildren: feel.stagger, delayChildren: 0.05 } } }}>
+                {reactions.map((reaction) => (
+                  <motion.button
+                    key={reaction.key}
+                    type="button"
+                    aria-label={reaction.label}
+                    aria-pressed={reaction.selected}
+                    variants={glyph}
+                    onClick={() => { haptic("selection"); onClose(); onReact?.(reaction.key); }}
+                    className={cn("flex size-11 items-center justify-center rounded-full text-[26px] leading-none", reaction.selected && "bg-ink/[0.08]")}
+                  >
+                    <span aria-hidden>{reaction.glyph}</span>
+                  </motion.button>
+                ))}
+              </motion.div>
+            </motion.div>
+          )}
           <motion.div
             ref={menuRef}
             role="menu"
             aria-label={label}
             className="absolute overflow-hidden rounded-[16px] bg-menu py-1.5 shadow-[0_12px_40px_-8px_rgb(10_10_12/0.30)]"
-            style={{ left: layout.menuLeft, top: layout.menuTop, width: MENU_W, transformOrigin: layout.above ? "left bottom" : "left top" }}
-            initial={{ opacity: 0, scale: 0.9, y: layout.above ? 6 : -6 }}
+            style={{ left: layout.menuLeft, top: layout.menuTop, width: MENU_W, transformOrigin: `${layout.end ? "right" : "left"} ${layout.above ? "bottom" : "top"}` }}
+            initial={{ opacity: 0, scale: reduced ? 1 : 0.9, y: reduced ? 0 : layout.above ? 6 : -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.08, ease: ease.out } }}
-            transition={{ ...spring.popover, opacity: { duration: dur.fast } }}
+            exit={{ opacity: 0, scale: reduced ? 1 : feel.exit.scale, transition: fadeOut }}
+            transition={{ ...feel.surface, opacity: { duration: feel.enter.fade } }}
           >
-            {actions.map((action) => (
-              <button
-                key={action.key}
-                type="button"
-                role="menuitem"
-                disabled={action.disabled}
-                onClick={() => { haptic("selection"); onClose(); action.onSelect(); }}
-                className={cn(
-                  "mobile-row flex h-[46px] w-full items-center gap-3 px-4 text-left text-[16px] disabled:opacity-40",
-                  action.danger ? "text-danger" : "text-ink",
-                )}
-              >
-                <span className="min-w-0 flex-1 truncate">{action.label}</span>
-                {action.icon && <span aria-hidden className="shrink-0 opacity-80">{action.icon}</span>}
-              </button>
-            ))}
+            <motion.div initial="off" animate="on" variants={{ on: { transition: { staggerChildren: feel.stagger, delayChildren: 0.04 } } }}>
+              {actions.map((action) => (
+                <motion.button
+                  key={action.key}
+                  type="button"
+                  role="menuitem"
+                  variants={item}
+                  disabled={action.disabled}
+                  onClick={() => { haptic("selection"); onClose(); action.onSelect(); }}
+                  className={cn(
+                    "mobile-row flex h-[46px] w-full items-center gap-3 px-4 text-left text-[16px] disabled:opacity-40",
+                    action.danger ? "text-danger" : "text-ink",
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                  {action.icon && <span aria-hidden className="shrink-0 opacity-80">{action.icon}</span>}
+                </motion.button>
+              ))}
+            </motion.div>
           </motion.div>
         </div>
       )}

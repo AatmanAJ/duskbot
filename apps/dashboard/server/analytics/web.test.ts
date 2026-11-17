@@ -284,6 +284,14 @@ describe("funnel", () => {
     expect(result.bySource.map(row => row.counts[0])).toEqual([1, 1]);
   });
 
+  it("counts an account that set up in the desktop app as onboarded, so it can still reach the cloud and paid steps", () => {
+    const input = funnelFixture();
+    input.cloudChosen = new Map([...input.cloudChosen, ["b", FROM + 9000]]);
+    input.paired = new Map([...input.paired, ["b", FROM + 4000]]);
+    const result = funnel({ ...input, mode: "signups" });
+    expect(result.steps.slice(0, 7).map(step => [step.id, step.count])).toEqual([["signup", 2], ["onboarding_name", 2], ["onboarding_plan", 2], ["onboarding_app", 2], ["onboarded", 2], ["cloud", 2], ["paid", 1]]);
+  });
+
   it("allows a waitlist join to reach the visitor signup step without an account", () => {
     const input = funnelFixture();
     const events = [site("wait", "wait", FROM), event("site_goal", FROM + 500, { goal: "waitlist_join" }, { visitor: "wait", session: "wait", pv: "wait:/" })];

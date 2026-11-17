@@ -342,6 +342,7 @@ export function PendingApprovalActions({
     <button
       key="allow"
       {...marked("allow")}
+      data-approval-allow=""
       type="button"
       onClick={() => decide("allow")}
       disabled={isSkillRequest && !reviewedSha256}

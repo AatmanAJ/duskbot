@@ -140,19 +140,26 @@ export function CloudDataProvider({ children, signedIn }: { children: ReactNode;
     }
   }, [refresh]);
 
+  const opening = useRef<Promise<boolean> | null>(null);
   const checkout = useCallback(async (req: CheckoutRequest) => {
     if (FIXTURE) {
       try { await mutate(() => api.checkout(req)); return true; } catch { return false; }
     }
-    try {
-      if (!active.current) return false;
-      const answer = await api.checkout(req);
-      // straight to the payment page: no refresh first, so nothing is drawn between the click and dodo
-      window.addEventListener("pageshow", (event) => { if (event.persisted) window.location.reload(); }, { once: true });
-      window.location.assign(answer.url);
-    } catch (e) { setError(apiError(e).message); return false; }
-    // on its way to the payment page: nothing is paid yet, so whoever asked keeps waiting instead of saying so
-    return new Promise<never>(() => {});
+    // one payment page at a time: another click while one is on its way waits on that one instead of asking again
+    if (opening.current) return opening.current;
+    if (!active.current) return false;
+    const open = (async () => {
+      try {
+        const answer = await api.checkout(req);
+        // straight to the payment page: no refresh first, so nothing is drawn between the click and dodo
+        window.addEventListener("pageshow", (event) => { if (event.persisted) window.location.reload(); }, { once: true });
+        window.location.assign(answer.url);
+      } catch (e) { setError(apiError(e).message); opening.current = null; return false; }
+      // on its way to the payment page: nothing is paid yet, so whoever asked keeps waiting instead of saying so
+      return new Promise<never>(() => {});
+    })();
+    opening.current = open;
+    return open;
   }, [mutate]);
 
   const power = useCallback(async (id: string, on: boolean) => {

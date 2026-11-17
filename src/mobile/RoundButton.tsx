@@ -9,12 +9,16 @@ export const RoundButton = forwardRef<HTMLButtonElement, {
   children: ReactNode;
   size?: number;
   floating?: boolean;
+  /** the chat header's glass instead of the white disc */
+  glass?: boolean;
   className?: string;
   pressed?: boolean;
   disabled?: boolean;
-}>(function RoundButton({ label, onClick, children, size = 44, floating = false, className, pressed, disabled }, ref) {
+  [data: `data-${string}`]: string | undefined;
+}>(function RoundButton({ label, onClick, children, size = 44, floating = false, glass = false, className, pressed, disabled, ...data }, ref) {
   return (
     <button
+      {...data}
       ref={ref}
       type="button"
       aria-label={label}
@@ -23,7 +27,7 @@ export const RoundButton = forwardRef<HTMLButtonElement, {
       onClick={onClick}
       className={cn(
         "mobile-press relative inline-flex shrink-0 items-center justify-center rounded-full text-ink disabled:opacity-40",
-        floating ? "mobile-float bg-composer" : "bg-ink/[0.05]",
+        glass ? "m-glass" : floating ? "mobile-float bg-composer" : "bg-ink/[0.05]",
         className,
       )}
       style={{ width: size, height: size }}

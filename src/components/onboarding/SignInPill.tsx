@@ -133,7 +133,7 @@ const OTHER_WAY_AFTER = 45;
 function WaitHelp({ guide, seconds }: { guide: string; seconds: number }) {
   return (
     <div className="flex max-w-[380px] flex-col items-center gap-1 text-center">
-      <p data-connect-guide="" className="m-0 text-[12px] leading-4 text-ink-secondary">{guide}</p>
+      {guide && <p data-connect-guide="" className="m-0 text-[12px] leading-4 text-ink-secondary">{guide}</p>}
       {seconds >= STILL_WAITING_AFTER && <p data-connect-still="" className="m-0 text-[12px] leading-4 text-ink-tertiary tabular-nums">{t("connect.stillWaiting", { seconds })}</p>}
     </div>
   );
@@ -254,7 +254,8 @@ export function ConnectPanel({ flow, name, driverKind, onTrouble }: {
         </>;
       } else {
         body = <CodeStep code={state.code} site={site} link={state.link} onOpen={state.link ? () => void flow.openAgain() : null} cancel={cancel}
-          guide={t(state.code ? "connect.guide.code" : "connect.guide.browser", { site })} seconds={seconds} onTrouble={onTrouble} />;
+          // a shown code already says where to enter it above, so it gets no second line
+          guide={state.code ? "" : t("connect.guide.browser", { site })} seconds={seconds} onTrouble={onTrouble} />;
       }
       break;
     case "failed": {

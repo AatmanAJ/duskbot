@@ -12,7 +12,7 @@ import { accountSignIn, type AccountSignInMethod, type AccountSignInVia } from "
 import type { OAuthProvider } from "../../../shared/account-api";
 import type { CloudSignInStart } from "../../../electron/cloud-account.mjs";
 import type { FunnelAccount, FunnelAccountState } from "./funnel-account";
-import { PRIMARY, QUIET, StepArt, StepFrame, TILE } from "./FunnelSteps";
+import { PRIMARY, QUIET, SECONDARY, StepArt, StepFrame, TILE } from "./FunnelSteps";
 
 function GoogleMark() {
   return (
@@ -145,6 +145,9 @@ export function AccountStep({ account, known, onDone, onSkip }: {
     );
   }
 
+  // a browser sign-in still under way is left to finish, so it lands if they come back to it
+  const skip = onSkip && (() => { accountSignIn("skipped", attempt.current ?? {}); onSkip(); });
+
   const waitingFor = magic ?? known?.magic ?? null;
   if (waitingFor && known?.signedIn !== true) {
     return (
@@ -153,6 +156,7 @@ export function AccountStep({ account, known, onDone, onSkip }: {
           <p role="status" className="flex items-center gap-2 text-[13px] leading-[18px] text-ink-secondary">
             <LoaderCircle size={14} aria-hidden="true" className="shrink-0 animate-spin motion-reduce:animate-none" />{t("funnel.account.magicWaiting")}
           </p>
+          {skip && <button type="button" data-funnel-account-without="" onClick={skip} className={cn(SECONDARY, "mt-2")}>{t("funnel.account.without")}</button>}
           <button type="button" className={QUIET} onClick={() => { cancelled(); void account.cancelBrowser().catch(() => {}).finally(() => setMagic(null)); }}>{t("funnel.cancel")}</button>
         </>} />
     );
@@ -165,6 +169,7 @@ export function AccountStep({ account, known, onDone, onSkip }: {
           <p role="status" className="flex items-center gap-2 text-[13px] leading-[18px] text-ink-secondary">
             <LoaderCircle size={14} aria-hidden="true" className="shrink-0 animate-spin motion-reduce:animate-none" />{t("funnel.account.waiting")}
           </p>
+          {skip && <button type="button" data-funnel-account-without="" onClick={skip} className={cn(SECONDARY, "mt-2")}>{t("funnel.account.without")}</button>}
           <button type="button" className={QUIET} onClick={() => { cancelled(); void account.cancelBrowser().catch(() => {}).finally(() => setBrowser(null)); }}>{t("funnel.cancel")}</button>
         </>} />
     );
@@ -173,19 +178,20 @@ export function AccountStep({ account, known, onDone, onSkip }: {
   return (
     // my-auto: centred in the step's pane like the steps that are a StepFrame alone
     <div ref={host} className="my-auto w-full pb-16">
-      {/* top right, across from Back, and quiet: the account is the way on */}
-      {onSkip && !sent && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-14 items-center justify-end px-4">
-          <button type="button" data-funnel-account-skip="" onClick={() => { accountSignIn("skipped", attempt.current ?? {}); onSkip(); }} className={cn(QUIET, "pointer-events-auto text-[12px] opacity-40 hover:opacity-70 focus-visible:opacity-100")}>{t("funnel.account.skip")}</button>
-        </div>
-      )}
-      <StepFrame art={<StepArt art="key" />} title={t("funnel.account.title")} sub={t(sent ? "funnel.account.codeSub" : phoneAppEnabled() ? "funnel.account.sub" : "funnel.account.subNoPhone", { email: sent?.email ?? "" })}>
+      {/* never in the top corner: Windows draws its caption buttons there */}
+      <StepFrame art={<StepArt art="key" />} title={t("funnel.account.title")} sub={t(sent ? "funnel.account.codeSub" : phoneAppEnabled() ? "funnel.account.sub" : "funnel.account.subNoPhone", { email: sent?.email ?? "" })}
+        footer={skip ? <button type="button" data-funnel-account-skip="" onClick={skip} className={QUIET}>{t("funnel.account.skip")}</button> : undefined}>
         <div className="flex w-full max-w-[320px] flex-col gap-3">
           {!sent && providers.length > 0 && (
             <>
               {providers.map((provider) => (
                 <button key={provider} type="button" data-funnel-provider={provider} disabled={busy}
-                  onClick={() => void run(async () => { begin(provider, "browser"); setBrowser(provider); await account.browser(provider); accountSignIn("handoff", { method: provider, via: "browser" }); })}
+                  onClick={() => void run(async () => {
+                    begin(provider, "browser");
+                    setBrowser(provider);
+                    try { await account.browser(provider); } catch (cause) { setBrowser(null); throw cause; }
+                    accountSignIn("handoff", { method: provider, via: "browser" });
+                  })}
                   className={cn(TILE, "flex min-h-11 w-full items-center justify-center gap-2.5 px-5 text-[14px] text-ink disabled:opacity-50")}>
                   {(() => { const Mark = PROVIDER_MARK[provider]; return <Mark />; })()}
                   {t(PROVIDER_LABEL[provider])}

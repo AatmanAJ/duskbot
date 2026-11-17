@@ -8,7 +8,7 @@ import { Icon } from "./Icon";
 import { DialogPane, GrokDialog, mdPrimaryCls, mdSecondaryCls, rowButtonCls } from "./ui/GrokDialog";
 import { SelectPill, type SelectPillOption } from "./ui/SelectPill";
 import { Toggle } from "./ui/Toggle";
-import { HeadArt, type ArtName } from "./ui/Art";
+import { ArtState, HeadArt, type ArtName } from "./ui/Art";
 import { SettingGlyph, type SettingGlyphName } from "./ui/SettingGlyph";
 
 /* The one row list the side panel, Settings and the settings sheets all draw: a small grey label over a white 12px card,
@@ -93,7 +93,9 @@ export function Card({ label, art, action, anchor, footnote, className, children
 }
 
 /** Grok's empty tab: centred 13/18 copy at 56% ink, right under the tabs and 16px in from each side. */
-export function PanelEmpty({ children, ...rest }: { children: ReactNode; "data-panel-empty"?: string }) {
+/** A list with nothing in it yet. Given art and a title, the pixel drawing, the title and this line as its hint. */
+export function PanelEmpty({ children, art, title, ...rest }: { children: ReactNode; art?: ArtName; title?: ReactNode; "data-panel-empty"?: string }) {
+  if (art && title) return <ArtState {...rest} data-art-state={rest["data-panel-empty"]} art={art} title={title}>{children}</ArtState>;
   return (
     <div {...rest} className="flex flex-col gap-2.5 px-4 py-4">
       <p className="text-pretty text-center text-[13px] leading-[18px] tracking-[0.015em] text-ink/[0.56]">{children}</p>

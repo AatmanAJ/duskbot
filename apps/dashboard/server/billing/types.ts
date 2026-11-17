@@ -8,6 +8,8 @@ export interface CreateCheckoutInput {
   checkoutId: string;
   accountId: string;
   email: string;
+  /** the account's own name, else none: the checkout's name field is filled from it or from the email */
+  name?: string | null;
   customerId: string | null;
   cart: ProviderCartLine[];
   returnUrl: string;

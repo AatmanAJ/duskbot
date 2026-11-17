@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mobileLinkUrl, pairingFromPayload, type MobileLinkPayload, type MobilePairingPayload, type MobileRedeemResponse } from "../../../shared/mobile-link";
 import type { MobilePlatform } from "../platform";
 import { connectToWorkspace, createConnectionStore } from "./connections";
-import { PairError, parseTypedPairing, redeemPairing, resolveTypedCode } from "./pair";
+import { PairError, parseTypedPairing, readScanned, redeemPairing, resolveTypedCode } from "./pair";
+import { MOBILE_LINK_VERSION, universalPairLink, universalSignInLink } from "../../../shared/mobile-link";
 import * as relay from "../transport/relay";
 import { createRelaySecrets } from "../transport/link-crypto";
 import { registerPushForConnection } from "./push";
@@ -30,6 +31,8 @@ describe("typed pairing", () => {
   it("parses phone links and 12-character workspace codes without inventing credentials", () => {
     expect(parseTypedPairing(`duskbot://pair?address=https%3A%2F%2Fworkspace.test&token=${credential}`)).toMatchObject(payload);
     expect(parseTypedPairing("workspace.test abcd1234efgh")).toEqual({ ...payload, v: 1, credential: "", code: "ABCD1234EFGH" });
+    // the desktop's qr is an https link, and the app's own scanner reads it too
+    expect(parseTypedPairing(`https://dusk.bot/m/pair#address=https%3A%2F%2Fworkspace.test&token=${credential}`)).toMatchObject(payload);
     expect((parseTypedPairing(" https://workspace.test:8443 ABCD1234EFGH ") as MobilePairingPayload)?.origin).toBe("https://workspace.test:8443");
   });
 
@@ -42,6 +45,8 @@ describe("pairing exchange", () => {
   it.each([
     [400, {}, "invalid"], [400, { error: "pairing expired" }, "expired"], [410, {}, "expired"],
     [409, {}, "used"], [401, {}, "refused"], [403, {}, "refused"], [503, {}, "unreachable"],
+    [401, { error: "pairing code is wrong or has expired; create a new one on the server" }, "expired"],
+    [403, { error: "Phones sign in to this workspace through its own sign-in.", code: "sign_in_instead" }, "sign-in"], [429, {}, "limited"],
   ])("maps HTTP %s to %s", async (status, body, code) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(body, status)));
     await expect(redeemPairing(payload, fakePlatform().platform)).rejects.toMatchObject({ name: "PairError", code, message: `mobile.pair.${code}` });
@@ -104,10 +109,17 @@ describe("pairing exchange", () => {
     vi.stubGlobal("fetch", fetcher);
     const { platform } = fakePlatform();
     await expect(redeemPairing({ ...payload, transport: "relay" }, platform)).rejects.toEqual(new PairError("relay-unavailable"));
-    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 1 }, platform)).rejects.toMatchObject({ code: "expired" });
+    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 3 * 60_000 }, platform)).rejects.toMatchObject({ code: "expired" });
     await expect(redeemPairing({ ...payload, origin: "https://workspace.test/path" }, platform)).rejects.toMatchObject({ code: "invalid" });
     await expect(redeemPairing({ ...payload, credential: "placeholder" }, platform)).rejects.toMatchObject({ code: "invalid" });
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("leaves a grant that only just ended by the phone's clock for the desktop to judge", async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({}, 410));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 30_000 }, fakePlatform().platform)).rejects.toMatchObject({ code: "expired" });
+    expect(fetcher).toHaveBeenCalled();
   });
 });
 
@@ -172,9 +184,10 @@ describe("v2 pairing", () => {
     expect(fetcher.mock.calls[0][0]).toBe(`https://relay.test/v1/lookups/${id}`);
   });
 
-  it("maps missing lookups to expired and unsupported crypto to a clear error", async () => {
+  it("maps missing lookups to an unknown code, not an expired one, and unsupported crypto to a clear error", async () => {
+    // a /pair code made for a browser has no lookup at all: "expired" sent people to make the same wrong code again
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 404)));
-    await expect(resolveTypedCode("ABCDEFGH2345")).rejects.toMatchObject({ code: "expired" });
+    await expect(resolveTypedCode("ABCDEFGH2345")).rejects.toMatchObject({ code: "unknown" });
     vi.stubGlobal("crypto", {});
     await expect(resolveTypedCode("ABCDEFGH2345")).rejects.toMatchObject({ code: "unsupported" });
   });
@@ -393,5 +406,37 @@ describe("push registration", () => {
     platform.native = false;
     await registerPushForConnection(platform);
     expect(puts(fetcher)).toHaveLength(2);
+  });
+});
+
+describe("the app's own scanner reads every qr the desktop, the site or an older build draws", () => {
+  const v2 = mobileLinkUrl({
+    v: MOBILE_LINK_VERSION, workspace: { name: "Studio", environmentId: "env_1", kind: "mac" },
+    grant: { id: "g1", secret: "s3cret", expiresAt: 1_900_000_000_000 },
+    via: [{ kind: "relay", base: "https://link.dusk.bot", channel: "abcdefghij", token: "tok_1", key: "k".repeat(43) }],
+  });
+
+  it("pairs from this computer's qr, the https link and its duskbot:// form alike", () => {
+    for (const text of [universalPairLink(v2, "QWER-TYPL-KMNB"), universalPairLink(v2, null), v2, ` ${v2} `]) {
+      expect(readScanned(text), text).toMatchObject({ kind: "pair", payload: { v: 2, credential: "s3cret", grantId: "g1" } });
+    }
+  });
+
+  it("pairs from an older server or companion qr", () => {
+    expect(readScanned(`duskbot://pair?address=https%3A%2F%2Fworkspace.test&token=${credential}`)).toMatchObject({ kind: "pair", payload: { origin: "https://workspace.test" } });
+    expect(readScanned(`https://dusk.bot/m/pair#address=https%3A%2F%2Fworkspace.test&token=${credential}`)).toMatchObject({ kind: "pair" });
+  });
+
+  it("opens the dusk cloud log in from a cloud's qr, with its email, the https link and duskbot:// alike", () => {
+    expect(readScanned(universalSignInLink("owner@example.test"))).toEqual({ kind: "signin", email: "owner@example.test" });
+    expect(readScanned("duskbot://signin?email=owner%40example.test")).toEqual({ kind: "signin", email: "owner@example.test" });
+    expect(readScanned(universalSignInLink(null))).toEqual({ kind: "signin", email: "" });
+  });
+
+  it("knows the store qr, takes a typed code, and refuses anything else", () => {
+    expect(readScanned("https://apps.apple.com/app/id6834725640")).toEqual({ kind: "store" });
+    expect(readScanned("https://dusk.bot/download")).toEqual({ kind: "store" });
+    expect(readScanned("qwer-typl-kmnb")).toEqual({ kind: "code", code: "QWERTYPLKMNB" });
+    for (const text of ["https://dusk.bot/m/pair?m=x", "https://evil.example/m/pair#m=x", "https://dusk.bot/pricing", "hello", ""]) expect(readScanned(text), text).toBeNull();
   });
 });

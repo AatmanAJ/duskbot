@@ -222,7 +222,10 @@ export interface AccountsBridge {
   onOpenSheet(callback: () => void): () => void;
 }
 /** Any place's own page, from the person's click: the accounts sheet opens on the rail's page, and this page learns nothing of them. */
-export interface AccountSheetBridge { offered(): Promise<boolean>; open(): Promise<void> }
+/** The account in use as a Cloud of the person's own shows it. `email` is absent from an older app. */
+export type AccountFace = Omit<AccountRow, "email" | "signIn"> & { email?: string };
+/** `face`: null on any page but a Cloud of the person's own, or while nobody is signed in. Absent on an older app. */
+export interface AccountSheetBridge { offered(): Promise<boolean>; open(): Promise<void>; face?(): Promise<AccountFace | null> }
 /** On the person's own Cloud, open in this app's window: the plan, read
  * only, Manage in the browser, and Sign in again. No account, credential or address. */
 /** `signin`: this computer's sign-in ended; `tier` names the plan last verified, if any. */

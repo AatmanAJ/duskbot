@@ -9,6 +9,7 @@ import { SettingRow } from "./SettingsPrimitives";
 import { SettingsSelect } from "./SettingsSelect";
 import { textFieldCls } from "./ui/GrokDialog";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 /** One entry: who did what as the row, when (and what was approved) as its quiet line; an admin change opens its
  * before and after under it, one path a line. */
@@ -85,7 +86,7 @@ export function ActivitySection() {
           <a href={`/api/admin-activity.csv${query}`} download className="ui-button">{t("activity.export")}</a>
         </ItemRow>
         {error && <NoteRow tone="danger">{t("activity.error", { message: error })}</NoteRow>}
-        {!error && entries.length === 0 && !loading && <NoteRow>{t("activity.empty")}</NoteRow>}
+        {!error && entries.length === 0 && !loading && <ArtState data-art-state="activity" art="binoculars" title={t("empty.activity.title")} className="py-6">{t("empty.activity.hint")}</ArtState>}
         {entries.length > 0 && <ul className="contents">{entries.map((entry, index) => <ActivityRow key={`${entry.at}-${index}`} entry={entry} />)}</ul>}
       </RowsCard>
       {editing === "who" && (

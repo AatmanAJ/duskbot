@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, ChevronLeft, ChevronRight, KeyRound, QrCode } from "../icons";
+import { ChevronLeft } from "../icons";
 import { QRCodeSVG } from "qrcode.react";
 
-import type { MobileDevice, MobilePairingRequest, MobilePairingResponse } from "../../shared/mobile-link";
+import { universalPairLink, universalSignInLink, type MobileDevice, type MobilePairingRequest, type MobilePairingResponse } from "../../shared/mobile-link";
 import { companionBridge } from "@/lib/companion-bridge";
 import { copyText, type CopyFeedback } from "@/lib/copy-text";
 import { cn } from "@/lib/cn";
@@ -13,10 +13,13 @@ import { api, ApiError } from "@/state/store";
 import { lastSeen, minutesLeft } from "../lib/pairing-time";
 import { haptic } from "../mobile/haptics";
 import { dur, ease } from "../mobile/motion";
-import { Card as RowsCard, CopyRow, ItemRow, NoteRow } from "./ListRows";
-import { PhoneHomeShot, StoreMarks } from "./PhoneHomeShot";
-import { GROK_FOCUS } from "./SidebarSimpleTop";
+import { Card as RowsCard, ItemRow } from "./ListRows";
+import { PlaceArt, type PlaceArtName } from "./ui/PlaceArt";
+import { StoreMark } from "./ui/StoreMarks";
+import { PRIMARY, QUIET, TILE } from "./onboarding/FunnelSteps";
+import type { PairedDevice } from "./ServerPairingCard";
 import { friendlyError } from "@/lib/plain-error";
+import { storeUrl } from "../mobile/connection/phone-update";
 
 export function platformLabelKey(platform: string) {
   return platform === "ios" ? "settings.mobile.ios" : platform === "android" ? "settings.mobile.android" : "settings.mobile.phone";
@@ -27,52 +30,82 @@ export function newDeviceSince(before: readonly string[], after: readonly Mobile
   return after.find((device) => !known.has(device.id)) ?? null;
 }
 
+/** a cloud's phones are its full-access sign-ins other than this window's own */
+export function cloudPhones(sessions: readonly PairedDevice[], current: string | null): PairedDevice[] {
+  return sessions.filter((session) => session.scopes.includes("admin") && session.id !== current);
+}
+
 const pill = "rounded-full bg-ink/5 px-2 py-0.5 text-[12px] leading-4 text-ink-secondary";
-const quietButton = "mobile-press min-h-11 rounded-full px-3 text-[13px] font-medium text-ink-secondary hover:bg-ink/5 disabled:opacity-50";
+const quietButton = cn(QUIET, "font-medium hover:bg-ink/5 disabled:opacity-50");
 
 /** The phone page's pieces, for a caller that lays them out around its own pairing code. */
 export interface PhoneParts {
-  /** the use case and the two ways to pair, or one way's own step once it is picked */
+  /** the link screen, or the short header over the linked phones once one is in */
   top: ReactNode;
-  /** a way's step is open: the caller keeps its own extras out of the way */
+  /** the link screen is up: the caller keeps its own extras out of the way */
   stepping: boolean;
   phones: ReactNode;
 }
 
-type Way = "qr" | "code";
+type Flow = "loading" | "home" | "platform" | "link";
+export type PhoneKind = "ios" | "android";
 
-export function MobilePairingCard({ remote, children }: {
+/** the phone picked last time: the next link starts at its steps, with a way back to pick again */
+export const PHONE_KIND_KEY = "dusk.settings.phoneKind";
+export function rememberedPhone(): PhoneKind | null {
+  try {
+    const kind = window.localStorage.getItem(PHONE_KIND_KEY);
+    return kind === "ios" || kind === "android" ? kind : null;
+  } catch { return null; }
+}
+
+/** a live code is swapped for a new one this long before it ends, so the screen never shows a dead code */
+export const RENEW_BEFORE_MS = 60_000;
+/** silent swaps after the one the person asked for: about an hour with the screen open, then it ends and says so */
+export const AUTO_RENEWALS = 5;
+
+export function MobilePairingCard({ remote, cloudHome = false, email, children }: {
   remote: boolean;
+  /** a dusk cloud refuses phone codes (server/index.ts createMobileLink refusal): the iPhone app reaches it by signing in */
+  cloudHome?: boolean;
+  /** the account's email, filled in on the phone's sign-in */
+  email?: string;
   /** lays the pieces out; null when this workspace may not link phones */
   children?: (phone: PhoneParts | null) => ReactNode;
 }) {
   const [devices, setDevices] = useState<MobileDevice[] | null>(null);
+  const [cloudSignIns, setCloudSignIns] = useState<PairedDevice[] | null>(null);
+  const signInsSeen = useRef(cloudSignIns);
+  signInsSeen.current = cloudSignIns;
   const [offer, setOffer] = useState<MobilePairingResponse | null>(null);
   const [hidden, setHidden] = useState(false);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
-  const [showLink, setShowLink] = useState(false);
-  const [view, setView] = useState<Way | null>(null);
-  const viewRef = useRef<Way | null>(null);
-  viewRef.current = view;
+  const [flow, setFlow] = useState<Flow>("loading");
+  const [kind, setKind] = useState<PhoneKind>(() => rememberedPhone() ?? "ios");
+  const linking = useRef(false);
+  linking.current = flow === "link";
   const [copied, setCopied] = useState<CopyFeedback>("idle");
   const [pairedName, setPairedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const generation = useRef(0);
+  const renewals = useRef(0);
   const baseline = useRef<string[] | null>(null);
-  const linkId = useId();
+  const cloudBaseline = useRef<string[] | null>(null);
   const stepId = useId();
   const stepHeading = useRef<HTMLHeadingElement>(null);
-  const opener = useRef<Way | null>(null);
-  const tiles = useRef<Record<Way, HTMLButtonElement | null>>({ qr: null, code: null });
+  const moved = useRef(false);
   const reducedMotion = useReducedMotion();
+
+  const start = (): Flow => rememberedPhone() ? "link" : "platform";
 
   const loadDevices = useCallback(async (epoch: number) => {
     try {
       const body = await api<{ devices: MobileDevice[]; current: string | null }>("/api/mobile/devices");
       if (generation.current !== epoch) return;
       setDevices(body.devices);
+      if (!cloudHome) setFlow((at) => at === "loading" ? (body.devices.length ? "home" : start()) : at);
       if (baseline.current) {
         const added = newDeviceSince(baseline.current, body.devices);
         if (added) {
@@ -90,26 +123,57 @@ export function MobilePairingCard({ remote, children }: {
         setHidden(true);
       } else {
         setError(friendlyError(cause, t("settings.mobile.error")));
+        if (!cloudHome) setFlow((at) => at === "loading" ? start() : at);
         haptic("error");
       }
+    }
+  }, [cloudHome]);
+
+  // a cloud's phone signs in with the account, so it shows up with the cloud's sign-ins
+  const loadCloudSignIns = useCallback(async (epoch: number) => {
+    try {
+      const body = await api<{ sessions?: PairedDevice[]; current?: string | null }>("/api/auth/sessions");
+      if (generation.current !== epoch) return;
+      const phones = cloudPhones(Array.isArray(body?.sessions) ? body.sessions : [], typeof body?.current === "string" ? body.current : null);
+      setCloudSignIns(phones);
+      setFlow((at) => at === "loading" ? (phones.length ? "home" : start()) : at);
+      if (cloudBaseline.current) {
+        const known = new Set(cloudBaseline.current);
+        const added = phones.find((session) => !known.has(session.id));
+        if (added) {
+          cloudBaseline.current = null;
+          setPairedName(added.label);
+          haptic("success");
+        }
+      }
+    } catch {
+      if (generation.current === epoch) setFlow((at) => at === "loading" ? start() : at);
     }
   }, []);
 
   useEffect(() => {
     const epoch = ++generation.current;
     baseline.current = null;
+    cloudBaseline.current = null;
     setDevices(null);
+    setCloudSignIns(null);
     setOffer(null);
     setHidden(false);
     setBusy(false);
     setRemoving(null);
     setPairedName(null);
-    setShowLink(false);
-    setView(null);
+    setFlow("loading");
     setError(null);
+    moved.current = false;
     void loadDevices(epoch);
+    if (cloudHome) void loadCloudSignIns(epoch);
     return () => { generation.current += 1; };
-  }, [loadDevices, remote]);
+  }, [loadDevices, loadCloudSignIns, remote, cloudHome]);
+
+  // the link screen makes its code as soon as it is up, the first time included
+  useEffect(() => {
+    if (flow === "link" && !cloudHome && devices && !offer && !busy && pairedName === null && error === null) void create();
+  }, [flow, cloudHome, devices]);
 
   useEffect(() => {
     if (!offer) return;
@@ -125,36 +189,47 @@ export function MobilePairingCard({ remote, children }: {
     return () => { cancelled = true; clearTimeout(timer); clearInterval(clock); };
   }, [loadDevices, offer]);
 
-  /** Opens a way's own step; a live offer is reused, since it carries both the qr's link and the typed code. */
-  async function create(way: Way, fresh = false) {
+  // on a cloud's link screen, watch for the phone's own sign-in
+  useEffect(() => {
+    if (!cloudHome || flow !== "link" || pairedName !== null) return;
+    const epoch = generation.current;
+    cloudBaseline.current = (signInsSeen.current ?? []).map((session) => session.id);
+    const poll = setInterval(() => void loadCloudSignIns(epoch), 3_000);
+    return () => { clearInterval(poll); cloudBaseline.current = null; };
+  }, [cloudHome, flow, pairedName, loadCloudSignIns]);
+
+  // while the screen is up, a code is replaced before it ends; the old one keeps working until its own end
+  useEffect(() => {
+    if (!offer || flow !== "link" || pairedName !== null || renewals.current >= AUTO_RENEWALS) return;
+    const epoch = generation.current;
+    const timer = setTimeout(() => {
+      renewals.current += 1;
+      void mint().then((body) => {
+        if (generation.current === epoch && linking.current) { setOffer(body); setNow(Date.now()); setCopied("idle"); }
+      }).catch(() => {});
+    }, Math.max(0, offer.expiresAt - RENEW_BEFORE_MS - Date.now()));
+    return () => clearTimeout(timer);
+  }, [offer, flow, pairedName]);
+
+  /** One offer carries both the qr's link and the typed code; a live one is reused. */
+  async function create(fresh = false) {
     if (busy || !devices) return;
-    opener.current = way;
-    setView(way);
     setCopied("idle");
     if (!fresh && offer && offer.expiresAt > Date.now() && pairedName === null) return;
     const epoch = generation.current;
     setBusy(true);
     setError(null);
-    setShowLink(false);
     setPairedName(null);
     setOffer(null);
     baseline.current = null;
+    renewals.current = 0;
     try {
       if (!(await requireUserPresence()) || generation.current !== epoch) return;
-      const request: MobilePairingRequest = {};
-      const companion = remote ? null : companionBridge();
-      if (companion) {
-        try {
-          request.companion = (await companion.start()).endpoints;
-        } catch {}
-      }
-      if (generation.current !== epoch) return;
-      const body = await api<MobilePairingResponse>("/api/mobile/pairing", { method: "POST", body: JSON.stringify(request) });
+      const body = await mint();
       if (generation.current !== epoch) return;
       baseline.current = devices.map((device) => device.id);
       setOffer(body);
       setNow(Date.now());
-      haptic("success");
     } catch (cause) {
       if (generation.current === epoch) {
         setError(friendlyError(cause, t("settings.mobile.error")));
@@ -163,6 +238,32 @@ export function MobilePairingCard({ remote, children }: {
     } finally {
       if (generation.current === epoch) setBusy(false);
     }
+  }
+
+  async function mint(): Promise<MobilePairingResponse> {
+    const request: MobilePairingRequest = {};
+    const companion = remote ? null : companionBridge();
+    if (companion) {
+      try {
+        request.companion = (await companion.start()).endpoints;
+      } catch {}
+    }
+    return api<MobilePairingResponse>("/api/mobile/pairing", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  function pick(next: PhoneKind) {
+    haptic("selection");
+    setKind(next);
+    try { window.localStorage.setItem(PHONE_KIND_KEY, next); } catch {}
+    go("link");
+  }
+
+  function go(to: Flow) {
+    moved.current = true;
+    setError(null);
+    setPairedName(null);
+    if (to === "home") setOffer(null);
+    setFlow(to);
   }
 
   async function remove(id: string) {
@@ -194,150 +295,227 @@ export function MobilePairingCard({ remote, children }: {
 
   if (hidden) return children ? <>{children(null)}</> : null;
   const expired = offer !== null && offer.expiresAt <= now;
-  const state = pairedName !== null ? "success" : offer ? (expired ? "expired" : "offer") : "idle";
+  const linked = pairedName !== null;
   const groupedCode = offer?.code?.replace(/[^a-z0-9]/gi, "").match(/.{1,4}/g)?.join(" ");
+  const hasPhones = cloudHome ? (cloudSignIns?.length ?? 0) > 0 : (devices?.length ?? 0) > 0;
+  const view = flow === "link" && linked ? "done" : flow;
+  const signInEmail = email?.trim();
+  const failed = error !== null && offer === null && !busy;
 
   const motionProps = {
     initial: { opacity: 0, y: reducedMotion ? 0 : 8 },
     animate: { opacity: 1, y: 0 },
     exit: { opacity: 0, y: reducedMotion ? 0 : -4 },
-    transition: { duration: reducedMotion ? 0 : dur.base, ease: ease.out },
+    transition: { duration: reducedMotion ? 0.12 : dur.base, ease: ease.out },
   };
 
-  // the use case first: the phone app's own home, big, with one plain line beside it
-  const hero = (
-    <div data-phone-hero="" className="@container">
-      <div className="grid overflow-hidden rounded-[16px] border-[0.5px] border-transparent bg-composer @min-[460px]:grid-cols-[1fr_auto]">
-        <div className="flex flex-col justify-center gap-2 px-6 pb-2 pt-6 @min-[460px]:py-8">
-          <h3 className="m-0 text-[22px] font-semibold leading-7 tracking-[-0.02em] text-ink">{t("mobile.desktop.title")}</h3>
-          <p className="m-0 text-[14px] leading-5 text-ink-secondary">{t("mobile.desktop.oneLine")}</p>
-          <p data-phone-platforms="" className="m-0 mt-2 flex items-center gap-2 text-[12px] leading-4 text-ink-tertiary"><StoreMarks />{t("mobile.desktop.storesSoon")}</p>
-        </div>
-        <div className="flex h-[280px] justify-center overflow-hidden px-8 pt-6 @min-[460px]:h-[300px]">
-          <PhoneHomeShot size="large" />
-        </div>
-      </div>
+  const heading = (title: ReactNode, sub?: ReactNode, art?: PlaceArtName) => (
+    <div className="flex flex-col items-center text-center">
+      {art && <PlaceArt name={art} size={52} className="place-mark mb-4" />}
+      <h3 id={stepId} ref={stepHeading} tabIndex={-1} className="m-0 text-balance text-[22px] font-normal leading-7 tracking-[-0.02em] text-ink outline-none">{title}</h3>
+      {sub && <p className="m-0 mt-1.5 max-w-[400px] text-pretty text-[14px] leading-5 text-ink-secondary">{sub}</p>}
     </div>
   );
 
-  const tile = (way: Way) => {
-    const qr = way === "qr";
+  const waiting = (line: ReactNode) => (
+    <p role="status" className="m-0 flex items-center justify-center gap-2 text-[13px] leading-[18px] text-ink-tertiary">
+      <span aria-hidden="true" className="phone-link-wait inline-block size-1.5 shrink-0 rounded-full bg-ink-secondary" />
+      {line}
+    </p>
+  );
+
+  // the qr's white tile, the same size whatever it holds, so nothing jumps while a code is made or renewed. level L: a
+  // screen does not smudge, and the long link gets bigger modules that a camera reads from further away
+  const qrTile = (value: string | null, label: string) => (
+    <div role="img" aria-label={label} aria-busy={!value} data-phone-qr={value ?? ""} className="flex size-[180px] shrink-0 items-center justify-center rounded-[14px] bg-white p-2.5">
+      {value ? <QRCodeSVG value={value} size={160} level="L" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
+        : <span className="size-[160px] animate-pulse rounded-[8px] bg-[#1b1b1f]/[0.06] motion-reduce:animate-none" />}
+    </div>
+  );
+
+  const ended = (art: PlaceArtName, line: string, action: string) => (
+    <div className="flex size-[180px] shrink-0 flex-col items-center justify-center gap-3 rounded-[14px] bg-ink/[0.04] p-3 text-center">
+      <PlaceArt name={art} size={40} />
+      <p role="status" className="m-0 text-[13px] leading-[18px] text-ink-secondary">{line}</p>
+      <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className="ui-button ui-button-pill min-h-11">{action}</button>
+    </div>
+  );
+
+  const ios = kind === "ios";
+  const storeBadge = ios ? (
+    <a data-phone-app-store="" href={storeUrl("ios")} target="_blank" rel="noreferrer" aria-label={t("settings.phone.appStoreLabel")}
+      className="inline-flex min-h-11 items-center gap-2 self-start rounded-full bg-ink/[0.05] py-1.5 pe-3.5 ps-2.5 text-[13px] font-medium leading-[18px] text-ink transition-colors duration-150 ease-[ease] hover:bg-ink/[0.09] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none">
+      <StoreMark name="apple" />{t("settings.phone.iphoneTag")}
+    </a>
+  ) : (
+    <span data-phone-google-play="" className="inline-flex min-h-11 items-center gap-2 self-start rounded-full bg-ink/[0.035] py-1.5 pe-2 ps-2.5 text-[13px] leading-[18px] text-ink-secondary">
+      <StoreMark name="android" />{t("settings.phone.googlePlay")}<span className={pill}>{t("settings.phone.androidTag")}</span>
+    </span>
+  );
+
+  const backBar = (to: Flow | null) => to && (
+    <div className="flex h-11 items-center">
+      <button type="button" data-pairing-back="" onClick={() => go(to)}
+        className="inline-flex min-h-11 items-center gap-0.5 rounded-full py-1 pe-3 ps-1.5 text-[13px] leading-[18px] text-ink-secondary transition-colors hover:bg-ink/[0.06] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none">
+        <ChevronLeft size={16} strokeWidth={1.5} aria-hidden="true" className="rtl:-scale-x-100" />{t(to === "platform" ? "settings.phone.otherPhone" : "common.back")}
+      </button>
+    </div>
+  );
+
+  const countdown = offer && !expired && (renewals.current < AUTO_RENEWALS
+    ? t("settings.mobile.renews", { minutes: minutesLeft(offer.expiresAt - RENEW_BEFORE_MS, now) })
+    : t("settings.mobile.expires", { minutes: minutesLeft(offer.expiresAt, now) }));
+
+  const phoneCard = (option: PhoneKind) => {
+    const apple = option === "ios";
     return (
-      <button type="button" ref={(node) => { tiles.current[way] = node; }} data-pairing-tile={way} {...(qr ? { "data-phone-pair": "" } : { "data-phone-code": "" })}
-        onClick={() => { haptic("selection"); void create(way); }} disabled={devices === null}
-        className={cn("mobile-press flex min-h-[72px] w-full items-center gap-3 rounded-[12px] border-[0.5px] border-transparent bg-composer px-4 py-3.5 text-start transition-colors duration-150 ease-out hover:bg-ink/[0.03] disabled:opacity-60", GROK_FOCUS)}>
-        <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ink/5 text-ink">{qr ? <QrCode size={18} /> : <KeyRound size={18} />}</span>
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-[14px] font-medium leading-5 text-ink">{t(qr ? "settings.mobile.scanTitle" : "settings.w6.pairing.title")}</span>
-          <span className="text-[13px] leading-[18px] text-ink-secondary">{t(qr ? "settings.mobile.scanLine" : "settings.mobile.codeLine")}</span>
+      <button type="button" data-phone-platform={option} aria-pressed={rememberedPhone() === option} onClick={() => pick(option)}
+        className={cn(TILE, "flex min-h-[176px] min-w-0 flex-col items-start justify-between gap-6 p-5 text-start")}>
+        <span className="flex w-full items-start justify-between gap-2">
+          <span className="flex size-14 items-center justify-center"><StoreMark name={apple ? "apple" : "android"} scale={2} /></span>
+          <span className={pill}>{t(apple ? "settings.phone.iphoneTag" : "settings.phone.androidTag")}</span>
         </span>
-        <ChevronRight aria-hidden="true" size={16} className="shrink-0 text-ink-tertiary" />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[16px] font-medium leading-6 text-ink">{t(apple ? "settings.phone.iphone" : "settings.phone.android")}</span>
+          <span className="text-[13px] leading-[18px] text-ink-secondary">{t(apple ? "settings.phone.iphoneSub" : "settings.phone.androidSub")}</span>
+        </span>
       </button>
     );
   };
 
-  const overview = (
-    <div className="flex flex-col gap-5">
-      {hero}
-      <div className="@container">
-        <div data-pairing-ways="" className="grid gap-3 @min-[480px]:grid-cols-2">{tile("qr")}{tile("code")}</div>
-      </div>
-      {error && <p role="alert" className="m-0 px-3 text-[13px] leading-[18px] text-danger">{error}</p>}
+  const platformStep = (
+    <div data-phone-choose="" className="flex flex-col items-center gap-6">
+      {heading(t("settings.phone.whichTitle"), t(cloudHome ? "settings.phone.whichSubCloud" : "settings.phone.whichSub"))}
+      <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">{phoneCard("ios")}{phoneCard("android")}</div>
     </div>
   );
 
-  // one way at a time: only its qr or its code, one instruction, back and a new code
-  const qrStep = view === "qr";
-  const step = view && (
-    <section aria-labelledby={stepId} data-pairing-step={view} className="flex flex-col items-center gap-5 rounded-[16px] border-[0.5px] border-transparent bg-composer px-6 pb-7 pt-3 text-center">
-      <div className="flex w-full justify-start">
-        <button type="button" data-pairing-back="" onClick={() => setView(null)} className={cn("mobile-press -ms-3 flex min-h-11 items-center gap-1 rounded-full px-3 text-[13px] font-medium text-ink-secondary hover:bg-ink/5", GROK_FOCUS)}>
-          <ChevronLeft aria-hidden="true" size={16} />{t("common.back")}
-        </button>
+  // one numbered step: a round number, what to do, and what it needs right under it
+  const step = (n: number, title: ReactNode, children: ReactNode) => (
+    <li className="flex min-w-0 gap-3.5">
+      <span aria-hidden="true" className="mt-px flex size-6 shrink-0 items-center justify-center rounded-full bg-ink/[0.07] text-[12px] font-medium leading-4 text-ink">{n}</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <span className="text-[15px] font-medium leading-6 text-ink">{title}</span>
+        {children}
       </div>
-      <h3 id={stepId} ref={stepHeading} tabIndex={-1} className="m-0 text-[17px] font-semibold leading-6 text-ink outline-none">{t(qrStep ? "settings.mobile.scanTitle" : "settings.w6.pairing.title")}</h3>
-      {state === "success" ? (
-        <div role="status" className="flex flex-col items-center gap-3">
-          <span aria-hidden="true" className="flex size-12 items-center justify-center rounded-full bg-success/10 text-success"><Check size={24} /></span>
-          <p className="m-0 break-words text-[14px] font-medium leading-5 text-ink">{t("mobile.desktop.linked", { name: pairedName ?? "" })}</p>
-          <p className="m-0 text-[13px] leading-[18px] text-ink-secondary">{t("mobile.desktop.linkedHint")}</p>
-          <button type="button" onClick={() => setView(null)} className="ui-button mobile-press mt-2 min-h-11 rounded-full">{t("common.done")}</button>
+    </li>
+  );
+  const line = (text: ReactNode) => <span className="text-pretty text-[13px] leading-[18px] text-ink-secondary">{text}</span>;
+
+  // the qr beside the two steps where there is room, above them where there is not
+  const slab = (left: ReactNode, steps: ReactNode) => (
+    <div className="@container w-full">
+      <div data-phone-slab="" className="grid grid-cols-1 gap-6 rounded-[20px] bg-ink/[0.035] p-5 @[500px]:grid-cols-[auto_minmax(0,1fr)] @[500px]:items-start @[500px]:gap-7">
+        <div className="flex flex-col items-center gap-2 justify-self-center">
+          {left}
+          <span className="text-[12px] leading-4 text-ink-tertiary">{t(ios ? "settings.phone.qrCaption" : "settings.phone.qrCaptionAndroid")}</span>
         </div>
-      ) : state === "expired" ? (
-        <div className="flex flex-col items-center gap-3">
-          <p role="status" className="m-0 text-[13px] leading-[18px] text-ink-secondary">{t("settings.mobile.expired")}</p>
-          <button type="button" onClick={() => void create(view, true)} disabled={busy} className="ui-button mobile-press min-h-11 rounded-full">{t("settings.mobile.newCode")}</button>
-        </div>
+        <ol data-phone-steps={kind} className="m-0 flex list-none flex-col gap-6 p-0 @[500px]:pt-1">{steps}</ol>
+      </div>
+    </div>
+  );
+
+  const getApp = ios
+    ? step(1, t("settings.phone.getIos"), <>{line(t("settings.phone.getIosLine"))}{storeBadge}</>)
+    : step(1, t("settings.phone.getAndroid"), <>{line(t(cloudHome ? "settings.phone.getAndroidLineCloud" : "settings.phone.getAndroidLine"))}{storeBadge}</>);
+
+  const codeBlock = offer && !offer.code ? line(t("settings.mobile.scanOnly")) : (
+    <div className="flex flex-col items-start gap-1">
+      {offer && !expired ? (
+        <code aria-label={t("settings.mobile.code")} data-phone-code="" className="select-all whitespace-nowrap font-mono text-[26px] leading-9 tracking-[0.08em] text-ink">{groupedCode}</code>
       ) : (
-        <>
-          {qrStep ? (
-            <div role="img" aria-label={t("settings.mobile.qr")} aria-busy={!offer} className="flex size-[232px] items-center justify-center rounded-[16px] bg-white p-3">
-              {offer ? <QRCodeSVG value={offer.link} size={208} level="M" includeMargin={false} bgColor="#ffffff" fgColor="#1b1b1f" aria-hidden="true" />
-                : <span className="size-[208px] animate-pulse rounded-[8px] bg-[#1b1b1f]/[0.06] motion-reduce:animate-none" />}
-            </div>
-          ) : offer && offer.code === null ? (
-            <p className="m-0 max-w-[320px] text-[13px] leading-[18px] text-ink-secondary">{t("settings.mobile.scanOnly")}</p>
-          ) : (
-            <div className="flex min-h-12 items-center justify-center">
-              {offer ? <code aria-label={t("settings.mobile.code")} className="select-all whitespace-nowrap font-mono text-[30px] leading-10 tracking-[0.12em] text-ink">{groupedCode}</code>
-                : <span aria-hidden="true" className="h-10 w-[260px] animate-pulse rounded-[8px] bg-ink/[0.06] motion-reduce:animate-none" />}
-            </div>
-          )}
-          {!(offer && !qrStep && offer.code === null) && (
-            <p className="m-0 max-w-[340px] text-[14px] leading-5 text-ink-secondary">{t(qrStep ? "settings.mobile.scanSteps" : "settings.docs.phone.codeSteps")}</p>
-          )}
-          {offer && (
-            <p role="status" className="m-0 flex items-center gap-2 text-[13px] leading-[18px] text-ink-tertiary">
-              <span aria-hidden="true" className="phone-link-wait inline-block size-1.5 rounded-full bg-ink-secondary" />
-              {t("mobile.desktop.waiting")} · {t("settings.mobile.expires", { minutes: minutesLeft(offer.expiresAt, now) })}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center justify-center gap-1">
-            <button type="button" data-phone-new-code="" onClick={() => void create(view, true)} disabled={busy} className={quietButton}>{t("settings.mobile.newCode")}</button>
-            {qrStep ? (offer && (
-              <button type="button" aria-expanded={showLink} aria-controls={linkId} onClick={() => { setShowLink(!showLink); haptic("selection"); }} className={quietButton}>
-                {t("mobile.desktop.copyLinkInstead")}
-              </button>
-            )) : offer?.code ? (
-              <button type="button" onClick={() => void copyCode()} className={quietButton} aria-live="polite">
-                {t(copied === "copied" ? "settings.mobile.copied" : copied === "failed" ? "settings.mobile.copyFailed" : "settings.mobile.copyCode")}
-              </button>
-            ) : null}
-          </div>
-          {qrStep && offer && (
-            <div id={linkId} hidden={!showLink} className="w-full max-w-[420px] text-start [&_button]:min-h-11 [&_button]:min-w-11">
-              {showLink && <CopyRow title={t("settings.mobile.link")} text={offer.link} copyLabel={t("settings.mobile.copyLink")} />}
-            </div>
-          )}
-        </>
+        <span aria-hidden="true" className={cn("my-0.5 block h-8 w-[220px] max-w-full rounded-[8px] bg-ink/[0.06]", !expired && "animate-pulse motion-reduce:animate-none")} />
       )}
-      {error && <p role="alert" className="m-0 text-[13px] leading-[18px] text-danger">{error}</p>}
+      <div className="-ms-3 flex flex-wrap items-center gap-1">
+        <button type="button" data-phone-copy="" onClick={() => void copyCode()} disabled={!offer || expired} className={quietButton} aria-live="polite">
+          {t(copied === "copied" ? "settings.mobile.copied" : copied === "failed" ? "settings.mobile.copyFailed" : "settings.mobile.copyCode")}
+        </button>
+        {offer && !expired && <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className={quietButton}>{t("settings.mobile.newCode")}</button>}
+      </div>
+    </div>
+  );
+
+  const localLink = (
+    <div data-phone-link="" className="flex flex-col items-center gap-6">
+      {heading(t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"))}
+      {failed ? (
+        <div data-pairing-failed="" className="flex w-full flex-col items-center gap-3 rounded-[20px] bg-ink/[0.035] px-6 py-8 text-center">
+          <PlaceArt name="error" size={44} />
+          <p role="alert" className="m-0 max-w-[380px] text-pretty text-[14px] leading-5 text-ink-secondary">{error}</p>
+          <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className="ui-button ui-button-pill min-h-11">{t("settings.phone.tryAgain")}</button>
+        </div>
+      ) : slab(
+        expired ? ended("expired", t("settings.mobile.expired"), t("settings.mobile.newCode"))
+          : qrTile(offer ? universalPairLink(offer.link, offer.code) : null, t("settings.mobile.qr")),
+        <>
+          {getApp}
+          {step(2, t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"), <>{line(t(ios ? "settings.phone.openIosLine" : "settings.phone.openAndroidLine"))}{codeBlock}</>)}
+        </>,
+      )}
+      {countdown && waiting(<>{t("mobile.desktop.waiting")} · {countdown}</>)}
+    </div>
+  );
+
+  // a cloud: no code to make, the qr opens the app at its dusk cloud log in with the email filled in
+  const cloudLink = (
+    <div data-phone-cloud="" className="flex flex-col items-center gap-6">
+      {heading(t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"))}
+      {slab(
+        qrTile(universalSignInLink(signInEmail), t("settings.phone.cloudQr")),
+        <>
+          {getApp}
+          {step(2, t("settings.phone.logInStep"), signInEmail ? (
+            <div data-phone-cloud-sign-in="" className="flex min-w-0 flex-col gap-1">
+              <span className="text-[12px] leading-4 text-ink-tertiary">{t("settings.phone.logInWith")}</span>
+              <span className="max-w-full break-all text-[18px] font-medium leading-6 text-ink">{signInEmail}</span>
+              {line(t(ios ? "settings.phone.cloudScan" : "settings.phone.cloudScanAndroid"))}
+            </div>
+          ) : line(t("settings.phone.cloudScanAny")))}
+        </>,
+      )}
+      {waiting(t("settings.phone.waitingCloud"))}
+    </div>
+  );
+
+  const doneStep = (
+    <div role="status" data-phone-linked="" className="flex flex-col items-center gap-6">
+      {heading(cloudHome ? t("settings.phone.cloudLinked") : t("mobile.desktop.linked", { name: pairedName ?? "" }), t("mobile.desktop.linkedHint"), "connected")}
+      <button type="button" data-primary="" onClick={() => go("home")} className={PRIMARY}>{t("common.done")}</button>
+    </div>
+  );
+
+  const loadingStep = <div aria-hidden="true" className="h-[300px] animate-pulse rounded-[20px] bg-ink/[0.035] motion-reduce:animate-none" />;
+
+  const steps: Record<Exclude<typeof view, "home">, ReactNode> = { loading: loadingStep, platform: platformStep, link: cloudHome ? cloudLink : localLink, done: doneStep };
+
+  const top = view === "home" ? (cloudHome ? (
+    <RowsCard label={t("settings.phone.linkedTitle")} action={<LinkAnother onClick={() => go(start())} />}>
+      <ItemRow pixel="phone" title={t("settings.phone.cloudHome")} hint={signInEmail ? t("settings.phone.cloudHomeHint", { email: signInEmail }) : t("settings.phone.cloudHomeHintAny")} />
+    </RowsCard>
+  ) : null) : (
+    <section aria-labelledby={stepId} data-phone-flow={view} className="mx-auto flex w-full max-w-[560px] flex-col gap-2 pb-2">
+      {view === "link" ? backBar("platform") : view === "platform" ? backBar(hasPhones ? "home" : null) : null}
+      {/* focus follows the swap once the old view has left */}
+      <AnimatePresence mode="wait" initial={false} onExitComplete={() => requestAnimationFrame(() => { if (moved.current) stepHeading.current?.focus({ preventScroll: true }); })}>
+        <motion.div key={view} {...motionProps}>{steps[view]}</motion.div>
+      </AnimatePresence>
     </section>
   );
 
-  const top = (
-    // focus follows the swap once the old view has left: into a step, then back to the tile that opened it
-    <AnimatePresence mode="wait" initial={false} onExitComplete={() => requestAnimationFrame(() => {
-      if (viewRef.current) stepHeading.current?.focus({ preventScroll: true });
-      else if (opener.current) { tiles.current[opener.current]?.focus({ preventScroll: true }); opener.current = null; }
-    })}>
-      <motion.div key={view ?? "overview"} {...motionProps}>{step || overview}</motion.div>
-    </AnimatePresence>
-  );
-
-  const phones = (
-    <RowsCard label={t("settings.mobile.devices")}>
-      {devices?.length ? devices.map((device) => (
+  const phones = view === "home" && !cloudHome ? (
+    <RowsCard label={t("settings.phone.linkedTitle")} action={<LinkAnother onClick={() => go(start())} />}>
+      {(devices ?? []).map((device) => (
         <ItemRow key={device.id} pixel="phone" title={device.name} hint={t("settings.mobile.seen", { when: lastSeen(device.lastSeenAt, now) })}>
           <span className={pill}>{t(platformLabelKey(device.platform))}</span>
           {device.relay && <span className={pill}>{t("settings.mobile.relay")}</span>}
           <button type="button" onClick={() => void remove(device.id)} disabled={removing !== null} aria-label={t("mobile.desktop.removePhone", { name: device.name })} className="ui-button mobile-press min-h-11 min-w-11 rounded-full">{t("settings.mobile.remove")}</button>
         </ItemRow>
-      )) : <NoteRow>{t("settings.mobile.empty")}</NoteRow>}
+      ))}
+      {error && <p role="alert" className="m-0 px-2.5 py-2 text-[13px] leading-[18px] text-danger">{error}</p>}
     </RowsCard>
-  );
+  ) : null;
 
-  const parts: PhoneParts = { top, stepping: view !== null, phones };
+  const parts: PhoneParts = { top, stepping: view !== "home", phones };
   return (
     <>
       <style>{`
@@ -346,8 +524,16 @@ export function MobilePairingCard({ remote, children }: {
         @media (prefers-reduced-motion: reduce) { .phone-link-wait { animation-play-state: paused; } }
         [data-reduced-motion="true"] .phone-link-wait { animation-play-state: paused; }
       `}</style>
-      {children ? children(parts) : <div className="flex flex-col gap-5">{top}{phones}</div>}
+      {children ? children(parts) : <div className="flex flex-col gap-5">{parts.top}{parts.phones}</div>}
     </>
+  );
+}
+
+function LinkAnother({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" data-phone-link-another="" onClick={() => { haptic("selection"); onClick(); }} className="ui-button ui-button-pill mobile-press min-h-11">
+      {t("mobile.desktop.linkAnother")}
+    </button>
   );
 }
 

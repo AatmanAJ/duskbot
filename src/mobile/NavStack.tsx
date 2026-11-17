@@ -8,11 +8,11 @@ import { prefersReducedMotion, projectRelease, settleTo } from "./motion";
 const UNDER_SHIFT = 0.3;
 const EXIT = { stiffness: 440, damping: 40 };
 /** A tapped push starts from rest: critically damped (zeta 1), so it eases in and lands without overshoot or creep. */
-const PUSH = { stiffness: 460, damping: 43, restDelta: 0.1 };
+const PUSH = { stiffness: 380, damping: 39, restDelta: 0.1 };
 const READY_CAP_MS = 1000;
 
 /** Resolves once a freshly mounted page is final: its transcript has mounted every row (`whole`, for a chat that builds
- * in steps), and it has painted the same height for three smooth frames. Anything still moving then would move after
+ * in steps), and it has painted the same height for two smooth frames. Anything still moving then would move after
  * the slide lands. Gives up waiting after `READY_CAP_MS`. */
 function whenSettled(el: HTMLElement, signal: { cancelled: boolean; whole: boolean }): Promise<void> {
   return new Promise((resolve) => {
@@ -29,7 +29,7 @@ function whenSettled(el: HTMLElement, signal: { cancelled: boolean; whole: boole
       steady = next === height && smooth ? steady + 1 : 0;
       height = next;
       const building = Boolean(log) && (log!.getAttribute("aria-busy") === "true" || (!signal.whole && el.querySelector("[data-simple-rows]") !== null));
-      if ((steady >= 3 && !building) || now - started > READY_CAP_MS) resolve();
+      if ((steady >= 2 && !building) || now - started > READY_CAP_MS) resolve();
       else requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -133,8 +133,8 @@ export function NavStack({ base, page, pageKey, onBack, onSettled }: {
     },
     onMove: (s) => x.set(Math.max(0, s.dx)),
     onEnd: (s) => {
-      const landing = projectRelease(x.get(), s.vx, 0.995);
-      if (landing > width / 2 && s.vx > -200) {
+      const landing = projectRelease(x.get(), s.vx);
+      if ((landing > width / 2 && s.vx > -200) || s.vx > 500) {
         go(width, Math.max(s.vx, 0), () => { setShownKey(null); lastPage.current = null; settled.current?.(false); onBack(); });
       } else {
         go(0, s.vx);
@@ -155,7 +155,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled }: {
         aria-hidden={pageShown && !moving ? true : undefined}
       >
         {base}
-        {pageShown && <motion.div aria-hidden className="pointer-events-none absolute inset-0 bg-[rgb(10_10_12/0.10)]" style={{ opacity: dim }} />}
+        {pageShown && <motion.div aria-hidden className="pointer-events-none absolute inset-0 bg-[rgb(10_10_12/0.16)]" style={{ opacity: dim }} />}
       </motion.div>
       {pageShown && (
         <motion.div

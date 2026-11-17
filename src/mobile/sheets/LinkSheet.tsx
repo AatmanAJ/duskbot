@@ -7,7 +7,7 @@ import { Sheet } from "../Sheet";
 import { usePlatform } from "../platform";
 import { haptic } from "../haptics";
 import { PixelArt } from "../Illustration";
-import { pairError, PairError, parseTypedPairing, resolveTypedCode } from "../connection/pair";
+import { pairError, isStoreLink, PairError, parseTypedPairing, resolveTypedCode } from "../connection/pair";
 import type { SheetPageProps } from "./registry";
 import { ErrorLine } from "../onboarding/parts";
 
@@ -35,6 +35,7 @@ export function LinkSheet({ open, onClose }: SheetPageProps<"link">) {
     setResolving(true);
     setError(null);
     try {
+      if (isStoreLink(input)) throw new PairError("store-qr");
       const parsed = parseTypedPairing(input);
       if (!parsed) throw new PairError("invalid");
       let text = input.trim();

@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { phoneTooOld } from "../../../shared/server-api";
 import type { MobilePlatform } from "../platform";
 
-/** the App Store's numeric id for the iPhone app, once it is listed; until then the update button opens dusk.bot/download */
-export const IOS_APP_STORE_ID: string | null = null;
+/** the App Store's numeric id for the iPhone app (apps/site/releases.json "ios") */
+export const IOS_APP_STORE_ID: string | null = "6834725640";
 const ANDROID_PACKAGE = "bot.dusk.mobile";
 
 export function storeUrl(kind: MobilePlatform["kind"], iosId: string | null = IOS_APP_STORE_ID): string {

@@ -16,6 +16,11 @@ describe("the funnel's steps", () => {
     expect(funnelSteps({ account: false, desktop: false, hello: false })).toEqual(["ai"]);
   });
 
+  it("on a cloud the desktop app set up: the hello, an AI, and that computer's bots when it has some", () => {
+    expect(funnelSteps({ account: false, desktop: false })).toEqual(["welcome", "ai"]);
+    expect(funnelSteps({ account: false, desktop: false, cloudBring: true, phone: true, permissions: true })).toEqual(["welcome", "ai", "bring"]);
+  });
+
   it("offers bringing bots in only when another app has some", () => {
     expect(funnelSteps({ account: false, desktop: true, bring: true })).toEqual(["welcome", "place", "ai", "bring"]);
   });

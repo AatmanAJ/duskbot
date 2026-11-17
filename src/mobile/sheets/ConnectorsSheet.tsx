@@ -114,6 +114,16 @@ async function readApps(): Promise<AppsSnapshot> {
   };
 }
 
+/** An app's logo, or its initial only when it has none: the tile draws that fallback itself. */
+export function AppFace({ entry }: { entry: Pick<AppEntry, "label" | "icon"> }) {
+  const { glyph, glyphPaint: _glyphPaint, ...art } = entry.icon;
+  return (
+    <span aria-hidden className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[11px] bg-ink/[0.06] text-ink-secondary">
+      {glyph ? <Icon name={glyph} size={21} /> : <ServiceTile card={{ label: entry.label, ...art }} size={40} className="absolute inset-0" />}
+    </span>
+  );
+}
+
 export function ConnectorsSheet({ open, onClose }: SheetPageProps<"connectors">) {
   const [snapshot, setSnapshot] = useState<AppsSnapshot | null>(null);
   const [query, setQuery] = useState("");
@@ -146,11 +156,8 @@ export function ConnectorsSheet({ open, onClose }: SheetPageProps<"connectors">)
           {!searching && <h2 id={`${id}-${group.key}`} className="px-3 pb-1 pt-2 text-[15px] font-semibold text-ink">{group.key === "connected" || group.key === "popular" ? t(`mobile.connectors.${group.key}`) : t(CATEGORY_LABEL[group.key])}</h2>}
           <ul>{group.entries.map((entry) => {
             const added = appIsAdded(entry, snapshot!.added);
-            const { glyph, glyphPaint: _glyphPaint, ...art } = entry.icon;
             return <li key={entry.id}><button type="button" onClick={() => connect(entry)} className="mobile-row flex min-h-[72px] w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left">
-              <span aria-hidden className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[11px] bg-ink/[0.06] text-[16px] font-semibold text-ink-secondary">
-                {glyph ? <Icon name={glyph} size={21} /> : <><span>{entry.label.slice(0, 1).toUpperCase()}</span><ServiceTile card={{ label: entry.label, ...art }} size={40} className="absolute inset-0" /></>}
-              </span>
+              <AppFace entry={entry} />
               <span className="min-w-0 flex-1"><span className="block truncate text-[16px] font-semibold text-ink">{entry.label}</span><span className="mt-0.5 line-clamp-1 text-[14px] leading-5 text-ink-secondary">{entry.description}</span></span>
               <span className={cn("flex min-h-8 shrink-0 items-center gap-1 rounded-full px-3 text-[14px] font-semibold", added ? "text-success" : "bg-ink/[0.06] text-ink")}>
                 {added && <Check aria-hidden size={15} />}{t(added ? "mobile.connectors.added" : "mobile.connectors.add")}

@@ -14,7 +14,7 @@
   "macNotarized": true,
   "windowsReady": true,
   "linuxReady": true,
-  "ios": "",
+  "ios": "https://apps.apple.com/app/id6834725640",
   "android": "",
   "sizes": {
     "mac-arm64": 164749655,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appLinkFromUniversal, MOBILE_LINK_VERSION, mobileLinkUrl, mobileOpenLink, parseMobileOpenLink, parseMobilePairingLink, type MobileLinkPayload } from "./mobile-link.ts";
+import { appLinkFromUniversal, MOBILE_LINK_VERSION, mobileLinkUrl, mobileOpenLink, parseMobileOpenLink, parseMobilePairingLink, parseSignInLink, universalPairLink, universalSignInLink, type MobileLinkPayload } from "./mobile-link.ts";
 import { phonePairingLink } from "./pairing-link.ts";
 
 const token = `omb_pair_${"a".repeat(43)}`;
@@ -49,6 +49,28 @@ describe("mobile pairing link adapter", () => {
   it("a pairing secret is only taken from the part of a universal link no web server sees", () => {
     const pair = mobileLinkUrl(payload);
     expect(appLinkFromUniversal(`https://dusk.bot/m/pair?${pair.split("?")[1]}`)).toBeNull();
+  });
+
+  it("the desktop's one qr: an https link that pairs in the app and carries the typed code for the store page, all after the #", () => {
+    const link = universalPairLink(mobileLinkUrl(payload), "ABCD-EFGH-JKLM");
+    expect(link.startsWith("https://dusk.bot/m/pair#m=")).toBe(true);
+    expect(link.endsWith("&c=ABCDEFGHJKLM")).toBe(true);
+    expect(new URL(link).search).toBe("");
+    expect(parseMobilePairingLink(appLinkFromUniversal(link)!)).toMatchObject({ v: 2, credential: "s3cret" });
+    expect(universalPairLink(mobileLinkUrl(payload), null)).not.toContain("c=");
+  });
+
+  it("a dusk cloud's qr opens the app's log in with the email filled in", () => {
+    const link = universalSignInLink("a+b@example.test");
+    expect(link).toBe("https://dusk.bot/m/signin#email=a%2Bb%40example.test");
+    expect(appLinkFromUniversal(link)).toBe("duskbot://signin?email=a%2Bb%40example.test");
+    expect(parseSignInLink(link)).toEqual({ email: "a+b@example.test" });
+    expect(parseSignInLink("duskbot://signin")).toEqual({ email: "" });
+    expect(parseSignInLink(universalSignInLink(null))).toEqual({ email: "" });
+    expect(parseSignInLink("duskbot://signin?email=not-an-email")).toEqual({ email: "" });
+    expect(appLinkFromUniversal("https://dusk.bot/m/signin?email=a@b.c"), "the email stays where no server sees it").toBeNull();
+    expect(parseSignInLink("duskbot://pair?m=x")).toBeNull();
+    expect(parseSignInLink("https://evil.example/m/signin#email=a@b.c")).toBeNull();
   });
 
   it("leaves every other address alone", () => {
