@@ -54,16 +54,25 @@ export function newElements(tree: string, mark: number, maxLines = MAX_NEW_LINES
   const out: Array<{ depth: number; line: string }> = [];
   const stack: Array<{ depth: number; line: string; printed: boolean }> = [];
   let count = 0;
+  let unnamed: { depth: number; at: number } | null = null;
   for (const raw of tree.split("\n")) {
     const depth = (raw.length - raw.trimStart().length) / 2;
     const line = raw.trim();
     while (stack.length && stack.at(-1)!.depth >= depth) stack.pop();
+    // a control whose text sits on its own line below it reads as that text: `- generic [ref=e21]: Priya Raman`
+    if (unnamed && depth === unnamed.depth + 1 && line.startsWith("- text: ")) {
+      out[unnamed.at]!.line = `${out[unnamed.at]!.line}${line.slice("- text:".length)}`;
+      unnamed = null;
+    } else if (unnamed && depth <= unnamed.depth) {
+      unnamed = null;
+    }
     const ref = REF.exec(line);
     if (ref && Number(ref[1]) > mark) {
       count++;
       if (count <= maxLines) {
         for (const above of stack) if (!above.printed && CONTEXT.test(above.line)) { out.push({ depth: above.depth, line: above.line }); above.printed = true; }
         out.push({ depth, line });
+        unnamed = line.endsWith(":") && !/^- \S+ "/u.test(line) ? { depth, at: out.length - 1 } : null;
       }
     }
     stack.push({ depth, line, printed: false });

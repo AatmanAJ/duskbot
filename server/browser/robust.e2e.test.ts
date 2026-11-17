@@ -82,6 +82,74 @@ suite("robust browser actions on real Chrome", () => {
     expect(await real.read<string>(target, "document.title")).toBe("sent to sam@acme.test");
   });
 
+  it("sets a slider through fill, by arrow keys on an ARIA slider and directly on a range input", async () => {
+    const target = bot();
+    const opened = real.text(await real.call(target, "agent_browser_open", { url: page("/slider", `<div id="s" role="slider" tabindex="0" aria-label="Max price" aria-valuemin="0" aria-valuemax="2000" aria-valuenow="2000"></div>
+      <input type="range" id="r" aria-label="Volume" min="0" max="10" value="2" oninput="document.title='volume ' + this.value">
+      <script>const s = document.getElementById("s"); s.addEventListener("keydown", (e) => { const d = { ArrowRight: 50, ArrowLeft: -50 }[e.key]; if (d) s.setAttribute("aria-valuenow", Math.max(0, Math.min(2000, Number(s.getAttribute("aria-valuenow")) + d))); });</script>`) }));
+    await real.call(target, "agent_browser_fill", { ref: refOf(opened, "slider", "Max price"), text: "$750" });
+    expect(await real.read<string>(target, "document.getElementById('s').getAttribute('aria-valuenow')")).toBe("750");
+    await real.call(target, "agent_browser_fill", { ref: refOf(opened, "slider", "Volume"), text: "7" });
+    expect(await real.read<string>(target, "document.title")).toBe("volume 7");
+  });
+
+  it("fills the field inside the box or label it was given, and says why a read-only field takes no text", async () => {
+    const target = bot();
+    await real.call(target, "agent_browser_open", { url: page("/fields", `<div class="wrap" role="group" aria-label="Search box"><span>🔎</span><input id="q"></div>
+      <label>Check in <input id="d" readonly></label>`) });
+    await real.call(target, "agent_browser_fill", { selector: ".wrap", text: "lisbon" });
+    expect(await real.read<string>(target, "document.getElementById('q').value")).toBe("lisbon");
+    const refused = await real.call(target, "agent_browser_fill", { selector: "#d", text: "2027-03-14" });
+    expect(real.text(refused)).toMatch(/read-only.*Click it and choose the value there/u);
+  });
+
+  it("puts a file into the hidden input behind a dropzone label", async () => {
+    const target = bot();
+    const file = `${real.dataDir}/receipt.txt`;
+    (await import("node:fs")).writeFileSync(file, "receipt");
+    await real.call(target, "agent_browser_open", { url: page("/drop", `<label class="drop">Drop a receipt or browse<input type="file" hidden onchange="document.title=this.files[0].name"></label>`) });
+    const put = await real.call(target, "agent_browser_upload", { selector: ".drop", files: [file] });
+    expect(put.isError).toBeUndefined();
+    expect(await real.read<string>(target, "document.title")).toBe("receipt.txt");
+  });
+
+  it("scrolls a virtual list inside an app that does not scroll until a name shows, then gives its row a ref", async () => {
+    const target = bot();
+    await real.call(target, "agent_browser_open", { url: page("/virtual", `<div style="display:flex;height:100vh"><div id="l" style="width:300px;overflow:auto;position:relative"><div id="s" style="position:relative"></div></div><main style="flex:1">pane</main></div>
+      <script>const names = Array.from({ length: 300 }, (_, i) => i === 240 ? "Priya Raman" : "Person " + i), list = document.getElementById("l"), spacer = document.getElementById("s");
+      spacer.style.height = names.length * 50 + "px";
+      const draw = () => { const first = Math.floor(list.scrollTop / 50); spacer.innerHTML = ""; for (let i = first; i < Math.min(names.length, first + 20); i++) { const row = document.createElement("div"); row.style = "position:absolute;top:" + i * 50 + "px;height:50px;cursor:pointer"; row.textContent = names[i]; row.onclick = () => document.title = names[i]; spacer.appendChild(row); } };
+      list.addEventListener("scroll", draw); draw();</script>`) });
+    const found = real.text(await real.call(target, "agent_browser_scroll", { toText: "Priya Raman", dy: 1500 }));
+    expect(found).toMatch(/"Priya Raman" shows on the page now/u);
+    expect(found).toMatch(/- generic \[ref=e\d+\] \[cursor=pointer\]: Priya Raman\n/u);
+    await real.call(target, "agent_browser_click", { text: "Priya Raman" });
+    expect(await real.read<string>(target, "document.title")).toBe("Priya Raman");
+  });
+
+  it("takes :has-text and role words written as CSS, and answers an ambiguous selector with refs to choose from", async () => {
+    const target = bot();
+    await real.call(target, "agent_browser_open", { url: page("/feed", `<article><p>Morning run</p><button aria-label="Like" onclick="document.title='liked run'">♡</button></article>
+      <article><p>First ceramics class</p><button aria-label="Like" onclick="document.title='liked ceramics'">♡</button></article><div role="textbox" contenteditable="true" aria-label="Reply"></div>`) });
+    await real.call(target, "agent_browser_click", { selector: "article:has-text(\"ceramics\") [aria-label=\"Like\"]" });
+    expect(await real.read<string>(target, "document.title")).toBe("liked ceramics");
+    expect((await real.call(target, "agent_browser_type", { selector: "textbox[name=\"Reply\"]", text: "nice" })).isError).toBeUndefined();
+    const ambiguous = await real.call(target, "agent_browser_click", { selector: "[aria-label=Like]" });
+    expect(ambiguous.isError).toBe(true);
+    expect(real.text(ambiguous)).toMatch(/matches 2 elements, so nothing was done\. They: e\d+ <button> "Like"; e\d+ <button> "Like"\. Pass the ref/u);
+    const second = /; (e\d+) <button>/u.exec(real.text(ambiguous))![1]!;
+    await real.call(target, "agent_browser_click", { ref: second });
+    expect(await real.read<string>(target, "document.title")).toBe("liked ceramics");
+  });
+
+  it("does not wait on loading placeholders behind a modal wall, and marks the wall modal", async () => {
+    const { value, ms } = await timed(() => real.call(bot(), "agent_browser_open", { url: page("/wall", `<main aria-busy="true" style="height:200px">Loading stories…</main>
+      <div role="dialog" aria-modal="true" aria-label="Your privacy" style="position:fixed;inset:0;background:#000a"><button>Manage choices</button></div>`) }));
+    expect(real.text(value)).toMatch(/dialog "Your privacy" \[modal\]/u);
+    expect(real.text(value)).not.toMatch(/still loading/u);
+    expect(ms).toBeLessThan(1_800);
+  });
+
   it("answers a click that moves to another page with that page's snapshot", async () => {
     const target = bot();
     const next = page("/next", `<h1>Orders</h1><button>Track order</button>`);

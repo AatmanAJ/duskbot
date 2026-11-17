@@ -52,7 +52,8 @@ export const PROBE_EXPRESSION = `(() => {
     textLength: text.length,
     nodes: document.getElementsByTagName("*").length,
     controls: document.querySelectorAll(${JSON.stringify(CONTROLS)}).length,
-    busy: [...document.querySelectorAll(${JSON.stringify(BUSY)})].slice(0, 50).some(visible),
+    // behind a modal (a consent wall, a dialog) the page waits on the person, so only what loads inside the modal counts
+    busy: (() => { const modal = [...document.querySelectorAll('[aria-modal="true"],dialog[open]')].find(visible); return [...document.querySelectorAll(${JSON.stringify(BUSY)})].slice(0, 50).some((el) => visible(el) && (!modal || modal.contains(el))); })(),
     scripts: [...document.scripts].map((s) => s.src).filter(Boolean).slice(0, 60).map((src) => src.slice(0, 300)),
     iframes: [...document.querySelectorAll("iframe")].map((f) => f.src).filter(Boolean).slice(0, 30).map((src) => src.slice(0, 300)),
     selectors: ${JSON.stringify(MARKERS)}.filter((selector) => document.querySelector(selector) !== null),

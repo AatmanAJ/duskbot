@@ -204,6 +204,7 @@ function states(item: Item): string {
   if (pressed === "true" || pressed === true) parts.push("[pressed]");
   else if (pressed === "mixed") parts.push("[pressed=mixed]");
   if (item.properties.get("selected") === true) parts.push("[selected]");
+  if (item.properties.get("modal") === true) parts.push("[modal]");
   return parts.join(" ");
 }
 

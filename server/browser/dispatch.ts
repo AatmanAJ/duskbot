@@ -482,11 +482,19 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       const target = call.input.ref !== undefined || call.input.selector !== undefined ? element(call.input, false) : null;
       const dx = call.input.dx ?? 0;
       const dy = call.input.dy ?? (call.input.dx === undefined ? 600 : 0);
+      const wanted = call.input.toText;
       return act(context, tab, async () => {
+        if (wanted !== undefined) {
+          const found = await tab.page.scrollUntil(target, dx, dy, wanted, context.deadline - FOLLOW_UP_MS);
+          const times = `${found.scrolls} time${found.scrolls === 1 ? "" : "s"}`;
+          return textResult(found.found ? `${found.scrolls ? `Scrolled ${times}; ` : ""}${JSON.stringify(wanted)} shows on the page now, scrolled into view.`
+            : found.atEnd ? `Scrolled ${times} to the end; ${JSON.stringify(wanted)} is not there. Check the spelling, or look elsewhere (a search box, another tab or page).`
+            : `Scrolled ${times}; ${JSON.stringify(wanted)} has not shown yet. Call again to keep looking.`);
+        }
         await tab.page.scroll(target, dx, dy, { timeoutMs: remaining(context) });
         const position = await valueInWorld<[number, number, number]>(tab.page.frames, tab.page.frames.mainFrameId, "[Math.round(scrollX), Math.round(scrollY), Math.round(document.documentElement.scrollHeight)]").catch(() => null);
         return textResult(`Scrolled by ${dx},${dy}.${position ? ` The page is at ${position[0]},${position[1]} of ${position[2]} pixels high.` : ""}`);
-      });
+      }, { observeChange: true });
     }
     case "agent_browser_upload": {
       const tab = tabOf(context, call.input.tab);

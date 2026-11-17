@@ -24,6 +24,11 @@ describe("what an action brought up", () => {
     });
   });
 
+  it("reads a nameless row by the text under it", () => {
+    const rows = ["- grid:", "  - generic [ref=e40] [cursor=pointer]:", "    - text: Priya Raman", "    - text: 11/02", "  - generic [ref=e41] [cursor=pointer]:", "    - text: Sam Ortiz"].join("\n");
+    expect(newElements(rows, 39)?.text).toBe("- grid:\n  - generic [ref=e40] [cursor=pointer]: Priya Raman\n  - generic [ref=e41] [cursor=pointer]: Sam Ortiz");
+  });
+
   it("says nothing when the action brought up no control", () => {
     expect(newElements(TREE, 11)).toBeNull();
   });
