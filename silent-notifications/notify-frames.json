@@ -1,0 +1,37 @@
+[
+  {
+    "kind": "done",
+    "botId": "6b15af46-f619-4223-864c-5594523f6e81",
+    "botName": "Pepper",
+    "threadId": "e3f2fc9a-2bc2-49bb-b1db-daf562e834ab",
+    "title": "Pepper finished",
+    "body": "Overnight backup finished: 214 files copied to the external drive, no errors.",
+    "silent": true,
+    "id": "c7fc5ec4-c557-4504-ac03-7b014a34cd78",
+    "at": 1794950444164,
+    "read": false
+  },
+  {
+    "kind": "done",
+    "botId": "6b15af46-f619-4223-864c-5594523f6e81",
+    "botName": "Pepper",
+    "threadId": "e3f2fc9a-2bc2-49bb-b1db-daf562e834ab",
+    "title": "Pepper finished",
+    "body": "Inbox sweep: archived 37 newsletters and 4 receipts. Nothing needs you.",
+    "silent": true,
+    "id": "ecc74819-d387-42a0-a31f-62507035a25b",
+    "at": 1794950445711,
+    "read": false
+  },
+  {
+    "kind": "done",
+    "botId": "6b15af46-f619-4223-864c-5594523f6e81",
+    "botName": "Pepper",
+    "threadId": "e3f2fc9a-2bc2-49bb-b1db-daf562e834ab",
+    "title": "Pepper finished",
+    "body": "Flight watch: the 9:05 to Lisbon on Friday dropped to $212 (it was $289). Want me to book it before it goes back up?",
+    "id": "8a1b33a6-fe4f-4687-a088-9bd3034076fa",
+    "at": 1794950447733,
+    "read": false
+  }
+]

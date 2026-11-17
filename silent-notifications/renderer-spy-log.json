@@ -1,0 +1,28 @@
+[
+  {
+    "at": 1794950444194,
+    "what": "banner",
+    "title": "Pepper finished",
+    "body": "Overnight backup finished: 214 files copied to the external drive, no errors.",
+    "osSound": false
+  },
+  {
+    "at": 1794950445742,
+    "what": "banner",
+    "title": "Pepper finished",
+    "body": "Inbox sweep: archived 37 newsletters and 4 receipts. Nothing needs you.",
+    "osSound": false
+  },
+  {
+    "at": 1794950447763,
+    "what": "chime",
+    "src": "chime-b.wav"
+  },
+  {
+    "at": 1794950447763,
+    "what": "banner",
+    "title": "Pepper finished",
+    "body": "Flight watch: the 9:05 to Lisbon on Friday dropped to $212 (it was $289). Want me to book it before it goes back up?",
+    "osSound": false
+  }
+]
