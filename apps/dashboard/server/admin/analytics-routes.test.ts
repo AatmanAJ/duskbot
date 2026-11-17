@@ -225,9 +225,9 @@ describe("admin analytics routes", () => {
     const web = await read<Web>(`/v1/admin/web?${range(time - DAY, time)}`, admin);
     expect(web.online).toEqual({ site: 1, app: 1 });
     expect(web.current).toMatchObject({ visitors: 1, pageviews: 1 });
-    for (const path of ["/v1/admin/web/page", "/v1/admin/funnel", "/v1/admin/journeys", "/v1/admin/app"]) expect((await call(path, { cookie: admin })).status, path).toBe(200);
+    for (const path of ["/v1/admin/web/page", "/v1/admin/funnel", "/v1/admin/journeys", "/v1/admin/app", "/v1/admin/retention"]) expect((await call(path, { cookie: admin })).status, path).toBe(200);
     const named = asked.filter((names): names is readonly string[] => names !== undefined);
-    expect(named.length).toBeGreaterThanOrEqual(5);
+    expect(named.length).toBeGreaterThanOrEqual(6);
     for (const names of named) expect(names).not.toContain("site_section");
   });
 
