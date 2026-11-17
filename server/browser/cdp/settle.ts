@@ -5,6 +5,8 @@ import { valueInWorld } from "./evaluate.ts";
 import type { FrameTree } from "./frames.ts";
 
 export const CHALLENGE_WAIT_MS = 15_000;
+/** A site whose check already cleared in this browser: its cookie usually lets the next page straight through. */
+export const CHALLENGE_REPEAT_WAIT_MS = 3_000;
 export const BUSY_WAIT_MS = 2_000;
 /** A fresh document with no controls yet is usually an app still drawing itself. */
 export const EMPTY_WAIT_MS = 1_000;
@@ -30,6 +32,7 @@ export interface PageProbe {
   selectors: string[];
   /** The document's HTTP status, 0 when unknown. */
   status?: number;
+  host?: string;
 }
 
 const MARKERS = ["#challenge-running", "#challenge-stage", "#challenge-form", "#cf-challenge-running", ".cf-browser-verification", "#cf-error-details",
@@ -52,6 +55,7 @@ export const PROBE_EXPRESSION = `(() => {
     iframes: [...document.querySelectorAll("iframe")].map((f) => f.src).filter(Boolean).slice(0, 30).map((src) => src.slice(0, 300)),
     selectors: ${JSON.stringify(MARKERS)}.filter((selector) => document.querySelector(selector) !== null),
     status: (() => { try { return performance.getEntriesByType("navigation")[0]?.responseStatus || 0; } catch { return 0; } })(),
+    host: location.hostname.slice(0, 253),
   };
 })()`;
 
@@ -75,8 +79,11 @@ export function classifyChallenge(probe: PageProbe, frameUrls: readonly string[]
   const short = probe.textLength < 2_000;
 
   if (/Attention Required! \| Cloudflare/iu.test(title) || (has(probe, "#cf-error-details") && /Sorry, you have been blocked|Error 10\d\d/iu.test(text))) return { vendor: "Cloudflare", state: "blocked" };
+  // Cloudflare loads its challenge-platform script on ordinary pages too (x.com does), so the script alone counts only on a
+  // page with nothing on it yet
   const cloudflare = /^Just a moment/iu.test(title) || has(probe, "#challenge-running") || has(probe, "#challenge-stage") || has(probe, "#challenge-form") ||
-    has(probe, "#cf-challenge-running") || has(probe, ".cf-browser-verification") || anyUrl(probe.scripts, /\/cdn-cgi\/challenge-platform\//u);
+    has(probe, "#cf-challenge-running") || has(probe, ".cf-browser-verification") ||
+    (probe.textLength < 300 && probe.controls === 0 && anyUrl(probe.scripts, /\/cdn-cgi\/challenge-platform\//u));
   if (cloudflare && short) return { vendor: "Cloudflare", state: "checking" };
 
   const datadome = frames.find((url) => /^https:\/\/(?:geo\.)?captcha-delivery\.com\//u.test(url));
@@ -149,7 +156,8 @@ const turnstileShown = (reader: PageReader, probe: PageProbe | null) => [...read
 const unpainted = (probe: PageProbe) => probe.controls === 0 && probe.textLength < 200;
 
 /** Waits out a self-clearing check, then loading placeholders, never past `deadline`. */
-export async function settlePage(target: SettleTarget | PageReader, { deadline, fresh = false, now = Date.now }: { deadline: number; fresh?: boolean; now?: () => number }): Promise<SettleReport> {
+/** `cleared`: the hosts whose check already cleared in this browser; a check there is waited out briefly, then reported. */
+export async function settlePage(target: SettleTarget | PageReader, { deadline, fresh = false, now = Date.now, cleared }: { deadline: number; fresh?: boolean; now?: () => number; cleared?: Set<string> }): Promise<SettleReport> {
   const reader = "probe" in target ? target : cdpReader(target);
   const stopped = () => reader.stopped?.() === true;
   const report: SettleReport = {};
@@ -157,7 +165,8 @@ export async function settlePage(target: SettleTarget | PageReader, { deadline, 
   const met = probe ? classifyChallenge(probe, reader.frameUrls()) : null;
   if (met) {
     const started = now();
-    const until = Math.min(deadline, started + CHALLENGE_WAIT_MS);
+    const host = probe?.host;
+    const until = Math.min(deadline, started + (host && cleared?.has(host) ? CHALLENGE_REPEAT_WAIT_MS : CHALLENGE_WAIT_MS));
     let current: Challenge | null = met;
     while (current?.state === "checking" && now() + CHALLENGE_POLL_MS <= until && !stopped()) {
       await sleep(CHALLENGE_POLL_MS);
@@ -173,6 +182,7 @@ export async function settlePage(target: SettleTarget | PageReader, { deadline, 
       return report;
     }
     report.challenge = { ...met, cleared: true, waitedMs: now() - started };
+    if (host) cleared?.add(host);
     await reader.loaded(Math.max(0, Math.min(5_000, deadline - now()))).catch(() => undefined);
     probe = await reader.probe();
   }

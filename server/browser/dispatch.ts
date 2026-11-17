@@ -22,6 +22,9 @@ import { errorResult, pageLabel, snapshotText, textResult, withParts, type ToolR
 import type { Tab, TabRegistry } from "./tabs.ts";
 import { targetOf, type ToolCall, type ToolInput } from "./tools.ts";
 
+/** The hosts whose bot check cleared in each browser. */
+const clearedChecks = new WeakMap<object, Set<string>>();
+
 export const DEFAULT_ACTION_MS = 15_000;
 /** Kept back from a call's budget for the reads after its action. */
 const FOLLOW_UP_MS = 5_000;
@@ -199,7 +202,9 @@ export function pictureNote(shot: Pick<Screenshot, "width" | "height" | "scale" 
 
 /** Waits out what a read would only catch half done: a bot check that clears by itself, loading placeholders. */
 async function settled(context: ToolContext, tab: Tab, fresh: boolean): Promise<string | null> {
-  const report = await settlePage({ frames: tab.page.frames, loaded: (timeoutMs) => tab.page.lifecycle.waitFor("load", { timeoutMs }) }, { deadline: context.deadline - FOLLOW_UP_MS, fresh });
+  let cleared = clearedChecks.get(context.browser);
+  if (!cleared) clearedChecks.set(context.browser, cleared = new Set());
+  const report = await settlePage({ frames: tab.page.frames, loaded: (timeoutMs) => tab.page.lifecycle.waitFor("load", { timeoutMs }) }, { deadline: context.deadline - FOLLOW_UP_MS, fresh, cleared });
   return settleNote(report);
 }
 

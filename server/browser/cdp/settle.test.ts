@@ -12,7 +12,10 @@ describe("bot-check interstitials", () => {
     ["an ordinary page", {}, [], null],
     ["an ordinary page that loads DataDome's script", { scripts: ["https://js.datadome.co/tags.js"] }, [], null],
     ["Cloudflare's waiting room", { title: "Just a moment...", text: "Checking if the site connection is secure", textLength: 80, controls: 0 }, [], { vendor: "Cloudflare", state: "checking" }],
-    ["Cloudflare's challenge script", { textLength: 100, scripts: ["https://shop.example/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"] }, [], { vendor: "Cloudflare", state: "checking" }],
+    ["Cloudflare's challenge script on an empty page", { textLength: 100, controls: 0, scripts: ["https://shop.example/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"] }, [], { vendor: "Cloudflare", state: "checking" }],
+    // x.com and many others load the script on every page: a short page with things to act on is no check
+    ["a short ordinary page that loads Cloudflare's script", { title: "Messages / X", text: "Messages\nNew message", textLength: 900, controls: 40,
+      scripts: ["https://x.com/cdn-cgi/challenge-platform/scripts/jsd/main.js"] }, [], null],
     ["Cloudflare's block page", { title: "Attention Required! | Cloudflare", text: "Sorry, you have been blocked" }, [], { vendor: "Cloudflare", state: "blocked" }],
     ["a DataDome captcha", { textLength: 10, iframes: ["https://geo.captcha-delivery.com/captcha/?initialCid=x&t=fe"] }, [], { vendor: "DataDome", state: "needs-user" }],
     ["a DataDome block", { textLength: 10 }, ["https://geo.captcha-delivery.com/captcha/?initialCid=x&t=bv"], { vendor: "DataDome", state: "blocked" }],
@@ -82,6 +85,27 @@ describe("settling a page before it is read", () => {
     const report = await settle(fakePage([check, check, check, "between", page()]));
     expect(report.challenge).toEqual({ vendor: "Cloudflare", state: "checking", cleared: true, waitedMs: 4_000 });
     expect(settleNote(report)).toBe("The site ran a Cloudflare bot check first; it cleared by itself after 4 s.");
+  });
+
+  it("reads a normal page that loads Cloudflare's script at once, every time", async () => {
+    const dms = page({ title: "Messages / X", textLength: 900, controls: 40, scripts: ["https://x.com/cdn-cgi/challenge-platform/scripts/jsd/main.js"] });
+    for (let read = 0; read < 3; read++) {
+      const target = fakePage([dms]);
+      expect(await settle(target)).toEqual({});
+      expect(target.reads).toBe(1);
+    }
+  });
+
+  it("waits only briefly on a site whose check already cleared in this browser", async () => {
+    const check = page({ title: "Just a moment...", textLength: 60, controls: 0, host: "shop.example" });
+    const cleared = new Set<string>();
+    const first = settlePage(fakePage([check, check, page({ host: "shop.example" })]), { deadline: 100_000, cleared });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await first).challenge).toMatchObject({ cleared: true });
+    expect([...cleared]).toEqual(["shop.example"]);
+    const again = settlePage(fakePage([check]), { deadline: 100_000, cleared });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await again).challenge).toMatchObject({ cleared: false, waitedMs: 3_000 });
   });
 
   it("gives up after 15 s, and calls a Turnstile still showing then a check for a person", async () => {

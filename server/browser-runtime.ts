@@ -10,10 +10,14 @@ import { launchSettingsKey } from "./browser-launch-key.ts";
 import { AGENT_BROWSER_BATCH_SPEC, agentBrowserStep, planAgentBrowserBatch, PROBE_SCRIPT, probeOfEval, SETTLED_READS, type AgentBrowserCall } from "./browser/agent-browser-batch.ts";
 import { runSteps } from "./browser/batch.ts";
 import { settleNote, settlePage, type PageReader } from "./browser/cdp/settle.ts";
+
 import { ThreadTabs, type ClosedThreadTab } from "./browser-thread-tabs.ts";
 import { agentBrowserTypeInLines, runAgentBrowserTypeInLines } from "./line-break-typing.ts";
 import type { Content, ToolResult } from "./browser/shape.ts";
 import { BATCH_TOOL } from "./browser/tools.ts";
+
+/** The hosts whose bot check cleared in each browser. */
+const clearedChecks = new WeakMap<object, Set<string>>();
 
 export interface BrowserSpawnSpec {
   command: string;
@@ -745,7 +749,9 @@ export class BrowserRuntime {
       },
       stopped: () => gate.owner !== null || gate.uncertain || gate.closing,
     };
-    return settleNote(await settlePage(reader, { deadline: deadline - 2 * this.options.followUpReserveMs, fresh }));
+    let cleared = clearedChecks.get(gate);
+    if (!cleared) clearedChecks.set(gate, cleared = new Set());
+    return settleNote(await settlePage(reader, { deadline: deadline - 2 * this.options.followUpReserveMs, fresh, cleared }));
   }
 
   private async relayTool(session: string, spec: BrowserSpawnSpec, tool: RelayedToolSpec, args: unknown, timeoutMs: number): Promise<unknown> {
