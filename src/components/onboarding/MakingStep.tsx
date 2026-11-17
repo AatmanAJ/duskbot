@@ -133,12 +133,23 @@ function useAnswering(making: Making): Making {
   return { kind: "setting-up", step: "checking", progress: 0.95, slow: false };
 }
 
+const OPEN_TRIED = "dusk.making.openTried";
+/** How long after an automatic open this page coming back means that open didn't take. */
+export const OPEN_RETURN_MS = 2 * 60_000;
+function openTriedRecently(now = Date.now()): boolean {
+  try { return now - Number(sessionStorage.getItem(OPEN_TRIED) ?? 0) < OPEN_RETURN_MS; } catch { return false; }
+}
+function markOpenTried(now = Date.now()): void {
+  try { sessionStorage.setItem(OPEN_TRIED, String(now)); } catch {}
+}
+
 /** Follows the Admin's word on the Cloud, holds this computer's AI sign-ins for it once, and opens its chat when it is ready. */
 export function MakingStep({ onOpened }: { onOpened: () => void }) {
   const bridge = window.duskDesktop?.cloudAccount;
   const [account, setAccount] = useState<CloudAccountState | null>(null);
   const [opening, setOpening] = useState(false);
-  const [openFailed, setOpenFailed] = useState(false);
+  // this page back right after an automatic open: the cloud didn't show, so Try again and this computer are offered
+  const [openFailed, setOpenFailed] = useState(openTriedRecently);
   useEffect(() => {
     if (!bridge) return;
     let live = true;
@@ -160,13 +171,14 @@ export function MakingStep({ onOpened }: { onOpened: () => void }) {
     if (!bridge || opening) return;
     setOpening(true);
     setOpenFailed(false);
+    markOpenTried();
     void bridge.connectHome().then(() => onOpened(), () => setOpenFailed(true)).finally(() => setOpening(false));
   };
   const autoOpened = useRef(false);
   useEffect(() => {
     if (making.kind !== "ready" || autoOpened.current) return;
     autoOpened.current = true;
-    open();
+    if (!openFailed) open();
   });
   return <MakingView making={making} opening={opening} openFailed={openFailed} onOpen={open} onHere={onOpened}
     onPlan={bridge ? () => void bridge.openDashboard().catch(() => {}) : undefined} />;
