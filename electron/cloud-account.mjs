@@ -615,7 +615,9 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
       if (!error?.opaque && error?.status === 409) return { outcome: "conflict", state: await refresh() };
       if (!error?.opaque && error?.status === 429) return { outcome: "rate-limited", state: state() };
       if (signInEnded(error)) return { outcome: "failed", state: await refresh() };
-      if (![404, 405, 501].includes(error?.status)) return { outcome: "failed", state: state() };
+      // the Admin paused the app's checkout (503 temporarily_unavailable): the Cloud page's billing still takes the plan
+      const paused = !error?.opaque && error?.status === 503 && error.code === "temporarily_unavailable";
+      if (![404, 405, 501].includes(error?.status) && !paused) return { outcome: "failed", state: state() };
       destination = `${origin}/billing?${new URLSearchParams({ plan, src: source })}`;
     }
     if (grant !== signedIn) return { outcome: "failed", state: state() };

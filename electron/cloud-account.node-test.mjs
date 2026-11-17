@@ -391,6 +391,14 @@ test("signed in, a checkout is the Admin's for this account, opened in the brows
   f.checkout = { status: 404, body: "<!doctype html>not here" };
   assert.equal((await f.client.checkout("max", "app_card")).outcome, "opened");
   assert.deepEqual(f.browsers, [`${f.origin}/billing?plan=max&src=app_card`]);
+  f.browsers = [];
+  f.checkout = { status: 503, body: { cloudContractVersion: 1, error: "temporarily_unavailable", errorDescription: "Off." } };
+  assert.equal((await f.client.checkout("pro", "app_menu")).outcome, "opened", "a paused app checkout falls back to the billing page, like upgrade");
+  assert.deepEqual(f.browsers, [`${f.origin}/billing?plan=pro&src=app_menu`]);
+  f.browsers = [];
+  f.checkout = { status: 503, body: "<!doctype html>Service Unavailable" };
+  assert.equal((await f.client.checkout("pro", "app_menu")).outcome, "failed", "a 503 page from in between is not the Admin's pause");
+  assert.deepEqual(f.browsers, []);
   f.now += 24 * 3600_000; assert.equal(f.client.state().checkout, undefined); assert.equal(f.client.checkoutLink(), null);
 });
 
