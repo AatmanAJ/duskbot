@@ -14,7 +14,7 @@ import { ELEVATED_CARD, ELEVATED_FLOAT } from "./elevated";
 import { activeLocale, t } from "@/lib/i18n";
 import { imeComposing, sendKeyLabel, sendsMessage, useSendKey } from "@/lib/send-key";
 import { phoneApp } from "@/lib/store-app";
-import { alternateSend, alternateSendLabel, useFollowUpDefault } from "@/lib/follow-up"; import { followUpChoices, resolveFollowUp, type FollowUp } from "../../shared/follow-up";
+import { alternateSend, useFollowUpDefault } from "@/lib/follow-up"; import { resolveFollowUp, type FollowUp } from "../../shared/follow-up";
 import {
   draftRevision,
   appendDraftAttachments,
@@ -1128,7 +1128,8 @@ export function Composer({
             />
           )}
           <div data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
-          {(simpleDock ? stoppable : busy && !stopPressed) && !locked && (
+          {/* with something typed it is only voice and send: no stop beside them */}
+          {(simpleDock ? stoppable : busy && !stopPressed) && !filled && !locked && (
           <button
             // the button leaves with the press: focus goes back to the field (not on a phone, where it would raise the keyboard)
             onClick={() => { interruptTurn(); if (!singleRow) refocusInput(); }}
@@ -1199,7 +1200,7 @@ export function Composer({
         {filled && !locked && (
           <ComposerSendButton compact={simpleDock} waits={!held && busy && !steersNow} label={sendNames.label} title={sendNames.title} look={slot.button}
             disabled={held || attachmentPending || unsentUpload} onSend={(alternate) => send(followUpFor(alternate))} onChoose={send}
-            menu={held ? undefined : followUpFor(false) && { choices: followUpChoices(followUpDefault, canSteer), name: busyName, sendKey: sendLabel, alternateKey: alternateSendLabel(sendKey) }} />
+            menu={undefined} />
           )}
           {ghostGlyph && <SlotGlyphGhost key={glyphs.swaps} glyph={ghostGlyph} ink={slot.ink} />}
           {micBack && (

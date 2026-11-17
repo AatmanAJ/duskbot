@@ -245,7 +245,7 @@ describe("the Simple composer in a bot chat", () => {
     }
   });
 
-  it("turns its round button into Stop while the bot works, and keeps a quiet Stop beside Send while you type", () => {
+  it("turns its round button into Stop while the bot works, and drops Stop while you type: only voice and send", () => {
     const busy = { ...bot, busy: true };
     render({ bot: busy });
     const slot = container.querySelector<HTMLButtonElement>('[data-composer-stop="slot"]')!;
@@ -260,8 +260,8 @@ describe("the Simple composer in a bot chat", () => {
 
     restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "and also this", attachments: [] });
     render({ bot: busy });
-    expect(container.querySelector('[data-composer-stop="beside"]')).not.toBeNull();
-    expect(container.querySelector('[data-composer-stop="slot"]')).toBeNull();
+    expect(container.querySelector("[data-composer-stop]")).toBeNull();
+    expect(container.querySelector('[data-voice-mic="start"]')).not.toBeNull();
   });
 
   it("shows the approval level as a chip only while this conversation overrides the bot, in the panel's words", () => {
