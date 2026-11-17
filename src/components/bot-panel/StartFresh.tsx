@@ -107,7 +107,6 @@ export function StartFreshDialog({ bridge, onClose }: { bridge: Bridge; onClose:
     finally { setAsking(false); }
   };
   const ready = startFreshTyped(typed);
-  const failed = view?.steps.filter((step) => step.status === "failed") ?? [];
 
   const title = phase === "idle" ? t("startFresh.title")
     : phase === "running" ? t("startFresh.progressTitle")
