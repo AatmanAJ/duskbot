@@ -83,6 +83,20 @@ describe("bug reports", () => {
     expect(testMail.latest(ALERT, first + 1)).toBeNull();
   });
 
+  it("takes feedback the app sends itself from its own page, with no cookie", async () => {
+    const appPage = "http://127.0.0.1:5199";
+    const preflight = await fetch(endpoint(), { method: "OPTIONS", headers: { origin: appPage, "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.headers.get("access-control-allow-headers")).toContain("content-type");
+    const sent = await post("/api/bug-reports", { ...payload({ source: "feedback", diagnostics: "" }), images: [] }, { origin: appPage });
+    expect(sent.status).toBe(201);
+    expect(sent.headers.get("access-control-allow-origin")).toBe("*");
+    expect(sent.headers.get("access-control-allow-credentials")).toBeNull();
+    const { id } = await sent.json() as { id: string };
+    expect(store.all.get(id)).toMatchObject({ source: "feedback", installId: INSTALL });
+  });
+
   it("refuses what the desktop must not resend, and a bad address only costs the address", async () => {
     expect(await sendDevsReport(endpoint(), payload({ installId: "x" }))).toMatchObject({ ok: false, retry: false, why: "refused" });
     expect(await sendDevsReport(endpoint(), payload({ description: " " }))).toMatchObject({ ok: false, retry: false });

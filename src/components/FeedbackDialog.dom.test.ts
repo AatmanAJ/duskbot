@@ -10,6 +10,7 @@ vi.mock("@/lib/feedback-sheet", async (actual) => ({
     : { ok: true, image: { blob: file, url: `blob:${file.name}` } }),
 }));
 
+import { sendFeedback } from "@/lib/feedback-sheet";
 import { ApiError } from "@/state/api";
 
 import { FeedbackDialog } from "./FeedbackDialog";
@@ -107,6 +108,54 @@ describe("the Give feedback sheet", () => {
     expect(alert).not.toContain("no route");
     expect($<HTMLTextAreaElement>("textarea")!.value).toBe("It froze");
     expect(sendButton().disabled).toBe(false);
+  });
+
+  describe("through a server without the feedback route", () => {
+    const noRoute = () => new Response(JSON.stringify({ error: "no route: POST /api/feedback" }), { status: 404, headers: { "content-type": "application/json" } });
+    const mountReal = async () => { await act(async () => { root.render(createElement(FeedbackDialog, { onClose, onSent, send: sendFeedback })); }); };
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it("sends it straight to the dusk bot team instead", async () => {
+      const fetcher = vi.fn(async (input: RequestInfo | URL) => (String(input) === "/api/feedback" ? noRoute()
+        : new Response(JSON.stringify({ id: "dr-abcdefghjk" }), { status: 201, headers: { "content-type": "application/json" } })));
+      vi.stubGlobal("fetch", fetcher);
+      await mountReal();
+      await type("It froze");
+      await choose(picture("a.png"));
+      await act(async () => { sendButton().click(); });
+      expect(onSent).toHaveBeenCalledTimes(1);
+      expect($('[role="alert"]')).toBeNull();
+      const [address, init] = fetcher.mock.calls[1] as unknown as [string, RequestInit];
+      expect(address).toBe("https://dusk.bot/api/bug-reports");
+      expect(init.credentials).toBe("omit");
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      expect(body).toMatchObject({ source: "feedback", description: "It froze", diagnostics: "", images: [{ data: "AQID" }] });
+      expect(body.installId).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+      expect(String(body.appVersion).length).toBeGreaterThan(0);
+      expect(String(body.platform).length).toBeLessThanOrEqual(40);
+    });
+
+    it("says the plain line when the team can't be reached either", async () => {
+      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => { if (String(input) === "/api/feedback") return noRoute(); throw new TypeError("Failed to fetch"); }));
+      await mountReal();
+      await type("It froze");
+      await act(async () => { sendButton().click(); });
+      const alert = $('[role="alert"]')?.textContent ?? "";
+      expect(alert).toContain("This server is too old to take feedback");
+      expect(alert).not.toContain("no route");
+      expect(onSent).not.toHaveBeenCalled();
+      expect(sendButton().disabled).toBe(false);
+    });
+
+    it("keeps the server's own refusal and sends nothing elsewhere", async () => {
+      const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: "You've sent a lot of feedback this hour. Try again later." }), { status: 429, headers: { "content-type": "application/json" } }));
+      vi.stubGlobal("fetch", fetcher);
+      await mountReal();
+      await type("It froze");
+      await act(async () => { sendButton().click(); });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect($('[role="alert"]')?.textContent).toContain("sent a lot of feedback");
+    });
   });
 
   it("Cancel and Escape close it", async () => {

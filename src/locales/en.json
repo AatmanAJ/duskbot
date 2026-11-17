@@ -31,6 +31,7 @@
   "giveFeedback.removeImage": "Remove image {n}",
   "giveFeedback.tooManyImages": "You can add up to {n} images.",
   "giveFeedback.goesTo": "Goes to the {app} team",
+  "giveFeedback.cancel": "Cancel",
   "giveFeedback.send": "Send",
   "giveFeedback.sending": "Sending…",
   "giveFeedback.sent": "Sent. Thanks for telling us.",

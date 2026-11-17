@@ -64,7 +64,6 @@ export function FeedbackDialog({ onClose, onSent, send = sendFeedback }: { onClo
       await send(text.trim(), images);
       onSent();
     } catch (failed) {
-      // a server from before 0.2.13 has no feedback route: its fallback answers 404 "no route: POST /api/feedback"
       if (failed instanceof ApiError && failed.status === 404) setError(t("giveFeedback.serverTooOld"));
       else setError(failed instanceof Error && failed.message ? friendlyError(failed) : t("giveFeedback.failed"));
       setSending(false);
@@ -78,7 +77,7 @@ export function FeedbackDialog({ onClose, onSent, send = sendFeedback }: { onClo
       data-panel-modal="feedback"
       footer={<>
         <span className="me-auto min-w-0 truncate text-[12px] leading-4 text-ink/56">{t("giveFeedback.goesTo")}</span>
-        <button type="button" onClick={onClose} className={mdSecondaryCls}>{t("common.cancel")}</button>
+        <button type="button" onClick={onClose} className={mdSecondaryCls}>{t("giveFeedback.cancel")}</button>
         <button type="button" data-feedback-send="" disabled={!text.trim() || sending} onClick={() => void submit()} className={mdPrimaryCls}>
           {sending ? t("giveFeedback.sending") : t("giveFeedback.send")}
         </button>
