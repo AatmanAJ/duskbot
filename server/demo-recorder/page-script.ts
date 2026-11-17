@@ -15,7 +15,7 @@ const MAX_QUEUE = 800;
 /** One read answers at most this many events, so the answer stays under the browser's 64 KB evaluation result. */
 const DRAIN_MAX = 60;
 /** A document that started to leave and is still here this much later is staying: a download, or a cancelled navigation. */
-const LEAVING_MS = 10_000;
+const LEAVING_MS = 6_000;
 export const DEMO_TEXT_MAX = 200;
 export const DEMO_VALUE_MAX = 2_000;
 
@@ -257,7 +257,19 @@ const SOURCE = String.raw`(() => {
     else push(type, el, { value: valueOf(el) });
   };
 
-  document.addEventListener("click", (event) => { const el = origin(event); if (el) push("click", el); }, true);
+  // A link followed or a form sent leaves this document a moment later. Until it has gone the page says it is on its
+  // way out, so the replayer never acts on a document that is about to be replaced.
+  const sameTab = (el) => { const target = clean(el.getAttribute("target")).toLowerCase(); return !target || target === "_self"; };
+  const plainClick = (event) => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+  document.addEventListener("click", (event) => {
+    const el = origin(event);
+    if (!el) return;
+    push("click", el);
+    const link = el.closest ? el.closest("a[href]") : null;
+    if (link && plainClick(event) && sameTab(link) && !link.hasAttribute("download") && /^https?:/.test(link.href) && link.href.split("#")[0] !== location.href.split("#")[0]) leavingAt = Date.now();
+  }, true);
+  addEventListener("click", (event) => { if (event.defaultPrevented) leavingAt = 0; });
+  addEventListener("submit", (event) => { if (event.defaultPrevented) leavingAt = 0; });
   document.addEventListener("input", onField("input"), true);
   document.addEventListener("change", onField("change"), true);
   document.addEventListener("keydown", (event) => {
@@ -265,7 +277,12 @@ const SOURCE = String.raw`(() => {
     const el = origin(event);
     push("key", el && el !== document.body ? el : null, { key: event.key });
   }, true);
-  document.addEventListener("submit", (event) => { const el = origin(event); if (el) push("submit", el); }, true);
+  document.addEventListener("submit", (event) => {
+    const el = origin(event);
+    if (!el) return;
+    push("submit", el);
+    if (sameTab(el)) leavingAt = Date.now();
+  }, true);
   document.addEventListener("focusin", (event) => { const el = origin(event); if (el) { notePasswords(el); push("focus", el); } }, true);
   document.addEventListener("focusout", (event) => { const el = origin(event); if (el) push("blur", el); }, true);
   document.addEventListener("scroll", () => {
@@ -275,14 +292,17 @@ const SOURCE = String.raw`(() => {
     push("scroll", null);
   }, true);
 
+  // The script runs before the page's own on the CDP driver, when the document has no element yet: the document node itself is watched.
   notePasswords(document);
   if (typeof MutationObserver === "function") {
-    new MutationObserver((records) => {
-      for (const record of records) {
-        if (record.type === "attributes") { if (record.oldValue === "password" || typeOf(record.target) === "password") everPrivate.add(record.target); }
-        else for (const node of record.addedNodes) notePasswords(node);
-      }
-    }).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["type"], attributeOldValue: true });
+    try {
+      new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.type === "attributes") { if (record.oldValue === "password" || typeOf(record.target) === "password") everPrivate.add(record.target); }
+          else for (const node of record.addedNodes) notePasswords(node);
+        }
+      }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["type"], attributeOldValue: true });
+    } catch (error) {}
   }
 
   // A page that is left before it is read hands what it saw to the next document of the same site.
@@ -297,7 +317,6 @@ const SOURCE = String.raw`(() => {
   addEventListener("pagehide", () => {
     try { if (queue.length) sessionStorage.setItem(STASH, JSON.stringify(queue)); } catch (error) {}
   });
-  // Between a click and the next page there is a moment when this document still answers: it says it is on its way out.
   addEventListener("beforeunload", () => { leavingAt = Date.now(); });
   push("open", null);
 
