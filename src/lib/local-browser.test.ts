@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { askLocalBrowser, blankPage, keepView, keptKey, keptView, minutesSince, pageTitle, parseLocalBrowser, tabLetter } from "./local-browser";
+import { askLocalBrowser, blankPage, browserHeadline, closePath, keepView, keptKey, keptView, minutesSince, pageTitle, parseLocalBrowser, recentClosed, tabLetter } from "./local-browser";
+import { wideWidth } from "./panel-wide";
 
 describe("local browser", () => {
   it("reads the server's answer, giving each kept screen its own address", () => {
@@ -51,5 +52,34 @@ describe("local browser", () => {
     expect(["", "about:blank", "chrome://newtab/", "chrome://new-tab-page/"].every(blankPage)).toBe(true);
     expect(blankPage("https://example.com/")).toBe(false);
     expect(minutesSince(0, 4 * 60_000 + 59_000)).toBe(4);
+  });
+
+  it("lists what a closed browser worked on for an hour, then nothing", () => {
+    const closed = { at: 1_000_000, tabs: [{ title: "Docs", url: "https://example.com/", image: null }] };
+    expect(recentClosed(closed, 1_000_000 + 4 * 60_000)).toBe(closed);
+    expect(recentClosed(closed, 1_000_000 + 60 * 60_000 - 1)).toBe(closed);
+    expect(recentClosed(closed, 1_000_000 + 60 * 60_000)).toBeNull();
+    expect(recentClosed({ at: 1_000_000, tabs: [{ title: "", url: "about:blank", image: null }] }, 1_000_000)).toBeNull();
+    expect(recentClosed(null)).toBeNull();
+  });
+
+  it("says the bot is browsing only while its turn has acted in the browser", () => {
+    expect(browserHeadline({ busy: true, turnStartedAt: 100, actedAt: 150 })).toBe("browsing");
+    expect(browserHeadline({ busy: true, turnStartedAt: 100, actedAt: 50 })).toBe("open");
+    expect(browserHeadline({ busy: true, turnStartedAt: 100, actedAt: null })).toBe("open");
+    expect(browserHeadline({ busy: false, turnStartedAt: 100, actedAt: 150 })).toBe("open");
+    expect(browserHeadline({ busy: false, turnStartedAt: undefined, actedAt: null, working: true })).toBe("browsing");
+  });
+
+  it("closes the browser of the conversation shown", () => {
+    expect(closePath("b1", "t 1")).toBe("/api/bots/b1/browser/close?threadId=t%201");
+    expect(closePath("b1", undefined)).toBe("/api/bots/b1/browser/close");
+  });
+
+  it("widens the panel to about 60% of the room it shares with the chat, keeping the chat readable", () => {
+    expect(wideWidth(1160)).toBe(696);
+    expect(wideWidth(2000)).toBe(880);
+    expect(wideWidth(800)).toBe(400);
+    expect(wideWidth(600)).toBe(320);
   });
 });

@@ -100,10 +100,14 @@ const GALLERY_TABS = [
   { title: "Example Domain", url: "https://example.com/", image: page("#555a63", "Example Domain", 4) },
   { title: "Example domains", url: "https://www.iana.org/help/example-domains", image: page("#8a5a1f", "Example domains", 6) },
 ];
-// ?card=local-browser-working / -closed / -offer: a local bot's browser with tabs open, closed four minutes ago, or idle
+// ?card=local-browser-working / -open / -held / -closed / -closed-old / -offer: a local bot's browser with tabs open as the
+// bot browses, open and idle, with a tab the person holds, closed four minutes ago, closed two hours ago, or never opened
 const localBrowser = params.get("card");
 if (localBrowser === "local-browser-working") setLocalBrowserFixture({ open: true, closed: null, tabs: GALLERY_TABS, working: true });
-if (localBrowser === "local-browser-closed") setLocalBrowserFixture({ open: false, closed: { at: Date.now() - 4 * 60_000, tabs: GALLERY_TABS.slice(0, 3) } });
+if (localBrowser === "local-browser-open") setLocalBrowserFixture({ open: true, closed: null, tabs: GALLERY_TABS });
+if (localBrowser === "local-browser-held") setLocalBrowserFixture({ open: true, closed: null, tabs: GALLERY_TABS, held: 0 });
+if (localBrowser === "local-browser-closed") setLocalBrowserFixture({ open: false, closed: { at: Date.now() - 4 * 60_000, tabs: GALLERY_TABS.slice(0, 3) }, tabs: GALLERY_TABS });
+if (localBrowser === "local-browser-closed-old") setLocalBrowserFixture({ open: false, closed: { at: Date.now() - 2 * 3600_000, tabs: GALLERY_TABS.slice(0, 3) }, tabs: GALLERY_TABS });
 if (localBrowser === "local-browser-offer") setLocalBrowserFixture({ open: false, closed: null });
 
 Object.assign(window, { __galleryAudit: auditLayout });
