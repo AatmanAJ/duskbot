@@ -16,7 +16,8 @@ export interface GlassHeader {
 }
 
 export type GlassButtonKind = "stop" | "mic" | "micSend" | "send" | "waits" | "followUp" | "discard";
-export interface GlassButton { kind: GlassButtonKind; disabled: boolean; label: string }
+/** `fill` and `ink` are the page's own colours for the button (#rrggbb), so Send wears the bot's button as on the desktop. */
+export interface GlassButton { kind: GlassButtonKind; disabled: boolean; label: string; fill?: string; ink?: string }
 
 export interface GlassComposer {
   frame: GlassFrame;
@@ -34,6 +35,8 @@ export interface GlassComposer {
 
 export interface GlassState {
   dark: boolean;
+  /** the chat is open but something covers its chrome: the page draws its own at once, so the native one goes at once */
+  handoff: boolean;
   accent: string;
   header: GlassHeader | null;
   composer: GlassComposer | null;
@@ -89,6 +92,49 @@ export function buttonKind(el: HTMLElement): GlassButtonKind | null {
   return null;
 }
 
+const hexes = new Map<string, string | null>();
+let swatch: CanvasRenderingContext2D | null | undefined;
+
+/** A computed css colour as #rrggbb, or null when it is mostly transparent or cannot be read. */
+export function cssHex(value: string): string | null {
+  const color = value.trim();
+  if (!color || color === "transparent") return null;
+  if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
+  const known = hexes.get(color);
+  if (known !== undefined) return known;
+  const hex = (r: number, g: number, b: number) => `#${[r, g, b].map((n) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, "0")).join("")}`;
+  let out: string | null = null;
+  const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+)(%?))?\s*\)$/.exec(color);
+  if (rgb) {
+    const alpha = rgb[4] === undefined ? 1 : Number(rgb[4]) / (rgb[5] ? 100 : 1);
+    out = alpha < 0.5 ? null : hex(Number(rgb[1]), Number(rgb[2]), Number(rgb[3]));
+  } else {
+    // oklab(), color-mix() and the rest: let the canvas resolve it to a pixel
+    if (swatch === undefined) {
+      try { swatch = document.createElement("canvas").getContext("2d", { willReadFrequently: true }); } catch { swatch = null; }
+    }
+    if (swatch) {
+      swatch.clearRect(0, 0, 1, 1);
+      swatch.fillStyle = "#000";
+      swatch.fillStyle = color;
+      swatch.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = swatch.getImageData(0, 0, 1, 1).data;
+      out = a < 128 ? null : hex(r, g, b);
+    }
+  }
+  if (hexes.size > 64) hexes.clear();
+  hexes.set(color, out);
+  return out;
+}
+
+/** Dark when the app's own ground is dark: the skin the person picked, whatever the system's appearance. */
+export function darkGround(hex: string | null): boolean | null {
+  if (!hex) return null;
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (c: number) => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255) < 0.4;
+}
+
 /** The composer's action buttons in order, each with its native twin; null when one has none (the page keeps its own composer then). */
 export function composerButtons(actions: Element | null): { buttons: GlassButton[]; elements: HTMLElement[] } | null {
   // in the order they are drawn, not written: a working bot's Stop sits last with `order`
@@ -97,7 +143,9 @@ export function composerButtons(actions: Element | null): { buttons: GlassButton
   for (const el of elements) {
     const kind = buttonKind(el);
     if (!kind) return null;
-    buttons.push({ kind, disabled: (el as HTMLButtonElement).disabled, label: el.getAttribute("aria-label") ?? "" });
+    const style = getComputedStyle(el);
+    buttons.push({ kind, disabled: (el as HTMLButtonElement).disabled, label: el.getAttribute("aria-label") ?? "",
+      fill: cssHex(style.backgroundColor) ?? undefined, ink: cssHex(style.color) ?? undefined });
   }
   return { buttons, elements };
 }
@@ -248,10 +296,11 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       field = read?.field ?? null;
       const styles = getComputedStyle(root);
       const next: GlassState = {
-        dark: html.dataset.skin === "grok-dark" || root.dataset.scheme === "dark",
+        dark: darkGround(cssHex(styles.getPropertyValue("--color-app"))) ?? (html.dataset.skin === "grok-dark" || root.dataset.scheme === "dark"),
         accent: styles.getPropertyValue("--color-accent").trim(),
         header,
         composer: read?.composer ?? null,
+        handoff: Boolean(chatEl) && (!header || !read),
       };
       if (header) html.dataset.nativeGlassHeader = ""; else delete html.dataset.nativeGlassHeader;
       if (next.composer) html.dataset.nativeGlassComposer = ""; else delete html.dataset.nativeGlassComposer;

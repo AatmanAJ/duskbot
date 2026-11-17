@@ -129,6 +129,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     private var headerShown = false
     private var composerShown = false
+    /// the page draws its own chrome in the same place (a sheet over the chat), or did until now: the two swap at once,
+    /// never crossfade, or both show (or neither) for the length of the fade
+    private var handoff = false
+    private var instant = false
     private var returnSends = true
     private var textSeq = 0
     private var reportedHeight: CGFloat = 0
@@ -220,6 +224,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             composer.overrideUserInterfaceStyle = style
         }
         if let hex = state["accent"] as? String, let color = UIColor(cssHex: hex) { accent = color }
+        let handing = state["handoff"] as? Bool ?? false
+        instant = handing || handoff
+        handoff = handing
         applyHeader(state["header"] as? [String: Any])
         applyComposer(state["composer"] as? [String: Any])
         keepOnTop()
@@ -308,8 +315,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         let kinds = buttons.map { $0["kind"] as? String ?? "" }
         if kinds != actionKinds {
             let oldKinds = actionKinds
-            let wasWorking = oldKinds.contains("stop")
-            let working = kinds.contains("stop")
+            // the mic beside the round button (Send, or a working bot's Stop): it springs out of the round button and
+            // slips back into it, as composer-mic-in and composer-mic-out do on the page
+            let hadBeside = oldKinds.dropLast().contains("mic")
+            let hasBeside = kinds.dropLast().contains("mic")
             // the slot keeps one button and one frame through mic, Send and Stop: only its symbol changes
             let keep: UIButton? = {
                 guard let last = actions.last, let was = oldKinds.last, let now = kinds.last,
@@ -331,26 +340,38 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             layoutComposer()
             for (button, kind) in leaving {
                 button.isUserInteractionEnabled = false
-                if wasWorking && !working && kind == "mic" {
+                if kind == "mic" && hadBeside && !hasBeside && keep != nil {
                     ComposerMotion.leave(button) { button.removeFromSuperview() }
                 } else {
                     button.removeFromSuperview()
                 }
             }
             let had = Set(oldKinds)
-            for (button, kind) in zip(actions, kinds) where button !== keep {
-                if kind == "mic" && working && !wasWorking { ComposerMotion.micIn(button) }
+            for (index, (button, kind)) in zip(actions, kinds).enumerated() where button !== keep {
+                if kind == "mic" && index < kinds.count - 1 && !hadBeside && keep != nil { ComposerMotion.micIn(button) }
                 else if (kind == "send" || kind == "micSend") && !had.contains(kind) { ComposerMotion.popIn(button) }
             }
         }
         for (button, data) in zip(actions, buttons) {
             button.isEnabled = !(data["disabled"] as? Bool ?? false)
             if let label = data["label"] as? String, !label.isEmpty { button.accessibilityLabel = label }
+            paint(button, kind: data["kind"] as? String ?? "", fill: data["fill"] as? String, ink: data["ink"] as? String)
         }
     }
 
+    private static func prominent(_ kind: String) -> Bool { kind == "send" || kind == "micSend" }
+
+    /// Send wears the page's own fill for it (the bot's button, per the app's light or dark look, as on the desktop)
+    private func paint(_ button: UIButton, kind: String, fill: String?, ink: String?) {
+        guard Self.prominent(kind) else { return }
+        let tint = fill.flatMap(UIColor.init(cssHex:)) ?? accent
+        let foreground = ink.flatMap(UIColor.init(cssHex:)) ?? .white
+        if button.tintColor != tint { button.tintColor = tint }
+        if button.configuration?.baseForegroundColor != foreground { button.configuration?.baseForegroundColor = foreground }
+    }
+
     private func configure(_ button: UIButton, kind: String, index: Int) {
-        let prominent = kind == "send" || kind == "micSend"
+        let prominent = Self.prominent(kind)
         var config: UIButton.Configuration = prominent ? .prominentGlass() : kind == "followUp" ? .plain() : .glass()
         let symbol: String
         let size: CGFloat
@@ -380,6 +401,12 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private func show(_ view: UIView, _ visible: Bool, _ shown: inout Bool) {
         guard visible != shown else { return }
         shown = visible
+        if instant {
+            view.layer.removeAllAnimations()
+            view.alpha = visible ? 1 : 0
+            view.isHidden = !visible
+            return
+        }
         if visible { view.isHidden = false }
         UIView.animate(withDuration: 0.18, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
             view.alpha = visible ? 1 : 0
@@ -508,7 +535,8 @@ private enum ComposerMotion {
         animator.startAnimation(afterDelay: delay)
     }
 
-    /// composer-mic-in: the small mic springs in beside Stop from 10pt toward it (420ms, a few percent of give, 40ms late)
+    /// composer-mic-in: the mic springs out of the round button (Send, or Stop) from 10pt toward it and .6 of its size
+    /// (420ms on --composer-bounce, a few percent of give, 40ms late)
     static func micIn(_ button: UIButton) {
         button.alpha = 0
         if reduced { run(0.2, glyphEase) { button.alpha = 1 }; return }
@@ -527,7 +555,7 @@ private enum ComposerMotion {
         UIView.animate(springDuration: 0.34, bounce: 0.2) { button.alpha = 1; button.transform = .identity }
     }
 
-    /// the turn over: the small mic beside Stop slips back out (composer-mic-out, 150ms) as the slot turns back
+    /// composer-mic-out: the mic beside the round button slips back into it (150ms) as the field empties or the turn ends
     static func leave(_ button: UIButton, done: @escaping () -> Void) {
         run(0.15, leaveEase, { button.alpha = 0; if !reduced { button.transform = CGAffineTransform(translationX: 10, y: 0).scaledBy(x: 0.6, y: 0.6) } }, done: done)
     }

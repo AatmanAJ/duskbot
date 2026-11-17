@@ -3,7 +3,7 @@ import { createElement, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buttonKind, composerButtons, covered, frameOf, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
+import { buttonKind, composerButtons, covered, cssHex, darkGround, frameOf, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
 import type { MobilePlatform } from "./platform";
 
 const rects = new WeakMap<Element, DOMRect>();
@@ -94,6 +94,33 @@ describe("composer buttons", () => {
       { kind: "mic", disabled: false, label: "" },
       { kind: "send", disabled: true, label: "" },
     ]);
+  });
+});
+
+describe("colours", () => {
+  it("reads the page's computed colours as hex, and nothing for a clear one", () => {
+    expect(cssHex("rgb(18, 111, 212)")).toBe("#126fd4");
+    expect(cssHex("rgba(0, 0, 0, 0)")).toBeNull();
+    expect(cssHex("rgb(28 28 28 / 0.9)")).toBe("#1c1c1c");
+    expect(cssHex("#FDFDFD")).toBe("#fdfdfd");
+    expect(cssHex("")).toBeNull();
+  });
+
+  it("follows the app's own ground for light and dark, whatever the system says", () => {
+    expect(darkGround("#fdfdfd")).toBe(false);
+    expect(darkGround("#121212")).toBe(true);
+    expect(darkGround(null)).toBeNull();
+  });
+
+  it("hands each button's fill and ink to its native twin", () => {
+    const actions = document.createElement("div");
+    const send = document.createElement("button");
+    send.setAttribute("data-composer-send", "");
+    send.style.backgroundColor = "rgb(0, 133, 74)";
+    send.style.color = "rgb(255, 255, 255)";
+    actions.append(send);
+    document.body.append(actions);
+    expect(composerButtons(actions)?.buttons[0]).toMatchObject({ kind: "send", fill: "#00854a", ink: "#ffffff" });
   });
 });
 
