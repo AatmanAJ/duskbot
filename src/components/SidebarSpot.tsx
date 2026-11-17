@@ -152,8 +152,6 @@ export function SpotCloudCard({ cta, card }: { cta: SpotCta; card: NonNullable<S
 }
 
 const CARD = cn("flex h-10 w-full items-center gap-2.5 rounded-full px-3.5 text-start", PRESS, FOCUS);
-/** the feedback card's look, for a card that sits beside the spot (SidebarBrowserCard) */
-export const SPOT_CARD = cn(CARD, TONAL);
 
 /** Give feedback, the update, or an offer: the same one-line card each time, so the spot only changes state. */
 export function SidebarSpot({ className, bridge, cta = null }: { className?: string; bridge?: AppUpdateBridge; cta?: SpotCta | null }) {

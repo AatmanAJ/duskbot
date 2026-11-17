@@ -7,7 +7,7 @@ import { createLiveStreamClient, type LiveResume } from "@/lib/browser-stream-v1
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import {
-  browserHeadline, closeLocalBrowser, keepView, keptKey, keptView, localBrowserFixture, useLocalBrowser,
+  blankPage, browserHeadline, closeLocalBrowser, keepView, keptKey, keptView, localBrowserFixture, useLocalBrowser,
 } from "@/lib/local-browser";
 import { usePageVisible } from "@/lib/page-visible";
 import { panelWide, setPanelWide, usePanelWidth, PANEL_NARROW } from "@/lib/panel-wide";
@@ -23,6 +23,8 @@ import { permissionsMissing, type MacPermissionsBridge } from "@/lib/mac-permiss
 import { MacPermissionsDialog } from "../onboarding/PermissionsStep";
 
 const NO_NAV: BrowserNav = { url: "", loading: false, canGoBack: false, canGoForward: false };
+/** What a new browser and a new tab open on. */
+export const START_PAGE = "https://www.google.com/";
 /** The pill opening into the browser, and the browser's frame closing back onto its first line. */
 const MORPH_MS = 350;
 const MORPH_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
@@ -56,7 +58,7 @@ function fixtureTabs(): StripTab[] | null {
 function fixtureInput(tabs: readonly StripTab[], input: PreviewStreamInput): StripTab[] {
   const front = (id: string) => tabs.map((tab) => ({ ...tab, active: tab.tabId === id }));
   if (input.type === "tabSelect") return front(input.tabId);
-  if (input.type === "tabNew") return [...tabs.map((tab) => ({ ...tab, active: false })), { tabId: `n${Date.now().toString(36)}`, title: "", url: "about:blank", active: true }];
+  if (input.type === "tabNew") return [...tabs.map((tab) => ({ ...tab, active: false })), { tabId: `n${Date.now().toString(36)}`, title: "", url: input.url ?? "about:blank", active: true }];
   if (input.type === "tabClose") {
     const at = tabs.findIndex((tab) => tab.tabId === input.tabId);
     const rest = tabs.filter((tab) => tab.tabId !== input.tabId);
@@ -101,7 +103,10 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
   const [connected, setConnected] = useState(false);
   const [painted, setPainted] = useState(false);
   const [control, setControl] = useState<PreviewStreamControl | null>(null);
-  const [tabs, setTabs] = useState<readonly StripTab[]>(() => fixtureTabs() ?? keptView(key).tabs ?? []);
+  const [tabs, setTabs] = useState<readonly StripTab[]>(() => fixtureTabs() ?? (from ? [] : keptView(key).tabs ?? []));
+  // the tabs this connection's browser announced: until then a tab id may be the last session's, which it refuses
+  const [heard, setHeard] = useState(false);
+  const opening = useRef<{ quiet: boolean; done: boolean }>({ quiet: false, done: false });
   const [nav, setNav] = useState<BrowserNav>(NO_NAV);
   const [picked, setPicked] = useState<string | null>(null);
   const [closingTabs, setClosingTabs] = useState<ReadonlySet<string>>(() => new Set());
@@ -155,6 +160,13 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
     if (message.type === "tabs") {
       const next = tabsOf(message.tabs);
       setTabs(next);
+      setHeard(true);
+      // a browser with nothing open yet shows the start page, once; a failure there is the view's own, never a toast
+      if (!opening.current.done && next.length > 0 && next.every((tab) => blankPage(tab.url)) && clientRef.current) {
+        opening.current = { quiet: true, done: true };
+        clientRef.current.send({ type: "navigate", url: START_PAGE });
+        setTimeout(() => { opening.current.quiet = false; }, 15_000);
+      } else if (next.some((tab) => !blankPage(tab.url))) opening.current.done = true;
       keepView(key, { tabs: next });
       const active = next.find((tab) => tab.active);
       if (active) setNav((current) => ({ ...current, url: active.url }));
@@ -228,7 +240,7 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
   const shown = tabs.filter((tab) => !closingTabs.has(tab.tabId));
   const active = shown.find((tab) => tab.active) ?? shown[0] ?? null;
   const selected = picked ?? active?.tabId ?? null;
-  const ready = fixture !== null || connected;
+  const ready = fixture !== null || (connected && heard);
   const heldIds = new Set([...(control?.heldTabs ?? []), ...shown.filter((tab) => tab.held).map((tab) => tab.tabId)]);
   const strip = shown.map((tab) => (heldIds.has(tab.tabId) && !tab.held ? { ...tab, held: true } : tab));
   const heldTab = strip.find((tab) => tab.tabId === selected && tab.held) ?? strip.find((tab) => tab.held) ?? null;
@@ -254,7 +266,7 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
       <BrowserHeader bot={bot} headline={headline} wide={wide} closing={closing} failed={Boolean(error) && !closing} onExpand={toggleWide} onClose={closeBrowser} />
       <div ref={frameRef} data-local-browser-frame="" className={cn("relative flex w-full flex-col overflow-hidden rounded-[16px] p-1", FRAME_TONE)}>
         <div ref={insideRef} className="flex min-w-0 flex-col">
-          <TabStrip bot={bot} tabs={strip} selected={selected} wide={wide} ready={ready} onSelect={select} onClose={closeTab} onNew={() => send({ type: "tabNew" })} />
+          {wide && <TabStrip bot={bot} tabs={strip} selected={selected} wide={wide} ready={ready} onSelect={select} onClose={closeTab} onNew={() => send({ type: "tabNew", url: START_PAGE })} />}
           <BrowserToolbar nav={shownNav} ready={ready}
             onHistory={(delta) => send({ type: "history", delta })}
             onReload={() => send({ type: "reload" })}
@@ -265,7 +277,7 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
             }} />
           <div ref={screenRef} data-local-browser-page="" className="relative m-1 aspect-[16/10] overflow-hidden rounded-[12px] bg-composer">
             {fixture ? <FixturePage tab={strip.find((tab) => tab.tabId === selected) ?? null} /> : pageVisible ? (
-              <div className={cn("absolute inset-0 flex flex-col", !wide && "pointer-events-none")} inert={!wide || undefined}>
+              <div data-local-browser-surface={painted ? "painted" : "waiting"} className={cn("absolute inset-0 flex flex-col transition-opacity duration-150 ease-out", !wide && "pointer-events-none", !painted && "opacity-0")} inert={!wide || undefined}>
                 <StreamSurface
                   key={`${attempt}:${stream ? "stream" : "live"}:${bot.browserProfile ?? ""}`}
                   connect={connect}
@@ -275,8 +287,9 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
                   onClient={onClient}
                   onControl={onControl}
                   onMessage={onMessage}
+                  quietNotice={() => { if (!opening.current.quiet) return false; opening.current.quiet = false; return true; }}
                   onFirstFrame={() => setPainted(true)}
-                  onConnectedChange={(next) => { setConnected(next); if (next) { connectedAt.current = Date.now(); setError(""); } }}
+                  onConnectedChange={(next) => { setConnected(next); if (!next) { setHeard(false); setPainted(false); } if (next) { connectedAt.current = Date.now(); setError(""); } }}
                   onUnauthorized={() => { if (stream) setFallback(true); else setAttempt((n) => n + 1); }}
                   onGone={() => { setConnected(false); latest.current.onEnded(); }}
                 />

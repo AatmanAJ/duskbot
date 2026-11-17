@@ -8,7 +8,7 @@ const f = vi.hoisted(() => ({
   closed: null as null | { at: number; tabs: Array<{ title: string; url: string; image: string | null }> },
   sent: [] as unknown[],
   closes: [] as Array<[string, string | undefined]>,
-  surface: null as null | { onMessage: (message: Record<string, unknown>) => void },
+  surface: null as null | { onMessage: (message: Record<string, unknown>) => void; onFirstFrame: () => void; quietNotice?: (message: string) => boolean },
 }));
 vi.mock("@/state/store", () => ({ useStore: () => ({ state: { config: { browserEngine: { engine: "chrome" } } } }), api: vi.fn() }));
 vi.mock("../Avatar", () => ({ BotAvatar: () => null }));
@@ -20,12 +20,12 @@ vi.mock("@/lib/local-browser", async (importOriginal) => ({
 vi.mock("../browser/StreamSurface", async () => {
   const { useEffect } = await import("react");
   return {
-    StreamSurface: (props: { onClient: (client: unknown) => void; onConnectedChange: (on: boolean) => void; onMessage: (message: Record<string, unknown>) => void }) => {
+    StreamSurface: (props: { onClient: (client: unknown) => void; onConnectedChange: (on: boolean) => void; onMessage: (message: Record<string, unknown>) => void; onFirstFrame: () => void; quietNotice?: (message: string) => boolean }) => {
       useEffect(() => {
         props.onClient({ send: (input: unknown) => { f.sent.push(input); return true; } });
         props.onConnectedChange(true);
       }, []);
-      f.surface = { onMessage: props.onMessage };
+      f.surface = { onMessage: props.onMessage, onFirstFrame: props.onFirstFrame, quietNotice: props.quietNotice };
       return null;
     },
   };
@@ -56,9 +56,18 @@ const message = (value: Record<string, unknown>) => act(async () => { f.surface!
 const click = (selector: string) => act(async () => { q(selector)!.click(); });
 
 describe("the compact browser in the Computer tab", () => {
-  it("shows the bot's tabs, and selects, closes and opens tabs through the browser", async () => {
+  it("at the panel's width shows only the address row and the page: no tabs, no new tab, no titles", async () => {
     await render();
     await message({ type: "tabs", tabs: TABS });
+    for (const gone of ["[data-local-browser-strip]", "[data-local-browser-tab]", "[data-local-browser-action=new-tab]"]) expect(q(gone), gone).toBeNull();
+    expect(host.textContent).not.toContain("Pena Palace tickets");
+    expect(q("[data-local-browser-toolbar]")).not.toBeNull();
+  });
+
+  it("expanded, shows the bot's tabs, and selects, closes and opens tabs through the browser", async () => {
+    await render();
+    await message({ type: "tabs", tabs: TABS });
+    await click("[data-local-browser-action=expand]");
     const tabs = [...host.querySelectorAll<HTMLElement>("[data-local-browser-tab]")];
     expect(tabs.map((tab) => tab.querySelector("[dir=auto]")?.textContent)).toEqual(["Lisbon to Sintra", "Pena Palace tickets", "Guesthouse Graça"]);
     expect(tabs[0]!.getAttribute("aria-selected")).toBe("true");
@@ -73,7 +82,37 @@ describe("the compact browser in the Computer tab", () => {
     expect(q('[data-local-browser-tab="c"]')).toBeNull();
 
     await click("[data-local-browser-action=new-tab]");
-    expect(f.sent.at(-1)).toEqual({ type: "tabNew" });
+    expect(f.sent.at(-1)).toEqual({ type: "tabNew", url: "https://www.google.com/" });
+  });
+
+  it("opens a new browser on Google once, as its own step: a failure there is never a toast", async () => {
+    await render();
+    await message({ type: "tabs", tabs: [{ tabId: "t1", title: "", url: "about:blank", active: true }] });
+    expect(f.sent).toEqual([{ type: "navigate", url: "https://www.google.com/" }]);
+    expect(f.surface!.quietNotice?.("The browser could not do that. Try again."), "its own step's failure").toBe(true);
+    expect(f.surface!.quietNotice?.("The browser could not do that. Try again."), "a person's next one shows").toBe(false);
+    await message({ type: "tabs", tabs: [{ tabId: "t1", title: "", url: "about:blank", active: true }] });
+    expect(f.sent, "only once").toHaveLength(1);
+  });
+
+  it("leaves a browser that already has pages where it is", async () => {
+    await render();
+    await message({ type: "tabs", tabs: TABS });
+    expect(f.sent).toEqual([]);
+  });
+
+  it("acts on no tab or page until this browser has said which tabs it has", async () => {
+    await render();
+    expect(q<HTMLButtonElement>("[data-local-browser-action=reload]")!.disabled, "a restarted browser numbers its tabs anew").toBe(true);
+    await message({ type: "tabs", tabs: TABS });
+    expect(q<HTMLButtonElement>("[data-local-browser-action=reload]")!.disabled).toBe(false);
+  });
+
+  it("keeps the page hidden until its first frame paints, so it never flashes black", async () => {
+    await render();
+    expect(q("[data-local-browser-surface]")!.className).toContain("opacity-0");
+    await act(async () => { f.surface!.onFirstFrame(); });
+    expect(q("[data-local-browser-surface]")!.className).not.toContain("opacity-0");
   });
 
   it("goes back, forward and reloads, and goes to a typed address on Enter", async () => {
@@ -192,6 +231,7 @@ describe("the compact browser in the Computer tab", () => {
   it("marks the tab the person holds, and hands it back", async () => {
     await render();
     await message({ type: "tabs", tabs: [{ ...TABS[0], held: true }, TABS[1]] });
+    await click("[data-local-browser-action=expand]");
     expect(q('[data-local-browser-tab="a"] [data-local-browser-held]')).not.toBeNull();
     expect(q('[data-local-browser-tab="b"] [data-local-browser-held]')).toBeNull();
     expect(q("[data-local-browser-held-line]")!.textContent).toBe("You’re using this tabHand back");

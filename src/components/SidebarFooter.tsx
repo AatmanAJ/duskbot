@@ -11,7 +11,6 @@ import { CloudUsageCard } from "./CloudUsageMeter";
 import { endCloudHowTo, useWorkspacePlace, type WorkspacePlace } from "./DesktopWorkspaceSwitcher";
 import { ConnectAppsButton, useSidebarApps } from "./SidebarConnectApps";
 import { SidebarProfileMenu, useSimpleAccount, type ArchivedBots } from "./SidebarProfileMenu";
-import { SidebarBrowserCard } from "./SidebarBrowserCard";
 import { SpotView, useSidebarSpot } from "./SidebarSpot";
 
 export function useSimplePlace(): WorkspacePlace {
@@ -44,7 +43,6 @@ export function SidebarFooter({ owner = null, archived }: { owner?: string | nul
       <SidebarPlaceStatus place={place} className="mb-2 px-1" />
       <AccountMoveStatus kind={move.kind} place={move.place} retry={move.retry} onOpen={openAccount} className="ps-1" />
       <div ref={setSidebarFooterSlot} data-sidebar-footer-slot="" className="empty:hidden" />
-      <SidebarBrowserCard className="mb-2" />
       <SpotView className="mb-2.5" state={spot} cta={cta} />
       <div className="flex items-center gap-1.5" onPointerLeave={() => setAppsEngaged(false)}>
         {apps.connected ? <>
