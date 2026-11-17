@@ -40,7 +40,7 @@ function lineFor(find: LocalFind): string {
 }
 
 const ROW_BUTTON = "ui-button ui-button-pill min-h-9 shrink-0 gap-1.5 px-3.5 text-[13px] transition-[background-color,transform] duration-150 ease-[ease] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100";
-const PRIMARY_BUTTON = "ui-button ui-button-pill ui-button-primary min-h-10 gap-1.5 px-4 text-[14px] transition-[background-color,transform] duration-150 ease-[ease] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60 motion-reduce:transition-none motion-reduce:active:scale-100";
+const PRIMARY_BUTTON = "ui-button ui-button-pill ui-button-primary h-8 min-h-8 gap-1.5 px-3.5 py-0 text-[13px] transition-[background-color,transform] duration-150 ease-[ease] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60 motion-reduce:transition-none motion-reduce:active:scale-100";
 
 /** The one app that knows this person, said as a person would: it already knows you; bring what it's learned. Its bots,
  * skills and tools come along quietly; only the memory is offered. */

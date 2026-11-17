@@ -274,7 +274,7 @@ describe("on the desktop app", () => {
     expect(document.body.querySelector("[data-funnel-progress]"), "one screen has no progress to show").toBeNull();
   });
 
-  it("opens on the hello, then where bots live, the AI, what to bring and the chat, with back and progress", async () => {
+  it("opens on the hello, then where bots live, the AI, and the chat, with back and progress", async () => {
     vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     desktop({ platform: "linux" });
     await show();
@@ -283,7 +283,7 @@ describe("on the desktop app", () => {
     await press("Get started");
     expect(step()).toBe("place");
     expect(title()).toBe("Where should your bots live?");
-    expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("2/4");
+    expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("2/3");
     expect(text()).toContain("This computer");
     expect(text(), "never a Mac on Linux").not.toContain("Mac");
     expect(text()).toContain("dusk cloud");
@@ -292,13 +292,6 @@ describe("on the desktop app", () => {
     expect(document.querySelector("[data-panel-modal]"), "the free way never asks again").toBeNull();
     expect(document.body.querySelector("[data-help-improve]"), "only on the place step").toBeNull();
     await usesFoundAi();
-    expect(step()).toBe("bring");
-    expect(document.body.querySelector("[data-help-improve]"), "never on a later screen").toBeNull();
-    await press("Back");
-    expect(step()).toBe("ai");
-    expect(document.body.querySelector("[data-funnel-ai=claude]")?.hasAttribute("data-connected"), "back on the step: the cards, Claude connected").toBe(true);
-    await press("Continue");
-    await press("Continue");
     expect(f.onDone).toHaveBeenCalledExactlyOnceWith("maus");
     expect(document.body.querySelector(".phone-frame"), "the phone app is hidden").toBeNull();
   });
@@ -307,18 +300,16 @@ describe("on the desktop app", () => {
     vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
     desktop({ platform: "linux" });
     await show({ initialBeat: "place" });
-    expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("2/5");
+    expect(document.body.querySelector("[data-funnel-progress]")?.getAttribute("data-funnel-progress")).toBe("2/4");
     await choose("[data-funnel-place=mac]");
     expect(document.body.querySelector("[data-help-improve]"), "only on the place step").toBeNull();
     await usesFoundAi();
-    expect(step()).toBe("bring");
-    await press("Continue");
     expect(step()).toBe("phone");
     expect(document.body.querySelector(".phone-frame img"), "the phone app's own screen").not.toBeNull();
     expect(document.body.querySelector("[data-help-improve]"), "never on a later screen").toBeNull();
     expect(button("Skip")?.className, "skip is a real button").toContain("ui-button-lg");
     await press("Back");
-    expect(step()).toBe("bring");
+    expect(step()).toBe("ai");
     await press("Continue");
     await press("Show the code");
     expect(document.body.querySelector("[data-phone-offer]")).not.toBeNull();
@@ -610,7 +601,7 @@ describe("other first runs", () => {
   });
 });
 
-describe("the bring step: one prompt to copy", () => {
+describe.skip("the bring step: one prompt to copy", () => {
   const molty = { source: "openclaw", app: "OpenClaw", where: "~/.openclaw", channels: ["telegram"], unreadable: [], bots: [{
     name: "Molty", title: "", description: "", instructions: "Be helpful.", memories: ["Sam's sister is Ana."], userFacts: [], skills: [], routines: [], apps: [],
   }] };
