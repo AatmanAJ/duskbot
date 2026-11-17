@@ -1302,6 +1302,23 @@ const savePhoneSecretOnce = createPhoneSecretSaveCoordinator((target, value) =>
   saveWorkspaceCredential(target, value),
 );
 
+/** The harness asks for the Mac companion's addresses when a phone signed in to this account links: only while the
+ * companion already runs and policy allows remote access. Security: a remote request never starts it. */
+function receiveCompanionEndpoints(proc, rawMessage) {
+  if (!rawMessage || typeof rawMessage !== "object" || rawMessage.type !== "duskbot:companion-endpoints") return false;
+  const requestId = typeof rawMessage.requestId === "string" ? rawMessage.requestId.slice(0, 64) : null;
+  if (!requestId) return true;
+  const answer = async () => {
+    if (managedRemoteAccessRefusal() || !companionRunning()) return null;
+    const state = await desktopCompanionState();
+    return state.enabled && !state.error && Array.isArray(state.endpoints) && state.endpoints.length ? state.endpoints : null;
+  };
+  void answer().catch(() => null).then((endpoints) => {
+    try { proc.postMessage({ type: "duskbot:companion-endpoints-result", requestId, endpoints }); } catch {}
+  });
+  return true;
+}
+
 function receivePhoneSecretSave(proc, rawMessage) {
   const request = decodePhoneSecretSaveRequest(rawMessage);
   if (!request) return false;
@@ -1366,7 +1383,7 @@ async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmen
       if (trustedApprovalMode.receive(proc, message)) return;
       if (managedDesktopRelay.receive(proc, message)) return;
       if (orgLibrary?.receive(message)) return;
-      if (settingsSyncMain?.receive(message) || receivePhoneSecretSave(proc, message) || oneHome.receive(proc, message)) return;
+      if (settingsSyncMain?.receive(message) || receivePhoneSecretSave(proc, message) || receiveCompanionEndpoints(proc, message) || oneHome.receive(proc, message)) return;
     } catch (error) {
       slog(`desktop private sync rejected: ${error?.message ?? error}`);
     }
@@ -1431,7 +1448,7 @@ async function startDevServer() {
     entry: path.join(root, "server", "dev-server.ts"),
     env: { ...process.env, DUSK_PORT: String(SERVER_PORT), DUSK_DATA_DIR: devDataDir, ...(devDataDir === desktopDataDir() ? {} : { DUSK_NO_TEST_BOTS: "1" }) },
     port: SERVER_PORT,
-    grant: (proc, isCurrent) => { serverProc = proc; if (!proc.__duskDevWired) { proc.__duskDevWired = true; proc.on("message", (message) => { if (serverProc !== proc) return; try { if (trustedApprovalMode.receive(proc, message) || managedDesktopRelay.receive(proc, message) || orgLibrary?.receive(message) || settingsSyncMain?.receive(message) || receivePhoneSecretSave(proc, message)) return; oneHome.receive(proc, message); } catch (error) { slog(`desktop private sync rejected: ${error?.message ?? error}`); } }); } syncDesktopMutationToken(proc); grantLocalComputer(proc, isCurrent); }, // the dev child is this app's own server too: same private channel for moves, logins and approvals
+    grant: (proc, isCurrent) => { serverProc = proc; if (!proc.__duskDevWired) { proc.__duskDevWired = true; proc.on("message", (message) => { if (serverProc !== proc) return; try { if (trustedApprovalMode.receive(proc, message) || managedDesktopRelay.receive(proc, message) || orgLibrary?.receive(message) || settingsSyncMain?.receive(message) || receivePhoneSecretSave(proc, message) || receiveCompanionEndpoints(proc, message)) return; oneHome.receive(proc, message); } catch (error) { slog(`desktop private sync rejected: ${error?.message ?? error}`); } }); } syncDesktopMutationToken(proc); grantLocalComputer(proc, isCurrent); }, // the dev child is this app's own server too: same private channel for moves, logins and approvals
     conflict: (port) => {
       const message = devServerConflictMessage(port);
       console.error(`[dev-server] ${message}`);

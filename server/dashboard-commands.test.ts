@@ -27,6 +27,24 @@ describe("dashboard commands", () => {
   });
 });
 
+describe("a phone signed in to the account asking to link", () => {
+  const pair = { id: "cmd_2", kind: "phone.pair" as const, target: "Sid's iPhone", issuedAt: 0, expiresAt: Date.now() + 60_000 };
+  it("mints the same grant the pairing qr carries, with the Mac companion's addresses when it already runs", async () => {
+    const sent: Array<{ url: string; body: unknown }> = [];
+    const link = "duskbot://pair?m=eyJ2IjoyfQ";
+    const runner = createDashboardCommands({ port: 7, collect: {} as never, companion: async () => [{ url: "http://192.168.1.4:5331", kind: "lan", priority: 1 }],
+      fetch: (async (url: string, init: RequestInit) => { sent.push({ url, body: JSON.parse(String(init.body)) }); return new Response(JSON.stringify({ link, code: null })); }) as typeof fetch });
+    expect(await runner.execute(pair)).toMatchObject({ ok: true, link });
+    expect(sent).toEqual([{ url: "http://127.0.0.1:7/api/mobile/pairing", body: { label: "Sid's iPhone", companion: [{ url: "http://192.168.1.4:5331", kind: "lan", priority: 1 }] } }]);
+  });
+
+  it("says unreachable when no route a phone can use exists, and refused otherwise", async () => {
+    expect(await commands(409, { error: "x", code: "unreachable" }).execute(pair)).toMatchObject({ ok: false, reason: "unreachable" });
+    expect(await commands(403, { error: "x", code: "sign_in_instead" }).execute(pair)).toMatchObject({ ok: false, reason: "refused" });
+    expect(await commands(200, { link: "https://elsewhere.example" }).execute(pair)).toMatchObject({ ok: false, reason: "refused" });
+  });
+});
+
 describe("connecting an app with no Composio set up", () => {
   it("is refused with what to do, as a 409 the dashboard shows", async () => {
     const { authorizeService, setManagedBrokerAccess } = await import("./composio.ts");
