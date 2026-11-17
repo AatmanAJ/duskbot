@@ -18,6 +18,7 @@ import { threadRefUrl } from "@/lib/thread-refs";
 import { RoundButton } from "./RoundButton";
 import { ContextMenu, useLongPress, type ContextAction } from "./ContextMenu";
 import { PullToRefresh } from "./PullToRefresh";
+import { revealOnce, useListFlip } from "./list-motion";
 import { refreshSnapshot } from "./refresh";
 import { usePlatform } from "./platform";
 import { ConnectionPill, ConnectionProblemCard, useLiveConnection } from "./connection/ConnectionProblem";
@@ -58,8 +59,9 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   // the phone's own account first: its photo, else its drawn head; the desktop's profile otherwise
   const face = phone ?? you?.face ?? null;
   const scrollRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
-  const [menu, setMenu] = useState<{ entry: Entry; rect: DOMRect; pinnedTile: boolean } | null>(null);
+  const [menu, setMenu] = useState<{ entry: Entry; rect: DOMRect; pinnedTile: boolean; source: HTMLElement | null } | null>(null);
 
   const { pinned, entries } = useMemo(() => {
     const parts = partitionSidebarBots(state.bots);
@@ -77,6 +79,12 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
     rows.sort((a, b) => b.at - a.at);
     return { pinned: top, entries: rows };
   }, [state.bots, state.groups, state.instances]);
+
+  useListFlip(listRef, `${pinned.length}|${entries.map((entry) => entry.id).join(",")}`);
+  const sawSkeleton = useRef(!state.hydrated);
+  const reveal = useCallback((el: HTMLDivElement | null) => {
+    if (el && sawSkeleton.current) { sawSkeleton.current = false; revealOnce(el); }
+  }, []);
 
   const unreadNotes = state.notifications.filter((note) => !note.read).length;
   const primary = pinned[0];
@@ -99,7 +107,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
     return list;
   }, [dispatch, onOpenSheet, platform]);
 
-  const openMenu = useCallback((entry: Entry, rect: DOMRect, pinnedTile = false) => setMenu({ entry, rect, pinnedTile }), []);
+  const openMenu = useCallback((entry: Entry, rect: DOMRect, source: HTMLElement | null, pinnedTile = false) => setMenu({ entry, rect, pinnedTile, source }), []);
 
   return (
     <div className="relative h-full bg-app">
@@ -114,7 +122,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
           top={LIST_TOP}
           indicator={(progress, refreshing) => <RefreshMark bot={primary} progress={progress} refreshing={refreshing} />}
         >
-          <div style={{ paddingTop: LIST_TOP }} className="pb-[calc(var(--m-safe-bottom)+24px)]">
+          <div ref={listRef} style={{ paddingTop: LIST_TOP }} className="pb-[calc(var(--m-safe-bottom)+24px)]">
             {state.hydrated && <ConnectionProblemCard notice={live.notice} place={live.place} trying={live.trying} onRetry={live.retry} />}
             {!state.hydrated ? (state.loadFailed ? (
               <EmptyState tone="error" art="signpost" className="pt-16" title={t("mobile.home.loadFailedTitle")} body={t(offline ? "mobile.home.loadFailedOffline" : "mobile.home.loadFailedBody")}
@@ -123,13 +131,13 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
               <EmptyState mascot="blue" className="pt-20" title={t("mobile.home.emptyTitle")} body={t("mobile.home.emptyBody")}
                 action={{ label: t("mobile.home.emptyAction"), icon: <Plus size={18} aria-hidden />, onClick: () => onOpenSheet({ kind: "create" }) }} />
             ) : (
-              <>
+              <div ref={reveal}>
                 {pinned.length > 0 && (
                   <section aria-labelledby="home-pinned" data-no-swipe>
                   <h2 id="home-pinned" className="px-5 pb-1 text-[13px] font-semibold text-ink-secondary">{t("sidebar.section.pinned")}</h2>
                   <div className="no-scrollbar flex gap-3 overflow-x-auto px-3 pb-2 pt-1">
                     {pinned.map((bot) => (
-                      <PinnedTile key={bot.id} bot={bot} onOpen={onOpenChat} onMenu={(rect) => openMenu(botEntry(bot, state), rect, true)} />
+                      <PinnedTile key={bot.id} bot={bot} onOpen={onOpenChat} onMenu={(rect, source) => openMenu(botEntry(bot, state), rect, source, true)} />
                     ))}
                   </div>
                   </section>
@@ -139,7 +147,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                   {pinned.length > 0 && <h2 className="px-5 pb-1 pt-3 text-[13px] font-semibold text-ink-secondary">{t("mobile.home.chats")}</h2>}
                   <ul role="list" aria-label={t("mobile.home.chats")} className="px-2">
                     {entries.map((entry) => (
-                      <li key={entry.id}>
+                      <li key={entry.id} data-flip-key={entry.id}>
                         <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} />
                       </li>
                     ))}
@@ -152,7 +160,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                     <button type="button" onClick={() => onOpenSheet({ kind: "create" })} className="mobile-press mt-1 flex h-11 items-center gap-2 rounded-full bg-ink px-5 text-[15px] font-medium text-app"><Plus size={18} />{t("mobile.home.emptyAction")}</button>
                   </div>
                 )}
-              </>
+              </div>
             )}
           </div>
         </PullToRefresh>
@@ -178,6 +186,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         label={menu ? t("sidebar.bot.actions", { name: menu.entry.kind === "bot" ? menu.entry.bot.name : menu.entry.group.name }) : ""}
         preview={menu ? (menu.pinnedTile && menu.entry.kind === "bot" ? <PinnedTileFace bot={menu.entry.bot} /> : <RowFace entry={menu.entry} />) : null}
         actions={menu ? actionsFor(menu.entry) : []}
+        source={menu?.source}
         onClose={() => setMenu(null)}
       />
     </div>
@@ -200,9 +209,9 @@ function RefreshMark({ bot, progress, refreshing }: { bot?: Bot; progress: Motio
   );
 }
 
-const PinnedTile = memo(function PinnedTile({ bot, onOpen, onMenu }: { bot: Bot; onOpen: (id: string) => void; onMenu: (rect: DOMRect) => void }) {
+const PinnedTile = memo(function PinnedTile({ bot, onOpen, onMenu }: { bot: Bot; onOpen: (id: string) => void; onMenu: (rect: DOMRect, source: HTMLElement | null) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
-  useLongPress(ref, onMenu);
+  useLongPress(ref, (rect) => onMenu(rect, ref.current));
   return (
     <button ref={ref} type="button" onClick={(event) => { holdPressed(event.currentTarget); onOpen(bot.id); }} className="mobile-press flex w-[84px] shrink-0 flex-col items-center gap-1.5 rounded-[20px] py-1" aria-label={botShowsUnread(bot) ? t("mobile.home.unreadChat", { name: bot.name }) : bot.name}>
       <PinnedTileFace bot={bot} />
@@ -228,9 +237,9 @@ function PinnedTileFace({ bot }: { bot: Bot }) {
   );
 }
 
-const HomeRow = memo(function HomeRow({ entry, onOpen, onMenu }: { entry: Entry; onOpen: (id: string) => void; onMenu: (entry: Entry, rect: DOMRect) => void }) {
+const HomeRow = memo(function HomeRow({ entry, onOpen, onMenu }: { entry: Entry; onOpen: (id: string) => void; onMenu: (entry: Entry, rect: DOMRect, source: HTMLElement | null) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
-  useLongPress(ref, (rect) => onMenu(entry, rect));
+  useLongPress(ref, (rect) => onMenu(entry, rect, ref.current));
   const name = entry.kind === "bot" ? entry.bot.name : entry.group.name;
   return (
     <button
