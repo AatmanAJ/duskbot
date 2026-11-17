@@ -127,7 +127,7 @@ import { buildRecall, recallRooms, recallThreadIds, withRecalled } from "./recal
 import { heldMemory, takeMemoryDelta } from "./memory-snapshot.ts";
 import { aboutOwner, embedPendingFacts } from "./memory-facts.ts";
 import { migrateMemory } from "./memory-migrate.ts";
-import { readOutsideContent } from "./memory-trust.ts";
+import { personsOwnWords, readOutsideContent } from "./memory-trust.ts";
 import { embedderSettled, warmEmbedder } from "./memory-embed.ts";
 import { generalForPrompt, listGeneralHistory } from "./general-memory.ts";
 import { computerFailuresToResolve, RESOLVE_SCAN } from "./computer-failure-resolution.ts";
@@ -1183,7 +1183,7 @@ function memoryWriteTrust(botId: string, threadId: string): WriteTrust {
   if (from && from !== "person") return { from: "outside", source: from };
   if (asked?.peerAsk) return { from: "outside", source: "other-bot" };
   if (isUnattended(botId, threadId) || botApiThread(threadId)) return { from: "outside", source: "tool" };
-  if (readOutsideContent(path)) return { from: "outside", source: "web" };
+  if (readOutsideContent(path)) return { from: "outside", source: "web", personSaid: personsOwnWords(path) };
   return { from: "person" };
 }
 
