@@ -16,7 +16,7 @@ export interface GlassHeader {
 }
 
 export type GlassButtonKind = "stop" | "mic" | "micSend" | "send" | "waits" | "followUp" | "discard" | "keep";
-/** `fill` and `ink` are the page's own colours for the button (#rrggbb), so Send wears the bot's button as on the desktop. */
+/** `fill` and `ink` are the page's own colours for the button (#rrggbb or #rrggbbaa), so Send wears the bot's button as on the desktop. */
 export interface GlassButton { kind: GlassButtonKind; disabled: boolean; label: string; fill?: string; ink?: string }
 
 export interface GlassComposer {
@@ -93,22 +93,20 @@ export function buttonKind(el: HTMLElement): GlassButtonKind | null {
   return null;
 }
 
-const hexes = new Map<string, string | null>();
+const parsed = new Map<string, Rgba | null>();
 let swatch: CanvasRenderingContext2D | null | undefined;
+type Rgba = { r: number; g: number; b: number; a: number };
 
-/** A computed css colour as #rrggbb, or null when it is mostly transparent or cannot be read. */
-export function cssHex(value: string): string | null {
+function rgba(value: string): Rgba | null {
   const color = value.trim();
   if (!color || color === "transparent") return null;
-  if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
-  const known = hexes.get(color);
+  if (/^#[0-9a-f]{6}$/i.test(color)) { const n = parseInt(color.slice(1), 16); return { r: n >> 16, g: (n >> 8) & 255, b: n & 255, a: 1 }; }
+  const known = parsed.get(color);
   if (known !== undefined) return known;
-  const hex = (r: number, g: number, b: number) => `#${[r, g, b].map((n) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, "0")).join("")}`;
-  let out: string | null = null;
+  let out: Rgba | null = null;
   const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+)(%?))?\s*\)$/.exec(color);
   if (rgb) {
-    const alpha = rgb[4] === undefined ? 1 : Number(rgb[4]) / (rgb[5] ? 100 : 1);
-    out = alpha < 0.5 ? null : hex(Number(rgb[1]), Number(rgb[2]), Number(rgb[3]));
+    out = { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]), a: rgb[4] === undefined ? 1 : Number(rgb[4]) / (rgb[5] ? 100 : 1) };
   } else {
     // oklab(), color-mix() and the rest: let the canvas resolve it to a pixel
     if (swatch === undefined) {
@@ -120,12 +118,28 @@ export function cssHex(value: string): string | null {
       swatch.fillStyle = color;
       swatch.fillRect(0, 0, 1, 1);
       const [r, g, b, a] = swatch.getImageData(0, 0, 1, 1).data;
-      out = a < 128 ? null : hex(r, g, b);
+      out = { r: r!, g: g!, b: b!, a: a! / 255 };
     }
   }
-  if (hexes.size > 64) hexes.clear();
-  hexes.set(color, out);
+  if (parsed.size > 64) parsed.clear();
+  parsed.set(color, out);
   return out;
+}
+
+const byte = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, "0");
+
+/** A computed css colour as #rrggbb, or null when it is mostly transparent or cannot be read. */
+export function cssHex(value: string): string | null {
+  const c = rgba(value);
+  return c && c.a >= 0.5 ? `#${byte(c.r)}${byte(c.g)}${byte(c.b)}` : null;
+}
+
+/** A computed css colour as #rrggbb, or #rrggbbaa when it is see-through; null when it is not there at all. */
+export function cssColor(value: string): string | null {
+  const c = rgba(value);
+  if (!c || c.a < 0.01) return null;
+  const hex = `#${byte(c.r)}${byte(c.g)}${byte(c.b)}`;
+  return c.a > 0.995 ? hex : hex + byte(c.a * 255);
 }
 
 /** Dark when the app's own ground is dark: the skin the person picked, whatever the system's appearance. */
@@ -145,11 +159,24 @@ export function composerButtons(actions: Element | null): { buttons: GlassButton
   for (const el of elements) {
     const kind = buttonKind(el);
     if (!kind) return null;
-    const style = getComputedStyle(el);
-    buttons.push({ kind, disabled: (el as HTMLButtonElement).disabled, label: el.getAttribute("aria-label") ?? "",
-      fill: cssHex(style.backgroundColor) ?? undefined, ink: cssHex(style.color) ?? undefined });
+    const { fill, ink } = restingColors(el);
+    buttons.push({ kind, disabled: (el as HTMLButtonElement).disabled, label: el.getAttribute("aria-label") ?? "", fill, ink });
   }
   return { buttons, elements };
+}
+
+const rested = new WeakMap<Element, { fill?: string; ink?: string }>();
+
+/** The button's fill and ink once its css colour transition (composer-press, 100ms) lands: the native button animates
+ * to them itself, so the values in between would only make it chase every frame. */
+export function restingColors(el: HTMLElement): { fill?: string; ink?: string } {
+  const known = rested.get(el);
+  const moving = known && el.getAnimations?.().some((animation) => /color/.test((animation as CSSTransition).transitionProperty ?? ""));
+  if (known && moving) return known;
+  const style = getComputedStyle(el);
+  const colors = { fill: cssColor(style.backgroundColor) ?? undefined, ink: cssColor(style.color) ?? undefined };
+  rested.set(el, colors);
+  return colors;
 }
 
 /** A strip inside the pill above its row (a reply, attachments): only the page draws those. */

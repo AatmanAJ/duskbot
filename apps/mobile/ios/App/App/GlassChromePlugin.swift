@@ -88,6 +88,90 @@ private class DiscButton: UIButton {
     }
 }
 
+/// The round button at the end of the composer: a solid disc in the page's own colours for it, not glass. A prominent
+/// glass button (iOS 26) lays its tint over what is behind it and adapts its glyph to that backdrop, so a near-black or
+/// near-white fill read washed out or inverted; this one is exactly the page's fill and ink. Fill and glyph change in
+/// one spring, the old glyph shrinking out as the new one grows in.
+@available(iOS 26.0, *)
+private final class SlotButton: DiscButton {
+    private var glyph = UIImageView()
+    private var symbol = ""
+    private var ink: UIColor?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        layer.cornerCurve = .circular
+        glyph.isUserInteractionEnabled = false
+        glyph.contentMode = .center
+        addSubview(glyph)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+        for view in subviews where view is UIImageView {
+            view.bounds = bounds
+            view.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        }
+    }
+
+    override var isHighlighted: Bool {
+        didSet {
+            guard isHighlighted != oldValue, !UIAccessibility.isReduceMotionEnabled else { return }
+            let pressed = isHighlighted
+            UIView.animate(springDuration: pressed ? 0.12 : 0.3, bounce: 0, initialSpringVelocity: 0, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+                self.transform = pressed ? CGAffineTransform(scaleX: 0.94, y: 0.94) : .identity
+            }
+        }
+    }
+
+    func show(symbol name: String, configuration: UIImage.SymbolConfiguration, fill: UIColor, ink newInk: UIColor, animated: Bool) {
+        let glyphChanged = name != symbol || newInk != ink
+        let fillChanged = backgroundColor != fill
+        guard glyphChanged || fillChanged else { return }
+        let image = UIImage(systemName: name, withConfiguration: configuration)?.withRenderingMode(.alwaysTemplate)
+        // a button just made arrives with its own entrance (or none): it starts in its colours
+        let first = symbol.isEmpty
+        symbol = name
+        ink = newInk
+        guard animated, !first, window != nil else {
+            backgroundColor = fill
+            glyph.image = image
+            glyph.tintColor = newInk
+            return
+        }
+        let reduced = UIAccessibility.isReduceMotionEnabled
+        let small = CGAffineTransform(scaleX: 0.5, y: 0.5)
+        var incoming: UIImageView?
+        var outgoing: UIImageView?
+        if glyphChanged {
+            let next = UIImageView(image: image)
+            next.tintColor = newInk
+            next.contentMode = .center
+            next.isUserInteractionEnabled = false
+            next.bounds = bounds
+            next.center = CGPoint(x: bounds.midX, y: bounds.midY)
+            next.alpha = 0
+            if !reduced { next.transform = small }
+            addSubview(next)
+            outgoing = glyph
+            glyph = next
+            incoming = next
+        }
+        UIView.animate(springDuration: 0.3, bounce: 0, initialSpringVelocity: 0, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            self.backgroundColor = fill
+            incoming?.alpha = 1
+            incoming?.transform = .identity
+            outgoing?.alpha = 0
+            if !reduced { outgoing?.transform = small }
+        } completion: { _ in
+            outgoing?.removeFromSuperview()
+        }
+    }
+}
+
 private struct Frame {
     let rect: CGRect
     init?(_ value: Any?) {
@@ -337,14 +421,14 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             let leaving = zip(actions, oldKinds).filter { $0.0 !== keep && $0.0 !== besideKept }
             actions = kinds.enumerated().map { index, kind in
                 if index == kinds.count - 1, let keep {
-                    configure(keep, kind: kind, index: index, was: oldKinds.last)
+                    configure(keep, kind: kind, index: index)
                     return keep
                 }
                 if index == 0, let besideKept {
-                    configure(besideKept, kind: kind, index: index, was: oldKinds.first)
+                    configure(besideKept, kind: kind, index: index)
                     return besideKept
                 }
-                let button = DiscButton(configuration: .glass())
+                let button: UIButton = index == kinds.count - 1 && Self.slotKinds.contains(kind) ? SlotButton() : DiscButton(configuration: .glass())
                 configure(button, kind: kind, index: index)
                 capsule.contentView.addSubview(button)
                 return button
@@ -372,52 +456,46 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         }
     }
 
-    private static func prominent(_ kind: String) -> Bool { kind == "send" || kind == "micSend" || kind == "keep" }
-
-    /// Send wears the page's own fill for it (the bot's button, per the app's light or dark look, as on the desktop)
-    private func paint(_ button: UIButton, kind: String, fill: String?, ink: String?) {
-        guard Self.prominent(kind) else { return }
-        let tint = fill.flatMap(UIColor.init(cssHex:)) ?? accent
-        let foreground = ink.flatMap(UIColor.init(cssHex:)) ?? .white
-        if button.tintColor != tint { button.tintColor = tint }
-        if button.configuration?.baseForegroundColor != foreground { button.configuration?.baseForegroundColor = foreground }
+    private static func symbol(_ kind: String) -> (name: String, configuration: UIImage.SymbolConfiguration) {
+        let (name, size, weight): (String, CGFloat, UIImage.SymbolWeight)
+        switch kind {
+        case "mic": (name, size, weight) = ("mic.fill", 17, .semibold)
+        case "send", "micSend": (name, size, weight) = ("arrow.up", 16, .bold)
+        // a filled square reads larger than an arrow at the same point size
+        case "stop": (name, size, weight) = ("stop.fill", 13, .bold)
+        case "waits": (name, size, weight) = ("clock", 16, .semibold)
+        case "followUp": (name, size, weight) = ("chevron.up", 15, .semibold)
+        case "discard": (name, size, weight) = ("xmark", 15, .semibold)
+        case "keep": (name, size, weight) = ("checkmark", 15, .bold)
+        default: (name, size, weight) = ("circle", 15, .semibold)
+        }
+        return (name, UIImage.SymbolConfiguration(pointSize: size, weight: weight))
     }
 
-    /// `was` is the kind the button wore until now: going between the bot's filled button and the plain glass one, the
-    /// fill and the glyph's colour cross over together, never one frame flat then the other
-    private func configure(_ button: UIButton, kind: String, index: Int, was: String? = nil) {
-        if let was, was != kind, Self.prominent(was) != Self.prominent(kind), button.window != nil {
-            UIView.transition(with: button, duration: 0.2, options: [.transitionCrossDissolve, .allowUserInteraction, .beginFromCurrentState]) {
-                self.configure(button, kind: kind, index: index)
-            }
-            return
-        }
-        let prominent = Self.prominent(kind)
-        var config: UIButton.Configuration = prominent ? .prominentGlass() : kind == "followUp" ? .plain() : .glass()
-        let symbol: String
-        let size: CGFloat
-        let weight: UIImage.SymbolWeight
-        switch kind {
-        case "mic": (symbol, size, weight) = ("mic.fill", 17, .semibold)
-        case "send", "micSend": (symbol, size, weight) = ("arrow.up", 16, .bold)
-        // a filled square reads larger than an arrow at the same point size
-        case "stop": (symbol, size, weight) = ("stop.fill", 13, .bold)
-        case "waits": (symbol, size, weight) = ("clock", 16, .semibold)
-        case "followUp": (symbol, size, weight) = ("chevron.up", 15, .semibold)
-        case "discard": (symbol, size, weight) = ("xmark", 15, .semibold)
-        case "keep": (symbol, size, weight) = ("checkmark", 15, .bold)
-        default: (symbol, size, weight) = ("circle", 15, .semibold)
-        }
-        config.cornerStyle = .capsule
-        config.contentInsets = .zero
-        config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: size, weight: weight)
-        config.image = UIImage(systemName: symbol)
-        config.symbolContentTransition = UISymbolContentTransition(UIAccessibility.isReduceMotionEnabled ? .automatic : .replace)
-        config.baseForegroundColor = prominent ? .white : kind == "mic" ? .secondaryLabel : .label
-        button.configuration = config
-        button.tintColor = prominent ? accent : nil
+    /// The round button wears the page's own fill and ink for its kind (the bot's Send, the ink-filled mic and Stop), so it
+    /// reads as the desktop's in the app's light or dark look; symbol, fill and ink change together in one animation
+    private func paint(_ button: UIButton, kind: String, fill: String?, ink: String?) {
+        guard let slot = button as? SlotButton else { return }
+        let prominent = kind == "send" || kind == "micSend" || kind == "keep"
+        let fillColor = fill.flatMap(UIColor.init(cssHex:)) ?? (prominent ? accent : .clear)
+        let inkColor = ink.flatMap(UIColor.init(cssHex:)) ?? (prominent ? .white : .label)
+        let symbol = Self.symbol(kind)
+        slot.show(symbol: symbol.name, configuration: symbol.configuration, fill: fillColor, ink: inkColor, animated: true)
+    }
+
+    private func configure(_ button: UIButton, kind: String, index: Int) {
         button.enumerateEventHandlers { action, _, event, _ in if let action { button.removeAction(action, for: event) } }
         button.addAction(UIAction { [weak self] _ in self?.emit(["type": "button", "index": index, "kind": kind]) }, for: .touchUpInside)
+        if button is SlotButton { return }
+        var config: UIButton.Configuration = kind == "followUp" ? .plain() : .glass()
+        let symbol = Self.symbol(kind)
+        config.cornerStyle = .capsule
+        config.contentInsets = .zero
+        config.preferredSymbolConfigurationForImage = symbol.configuration
+        config.image = UIImage(systemName: symbol.name)
+        config.symbolContentTransition = UISymbolContentTransition(UIAccessibility.isReduceMotionEnabled ? .automatic : .replace)
+        config.baseForegroundColor = kind == "mic" ? .secondaryLabel : .label
+        button.configuration = config
     }
 
     private func show(_ view: UIView, _ visible: Bool, _ shown: inout Bool) {
@@ -591,7 +669,8 @@ private extension UIColor {
         guard hex.hasPrefix("#") else { return nil }
         hex.removeFirst()
         if hex.count == 3 { hex = hex.map { "\($0)\($0)" }.joined() }
-        guard hex.count == 6, let n = UInt32(hex, radix: 16) else { return nil }
-        self.init(red: CGFloat((n >> 16) & 0xff) / 255, green: CGFloat((n >> 8) & 0xff) / 255, blue: CGFloat(n & 0xff) / 255, alpha: 1)
+        if hex.count == 6 { hex += "ff" }
+        guard hex.count == 8, let n = UInt32(hex, radix: 16) else { return nil }
+        self.init(red: CGFloat((n >> 24) & 0xff) / 255, green: CGFloat((n >> 16) & 0xff) / 255, blue: CGFloat((n >> 8) & 0xff) / 255, alpha: CGFloat(n & 0xff) / 255)
     }
 }
