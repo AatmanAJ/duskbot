@@ -45,11 +45,12 @@ export function setupFor(instance: InstanceInfo) {
     : { intent: "cloud" as const };
 }
 
-const inApp = (instance: InstanceInfo) => connectsInApp(instance as unknown as ConnectInstance);
+export const inAppConnect = (instance: InstanceInfo) => connectsInApp(instance as unknown as ConnectInstance);
+const inApp = inAppConnect;
 
 /** The pressed AI's way in: its connect, stage by stage, or the setup for an AI without a sign-in. "Try another way"
  * after a failure shows that setup too. */
-function Connect({ tile, flow }: { tile: AiTile<InstanceInfo>; flow: ConnectFlowHandle }) {
+export function AiConnect({ tile, flow }: { tile: AiTile<InstanceInfo>; flow: ConnectFlowHandle }) {
   const [trouble, setTrouble] = useState(false);
   const instance = tile.instance;
   const inAppConnect = !trouble && tile.candidates.some(inApp);
@@ -161,7 +162,7 @@ export function AiCards({ onMore, className, onConnected, suggested = [], staysH
         {chosen && (
           <StageSwap stage={chosen.id}>
             <div data-funnel-ai-connect={chosen.id} className="flex w-full flex-col items-center">
-              <Connect key={chosen.id} tile={chosen} flow={{ ...flow, cancel: () => { flow.cancel(); setPicked(null); } }} />
+              <AiConnect key={chosen.id} tile={chosen} flow={{ ...flow, cancel: () => { flow.cancel(); setPicked(null); } }} />
             </div>
           </StageSwap>
         )}

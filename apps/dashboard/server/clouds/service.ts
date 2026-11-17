@@ -120,10 +120,19 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
       const held = await stash.open(id);
       if (!held) continue;
       if (held.accountId !== c.accountId) { await stash.drop(id); continue; }
+      const secret = sealer.unseal(c.bootstrapSecret);
       try {
-        await client.signIns(c.origin, sealer.unseal(c.bootstrapSecret), held.items);
+        await client.signIns(c.origin, secret, held.items);
         await stash.drop(id);
-      } catch { console.warn(`clouds: handing held AI sign-ins to cloud ${c.id} failed; it is tried again on the next pass`); }
+      } catch (error) {
+        // a home on an older image refuses kinds it doesn't know: it still takes the ChatGPT login, the one kind every home takes
+        const older = (error as { status?: unknown }).status === 400 && held.items.some(item => item.kind !== "codex-auth");
+        const known = held.items.filter(item => item.kind === "codex-auth");
+        if (older && known.length) {
+          try { await client.signIns(c.origin, secret, known); await stash.drop(id); continue; } catch {}
+        } else if (older) { await stash.drop(id); continue; }
+        console.warn(`clouds: handing held AI sign-ins to cloud ${c.id} failed; it is tried again on the next pass`);
+      }
     }
   }
   function get(id: string) { return store.state.clouds.find(c => c.id === id) ?? null; }

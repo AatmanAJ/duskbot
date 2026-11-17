@@ -9413,6 +9413,8 @@
   "funnel.ai.staysHere": "Stays here",
   "funnel.ai.connectedHereOnly": "{name} is connected on this computer only.",
   "funnel.ai.onComputer": "On your computer",
+  "cloudSignIn.line": "Sign in to {name} here to use it on your cloud.",
+  "cloudSignIn.action": "Sign in to {name}",
   "funnel.cloudBring.title": "Bring your bots along",
   "empty.memory.title": "Nothing remembered yet",
   "empty.memory.hint": "Tell {name} something worth keeping, or add a note below.",

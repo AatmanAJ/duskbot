@@ -858,8 +858,14 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
       const cloud = current.clouds?.find(entry => entry.primary && entry.runsOn === "cloud" && ["checkout", "setting_up", "ready"].includes(entry.status));
       if (!signedIn || current.status !== "connected" || !cloud) return { outcome: "no-cloud" };
       if (!Array.isArray(items) || !items.length) return { outcome: "nothing" };
-      try { await request(`clouds/${encodeURIComponent(cloud.id)}/ai-signins`, { method: "POST", body: { items }, token: signedIn.token, timeoutMs: 30_000 }); }
-      catch { return { outcome: "failed" }; }
+      const hold = (list) => request(`clouds/${encodeURIComponent(cloud.id)}/ai-signins`, { method: "POST", body: { items: list }, token: signedIn.token, timeoutMs: 30_000 });
+      try { await hold(items); }
+      catch (error) {
+        // an older Admin refuses kinds it doesn't know: it still holds the ChatGPT login, the one kind it always took
+        const known = items.filter(item => item?.kind === "codex-auth");
+        if (error?.status !== 400 || !known.length || known.length === items.length) return { outcome: "failed" };
+        try { await hold(known); } catch { return { outcome: "failed" }; }
+      }
       return { outcome: "held" };
     },
     /** Keep my plan: renewal back on for the same Cloud, as `cancelPlan` names it. */

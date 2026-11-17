@@ -20,6 +20,7 @@ import { returnFocusToComposer } from "./AskCard";
 import { IntroChips } from "./HelperSetup";
 import { usePrefersReducedMotion } from "./mascot-clock";
 import { preloadConnectedApps } from "@/lib/connected-apps";
+import { CloudSignInLine, useMissingCloudAi } from "./onboarding/CloudSignInLine";
 
 /** How long after the part before each part arrives, when a first run has just landed here: the three lines, the typing
  * row, the follow-up and its chips. With no AI there is no typing row, and the follow-up comes `noAi` after the last line. */
@@ -136,6 +137,8 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
   const lines = introLines({ name: bot?.name ?? DEFAULT_BOT_NAME, chief: Boolean(bot?.chiefOfStaff), person, team, fromComputer, carried });
   const look = useLookAround(!answered);
   const ai = thinksWith(bot, state.instances);
+  // a new cloud whose AIs didn't come along: the one it misses is named, with its sign-in, in place of the AI chip
+  const missing = useMissingCloudAi(fromComputer && state.config?.cloudHome === true, ai === "own");
   const connects = whoConnectsAi(useTeamPeople());
 
   // A first run's intro plays once: it asks for the follow-up, which then stays in the conversation.
@@ -173,7 +176,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
   // the chips belong under these bubbles: none while the app connects, reconnects or the transcript is still loading
   const onScreen = state.connected && bot?.transcriptLoaded !== false && bubbles.length > 0;
   const chips = answered || !onScreen || shown < ALL || !facts ? [] : introChips({
-    aiReady: ai === "own",
+    aiReady: ai === "own" || missing !== null,
     ownBots: state.bots.filter((candidate) => !candidate.hidden && !candidate.defaultBot).length,
     onCloud: state.config?.cloudHome === true,
     team: Boolean(state.config?.team),
@@ -205,6 +208,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
           <span className="text-[14px] leading-5 text-ink-tertiary">{t("helperIntro.typing")}</span>
         </div>
       )}
+      {missing && onScreen && shown >= ALL && <CloudSignInLine tile={missing} />}
       <IntroChips chips={chips} asks={introAsks(look.slugs ?? [])} onAsk={ready ? (answer) => { dispatch({ type: "answerCard", botId, threadId, messageId: message.id, answer }); returnFocusToComposer(); } : undefined} />
     </div>
   );

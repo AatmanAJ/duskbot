@@ -1,9 +1,11 @@
 // The whole first run as the person sees it, for proving it asks for an AI once: the real WelcomeFlow with a fake
 // desktop bridge, signed in, ChatGPT, Claude and Grok connected on this computer (Claude's sign-in stays here).
-// ?side=desktop|cloud: this computer's window, or the new cloud's own page. ?beat=: the screen to open (a resumed run).
+// ?side=desktop|cloud: this computer's window, or the new cloud's own page; chat: the new cloud's first chat with Dusk
+// when nothing came along. ?beat=: the screen to open (a resumed run).
 // ?cloud=1: the run picked dusk cloud. Served by scripts/verify-ai-once.ts.
 import { createRoot } from "react-dom/client";
 import { WelcomeFlow } from "../../src/components/onboarding/WelcomeFlow";
+import { SimpleHelperIntro } from "../../src/components/SimpleHelperIntro";
 import { DesktopCapabilitiesProvider } from "../../src/components/DesktopCapabilities";
 import { setEmailGateDone } from "../../src/lib/analytics";
 import { initialDesktopCapabilities } from "../../src/lib/desktop";
@@ -11,7 +13,7 @@ import { setLocale } from "../../src/lib/i18n";
 import { applySkinChoice } from "../../src/lib/skins";
 import { saveWelcomeDraft } from "../../src/lib/welcome-draft";
 import type { BeatId } from "../../src/lib/onboarding";
-import { StoreProvider } from "../../src/state/store";
+import { StoreProvider, useStore } from "../../src/state/store";
 import "../../src/styles.css";
 import "../../src/styles/overlays.css";
 import "../../src/styles/motion.css";
@@ -38,8 +40,17 @@ if (side === "desktop") {
   } as unknown as typeof window.duskDesktop;
 }
 
+function FirstChat() {
+  const { state } = useStore();
+  const dusk = state.bots.find((bot) => bot.defaultBot) ?? state.bots[0];
+  if (!dusk || !state.config) return null;
+  return <div className="mx-auto flex min-h-[100dvh] max-w-[720px] flex-col justify-end px-6 py-10">
+    <SimpleHelperIntro botId={dusk.id} threadId="preview" message={{ id: "intro", role: "bot", kind: "text", text: "" } as never} answered={false} />
+  </div>;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StoreProvider><DesktopCapabilitiesProvider>
-    <WelcomeFlow onDone={() => { document.body.dataset.firstRunDone = "1"; }} cloudHome={side === "cloud"} />
+    {side === "chat" ? <FirstChat /> : <WelcomeFlow onDone={() => { document.body.dataset.firstRunDone = "1"; }} cloudHome={side === "cloud"} />}
   </DesktopCapabilitiesProvider></StoreProvider>,
 );
