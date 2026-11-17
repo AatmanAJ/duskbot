@@ -1140,7 +1140,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       const hostLease = mcpHost.enabled(turnEnvironment) && claudeCliHttpMcp(cliVersion) ? mcpHost.lease() : null;
       const hostedNames = new Set<string>();
       if (hostLease) {
-        const hosted = hostMcpServers({ servers: mcpServers, threadId, lease: hostLease, keep: ["alwaysLoad"], gated: false });
+        const hosted = hostMcpServers({ servers: mcpServers, threadId, lease: hostLease, keep: ["alwaysLoad"] });
         for (const name of Object.keys(mcpServers)) delete mcpServers[name];
         Object.assign(mcpServers, hosted.servers);
         for (const name of hosted.hosted) hostedNames.add(name);
