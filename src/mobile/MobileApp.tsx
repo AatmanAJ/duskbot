@@ -15,7 +15,7 @@ import { effectiveLanguage, useLanguageChoice, usePageLanguage } from "@/lib/lan
 import { parseMobileOpenLink, type MobileOpenTarget } from "../../shared/mobile-link";
 import { setChatCovered } from "@/lib/chat-in-front";
 import { readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
-import { AiConsentProvider } from "./consent/AiConsent";
+import { AiConsentProvider, AiConsentSheet } from "./consent/AiConsent";
 import { installAiReport } from "@/lib/ai-report";
 import { registerPushForConnection } from "./connection/push";
 import { supportMail } from "./legal";
@@ -173,6 +173,7 @@ function Shell() {
       <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); openChat(id); }} />
       <ConnectAppsHost />
       <MessageHold rootRef={rootRef} />
+      <AiConsentSheet />
       <Sheet open={desktopOnly} onClose={() => setDesktopOnly(false)} title={t("mobile.desktopOnly.title")}>
         <div className="px-5 pb-[calc(var(--m-safe-bottom)+16px)]">
           <p className="text-[15px] leading-6 text-ink-secondary">{t("mobile.desktopOnly.body")}</p>
