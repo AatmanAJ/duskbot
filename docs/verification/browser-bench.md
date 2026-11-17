@@ -32,3 +32,14 @@ node --experimental-strip-types scripts/browser-bench-card.ts --before /tmp/benc
 
 Wall time moves with the machine's load (two runs of the same code measured 19 s and 28 s per task while other work
 ran), so compare a before and an after played at the same time, each from a frozen copy of its tree.
+
+## Scores, 2026-11-17
+
+27 tasks, 3 runs each, before (fb4ba1218f) and after (738745d39c) played at the same time:
+
+| | Sonnet before | Sonnet after | Haiku before | Haiku after |
+|---|---|---|---|---|
+| Tasks done right | 78/81 | 80/81 | 73/81 | 76/81 |
+| Tool calls per task | 6.6 | 4.9 | 10.0 | 6.9 |
+| Seconds per task | 16.2 | 12.9 | 17.7 | 15.3 |
+| Failed calls per task | 0.4 | 0.1 | 0.4 | 0.4 |
