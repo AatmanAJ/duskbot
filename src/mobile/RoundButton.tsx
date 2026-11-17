@@ -14,9 +14,11 @@ export const RoundButton = forwardRef<HTMLButtonElement, {
   className?: string;
   pressed?: boolean;
   disabled?: boolean;
-}>(function RoundButton({ label, onClick, children, size = 44, floating = false, glass = false, className, pressed, disabled }, ref) {
+  [data: `data-${string}`]: string | undefined;
+}>(function RoundButton({ label, onClick, children, size = 44, floating = false, glass = false, className, pressed, disabled, ...data }, ref) {
   return (
     <button
+      {...data}
       ref={ref}
       type="button"
       aria-label={label}
