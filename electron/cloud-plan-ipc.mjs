@@ -12,7 +12,20 @@ export function otherCloudSnapshot(cloud) {
 // Security: an upgrade goes only to a plan the verified session lists, and only with the confirmation main kept from its
 // own preview; a page never holds it. Upgrading is My Cloud's alone: another Cloud of the person's (`otherCloud(event)`,
 // its page) reads its own plan, never My Cloud's.
-export function installCloudPlanIpc({ ipcMain, pageSender, account, client, notices, homePage, otherCloud = () => null }) {
+/** after a phone sign-in code passed the person's presence check, its silent renewals skip it this long */
+export const PHONE_SIGN_IN_RENEW_MS = 75 * 60_000;
+
+// Security: a phone sign-in code logs a phone in to the account, so a page only gets one after main's own presence check
+// (Touch ID or the confirm), never on the page's word; only the renewals of a screen already checked skip it, for an hour or so.
+export function installCloudPlanIpc({ ipcMain, pageSender, account, client, notices, homePage, otherCloud = () => null, presence = async () => false, now = Date.now }) {
+  let phoneCheckedUntil = 0;
+  ipcMain.handle("cloud-plan:phone-sign-in", (event, renew) => pageSender("cloud-plan:phone-sign-in", async () => {
+    if (!(renew === true && now() < phoneCheckedUntil)) {
+      if (!(await presence())) return { outcome: "canceled" };
+      phoneCheckedUntil = now() + PHONE_SIGN_IN_RENEW_MS;
+    }
+    return client().phoneSignIn();
+  })(event));
   ipcMain.handle("cloud-plan:state", event => {
     const other = otherCloud(event);
     if (other) return { ...otherCloudSnapshot(other), ...(homePage(event) ? { home: true } : {}) };

@@ -249,6 +249,7 @@ export interface CloudPlanSnapshot {
   /** Verified: who runs My Cloud's machine, when the session's list says ("managed"). */
   provider?: string;
 }
+export type CloudPhoneSignIn = { outcome: "code"; code: string; expiresAt: number; email: string } | { outcome: "signed-out" | "limited" | "failed" | "canceled" };
 export interface CloudPlanBridge {
   state(): Promise<CloudPlanSnapshot>;
   manage(): Promise<void>;
@@ -256,6 +257,9 @@ export interface CloudPlanBridge {
   openPage?(page: Exclude<CloudHandoffPage, "plans">, workspaceId?: string): Promise<CloudWebHandoffResult>;
   /** This device's dusk cloud sign-in, again, once it has ended: only from the person's click. */
   signIn?(): Promise<void>;
+  /** A code (and its QR) that logs a phone in to this account, after main's presence check; `renew` swaps the one on
+   * screen without asking again for about an hour. Absent on an older app. */
+  phoneSignIn?(renew?: boolean): Promise<CloudPhoneSignIn>;
   /** The trial's popup due now was shown: main shows it no more today. Absent on an older app. */
   noticeSeen?(): Promise<void>;
   /** The usage meter's Upgrade: the preview, then the change (only from the person's click). Absent on an older app. */
@@ -317,6 +321,8 @@ export interface CloudAccountClient {
   setAvatar(choice: string | null): Promise<true | null>;
   /** A five-minute signed grant for the link service (apps/link-service/src/grant.mjs); null when signed out. */
   linkGrant(): Promise<string | null>;
+  /** a ten-minute, single-use code that logs a phone in to this account (ACCOUNT_ROUTES.phoneSignIn) */
+  phoneSignIn(): Promise<Exclude<CloudPhoneSignIn, { outcome: "canceled" }>>;
   /** Short-lived Cloudflare TURN servers for the direct screen path; null when signed out or TURN is off. */
   screenIce(): Promise<Array<{ urls: string[]; username?: string; credential?: string }> | null>;
   /** Only when the sign-in has ended: forget it and start a new one. */

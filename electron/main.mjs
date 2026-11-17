@@ -2973,7 +2973,9 @@ const ownCloudPage = event => {
   return otherOwnClouds(cloudAccount.state().clouds).find(cloud => cloud.origin === origin) ?? null;
 };
 const activePageOrigin = event => { const origin = activeEnvironment(environmentsState)?.origin, contents = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null; return origin && cloudPageSenderAllowed(event, { contents, homeOrigin: origin, activeOrigin: origin }) ? origin : null; }; const confirmTeamMove = async words => mainWindow && !mainWindow.isDestroyed() && (await dialog.showMessageBox(mainWindow, { type: "warning", ...words, defaultId: 1, cancelId: 1, noLink: true })).response === 0;
-installCloudPlanIpc({ ipcMain, pageSender: cloudPageSender, account: () => cloudAccount, client: () => ensureCloudAccount(), notices: () => cloudTrialNotices(), homePage: event => homeWindow.homePage(event), otherCloud: ownCloudPage });
+let userPresence = null;
+installCloudPlanIpc({ ipcMain, pageSender: cloudPageSender, account: () => cloudAccount, client: () => ensureCloudAccount(), notices: () => cloudTrialNotices(), homePage: event => homeWindow.homePage(event), otherCloud: ownCloudPage,
+  presence: async () => (await userPresence?.("show a code that logs a phone in to your account")) === true });
 
 // The buying sheet (cloud-buy.mjs): its channels, and the Cloud's name and colour (Servers entry once listed).
 const cloudLook = createCloudLook({ store: lookFile(() => path.join(app.getPath("userData"), cloudTarget(process.env).look), fs), accountId: () => cloudAccount?.state().account?.id ?? null,
@@ -3131,7 +3133,7 @@ const cloudSync = installCloudFiles({
   cloudOrigin: () => myCloud(), cloudAccount: () => ensureCloudAccount(), stateDir: cloudTarget(process.env).sync, power: cloudPower,
 });
 
-installUserPresence({ ipcMain, guard: workspaceOnly, dialog, systemPreferences, log: slog, window: () => mainWindow, trusted: senderIsLocal });
+userPresence = installUserPresence({ ipcMain, guard: workspaceOnly, dialog, systemPreferences, log: slog, window: () => mainWindow, trusted: senderIsLocal });
 // window.confirm() has no parent window, so (tiling) window managers cannot center it over the app.
 ipcMain.handle("dialog:confirm", localWorkspaceOnly("dialog:confirm", async (_event, message) => {
   if (typeof message !== "string" || !message.trim() || message.length > 4096 || !mainWindow || mainWindow.isDestroyed()) return false;

@@ -113,6 +113,9 @@ export const ACCOUNT_ROUTES = {
   workspaceUnlink: "/v1/app/workspace-unlink", // POST { workspaceId } -> { ok: true, removed: boolean }
   /** bearer app session: a five-minute signed grant the app hands the link service to open a VPS setup session. */
   linkGrant: "/v1/app/link-grant", //           POST {} -> { v: 1, grant, expiresAt }
+  /** bearer desktop app session: a short letters-only code (and its QR) that logs a phone in to this account, single use,
+   * PHONE_SIGN_IN_TTL_MS long. the phone redeems it at appPhoneSignIn. */
+  phoneSignIn: "/v1/app/phone-sign-in", //      POST {} -> PhoneSignInGrant
   /** bearer app session: short-lived Cloudflare TURN credentials for the direct screen path; 503 when TURN is off. */
   screenIce: "/v1/app/screen-ice", //           POST {} -> { v: 1, iceServers, expiresAt }
   /** bearer app session: deletes the account from the app, as deleteAccount does on the website, cancelling any plan
@@ -131,12 +134,27 @@ export const ACCOUNT_ROUTES = {
    * ASAuthorizationAppleIDCredential -> AppGrant; errors { error: invalid_request | invalid_grant | signup_closed |
    * identity_taken | provider_unavailable | rate_limited } */
   appAppleSignIn: "/api/cloud/app/sign-in/apple",
+  /** a phone redeems a desktop's PhoneSignInGrant code -> AppGrant; errors { error: invalid_request | invalid_code |
+   * expired | used | rate_limited } */
+  appPhoneSignIn: "/api/cloud/app/sign-in/phone", // POST { code, deviceName, platform, appVersion? }
   desktopAuthorize: "/api/cloud/desktop/authorize",
   desktopToken: "/api/cloud/desktop/token",
   appSession: "/api/cloud/desktop/session", //  GET -> AppSessionAnswer; DELETE {} -> { ok: true }
   /** bearer app session: the person's avatar (shared/user-avatar.ts): "photo", "g:<seed>", or null for the default. */
   appAvatar: "/v1/app/avatar", //               POST { avatar: string | null } -> { avatar: string | null }
 } as const;
+
+/** a phone sign-in code: letters only (server/sessions.ts PAIRING_CODE_ALPHABET), shown XXXX-XXXX, single use */
+export const PHONE_SIGN_IN_CODE_LENGTH = 8;
+export const PHONE_SIGN_IN_TTL_MS = 10 * 60_000;
+/** `email`: the account the code logs into, for the desktop to show */
+export interface PhoneSignInGrant { v: 1; code: string; expiresAt: number; email: string }
+/** what a person typed or a link carried as a phone sign-in code, uppercase without dashes or spaces, or null */
+export function cleanPhoneSignInCode(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 40) return null;
+  const code = value.replace(/[\s-]/g, "").toUpperCase();
+  return code.length === PHONE_SIGN_IN_CODE_LENGTH && /^[A-Z]+$/.test(code) ? code : null;
+}
 
 /** `nonce` is the raw nonce; the app sets the request's nonce to its sha-256 hex. `givenName`/`familyName` come from the
  * credential's fullName, which apple fills only the first time; send them whenever present. */
@@ -226,5 +244,5 @@ export interface AppSessionIdentity {
 export type AccountErrorCode =
   | "billing_active"
   | "invalid_request" | "invalid_email" | "wrong_code" | "invalid_code" | "expired" | "rate_limited" | "signup_closed"
-  | "signed_out" | "confirm" | "other_account" | "invalid_token" | "forbidden" | "csrf" | "not_found" | "last_identity" | "identity_taken"
+  | "used" | "signed_out" | "confirm" | "other_account" | "invalid_token" | "forbidden" | "csrf" | "not_found" | "last_identity" | "identity_taken"
   | "authorization_pending" | "slow_down" | "access_denied" | "expired_token" | "invalid_grant" | "provider_unavailable" | "failed";

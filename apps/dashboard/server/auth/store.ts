@@ -20,7 +20,10 @@ export interface StoredCode { id: string; email: string; codeHash: string; pendi
 /** a desktop sign-in waiting for its approval, keyed by the device code's hash, kept so a restart between the app opening the
  *  approve page and the person approving it does not end it */
 export interface StoredDevice { id: string; userCode: string; device: { name: string; platform: string; appVersion: string | null }; expiresAt: number; interval: number; lastPollAt: number | null; accountId: string | null; denied: boolean; intent?: AccountIntent; createdAt?: number }
-interface AuthState { accounts: Account[]; identities: Identity[]; sessions: Session[]; codes?: StoredCode[]; devices?: StoredDevice[] }
+/** a phone sign-in code a desktop session made: only its hmac. kept past its end (and once used) for a while, so the phone
+ *  can say expired or used rather than wrong */
+export interface StoredPhoneCode { codeHash: string; accountId: string; sessionId: string; expiresAt: number; purgeAt: number; usedAt?: number }
+interface AuthState { accounts: Account[]; identities: Identity[]; sessions: Session[]; codes?: StoredCode[]; devices?: StoredDevice[]; phoneCodes?: StoredPhoneCode[] }
 
 export function createAuthStore(dataDir: string) {
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
