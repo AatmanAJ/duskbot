@@ -13,7 +13,7 @@ describe("a sheet page inside Settings' stack", () => {
   it("draws in place with a back that pops the stack, never a second dialog over Settings", () => {
     const back = vi.fn();
     const onClose = vi.fn();
-    act(() => root.render(createElement(SheetStack, { value: { back } }, createElement(Sheet, { open: true, onClose, title: "Notifications" }, createElement("p", null, "caught up")))));
+    act(() => root.render(createElement(SheetStack, { value: { back } }, createElement(Sheet, { open: true, onClose, title: "Notifications", children: createElement("p", null, "caught up") }))));
     expect(host.querySelector("[role=dialog]")).toBeNull();
     expect(host.textContent).toContain("Notifications");
     expect(host.textContent).toContain("caught up");
@@ -25,7 +25,7 @@ describe("a sheet page inside Settings' stack", () => {
   it("keeps a page's own inner back (a vault entry) ahead of the stack's", () => {
     const back = vi.fn();
     const inner = vi.fn();
-    act(() => root.render(createElement(SheetStack, { value: { back } }, createElement(Sheet, { open: true, onClose() {}, title: "Login", back: inner }, null))));
+    act(() => root.render(createElement(SheetStack, { value: { back } }, createElement(Sheet, { open: true, onClose() {}, title: "Login", back: inner, children: null }))));
     act(() => host.querySelector<HTMLButtonElement>("button[aria-label='Back']")!.click());
     expect(inner).toHaveBeenCalledOnce();
     expect(back).not.toHaveBeenCalled();
