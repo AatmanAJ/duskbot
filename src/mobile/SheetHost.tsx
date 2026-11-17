@@ -31,7 +31,7 @@ function PanelSheet({ sheet, open, onClose }: { sheet: Extract<MobileSheet, { ki
   return (
     <Sheet open={open} onClose={onClose} full flush label={bot?.name ?? group?.name ?? t("mobile.sheet.profile")} bodyClassName="mobile-panel-sheet">
       <Suspense fallback={null}>
-        {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} /> : null}
+        {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} initialTab={sheet.kind === "computer" ? "computer" : "details"} /> : null}
       </Suspense>
     </Sheet>
   );

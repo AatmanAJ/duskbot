@@ -239,6 +239,14 @@ html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-u
 .dusk-mobile [data-mobile-chat] [data-grok-inset] [data-tour="composer"] button:not([role="menuitem"]):is([data-composer-send], [data-voice-mic], [data-composer-stop], :has(> [data-composer-plus])) {
   width: 34px; height: 34px; min-width: 34px; min-height: 34px;
 }
+.dusk-mobile [data-mobile-chat] [data-composer-stop-ghost] { width: 34px; height: 34px; }
+/* desktop's hold-the-spot swap: Stop turns in where the mic was, the mic springs in beside it, and when the turn ends
+   the stop disc fades out over the mic's glyph popping back (keyframes in src/styles/composer.css) */
+.dusk-mobile [data-mobile-chat] [data-composer-stop="slot"] .composer-stop-glyph { animation: composer-stop-in 260ms var(--composer-glyph-ease); }
+.dusk-mobile [data-mobile-chat] .composer-mic-back > svg { animation: composer-glyph-in 200ms var(--composer-glyph-ease); }
+@media (prefers-reduced-motion: reduce) {
+  .dusk-mobile [data-mobile-chat] :is([data-composer-stop="slot"] .composer-stop-glyph, .composer-mic-back > svg) { animation-name: composer-glyph-fade; }
+}
 .dusk-mobile [data-mobile-chat] :active > [data-composer-plus] { scale: .92; background-color: var(--g-tint-press); transition-duration: .16s, .15s; }
 .dusk-mobile [data-mobile-chat] [data-composer-actions] { gap: 6px; }
 .dusk-mobile [data-mobile-chat] [data-composer-actions] [data-voice-mic="start"] {

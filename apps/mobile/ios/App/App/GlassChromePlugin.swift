@@ -143,7 +143,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         header.isHidden = true
         host.addSubview(header)
         round(back, symbol: "chevron.left", label: "Back") { [weak self] in self?.emit(["type": "tap", "target": "back"]) }
-        round(right, symbol: "ellipsis", label: "More") { [weak self] in self?.emit(["type": "tap", "target": "right"]) }
+        round(right, symbol: "display", label: "Computer") { [weak self] in self?.emit(["type": "tap", "target": "right"]) }
         pill.configuration?.cornerStyle = .capsule
         pill.configuration?.imagePadding = 8
         pill.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 7, bottom: 0, trailing: 16)
@@ -230,9 +230,6 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         if let rightFrame = Frame(data["right"]) {
             right.isHidden = false
             right.frame = rightFrame.rect
-            let kind = data["rightKind"] as? String ?? "computer"
-            let symbol = kind == "more" ? "ellipsis" : "display"
-            right.configuration?.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
             right.accessibilityLabel = data["rightLabel"] as? String
             liveDot.isHidden = !(data["live"] as? Bool ?? false)
             liveDot.frame = CGRect(x: rightFrame.rect.width - 14, y: 6, width: 8, height: 8)
@@ -289,16 +286,28 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private func applyActions(_ buttons: [[String: Any]]) {
         let kinds = buttons.map { $0["kind"] as? String ?? "" }
         if kinds != actionKinds {
-            let appearing = Set(kinds).subtracting(actionKinds)
-            actions.forEach { $0.removeFromSuperview() }
+            let leaving = zip(actions, actionKinds).map { ($0, $1) }
+            let wasWorking = actionKinds.contains("stop")
             actions = kinds.enumerated().map { index, kind in makeAction(kind, index: index) }
             actions.forEach(capsule.contentView.addSubview)
             actionKinds = kinds
             layoutComposer()
-            for (button, kind) in zip(actions, kinds) where appearing.contains(kind) && (kind == "send" || kind == "micSend") {
-                button.transform = CGAffineTransform(scaleX: 0.6, y: 0.6)
-                button.alpha = 0
-                UIView.animate(springDuration: 0.35, bounce: 0.15) { button.transform = .identity; button.alpha = 1 }
+            let working = kinds.contains("stop")
+            for (button, kind) in leaving {
+                button.isUserInteractionEnabled = false
+                if wasWorking && !working && (kind == "stop" || kind == "mic") {
+                    if kind == "stop" { capsule.contentView.bringSubviewToFront(button) }
+                    ComposerMotion.leave(button, kind: kind) { button.removeFromSuperview() }
+                } else {
+                    button.removeFromSuperview()
+                }
+            }
+            let had = Set(leaving.map { $0.1 })
+            for (button, kind) in zip(actions, kinds) {
+                if (kind == "send" || kind == "micSend") && !had.contains(kind) { ComposerMotion.popIn(button) }
+                else if kind == "stop" && !wasWorking { ComposerMotion.stopIn(button) }
+                else if kind == "mic" && working && !wasWorking { ComposerMotion.micIn(button) }
+                else if kind == "mic" && wasWorking && !working { ComposerMotion.glyphIn(button) }
             }
         }
         for (button, data) in zip(actions, buttons) {
@@ -441,6 +450,72 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             image.draw(in: CGRect(origin: .zero, size: size))
         }
         return rendered.withRenderingMode(.alwaysOriginal)
+    }
+}
+
+/// The desktop composer's swaps (src/styles/composer.css) in UIKit: the same curves and durations, so a turn starting
+/// and ending moves the same on both. Reduce Motion keeps the fades and drops the travel.
+@available(iOS 26.0, *)
+private enum ComposerMotion {
+    static let glyphEase = UICubicTimingParameters(controlPoint1: CGPoint(x: 0.22, y: 1), controlPoint2: CGPoint(x: 0.36, y: 1))
+    static let leaveEase = UICubicTimingParameters(controlPoint1: CGPoint(x: 0.4, y: 0), controlPoint2: CGPoint(x: 1, y: 1))
+    static var reduced: Bool { UIAccessibility.isReduceMotionEnabled }
+
+    private static func glyph(_ button: UIButton) -> UIView {
+        button.layoutIfNeeded()
+        return button.imageView ?? button
+    }
+
+    private static func run(_ duration: TimeInterval, _ timing: UITimingCurveProvider, delay: TimeInterval = 0, _ change: @escaping () -> Void, done: (() -> Void)? = nil) {
+        let animator = UIViewPropertyAnimator(duration: duration, timingParameters: timing)
+        animator.addAnimations(change)
+        if let done { animator.addCompletion { _ in done() } }
+        animator.startAnimation(afterDelay: delay)
+    }
+
+    /// composer-stop-in: the square turns in from a quarter turn back, small and soft (260ms)
+    static func stopIn(_ button: UIButton) {
+        let view = glyph(button)
+        view.alpha = 0
+        if !reduced { view.transform = CGAffineTransform(rotationAngle: -.pi / 4).scaledBy(x: 0.4, y: 0.4) }
+        run(0.26, glyphEase) { view.alpha = 1; view.transform = .identity }
+    }
+
+    /// composer-mic-in: the small mic springs in beside Stop from 10pt toward it (420ms, a few percent of give, 40ms late)
+    static func micIn(_ button: UIButton) {
+        button.alpha = 0
+        if reduced { run(0.2, glyphEase) { button.alpha = 1 }; return }
+        button.transform = CGAffineTransform(translationX: 10, y: 0).scaledBy(x: 0.6, y: 0.6)
+        UIView.animate(springDuration: 0.42, bounce: 0.2, initialSpringVelocity: 0, delay: 0.04, options: [.allowUserInteraction]) {
+            button.alpha = 1
+            button.transform = .identity
+        }
+    }
+
+    /// composer-glyph-in: the glyph that comes back to the round button pops in (200ms)
+    static func glyphIn(_ button: UIButton) {
+        let view = glyph(button)
+        view.alpha = 0
+        if !reduced { view.transform = CGAffineTransform(scaleX: 0.5, y: 0.5) }
+        run(0.2, glyphEase) { view.alpha = 1; view.transform = .identity }
+    }
+
+    /// send arriving with the first character: m-pop, from .9 on the release spring
+    static func popIn(_ button: UIButton) {
+        button.alpha = 0
+        if reduced { run(0.2, glyphEase) { button.alpha = 1 }; return }
+        button.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
+        UIView.animate(springDuration: 0.34, bounce: 0.2) { button.alpha = 1; button.transform = .identity }
+    }
+
+    /// the turn over: Stop's disc fades and shrinks over the mic coming back (composer-glyph-out, 200ms) and the small
+    /// mic beside it slips back out (composer-mic-out, 150ms)
+    static func leave(_ button: UIButton, kind: String, done: @escaping () -> Void) {
+        if kind == "stop" {
+            run(0.2, glyphEase, { button.alpha = 0; if !reduced { button.transform = CGAffineTransform(scaleX: 0.5, y: 0.5) } }, done: done)
+        } else {
+            run(0.15, leaveEase, { button.alpha = 0; if !reduced { button.transform = CGAffineTransform(translationX: 10, y: 0).scaledBy(x: 0.6, y: 0.6) } }, done: done)
+        }
     }
 }
 

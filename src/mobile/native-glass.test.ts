@@ -133,7 +133,7 @@ function Chat({ platform }: { platform: MobilePlatform }) {
         createElement("button", { "data-glass": "title", id: "title" },
           createElement("span", { "data-glass-avatar": "" }),
           createElement("span", { "data-glass-name": "" }, "Manager")),
-        createElement("button", { "data-glass": "right", "data-glass-kind": "more", id: "right" })),
+        createElement("button", { "data-glass": "right", id: "right" })),
       createElement("div", { "data-tour": "composer", id: "shell" },
         createElement("button", { id: "plus" }, createElement("span", { "data-composer-plus": "" })),
         createElement("div", null,
@@ -170,7 +170,7 @@ describe("useNativeGlass", () => {
     runFrame();
     expect(glass.update).toHaveBeenCalledTimes(1);
     const state = glass.update.mock.calls[0]![0];
-    expect(state.header).toMatchObject({ back: { x: 12, y: 59, w: 44, h: 44 }, title: { x: 120, w: 150 }, right: { x: 334 }, name: "Manager", rightKind: "more" });
+    expect(state.header).toMatchObject({ back: { x: 12, y: 59, w: 44, h: 44 }, title: { x: 120, w: 150 }, right: { x: 334 }, name: "Manager" });
     expect(state.composer).toMatchObject({ frame: { x: 10, y: 760, w: 370, h: 48 }, plus: true, placeholder: "Message Manager", returnSends: true, voice: null, buttons: [{ kind: "mic", disabled: false, label: "Dictate" }] });
     expect(document.documentElement.dataset.nativeGlassHeader).toBe("");
     expect(document.documentElement.dataset.nativeGlassComposer).toBe("");

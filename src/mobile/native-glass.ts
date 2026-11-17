@@ -9,7 +9,6 @@ export interface GlassHeader {
   title: GlassFrame;
   right: GlassFrame | null;
   name: string;
-  rightKind: "computer" | "more";
   live: boolean;
   backLabel: string;
   titleLabel: string;
@@ -92,7 +91,8 @@ export function buttonKind(el: HTMLElement): GlassButtonKind | null {
 
 /** The composer's action buttons in order, each with its native twin; null when one has none (the page keeps its own composer then). */
 export function composerButtons(actions: Element | null): { buttons: GlassButton[]; elements: HTMLElement[] } | null {
-  const elements = actions ? [...actions.querySelectorAll<HTMLElement>("button")] : [];
+  // in the order they are drawn, not written: a working bot's Stop sits last with `order`
+  const elements = actions ? [...actions.querySelectorAll<HTMLElement>("button")].sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left) : [];
   const buttons: GlassButton[] = [];
   for (const el of elements) {
     const kind = buttonKind(el);
@@ -163,7 +163,6 @@ function readHeader(nav: Element): GlassHeader | null {
     title: frameOf(title),
     right: right ? frameOf(right) : null,
     name: title.querySelector("[data-glass-name]")?.textContent ?? "",
-    rightKind: right?.dataset.glassKind === "more" ? "more" : "computer",
     live: Boolean(right?.querySelector("[data-glass-live]")),
     backLabel: back.getAttribute("aria-label") ?? "",
     titleLabel: title.getAttribute("aria-label") ?? "",

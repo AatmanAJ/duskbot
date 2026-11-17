@@ -15,7 +15,6 @@ import { effectiveLanguage, useLanguageChoice, usePageLanguage } from "@/lib/lan
 import { parseMobileOpenLink, type MobileOpenTarget } from "../../shared/mobile-link";
 import { setChatCovered } from "@/lib/chat-in-front";
 import { readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
-import { screenViewAllowed } from "@/lib/store-app";
 import { AiConsentProvider } from "./consent/AiConsent";
 import { installAiReport } from "@/lib/ai-report";
 import { registerPushForConnection } from "./connection/push";
@@ -109,7 +108,7 @@ function Shell() {
       else openChat(id);
       if (target.messageId && target.threadId) dispatch({ type: "focusMessage", threadId: target.threadId, messageId: target.messageId });
     }
-    if (target.view === "computer" && target.botId && screenViewAllowed()) openSheet({ kind: "computer", botId: target.botId });
+    if (target.view === "computer" && target.botId) openSheet({ kind: "computer", botId: target.botId });
     else if (target.view === "profile" && id) openSheet({ kind: "profile", id });
     else if (target.view === "settings") openSheet({ kind: "settings" });
     else if (target.view === "notifications") openSheet({ kind: "notifications" });
@@ -156,7 +155,7 @@ function Shell() {
       members={members}
       onBack={() => setChatId(null)}
       onProfile={() => openSheet({ kind: "profile", id: chatId! })}
-      onComputer={bot && screenViewAllowed() ? () => openSheet({ kind: "computer", botId: bot.id }) : undefined}
+      onComputer={() => openSheet({ kind: "computer", botId: chatId! })}
     />
   ) : null;
 

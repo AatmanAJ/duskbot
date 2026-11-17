@@ -1,4 +1,4 @@
-import { ChevronLeft, Monitor, MoreHorizontal } from "../icons";
+import { ChevronLeft, Monitor } from "../icons";
 import { useStore, type Bot, type Group } from "@/state/store";
 import { ChatView } from "@/components/ChatView";
 import { GroupView } from "@/components/GroupView";
@@ -16,7 +16,7 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
   members: Bot[];
   onBack: () => void;
   onProfile: () => void;
-  onComputer?: () => void;
+  onComputer: () => void;
 }) {
   const { state } = useStore();
   const name = group?.name ?? bot?.name ?? "";
@@ -52,16 +52,10 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
           <ConnectionPill notice={link.notice === "reconnecting" ? null : link.notice} trying={link.trying} onRetry={link.retry} testId="mobile-chat-cloud-status" className="absolute top-[calc(100%+8px)] h-8 px-3" />
         </div>
         <div className="flex justify-end">
-          {onComputer ? (
-            <RoundButton floating glass data-glass="right" data-glass-kind="computer" label={live ? `${t("mobile.chat.computer")}, ${t("place.live")}` : t("mobile.chat.computer")} onClick={onComputer} className="pointer-events-auto">
-              <Monitor size={19} strokeWidth={1.8} />
-              {live && <span aria-hidden data-glass-live="" className="absolute right-2.5 top-2.5 size-2 rounded-full bg-success" />}
-            </RoundButton>
-          ) : (
-            <RoundButton floating glass data-glass="right" data-glass-kind="more" label={t("mobile.chat.openProfile", { name })} onClick={onProfile} className="pointer-events-auto">
-              <MoreHorizontal size={20} strokeWidth={2} />
-            </RoundButton>
-          )}
+          <RoundButton floating glass data-glass="right" label={live ? `${t("mobile.chat.computer")}, ${t("place.live")}` : t("mobile.chat.computer")} onClick={onComputer} className="pointer-events-auto">
+            <Monitor size={19} strokeWidth={1.8} />
+            {live && <span aria-hidden data-glass-live="" className="absolute right-2.5 top-2.5 size-2 rounded-full bg-success" />}
+          </RoundButton>
         </div>
       </nav>
     </div>

@@ -33,6 +33,7 @@ vi.mock("./CallView", () => ({ CallButton: (props: Record<string, unknown>) => {
 } }));
 
 import { Composer } from "./Composer";
+import { composerButtons } from "@/mobile/native-glass";
 
 const bot: Bot = {
   id: "atlas", threadId: "atlas-thread", name: "Atlas", title: "", description: "",
@@ -86,6 +87,25 @@ afterEach(() => {
 vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
 
 describe("the phone composer", () => {
+  it("while the bot works, Stop holds the mic's place at the end and every control has its native glass twin", () => {
+    vi.stubEnv("VITE_DUSK_LIVE_CALL", "");
+    try {
+      render({ bot: { ...bot, busy: true } });
+      const stop = container.querySelector<HTMLElement>("[data-composer-stop]")!;
+      expect(stop.dataset.composerStop).toBe("slot");
+      expect(stop.className).toContain("order-last");
+      expect(container.querySelector('[data-voice-mic="start"]')!.className).toContain("composer-mic-in");
+      expect(composerButtons(container.querySelector("[data-composer-actions]"))?.buttons.map((b) => b.kind)).toContain("stop");
+
+      render({ bot });
+      expect(container.querySelector("[data-composer-stop]")).toBeNull();
+      expect(container.querySelector('[data-voice-mic="start"]')!.className).toContain("composer-mic-back");
+      expect(container.querySelector("[data-composer-stop-ghost]")).not.toBeNull();
+    } finally {
+      vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
+    }
+  });
+
   it("in the phone app, return is labelled send and sends, whatever send key the desktop chose", () => {
     setSendKey("mod-enter");
     document.documentElement.dataset.mobileApp = "ios";

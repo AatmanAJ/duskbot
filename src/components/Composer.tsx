@@ -622,7 +622,13 @@ export function Composer({
   // the mic at the end of the bar and the small one beside Send are two buttons, so neither slides across when the field
   // fills or empties (only Send or the reserved spot takes a place); focus on the old one carries to the new
   // beside a working bot's Stop the small mic springs in where the spacer was, so it mounts fresh there too
-  const micPlace = filled ? "beside" : stopInSlot && !singleRow ? "stop" : "end";
+  // a phone's Stop takes the mic's place at the end of the pill the same way
+  const phoneStop = singleRow && busy && !stopPressed && !locked && !filled;
+  const micPlace = filled ? "beside" : (stopInSlot && !singleRow) || phoneStop ? "stop" : "end";
+  // when the turn ends on a phone the square fades out over the mic coming back to its place
+  const [micTrail, setMicTrail] = useState({ place: micPlace, from: micPlace, swaps: 0 });
+  if (micTrail.place !== micPlace) setMicTrail({ place: micPlace, from: micTrail.place, swaps: micTrail.swaps + 1 });
+  const micBack = singleRow && micPlace === "end" && micTrail.from === "stop";
   const micFocused = useRef(false);
   useLayoutEffect(() => {
     if (micFocused.current && document.activeElement !== micButtonRef.current) micButtonRef.current?.focus({ preventScroll: true });
@@ -1121,16 +1127,16 @@ export function Composer({
               className={singleRow ? "flex-1 py-1.5" : "mb-px mt-[3px] flex-1"}
             />
           )}
-          <div data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : "gap-1", !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
+          <div data-composer-actions className={cn("flex items-center", simpleDock ? "relative gap-2" : cn("gap-1", singleRow && "relative"), !singleRow && !simpleDock && "@max-[30rem]/composer:ml-auto", stacked && "ml-auto")}>
           {(simpleDock ? stoppable : busy && !stopPressed) && !locked && (
           <button
             // the button leaves with the press: focus goes back to the field (not on a phone, where it would raise the keyboard)
             onClick={() => { interruptTurn(); if (!singleRow) refocusInput(); }}
             aria-label={t("chat.stopTurn")}
-            data-composer-stop={simpleDock ? (stopInSlot ? "slot" : "beside") : undefined}
+            data-composer-stop={simpleDock ? (stopInSlot ? "slot" : "beside") : singleRow ? (phoneStop ? "slot" : "beside") : undefined}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
-              singleRow ? "size-10 bg-ink text-app"
+              singleRow ? cn("size-10 bg-ink text-app", phoneStop && "order-last")
                 : !simpleDock ? "size-8 text-ink-secondary hover:bg-raised hover:text-ink max-md:size-10"
                 : stopInSlot ? cn("composer-press size-7 order-last", slot.button.className)
                 : SIMPLE_CONTROL,
@@ -1138,7 +1144,7 @@ export function Composer({
             style={stopInSlot ? slot.button.style : undefined}
             title={t("chat.stop")}
           >
-            <span aria-hidden className={cn("block rounded-[2.5px] bg-current", simpleDock ? "size-[10px]" : "size-[12px]", stopInSlot && "composer-glyph composer-stop-glyph")} />
+            <span aria-hidden className={cn("block rounded-[2.5px] bg-current", simpleDock ? "size-[10px]" : "size-[12px]", (stopInSlot || phoneStop) && "composer-glyph composer-stop-glyph")} />
           </button>
         )}
         {!locked && recording && (
@@ -1176,6 +1182,7 @@ export function Composer({
               "flex shrink-0 items-center justify-center rounded-full",
               simpleDock ? "size-7" : "size-8 max-md:size-10",
               micPlace === "stop" && "composer-mic-in",
+              micBack && "composer-mic-back",
               recording
                 ? "composer-press bg-ink text-app hover:bg-[color-mix(in_srgb,var(--color-ink)_88.5%,var(--color-menu))] disabled:opacity-40"
                 : micInSlot ? singleRow ? "composer-press bg-ink text-app hover:opacity-90" : "composer-press hover:brightness-[0.88]"
@@ -1195,6 +1202,11 @@ export function Composer({
             menu={held ? undefined : followUpFor(false) && { choices: followUpChoices(followUpDefault, canSteer), name: busyName, sendKey: sendLabel, alternateKey: alternateSendLabel(sendKey) }} />
           )}
           {ghostGlyph && <SlotGlyphGhost key={glyphs.swaps} glyph={ghostGlyph} ink={slot.ink} />}
+          {micBack && (
+            <span aria-hidden="true" data-composer-stop-ghost key={`stop-${micTrail.swaps}`} className="composer-glyph-out pointer-events-none absolute bottom-0 right-0 z-[1] flex size-10 items-center justify-center rounded-full bg-ink text-app">
+              <span className="block size-[12px] rounded-[2.5px] bg-current" />
+            </span>
+          )}
           {ghostGlyph === "stop" && !singleRow && (
             <span aria-hidden="true" data-composer-mic-ghost key={`mic-${glyphs.swaps}`} className={cn(SIMPLE_CONTROL, "composer-mic-out pointer-events-none absolute bottom-0 right-9 flex items-center justify-center")}>
               <Icon name="mic" variant="filled" size={16} />

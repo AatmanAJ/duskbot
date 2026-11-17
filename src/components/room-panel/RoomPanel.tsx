@@ -46,7 +46,7 @@ function RoomHero({ group, members }: { group: Group; members: Bot[] }) {
   );
 }
 
-export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: boolean }) {
+export function RoomPanel({ group, overlay = false, initialTab = "details" }: { group: Group; overlay?: boolean; initialTab?: PanelTab }) {
   const { state, dispatch } = useStore();
   const { dragProps } = useCaptionChrome();
   // the side panel stays shut for every chat until the person opens it again, as the bot panel does
@@ -54,7 +54,7 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
     closeRoomPanel({ refocus: true });
     dispatch({ type: "toggleSettings", open: false });
   };
-  const [tab, setTab] = useState<PanelTab>("details");
+  const [tab, setTab] = useState<PanelTab>(initialTab);
   const [page, setPage] = useState<RoomPage | null>(null);
   const [membersOpen, setMembersOpen] = useState(false);
   const dialogRef = useRef<HTMLElement>(null);
