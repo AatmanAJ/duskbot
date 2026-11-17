@@ -14,6 +14,8 @@
   "appUpdate.downloadingShort": "Downloading update",
   "appUpdate.downloadPage": "Opens dusk.bot to download {version}",
   "giveFeedback.card": "Give feedback",
+  "sidebar.browser.card": "{name}'s browser",
+  "sidebar.browser.hint": "Watch it browse and take over any time",
   "giveFeedback.title": "Give feedback",
   "giveFeedback.label": "What happened, or what would you change?",
   "giveFeedback.placeholder": "A bug, an idea, anything that felt off",

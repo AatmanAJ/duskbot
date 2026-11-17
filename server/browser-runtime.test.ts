@@ -6,6 +6,7 @@ import { addHeldSecretScrubber, HELD_SECRET_MASK } from "../shared/redact.ts";
 import { BROWSER_VIEWPORT } from "./browser-page-size.ts";
 import { BROWSER_CALL_DEFAULTS, BROWSER_HOVER_TOOL, BROWSER_RESTART_TOOL, BROWSER_UPLOAD_TOOL, BrowserRuntime, PERSON_ACTED, PERSON_TYPED_ON_PAGE, TransportError, browserRuntimeEnv, formatBrowserTiming, type BrowserSpawnSpec, type BrowserTiming } from "./browser-runtime.ts";
 import { launchSettingsKey } from "./browser-launch-key.ts";
+import { browserIdleMs } from "./browser-lifecycle-cleanup.ts";
 import { HARNESS_CALL_BUDGET_MS, HARNESS_PROXY_TIMEOUT_MS } from "./harness-budget.ts";
 import { RelayPorts } from "./browser-relay.ts";
 import { BrowserSteps, type StepCall, type StepContext } from "./browser-steps.ts";
@@ -629,6 +630,27 @@ describe("server-owned browser MCP runtime", () => {
     expect(next.content[1].text).toContain("again");
     const after = await value.agentRpc("s", spec(), "tools/call", { name: "echo", arguments: { text: "third" } }) as { content: Array<{ text: string }> };
     expect(after.content.map((part) => part.text).join("\n")).not.toMatch(/sat unused/);
+  });
+
+  it("on this computer, keeps a browser open through 39 unused minutes and closes it, tabs and all, at 40", async () => {
+    const closeBrowser = vi.fn(async () => true);
+    const value = runtime({ closeBrowser });
+    const closing = vi.fn();
+    value.onIdleClose(closing);
+    await value.agentRpc("s", spec(), "tools/call", { name: "echo", arguments: { text: "first" } });
+    const start = Date.now();
+    const clock = vi.spyOn(Date, "now");
+    try {
+      clock.mockReturnValue(start + 39 * 60_000);
+      expect(await value.closeIfIdle("s", browserIdleMs({}))).toBe(false);
+      expect(closing).not.toHaveBeenCalled();
+      clock.mockReturnValue(start + 40 * 60_000 + 1);
+      expect(await value.closeIfIdle("s", browserIdleMs({}))).toBe(true);
+      expect(closing).toHaveBeenCalledWith("s");
+      expect(closeBrowser).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("tells a bot whose temporary browser closed while idle that its sign-ins went with it", async () => {
