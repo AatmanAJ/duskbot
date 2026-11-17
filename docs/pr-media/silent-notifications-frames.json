@@ -1,0 +1,20 @@
+[
+  {
+    "kind": "done",
+    "title": "Pepper finished",
+    "body": "Overnight backup finished: 214 files copied, no errors.",
+    "silent": true
+  },
+  {
+    "kind": "done",
+    "title": "Pepper finished",
+    "body": "The 9:05 flight to Lisbon dropped to $212, want me to book it before it goes back up?",
+    "silent": null
+  },
+  {
+    "kind": "done",
+    "title": "Pepper finished",
+    "body": "hello from fake claude",
+    "silent": null
+  }
+]
