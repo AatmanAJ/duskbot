@@ -17,6 +17,7 @@ export const READ_ONLY_AGENT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "list_team_library",
   "set_status",
   "send_message",
+  "set_notification_sound",
 ]);
 
 /** The reviewed reads that reach past this workspace (X, the research catalog, a decision or extraction model): they

@@ -36,6 +36,10 @@ export type NotifyKind =
    * once: a tool turned off for the bots it doesn't start for. */
   | "notice";
 
+/** How a bot wants the notice for its turn's reply to sound, chosen with its set_notification_sound tool: `quiet` shows it
+ * (feed, unread, banner, badge) without a sound, `ding` plays one. */
+export type NotificationSound = "quiet" | "ding";
+
 export interface Notification {
   kind: NotifyKind;
   botId: string;
@@ -53,6 +57,10 @@ export interface Notification {
   /** On a Team Cloud, the one person this is for (their person key): a teammate tagged by name, or the person a bot
    * passed a message to. It reaches nobody else, an admin included. */
   forPerson?: string;
+  /** Shown as usual (feed, unread, banner, badge) but without a sound: the bot chose `quiet` for this turn, or it is a
+   * run nobody was watching (a routine, a webhook) that did not choose `ding`. Asks (an approval, a question, a sign-in
+   * or a secret) and failures never carry it. A device's own sound setting may still override it either way. */
+  silent?: true;
 }
 
 /** A `Notification` as the feed stores it: the live `notify` frame and `GET /api/notifications` carry the same entry. */

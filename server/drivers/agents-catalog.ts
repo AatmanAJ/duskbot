@@ -18,6 +18,7 @@ import { READ_PAGES_DEFINITION, READ_PAGES_TOOL } from "./agents-read-pages.ts";
 import { SLACK_TOOL_DEFINITIONS, SLACK_TOOL_NAMES } from "./agents-slack-tools.ts";
 import { STATUS_TOOL_DEFINITION } from "./agents-status-tool.ts";
 import { SEND_MESSAGE_TOOL_DEFINITION } from "./agents-send-message-tool.ts";
+import { NOTIFICATION_SOUND_TOOL_DEFINITION } from "./agents-sound-tool.ts";
 import type { CatalogProfile } from "./agents-catalog-profile.ts";
 import { advertisedSchema } from "./agents-schema.ts";
 export { catalogProfileFromEnv, type CatalogProfile } from "./agents-catalog-profile.ts";
@@ -173,6 +174,7 @@ const APPLIES_OUTCOME = " Read the result: it applies immediately at every acces
 const TOOL_DEFINITIONS = [
   STATUS_TOOL_DEFINITION,
   SEND_MESSAGE_TOOL_DEFINITION,
+  NOTIFICATION_SOUND_TOOL_DEFINITION,
   {
     name: "create_options_card",
     description:

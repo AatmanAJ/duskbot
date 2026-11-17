@@ -35,6 +35,7 @@ export type BridgeRoute = { name: string; arguments: Json } | { answer: BridgeAn
 export const BRIDGE_HOT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "set_status",
   "send_message",
+  "set_notification_sound",
   "create_options_card",
   "tool_result_read",
   "list_room_targets",

@@ -1,8 +1,11 @@
-// The bot's own words for its status line, from its set_status tool, however an engine spells or bridges the call. The
-// call itself is never a step: the bus logs it but delivers only the label it sets.
+// The bot's own words for its status line, from its set_status tool, and its choice of sound for this turn's notice, from
+// set_notification_sound, however an engine spells or bridges the call. Neither call is a step: the bus logs it but
+// delivers only the label it sets.
 import { STATUS_LABEL_MAX, STATUS_TOOL } from "../../shared/turn-progress.ts";
 import { SERVER_PREFIXES, USE_TOOL } from "../drivers/agents-bridge.ts";
 import { SEND_MESSAGE_TOOL } from "../drivers/agents-send-message-tool.ts";
+import { isNotificationSound, NOTIFICATION_SOUND_TOOL } from "../drivers/agents-sound-tool.ts";
+import type { NotificationSound } from "../../shared/notification.ts";
 import { newId, type RuntimeEvent } from "../contracts.ts";
 import { redactSecretsInText } from "../redact.ts";
 import { derivedLabel, LABEL_HOLD_MS, MODEL_HOLD_MS } from "./derived-status.ts";
@@ -71,6 +74,24 @@ export function sentMessageText(title: string | undefined, input: unknown): stri
   return null;
 }
 
+const SOUND_FIELD = /"sound"\s*:\s*"(quiet|ding)"/;
+
+/** A set_notification_sound call's choice, through the bridge's use_tool too; `null` for any other call, undefined when
+ * it names no sound that can be read. */
+export function notificationSoundCall(title: string | undefined, input: unknown): NotificationSound | undefined | null {
+  const name = bareName(title);
+  const args = parsed(input);
+  const sound = (value: unknown, raw: unknown) => {
+    if (record(value)) return isNotificationSound(value.sound) ? value.sound : undefined;
+    const match = typeof raw === "string" ? SOUND_FIELD.exec(raw) : null;
+    return match ? match[1] as NotificationSound : undefined;
+  };
+  if (name === NOTIFICATION_SOUND_TOOL) return sound(args, input);
+  if (name !== USE_TOOL) return null;
+  if (record(args)) return args.name === NOTIFICATION_SOUND_TOOL ? sound(record(args.arguments) ? args.arguments : {}, undefined) : null;
+  return typeof input === "string" && input.includes(`"${NOTIFICATION_SOUND_TOOL}"`) ? sound(undefined, input) : null;
+}
+
 const TRAILING = /[\s.,;:!?…]+$/u;
 
 /** The status line's label for what the bot said: no leading "is ", sentence case, no trailing punctuation or ellipsis,
@@ -111,6 +132,7 @@ interface Derived {
 export class TurnStatus {
   private readonly labels = new Map<string, { turnId?: string; label: string }>();
   private readonly calls = new Map<string, Set<string>>();
+  private readonly sounds = new Map<string, NotificationSound>();
   private readonly derived = new Map<string, Derived>();
   private readonly options: TurnStatusOptions;
   private readonly now: () => number;
@@ -133,6 +155,12 @@ export class TurnStatus {
             createdAt: event.createdAt, turnId: event.turnId, type: "item.completed", itemType: "assistant_text", text: sent,
           } as RuntimeEvent,
         };
+      }
+      const sound = notificationSoundCall(event.title, event.input);
+      if (sound !== null) {
+        this.hold(event);
+        if (sound) this.sounds.set(event.threadId, sound);
+        return {};
       }
       const text = statusCallText(event.title, event.input);
       if (text === null) return null;
@@ -167,9 +195,10 @@ export class TurnStatus {
     calls.add(event.itemId);
   }
 
-  /** An engine's own report of a set_status or send_message call being written: never a step on the status line. */
+  /** An engine's own report of a set_status, send_message or set_notification_sound call being written: never a step on the status line. */
   hides(event: ProgressEvent): boolean {
-    return event.label === undefined && (isStatusToolName(event.tool) || bareName(event.tool) === SEND_MESSAGE_TOOL);
+    const name = bareName(event.tool);
+    return event.label === undefined && (isStatusToolName(event.tool) || name === SEND_MESSAGE_TOOL || name === NOTIFICATION_SOUND_TOOL);
   }
 
   /** A frame of the turn carries the label the bot set last. */
@@ -215,6 +244,17 @@ export class TurnStatus {
       this.derived.set(threadId, held);
     }
     return held;
+  }
+
+  /** The sound the bot chose for the notice of the thread's latest turn. It outlives the turn's end, which is when that
+   * notice goes, and is dropped when the thread's next turn starts. */
+  notificationSound(threadId: string): NotificationSound | undefined {
+    return this.sounds.get(threadId);
+  }
+
+  /** A new turn starts on the thread: the last turn's choice of sound no longer applies. */
+  turnStarted(threadId: string): void {
+    this.sounds.delete(threadId);
   }
 
   forget(threadId: string): void {
