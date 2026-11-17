@@ -10,6 +10,8 @@ export type PageEvaluate = (expression: string) => Promise<unknown>;
 export interface DomDriver {
   open(url: string): Promise<void>;
   clickAt(x: number, y: number): Promise<void>;
+  /** Moves the pointer to where the next action lands, so a person watching can follow it. */
+  hover?(x: number, y: number): Promise<void>;
   insertText(text: string): Promise<void>;
   /** Types a secret: the page is then closed to the bot's eyes until the secret is gone from it. */
   insertSecret?(text: string): Promise<void>;
@@ -236,7 +238,8 @@ element.focus();
 if (typeof element.select === "function") element.select();
 else { const range = document.createRange(); range.selectNodeContents(element); const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); }
 const now = focusedElement();
-return { focused: now === element, filled: String("value" in element ? element.value : element.textContent || "").length > 0 };`);
+const box = boxOf(element);
+return { focused: now === element, filled: String("value" in element ? element.value : element.textContent || "").length > 0, x: box.x + box.width / 2, y: box.y + box.height / 2 };`);
 const FILLED = (role: string, name: string) => FIND(role, name, `return { filled: String("value" in element ? element.value : element.textContent || "").length > 0 };`);
 const CHOOSE = (role: string, name: string, value: string) => FIND(role, name, `
 if (element.tagName !== "SELECT") return { wrongKind: true };
@@ -249,13 +252,15 @@ if (index < 0) {
   index = starts.length === 1 ? options.indexOf(starts[0]) : -1;
 }
 if (index < 0 || options[index].disabled) return { noOption: true };
+element.scrollIntoView({ block: "center", inline: "center" });
 element.focus();
 if (element.selectedIndex !== index) {
   element.selectedIndex = index;
   element.dispatchEvent(new Event("input", { bubbles: true }));
   element.dispatchEvent(new Event("change", { bubbles: true }));
 }
-return { chosen: element.selectedIndex === index };`);
+const box = boxOf(element);
+return { chosen: element.selectedIndex === index, x: box.x + box.width / 2, y: box.y + box.height / 2 };`);
 
 const record = (value: unknown): Record<string, unknown> | null => (value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null);
 const finite = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
@@ -341,20 +346,23 @@ export function createDomSurface(evaluate: PageEvaluate, driver: DomDriver): Rep
           if (lost) return { ok: false, reason: lost };
           if (chosen.wrongKind === true) return { ok: false, reason: sentence(`${quoted(role, name)} is not a plain list, so it has to be picked from by hand.`) };
           if (chosen.noOption === true) return { ok: false, reason: sentence(`${quoted(role, name)} has no choice "${options?.secret ? "the saved value" : action.value}".`) };
-          return chosen.chosen === true ? { ok: true } : { ok: false, reason: sentence(`${quoted(role, name)} did not take the choice.`) };
+          if (chosen.chosen !== true) return { ok: false, reason: sentence(`${quoted(role, name)} did not take the choice.`) };
+          await driver.hover?.(finite(chosen.x), finite(chosen.y)).catch(() => {});
+          return { ok: true };
         }
         const focus = await ask(FOCUS(role, name));
         const lost = notFound(focus, role, name);
         if (lost) return { ok: false, reason: lost };
         if (focus.wrongKind === true) return { ok: false, reason: sentence(`${quoted(role, name)} does not take text.`) };
         if (focus.focused !== true) return { ok: false, reason: `Could not put the cursor in ${quoted(role, name)}.` };
+        await driver.hover?.(finite(focus.x), finite(focus.y)).catch(() => {});
         if (action.value.length > 0) await (options?.secret && driver.insertSecret ? driver.insertSecret(action.value) : driver.insertText(action.value));
         else if (focus.filled === true) await driver.press("Backspace");
         const after = await ask(FILLED(role, name));
         if ((after.filled === true) !== action.value.length > 0) return { ok: false, reason: sentence(`${quoted(role, name)} did not take the text.`) };
         return { ok: true };
-      } catch {
-        return { ok: false, reason: "The page could not be reached." };
+      } catch (error) {
+        return { ok: false, reason: error instanceof Error && error.message ? error.message.slice(0, 300) : "The page could not be reached." };
       }
     },
     async observe(): Promise<Observation> {

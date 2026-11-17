@@ -68,13 +68,21 @@ function BlankRow({ blank, onRename, onFix }: { blank: DemoBlank; onRename: (to:
   );
 }
 
+const PICTURE = { width: 176, height: 110, zoom: 0.45 } as const;
+
+/** A step's picture, drawn in close on where it happened; the whole screen from the top when nothing says where. */
 function StepPicture({ recordingId, step, frame, number }: { recordingId: string; step: DemoStep; frame: DemoFrame | undefined; number: number }) {
-  if (!step.frame || !frame) return <div aria-hidden="true" className="flex h-[60px] w-24 shrink-0 items-center justify-center rounded-md bg-ink/6 text-ink-tertiary"><FileText size={16} /></div>;
+  const box = "relative shrink-0 overflow-hidden rounded-md bg-ink/6";
+  const size = { width: PICTURE.width, height: PICTURE.height };
+  if (!step.frame || !frame) return <div aria-hidden="true" style={size} className={cn(box, "flex items-center justify-center text-ink-tertiary")}><FileText size={16} /></div>;
   const scale = frame.scale ?? 1;
+  const zoom = step.point ? PICTURE.zoom : PICTURE.width / frame.width;
+  const within = (value: number, room: number) => Math.max(Math.min(0, room), Math.min(0, value));
+  const left = step.point ? within(PICTURE.width / 2 - step.point.x * scale * zoom, PICTURE.width - frame.width * zoom) : 0;
+  const top = step.point ? within(PICTURE.height / 2 - step.point.y * scale * zoom, PICTURE.height - frame.height * zoom) : 0;
   return (
-    <div className="relative h-[60px] w-24 shrink-0 overflow-hidden rounded-md bg-ink/6">
-      <img src={frameUrl(recordingId, step.frame)} alt={t("showOnce.step.picture", { number })} loading="lazy" draggable={false} className="size-full object-cover object-top" />
-      {step.point ? <span aria-hidden="true" className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-app bg-accent" style={{ left: `${Math.min(100, (step.point.x * scale / frame.width) * 100)}%`, top: `${Math.min(100, (step.point.y * scale / frame.height) * 100)}%` }} /> : null}
+    <div role="img" aria-label={t("showOnce.step.picture", { number })} style={{ ...size, backgroundImage: `url("${frameUrl(recordingId, step.frame)}")`, backgroundSize: `${frame.width * zoom}px ${frame.height * zoom}px`, backgroundPosition: `${left}px ${top}px` }} className={cn(box, "bg-no-repeat")}>
+      {step.point ? <span aria-hidden="true" className="absolute size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent bg-accent/15" style={{ left: left + step.point.x * scale * zoom, top: top + step.point.y * scale * zoom }} /> : null}
     </div>
   );
 }

@@ -80,6 +80,8 @@ interface Draft {
   effect?: DemoEvent;
   events: DemoEvent[];
   point?: { x: number; y: number };
+  /** The picture of a step no recorded event stands behind. */
+  frame?: string;
 }
 
 const roleWord = (role: string) => (role === "textbox" || role === "searchbox" || role === "spinbutton" ? "field" : role === "combobox" || role === "listbox" ? "list" : role === "element" ? "text" : role);
@@ -113,7 +115,7 @@ export function outlineDemo(trace: DemoTrace): DemoPlan {
   const startUrl = trace.surface === "browser" && first && first.kind !== "open" ? first.context?.url : undefined;
   if (startUrl) {
     const site = siteOf(first);
-    drafts.push({ title: site ? `Open ${site}` : "Open the page", goal: `Go to ${startUrl}.`, actions: [{ do: "open", url: startUrl }], check: { kind: "url", text: pathOf(startUrl) }, events: [] });
+    drafts.push({ title: site ? `Open ${site}` : "Open the page", goal: `Go to ${startUrl}.`, actions: [{ do: "open", url: startUrl }], check: { kind: "url", text: pathOf(startUrl) }, events: [], ...(first?.before ? { frame: first.before } : {}) });
   }
 
   for (let index = 0; index < events.length; index++) {
@@ -198,9 +200,17 @@ export function outlineDemo(trace: DemoTrace): DemoPlan {
     return { kind: "visual", expect: blind ? "The screen looks like the picture taken after this step." : `The screen shows the result of this step: ${draft.title.toLowerCase()}.` };
   }
 
+  /** Where on the picture a step happened: where the person pressed, or the middle of what they typed into. */
+  const pointOf = (draft: Draft) => {
+    if (draft.point) return draft.point;
+    const event = draft.events.find((each) => each.point) ?? draft.events[0];
+    const bounds = event?.target?.bounds;
+    return event?.point ?? (bounds && bounds.width > 0 ? { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 } : undefined);
+  };
   const steps: DemoStep[] = drafts.map((draft, index) => {
-    const before = draft.events[0]?.before;
+    const before = draft.frame ?? draft.events[0]?.before;
     const after = draft.events.at(-1)?.after;
+    const point = pointOf(draft);
     return {
       id: `s${index + 1}`,
       title: short(draft.title, TITLE_LIMIT),
@@ -209,7 +219,7 @@ export function outlineDemo(trace: DemoTrace): DemoPlan {
       check: draft.check ?? effectCheck(draft),
       ...(before ?? after ? { frame: (before ?? after)! } : {}),
       ...(after ? { frameAfter: after } : {}),
-      ...(draft.point && draft.actions.length === 0 ? { point: draft.point } : {}),
+      ...(point ? { point } : {}),
       events: draft.events.map((event) => event.seq),
     };
   });

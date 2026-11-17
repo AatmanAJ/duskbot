@@ -147,10 +147,11 @@ describe("reviewing the steps", () => {
     const steps = [...document.querySelectorAll<HTMLElement>("[data-demo-step]")];
 
     expect(steps.map((step) => step.querySelector<HTMLInputElement>("input")!.value)).toEqual(["Click New expense", "Enter Merchant", "Click Submit expense"]);
-    expect(steps[0]!.querySelector("img")!.getAttribute("src")).toBe(`/api/demos/${recording().id}/frames/f00000000000000000001`);
+    expect(steps[0]!.querySelector<HTMLElement>("[role=img]")!.style.backgroundImage).toContain(`/api/demos/${recording().id}/frames/f00000000000000000001`);
+    expect(steps[0]!.querySelector("[role=img]")!.getAttribute("aria-label")).toBe("The screen at step 1");
     expect(steps[0]!.textContent).toContain("Check: The screen shows “New expense”");
     expect(steps[1]!.textContent).toContain("Check: “Merchant” holds {{merchant}}");
-    expect(steps[1]!.querySelector("img")).toBeNull();
+    expect(steps[1]!.querySelector("[role=img]")).toBeNull();
   });
 
   it("renames an input in every step that uses it, and refuses a name that is taken", async () => {

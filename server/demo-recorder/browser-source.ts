@@ -1,4 +1,5 @@
 import { valueInWorld } from "../browser/cdp/evaluate.ts";
+import type { PointerReporter } from "../browser/cdp/actions.ts";
 import type { CdpPage } from "../browser/cdp/page.ts";
 import type { Screenshot } from "../browser/cdp/screencast.ts";
 import { personUrl } from "../browser/dispatch.ts";
@@ -13,7 +14,7 @@ export interface BrowserDemoAccess {
   page(): CdpPage | null;
   still(): Promise<Screenshot | null>;
   /** One action on the page in front, run as the bot's own are; starts the browser when it is asleep. */
-  act<T>(work: (page: CdpPage) => Promise<T>): Promise<T>;
+  act<T>(work: (page: CdpPage, pointer: PointerReporter | undefined) => Promise<T>): Promise<T>;
 }
 
 const OPEN_TIMEOUT_MS = 30_000;
@@ -37,7 +38,8 @@ export function browserDemoSource(access: BrowserDemoAccess): { probe: Accessibi
       if (!address) throw new Error("That address cannot be opened.");
       await access.act((page) => page.navigate(address, { readiness: "load", timeoutMs: OPEN_TIMEOUT_MS }));
     },
-    clickAt: (x, y) => access.act((page) => page.mouse.click(x, y)),
+    clickAt: async (x, y) => { await access.act((page, pointer) => page.click({ x, y }, pointer ? { pointer } : {})); },
+    hover: async (x, y) => { await access.act((page, pointer) => page.hover({ x, y }, pointer ? { pointer } : {})); },
     insertText: (text) => access.act((page) => page.keyboard.insertText(text)),
     insertSecret: (text) => access.act(async (page) => {
       // Security: armed before the secret is typed, so no screenshot or page script of the bot's can read it back.

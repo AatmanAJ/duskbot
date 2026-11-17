@@ -16,6 +16,7 @@ import { SecretHolds, type SecretHold } from "../browser-secret-hold.ts";
 import { scrubBrowserResult } from "../browser-tool-shape.ts";
 import type { FillLoginDeps } from "../login-fill.ts";
 import type { Backend, OpenedBrowser } from "./backends.ts";
+import type { PointerReporter } from "./cdp/actions.ts";
 import type { CdpBrowser } from "./cdp/browser.ts";
 import type { Download } from "./cdp/downloads.ts";
 import { isUnanswered } from "./cdp/errors.ts";
@@ -669,12 +670,12 @@ export class BrowserService {
   }
 
   /** One action of a task being done again, run as the bot's own are: in turn with them, and refused while a person holds the browser. */
-  async demoAct<T>(target: BrowserTarget, work: (page: CdpPage) => Promise<T>): Promise<T> {
+  async demoAct<T>(target: BrowserTarget, work: (page: CdpPage, pointer: PointerReporter | undefined) => Promise<T>): Promise<T> {
     const profile = this.profile(target);
     await this.running(profile);
     const tab = profile.active() ?? await this.#openTab(profile, "agent");
     profile.lastUsed = Date.now();
-    const done = await this.#lanes.run(profile.key, async () => ({ value: await profile.control.agent(tab, () => work(tab.page)) }), this.#options.laneWaitMs);
+    const done = await this.#lanes.run(profile.key, async () => ({ value: await profile.control.agent(tab, () => work(tab.page, profile.hub.pointer(tab))) }), this.#options.laneWaitMs);
     if (!done) throw new Error(LANE_BUSY);
     return done.value;
   }
