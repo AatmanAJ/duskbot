@@ -19,6 +19,9 @@ export interface ScanResult {
   text: string;
 }
 
+/** A push still in Notification Center: its own identifier, the conversation and the notification it was for. */
+export interface DeliveredNotification { id: string; threadId?: string; notificationId?: string }
+
 export interface AppleCredential { identityToken: string; authorizationCode: string; givenName?: string; familyName?: string }
 
 export type CameraPermission = "granted" | "denied" | "prompt";
@@ -124,6 +127,12 @@ export interface MobilePlatform {
    * the system's question: a phone not yet asked resolves null. */
   registerPush?(options?: { prompt?: boolean }): Promise<{ token: string; platform: "apns" | "fcm" } | null>;
   onNotificationOpen?(listener: (target: MobileOpenTarget) => void): () => void;
+  /** The conversation on screen, null for none: a push about it shows nothing while the app is open, any other shows
+   * the system's own banner. */
+  setViewingThread?(threadId: string | null): void;
+  /** What Notification Center holds from the bot host, and its removal. */
+  deliveredNotifications?(): Promise<DeliveredNotification[]>;
+  removeDeliveredNotifications?(ids: readonly string[]): Promise<void>;
   /** A push's button, its reply field, a tap on a push from the bot host, or a Live Activity's button; one that arrived
    * before a listener waits for the first. */
   onPhoneAction?(listener: (action: NativeAction) => void): () => void;

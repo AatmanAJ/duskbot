@@ -18,6 +18,9 @@ import { readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
 import { AiConsentProvider, AiConsentSheet } from "./consent/AiConsent";
 import { installAiReport } from "@/lib/ai-report";
 import { registerPushForConnection } from "./connection/push";
+import { setPresenceThread } from "./connection/presence";
+import { useSeenNotifications } from "./connection/seen-notifications";
+import { visibleNotificationThread } from "@/state/thread-navigation";
 import { supportMail } from "./legal";
 import { NavStack } from "./NavStack";
 import { ChatScreen } from "./ChatScreen";
@@ -82,6 +85,10 @@ function Shell() {
 
   // with the list in front, the chat last opened is not being read: its replies stay unread and still notify
   useEffect(() => { setChatCovered(chatId === null); return () => setChatCovered(false); }, [chatId]);
+  // the conversation on screen never pushes or shows a banner here; pushes already seen leave Notification Center
+  const viewingThread = chatId ? visibleNotificationThread(state) : null;
+  useEffect(() => { setPresenceThread(viewingThread); return () => setPresenceThread(null); }, [viewingThread]);
+  useSeenNotifications(platform, state.notifications, viewingThread);
 
   const openChat = useCallback((id: string) => {
     const current = latest.current;
