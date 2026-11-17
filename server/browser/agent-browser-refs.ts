@@ -102,7 +102,7 @@ export class CarriedRefs {
     if (tool === "agent_browser_open") this.#shots.delete(key);
     const refs = refsOf(result);
     if (!refs) return;
-    this.#shots.set(key, { args: tool === "agent_browser_open" ? OPEN_SNAPSHOT : { ...(record(args) ?? {}) }, refs, carried: null });
+    this.#shots.set(key, { args: tool === "agent_browser_open" ? OPEN_SNAPSHOT : { ...record(args) }, refs, carried: null });
   }
 
   /** The engine cleared its refs by switching to this conversation's tab: snapshot again and map the old refs over. */
