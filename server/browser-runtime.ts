@@ -16,7 +16,7 @@ import { settleNote, settlePage, type PageReader } from "./browser/cdp/settle.ts
 
 import { ThreadTabs, type ClosedThreadTab } from "./browser-thread-tabs.ts";
 import { agentBrowserTypeInLines, runAgentBrowserTypeInLines } from "./line-break-typing.ts";
-import type { Content, ToolResult } from "./browser/shape.ts";
+import { asToolResult, firstText, lostCallToolError, recoveredResult, stillBusyToolError, stuckBrowserToolError, toolNameOf, type ToolResult } from "./browser-runtime-results.ts";
 import { BATCH_TOOL } from "./browser/tools.ts";
 
 /** The hosts whose bot check cleared in each browser. */
@@ -67,17 +67,13 @@ const idleClosedNote = (saves: boolean) => `Your browser sat unused and was clos
 const PERSON_RESTARTED = "The person restarted your browser from the Browser panel; this call ran in the fresh browser. Pages you had open are gone, so open the page you need again before using earlier @eN refs, and check whether an interrupted action already happened before repeating it.";
 /** One bot call, lane wait included, answers within `callBudgetMs`; the engine's action keeps `followUpReserveMs` of it for the reads after. */
 export const BROWSER_CALL_DEFAULTS = { requestTimeoutMs: 120_000, laneWaitMs: 30_000, callBudgetMs: HARNESS_CALL_BUDGET_MS, followUpReserveMs: 15_000 } as const;
-const RESTART_COST = "a restart closes every tab and loses page state such as form input";
-const LATE = Symbol("late");
-const HOLD_POLL_MS = 500;
+const LATE = Symbol("late"), HOLD_POLL_MS = 500;
 
 const PAGE_ACTIONS: ReadonlySet<string> = new Set([
   "agent_browser_click", "agent_browser_fill", "agent_browser_type", "agent_browser_press",
   "agent_browser_check", "agent_browser_uncheck", "agent_browser_select", BROWSER_UPLOAD_TOOL, BROWSER_HOVER_TOOL,
 ]);
-const MAX_REQUEST_BYTES = 1_048_576;
-const MAX_RESPONSE_BYTES = 16_777_216;
-const HANDSHAKE_TIMEOUT_MS = 1_000;
+const MAX_REQUEST_BYTES = 1_048_576, MAX_RESPONSE_BYTES = 16_777_216, HANDSHAKE_TIMEOUT_MS = 1_000;
 const HOST_ENV = ["HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PATH", "Path", "TMPDIR", "TMP", "TEMP", "SystemRoot", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"];
 
 /** One env for MCP, viewer and cleanup so they share HOME/socket paths: OS plumbing, never provider credentials. */
@@ -1143,43 +1139,6 @@ export class BrowserRuntime {
   async closeAll(): Promise<void> {
     await Promise.all([...new Set([...this.clients.keys(), ...this.gates.keys(), ...this.holds.sessions()])].map((session) => this.close(session)));
   }
-}
-
-function stuckBrowserToolError(): { isError: true; content: Array<{ type: "text"; text: string }> } {
-  return { isError: true, content: [{ type: "text", text: BROWSER_INTERRUPTED }] };
-}
-
-function lostCallToolError(call: string): { isError: true; content: Array<{ type: "text"; text: string }> } {
-  return { isError: true, content: [{ type: "text", text: `The browser did not answer this ${call} call. It may still be running, or it may already have taken effect. Do not repeat it yet: your next browser call first waits for the browser, then tells you where the page is. Call ${BROWSER_RESTART_TOOL} only if the browser stays busy, because ${RESTART_COST}.` }] };
-}
-
-function stillBusyToolError(call: string): { isError: true; content: Array<{ type: "text"; text: string }> } {
-  return { isError: true, content: [{ type: "text", text: `The browser is still busy with an earlier ${call} call that did not answer. This call did not run. Try again in a moment. If the browser stays busy, call ${BROWSER_RESTART_TOOL}; ${RESTART_COST}.` }] };
-}
-
-function recoveredResult(call: string, url: string): { content: Array<{ type: "text"; text: string }> } {
-  return { content: [{ type: "text", text: `The browser answers again: the earlier ${call} call that did not answer has ended, and it may have taken effect. This call did not run. The current page is ${url || "unknown"}. Check the page before you repeat the earlier action, then call again what you need.` }] };
-}
-
-function toolNameOf(params: unknown): string | undefined {
-  const name = (params as { name?: unknown } | null)?.name;
-  return typeof name === "string" ? name : undefined;
-}
-
-function firstText(result: unknown): string {
-  const content = (result as { content?: unknown } | null)?.content;
-  const part = Array.isArray(content) ? content.find((item) => typeof (item as { text?: unknown } | null)?.text === "string") : undefined;
-  return part ? (part as { text: string }).text : "";
-}
-
-/** An engine answer as a batch step's result: its text and pictures. */
-function asToolResult(result: unknown): ToolResult {
-  const record = result as { content?: unknown; isError?: unknown } | null;
-  const content = (Array.isArray(record?.content) ? record.content as unknown[] : []).filter((part): part is Content => {
-    const item = part as { type?: unknown; text?: unknown; data?: unknown } | null;
-    return (item?.type === "text" && typeof item.text === "string") || (item?.type === "image" && typeof item.data === "string");
-  });
-  return { content, ...(record?.isError === true ? { isError: true } : {}) };
 }
 
 function withDuskTools(result: unknown): unknown {
