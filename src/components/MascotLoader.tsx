@@ -4,13 +4,12 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { MASCOT_INK } from "@/lib/mascot";
 import {
-  ARRIVE_MS, BEAT_MS, arrivePose, beatPose, blinking, cheerPose, idleBob, loadingFace, loadingLaunch, loadingLineAt, napPose,
+  APPEAR_AFTER_MS, ARRIVE_MS, BEAT_MS, arrivePose, beatPose, blinking, cheerPose, idleBob, loadingFace, loadingLaunch, loadingLineAt, napPose,
   pickBeat, still, wakePose, type LoadingCrew, type LoadingFace, type LoaderBeat, type LoaderEyes, type LoaderPose,
 } from "@/lib/mascot-loading";
 import type { LocaleKey } from "@/locales";
 import CREW_SPRITES from "../../electron/resources/startup-crew.json";
 
-const APPEAR_AFTER_MS = 220;
 const TICK_MS = 200;
 const HAPPY_MS = 300;
 const EXIT_MS = 240;

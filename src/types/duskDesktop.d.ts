@@ -254,6 +254,12 @@ const __APP_VERSION__: string;
         cloudMove?: (id: string) => Promise<boolean>;
         /** Main's word that the places or the sign-in changed: read them again. */
         onChanged?: (callback: () => void) => () => void;
+        /** Main's word that a switch to another place began (true) or ended without a new page (false). */
+        onSwitching?: (callback: (on: boolean) => void) => () => void;
+        /** The loading mascot this page shows, handed on to the page the switch opens. */
+        handLook?: (look: import("../lib/mascot-loading").HandedLook) => void;
+        /** The mascot the page before handed on, once, while it is fresh. */
+        takeLook?: () => import("../lib/mascot-loading").HandedLook | null;
       };
       /** Buying another Cloud from the rail's ＋, on this app's page or a hosted Cloud's; absent on an older app. */
       cloudAdd?: {

@@ -193,6 +193,13 @@ const bridge = {
       ipcRenderer.on("workspaces:changed", handler);
       return () => ipcRenderer.removeListener("workspaces:changed", handler);
     },
+    onSwitching: (cb) => {
+      const handler = (_event, on) => cb(on === true);
+      ipcRenderer.on("workspaces:switching", handler);
+      return () => ipcRenderer.removeListener("workspaces:switching", handler);
+    },
+    handLook: (look) => ipcRenderer.send("workspaces:switch-look", look),
+    takeLook: () => { try { return ipcRenderer.sendSync("workspaces:switch-look-take") ?? null; } catch { return null; } },
   },
   // The window's own rail (this app's page at /rail, beside every place's page): while a sheet of its own is open it
   // covers the window; the skin of the page beside it comes from main, and whether that page draws the window's frame.

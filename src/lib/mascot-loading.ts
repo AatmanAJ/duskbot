@@ -1,5 +1,6 @@
 import type { LocaleKey } from "@/locales";
-import { PICKER_COLORS, type MausColor } from "./mascot";
+import { HANDED_KEY } from "./switch-hold-key";
+import { MASCOT_INK, PICKER_COLORS, type MausColor } from "./mascot";
 
 /** How the loading mascot carries itself through one launch: looking about, hopping in place, mulling, all ears. */
 export const LOADING_MOODS = ["searching", "waiting", "thinking", "listening"] as const;
@@ -26,14 +27,56 @@ export function pickLoadingLook(last: string | null, random: () => number = Math
 
 let launch: { start: number; color: MausColor; mood: LoadingMood; crew: LoadingCrew; seen: boolean } | null = null;
 
-/** One loading look and clock for the whole launch, so every screen that waits shows the same mascot, mid-story. */
-export function loadingLaunch(now = performance.now()) {
+/** The mascot a page hands on to the page a switch of place opens: who it is, how long it has been on screen, and the
+ * ink it is drawn in and the ground under it, for the next page to paint before its own code has loaded. */
+export type HandedLook = { crew: LoadingCrew; color: MausColor; mood: LoadingMood; elapsed: number; ink?: string; ground?: string };
+
+/** Only after this long on screen has the mascot appeared (MascotLoader waits as long before it shows). */
+export const APPEAR_AFTER_MS = 220;
+
+const handedOf = (value: unknown): HandedLook | null => {
+  if (!value || typeof value !== "object") return null;
+  const { crew, color, mood, elapsed } = value as Record<string, unknown>;
+  if (!LOADING_CREW.includes(crew as LoadingCrew) || !PICKER_COLORS.includes(color as MausColor) || !LOADING_MOODS.includes(mood as LoadingMood)) return null;
+  if (typeof elapsed !== "number" || !Number.isFinite(elapsed) || elapsed < 0) return null;
+  return { crew: crew as LoadingCrew, color: color as MausColor, mood: mood as LoadingMood, elapsed };
+};
+
+/** One loading look and clock for the whole launch, so every screen that waits shows the same mascot, mid-story. A page
+ * that a switch of place opened goes on with the mascot the page before `handed` on, where it was. */
+export function loadingLaunch(now = performance.now(), handed: () => unknown = handedByDesktop) {
   if (launch) return launch;
+  const came = handedOf(handed());
+  if (came) {
+    launch = { start: now - came.elapsed, color: came.color, mood: came.mood, crew: came.crew, seen: came.elapsed >= APPEAR_AFTER_MS };
+    return launch;
+  }
   let last: string | null = null;
   try { last = localStorage.getItem(LAST_COLOUR); } catch { /* storage off: any colour */ }
   launch = { start: now, ...pickLoadingLook(last), seen: false };
   try { localStorage.setItem(LAST_COLOUR, launch.color); } catch { /* storage off */ }
   return launch;
+}
+
+function handedByDesktop(): unknown {
+  if (typeof window === "undefined") return null;
+  const held = (window as unknown as Record<string, unknown>)[HANDED_KEY];
+  if (held) return held;
+  try { return window.duskDesktop?.workspaces?.takeLook?.() ?? null; } catch { return null; }
+}
+
+/** A switch of place began: the same mascot waits again from the start, hopping in as on launch. */
+export function restartLoadingLaunch(now = performance.now()) {
+  const look = loadingLaunch(now);
+  look.start = now;
+  look.seen = false;
+  return look;
+}
+
+/** The mascot as it is now, to hand on to the page a switch of place opens. */
+export function handLoadingLook(now = performance.now(), ground?: string): HandedLook {
+  const look = loadingLaunch(now);
+  return { crew: look.crew, color: look.color, mood: look.mood, elapsed: Math.max(0, now - look.start), ink: MASCOT_INK[look.color], ...(ground ? { ground } : {}) };
 }
 
 export function resetLoadingLaunch() { launch = null; }

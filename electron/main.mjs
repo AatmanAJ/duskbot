@@ -119,6 +119,7 @@ import { askForMicrophone, openPrivacySettings } from "./privacy-settings.mjs"; 
 import { createHomeWindow, HOME_SCREEN_PATH, installHomeWindowIpc, WELCOMED_ROUTE } from "./home-window.mjs";
 import { settledActive } from "./workspace-choice.mjs"; import { createWorkspaceReconnect, installWorkspaceReconnectIpc, RECONNECT_PATH } from "./workspace-reconnect.mjs";
 import { createTeamProfileSeeds } from "./team-profile-seed.mjs";
+import { createWorkspaceSwitch, installWorkspaceSwitchIpc } from "./workspace-switch.mjs";
 import { createHomePlaces } from "./home-places.mjs"; import { createDesktopRing, installAccounts } from "./accounts-main.mjs"; import { createAddedCloudNotice, installCloudRail, railPlaces } from "./cloud-rail.mjs"; import { createPlaceInboxWatch } from "./place-inbox-watch.mjs"; import { homeLook, otherOwnClouds, withoutOldCloudHome } from "./cloud-list.mjs"; import { installPlaceLook } from "./place-look.mjs"; import { CHROME_RAIL_PATH, createChromeRail } from "./chrome-rail.mjs";
 import { createWindowStateFile } from "./window-state-file.mjs";
 import { bundleSource, createLocalUi, devSource, originOf, servedOrigins } from "./local-ui.mjs";
@@ -1805,6 +1806,10 @@ function servePlaceFrom(url) {
   return localUi ? localUi.refresh() : Promise.resolve();
 }
 
+const mainWindowAlive = () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
+const workspaceSwitch = createWorkspaceSwitch({ window: mainWindowAlive, log: slog });
+installWorkspaceSwitchIpc({ ipcMain, workspaceSwitch, window: mainWindowAlive });
+
 function navigateMainWindow(url) {
   if (!mainWindow || mainWindow.isDestroyed()) return Promise.resolve(false);
   return servePlaceFrom(url).then(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.loadURL(url).then(() => true, () => false) : false));
@@ -1893,7 +1898,7 @@ async function switchLocalEnvironmentTo(targetDir, targetId, quiet = false, { st
       return failedSwitch();
     }
     switchSucceeded = true;
-    if (!stay) navigateMainWindow(rendererOrigin());
+    if (!stay) await navigateMainWindow(rendererOrigin());
     return { ok: true };
   } catch (error) {
     slog(`environment switch to ${targetDir} failed (${error?.message ?? error})`);
@@ -1918,6 +1923,10 @@ const placesChosen = placesChosenStore(jsonFile(path.join(app.getPath("userData"
 
 async function switchEnvironment(id) {
   if ((id === environmentsState.activeId && !homeWindow.asking()) || (id !== LOCAL_ID && !environmentsState.environments.some((entry) => entry.id === id))) return;
+  return workspaceSwitch.around(() => switchEnvironmentNow(id));
+}
+
+async function switchEnvironmentNow(id) {
   placesChosen.choose();
   const entry = environmentsState.environments.find((candidate) => candidate.id === id);
   if (localRuntimeStarting && (id === LOCAL_ID || entry?.kind === "local")) await waitForLocalStartup(localRuntimeStarting);
@@ -3068,7 +3077,8 @@ const cloudFocus = createCloudFocus({ fetch: (...args) => session.defaultSession
 app.on("browser-window-focus", () => { cloudFocus.check(); });
 /** Every path that shows the window: My Cloud once it is the person's home, else as before. */
 function showHome(options) {
-  return homeWindow.show(options).catch(error => slog(`home: ${error?.message ?? error}`));
+  const shown = () => homeWindow.show(options).catch(error => slog(`home: ${error?.message ?? error}`));
+  return options?.place ? workspaceSwitch.around(shown) : shown();
 }
 const openOwnCloud = id => showHome({ place: { cloud: id, name: environmentsState.environments.find(entry => entry.cloud?.id === id)?.name } });
 const placeInbox = createPlaceInboxWatch({ places: () => [{ id: LOCAL_ID, local: true }, ...environmentsState.environments.filter(entry => entry.kind !== "local" && entry.origin)], activeId: () => environmentsState.activeId, local: localServerRequest, cloudFetch: (...args) => session.defaultSession.fetch(...args), asleep: origin => homeWindow.asleepAt(origin), shown: () => !desktopRemoteAccess && serverReady && Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()), changed: () => railChanged() });
@@ -3200,7 +3210,7 @@ ipcMain.handle("workspaces:menu", workspaceOnly(async (_event, from) => {
       ...(homeWindow.cloudOrigin() && cloudOffersAllowed() ? { onAddCloud: () => void ensureCloudAccount().webHandoff({ page: "cloud" }).catch(error => slog(`add cloud: ${error?.message ?? error}`)) } : {}),
       kindIcon: placeKindIcon,
       // with My Cloud home, this computer stays one tap away: once its bots moved it opens fresh (its own first bot), never the frozen copy that refuses every send
-      onLocal: () => void workspaceMenuAction(() => (cleanWorkspace.marker().frozen ? homeWindow.openHere() : activeEnvironment(environmentsState) ? switchEnvironment(LOCAL_ID) : (homePlaces.remember(null), persistEnvironments(withActive(environmentsState, LOCAL_ID), "chosen"), navigateMainWindow(rendererOrigin())))),
+      onLocal: () => void workspaceMenuAction(() => (cleanWorkspace.marker().frozen ? workspaceSwitch.around(() => homeWindow.openHere()) : activeEnvironment(environmentsState) ? switchEnvironment(LOCAL_ID) : workspaceSwitch.around(() => (homePlaces.remember(null), persistEnvironments(withActive(environmentsState, LOCAL_ID), "chosen"), navigateMainWindow(rendererOrigin()))))),
       localShown: Boolean(mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents })),
       ...(await placesMenuOptions({ homeOrigin: homeWindow.cloudOrigin(), cloud: cloudHomeEntry(), home: oneHome.away() || ownHome?.away() === true, platform: process.platform, port: SERVER_PORT })),
     });
