@@ -190,6 +190,8 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
     expect(await busyThreads(botId)).toEqual([threads[0]]);
     const created = await api("POST", "/api/routines", {
       name: "Slot dispatch probe",
+      // delivered to the brief, a run works in a thread of its own and takes a slot like any task thread
+      deliver: "brief",
       prompt: "Write the scheduled digest.",
       target: "bot",
       botId,
@@ -234,7 +236,7 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
     finish(main);
     await expect.poll(() => busyThreads(botId), { timeout: 10_000 }).toEqual([]);
     const created = await api("POST", "/api/routines", {
-      name: "Slot holder", prompt: "Write the scheduled digest.", target: "bot", botId, runOn: "maus", enabled: true,
+      name: "Slot holder", prompt: "Write the scheduled digest.", target: "bot", botId, runOn: "maus", enabled: true, deliver: "brief",
       schedule: { type: "daily", time: "23:00" },
     });
     expect(created.status).toBe(201);
@@ -274,6 +276,7 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
 
       const created = await api("POST", "/api/routines", {
         name: "Workspace collision probe",
+        deliver: "brief",
         prompt: "Write the scheduled digest.",
         target: "bot",
         botId,
@@ -456,6 +459,7 @@ describe("per-bot thread capacity through an isolated HTTP fixture", () => {
     const source = await botWithThreads(1);
     const created = await api("POST", "/api/routines", {
       name: "Delegated slot probe",
+      deliver: "brief",
       prompt: "Hold the delegator turn.",
       target: "bot",
       botId: source.botId,
