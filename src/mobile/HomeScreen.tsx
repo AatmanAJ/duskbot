@@ -87,7 +87,6 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
     if (el && sawSkeleton.current) { sawSkeleton.current = false; revealOnce(el); }
   }, []);
 
-  const unreadNotes = state.notifications.filter((note) => !note.read).length;
   const primary = pinned[0];
 
   const actionsFor = useCallback((entry: Entry): ContextAction[] => {
@@ -177,11 +176,10 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
 
       <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-0 z-[5] h-[calc(var(--m-safe-top)+72px)] bg-gradient-to-b from-app from-60% to-transparent transition-opacity duration-150", scrolled ? "opacity-100" : "opacity-0")} />
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-3" style={{ paddingTop: BAR_TOP }}>
-        <RoundButton floating label={unreadNotes ? t("mobile.home.youWithNotifications", { count: unreadNotes }) : t("mobile.home.you")} onClick={() => onOpenSheet({ kind: "settings" })} className="pointer-events-auto overflow-visible">
+        <RoundButton floating label={t("mobile.home.you")} onClick={() => onOpenSheet({ kind: "settings" })} className="pointer-events-auto overflow-visible">
           {face
             ? <UserFace account={face} size={40} className="size-full" />
             : <span className="text-[14px] font-semibold">{you?.initials ?? <UserRound size={19} />}</span>}
-          {unreadNotes > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold tabular-nums text-app ring-2 ring-app">{unreadNotes > 9 ? "9+" : unreadNotes}</span>}
         </RoundButton>
         <div className="flex-1" />
         <ConnectionPill notice={live.notice} trying={live.trying} onRetry={live.retry} testId="mobile-connection-status" />
