@@ -106,8 +106,9 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       const shift = Math.max(0, height - safeBottom(root));
       delete root.dataset.kbMoving;
       const list = scroller(root);
+      const top = list?.scrollTop ?? 0;
       set(height, 0);
-      if (list) list.scrollTop += shift - Math.max(0, committed - safeBottom(root));
+      if (list) list.scrollTop = top + shift - Math.max(0, committed - safeBottom(root));
       committed = height;
     };
 
@@ -133,8 +134,10 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
         delete root.dataset.kbMoving;
         delete root.dataset.keyboard;
         const list = scroller(root);
+        // read before the layout gives the space back: the taller scroller clamps scrollTop on the next read
+        const top = list?.scrollTop ?? 0;
         set(0, shift);
-        if (list) list.scrollTop -= shift;
+        if (list) list.scrollTop = Math.max(0, top - shift);
         committed = 0;
         requestAnimationFrame(() => requestAnimationFrame(() => {
           root.dataset.kbMoving = "";
