@@ -42,6 +42,18 @@ test("takes the token out of the address bar before rendering; the same account 
   expect(state.left).toEqual(["/billing?plan=pro&src=app_computer_move"]);
 });
 
+test("a redeemed link marks this tab as the app's, so the website never starts its own setup on top", async () => {
+  sessionStorage.clear();
+  await land(`#t=${token}`);
+  const { cameFromApp } = await import("../lib/from-app");
+  expect(cameFromApp(new URLSearchParams())).toBe(true);
+  sessionStorage.clear();
+  expect(cameFromApp(new URLSearchParams()), "a plain visit is the website's").toBe(false);
+  expect(cameFromApp(new URLSearchParams("plan=pro&src=app_card")), "the app's plans link").toBe(true);
+  expect(cameFromApp(new URLSearchParams("from=app")), "the app's checkout").toBe(true);
+  expect(cameFromApp(new URLSearchParams("src=site_pricing"))).toBe(false);
+});
+
 test("signed out: asks first, then confirms once with the same token", async () => {
   const handoff = vi.spyOn(state.api, "handoff").mockResolvedValueOnce({ ask: "confirm", email: "owner@duskbot.test" });
   const host = await land(`#t=${token}`);

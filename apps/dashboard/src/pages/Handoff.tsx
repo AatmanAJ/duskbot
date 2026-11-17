@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { Button, ButtonLink } from "../ui/kit";
 import { SkyEmpty } from "../ui/Sky";
 import { PlansPageSkeleton } from "../ui/plans-skeleton";
+import { FROM_APP_KEY } from "../lib/from-app";
 
 type Step = { kind: "working" } | { kind: "ask"; why: "confirm" | "other_account"; email: string } | { kind: "expired" } | { kind: "failed"; message: string };
 
@@ -35,6 +36,7 @@ export function HandoffPage() {
       const answer = await redeemSoon(token, opts);
       if ("ask" in answer) { setStep({ kind: "ask", why: answer.ask, email: answer.email }); return; }
       forgetHandoff();
+      try { sessionStorage.setItem(FROM_APP_KEY, "1"); } catch {}
       go(handoffNext(answer.next));
     } catch (e) {
       forgetHandoff();
