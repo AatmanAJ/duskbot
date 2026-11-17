@@ -95,7 +95,7 @@ function PlanStep({ catalog, home, setHome, plan, setPlan }: { catalog: PlanCata
               return (
                 <button key={id} type="button" role="radio" aria-checked={on} data-stretch-key={id} onClick={() => setPlan(id)}
                   className={cx("relative inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-13", on ? "font-medium text-ink" : "font-normal text-ink-2 hover-link")}>
-                  {b.name.toLowerCase()} <span className="num font-normal text-ink-3">{per(b.monthly, "month", catalog).amount}/mo</span>
+                  {b.name.toLowerCase()} <span className="num">{per(b.monthly, "month", catalog).amount}/mo</span>
                 </button>
               );
             })}
