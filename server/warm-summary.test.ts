@@ -201,6 +201,19 @@ describe("warm summary scheduling", () => {
     expect(warm.state("t1")?.last?.outcome).toBe("failed: the summary failed: overloaded");
   });
 
+  // a fold with nothing to fold logged "failed:" dozens of times a day and buried real errors (#13)
+  it("notes a summary that was not needed as skipped, without a log line", async () => {
+    const lines: string[] = [];
+    const { time, warm, runs } = setup({ log: (line) => lines.push(line) });
+    warm.turnCompleted(target, { ok: true, contextTokens: 150_000 });
+    await time.advance(WARM_SUMMARY_IDLE_MS);
+    runs[0]!.finish({ ok: false, reason: "the conversation does not need a summary yet", skip: true });
+    await time.advance(WARM_SUMMARY_GIVE_UP_MS);
+    expect(runs).toHaveLength(1);
+    expect(warm.state("t1")?.last?.outcome).toBe("skipped: the conversation does not need a summary yet");
+    expect(lines.filter((line) => /failed|skipped/.test(line))).toEqual([]);
+  });
+
   it("runs its delays faster under a time scale, for fixtures", async () => {
     const { time, warm, runs } = setup({ timeScale: 0.01 });
     warm.turnCompleted(target, { ok: true, contextTokens: 150_000 });
