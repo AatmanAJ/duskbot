@@ -11,6 +11,8 @@ import { t } from "@/lib/i18n";
 
 import type { AppUpdateBridge, AppUpdateState } from "../../electron/app-update.mjs";
 import { Art, type ArtName } from "./ui/Art";
+import { MausAvatar } from "./Avatar";
+import { mdPrimaryCls } from "./ui/GrokDialog";
 
 const DOWNLOAD_PAGE = "https://dusk.bot/download";
 
@@ -117,8 +119,36 @@ export interface SpotCta {
   hint?: string;
   art: ArtName;
   closeLabel: string;
+  /** drawn as the website sidebar's dusk cloud card instead of the one-line card; `title` only for the invested pitch */
+  card?: { title?: string; body: string; action: string; invested: boolean };
   onStart: () => void;
   onClose: () => void;
+}
+
+/** The website sidebar's dusk cloud card in the spot: a mascot beside one line (or the person's own numbers), the action
+ * under them, and a close that brings Give feedback back. */
+export function SpotCloudCard({ cta, card }: { cta: SpotCta; card: NonNullable<SpotCta["card"]> }) {
+  return (
+    <div data-sidebar-spot="cta" data-spot-cta={cta.id} data-spot-card="" data-invested={card.invested ? "" : undefined}
+      className="relative rounded-[20px] border border-ink/[0.08] bg-composer p-4 transition-[opacity,transform] duration-200 ease-out starting:translate-y-2 starting:opacity-0 motion-reduce:starting:translate-y-0">
+      <div className="flex items-center gap-3 pe-5">
+        <span aria-hidden="true" className="flex shrink-0">
+          {card.invested
+            ? <MausAvatar color="blue" bodyId="kit" size={34} state="celebrate" animated={false} trackPointer={false} />
+            : <MausAvatar color="purple" bodyId="wisp" size={34} state="sleeping" animated={false} trackPointer={false} />}
+        </span>
+        <div className="min-w-0">
+          {card.title && <p className="m-0 text-[14px] font-semibold leading-[1.3] text-ink">{card.title}</p>}
+          <p className={cn("m-0 text-[13px] font-medium leading-[1.4] text-ink-secondary", card.title && "mt-0.5")}>{card.body}</p>
+        </div>
+      </div>
+      <button type="button" data-spot-cta-start="" onClick={cta.onStart} className={cn(mdPrimaryCls, "mt-3.5 w-full")}>{card.action}</button>
+      <button type="button" data-spot-cta-close="" aria-label={cta.closeLabel} title={cta.closeLabel} onClick={cta.onClose}
+        className="absolute end-2 top-2 flex size-7 cursor-pointer items-center justify-center rounded-full text-ink/56 transition-[background-color,color] duration-[120ms] ease-[ease] hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus">
+        <X size={13} aria-hidden="true" />
+      </button>
+    </div>
+  );
 }
 
 const CARD = cn("flex h-10 w-full items-center gap-2.5 rounded-full px-3.5 text-start", PRESS, FOCUS);
@@ -136,7 +166,7 @@ export function SpotView({ className, state, cta = null }: { className?: string;
     <div className={className}>
       {updated && spot.kind === "feedback" && <UpdatedNote version={updated} seen={seen} />}
       {spot.kind !== "feedback" ? <UpdateCard spot={spot} act={act} className={CARD} />
-        : cta ? <SpotCtaCard cta={cta} />
+        : cta ? (cta.card ? <SpotCloudCard cta={cta} card={cta.card} /> : <SpotCtaCard cta={cta} />)
         : (
           <button type="button" data-sidebar-spot="feedback" data-art-hover="" onClick={act} className={cn(CARD, TONAL)}>
             <Art name="bubbles" className="h-5 w-5 shrink-0 object-contain" />

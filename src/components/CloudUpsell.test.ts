@@ -48,10 +48,11 @@ beforeEach(() => {
 });
 
 describe("the dusk cloud offer in the sidebar's spot", () => {
-  it("says Keep your bots working, the bot panel's pitch made small, with no nap in it", async () => {
+  it("is the website sidebar's card: dusk cloud keeps your bots working, and Keep them working, with no nap in it", async () => {
     const html = await launch();
-    expect(html).toContain("Keep your bots working");
-    expect(html).toContain("On dusk cloud, they keep replying even when this Mac is asleep or off.");
+    expect(html).toContain('data-spot-card=""');
+    expect(html).toContain("dusk cloud keeps your bots working, even when your Mac is off.");
+    expect(html).toContain(">Keep them working<");
     expect(html).not.toMatch(/\bnap/i);
     expect(track).toHaveBeenCalledWith("upsell_shown", { source: "app_sidebar" });
   });
@@ -104,15 +105,15 @@ describe("the dusk cloud offer in the sidebar's spot", () => {
     expect(storage.has("dusk-cloud-sidebar-card-until")).toBe(false);
   });
 
-  it("only on a day the app is used, and never again within three hours", async () => {
+  it("twice a day at most while the app is in use, never again within three hours", async () => {
     today(0);
-    expect(await launch(), "opened, nothing sent yet").toBe("");
-    today(30, { shown: 1, lastShownAt: Date.now() - 3600_000 });
+    expect(await launch(), "the app in use today").toContain("data-spot-cta");
+    today(0, { shown: 1, lastShownAt: Date.now() - 3600_000 });
     expect(await launch()).toBe("");
-    today(30, { shown: 1, lastShownAt: Date.now() - 3 * 3600_000 - 1 });
-    expect(await launch(), "a busy day earns another, three hours on").toContain("data-spot-cta");
-    today(30, { shown: 3, lastShownAt: Date.now() - 5 * 3600_000 });
-    expect(await launch(), "three at most").toBe("");
+    today(0, { shown: 1, lastShownAt: Date.now() - 3 * 3600_000 - 1 });
+    expect(await launch(), "the second, three hours on").toContain("data-spot-cta");
+    today(30, { shown: 2, lastShownAt: Date.now() - 5 * 3600_000 });
+    expect(await launch(), "two at most, however busy the day").toBe("");
   });
 
   it("never in a store build, nor before the first reply", async () => {

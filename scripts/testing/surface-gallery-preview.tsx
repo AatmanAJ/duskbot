@@ -15,7 +15,7 @@ import { saveWelcomeDraft } from "../../src/lib/welcome-draft";
 import { BEAT_ORDER, type BeatId } from "../../src/lib/onboarding";
 import { useStore } from "../../src/state/store";
 import { CloudReady } from "../../src/components/CloudSetup";
-import { SidebarSpot, SpotCtaCard } from "../../src/components/SidebarSpot";
+import { SidebarSpot, SpotCloudCard } from "../../src/components/SidebarSpot";
 import type { CloudOffer } from "../../electron/cloud-home.mjs";
 import { useSidebarFooterSlot } from "../../src/lib/sidebar-footer-slot";
 import { auditLayout } from "./chat-gallery/layout-audit";
@@ -98,7 +98,7 @@ function Cards() {
   if (update && slot) return createPortal(<SidebarSpot bridge={update} />, slot);
   if (params.get("card") === "cloud-ready") return <CloudReady slot={slot} onDone={() => undefined} />;
   // ?card=cloud-nudge: the dusk cloud offer as a scheduled showing puts it in the spot above the account row
-  if (params.get("card") === "cloud-nudge" && slot) return createPortal(<SpotCtaCard cta={{ id: "cloud", title: "Keep your bots working", art: "clock", closeLabel: "Hide", onStart: () => undefined, onClose: () => undefined }} />, slot);
+  if (params.get("card") === "cloud-nudge" && slot) return createPortal(<SpotCloudCard cta={{ id: "cloud", title: "Keep your bots working", art: "clock", closeLabel: "Hide", onStart: () => undefined, onClose: () => undefined }} card={{ body: "dusk cloud keeps your bots working, even when your Mac is off.", action: "Keep them working", invested: false }} />, slot);
   // ?card=toast-done / toast-error: a passing toast, held on screen
   if (params.get("card") === "toast-done") return <Toast text="Pepper is ready to use" action={{ label: "Undo", onClick: () => undefined }} timeoutMs={600_000} onDone={() => undefined} />;
   if (params.get("card") === "toast-error") return <Toast tone="error" text="Couldn't save Pepper's name. Try again." timeoutMs={600_000} onDone={() => undefined} />;
@@ -118,14 +118,13 @@ const GALLERY_TABS = [
   { title: "Example Domain", url: "https://example.com/", image: page("#555a63", "Example Domain", 4) },
   { title: "Example domains", url: "https://www.iana.org/help/example-domains", image: page("#8a5a1f", "Example domains", 6) },
 ];
-// ?card=local-browser-working / -open / -held / -closed / -closed-old / -offer: a local bot's browser with tabs open as the
-// bot browses, open and idle, with a tab the person holds, closed four minutes ago, closed two hours ago, or never opened
+// ?card=local-browser-working / -open / -held / -closed / -offer: a local bot's browser with tabs open as the
+// bot browses, open and idle, with a tab the person holds, closed four minutes ago, or never opened
 const localBrowser = params.get("card");
 if (localBrowser === "local-browser-working") setLocalBrowserFixture({ open: true, closed: null, tabs: GALLERY_TABS, working: true });
 if (localBrowser === "local-browser-open") setLocalBrowserFixture({ open: true, closed: null, tabs: GALLERY_TABS });
 if (localBrowser === "local-browser-held") setLocalBrowserFixture({ open: true, closed: null, tabs: GALLERY_TABS, held: 0 });
 if (localBrowser === "local-browser-closed") setLocalBrowserFixture({ open: false, closed: { at: Date.now() - 4 * 60_000, tabs: GALLERY_TABS.slice(0, 3) }, tabs: GALLERY_TABS });
-if (localBrowser === "local-browser-closed-old") setLocalBrowserFixture({ open: false, closed: { at: Date.now() - 2 * 3600_000, tabs: GALLERY_TABS.slice(0, 3) }, tabs: GALLERY_TABS });
 if (localBrowser === "local-browser-offer") setLocalBrowserFixture({ open: false, closed: null });
 
 Object.assign(window, { __galleryAudit: auditLayout });

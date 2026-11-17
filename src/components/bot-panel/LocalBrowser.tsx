@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { ArrowLeft, Hand, Loader2 } from "../../icons";
+import { Hand, Loader2 } from "../../icons";
 
 import { resolveAddressBarInput } from "@/lib/browser-address";
 import { browserStreamAccess, createPreviewStreamClient, type PreviewStreamClient, type PreviewStreamControl, type PreviewStreamInput } from "@/lib/browser-stream-client";
@@ -7,8 +7,7 @@ import { createLiveStreamClient, type LiveResume } from "@/lib/browser-stream-v1
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import {
-  blankPage, browserHeadline, closeLocalBrowser, keepView, keptKey, keptView, localBrowserFixture, minutesSince, pageTitle, recentClosed, siteOf,
-  useLocalBrowser, type ClosedTabView, type LocalBrowserState,
+  browserHeadline, closeLocalBrowser, keepView, keptKey, keptView, localBrowserFixture, useLocalBrowser,
 } from "@/lib/local-browser";
 import { usePageVisible } from "@/lib/page-visible";
 import { panelWide, setPanelWide, usePanelWidth, PANEL_NARROW } from "@/lib/panel-wide";
@@ -17,7 +16,7 @@ import { api, useStore, type Bot } from "@/state/store";
 import { BROWSER_HELD_ELSEWHERE } from "../../../shared/browser-held";
 import type { BrowserNav } from "../browser/ChromeRow";
 import { StreamSurface, type SurfaceConnect } from "../browser/StreamSurface";
-import { BrowserHeader, BrowserToolbar, FRAME_TONE, SiteMark, StartPill, TabStrip, tabName, type StripTab } from "./browser-strip";
+import { BrowserHeader, BrowserToolbar, FRAME_TONE, StartPill, TabStrip, tabName, type StripTab } from "./browser-strip";
 import { buttonCls } from "./rows";
 import { BOT_PANEL_ID } from "./side-panel";
 import { permissionsMissing, type MacPermissionsBridge } from "@/lib/mac-permissions";
@@ -87,10 +86,10 @@ export interface MorphFrom { top: number; left: number; width: number; height: n
  */
 export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
   bot: Bot; from?: MorphFrom | null;
-  /** The person closed it: the tabs it had, for What it worked on until the server's own list arrives. */
-  onClosed: (tabs: ClosedTabView[]) => void;
+  /** The person closed it. */
+  onClosed: () => void;
   /** The browser closed while shown (idle, or elsewhere). */
-  onEnded: (tabs: ClosedTabView[]) => void;
+  onEnded: () => void;
 }) {
   const { state } = useStore();
   const [fallback, setFallback] = useState(false);
@@ -170,7 +169,7 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
     } else if (message.type === "pointer") {
       setActedAt(Date.now());
     } else if (message.type === "asleep") {
-      latest.current.onEnded(closedView(tabsRef.current));
+      latest.current.onEnded();
     }
   }, [key, botActed]);
 
@@ -244,11 +243,10 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
   };
   const toggleWide = () => setPanelWide(!wide);
   const closeBrowser = () => {
-    const tabsNow = closedView(tabsRef.current);
-    if (fixture) { latest.current.onClosed(tabsNow); return; }
+    if (fixture) { latest.current.onClosed(); return; }
     setClosing(true);
     setError("");
-    closeLocalBrowser(bot.id, bot.threadId).then(() => latest.current.onClosed(tabsNow), () => { setClosing(false); setError(t("localBrowser.closeFailed")); });
+    closeLocalBrowser(bot.id, bot.threadId).then(() => latest.current.onClosed(), () => { setClosing(false); setError(t("localBrowser.closeFailed")); });
   };
 
   return (
@@ -280,7 +278,7 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
                   onFirstFrame={() => setPainted(true)}
                   onConnectedChange={(next) => { setConnected(next); if (next) { connectedAt.current = Date.now(); setError(""); } }}
                   onUnauthorized={() => { if (stream) setFallback(true); else setAttempt((n) => n + 1); }}
-                  onGone={() => { setConnected(false); latest.current.onEnded(closedView(tabsRef.current)); }}
+                  onGone={() => { setConnected(false); latest.current.onEnded(); }}
                 />
               </div>
             ) : null}
@@ -314,93 +312,30 @@ export function LocalBrowserLive({ bot, from, onClosed, onEnded }: {
   );
 }
 
-const closedView = (tabs: readonly StripTab[]): ClosedTabView[] =>
-  tabs.filter((tab) => !blankPage(tab.url)).map((tab) => ({ title: tab.title, url: tab.url, image: null }));
-
-/** A closed browser: the gray Start browser pill, and for an hour after it closed, the tabs it closed with. */
-export function LocalBrowserClosed({ bot, recent, now, pill, starting = false, onStart }: {
-  bot: Bot; recent: LocalBrowserState["closed"]; now: number; starting?: boolean;
-  pill: RefObject<HTMLButtonElement | null>; onStart: () => void;
+/** A closed browser: only the gray Start browser pill; its tabs show again once it is open. */
+export function LocalBrowserClosed({ bot, pill, starting = false, onStart }: {
+  bot: Bot; pill: RefObject<HTMLButtonElement | null>; starting?: boolean; onStart: () => void;
 }) {
-  const [chosen, setChosen] = useState<number | null>(null);
-  useEffect(() => { setChosen(null); }, [recent?.at]);
-  const when = recent ? (minutesSince(recent.at, now) < 1 ? t("localBrowser.justNow") : t("localBrowser.minutesAgo", { count: minutesSince(recent.at, now) })) : "";
-  const tab = chosen === null || !recent ? null : recent.tabs[chosen] ?? null;
-
-  if (tab) {
-    return (
-      <section data-local-browser="last-screen" className="flex flex-col gap-2">
-        <div className="flex min-h-7 items-center gap-2">
-          <button type="button" data-local-browser-action="back" className={buttonCls} onClick={() => setChosen(null)}>
-            <ArrowLeft size={13} aria-hidden="true" />{t("localBrowser.back")}
-          </button>
-          <span dir="auto" className="min-w-0 flex-1 truncate text-end text-[12px] leading-4 text-ink/[0.56]">{pageTitle(tab.title, tab.url) || siteOf(tab.url)} · {when}</span>
-        </div>
-        <div className={cn("relative aspect-[16/10] w-full overflow-hidden rounded-xl", FRAME_TONE)}>
-          {tab.image
-            ? <img src={tab.image} alt={t("localBrowser.lastScreen", { title: pageTitle(tab.title, tab.url) || siteOf(tab.url) })} className="absolute inset-0 size-full object-cover object-top" />
-            : <p className="absolute inset-0 m-0 flex items-center justify-center px-6 text-center text-[12px] leading-4 text-ink/[0.56]">{t("localBrowser.noScreen")}</p>}
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <section data-local-browser="closed" aria-label={t("localBrowser.label", { name: bot.name })}
-      className="flex flex-col gap-2 transition-opacity duration-200 ease-out starting:opacity-0">
+    <section data-local-browser="closed" aria-label={t("localBrowser.label", { name: bot.name })} className="flex transition-opacity duration-200 ease-out starting:opacity-0">
       <StartPill ref={pill} onStart={onStart} disabled={starting} />
-      {recent && <>
-        <h3 className="m-0 mt-2 px-1 text-[12px] font-normal leading-4 text-ink/[0.56]">{t("localBrowser.workedOn")}</h3>
-        <ul data-local-browser-recent="" className="m-0 flex list-none flex-col p-0">
-          {recent.tabs.map((one, index) => !blankPage(one.url) && (
-            <li key={`${one.url}:${index}`}>
-              <ClosedRow tab={one} when={when} onOpen={() => setChosen(index)} />
-            </li>
-          ))}
-        </ul>
-        <p className="m-0 px-1 text-[12px] leading-4 text-ink/[0.56]">{t("localBrowser.workedOnHint")}</p>
-      </>}
     </section>
-  );
-}
-
-function ClosedRow({ tab, when, onOpen }: { tab: ClosedTabView; when: string; onOpen: () => void }) {
-  const site = siteOf(tab.url);
-  return (
-    <button type="button" data-local-browser-closed-tab="" onClick={onOpen}
-      className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-1 py-1.5 text-left hover:bg-ink/[0.04] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus">
-      <span aria-hidden="true" className="relative flex h-8 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-ink/[0.06]">
-        {tab.image ? <img src={tab.image} alt="" loading="lazy" draggable={false} className="absolute inset-0 size-full object-cover object-top" /> : <SiteMark title={tab.title} url={tab.url} />}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span dir="auto" className="truncate text-[13px] leading-[18px] text-ink">{pageTitle(tab.title, tab.url) || site}</span>
-        <span className="truncate text-[12px] leading-4 text-ink/[0.56]">{site}</span>
-      </span>
-      <span className="shrink-0 text-[12px] leading-4 text-ink/[0.56]">{when}</span>
-    </button>
   );
 }
 
 /** What the person did that the server's next answer has not caught up with: started the browser, or closed it (or saw it
  * close). `confirmed`: the server has since said it is closed, so its own answer leads again. */
-type Override = { kind: "started"; from: MorphFrom | null } | { kind: "closed"; at: number; tabs: ClosedTabView[]; confirmed: boolean };
+type Override = { kind: "started"; from: MorphFrom | null } | { kind: "closed"; confirmed: boolean };
 
-function useNow(everyMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), everyMs); return () => clearInterval(timer); }, [everyMs]);
-  return now;
-}
 
-/** A bot's browser on this computer in its Computer tab: the live browser while it runs; otherwise the Start browser pill,
- * with what it worked on for an hour after it closed. */
+/** A bot's browser on this computer in its Computer tab: the live browser while it runs; otherwise the Start browser pill. */
 export function LocalBrowserSection({ bot, after, askFirst = null }: {
   bot: Bot; after?: ReactNode;
   /** this Mac's permissions the bot needs, asked for when the person starts its browser while any is off */
   askFirst?: MacPermissionsBridge | null;
 }) {
-  const { open, closed, known } = useLocalBrowser(bot.id, bot.threadId, bot.browser !== false);
+  const { open, known } = useLocalBrowser(bot.id, bot.threadId, bot.browser !== false);
   const [override, setOverride] = useState<Override | null>(null);
-  const now = useNow(30_000);
   const pill = useRef<HTMLButtonElement | null>(null);
   const below = useRef<HTMLDivElement | null>(null);
   const belowTop = useRef<number | null>(null);
@@ -426,9 +361,6 @@ export function LocalBrowserSection({ bot, after, askFirst = null }: {
   }, [unconfirmed]);
 
   const live = override?.kind === "started" ? true : override?.kind === "closed" && !override.confirmed ? false : open;
-  const ownClose = override?.kind === "closed" ? { at: override.at, tabs: override.tabs } : null;
-  const listed = closed && (!ownClose || closed.at >= ownClose.at - 60_000) ? closed : ownClose ?? closed;
-  const recent = recentClosed(listed, now);
 
   const openBrowser = () => {
     setAsking(false);
@@ -444,9 +376,9 @@ export function LocalBrowserSection({ bot, after, askFirst = null }: {
     setChecking(true);
     void askFirst.status().then((status) => (permissionsMissing(status) ? setAsking(true) : openBrowser()), () => openBrowser()).finally(() => setChecking(false));
   };
-  const ended = (kind: "closed" | "ended") => (tabs: ClosedTabView[]) => {
+  const ended = (kind: "closed" | "ended") => () => {
     belowTop.current = below.current?.getBoundingClientRect().top ?? null;
-    setOverride({ kind: "closed", at: Date.now(), tabs, confirmed: kind === "ended" && !open });
+    setOverride({ kind: "closed", confirmed: kind === "ended" && !open });
   };
 
   // what sits below moves with the browser opening or closing above it, instead of jumping
@@ -462,7 +394,7 @@ export function LocalBrowserSection({ bot, after, askFirst = null }: {
   return (
     <>
       {live ? <LocalBrowserLive key={`${bot.id}\n${bot.threadId ?? ""}`} bot={bot} from={from} onClosed={ended("closed")} onEnded={ended("ended")} />
-        : known || late || override ? <LocalBrowserClosed bot={bot} recent={recent} now={now} pill={pill} starting={checking} onStart={start} /> : null}
+        : known || late || override ? <LocalBrowserClosed bot={bot} pill={pill} starting={checking} onStart={start} /> : null}
       <div ref={below} className="mt-3 empty:hidden">{(known || late) && after}</div>
       {asking && askFirst && <MacPermissionsDialog bridge={askFirst} onClose={() => setAsking(false)} onAllowed={openBrowser}
         relaunch={typeof window.duskDesktop?.relaunch === "function" ? () => void window.duskDesktop!.relaunch!() : null} />}

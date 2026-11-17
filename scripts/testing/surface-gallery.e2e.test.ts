@@ -154,14 +154,12 @@ const SURFACES: Surface[] = [
   { id: "picker:connect", open: `{ type: "toggleSettings", open: true, section: "overview", botId: window.__surfaceGallery.botId }`, run: PICKER_CONNECT, scope: "[data-connect-ai]" },
   { id: "picker:connected", open: `{ type: "toggleSettings", open: true, section: "overview", botId: window.__surfaceGallery.botId }`, run: PICKER_CONNECTED, scope: "#root" },
   // a bot's browser on this computer, in its Computer tab: browsing, open and idle, a tab the person holds, its close
-  // confirm, closed a few minutes ago (and one closed tab's last screen), closed hours ago, and no browser at all
+  // confirm, closed (the Start browser pill alone), and no browser at all
   { id: "panel:local-browser-working", open: `{ type: "toggleSettings", open: true, section: "computer", botId: window.__surfaceGallery.botId }`, query: "card=local-browser-working", scope: "[data-local-browser]" },
   { id: "panel:local-browser-open", open: `{ type: "toggleSettings", open: true, section: "computer", botId: window.__surfaceGallery.botId }`, query: "card=local-browser-open", scope: "[data-local-browser]" },
   { id: "panel:local-browser-held", open: `{ type: "toggleSettings", open: true, section: "computer", botId: window.__surfaceGallery.botId }`, query: "card=local-browser-held", scope: "[data-local-browser]" },
   { id: "panel:local-browser-confirm", open: `{ type: "toggleSettings", open: true, section: "computer", botId: window.__surfaceGallery.botId }`, query: "card=local-browser-open", run: CLICK("[data-local-browser-action=close]"), scope: "[data-local-browser]" },
   { id: "panel:local-browser-closed", open: `{ type: "toggleSettings", open: true, section: "computer", botId: window.__surfaceGallery.botId }`, query: "card=local-browser-closed", scope: "[data-local-browser]" },
-  { id: "panel:local-browser-closed-old", open: `{ type: "toggleSettings", open: true, section: "computer", botId: window.__surfaceGallery.botId }`, query: "card=local-browser-closed-old", scope: "[data-local-browser]" },
-  { id: "panel:local-browser-last-screen", open: `{ type: "toggleSettings", open: true, section: "computer", botId: window.__surfaceGallery.botId }`, query: "card=local-browser-closed", run: CLICK("[data-local-browser-closed-tab]"), scope: "[data-local-browser]" },
   { id: "card:cloud-nudge", open: SELECT, query: "card=cloud-nudge", scope: "[data-spot-cta]" },
   { id: "card:cloud-stale-checkout", open: `{ type: "openCloudAdd", source: "app_bot_panel" }`, query: "card=cloud-stale-checkout", scope: "[data-cloud-add-dialog] [data-plan-buy]" },
   { id: "panel:local-browser-offer", open: `{ type: "toggleSettings", open: true, section: "computer", botId: window.__surfaceGallery.botId }`, query: "card=local-browser-offer", scope: "[data-cloud-cta]" },

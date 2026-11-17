@@ -143,19 +143,6 @@ export function tabLetter(title: string, url: string): string {
   return (source.match(/[\p{L}\p{N}]/u)?.[0] ?? "·").toUpperCase();
 }
 
-/** Whole minutes since, for the closed list. */
-export function minutesSince(at: number, now = Date.now()): number {
-  return Math.max(0, Math.floor((now - at) / 60_000));
-}
-
-/** How long a closed browser's tabs stay listed under What it worked on. */
-export const RECENT_SHOWN_MS = 60 * 60_000;
-
-/** The tabs a browser closed with, while they are still worth listing. */
-export function recentClosed(closed: LocalBrowserState["closed"], now = Date.now()): LocalBrowserState["closed"] {
-  return closed && now - closed.at < RECENT_SHOWN_MS && closed.tabs.some((tab) => !blankPage(tab.url)) ? closed : null;
-}
-
 /** What the line above the browser says: the bot browsing while its turn has acted in the browser, else that it is open. */
 export function browserHeadline({ busy, turnStartedAt, actedAt, working }: { busy: boolean; turnStartedAt: number | undefined; actedAt: number | null; working?: boolean }): "browsing" | "open" {
   if (working) return "browsing";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { askLocalBrowser, blankPage, browserHeadline, closePath, keepView, keptKey, keptView, minutesSince, pageTitle, parseLocalBrowser, recentClosed, tabLetter } from "./local-browser";
+import { askLocalBrowser, blankPage, browserHeadline, closePath, keepView, keptKey, keptView, pageTitle, parseLocalBrowser, tabLetter } from "./local-browser";
 import { wideWidth } from "./panel-wide";
 
 describe("local browser", () => {
@@ -51,16 +51,6 @@ describe("local browser", () => {
     expect(pageTitle("Cat - Wikipedia", "https://en.wikipedia.org/wiki/Cat")).toBe("Cat - Wikipedia");
     expect(["", "about:blank", "chrome://newtab/", "chrome://new-tab-page/"].every(blankPage)).toBe(true);
     expect(blankPage("https://example.com/")).toBe(false);
-    expect(minutesSince(0, 4 * 60_000 + 59_000)).toBe(4);
-  });
-
-  it("lists what a closed browser worked on for an hour, then nothing", () => {
-    const closed = { at: 1_000_000, tabs: [{ title: "Docs", url: "https://example.com/", image: null }] };
-    expect(recentClosed(closed, 1_000_000 + 4 * 60_000)).toBe(closed);
-    expect(recentClosed(closed, 1_000_000 + 60 * 60_000 - 1)).toBe(closed);
-    expect(recentClosed(closed, 1_000_000 + 60 * 60_000)).toBeNull();
-    expect(recentClosed({ at: 1_000_000, tabs: [{ title: "", url: "about:blank", image: null }] }, 1_000_000)).toBeNull();
-    expect(recentClosed(null)).toBeNull();
   });
 
   it("says the bot is browsing only while its turn has acted in the browser", () => {

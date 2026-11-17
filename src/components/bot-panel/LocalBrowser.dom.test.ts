@@ -122,21 +122,17 @@ describe("the compact browser in the Computer tab", () => {
     expect(f.closes).toEqual([["b1", "t1"]]);
     expect(q("[data-local-browser=live]")).toBeNull();
     expect(q("[data-local-browser-action=start]")!.textContent).toBe("Start browser");
-    expect([...host.querySelectorAll("[data-local-browser-closed-tab] [dir=auto]")].map((title) => title.textContent)).toEqual(["Lisbon to Sintra", "Pena Palace tickets", "Guesthouse Graça"]);
+    expect(q("[data-local-browser-tab]"), "no tabs once it is closed").toBeNull();
     expect(q("[data-cta]")).not.toBeNull();
   });
 
-  it("lists what it worked on for an hour after the browser closed, then only the pill and the offer", async () => {
+  it("shows only the pill and the offer while closed, never the tabs it closed with, however recent", async () => {
     f.open = false;
-    f.closed = { at: Date.now() - 4 * 60_000, tabs: [{ title: "Lisbon to Sintra", url: "https://www.cp.pt/en/tickets", image: null }] };
+    f.closed = { at: Date.now() - 60_000, tabs: [{ title: "Lisbon to Sintra", url: "https://www.cp.pt/en/tickets", image: "/screen.jpg" }] };
     await render();
-    expect(host.querySelectorAll("[data-local-browser-closed-tab]")).toHaveLength(1);
-    expect(q("[data-local-browser-action=start]")).not.toBeNull();
-
-    f.closed = { at: Date.now() - 61 * 60_000, tabs: f.closed.tabs };
-    await render({ name: "Nova " });
-    expect(q("[data-local-browser-recent]")).toBeNull();
-    expect(q("[data-local-browser-action=start]")).not.toBeNull();
+    expect(q("[data-local-browser=closed]")!.textContent).toBe("Start browser");
+    for (const gone of ["[data-local-browser-closed-tab]", "[data-local-browser-recent]", "[data-local-browser-tab]", "[data-local-browser=last-screen]"]) expect(q(gone), gone).toBeNull();
+    expect(host.textContent).not.toContain("Lisbon to Sintra");
     expect(q("[data-cta]")).not.toBeNull();
   });
 

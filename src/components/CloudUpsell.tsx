@@ -8,9 +8,7 @@ import { endNudge, nextNudgeAt, noteNudgeSession, nudgeDay, nudgeEligible, nudge
 import { CLOUD_INTRO, dismissNotice, INVESTED_NOTICE, LATE_ROUTINE_NOTICE, launchNotice, noticeSeen, watchLaunchNotice } from "@/lib/notices";
 import { t } from "@/lib/i18n";
 import { api, useStore } from "@/state/store";
-import { SpotCtaCard, type SpotCta } from "./SidebarSpot";
-import { useCloudDesktop } from "./bot-panel/CloudDesktop";
-import { cloudMoveStage, hasDuskCloud, MOVE_IN_PROGRESS } from "@/lib/cloud-move";
+import { SpotCloudCard, SpotCtaCard, type SpotCta } from "./SidebarSpot";
 import { localDesktopPage } from "./onboarding/WelcomeGate";
 import { useCloudPlan } from "./ProIntroduction";
 import { deviceWord } from "./vps-link/parts";
@@ -45,36 +43,13 @@ const INVESTED_LINE = { bots: "cloudUpsell.invested.bots", messages: "cloudUpsel
 // the invested pitch holds the card for the rest of the launch it first showed in
 let launchInvested: InvestedFacts | null = null;
 
-/** the dusk cloud offer in the sidebar's spot, in Give feedback's place, a few times on a day the app is used
- * (lib/cloud-nudge.ts), never during first run. A launch that already showed a cloud notice in the corner leaves it out,
- * so the pitch is said once. Someone clearly invested (shared/cloud-upsell.ts INVESTED) gets it in their own numbers
- * instead, once per account. `covered`: an update holds the spot, so no showing starts under it. */
+/** the dusk cloud offer in the sidebar's spot, in Give feedback's place, as the website's sidebar card: at most twice a
+ * day the app is used (lib/cloud-nudge.ts), never during first run, and only for an account without dusk cloud. A launch
+ * that already showed a cloud notice in the corner leaves it out, so the pitch is said once. Someone clearly invested
+ * (shared/cloud-upsell.ts INVESTED) gets it in their own numbers instead, once per account. `covered`: an update holds the
+ * spot, so no showing starts under it. */
 export function useSidebarCloudCta(covered = false): SpotCta | null {
-  const switchCta = useSidebarSwitchCta(covered);
-  const offer = useSidebarOfferCta(covered);
-  return offer ?? switchCta;
-}
-
-// closed for this launch: Give feedback comes back until the app starts again
-let switchClosed = false;
-
-/** An account that has a dusk cloud: the spot's way to it from this computer, in Give feedback's place. Never while the
- * bots are on their way, on the cloud's own page, or in a store build. */
-export function useSidebarSwitchCta(covered = false): SpotCta | null {
-  const { state } = useStore();
-  const cloudDesktop = useCloudDesktop();
-  const [closed, setClosed] = useState(switchClosed);
-  const stage = cloudDesktop ? cloudMoveStage(cloudDesktop.view, cloudDesktop.keep) : null;
-  const openHome = cloudDesktop?.openHome;
-  if (covered || closed || storeApp() || state.config?.cloudHome === true || !openHome || !hasDuskCloud(stage) || MOVE_IN_PROGRESS.has(stage!)) return null;
-  return {
-    id: "cloud-switch",
-    title: t("runsOn.switchCloud"),
-    art: "clock",
-    closeLabel: t("cloudUpsell.hide"),
-    onStart: () => void openHome().catch(() => {}),
-    onClose: () => { switchClosed = true; setClosed(true); },
-  };
+  return useSidebarOfferCta(covered);
 }
 
 function useSidebarOfferCta(covered: boolean): SpotCta | null {
@@ -119,13 +94,16 @@ function useSidebarOfferCta(covered: boolean): SpotCta | null {
   useEffect(() => { if (visible) return watchUpsell(source); }, [visible, source]);
   if (!visible) return null;
   const device = deviceWord();
+  const title = by && invested ? t(INVESTED_LINE[by], { count: invested[by] }) : t("cloudUpsell.nudge.title");
   return {
     id: by ? "cloud-invested" : "cloud",
-    title: by && invested ? t(INVESTED_LINE[by], { count: invested[by] }) : t("cloudUpsell.nudge.title"),
+    title,
     hint: t(by ? "cloudUpsell.invested.body" : "cloudUpsell.nudge.body", { device }),
     art: "clock",
     closeLabel: t("cloudUpsell.hide"),
-    onClose: () => { trackUpsell("dismiss", source); endNudge(true); },
+    card: by ? { title, body: t("cloudUpsell.invested.body", { device }), action: t("runsOn.getCloud"), invested: true }
+      : { body: t("cloudUpsell.side.body", { device }), action: t("cloudUpsell.side.action"), invested: false },
+    onClose: () => { trackUpsell("dismiss", source); endNudge(); },
     onStart: () => { trackUpsell("click", source); endNudge(); open(source); },
   };
 }
@@ -133,7 +111,7 @@ function useSidebarOfferCta(covered: boolean): SpotCta | null {
 /** the offer on its own, as the spot draws it */
 export function SidebarCloudCard() {
   const cta = useSidebarCloudCta();
-  return cta ? <SpotCtaCard cta={cta} /> : null;
+  return cta ? (cta.card ? <SpotCloudCard cta={cta} card={cta.card} /> : <SpotCtaCard cta={cta} />) : null;
 }
 
 /** the 24/7 line inside a flow that makes something run on its own (a schedule, an app event, another app sending
