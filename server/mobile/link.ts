@@ -32,6 +32,8 @@ import { formatPairingCode, type Scope, type SessionRegistry } from "../sessions
 import { postLookup } from "./lookup.ts";
 import { createPhonePresence } from "./presence.ts";
 import { createPushSender, pushRelayBase, type PushMessage, type PushSender } from "./push.ts";
+import { createTurnActivities } from "./turn-activity.ts";
+import type { TurnActivityAttributes, TurnActivityEvent } from "../../shared/phone-activity.ts";
 
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 const B64URL_KEY = /^[A-Za-z0-9_-]{43}$/;
@@ -55,6 +57,8 @@ const deviceSchema = z.object({
   createdAt: z.number(),
   relay: z.object({ channel: z.string().regex(/^[a-z2-7]{10}$/), verifier: z.string().regex(HEX64), pub: z.string().regex(B64URL_KEY) }).nullable(),
   push: z.object({ service: z.enum(PUSH_SERVICES), token: z.string().min(8).max(4096), environment: z.enum(["sandbox", "production"]).optional(), updatedAt: z.number() }).nullable(),
+  /** the iPhone's Live Activity push-to-start token */
+  activityStart: z.object({ token: z.string().min(8).max(4096), environment: z.enum(["sandbox", "production"]).optional(), updatedAt: z.number() }).nullable().optional(),
 });
 type DeviceRecord = z.infer<typeof deviceSchema>;
 const fileSchema = z.object({ v: z.literal(1), devices: z.array(deviceSchema) });
@@ -86,6 +90,12 @@ export interface MobileLinkDeps {
 }
 
 let activeNotify: ((notification: NotificationLogEntry, options: { adminOnly?: boolean; person?: string }) => void) | null = null;
+let activeTurnActivity: ((threadId: string, event: TurnActivityEvent, context: { attributes?: TurnActivityAttributes; reply?: string }) => void) | null = null;
+
+/** a turn's progress, for the Live Activities phones show for its thread; a no-op until a workspace link exists */
+export function turnActivityToPhones(threadId: string, event: TurnActivityEvent, context: { attributes?: TurnActivityAttributes; reply?: string } = {}): void {
+  activeTurnActivity?.(threadId, event, context);
+}
 
 /** the event stream's `notify` frames, fanned out to registered phones; a no-op until a workspace link exists */
 export function notifyPhones(notification: unknown, options: { adminOnly?: boolean; person?: string } = {}): void {
@@ -124,6 +134,16 @@ export function createMobileLink(deps: MobileLinkDeps) {
     for (const event of events) if (!deps.isRead?.(event.id)) latest.set(event.threadId, event);
     for (const event of latest.values()) void deliver(device, event);
   } });
+  const activities = createTurnActivities({
+    now,
+    send: (target, message) => push.sendActivity?.({ service: "apns", ...target }, message) ?? Promise.resolve("skipped"),
+    startTargets: () => {
+      const live = new Set(deps.sessions.list().map((session) => session.id));
+      return devices.flatMap((device) => device.activityStart && live.has(device.sessionId) && presence.away(device.id)
+        ? [{ deviceId: device.id, token: device.activityStart.token, ...(device.activityStart.environment ? { environment: device.activityStart.environment } : {}) }]
+        : []);
+    },
+  });
 
   /** sends now; a push the service could not take goes again at 10 s and 60 s while the phone is still away and unread */
   function deliver(device: DeviceRecord, message: PushMessage, attempt = 0): Promise<void> {
@@ -169,7 +189,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
   function prune(): boolean {
     const live = devices.filter((device) => deps.sessions.isLive(device.sessionId));
     if (live.length === devices.length) return false;
-    for (const device of devices) if (!live.includes(device)) presence.forget(device.id);
+    for (const device of devices) if (!live.includes(device)) { presence.forget(device.id); activities.forgetDevice(device.id); }
     devices = live;
     persist();
     bump();
@@ -177,7 +197,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
   }
   deps.sessions.onSessionRevoked((sessionId) => {
     if (!devices.some((device) => device.sessionId === sessionId)) return;
-    for (const device of devices) if (device.sessionId === sessionId) presence.forget(device.id);
+    for (const device of devices) if (device.sessionId === sessionId) { presence.forget(device.id); activities.forgetDevice(device.id); }
     devices = devices.filter((device) => device.sessionId !== sessionId);
     persist();
     bump();
@@ -309,6 +329,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     const device = devices.find((one) => one.id === id);
     if (!device) return false;
     presence.forget(id);
+    activities.forgetDevice(id);
     devices = devices.filter((one) => one.id !== id);
     persist();
     bump();
@@ -351,7 +372,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     const targets = devices.filter((device) => device.push);
     if (!targets.length) return;
     const sessions = new Map(deps.sessions.list().map((session) => [session.id, session]));
-    const message: PushMessage = { id: notification.id, kind: notification.kind, title: notification.title, botId: notification.botId, botName: notification.botName, threadId: notification.threadId, ...(notification.groupId ? { groupId: notification.groupId } : {}) };
+    const message: PushMessage = { id: notification.id, kind: notification.kind, title: notification.title, botId: notification.botId, botName: notification.botName, threadId: notification.threadId, ...(notification.groupId ? { groupId: notification.groupId } : {}), ...(notification.requestId ? { requestId: notification.requestId } : {}) };
     await Promise.all(targets.map((device) => {
       const session = sessions.get(device.sessionId);
       if (!session || (options.adminOnly && !session.scopes.includes("admin")) || !device.push) return;
@@ -362,6 +383,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
   const deviceOf = (auth: RequestAuth) => (auth.kind === "session" ? devices.find((device) => device.sessionId === auth.session.id) ?? null : null);
 
   activeNotify = (notification, options) => { void notify(notification, options).catch((error) => log(`mobile: push failed (${(error as Error).message})`)); };
+  activeTurnActivity = (threadId, event, context) => activities.event(threadId, event, context);
 
   return {
     /** POST /api/mobile/redeem, before the auth gate: the grant's secret is the authorization */
@@ -416,6 +438,32 @@ export function createMobileLink(deps: MobileLinkDeps) {
         json(res, 200, { ok: true, delivering: push.delivers?.(service) ?? push.configured.includes(service) });
         return true;
       }
+      if ((path === "/api/mobile/activity" || path === "/api/mobile/activity-start") && (method === "PUT" || method === "DELETE")) {
+        const device = deviceOf(auth);
+        if (!device || device.platform !== "ios") { json(res, 403, { error: "only a paired iPhone shows Live Activities" }); return true; }
+        const value = await body();
+        const token = typeof value.token === "string" ? value.token.trim() : "";
+        const environment = value.environment === "sandbox" || value.environment === "production" ? value.environment : undefined;
+        if (path === "/api/mobile/activity-start") {
+          if (method === "DELETE") device.activityStart = null;
+          else if (/^[0-9a-f]{16,512}$/i.test(token)) device.activityStart = { token, ...(environment ? { environment } : {}), updatedAt: now() };
+          else { json(res, 400, { error: "token must be the push-to-start token, hex" }); return true; }
+          persist();
+          json(res, 200, { ok: true });
+          return true;
+        }
+        const threadId = typeof value.threadId === "string" && /^[\w:.-]{1,128}$/.test(value.threadId) ? value.threadId : null;
+        if (!threadId) { json(res, 400, { error: "threadId is required" }); return true; }
+        if (method === "DELETE") { activities.unregister(device.id, threadId); json(res, 200, { ok: true }); return true; }
+        if (!/^[0-9a-f]{16,512}$/i.test(token)) { json(res, 400, { error: "token must be the activity's push token, hex" }); return true; }
+        activities.register(device.id, {
+          threadId, token, ...(environment ? { environment } : {}),
+          ...(typeof value.key === "string" ? { key: value.key } : {}),
+          ...(typeof value.startedAt === "number" ? { startedAt: value.startedAt } : {}),
+        });
+        json(res, 200, { ok: true, delivering: push.delivers?.("apns") ?? push.configured.includes("apns") });
+        return true;
+      }
       if (path === "/api/mobile/presence" && method === "PUT") {
         const device = deviceOf(auth);
         if (!device) { json(res, 403, { error: "only a paired phone reports where it is" }); return true; }
@@ -439,6 +487,9 @@ export function createMobileLink(deps: MobileLinkDeps) {
       return false;
     },
     notify: (notification: NotificationLogEntry, options?: { adminOnly?: boolean; person?: string }) => notify(notification, options),
+    turnActivity: (threadId: string, event: TurnActivityEvent, context?: { attributes?: TurnActivityAttributes; reply?: string }) => activities.event(threadId, event, context),
+    /** for tests */
+    activities: (threadId: string) => activities.state(threadId),
     /** for tests */
     state: () => ({ rev, applied, devices: devices.map((device) => ({ ...device })), grants: grants.size, agent }),
   };

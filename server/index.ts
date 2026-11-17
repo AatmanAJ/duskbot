@@ -480,7 +480,7 @@ import { screenFrameHash, screenSurfaceForTool, screenTouchingTool, settledFrame
 import { asSchedule, RoutineRequestService } from "./routine-requests.ts"; import { ownerSpokeOnly } from "./cloud-routine-level.ts"; import { routineRunCard, routineRunFallbackText } from "./routine-run-card.ts";
 import { activeRoutinesContext } from "./active-routines-context.ts";
 import { createRefusedHandoffs } from "./host/refused-handoffs.ts"; import { automationContextText, createAutomationReports, newestAutomationLines } from "./automation-reports.ts"; import { createAutomationDestinations } from "./automation-destinations.ts"; import { createProactive } from "./host/proactive.ts"; import { READ_AND_DRAFT_PARTS, READ_AND_DRAFT_REFUSAL, READ_AND_DRAFT_TOOLS, recordsAnswer } from "./read-and-draft.ts"; import { createPresenceRoutes } from "./routes/presence.ts"; import { needsYouNow } from "./today.ts";
-import { engineLabel, LimitResetClock, nearLimitNote } from "./limit-resets.ts"; import { loadPlanUsage, planAccountsFromInstances } from "./plan-usage.ts"; import { LimitFailovers, limitBackupAllowed } from "./limit-failover.ts"; import { createLimitResetRoutes } from "./routes/limit-resets.ts"; import { createComputerEgress } from "./computer-egress.ts"; import { createComputerEgressRoutes } from "./routes/computer-egress.ts"; import { createMobileLink, mobileLookupRelay, notifyPhones } from "./mobile/link.ts"; import { isThisServerVps } from "./vps-local.ts";
+import { engineLabel, LimitResetClock, nearLimitNote } from "./limit-resets.ts"; import { loadPlanUsage, planAccountsFromInstances } from "./plan-usage.ts"; import { LimitFailovers, limitBackupAllowed } from "./limit-failover.ts"; import { createLimitResetRoutes } from "./routes/limit-resets.ts"; import { createComputerEgress } from "./computer-egress.ts"; import { createComputerEgressRoutes } from "./routes/computer-egress.ts"; import { createMobileLink, mobileLookupRelay, notifyPhones, turnActivityToPhones } from "./mobile/link.ts"; import { turnActivityAttributes } from "./mobile/turn-activity.ts"; import { isThisServerVps } from "./vps-local.ts";
 import { parseTriggerRequest, triggerTarget } from "./trigger-tools.ts"; import { WebhookRequestError, WebhookRequestService } from "./webhook-requests.ts"; import { createAppTriggerHost } from "./app-trigger-host.ts";
 import { appliesNow, directApply, UNDO_STALE, type DirectApply } from "./direct-apply.ts";
 import { createAgentCard } from "./chat-widgets.ts";
@@ -7271,6 +7271,7 @@ bus.subscribe((event: RuntimeEvent) => {
           turnId: liveTurnId,
         });
         if (event.itemId) toolMessageByItem.set(`${event.threadId}:${event.itemId}`, message.id);
+        turnActivityToPhones(event.threadId, { type: "step", activity: event.step?.activity ?? "tool" });
       }
       break;
     case "request.opened": {
@@ -7435,14 +7436,16 @@ bus.subscribe((event: RuntimeEvent) => {
             notificationBot,
             (routineRun && routineSourceThread(routineRun)) || event.threadId,
             routineRun?.attention ? `${routineRun.routineName}: ${routineRun.attention}` : event.summary,
+            event.requestId ? { requestId: event.requestId } : undefined,
           ), routineRun ? { routine: true } : undefined);
+          if (event.requestId) turnActivityToPhones(event.threadId, { type: "ask", kind: permission ? "approve" : "answer", requestId: event.requestId }, { attributes: turnActivityAttributes(asker, event.threadId, store.groupByThread(event.threadId)?.id) });
         }
       }
       break;
     }
     case "request.resolved": {
       if (event.requestId) pendingCommandRules.delete(`${event.threadId}:${event.requestId}`);
-      if (event.requestId) askCards.settleWaitingOnPersonChips(event.threadId, event);
+      if (event.requestId) { askCards.settleWaitingOnPersonChips(event.threadId, event); turnActivityToPhones(event.threadId, { type: "resolved", requestId: event.requestId }); }
       const waiting = bot ?? (speaker ? store.bot(speaker.botId) : undefined);
       if (bot && turnWaitedOnPerson(store.taskByThread(bot.id, event.threadId))) {
         store.setTaskActivity(bot.id, event.threadId, "working");
@@ -7525,6 +7528,7 @@ bus.subscribe((event: RuntimeEvent) => {
           .map((message) => message.text ?? "").join("\n"));
       }
       const reply = lastReply.get(event.threadId) ?? "";
+      if (!internal) turnActivityToPhones(event.threadId, event.ok && !stopped ? { type: "done" } : { type: "stopped" }, { reply });
       if (personStops.stopped(event.threadId, completedTurnId)) pushStoppedTurn(completedTurnId);
       personStops.turnEnded(event.threadId, completedTurnId);
       lastReply.delete(event.threadId);

@@ -171,6 +171,24 @@ describe("mobile link", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("registers an iPhone's Live Activity and push-to-start tokens, and an approval's ask id travels with its push", async () => {
+    const mobile = link();
+    const answer = (await call(mobile, owner, "POST", "/api/mobile/pairing")).body as MobilePairingResponse;
+    const phone = (await redeem(mobile, { secret: answer.payload.grant.secret, attemptId: "attempt-0005", device: { name: "p", platform: "ios" } })).body as MobileRedeemResponse;
+    const auth: RequestAuth = { kind: "session", session: sessions.authenticate(phone.token)!, via: "bearer", scopes: phone.scopes };
+    expect((await call(mobile, owner, "PUT", "/api/mobile/activity", { threadId: "t1", token: "ab".repeat(16) })).status).toBe(403);
+    expect((await call(mobile, auth, "PUT", "/api/mobile/activity", { threadId: "t1", token: "not hex" })).status).toBe(400);
+    expect((await call(mobile, auth, "PUT", "/api/mobile/activity", { threadId: "t1", token: "ab".repeat(16) })).status).toBe(200);
+    expect(mobile.activities("t1")).toHaveLength(1);
+    expect((await call(mobile, auth, "DELETE", "/api/mobile/activity", { threadId: "t1" })).status).toBe(200);
+    expect(mobile.activities("t1")).toHaveLength(0);
+    expect((await call(mobile, auth, "PUT", "/api/mobile/activity-start", { token: "cd".repeat(16), environment: "sandbox" })).status).toBe(200);
+    expect(mobile.state().devices[0]!.activityStart).toMatchObject({ token: "cd".repeat(16), environment: "sandbox" });
+    await call(mobile, auth, "PUT", "/api/mobile/push", { service: "apns", token: "abcdef0123456789" });
+    await mobile.notify({ id: "n2", at: 1, read: false, kind: "approval", botId: "b1", botName: "Nova", threadId: "t1", title: "Nova", body: "x", requestId: "req-1" });
+    expect(sent.at(-1)?.message).toMatchObject({ kind: "approval", requestId: "req-1" });
+  });
+
   describe("away phones", () => {
     afterEach(() => { vi.useRealTimers(); });
     async function pushPhone(mobile: ReturnType<typeof link>, attempt: string) {
