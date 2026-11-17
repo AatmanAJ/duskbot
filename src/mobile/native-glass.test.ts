@@ -130,18 +130,16 @@ describe("colours", () => {
     expect(cssColor("rgba(0, 0, 0, 0)")).toBeNull();
   });
 
-  it("holds a button's colours while its colour transition runs, so the native one never chases the frames between", () => {
+  it("reads where a colour transition or handoff is heading, not the frame it is on", () => {
     const actions = document.createElement("div");
     const send = document.createElement("button");
     send.setAttribute("data-composer-send", "");
-    send.style.backgroundColor = "rgb(0, 133, 74)";
+    send.style.backgroundColor = "rgb(5, 140, 80)";
     actions.append(send);
     document.body.append(actions);
-    expect(composerButtons(actions)?.buttons[0]?.fill).toBe("#00854a");
-    send.style.backgroundColor = "rgb(10, 150, 90)";
-    send.getAnimations = () => [{ transitionProperty: "background-color" } as unknown as Animation];
-    expect(composerButtons(actions)?.buttons[0]?.fill).toBe("#00854a");
-    send.getAnimations = () => [];
+    const effect = Object.create(KeyframeEffect.prototype) as KeyframeEffect;
+    effect.getKeyframes = () => [{ backgroundColor: "rgb(0, 133, 74)" }, { backgroundColor: "rgb(10, 150, 90)" }] as unknown as ComputedKeyframe[];
+    send.getAnimations = () => [{ effect } as unknown as Animation];
     expect(composerButtons(actions)?.buttons[0]?.fill).toBe("#0a965a");
   });
 });

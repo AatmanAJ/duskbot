@@ -165,18 +165,19 @@ export function composerButtons(actions: Element | null): { buttons: GlassButton
   return { buttons, elements };
 }
 
-const rested = new WeakMap<Element, { fill?: string; ink?: string }>();
-
-/** The button's fill and ink once its css colour transition (composer-press, 100ms) lands: the native button animates
- * to them itself, so the values in between would only make it chase every frame. */
+/** The button's fill and ink as they will rest: while a colour transition or the slot's handoff animation runs, where
+ * it is heading, so the native button springs there once instead of chasing every frame between. */
 export function restingColors(el: HTMLElement): { fill?: string; ink?: string } {
-  const known = rested.get(el);
-  const moving = known && el.getAnimations?.().some((animation) => /color/.test((animation as CSSTransition).transitionProperty ?? ""));
-  if (known && moving) return known;
   const style = getComputedStyle(el);
-  const colors = { fill: cssColor(style.backgroundColor) ?? undefined, ink: cssColor(style.color) ?? undefined };
-  rested.set(el, colors);
-  return colors;
+  let fill = style.backgroundColor;
+  let ink = style.color;
+  for (const animation of el.getAnimations?.() ?? []) {
+    const frames = animation.effect instanceof KeyframeEffect ? animation.effect.getKeyframes() : [];
+    const end = frames[frames.length - 1] as Record<string, unknown> | undefined;
+    if (typeof end?.backgroundColor === "string") fill = end.backgroundColor;
+    if (typeof end?.color === "string") ink = end.color;
+  }
+  return { fill: cssColor(fill) ?? undefined, ink: cssColor(ink) ?? undefined };
 }
 
 /** A strip inside the pill above its row (a reply, attachments): only the page draws those. */
