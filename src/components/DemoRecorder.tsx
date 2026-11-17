@@ -45,7 +45,7 @@ export function seeingLine(seeing: DemoSeeing | undefined): string {
   return t(SEEN_BARE[seeing.kind] ?? "showOnce.seeing.nothing");
 }
 
-const FRAME: Partial<Record<DockTone, string>> = { watching: "ring-danger", working: "ring-accent", look: "ring-warning" };
+const FRAME: Partial<Record<DockTone, string>> = { watching: "inset-ring-danger", working: "inset-ring-accent", look: "inset-ring-warning" };
 
 /** What happens next, said before anything is recorded, with a name for the task if the person has one. */
 function DemoIntro({ botName, starting, onStart, onCancel }: { botName: string; starting: boolean; onStart: (name: string) => void; onCancel: () => void }) {
@@ -169,7 +169,7 @@ export function DemoRecorder({ bot, surface, holding, threadId, onTake, asked = 
   const ring = frame && tone && (!run || run.status === "running") ? FRAME[tone] : undefined;
   return (
     <div data-demo-recorder={live?.status ?? (run ? "replay" : intro ? "intro" : "idle")} className={cn("shrink-0", (live || run || intro) && "order-last")}>
-      {ring ? <span aria-hidden="true" data-demo-frame={tone} className={cn("pointer-events-none absolute inset-0 z-20 rounded-[inherit] ring-2 ring-inset", ring)} /> : null}
+      {ring ? <span aria-hidden="true" data-demo-frame={tone} className={cn("pointer-events-none absolute inset-0 z-20 rounded-[inherit] inset-ring-2", ring)} /> : null}
       {run ? <DemoRun run={run} botName={bot.name} holding={holding} onDismiss={() => setDismissed(run.id)} />
         : live?.status === "recording" ? (
           <Watching live={live} botName={bot.name} title={names[live.id] ?? ""} busy={busy}
