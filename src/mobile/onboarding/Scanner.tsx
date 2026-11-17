@@ -8,7 +8,8 @@ import { haptic } from "../haptics";
 import { dur, ease, spring } from "../motion";
 import type { CameraSession, MobilePlatform } from "../platform";
 
-const FRAME = 264;
+/** The viewfinder fills the width but a margin, up to a size that still leaves room for the title and the buttons. */
+const frameSize = () => Math.round(Math.max(240, Math.min((globalThis.innerWidth || 390) - 56, 360)));
 /** One camera session at a time: a new scanner waits for the last one to finish closing (a quick close and reopen, or a
  * dev double mount), since a start racing a stop leaves the native preview dark. */
 let lastStop: Promise<unknown> = Promise.resolve();
@@ -29,6 +30,7 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
   const [torch, setTorch] = useState<boolean | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [seen, setSeen] = useState(false);
+  const [frame] = useState(frameSize);
   const read = useRef(onCode);
   read.current = onCode;
 
@@ -68,7 +70,7 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
 
   return (
     <motion.div
-      className="absolute inset-0 z-20 overflow-hidden"
+      className="fixed inset-0 z-50 overflow-hidden"
       data-scan-clear
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.16 } }}
       transition={{ duration: dur.base }}
@@ -77,15 +79,15 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
       {platform.kind === "web" && <video ref={videoRef} className="absolute inset-0 size-full object-cover" muted playsInline autoPlay aria-hidden />}
       {unavailable && <div aria-hidden className="absolute inset-0 bg-[#121212]" />}
 
-      <div className="absolute left-1/2 top-[40%] -translate-x-1/2 -translate-y-1/2" style={{ width: FRAME, height: FRAME }}>
-        <div aria-hidden className="absolute inset-0 rounded-[38px]" style={{ boxShadow: "0 0 0 200vmax rgb(6 8 14 / 0.64)" }} />
-        {(["left-0 top-0 border-l-[3.5px] border-t-[3.5px] rounded-tl-[38px]", "right-0 top-0 border-r-[3.5px] border-t-[3.5px] rounded-tr-[38px]", "bottom-0 left-0 border-b-[3.5px] border-l-[3.5px] rounded-bl-[38px]", "bottom-0 right-0 border-b-[3.5px] border-r-[3.5px] rounded-br-[38px]"]).map((corner) => (
-          <motion.span key={corner} aria-hidden className={`absolute size-14 border-white ${corner}`}
+      <div className="absolute left-1/2 top-[44%] -translate-x-1/2 -translate-y-1/2" style={{ width: frame, height: frame }}>
+        <div aria-hidden className="absolute inset-0 rounded-[44px]" style={{ boxShadow: "0 0 0 200vmax rgb(6 8 14 / 0.64)" }} />
+        {(["left-0 top-0 border-l-[3.5px] border-t-[3.5px] rounded-tl-[44px]", "right-0 top-0 border-r-[3.5px] border-t-[3.5px] rounded-tr-[44px]", "bottom-0 left-0 border-b-[3.5px] border-l-[3.5px] rounded-bl-[44px]", "bottom-0 right-0 border-b-[3.5px] border-r-[3.5px] rounded-br-[44px]"]).map((corner) => (
+          <motion.span key={corner} aria-hidden className={`absolute size-16 border-white ${corner}`}
             animate={{ scale: seen ? 0.94 : 1, borderColor: seen ? "#7ce3b0" : "#ffffff" }} transition={spring.lively} />
         ))}
         {!busy && !unavailable && (
-          <div aria-hidden className="absolute inset-x-6 top-6 overflow-hidden" style={{ height: FRAME - 48 }}>
-            <span className="dusk-scanline absolute inset-x-0 top-0 block h-16" style={{ ["--scan-travel" as string]: `${FRAME - 48 - 64}px`, background: "linear-gradient(180deg, transparent, rgb(255 255 255 / 0.14) 70%, rgb(255 255 255 / 0.55) 100%)", borderRadius: 2 }} />
+          <div aria-hidden className="absolute inset-x-6 top-6 overflow-hidden" style={{ height: frame - 48 }}>
+            <span className="dusk-scanline absolute inset-x-0 top-0 block h-16" style={{ ["--scan-travel" as string]: `${frame - 48 - 64}px`, background: "linear-gradient(180deg, transparent, rgb(255 255 255 / 0.14) 70%, rgb(255 255 255 / 0.55) 100%)", borderRadius: 2 }} />
           </div>
         )}
         <div aria-hidden className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-[62%]">
@@ -96,7 +98,7 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
         )}
         <AnimatePresence>
           {busy && (
-            <motion.div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-[38px] bg-[rgb(10_12_20/0.55)] text-white" role="status"
+            <motion.div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-[44px] bg-[rgb(10_12_20/0.55)] text-white" role="status"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: dur.fast }}>
               <WorkingDots size={5} />
               <span className="text-[15px] font-medium">{t("mobile.onboarding.linking")}</span>
