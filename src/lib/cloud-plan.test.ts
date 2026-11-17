@@ -240,7 +240,7 @@ describe("what is for sale, as the Admin says", () => {
     expect(badge(1)).toBe("Free for 1 day");
     expect(badge(3)).toBe("Free for 3 days");
     setLocale("de");
-    expect(terms(1)).toBe("1 Tag kostenlos, dann $169/Monat zzgl. ggf. anfallender Steuern");
+    expect(terms(1)).toBe("1 Tag kostenlos, dann $169/Monat zzgl. ggf. anfallender Steuern. In der Zeit wird nichts berechnet. Jederzeit kündbar.");
     expect(badge(3)).toBe("3 Tage kostenlos");
     setLocale("en");
   });
@@ -251,7 +251,7 @@ describe("what is for sale, as the Admin says", () => {
       computerHours: 800, voiceCharacters: 90_000, snapshotDays: 14 } }], recommended: "max" });
     expect(card!.rows.map(row => row.text)).toEqual(["Immer verfügbar, bevorzugtes Aufwachen", "8 vCPU · 8 GB RAM", "10 GB Festplatte, wächst bis 100 GB",
       "Tägliche Backups, 14 Tage aufbewahrt"]);
-    expect([card!.action, card!.terms]).toEqual(["Kostenlos testen", "3 Tage kostenlos, dann $99/Monat zzgl. ggf. anfallender Steuern"]);
+    expect([card!.action, card!.terms]).toEqual(["Kostenlos testen", "3 Tage kostenlos, dann $99/Monat zzgl. ggf. anfallender Steuern. In der Zeit wird nichts berechnet. Jederzeit kündbar."]);
   });
 
   it("money-back only while the Admin offers it; due today in cents", () => {
