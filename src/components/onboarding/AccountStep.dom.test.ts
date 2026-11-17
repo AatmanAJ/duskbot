@@ -67,3 +67,13 @@ it("both bridges sign out through the cloud account, which the gate's state foll
   expect(signOut).toHaveBeenCalledTimes(2);
   expect(funnelAccount({ accountGate: gate } as never)!.signOut).toBeUndefined();
 });
+
+it("waiting on a magic link says plainly where the link went and what opening it does", async () => {
+  const account = fakeAccount();
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const known: FunnelAccountState = { signedIn: false, required: false, browser: false, magic: "ada@example.com" };
+  await act(async () => root.render(createElement(AccountStep, { account, known, onDone: () => {}, onSkip: null })));
+  expect(host.textContent).toContain("We sent a link to ada@example.com. Open it to finish signing in.");
+  await act(async () => root.unmount());
+});

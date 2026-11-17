@@ -28,7 +28,7 @@ export function AiStep({ tested, cloud = false, computerAis = [], onNext }: { te
   const usedLeft = tiles.filter((tile) => used.includes(tile.id) && !engineReady(tile.instance));
   const sub = usedLeft.length
     ? t("funnel.ai.subComputer", { ais: new Intl.ListFormat(activeLocale(), { style: "long", type: "conjunction" }).format(usedLeft.map((tile) => tile.label)) })
-    : connected.length ? t("funnel.ai.subMore") : cloud ? t("funnel.ai.subCloud") : t("funnel.ai.sub");
+    : connected.length ? t("funnel.ai.subMore") : cloud ? t(free ? "funnel.ai.subCloud" : "funnel.ai.subCloudNoFree") : t("funnel.ai.sub");
   const { using, goOn, skip } = useFoundAi(null, onNext);
 
   if (using !== "none") {
@@ -55,7 +55,7 @@ export function AiStep({ tested, cloud = false, computerAis = [], onNext }: { te
     <StepFrame art={<StepArt art="plug" />} title={t("funnel.ai.title")} sub={sub} wide
       footer={<>
         <button type="button" data-primary="" data-funnel-ai-continue="" disabled={connected.length === 0} onClick={() => onNext("connected")} className={PRIMARY}>{t("funnel.next")}</button>
-        {connected.length === 0 && <button type="button" data-funnel-later="" onClick={() => onNext(free ? "free" : "later")} className={SECONDARY}>{t("funnel.ai.later")}</button>}
+        {connected.length === 0 && <button type="button" data-funnel-later="" onClick={() => onNext(free ? "free" : "later")} className={SECONDARY}>{t(cloud && free ? "funnel.ai.free" : "funnel.ai.later")}</button>}
       </>}>
       <AiCards tested={tested} onMore={() => setMore(true)} suggested={used} />
 
