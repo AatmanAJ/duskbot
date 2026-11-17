@@ -53,12 +53,12 @@ test("a plan change that charges now is applied only at the amount the person wa
   const overview = { subscriptions: [{ id: "sub1", status: "active", createdAt: 1, bundle: null, totalCents: 1000, currentPeriodEnd: 2, cancelAtPeriodEnd: false, cart: { interval: "month", license: { kind: "team", members: 3 }, desktop: { kind: "none" } } }], clouds: [], invoices: { invoices: [] } };
   let chargeNowCents = 1250;
   const fetch = vi.fn(async (path: string, _init?: RequestInit) => Response.json(
-    path.endsWith("catalog") ? catalog : path.endsWith("overview") ? overview : path.endsWith("/preview") ? { v: 1, quote: {}, chargeNowCents, confirmation: "confirm-1", expiresAt: 3 } : {}));
+    path.endsWith("catalog") ? catalog : path.endsWith("overview") ? overview : path.endsWith("/preview") ? { v: 1, quote: {}, timing: "now", chargeNowCents, taxCents: 150, effectiveAt: 1, nextChargeCents: 1000, nextChargeAt: 2, confirmation: "confirm-1", expiresAt: 3 } : {}));
   vi.stubGlobal("fetch", fetch);
   const { api } = await import("./api");
   await api.billing();
   const selection = { license: "team", members: 3, desktop: "none", size: null, region: "eu", interval: "month" } as const;
-  expect(await api.changeCharge(selection)).toBe(12.5);
+  expect(await api.changeCharge(selection)).toEqual({ timing: "now", todayUsd: 12.5, taxUsd: 1.5, effectiveAt: 1, nextUsd: 10, nextAt: 2 });
   expect(fetch.mock.calls.some(([path]) => path.endsWith("/change"))).toBe(false);
   await expect(api.changePlan(selection)).rejects.toMatchObject({ code: "price_changed" });
   await expect(api.changePlan(selection, 10)).rejects.toMatchObject({ code: "price_changed" });

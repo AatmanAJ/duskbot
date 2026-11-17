@@ -4,8 +4,8 @@ import { setFlowNote } from "../lib/flow-note";
 import { Check, ChevronDown, Download } from "@/icons";
 import { useCloud } from "../data/cloud";
 import { LoadError } from "./common";
-import type { BillingInterval, LicenseId, PlanCatalog, Selection } from "../data/contracts";
-import { bundleOf, desktopOf, gb, licenseMonthly, licenseOf, perMonthOn, priceCart } from "../data/pricing";
+import type { BillingInterval, ChangeOffer, LicenseId, PlanCatalog, Selection } from "../data/contracts";
+import { bundleOf, desktopOf, gb, licenseMonthly, licenseOf, perMonthOn } from "../data/pricing";
 import { useSession } from "../data/session";
 import { track } from "../lib/analytics";
 import { useCart } from "../data/quote";
@@ -22,7 +22,7 @@ import { regionName } from "./cloud-bits";
 import { AnimatePresence, EASE_OUT, m } from "../ui/motion";
 import { Digits } from "../ui/Digits";
 import { CancelFlow, CONTACT } from "./cancel-flow";
-import { BUSY, cartText, ChargeLine, CHECKOUT_PLAN_KEY, IntervalToggle, LicenseSheet, money, PlanSheet, planSelection, priceText, sharedRegions, useInterval, Working, type PaidPlan } from "./plan-sheet";
+import { BUSY, cartText, CHECKOUT_PLAN_KEY, IntervalToggle, LicenseSheet, money, OfferLine, offerAction, PlanSheet, planName, planSelection, priceText, sharedRegions, switchedToast, useInterval, Working, type PaidPlan } from "./plan-sheet";
 import { CHECKOUT_SOON, checkoutDone, trialAction } from "./cloud-offer";
 
 export { IntervalToggle, useInterval };
@@ -158,7 +158,10 @@ function Row({ k, children, action }: { k: string; children: ReactNode; action?:
 const quiet = "text-link inline-flex h-9 items-center rounded-full px-1 text-14 disabled:opacity-45 max-sm:h-11";
 
 function YourBilling({ catalog, onLicense, onManage }: { catalog: PlanCatalog; onLicense(): void; onManage(): void }) {
-  const { billing, clouds, updateCard } = useCloud();
+  const { billing, clouds, updateCard, changePlan } = useCloud();
+  const { toast } = useSession();
+  const [keeping, setKeeping] = useState(false);
+  const [keepError, setKeepError] = useState<string | null>(null);
   const sub = billing?.subscription ?? null;
   const sel = sub?.selection ?? null;
   const { cart } = useCart(sel, catalog);
@@ -179,6 +182,15 @@ function YourBilling({ catalog, onLicense, onManage }: { catalog: PlanCatalog; o
             <span className="block truncate max-sm:whitespace-normal">{plan}{desk && sel ? <span className="text-ink-3">, {clouds?.[0]?.name ?? desk.name} in {regionName(catalog, sel.region)}</span> : <span className="text-ink-3">, your bots run on your mac</span>}</span>
             {sub && <span className="num block truncate text-13 text-ink-3 max-sm:whitespace-normal">{cart ? `${cartText(cart, sub.selection.interval)} · ` : ""}{renews}{applied && !sub.cancelAt ? ` · ${applied.percent}% off for ${applied.cycles} months` : ""}</span>}
           </Row>
+          {sub?.scheduled && (
+            <Row k="next plan" action={<button type="button" className={quiet} disabled={keeping} onClick={() => {
+              setKeeping(true); setKeepError(null);
+              changePlan(sub.selection, 0).then(() => toast(`you stay on ${planName(catalog, sub.bundle)}`), (e: Error) => setKeepError(e.message)).finally(() => setKeeping(false));
+            }}>{keeping ? "keeping" : `keep ${planName(catalog, sub.bundle)}`}</button>}>
+              <span className="num block truncate max-sm:whitespace-normal">{planName(catalog, sub.scheduled.bundle)}<span className="text-ink-3">, from {longDate(sub.scheduled.at)} at {money(sub.scheduled.amountUsd)}{sub.scheduled.selection.interval === "year" ? "/yr" : "/mo"}</span></span>
+              <span className="block text-13 text-ink-3">{keepError ? <span role="alert" className="text-bad">{keepError}</span> : `you keep ${planName(catalog, sub.bundle)} and its machine until then. nothing more is charged.`}</span>
+            </Row>
+          )}
           <Row k="license" action={<button type="button" className={quiet} onClick={onLicense}>{lic?.work ? "change" : "add"}</button>}>
             {lic?.work && sel ? <span className="block truncate max-sm:whitespace-normal">{lic.name} license<span className="num text-ink-3">, {members(sel.members)} · {bundleOf(catalog, "pro")?.license === sel.license && bundleOf(catalog, "pro")?.desktop === sel.desktop ? "included with pro" : priceText(licenseMonthly(lic, sel.members), sel.interval, catalog)}</span></span> : <span className="text-ink-3">personal use, free</span>}
           </Row>
@@ -209,15 +221,15 @@ function YourBilling({ catalog, onLicense, onManage }: { catalog: PlanCatalog; o
   );
 }
 
-/** a cloud plan from its card, with no sheet: no plan yet goes straight to checkout, a running plan changes in place,
- * stopping once on the card when the change charges something now */
+/** a cloud plan from its card, with no sheet: no plan yet goes straight to checkout; a running plan stops once on the
+ * card to show what the switch does (today's charge, the next one and when), then changes in place */
 function useDirectPlan(catalog: PlanCatalog | null, interval: BillingInterval) {
   const { billing, checkout, changeCharge, changePlan } = useCloud();
   const { toast } = useSession();
   const owned = billing?.subscription?.selection ?? null;
   const [busy, setBusy] = useState<Tier | null>(null);
   const [error, setError] = useState<{ id: Tier; text: string } | null>(null);
-  const [charge, setCharge] = useState<{ id: Tier; key: string; usd: number } | null>(null);
+  const [charge, setCharge] = useState<{ id: Tier; key: string; offer: ChangeOffer } | null>(null);
   const selectionFor = (id: Exclude<Tier, "free">): Selection | null => {
     if (!catalog) return null;
     if (id === "team") {
@@ -232,17 +244,14 @@ function useDirectPlan(catalog: PlanCatalog | null, interval: BillingInterval) {
     const sel = selectionFor(id);
     if (!catalog || !sel || busy) return;
     const key = JSON.stringify(sel);
-    const shown = charge?.id === id && charge.key === key ? charge.usd : null;
+    const shown = charge?.id === id && charge.key === key ? charge.offer : null;
     setBusy(id); setError(null);
     try {
       if (owned) {
-        if (shown === null) {
-          const usd = await changeCharge(sel);
-          if (usd > 0) { setCharge({ id, key, usd }); return; }
-        }
-        await changePlan(sel, shown ?? 0);
+        if (shown === null) { setCharge({ id, key, offer: await changeCharge(sel) }); return; }
+        await changePlan(sel, shown.todayUsd);
         setCharge(null);
-        toast(`you are on ${bundleOf(catalog, id)?.name ?? id}`);
+        toast(switchedToast(shown, bundleOf(catalog, id)?.name ?? id));
       } else {
         track({ name: "plan_chosen", props: { plan: id, period: interval } });
         if (catalog.checkoutOpen === false) { setError({ id, text: CHECKOUT_SOON }); return; }
@@ -257,14 +266,14 @@ function useDirectPlan(catalog: PlanCatalog | null, interval: BillingInterval) {
     if (error?.id === id) return <p role="alert" className="mt-3 text-13 text-bad">{error.text}</p>;
     if (charge?.id !== id || !catalog || id === "free") return null;
     const sel = selectionFor(id);
-    return sel && charge.key === JSON.stringify(sel)
-      ? <>{id === "team" && <p className="mt-3 text-13 text-ink-3">your dusk cloud moves to its own machine. your bots pause for a minute or two.</p>}<ChargeLine charge={charge.usd} cart={priceCart(sel, catalog)} interval={sel.interval} from={billing?.subscription?.currentPeriodEnd} /></>
+    return sel && owned && charge.key === JSON.stringify(sel)
+      ? <OfferLine offer={charge.offer} from={planName(catalog, billing?.subscription?.bundle)} to={bundleOf(catalog, id)?.name ?? "the new plan"} fromInterval={owned.interval} toInterval={sel.interval} />
       : null;
   };
   const label = (id: Tier, fallback: string) => {
     if (busy === id) return owned ? "switching" : "opening checkout";
     const sel = id !== "free" && charge?.id === id ? selectionFor(id) : null;
-    return sel && charge && charge.key === JSON.stringify(sel) ? `pay ${money(charge.usd)} and switch` : fallback;
+    return sel && charge && charge.key === JSON.stringify(sel) ? offerAction(charge.offer, bundleOf(catalog!, id)?.name ?? id, planName(catalog!, billing?.subscription?.bundle)) : fallback;
   };
   return { busy, choose, note, label, retry: (plan: PaidPlan) => void choose(plan) };
 }

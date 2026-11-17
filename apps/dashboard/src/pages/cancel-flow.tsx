@@ -154,7 +154,7 @@ export function CancelFlow({ open, onClose, catalog }: { open: boolean; onClose(
   const downgrade = () => run("downgrade", async () => {
     await changePlan(smaller, 0);
     log("help", "downgrade");
-    toast(`you are on ${plus?.name ?? "plus"}`);
+    toast(`you switch to ${plus?.name ?? "plus"} on ${until}. until then nothing changes.`);
   });
   const stop = () => run("cancel", async () => {
     if (keepsLicense) { await changePlan({ ...sel, desktop: "none", size: null }); log("confirm", "cancelled"); }

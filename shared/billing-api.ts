@@ -154,6 +154,8 @@ export interface SubscriptionView {
   createdAt: number;
   /** a free trial: nothing is charged until then, the first charge comes at this time unless cancelled */
   trialEndsAt?: number;
+  /** a confirmed downgrade waiting for the next billing date */
+  scheduledChange?: ScheduledChangeView;
 }
 
 export const LICENSE_STATUSES = ["active", "grace", "expired"] as const;
@@ -251,7 +253,26 @@ export interface RetentionOffer { percent: number; cycles: number }
 /** the stay-on discount: `offer` while this account may still take it (once per account, monthly plans), `applied` once taken */
 export interface RetentionView { offer: RetentionOffer | null; applied: (RetentionOffer & { at: number }) | null }
 
-export interface ChangePreview { v: typeof BILLING_API_VERSION; quote: Quote; chargeNowCents: number; confirmation: string; expiresAt: number }
+/** when a plan change takes effect and what it charges:
+ *  `trial`: during a free trial, nothing now; the trial keeps its end date and the first charge is the new plan's price
+ *  `now`: an upgrade, charged now for the time left in the period (the billing date stays; monthly to yearly starts a new year today)
+ *  `scheduled`: a downgrade or yearly to monthly, nothing now; the current plan runs to `effectiveAt`, then the new one bills
+ *  `undo`: back to the current plan while a scheduled change waits: the scheduled change is dropped, nothing is charged */
+export type ChangeTiming = "trial" | "now" | "scheduled" | "undo";
+export interface ChangePreview {
+  v: typeof BILLING_API_VERSION; quote: Quote; timing: ChangeTiming;
+  /** charged to the card on file when confirmed, tax included; 0 unless `timing` is now */
+  chargeNowCents: number;
+  /** the tax inside `chargeNowCents` */
+  taxCents: number;
+  /** when the new plan (and its machine) starts */
+  effectiveAt: number;
+  /** the next charge after this change, at the new plan's price before tax, and when */
+  nextChargeCents: number; nextChargeAt: number | null;
+  confirmation: string; expiresAt: number;
+}
+/** a change the owner confirmed that starts at `at` (the next billing date) */
+export interface ScheduledChangeView { cart: Cart; bundle: BundleId | null; totalCents: number; at: number }
 
 export const CLOUD_SWATCHES = ["blue", "green", "amber", "rose", "violet", "slate"] as const;
 export type CloudSwatch = (typeof CLOUD_SWATCHES)[number];
@@ -330,7 +351,7 @@ export interface BillingOverview {
  *   DELETE /v1/team/members/:email                   -> { team: TeamView }   owner; ends their access to the team's cloud
  *   POST /v1/team/join     { token }                 -> TeamJoinAnswer       410 invite_invalid, 403 invite_other_email, 409 seats_full
  *   POST /v1/billing/subscriptions/:id/preview  { cart: Cart }            -> ChangePreview
- *   POST /v1/billing/subscriptions/:id/change   { confirmation }          -> { subscription: SubscriptionView }
+ *   POST /v1/billing/subscriptions/:id/change   { confirmation }          -> { subscription: SubscriptionView; paymentUrl?: string }  a card that needs a check (3DS) pays at paymentUrl
  *   POST /v1/billing/subscriptions/:id/cancel   { survey?: CancelSurvey } -> { subscription: SubscriptionView }
  *   POST /v1/billing/subscriptions/:id/keep                               -> { subscription: SubscriptionView }
  *   POST /v1/billing/subscriptions/:id/retention RetentionInput           -> { ok: true }
@@ -345,7 +366,7 @@ export interface BillingOverview {
  * errors: { error, code } with codes below.
  */
 export const BILLING_ERROR_CODES = ["billing_active", "signed_out", "invalid_request", "not_found", "forbidden", "rate_limited", "already_subscribed", "checkout_open", "cap",
-  "confirmation_required", "price_changed", "not_subscribed", "already_on_plan", "plan_change_unavailable", "seats_full", "invite_invalid", "invite_other_email", "already_in_team", "discount_used", "discount_unavailable", "unavailable", "checkout_soon", "bad_signature", "failed"] as const;
+  "confirmation_required", "price_changed", "not_subscribed", "already_on_plan", "plan_change_unavailable", "change_in_progress", "payment_failed", "seats_full", "invite_invalid", "invite_other_email", "already_in_team", "discount_used", "discount_unavailable", "unavailable", "checkout_soon", "bad_signature", "failed"] as const;
 export interface DeletionBlocker { kind: "subscription" | "cloud_desktop"; id: string; label: string; status: string }
 export interface DeleteAccountOptions { cancelBilling?: boolean; destroyDesktopsNow?: boolean }
 export type BillingErrorCode = (typeof BILLING_ERROR_CODES)[number];

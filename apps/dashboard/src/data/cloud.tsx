@@ -2,7 +2,7 @@ import type { DeleteAccountOptions } from "../../../../shared/billing-api";
 import type { ConnectorsAnswer } from "../../../../shared/dashboard-protocol";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, FIXTURE, type AccountData } from "../lib/api";
-import type { BillingOverview, CheckoutRequest, CloudDesktop, DesktopId, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection } from "./contracts";
+import type { BillingOverview, ChangeOffer, CheckoutRequest, CloudDesktop, DesktopId, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection } from "./contracts";
 import { fixtureCatalog } from "./fixtures";
 import type { CancelAnswer, RetentionInput } from "./wire";
 
@@ -23,8 +23,8 @@ export interface CloudData {
   checkout(req: CheckoutRequest): Promise<boolean>;
   power(id: string, on: boolean): Promise<void>;
   resize(id: string, req: { tier: Exclude<DesktopId, "none">; size: MachineSpec | null }): Promise<void>;
-  /** what changing to `selection` charges now, in dollars; a change that charges anything is confirmed with that amount */
-  changeCharge(selection: Selection): Promise<number>;
+  /** what changing to `selection` does: today's charge, the next one and when; every change is confirmed with it */
+  changeCharge(selection: Selection): Promise<ChangeOffer>;
   changePlan(selection: Selection, approvedUsd?: number): Promise<void>;
   cancel(reason: CancelAnswer | ""): Promise<void>;
   /** records a cancel flow step; never throws */

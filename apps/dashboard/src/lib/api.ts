@@ -1,7 +1,7 @@
 import type { DeletionBlocker, DeleteAccountOptions } from "../../../../shared/billing-api";
 import type { CommandKind, CommandView, ConnectorsAnswer, WorkspaceDetail, WorkspaceSummary } from "../../../../shared/dashboard-protocol";
 import type { PulseAnswer } from "../../../../shared/machine-pulse";
-import type { AccountDevice, AccountProfile, AuthProviders, BillingOverview, CheckoutAnswer, CheckoutRequest, CloudDesktop, DesktopId, EmailCodeStart, Identity, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection, SlackWake } from "../data/contracts";
+import type { AccountDevice, AccountProfile, AuthProviders, BillingOverview, ChangeOffer, CheckoutAnswer, CheckoutRequest, CloudDesktop, DesktopId, EmailCodeStart, Identity, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection, SlackWake } from "../data/contracts";
 import { trackOnboardingDone } from "./analytics";
 import { accountFromWire, billingFromWire, cartFromQuote, cartFromSelection, catalogFromWire, cloudFromWire, providersFromWire } from "../data/live";
 import { CSRF_HEADER, EMAIL_CODE_DIGITS, readCsrfCookie, type AccountAnswer, type AccountView, type BillingOverview as WireBillingOverview, type CancelAnswer, type Catalog, type ChangePreview, type CheckoutAnswer as WireCheckoutAnswer, type CloudDesktopView, type DeviceLookupAnswer, type EmailStartAnswer, type HandoffAnswer, type MeAnswer, type ProvidersAnswer, type Quote, type RetentionInput, type WebSignInAnswer } from "../data/wire";
@@ -109,6 +109,9 @@ async function overview(): Promise<{ billing: BillingOverview; clouds: CloudDesk
   return { billing, clouds: answer.clouds.map(cloudFromWire).filter((cloud) => cloud !== null) };
 }
 
+const offerFromWire = (preview: ChangePreview): ChangeOffer => ({ timing: preview.timing, todayUsd: preview.chargeNowCents / 100, taxUsd: preview.taxCents / 100,
+  effectiveAt: preview.effectiveAt, nextUsd: preview.nextChargeCents / 100, nextAt: preview.nextChargeAt });
+
 function subscriptionPath(): string {
   if (!subscriptionId) throw new ApiError("there is no plan to change.", 409, "not_subscribed");
   return `/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`;
@@ -202,19 +205,21 @@ export const api = {
   },
   /** a card-only page for the plan's payment method; dusk bot never opens the provider's customer portal */
   updateCard: () => send<{ url: string }>(`${subscriptionPath()}/card`, "POST"),
-  /** what a plan change charges now, in dollars, before anything is applied */
-  changeCharge: async (selection: Selection): Promise<number> => {
-    if (FIXTURE) return 0;
-    const preview = await send<ChangePreview>(`${subscriptionPath()}/preview`, "POST", { cart: cartFromSelection(selection, await catalog()) });
-    return preview.chargeNowCents / 100;
+  /** what a plan change does, before anything is applied: today's charge, the next one and when */
+  changeCharge: async (selection: Selection): Promise<ChangeOffer> => {
+    if (FIXTURE) return { timing: "now", todayUsd: 0, taxUsd: 0, effectiveAt: Date.now(), nextUsd: 0, nextAt: null };
+    return offerFromWire(await send<ChangePreview>(`${subscriptionPath()}/preview`, "POST", { cart: cartFromSelection(selection, await catalog()) }));
   },
-  /** applies a plan change only while it charges no more than the person was shown (`approvedUsd`) */
+  /** applies a plan change only while it charges no more than the person was shown (`approvedUsd`); a card that needs a
+   * check goes to the provider's payment page */
   changePlan: async (selection: Selection, approvedUsd = 0) => {
     if (FIXTURE) return send("/v1/billing/change", "POST", { selection });
     const path = subscriptionPath();
     const preview = await send<ChangePreview>(`${path}/preview`, "POST", { cart: cartFromSelection(selection, await catalog()) });
     if (preview.chargeNowCents > Math.round(approvedUsd * 100)) throw new ApiError("the price changed. check it and confirm again.", 409, "price_changed");
-    return send(`${path}/change`, "POST", { confirmation: preview.confirmation });
+    const answer = await send<{ paymentUrl?: string }>(`${path}/change`, "POST", { confirmation: preview.confirmation });
+    if (answer.paymentUrl) window.location.assign(answer.paymentUrl);
+    return answer;
   },
   /** a cancel flow step, for the owner's cancel reasons and saves */
   retention: (input: RetentionInput) => send(FIXTURE ? "/v1/billing/retention" : `${subscriptionPath()}/retention`, "POST", input),
