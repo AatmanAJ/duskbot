@@ -3192,8 +3192,8 @@ ipcMain.handle("workspaces:menu", workspaceOnly(async (_event, from) => {
       ...cloudMenuOptions(from === "howto" ? "app_howto" : "app_menu"),
       ...(homeWindow.cloudOrigin() && cloudOffersAllowed() ? { onAddCloud: () => void ensureCloudAccount().webHandoff({ page: "cloud" }).catch(error => slog(`add cloud: ${error?.message ?? error}`)) } : {}),
       kindIcon: placeKindIcon,
-      // with My Cloud home, this computer stays one tap away
-      onLocal: () => void workspaceMenuAction(() => (activeEnvironment(environmentsState) ? switchEnvironment(LOCAL_ID) : (homePlaces.remember(null), persistEnvironments(withActive(environmentsState, LOCAL_ID), "chosen"), navigateMainWindow(rendererOrigin())))),
+      // with My Cloud home, this computer stays one tap away, unless all it has is the frozen copy the bots moved out of
+      ...(cleanWorkspace.showable() ? { onLocal: () => void workspaceMenuAction(() => (!cleanWorkspace.showable() ? showHome() : activeEnvironment(environmentsState) ? switchEnvironment(LOCAL_ID) : (homePlaces.remember(null), persistEnvironments(withActive(environmentsState, LOCAL_ID), "chosen"), navigateMainWindow(rendererOrigin())))) } : {}),
       localShown: Boolean(mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents })),
       ...(await placesMenuOptions({ homeOrigin: homeWindow.cloudOrigin(), cloud: cloudHomeEntry(), home: oneHome.away() || ownHome?.away() === true, platform: process.platform, port: SERVER_PORT })),
     });
