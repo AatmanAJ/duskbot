@@ -72,9 +72,14 @@ export function createDodoProvider(options: DodoProviderOptions): BillingProvide
         customer: input.customerId ? { customer_id: input.customerId } : { email: input.email, ...(named && name ? { name } : {}) }, return_url: input.returnUrl, metadata: { checkoutId: input.checkoutId, accountId: input.accountId },
         ...(input.trialDays ? { subscription_data: { trial_period_days: input.trialDays } } : {}) });
       // the name only saves typing: a checkout dodo refuses with it is asked once more without it
-      const result = await json("/checkouts", body(true)).catch((error: unknown) => {
+      const open = () => json("/checkouts", body(true)).catch((error: unknown) => {
         if (!name || !(error instanceof BillingProviderError) || error.code !== "refused") throw error;
         return json("/checkouts", body(false));
+      });
+      // dodo's create-checkout now and then fails with a 5xx or a dropped connection; one quiet retry opens the page
+      const result = await open().catch((error: unknown) => {
+        if (!(error instanceof BillingProviderError) || error.code !== "unavailable") throw error;
+        return open();
       });
       if (typeof result.session_id !== "string" || !result.session_id) throw new BillingProviderError("refused");
       return { sessionId: result.session_id, url: allowedUrl(result.checkout_url, `${prefix}checkout.dodopayments.com`) };

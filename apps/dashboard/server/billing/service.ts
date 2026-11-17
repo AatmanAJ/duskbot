@@ -801,7 +801,8 @@ export function createBillingService(options: BillingServiceOptions) {
       if (closureFor(account.id)) { entry.status = "expired"; entry.url = null; store.commit(); fail(409, "billing_active"); }
       entry.url = session.url; store.commit();
       return { v: 1, checkoutId: entry.id, checkoutUrl: session.url, cloudId: entry.cloudId, revives: entry.revive === true };
-    } catch {
+    } catch (error) {
+      if (error instanceof BillingProviderError) console.warn(`billing: WARN checkout ${entry.id} didn't open: the provider said ${error.code}`);
       entry.status = "expired"; store.commit(); if (entry.cloudId && !entry.revive) clouds.abandon(entry.cloudId); fail(503, "unavailable");
     }
   }
