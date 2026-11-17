@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, Maximize, Shrink } from "../../icons";
 import { browserStreamAccess, createPreviewStreamClient, type PreviewStreamClient, type PreviewStreamControl, type PreviewStreamInput } from "@/lib/browser-stream-client";
 import { createLiveStreamClient, type LiveResume } from "@/lib/browser-stream-v1";
 import { cn } from "@/lib/cn";
+import { glassPopupTopInset } from "@/lib/glass-popup";
 import { t } from "@/lib/i18n";
 import { blankPage, keepView, keptKey, keptView, localBrowserFixture, minutesSince, pageTitle, siteOf, tabLetter, useLocalBrowser, type ClosedTabView, type LocalBrowserState } from "@/lib/local-browser";
 import { usePageVisible } from "@/lib/page-visible";
@@ -200,6 +201,8 @@ export function LocalBrowserLive({ bot }: { bot: Bot }) {
 
   const view = (
     <section data-local-browser="live" data-big={big || undefined} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={t("localBrowser.label", { name: bot.name })}
+      // over the whole window the traffic lights (Windows: caption buttons) sit in its top corner: the page starts under them
+      style={big ? { paddingTop: glassPopupTopInset() } : undefined}
       className={big ? "fixed inset-0 z-50 flex flex-col gap-2 bg-app p-4 text-ink" : "flex flex-col gap-2"}>
       <div className={cn(screenCls, "flex flex-col", big && "min-h-0 flex-1")}>
         {strip.length > 0 && <TabStrip bot={bot} tabs={strip} selected={active?.tabId ?? null} onSelect={select} dot={dot} />}
