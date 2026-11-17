@@ -24,7 +24,8 @@ describe("the funnel's steps", () => {
   it("offers bringing things in on this computer's own window, after the place", () => {
     expect(funnelSteps({ account: false, desktop: true, bring: true })).toEqual(["welcome", "place", "ai", "bring"]);
     expect(funnelSteps({ account: false, desktop: true, bring: false })).not.toContain("bring");
-    expect(funnelSteps({ account: false, desktop: true, bring: true, path: "cloud" }), "never on dusk cloud").not.toContain("bring");
+    expect(funnelSteps({ account: false, desktop: true, bring: true, path: "cloud" }), "on dusk cloud too, before the cloud is made")
+      .toEqual(["welcome", "place", "checkout", "ai", "bring", "making"]);
   });
 
   it("shows the phone only while the phone app is offered, on this computer's own window", () => {
@@ -35,10 +36,11 @@ describe("the funnel's steps", () => {
 
   it("on dusk cloud goes from the place straight to the browser's checkout, then the cloud being made", () => {
     const steps = funnelSteps({ account: true, desktop: true, bring: true, path: "cloud", phone: true });
-    expect(steps, "the account and the place come before the AI").toEqual(["welcome", "account", "place", "checkout", "ai", "making"]);
+    expect(steps, "the account and the place come before the AI").toEqual(["welcome", "account", "place", "checkout", "ai", "bring", "making"]);
     expect(nextStep(steps, "place")).toBe("checkout");
     expect(nextStep(steps, "checkout")).toBe("ai");
-    expect(nextStep(steps, "ai")).toBe("making");
+    expect(nextStep(steps, "ai")).toBe("bring");
+    expect(nextStep(steps, "bring")).toBe("making");
     expect(nextStep(steps, "making"), "the chat comes after the last").toBeNull();
     expect(previousStep(steps, "checkout"), "an easy way back before paying").toBe("place");
     expect(previousStep(steps, "ai", { paid: true }), "never back to a purchase that is done").toBeNull();

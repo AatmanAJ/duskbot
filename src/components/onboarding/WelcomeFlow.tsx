@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { setEmailGateDone, track } from "@/lib/analytics";
 import { openExternalLink } from "@/lib/app-links";
 import { phoneAppPrompted } from "@/lib/feature-flags";
@@ -22,7 +22,7 @@ import { AiStep } from "./AiStep";
 import { BringStatus, BringStep } from "./BringStep";
 import { CheckoutStep, useCloudTile } from "./CheckoutStep";
 import { CloudBringStep, useCloudBringOffered } from "./CloudBringStep";
-import { funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
+import { cloudOwned, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
 import { funnelAccount, type FunnelAccountState } from "./funnel-account";
 import { FunnelBar, PhoneStep, PlaceStep, WelcomeStep } from "./FunnelSteps";
 import { MakingStep } from "./MakingStep";
@@ -119,7 +119,7 @@ export function WelcomeFlow({
   const draft = useMemo(() => (keepsDraft ? readWelcomeDraft() : null), [keepsDraft]);
   // where the bots live, once picked; a resumed dusk cloud run past its checkout is paid for (the AI or the Cloud being made)
   const [path, setPath] = useState<FunnelPath | null>(draft?.cloud === true ? "cloud" : null);
-  const [paid, setPaid] = useState(draft?.cloud === true && (draft.beat === "ai" || draft.beat === "making"));
+  const [paid, setPaid] = useState(draft?.cloud === true && (draft.beat === "ai" || draft.beat === "bring" || draft.beat === "making"));
   const [checkoutStart, setCheckoutStart] = useState(false);
   const cloud = path === "cloud";
 
@@ -262,6 +262,27 @@ export function WelcomeFlow({
     setFrom("next");
     setAt("ai");
   }, []);
+
+  // an account that already has dusk cloud (bought on the website, or earlier) is never asked where the bots live: on
+  // reaching the place or the checkout it goes on as if that checkout had just completed
+  const cloudAccount = desktop && !replay ? window.duskDesktop?.cloudAccount : undefined;
+  const [owned, setOwned] = useState(false);
+  useEffect(() => {
+    if (!cloudAccount || paid) return;
+    let alive = true;
+    const seen = (next: Parameters<typeof cloudOwned>[0]) => { if (alive && cloudOwned(next)) setOwned(true); };
+    void cloudAccount.state().then(seen, () => {});
+    const stop = cloudAccount.onState(seen);
+    return () => { alive = false; stop(); };
+  }, [cloudAccount, paid]);
+  useLayoutEffect(() => {
+    if (!owned || paid || (at !== "place" && at !== "checkout")) return;
+    track("onboarding_cloud", { action: "owned" });
+    setPath("cloud");
+    setPaid(true);
+    setFrom("next");
+    setAt("ai");
+  }, [owned, paid, at]);
   // this Mac, from the place step or from the browser's waiting screen: on to the step after the place
   const toMac = () => {
     setPath("mac");
