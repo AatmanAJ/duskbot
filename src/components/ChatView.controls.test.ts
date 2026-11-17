@@ -98,16 +98,16 @@ describe("the header's right side", () => {
     }
   });
 
-  it("moves Stop out of the header into the composer's round button while a turn runs", () => {
+  it("shows no Stop in the header or the composer while a turn runs: only send and voice", () => {
     {
       const busy = { ...bot, busy: true, tasks: (bot.tasks ?? []).map((task) => ({ ...task, busy: true })) };
       const { markup, controls } = header(busy);
       expect(controls).not.toContain("Stop this turn");
-      const stop = markup.match(/<button[^>]*data-composer-stop="slot"[^>]*>/)?.[0] ?? "";
-      expect(stop).toContain('aria-label="Stop this turn"');
+      expect(markup).not.toContain("data-composer-stop");
+      expect(markup).not.toContain('aria-label="Stop this turn"');
       expect(markup).not.toContain('data-call-button="composer"');
       expect(header({ ...busy, waitingForTeammates: true, busy: false, tasks: (bot.tasks ?? []).map((task) => ({ ...task, busy: false, waitingForTeammates: true })) }).markup)
-        .toContain('data-composer-stop="slot"');
+        .not.toContain("data-composer-stop");
     }
   });
 
@@ -196,7 +196,8 @@ describe("header name", () => {
       expect(pillOf(busyMarkup)).toBe(pillOf(idleMarkup));
       expect(busyMarkup).toMatch(/<span role="status" class="sr-only" data-chathead-status="true">Working<\/span>/);
       expect(idleMarkup).toMatch(/<span role="status" class="sr-only" data-chathead-status="true"><\/span>/);
-      expect(busyMarkup).toContain(remote ? 'title="Stop this turn"' : 'aria-label="Stop this turn"');
+      if (remote) expect(busyMarkup).toContain('title="Stop this turn"');
+      else expect(busyMarkup).not.toContain("Stop this turn");
     }
   });
 
