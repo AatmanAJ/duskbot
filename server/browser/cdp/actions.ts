@@ -13,7 +13,9 @@ import type { Keyboard } from "./keyboard.ts";
 import type { NodeHandle, RefTable } from "./refs.ts";
 import { liveRef } from "./relocate.ts";
 import { coverAdvice, RECEIVES, samplePoints, SCROLL_CLEAR, VISIBLE_POINT, type Receives } from "./cover.ts";
+import { innerField, notEditableMessage, WHY_NOT_EDITABLE } from "./fields.ts";
 import { resolveElement } from "./selectors.ts";
+import { setSlider, sliderState } from "./slider.ts";
 
 export const DEFAULT_ACTION_TIMEOUT_MS = 15_000;
 const POLL_MS = 100;
@@ -299,7 +301,12 @@ async function focusEditable(context: ActionContext, handle: NodeHandle & { ref?
     if (isGone(error) || (error instanceof DriverError && error.code === "not-found")) throw gone(handle);
     throw error;
   }
-  if (!editable) throw notEditable();
+  if (!editable) {
+    const inner = await innerField(context.frames, handle, "text");
+    if (inner) return focusEditable(context, inner);
+    const why = await callOnNode<string>(context.frames, handle, WHY_NOT_EDITABLE).catch(() => "");
+    throw why ? new DriverError("not-editable", notEditableMessage(why)) : notEditable();
+  }
   await focusNode(handle);
   let current = handle;
   for (let frame = 0; ; frame++) {
@@ -318,7 +325,13 @@ async function focusEditable(context: ActionContext, handle: NodeHandle & { ref?
 export async function fill(context: ActionContext, target: Exclude<Target, Point>, text: string): Promise<void> {
   await context.bringToFront();
   refuseErrorPage(context);
-  const { kind, handle } = await focusEditable(context, await element(context, target));
+  const named = await element(context, target);
+  const slider = await sliderState(context.frames, named);
+  if (slider) {
+    await setSlider(context.frames, context.keyboard, named, slider, text);
+    return;
+  }
+  const { kind, handle } = await focusEditable(context, named);
   // Date and time fields take no typed text: set them like a picker would (the events are untrusted).
   if (kind === "value") {
     await callOnNode(context.frames, handle, SET_VALUE, [text]);
@@ -485,13 +498,29 @@ export async function drag(context: ActionContext, from: Target, to: Target, { t
   }
 }
 
-const VIEWPORT_CENTER = "({ x: innerWidth / 2, y: innerHeight / 2 })";
+/** The middle of the viewport, or of the largest scrolling box on screen when the page itself cannot scroll (an app whose list scrolls inside it). */
+const WHEEL_AT = `(() => {
+  const root = document.scrollingElement || document.documentElement;
+  const middle = { x: innerWidth / 2, y: innerHeight / 2 };
+  // a page that scrolls only a little (a margin past 100vh) is an app whose real list scrolls inside it
+  if (root.scrollHeight - innerHeight > 200) return middle;
+  let best = null, size = 0;
+  for (const el of document.querySelectorAll("*")) {
+    if (el.scrollHeight <= el.clientHeight + 2) continue;
+    const overflow = getComputedStyle(el).overflowY;
+    if (overflow !== "auto" && overflow !== "scroll") continue;
+    const r = el.getBoundingClientRect();
+    const w = Math.min(r.right, innerWidth) - Math.max(r.left, 0), h = Math.min(r.bottom, innerHeight) - Math.max(r.top, 0);
+    if (w > 0 && h > 0 && w * h > size) { size = w * h; best = { x: Math.max(r.left, 0) + w / 2, y: Math.max(r.top, 0) + h / 2 }; }
+  }
+  return best || middle;
+})()`;
 
-/** A mouse wheel over the target, or over the middle of the viewport. */
+/** A mouse wheel over the target, or where a person would wheel to scroll the page. */
 export async function scroll(context: ActionContext, target: Target | null, deltaX: number, deltaY: number, { timeoutMs = DEFAULT_ACTION_TIMEOUT_MS }: { timeoutMs?: number } = {}): Promise<Point> {
   await context.bringToFront();
   const point = target === null
-    ? await valueInWorld<Point>(context.frames, context.frames.mainFrameId, VIEWPORT_CENTER)
+    ? await valueInWorld<Point>(context.frames, context.frames.mainFrameId, WHEEL_AT)
     : isPoint(target) ? await inViewport(context, target) : await actionablePoint(context, await element(context, target), Date.now() + timeoutMs, { hitTest: false });
   await context.mouse.move(point.x, point.y);
   await context.mouse.wheel(deltaX, deltaY);

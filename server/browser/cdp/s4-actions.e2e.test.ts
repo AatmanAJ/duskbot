@@ -89,7 +89,7 @@ suite("S4 snapshot, refs and actions on real Chrome", () => {
 
   it("rejects ambiguous CSS controls without clicking any row (t3)", async () => {
     await open(repeatedRows);
-    await expect(page.click({ selector: 'button[data-testid="delete-row"]' }, { timeoutMs: 1_000 })).rejects.toThrow(/strict mode violation/);
+    await expect(page.click({ selector: 'button[data-testid="delete-row"]' }, { timeoutMs: 1_000 })).rejects.toThrow(/matches 5 elements, so nothing was done\. They: (e\d+ <button> "delete"(; )?){5}\. Pass the ref of the one you mean\./);
     expect(await read(`document.querySelectorAll("li").length`)).toBe(5);
   });
 
@@ -256,9 +256,8 @@ suite("S4 snapshot, refs and actions on real Chrome", () => {
 
   it("refuses to type into what is not an enabled text field (t3)", async () => {
     await open(`<button id="b">b</button><input id="d" disabled><input id="r" readonly value="x"><input id="c" type="checkbox">`);
-    for (const selector of ["#b", "#d", "#r", "#c"]) {
-      await expect(page.fill({ selector }, "x")).rejects.toThrow("The target is not an enabled text field, so no text was typed.");
-    }
+    const why: Record<string, RegExp> = { "#b": /is a <button>, not a text field, so no text was typed/, "#d": /disabled, so no text was typed/, "#r": /read-only, so no text was typed/, "#c": /checkbox or radio button, so no text was typed: use agent_browser_check/ };
+    for (const [selector, message] of Object.entries(why)) await expect(page.fill({ selector }, "x")).rejects.toMatchObject({ code: "not-editable", message: expect.stringMatching(message) });
     await inPageWorld(() => page.evaluate("document.activeElement.blur()", { world: "page" }));
     await expect(page.type(null, "x")).rejects.toMatchObject({ code: "not-editable" });
   });
