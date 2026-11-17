@@ -1,11 +1,19 @@
 import { Suspense, useEffect, useRef, type ReactNode } from "react";
-import { useStore } from "@/state/store";
+import { useStore, type Action } from "@/state/store";
 import { BotSettingsDialog, RoomPanel } from "@/components/lazy-screens";
 import { t } from "@/lib/i18n";
 import { Sheet } from "./Sheet";
 import type { MobileSheet, OpenSheet } from "./sheets";
 import { SHEET_PAGES } from "./sheets/registry";
 import "./sheets/sheets.css";
+
+/** What opening a bot's sheet tells the store, dispatched with the open itself so the panel and the sheet arrive in one
+ * render instead of a second one landing in the sheet's first frames. A room has no store panel: the store ignores it. */
+export function panelOpenAction(sheet: MobileSheet): Action | null {
+  if (sheet.kind === "computer") return { type: "toggleComputer", open: true, botId: sheet.botId };
+  if (sheet.kind === "profile") return { type: "toggleSettings", open: true, botId: sheet.id };
+  return null;
+}
 
 /** The bot's own panel (profile, conversations, library, routines, computer) in a full sheet. The store still thinks
  * of it as the side panel, so opening and closing keep `settingsOpen` in step both ways. */
@@ -16,11 +24,6 @@ function PanelSheet({ sheet, open, onClose }: { sheet: Extract<MobileSheet, { ki
   const group = bot ? undefined : state.groups.find((g) => g.id === id);
   const wasOpen = useRef(false);
 
-  useEffect(() => {
-    if (!open || !bot) return;
-    dispatch(sheet.kind === "computer" ? { type: "toggleComputer", open: true, botId: bot.id } : { type: "toggleSettings", open: true, botId: bot.id });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, sheet.kind, id]);
   useEffect(() => {
     if (!bot) return;
     if (state.settingsOpen) wasOpen.current = true;

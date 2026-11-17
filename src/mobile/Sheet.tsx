@@ -93,8 +93,11 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
     if (!nav || reduced) return;
     const style = recedeStyle(progress);
     nav.style.transform = style?.transform ?? "";
-    nav.style.borderRadius = style?.borderRadius ?? "";
-    nav.style.transformOrigin = "50% 0";
+    // the page clips to its corners: rounding them a little more each frame repaints the whole page every frame, so
+    // they round once as it starts to step back (the screen's own corners hide them that early) and stay so
+    const corners = style ? recedeStyle(1)!.borderRadius : "";
+    if (nav.style.borderRadius !== corners) nav.style.borderRadius = corners;
+    if (nav.style.transformOrigin !== "50% 0px") nav.style.transformOrigin = "50% 0";
   });
   useLayoutEffect(() => {
     if (!mounted) return;
@@ -122,10 +125,16 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
     if (open) {
       opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       y.set(height.current);
-      go(0, 0);
       sheet.focus({ preventScroll: true });
-      // the content arrives a beat behind the sheet that carries it
-      if (!reduced) bodyRef.current?.animate([{ opacity: 0.25, translate: "0 18px" }, { opacity: 1, translate: "0 0" }], { duration: 340, delay: 30, easing: "cubic-bezier(.22,1,.36,1)", fill: "backwards" });
+      // the rise starts on the first frame drawn with the sheet in place below the screen: started here, the spring's
+      // clock would run through the frame that mounts its content and its first steps would lurch, then stall
+      const body = bodyRef.current;
+      const start = requestAnimationFrame(() => {
+        go(0, 0);
+        // the content arrives a beat behind the sheet that carries it
+        if (!reduced) body?.animate([{ opacity: 0.25, translate: "0 18px" }, { opacity: 1, translate: "0 0" }], { duration: 340, delay: 30, easing: "cubic-bezier(.22,1,.36,1)", fill: "backwards" });
+      });
+      return () => cancelAnimationFrame(start);
     } else {
       go(height.current + 24, 0, () => {
         setMounted(false);

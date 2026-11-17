@@ -22,7 +22,7 @@ import { supportMail } from "./legal";
 import { NavStack } from "./NavStack";
 import { ChatScreen } from "./ChatScreen";
 import { HomeScreen, releasePressed } from "./HomeScreen";
-import { SheetHost } from "./SheetHost";
+import { panelOpenAction, SheetHost } from "./SheetHost";
 import { closeTopSheet, Sheet } from "./Sheet";
 import { t } from "@/lib/i18n";
 import { useKeyboardDismiss, useKeyboardSync } from "./keyboard";
@@ -83,9 +83,11 @@ function Shell() {
   }, [dispatch]);
 
   const openSheet = useCallback((next: MobileSheet) => {
+    const panel = panelOpenAction(next);
+    if (panel) dispatch(panel);
     setSheet(next);
     setSheetOpen(true);
-  }, []);
+  }, [dispatch]);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
 
   // a shared card that opens the computer app's settings (connect an AI, add a key) has nothing to open on a phone: it

@@ -3,6 +3,9 @@
 /* behind an open sheet the page steps back onto a dark ground, so its rounded top edge reads as a page, not a header */
 .dusk-mobile:has(.mobile-sheet-layer[data-sheet-open]) { background-color: #0d0d0f; }
 .dusk-mobile .mobile-nav { will-change: auto; }
+/* the bottom sheet moves on its own spring (Sheet.tsx); the desktop's centred-dialog keyframe would take its transform
+   for 200ms, drawing it open at once and then pulling it down before it rises */
+.dusk-mobile .mobile-sheet.mobile-sheet[role="dialog"] { animation: none; }
 
 /* the profile's pencil sits on its own small dark disc at the avatar's corner, visible on every mascot colour */
 .dusk-mobile .mobile-panel-sheet [data-panel-avatar] > span[aria-hidden="true"] {
