@@ -4,6 +4,7 @@ import { connect, createServer, type ClientHttp2Session, type Http2Server, type 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { QUIET_PUSH_CHANNEL } from "../../shared/mobile-link.ts";
 import { createPushSender, pushRelayBase, type PushMessage } from "./push.ts";
 
 const ec = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
@@ -120,6 +121,13 @@ describe("APNs push", () => {
     expect(JSON.parse(body)).toEqual({
       aps: { alert: { title: "Maus", body: "New message" }, sound: "default", "thread-id": "thread-1" }, dusk: data,
     });
+  });
+
+  it("leaves the sound out of a quiet alert, which still shows", async () => {
+    expect(await sender().send(target, { ...message, silent: true })).toBe("sent");
+    const body = JSON.parse(received[0].body);
+    expect(body.aps).toEqual({ alert: { title: "Maus", body: "New message" }, "thread-id": "thread-1" });
+    expect(body.dusk).toEqual(data);
   });
 
   it.each([
@@ -259,6 +267,13 @@ describe("FCM push", () => {
       android: { collapse_key: "thread-1", priority: "high" },
     } });
     expect(Object.values(JSON.parse(body).message.data).every((value) => typeof value === "string")).toBe(true);
+  });
+
+  it("posts a quiet push to the phone's low-importance channel, keeping its data all strings", async () => {
+    expect(await sender().send(target, { ...message, silent: true })).toBe("sent");
+    const sent = JSON.parse(String(requests.at(-1)!.init.body)).message;
+    expect(sent.android).toEqual({ collapse_key: "thread-1", priority: "high", notification: { channel_id: QUIET_PUSH_CHANNEL } });
+    expect(sent.data).toEqual(data);
   });
 
   it("refreshes five minutes before expiry", async () => {

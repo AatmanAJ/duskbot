@@ -59,7 +59,8 @@ export interface Notification {
   forPerson?: string;
   /** Shown as usual (feed, unread, banner, badge) but without a sound: the bot chose `quiet` for this turn, or it is a
    * run nobody was watching (a routine, a webhook) that did not choose `ding`. Asks (an approval, a question, a sign-in
-   * or a secret) and failures never carry it. A device's own sound setting may still override it either way. */
+   * or a secret) and failures never carry it. A device's own sound setting may still override it either way. Only the
+   * live `notify` frame carries it: a sound plays as a notice arrives, so `GET /api/notifications` lists it without. */
   silent?: true;
 }
 
