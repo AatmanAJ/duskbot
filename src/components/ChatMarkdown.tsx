@@ -13,7 +13,6 @@ import { createMarkdownRenderCache } from "@/lib/markdown-render-cache";
 import { parseFenceInfo } from "../lib/code-block";
 import { markdownImageName, markdownImageOpenUrl } from "../lib/markdown-image";
 import { repairMarkdownTables } from "../lib/markdown-tables";
-import { TRANSCRIPT_WINDOW_SIZE } from "../lib/transcript-window";
 import { windowsPathDestinations } from "../../shared/markdown-windows-paths";
 import { GITHUB_REF_CLASS, isUseMyComputerUrl, UseMyComputerLink, usePageOpener, withPageOpen } from "./ChatLinks";
 import { githubRefFromProps, remarkGithubRefs } from "@/lib/github-refs";
@@ -475,7 +474,7 @@ export function normalizeMathDelimiters(text: string, imageOffsets?: Map<number,
 }
 
 const normalizedCache = new Map<string, Pick<MessageScope, "imageOffsets"> & { source: string }>();
-const NORMALIZED_CACHE_MAX = TRANSCRIPT_WINDOW_SIZE * 2;
+const NORMALIZED_CACHE_MAX = 240;
 
 function normalizeMessageMarkdown(text: string) {
   const cached = normalizedCache.get(text);
