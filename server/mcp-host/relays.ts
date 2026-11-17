@@ -6,6 +6,7 @@ import { parseHarnessMcpKind } from "../harness-mcp-request.ts";
 import { harnessMcpTokenEnv } from "../harness-mcp-token.ts";
 import { SPAWNED_PROXIES } from "../proxy-paths.ts";
 import { TOOL_LIMIT_ENV } from "../tool-count-limit.ts";
+import { TOOL_SCHEMA_PROFILE_ENV } from "../tool-schema-profile.ts";
 import type { HostedServer } from "./mounts.ts";
 
 interface StdioSpec {
@@ -18,6 +19,12 @@ interface StdioSpec {
 const PROCESS_ONLY = new Set(["ELECTRON_RUN_AS_NODE"]);
 
 const LOOPBACK_HARNESS = /^http:\/\/127\.0\.0\.1:\d{1,5}$/;
+
+/** A relay told anything beyond what its hosted server takes keeps its relay: the host would drop that setting. The
+ * schema profile is read only by gates, never by these relays. */
+function onlyKnows(env: Record<string, string>, known: readonly string[]): boolean {
+  return Object.keys(env).every((name) => name === TOOL_SCHEMA_PROFILE_ENV || known.includes(name));
+}
 
 function stringEnv(env: unknown): Record<string, string> | null {
   if (env === undefined) return {};
@@ -55,15 +62,16 @@ export function hostedRelay(spec: unknown): HostedServer | null {
     const family = parseHarnessMcpKind(rest[0]);
     const token = family ? env[harnessMcpTokenEnv(family)] : undefined;
     if (!family || !token || !env.DUSK_HARNESS_URL || !LOOPBACK_HARNESS.test(env.DUSK_HARNESS_URL)) return null;
+    if (!onlyKnows(env, ["DUSK_HARNESS_URL", harnessMcpTokenEnv(family), TOOL_LIMIT_ENV])) return null;
     return { kind: "harness", family, harnessUrl: `${env.DUSK_HARNESS_URL}/`, token, ...(env[TOOL_LIMIT_ENV] !== undefined ? { toolLimit: env[TOOL_LIMIT_ENV] } : {}) };
   }
   if (script === SPAWNED_PROXIES.permission && rest.length === 1) {
     const toolScope = permissionScope(env.DUSK_PERMISSION_TOOL_SCOPE);
-    if (toolScope === null || !rest[0]) return null;
+    if (toolScope === null || !rest[0] || !onlyKnows(env, ["DUSK_PERMISSION_TOOL_SCOPE"])) return null;
     return { kind: "permission", socketPath: rest[0], ...(toolScope ? { toolScope } : {}) };
   }
   if (script === SPAWNED_PROXIES.dweb && rest.length === 0) {
-    return env.DWEB_URL ? { kind: "dweb", url: env.DWEB_URL } : null;
+    return env.DWEB_URL && onlyKnows(env, ["DWEB_URL"]) ? { kind: "dweb", url: env.DWEB_URL } : null;
   }
   if (script === SPAWNED_PROXIES.phone && rest.length === 0) {
     return { kind: "phone", env };

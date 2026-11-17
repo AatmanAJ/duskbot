@@ -31,6 +31,8 @@ describe("which relays the MCP host stands in for", () => {
       { command: node, args: [SPAWNED_PROXIES.agents], env: { DUSK_HARNESS_URL: "https://127.0.0.1:8799", DUSK_COMMS_TOKEN: "c" } },
       { command: node, args: [SPAWNED_PROXIES.agents, "--extra"], env: { DUSK_HARNESS_URL: HARNESS, DUSK_COMMS_TOKEN: "c" } },
       { command: node, args: [SPAWNED_PROXIES.harnessMcp, "data"], env: { DUSK_HARNESS_URL: HARNESS } },
+      { command: node, args: [SPAWNED_PROXIES.harnessMcp, "data"], env: { DUSK_HARNESS_URL: HARNESS, DUSK_MCP_TOKEN_DATA: "d", DUSK_SOMETHING_NEW: "1" } },
+      { command: node, args: [SPAWNED_PROXIES.dweb], env: { DWEB_URL: "http://127.0.0.1:49737", DWEB_TOKEN: "x" } },
       { command: node, args: [SPAWNED_PROXIES.harnessMcp, "nope"], env: { DUSK_HARNESS_URL: HARNESS, DUSK_MCP_TOKEN_NOPE: "x" } },
       { command: node, args: [SPAWNED_PROXIES.permission], env: {} },
       { command: node, args: [SPAWNED_PROXIES.permission, "/s"], env: { DUSK_PERMISSION_TOOL_SCOPE: "{not json" } },
