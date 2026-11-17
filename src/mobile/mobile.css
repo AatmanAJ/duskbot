@@ -330,6 +330,32 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-
 /* the native glass draws the header and composer over the page: the page's own stay in place, unseen, for layout,
    menus and focus */
 html[data-native-glass-header] .dusk-mobile [data-glass-nav] [data-glass] { opacity: 0; }
+/* the glass and the page's header swap in one frame both ways: a press's opacity fade here would leave a blank header
+   (or two) for its length */
+.dusk-mobile [data-glass-nav] [data-glass].mobile-press { transition: scale .2s var(--m-ease-release), background-color .15s ease; }
+/* where the native glass draws the header, a sheet hands it to the page's own (the glass cannot sit under the sheet):
+   that one wears the glass's symbols, its live dot and its pill's inset, so the swap shows nothing */
+html[data-native-glyphs~="back"] .dusk-mobile [data-glass-nav] [data-glass="back"] > svg,
+html[data-native-glyphs~="right"] .dusk-mobile [data-glass-nav] [data-glass="right"] > svg { visibility: hidden; }
+html[data-native-glyphs~="back"] .dusk-mobile [data-glass-nav] [data-glass="back"]::after,
+html[data-native-glyphs~="right"] .dusk-mobile [data-glass-nav] [data-glass="right"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  translate: none;
+  background-color: currentColor;
+  -webkit-mask: var(--glyph) center / 100% 100% no-repeat;
+  mask: var(--glyph) center / 100% 100% no-repeat;
+  width: var(--glyph-w);
+  height: var(--glyph-h);
+  pointer-events: none;
+}
+html[data-native-glyphs~="back"] .dusk-mobile [data-glass-nav] [data-glass="back"] { --glyph: var(--native-glyph-back); --glyph-w: var(--native-glyph-back-w); --glyph-h: var(--native-glyph-back-h); }
+html[data-native-glyphs~="right"] .dusk-mobile [data-glass-nav] [data-glass="right"] { --glyph: var(--native-glyph-right); --glyph-w: var(--native-glyph-right-w); --glyph-h: var(--native-glyph-right-h); }
+html[data-native-glyphs~="right"] .dusk-mobile [data-glass-nav] [data-glass-live] { top: 6px; right: 6px; }
+html[data-native-glyphs] .dusk-mobile [data-glass-nav] [data-glass="title"] { padding-left: 7px; }
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
   visibility: hidden;
   height: var(--glass-composer-h, auto) !important;

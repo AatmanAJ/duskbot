@@ -65,8 +65,31 @@ export interface GlassBridge {
   /** The chat's page starts a slide along `path`: the header and composer play the same path natively from this frame,
    * with no frame updates in between. null stops them where they are. */
   slide(path: SlidePath | null): void;
+  /** The native header's own symbols, for the page's header to draw while it stands in for the glass. */
+  glyphs?(): Promise<GlassGlyphs>;
   onEvent(listener: (event: GlassEvent) => void): () => void;
 }
+
+/** A symbol as a black-on-clear png data url, and its size in points (css px). */
+export interface GlassGlyph { data: string; w: number; h: number }
+export type GlassGlyphs = Partial<Record<"back" | "right", GlassGlyph>>;
+
+/** The page's back and computer buttons wear the native header's symbols, so a sheet that hands the header to the page
+ * (the glass cannot be drawn under it) changes nothing a person sees in them. */
+export function applyGlassGlyphs(html: HTMLElement, glyphs: GlassGlyphs): boolean {
+  const entries = Object.entries(glyphs).filter((entry): entry is [string, GlassGlyph] =>
+    Boolean(entry[1] && typeof entry[1].data === "string" && entry[1].data.startsWith("data:image/png;base64,") && entry[1].w > 0 && entry[1].h > 0));
+  if (entries.length === 0) return false;
+  for (const [key, glyph] of entries) {
+    html.style.setProperty(`--native-glyph-${key}`, `url("${glyph.data}")`);
+    html.style.setProperty(`--native-glyph-${key}-w`, `${glyph.w}px`);
+    html.style.setProperty(`--native-glyph-${key}-h`, `${glyph.h}px`);
+  }
+  html.dataset.nativeGlyphs = entries.map(([key]) => key).join(" ");
+  return true;
+}
+
+let glyphsAsked: Promise<GlassGlyphs> | null = null;
 
 const round = (n: number) => Math.round(n * 2) / 2;
 
@@ -336,6 +359,10 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     const root = rootRef.current;
     if (!glass || !root || !chatOpen) return;
     const html = document.documentElement;
+    if (glass.glyphs && html.dataset.nativeGlyphs === undefined) {
+      glyphsAsked ??= glass.glyphs();
+      void glyphsAsked.then((glyphs) => applyGlassGlyphs(html, glyphs), () => {});
+    }
     let frame = 0;
     let last: GlassState | null = null;
     let elements: HTMLElement[] = [];

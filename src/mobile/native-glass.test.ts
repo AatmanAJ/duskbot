@@ -3,7 +3,7 @@ import { createElement, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, restingFrame, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
+import { applyGlassGlyphs, buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, restingFrame, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
 
@@ -378,5 +378,29 @@ describe("useNativeGlass", () => {
     runFrame();
     ($("field") as HTMLTextAreaElement).focus();
     expect(glass.focus).toHaveBeenCalled();
+  });
+});
+
+describe("the header's symbols for the page", () => {
+  const png = (tag: string) => `data:image/png;base64,${tag}`;
+  afterEach(() => {
+    const html = document.documentElement;
+    delete html.dataset.nativeGlyphs;
+    for (const name of ["back", "right"]) for (const end of ["", "-w", "-h"]) html.style.removeProperty(`--native-glyph-${name}${end}`);
+  });
+
+  it("dresses the page's back and computer buttons in the glass's own glyphs, at their size", () => {
+    const html = document.documentElement;
+    expect(applyGlassGlyphs(html, { back: { data: png("QkFDSw=="), w: 11.5, h: 19 }, right: { data: png("RElTUA=="), w: 24, h: 17.5 } })).toBe(true);
+    expect(html.dataset.nativeGlyphs).toBe("back right");
+    expect(html.style.getPropertyValue("--native-glyph-right")).toBe(`url("${png("RElTUA==")}")`);
+    expect(html.style.getPropertyValue("--native-glyph-back-w")).toBe("11.5px");
+  });
+
+  it("leaves the page's own glyphs when the native side sends nothing usable", () => {
+    const html = document.documentElement;
+    expect(applyGlassGlyphs(html, {})).toBe(false);
+    expect(applyGlassGlyphs(html, { right: { data: "javascript:alert(1)", w: 24, h: 17 } })).toBe(false);
+    expect(html.dataset.nativeGlyphs).toBeUndefined();
   });
 });

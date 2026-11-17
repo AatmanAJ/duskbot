@@ -21,7 +21,7 @@ import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState }
 import type { AppleCredential, CameraPermission, CameraScanner, DeliveredNotification, MobilePlatform, OrientationBridge, ScanOverlay, TurnActivityBridge } from "@/mobile/platform";
 import type { NativeAction } from "@/mobile/phone-actions";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
-import type { GlassBridge, GlassEvent, GlassState } from "@/mobile/native-glass";
+import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
 import type { SlidePath } from "@/mobile/NavStack";
 import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
@@ -72,6 +72,7 @@ interface GlassPlugin {
   blur(): Promise<void>;
   clear(): Promise<void>;
   slide(options: { path: SlidePath | null }): Promise<void>;
+  glyphs(): Promise<GlassGlyphs>;
   addListener(event: "glass", listener: (event: GlassEvent) => void): Promise<PluginListenerHandle>;
 }
 const DuskGlass = registerPlugin<GlassPlugin>("DuskGlass");
@@ -86,6 +87,7 @@ export function glassBridge(plugin: GlassPlugin): GlassBridge {
     blur: () => quiet(plugin.blur()),
     clear: () => quiet(plugin.clear()),
     slide: (path) => quiet(plugin.slide({ path })),
+    glyphs: () => plugin.glyphs().catch(() => ({})),
     onEvent: (listener) => unsubscribe([plugin.addListener("glass", listener)]),
   };
 }

@@ -19,6 +19,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "blur", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "clear", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "slide", returnType: CAPPluginReturnNone),
+        CAPPluginMethod(name: "glyphs", returnType: CAPPluginReturnPromise),
     ]
 
     private var chrome: AnyObject?
@@ -78,6 +79,13 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func clear(_ call: CAPPluginCall) {
         guard #available(iOS 26.0, *) else { return }
         withChrome { $0.apply([:]) }
+    }
+
+    /// The header's own symbols as the page can draw them: while a sheet covers the chat the page shows its header in
+    /// the glass's place, and with these its back and computer buttons are the same glyphs, so nothing changes there.
+    @objc func glyphs(_ call: CAPPluginCall) {
+        guard #available(iOS 26.0, *) else { call.resolve([:]); return }
+        DispatchQueue.main.async { call.resolve(ChatGlassChrome.glyphImages()) }
     }
 
     @objc func slide(_ call: CAPPluginCall) {
@@ -267,13 +275,14 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         header.alpha = 0
         header.isHidden = true
         host.addSubview(header)
-        round(back, symbol: "chevron.left", label: "Back") { [weak self] in self?.emit(["type": "tap", "target": "back"]) }
-        round(right, symbol: "display", label: "Computer") { [weak self] in self?.emit(["type": "tap", "target": "right"]) }
+        round(back, symbol: Self.headerSymbols["back"]!, label: "Back") { [weak self] in self?.emit(["type": "tap", "target": "back"]) }
+        round(right, symbol: Self.headerSymbols["right"]!, label: "Computer") { [weak self] in self?.emit(["type": "tap", "target": "right"]) }
         pill.configuration?.cornerStyle = .capsule
         pill.configuration?.imagePadding = 8
         pill.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 7, bottom: 0, trailing: 16)
         pill.configuration?.titleLineBreakMode = .byTruncatingTail
-        pill.addAction(UIAction { [weak self] _ in self?.emit(["type": "tap", "target": "title"]) }, for: .touchUpInside)
+        // the bot's sheet rises as the finger lands, not when it lifts
+        pill.addAction(UIAction { [weak self] _ in self?.emit(["type": "tap", "target": "title"]) }, for: .touchDown)
         liveDot.backgroundColor = .systemGreen
         liveDot.layer.cornerRadius = 4
         liveDot.isUserInteractionEnabled = false
@@ -390,7 +399,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     private func round(_ button: UIButton, symbol: String, label: String, action: @escaping () -> Void) {
         button.configuration?.cornerStyle = .capsule
-        button.configuration?.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
+        button.configuration?.image = UIImage(systemName: symbol, withConfiguration: Self.headerGlyph)
         button.configuration?.baseForegroundColor = .label
         button.accessibilityLabel = label
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
@@ -734,6 +743,23 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     func textViewDidEndEditing(_ textView: UITextView) { emit(["type": "focus", "focused": false]) }
 
     // MARK: images
+
+    static let headerSymbols = ["back": "chevron.left", "right": "display"]
+    static let headerGlyph = UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+
+    /// Each header symbol as a black-on-clear png the page uses as a mask, with its size in points.
+    static func glyphImages() -> [String: Any] {
+        var out: [String: Any] = [:]
+        for (key, name) in headerSymbols {
+            guard let symbol = UIImage(systemName: name, withConfiguration: headerGlyph)?.withTintColor(.black, renderingMode: .alwaysOriginal) else { continue }
+            let format = UIGraphicsImageRendererFormat.preferred()
+            format.opaque = false
+            let drawn = UIGraphicsImageRenderer(size: symbol.size, format: format).image { _ in symbol.draw(at: .zero) }
+            guard let png = drawn.pngData() else { continue }
+            out[key] = ["data": "data:image/png;base64," + png.base64EncodedString(), "w": symbol.size.width, "h": symbol.size.height]
+        }
+        return out
+    }
 
     private static func image(fromDataURL url: String) -> UIImage? {
         guard let comma = url.firstIndex(of: ","), url.hasPrefix("data:image/") else { return nil }
