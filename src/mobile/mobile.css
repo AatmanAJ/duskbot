@@ -289,3 +289,14 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
 }
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea { visibility: visible; opacity: 0; caret-color: transparent; }
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] :is([role="menu"], [role="listbox"], [data-sidebar-popover-menu], [data-composer-menu]) { visibility: visible; }
+
+/* message text at the phone's body size: iOS Body is 17/22 at the default text size (HIG Typography), a step heavier
+   than the desktop's Geist so it reads like Messages on a small screen */
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] {
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 450;
+  padding: 8px 14px;
+}
+.dusk-mobile [data-mobile-chat] [data-chat-bubble]:not([class*="rounded-es-"]):not([class*="rounded-ee-"]) { border-radius: 19px; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] :is(.chat-text, .chat-md, p, li, blockquote, td, th) { font-size: inherit; line-height: inherit; }
