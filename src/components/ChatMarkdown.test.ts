@@ -23,7 +23,9 @@ import {
   textDirection,
   ensureChatKatex,
   messageNeedsKatex,
+  closedFence,
 } from "./ChatMarkdown";
+import { sanitizeDiagramSvg } from "@/lib/diagram-svg";
 import { parseFenceInfo } from "@/lib/code-block";
 import { markdownImageName, markdownImageOpenUrl } from "@/lib/markdown-image";
 import { BotEditorStore, initialState, StoreProvider } from "@/state/store";
@@ -41,6 +43,8 @@ const shiki = vi.hoisted(() => ({
   codeToHtml: vi.fn(async (_code: string, _options: unknown) => "<pre></pre>"),
   loadLanguage: vi.fn(async (_grammar: unknown) => undefined),
 }));
+// happy-dom drops the <svg> that DOMPurify hands back.
+vi.mock("@/lib/diagram-svg", () => ({ sanitizeDiagramSvg: vi.fn((svg: string) => svg) }));
 vi.mock("shiki/core", () => ({
   createHighlighterCore: async () => ({
     codeToHtml: (code: string, options: unknown) => shiki.codeToHtml(code, options),
@@ -1124,6 +1128,21 @@ describe("mermaid diagrams", () => {
     expect(html).toContain('aria-label="Copy diagram source"');
   });
 
+  it("shows a fence cut off before its closing line as code, not as a failed diagram", () => {
+    const html = renderToStaticMarkup(createElement(ChatMarkdown, {
+      text: "I was drawing it:\n\n```mermaid\nflowchart TD\n  A[Start] --> B{Check",
+    }));
+    expect(html).not.toContain("Copy diagram source");
+    expect(html).toContain('aria-label="Copy code"');
+  });
+
+  it("knows a closed fence from one still open", () => {
+    expect(closedFence("```mermaid\nflowchart LR\n```", "flowchart LR")).toBe(true);
+    expect(closedFence("````mermaid\nflowchart LR\n```", "flowchart LR")).toBe(false);
+    expect(closedFence("```mermaid\nflowchart LR", "flowchart LR")).toBe(false);
+    expect(closedFence("~~~mermaid\nflowchart LR\n```", "flowchart LR")).toBe(false);
+  });
+
   it("keeps ordinary fenced code on the highlighter path", () => {
     const html = renderToStaticMarkup(createElement(ChatMarkdown, {
       text: "```ts\nconst sea = true;\n```",
@@ -1153,6 +1172,7 @@ it("renders mermaid strictly and serves repeat views from cache", async () => {
     }));
     expect(render).toHaveBeenCalledWith(expect.any(String), "flowchart LR\n  Ship-->Sea");
 
+    expect(sanitizeDiagramSvg).toHaveBeenCalledWith("<svg>sea lanes</svg>");
     expect(renderToStaticMarkup(createElement(ChatMarkdown, { text: fence }))).toContain("<svg>sea lanes</svg>");
     for (const callback of effects.splice(0)) cleanup.push(callback());
     await Promise.resolve();

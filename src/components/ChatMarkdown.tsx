@@ -31,15 +31,20 @@ import { linkBrand, PLATED_LOGOS } from "@/lib/link-brand"; import { siteIconUrl
 export { CodeBlock, HIGHLIGHT_CACHE_MAX, HIGHLIGHT_CACHE_MAX_CHARS, HIGHLIGHT_MAX_CHARS, type CodeBlockProps } from "./CodeBlock";
 import { FilePreviewButton } from "./FilePreviewButton";
 import { MermaidViewer } from "./MermaidViewer";
+import { sanitizeDiagramSvg } from "@/lib/diagram-svg";
+import { diagramThemeKey, mermaidThemeVariables, readDiagramTokens, type DiagramTokens } from "@/lib/diagram-theme";
 import { SaveIconButton, useHtmlPreview } from "./HtmlFilePreview";
 import "./chat.css";
 import { friendlyError } from "@/lib/plain-error";
+import { cn } from "@/lib/cn";
 
 const mermaidCache = new Map<string, string>();
 const MERMAID_CACHE_MAX = 50;
 // mermaid.render() needs an id no earlier call used, failed calls included (they can leave an orphan element).
 let mermaidRenderId = 0;
-const mermaidKey = (scheme: "dark" | "light", code: string) => `${scheme}:${codeHash(code)}`;
+const mermaidKey = (theme: string, code: string) => `${theme}:${codeHash(code)}`;
+// The theme the last diagram was drawn in, so a remount finds its drawing before the first paint.
+let lastDiagramTheme: string | null = null;
 
 const WINDOWS_PATH = /^[a-zA-Z]:[\\/]/;
 const absolutePath = (value: string): string | null => {
@@ -120,6 +125,33 @@ function remarkSoftBreaks() {
   };
 }
 
+// Foundation taken from T3 Code: adapted from pingdotgg/t3code@b387e3a1
+// apps/web/src/components/chat/MarkdownCodeBlock.logic.ts (isClosedCodeFence), MIT License, Copyright (c) 2026 T3 Tools
+// Inc. (full text in third_party/t3-code/LICENSE); modified: it takes the fence's own source, and an indented opener.
+export function closedFence(source: string, code: string): boolean {
+  const opening = /^[ \t]*(`{3,}|~{3,})/.exec(source)?.[1];
+  const closing = /(?:^|\n)[ \t>]*(`{3,}|~{3,})[ \t\r]*$/.exec(source)?.[1];
+  return opening !== undefined && closing !== undefined && opening[0] === closing[0] && closing.length >= opening.length
+    && source.replace(/\r$/, "").split(/\r\n|\r|\n/).length > code.split(/\r\n|\r|\n/).length;
+}
+
+function remarkOpenDiagrams() {
+  return (tree: { children?: any[] }, file: { value?: unknown }) => {
+    const text = String(file.value ?? "");
+    const visit = (node: { children?: any[] }) => {
+      for (const child of node.children ?? []) {
+        if (child?.type === "code" && child.lang?.toLowerCase() === "mermaid") {
+          const start = child.position?.start?.offset, end = child.position?.end?.offset;
+          if (start !== undefined && end !== undefined && !closedFence(text.slice(start, end), child.value ?? "")) {
+            child.data = { ...child.data, hProperties: { ...child.data?.hProperties, "data-open-fence": "" } };
+          }
+        } else visit(child);
+      }
+    };
+    visit(tree);
+  };
+}
+
 function unwrapLinkedImages() {
   return (tree: { children?: any[] }) => {
     const visit = (node: { children?: any[] }) => {
@@ -185,14 +217,38 @@ export interface MermaidDiagramProps {
   code: string;
 }
 
-const MERMAID_FONT = '"Inter", -apple-system, BlinkMacSystemFont, "SF UI Text", "Segoe UI", system-ui, sans-serif';
+/** Below this a diagram's labels stop being readable, so a wider one scrolls sideways instead of shrinking further. */
+const DIAGRAM_MIN_SCALE = 0.75;
 
-/** Security: the only HTML injected is the SVG mermaid.render() returns under securityLevel "strict". */
+/** Tighter than mermaid's defaults, so a diagram fits a chat bubble at close to its own size. */
+const DIAGRAM_LAYOUT = {
+  flowchart: { nodeSpacing: 28, rankSpacing: 36, padding: 10, diagramPadding: 4 },
+  sequence: { actorMargin: 36, boxMargin: 8, messageMargin: 28, diagramMarginX: 8, diagramMarginY: 8, mirrorActors: false },
+  state: { padding: 6 },
+  xyChart: { width: 560, height: 320 },
+  pie: { textPosition: 0.7 },
+} as const;
+
+function diagramTheme(element: HTMLElement | null): { tokens: DiagramTokens | null; key: string } {
+  const target = element ?? (typeof document === "undefined" ? null : document.documentElement);
+  const scheme = mermaidScheme(target);
+  if (!target) return { tokens: null, key: scheme };
+  try {
+    const tokens = readDiagramTokens(target, scheme);
+    return { tokens, key: diagramThemeKey(tokens) };
+  } catch {
+    return { tokens: null, key: scheme };
+  }
+}
+
+/** Security: the only HTML injected is the SVG mermaid.render() returns under securityLevel "strict", passed through
+ * sanitizeDiagramSvg. */
 export function MermaidDiagram({ code }: MermaidDiagramProps) {
   const frame = useRef<HTMLDivElement | null>(null);
+  const drawing = useRef<HTMLDivElement | null>(null);
   const [skinEpoch, setSkinEpoch] = useState(0);
-  const [svg, setSvg] = useState<string | null>(() =>
-    mermaidCache.get(mermaidKey(mermaidScheme(typeof document === "undefined" ? null : document.documentElement), code)) ?? null);
+  const [svg, setSvg] = useState<string | null>(() => mermaidCache.get(mermaidKey(lastDiagramTheme ?? diagramTheme(null).key, code)) ?? null);
+  const [arrived, setArrived] = useState(false);
   const markup = useMemo(() => (svg ? { __html: svg } : null), [svg]);
   const [error, setError] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
@@ -211,8 +267,9 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
   }, []);
 
   useEffect(() => {
-    const scheme = mermaidScheme(frame.current);
-    const key = mermaidKey(scheme, code);
+    const theme = diagramTheme(frame.current);
+    lastDiagramTheme = theme.key;
+    const key = mermaidKey(theme.key, code);
     const cached = mermaidCache.get(key);
     if (cached) {
       setSvg(cached);
@@ -227,8 +284,9 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
           startOnLoad: false,
           securityLevel: "strict",
           suppressErrorRendering: true,
-          theme: scheme === "light" ? "default" : "dark",
-          fontFamily: MERMAID_FONT,
+          ...(theme.tokens
+            ? { theme: "base", look: "neo", fontFamily: theme.tokens.font, themeVariables: mermaidThemeVariables(theme.tokens), ...DIAGRAM_LAYOUT }
+            : { theme: theme.key === "light" ? "default" : "dark" }),
         });
         return module.default.render(`dusk-mermaid-${mermaidRenderId}`, code);
       })
@@ -238,8 +296,10 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
           const first = mermaidCache.keys().next().value;
           if (first) mermaidCache.delete(first);
         }
-        mermaidCache.set(key, out.svg);
-        setSvg(out.svg);
+        const clean = sanitizeDiagramSvg(out.svg);
+        mermaidCache.set(key, clean);
+        setSvg(clean);
+        setArrived(true);
         setError(null);
       })
       .catch((cause: unknown) => {
@@ -253,25 +313,31 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
   }, [code, skinEpoch]);
 
   useLayoutEffect(() => {
-    const drawn = svg && frame.current?.querySelector("svg");
+    const drawn = svg && drawing.current?.querySelector("svg");
     if (!drawn) return;
     const box = drawn.viewBox?.baseVal;
     const width = Number.parseFloat(drawn.style.maxWidth) || box?.width || 0;
     const height = box && box.width > 0 ? width * (box.height / box.width) : 0;
+    // mermaid draws at 100% of its box, which in a bubble sized to its words is only as wide as the longest line
+    if (width > 0) {
+      drawn.style.width = `${width}px`;
+      drawn.style.minWidth = `${Math.round(width * DIAGRAM_MIN_SCALE)}px`;
+    }
     if (width > 0 && height > 0) rememberRenderedSize(sizeKey, { w: Math.round(width), h: Math.round(height) });
   }, [svg, sizeKey]);
 
   const waiting = !svg && !error && !showSource && reserved;
+  const loading = !svg && !error && !showSource && !reserved;
   const diagram = <>
     {error && (
       <p role="alert" className="px-3 pt-2 text-[12px] text-danger">
         {t("chat.markdown.diagramFailed")} {error}
       </p>
     )}
-    {markup && <div className="overflow-x-auto p-3 [&_svg]:!max-w-full" dangerouslySetInnerHTML={markup} />}
+    {markup && <div ref={drawing} className={cn("overflow-x-auto p-3 [&_svg]:!max-w-full", arrived && "motion-safe:animate-fade-in")} dangerouslySetInnerHTML={markup} />}
     {waiting && <div className="p-3"><div data-mermaid-reserved style={{ width: `min(100%, ${reserved.w}px)`, aspectRatio: `${reserved.w} / ${reserved.h}` }} /></div>}
-    {(showSource || (!svg && !waiting) || error) && (
-      <pre className="overflow-x-auto px-3 py-2 text-[13px] leading-5 text-ink-secondary">{code}</pre>
+    {(showSource || loading || error) && (
+      <pre aria-hidden={loading || undefined} className={cn("overflow-x-auto px-3 py-2 text-[13px] leading-5 text-ink-secondary", loading && "invisible")}>{code}</pre>
     )}
   </>;
   return (
@@ -556,7 +622,7 @@ function MarkdownCode({ node, children }: BlockProps) {
   const flat = (n: any): string =>
     typeof n === "string" ? n : Array.isArray(n) ? n.map(flat).join("") : (n?.props?.children ? flat(n.props.children) : "");
   const code = flat(child?.props?.children).replace(/\n$/, "");
-  if (lang.trim().toLowerCase() === "mermaid") {
+  if (lang.trim().toLowerCase() === "mermaid" && child?.props?.["data-open-fence"] === undefined) {
     return <MermaidDiagram code={code} />;
   }
   return <CodeBlock code={code} lang={lang} initialWrap={wrap} />;
@@ -743,7 +809,7 @@ const NO_THREAD_REFS: ThreadRefsValue = { threads: [] };
 
 // One plugin list for everything every message shares; a message adds mentions only when it has an "@" and thread
 // links only when it may name one, so most messages render the same way whatever the bot list holds.
-const BASE_REMARK_PLUGINS: NonNullable<MarkdownOptions["remarkPlugins"]> = [[remarkGfm, GFM_OPTIONS], remarkMath, remarkWindowsPathDestinations, unwrapLinkedImages, remarkSoftBreaks, remarkGithubRefs];
+const BASE_REMARK_PLUGINS: NonNullable<MarkdownOptions["remarkPlugins"]> = [[remarkGfm, GFM_OPTIONS], remarkMath, remarkWindowsPathDestinations, unwrapLinkedImages, remarkOpenDiagrams, remarkSoftBreaks, remarkGithubRefs];
 const NO_REHYPE_PLUGINS: NonNullable<MarkdownOptions["rehypePlugins"]> = [];
 let katexPlugins: { plugin: KatexPlugin; list: NonNullable<MarkdownOptions["rehypePlugins"]> } | null = null;
 const rehypePluginsFor = (math: KatexPlugin | null) => {
