@@ -2581,6 +2581,18 @@ function selectableInstances<T extends SelectableInstance>(instances: readonly T
   return withInstanceConfig(instances, instanceConfigs(cfg), (instanceId) => used.has(instanceId) || managedDesktop.owns(instanceId));
 }
 
+let lastSelectable: readonly SelectableInstance[] = [];
+
+/** A turn for a bot with no AI: never an empty instance in an error. A ready AI found here and not chosen yet is named, so
+ * the card can offer it in one tap; otherwise the person is asked to connect one. */
+function noAiRefusal(threadId: string): Error & { status: number; code: "no_ai"; found?: { instanceId: string; name: string } } {
+  const language = conversationLanguage(threadId);
+  const found = lastSelectable.find((instance) => instance.found && readyToRun(instance, selectionContext) && instance.models.default.trim());
+  const name = found ? registry.get(found.instanceId)?.displayName ?? BUILT_IN_DRIVERS.find((driver) => driver.driverKind === found.driverKind)?.metadata.displayName ?? found.instanceId : "";
+  return Object.assign(new Error(found ? serverLine(language, "server.noAi.found", { name }) : serverLine(language, "server.noAi.admin")),
+    { status: 409, code: "no_ai" as const, ...(found ? { found: { instanceId: found.instanceId, name } } : {}) });
+}
+
 /** The providers a bot, its backups, a conversation or a saved default runs on. */
 function providersInUse(): Set<string> {
   const used = new Set<string>();
@@ -2623,6 +2635,7 @@ const selectionContext = {
 async function refreshUnsetModelSelections(instances?: readonly SelectableInstance[], read = testedAi.read()): Promise<void> {
   if (registry.provisional(instances)) return;
   const selectable = selectableInstances(instances ?? await registry.describe());
+  lastSelectable = selectable;
   const own = selectable.filter(instance => !selectionContext.company(instance.instanceId) && readyToRun(instance, selectionContext));
   routineHolds?.engines({ ready: own.length > 0, signedIn: own.some(instance => instance.snapshot.authenticated === true) });
   bootSelection = testedAi.settle(await defaultSelection(undefined, selectable.filter(instance => readyToRun(instance, selectionContext))), selectable, read);
@@ -8563,7 +8576,7 @@ async function beginTurn(
   const instance = registry.get(bot.modelSelection.instanceId);
   if (!instance) {
     if (removedComputerInstanceIds(cfg.instances).has(bot.modelSelection.instanceId)) void retryComputerEngineMove();
-    throw noAiNotice.refusal(threadId, opts?.sender, bot.modelSelection.instanceId) ?? Object.assign(new Error(`provider instance "${bot.modelSelection.instanceId}" is unavailable: pick another model in settings`), { status: 409 });
+    throw noAiNotice.refusal(threadId, opts?.sender, bot.modelSelection.instanceId) ?? (bot.modelSelection.instanceId ? Object.assign(new Error(`provider instance "${bot.modelSelection.instanceId}" is unavailable: pick another model in settings`), { status: 409 }) : noAiRefusal(threadId));
   }
   const policyRefusal = policyModelRefusal(instance);
   if (policyRefusal) throw Object.assign(new Error(policyRefusal), { status: 409, code: "managed_policy" });
@@ -16479,7 +16492,8 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
     const candidateCode = (e as { code?: unknown })?.code;
     const code = typeof candidateCode === "string" && ["guarded_busy", "guarded_branch", "guarded_permissions", "guarded_request_changed", "guarded_request_untracked", "outside_workspace", "no_ai", BOT_LIMIT_CODE].includes(candidateCode)
       ? candidateCode : undefined;
-    return json(res, status, { error: e instanceof Error ? e.message : String(e), ...(code ? { code } : {}) });
+    const found = code === "no_ai" ? (e as { found?: unknown }).found : undefined;
+    return json(res, status, { error: e instanceof Error ? e.message : String(e), ...(code ? { code } : {}), ...(found ? { found } : {}) });
   } finally {
     releaseWorkspaceRequest?.();
   }

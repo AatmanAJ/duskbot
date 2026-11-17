@@ -325,6 +325,7 @@
   "server.noAi.member": "{owner} muss eine KI verbinden, bevor Bots antworten können. Ich habe Bescheid gegeben.",
   "server.noAi.memberNoOwner": "Der Inhaber des Teams muss eine KI verbinden, bevor Bots antworten können. Ich sage Bescheid, sobald er das Team zum ersten Mal öffnet.",
   "server.noAi.admin": "Verbinde zuerst eine KI, damit Bots antworten können.",
+  "server.noAi.found": "{name} ist auf diesem Computer, aber dusk bot nutzt es erst, wenn du es sagst. Nutze es, um eine Antwort zu bekommen.",
   "server.noAi.nobodyHere": "Es ist noch keine KI verbunden, daher kann nichts laufen.",
   "server.noAi.ownerTitle": "KI für {team} verbinden",
   "server.noAi.ownerLine": "{name} wollte in {team} einen Bot nutzen, aber es ist noch keine KI verbunden. Verbinde eine, damit Bots antworten können.",

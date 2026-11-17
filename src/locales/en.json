@@ -427,6 +427,7 @@
   "server.noAi.member": "{owner} needs to connect an AI before bots can answer. I've told them.",
   "server.noAi.memberNoOwner": "The team's owner needs to connect an AI before bots can answer. I'll tell them when they first open the team.",
   "server.noAi.admin": "Connect an AI first, so bots can answer.",
+  "server.noAi.found": "{name} is on this computer, but dusk bot only uses it once you say so. Use it to get a reply.",
   "server.noAi.nobodyHere": "No AI is connected yet, so nothing can run.",
   "server.noAi.ownerTitle": "Connect an AI for {team}",
   "server.noAi.ownerLine": "{name} tried to use a bot in {team}, but no AI is connected yet. Connect one so bots can answer.",
