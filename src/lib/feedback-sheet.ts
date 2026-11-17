@@ -4,6 +4,7 @@ import { api, ApiError } from "@/state/api";
 import { redactSecretsInText } from "../../shared/redact";
 import { appVersion } from "./app-links";
 import { prepareBanner, type BannerProblem } from "./place-banner";
+import { randomUuid } from "./random-uuid";
 
 /** POST /api/feedback (server/routes/feedback.ts) */
 export const FEEDBACK_PATH = "/api/feedback";
@@ -60,11 +61,11 @@ function installId(): string {
   try {
     const kept = localStorage.getItem(INSTALL_KEY);
     if (kept && /^[A-Za-z0-9_-]{8,64}$/.test(kept)) return kept;
-    const made = `app-${crypto.randomUUID().replaceAll("-", "")}`;
+    const made = `app-${randomUuid().replaceAll("-", "")}`;
     localStorage.setItem(INSTALL_KEY, made);
     return made;
   } catch {
-    return `app-${crypto.randomUUID().replaceAll("-", "")}`;
+    return `app-${randomUuid().replaceAll("-", "")}`;
   }
 }
 
