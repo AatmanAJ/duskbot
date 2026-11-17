@@ -72,11 +72,12 @@ afterEach(async () => {
   for (const folder of folders.splice(0)) await removeTempDir(folder);
 });
 
-async function serve({ attach, current = () => true, download, audience = () => "team" }: {
+async function serve({ attach, current = () => true, download, audience = () => "team", close }: {
   attach?: (options: ViewerOptions, push: (output: ViewerOutput) => void) => Promise<Viewer>;
   current?: () => boolean;
   download?: (id: string) => Download | undefined;
   audience?: (threadId: string | null) => Audience | null;
+  close?: BrowserViewerRouteDeps["close"];
 } = {}): Promise<Fixture> {
   const fixture = { origin: "", attachments: [], inputs: [], answers: [], pickerChecks: 0, resumes: [], people: [], sizes: [], opened: [], checked: [], dataDir: mkdtempSync(join(tmpdir(), "dusk-browser-viewers-")) } as unknown as Fixture;
   folders.push(fixture.dataDir);
@@ -125,6 +126,7 @@ async function serve({ attach, current = () => true, download, audience = () => 
     },
     authorize: async () => null,
     current: (_botId, _session, _auth, checked) => { fixture.checked.push(checked); return current(); },
+    ...(close ? { close } : {}),
   };
   const route = createBrowserViewerRoutes(deps);
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
@@ -333,6 +335,25 @@ describe("the v1 live view", () => {
       expect((await fetch(`http://${fixture.origin}/api/bots/pepper/browser/live${query}`)).status).toBe(204);
     }
     expect(fixture.sizes).toEqual([{ width: 365, height: 686 }, null, null, null]);
+  });
+});
+
+describe("closing the browser from the Computer tab", () => {
+  it("closes the browser of the conversation the person looks at, on a POST only", async () => {
+    const closed: Array<[string, Audience]> = [];
+    const fixture = await serve({
+      audience: (threadId) => (threadId === "hidden" ? null : threadId === "t1" ? "thread-t1" as Audience : "team"),
+      close: async (botId, audience) => { closed.push([botId, audience]); return botId === "pepper" ? { closed: true } : { status: 404, error: "no such bot" }; },
+    });
+    const post = (path: string) => fetch(`http://${fixture.origin}${path}`, { method: "POST" });
+    const answer = await post("/api/bots/pepper/browser/close?threadId=t1");
+    expect(answer.status).toBe(200);
+    expect(await answer.json()).toEqual({ closed: true });
+    expect(closed).toEqual([["pepper", "thread-t1"]]);
+    expect((await fetch(`http://${fixture.origin}/api/bots/pepper/browser/close`)).status).toBe(405);
+    expect((await post("/api/bots/pepper/browser/close?threadId=hidden")).status).toBe(404);
+    expect((await post("/api/bots/basil/browser/close")).status).toBe(404);
+    expect(closed).toHaveLength(2);
   });
 });
 

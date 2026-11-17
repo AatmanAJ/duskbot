@@ -26,6 +26,7 @@ const STREAM = /^\/api\/bots\/([\w-]+)\/browser\/stream$/;
 const UPLOAD = /^\/api\/bots\/([\w-]+)\/browser\/upload$/;
 const DOWNLOAD = /^\/api\/bots\/([\w-]+)\/browser\/download\/([\w-]{1,64})$/;
 const RECENT = /^\/api\/bots\/([\w-]+)\/browser\/recent(?:\/(\d{1,2}))?$/;
+const CLOSE = /^\/api\/bots\/([\w-]+)\/browser\/close$/;
 const CHOOSER = /^[\w-]{1,64}$/;
 const UPLOAD_MAX_FILES = 20;
 const PICKER_CLOSED = "The page's file picker is no longer open.";
@@ -50,8 +51,10 @@ export interface BrowserViewerRouteDeps {
   dataDir: string;
   /** counts a stream that rides the relay, with why it is not direct */
   relayed?(reason: ScreenFallbackReason | null): void;
-  /** Whether the bot's browser for this audience runs now, and the tabs it closed with in the last 30 minutes; never starts it. */
+  /** Whether the bot's browser for this audience runs now, and the tabs it closed with in the last hour; never starts it. */
   recent?(botId: string, audience: Audience): Promise<{ open: boolean; closed: ClosedBrowser | null } | Failure>;
+  /** Closes the bot's browser for this audience, keeping its tabs for `recent`; false when it was not running. */
+  close?(botId: string, audience: Audience): Promise<{ closed: boolean } | Failure>;
 }
 
 const ownerOf = (auth: RequestAuth) => (auth.kind === "session" ? auth.session.id : "local-owner");
@@ -127,12 +130,28 @@ async function recentRoute(deps: BrowserViewerRouteDeps, botId: string, index: s
   res.end(image);
 }
 
+/** The person closes a bot's browser from its Computer tab. */
+async function closeRoute(deps: BrowserViewerRouteDeps, botId: string,
+  { req, res, url, method, auth, json }: Pick<RouteArgs, "req" | "res" | "url" | "method" | "auth" | "json">) {
+  res.setHeader("cache-control", "no-store");
+  if (method !== "POST") return json(res, 405, { error: "method not allowed" });
+  const audience = deps.audience(auth, url.searchParams.get("threadId"));
+  if (!audience) return json(res, 404, { error: "no such conversation" });
+  const failure = await deps.authorize(req, auth);
+  if (failure) return json(res, failure.status, { error: failure.error });
+  const result = await deps.close!(botId, audience);
+  if ("error" in result) return json(res, result.status, { error: result.error });
+  return json(res, 200, result);
+}
+
 export function createBrowserViewerRoutes(deps: BrowserViewerRouteDeps): RouteHandler {
   deps.upgrades.route((path) => STREAM.test(path));
   const uploading = new Set<string>();
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
     const recent = RECENT.exec(path);
     if (recent && deps.recent) return recentRoute(deps, recent[1]!, recent[2], { req, res, url, method, auth, json });
+    const close = CLOSE.exec(path);
+    if (close && deps.close) return closeRoute(deps, close[1]!, { req, res, url, method, auth, json });
     const live = LIVE.exec(path);
     const stream = live ? null : STREAM.exec(path);
     const upload = live || stream ? null : UPLOAD.exec(path);
