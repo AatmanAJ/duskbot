@@ -16,9 +16,19 @@ export function setNotificationPlace(name: string | null) {
   placeName = name;
 }
 
+/** The desktop app on a Mac never posts system notifications: the dock, the island and the unread dots carry them. */
+export function systemNotificationsAllowed(platform: string | undefined = typeof window === "undefined" ? undefined : window.duskDesktop?.platform): boolean {
+  return platform !== "darwin";
+}
+
+/** A notification about the chat in front is read as it lands, so a phone's push waiting out its grace never goes. */
+export function readOnArrival(frame: Pick<NotifyFrame, "kind" | "threadId">, visibleThreadId: string | null, inFront: boolean): boolean {
+  return frame.kind !== "spend" && inFront && visibleThreadId !== null && visibleThreadId === frame.threadId;
+}
+
 /** Call from the click: browsers may reject a permission request made later from an SSE frame. Resolves to the permission now in force. */
 export async function requestNotificationPermission(): Promise<NotificationPermission | null> {
-  if (typeof Notification === "undefined") return null;
+  if (typeof Notification === "undefined" || !systemNotificationsAllowed()) return null;
   try {
     return Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
   } catch {
@@ -45,6 +55,8 @@ export function showNotification(
   if (frame.kind === "done" && !finishedNotificationsEnabled()) return;
   const spend = frame.kind === "spend";
   if (!spend && chatInFront() && visibleThreadId === frame.threadId) return;
+  // the app's own ping stays, with its own setting; only the system banner goes
+  if (!systemNotificationsAllowed()) return play();
   if (Notification.permission !== "granted") return;
 
   const title = placeName ? `${placeName} · ${frame.title}` : frame.title;

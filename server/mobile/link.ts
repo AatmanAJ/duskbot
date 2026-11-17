@@ -45,6 +45,8 @@ const SYNC_WAIT_MAX_S = 25;
 const MAX_DEVICES = 24;
 /** a push the service could not take is tried again after these */
 const PUSH_RETRY_MS = [10_000, 60_000];
+/** a notification waits this long before it pushes, so one read right away (on any device) never buzzes */
+export const PUSH_GRACE_MS = 4_000;
 
 const relayId = () => Array.from(randomBytes(10), (byte) => B32[byte & 31]).join("");
 
@@ -90,6 +92,7 @@ export interface MobileLinkDeps {
 }
 
 let activeNotify: ((notification: NotificationLogEntry, options: { adminOnly?: boolean; person?: string }) => void) | null = null;
+let activeRead: ((ids: readonly string[]) => void) | null = null;
 let activeTurnActivity: ((threadId: string, event: TurnActivityEvent, context: { attributes?: TurnActivityAttributes; reply?: string }) => void) | null = null;
 
 /** a turn's progress, for the Live Activities phones show for its thread; a no-op until a workspace link exists */
@@ -101,6 +104,11 @@ export function turnActivityToPhones(threadId: string, event: TurnActivityEvent,
 export function notifyPhones(notification: unknown, options: { adminOnly?: boolean; person?: string } = {}): void {
   const entry = notification as NotificationLogEntry | null;
   if (activeNotify && entry && typeof entry.id === "string" && typeof entry.threadId === "string") activeNotify(entry, options);
+}
+
+/** the event stream's `notifications.read` frames: a notification read anywhere never pushes after that */
+export function readOnPhones(ids: unknown): void {
+  if (activeRead && Array.isArray(ids)) activeRead(ids.filter((id): id is string => typeof id === "string"));
 }
 
 /** DUSK_MOBILE_RELAY: the relay that holds typed-code lookups when no link agent names one ("default" for the public one,
@@ -126,14 +134,26 @@ export function createMobileLink(deps: MobileLinkDeps) {
   const syncWaiters = new Set<() => void>();
   const applyWaiters = new Set<() => void>();
   const pushed = new Set<string>();
-  const presence = createPhonePresence<PushMessage>({ flush: (deviceId, events) => {
-    const device = devices.find((one) => one.id === deviceId);
-    if (!device?.push) return;
-    // one push per conversation: the newest; the phone collapses a thread's pushes anyway
-    const latest = new Map<string, PushMessage>();
-    for (const event of events) if (!deps.isRead?.(event.id)) latest.set(event.threadId, event);
-    for (const event of latest.values()) void deliver(device, event);
-  } });
+  const presence = createPhonePresence({ now });
+  /** pushes waiting out their grace, one per phone and conversation: a newer notification there replaces the older */
+  const waiting = new Map<string, { timer: ReturnType<typeof setTimeout>; id: string }>();
+  /** not read on any device, and the phone is not open on that conversation */
+  const stillNews = (device: DeviceRecord, message: PushMessage) => !deps.isRead?.(message.id) && !presence.viewing(device.id, message.threadId);
+
+  function later(device: DeviceRecord, message: PushMessage) {
+    const key = `${device.id}\n${message.threadId}`;
+    clearTimeout(waiting.get(key)?.timer);
+    const timer = setTimeout(() => {
+      if (waiting.get(key)?.timer === timer) waiting.delete(key);
+      if (devices.includes(device) && device.push && stillNews(device, message)) void deliver(device, message);
+    }, PUSH_GRACE_MS);
+    timer.unref?.();
+    waiting.set(key, { timer, id: message.id });
+  }
+  function read(ids: readonly string[]) {
+    const done = new Set(ids);
+    for (const [key, one] of waiting) if (done.has(one.id)) { clearTimeout(one.timer); waiting.delete(key); }
+  }
   const activities = createTurnActivities({
     now,
     send: (target, message) => push.sendActivity?.({ service: "apns", ...target }, message) ?? Promise.resolve("skipped"),
@@ -145,7 +165,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     },
   });
 
-  /** sends now; a push the service could not take goes again at 10 s and 60 s while the phone is still away and unread */
+  /** sends now; a push the service could not take goes again at 10 s and 60 s while it is still news to the phone */
   function deliver(device: DeviceRecord, message: PushMessage, attempt = 0): Promise<void> {
     const registration = device.push;
     if (!registration) return Promise.resolve();
@@ -156,7 +176,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
         const wait = PUSH_RETRY_MS[attempt];
         if (outcome !== "failed" || wait === undefined) return;
         const timer = setTimeout(() => {
-          if (device.push !== registration || !devices.includes(device) || !presence.away(device.id) || deps.isRead?.(message.id)) return;
+          if (device.push !== registration || !devices.includes(device) || !stillNews(device, message)) return;
           void deliver(device, message, attempt + 1);
         }, wait);
         timer.unref?.();
@@ -376,7 +396,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     await Promise.all(targets.map((device) => {
       const session = sessions.get(device.sessionId);
       if (!session || (options.adminOnly && !session.scopes.includes("admin")) || !device.push) return;
-      return presence.route(device.id, message) === "push" ? deliver(device, message) : undefined;
+      if (!presence.viewing(device.id, message.threadId)) later(device, message);
     }));
   }
 
@@ -384,6 +404,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
 
   activeNotify = (notification, options) => { void notify(notification, options).catch((error) => log(`mobile: push failed (${(error as Error).message})`)); };
   activeTurnActivity = (threadId, event, context) => activities.event(threadId, event, context);
+  activeRead = read;
 
   return {
     /** POST /api/mobile/redeem, before the auth gate: the grant's secret is the authorization */
@@ -469,7 +490,9 @@ export function createMobileLink(deps: MobileLinkDeps) {
         if (!device) { json(res, 403, { error: "only a paired phone reports where it is" }); return true; }
         const value = await body();
         if (typeof value.away !== "boolean") { json(res, 400, { error: "away must be true or false" }); return true; }
-        presence.report(device.id, value.away);
+        const viewing = value.threadId ?? null;
+        if (viewing !== null && (typeof viewing !== "string" || !/^[\w:.-]{1,128}$/.test(viewing))) { json(res, 400, { error: "threadId must be a conversation id or null" }); return true; }
+        presence.report(device.id, value.away, viewing);
         // the app open in the foreground on a Cloud home: the same hint as the desktop's focus, never someone using it
         if (!value.away) cloudPowerNow()?.noteFocus?.();
         json(res, 200, { ok: true });
@@ -487,6 +510,8 @@ export function createMobileLink(deps: MobileLinkDeps) {
       return false;
     },
     notify: (notification: NotificationLogEntry, options?: { adminOnly?: boolean; person?: string }) => notify(notification, options),
+    /** these notifications were read somewhere: their pushes still waiting out the grace never go */
+    read,
     turnActivity: (threadId: string, event: TurnActivityEvent, context?: { attributes?: TurnActivityAttributes; reply?: string }) => activities.event(threadId, event, context),
     /** for tests */
     activities: (threadId: string) => activities.state(threadId),

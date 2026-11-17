@@ -68,7 +68,7 @@ import { answerResponse, dismissResponse } from "@/lib/card-answer";
 import { forgetLiveTurns, forgetStopPress, noteRuntimeTurn, sendStop } from "@/lib/stop-turn"; import { forgetTurnStatuses } from "@/state/turn-status"; import { forgetLiveReplies } from "@/state/live-reply";
 import { readLastConversation, rememberConversation } from "@/lib/last-conversation";
 import { readLastBotSection, rememberBotSection } from "@/lib/last-bot-section";
-import { showNotification } from "@/lib/notify";
+import { readOnArrival, showNotification } from "@/lib/notify";
 import { randomUuid } from "@/lib/random-uuid";
 import { speechOwner, spokenReplyStream } from "@/lib/spoken-reply-stream";
 import { t } from "@/lib/i18n";
@@ -3235,16 +3235,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rawDispatch({ type: "groupPatched", group });
           break;
         }
-        case "notify":
+        case "notify": {
+          const shown = visibleNotificationThread(stateRef.current);
           // The wrapped dispatch: only it PATCHes unread:false back to the server.
           showNotification(
             frame.notification,
             (target) => openThread(dispatch, target, stateRef.current),
             stateRef.current.bots.find((bot) => bot.id === frame.notification.botId)?.avatarUrl,
-            visibleNotificationThread(stateRef.current),
+            shown,
           );
-          rawDispatch({ type: "notificationReceived", entry: frame.notification });
+          const seen = readOnArrival(frame.notification, shown, chatInFront());
+          rawDispatch({ type: "notificationReceived", entry: seen ? { ...frame.notification, read: true } : frame.notification });
+          if (seen) fetch(`/api/notifications/${encodeURIComponent(frame.notification.id)}/read`, { method: "POST" }).catch(() => {});
           break;
+        }
         case "notifications.read":
           bumpPeripheralVersion("notifications");
           rawDispatch({ type: "notificationsRead", ids: frame.ids });

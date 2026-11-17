@@ -9,7 +9,7 @@ import type { RequestAuth } from "../request-auth.ts";
 import { SessionRegistry } from "../sessions.ts";
 import { generateKeyPairSync } from "node:crypto";
 
-import { createMobileLink, mobileLookupRelay } from "./link.ts";
+import { createMobileLink, mobileLookupRelay, PUSH_GRACE_MS } from "./link.ts";
 import { lookupKeys, openLookup } from "./lookup.ts";
 import type { PushMessage, PushTarget } from "./push.ts";
 
@@ -159,6 +159,7 @@ describe("mobile link", () => {
   });
 
   it("registers a phone for push and fans notifications out without their text", async () => {
+    vi.useFakeTimers();
     const mobile = link();
     const answer = (await call(mobile, owner, "POST", "/api/mobile/pairing")).body as MobilePairingResponse;
     const phone = (await redeem(mobile, { secret: answer.payload.grant.secret, attemptId: "attempt-0004", device: { name: "p", platform: "ios" } })).body as MobileRedeemResponse;
@@ -166,9 +167,12 @@ describe("mobile link", () => {
     expect((await call(mobile, owner, "PUT", "/api/mobile/push", { service: "apns", token: "abcdef0123456789" })).status).toBe(403);
     expect((await call(mobile, auth, "PUT", "/api/mobile/push", { service: "apns", token: "abcdef0123456789", environment: "sandbox" })).body).toEqual({ ok: true, delivering: true });
     await mobile.notify({ id: "n1", at: 1, read: false, kind: "mention", botId: "b1", botName: "Nova", threadId: "t1", title: "Nova", body: "secret text" });
+    await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
     expect(sent).toEqual([{ target: { service: "apns", token: "abcdef0123456789", environment: "sandbox" }, message: { id: "n1", kind: "mention", title: "Nova", botId: "b1", botName: "Nova", threadId: "t1" } }]);
     await mobile.notify({ id: "n1", at: 1, read: false, kind: "mention", botId: "b1", botName: "Nova", threadId: "t1", title: "Nova", body: "again" });
+    await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
     expect(sent).toHaveLength(1);
+    vi.useRealTimers();
   });
 
   it("registers an iPhone's Live Activity and push-to-start tokens, and an approval's ask id travels with its push", async () => {
@@ -185,7 +189,10 @@ describe("mobile link", () => {
     expect((await call(mobile, auth, "PUT", "/api/mobile/activity-start", { token: "cd".repeat(16), environment: "sandbox" })).status).toBe(200);
     expect(mobile.state().devices[0]!.activityStart).toMatchObject({ token: "cd".repeat(16), environment: "sandbox" });
     await call(mobile, auth, "PUT", "/api/mobile/push", { service: "apns", token: "abcdef0123456789" });
+    vi.useFakeTimers();
     await mobile.notify({ id: "n2", at: 1, read: false, kind: "approval", botId: "b1", botName: "Nova", threadId: "t1", title: "Nova", body: "x", requestId: "req-1" });
+    await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
+    vi.useRealTimers();
     expect(sent.at(-1)?.message).toMatchObject({ kind: "approval", requestId: "req-1" });
   });
 
@@ -200,63 +207,83 @@ describe("mobile link", () => {
     }
     const note = (id: string, threadId = "t1") => ({ id, at: 1, read: false, kind: "mention" as const, botId: "b1", botName: "Nova", threadId, title: "Nova", body: "x" });
 
-    it("holds an event while the app is open and pushes it once the phone has stayed away", async () => {
+    it("never pushes a conversation the open app is showing, and pushes the others after the grace", async () => {
       vi.useFakeTimers();
-      const read = new Set<string>();
-      const mobile = link({ isRead: (id) => read.has(id) });
+      const mobile = link();
       const auth = await pushPhone(mobile, "attempt-0101");
-      expect((await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false })).status).toBe(200);
+      expect((await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false, threadId: "t1" })).status).toBe(200);
       await mobile.notify(note("n1"));
       await mobile.notify(note("n2", "t2"));
-      await mobile.notify(note("n3", "t2"));
-      await mobile.notify(note("n4", "t3"));
-      read.add("n4");
+      await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS - 1);
       expect(sent).toHaveLength(0);
-      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: true });
-      await vi.advanceTimersByTimeAsync(2_000);
-      expect(sent).toHaveLength(0);
-      await vi.advanceTimersByTimeAsync(1_500);
-      // the newest per conversation, and nothing already read
-      expect(sent.map((one) => one.message.id)).toEqual(["n1", "n3"]);
+      await vi.advanceTimersByTimeAsync(1);
+      // the open app on another chat gets the push, so iOS shows its own banner
+      expect(sent.map((one) => one.message.id)).toEqual(["n2"]);
     });
 
-    it("keeps the push back when the phone returns within the settle window, and drops events older than five minutes", async () => {
+    it("drops a waiting push once the phone opens that conversation", async () => {
       vi.useFakeTimers();
       const mobile = link();
       const auth = await pushPhone(mobile, "attempt-0102");
-      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false });
+      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false, threadId: null });
       await mobile.notify(note("n1"));
-      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: true });
       await vi.advanceTimersByTimeAsync(1_000);
-      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false });
-      await vi.advanceTimersByTimeAsync(5_000);
-      expect(sent).toHaveLength(0);
-      for (let i = 0; i < 6; i++) { await vi.advanceTimersByTimeAsync(50_000); await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false }); }
-      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: true });
-      await vi.advanceTimersByTimeAsync(4_000);
+      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false, threadId: "t1" });
+      await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
       expect(sent).toHaveLength(0);
     });
 
-    it("counts an app that stopped checking in as away", async () => {
+    it("cancels a waiting push when the notification is read on any device", async () => {
+      vi.useFakeTimers();
+      const read = new Set<string>();
+      const mobile = link({ isRead: (id) => read.has(id) });
+      await pushPhone(mobile, "attempt-0103");
+      await mobile.notify(note("n1"));
+      await mobile.notify(note("n2", "t2"));
+      await mobile.notify(note("n3", "t3"));
+      mobile.read(["n1"]);
+      // read somewhere without a frame reaching here: the push still checks before it leaves
+      read.add("n2");
+      await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
+      expect(sent.map((one) => one.message.id)).toEqual(["n3"]);
+    });
+
+    it("sends one push per conversation, the newest, when several land within the grace", async () => {
       vi.useFakeTimers();
       const mobile = link();
-      const auth = await pushPhone(mobile, "attempt-0103");
-      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false });
+      await pushPhone(mobile, "attempt-0104");
       await mobile.notify(note("n1"));
-      expect(sent).toHaveLength(0);
-      await vi.advanceTimersByTimeAsync(64_000);
-      expect(sent.map((one) => one.message.id)).toEqual(["n1"]);
       await mobile.notify(note("n2"));
-      expect(sent.map((one) => one.message.id)).toEqual(["n1", "n2"]);
+      await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
+      expect(sent.map((one) => one.message.id)).toEqual(["n2"]);
     });
 
-    it("pushes at once to a phone that never reported, and tries a failed push again at 10 s and 60 s", async () => {
+    it("counts an app that stopped checking in as away, even on the conversation it last showed", async () => {
+      vi.useFakeTimers();
+      const mobile = link();
+      const auth = await pushPhone(mobile, "attempt-0105");
+      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false, threadId: "t1" });
+      await mobile.notify(note("n1"));
+      await vi.advanceTimersByTimeAsync(64_000);
+      expect(sent).toHaveLength(0);
+      await mobile.notify(note("n2"));
+      await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
+      expect(sent.map((one) => one.message.id)).toEqual(["n2"]);
+      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: true, threadId: "t1" });
+      await mobile.notify(note("n3"));
+      await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
+      expect(sent.map((one) => one.message.id)).toEqual(["n2", "n3"]);
+    });
+
+    it("pushes after the grace to a phone that never reported, and tries a failed push again at 10 s and 60 s", async () => {
       vi.useFakeTimers();
       const outcomes = ["failed", "failed", "sent"] as const;
       const tries: string[] = [];
       const mobile = link({ push: { configured: ["apns"], send: async (_target, message) => { tries.push(message.id); return outcomes[tries.length - 1] ?? "sent"; } } });
       await pushPhone(mobile, "attempt-0104");
       await mobile.notify(note("n1"));
+      expect(tries).toEqual([]);
+      await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
       expect(tries).toEqual(["n1"]);
       await vi.advanceTimersByTimeAsync(10_000);
       expect(tries).toEqual(["n1", "n1"]);
@@ -271,6 +298,8 @@ describe("mobile link", () => {
       const auth = await pushPhone(mobile, "attempt-0105");
       expect((await call(mobile, owner, "PUT", "/api/mobile/presence", { away: false })).status).toBe(403);
       expect((await call(mobile, auth, "PUT", "/api/mobile/presence", { away: "no" })).status).toBe(400);
+      expect((await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false, threadId: "no spaces" })).status).toBe(400);
+      expect((await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false, threadId: 7 })).status).toBe(400);
     });
   });
 
