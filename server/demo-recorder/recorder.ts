@@ -43,6 +43,10 @@ export interface DemoRecorder {
   /** Ends the recording and turns it into steps. */
   stop(botId: string): Promise<DemoRecording | { error: string }>;
   cancel(botId: string): Promise<void>;
+  /** Security: while paused, what the person does is passed on to the screen and never looked at or written down. */
+  pause(botId: string, paused: boolean): DemoRecording | { error: string };
+  /** Takes back the last thing written down in the recording under way. */
+  undo(botId: string): Promise<DemoRecording | { error: string }>;
   get(id: string): DemoRecording | null;
   list(botId?: string): DemoRecording[];
   updatePlan(id: string, plan: unknown): DemoRecording | { error: string };
@@ -82,6 +86,8 @@ function readRecording(path: string): DemoRecording | null {
       ...(plan && "plan" in plan ? { plan: plan.plan } : {}),
       ...(typeof value.skillName === "string" ? { skillName: value.skillName } : {}),
       ...(typeof value.routineId === "string" ? { routineId: value.routineId } : {}),
+      ...(typeof value.routineName === "string" ? { routineName: value.routineName } : {}),
+      ...(typeof value.routineSource === "string" ? { routineSource: value.routineSource } : {}),
       ...(typeof value.error === "string" ? { error: value.error } : {}),
       ...(value.truncated === true ? { truncated: true } : {}),
     };
@@ -94,7 +100,7 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
   const now = deps.now ?? Date.now;
   const scrub = deps.scrub ?? redactSecretsInText;
   const recordings = new Map<string, DemoRecording>();
-  const active = new Map<string, { recording: DemoRecording; capture: DemoCapture }>();
+  const active = new Map<string, { recording: DemoRecording; capture: DemoCapture; paused: boolean }>();
   const folderOf = (id: string) => join(deps.dir, id);
   const copy = (recording: DemoRecording) => structuredClone(recording);
 
@@ -138,8 +144,12 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
   };
 
   function counted(botId: string, entry: { recording: DemoRecording; capture: DemoCapture }): void {
-    if (active.get(botId) !== entry || entry.capture.eventCount === entry.recording.eventCount) return;
+    if (active.get(botId) !== entry) return;
+    const seeing = entry.capture.seeing;
+    if (entry.capture.eventCount === entry.recording.eventCount && JSON.stringify(seeing ?? null) === JSON.stringify(entry.recording.seeing ?? null)) return;
     entry.recording.eventCount = entry.capture.eventCount;
+    if (seeing) entry.recording.seeing = seeing;
+    else delete entry.recording.seeing;
     changed(entry.recording);
   }
 
@@ -162,20 +172,20 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
         frames: [],
         framesSkipped: 0,
       };
-      active.set(request.botId, { recording, capture });
+      active.set(request.botId, { recording, capture, paused: false });
       return changed(recording);
     },
 
     async input(botId, raw) {
       const entry = active.get(botId);
-      if (!entry) return;
+      if (!entry || entry.paused) return;
       await entry.capture.input(raw);
       counted(botId, entry);
     },
 
     async relay(botId, raw) {
       const entry = active.get(botId);
-      if (!entry) return () => {};
+      if (!entry || entry.paused) return () => {};
       try {
         const landed = await entry.capture.relay(raw);
         counted(botId, entry);
@@ -193,6 +203,8 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
       if (!entry) return { error: "This bot is not being recorded." };
       active.delete(botId);
       const { recording, capture } = entry;
+      delete recording.paused;
+      delete recording.seeing;
       let trace: DemoTrace;
       try {
         trace = await capture.finish();
@@ -220,6 +232,23 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
       active.delete(botId);
       await entry.capture.finish().catch(() => {});
       discard(entry.recording.id);
+    },
+
+    pause(botId, paused) {
+      const entry = active.get(botId);
+      if (!entry) return { error: "This bot is not being recorded." };
+      entry.paused = paused;
+      if (paused) entry.recording.paused = true;
+      else delete entry.recording.paused;
+      return changed(entry.recording);
+    },
+
+    async undo(botId) {
+      const entry = active.get(botId);
+      if (!entry) return { error: "This bot is not being recorded." };
+      await entry.capture.undo();
+      counted(botId, entry);
+      return copy(entry.recording);
     },
 
     get(id) {
@@ -266,7 +295,7 @@ export function createDemoRecorder(deps: DemoRecorderDeps): DemoRecorder {
       if (!skillName) return { error: "The skill could not be saved." };
       const created = deps.routines.create({ name: options.name?.trim() || plan.title, prompt: demoRoutinePrompt(plan, skillName, source), botId: recording.botId });
       if ("error" in created) return created;
-      return changed(Object.assign(recording, { routineId: created.id }));
+      return changed(Object.assign(recording, { routineId: created.id, routineName: options.name?.trim() || plan.title, routineSource: source }));
     },
 
     frame(id, frameId) {

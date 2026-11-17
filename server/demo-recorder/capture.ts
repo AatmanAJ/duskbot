@@ -1,4 +1,4 @@
-import type { DemoAccessibility, DemoContext, DemoEvent, DemoPoint, DemoRect, DemoSurface, DemoTarget, DemoTrace } from "../../shared/demo-recording.ts";
+import type { DemoAccessibility, DemoContext, DemoEvent, DemoPoint, DemoRect, DemoSeeing, DemoSurface, DemoTarget, DemoTrace } from "../../shared/demo-recording.ts";
 import type { FrameStore, ScreenFrame } from "./frames.ts";
 
 /** Modifier bits as the Chrome DevTools protocol numbers them. */
@@ -62,7 +62,11 @@ export interface DemoCapture {
    */
   relay(raw: RawInput): Promise<() => void>;
   finish(): Promise<DemoTrace>;
+  /** Takes back the last thing written down. False when there was nothing to take back. */
+  undo(): Promise<boolean>;
   readonly eventCount: number;
+  /** Security: the last thing the person did as its kind, its target's label and a count, never the text. */
+  readonly seeing: DemoSeeing | null;
 }
 
 /** A desktop's accessibility is read over a slow path, so one look serves a run of keys for this long. */
@@ -424,8 +428,25 @@ export function createDemoCapture(deps: CaptureDeps): DemoCapture {
       deps.log?.(`demo capture: ${events.length} events, ${kept.length} pictures, ${frames.skipped} left out`);
       return finished;
     },
+    undo() {
+      const taken = chain.then(() => {
+        settle();
+        const gone = events.pop();
+        awaitingAfter = null;
+        lastClick = null;
+        return gone !== undefined;
+      });
+      chain = taken.then(() => {}, () => {});
+      return taken.catch(() => false);
+    },
     get eventCount() {
       return events.length;
+    },
+    get seeing() {
+      if (run) return { kind: "type" as const, ...(run.target ? { name: run.target.name } : {}), ...(run.text === null || run.target?.secure ? { secure: true as const } : {}), chars: run.chars };
+      const last = events.at(-1);
+      if (!last) return null;
+      return { kind: last.kind, ...(last.target ? { name: last.target.name } : {}), ...(last.secure ? { secure: true as const } : {}), ...(last.chars !== undefined ? { chars: last.chars } : last.text !== undefined ? { chars: [...last.text].length } : {}) };
     },
   };
 }

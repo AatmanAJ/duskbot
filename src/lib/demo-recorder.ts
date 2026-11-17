@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import type { DemoPlan, DemoRecording, DemoReplayRun, DemoSurface } from "../../shared/demo-recording";
+import type { DemoPlan, DemoRecording, DemoReplayItem, DemoReplayRun, DemoSurface } from "../../shared/demo-recording";
 import { botDemos, forgetDemoRecording, keepDemoRecording, keepDemoRun, NO_DEMOS, subscribeDemos, updateBotDemos, type BotDemos, type DemoSurfaces } from "@/lib/demo-events";
 import { api } from "@/state/store";
 
@@ -34,6 +34,8 @@ export const demos = {
   start: (botId: string, surface: DemoSurface, threadId?: string) => recordingFrom(`/api/bots/${botId}/demos`, json("POST", { surface, ...(threadId ? { threadId } : {}) })),
   stop: (botId: string) => recordingFrom(`/api/bots/${botId}/demos/stop`, json("POST")),
   cancel: (botId: string) => api(`/api/bots/${botId}/demos/cancel`, json("POST")),
+  pause: (botId: string, paused: boolean) => recordingFrom(`/api/bots/${botId}/demos/pause`, json("POST", { paused })),
+  undo: (botId: string) => recordingFrom(`/api/bots/${botId}/demos/undo`, json("POST")),
   savePlan: (id: string, plan: DemoPlan) => recordingFrom(`/api/demos/${id}/plan`, json("PUT", { plan })),
   saveSkill: (id: string, name: string) => recordingFrom(`/api/demos/${id}/skill`, json("POST", name.trim() ? { name: name.trim() } : {})),
   saveRoutine: (id: string, name: string, source: string) => recordingFrom(`/api/demos/${id}/routine`, json("POST", { source, ...(name.trim() ? { name: name.trim() } : {}) })),
@@ -46,7 +48,17 @@ export const demos = {
     keepDemoRun(recording.botId, run);
     return run;
   },
+  /** The inputs as the files give them, to look over before anything is done. */
+  inputs: async (id: string, files: Array<{ name: string; content: string }>) => (await api<{ items: DemoReplayItem[] }>(`/api/demos/${id}/inputs`, json("POST", { files }))).items,
+  /** Does the task for inputs a person has looked over; a file that gets stuck waits to be skipped or tried again. */
+  async replayItems(recording: DemoRecording, items: DemoReplayItem[]) {
+    const { run } = await api<{ run: DemoReplayRun }>(`/api/demos/${recording.id}/replay`, json("POST", { items, ask: true }));
+    keepDemoRun(recording.botId, run);
+    return run;
+  },
+  decide: (id: string, decision: "skip" | "retry") => api(`/api/demos/${id}/replay/decide`, json("POST", { decision })),
   stopReplay: (id: string) => api(`/api/demos/${id}/replay/stop`, json("POST")),
+  setSkill: (botId: string, skillName: string, enabled: boolean) => api(`/api/bots/${botId}/skills/${encodeURIComponent(skillName)}`, json("PATCH", { enabled })),
 };
 
 export const frameUrl = (recordingId: string, frameId: string) => `/api/demos/${recordingId}/frames/${frameId}`;

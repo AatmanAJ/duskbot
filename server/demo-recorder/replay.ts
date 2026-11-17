@@ -1,4 +1,4 @@
-import { blankNames, fillBlanks, matchesPattern } from "../../shared/demo-plan.ts";
+import { blankNames, dayText, fillBlanks, matchesPattern } from "../../shared/demo-plan.ts";
 import type { DemoAccessibility, DemoAction, DemoItemOutcome, DemoPlan, DemoReplayItem, DemoReplayProgress, DemoReplayReport, DemoStep, DemoStepOutcome } from "../../shared/demo-recording.ts";
 
 /** What is on screen, as accessibility reads it. */
@@ -47,8 +47,11 @@ export interface ReplayOptions {
   /** How long a check may take to come true after a step. */
   settleMs?: number;
   onProgress?: (progress: DemoReplayProgress) => void;
+  /** A step that did not pass: the answer says to leave that file there, or to try the step once more. */
+  onStuck?: (item: DemoReplayItem, outcome: DemoStepOutcome) => Promise<"skip" | "retry">;
   signal?: AbortSignal;
   wait?: (ms: number) => Promise<void>;
+  now?: () => number;
   log?: (line: string) => void;
 }
 
@@ -216,7 +219,10 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
   }
 
   const outcomes: DemoItemOutcome[] = [];
-  for (const [index, item] of options.items.entries()) {
+  const todays = plan.blanks.filter((each) => each.today).map((each) => each.name);
+  for (const [index, given] of options.items.entries()) {
+    const day = dayText(new Date(options.now?.() ?? Date.now()));
+    const item = todays.length ? { ...given, values: { ...given.values, ...Object.fromEntries(todays.map((name) => [name, day])) }, missing: given.missing.filter((name) => !todays.includes(name)) } : given;
     const steps = plan.steps.map(blank);
     if (options.signal?.aborted) {
       outcomes.push({ id: item.id, label: item.label, status: "skipped", steps });
@@ -231,7 +237,9 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
     }
     let ok = true;
     let begun = true;
-    for (const [at, step] of plan.steps.entries()) {
+    let at = 0;
+    while (at < plan.steps.length) {
+      const step = plan.steps[at]!;
       if (stopped()) {
         ok = false;
         begun = at > 0;
@@ -241,11 +249,15 @@ export async function runReplay(options: ReplayOptions): Promise<DemoReplayRepor
       const outcome = await runStep(step, item);
       steps[at] = outcome;
       emit({ type: "step-done", item: item.id, step: step.id, ok: outcome.status === "done", via: outcome.via ?? "direct", attempts: outcome.attempts, ...(outcome.note ? { note: outcome.note } : {}) });
-      if (outcome.status !== "done") {
-        ok = false;
-        options.log?.(`demo replay: item ${index + 1} of ${options.items.length} failed at step ${at + 1} of ${plan.steps.length}`);
-        break;
+      if (outcome.status === "done") {
+        at += 1;
+        continue;
       }
+      const decision = options.onStuck && !stopped() ? await options.onStuck(item, outcome).catch(() => "skip" as const) : "skip";
+      if (decision === "retry" && !stopped()) continue;
+      ok = false;
+      options.log?.(`demo replay: item ${index + 1} of ${options.items.length} failed at step ${at + 1} of ${plan.steps.length}`);
+      break;
     }
     outcomes.push({ id: item.id, label: item.label, status: ok ? "done" : begun ? "failed" : "skipped", steps });
     emit({ type: "item-done", item: item.id, ok });

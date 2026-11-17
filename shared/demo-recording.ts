@@ -106,6 +106,8 @@ export interface DemoBlank {
   /** What the person entered when they showed it. Never present for a secret. */
   example?: string;
   choices?: string[];
+  /** A date that is always the day the task is done: never read from a file. */
+  today?: true;
 }
 
 /** One way to carry a step out by accessibility, without the model: found by role and name, never by position. */
@@ -156,6 +158,16 @@ export interface DemoPlan {
 
 export type DemoRecordingStatus = "recording" | "compiling" | "ready" | "failed";
 
+/** The last thing the person did while they are showing a task: what kind and where, never what they typed. */
+export interface DemoSeeing {
+  kind: DemoEventKind;
+  /** The label of what they acted on. */
+  name?: string;
+  /** It was typed where nothing may be kept: only `chars` is. */
+  secure?: true;
+  chars?: number;
+}
+
 export interface DemoRecording {
   id: string;
   botId: string;
@@ -172,6 +184,13 @@ export interface DemoRecording {
   /** The skill it was saved as. */
   skillName?: string;
   routineId?: string;
+  /** The routine made from it: what it was called and what it was told to run on. */
+  routineName?: string;
+  routineSource?: string;
+  /** While it is being shown: the person asked for nothing to be written down for now. */
+  paused?: boolean;
+  /** While it is being shown: the last thing the person did. */
+  seeing?: DemoSeeing;
   error?: string;
   /** The showing ran past what one recording holds, so its last part is missing. */
   truncated?: boolean;
@@ -236,6 +255,8 @@ export interface DemoReplayRun {
   }>;
   done: number;
   failed: number;
+  /** A file's step did not pass, and the run is waiting to be told to skip that file or try the step again. */
+  asking?: { item: string; step: string; note?: string };
 }
 
 /** One change to a recording or a replay, as the events stream carries it. */

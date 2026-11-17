@@ -14,6 +14,7 @@ const sentence = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
 function inputLine(blank: DemoBlank): string {
   const head = `- \`${blank.name}\` (${oneLine(blank.label)})`;
+  if (blank.today) return `${head}: today's date, written like "2026-11-02". Use the day you are doing the task; do not read it from the file.`;
   if (blank.kind === "secret") return `${head}: comes from the saved sign-in for this site. Never ask for it and never type it yourself; fill it with the sign-in tool.`;
   const kind = blank.kind === "choice" && blank.choices?.length ? `one of ${blank.choices.map((choice) => `"${oneLine(choice)}"`).join(", ")}` : blank.kind === "choice" ? "a choice from a list" : `a ${blank.kind === "text" ? "piece of text" : blank.kind}`;
   return `${head}: ${kind}${blank.example !== undefined && blank.example.trim() ? `, for example "${oneLine(blank.example)}"` : ""}`;

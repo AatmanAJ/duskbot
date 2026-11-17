@@ -58,22 +58,30 @@ folder of receipts. Open only the printed preview URL.
 
 1. Enter the printed portal address. Press **Show Nova a task**: a card says
    what will happen and takes a name for the task. Press **Start showing**: the
-   pill reads "You have control" and stays so, and the bar under the page
-   reads "Nova is watching" and counts each thing you do.
+   pill reads "You have control" and stays so, the page is ringed in red, and
+   the bar under it reads "Nova is watching" with the last thing you did.
 2. Press **New expense**, fill Merchant, Amount, Date and Notes from the first
-   receipt, choose a Category, and press **Submit expense**.
-3. Press **Done**. Each step reads as a sentence with its inputs marked; open
-   one for its picture, goal and check. Rename an input, move a step up and
-   back, then **Save as skill**: the button reads **Saved** and stays off until
-   something changes. **Make it a routine** takes what it runs on, and is
+   receipt, choose a Category, and press **Submit expense**. On the way, press
+   **Pause** (the bar reads "Paused" and the count stops), **Carry on**, and
+   **Undo step** (the count goes down by one).
+3. Press **Done**. The steps open in a sheet on the right, each a sentence with
+   its inputs marked; open one for its picture, goal and check. Rename an
+   input, move a step up and back, then **Save as skill**: the button reads
+   **Saved** and stays off until something changes, and a switch turns the
+   skill off and on. **Make it a routine** takes what it runs on, and is
    replaced by "Routine added" once there is one.
 4. Press **Hand back**, open **Shown tasks**, the recording, then **Choose
-   files** and pick the other eleven receipts. The bot's pointer moves through
-   the form for each, the bar fills one mark for each file and counts to 11 of
-   11, and the portal lists twelve expenses.
-5. Show the sign-in page with a made-up password. The password field is
-   black in that recording's pictures and `trace.json` under the printed data
-   folder holds only how many characters were typed.
+   files** and pick the other eleven receipts. A table shows what was read from
+   each; change a value, then **Run 11**. The bot's pointer moves through the
+   form for each, the page is ringed in blue, the bar fills one mark for each
+   file and counts to 11 of 11, and the portal lists twelve expenses.
+5. Choose a file whose Date is "yesterday". The portal refuses it, the bar
+   turns orange and reads "Nova needs a hand" with what the screen said:
+   **Try again** does the step once more, **Skip this one** goes on.
+6. Show the sign-in page with a made-up password. While you type it the bar
+   reads "Nova is looking away" with a count; the password field is black in
+   that recording's pictures and `trace.json` under the printed data folder
+   holds only how many characters were typed.
 
 Stop the launcher with Ctrl-C. A Local VM desktop needs Docker: take control in
 the Computer panel, press **Show Nova a task** there, and the same review opens.

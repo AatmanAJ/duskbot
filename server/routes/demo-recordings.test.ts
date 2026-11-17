@@ -8,8 +8,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { renameBlank } from "../../shared/demo-plan.ts";
-import type { DemoChange, DemoPlan, DemoRecording, DemoReplayRun } from "../../shared/demo-recording.ts";
+import { dayText, renameBlank, setBlankToday } from "../../shared/demo-plan.ts";
+import type { DemoChange, DemoPlan, DemoRecording, DemoReplayItem, DemoReplayRun } from "../../shared/demo-recording.ts";
 import type { DemoTap } from "../browser/viewers/demo-tap.ts";
 import { createDemoHost, type DemoSeat } from "../demo-recorder/host.ts";
 import { createDemoRecorder } from "../demo-recorder/recorder.ts";
@@ -207,6 +207,88 @@ describe("showing a bot a task over the routes", () => {
     expect(run.items[1]!.step).toBe(recording.plan!.steps.at(-1)!.title);
     expect(run).toMatchObject({ done: 1, failed: 1 });
   }, 30_000);
+
+  it("says what the person last did and never what they typed, takes a step back, and writes nothing down while paused", async () => {
+    const on = await serve();
+    await on.call("POST", "/api/bots/bot-1/demos", { surface: "browser" });
+    const person = on.person();
+    const live = async () => (await on.call<{ recordings: DemoRecording[] }>("GET", "/api/bots/bot-1/demos")).body.recordings[0]!;
+    await person.click("New expense");
+    expect((await live()).seeing).toEqual({ kind: "click", name: "New expense" });
+    await person.click("Merchant");
+    await person.type("Blue Door Coffee");
+    const typing = await live();
+    expect(typing.seeing).toMatchObject({ kind: "type", name: "Merchant", chars: 16 });
+    expect(JSON.stringify(typing)).not.toContain("Blue Door");
+
+    const undone = await on.call<{ recording: DemoRecording }>("POST", "/api/bots/bot-1/demos/undo");
+    expect(undone.status).toBe(200);
+    expect(undone.body.recording).toMatchObject({ eventCount: 2, seeing: { kind: "click", name: "Merchant" } });
+
+    const paused = await on.call<{ recording: DemoRecording }>("POST", "/api/bots/bot-1/demos/pause", { paused: true });
+    expect(paused.body.recording.paused).toBe(true);
+    await person.click("Amount");
+    await person.type("18.40");
+    expect((await live()).eventCount).toBe(2);
+    const resumed = await on.call<{ recording: DemoRecording }>("POST", "/api/bots/bot-1/demos/pause", { paused: false });
+    expect(resumed.body.recording.paused).toBeUndefined();
+    await person.click("Notes");
+    expect(await live()).toMatchObject({ eventCount: 3, seeing: { kind: "click", name: "Notes" } });
+
+    const stopped = await on.call<{ recording: DemoRecording }>("POST", "/api/bots/bot-1/demos/stop");
+    expect(stopped.body.recording.status).toBe("ready");
+    expect(stopped.body.recording.seeing).toBeUndefined();
+    expect(stopped.body.recording.plan!.steps.map((step) => step.title).join(" | ")).not.toContain("Amount");
+    expect((await on.call("POST", "/api/bots/bot-1/demos/undo")).status).toBe(409);
+  });
+
+  it("reads the inputs for a person to look over, runs what they send back, and waits on a file that gets stuck", async () => {
+    const on = await serve();
+    const recording = await recorded(on);
+    const files = [{ name: "bad-date.txt", content: "Merchant: Corner Deli\nAmount: 9.00\nDate: yesterday\nCategory: Meals\nNotes: Lunch\n" }, receiptFiles()[2]!];
+    const read = await on.call<{ items: DemoReplayItem[] }>("POST", `/api/demos/${recording.id}/inputs`, { files });
+    expect(read.status).toBe(200);
+    expect(read.body.items.map((item) => [item.label, item.values.date === "yesterday", item.missing])).toEqual([["bad-date.txt", true, []], [files[1]!.name, false, []]]);
+    expect(on.page.expenses()).toHaveLength(1);
+
+    const begun = await on.call<{ run: DemoReplayRun }>("POST", `/api/demos/${recording.id}/replay`, { items: read.body.items, ask: true });
+    expect(begun.status).toBe(202);
+    const asks = () => on.changes.filter((change) => change.run?.asking).length;
+    const asked = async (count: number) => {
+      for (let tries = 0; tries < 1600 && asks() < count; tries++) await new Promise((resolve) => setTimeout(resolve, 25));
+      return (await on.call<{ run: DemoReplayRun }>("GET", `/api/demos/${recording.id}/replay`)).body.run;
+    };
+    const waiting = await asked(1);
+    expect(waiting.status).toBe("running");
+    expect(waiting.asking).toMatchObject({ item: read.body.items[0]!.id, step: recording.plan!.steps.at(-1)!.title });
+    expect(waiting.asking!.note).toContain("Date must look like 2026-11-03.");
+    expect(waiting.items[1]!.status).toBe("waiting");
+
+    expect((await on.call("POST", `/api/demos/${recording.id}/replay/decide`, { decision: "retry" })).body).toEqual({ decided: true });
+    expect((await asked(2)).asking).toBeTruthy();
+    expect((await on.call("POST", `/api/demos/${recording.id}/replay/decide`, { decision: "skip" })).body).toEqual({ decided: true });
+    const run = await finished(on, recording.id);
+    expect(run.items.map((item) => item.status)).toEqual(["failed", "done"]);
+    expect(run.asking).toBeUndefined();
+    expect((await on.call("POST", `/api/demos/${recording.id}/replay/decide`, { decision: "skip" })).body).toEqual({ decided: false });
+    expect((await on.call("POST", `/api/demos/${recording.id}/replay`, { items: [{ id: "x", label: "x" }] })).status).toBe(400);
+  }, 60_000);
+
+  it("fills a date that is always today's with the day it is done, and never asks a file for it", async () => {
+    const on = await serve();
+    const recording = await recorded(on);
+    const plan = setBlankToday(recording.plan!, "date", true) as DemoPlan;
+    const saved = await on.call<{ recording: DemoRecording }>("PUT", `/api/demos/${recording.id}/plan`, { plan });
+    expect(saved.body.recording.plan!.blanks.find((blank) => blank.name === "date")).toMatchObject({ today: true });
+    await on.call("POST", `/api/demos/${recording.id}/skill`, {});
+    expect(on.installed[0]!.content).toContain("today's date");
+
+    const read = await on.call<{ items: DemoReplayItem[] }>("POST", `/api/demos/${recording.id}/inputs`, { files: [{ name: "no-date.txt", content: "Merchant: Corner Deli\nAmount: 9.00\nCategory: Meals\nNotes: Lunch\n" }] });
+    expect(read.body.items[0]!.missing).toEqual([]);
+    await on.call("POST", `/api/demos/${recording.id}/replay`, { items: read.body.items });
+    expect(await finished(on, recording.id)).toMatchObject({ done: 1, failed: 0 });
+    expect(on.page.expenses().at(-1)).toMatchObject({ merchant: "Corner Deli", date: dayText(new Date()) });
+  });
 
   it("hands a step to the bot's own turn when the page differs, and stops when told to", async () => {
     const asked: string[] = [];

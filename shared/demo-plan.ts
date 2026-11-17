@@ -78,6 +78,19 @@ export function fixBlank(plan: DemoPlan, name: string, value: string): DemoPlan 
   return { ...fixed, blanks: plan.blanks.filter((each) => each.name !== name) };
 }
 
+/** Says a date input is always the day the task is done, or that it is read each time again. */
+export function setBlankToday(plan: DemoPlan, name: string, today: boolean): DemoPlan | { error: string } {
+  const blank = plan.blanks.find((each) => each.name === name);
+  if (!blank) return { error: `There is no input called ${name}.` };
+  if (blank.kind !== "date") return { error: "Only a date can be today's date." };
+  return { ...plan, blanks: plan.blanks.map((each) => { const { today: _was, ...rest } = each; return each.name === name && today ? { ...rest, today: true as const } : each.name === name ? rest : each; }) };
+}
+
+/** A day as dates are written in the steps: 2026-11-02, in the clock of the machine it runs on. */
+export function dayText(at: Date): string {
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+}
+
 export function moveStep(plan: DemoPlan, stepId: string, toIndex: number): DemoPlan {
   const from = plan.steps.findIndex((step) => step.id === stepId);
   if (from < 0) return plan;
@@ -164,7 +177,7 @@ function readBlank(value: unknown): DemoBlank | null {
   if (name === null || label === null || !kind) return null;
   const example = kind === "secret" ? null : text(blank.example);
   const choices = Array.isArray(blank.choices) ? blank.choices.filter((choice): choice is string => typeof choice === "string" && choice.length <= 300).slice(0, LIMITS.choices) : null;
-  return { name, label, kind, ...(example !== null ? { example } : {}), ...(choices && choices.length ? { choices } : {}) };
+  return { name, label, kind, ...(example !== null ? { example } : {}), ...(choices && choices.length ? { choices } : {}), ...(kind === "date" && blank.today === true ? { today: true as const } : {}) };
 }
 
 function readStep(value: unknown): DemoStep | null {

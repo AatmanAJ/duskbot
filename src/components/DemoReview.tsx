@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
-import { fixBlank, moveStep, removeStep, renameBlank, updateStep } from "../../shared/demo-plan";
-import type { DemoBlank, DemoCheck, DemoFrame, DemoPlan, DemoRecording, DemoStep } from "../../shared/demo-recording";
+import { dayText, fixBlank, moveStep, removeStep, renameBlank, setBlankToday, updateStep } from "../../shared/demo-plan";
+import type { DemoBlank, DemoCheck, DemoFrame, DemoPlan, DemoRecording, DemoReplayItem, DemoStep } from "../../shared/demo-recording";
 import { ArrowDown, ArrowUp, Check, ChevronDown, CircleCheck, FileText, GripVertical, Loader2, LockKeyhole, Trash2 } from "../icons";
 import { cn } from "@/lib/cn";
 import { demos, frameUrl, readInputFiles } from "@/lib/demo-recorder";
@@ -9,8 +10,10 @@ import { t } from "@/lib/i18n";
 import { friendlyError } from "@/lib/plain-error";
 import type { LocaleKey } from "@/locales";
 import { askConfirm } from "./ConfirmDialog";
+import { DemoFiles } from "./DemoFiles";
+import { Icon } from "./Icon";
 import { FormField } from "./ListRows";
-import { GrokDialog, mdPrimaryCls, mdSecondaryCls, rowHintCls, smallButtonCls, textAreaCls, textFieldCls } from "./ui/GrokDialog";
+import { formBodyCls, formCloseCls, formSheetCls, mdPrimaryCls, mdSecondaryCls, rowHintCls, smallButtonCls, textAreaCls, textFieldCls, useDialogKeys } from "./ui/GrokDialog";
 
 const iconButton = "flex size-7 shrink-0 items-center justify-center rounded-md text-ink-secondary hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default disabled:opacity-40";
 const sectionLabel = "m-0 text-[13px] font-normal leading-[18px] text-ink-secondary";
@@ -37,7 +40,7 @@ function Sentence({ text }: { text: string }) {
 
 const KIND: Record<DemoBlank["kind"], LocaleKey> = { text: "showOnce.inputs.kind.text", number: "showOnce.inputs.kind.number", date: "showOnce.inputs.kind.date", choice: "showOnce.inputs.kind.choice", secret: "showOnce.inputs.kind.secret" };
 
-function BlankChip({ blank, open, onToggle, onRename, onFix }: { blank: DemoBlank; open: boolean; onToggle: () => void; onRename: (to: string) => string | null; onFix: () => void }) {
+function BlankChip({ blank, open, onToggle, onRename, onFix, onToday }: { blank: DemoBlank; open: boolean; onToggle: () => void; onRename: (to: string) => string | null; onFix: () => void; onToday: (today: boolean) => void }) {
   const [name, setName] = useState(blank.name);
   const [error, setError] = useState("");
   useEffect(() => { setName(blank.name); setError(""); }, [blank.name]);
@@ -54,7 +57,7 @@ function BlankChip({ blank, open, onToggle, onRename, onFix }: { blank: DemoBlan
       <button type="button" aria-expanded={open} onClick={onToggle} className={cn("flex h-8 min-w-0 max-w-full items-center gap-2 rounded-[10px] pl-1 pr-3 text-left text-[13px] text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus", open ? "self-start" : "bg-ink/4 hover:bg-ink/8")}>
         <span className={tokenCls}>{blank.name}</span>
         {secret ? <LockKeyhole size={12} aria-hidden="true" className="shrink-0 text-ink-secondary" /> : null}
-        <span className="min-w-0 truncate">{secret ? t("showOnce.inputs.secret") : blank.example ?? blank.label}</span>
+        <span className="min-w-0 truncate">{secret ? t("showOnce.inputs.secret") : blank.today ? t("showOnce.inputs.today") : blank.example ?? blank.label}</span>
       </button>
       {open && <>
         <div className="flex flex-wrap items-center gap-2">
@@ -69,7 +72,8 @@ function BlankChip({ blank, open, onToggle, onRename, onFix }: { blank: DemoBlan
             className="h-7 w-44 min-w-0 rounded-md bg-menu px-2 font-mono text-[12px] text-ink outline-none focus:bg-ink/10"
           />
           <span className="min-w-0 flex-1 truncate text-[12px] text-ink-secondary">{t("showOnce.inputs.from", { label: blank.label, kind: t(KIND[blank.kind]) })}</span>
-          {!secret && blank.example ? <button type="button" className={smallButtonCls} title={t("showOnce.inputs.fixHint", { value: blank.example })} onClick={onFix}>{t("showOnce.inputs.fix")}</button> : null}
+          {blank.kind === "date" ? <button type="button" className={smallButtonCls} aria-pressed={blank.today === true} onClick={() => onToday(!blank.today)}>{t(blank.today ? "showOnce.inputs.todayOff" : "showOnce.inputs.todayOn")}</button> : null}
+          {!secret && !blank.today && blank.example ? <button type="button" className={smallButtonCls} title={t("showOnce.inputs.fixHint", { value: blank.example })} onClick={onFix}>{t("showOnce.inputs.fix")}</button> : null}
         </div>
         {error && <p role="alert" className="m-0 text-[12px] leading-4 text-danger">{error}</p>}
       </>}
@@ -96,8 +100,8 @@ function StepPicture({ recordingId, step, frame, number }: { recordingId: string
   );
 }
 
-function StepRow({ recordingId, step, frame, index, total, open, dragging, over, onToggle, onChange, onMove, onRemove, onDragStart, onDragOver, onDrop }: {
-  recordingId: string; step: DemoStep; frame: DemoFrame | undefined; index: number; total: number; open: boolean; dragging: boolean; over: boolean; onToggle: () => void;
+function StepRow({ recordingId, step, frame, index, total, open, dragging, over, question, onToggle, onChange, onMove, onRemove, onDragStart, onDragOver, onDrop }: {
+  recordingId: string; step: DemoStep; frame: DemoFrame | undefined; index: number; total: number; open: boolean; dragging: boolean; over: boolean; question?: ReactNode; onToggle: () => void;
   onChange: (patch: Partial<Pick<DemoStep, "title" | "goal">>) => void; onMove: (to: number) => void; onRemove: () => void;
   onDragStart: () => void; onDragOver: () => void; onDrop: () => void;
 }) {
@@ -119,6 +123,7 @@ function StepRow({ recordingId, step, frame, index, total, open, dragging, over,
           <GripVertical size={14} aria-hidden="true" />
         </button>
       </div>
+      {question}
       {open && (
         <div className="flex flex-wrap items-start gap-3 pb-3 pl-7">
           <StepPicture recordingId={recordingId} step={step} frame={frame} number={number} />
@@ -141,13 +146,47 @@ function StepRow({ recordingId, step, frame, index, total, open, dragging, over,
   );
 }
 
-type Saving = "" | "skill" | "routine" | "run" | "delete";
+type Saving = "" | "skill" | "routine" | "run" | "try" | "delete" | "toggle";
+
+/** The review as a sheet down the right side of the app: the screen the task was shown on stays in view beside it. */
+function Sheet({ kicker, title, footer, onClose, children }: { kicker: string; title: ReactNode; footer: ReactNode; onClose: () => void; children: ReactNode }) {
+  const sheet = useRef<HTMLDivElement>(null);
+  const kickerId = useId();
+  const close = useDialogKeys(sheet, onClose);
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex justify-end p-2">
+      <div aria-hidden="true" data-modal-scrim className="ui-dialog-scrim absolute inset-0" onMouseDown={() => close.current()} />
+      <div ref={sheet} role="dialog" aria-modal="true" aria-labelledby={kickerId} tabIndex={-1} data-panel-modal="demo-review" style={{ maxWidth: "min(560px, calc(100vw - 16px))" }} className={cn(formSheetCls, "h-full max-h-none rounded-[16px]")}>
+        <header className="flex shrink-0 items-start gap-3 px-5 pb-3 pt-5">
+          <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-[13px] bg-accent/12 text-accent-text"><FileText size={18} /></span>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <p id={kickerId} className="m-0 text-[12px] leading-4 text-ink-secondary">{kicker}</p>
+            {title}
+          </div>
+          <button type="button" aria-label={t("common.close")} onClick={() => close.current()} className={formCloseCls}><Icon name="close" size={16} /></button>
+        </header>
+        <div className={cn(formBodyCls, "flex flex-col px-5")}>{children}</div>
+        <div className="flex shrink-0 items-center gap-2 border-t border-ink/6 px-5 pb-4 pt-3">{footer}</div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function Switch({ on, label, disabled, onChange }: { on: boolean; label: string; disabled?: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)} className={cn("flex h-[22px] w-9 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-default disabled:opacity-50", on ? "justify-end bg-accent" : "justify-start bg-ink/15")}>
+      <span aria-hidden="true" className="size-[18px] rounded-full bg-white shadow-sm" />
+    </button>
+  );
+}
 
 /**
  * One recording's steps, to read over, change and save. `named` is what the person called the task before they showed
- * it. Saving is offered only while there is something to save, and a routine only until this task has one.
+ * it. Saving is offered only while there is something to save, and a routine only until this task has one. `onAgain`
+ * starts a fresh showing of the same task.
  */
-export function DemoReview({ recording, botName, holding, named = "", onClose }: { recording: DemoRecording; botName: string; holding: boolean; named?: string; onClose: () => void }) {
+export function DemoReview({ recording, botName, holding, named = "", onAgain, onClose }: { recording: DemoRecording; botName: string; holding: boolean; named?: string; onAgain?: () => void; onClose: () => void }) {
   const renamed = Boolean(named.trim()) && !recording.skillName && named.trim() !== recording.plan!.title;
   const [plan, setPlan] = useState<DemoPlan>(() => (renamed ? { ...recording.plan!, title: named.trim() } : recording.plan!));
   const [dirty, setDirty] = useState(renamed);
@@ -156,11 +195,17 @@ export function DemoReview({ recording, botName, holding, named = "", onClose }:
   const [note, setNote] = useState("");
   const [openStep, setOpenStep] = useState<string | null>(null);
   const [openBlank, setOpenBlank] = useState<string | null>(null);
+  const [answered, setAnswered] = useState<string[]>([]);
+  const [skillOn, setSkillOn] = useState(true);
+  const [picked, setPicked] = useState<{ read: DemoReplayItem[]; left: string[] } | null>(null);
   const [routine, setRoutine] = useState<{ name: string; source: string } | null>(null);
   const [dragged, setDragged] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const frames = useMemo(() => new Map(recording.frames.map((frame) => [frame.id, frame])), [recording.frames]);
+  const shownOn = dayText(new Date(recording.createdAt));
+  /** A date typed on the day it was shown may have meant "today": the one thing the steps cannot say by themselves. */
+  const unsure = plan.blanks.filter((blank) => blank.kind === "date" && !blank.today && blank.example === shownOn && !answered.includes(blank.name)).map((blank) => blank.name);
 
   const edit = (next: DemoPlan | { error: string }): string | null => {
     if ("error" in next) return next.error;
@@ -198,20 +243,37 @@ export function DemoReview({ recording, botName, holding, named = "", onClose }:
   const saveSkill = () => run("skill", async () => {
     if (!await stored()) return;
     const saved = await demos.saveSkill(recording.id, "");
+    setSkillOn(true);
     setNote(t("showOnce.save.saved", { name: saved.skillName ?? "", bot: botName }));
+  });
+  const toggleSkill = (on: boolean) => run("toggle", async () => {
+    if (!recording.skillName) return;
+    await demos.setSkill(recording.botId, recording.skillName, on);
+    setSkillOn(on);
   });
   const saveRoutine = () => run("routine", async () => {
     if (!routine || recording.routineId || !await stored()) return;
     await demos.saveRoutine(recording.id, routine.name, routine.source);
     setRoutine(null);
   });
-  const replay = (files: File[]) => run("run", async () => {
+  const choose = (files: File[]) => run("run", async () => {
     if (!await stored()) return;
     const { read, skipped } = await readInputFiles(files);
     if (!read.length) { setError(t("showOnce.run.nothingToRead")); return; }
-    await demos.replay(recording, read);
-    if (skipped.length) setNote(t("showOnce.run.skipped", { names: skipped.join(", ") }));
-    else onClose();
+    setPicked({ read: await demos.inputs(recording.id, read), left: skipped });
+  });
+  const start = (items: DemoReplayItem[]) => run("run", async () => {
+    setPicked(null);
+    await demos.replayItems(recording, items);
+    onClose();
+  });
+  const tryOnce = () => run("try", async () => {
+    if (!await stored()) return;
+    const inputs = plan.blanks.filter((blank) => blank.kind !== "secret" && !blank.today);
+    const lacking = inputs.filter((blank) => !blank.example?.trim()).map((blank) => blank.name);
+    if (lacking.length) { setError(t("showOnce.try.lacking", { names: lacking.join(", ") })); return; }
+    await demos.replayItems(recording, [{ id: "try-1", label: t("showOnce.try.label"), values: Object.fromEntries(inputs.map((blank) => [blank.name, blank.example!])), missing: [] }]);
+    onClose();
   });
   const remove = () => run("delete", async () => {
     if (!await askConfirm({ title: t("showOnce.deleteTitle"), body: t("showOnce.deleteBody"), confirmLabel: t("common.delete"), tone: "danger" })) return;
@@ -237,27 +299,51 @@ export function DemoReview({ recording, botName, holding, named = "", onClose }:
     recording.framesSkipped > 0 ? many("showOnce.review.framesSkipped", recording.framesSkipped) : "",
     recording.truncated ? t("showOnce.review.truncated") : "",
   ].filter(Boolean);
+  const held = holding ? t("showOnce.holdHint", { name: botName }) : undefined;
+  const question = (step: DemoStep): ReactNode => {
+    const name = unsure.find((each) => step.goal.includes(`{{${each}}}`));
+    const blank = name ? plan.blanks.find((each) => each.name === name) : undefined;
+    if (!blank) return null;
+    return (
+      <div data-demo-question={blank.name} className="mb-2 ml-7 flex flex-col gap-2 rounded-[11px] bg-warning/12 px-3 py-2.5">
+        <p className="m-0 text-[13px] leading-[18px] text-ink">{t("showOnce.question.date", { name: botName, label: blank.label })}</p>
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" className={smallButtonCls} onClick={() => setAnswered([...answered, blank.name])}>{t("showOnce.question.changes")}</button>
+          <button type="button" className={smallButtonCls} onClick={() => { edit(setBlankToday(plan, blank.name, true)); }}>{t("showOnce.question.today")}</button>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <GrokDialog
-      title={t("showOnce.review.title", { name: botName })}
-      width={600}
+    <Sheet
+      kicker={t("showOnce.review.title", { name: botName })}
       onClose={onClose}
-      data-panel-modal="demo-review"
+      title={<input value={plan.title} aria-label={t("showOnce.review.name")} placeholder={t("showOnce.review.name")} onChange={(event) => { setPlan({ ...plan, title: event.target.value }); setDirty(true); setNote(""); }} className="-mx-1.5 block h-8 min-w-0 rounded-[9px] bg-transparent px-1.5 text-[20px] font-semibold leading-7 tracking-[-0.015em] text-ink outline-none hover:bg-ink/4 focus:bg-ink/6" />}
       footer={<>
-        <button type="button" className={cn(mdSecondaryCls, "mr-auto")} disabled={working} onClick={() => void remove()}>{t("showOnce.delete")}</button>
-        <span data-demo-save-state={saved ? "saved" : "unsaved"} className="min-w-0 truncate text-[12px] text-ink-secondary">{state}</span>
+        <button type="button" data-demo-try className={mdSecondaryCls} disabled={working || holding} title={held ?? t("showOnce.try.hint", { name: botName })} onClick={() => void tryOnce()}>{busy === "try" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}{t("showOnce.try.button")}</button>
+        {onAgain ? <button type="button" className={cn(smallButtonCls, "bg-transparent")} disabled={working} onClick={onAgain}>{t("showOnce.again.show")}</button> : null}
+        <span data-demo-save-state={saved ? "saved" : "unsaved"} className="min-w-0 flex-1 truncate text-right text-[12px] text-ink-secondary" title={state}>{state}</span>
         <button type="button" data-demo-save className={mdPrimaryCls} disabled={working || saved} onClick={() => void saveSkill()}>
           {busy === "skill" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}{saved ? t("showOnce.save.done") : recording.skillName ? t("showOnce.save.changes") : t("showOnce.save.skill")}
         </button>
       </>}
     >
-      <div className="flex flex-col gap-5" data-demo-review={recording.id}>
+      <div className="flex flex-col gap-5 pb-4" data-demo-review={recording.id}>
         <div className="flex flex-col gap-1.5">
-          <input value={plan.title} aria-label={t("showOnce.review.name")} placeholder={t("showOnce.review.name")} onChange={(event) => { setPlan({ ...plan, title: event.target.value }); setDirty(true); setNote(""); }} className="-mx-1.5 block h-9 min-w-0 rounded-[9px] bg-transparent px-1.5 text-[20px] font-semibold leading-7 tracking-[-0.015em] text-ink outline-none hover:bg-ink/4 focus:bg-ink/6" />
           <p className={cn(rowHintCls, "m-0")}>{facts}</p>
           {cautions.map((line) => <p key={line} className="m-0 rounded-[9px] bg-warning/12 px-2.5 py-1.5 text-[12px] leading-[17px] text-ink">{line}</p>)}
         </div>
+
+        {recording.skillName ? (
+          <div data-demo-skill={skillOn ? "on" : "off"} className={cn(cardCls, "flex-row items-center gap-3 px-3.5 py-3")}>
+            <div className="min-w-0 flex-1">
+              <p className="m-0 text-[13px] font-medium leading-[18px] text-ink">{t(skillOn ? "showOnce.skill.on" : "showOnce.skill.off", { name: botName })}</p>
+              <p className={cn(rowHintCls, "m-0 truncate")}>{t("showOnce.savedAs", { name: recording.skillName })}</p>
+            </div>
+            <Switch on={skillOn} label={t("showOnce.skill.switch", { name: botName })} disabled={working} onChange={(on) => void toggleSkill(on)} />
+          </div>
+        ) : null}
 
         <section aria-label={t("showOnce.inputs.title")} className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between gap-3">
@@ -269,7 +355,8 @@ export function DemoReview({ recording, botName, holding, named = "", onClose }:
               {plan.blanks.map((blank) => (
                 <BlankChip key={blank.name} blank={blank} open={openBlank === blank.name} onToggle={() => setOpenBlank(openBlank === blank.name ? null : blank.name)}
                   onRename={(to) => { const refused = edit(renameBlank(plan, blank.name, to)); if (!refused) setOpenBlank(to); return refused; }}
-                  onFix={() => { edit(fixBlank(plan, blank.name, blank.example ?? "")); setOpenBlank(null); }} />
+                  onFix={() => { edit(fixBlank(plan, blank.name, blank.example ?? "")); setOpenBlank(null); }}
+                  onToday={(today) => { edit(setBlankToday(plan, blank.name, today)); }} />
               ))}
             </ul>
           ) : <p className={cn(rowHintCls, "m-0")}>{t("showOnce.inputs.none")}</p>}
@@ -292,6 +379,7 @@ export function DemoReview({ recording, botName, holding, named = "", onClose }:
                 open={openStep === step.id}
                 dragging={dragged === step.id}
                 over={over === step.id && dragged !== null && dragged !== step.id}
+                question={question(step)}
                 onToggle={() => setOpenStep(openStep === step.id ? null : step.id)}
                 onChange={(patch) => write(step.id, patch)}
                 onMove={(to) => { edit(moveStep(plan, step.id, to)); }}
@@ -310,17 +398,22 @@ export function DemoReview({ recording, botName, holding, named = "", onClose }:
             <div className="flex items-center gap-3 px-3.5 py-3">
               <div className="min-w-0 flex-1">
                 <p className="m-0 text-[13px] font-medium leading-[18px] text-ink">{t("showOnce.run.choose")}</p>
-                <p className={cn(rowHintCls, "m-0")}>{holding ? t("showOnce.holdHint", { name: botName }) : t("showOnce.run.chooseHint")}</p>
+                <p className={cn(rowHintCls, "m-0")}>{held ?? t("showOnce.run.chooseHint")}</p>
               </div>
-              <input ref={picker} type="file" multiple hidden accept=".txt,.csv,.tsv,.json,.md,.eml,.log,.xml,.html,.yaml,.yml,text/*,application/json" onChange={(event) => { const files = [...(event.target.files ?? [])]; event.target.value = ""; if (files.length) void replay(files); }} />
+              <input ref={picker} type="file" multiple hidden accept=".txt,.csv,.tsv,.json,.md,.eml,.log,.xml,.html,.yaml,.yml,text/*,application/json" onChange={(event) => { const files = [...(event.target.files ?? [])]; event.target.value = ""; if (files.length) void choose(files); }} />
               <button type="button" data-demo-run-choose className={mdSecondaryCls} disabled={working || holding} onClick={() => picker.current?.click()}>{busy === "run" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}{t("showOnce.run.pick")}</button>
+            </div>
+            <div className="border-t border-ink/6 px-3.5 py-3">
+              <p className="m-0 text-[13px] font-medium leading-[18px] text-ink">{t("showOnce.ask.title")}</p>
+              <p className={cn(rowHintCls, "m-0")}>{t(recording.skillName ? "showOnce.ask.hint" : "showOnce.ask.hintUnsaved", { name: botName })}</p>
             </div>
             <div data-demo-routine={recording.routineId ? "added" : routine ? "form" : "none"} className="flex flex-col gap-2 border-t border-ink/6 px-3.5 py-3">
               {recording.routineId ? (
                 <div className="flex items-start gap-2">
                   <CircleCheck size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-success" />
-                  <div className="min-w-0 flex-1">
-                    <p className="m-0 text-[13px] font-medium leading-[18px] text-ink">{t("showOnce.routine.added")}</p>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <p className="m-0 text-[13px] font-medium leading-[18px] text-ink">{recording.routineName ? t("showOnce.routine.addedNamed", { routine: recording.routineName }) : t("showOnce.routine.added")}</p>
+                    {recording.routineSource ? <p className={cn(rowHintCls, "m-0 break-words")}>{t("showOnce.routine.source", { source: recording.routineSource })}</p> : null}
                     <p className={cn(rowHintCls, "m-0")}>{t("showOnce.routine.addedHint", { name: botName })}</p>
                   </div>
                 </div>
@@ -351,7 +444,9 @@ export function DemoReview({ recording, botName, holding, named = "", onClose }:
 
         {note && <p role="status" className="m-0 flex items-center gap-1.5 text-[13px] leading-[18px] text-ink"><CircleCheck size={14} aria-hidden="true" className="shrink-0 text-success" />{note}</p>}
         {error && <p role="alert" className="m-0 text-[13px] leading-[18px] text-danger">{error}</p>}
+        <button type="button" className={cn(smallButtonCls, "self-start bg-transparent text-ink-secondary")} disabled={working} onClick={() => void remove()}>{t("showOnce.delete")}</button>
       </div>
-    </GrokDialog>
+      {picked ? <DemoFiles plan={plan} read={picked.read} left={picked.left} onRun={(items) => void start(items)} onCancel={() => setPicked(null)} /> : null}
+    </Sheet>
   );
 }

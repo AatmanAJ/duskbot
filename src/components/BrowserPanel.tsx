@@ -284,7 +284,7 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
   const passkeyWall = passkeyWallAt(nav.url);
   return <div ref={panel} className={maximized
     ? "fixed inset-0 z-50 flex flex-col overflow-hidden bg-card text-ink"
-    : "flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-transparent bg-card text-ink"} data-browser-transport={stream ? "stream" : "live"}>
+    : "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-transparent bg-card text-ink"} data-browser-transport={stream ? "stream" : "live"}>
     <ChromeRow
       ref={address}
       botName={bot.name}
@@ -326,7 +326,7 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
         onRestart={restart}
       />}
     />
-    <DemoRecorder bot={bot} surface="browser" holding={connected && you} onTake={takeControl} asked={recordAsked} />
+    <DemoRecorder bot={bot} surface="browser" holding={connected && you} onTake={takeControl} asked={recordAsked} frame />
     {error && <div role="alert" className="flex shrink-0 items-center justify-between gap-2 border-b border-transparent px-3 py-2 text-[12px] text-danger"><span>{error}</span>{!connected && <button className="shrink-0 underline" onClick={reconnect}>{t("browser.panel.reconnect")}</button>}</div>}
     {takeStatus === "stale" && <div role="status" className="shrink-0 border-b border-transparent px-3 py-1.5 text-[12px] text-accent-text">{t("browser.control.stale", { name: bot.name })}</div>}
     {passkeyWall && passkeyDismissed !== nav.url && <PasskeyNotice wall={passkeyWall} botName={bot.name} onDismiss={() => setPasskeyDismissed(nav.url)} />}

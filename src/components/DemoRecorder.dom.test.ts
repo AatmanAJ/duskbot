@@ -56,7 +56,7 @@ afterEach(() => { act(() => root.unmount()); host.remove(); document.body.innerH
 
 let bots = 0;
 /** Each test shows its own bot a task, so one test's recordings are not another's. */
-const mount = async (holding: boolean, botId = `bot-${++bots}-${Math.round(performance.now())}`, more: { onTake?: () => void; asked?: number } = {}) => {
+const mount = async (holding: boolean, botId = `bot-${++bots}-${Math.round(performance.now())}`, more: { onTake?: () => void; asked?: number; frame?: boolean } = {}) => {
   listed = listed.map((each) => ({ ...each, botId }));
   await act(async () => { root.render(createElement(DemoRecorder, { bot: { id: botId, name: "Nova" }, surface: "browser", holding, ...more })); });
   await act(async () => { await Promise.resolve(); });
@@ -152,6 +152,34 @@ describe("showing a task", () => {
     await mount(true, botId, { onTake, asked: 1 });
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos` });
     expect(strip()!.dataset.demoRecorder).toBe("recording");
+  });
+
+  it("says what it last saw, looks away at a password, takes a step back and pauses", async () => {
+    const botId = await mount(true, undefined, { frame: true });
+    const live = recording({ botId, status: "recording", eventCount: 2, plan: undefined, seeing: { kind: "type", name: "Amount", chars: 3 } });
+    answers[`POST /api/bots/${botId}/demos`] = () => ({ recording: live });
+    answers[`POST /api/bots/${botId}/demos/undo`] = () => ({ recording: { ...live, eventCount: 1, seeing: { kind: "click", name: "Amount" } } });
+    answers[`POST /api/bots/${botId}/demos/pause`] = (body) => ({ recording: { ...live, eventCount: 1, ...((body as { paused: boolean }).paused ? { paused: true } : {}) } });
+    await start();
+    const dock = () => host.querySelector<HTMLElement>("[data-demo-dock]")!;
+    const seeing = () => host.querySelector("[data-demo-seeing]")!.textContent;
+
+    expect([dock().dataset.demoDock, seeing()]).toEqual(["watching", "Typing into Amount"]);
+    expect(host.querySelector<HTMLElement>("[data-demo-frame]")!.dataset.demoFrame).toBe("watching");
+    await act(async () => { publishDemoChange({ botId, recording: { ...live, seeing: { kind: "type", name: "Password", secure: true, chars: 16 } } }); });
+    expect([dock().dataset.demoDock, strip()!.querySelector("[role=status]")!.textContent, seeing()]).toEqual(["away", "Nova is looking away", "Password: 16 characters typed, none kept"]);
+
+    await press(button("Undo step", host));
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos/undo` });
+    expect(seeing()).toBe("Pressed Amount");
+    await press(button("Pause", host));
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/bots/${botId}/demos/pause`, body: { paused: true } });
+    expect([dock().dataset.demoDock, strip()!.querySelector("[role=status]")!.textContent, seeing()]).toEqual(["paused", "Paused", "Nothing you do now is written down."]);
+    expect(host.querySelector("[data-demo-frame]")).toBeNull();
+    expect(button("Undo step", host)!.disabled).toBe(true);
+    await press(button("Carry on", host));
+    expect(calls.at(-1)).toMatchObject({ body: { paused: false } });
+    expect(dock().dataset.demoDock).toBe("watching");
   });
 
   it("throws the recording away on Discard", async () => {
@@ -314,6 +342,92 @@ describe("reviewing the steps", () => {
     expect([document.querySelector<HTMLButtonElement>("[data-demo-save]")!.textContent, document.querySelector<HTMLButtonElement>("[data-demo-save]")!.disabled]).toEqual(["Saved", true]);
   });
 
+  it("asks about a date typed on the day it was shown, and can make it always today's", async () => {
+    const dated = (): DemoPlan => {
+      const base = plan();
+      return { ...base, blanks: [...base.blanks, { name: "date", label: "Date", kind: "date", example: "2026-11-02" }], steps: [...base.steps, { ...base.steps[1]!, id: "s4", title: "Enter Date", goal: "Type {{date}} into the \"Date\" field." }] };
+    };
+    await opened({ createdAt: new Date(2026, 10, 2, 12).getTime(), plan: dated() });
+    const question = () => document.querySelector<HTMLElement>("[data-demo-question=date]");
+
+    expect(question()!.textContent).toContain("Nova is not sure about Date");
+    expect(steps()[3]!.contains(question())).toBe(true);
+    await press(button("Always today’s date", question()!));
+    expect(question()).toBeNull();
+    expect(chip("date")!.textContent).toContain("Today’s date");
+    expect(document.querySelector("[data-demo-save-state]")!.textContent).toBe("Not saved yet");
+    await press(chip("date")!.querySelector("button"));
+    await press(button("Read it each time", chip("date")!));
+    expect(chip("date")!.textContent).toContain("2026-11-02");
+    await press(button("It changes each time", question()!));
+    expect(question()).toBeNull();
+  });
+
+  it("does not ask about a date that was not the day it was shown", async () => {
+    const base = plan();
+    await opened({ createdAt: new Date(2026, 10, 17, 12).getTime(), plan: { ...base, blanks: [...base.blanks, { name: "date", label: "Date", kind: "date", example: "2026-11-02" }], steps: [...base.steps, { ...base.steps[1]!, id: "s4", title: "Enter Date", goal: "Type {{date}} into the \"Date\" field." }] } });
+    expect(document.querySelector("[data-demo-question]")).toBeNull();
+  });
+
+  it("tries it once with the values it was shown, waiting on anything that gets stuck", async () => {
+    const botId = await opened();
+    const id = recording().id;
+    answers[`POST /api/demos/${id}/replay`] = () => ({ run: { id: "run-try", recordingId: id, status: "running", done: 0, failed: 0, items: [] } });
+    await press(document.querySelector("[data-demo-try]"));
+
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${id}/replay`, body: { ask: true, items: [{ id: "try-1", label: "A try with your values", values: { merchant: "Blue Door Coffee", amount: "18.40" }, missing: [] }] } });
+    expect(review()).toBeNull();
+    expect(strip()!.dataset.demoRecorder).toBe("replay");
+    expect(botId).toBeTruthy();
+  });
+
+  it("shows what was read from the files, lets a value be put right, and leaves out what still lacks one", async () => {
+    await opened();
+    const id = recording().id;
+    answers[`POST /api/demos/${id}/inputs`] = () => ({ items: [
+      { id: "1-a", label: "a.txt", values: { merchant: "Lumen Rail", amount: "64.00" }, missing: [] },
+      { id: "2-b", label: "b.txt", values: { merchant: "Kestrel Cloud" }, missing: ["amount"] },
+    ] });
+    answers[`POST /api/demos/${id}/replay`] = () => ({ run: { id: "run-2", recordingId: id, status: "running", done: 0, failed: 0, items: [] } });
+    const picker = review()!.querySelector<HTMLInputElement>("input[type=file]")!;
+    Object.defineProperty(picker, "files", { configurable: true, value: [new File(["Merchant: Lumen Rail"], "a.txt", { type: "text/plain" }), new File(["Merchant: Kestrel Cloud"], "b.txt", { type: "text/plain" })] });
+    await act(async () => { picker.dispatchEvent(new Event("change", { bubbles: true })); });
+    for (let turns = 0; turns < 6; turns++) await act(async () => { await Promise.resolve(); });
+    const rows = () => [...document.querySelectorAll<HTMLElement>("[data-demo-file]")].map((row) => row.dataset.demoFile);
+    const run = () => document.querySelector<HTMLButtonElement>("[data-demo-files-run]")!;
+
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${id}/inputs`, body: { files: [{ name: "a.txt", content: "Merchant: Lumen Rail" }, { name: "b.txt", content: "Merchant: Kestrel Cloud" }] } });
+    expect(document.querySelector("[data-demo-files]")!.closest("[role=dialog]")!.textContent).toContain("Submit expense · Harbor Expenses, for 2 files");
+    expect([rows(), run().textContent]).toEqual([["ready", "lacking"], "Run 1, skip 1"]);
+    expect(calls.some((call) => call.path.endsWith("/replay"))).toBe(false);
+    await type(labelled("amount for b.txt"), "120.00");
+    expect([rows(), run().textContent]).toEqual([["ready", "ready"], "Run 2"]);
+    await press(run());
+    await act(async () => { await Promise.resolve(); });
+
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${id}/replay`, body: { ask: true, items: [{ id: "1-a", values: { amount: "64.00" } }, { id: "2-b", values: { merchant: "Kestrel Cloud", amount: "120.00" }, missing: [] }] } });
+    expect(document.querySelector("[data-demo-files]")).toBeNull();
+    expect(review()).toBeNull();
+  });
+
+  it("switches the saved skill off and on for the bot", async () => {
+    const botId = await opened({ skillName: "harbor-expense" });
+    const card = () => document.querySelector<HTMLElement>("[data-demo-skill]")!;
+    expect([card().dataset.demoSkill, card().textContent]).toEqual(["on", expect.stringContaining("Nova can do this now")]);
+    await press(card().querySelector("[role=switch]"));
+
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", path: `/api/bots/${botId}/skills/harbor-expense`, body: { enabled: false } });
+    expect([card().dataset.demoSkill, card().textContent]).toEqual(["off", expect.stringContaining("Off for Nova")]);
+  });
+
+  it("starts a fresh showing from the review", async () => {
+    await opened();
+    await press(button("Show it again"));
+
+    expect(review()).toBeNull();
+    expect(strip()!.dataset.demoRecorder).toBe("intro");
+  });
+
   it("will not run on files while the person still holds the browser, and says why", async () => {
     listed = [recording()];
     await mount(true);
@@ -347,6 +461,24 @@ describe("doing it again", () => {
     expect(strip()!.textContent).toContain("03-papertrail-supply.txt · Enter Amount");
     await press(button("Stop", host));
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${recording().id}/replay/stop` });
+  });
+
+  it("waits on a file that gets stuck, to be skipped or tried again", async () => {
+    listed = [recording()];
+    const botId = await mount(false);
+    await act(async () => { publishDemoChange({ botId, run: run({ asking: { item: "b", step: "Click Submit expense", note: "The screen says: Date must look like 2026-11-03." } }) }); });
+    const dock = () => host.querySelector<HTMLElement>("[data-demo-run]")!;
+
+    expect([dock().dataset.demoRun, dock().querySelector("[role=status]")!.textContent]).toEqual(["asking", "Nova needs a hand"]);
+    expect(dock().textContent).toContain("2 of 3 · 03-papertrail-supply.txt · Click Submit expense");
+    expect(dock().querySelector("[data-demo-stuck]")!.textContent).toBe("The screen says: Date must look like 2026-11-03. Take control to clear what is in the way, hand it back, then try again.");
+    await press(button("Try again", host));
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: `/api/demos/${recording().id}/replay/decide`, body: { decision: "retry" } });
+    await press(button("Skip this one", host));
+    expect(calls.at(-1)).toMatchObject({ body: { decision: "skip" } });
+
+    await mount(true, botId);
+    expect(host.querySelector<HTMLButtonElement>("[data-demo-retry]")!.disabled).toBe(true);
   });
 
   it("lists each file with what happened to it", async () => {

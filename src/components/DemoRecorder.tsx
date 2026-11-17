@@ -1,24 +1,20 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { DemoRecording, DemoReplayRun, DemoSurface } from "../../shared/demo-recording";
-import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, CircleDashed, Loader2, Minus } from "../icons";
+import type { DemoRecording, DemoSeeing, DemoSurface } from "../../shared/demo-recording";
+import { ChevronDown, ChevronUp, Loader2, LockKeyhole, Pause, Play, Undo2 } from "../icons";
 import { cn } from "@/lib/cn";
 import { demos, useBotDemos } from "@/lib/demo-recorder";
 import { t } from "@/lib/i18n";
 import { friendlyError } from "@/lib/plain-error";
 import type { LocaleKey } from "@/locales";
 import { DemoReview } from "./DemoReview";
+import { DemoRun, dockCls, dockLineCls, dockTitleCls, Mark, quietButton, runTone, type DockTone } from "./DemoRun";
 import { mdPrimaryCls, mdSecondaryCls, rowHintCls, smallButtonCls, textFieldCls } from "./ui/GrokDialog";
 
 export { checkLine, DemoReview } from "./DemoReview";
+export { DemoRun } from "./DemoRun";
 
-const count = (key: "showOnce.actions" | "showOnce.run.byBot" | "showOnce.run.doneWithFailed", n: number, more: Record<string, string | number> = {}) =>
-  t(`${key}.${n === 1 ? "one" : "many"}` as LocaleKey, { count: n, ...more });
-const dockCls = "m-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] bg-menu px-3 py-2.5 shadow-lg outline-1 -outline-offset-1 outline-edge [outline-style:solid]";
-const dockTitleCls = "m-0 truncate text-[13px] font-semibold leading-[18px] text-ink";
-const dockLineCls = "m-0 truncate text-[12px] leading-4 text-ink-secondary";
-const quietButton = "flex h-8 shrink-0 cursor-pointer items-center rounded-full px-3 text-[13px] font-medium text-ink-secondary hover:bg-ink/6 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default disabled:opacity-40";
-
+const actions = (n: number) => t(`showOnce.actions.${n === 1 ? "one" : "many"}` as LocaleKey, { count: n });
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; };
 
 /** How long a showing has run, counted here once a second. */
@@ -31,10 +27,25 @@ function Elapsed({ since }: { since: number }) {
   return <span className="tabular-nums">{clock(now - since)}</span>;
 }
 
-function Mark({ tone, children }: { tone: "watching" | "working" | "done" | "look"; children: ReactNode }) {
-  const wash = tone === "watching" ? "bg-danger/12" : tone === "done" ? "bg-success/15" : tone === "look" ? "bg-warning/15" : "bg-accent/12";
-  return <span aria-hidden="true" className={cn("flex size-9 shrink-0 items-center justify-center rounded-[11px]", wash)}>{children}</span>;
+const SEEN: Partial<Record<DemoSeeing["kind"], [named: LocaleKey, bare: LocaleKey]>> = {
+  type: ["showOnce.seeing.type", "showOnce.seeing.typeBare"],
+  click: ["showOnce.seeing.click", "showOnce.seeing.clickBare"],
+  "double-click": ["showOnce.seeing.click", "showOnce.seeing.clickBare"],
+  "right-click": ["showOnce.seeing.click", "showOnce.seeing.clickBare"],
+  choose: ["showOnce.seeing.choose", "showOnce.seeing.chooseBare"],
+};
+const SEEN_BARE: Partial<Record<DemoSeeing["kind"], LocaleKey>> = { open: "showOnce.seeing.open", key: "showOnce.seeing.key", scroll: "showOnce.seeing.scroll", drag: "showOnce.seeing.drag" };
+
+/** The last thing the person did, in words. What was typed is never part of it: a secure field gets a count. */
+export function seeingLine(seeing: DemoSeeing | undefined): string {
+  if (!seeing) return t("showOnce.seeing.nothing");
+  if (seeing.kind === "type" && seeing.secure) return seeing.name ? t("showOnce.seeing.secure", { name: seeing.name, count: seeing.chars ?? 0 }) : t("showOnce.seeing.secureBare", { count: seeing.chars ?? 0 });
+  const pair = SEEN[seeing.kind];
+  if (pair) return seeing.name ? t(pair[0], { name: seeing.name }) : t(pair[1]);
+  return t(SEEN_BARE[seeing.kind] ?? "showOnce.seeing.nothing");
 }
+
+const FRAME: Partial<Record<DockTone, string>> = { watching: "ring-danger", working: "ring-accent", look: "ring-warning" };
 
 /** What happens next, said before anything is recorded, with a name for the task if the person has one. */
 function DemoIntro({ botName, starting, onStart, onCancel }: { botName: string; starting: boolean; onStart: (name: string) => void; onCancel: () => void }) {
@@ -61,57 +72,25 @@ function DemoIntro({ botName, starting, onStart, onCancel }: { botName: string; 
   );
 }
 
-const ROW_STATUS: Record<DemoReplayRun["items"][number]["status"], LocaleKey> = { waiting: "showOnce.run.status.waiting", running: "showOnce.run.status.running", done: "showOnce.run.status.done", failed: "showOnce.run.status.failed", skipped: "showOnce.run.status.skipped" };
-const SEGMENT: Record<DemoReplayRun["items"][number]["status"], string> = { waiting: "bg-ink/10", running: "bg-accent", done: "bg-success", failed: "bg-warning", skipped: "bg-ink/25" };
-
-function RunRow({ item, botName }: { item: DemoReplayRun["items"][number]; botName: string }) {
-  const icon: ReactNode = item.status === "done" ? <CircleCheck size={14} className="text-success" />
-    : item.status === "failed" ? <CircleAlert size={14} className="text-warning" />
-    : item.status === "running" ? <Loader2 size={14} className="animate-spin text-ink" />
-    : item.status === "skipped" ? <Minus size={14} className="text-ink-secondary" />
-    : <CircleDashed size={14} className="text-ink-tertiary" />;
-  const detail = item.status === "skipped" && item.missing.length ? t("showOnce.run.missing", { names: item.missing.join(", ") })
-    : item.status === "failed" ? [item.step, item.note].filter(Boolean).join(": ")
-    : item.status === "running" ? item.step ?? ""
-    : item.byBot > 0 ? count("showOnce.run.byBot", item.byBot, { name: botName }) : "";
+/** The showing under way: what the bot last saw, and taking a step back, pausing, throwing it away or finishing. */
+function Watching({ live, botName, title, busy, onUndo, onPause, onDiscard, onDone }: { live: DemoRecording; botName: string; title: string; busy: boolean; onUndo: () => void; onPause: (paused: boolean) => void; onDiscard: () => void; onDone: () => void }) {
+  const paused = live.paused === true;
+  const away = !paused && live.seeing?.kind === "type" && live.seeing.secure === true;
   return (
-    <li data-demo-run-item={item.status} className="flex items-start gap-2 py-1">
-      <span aria-hidden="true" className="mt-0.5 shrink-0">{icon}</span>
-      <span className="w-48 shrink-0 truncate text-[12px] leading-[18px] text-ink" title={item.label}>{item.label}</span>
-      <span className="sr-only">{t(ROW_STATUS[item.status])}</span>
-      <span className="min-w-0 flex-1 break-words text-[12px] leading-[18px] text-ink-secondary">{detail}</span>
-    </li>
-  );
-}
-
-/** A replay as it goes: one mark for each file, what it is on, and each file's outcome on request. */
-export function DemoRun({ run, botName, onDismiss }: { run: DemoReplayRun; botName: string; onDismiss: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [stopping, setStopping] = useState(false);
-  const total = run.items.length;
-  const settled = run.items.filter((item) => item.status === "done" || item.status === "failed" || item.status === "skipped").length;
-  const current = run.items.find((item) => item.status === "running");
-  const running = run.status === "running";
-  const failed = run.failed + run.items.filter((item) => item.status === "skipped" && item.missing.length > 0).length;
-  const headline = running ? t("showOnce.run.progress", { done: Math.min(total, settled + (current ? 1 : 0)), total })
-    : run.status === "stopped" ? t("showOnce.run.stopped", { done: run.done, total })
-    : failed ? count("showOnce.run.doneWithFailed", failed, { done: run.done, total }) : t("showOnce.run.done", { done: run.done, total });
-  const tone = running ? "working" : failed || run.status === "stopped" ? "look" : "done";
-  return (
-    <div data-demo-run={run.status} className={cn(dockCls, "flex-col items-stretch")}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Mark tone={tone}>{running ? <Loader2 size={16} className="animate-spin text-accent-text" /> : tone === "look" ? <CircleAlert size={16} className="text-warning" /> : <CircleCheck size={16} className="text-success" />}</Mark>
-        <div className="min-w-0 flex-1 basis-40">
-          <p role="status" className={dockTitleCls}>{running ? t("showOnce.run.title", { name: botName }) : ""}{running ? " · " : ""}{headline}</p>
-          {current ? <p className={dockLineCls}>{[current.label, current.step].filter(Boolean).join(" · ")}</p> : null}
-        </div>
-        <button type="button" className={quietButton} aria-expanded={open} onClick={() => setOpen(!open)}>{t(open ? "showOnce.run.hide" : "showOnce.run.details")}{open ? <ChevronUp size={12} aria-hidden="true" className="ml-1" /> : <ChevronDown size={12} aria-hidden="true" className="ml-1" />}</button>
-        {running
-          ? <button type="button" className={mdSecondaryCls} disabled={stopping} onClick={() => { setStopping(true); void demos.stopReplay(run.recordingId).catch(() => {}).finally(() => setStopping(false)); }}>{t("showOnce.run.stop")}</button>
-          : <button type="button" className={mdPrimaryCls} onClick={onDismiss}>{t("common.close")}</button>}
+    <div data-demo-dock={paused ? "paused" : away ? "away" : "watching"} className={dockCls}>
+      <Mark tone={paused ? "idle" : "watching"}>{paused ? <Pause size={14} className="text-ink-secondary" /> : <span className="size-2.5 animate-pulse rounded-full bg-danger motion-reduce:animate-none" />}</Mark>
+      <div className="min-w-0 basis-40">
+        <p role="status" className={dockTitleCls}>{paused ? t("showOnce.paused") : away ? t("showOnce.away", { name: botName }) : t("showOnce.recording", { name: botName })}</p>
+        <p className={dockLineCls}>{title ? `${title} · ` : ""}<span data-demo-actions>{actions(live.eventCount)}</span>{paused ? null : <> · <Elapsed since={live.createdAt} /></>}</p>
       </div>
-      <div aria-hidden="true" data-demo-run-marks className="flex gap-1">{run.items.map((item) => <span key={item.id} className={cn("h-1.5 min-w-1 flex-1 rounded-full transition-colors duration-300 motion-reduce:transition-none", SEGMENT[item.status])} />)}</div>
-      {open && <ul className="m-0 max-h-56 list-none overflow-y-auto p-0 [scrollbar-width:thin]">{run.items.map((item) => <RunRow key={item.id} item={item} botName={botName} />)}</ul>}
+      <p data-demo-seeing className={cn("m-0 flex h-9 min-w-0 flex-1 basis-48 items-center gap-2 truncate rounded-[11px] px-3 text-[13px]", away ? "bg-ink text-app" : "bg-ink/4 text-ink")}>
+        {away ? <LockKeyhole size={13} aria-hidden="true" className="shrink-0" /> : null}
+        <span className="truncate">{paused ? t("showOnce.pausedHint") : seeingLine(live.seeing)}</span>
+      </p>
+      <button type="button" className={quietButton} disabled={busy || paused || live.eventCount === 0} onClick={onUndo}><Undo2 size={13} aria-hidden="true" />{t("showOnce.undo")}</button>
+      <button type="button" className={quietButton} disabled={busy} onClick={() => onPause(!paused)}>{paused ? <Play size={13} aria-hidden="true" /> : <Pause size={13} aria-hidden="true" />}{t(paused ? "showOnce.resume" : "showOnce.pause")}</button>
+      <button type="button" className={quietButton} disabled={busy} onClick={onDiscard}>{t("showOnce.discard")}</button>
+      <button type="button" data-demo-stop className={mdPrimaryCls} disabled={busy} onClick={onDone}>{t("showOnce.stop")}</button>
     </div>
   );
 }
@@ -122,9 +101,10 @@ const TAKE_TIMEOUT_MS = 12_000;
  * Show it once, on one of a bot's screens: what it is before it starts, the showing while the person holds the screen,
  * the steps to review when they stop, and the replay as it runs. `holding` says the person has taken control here;
  * `onTake` takes it and keeps it, which starting does first so the screen stays theirs for as long as they are showing
- * the task. A change of `asked` opens the start from elsewhere, such as a menu.
+ * the task. A change of `asked` opens the start from elsewhere, such as a menu. With `frame`, the nearest positioned
+ * box around it is ringed while the bot watches or works.
  */
-export function DemoRecorder({ bot, surface, holding, threadId, onTake, asked = 0 }: { bot: { id: string; name: string }; surface: DemoSurface; holding: boolean; threadId?: string; onTake?: () => void; asked?: number }) {
+export function DemoRecorder({ bot, surface, holding, threadId, onTake, asked = 0, frame = false }: { bot: { id: string; name: string }; surface: DemoSurface; holding: boolean; threadId?: string; onTake?: () => void; asked?: number; frame?: boolean }) {
   const state = useBotDemos(bot.id);
   const [intro, setIntro] = useState(false);
   const [taking, setTaking] = useState(false);
@@ -185,26 +165,24 @@ export function DemoRecorder({ bot, surface, holding, threadId, onTake, asked = 
   if (!state.loaded || (!state.surfaces[surface] && !ready.length && !live)) return null;
   if (!offered && !taking && !intro && !live && !run && !ready.length && !error) return null;
 
-  const title = live ? names[live.id] : "";
+  const tone: DockTone | null = run ? runTone(run) : live?.status === "recording" && !live.paused ? "watching" : live?.status === "compiling" ? "working" : null;
+  const ring = frame && tone && (!run || run.status === "running") ? FRAME[tone] : undefined;
   return (
     <div data-demo-recorder={live?.status ?? (run ? "replay" : intro ? "intro" : "idle")} className={cn("shrink-0", (live || run || intro) && "order-last")}>
-      {run ? <DemoRun run={run} botName={bot.name} onDismiss={() => setDismissed(run.id)} />
+      {ring ? <span aria-hidden="true" data-demo-frame={tone} className={cn("pointer-events-none absolute inset-0 z-20 rounded-[inherit] ring-2 ring-inset", ring)} /> : null}
+      {run ? <DemoRun run={run} botName={bot.name} holding={holding} onDismiss={() => setDismissed(run.id)} />
         : live?.status === "recording" ? (
-          <div data-demo-dock="watching" className={dockCls}>
-            <Mark tone="watching"><span className="size-2.5 animate-pulse rounded-full bg-danger motion-reduce:animate-none" /></Mark>
-            <div className="min-w-0 flex-1 basis-40">
-              <p role="status" className={dockTitleCls}>{t("showOnce.recording", { name: bot.name })}</p>
-              <p className={dockLineCls}>{title ? `${title} · ` : ""}<span data-demo-actions>{count("showOnce.actions", live.eventCount)}</span> · <Elapsed since={live.createdAt} /></p>
-            </div>
-            <button type="button" className={quietButton} disabled={busy} onClick={() => void act(() => demos.cancel(bot.id))}>{t("showOnce.discard")}</button>
-            <button type="button" data-demo-stop className={mdPrimaryCls} disabled={busy} onClick={() => void stop()}>{busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}{t("showOnce.stop")}</button>
-          </div>
+          <Watching live={live} botName={bot.name} title={names[live.id] ?? ""} busy={busy}
+            onUndo={() => void act(() => demos.undo(bot.id))}
+            onPause={(paused) => void act(() => demos.pause(bot.id, paused))}
+            onDiscard={() => void act(() => demos.cancel(bot.id))}
+            onDone={() => void stop()} />
         ) : live ? (
           <div data-demo-dock="writing" className={dockCls}>
             <Mark tone="working"><Loader2 size={16} className="animate-spin text-accent-text" /></Mark>
             <div className="min-w-0 flex-1 basis-40">
               <p role="status" className={dockTitleCls}>{t("showOnce.compiling", { name: bot.name })}</p>
-              <p className={dockLineCls}>{count("showOnce.actions", live.eventCount)}</p>
+              <p className={dockLineCls}>{actions(live.eventCount)}</p>
             </div>
           </div>
         ) : intro ? <DemoIntro botName={bot.name} starting={taking || busy} onStart={begin} onCancel={() => { setIntro(false); setTaking(false); }} />
@@ -234,7 +212,7 @@ export function DemoRecorder({ bot, surface, holding, threadId, onTake, asked = 
           ))}
         </ul>
       )}
-      {review && <DemoReview key={review.id} recording={review} botName={bot.name} holding={holding} named={names[review.id] ?? ""} onClose={() => setReviewing(null)} />}
+      {review && <DemoReview key={review.id} recording={review} botName={bot.name} holding={holding} named={names[review.id] ?? ""} onAgain={offered ? () => { setReviewing(null); setIntro(true); } : undefined} onClose={() => setReviewing(null)} />}
     </div>
   );
 }

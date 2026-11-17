@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { DemoBlank, DemoChange, DemoRecording, DemoReplayRun } from "../../shared/demo-recording.ts";
+import type { DemoBlank, DemoChange, DemoRecording, DemoReplayItem, DemoReplayRun } from "../../shared/demo-recording.ts";
 import type { DemoTap } from "../browser/viewers/demo-tap.ts";
 import { CAPTURE_LIMITS, type AccessibilityProbe, type ScreenSource } from "./capture.ts";
 import type { DemoEngine } from "./compiler.ts";
@@ -48,6 +48,12 @@ export interface DemoHost<Who> {
   cancel(botId: string): Promise<void>;
   /** Reads the inputs out of the files and starts doing the task for each; the answer is the run as it begins. */
   replay(recordingId: string, files: readonly InputFile[], who: Who): Promise<DemoReplayRun | Refusal>;
+  /** The inputs as they would be read out of the files, for a person to look over before anything is done. */
+  inputs(recordingId: string, files: readonly InputFile[]): Promise<DemoReplayItem[] | Refusal>;
+  /** Does the task for inputs a person has looked over. With `ask`, a file whose step does not pass waits for `decide`. */
+  replayItems(recordingId: string, items: readonly DemoReplayItem[], who: Who, options?: { ask?: boolean }): Promise<DemoReplayRun | Refusal>;
+  /** Answers a run that is waiting on a file: leave it, or try its step once more. False when nothing was waiting. */
+  decide(recordingId: string, decision: "skip" | "retry"): boolean;
   run(recordingId: string): DemoReplayRun | null;
   stopReplay(recordingId: string): boolean;
 }
@@ -84,7 +90,7 @@ function botActor(turn: NonNullable<DemoHostDeps<unknown>["turn"]>, botId: strin
 export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
   const { recorder } = deps;
   const seats = new Map<string, { seat: DemoSeat; abandoned: ReturnType<typeof setTimeout> }>();
-  const runs = new Map<string, { run: DemoReplayRun; stop: AbortController }>();
+  const runs = new Map<string, { run: DemoReplayRun; stop: AbortController; decide: ((decision: "skip" | "retry") => void) | null }>();
   const replaying = new Set<string>();
 
   async function seatFor(botId: string, surface: DemoRecording["surface"], threadId: string | null, who: Who): Promise<DemoSeat | Refusal> {
@@ -136,7 +142,39 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
       await recorder.cancel(botId).finally(() => seat?.close?.());
     },
 
-    async replay(recordingId, files, who) {
+    replay: (recordingId, files, who) => begin(recordingId, (plan, botId) => readDemoInputs(files, plan.blanks, { engine: deps.engine(botId) }), who, false),
+
+    async inputs(recordingId, files) {
+      const recording = recorder.get(recordingId);
+      if (!recording?.plan || recording.status !== "ready") return { status: 404, error: "That recording has no steps to do again." };
+      const items = await readDemoInputs(files, recording.plan.blanks, { engine: deps.engine(recording.botId) });
+      return items.length ? items : { status: 422, error: "Those files hold nothing to read inputs from." };
+    },
+
+    replayItems: (recordingId, items, who, options) => begin(recordingId, async () => [...items], who, options?.ask === true),
+
+    decide(recordingId, decision) {
+      const entry = runs.get(recordingId);
+      if (!entry?.decide) return false;
+      entry.decide(decision);
+      return true;
+    },
+
+    run(recordingId) {
+      const entry = runs.get(recordingId);
+      return entry ? structuredClone(entry.run) : null;
+    },
+
+    stopReplay(recordingId) {
+      const entry = runs.get(recordingId);
+      if (!entry || entry.run.status !== "running") return false;
+      entry.stop.abort();
+      entry.decide?.("skip");
+      return true;
+    },
+  };
+
+  async function begin(recordingId: string, read: (plan: NonNullable<DemoRecording["plan"]>, botId: string) => Promise<DemoReplayItem[]>, who: Who, ask: boolean): Promise<DemoReplayRun | Refusal> {
       const recording = recorder.get(recordingId);
       if (!recording?.plan || recording.status !== "ready") return { status: 404, error: "That recording has no steps to do again." };
       if (runs.get(recordingId)?.run.status === "running") return { status: 409, error: "This task is already being done again. Stop it first." };
@@ -149,7 +187,7 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
         replaying.delete(botId);
         seat?.close?.();
       };
-      let items: Awaited<ReturnType<typeof readDemoInputs>>;
+      let items: DemoReplayItem[];
       try {
         const found = await seatFor(botId, recording.surface, recording.threadId ?? null, who);
         if (refused(found)) {
@@ -157,7 +195,7 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
           return found;
         }
         seat = found;
-        items = await readDemoInputs(files, plan.blanks, { engine: deps.engine(botId) });
+        items = await read(plan, botId);
       } catch (error) {
         ended();
         throw error;
@@ -176,7 +214,8 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
         failed: 0,
       };
       const stop = new AbortController();
-      runs.set(recordingId, { run, stop });
+      const entry: { run: DemoReplayRun; stop: AbortController; decide: ((decision: "skip" | "retry") => void) | null } = { run, stop, decide: null };
+      runs.set(recordingId, entry);
       const tell = () => deps.changed({ botId, run: structuredClone(run) });
       const row = (id: string) => run.items.find((item) => item.id === id);
       const titles = new Map(plan.steps.map((step) => [step.id, step.title]));
@@ -190,6 +229,18 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
           return blank && deps.secret ? deps.secret(botId, blank, at.where()) : null;
         },
         signal: stop.signal,
+        ...(ask ? {
+          onStuck: (item: DemoReplayItem, outcome: { title: string; note?: string }) => new Promise<"skip" | "retry">((resolve) => {
+            run.asking = { item: item.id, step: outcome.title, ...(outcome.note ? { note: outcome.note } : {}) };
+            entry.decide = (decision) => {
+              entry.decide = null;
+              delete run.asking;
+              tell();
+              resolve(decision);
+            };
+            tell();
+          }),
+        } : {}),
         onProgress(progress) {
           const item = row(progress.item);
           if (!item) return;
@@ -223,18 +274,5 @@ export function createDemoHost<Who>(deps: DemoHostDeps<Who>): DemoHost<Who> {
         deps.log?.("demo replay: the run ended on an error");
       });
       return structuredClone(run);
-    },
-
-    run(recordingId) {
-      const entry = runs.get(recordingId);
-      return entry ? structuredClone(entry.run) : null;
-    },
-
-    stopReplay(recordingId) {
-      const entry = runs.get(recordingId);
-      if (!entry || entry.run.status !== "running") return false;
-      entry.stop.abort();
-      return true;
-    },
-  };
+  }
 }

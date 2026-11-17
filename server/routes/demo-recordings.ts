@@ -15,8 +15,8 @@ export interface DemoRecordingRouteDeps {
   changed(change: DemoChange): void;
 }
 
-const BOT = /^\/api\/bots\/([\w-]+)\/demos(?:\/(stop|cancel))?$/;
-const ONE = /^\/api\/demos\/(demo-[a-f0-9-]{36})(?:\/(plan|skill|routine|replay|replay\/stop))?$/;
+const BOT = /^\/api\/bots\/([\w-]+)\/demos(?:\/(stop|cancel|pause|undo))?$/;
+const ONE = /^\/api\/demos\/(demo-[a-f0-9-]{36})(?:\/(plan|skill|routine|inputs|replay|replay\/stop|replay\/decide))?$/;
 const FRAME = /^\/api\/demos\/(demo-[a-f0-9-]{36})\/frames\/(f[a-f0-9]{20})$/;
 const FILES_MAX = 200;
 const FILE_MAX_CHARS = 200_000;
@@ -25,7 +25,14 @@ const FILES_MAX_CHARS = 2_000_000;
 const startBody = z.object({ surface: z.enum(["browser", "computer"]), threadId: z.string().min(1).max(200).optional() });
 const skillBody = z.object({ name: z.string().trim().min(1).max(120).optional() });
 const routineBody = z.object({ name: z.string().trim().min(1).max(120).optional(), source: z.string().trim().min(1).max(600) });
-const replayBody = z.object({ files: z.array(z.object({ name: z.string().min(1).max(260), content: z.string().max(FILE_MAX_CHARS) })).min(1).max(FILES_MAX) });
+const filesBody = z.object({ files: z.array(z.object({ name: z.string().min(1).max(260), content: z.string().max(FILE_MAX_CHARS) })).min(1).max(FILES_MAX) });
+const VALUE_MAX_CHARS = 4_000;
+const itemsBody = z.object({
+  items: z.array(z.object({ id: z.string().min(1).max(80), label: z.string().min(1).max(260), values: z.record(z.string().max(80), z.string().max(VALUE_MAX_CHARS)), missing: z.array(z.string().max(80)).max(100) })).min(1).max(FILES_MAX),
+  ask: z.boolean().optional(),
+});
+const pauseBody = z.object({ paused: z.boolean() });
+const decideBody = z.object({ decision: z.enum(["skip", "retry"]) });
 
 const isRefusal = (value: DemoRecording | Refusal | object): value is Refusal => "status" in value && "error" in value && !("id" in value);
 
@@ -62,6 +69,16 @@ export function createDemoRecordingRoutes(deps: DemoRecordingRouteDeps): RouteHa
       if (bot[2] === "stop") {
         const stopped = await host.stop(botId);
         return isRefusal(stopped) ? json(res, stopped.status, { error: stopped.error }) : json(res, 200, { recording: stopped });
+      }
+      if (bot[2] === "pause") {
+        const body = pauseBody.safeParse(await readBody(req));
+        if (!body.success) return json(res, 400, { error: "Say whether to pause or carry on." });
+        const paused = recorder.pause(botId, body.data.paused);
+        return "id" in paused ? json(res, 200, { recording: paused }) : json(res, 409, { error: paused.error });
+      }
+      if (bot[2] === "undo") {
+        const undone = await recorder.undo(botId);
+        return "id" in undone ? json(res, 200, { recording: undone }) : json(res, 409, { error: undone.error });
       }
       const body = startBody.safeParse(await readBody(req));
       if (!body.success) return json(res, 400, { error: "Say where the task will be shown: the browser or the computer." });
@@ -103,11 +120,26 @@ export function createDemoRecordingRoutes(deps: DemoRecordingRouteDeps): RouteHa
       return answer(recorder.saveRoutine(id, { source: body.data.source, ...(body.data.name ? { name: body.data.name } : {}) }), 201);
     }
     if (one[2] === "replay/stop") return json(res, 200, { stopped: host.stopReplay(id) });
-    if (one[2] === "replay") {
-      const body = replayBody.safeParse(await readBody(req));
+    if (one[2] === "replay/decide") {
+      const body = decideBody.safeParse(await readBody(req));
+      if (!body.success) return json(res, 400, { error: "Say whether to skip that one or try it again." });
+      return json(res, 200, { decided: host.decide(id, body.data.decision) });
+    }
+    const tooLarge = (files: Array<{ content: string }>) => files.reduce((sum, file) => sum + file.content.length, 0) > FILES_MAX_CHARS;
+    if (one[2] === "inputs") {
+      const body = filesBody.safeParse(await readBody(req));
       if (!body.success) return json(res, 400, { error: "Choose up to 200 text files to read the inputs from." });
-      if (body.data.files.reduce((sum, file) => sum + file.content.length, 0) > FILES_MAX_CHARS) return json(res, 413, { error: "Those files are too large to read together. Choose fewer." });
-      const run = await host.replay(id, body.data.files, auth);
+      if (tooLarge(body.data.files)) return json(res, 413, { error: "Those files are too large to read together. Choose fewer." });
+      const items = await host.inputs(id, body.data.files);
+      return "status" in items ? json(res, items.status, { error: items.error }) : json(res, 200, { items });
+    }
+    if (one[2] === "replay") {
+      const raw = await readBody(req);
+      const looked = itemsBody.safeParse(raw);
+      const body = looked.success ? null : filesBody.safeParse(raw);
+      if (!looked.success && !body?.success) return json(res, 400, { error: "Choose up to 200 text files to read the inputs from." });
+      if (body?.success && tooLarge(body.data.files)) return json(res, 413, { error: "Those files are too large to read together. Choose fewer." });
+      const run = looked.success ? await host.replayItems(id, looked.data.items, auth, { ask: looked.data.ask === true }) : await host.replay(id, body!.data!.files, auth);
       return "status" in run && "error" in run ? json(res, run.status, { error: run.error }) : json(res, 202, { run });
     }
     return PASS;

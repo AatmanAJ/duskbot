@@ -60,7 +60,7 @@ type Pairs = Array<[key: string, value: string]>;
 function matched(pairs: Pairs, blanks: readonly DemoBlank[]): { values: Record<string, string>; missing: string[] } {
   const open = pairs.map(([key, value]) => ({ key: norm(key), value, used: false })).filter((pair) => pair.key && pair.value.trim());
   const values: Record<string, string> = {};
-  const wanted = blanks.filter((blank) => blank.kind !== "secret");
+  const wanted = blanks.filter((blank) => blank.kind !== "secret" && !blank.today);
   const take = (blank: DemoBlank, names: string[]) => {
     if (Object.hasOwn(values, blank.name)) return;
     const pair = open.find((each) => !each.used && names.includes(each.key));
