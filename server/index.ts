@@ -7438,7 +7438,7 @@ bus.subscribe((event: RuntimeEvent) => {
             routineRun?.attention ? `${routineRun.routineName}: ${routineRun.attention}` : event.summary,
             event.requestId ? { requestId: event.requestId } : undefined,
           ), routineRun ? { routine: true } : undefined);
-          if (event.requestId) turnActivityToPhones(event.threadId, { type: "ask", kind: permission ? "approve" : "answer", requestId: event.requestId }, { attributes: turnActivityAttributes(asker, event.threadId, store.groupByThread(event.threadId)?.id) });
+          if (event.requestId) turnActivityToPhones(event.threadId, { type: "ask", kind: permission ? "approve" : "answer", requestId: event.requestId }, asker.notifications === false ? {} : { attributes: turnActivityAttributes(asker, event.threadId, store.groupByThread(event.threadId)?.id) });
         }
       }
       break;
