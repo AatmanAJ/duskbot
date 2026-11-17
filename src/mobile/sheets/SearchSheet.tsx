@@ -121,7 +121,7 @@ export const SearchSheet: ComponentType<SheetPageProps<"search">> = ({ open, onC
 
   return (
     <Sheet open={open} onClose={onClose} title={t("mobile.search.title")} full flush>
-      <div className="sticky top-0 z-10 flex items-center gap-1 bg-app px-4 pb-3 pt-2">
+      <div className="sticky top-0 z-10 flex items-center gap-1 bg-app px-4 pb-3 pt-6">
         <div className="flex h-11 min-w-0 flex-1 items-center rounded-full bg-ink/[0.05] pl-3">
           <Search aria-hidden size={19} className="shrink-0 text-ink-secondary" />
           <label className="sr-only" htmlFor="mobile-search-input">{t("mobile.search.title")}</label>
