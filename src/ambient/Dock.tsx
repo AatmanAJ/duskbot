@@ -23,8 +23,8 @@ export { dotOf, newsOf };
 const EDGE = 14;
 /** Off the bots and the card, the card goes almost at once (a slip of the pointer is forgiven); the column follows a
  * good while later, so the two never vanish together. */
-export const CARD_LEAVE_MS = 90;
-export const HIDE_MS = 520;
+export const CARD_LEAVE_MS = 450;
+export const HIDE_MS = 880;
 /** This much around the card and the column still counts as on them, so heading back never closes anything. */
 const GRACE = 16;
 /** The first card of a visit waits for intent: resting on a bot this long, or moving this far on the column. */
