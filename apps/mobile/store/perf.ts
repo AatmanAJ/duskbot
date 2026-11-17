@@ -4,7 +4,7 @@
 // glass bridge (a recording stand-in), and style and layout work. `--video <dir>` also keeps the screencast of each chat
 // switch for frame strips.
 //
-//   node --experimental-strip-types apps/mobile/store/perf.ts --out perf.json [--rate 4] [--runs 3] [--video dir]
+//   node --experimental-strip-types apps/mobile/store/perf.ts --out perf.json [--rate 4] [--runs 3] [--video dir] [--only sheet]
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +15,7 @@ import { parseArgs } from "node:util";
 import { startStage, js, type Stage } from "./stage.ts";
 import { TEAM } from "./team.mjs";
 
-const { values: args } = parseArgs({ options: { out: { type: "string" }, rate: { type: "string", default: "4" }, runs: { type: "string", default: "3" }, video: { type: "string" }, profile: { type: "string" } } });
+const { values: args } = parseArgs({ options: { out: { type: "string" }, rate: { type: "string", default: "4" }, runs: { type: "string", default: "3" }, video: { type: "string" }, profile: { type: "string" }, only: { type: "string" } } });
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const RATE = Number(args.rate);
 const RUNS = Number(args.runs);
@@ -74,7 +74,12 @@ const INSTRUMENT = `(() => {
       perf.commits.push([at, out]);
     },
   };
-  const glass = (kind) => (state) => perf.glass.push([performance.now(), kind, state === undefined ? 0 : JSON.stringify(state).length]);
+  let header = false;
+  const glass = (kind) => (state) => {
+    const swap = kind === "update" && Boolean(state?.header) !== header;
+    if (kind === "update") header = Boolean(state?.header);
+    perf.glass.push([performance.now(), kind, state === undefined ? 0 : JSON.stringify(state).length, swap]);
+  };
   window.__perfGlass = { update: glass("update"), setText: glass("text"), setAvatar: glass("avatar"), focus() {}, blur() {}, clear: glass("clear"), slide: glass("slide"), onEvent: (fn) => { perf.emit = fn; return () => {}; } };
   // the pushed page's position each frame, for when a slide starts and lands
   // read as drawn only while it may move (an inline transform changed, or keyframes run), so a resting page is not restyled
@@ -85,6 +90,11 @@ const INSTRUMENT = `(() => {
     else if (el.style.transform !== inline || el.getAnimations().length) { inline = el.style.transform; x = new DOMMatrixReadOnly(getComputedStyle(el).transform).m41; }
     const last = perf.pagePath?.at(-1);
     if (perf.pagePath && (!last || last[1] !== x)) perf.pagePath.push([performance.now(), x]);
+    // an open sheet's rise: its y each frame while one is on screen
+    const sheet = document.querySelector(".mobile-sheet");
+    const y = sheet ? new DOMMatrixReadOnly(getComputedStyle(sheet).transform).m42 : null;
+    const top = perf.sheetPath?.at(-1);
+    if (perf.sheetPath && (!top || top[1] !== y)) perf.sheetPath.push([performance.now(), y]);
     requestAnimationFrame(watch);
   };
   requestAnimationFrame(watch);
@@ -115,7 +125,7 @@ const LOG = `document.querySelector("[data-mobile-chat] [role=log]")`;
 
 /** Runs `act`, waits `settle` ms, and reports what the page did from the start of the window. */
 async function measure(stage: Stage, label: string, act: () => Promise<void>, settle: number, walk = false): Promise<Result> {
-  await stage.page.evaluate(`(() => { const p = window.__perf; p.walk = ${walk}; p.start = performance.now(); p.tapAt = 0; p.pagePath = []; p.frames.length = 0; p.longtasks.length = 0; p.commits.length = 0; p.fetches.length = 0; p.glass.length = 0; })()`);
+  await stage.page.evaluate(`(() => { const p = window.__perf; p.walk = ${walk}; p.start = performance.now(); p.tapAt = 0; p.pagePath = []; p.sheetPath = []; p.frames.length = 0; p.longtasks.length = 0; p.commits.length = 0; p.fetches.length = 0; p.glass.length = 0; })()`);
   const before = await metrics(stage);
   await act();
   await delay(settle);
@@ -132,7 +142,11 @@ async function measure(stage: Stage, label: string, act: () => Promise<void>, se
     const moved = path.find(([, x]) => x !== null && x < width - 0.5 && x > 0.5);
     const landed = path.find(([t, x]) => x !== null && Math.abs(x) < 0.5 && (!moved || t >= moved[0]));
     const gone = path.find(([, x]) => x === null || x >= width - 0.5);
+    const sheetPath = p.sheetPath.filter(([, y]) => y !== null);
+    const rose = sheetPath.find(([, y]) => y < sheetPath[0][1] - 0.5);
+    const sheetLanded = sheetPath.find(([, y]) => Math.abs(y) < 0.5);
     return {
+      ...(sheetPath.length ? { tapToSheet: Math.round(sheetPath[0][0] - tap), tapToSheetMove: rose ? Math.round(rose[0] - tap) : -1, tapToSheetLand: sheetLanded ? Math.round(sheetLanded[0] - tap) : -1 } : {}),
       tapToMove: moved ? Math.round(moved[0] - tap) : -1,
       tapToLand: landed ? Math.round(landed[0] - tap) : -1,
       tapToGone: gone ? Math.round(gone[0] - tap) : -1,
@@ -150,6 +164,8 @@ async function measure(stage: Stage, label: string, act: () => Promise<void>, se
       glassUpdates: p.glass.filter(([, k]) => k === "update").length,
       glassAvatars: p.glass.filter(([, k]) => k === "avatar").length,
       glassSlides: p.glass.filter(([, k]) => k === "slide").length,
+      // the native header taken down and put back: each one swaps the glass pill for the page's own
+      glassHeaderSwaps: p.glass.filter(([, , , swap]) => swap).length,
       glassBytes: p.glass.reduce((n, [, , b]) => n + b, 0),
     };
   })()`);
@@ -219,7 +235,7 @@ try {
   console.log(`cold start (unthrottled): ${JSON.stringify(cold)}`);
   results.push({ label: "cold start (unthrottled)", ...cold });
 
-  for (let run = 0; run < RUNS; run += 1) {
+  for (let run = 0; run < (args.only === "sheet" ? 0 : RUNS); run += 1) {
     const walk = run === RUNS - 1;
     results.push(await openChat(stage, LONG, walk));
     results.push(await back(stage, walk));
@@ -227,6 +243,7 @@ try {
     results.push(await back(stage, walk));
   }
 
+  if (args.only !== "sheet") {
   await openChat(stage, LONG);
   results.push(await measure(stage, "idle chat, 2 s", async () => {}, 2000, true));
   results.push(await measure(stage, `scroll ${LONG}`, async () => {
@@ -238,9 +255,10 @@ try {
     await stage.page.send("Input.synthesizeScrollGesture", { x, y, yDistance: -4000, speed: 2400, gestureSourceType: "touch", repeatCount: 1 });
   }, 500, true));
   await back(stage);
+  }
 
   await openChat(stage, "Nova");
-  results.push(await measure(stage, "send a message (and its reply)", async () => {
+  if (args.only !== "sheet") results.push(await measure(stage, "send a message (and its reply)", async () => {
     // typed and sent through the glass bridge, as the native composer does
     await stage.page.evaluate(`window.__perf.emit({ type: "text", text: "what's on for tomorrow?" })`);
     await delay(300);
@@ -251,6 +269,21 @@ try {
     await tap(stage, TITLE);
     await stage.page.until(`[...document.querySelectorAll("[role=dialog]")].some((el) => el.getBoundingClientRect().width > 0)`, 10_000);
   }, 800, true));
+  const sheetGone = () => stage.page.until(`!document.querySelector(".mobile-sheet")`, 10_000);
+  results.push(await measure(stage, "close the bot sheet", async () => {
+    await stage.page.evaluate(`document.querySelector(".mobile-sheet").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    await sheetGone();
+  }, 400, true));
+  // as on an iPhone: the native pill's touch reaches the page over the glass bridge
+  for (let run = 0; run < RUNS; run += 1) {
+    results.push(await measure(stage, "open the bot sheet from the native pill", async () => {
+      await stage.page.evaluate(`(() => { window.__perf.tapAt = performance.now(); window.__perf.emit({ type: "tap", target: "title" }); })()`);
+      await stage.page.until(`[...document.querySelectorAll("[role=dialog]")].some((el) => el.getBoundingClientRect().width > 0)`, 10_000);
+    }, 800, run === RUNS - 1));
+    await stage.page.evaluate(`document.querySelector(".mobile-sheet").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    await sheetGone();
+    await delay(400);
+  }
 
   if (args.profile) {
     // where the page thread's time goes while a long chat opens: self time by function, heaviest first
