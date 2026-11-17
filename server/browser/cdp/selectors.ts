@@ -2,6 +2,7 @@ import { DriverError, messageOf } from "./errors.ts";
 import { callInWorld } from "./evaluate.ts";
 import type { FrameTree } from "./frames.ts";
 import { parseRef, type NodeHandle, type RefTable } from "./refs.ts";
+import { liveRef } from "./relocate.ts";
 
 /**
  * A selector names elements in the main frame, open shadow roots included:
@@ -123,10 +124,10 @@ export async function resolveSelector(frames: FrameTree, input: string): Promise
   return { frameId: frames.mainFrameId, session: frames.mainSession, backendNodeId };
 }
 
-/** A ref, or a selector that reads as one ("aria-ref=e5"), resolves through the tab's refs. */
+/** A ref, or a selector that reads as one ("aria-ref=e5"), resolves through the tab's refs to the element as it is now. */
 export async function resolveElement(frames: FrameTree, refs: RefTable, target: { ref?: string; selector?: string }): Promise<NodeHandle & { ref?: string }> {
-  if (target.ref !== undefined) return refs.resolve(target.ref);
+  if (target.ref !== undefined) return liveRef(frames, refs, target.ref);
   if (target.selector === undefined) throw new DriverError("invalid-selector", "Name the element with a ref or a selector.");
-  if (parseRef(target.selector)) return refs.resolve(target.selector);
+  if (parseRef(target.selector)) return liveRef(frames, refs, target.selector);
   return resolveSelector(frames, target.selector);
 }

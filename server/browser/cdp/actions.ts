@@ -11,6 +11,7 @@ import type { FrameTree } from "./frames.ts";
 import type { MouseButton, Mouse, Point } from "./input.ts";
 import type { Keyboard } from "./keyboard.ts";
 import type { NodeHandle, RefTable } from "./refs.ts";
+import { liveRef } from "./relocate.ts";
 import { resolveElement } from "./selectors.ts";
 
 export const DEFAULT_ACTION_TIMEOUT_MS = 15_000;
@@ -257,26 +258,48 @@ const SET_VALUE = `function (value) {
 
 const notEditable = () => new DriverError("not-editable", "The target is not an enabled text field, so no text was typed.");
 
-async function focusEditable(context: ActionContext, handle: NodeHandle & { ref?: string }): Promise<"text" | "value" | "contenteditable"> {
-  let editable: { kind: "text" | "value" | "contenteditable" } | null;
+type EditableKind = "text" | "value" | "contenteditable";
+
+const FOCUS_SWAP_FRAMES = 5;
+
+async function focusNode(handle: NodeHandle): Promise<void> {
   try {
-    editable = await callOnNode<{ kind: "text" | "value" | "contenteditable" } | null>(context.frames, handle, EDITABLE);
+    await handle.session.send("DOM.focus", { backendNodeId: handle.backendNodeId });
+  } catch (error) {
+    if (!isGone(error) && !/not focusable/i.test(messageOf(error))) throw error;
+  }
+}
+
+/** Focuses the field and answers the element that has the focus then: a page may swap the field for a new copy as it
+ * takes focus (a React composer), and the ref follows that copy. */
+async function focusEditable(context: ActionContext, handle: NodeHandle & { ref?: string }): Promise<{ kind: EditableKind; handle: NodeHandle & { ref?: string } }> {
+  let editable: { kind: EditableKind } | null;
+  try {
+    editable = await callOnNode<{ kind: EditableKind } | null>(context.frames, handle, EDITABLE);
   } catch (error) {
     if (isGone(error) || (error instanceof DriverError && error.code === "not-found")) throw gone(handle);
     throw error;
   }
   if (!editable) throw notEditable();
-  await handle.session.send("DOM.focus", { backendNodeId: handle.backendNodeId });
-  if (!(await callOnNode<boolean>(context.frames, handle, FOCUSED))) throw notEditable();
-  return editable.kind;
+  await focusNode(handle);
+  let current = handle;
+  for (let frame = 0; ; frame++) {
+    if (await callOnNode<boolean>(context.frames, current, FOCUSED).catch(() => false)) return { kind: editable.kind, handle: current };
+    if (!handle.ref || frame >= FOCUS_SWAP_FRAMES) throw notEditable();
+    await valueInWorld(context.frames, handle.frameId, NEXT_FRAME, { awaitPromise: true }).catch(() => {});
+    const now = await liveRef(context.frames, context.refs, handle.ref);
+    if (now.backendNodeId !== current.backendNodeId) {
+      current = now;
+      if (!(await callOnNode<boolean>(context.frames, current, FOCUSED).catch(() => false))) await focusNode(current);
+    }
+  }
 }
 
 /** Clears the field and inserts the text in one input event, as a paste would. */
 export async function fill(context: ActionContext, target: Exclude<Target, Point>, text: string): Promise<void> {
   await context.bringToFront();
   refuseErrorPage(context);
-  const handle = await element(context, target);
-  const kind = await focusEditable(context, handle);
+  const { kind, handle } = await focusEditable(context, await element(context, target));
   // Date and time fields take no typed text: set them like a picker would (the events are untrusted).
   if (kind === "value") {
     await callOnNode(context.frames, handle, SET_VALUE, [text]);
