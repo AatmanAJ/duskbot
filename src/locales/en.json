@@ -3197,6 +3197,7 @@
   "funnel.account.magicWaiting": "Waiting for you to open it",
   "funnel.account.signedInTitle": "You're signed in",
   "funnel.account.signedIn": "Signed in as {email}.",
+  "funnel.account.switch": "Use a different account",
   "funnel.account.skip": "Skip for now",
   "funnel.account.without": "Continue without an account",
   "funnel.place.title": "Where should your bots live?",

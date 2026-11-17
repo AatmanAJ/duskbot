@@ -143,7 +143,14 @@ export function AccountStep({ account, known, onDone, onSkip }: {
       <StepFrame art={<span className="place-mark grid size-14 place-items-center rounded-full bg-success/10 text-success"><Check size={26} aria-hidden="true" /></span>}
         title={t("funnel.account.signedInTitle")}
         sub={known.email ? t("funnel.account.signedIn", { email: known.email }) : undefined}
-        footer={<button type="button" data-primary="" autoFocus onClick={onDone} className={PRIMARY}>{t("funnel.next")}</button>} />
+        footer={<>
+          <button type="button" data-primary="" autoFocus onClick={onDone} disabled={busy} className={PRIMARY}>{t("funnel.next")}</button>
+          {account.signOut && (
+            <button type="button" data-funnel-account-switch="" className={cn(QUIET, "mt-2 disabled:opacity-40")} disabled={busy}
+              onClick={() => void run(async () => { await account.signOut!(); })}>{t("funnel.account.switch")}</button>
+          )}
+          {problem && <p role="alert" className="text-center text-[13px] leading-[18px] text-danger">{problemLine(problem, null)}</p>}
+        </>} />
     );
   }
 
