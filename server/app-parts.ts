@@ -333,20 +333,26 @@ export function createPartsDownloader(options: {
       const count = (failures.get(part.name) ?? 0) + 1;
       failures.set(part.name, count);
       const delay = delays[Math.min(count - 1, delays.length - 1)] ?? 600_000;
-      options.log?.(`app parts: ${part.name} failed (${message}); trying again in ${Math.round(delay / 1000)} s`);
-      set(part.name, { phase: "failed", error: message, received: last.received, total: part.bytes });
-      const timer = setTimeout(() => { void attempt(part); }, delay);
+      const timer = setTimeout(() => { begin(part); }, delay);
       timer.unref?.();
       timers.set(part.name, timer);
+      options.log?.(`app parts: ${part.name} failed (${message}); trying again in ${Math.round(delay / 1000)} s`);
+      set(part.name, { phase: "failed", error: message, received: last.received, total: part.bytes });
     } finally {
       running.delete(part.name);
     }
   }
 
+  function begin(part: PartSpec): void {
+    attempt(part).catch((error: unknown) => {
+      try { options.log?.(`app parts: ${part.name} attempt broke: ${error instanceof Error ? error.message : String(error)}`); } catch {}
+    });
+  }
+
   const find = (name: PartName) => options.manifest.parts.find((part) => part.name === name);
   return {
     start() {
-      for (const part of options.manifest.parts) if (states.get(part.name)?.phase !== "ready") void attempt(part);
+      for (const part of options.manifest.parts) if (states.get(part.name)?.phase !== "ready") begin(part);
     },
     state: (name) => states.get(name) ?? null,
     ready(name) {
@@ -355,12 +361,12 @@ export function createPartsDownloader(options: {
       if (!part || !state) return Promise.resolve(false);
       if (state.phase === "ready") return Promise.resolve(true);
       // a bot needs it now: a failed part is tried again at once rather than at its next retry
-      if (!running.has(name)) void attempt(part);
+      if (!running.has(name)) begin(part);
       return new Promise((resolve) => { waiters.set(name, [...(waiters.get(name) ?? []), resolve]); });
     },
     retry(name) {
       const part = find(name);
-      if (part && states.get(name)?.phase !== "ready") void attempt(part);
+      if (part && states.get(name)?.phase !== "ready") begin(part);
     },
     stop() {
       stopped = true;

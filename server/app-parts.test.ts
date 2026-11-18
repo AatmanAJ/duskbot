@@ -184,6 +184,38 @@ describe("createPartsDownloader", () => {
     downloader.stop();
   });
 
+  it("a download cut partway resumes from the kept bytes on its own retry and lands ready", async () => {
+    const root = temp();
+    const zip = bundleZip();
+    const { fetchImpl, calls } = server(zip, { cutAt: Math.floor(zip.length * 0.8) });
+    const downloader = createPartsDownloader({ manifest: { v: 1, parts: [spec(zip)] }, root, platform: "linux", fetchImpl, retryMs: [10] });
+    downloader.start();
+    await vi.waitFor(() => expect(downloader.state("browser")?.phase).toBe("ready"));
+    expect(calls).toEqual([null, `bytes=${Math.floor(zip.length * 0.8)}-`]);
+    downloader.stop();
+  });
+
+  it("keeps retrying when the one listening throws, without an unhandled rejection", async () => {
+    const root = temp();
+    const zip = bundleZip();
+    const { fetchImpl } = server(zip, { failFirst: 2 });
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const downloader = createPartsDownloader({
+        manifest: { v: 1, parts: [spec(zip)] }, root, platform: "linux", fetchImpl, retryMs: [10],
+        onChange: (_name, state) => { if (state.phase === "failed") throw new Error("listener broke"); },
+      });
+      downloader.start();
+      await vi.waitFor(() => expect(downloader.state("browser")?.phase).toBe("ready"));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).not.toHaveBeenCalled();
+      downloader.stop();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
   it("a part already unpacked is ready without a download", async () => {
     const root = temp();
     const zip = bundleZip();
