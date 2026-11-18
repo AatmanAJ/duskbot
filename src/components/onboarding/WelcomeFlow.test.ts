@@ -367,7 +367,7 @@ describe("on the desktop app", () => {
       continueInBrowser: vi.fn(async () => ({ outcome: "opened", state: bridge.now })),
       offer: vi.fn(async () => ({ plans: [{ tier: "starter", amount: 1500, trialDays: 7 }, { tier: "pro", amount: 2900, trialDays: 7 }], recommended: "pro" })),
       holdSignIns: vi.fn(async () => ({ outcome: "held" })), connectHome: vi.fn(async () => ({ status: "connected" })),
-      tell: async (next: unknown) => { bridge.now = next; await act(async () => { for (const listener of [...listeners]) listener(next); }); await settle(); },
+      tell: async (next: unknown) => { bridge.now = next; await act(async () => { for (const listener of listeners) listener(next); }); await settle(); },
     };
     return bridge;
   };
