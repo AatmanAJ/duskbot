@@ -124,7 +124,7 @@ function StatusShimmer({ text }: { text: string }) {
 
 /** How the line's words change: the old words blur out as the new ones come in from a blur, both in the same cell at
  * once, so the line never shows neither; the cell's width eases from the old words' to the new. */
-export const WORD_SWAP = { duration: 220, easing: "cubic-bezier(0.22, 1, 0.36, 1)", blurPx: 4 } as const;
+export const WORD_SWAP = { duration: 880, easing: "cubic-bezier(0.22, 1, 0.36, 1)", blurPx: 4 } as const;
 
 type StepWords = { key: string; text: string };
 

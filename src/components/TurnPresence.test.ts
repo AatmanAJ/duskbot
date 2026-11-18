@@ -272,7 +272,7 @@ describe("the working line swapping words", () => {
     const fadeIn = runs.find((run) => run.el === into)!;
     expect(fadeOut.keyframes).toEqual([{ opacity: 1, filter: "blur(0px)" }, { opacity: 0, filter: "blur(4px)" }]);
     expect(fadeIn.keyframes).toEqual([{ opacity: 0, filter: "blur(4px)" }, { opacity: 1, filter: "blur(0px)" }]);
-    for (const run of [fadeOut, fadeIn]) expect(run.options).toMatchObject({ duration: 220, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+    for (const run of [fadeOut, fadeIn]) expect(run.options).toMatchObject({ duration: 880, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
     expect(into!.classList, "no rise on a swap").not.toContain("turn-label-in");
     act(() => fadeOut.onfinish!());
     expect(words().map((word) => word.textContent)).toEqual(["Writing the reply"]);
