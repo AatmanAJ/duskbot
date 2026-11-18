@@ -292,9 +292,9 @@ describe("admin panel api", () => {
     expect(events.events.map(event => event.id)).toEqual(["real1"]);
     const shown = await (await call("/v1/admin/events?name=app_open&limit=3", { cookie: admin })).json() as { events: Array<{ id: string }> };
     expect(shown.events).toHaveLength(3);
-    const overview = await (await call("/v1/admin/overview?days=7", { cookie: admin, headers: hide })).json() as { totals: { wau: number; appWau: number } };
+    const overview = await (await call("/v1/admin/overview?days=7", { cookie: admin, headers: hide })).json() as { totals: { appWau: number } };
     expect(overview.totals.appWau).toBe(1);
-    expect(overview.totals.wau).toBeGreaterThanOrEqual(overview.totals.appWau);
+    expect(overview.totals).not.toHaveProperty("wau");
   });
   it("says when a read hit its event limit, and starts the experience chart at the first whole day it holds", async () => {
     const admin = await login(ADMIN);

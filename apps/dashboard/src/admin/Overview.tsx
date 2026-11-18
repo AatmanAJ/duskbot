@@ -93,12 +93,11 @@ function SitePicker({ value, onChange, counts }: { value: Surface; onChange(v: S
 const I = { size: 14, strokeWidth: 1.75 } as const;
 
 function mainSeries(id: ChartedId, data: SeriesData): MainSeries {
-  const money = data.revenue, net = (i: number) => money ? money.new[i]! + money.renewal[i]! + money.refund[i]! : 0;
+  const money = data.revenue;
   switch (id) {
     case "revenue": return { label: "revenue", kind: "revenue", values: null };
     case "mrr": return { label: "mrr", kind: "money", values: money?.mrr ?? null };
     case "customers": return { label: "new customers", kind: "count", values: data.paid };
-    case "per visitor": return { label: "per visitor", kind: "money", values: data.visitors.map((v, i) => v ? net(i) / v : 0) };
     case "conversion": return { label: "conversion", kind: "share", values: data.visitors.map((v, i) => v ? data.signups[i]! / v : 0) };
   }
 }
@@ -288,7 +287,6 @@ export function OverviewPage() {
               { id: "mrr", value: r && !filtered ? r.current.mrr : null, format: dollars, toggle: charted("mrr"),
                 change: mrrMoved === null ? undefined : mrrMoved === 0 ? <span className="text-12 text-ink-4">no change in this range</span> : <span className="text-12 text-ink-4"><span className={cx("font-mono num", mrrMoved > 0 ? "text-good" : "text-bad")}>{mrrMoved > 0 ? "+" : ""}{usd(mrrMoved, true)}</span> in this range</span> },
               { id: "customers", value: r ? r.current.customers : null, format: whole, now: r?.current.customers, before: r?.previous.customers, toggle: charted("customers") },
-              { id: "per visitor", value: r && c.visitors ? r.current.net / c.visitors : null, format: (v) => usd(Math.round(v)), now: r && c.visitors ? r.current.net / c.visitors : undefined, before: r && p.visitors ? r.previous.net / p.visitors : undefined, toggle: charted("per visitor") },
               { id: "conversion", value: c.conversion, format: share, now: c.conversion, before: p.conversion, toggle: charted("conversion") },
               { id: "bounce rate", value: c.bounce, format: share, now: c.bounce, before: p.bounce, invert: true },
             ]} />

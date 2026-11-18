@@ -86,6 +86,8 @@ const ACTIVE_NAMES = EVENT_NAMES.filter(name => "active" in EVENTS[name]);
 /** "using the app": the app's own events and its server heartbeat, not site visits or sign-ins */
 const APP_NAMES = EVENT_NAMES.filter(name => EVENTS[name].source === "app" || name === "app_active");
 const REALTIME_TTL_MS = 4_000;
+/** how long past its freshness a kept read is still answered at once while a new one is computed behind it */
+const STALE_MS = 10 * 60_000;
 const bundleLabel = (id: string | null | undefined) => BILLING_CONFIG.bundles.find(bundle => bundle.id === id)?.label.toLowerCase() ?? (id ? "custom" : null);
 const regionLabel = (id: string, managed: boolean) => (labelOfRegion(managed ? MANAGED_REGION.id : id) ?? id).toLowerCase();
 const int = (value: string | null, fallback: number, min: number, max: number) => {
@@ -333,17 +335,16 @@ export function createAdmin(options: AdminOptions) {
     const time = now(), range = dayRange(time, days), since = Date.parse(`${range[0]}T00:00:00Z`);
     const { accounts, sessions } = v.directory();
     const today = Date.parse(`${range.at(-1)}T00:00:00Z`);
-    const [daily, waitlistDays, waitlistCount, wau, mau, marked, appWau, activeNow, siteVisitors] = await Promise.all([
+    const [daily, waitlistDays, waitlistCount, marked, appWau, activeNow, siteVisitors] = await Promise.all([
       v.sink.daily(["active_accounts", "site_visitors", "site_view", "app_active"], range[0]!, range.at(-1)!),
       v.waitlist?.byDay(since).catch(() => []) ?? Promise.resolve([]),
       v.waitlist?.count().catch(() => null) ?? Promise.resolve(null),
-      v.sink.accounts(ACTIVE_NAMES, time - 7 * DAY), v.sink.accounts(ACTIVE_NAMES, time - 30 * DAY),
       Promise.all(["onboarding_done", "app_paired", "first_bot_reply", "plan_chosen"].map(name => v.sink.accounts([name], since))),
       v.sink.accounts(APP_NAMES, time - 7 * DAY), v.sink.accounts(ACTIVE_NAMES, today),
       v.sink.visitorCount(since, time + 60_000, SITE_VISIT_EVENTS),
     ]);
     const hidden = v.hidden(), kept = (ids: Set<string>) => hidden.size ? new Set([...ids].filter(id => !hidden.has(id))) : ids;
-    const [wauKept, mauKept, markedKept, appWauKept] = [kept(wau), kept(mau), marked.map(kept), kept(appWau)];
+    const [markedKept, appWauKept] = [marked.map(kept), kept(appWau)];
     const activeToday = kept(new Set([...activeNow, ...sessions.filter(session => session.lastSeenAt >= today).map(session => session.accountId)])).size;
     const untracked = v.live ? null : accounts.filter(account => analytics.optedOut(account.id)).length;
     const series = (name: string) => perDay(range, daily.filter(row => row.name === name));
@@ -357,10 +358,9 @@ export function createAdmin(options: AdminOptions) {
       now: time, days, range, data: v.live ? live!.label : "own",
       totals: {
         accounts: accounts.length, newAccounts: accounts.filter(account => account.createdAt >= since).length,
-        activeToday, untracked, wau: wauKept.size, mau: mauKept.size, appWau: appWauKept.size,
+        activeToday, untracked, appWau: appWauKept.size,
         paying: new Set(v.store().subscriptions.filter(isPaying).map(sub => sub.accountId)).size,
         waitlist: waitlistCount, clouds: [...byState].reduce((sum, [state, count]) => state === "destroyed" ? sum : sum + count, 0),
-        devices: sessions.filter(session => session.kind !== "web").length,
       },
       series: {
         signups: perDay(range, accounts.map(account => ({ day: dayKey(account.createdAt), count: 1 }))),
@@ -370,9 +370,6 @@ export function createAdmin(options: AdminOptions) {
         workspaces: owned, marked: { onboarded: markedKept[0]!, paired: markedKept[1]!, replied: markedKept[2]!, chosen: markedKept[3]! } }),
       clouds: [...byState].map(([state, count]) => ({ state, count })).sort((a, b) => b.count - a.count),
       bots: { workspaces: owned.length, bots: owned.reduce((sum, ws) => sum + (ws.report?.bots?.length ?? 0), 0), turns30d: owned.reduce((sum, ws) => sum + workspaceTurns(ws, sinceDay), 0) },
-      platforms: [...sessions.filter(session => session.kind !== "web").reduce((map, session) => map.set(session.platform ?? "unknown", (map.get(session.platform ?? "unknown") ?? 0) + 1), new Map<string, number>())]
-        .map(([platform, count]) => ({ platform, count })).sort((a, b) => b.count - a.count),
-      spend: { exposed: false, note: "the managed backend keeps its InstaBox cost book internally; it has no read for this panel yet" },
     };
   }
 
@@ -522,11 +519,11 @@ export function createAdmin(options: AdminOptions) {
     if (/^\/(?:me|health|audit|waitlist\.csv|ops\/relays|experience\/timeline)$/.test(route) || /^\/(?:users|journeys|v2\/people)\/[^/]+$/.test(route) || /^\/clouds\/[^/]+\/usage$/.test(route)) return null;
     return route === "/realtime" ? REALTIME_TTL_MS : options.readCacheMs ?? 30_000;
   }
-  /** one question: the path, its query (a `to` near now rounded to 30 s, so a refresh shares the answer) and the panel's switches */
+  /** one question: the path, its query (a `to` within 10 minutes of now reads as now, so every "until now" view shares one answer) and the panel's switches */
   function readKey(req: IncomingMessage, url: URL) {
     const params = [...url.searchParams].map(([key, value]) => {
       const at = Number(value);
-      return key === "to" && Number.isSafeInteger(at) && Math.abs(now() - at) < 120_000 ? [key, String(Math.floor(at / 30_000))] : [key, value];
+      return key === "to" && Number.isSafeInteger(at) && Math.abs(now() - at) < 10 * 60_000 ? [key, "now"] : [key, value];
     }).sort(([a], [b]) => a!.localeCompare(b!));
     const header = (name: string) => String(req.headers[name] ?? "");
     return `${url.pathname}?${new URLSearchParams(params as Array<[string, string]>)}|${header("x-dusk-admin-data")}|${header("x-dusk-admin-tests")}|${header("x-dusk-admin-money")}`;
@@ -550,7 +547,7 @@ export function createAdmin(options: AdminOptions) {
         const out: { data?: unknown } = {};
         await answer(req, res, url, owner, route, method, data => { out.data = data; return true; });
         return out.data;
-      });
+      }, route === "/realtime" ? 0 : STALE_MS);
       options.json(res, 200, shape(data));
       return true;
     } catch (error) {

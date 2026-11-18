@@ -1,4 +1,4 @@
-export const KPI_IDS = ["visitors", "revenue", "signups", "mrr", "customers", "per visitor", "conversion", "bounce rate"] as const;
+export const KPI_IDS = ["visitors", "revenue", "signups", "mrr", "customers", "conversion", "bounce rate"] as const;
 export type KpiId = (typeof KPI_IDS)[number];
 
 export const TINTS = ["none", "green", "blue", "orange", "purple", "yellow"] as const;
@@ -15,7 +15,7 @@ export const TINT_STYLE: Record<Exclude<Tint, "none">, { label: string; wash: st
 export const DEFAULT_TINTS: Partial<Record<KpiId, Tint>> = { mrr: "green" };
 
 /** the cards the chart can draw as its main bars; visitors and signups already have their own line and dots, bounce has no per-day figure */
-export const CHARTED = ["revenue", "mrr", "customers", "per visitor", "conversion"] as const satisfies readonly KpiId[];
+export const CHARTED = ["revenue", "mrr", "customers", "conversion"] as const satisfies readonly KpiId[];
 export type ChartedId = (typeof CHARTED)[number];
 const isCharted = (id: KpiId): id is ChartedId => (CHARTED as readonly string[]).includes(id);
 /** the chart's main series: the first green card it can draw, in the strip's order */

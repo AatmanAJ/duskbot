@@ -15,8 +15,9 @@ export function isDatabaseError(error: unknown): boolean {
 
 export interface ReadCacheOptions { now?: () => number; deadlineMs?: number; maxEntries?: number }
 export interface ReadCache {
-  /** the answer for `key`: a kept one younger than `ttlMs`, the one already being computed, or a new computation */
-  get<T>(key: string, ttlMs: number, work: () => Promise<T>): Promise<T>;
+  /** the answer for `key`: a kept one younger than `ttlMs`, the one already being computed, or a new computation. with
+   *  `staleMs`, a kept one up to that much older is answered at once while a fresh one is computed behind it */
+  get<T>(key: string, ttlMs: number, work: () => Promise<T>, staleMs?: number): Promise<T>;
   /** forgets every kept answer (after a change the panel made) */
   clear(): void;
   /** the deadline and database error mapping alone, for reads that are never kept */
@@ -40,27 +41,35 @@ export function createReadCache(options: ReadCacheOptions = {}): ReadCache {
       throw error;
     });
   }
+  function compute<T>(key: string, ttlMs: number, work: () => Promise<T>): Promise<T> {
+    const started = generation;
+    const promise = withDeadline(work()).then(value => {
+      // an answer computed before a change is not kept past it
+      if (started === generation && ttlMs > 0) {
+        kept.delete(key);
+        kept.set(key, { at: now(), value });
+        while (kept.size > maxEntries) kept.delete(kept.keys().next().value!);
+      }
+      return value;
+    }).finally(() => { if (running.get(key) === promise) running.delete(key); });
+    running.set(key, promise);
+    return promise;
+  }
   return {
     get size() { return kept.size; },
-    get<T>(key: string, ttlMs: number, work: () => Promise<T>): Promise<T> {
+    get<T>(key: string, ttlMs: number, work: () => Promise<T>, staleMs = 0): Promise<T> {
       const hit = kept.get(key);
       if (hit && now() - hit.at < ttlMs) return Promise.resolve(hit.value as T);
-      const inFlight = running.get(key);
-      if (inFlight) return inFlight as Promise<T>;
-      const started = generation;
-      const promise = withDeadline(work()).then(value => {
-        // an answer computed before a change is not kept past it
-        if (started === generation && ttlMs > 0) {
-          kept.delete(key);
-          kept.set(key, { at: now(), value });
-          while (kept.size > maxEntries) kept.delete(kept.keys().next().value!);
-        }
-        return value;
-      }).finally(() => { if (running.get(key) === promise) running.delete(key); });
-      running.set(key, promise);
-      return promise;
+      const inFlight = running.get(key) as Promise<T> | undefined;
+      if (hit && ttlMs > 0 && now() - hit.at < ttlMs + staleMs) {
+        // a failed refresh keeps the older answer; the next read tries again
+        if (!inFlight) compute(key, ttlMs, work).catch(() => {});
+        return Promise.resolve(hit.value as T);
+      }
+      return inFlight ?? compute(key, ttlMs, work);
     },
-    clear() { kept.clear(); generation++; },
+    // a read already running started before the change, so the next caller starts a new one
+    clear() { kept.clear(); running.clear(); generation++; },
     bounded: withDeadline,
   };
 }
