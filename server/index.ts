@@ -228,7 +228,7 @@ import {
   isRemoteMcpServer,
   parseMcpServerMutation,
   parseStoredMcpServer,
-} from "./mcp-registry.ts";
+} from "./mcp-registry.ts"; import { sharedServerJoins } from "./mcp-shared-join.ts";
 import { createCloudComposioConnect } from "./cloud-composio-connect.ts";
 import { attachCustomMcp } from "./mcp-result-budget.ts";
 import { MCP_OAUTH_CALLBACK_PATH, McpOAuthManager } from "./mcp-oauth.ts";
@@ -13059,8 +13059,8 @@ function teamAdminHost() {
 }
 
 function persistMcpServers(next: Record<string, unknown>): void {
-  saveConfig({ mcpServers: next });
-  cfg.mcpServers = next;
+  const joins = sharedServerJoins(cfg.mcpServers, next, store.bots); saveConfig({ mcpServers: next });
+  cfg.mcpServers = next; for (const join of joins) store.patchBot(join.botId, { mcpServers: join.mcpServers });
 }
 
 async function describeInstances() {

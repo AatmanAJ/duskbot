@@ -56,6 +56,15 @@ describe("what the person said themselves", () => {
     expect(personsOwnWords([said("I'm Ana", { sender: { id: "ana" } }), said("I'm Raj", { sender: { id: "raj" } })])).toEqual(["I'm Raj"]);
   });
 
+  it("counts the person's yes to the bot's question quoting the line as their own words, and nothing else", () => {
+    const question = { role: "bot", kind: "text", text: "Save this for all your bots: \"Notion stays connected for every bot\"?" };
+    const path = [said("why does my other bot not see notion"), question, said("yes")];
+    expect(saidByPerson("Notion stays connected for every bot", personsOwnWords(path))).toBe(true);
+    expect(saidByPerson("Notion stays connected for every bot", personsOwnWords([...path.slice(0, 2), said("no, don't")]))).toBe(false);
+    expect(saidByPerson("Notion stays connected for every bot", personsOwnWords([path[0]!, { ...question, text: "Notion stays connected for every bot." }, said("yes")]))).toBe(false);
+    expect(saidByPerson("Notion stays connected for every bot", personsOwnWords([question, said("why?"), said("yes")]))).toBe(false);
+  });
+
   it("recognises the person's own wish in a saved line and nothing a page put there", () => {
     const person = ["Also make sure every new development on GitHub goes by my name", "Remember, GitHub is always under my name."];
     expect(saidByPerson("The person wants every new development on GitHub to go by their name", person)).toBe(true);

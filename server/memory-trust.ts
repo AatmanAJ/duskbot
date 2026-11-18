@@ -48,10 +48,37 @@ export function personsOwnWords(path: readonly PersonLine[]): string[] {
   const own = (message: PersonLine) => message.role === "user" && message.kind === "text" && typeof message.text === "string"
     && !message.peerAsk && !message.webhookPost && message.via !== "api" && !message.relayed && !message.relay && !message.comm
     && !message.inbox && !message.peerPost && !message.from;
-  const asked = path.findLast((message) => message.role === "user" && message.kind === "text");
+  const at = path.findLastIndex((message) => message.role === "user" && message.kind === "text");
+  const asked = path[at];
   if (!asked || !own(asked)) return [];
   const who = asked.sender?.id ?? asked.sender?.name;
-  return path.filter((message) => own(message) && (message.sender?.id ?? message.sender?.name) === who).slice(-PERSON_LINES).map((message) => message.text!);
+  const lines = path.filter((message) => own(message) && (message.sender?.id ?? message.sender?.name) === who).slice(-PERSON_LINES).map((message) => message.text!);
+  const confirmed = isYes(asked.text!) ? questionBefore(path, at) : null;
+  return confirmed ? [...lines, confirmed] : lines;
+}
+
+const YES = new Set(["y", "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "correct", "please", "save", "do", "go"]);
+const NOT = new Set(["no", "not", "don", "dont", "never", "nope", "stop", "cancel", "wait", "don't"]);
+
+/** A short reply that opens with a yes and says no "not". */
+function isYes(text: string): boolean {
+  const said = text.toLowerCase().replace(/’/g, "'").split(/[^\p{L}']+/u).filter(Boolean);
+  return said.length > 0 && said.length <= 6 && YES.has(said[0]!) && !said.some((word) => NOT.has(word) || word.endsWith("n't"));
+}
+
+const QUESTION_CHARS = 500;
+
+/** Security invariant: the bot's short question the person's yes answers, and only one that came after their previous message,
+ * so their yes to a quoted line confirms exactly that line. */
+function questionBefore(path: readonly PersonLine[], at: number): string | null {
+  for (let i = at - 1; i >= 0; i -= 1) {
+    const message = path[i]!;
+    if (message.role === "user" && message.kind === "text") return null;
+    if (message.role === "bot" && (message.kind === "text" || message.kind === "options") && typeof message.text === "string" && message.text.trim()) {
+      return message.text.includes("?") && message.text.length <= QUESTION_CHARS ? message.text : null;
+    }
+  }
+  return null;
 }
 
 /** Words a saved line may use that the person need not have typed: how a note names the person, and glue. */

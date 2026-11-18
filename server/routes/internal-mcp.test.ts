@@ -550,6 +550,18 @@ describe("internal mcp_server route, Full access", () => {
     ]);
   });
 
+  it("list says a shared server needs no sharing setting and how a bot whose selection leaves it out gets it", async () => {
+    const { call } = fixture({ servers: { notes, linear }, mcpServers: ["notes"] });
+    const { body } = await call("GET");
+    const [head, json] = [body.text!.slice(0, body.text!.indexOf("\n")), body.text!.slice(body.text!.indexOf("\n") + 1)];
+    expect(JSON.parse(json)).toEqual([
+      expect.objectContaining({ name: "notes", owner: "shared", forThisBot: true }),
+      expect.objectContaining({ name: "linear", owner: "shared", forThisBot: false }),
+    ]);
+    expect(head).toContain("no setting or preference that shares connections");
+    expect(head).toContain("action enable");
+  });
+
   it("an update that sends back the address list showed keeps the saved address, headers and sign-in; a new address drops them", async () => {
     probeWith({ ok: true, tools: [] });
     const { call, post, stored, mcpOAuth } = fixture({ servers: { zap: zapier } });
