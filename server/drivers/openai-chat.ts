@@ -27,6 +27,7 @@ import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
+import { carriedSteps, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
 import { announcesAction, claimsUnmadeChange, effectfulCall, leakedToolSyntax, NUDGE_ANNOUNCED_ACTION, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
@@ -226,7 +227,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     if (completion.responseOutput) responseOutputs.set(reply, completion.responseOutput);
     return reply;
   };
-  const delivered = new Map<string, DeliveredUserMessage[]>();
+  const delivered = new Map<string, DeliveredUserMessage[]>(), carried = createCarriedWork();
   /** Not cleared on `sessionReset`: with no cursor the harness sends it on nearly every turn. */
   const sessionGrants = new Map<string, Set<string>>();
 
@@ -520,6 +521,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     const turnId = newId();
     const abort = new AbortController();
     const messages = messagesFor(turn);
+    messages.splice(-1, 0, ...carried.take(turn.threadId));
     const request = messages.at(-1)!;
     const retainImages = chatImageBudget();
     for (const message of messages) retainImages(message.content);
@@ -587,7 +589,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let hasUsage = false;
       let ok = false;
       let stopReason: string | null = null;
-      let failure: string | undefined, failureCode: string | undefined;
+      let failure: string | undefined, failureCode: string | undefined, limitFacts: ReturnType<typeof chatLimitFacts> = null;
       let toolFailed = false;
       let correctiveRounds = 0;
       const denials: string[] = [], failedCalls: string[] = [];
@@ -878,6 +880,8 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       } catch (value) {
         stopReason = abort.signal.aborted ? "interrupted" : stopReason ?? "error";
         failure = safeText(asError(inPlainWords(value)).message).slice(0, 2_000); failureCode = failureCodeOf(value);
+        limitFacts = abort.signal.aborted ? null : chatLimitFacts(value);
+        if (limitFacts && seenCalls.size) carried.keep(turn.threadId, carriedSteps(messages, messages.indexOf(request)));
       } finally {
         turnEntry.ending = true;
         approval.close();
@@ -895,7 +899,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           // "upstream" (an OpenAI-compatible URL) names no provider, so its raw line is kept.
           const message = options.httpErrorLabel === "upstream" ? failure : plainFailureMessage(options.httpErrorLabel, failure);
           const replyShownFirst = stopReason === "tool_error";
-          emit({ ...base(turn.threadId, turnId), type: "runtime.error", message, terminal: !abort.signal.aborted, ...(replyShownFirst ? { partial: true } : {}), ...(failureCode ? { errorCode: failureCode } : {}) });
+          emit({ ...base(turn.threadId, turnId), type: "runtime.error", message, terminal: !abort.signal.aborted, ...(replyShownFirst ? { partial: true } : {}), ...(failureCode ? { errorCode: failureCode } : {}), ...limitFacts });
         }
         if (!ok && !abort.signal.aborted) {
           const continuable = classifyContinuable(stopReason, failure);
