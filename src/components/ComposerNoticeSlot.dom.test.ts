@@ -6,7 +6,7 @@ import { ComposerNoticeSlot } from "./ComposerNoticeSlot";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-type Run = { keyframes: Keyframe[]; node: Element; onfinish: (() => void) | null; oncancel: (() => void) | null };
+type Run = { keyframes: Keyframe[]; options?: KeyframeAnimationOptions; node: Element; onfinish: (() => void) | null; oncancel: (() => void) | null };
 let runs: Run[] = [];
 let root: ReturnType<typeof createRoot> | null = null;
 
@@ -20,8 +20,8 @@ const cardRuns = () => runs.filter((run) => (run.node as HTMLElement).dataset?.c
 beforeEach(() => {
   runs = [];
   document.documentElement.dataset.reducedMotion = "false";
-  vi.spyOn(HTMLElement.prototype, "animate").mockImplementation(function (this: HTMLElement, keyframes) {
-    const run: Run = { keyframes: keyframes as Keyframe[], node: this, onfinish: null, oncancel: null };
+  vi.spyOn(HTMLElement.prototype, "animate").mockImplementation(function (this: HTMLElement, keyframes, options) {
+    const run: Run = { keyframes: keyframes as Keyframe[], options: options as KeyframeAnimationOptions, node: this, onfinish: null, oncancel: null };
     runs.push(run);
     return run as unknown as Animation;
   });
@@ -39,7 +39,7 @@ describe("the cards above the composer", () => {
     expect(enter.keyframes[1]).toMatchObject({ opacity: 1 });
   });
 
-  it("keep a leaving card on screen until its exit has played, then drop it", async () => {
+  it("keep a leaving card on screen, fading where it is, until its exit has played, then drop it", async () => {
     await render(true);
     await render(false);
     await flush();
@@ -47,7 +47,8 @@ describe("the cards above the composer", () => {
     expect(leaving, "still there while it leaves").not.toBeNull();
     expect(leaving!.getAttribute("aria-hidden")).toBe("true");
     const exit = cardRuns().at(-1)!;
-    expect(exit.keyframes[1]).toMatchObject({ opacity: 0, transform: "translateY(6px)" });
+    expect(exit.keyframes).toEqual([{ opacity: 1 }, { opacity: 0 }]);
+    expect(exit.options).toMatchObject({ duration: 140, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
     exit.onfinish!();
     expect(document.querySelector("[data-card]")).toBeNull();
   });

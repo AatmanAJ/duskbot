@@ -63,7 +63,7 @@ const mascot = () => host.querySelector(".turn-presence");
 /** The line as it reads: the phrase fading out is not part of it. */
 const statusLine = () => {
   const line = host.querySelector("[data-turn-status]")?.cloneNode(true) as HTMLElement | undefined;
-  line?.querySelectorAll(".turn-phrase-out").forEach((node) => node.remove());
+  line?.querySelectorAll("[data-word-out]").forEach((node) => node.remove());
   return line?.textContent?.replace(/\s+/g, " ").trim() ?? null;
 };
 
@@ -85,7 +85,7 @@ afterEach(() => {
 });
 
 describe("the working line", () => {
-  it("is the bot's tiny working mascot and one word, Thinking first, with the timer and size kept in its tooltip", () => {
+  it("is the bot's tiny working mascot and one word, Thinking first, with no seconds anywhere on it", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     expect(mascot()).not.toBeNull();
@@ -201,7 +201,7 @@ describe("the working line", () => {
     act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
     engine({ type: "turn.progress", activity: "tool", tool: "set_status", label: "Drafting the summary" } as Partial<RuntimeEvent>);
     expect(statusLine()).toBe("Drafting the summary");
-    expect(host.querySelector("[data-turn-now]")?.classList, "each new label rises in").toContain("turn-label-in");
+    expect(host.querySelector("[data-turn-now]")?.classList, "a new label crossfades in place, it does not rise").not.toContain("turn-label-in");
     act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
     engine({ type: "turn.completed", ok: true } as Partial<RuntimeEvent>);
     render(busyBot([ask], false));

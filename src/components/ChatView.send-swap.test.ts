@@ -77,9 +77,12 @@ it("carries a send out of the composer, grows the reply out of the mascot, and k
   state = { ...state, bots: [{ ...bot, messages: [hello, optimistic], activeLeafId: optimistic.id }] };
   await act(async () => draw());
   const sent = host.querySelector('[data-mid="optimistic-s1"] [data-chat-bubble]')!;
-  expect(sent.closest("[data-arrival-own]"), "the send rides the column's follow, so its row is the flow's to move").toBeNull();
-  // one fade and a small grow from its tail corner: nothing flies across the chat
-  expect(played.filter((one) => one.el === sent).map((one) => one.keyframes)).toEqual([[{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "scale(1)" }]]);
+  expect(sent.closest("[data-arrival-own]"), "the bubble rises on its own, so its row never rises as well").not.toBeNull();
+  // one fade, a grow from 0.9 and a 16px rise from its tail corner, by the composer
+  expect(played.filter((one) => one.el === sent).map((one) => one.keyframes)).toEqual([[
+    { opacity: 0, transform: "translateY(16px) scale(0.9)" }, { opacity: 1, transform: "translateY(0px) scale(1)" },
+  ]]);
+  expect(played.filter((one) => one.el === sent.closest("[data-arrival]")), "nor does its row").toHaveLength(0);
   expect((sent as HTMLElement).style.transformOrigin).toBe("100% 100%");
 
   const before = played.length;

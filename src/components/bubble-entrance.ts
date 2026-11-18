@@ -1,9 +1,10 @@
 import { SEND_FLOW, springTiming } from "@/hooks/use-arrival-flow";
 
-/** The person's bubble comes in where it rests: a fade and a small grow from its tail corner, on the same short ease-out
- * as the column's follow, which is its only movement, so nothing flies across the chat. */
+/** The person's bubble comes out of the composer: it fades in, grows from 0.9 and rises 16px from its bottom end corner,
+ * on the same 200ms ease-out as the column's follow, so the two land together. */
 export const SEND_ENTER = SEND_FLOW;
-export const SEND_ENTER_FROM = 0.96;
+export const SEND_ENTER_FROM = 0.9;
+export const SEND_ENTER_RISE_PX = 16;
 /** A reply grows out of its top corner, by the mascot, then its words fade in whole. */
 export const REPLY_GROW = springTiming(420, 32);
 export const REPLY_GROW_FROM = 0.94;
@@ -23,8 +24,8 @@ export function hasSendLaunch(sendId: string | undefined): boolean {
 
 const canAnimate = (el: Element) => typeof (el as HTMLElement).animate === "function";
 
-/** The person's bubble fades in and grows a hair from its bottom end corner, by the composer; under reduced motion it
- * only fades. Transform and opacity alone, so it runs on the compositor and the layer it needs lives only as long. */
+/** The person's bubble scales up out of the composer from its bottom end corner; under reduced motion it only fades.
+ * Transform and opacity alone, so it runs on the compositor and the layer it needs lives only as long. */
 export function enterFromComposer(bubble: HTMLElement, sendId: string | undefined, reduced: boolean): void {
   if (!hasSendLaunch(sendId) || !canAnimate(bubble)) return;
   launch = null;
@@ -32,7 +33,7 @@ export function enterFromComposer(bubble: HTMLElement, sendId: string | undefine
   bubble.style.transformOrigin = rtl ? "0% 100%" : "100% 100%";
   bubble.animate(reduced
     ? [{ opacity: 0 }, { opacity: 1 }]
-    : [{ opacity: 0, transform: `scale(${SEND_ENTER_FROM})` }, { opacity: 1, transform: "scale(1)" }], SEND_ENTER);
+    : [{ opacity: 0, transform: `translateY(${SEND_ENTER_RISE_PX}px) scale(${SEND_ENTER_FROM})` }, { opacity: 1, transform: "translateY(0px) scale(1)" }], SEND_ENTER);
 }
 
 /** The reply grows out of its top start corner, the mascot's side, so its top edge moves only with the conversation;

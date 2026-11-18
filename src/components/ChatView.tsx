@@ -403,7 +403,7 @@ const Bubble = memo(function Bubble({
   }, [focusedSearch, collapsible, focus?.nonce]);
   const reduced = usePrefersReducedMotion();
   const own = useRef<{ bubble: HTMLDivElement | null; entered: boolean }>({ bubble: null, entered: false });
-  // a send fades in by the composer and rides the column's follow; a reply grows out of the mascot; anything else rises
+  // a send scales up out of the composer as the column follows; a reply grows out of the mascot; anything else rises
   // with its row
   const [entrance] = useState<"send" | "grow" | null>(() => {
     if (!fresh) return null;
@@ -453,7 +453,7 @@ const Bubble = memo(function Bubble({
   );
 
   return (
-    <div {...{ [MESSAGE_ROW]: "", ...(entrance === "grow" ? { [OWN_ENTRANCE]: "" } : {}) }} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", (reactionsOnBubble || (mediaReactions && !group)) && "pt-[26px]", user ? "items-end" : "items-start", join?.above && SIMPLE_STACKED)}>
+    <div {...{ [MESSAGE_ROW]: "", ...(entrance ? { [OWN_ENTRANCE]: "" } : {}) }} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", (reactionsOnBubble || (mediaReactions && !group)) && "pt-[26px]", user ? "items-end" : "items-start", join?.above && SIMPLE_STACKED)}>
       {message.relay ? <RelayLabel message={message} /> : peer && !underExchangeLine && <PeerLabel peer={peer} />}
       {speaker && <div className="mb-0.5 px-1 text-[12px] font-medium text-ink-secondary">{speaker}</div>}
       {imagesAbove && <AttachmentGallery media={message.media} images={imagesAbove.images} files={imagesAbove.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} align="end" className="mb-1" />}

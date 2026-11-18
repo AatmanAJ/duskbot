@@ -1,9 +1,17 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { reducedMotion } from "@/lib/onboarding";
 
-/** How a card above the composer comes and goes: a fade with a short rise, the slot's height following on bencho's out
- * curve, so the composer and the chat never jump. Exits are shorter than entrances. */
-export const NOTICE_MOTION = { enterMs: 220, exitMs: 180, rise: 6, ease: "cubic-bezier(0.22, 1, 0.36, 1)" } as const;
+/** How a card above the composer comes and goes, so the composer and the chat never jump. It comes in with a fade and a
+ * short rise, the slot's height following; it leaves by fading where it is while the slot's height collapses under it,
+ * on an ease-in-out, and the chat rides that collapse. */
+export const NOTICE_MOTION = {
+  enterMs: 220,
+  fadeOutMs: 140,
+  collapseMs: 200,
+  rise: 6,
+  ease: "cubic-bezier(0.22, 1, 0.36, 1)",
+  collapseEase: "cubic-bezier(0.645, 0.045, 0.355, 1)",
+} as const;
 
 const canAnimate = (node: Element) => typeof (node as HTMLElement).animate === "function";
 
@@ -24,7 +32,9 @@ export function ComposerNoticeSlot({ children, className }: { children: ReactNod
       height.current = now;
       if (was === null || was === now || reducedMotion() || !canAnimate(box)) return;
       box.style.overflow = "hidden";
-      const run = box.animate([{ height: `${was}px` }, { height: `${now}px` }], { duration: now > was ? NOTICE_MOTION.enterMs : NOTICE_MOTION.exitMs, easing: NOTICE_MOTION.ease });
+      const run = box.animate([{ height: `${was}px` }, { height: `${now}px` }], now > was
+        ? { duration: NOTICE_MOTION.enterMs, easing: NOTICE_MOTION.ease }
+        : { duration: NOTICE_MOTION.collapseMs, easing: NOTICE_MOTION.collapseEase });
       run.onfinish = run.oncancel = () => { box.style.overflow = ""; };
     };
     const observer = new MutationObserver((records) => {
@@ -48,10 +58,8 @@ export function ComposerNoticeSlot({ children, className }: { children: ReactNod
           Object.assign(node.style, { position: "absolute", left: "0", right: "0", top: `${top}px`, pointerEvents: "none" });
           node.setAttribute("aria-hidden", "true");
           layer.appendChild(node);
-          const run = node.animate(reduced ? [{ opacity: 1 }, { opacity: 0 }]
-            : [{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateY(${NOTICE_MOTION.rise}px)` }],
-          { duration: NOTICE_MOTION.exitMs, easing: NOTICE_MOTION.ease, fill: "forwards" });
-          run.onfinish = run.oncancel = () => node.remove();
+          const fade = node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: NOTICE_MOTION.fadeOutMs, easing: NOTICE_MOTION.ease, fill: "forwards" });
+          fade.onfinish = fade.oncancel = () => node.remove();
         }
       }
       follow();
