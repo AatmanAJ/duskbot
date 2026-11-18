@@ -7,7 +7,7 @@ import { ADVANCED_PAGES, type AdvancedPage } from "@/lib/open-settings";
 import { t, tPreferred, tOptional } from "@/lib/i18n";
 import { HELP_CENTER_URL, appVersion, openExternalLink } from "@/lib/app-links";
 import { openFeedback } from "@/lib/feedback-sheet";
-import { phoneAppByHand, phoneAppHiddenByBuild, setPhoneAppByHand, skillsLibraryEnabled } from "@/lib/feature-flags";
+import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import { setColorUserBubbles, useColorUserBubbles } from "@/lib/user-bubble-preference";
 import { resolveSkin } from "@/lib/skins";
 import { setDressUp, useDressUp } from "@/lib/halloween-dress";
@@ -399,11 +399,6 @@ export function AdvancedIndex({ pages, remoteActive, onOpen }: { pages: readonly
         ))}
         {archived.length > 0 && <NavRow data-settings-open="archived" title={t("settings.advanced.bots.archived")} hint={t("settings.hint.archived")} value={archived.length} onClick={() => setArchivedOpen(true)} />}
       </RowsCard>
-      {!remoteActive && phoneAppHiddenByBuild() && <RowsCard label={t("settings.advanced.developer")} data-settings-block="advanced-developer">
-        <SwitchRow data-settings-switch="phone-app" title={t("settings.advanced.phoneApp")} hint={t("settings.advanced.phoneAppHint")} checked={phoneAppByHand()}
-          // every phone entry point reads the switch as it draws, so the window starts over with it
-          onChange={() => { setPhoneAppByHand(!phoneAppByHand()); window.location.reload(); }} />
-      </RowsCard>}
       {archivedOpen && <ArchivedBotsPanel bots={archived} onClose={() => setArchivedOpen(false)} onRestored={() => {}} />}
     </>
   );
