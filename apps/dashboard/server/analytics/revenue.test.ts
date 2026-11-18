@@ -25,8 +25,8 @@ describe("revenue", () => {
       sub("acct_converted", 3000, { trialEndsAt: T }),
       sub("acct_gone", 9900, { status: "ended" }),
     ];
-    expect(TRIAL_CONVERSION).toBe(0.6);
-    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800, expected: 7000 + Math.round(14900 * 0.6), conversion: 0.6 });
+    expect(TRIAL_CONVERSION).toBe(0.7);
+    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800, expected: 7000 + Math.round(14900 * 0.7), conversion: 0.7 });
     // once the trials run out they count as paying in full; a cancelled trial is no longer counted
     expect(mrrForecastAt(subs.filter(row => row.status === "active"), trialEnd, trialEnd).expected).toBe(7000 + 14900 + 9900);
     expect(mrrForecastAt(subs, now, now, 1).expected).toBe(7000 + 14900);
