@@ -8053,6 +8053,7 @@
   "mobile.chat.copyChat": "Copy chat",
   "mobile.chat.shareChat": "Share chat",
   "mobile.home.chats": "Chats",
+  "mobile.home.folderUnread": "{count} unread",
   "mobile.home.emptyAction": "Create a bot",
   "mobile.home.emptyBody": "Make your first bot and hand it something to do.",
   "mobile.home.emptyTitle": "No bots yet",

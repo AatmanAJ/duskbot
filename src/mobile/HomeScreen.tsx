@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, useTransform, type MotionValue } from "motion/react";
-import { BellDot, Check, MonitorSmartphone, Pin, PinOff, Plus, RotateCcw, Search, Star, UserRound } from "../icons";
+import { BellDot, Check, ChevronDown, MonitorSmartphone, Pin, PinOff, Plus, RotateCcw, Search, Star, UserRound } from "../icons";
 import { api, retryLoad, useStore, type Bot, type Group } from "@/state/store";
 import { BotAvatar, MausAvatar } from "@/components/Avatar";
 import { MascotLoader } from "@/components/MascotLoader";
@@ -28,6 +28,7 @@ import { listTime } from "./time";
 import { EmptyState } from "./Illustration";
 import { useOffline } from "./network";
 import type { OpenSheet } from "./sheets";
+import { homeFolders, useCollapsedFolders } from "./home-folders";
 
 /** The row stays pressed while its chat builds offscreen, so the hand sees the tap land; cleared when the chat arrives. */
 function holdPressed(el: HTMLElement) {
@@ -105,7 +106,9 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
     return { pinned: top, pinnedEntries: tiles, entries: listed };
   }, [state.bots, state.groups, state.instances]);
 
-  useListFlip(listRef, `${pinned.length}|${entries.map((entry) => entry.id).join(",")}`);
+  const { folders, loose } = useMemo(() => homeFolders(entries, (entry) => entry.kind === "bot" ? entry.bot.section : entry.group.section), [entries]);
+  const folding = useCollapsedFolders();
+  useListFlip(listRef, `${pinned.length}|${folders.map((folder) => `${folder.name}:${folding.collapsed(folder.name) ? "-" : folder.entries.map((entry) => entry.id).join(",")}`).join("|")}|${loose.map((entry) => entry.id).join(",")}`);
   // the loader hops away as the chats arrive under it; it never comes back once gone
   const [listIn, setListIn] = useState(state.hydrated === true);
   const [loaderGone, setLoaderGone] = useState(state.hydrated === true);
@@ -179,14 +182,38 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                 )}
                 {entries.length > 0 ? (
                   <>
-                  {pinned.length > 0 && <h2 className="px-5 pb-1 pt-3 text-[13px] font-semibold text-ink-secondary">{t("mobile.home.chats")}</h2>}
-                  <ul role="list" aria-label={t("mobile.home.chats")} className="px-2">
-                    {entries.map((entry) => (
-                      <li key={entry.id} data-flip-key={entry.id}>
-                        <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
-                      </li>
-                    ))}
-                  </ul>
+                  {folders.map((folder) => {
+                    const open = !folding.collapsed(folder.name);
+                    return (
+                      <section key={`folder:${folder.name}`} data-home-folder={folder.name}>
+                        <button type="button" aria-expanded={open} onClick={() => folding.toggle(folder.name)}
+                          className="flex min-h-11 w-full items-center gap-1.5 px-5 pt-2 text-left text-[13px] font-semibold text-ink-secondary">
+                          <span className="min-w-0 truncate">{folder.name}</span>
+                          <ChevronDown aria-hidden size={14} className={cn("shrink-0 transition-transform duration-150 ease-[ease] motion-reduce:transition-none", !open && "-rotate-90")} />
+                          {!open && folder.unread > 0 && <span className="ms-auto rounded-full bg-ink px-2 text-[12px] leading-5 text-app">{t("mobile.home.folderUnread", { count: folder.unread })}</span>}
+                        </button>
+                        {open && (
+                          <ul role="list" aria-label={folder.name} className="px-2">
+                            {folder.entries.map((entry) => (
+                              <li key={entry.id} data-flip-key={entry.id}>
+                                <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </section>
+                    );
+                  })}
+                  {loose.length > 0 && (pinned.length > 0 || folders.length > 0) && <h2 className="px-5 pb-1 pt-3 text-[13px] font-semibold text-ink-secondary">{t("mobile.home.chats")}</h2>}
+                  {loose.length > 0 && (
+                    <ul role="list" aria-label={t("mobile.home.chats")} className="px-2">
+                      {loose.map((entry) => (
+                        <li key={entry.id} data-flip-key={entry.id}>
+                          <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   </>
                 ) : (
                   <div className="mx-4 mt-4 flex flex-col items-start gap-3 rounded-[20px] bg-ink/[0.04] px-5 py-5">
@@ -323,7 +350,7 @@ function RowFace({ entry }: { entry: Entry }) {
         <span className="mt-0.5 flex items-center gap-2">
           <span className={cn("min-w-0 flex-1 truncate text-[14px] leading-5", entry.unread ? "text-ink" : "text-ink-secondary")}>
             {entry.kind === "bot" && working && !entry.bot.waitingForTeammates && entry.bot.activity !== "waiting-on-you"
-              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} mascot={20} />
+              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} />
               : entry.preview || " "}
           </span>
         </span>
