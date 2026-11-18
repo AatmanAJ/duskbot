@@ -47,7 +47,7 @@ export function createOneChat(deps: OneChatDeps) {
   function fold({ inUse, apart }: { inUse(threadId: string): boolean; apart(threadId: string): boolean }): number {
     if (deps.team) return 0;
     let folded = 0;
-    for (const bot of [...store.bots]) {
+    for (const bot of Array.from(store.bots)) {
       const work = workThreads(bot);
       if (!work.size) continue;
       const mainId = deps.mainThread(bot.id, work);
