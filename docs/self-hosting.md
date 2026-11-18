@@ -66,8 +66,20 @@ through the relay. Running the install again with `--repair` and another way mov
 the server to it; the app follows. The line is single use and expires after 30
 minutes; [the link service](../apps/link-service/README.md) has the details.
 
-Already running dusk bot with `npx duskbot serve`? The sheet's last choice
-connects to it by the address and pairing code that command prints.
+The line also puts `duskbot` on the server's PATH for every login (a small
+`/usr/local/bin/duskbot` that runs the server account's own build as that
+account), so `duskbot pair --label desktop` there makes a code for another
+computer. A server installed before this has it after its next update; until
+then run `sudo -u dusk /home/dusk/.local/bin/duskbot pair --label desktop`.
+
+Already running dusk bot? The sheet's last choice takes what
+`duskbot pair --label desktop` (or `npx duskbot pair --label desktop`, for a
+server started with npx) prints on it: paste the whole output into the first
+field and the app picks the server's public pairing link out of it. With no
+public address it prints only a code; then enter the address and that code.
+A server linked only through the relay has no address to enter: a new line from
+the other computer's app moves its link there (the server keeps one link, so the
+computer it was linked to before stops reaching it).
 
 ## What works headless (and what doesn't)
 
@@ -381,6 +393,7 @@ Pair once, then use the server from any browser on any machine that can
 reach it. On the server:
 
 ```sh
+duskbot pair                             # the app's one-line install
 npx duskbot pair                         # npm install
 pnpm dusk pair                                # from a checkout
 docker compose exec dusk node dist-server/duskbot.js pair   # Docker
@@ -398,7 +411,7 @@ From the **desktop app**, use the server dropdown above Search → **Connect
 to a server…**, or **Settings → Servers**. Enter the server's
 HTTPS address or full pairing link, with an optional name. Custom domains and
 Cloudflare tunnel addresses work; Tailscale is not required. Generate a fresh
-link for each device: `npx duskbot pair --label "My desktop"` creates an
+link for each device: `duskbot pair --label "My desktop"` (with `npx` in front on an npm install) creates an
 owner link without the phone wizard; add `--client` for chat-only access.
 A code already used by your phone cannot also pair your desktop.
 
