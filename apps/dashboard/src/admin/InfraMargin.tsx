@@ -2,7 +2,7 @@ import { useState } from "react";
 import { cx } from "../ui/kit";
 import { AnimatePresence } from "../ui/motion";
 import { CustomerLink } from "./CustomerSheet";
-import { useAdmin } from "./api";
+import { useAdmin, useAdminRole } from "./api";
 import { Avatar, percent, personName, usd } from "./kit";
 import { BarRow, ChartCard } from "./charts";
 import { n } from "./ui";
@@ -48,6 +48,7 @@ function Row({ c, compact }: { c: InfraCustomer; compact?: boolean }) {
 export function InfraMargin() {
   const { data } = useAdmin<InfraReport>("/revenue/infra", 120_000);
   const [all, setAll] = useState(false);
+  const owner = useAdminRole() === "owner";
   if (!data) return <div className="h-[220px] rounded-[24px] bg-card" aria-busy="true" />;
   const t = data.totals, list = all ? data.customers : data.customers.slice(0, 10);
   const most = Math.max(1, ...data.awake.map((bucket) => bucket.clouds));
@@ -65,14 +66,15 @@ export function InfraMargin() {
           <span>compute <span className="font-mono text-ink num">{usd(t.computeCents)}</span></span>
           <span>disk <span className="font-mono text-ink num">{usd(t.diskCents)}</span> (upper bound)</span>
           <span>dodo fees <span className="font-mono text-ink num">{usd(t.feeCents)}</span>/mo</span>
+          {!owner && t.clouds > 0 && <span>per cloud <span className="font-mono text-ink num">{usd(Math.round(t.projectedCents / t.clouds))}</span>/mo pace</span>}
           {t.unbilledCents > 0 && <span>clouds with no paid plan <span className="font-mono text-ink num">{usd(t.unbilledCents)}</span></span>}
         </div>
         <p className="mt-2 px-1 text-12 text-ink-4">margin is mrr less dodo's {fee} per charge and this month's instabox cost at its current pace; disk is priced at {usd(data.assumptions.diskCentsPerGiBMonth)}/gb-month on every gb, ignoring the free 200 gb pool.</p>
       </ChartCard>
-      <div className="grid grid-cols-2 items-start gap-4 max-lg:grid-cols-1">
-        <ChartCard title="lowest margins">
+      <div className={cx("grid items-start gap-4 max-lg:grid-cols-1", owner ? "grid-cols-2" : "grid-cols-1")}>
+        {owner && <ChartCard title="lowest margins">
           {data.worst.length ? <ul className="-m-1.5">{data.worst.map((c) => <Row key={c.accountId} c={c} compact />)}</ul> : <p className="py-6 text-center text-13 text-ink-3">no paying clouds measured yet.</p>}
-        </ChartCard>
+        </ChartCard>}
         <ChartCard title="awake hours a day" action={<span className="t-meta">{n(t.clouds)} {t.clouds === 1 ? "cloud" : "clouds"}, average this month</span>}>
           <ul className="flex flex-col gap-px">
             <AnimatePresence initial={false}>
@@ -81,7 +83,7 @@ export function InfraMargin() {
           </ul>
         </ChartCard>
       </div>
-      <section aria-labelledby="infra-customers" className="rounded-[24px] bg-card p-2">
+      {owner && <section aria-labelledby="infra-customers" className="rounded-[24px] bg-card p-2">
         <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
           <h2 id="infra-customers" className="text-14 font-medium text-ink">cost per customer</h2>
           <span className="t-meta">{n(data.customers.length)}</span>
@@ -95,7 +97,7 @@ export function InfraMargin() {
           ) : <p className="px-3 py-7 text-center text-13 text-ink-3">{data.collected ? "no managed cloud usage measured this month yet." : "usage collection is off here."}</p>}
         </div>
         {data.customers.length > 10 && <button type="button" onClick={() => setAll((v) => !v)} className="text-link mx-auto mt-1.5 block h-8 px-3 text-12">{all ? "show fewer" : `show all ${n(data.customers.length)}`}</button>}
-      </section>
+      </section>}
     </>
   );
 }

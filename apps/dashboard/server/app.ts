@@ -505,7 +505,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
   }
   function isAdminRequest(req: IncomingMessage) {
     const found = auth.webSession(req);
-    return !!found && admin.isAdmin(found.account.email);
+    return !!found && admin.roleOf(found.account) !== null;
   }
   /** one public origin: www sends to it, app (where the page used to live) to the page, dev home; the API still answers on
    *  app so an old build's calls keep working */

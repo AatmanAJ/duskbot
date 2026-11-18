@@ -33,6 +33,8 @@ import { moneyIn, moneyViewOf, withoutOps, type MoneyView } from "./money-mode.t
 import { ReadUnavailable, createReadCache } from "./read-cache.ts";
 import { V2Error, overviewV2, paymentsV2, peopleV2, personV2, type V2Source } from "./v2.ts";
 import type { Money } from "./payments.ts";
+import { ADMIN_ROLES, type Account, type AdminRole } from "../auth/store.ts";
+import { forGrowth, growthMay, growthUrl, type PanelRole } from "./roles.ts";
 import { DAY, choseCloud, dayKey, dayRange, funnel, isPaying, perDay, wasPaid, workspaceTurns } from "./metrics.ts";
 
 export class AdminError extends Error {
@@ -203,11 +205,17 @@ export function createAdmin(options: AdminOptions) {
     throw new AdminError(404, "not_found", "Route not found.");
   }
 
-  /** every admin route: a signed-in web session (401), an allowed email (403), and the CSRF header on changes */
+  /** a full admin by DUSK_ADMIN_EMAILS, or the limited role the owner granted on the account */
+  function roleOf(account: Pick<Account, "email" | "adminRole">): PanelRole | null {
+    if (allowed.has(account.email.toLowerCase())) return "owner";
+    return account.adminRole && ADMIN_ROLES.includes(account.adminRole) ? account.adminRole : null;
+  }
+  /** every admin route: a signed-in web session (401), an admin role (403), and the CSRF header on changes */
   function gate(req: IncomingMessage, mutation: boolean) {
     const owner = auth.requireWeb(req, { mutation });
-    if (!allowed.has(owner.email.toLowerCase())) throw new AdminError(403, "not_admin", "This account is not an admin.");
-    return owner;
+    const role = roleOf(owner);
+    if (!role) throw new AdminError(403, "not_admin", "This account is not an admin.");
+    return { owner, role };
   }
   function audit(actor: string, action: string, target: string | null, detail: Record<string, string | number | boolean | null> = {}) {
     return analytics.sink.audit({ id: `aud_${randomBytes(12).toString("base64url")}`, at: now(), actor, action, target, detail }).catch(() => { analytics.stats.failed++; });
@@ -386,7 +394,8 @@ export function createAdmin(options: AdminOptions) {
     const timeline = [...events.map(({ name, at, props }) => ({ name, at, props, source: "event" as const })), ...derived.map(item => ({ ...item, source: "record" as const }))]
       .sort((a, b) => b.at - a.at).slice(0, 250);
     return {
-      account: { id: account.id, email: account.email, name: account.name, createdAt: account.createdAt, lastSeenAt: lastSeen(id, sessions), optOut: analytics.optedOut(id) },
+      account: { id: account.id, email: account.email, name: account.name, createdAt: account.createdAt, lastSeenAt: lastSeen(id, sessions), optOut: analytics.optedOut(id),
+        admin: { owner: roleOf(account) === "owner", role: account.adminRole ?? null } },
       methods: ["email", ...identities.filter(item => item.accountId === id).map(item => item.provider)],
       plan: planOf(id),
       subscriptions: plans.subscriptions(id),
@@ -505,19 +514,22 @@ export function createAdmin(options: AdminOptions) {
     const path = url.pathname, method = req.method ?? "GET";
     if (path !== "/v1/admin" && !path.startsWith("/v1/admin/")) return false;
     const mutation = method !== "GET" && method !== "HEAD";
-    const owner = gate(req, mutation);
+    const { owner, role } = gate(req, mutation);
     const route = path.slice("/v1/admin".length) || "/";
+    if (role === "growth" && !growthMay(method, route)) throw new AdminError(403, "not_allowed", "This admin role can't open that.");
+    if (role === "growth") url = growthUrl(route, url);
+    const shape = (data: unknown) => role === "growth" ? forGrowth(route, data) : data;
     if (mutation) reads.clear();
     try {
       if (method !== "GET") return await answer(req, res, url, owner, route, method, data => { options.json(res, 200, data); return true; });
       const ttlMs = readTtl(route);
-      if (ttlMs === null) return await reads.bounded(answer(req, res, url, owner, route, method, data => { options.json(res, 200, data); return true; }));
+      if (ttlMs === null) return await reads.bounded(answer(req, res, url, owner, route, method, data => { options.json(res, 200, shape(data)); return true; }));
       const data = await reads.get(readKey(req, url), ttlMs, async () => {
         const out: { data?: unknown } = {};
         await answer(req, res, url, owner, route, method, data => { out.data = data; return true; });
         return out.data;
       });
-      options.json(res, 200, data);
+      options.json(res, 200, shape(data));
       return true;
     } catch (error) {
       if (error instanceof ReadUnavailable) throw new AdminError(error.status, error.code, error.message);
@@ -525,10 +537,10 @@ export function createAdmin(options: AdminOptions) {
     }
   }
 
-  async function answer(req: IncomingMessage, res: ServerResponse, url: URL, owner: ReturnType<typeof gate>, route: string, method: string, send: (data: unknown) => true): Promise<boolean> {
+  async function answer(req: IncomingMessage, res: ServerResponse, url: URL, owner: ReturnType<typeof gate>["owner"], route: string, method: string, send: (data: unknown) => true): Promise<boolean> {
     if (method === "GET" && route.startsWith("/v2/")) return send(await v2(req, url, route, owner));
     if (method === "GET") {
-      if (route === "/me") return send({ admin: true, email: owner.email, environment: options.service.environment, version: options.service.version, live: live?.label ?? null });
+      if (route === "/me") return send({ admin: true, role: roleOf(owner), email: owner.email, environment: options.service.environment, version: options.service.version, live: live?.label ?? null });
       if (route === "/overview") return send(await overview(int(url.searchParams.get("days"), 30, 7, 90), await viewOf(req)));
       if (route === "/users") return send(users(url, ownViewOf(req)));
       const userMatch = /^\/users\/([A-Za-z0-9_-]{1,80})$/.exec(route);
@@ -674,6 +686,18 @@ export function createAdmin(options: AdminOptions) {
         await plans.edit(owner, { id: account.id, email: account.email }, options.bodyObject(await options.readBody(req))).catch(rethrow);
         return send(await user(account.id));
       }
+      const roleRoute = /^\/users\/([A-Za-z0-9_-]{1,80})\/admin-role$/.exec(route);
+      if (roleRoute) {
+        const body = options.bodyObject(await options.readBody(req));
+        if (body.role !== null && !ADMIN_ROLES.includes(body.role as AdminRole)) throw new AdminError(400, "invalid_request", "Invalid role.");
+        const account = auth.account(roleRoute[1]!);
+        if (!account) throw new AdminError(404, "not_found", "Not found.");
+        if (roleOf(account) === "owner") throw new AdminError(409, "already_owner", "This account is already a full admin.");
+        const before = account.adminRole ?? null;
+        auth.setAdminRole(account.id, body.role as AdminRole | null);
+        await audit(owner.id, body.role ? "admin.role.grant" : "admin.role.revoke", account.id, { role: (body.role as string | null) ?? before });
+        return send({ role: account.adminRole ?? null });
+      }
       if (route === "/ops/collect") {
         if (!options.ops) throw new AdminError(404, "not_found", "The ops page is not connected.");
         const result = await options.ops.collect();
@@ -690,5 +714,5 @@ export function createAdmin(options: AdminOptions) {
     }
     throw new AdminError(404, "not_found", "Route not found.");
   }
-  return { handle, isAdmin: (email: string) => allowed.has(email.toLowerCase()), customers: () => deep.customers() };
+  return { handle, isAdmin: (email: string) => allowed.has(email.toLowerCase()), roleOf, customers: () => deep.customers() };
 }

@@ -7,7 +7,7 @@ import { SkyEmpty } from "../ui/Sky";
 import { Link, navigate, useLocation } from "../lib/router";
 import { useToasts } from "../lib/toast";
 import mark from "../../favicon.svg";
-import { useAdmin } from "./api";
+import { AdminRoleContext, useAdmin, type AdminRole } from "./api";
 import { DataSwitch, MoneySwitch, StagingTag, TestSwitch } from "./DataSwitch";
 import { OverviewPage } from "./Overview";
 import { DetailsPage } from "./Details";
@@ -62,6 +62,10 @@ const MORE: NavItem[] = [
   { to: "/admin/audit", key: "a", label: "audit log", icon: <History {...SMALL} /> },
 ];
 const ALL = [...NAV, ...MORE];
+/** the pages a growth admin sees; the server refuses every other read for that role too */
+const GROWTH_PAGES = new Set(["/admin", "/admin/live", "/admin/waitlist", "/admin/revenue", "/admin/retention"]);
+const opens = (role: AdminRole, path: string) => role === "owner" || GROWTH_PAGES.has(path) || /^\/admin\/analytics\/[a-z]+$/.test(path);
+const groupsFor = (role: AdminRole) => role === "owner" ? GROUPS : GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => GROWTH_PAGES.has(item.to)) })).filter((group) => group.items.length);
 const PEOPLE_TABS = [{ to: "/admin/people", label: "accounts" }, { to: "/admin/people/visitors", label: "visitors and journeys" }];
 const MOVED: Record<string, string> = { "/admin/funnel": "/admin#funnel", "/admin/users": "/admin/people", "/admin/people/waitlist": "/admin/waitlist", "/admin/app": "/admin/product/apps", "/admin/product/retention": "/admin/retention" };
 const prefixes = (item: NavItem) => [item.to, ...(item.also ?? [])];
@@ -73,7 +77,8 @@ export function currentItem(path: string): NavItem | null {
   return best;
 }
 
-function page(path: string): ReactNode {
+function page(path: string, role: AdminRole): ReactNode {
+  if (!opens(role, path)) return <SkyEmpty art="cat" title="not part of your admin view." action={<ButtonLink to="/admin" variant="primary">overview</ButtonLink>}>your role covers growth, revenue and cost.</SkyEmpty>;
   if (path === "/admin") return <OverviewPage />;
   const details = /^\/admin\/analytics\/([a-z]+)$/.exec(path);
   if (details) return <DetailsPage dimension={details[1]!} />;
@@ -99,7 +104,7 @@ function page(path: string): ReactNode {
 }
 
 /** g then a letter moves between pages, / finds, ? lists the keys; none of it fires while typing */
-function useShortcuts(openHelp: () => void) {
+function useShortcuts(openHelp: () => void, role: AdminRole) {
   const pending = useRef<number>(0);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -109,14 +114,14 @@ function useShortcuts(openHelp: () => void) {
       if (e.key === "?") { e.preventDefault(); openHelp(); return; }
       if (e.key === "g") { pending.current = Date.now(); return; }
       if (Date.now() - pending.current < 1200) {
-        const item = ALL.find((nav) => nav.key === e.key);
+        const item = ALL.find((nav) => nav.key === e.key && opens(role, nav.to));
         pending.current = 0;
         if (item) { e.preventDefault(); navigate(item.to); }
       }
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [openHelp]);
+  }, [openHelp, role]);
 }
 
 
@@ -127,9 +132,10 @@ function Toasts() {
 
 export function AdminApp() {
   const { path } = useLocation();
-  const me = useAdmin<{ admin: true; email: string; environment: string; version: string | null; live?: string | null }>("/me");
+  const me = useAdmin<{ admin: true; role?: AdminRole; email: string; environment: string; version: string | null; live?: string | null }>("/me");
+  const role: AdminRole = me.data?.role ?? "owner";
   const [help, setHelp] = useState(false);
-  useShortcuts(() => setHelp(true));
+  useShortcuts(() => setHelp(true), role);
   const current = currentItem(path);
   const inMore = !!current && MORE.includes(current);
   const theme = useTheme();
@@ -167,7 +173,7 @@ export function AdminApp() {
           {close && <button type="button" autoFocus onClick={close} aria-label="close menu" className="press hover-ghost -me-1 grid size-11 place-items-center rounded-full text-ink-2"><X size={18} strokeWidth={1.75} /></button>}
         </div>
         <nav aria-label="admin" className="flex flex-col gap-4">
-          {GROUPS.map((group) => (
+          {groupsFor(role).map((group) => (
             <div key={group.label} className="flex flex-col gap-0.5">
               <span className="t-meta px-3 pb-1 !text-[11.5px]">{group.label}</span>
               {group.items.map((item) => {
@@ -181,7 +187,7 @@ export function AdminApp() {
               })}
             </div>
           ))}
-          <div className="flex flex-col gap-0.5">
+          {role === "owner" && <div className="flex flex-col gap-0.5">
             <button type="button" aria-expanded={moreOpen} aria-controls={close ? "admin-more-drawer" : "admin-more"} onClick={() => setMoreOpen((v) => !v)}
               className="hover-side flex h-8 items-center gap-2 rounded-full px-3 text-13 text-ink-3 max-lg:h-11">
               more <m.span aria-hidden className="inline-flex" initial={false} animate={{ rotate: moreOpen ? 180 : 0 }}><ChevronDown size={14} strokeWidth={1.75} /></m.span>
@@ -202,7 +208,7 @@ export function AdminApp() {
               </m.ul>
             )}
             </AnimatePresence>
-          </div>
+          </div>}
         </nav>
         <div className="mt-auto flex flex-col gap-1 px-1">
           {me.data?.live && <DataSwitch live={me.data.live} />}
@@ -245,18 +251,18 @@ export function AdminApp() {
       <main id="admin-main" className="lg:ps-[232px]">
         <PageIn key={path} id={path} className="mx-auto w-full max-w-[1320px] px-10 pb-24 pt-10 max-lg:px-5 max-lg:pt-6 max-sm:px-4">
           {me.data && <StagingTag environment={me.data.environment} live={me.data.live} />}
-          {me.data ? page(path) : <Loading rows={8} />}
+          {me.data ? <AdminRoleContext.Provider value={role}>{page(path, role)}</AdminRoleContext.Provider> : <Loading rows={8} />}
         </PageIn>
       </main>
       <Modal open={help} onClose={() => setHelp(false)} title="keyboard shortcuts">
         <ul className="mt-2 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-14">
-          {ALL.map((item) => <li key={item.key} className="contents"><kbd className="font-mono text-ink">g {item.key}</kbd><span>{item.label}</span></li>)}
+          {ALL.filter((item) => opens(role, item.to)).map((item) => <li key={item.key} className="contents"><kbd className="font-mono text-ink">g {item.key}</kbd><span>{item.label}</span></li>)}
           <li className="contents"><kbd className="font-mono text-ink">/</kbd><span>search this page</span></li>
           <li className="contents"><kbd className="font-mono text-ink">?</kbd><span>this list</span></li>
         </ul>
       </Modal>
-      {me.data && <CustomerSheetHost />}
-      {me.data && <PersonSheetHost />}
+      {me.data && role === "owner" && <CustomerSheetHost />}
+      {me.data && role === "owner" && <PersonSheetHost />}
       <Toasts />
     </div>
   );
