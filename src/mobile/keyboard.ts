@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from "react";
 import { keyboardInset } from "@/lib/phone-viewport";
 import { keyboardCurve, prefersReducedMotion } from "./motion";
-import type { MobilePlatform } from "./platform";
+import type { KeyboardFrame, MobilePlatform } from "./platform";
 
 /** The open chat's transcript scroller, kept still on screen while the layout under it changes. */
 function scroller(root: HTMLElement): HTMLElement | null {
@@ -80,6 +80,18 @@ export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<
   }, [platform, rootRef]);
 }
 
+/** A keyboard event that reached the page later than this was a stalled page, not a bridge hop. */
+const MAX_CATCH_UP_MS = 150;
+
+/** How the page rides a keyboard move the system announced: the system's own duration (within reason) and a negative
+ * delay for the time its event spent crossing the bridge, so the transcript sits on the keyboard and the native composer
+ * from its first frame instead of trailing them. */
+export function keyboardRide(frame: KeyboardFrame, fallback: number, now = Date.now()): { duration: number; delayMs: number } {
+  const duration = frame.duration !== undefined && frame.duration >= 0.15 && frame.duration <= 0.7 ? frame.duration : fallback;
+  const delayMs = frame.at ? Math.min(MAX_CATCH_UP_MS, Math.max(0, now - frame.at), duration * 1000) : 0;
+  return { duration, delayMs };
+}
+
 function safeBottom(root: HTMLElement): number {
   const probe = document.createElement("div");
   probe.style.cssText = "position:absolute;visibility:hidden;height:var(--m-safe-bottom)";
@@ -102,6 +114,13 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
     root.style.setProperty("--m-kb-ease", curve.css);
     let committed = 0;
     let settleTimer = 0;
+    const ride = (frame: KeyboardFrame) => {
+      if (prefersReducedMotion()) return { duration: 0.01, delayMs: 0 };
+      const timing = keyboardRide(frame, curve.duration);
+      root.style.setProperty("--m-kb-dur", `${timing.duration}s`);
+      root.style.setProperty("--m-kb-delay", `${-timing.delayMs}ms`);
+      return timing;
+    };
 
     const set = (kb: number, shift: number) => {
       root.style.setProperty("--m-kb", `${kb}px`);
@@ -123,16 +142,18 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
     // there the layout already ends at the keyboard and only ios gets the ride-along choreography
     if (platform.kind === "android") return;
     if (platform.onKeyboard) {
-      const stop = platform.onKeyboard(({ height, phase }) => {
+      const stop = platform.onKeyboard((frame) => {
+        const { height, phase } = frame;
         if (height > 0) {
           if (phase === "did") { commitShown(height); return; }
           if (!committed && !root.dataset.keyboard) toLatest(root);
           const shift = Math.max(0, height - Math.max(committed, safeBottom(root)));
+          const timing = ride(frame);
           root.dataset.kbMoving = "";
           root.dataset.keyboard = "open";
           root.style.setProperty("--m-kb-shift", `${shift}px`);
           window.clearTimeout(settleTimer);
-          settleTimer = window.setTimeout(() => commitShown(height), curve.duration * 1000 + 40);
+          settleTimer = window.setTimeout(() => commitShown(height), timing.duration * 1000 - timing.delayMs + 40);
           return;
         }
         if (phase === "did") { delete root.dataset.kbMoving; return; }
@@ -147,6 +168,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
         if (list) list.scrollTop = Math.max(0, top - shift);
         committed = 0;
         requestAnimationFrame(() => requestAnimationFrame(() => {
+          ride(frame);
           root.dataset.kbMoving = "";
           root.style.setProperty("--m-kb-shift", "0px");
         }));

@@ -29,8 +29,11 @@ export interface GlassComposer {
   plusLabel: string;
   placeholder: string;
   disabled: boolean;
-  /** what dictation has heard so far, while it listens; the field is hidden then */
+  /** what dictation has heard so far, or its waiting words, while it listens: the capsule shows it by a live waveform in
+   * the field's place */
   voice: string | null;
+  /** `voice` is words heard, not the waiting words (apps before 1.3 ignore it) */
+  voiceHeard?: boolean;
   buttons: GlassButton[];
   returnSends: boolean;
   /** the page's text zoom, so the native field's text matches the page's (apps before 1.3 ignore it) */
@@ -54,7 +57,9 @@ export type GlassEvent =
   | { type: "text"; text: string }
   | { type: "submit" }
   | { type: "focus"; focused: boolean }
-  | { type: "height"; height: number };
+  | { type: "height"; height: number }
+  /** the keyboard starts to move: how far it will cover, its duration in seconds and when it started, in epoch ms */
+  | { type: "keyboard"; height: number; duration: number; at: number };
 
 /** The phone's native glass chrome (ios/App/App/GlassChromePlugin.swift): it draws the chat header and composer
  * over the web view so the glass bends the transcript under it, and hands taps and typing back to the page. */
@@ -65,9 +70,9 @@ export interface GlassBridge {
   focus(): void;
   blur(): void;
   clear(): void;
-  /** The chat's page starts a slide along `path`: the header and composer play the same path natively from this frame,
-   * with no frame updates in between. null stops them where they are. */
-  slide(path: SlidePath | null): void;
+  /** The chat's page starts a slide along `path` at `at` (epoch ms): the header and composer play the same path natively,
+   * as far into it as the message took to arrive, with no frame updates in between. null stops them where they are. */
+  slide(path: SlidePath | null, at?: number): void;
   /** The native header's own symbols, for the page's header to draw while it stands in for the glass. */
   glyphs?(): Promise<GlassGlyphs>;
   onEvent(listener: (event: GlassEvent) => void): () => void;
@@ -314,12 +319,14 @@ function readComposer(shell: HTMLElement, baseline: number, dx: number): { compo
   return {
     composer: {
       frame,
-      gap: round(baseline - (frame.y + frame.h - keyboardRide(shell))),
+      // whole pixels: mid-ride the measured gap wobbles by half a pixel, and each wobble would re-pin the native composer
+      gap: Math.round(baseline - (frame.y + frame.h - keyboardRide(shell))),
       plus: Boolean(plus),
       plusLabel: plus?.closest("button")?.getAttribute("aria-label") ?? plus?.getAttribute("aria-label") ?? "",
       placeholder: field?.placeholder ?? "",
       disabled: Boolean(field?.disabled),
       voice: recording ? spoken(voiceStrip) : null,
+      voiceHeard: recording && Boolean(voiceStrip?.querySelector("[data-voice-heard]")),
       buttons: actions.buttons,
       returnSends: field?.getAttribute("enterkeyhint") === "send",
       fontScale: appliedTextScale(),
@@ -327,6 +334,12 @@ function readComposer(shell: HTMLElement, baseline: number, dx: number): { compo
     elements: actions.elements,
     field,
   };
+}
+
+/** When a slide begun this frame shows its first moved frame, on the clock the native side reads (epoch ms): a web
+ * animation started now draws from the next frame, about half a 60 Hz frame on average from here. */
+export function slideStart(now = performance.timeOrigin + performance.now()): number {
+  return Math.round(now + 1000 / 120);
 }
 
 const FRESH_FRAMES = 30;
@@ -365,7 +378,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       return;
     }
     slideRef.current = { until: performance.now() + path.duration, to: path.points.at(-1) ?? 0 };
-    glass.slide(path);
+    glass.slide(path, slideStart());
   }, [platform]);
 
   useEffect(() => {

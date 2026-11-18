@@ -175,7 +175,7 @@ function fakeGlass() {
     focus: vi.fn(),
     blur: vi.fn(),
     clear: vi.fn(),
-    slide: vi.fn<(path: SlidePath | null) => void>(),
+    slide: vi.fn<(path: SlidePath | null, at?: number) => void>(),
     onEvent: (fn: (event: GlassEvent) => void) => { listener = fn; return () => { listener = null; }; },
   } satisfies GlassBridge;
   return { glass, send: (event: GlassEvent) => listener?.(event) };
@@ -279,7 +279,7 @@ describe("useNativeGlass", () => {
     const sent = glass.update.mock.calls.length;
     $("page").dataset.moving = "";
     slideGlass({ duration: 400, points: [390, 200, 0] });
-    expect(glass.slide).toHaveBeenCalledWith({ duration: 400, points: [390, 200, 0] });
+    expect(glass.slide).toHaveBeenCalledWith({ duration: 400, points: [390, 200, 0] }, expect.any(Number));
     for (const dx of [300, 120, 30]) { slideBy(dx); runFrame(); }
     expect(glass.update).toHaveBeenCalledTimes(sent + 1);
     expect(glass.update.mock.lastCall![0]).toMatchObject({ offset: 0, header: { back: { x: 12 } } });

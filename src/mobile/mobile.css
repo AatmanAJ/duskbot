@@ -61,7 +61,7 @@
 }
 .dusk-mobile[data-kb-moving] [data-mobile-chat] .glass-scroller,
 .dusk-mobile[data-kb-moving] [data-mobile-chat] [data-grok-inset] {
-  transition: transform var(--m-kb-dur) var(--m-kb-ease);
+  transition: transform var(--m-kb-dur) var(--m-kb-ease) var(--m-kb-delay, 0s);
   will-change: transform;
 }
 .dusk-mobile [data-mobile-chat] { padding-bottom: max(var(--m-safe-bottom), var(--m-kb)); }
@@ -73,7 +73,7 @@
 @media (prefers-reduced-motion: reduce) {
   .dusk-mobile .mobile-press, .dusk-mobile .mobile-press:active { scale: 1; }
   .dusk-mobile[data-kb-moving] [data-mobile-chat] .glass-scroller,
-  .dusk-mobile[data-kb-moving] [data-mobile-chat] [data-grok-inset] { transition-duration: .01s; }
+  .dusk-mobile[data-kb-moving] [data-mobile-chat] [data-grok-inset] { transition-duration: .01s; transition-delay: 0s; }
 }
 
 /* the web phone preview draws a status bar and home indicator around an iframe, which reports no safe areas */

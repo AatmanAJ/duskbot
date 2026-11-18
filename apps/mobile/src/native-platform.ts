@@ -71,7 +71,7 @@ interface GlassPlugin {
   focus(): Promise<void>;
   blur(): Promise<void>;
   clear(): Promise<void>;
-  slide(options: { path: SlidePath | null }): Promise<void>;
+  slide(options: { path: SlidePath | null; at?: number }): Promise<void>;
   glyphs(): Promise<GlassGlyphs>;
   addListener(event: "glass", listener: (event: GlassEvent) => void): Promise<PluginListenerHandle>;
 }
@@ -86,7 +86,7 @@ export function glassBridge(plugin: GlassPlugin): GlassBridge {
     focus: () => quiet(plugin.focus()),
     blur: () => quiet(plugin.blur()),
     clear: () => quiet(plugin.clear()),
-    slide: (path) => quiet(plugin.slide({ path })),
+    slide: (path, at) => quiet(plugin.slide({ path, at })),
     glyphs: () => plugin.glyphs().catch(() => ({})),
     onEvent: (listener) => unsubscribe([plugin.addListener("glass", listener)]),
   };
@@ -499,11 +499,20 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       })().catch(() => {});
     },
     onKeyboard(listener) {
-      return unsubscribe([
-        Keyboard.addListener("keyboardWillShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "will" })),
+      const settled = [
         Keyboard.addListener("keyboardDidShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "did" })),
-        Keyboard.addListener("keyboardWillHide", () => listener({ height: 0, phase: "will" })),
         Keyboard.addListener("keyboardDidHide", () => listener({ height: 0, phase: "did" })),
+      ];
+      // with the glass chrome a move comes from the notification the native composer rides, with its timing
+      if (glass?.supported) {
+        return unsubscribe([...settled, DuskGlass.addListener("glass", (event) => {
+          if (event.type === "keyboard") listener({ height: event.height, phase: "will", duration: event.duration, at: event.at });
+        })]);
+      }
+      return unsubscribe([
+        ...settled,
+        Keyboard.addListener("keyboardWillShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "will" })),
+        Keyboard.addListener("keyboardWillHide", () => listener({ height: 0, phase: "will" })),
       ]);
     },
     hideKeyboard() {

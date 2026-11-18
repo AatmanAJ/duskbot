@@ -182,6 +182,7 @@ public class SpeechRecognizerPlugin: CAPPlugin, CAPBridgedPlugin {
             DispatchQueue.main.async {
                 guard let self, self.active, !self.finishing, self.session == number else { return }
                 self.notifyListeners("level", data: ["level": level, "session": number])
+                NotificationCenter.default.post(name: .duskSpeechLevel, object: nil, userInfo: ["level": level])
             }
         }
         engine.prepare()
@@ -358,4 +359,9 @@ struct SpeechTranscript {
         if start != nil { finalStart = start }
         return text
     }
+}
+
+extension Notification.Name {
+    /// the microphone's loudness while dictation listens, 0 to about 1, for native views that draw it
+    static let duskSpeechLevel = Notification.Name("DuskSpeechLevel")
 }

@@ -88,9 +88,9 @@ export function springPath(from: number, to: number, velocity: number, { stiffne
   return { duration: Math.round((points.length - 1) * step), points };
 }
 
-const IOS_KEYBOARD = springEasing(500, 44.7);
-/** The software keyboard's own curve: iOS 26 slides it on a critically damped spring (stiffness 500, measured), Android
- * on its emphasized decelerate. */
+const IOS_KEYBOARD = springEasing(555.027, 47.118);
+/** The software keyboard's own curve: iOS 26 slides it on a critically damped spring (mass 1, stiffness 555.027, damping
+ * 47.118, about 0.383 s, as Telegram iOS reads it off UIKit), Android on its emphasized decelerate. */
 export const keyboardCurve = {
   ios: { duration: IOS_KEYBOARD.duration / 1000, css: IOS_KEYBOARD.easing },
   android: { duration: 0.28, css: "cubic-bezier(.2,0,0,1)" },
