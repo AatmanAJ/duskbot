@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState, type KeyboardEvent, type ReactNode
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { panelWide, setPanelWide } from "@/lib/panel-wide";
+import { friendlyError } from "@/lib/plain-error";
 import { phoneApp } from "@/lib/store-app";
 import { ApiError } from "@/state/api";
 import type { Bot } from "@/state/store";
@@ -141,7 +142,7 @@ export function DocumentPage({ bot }: { bot: Bot }) {
     try { await work(); }
     catch (reason) {
       const stale = reason instanceof ApiError && reason.status === 409;
-      setError({ text: stale ? t("documents.error.stale", { name: bot.name }) : reason instanceof Error ? reason.message : t("documents.error.save"), stale });
+      setError({ text: stale ? t("documents.error.stale", { name: bot.name }) : friendlyError(reason, t("documents.error.save")), stale });
     } finally { setBusy(false); }
   };
   const save = () => run(async () => {

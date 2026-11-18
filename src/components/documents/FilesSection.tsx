@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent } from "react";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { friendlyError } from "@/lib/plain-error";
 import type { Bot } from "@/state/store";
 import { Download, MoreHorizontal, Pencil, Trash2 } from "../../icons";
 import { Card, LabelAction, NoteRow, PanelEmpty } from "../bot-panel/rows";
@@ -34,7 +35,7 @@ function FileRow({ bot, doc, now, onOpen, onChanged }: {
     setBusy(true);
     setError("");
     try { await work(); setMode("idle"); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t("documents.error.save")); }
+    catch (reason) { setError(friendlyError(reason, t("documents.error.save"))); }
     finally { setBusy(false); }
   };
   const rename = () => act(async () => {
