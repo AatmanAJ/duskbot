@@ -10,28 +10,16 @@ export interface CallMic {
 }
 
 /** Chromium's echo canceller hears everything the app plays (Chrome-wide echo cancellation, on by default on macOS,
- * Windows and Linux), so the bot's voice is taken out of the microphone and the person can talk over it.
- * `echoCancellation: "all"` asks for that explicitly where Chromium 141+ understands it. */
-function constraints(all: boolean): MediaStreamConstraints {
-  return {
-    audio: {
-      echoCancellation: (all ? "all" : true) as unknown as boolean,
-      noiseSuppression: true,
-      autoGainControl: true,
-      channelCount: 1,
-    },
-  };
-}
+ * Windows and Linux), so the bot's voice is taken out of the microphone and the person can talk over it. Plain `true`:
+ * `echoCancellation: "all"` delivered only silence in headless Chromium 151. */
+const CONSTRAINTS: MediaStreamConstraints = {
+  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+};
 
 export async function openCallMic(onFrame: (frame: Float32Array) => void): Promise<CallMic> {
   let stream: MediaStream | undefined;
   try {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia(constraints(true));
-    } catch (error) {
-      if ((error as { name?: string })?.name !== "OverconstrainedError" && (error as { name?: string })?.name !== "TypeError") throw error;
-      stream = await navigator.mediaDevices.getUserMedia(constraints(false));
-    }
+    stream = await navigator.mediaDevices.getUserMedia(CONSTRAINTS);
     const context = new AudioContext({ sampleRate: CAPTURE_RATE });
     const source = context.createMediaStreamSource(stream);
     // ScriptProcessor rather than an AudioWorklet: no extra module to load, and 32 ms frames are plenty for turn-taking.

@@ -83,7 +83,7 @@ describe("VoiceCallSession", () => {
     expect(actions.sent).toEqual([["what's on my calendar", session.callId]]);
     expect(session.state.phase).toBe("thinking");
     expect(session.timings).toHaveLength(1);
-    expect(session.timings[0]!.endpoint).toBeGreaterThanOrEqual(600);
+    expect(session.timings[0]!.endpoint).toBeGreaterThanOrEqual(540);
     session.close();
     expect(callReplyOwner("thread-1")).toBeNull();
   });

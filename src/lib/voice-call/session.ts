@@ -21,6 +21,8 @@ export interface CallSnapshot {
   progress: number | null;
   error: { kind: CallErrorKind; message?: string } | null;
   startedAt: number | null;
+  /** The last answered turn's timings. */
+  lastTurn: TurnTiming | null;
 }
 
 /** One spoken turn's timings in ms, from the moment the person stopped talking. */
@@ -71,7 +73,7 @@ const defaultIo = (): CallIo => ({
 
 export class VoiceCallSession {
   readonly callId: string;
-  private snapshot: CallSnapshot = { phase: "connecting", muted: false, heard: "", caption: "", progress: null, error: null, startedAt: null };
+  private snapshot: CallSnapshot = { phase: "connecting", muted: false, heard: "", caption: "", progress: null, error: null, startedAt: null, lastTurn: null };
   private readonly watchers = new Set<() => void>();
   private readonly io: CallIo;
   private readonly vad = new Vad();
@@ -192,7 +194,7 @@ export class VoiceCallSession {
     let current = await status();
     if (!current.available) throw new Error("unsupported");
     if (current.model.phase === "ready") {
-      void this.io.fetch("/api/voice/local/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      await this.io.fetch("/api/voice/local/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wait: true }) });
       return;
     }
     this.set({ phase: "preparing", progress: 0 });
@@ -245,7 +247,7 @@ export class VoiceCallSession {
       pending.timing.firstAudio = Math.round(this.io.now() - pending.stoppedAt);
       this.pendingTiming = null;
     }
-    this.set({ caption: text });
+    this.set({ caption: text, ...(pending ? { lastTurn: { ...pending.timing } } : {}) });
     this.refresh();
   }
 

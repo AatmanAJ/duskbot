@@ -3407,3 +3407,25 @@ button:disabled.bg-danger {
     box-shadow: none;
   }
 }
+
+/* voice call: the pill rises on the sheet curve, its menu grows from the gear, the stage crossfades */
+@keyframes voice-call-rise {
+  from { transform: translateY(18px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes voice-call-grow {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes voice-call-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.voice-call-dock { animation: voice-call-fade 160ms linear both; }
+.voice-call-pill { animation: voice-call-rise 380ms cubic-bezier(0.1, 0.6, 0.3, 1) both; }
+.voice-call-menu { transform-origin: bottom right; animation: voice-call-grow 170ms cubic-bezier(0.1, 0.6, 0.3, 1) both; }
+.voice-call-stage { animation: voice-call-fade 160ms linear both; }
+.voice-call-heard { transition: opacity 120ms linear; }
+@media (prefers-reduced-motion: reduce) {
+  .voice-call-pill, .voice-call-menu { animation: voice-call-fade 160ms linear both; }
+}

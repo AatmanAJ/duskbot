@@ -113,7 +113,8 @@ function CallSurface({ bot, session, transcript, voice, speed, onRetry }: {
   return (
     <>
       {!transcript && <CallStage bot={bot} snap={snap} />}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 px-4 pb-4">
+      {/* covers the composer while the call holds the floor, so nothing under the pill shows or moves */}
+      <div className="voice-call-dock pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 bg-[linear-gradient(to_top,var(--color-app)_72%,transparent)] px-4 pb-5 pt-10">
         <HeardLine snap={snap} />
         <CallPill bot={bot} snap={snap} session={session} wave={wave} transcript={transcript} voice={voice} speed={speed} onRetry={onRetry} />
       </div>
@@ -183,6 +184,7 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, onRetry 
       role="region"
       aria-label={t("call.callWith", { name: bot.name })}
       data-voice-call={snap.phase}
+      data-turn-ms={snap.lastTurn ? `${snap.lastTurn.endpoint},${snap.lastTurn.transcribed},${snap.lastTurn.sent},${snap.lastTurn.firstAudio}` : undefined}
       className="voice-call-pill pointer-events-auto relative flex h-14 items-center gap-1.5 rounded-full bg-menu py-2 pl-2 pr-2 text-ink shadow-[0_10px_34px_-8px_rgba(0,0,0,0.28),0_2px_8px_-2px_rgba(0,0,0,0.12)]"
     >
       <BotAvatar bot={bot} size={40} state={mascot as never} animated />
@@ -191,7 +193,7 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, onRetry 
           <>
             <VoiceCallWave
               source={wave}
-              className="[--wave-bot:var(--color-accent)] [--wave-idle:var(--color-ink-tertiary)] [--wave-person:var(--color-ink)]"
+              className="[--wave-bot:var(--color-ink)] [--wave-idle:var(--color-ink-tertiary)] [--wave-person:var(--color-ink-secondary)]"
             />
             <span className="sr-only">{phaseLabel(snap, bot.name)}</span>
           </>
@@ -320,7 +322,7 @@ function CallSettings({ voice, speed, onVoice, onSpeed }: {
 function HeardLine({ snap }: { snap: CallSnapshot }) {
   const text = snap.phase === "hearing" || snap.phase === "thinking" ? snap.heard : "";
   return (
-    <div className={cn("voice-call-heard pointer-events-none max-w-[min(520px,90%)] truncate rounded-full bg-menu/90 px-3.5 py-1.5 text-[13px] text-ink-secondary shadow-[0_4px_16px_-6px_rgba(0,0,0,0.18)] [direction:rtl]", !text && "invisible")}>
+    <div className={cn("voice-call-heard pointer-events-none max-w-[min(520px,90%)] truncate rounded-full bg-menu/90 px-3.5 py-1.5 text-[13px] text-ink-secondary shadow-[0_4px_16px_-6px_rgba(0,0,0,0.18)] [direction:rtl]", text ? "opacity-100" : "opacity-0")}>
       <bdi dir="ltr">{text || " "}</bdi>
     </div>
   );

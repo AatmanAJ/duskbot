@@ -23,8 +23,8 @@ describe("Vad", () => {
     expect(events.map((e) => e.event)).toEqual(["start", "end"]);
     const [start, end] = events;
     expect(start!.at).toBe((30 + 3) * FRAME);
-    expect(end!.at - (30 + 20) * FRAME).toBeGreaterThanOrEqual(640);
-    expect(end!.at - (30 + 20) * FRAME).toBeLessThan(700);
+    expect(end!.at - (30 + 20) * FRAME).toBeGreaterThanOrEqual(560);
+    expect(end!.at - (30 + 20) * FRAME).toBeLessThan(620);
   });
 
   it("ignores a click shorter than a syllable", () => {

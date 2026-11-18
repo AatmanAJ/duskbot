@@ -19,7 +19,7 @@ export const DEFAULT_TUNING: VadTuning = {
   bargeMarginDb: 17,
   startMs: 90,
   bargeStartMs: 200,
-  endMs: 640,
+  endMs: 560,
   minLevelDb: -52,
   calibrateMs: 320,
 };

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { nativeRequire } from "../data/engine.ts";
 import { createG2p, type LexiconTable } from "./g2p.ts";
 import type { ModelStore } from "./models.ts";
 
@@ -29,9 +30,10 @@ export function isBuiltInVoice(value: unknown): value is BuiltInVoice {
 }
 
 let ortLoad: Promise<Ort | null> | null = null;
-/** Null where no native build exists for this platform. */
+/** Null where no native build exists for this platform. Loaded from the packaged app's staged native modules, like
+ * DuckDB, since a native addon cannot be bundled. */
 export function loadOrt(): Promise<Ort | null> {
-  ortLoad ??= import("onnxruntime-node").then((mod) => (mod.default ?? mod) as Ort, () => null);
+  ortLoad ??= Promise.resolve().then(() => nativeRequire()("onnxruntime-node") as Ort).catch(() => null);
   return ortLoad;
 }
 
