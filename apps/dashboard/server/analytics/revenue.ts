@@ -56,15 +56,16 @@ const countedAt = (subs: readonly SubscriptionLike[], at: number, now: number) =
 
 /** the share of free trials not set to cancel that the overview expects to start paying */
 export const TRIAL_CONVERSION = 0.7;
-/** `full` counts every trial at its price; `expected` is paying plus `conversion` of the trials not set to cancel */
+/** `full` counts every trial at its price; `expected` drops anything set to cancel, then counts `conversion` of the trials left */
 export interface MrrForecast { expected: number; paying: number; trials: number; full: number; conversion: number }
 export function mrrForecastAt(subs: readonly SubscriptionLike[], at: number, now: number, conversion = TRIAL_CONVERSION): MrrForecast {
   let paying = 0, trials = 0, full = 0;
   for (const sub of countedAt(subs, at, now)) {
     const value = monthly(sub);
     full += value;
+    if (sub.cancelAtPeriodEnd || sub.status === "cancelled") continue;
     if (sub.trialEndsAt === undefined || at >= sub.trialEndsAt) paying += value;
-    else if (!sub.cancelAtPeriodEnd && sub.status !== "cancelled") trials += value;
+    else trials += value;
   }
   return { expected: paying + Math.round(trials * conversion), paying, trials, full, conversion };
 }

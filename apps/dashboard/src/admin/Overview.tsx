@@ -12,7 +12,7 @@ import { adminCall, useAdmin, type Overview } from "./api";
 import { avatarOf } from "./names";
 import { centroid, countryName } from "./geo";
 import { Avatar, CHANNEL, Chip, Delta, FilterChips, NoteDialog, RangePicker, RankCard, duration, percent, personName, rangeOf, usd, type Mark, type Note, type Range, type RankRow, type SeriesData } from "./kit";
-import { CheerBubble, PaymentsCard, useCheer, type MrrForecast, type RevenueAnswer } from "./Revenue";
+import { CheerBubble, PaymentsCard, useCheer, type RevenueAnswer } from "./Revenue";
 import { PulseGrid } from "./Pulse";
 import { UsageSection } from "./Usage";
 import { ChartCard, ConversionList, LiveMap, LtvList, MainChart, PeakHours, SERIES, StackedBars, channelStacks, type ChartShow, type Insights } from "./charts";
@@ -109,11 +109,6 @@ function Kpi({ label, value, format, now, before, invert, toggle, money, note, h
   );
 }
 
-function mrrNote(f: MrrForecast | null | undefined) {
-  if (!f) return {};
-  const note = `expected · ${usd(f.paying)} paying + ${Math.round(f.conversion * 100)}% of ${usd(f.trials)} in trials`;
-  return { note, hint: `${note}. ${usd(f.full)} if every trial paid in full` };
-}
 
 function MapPanel({ rows }: { rows: RankRow[] }) {
   const points = rows.slice(0, 40).flatMap((row) => {
@@ -290,7 +285,7 @@ export function OverviewPage() {
               <Kpi label="visitors" value={c.visitors} format={whole} now={c.visitors} before={p.visitors} toggle={{ on: show.visitors, flip: flip("visitors"), colour: SERIES.visitors }} />
               <Kpi label="revenue" value={r ? r.current.net : null} format={dollars} now={r?.current.net} before={r?.previous.net} money toggle={{ on: show.revenue, flip: flip("revenue"), colour: SERIES.revenue }} />
               <Kpi label="signups" value={c.signups} format={whole} now={c.signups} before={p.signups} toggle={{ on: show.signups, flip: flip("signups"), colour: SERIES.signups }} />
-              <Kpi label="mrr" value={r && !filtered ? r.current.mrr : null} format={dollars} now={r && !filtered ? r.current.mrr : undefined} before={r?.previous.mrr} {...mrrNote(filtered ? null : r?.current.mrrForecast)} />
+              <Kpi label="mrr" value={r && !filtered ? r.current.mrr : null} format={dollars} now={r && !filtered ? r.current.mrr : undefined} before={r?.previous.mrr} />
               <Kpi label="customers" value={r ? (overview.data?.totals.paying ?? r.current.customers) : null} format={whole} now={r?.current.customers} before={r?.previous.customers} />
               <Kpi label="per visitor" value={r && c.visitors ? r.current.net / c.visitors : null} format={(v) => usd(Math.round(v))} now={r && c.visitors ? r.current.net / c.visitors : undefined} before={r && p.visitors ? r.previous.net / p.visitors : undefined} />
               <Kpi label="conversion" value={c.conversion} format={share} now={c.conversion} before={p.conversion} />
