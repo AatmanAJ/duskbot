@@ -7618,6 +7618,7 @@
   "settings.elsewhere.code": "This computer's code",
   "settings.elsewhere.codeHint": "Make a code, then type it on the other device to connect it here.",
   "settings.elsewhere.codeLive": "Type it on the other device. Expires in {minutes} min.",
+  "settings.elsewhere.noAddress": "This server has no public address, so another device can't find it by this code. For a phone, use settings → phone: its QR code and code go through the link service. On another computer, open /pair at the address you reach this server by and type the code there.",
   "settings.elsewhere.copy": "Copy",
   "settings.elsewhere.connectHint": "Use the bots on another computer from here.",
   "settings.hint.elsewhere": "Reach this dusk bot from another computer or a server",

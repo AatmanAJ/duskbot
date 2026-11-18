@@ -246,6 +246,7 @@ export function ServerPairingCard({ initialSession = null, cloudHome = false, fo
             <p className="m-0 text-[13px] leading-[18px] text-ink-secondary">
               {live ? t("settings.elsewhere.codeLive", { minutes: minutesLeft(live.expiresAt, now) }) : expired ? t("remote.serverPairing.expired") : t("settings.elsewhere.codeHint")}
             </p>
+            {live && !live.url && <p data-pairing-no-address="" className="m-0 text-[13px] leading-[18px] text-ink-secondary [text-wrap:pretty]">{t("settings.elsewhere.noAddress")}</p>}
             <div className="flex flex-wrap items-center gap-2">
               {live && (
                 <button type="button" data-pairing-copy="" className="ui-button ui-button-primary" onClick={() => void copyCode()}>
