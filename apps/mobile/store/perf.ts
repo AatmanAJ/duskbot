@@ -21,16 +21,21 @@ const RATE = Number(args.rate);
 const RUNS = Number(args.runs);
 const LONG = "Quill";
 
-// a long chat to scroll and switch into: 180 messages of lists, code and links, as a working chat reads after a few weeks
+// a long chat to scroll and switch into: 320 messages of lists, code and links, as a working chat reads after a few weeks
 const quill = TEAM.find((one) => one.name === LONG)!;
 const long: Array<[string, string, number]> = [];
-for (let i = 0; i < 180; i += 1) {
+for (let i = 0; i < 320; i += 1) {
   const ago = 60 * 24 * 6 - i * 40;
   long.push(i % 2 === 0
     ? ["me", `draft ${i / 2 + 1}: can you tighten the intro and give me three options for the closing line?`, ago]
     : [LONG, `here's take ${(i + 1) / 2}:\n\n1. **lead with the result**, then the why\n2. cut the second paragraph to two lines\n3. end on the ask\n\n\`\`\`\nsubject: quick update on the launch\n\`\`\`\n\nthe closing options are in [the doc](https://example.com/doc/${i}). want me to send the shortest one?`, ago - 1]);
 }
 (quill as { chat: unknown[] }).chat = [...long, ...quill.chat];
+// a home of 50 bots, as a busy team's phone lists them
+const COLORS = ["purple", "blue", "pink", "orange", "teal", "yellow", "coral", "green"];
+for (let i = TEAM.length; i < 50; i += 1) {
+  (TEAM as unknown as Array<Record<string, unknown>>).push({ name: `Helper ${i + 1}`, color: COLORS[i % COLORS.length], body: "pip", chat: [["me", `task ${i + 1}: check the numbers`, 600 + i * 30], [`Helper ${i + 1}`, `done, the numbers for task ${i + 1} add up.`, 599 + i * 30]] });
+}
 
 const INSTRUMENT = `(() => {
   const perf = window.__perf = { frames: [], longtasks: [], commits: [], fetches: [], glass: [], walk: false, tapAt: 0, marks: {} };
@@ -134,6 +139,7 @@ async function measure(stage: Stage, label: string, act: () => Promise<void>, se
     const p = window.__perf, from = p.start, tap = p.tapAt || from;
     const frames = p.frames.filter((t) => t >= from);
     const gaps = frames.slice(1).map((t, i) => t - frames[i]);
+    const sorted = [...gaps].sort((a, b) => a - b);
     const longtasks = p.longtasks.filter(([s]) => s >= from);
     const rendered = {};
     for (const [, out] of p.commits) for (const [k, v] of Object.entries(out)) rendered[k] = (rendered[k] || 0) + v;
@@ -153,6 +159,8 @@ async function measure(stage: Stage, label: string, act: () => Promise<void>, se
       frames: frames.length,
       dropped: gaps.reduce((n, g) => n + Math.max(0, Math.round(g / 16.67) - 1), 0),
       worstFrame: Math.round(Math.max(0, ...gaps)),
+      p50Frame: Math.round((sorted[Math.floor(0.5 * sorted.length)] ?? 0) * 10) / 10,
+      p95Frame: Math.round((sorted[Math.min(sorted.length - 1, Math.floor(0.95 * sorted.length))] ?? 0) * 10) / 10,
       longTasks: longtasks.length,
       longTaskMs: Math.round(longtasks.reduce((n, [, d]) => n + d, 0)),
       worstTask: Math.round(Math.max(0, ...longtasks.map(([, d]) => d))),
@@ -244,6 +252,10 @@ try {
   }
 
   if (args.only !== "sheet") {
+  results.push(await measure(stage, "scroll home (50 bots)", async () => {
+    await stage.page.send("Input.synthesizeScrollGesture", { x: 220, y: 600, yDistance: -3000, speed: 2400, gestureSourceType: "touch", repeatCount: 1 });
+    await stage.page.send("Input.synthesizeScrollGesture", { x: 220, y: 300, yDistance: 3000, speed: 2400, gestureSourceType: "touch", repeatCount: 1 });
+  }, 500, true));
   await openChat(stage, LONG);
   results.push(await measure(stage, "idle chat, 2 s", async () => {}, 2000, true));
   results.push(await measure(stage, `scroll ${LONG}`, async () => {
