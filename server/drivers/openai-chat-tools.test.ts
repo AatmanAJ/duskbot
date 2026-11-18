@@ -1273,6 +1273,26 @@ describe("structured tool execution boundaries", () => {
     expect(f.recorder.events.filter((event) => event.type === "turn.retrying")).toEqual([expect.objectContaining({ attempt: 1, reason: "server_error" })]);
   });
 
+  it.each(["openai-compat", "grok"] as const)("asks a %s model once more for a tool call it leaked as raw harmony tokens, and never shows or runs the tokens", async (provider) => {
+    const leaked = "<|start|>assistant<|channel|>commentary to=functions.audit_write <|constrain|>json<|message|>{\"value\":\"done\"}<|call|>";
+    const f = await fixture((_body, response, round) => sse(response, [chunk({ content: round === 1 ? leaked : "Nothing needed writing." }, "stop")]), provider);
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toEqual([]);
+    expect(f.requests).toHaveLength(2);
+    const shown = f.recorder.events.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
+    expect(shown).toEqual(["Nothing needed writing."]);
+  });
+
+  it("ends a turn whose model leaks raw tool tokens twice as a broken tool call, never as its reply", async () => {
+    const leaked = "<|channel|>commentary to=functions.audit_write <|message|>{}<|call|>";
+    const f = await fixture((_body, response) => sse(response, [chunk({ content: leaked }, "stop")]));
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: false });
+    expect(f.requests).toHaveLength(2);
+    expect(f.recorder.events.some((event) => event.type === "item.completed" && event.itemType === "assistant_text")).toBe(false);
+  });
+
   it("gives up on a provider that keeps refusing after a step ran, without repeating the step", async () => {
     const f = await fixture((_body, response, round) => {
       if (round === 1) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);

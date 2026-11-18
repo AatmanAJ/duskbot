@@ -82,3 +82,13 @@ export function retryDelay(error: unknown, verdict: ErrorClassification, attempt
   if (typeof asked === "number" && asked > MAX_RETRY_WAIT_MS) return null;
   return Math.max(computeBackoff(attempt), typeof asked === "number" ? asked : 0);
 }
+
+// gpt-oss's harmony tokens (`<|channel|>commentary to=functions.x <|constrain|>json<|message|>{...}<|call|>`), which a
+// provider whose parser missed them passes on as the reply's text
+const HARMONY_CALL = /<\|(?:start|channel|constrain|message|call)\|>[\s\S]*\bto=functions\.|\bto=functions\.[\w.-]+[\s\S]*<\|(?:message|call)\|>/;
+
+/** a reply that is a tool call in a model's raw chat-format tokens: it ran nothing and is no answer, so it is asked for
+ * again and never shown */
+export function leakedToolSyntax(text: string): boolean {
+  return HARMONY_CALL.test(text);
+}

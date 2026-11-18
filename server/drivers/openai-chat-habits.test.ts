@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { announcesAction, claimsUnmadeChange, effectfulCall, MAX_RETRY_WAIT_MS, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { announcesAction, claimsUnmadeChange, effectfulCall, leakedToolSyntax, MAX_RETRY_WAIT_MS, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 
 describe("announcesAction before anything ran", () => {
   it.each([
@@ -93,5 +93,16 @@ describe("withRetryAfter", () => {
     expect((withRetryAfter(new Error("x"), new Headers({ "retry-after-ms": "1500" }), now) as any).retryAfterMs).toBe(1_500);
     expect((withRetryAfter(new Error("x"), new Headers({ "retry-after": "Thu, 19 Nov 2026 10:00:30 GMT" }), now) as any).retryAfterMs).toBe(30_000);
     expect((withRetryAfter(new Error("x"), new Headers(), now) as any).retryAfterMs).toBeUndefined();
+  });
+});
+
+describe("leakedToolSyntax", () => {
+  it("reads gpt-oss harmony tokens a provider passed on as text", () => {
+    expect(leakedToolSyntax("<|start|>assistant<|channel|>commentary to=functions.find_tool <|constrain|>json<|message|>{\n  \"query\": \"trigger\"\n}<|call|>")).toBe(true);
+    expect(leakedToolSyntax("Writing three posts now.\n---\n<|channel|>commentary to=functions.find_tool <|message|>{}<|call|>")).toBe(true);
+  });
+  it("leaves ordinary replies, including ones that mention the tokens in prose, alone", () => {
+    expect(leakedToolSyntax("Here are three posts for X.")).toBe(false);
+    expect(leakedToolSyntax("Harmony uses a <|channel|> token to split reasoning from the answer.")).toBe(false);
   });
 });

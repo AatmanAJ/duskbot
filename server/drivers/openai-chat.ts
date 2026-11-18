@@ -27,7 +27,7 @@ import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
-import { announcesAction, claimsUnmadeChange, effectfulCall, NUDGE_ANNOUNCED_ACTION, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { announcesAction, claimsUnmadeChange, effectfulCall, leakedToolSyntax, NUDGE_ANNOUNCED_ACTION, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
 import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
@@ -649,12 +649,14 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               }, tools.definitions, undefined, turn.effort);
               // A reply cut off at the token limit may be a call cut short; running half of one is worse than saying so.
               const written = holdback && !completion.toolCalls.length && completion.finishReason !== "length" ? textToolCalls(completion.text, tools.definitions) : null;
-              unreadable = written?.kind === "unreadable" && !askedAgain;
+              const leaked = !written && !completion.toolCalls.length && tools.definitions.length > 0 && leakedToolSyntax(completion.text);
+              if (leaked && askedAgain) throw noReplyError("tool_call_malformed");
+              unreadable = (written?.kind === "unreadable" || leaked) && !askedAgain;
               if (written?.kind === "calls") {
                 completion = { ...completion, text: written.text, toolCalls: written.calls, finishReason: "tool_calls" };
                 native("in", { recovered: "text_tool_calls", calls: written.calls.map((call) => call.function.name) });
               } else if (unreadable) {
-                completion = { ...completion, text: written!.text };
+                completion = { ...completion, text: written?.text ?? "" };
                 native("in", { recovered: "unreadable_tool_call" });
               } else {
                 const rest = holdback?.rest();
