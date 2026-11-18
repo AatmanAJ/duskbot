@@ -81,7 +81,7 @@ function describe(item: UserDetail["timeline"][number]) {
   return Object.entries(p).filter(([key]) => key !== "cloudId").map(([key, value]) => key === "ms" && typeof value === "number" ? `for ${duration(value)}` : `${key} ${value}`).join(", ");
 }
 
-/** the owner's switch for the growth admin role: analytics, revenue and cost, read only */
+/** the owner's switch for the growth admin role: analytics and revenue, read only */
 function AdminAccess({ detail, onChange }: { detail: UserDetail; onChange(next: UserDetail): void }) {
   const [busy, setBusy] = useState(false);
   const admin = detail.account.admin;
@@ -92,7 +92,7 @@ function AdminAccess({ detail, onChange }: { detail: UserDetail; onChange(next: 
     try {
       const answer = await adminCall<{ role: "growth" | null }>(`/users/${encodeURIComponent(detail.account.id)}/admin-role`, { method: "POST", body: { role: on ? null : "growth" } });
       onChange({ ...detail, account: { ...detail.account, admin: { ...admin, role: answer.role } } });
-      toast(answer.role ? "growth admin on. they see analytics, revenue and cost." : "growth admin off.");
+      toast(answer.role ? "growth admin on. they see analytics and revenue." : "growth admin off.");
     } catch (err) {
       toast(err instanceof AdminApiError ? err.message : "that didn't save.", "bad");
     } finally { setBusy(false); }
@@ -101,7 +101,7 @@ function AdminAccess({ detail, onChange }: { detail: UserDetail; onChange(next: 
     <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3 rounded-[18px] bg-card px-4 py-3">
       <div className="min-w-0">
         <div className="text-14 text-ink">admin access</div>
-        <div className="mt-0.5 text-12 text-ink-3">{admin.owner ? "full admin, from the admin email list." : on ? "growth admin: analytics, revenue and cost, read only." : "none. growth admin lets them read analytics, revenue and cost, nothing else."}</div>
+        <div className="mt-0.5 text-12 text-ink-3">{admin.owner ? "full admin, from the admin email list." : on ? "growth admin: analytics and revenue, read only." : "none. growth admin lets them read analytics and revenue, nothing else."}</div>
       </div>
       {!admin.owner && <Button size="sm" disabled={busy} onClick={flip}>{on ? "remove growth admin" : "make growth admin"}</Button>}
     </div>

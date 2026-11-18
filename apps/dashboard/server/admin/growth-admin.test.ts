@@ -29,7 +29,9 @@ const PATTERN_ROUTES: Array<[method: string, route: string]> = [
   ["POST", `/clouds/${CLOUD}/pause`], ["POST", `/clouds/${CLOUD}/resume`], ["POST", `/clouds/${CLOUD}/delete`], ["POST", `/clouds/${CLOUD}/end-trial`],
 ];
 const PATTERN_COUNT = 10;
-const ALLOWED_GETS = ["/me", "/overview", "/web", "/web/country", "/funnel", "/realtime", "/retention", "/waitlist", "/revenue", "/revenue/infra"];
+const ALLOWED_GETS = ["/me", "/overview", "/web", "/web/country", "/funnel", "/realtime", "/retention", "/waitlist", "/revenue"];
+/** what cloud spend, cost per customer, margins and machines answer on; none of it is the growth role's */
+const CLOUD_ROUTES = ["/revenue/infra", "/clouds", "/clouds?status=all", `/clouds/${CLOUD}/usage`, "/ops", "/ops/accounts", "/ops/relays", "/ops/sharing"];
 
 describe("growth admin role", () => {
   let mailer: ReturnType<typeof memoryMailer>;
@@ -103,11 +105,12 @@ describe("growth admin role", () => {
 
   it("pins the allowlist: reads only, and only these", () => {
     expect(GROWTH_ROUTES.map(pattern => pattern.source)).toEqual([
-      "^\\/me$", "^\\/overview$", "^\\/web$", "^\\/web\\/[a-z_]{1,30}$", "^\\/funnel$", "^\\/realtime$", "^\\/retention$", "^\\/waitlist$", "^\\/revenue$", "^\\/revenue\\/infra$",
+      "^\\/me$", "^\\/overview$", "^\\/web$", "^\\/web\\/[a-z_]{1,30}$", "^\\/funnel$", "^\\/realtime$", "^\\/retention$", "^\\/waitlist$", "^\\/revenue$",
     ]);
     for (const route of ALLOWED_GETS) { expect(growthMay("GET", route)).toBe(true); expect(growthMay("POST", route)).toBe(false); }
     expect(growthMay("GET", "/waitlist.csv")).toBe(false);
     expect(growthMay("GET", "/revenue/sync")).toBe(false);
+    for (const route of CLOUD_ROUTES) expect(growthMay("GET", route.split("?")[0]!)).toBe(false);
   });
 
   it("is granted by the owner and lets the role in, with its role on /me", async () => {
@@ -144,6 +147,22 @@ describe("growth admin role", () => {
       expect([path, (await call(path, { method, cookie: growth })).status]).toEqual([path, 403]);
   });
 
+  it("gets no cloud cost, spend, margin or cloud figure at all", async () => {
+    const { owner, growth } = await setup();
+    await paidBuyer();
+    for (const route of CLOUD_ROUTES) {
+      const res = await call(`/v1/admin${route}`, { cookie: growth });
+      expect([route, res.status, (await res.json() as { code?: string }).code]).toEqual([route, 403, "not_allowed"]);
+    }
+    expect((await call("/v1/admin/revenue/infra", { cookie: owner })).status).toBe(200);
+    const overview = await (await call("/v1/admin/overview", { cookie: growth })).json() as { clouds?: unknown; totals: Record<string, unknown> };
+    expect(overview.clouds).toBeUndefined();
+    expect("clouds" in overview.totals).toBe(false);
+    expect(typeof overview.totals.paying).toBe("number");
+    const revenue = await (await call("/v1/admin/revenue?mode=all", { cookie: growth })).text();
+    expect(revenue).not.toMatch(/costCents|computeCents|marginCents|instabox/i);
+  });
+
   it("cannot grant or revoke roles, its own included", async () => {
     const { owner, growth, growthId } = await setup();
     const buyerId = app.auth.accountByEmail(BUYER)!.id;
@@ -163,7 +182,7 @@ describe("growth admin role", () => {
     expect((await call("/v1/admin/revenue", { cookie: growth })).status).toBe(403);
   });
 
-  it("gets revenue, cost and traffic with no email, name or customer list", async () => {
+  it("gets revenue and traffic with no email, name or customer list", async () => {
     const { owner, growth } = await setup();
     await paidBuyer();
     const buyerId = app.auth.accountByEmail(BUYER)!.id;
@@ -181,10 +200,6 @@ describe("growth admin role", () => {
     expect(revenue.upcoming).toEqual([]);
     expect(revenue.risk).toEqual([]);
     expect(revenue.headline.mrr).toBeGreaterThan(0);
-    const infra = await (await call("/v1/admin/revenue/infra", { cookie: growth })).json() as { customers: unknown[]; worst: unknown[]; totals: { costCents: number } };
-    expect(infra.customers).toEqual([]);
-    expect(infra.worst).toEqual([]);
-    expect(typeof infra.totals.costCents).toBe("number");
     const waitlist = await (await call("/v1/admin/waitlist?q=waiting", { cookie: growth })).json() as { entries: unknown[]; count: number; total: number };
     expect(waitlist).toMatchObject({ entries: [], count: 2, total: 2 });
   });
