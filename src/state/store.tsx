@@ -5,7 +5,7 @@ import { aiSendAllowed } from "@/lib/ai-consent-gate";
 import { trailAction } from "@/lib/trail-actions";
 import { cloudAsleep, onCloudPower } from "../lib/cloud-power";
 import { cloudWakingLoad, WAKING_LOAD_MS } from "./waking-load";
-import { chatInFront } from "@/lib/chat-in-front";
+import { awayFromChat, chatInFront, noteChatInFront } from "@/lib/chat-in-front";
 import { answerOf, api, ApiError, snapshotArrays } from "./api";
 import { sendOutbox } from "./send-outbox";
 import { chatSnapshotPath, MESSAGE_PAGE_SIZE, takeBootRead } from "./boot-reads";
@@ -418,7 +418,7 @@ function taskPatchFields(patch: TaskUpdatePatch): Partial<Task> {
 }
 
 function openedUnreadDivider(state: AppState, threadId: string, unread: boolean, messages: readonly Message[], lastReadMessageId?: string): AppState["unreadDivider"] {
-  if (!unread) return state.unreadDivider?.threadId === threadId ? state.unreadDivider : null;
+  if (!unread || !awayFromChat(threadId)) return state.unreadDivider?.threadId === threadId ? state.unreadDivider : null;
   const messageId = firstUnreadMessageId(messages, lastReadMessageId);
   return messageId ? { threadId, messageId } : null;
 }
@@ -1141,7 +1141,7 @@ export function reducer(state: AppState, action: Action): AppState {
         return {
           ...state,
           unreadDivider: openedUnreadDivider(state, room.threadId, room.unread, room.messages, room.lastReadMessageId),
-          unreadDividerPending: (room.transcriptLoaded === false || room.transcriptStale) && room.unread ? room.threadId : undefined,
+          unreadDividerPending: (room.transcriptLoaded === false || room.transcriptStale) && room.unread && awayFromChat(room.threadId) ? room.threadId : undefined,
           activeView: "chat",
           selectedId: action.id,
           groups: state.groups.map((g) => (g.id === action.id ? { ...g, unread: false } : g)),
@@ -1155,7 +1155,7 @@ export function reducer(state: AppState, action: Action): AppState {
             unreadDivider: opened
               ? openedUnreadDivider(state, opened.threadId, threadOpensUnread(opened), visibleMessages(opened), threadReadCursor(opened))
               : state.unreadDivider,
-            unreadDividerPending: (opened?.transcriptLoaded === false || opened?.transcriptStale) && threadOpensUnread(opened) ? opened.threadId : undefined,
+            unreadDividerPending: (opened?.transcriptLoaded === false || opened?.transcriptStale) && threadOpensUnread(opened) && awayFromChat(opened.threadId) ? opened.threadId : undefined,
             activeView: "chat",
             selectedId: action.id,
           },
@@ -2144,6 +2144,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (state.selectedId) rememberConversation(state.selectedId);
   }, [state.selectedId]);
+  const shownChatThread = state.activeView === "chat"
+    ? (state.bots.find((bot) => bot.id === state.selectedId) ?? state.groups.find((group) => group.id === state.selectedId))?.threadId ?? null
+    : null;
+  useEffect(() => { noteChatInFront(shownChatThread); }, [shownChatThread]);
+  useEffect(() => {
+    const note = () => noteChatInFront();
+    window.addEventListener("focus", note);
+    window.addEventListener("blur", note);
+    document.addEventListener("visibilitychange", note);
+    return () => {
+      window.removeEventListener("focus", note);
+      window.removeEventListener("blur", note);
+      document.removeEventListener("visibilitychange", note);
+    };
+  }, []);
   useEffect(() => {
     try { globalThis.localStorage?.setItem(BOT_PANEL_OPEN_KEY, state.settingsOpen ? "1" : "0"); } catch {}
   }, [state.settingsOpen]);
