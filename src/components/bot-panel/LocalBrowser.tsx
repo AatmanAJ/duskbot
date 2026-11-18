@@ -10,7 +10,7 @@ import {
   blankPage, browserHeadline, closeLocalBrowser, keepView, keptKey, keptView, localBrowserFixture, useLocalBrowser,
 } from "@/lib/local-browser";
 import { usePageVisible } from "@/lib/page-visible";
-import { panelWide, setPanelWide, usePanelWidth, PANEL_NARROW } from "@/lib/panel-wide";
+import { panelRest, panelWide, setPanelWide, usePanelWidth } from "@/lib/panel-wide";
 import { browserScope, withBrowserScope } from "@/lib/team-browser";
 import { api, useStore, type Bot } from "@/state/store";
 import { BROWSER_HELD_ELSEWHERE } from "../../../shared/browser-held";
@@ -117,7 +117,7 @@ export function LocalBrowserLive({ bot, from, started = false, onClosed, onEnded
   const [error, setError] = useState("");
   const [closing, setClosing] = useState(false);
   const [actedAt, setActedAt] = useState<number | null>(null);
-  const wide = usePanelWidth() > PANEL_NARROW;
+  const wide = usePanelWidth() > panelRest();
   const pageVisible = usePageVisible();
   const clientRef = useRef<PreviewStreamClient | null>(null);
   const controlRef = useRef<PreviewStreamControl | null>(null);
@@ -410,7 +410,7 @@ export function LocalBrowserSection({ bot, after, askFirst = null }: {
   }, [live]);
 
   const from = override?.kind === "started" ? override.from : null;
-  const wide = usePanelWidth() > PANEL_NARROW;
+  const wide = usePanelWidth() > panelRest();
   return (
     <>
       {live ? <LocalBrowserLive key={`${bot.id}\n${bot.threadId ?? ""}`} bot={bot} from={from} started={override?.kind === "started"} onClosed={ended("closed")} onEnded={ended("ended")} />

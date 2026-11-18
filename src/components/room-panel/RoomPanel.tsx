@@ -17,6 +17,7 @@ import { TAB_LABEL, type PanelTab } from "../bot-panel/page-registry";
 import { panelTabs, screenViewAllowed } from "@/lib/store-app";
 import { pageSurfaceCls } from "../bot-panel/pages";
 import { roundButtonCls } from "../bot-panel/rows";
+import { PanelResizeEdge } from "../bot-panel/PanelResizeEdge";
 import { sidePanelCls } from "../bot-panel/side-panel";
 import { SegmentedTabs } from "../ui/SegmentedTabs";
 import { RoomAdvancedTab } from "./RoomAdvancedTab";
@@ -194,8 +195,8 @@ export function RoomPanel({ group, overlay = false, initialTab = "details" }: { 
         className={sidePanelCls(overlay)}
       >
         <span id="room-panel-title" className="sr-only">{group.name}</span>
-        <span aria-hidden="true" data-panel-edge className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[0.5px] bg-edge max-md:hidden" />
-        <div {...dragProps} className="relative flex h-[60px] shrink-0 items-center gap-2 p-3">
+        <PanelResizeEdge />
+        <div {...dragProps} className="relative ms-2 flex h-[60px] shrink-0 items-center gap-2 p-3 ps-1">
           {page === null ? (
             <span className="ms-auto" />
           ) : (
