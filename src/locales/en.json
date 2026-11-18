@@ -4642,6 +4642,7 @@
   "phone.relay.signInAction": "Sign in",
   "phone.relay.failed": "Pairing from anywhere could not start: {reason} You can still pair on the same Wi-Fi below.",
   "phone.relay.unreachable": "dusk bot could not reach its relay.",
+  "phone.relay.tunnelLimit": "Pairing from anywhere could not start: your dusk bot account has reached its limit of linked servers and computers. Remove a server you no longer use, then try again. You can still pair on the same Wi-Fi below.",
   "phone.verifying.local": "Preparing your pairing code",
   "phone.verifying.tailscale": "Preparing Tailscale pairing",
   "phone.verifying.secure": "Creating secure remote access",
