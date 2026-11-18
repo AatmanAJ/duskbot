@@ -16,6 +16,7 @@ import { isOpsMade, withoutOps } from "./admin/money-mode.ts";
 import type { Mailer, MailMessage, TestMailbox } from "./auth/mail.ts";
 import type { RoutedMailer } from "./auth/mail-router.ts";
 import { createStore } from "./store.ts";
+import { createConnectStates } from "./connect-states.ts";
 import { appComputer, COMPUTER_ID, COMPUTER_PAIR_LIMITS, COMPUTER_PAIR_WAIT_MS, pairAnswer } from "./app-computers.ts";
 import type { Account, StoredCommand, StoredWorkspace } from "./store.ts";
 import { createBilling } from "./billing/index.ts";
@@ -439,6 +440,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
   for (const command of state.commands) if (command.purgeAt > now() && state.workspaces.some(ws => ws.id === command.workspaceId))
     commands.set(command.workspaceId, [...(commands.get(command.workspaceId) ?? []), command]);
   const deliveredAt = new Map<string, number>();
+  const connectStates = createConnectStates(pagesUrl, now);
   // a workspace that reported shortly before a restart still counts as awake for app sign-ins
   const seen = new Map<string, number>(state.workspaces.filter(ws => ws.lastReportAt !== null).map(ws => [ws.id, ws.lastReportAt!]));
   const history = new Map<string, MachineSample[]>();
@@ -543,7 +545,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     const watched = isWatching(ws);
     lastWatching.set(ws.id, watched);
     const queued = (commands.get(ws.id) ?? []).filter(command => due(command) && command.expiresAt > now());
-    const delivery = queued.map(({ id, kind, target, issuedAt, expiresAt }) => ({ id, kind, target, issuedAt, expiresAt }));
+    const delivery = queued.map(({ id, kind, target, issuedAt, expiresAt, callback }) => ({ id, kind, target, issuedAt, expiresAt, ...(callback ? { callback } : {}) }));
     for (const command of queued) { command.status = "sent"; deliveredAt.set(command.id, now()); }
     if (queued.length) store.changed();
     return { v: 1, watching: watched, nextReportMs: watched ? FAST_REPORT_MS : SLOW_REPORT_MS, commands: delivery, ...(ws.ownerAccountId ? { usageOptOut: analytics.optedOut(ws.ownerAccountId) } : {}) };
@@ -935,7 +937,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
           if (command) {
             commandsChanged = true;
             command.status = result.ok ? "done" : "failed"; command.message = result.message; command.doneAt = result.at;
-            if (command.kind === "app.connect" && result.ok && result.url) command.url = result.url;
+            if (command.kind === "app.connect" && result.ok && result.url) { command.url = result.url; if (result.returnsHere && command.callback) command.returnsHere = true; }
             if (command.kind === "phone.pair") pairWaits.get(command.id)?.(result);
           }
         }
@@ -993,6 +995,14 @@ export function createDashboardApp(options: DashboardAppOptions) {
       }
       return json(res, 200, answer);
     }
+    if (method === "POST" && path === "/v1/connect/finish") {
+      const owner = account(req);
+      watch(owner);
+      const data = bodyObject(await readBody(req));
+      const found = typeof data.state === "string" ? connectStates.take(data.state, owner.id) : null;
+      if (!found || !owned(found.workspaceId, owner)) fail(404, "connect_expired", "This sign-in link expired. Connect the app again.");
+      return json(res, 200, { workspaceId: found.workspaceId, slug: found.slug, outcome: data.status === "success" ? "signed-in" : "cancelled" });
+    }
     if (method === "POST" && path === "/v1/claim") {
       const owner = account(req);
       const data = bodyObject(await readBody(req));
@@ -1044,6 +1054,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
         }
         const command: StoredCommand = { id: `cmd_${random(16)}`, workspaceId: ws.id, kind, target, issuedAt: now(), expiresAt: now() + COMMAND_TTL_MS,
           purgeAt: now() + 2 * COMMAND_TTL_MS, status: "queued", message: null, doneAt: null };
+        if (kind === "app.connect" && data.returnHere === true) command.callback = connectStates.open(owner.id, ws.id, target!);
         queue.push(command);
         commands.set(ws.id, queue.filter(item => item.status === "queued" || item.status === "sent" || queue.indexOf(item) >= queue.length - 100));
         saveCommands();

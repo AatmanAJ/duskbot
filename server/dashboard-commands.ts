@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
-import { appSlug, commandPairLink, commandUrl } from "../shared/dashboard-protocol.ts";
+import { appSlug, commandPairLink, commandUrl, connectCallback } from "../shared/dashboard-protocol.ts";
 import type { CompanionEndpoint } from "../shared/pairing-link.ts";
 import type { CommandResult, DashboardCommand } from "../shared/dashboard-protocol.ts";
 import type { createDashboardCollector } from "./dashboard-report.ts";
@@ -15,7 +15,7 @@ export function plainError(message: string): boolean {
 
 /** `companion`: the Mac companion's addresses while it already runs and policy allows remote access, else null; a phone
  *  pairing never starts it */
-export function createDashboardCommands(deps: { port: number; collect: ReturnType<typeof createDashboardCollector>; fetch?: typeof fetch; companion?: () => Promise<CompanionEndpoint[] | null> }) {
+export function createDashboardCommands(deps: { port: number; collect: ReturnType<typeof createDashboardCollector>; fetch?: typeof fetch; companion?: () => Promise<CompanionEndpoint[] | null>; dashboardUrl?: () => string | null }) {
   const pending = new Map<string, { path: string; method: string }>();
   const owners = new WeakSet<RequestAuth>();
   function authenticate(req: IncomingMessage): RequestAuth | null {
@@ -52,6 +52,15 @@ export function createDashboardCommands(deps: { port: number; collect: ReturnTyp
       return result(false, "The workspace refused the phone pairing.", { reason: "refused" });
     } catch { return result(false, "The workspace could not complete this action.", { reason: "refused" }); }
   }
+  /** a callback on the website this workspace reports to, or on the site it is a part of; never one elsewhere */
+  function ownCallback(input: unknown): string | null {
+    const callback = connectCallback(input), dashboard = deps.dashboardUrl?.() ?? null;
+    if (!callback || !dashboard) return null;
+    try {
+      const host = new URL(callback).hostname, own = new URL(dashboard).hostname;
+      return host === own || own.endsWith(`.${host}`) ? callback : null;
+    } catch { return null; }
+  }
   async function execute(command: DashboardCommand): Promise<CommandResult> {
     if (command.kind === "phone.pair") return pairPhone(command);
     const result = (ok: boolean, message: string): CommandResult => ({ id: command.id, ok, message, at: Date.now() });
@@ -85,6 +94,8 @@ export function createDashboardCommands(deps: { port: number; collect: ReturnTyp
       const connect = command.kind === "app.connect";
       path = `/api/connectors/${encodeURIComponent(slug)}${connect ? "/authorize" : ""}`;
       method = connect ? "POST" : "DELETE"; message = connect ? "Sign-in is ready." : "Disconnected.";
+      const callback = connect ? ownCallback(command.callback) : null;
+      if (callback) body = { callbackUrl: callback };
     } else return result(false, "This dashboard command is not supported.");
     try {
       const response = await call(path, method, body);
@@ -94,8 +105,10 @@ export function createDashboardCommands(deps: { port: number; collect: ReturnTyp
         return result(false, shown ? (answer.error as string).trim() : "The workspace could not complete this action.");
       }
       if (command.kind !== "app.connect") return result(true, message);
-      const url = commandUrl((await response.json().catch(() => ({})) as { url?: unknown }).url);
-      return url ? { ...result(true, message), url } : result(false, "This app did not return a sign-in page.");
+      const answer = await response.json().catch(() => ({})) as { url?: unknown; returnsHere?: unknown };
+      const url = commandUrl(answer.url);
+      if (!url) return result(false, "This app did not return a sign-in page.");
+      return { ...result(true, message), url, ...(answer.returnsHere === true && "callbackUrl" in body ? { returnsHere: true as const } : {}) };
     } catch { return result(false, "The workspace could not complete this action."); }
   }
   return { execute, authenticate, owns: (auth: RequestAuth) => owners.has(auth) };
