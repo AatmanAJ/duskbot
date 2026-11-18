@@ -1,8 +1,8 @@
 # Installs a dusk bot setup.exe silently, opens it and waits for the background server; exits 1 when it never came up.
 # -Variant sets up a home PC condition first: defender (asks for real-time scanning and drops GitHub's exclusions; a
 # hosted runner's Defender may refuse, the summary says), proxy (dead proxy in the environment), ports (the app's ports
-# reserved the way Hyper-V/WSL reserve ranges), engines (engine CLIs installed), busy (three spinning processes per
-# core, like a slow PC), upgrade (0.2.15 opened first). Several can be joined with commas.
+# reserved the way Hyper-V/WSL reserve ranges), engines (engine CLIs installed), busy and heavy (three or six spinning
+# processes per core, like a slow PC), upgrade (0.2.15 opened first). Several can be joined with commas.
 param([Parameter(Mandatory)][string]$Installer, [Parameter(Mandatory)][string]$Out, [string]$Variant = "clean", [int]$WaitSeconds = 420)
 $ErrorActionPreference = "Stop"
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
@@ -49,9 +49,9 @@ switch ($Variant.Split(",")) {
     Start-Sleep -Seconds 5
     Copy-Item (Join-Path $env:APPDATA "duskbot\logs\server.log") "$Out\server-0.2.15.log" -ErrorAction SilentlyContinue
   }
-  "busy" {
-    # a slower PC: three spinning processes per core share the CPU with the app while it starts
-    $burn = 3 * [Environment]::ProcessorCount
+  { $_ -in "busy", "heavy" } {
+    # a slower PC: spinning processes (three per core, six for heavy) share the CPU with the app while it starts
+    $burn = $(if ($_ -eq "heavy") { 6 } else { 3 }) * [Environment]::ProcessorCount
     for ($i = 0; $i -lt $burn; $i++) { Start-Process -FilePath "node" -ArgumentList "-e", "for(;;){}" -WindowStyle Hidden }
     Note "busy: $burn spinning processes on $([Environment]::ProcessorCount) cores"
   }
