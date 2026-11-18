@@ -1,6 +1,8 @@
 import type { WireMessage } from "../shared/wire.ts";
+import { turnClockLine } from "./turn-clock.ts";
 
 export const QUIET_GAP_MS = 6 * 60 * 60_000;
+export const GREETING_GAP_MS = 4 * 60 * 60_000;
 
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
@@ -27,4 +29,15 @@ export function quietGapNote(previousAt: number | null, now: number): string {
   const gap = now - previousAt;
   if (gap < QUIET_GAP_MS) return "";
   return ` The person's previous message in this chat was ${gapWords(gap)} ago: what was said here about prices, plans, times or "later today" may be out of date, so check before relying on it, and do not pick up as if no time had passed.`;
+}
+
+/** A time-of-day greeting fits the first message of a chat or one after a long quiet, never the middle of a conversation. */
+export function greetingFits(previousAt: number | null, now: number): boolean {
+  return previousAt === null || !Number.isFinite(previousAt) || now - previousAt >= GREETING_GAP_MS;
+}
+
+/** The clock for a person's turn; `previousAt` undefined is a turn that is not a fresh message from them (a bot hop, a continuation). */
+export function personClock(now: number, timeZone: string, previousAt: number | null | undefined): string {
+  if (previousAt === undefined) return turnClockLine(now, timeZone, false);
+  return turnClockLine(now, timeZone, greetingFits(previousAt, now)) + quietGapNote(previousAt, now);
 }
