@@ -149,8 +149,9 @@ describe("the phone composer", () => {
     }
   });
 
-  it("with live calls off, ends the pill on an inverse mic and offers no call", () => {
+  it("with calls off, ends the pill on an inverse mic and offers no call", () => {
     vi.stubEnv("VITE_DUSK_LIVE_CALL", "");
+    vi.stubEnv("VITE_DUSK_VOICE_CALL", "0");
     try {
       render({ bot });
       expect(fixture.call).toBeNull();
@@ -159,6 +160,7 @@ describe("the phone composer", () => {
       expect(mic.className.split(" ")).toEqual(expect.arrayContaining(["bg-ink", "text-app", "size-8", "max-md:size-10"]));
     } finally {
       vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
+      vi.stubEnv("VITE_DUSK_VOICE_CALL", "");
     }
   });
 

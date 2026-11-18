@@ -99,6 +99,7 @@ describe("the header's right side", () => {
   });
 
   it("shows no Stop in the header or the composer while a turn runs: only send and voice", () => {
+    vi.stubEnv("VITE_DUSK_VOICE_CALL", "0");
     {
       const busy = { ...bot, busy: true, tasks: (bot.tasks ?? []).map((task) => ({ ...task, busy: true })) };
       const { markup, controls } = header(busy);
@@ -109,6 +110,7 @@ describe("the header's right side", () => {
       expect(header({ ...busy, waitingForTeammates: true, busy: false, tasks: (bot.tasks ?? []).map((task) => ({ ...task, busy: false, waitingForTeammates: true })) }).markup)
         .not.toContain("data-composer-stop");
     }
+    vi.unstubAllEnvs();
   });
 
   it("keeps Stop in a remote client's header while a turn runs", () => {
@@ -265,10 +267,12 @@ describe("thread control placement", () => {
     expect(markup.includes('data-testid="chat-more"')).toBe(remote);
   });
 
-  it("with live calls off, offers no call anywhere and keeps the mic in the composer", () => {
+  it("with calls off, offers no call anywhere and keeps the mic in the composer", () => {
+    vi.stubEnv("VITE_DUSK_VOICE_CALL", "0");
     const markup = renderToStaticMarkup(createElement(ChatView, { bot }));
     expect(markup).not.toContain("data-call-button");
     expect(markup.slice(markup.indexOf("data-composer-actions"))).toContain('data-voice-mic="start"');
+    vi.unstubAllEnvs();
   });
 
   it("calls from the composer beside dictation, not the header", () => {

@@ -69,7 +69,7 @@ import { readLastConversation, rememberConversation } from "@/lib/last-conversat
 import { readLastBotSection, rememberBotSection } from "@/lib/last-bot-section";
 import { readOnArrival, showNotification } from "@/lib/notify";
 import { randomUuid } from "@/lib/random-uuid";
-import { speechOwner, spokenReplyStream } from "@/lib/spoken-reply-stream";
+import { callReplyOwner, callReplyStream, speechOwner, spokenReplyStream } from "@/lib/spoken-reply-stream";
 import { t } from "@/lib/i18n";
 import { createBotPatchQueue, flushWhenLeaving, keepaliveFits, type BotUpdatePatch } from "./bot-patch-queue"; import { createNewTaskOnce } from "./new-task-once";
 import { liveCallFromFrame, nextLiveCallLookup } from "./live-call";
@@ -688,7 +688,7 @@ export type Action =
       replyToId?: string;
       threadId?: string;
       dataContext?: import("../../shared/data-context").DataContext; pointed?: import("../../shared/app-frame/point").PointedElement[]; mode?: "chat" | "goal";
-      followUp?: import("../../shared/follow-up").FollowUp; mentions?: string[]; onError?: () => void;
+      followUp?: import("../../shared/follow-up").FollowUp; mentions?: string[]; onError?: () => void; voiceCall?: { callId: string };
       /** The server answered the send, or it failed: the composer lets go of its Send button. */
       onSettled?: () => void;
     }
@@ -2487,7 +2487,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           void waitForExecutionSettings(botBeforeSend ? [botBeforeSend] : [], threadId)
             .then(() => sendReconciled((signal) => api(`/api/bots/${action.botId}/messages`, {
                 method: "POST", signal,
-                body: JSON.stringify({ text: action.text, replyToId: action.replyToId, threadId, sendId, ...(action.dataContext ? { dataContext: action.dataContext } : {}), ...(action.pointed?.length ? { pointed: action.pointed } : {}), ...(action.mode === "goal" ? { mode: "goal" } : {}), ...(action.followUp ? { followUp: action.followUp } : {}), ...(action.mentions?.length ? { mentions: action.mentions } : {}) }),
+                body: JSON.stringify({ text: action.text, replyToId: action.replyToId, threadId, sendId, ...(action.dataContext ? { dataContext: action.dataContext } : {}), ...(action.pointed?.length ? { pointed: action.pointed } : {}), ...(action.mode === "goal" ? { mode: "goal" } : {}), ...(action.followUp ? { followUp: action.followUp } : {}), ...(action.mentions?.length ? { mentions: action.mentions } : {}), ...(action.voiceCall ? { voiceCall: action.voiceCall } : {}) }),
               }), arrived, undefined, threadId ? { threadId, sendId, text: action.text, replyToId: action.replyToId, channelMode: action.mode } : undefined))
             .then((sent) => {
               outbox?.release(sendId);
@@ -3191,7 +3191,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           if (frame.message?.role === "bot" && frame.message?.kind === "text") {
             const owner = speechOwner(stateRef.current, frame.threadId);
-            spokenReplyStream.completeBotText(frame.threadId, frame.message.turnId, frame.message.text ?? "", owner, frame.message.id);
+            spokenReplyStream.completeBotText(frame.threadId, frame.message.turnId, frame.message.text ?? "", owner, frame.message.id); callReplyStream.completeBotText(frame.threadId, frame.message.turnId, frame.message.text ?? "", callReplyOwner(frame.threadId), frame.message.id);
           }
           break;
         }
@@ -3269,7 +3269,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "runtime": {
           if (frame.event.type === "content.delta" && frame.event.streamKind === "assistant_text" && frame.event.delta && !frame.event.synthetic) noteReplyTurn(frame.event.turnId);
-          spokenReplyStream.onRuntimeEvent(frame.event, speechOwner(stateRef.current, frame.event.threadId));
+          spokenReplyStream.onRuntimeEvent(frame.event, speechOwner(stateRef.current, frame.event.threadId)); callReplyStream.onRuntimeEvent(frame.event, callReplyOwner(frame.event.threadId));
           const action = runtimeFrameAction(frame.event);
           if (action) rawDispatch(action);
           break;

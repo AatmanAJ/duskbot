@@ -34,6 +34,11 @@ export function liveCallEnabled(): boolean {
   return import.meta.env?.VITE_DUSK_LIVE_CALL === "1";
 }
 
+/** Voice calls with the built-in voice: on unless a build sets `VITE_DUSK_VOICE_CALL=0`. */
+export function voiceCallsEnabled(): boolean {
+  return import.meta.env?.VITE_DUSK_VOICE_CALL !== "0";
+}
+
 export function browserAvailable(config: FeatureFlagConfig | null | undefined): boolean {
   return config?.browserEngine?.kind === "engine";
 }

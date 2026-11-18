@@ -96,7 +96,7 @@ import {
   doubleEnterSteerWindowExpiresAt,
   doubleEnterSteersQueue,
 } from "./ComposerQueuedMessages";
-import { liveCallEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
+import { liveCallEnabled, voiceCallsEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
 import { mentionChoicesForQuery, mentionQueryAt } from "@/lib/mentions"; import { mentionPicksFor, restoreMentionPicks } from "@/lib/mention-picks";
 import { serializeThreadRefs, threadTokenFromPaste, threadTokenSpacing } from "@/lib/thread-refs";
 import {
@@ -597,7 +597,7 @@ export function Composer({
   // a Stop pressed here takes the button away at once: the turn reads as over before the server says so
   const stopPressed = Boolean(useStopPress(threadId || undefined));
   const stoppable = (busy || Boolean(!group && bot?.waitingForTeammates)) && !stopPressed;
-  const live = liveCallEnabled();
+  const live = liveCallEnabled() || voiceCallsEnabled();
   // the composer never shows Stop (the owner's rule): only send and voice, even while the bot works
   const stopInSlot = false;
   const callShown = !filled;
@@ -1197,7 +1197,7 @@ export function Composer({
               : simpleDock ? <Icon name="mic" variant="filled" size={16} className={micInSlot ? "composer-glyph" : undefined} /> : <Mic size={16} strokeWidth={1.75} absoluteStrokeWidth className="[&_rect]:fill-current" />}
           </button>
         )}
-        {live && callShown && bot && !group && <CallButton bot={bot} placement="composer" fill={singleRow ? undefined : slot.fill} ink={slot.ink} inverse={singleRow} />}
+        {live && callShown && bot && !group && <CallButton bot={bot} placement="composer" fill={singleRow ? undefined : slot.fill} ink={slot.ink} inverse={singleRow} live={liveCallEnabled()} />}
         {filled && !locked && !phoneVoice && (
           <ComposerSendButton compact={simpleDock} waits={!held && busy && !steersNow && !phoneApp()} label={sendNames.label} title={sendNames.title} look={slot.button}
             disabled={(held && !singleRow) || attachmentPending || unsentUpload} onSend={(alternate) => { if (!held) send(followUpFor(alternate)); }} onChoose={send}

@@ -103,8 +103,19 @@ afterEach(() => {
 });
 
 describe("the Simple composer in a bot chat", () => {
-  it("with live calls off, makes the mic its one round button in the bot's tone, and offers no call", () => {
+  it("with Live calls off, still offers a call with the built-in voice, and no Live choice", () => {
     vi.stubEnv("VITE_DUSK_LIVE_CALL", "");
+    try {
+      render({ bot });
+      expect(fixture.call).toMatchObject({ placement: "composer", live: false });
+    } finally {
+      vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
+    }
+  });
+
+  it("with calls off, makes the mic its one round button in the bot's tone, and offers no call", () => {
+    vi.stubEnv("VITE_DUSK_LIVE_CALL", "");
+    vi.stubEnv("VITE_DUSK_VOICE_CALL", "0");
     try {
       render({ bot });
       expect(fixture.call).toBeNull();
@@ -117,6 +128,7 @@ describe("the Simple composer in a bot chat", () => {
       expect([...menu()!.querySelectorAll("[data-menu-key]")].map((row) => row.getAttribute("data-menu-key"))).toEqual(["attach", "teach"]);
     } finally {
       vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
+      vi.stubEnv("VITE_DUSK_VOICE_CALL", "");
     }
   });
 
