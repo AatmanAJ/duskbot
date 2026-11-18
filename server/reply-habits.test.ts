@@ -1,6 +1,12 @@
 import { expect, it } from "vitest";
 import { REPLY_HABITS_PROMPT, replyHabitsPrompt, TOOL_HABITS_PROMPT } from "./reply-habits.ts";
 
+it("tells a failure in plain words, never as pasted error text, paths or a list of checks", () => {
+  for (const quick of [false, true]) {
+    expect(replyHabitsPrompt(quick)).toContain("Never paste the error text, a command, a setting name or a file path, and never list your checks as \"X: no\" lines.");
+  }
+});
+
 it("prefers batches for independent searches and keeps a native batching fallback", () => {
   expect(TOOL_HABITS_PROMPT).toContain("for 2 or more independent searches, prefer web_search_many when it is listed");
   expect(TOOL_HABITS_PROMPT).toContain("up to 10 queries in one call");

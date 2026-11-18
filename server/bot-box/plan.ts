@@ -240,8 +240,10 @@ export function planBox(setup: BoxSetup, request: BoxRequest): BoxPlan {
     const shown = boxUploadsDir(dataDir, ids.botId, ids.threadId);
     mounts.push({ kind: "ro", source: shown, target: shown, optional: true });
   }
+  const putBackWritable = (path: string) => writable.some((root) => under(root, dataDir) && under(path, root));
+  const named = argvPaths(request.args).filter((path) => !putBackWritable(path));
   const readOnly = new Set<string>();
-  for (const path of [...(request.ro ?? []), ...argvPaths(request.args), ...(botId && ID.test(botId) ? [join(dataDir, "bots", botId, "SOUL.md")] : [])]) {
+  for (const path of [...(request.ro ?? []), ...named, ...(botId && ID.test(botId) ? [join(dataDir, "bots", botId, "SOUL.md")] : [])]) {
     const full = resolve(path);
     // Code and the system are already there; a file under HOME or /tmp the command line names is put back read-only.
     if (covered(full) || readOnly.has(full) || fencedPath(full, setup.fence, dataDir)) continue;

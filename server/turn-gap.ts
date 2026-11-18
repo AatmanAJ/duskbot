@@ -31,13 +31,25 @@ export function quietGapNote(previousAt: number | null, now: number): string {
   return ` The person's previous message in this chat was ${gapWords(gap)} ago: what was said here about prices, plans, times or "later today" may be out of date, so check before relying on it, and do not pick up as if no time had passed.`;
 }
 
-/** A time-of-day greeting fits the first message of a chat or one after a long quiet, never the middle of a conversation. */
+/** A time-of-day greeting fits the person's first message to the bot in a while, never the middle of a conversation. */
 export function greetingFits(previousAt: number | null, now: number): boolean {
   return previousAt === null || !Number.isFinite(previousAt) || now - previousAt >= GREETING_GAP_MS;
 }
 
-/** The clock for a person's turn; `previousAt` undefined is a turn that is not a fresh message from them (a bot hop, a continuation). */
-export function personClock(now: number, timeZone: string, previousAt: number | null | undefined): string {
+/** When the person last wrote to this bot in any of its other conversations, or null. */
+export function askedElsewhereAt(tasks: ReadonlyArray<{ threadId: string; askedAt?: number }> | undefined, threadId: string): number | null {
+  let latest: number | null = null;
+  for (const task of tasks ?? []) {
+    if (task.threadId === threadId || task.askedAt === undefined || !Number.isFinite(task.askedAt)) continue;
+    if (latest === null || task.askedAt > latest) latest = task.askedAt;
+  }
+  return latest;
+}
+
+/** The clock for a person's turn; `previousAt` undefined is a turn that is not a fresh message from them (a bot hop, a
+ * continuation). `elsewhereAt` is their last message to the bot in another chat: a new chat right after one is no new day. */
+export function personClock(now: number, timeZone: string, previousAt: number | null | undefined, elsewhereAt: number | null = null): string {
   if (previousAt === undefined) return turnClockLine(now, timeZone, false);
-  return turnClockLine(now, timeZone, greetingFits(previousAt, now)) + quietGapNote(previousAt, now);
+  const lastSeen = previousAt === null ? elsewhereAt : elsewhereAt === null ? previousAt : Math.max(previousAt, elsewhereAt);
+  return turnClockLine(now, timeZone, greetingFits(lastSeen, now)) + quietGapNote(previousAt, now);
 }

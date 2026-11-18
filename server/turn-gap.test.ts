@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MID_CHAT_NOTE } from "./turn-clock.ts";
-import { gapWords, GREETING_GAP_MS, greetingFits, personClock, previousPersonMessageAt, QUIET_GAP_MS, quietGapNote } from "./turn-gap.ts";
+import { askedElsewhereAt, gapWords, GREETING_GAP_MS, greetingFits, personClock, previousPersonMessageAt, QUIET_GAP_MS, quietGapNote } from "./turn-gap.ts";
 
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
@@ -64,6 +64,16 @@ describe("personClock", () => {
       expect(quiet(clock)).toBe(true);
       expect(clock).toContain("Wednesday, 2026-11-18 15:00 Asia/Kolkata");
     }
+  });
+
+  it("a new chat right after the person wrote to the bot in another one is no new day: no greeting there either", () => {
+    const tasks = [{ threadId: "older", askedAt: now - 20 * 60_000 }, { threadId: "new", askedAt: now }, { threadId: "silent" }];
+    expect(askedElsewhereAt(tasks, "new")).toBe(now - 20 * 60_000);
+    expect(quiet(personClock(now, "Asia/Kolkata", null, askedElsewhereAt(tasks, "new")))).toBe(true);
+    expect(greets(personClock(now, "Asia/Kolkata", null, now - GREETING_GAP_MS))).toBe(true);
+    expect(quiet(personClock(now, "Asia/Kolkata", now - 3 * DAY, now - 60_000)), "a long-quiet chat reopened mid-session elsewhere").toBe(true);
+    expect(personClock(now, "Asia/Kolkata", now - 3 * DAY, now - 60_000)).toContain("previous message in this chat was 3 days ago");
+    expect(askedElsewhereAt(undefined, "new")).toBeNull();
   });
 
   it("allows a greeting from four hours of quiet on", () => {

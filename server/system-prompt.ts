@@ -163,10 +163,13 @@ export const CLOUD_HOME_PLACE = "the user's My Cloud, their always-on dusk bot i
 // The Cloud prompt names the synced folders; index.ts reads the registry through here.
 export { syncedFolders } from "./cloud-sync-store.ts";
 
+export const CLOUD_FILES_NOTE = " Each chat has its own working folder; the folders of your earlier chats sit next to it, and files that should last across chats go in your own bot folder with your memory. When a file from an earlier chat is not in this chat's folder, look there before saying it is gone.";
+
 export function cloudHomePrompt(synced: ReadonlyArray<{ computerName: string; pcPath: string; cloudPath: string }> = []): string {
   return ` You run on ${CLOUD_HOME_PLACE}.`
     + " You cannot see or use their own computer, its screen or its files from here. If they ask for something on it, say so in one sentence."
     + " Offer what works here: the built-in browser and their connected VPS computer. Their VPS computer is a sandboxed desktop on their own server. Never ask them to set up this computer or a Local VM; neither exists here."
+    + CLOUD_FILES_NOTE
     + syncedFoldersPrompt(synced);
 }
 

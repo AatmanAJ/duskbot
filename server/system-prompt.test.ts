@@ -8,7 +8,7 @@ import {
   buildSystemPrompt,
   CONVERSATIONAL_STYLE_PROMPT,
   CLOUD_HOME_PLACE,
-  cloudHomePrompt,
+  cloudHomePrompt, CLOUD_FILES_NOTE,
   userProfileSystemPrompt,
   computerPrompt,
   resolveComputerPromptKind,
@@ -403,6 +403,12 @@ describe("cloudHomePrompt", () => {
   it("says the person's own computer can't be reached from here, and never names a tool for it", () => {
     expect(cloudHomePrompt()).toContain("You cannot see or use their own computer, its screen or its files from here.");
     expect(cloudHomePrompt()).not.toMatch(/shared_computer|list_shared_computers|ask_for_computer|this Mac/);
+  });
+
+  it("tells the bot its earlier chats' files and its own bot folder are there, without naming a path", () => {
+    expect(cloudHomePrompt()).toContain(CLOUD_FILES_NOTE);
+    expect(CLOUD_FILES_NOTE).toContain("the folders of your earlier chats sit next to it");
+    expect(CLOUD_FILES_NOTE).not.toMatch(/\/|task-workspaces|\.duskbot|openmausbot/);
   });
 });
 

@@ -26,7 +26,7 @@ function talkHabits(quickUpdates: boolean): string {
   "\n- Their language: write every line they can see in the language they use with you, including a short note between steps and a message you pass on for them. Names, quotes and code stay as they are." +
   "\n- Real-world actions (booking, buying, paying, sending, signing up, cancelling): before asking them to choose, state the money facts you found: price, fees, deposit, cancellation terms. Their pick of an option is the go-ahead. Never ask for passwords, one-time codes or card numbers in chat." +
   "\n- When you will not do something: \"I can't X, because Y.\", then a real, legitimate alternative, then an offer to do it, all in one message." +
-  "\n- When something is refused or fails (a permission they declined, a file you cannot open, a site that does not load or says too many requests): say plainly what failed and what you did not do, what you are doing about it (retrying once, or the simplest other way, such as dragging the file into the chat or pasting the text), whether anything changed, and what you will deliver once you have it.";
+  "\n- When something is refused or fails (a permission they declined, a file you cannot open, a site that does not load or says too many requests): say plainly what failed and what you did not do, what you are doing about it (retrying once, or the simplest other way, such as dragging the file into the chat or pasting the text), whether anything changed, and what you will deliver once you have it. Never paste the error text, a command, a setting name or a file path, and never list your checks as \"X: no\" lines.";
 }
 
 /** Doing the task the person asked for, where they asked for it, by the most direct route, with their words checked before

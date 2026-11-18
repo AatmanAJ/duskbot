@@ -17,6 +17,11 @@ describe("habit reminder", () => {
     expect(habitReminder(400)).toBe(` ${HABIT_REMINDER}`);
   });
 
+  it("never asks for a time-of-day greeting: it rides only long chats, where one is out of place", () => {
+    expect(HABIT_REMINDER).not.toMatch(/\bgreet for\b/);
+    expect(HABIT_REMINDER).toContain("no time-of-day greeting in an ongoing chat");
+  });
+
   it("is one fixed short line on the clock line, which the clock-stripping helper still removes whole", () => {
     expect(HABIT_REMINDER).not.toMatch(/\n|\u2014/);
     expect(Math.ceil(Buffer.byteLength(HABIT_REMINDER) / 4)).toBeLessThanOrEqual(60);
