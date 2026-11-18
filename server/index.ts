@@ -994,7 +994,6 @@ function cloudGuestOpened(threadId: string): boolean {
 
 const guestDrivenTurns = new Map<string, string>();
 
-
 /** Never the owner when a guest drives the source, so the new conversation is confined like it. On a Team Cloud it is the
  * source's audience: one person's only from their own private chat (else a shared chat's work reads their notes). */
 function openerFrom(fromThreadId: string): string | undefined {
@@ -1013,8 +1012,6 @@ function parentThreadModel(botId: string, parentThreadId: string): { modelSelect
     registry.cliTarget(modelSelection.instanceId)?.driverKind);
   return { modelSelection, ...(needsAsk ? { approvalMode: "ask" as const } : {}) };
 }
-
-
 
 /** Loopback is not the owner on a Cloud home: only processes on the machine (a bot's shell) arrive that way. */
 function cloudOwnerSession(auth: RequestAuth): boolean {
@@ -1362,7 +1359,6 @@ function adminAuditRows(
   }
   return rows;
 }
-
 
 const spend = createSpend({ dataDir: DATA_DIR, onHit: (hit) => routineGuard.capHit(hit) }); const routineGuard = createRoutineGuard({ dataDir: DATA_DIR, routine: (id) => routines?.listRoutines().find((one) => one.id === id), runs: () => routines?.listRuns() ?? [], pause: (id) => { try { routines?.update(id, { enabled: false }); } catch (error) { console.error(`routines: could not pause ${id}: ${error instanceof Error ? error.message : String(error)}`); } }, recheck: (id, at) => void routines?.deferNextRun(id, at, true), language: (threadId) => (threadId ? conversationLanguage(threadId) : undefined), spendOver: (botId, routineId) => spend.over(botId, routineId), allowanceHeld: (run, language) => routineHost.allowanceHeld(run, language),
   tell: (botId, threadId, text, quiet) => { const bot = store.bot(botId); if (!bot) return; const thread = threadId && store.taskByThread(botId, threadId) ? threadId : bot.threadId; store.appendMessage(thread, { role: "bot", kind: "activity", tool: { name: `notice: ${text}`, ok: true } }); if (!quiet) notify(buildNoticeNotification(bot, thread, text)); } }); const routineHost = createRoutineHost({ dataDir: DATA_DIR, cloudHome: Boolean(CLOUD_HOME), spend, routines: () => routines, botName: (id) => store.bot(id)?.name, model: (botId) => { const selection = store.bot(botId)?.modelSelection; return selection ? { driverKind: registry.get(selection.instanceId)?.driverKind ?? "unknown", model: selection.model } : undefined; }, tell: (botId, threadId, text) => routineGuard.tell(botId, threadId, text), language: (threadId) => (threadId ? conversationLanguage(threadId) : undefined), probeLoopbackOrigin: process.env.DUSK_PROBE_LOOPBACK_ORIGIN });
@@ -1839,7 +1835,6 @@ function agentsIntegration(
     { generation, depth, skillAuthoring, roomHandoffId, ...(hostFiles && !CLOUD_HOME ? { deliversSavedFiles: true } : {}) },
     (turn) => mintInternalCapability({ botId, threadId, kind: "agents", createdBots: 0, openedThreads: 0, ...turn }), `http://127.0.0.1:${PORT}`) };
 }
-
 
 const hooksEnabled = () => process.env.DUSK_HOOKS !== "0";
 function hooksIntegration(botId: string, threadId: string, generation: string): { url: string; token: string } {
@@ -4979,7 +4974,6 @@ sessions.onSessionRevoked((sessionId) => {
   ownerOnlyCache.clear();
 });
 
-
 /** A stream id makes the cursor safe across restarts, since sequence numbers restart at 1. It rides
  * in the SSE `id:` field, so a browser EventSource resumes through Last-Event-ID with no client code. */
 const STREAM_ID = randomUUID().slice(0, 8);
@@ -6003,7 +5997,6 @@ function vpsSharingChanged(patch: Pick<Partial<AppConfig>, "signIn" | "vps">): b
 function inheritedTeamComputer(bot: Pick<BotRecord, "section" | "computer" | "cloudBackend" | "vpsAlias" | "createdBy" | "reportsTo" | "defaultBot">): TeamComputerRecord | undefined {
   return teamComputers.forBot(bot, { workspaceShared: vpsDefaults().workspaceShared && Boolean(vpsSshAlias(cfg)) });
 }
-
 
 type BotScreen = { container: ScreenContainer; lease: IndependentScreenLease };
 const botScreens = new Map<string, BotScreen>();
@@ -12694,7 +12687,6 @@ function maybeResumeConnectors(threadId: string, resumeKey: string) {
   return true;
 }
 
-
 const phoneSecretSubmissions = new PhoneSecretSubmissionRegistry();
 
 function claimPhoneSecretBotDeletion(botId: string): (() => void) | null {
@@ -16678,7 +16670,6 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
 const gzipForwarded = gzipTunnelReplies(handleRequest);
 const server = createServer(IDLE_HTTP_SERVER, (req, res) => (req.headers["x-forwarded-for"] === undefined ? handleRequest(req, res) : gzipForwarded(req, res)));
 upgrades.attach(server, handleRequest);
-
 
 console.log(LOOPBACK.trust === "service"
   ? `local requests: service trust (${LOOPBACK.reason}); without a session, loopback may use only health, the Slack worker's guarded routes and bot capability routes`
