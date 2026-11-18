@@ -189,6 +189,12 @@ function srcsetPaths(value: string): Array<{ start: number; end: number; path: s
   return paths;
 }
 
+const FAILED = "data-dusk-media-failed";
+
+function awaitingBlob(element: Element): boolean {
+  return (element.getAttribute("src") ?? "").startsWith("/api/") || srcsetPaths(element.getAttribute("srcset") ?? "").length > 0;
+}
+
 function installMedia(): () => void {
   const selector = "img,audio,video,source,image,link[rel~='icon']";
   const attributes = ["src", "srcset", "poster", "href"];
@@ -221,6 +227,7 @@ function installMedia(): () => void {
   const replace = async (element: Element, attribute: string) => {
     const value = element.getAttribute(attribute);
     if (!value || processed.get(element)?.get(attribute) === value) return;
+    if (attribute === "src" && value.startsWith("/api/")) element.removeAttribute(FAILED);
     let next = value;
     if (attribute === "srcset") {
       const replacements = await Promise.all(srcsetPaths(value).map(async (candidate) => ({ ...candidate, url: await blobUrl(candidate.path) })));
@@ -229,7 +236,15 @@ function installMedia(): () => void {
         next = next.slice(0, start) + url + next.slice(end);
       }
     } else if (value.startsWith("/api/")) {
-      next = await blobUrl(value) ?? value;
+      const url = await blobUrl(value);
+      if (!url) {
+        if (!stopped && attribute === "src" && element.getAttribute(attribute) === value) {
+          element.setAttribute(FAILED, "");
+          element.dispatchEvent(new Event("error"));
+        }
+        return;
+      }
+      next = url;
     }
     if (stopped || next === value || element.getAttribute(attribute) !== value) return;
     let marks = processed.get(element);
@@ -252,10 +267,18 @@ function installMedia(): () => void {
       for (const node of mutation.addedNodes) scan(node);
     }
   });
+  // the app's own origin serves no /api, so a workspace path's first load fails before its blob is swapped in; that
+  // error is held back (it would show a broken image), and the real one is sent if the blob cannot be had
+  const early = (event: Event) => {
+    const element = event.target;
+    if (element instanceof Element && element.matches(selector) && !element.hasAttribute(FAILED) && awaitingBlob(element)) event.stopImmediatePropagation();
+  };
+  document.addEventListener("error", early, true);
   observer.observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: attributes });
   scan(document);
   return () => {
     stopped = true;
+    document.removeEventListener("error", early, true);
     observer.disconnect();
     controller.abort();
     for (const url of cache.values()) URL.revokeObjectURL(url);
