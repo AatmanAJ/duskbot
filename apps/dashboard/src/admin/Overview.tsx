@@ -287,7 +287,7 @@ export function OverviewPage() {
               { id: "signups", value: c.signups, format: whole, now: c.signups, before: p.signups, toggle: { on: show.signups, flip: flip("signups"), colour: SERIES.signups } },
               { id: "mrr", value: r && !filtered ? r.current.mrr : null, format: dollars, toggle: charted("mrr"),
                 change: mrrMoved === null ? undefined : mrrMoved === 0 ? <span className="text-12 text-ink-4">no change in this range</span> : <span className="text-12 text-ink-4"><span className={cx("font-mono num", mrrMoved > 0 ? "text-good" : "text-bad")}>{mrrMoved > 0 ? "+" : ""}{usd(mrrMoved, true)}</span> in this range</span> },
-              { id: "customers", value: r ? (overview.data?.totals.paying ?? r.current.customers) : null, format: whole, now: r?.current.customers, before: r?.previous.customers, toggle: charted("customers") },
+              { id: "customers", value: r ? r.current.customers : null, format: whole, now: r?.current.customers, before: r?.previous.customers, toggle: charted("customers") },
               { id: "per visitor", value: r && c.visitors ? r.current.net / c.visitors : null, format: (v) => usd(Math.round(v)), now: r && c.visitors ? r.current.net / c.visitors : undefined, before: r && p.visitors ? r.previous.net / p.visitors : undefined, toggle: charted("per visitor") },
               { id: "conversion", value: c.conversion, format: share, now: c.conversion, before: p.conversion, toggle: charted("conversion") },
               { id: "bounce rate", value: c.bounce, format: share, now: c.bounce, before: p.bounce, invert: true },

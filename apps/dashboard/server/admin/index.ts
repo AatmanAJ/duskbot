@@ -83,6 +83,9 @@ const rethrow = (error: unknown): never => {
 };
 export const parseAdminEmails = (value: string | undefined) => [...new Set((value ?? "").split(",").map(item => item.trim().toLowerCase()).filter(item => /^[^\s@]+@[^\s@]+$/.test(item)))];
 const ACTIVE_NAMES = EVENT_NAMES.filter(name => "active" in EVENTS[name]);
+/** "using the app": the app's own events and its server heartbeat, not site visits or sign-ins */
+const APP_NAMES = EVENT_NAMES.filter(name => EVENTS[name].source === "app" || name === "app_active");
+const REALTIME_TTL_MS = 4_000;
 const bundleLabel = (id: string | null | undefined) => BILLING_CONFIG.bundles.find(bundle => bundle.id === id)?.label.toLowerCase() ?? (id ? "custom" : null);
 const regionLabel = (id: string, managed: boolean) => (labelOfRegion(managed ? MANAGED_REGION.id : id) ?? id).toLowerCase();
 const int = (value: string | null, fallback: number, min: number, max: number) => {
@@ -124,6 +127,17 @@ export function createAdmin(options: AdminOptions) {
         if (!base) return null;
         const ids = hidden();
         return { key: `${base.key}~clean`, sink: base.sink, hidden: ids, drops: event => isTestEvent(event, ids) };
+      },
+      events: async query => {
+        const ids = hidden(), kept: StoredEvent[] = [];
+        let before = query.before;
+        for (let page = 0; page < 5 && kept.length < query.limit; page++) {
+          const got = await view.sink.events({ ...query, before });
+          kept.push(...got.filter(event => !isTestEvent(event, ids)));
+          if (got.length < query.limit) break;
+          before = got.at(-1)!.at;
+        }
+        return kept.slice(0, query.limit);
       },
       person: async query => { const ids = hidden(); return (await view.sink.person(query)).filter(event => !isTestEvent(event, ids)); },
       lastSeen: async since => { const seen = await view.sink.lastSeen(since); for (const id of hidden()) seen.delete(id); return seen; },
@@ -278,7 +292,7 @@ export function createAdmin(options: AdminOptions) {
       const [people, previousPeople, snapshots, frustrations, digests, recentPeople, signals, spans, events] = rows;
       return [daily, previousDaily, real(people), real(previousPeople), real(snapshots), real(frustrations), real(digests), real(recentPeople), real(signals), real(spans), events] as const;
     });
-    const answer = summarizeUsage({ days, daily, previousDaily, people, previousPeople: new Set(previousPeople.filter(row => row.turns > 0).map(row => row.accountId)).size, snapshots, frustrations, digests, adoption: adoption(snapshots, recentPeople) });
+    const answer = summarizeUsage({ days, daily, previousDaily, people, previousPeople: new Set(previousPeople.filter(row => row.turns > 0).map(row => row.accountId)).size, snapshots, frustrations, digests, adoption: adoption(snapshots, recentPeople, v) });
     const signIns = signals.filter(record => (record.data as { name: string }).name === "engine_sign_in")
       .map(record => ({ id: record.id, name: "engine_sign_in", at: record.at, accountId: record.accountId, props: (record.data as { props: StoredEvent["props"] }).props }));
     const billingState = v.store();
@@ -293,14 +307,14 @@ export function createAdmin(options: AdminOptions) {
     const stats = Object.values(options.wakeStats?.() ?? {}).filter((stat): stat is { medianMs: number; p90Ms: number; samples: number } => !!stat).sort((a, b) => b.samples - a.samples);
     return stats[0] ? { count: stats.reduce((sum, stat) => sum + stat.samples, 0), p50Ms: stats[0].medianMs, p90Ms: stats[0].p90Ms } : undefined;
   }
-  function adoption(snapshots: Awaited<ReturnType<Usage["store"]["snapshots"]>>, recent: Awaited<ReturnType<Usage["store"]["people"]>>): AdoptionInput {
-    const { accounts, sessions } = directory();
+  function adoption(snapshots: Awaited<ReturnType<Usage["store"]["snapshots"]>>, recent: Awaited<ReturnType<Usage["store"]["people"]>>, v: View): AdoptionInput {
+    const { accounts, sessions } = v.directory();
     const bot = new Set<string>(), routine = new Set<string>(), connector = new Set<string>(), phone = new Set<string>(), cloud = new Set<string>();
     for (const row of snapshots) {
       if (row.snapshot.bots > 0) bot.add(row.accountId);
       if (row.snapshot.routines + row.snapshot.webhooks + row.snapshot.appEvents > 0) routine.add(row.accountId);
     }
-    for (const ws of options.workspaces()) {
+    for (const ws of v.workspaces()) {
       const id = ws.ownerAccountId;
       if (!id) continue;
       if (ws.report?.bots?.length) bot.add(id);
@@ -310,7 +324,7 @@ export function createAdmin(options: AdminOptions) {
     }
     for (const session of sessions) if (session.kind === "mobile") phone.add(session.accountId);
     for (const row of recent) if (row.appTurns > 0) connector.add(row.accountId);
-    for (const c of allClouds()) if (!c.ended) cloud.add(c.accountId);
+    for (const c of v.clouds()) if (!c.ended) cloud.add(c.accountId);
     const known = new Set(accounts.map(account => account.id)), count = (set: Set<string>) => [...set].filter(id => known.has(id)).length;
     return { accounts: accounts.length, bot: count(bot), routine: count(routine), connector: count(connector), phone: count(phone), cloud: count(cloud) };
   }
@@ -318,15 +332,16 @@ export function createAdmin(options: AdminOptions) {
   async function overview(days: number, v: View) {
     const time = now(), range = dayRange(time, days), since = Date.parse(`${range[0]}T00:00:00Z`);
     const { accounts, sessions } = v.directory();
-    const [daily, waitlistDays, waitlistCount, wau, mau, marked] = await Promise.all([
+    const [daily, waitlistDays, waitlistCount, wau, mau, marked, appWau] = await Promise.all([
       v.sink.daily(["active_accounts", "site_visitors", "site_view", "app_active"], range[0]!, range.at(-1)!),
       v.waitlist?.byDay(since).catch(() => []) ?? Promise.resolve([]),
       v.waitlist?.count().catch(() => null) ?? Promise.resolve(null),
       v.sink.accounts(ACTIVE_NAMES, time - 7 * DAY), v.sink.accounts(ACTIVE_NAMES, time - 30 * DAY),
       Promise.all(["onboarding_done", "app_paired", "first_bot_reply", "plan_chosen"].map(name => v.sink.accounts([name], since))),
+      v.sink.accounts(APP_NAMES, time - 7 * DAY),
     ]);
     const hidden = v.hidden(), kept = (ids: Set<string>) => hidden.size ? new Set([...ids].filter(id => !hidden.has(id))) : ids;
-    const [wauKept, mauKept, markedKept] = [kept(wau), kept(mau), marked.map(kept)];
+    const [wauKept, mauKept, markedKept, appWauKept] = [kept(wau), kept(mau), marked.map(kept), kept(appWau)];
     const series = (name: string) => perDay(range, daily.filter(row => row.name === name));
     const seenToday = new Set(sessions.filter(session => session.lastSeenAt >= Date.parse(`${range.at(-1)}T00:00:00Z`)).map(session => session.accountId));
     const activeSeries = series("active_accounts");
@@ -339,9 +354,9 @@ export function createAdmin(options: AdminOptions) {
       now: time, days, range, data: v.live ? live!.label : "own",
       totals: {
         accounts: accounts.length, newAccounts: accounts.filter(account => account.createdAt >= since).length,
-        activeToday: Math.max(activeSeries.at(-1) ?? 0, seenToday.size), wau: wauKept.size, mau: mauKept.size,
+        activeToday: Math.max(activeSeries.at(-1) ?? 0, seenToday.size), wau: wauKept.size, mau: mauKept.size, appWau: appWauKept.size,
         paying: new Set(v.store().subscriptions.filter(isPaying).map(sub => sub.accountId)).size,
-        waitlist: waitlistCount, clouds: clouds.filter(c => c.status !== "destroyed").length,
+        waitlist: waitlistCount, clouds: [...byState].reduce((sum, [state, count]) => state === "destroyed" ? sum : sum + count, 0),
         devices: sessions.filter(session => session.kind !== "web").length,
       },
       series: {
@@ -502,7 +517,7 @@ export function createAdmin(options: AdminOptions) {
   /** how long a GET answer is kept: null for the ones that are never kept (an audited view, an export, live probes) */
   function readTtl(route: string): number | null {
     if (/^\/(?:me|health|audit|waitlist\.csv|ops\/relays|experience\/timeline)$/.test(route) || /^\/(?:users|journeys|v2\/people)\/[^/]+$/.test(route) || /^\/clouds\/[^/]+\/usage$/.test(route)) return null;
-    return route === "/realtime" ? 0 : options.readCacheMs ?? 30_000;
+    return route === "/realtime" ? REALTIME_TTL_MS : options.readCacheMs ?? 30_000;
   }
   /** one question: the path, its query (a `to` near now rounded to 30 s, so a refresh shares the answer) and the panel's switches */
   function readKey(req: IncomingMessage, url: URL) {
@@ -566,9 +581,8 @@ export function createAdmin(options: AdminOptions) {
         if (!options.waitlist) return send({ configured: false, total: 0, entries: [], brevo: { state: "not_configured", listCount: null, waitlistCount: null, checkedAt: null } });
         const q = (url.searchParams.get("q") ?? "").slice(0, 100);
         const offset = int(url.searchParams.get("offset"), 0, 0, 10_000_000), limit = int(url.searchParams.get("limit"), 50, 1, 200);
-        const [page, count] = await Promise.all([options.waitlist.list({ search: q, limit, offset }), options.waitlist.count()]);
         const days = dayRange(now(), 30);
-        const byDay = await options.waitlist.byDay(Date.parse(`${days[0]}T00:00:00Z`));
+        const [page, count, byDay] = await Promise.all([options.waitlist.list({ search: q, limit, offset }), options.waitlist.count(), options.waitlist.byDay(Date.parse(`${days[0]}T00:00:00Z`))]);
         return send({ configured: true, count, total: page.total, offset, limit, entries: page.entries, days, series: perDay(days, byDay), brevo: await brevo(count) });
       }
       if (route === "/waitlist.csv") {
