@@ -472,7 +472,7 @@ function harnessControlCheck(options: ProxyOptions) {
 
 /** an unremembered session: the harness says whether it is one of its phones, paired through the relay */
 async function admitMobile(options: ProxyOptions, admission: Admission, req: IncomingMessage, token: string): Promise<{ status: number; body: unknown } | "forward" | "not-phone"> {
-  const verdict = await admission.admit(token, remoteHeaders(req));
+  const verdict = await admission.admit(token, remoteHeaders(req), req.socket.remoteAddress ?? "");
   if (verdict.kind === "phone") {
     try {
       options.mobile?.remember(token, verdict.deviceId, verdict.environmentId);

@@ -13,6 +13,8 @@ import { createHash } from "node:crypto";
 import { request as httpRequest } from "node:http";
 
 const LOOKUPS_PER_MINUTE = 30;
+/** one address's share of the lookups, so one LAN client cannot spend them all */
+const LOOKUPS_PER_ADDRESS = 10;
 const REFUSED_MS = 60_000;
 const REFUSED_MAX = 256;
 
@@ -62,19 +64,29 @@ const environmentIdOf = (body: unknown): string | null => {
 };
 
 export function createMobileAdmission({ harnessPort, now = Date.now }: { harnessPort: number; now?: () => number }) {
-  const lookups: number[] = [];
+  const lookups: Array<{ at: number; from: string }> = [];
   const refused = new Map<string, number>();
+  const asking = new Map<string, Promise<Admission>>();
 
   return {
-    /** asks the harness whether `token` is one of its live paired phones */
-    async admit(token: string, remote: Record<string, string>): Promise<Admission> {
+    /** asks the harness whether `token` is one of its live paired phones; `from` is the client's own address, and
+     * requests carrying the same token at once share one lookup */
+    admit(token: string, remote: Record<string, string>, from: string): Promise<Admission> {
       const hash = hashOf(token);
       const t = now();
       for (const [key, until] of refused) if (until <= t) refused.delete(key);
-      if ((refused.get(hash) ?? 0) > t) return { kind: "unknown" };
-      while (lookups.length && lookups[0] <= t - 60_000) lookups.shift();
-      if (lookups.length >= LOOKUPS_PER_MINUTE) return { kind: "limited" };
-      lookups.push(t);
+      if ((refused.get(hash) ?? 0) > t) return Promise.resolve({ kind: "unknown" });
+      const pending = asking.get(hash);
+      if (pending) return pending;
+      while (lookups.length && lookups[0].at <= t - 60_000) lookups.shift();
+      if (lookups.length >= LOOKUPS_PER_MINUTE || lookups.filter((one) => one.from === from).length >= LOOKUPS_PER_ADDRESS) return Promise.resolve({ kind: "limited" });
+      lookups.push({ at: t, from });
+      const lookup = this.lookup(hash, token, remote).finally(() => asking.delete(hash));
+      asking.set(hash, lookup);
+      return lookup;
+    },
+    async lookup(hash: string, token: string, remote: Record<string, string>): Promise<Admission> {
+      const t = now();
       const headers = { ...remote, authorization: `Bearer ${token}` };
       let device: Answer, session: Answer;
       try {
@@ -105,9 +117,9 @@ export function createMobileAdmission({ harnessPort, now = Date.now }: { harness
   };
 }
 
-/** a remembered phone's 401 ends it only when the workspace that paired it is the one answering */
+/** a remembered phone's 401 ends it only when the workspace that paired it is known to be the one answering; a phone
+ * remembered without its workspace keeps the plain 401 */
 export async function sessionEndedHere(remembered: string | null, current: () => Promise<string | null>): Promise<boolean> {
   if (!remembered) return true;
-  const running = await current();
-  return running === null || running === remembered;
+  return (await current()) === remembered;
 }

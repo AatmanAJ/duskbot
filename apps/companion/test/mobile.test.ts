@@ -283,16 +283,35 @@ describe("mobile HTTP forwarding", () => {
     expect(app.mobile.has(TOKEN)).toBe(false);
   });
 
-  it("caps harness lookups for unknown sessions at 30 a minute", async () => {
+  it("caps one address's harness lookups for unknown sessions at 10 a minute", async () => {
     let lookups = 0;
     const app = await fixture((_req, res) => { lookups += 1; res.writeHead(401).end(); });
     const statuses: number[] = [];
-    for (let i = 0; i < 32; i += 1) {
+    for (let i = 0; i < 12; i += 1) {
       const token = `dusk_sess_${String(i).padStart(43, "b")}`;
       statuses.push((await fetch(`${app.url}/api/bots`, { headers: { authorization: `Bearer ${token}` } })).status);
     }
     expect(statuses.every((status) => status === 503)).toBe(true);
-    expect(lookups).toBe(60);
+    expect(lookups).toBe(20);
+  });
+
+  it("asks the harness once for a phone's requests that arrive together", async () => {
+    const asked: string[] = [];
+    const app = await fixture((req, res) => {
+      if (req.url === "/api/mobile/device") { asked.push(req.url); return void setTimeout(() => res.writeHead(200).end(JSON.stringify({ device: { id: "relay-phone" } })), 50); }
+      if (req.url === "/api/auth/session") return res.writeHead(200).end(JSON.stringify({ environmentId: "env-a" }));
+      res.end("ok");
+    });
+    const statuses = await Promise.all([1, 2, 3, 4].map(() => fetch(`${app.url}/api/bots`, { headers: auth }).then((res) => res.status)));
+    expect(statuses).toEqual([200, 200, 200, 200]);
+    expect(asked).toHaveLength(1);
+  });
+
+  it("keeps a remembered phone when the running workspace cannot say which it is", async () => {
+    const app = await fixture((_req, res) => res.writeHead(401).end("{}"));
+    app.mobile.remember(TOKEN, "phone", "env-a");
+    expect((await fetch(`${app.url}/api/auth/session`, { headers: auth })).status).toBe(503);
+    expect(app.mobile.has(TOKEN)).toBe(true);
   });
 
   it("forgets a session on harness 401 and closes the next request at the sidecar", async () => {
