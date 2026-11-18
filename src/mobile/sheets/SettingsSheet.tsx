@@ -179,7 +179,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
 
       <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>
         {(places === null || places.length > 0) && <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />}
-        {platform.native && <SettingsRow icon={<Plus />} label={t("mobile.settings.addPlace")} onClick={() => { haptic("selection"); onClose(); window.dispatchEvent(new Event("dusk:add-place")); }} />}
+        <SettingsRow icon={<Plus />} label={t("mobile.settings.addPlace")} onClick={() => { haptic("selection"); onClose(); window.dispatchEvent(new Event("dusk:add-place")); }} />
       </SettingsSection>
 
       <SettingsSection card>

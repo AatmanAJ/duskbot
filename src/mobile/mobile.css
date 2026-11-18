@@ -192,7 +192,7 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-
   inset-inline: auto 0;
   transform-origin: right bottom;
 }
-.dusk-mobile [data-mobile-chat] [data-chat-bubble][class*="100%-82px"] { max-width: 85%; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble][class*="100%-82px"] { max-width: calc(100% - 44px); }
 
 /* the room's setup form is drawn at desktop density; on a phone its labels and hints read at the shell's sizes */
 .dusk-mobile [data-testid="room-setup"] .text-\[13px\] { font-size: 15px; line-height: 20px; }
@@ -372,15 +372,16 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea { visibility: visible; opacity: 0; caret-color: transparent; }
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] :is([role="menu"], [role="listbox"], [data-sidebar-popover-menu], [data-composer-menu]) { visibility: visible; }
 
-/* message text at the phone's body size: iOS Body is 17/22 at the default text size (HIG Typography), a step heavier
-   than the desktop's Geist so it reads like Messages on a small screen */
+/* message text at the phone's body size, 17 on a 24 line, regular weight; the bot's bubble is a little roomier at the
+   sides than the person's, and every bubble keeps one 20px radius, no tail */
 .dusk-mobile [data-mobile-chat] [data-chat-bubble] {
   font-size: 17px;
-  line-height: 22px;
-  font-weight: 450;
+  line-height: 24px;
+  font-weight: 400;
   padding: 8px 14px;
+  border-radius: 20px;
 }
-.dusk-mobile [data-mobile-chat] [data-chat-bubble]:not([class*="rounded-es-"]):not([class*="rounded-ee-"]) { border-radius: 19px; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble].chat-bubble-bot { padding-inline: 16px; }
 .dusk-mobile [data-mobile-chat] [data-chat-bubble] :is(.chat-text, .chat-md, p, li, blockquote, td, th) { font-size: inherit; line-height: inherit; }
 .dusk-mobile [data-mobile-chat] .turn-label-slot { font-size: 17px; }
 
@@ -400,3 +401,19 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
 /* a reply's words arrive as the system's do: a short fade, no blur, so a long reply never repaints every word it adds */
 .dusk-mobile [data-mobile-chat] .md-rv { animation: md-rv-fade 140ms cubic-bezier(.2,0,0,1) both; animation-delay: calc(var(--rv, 0) * var(--rv-step, 0ms)); }
 @media (prefers-reduced-motion: reduce) { .dusk-mobile [data-mobile-chat] .md-rv { animation-delay: 0ms; } }
+
+/* each message's time, beside it in the gutter the transcript uncovers when it is dragged to the left */
+.dusk-mobile [data-mobile-chat] [data-message-row][data-time]::after {
+  content: attr(data-time);
+  position: absolute;
+  inset-inline-end: -60px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 52px;
+  text-align: end;
+  font-size: 13px;
+  line-height: 16px;
+  color: var(--color-ink-tertiary);
+  white-space: nowrap;
+  pointer-events: none;
+}

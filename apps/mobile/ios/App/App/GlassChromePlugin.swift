@@ -473,7 +473,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// name and avatar swap in one go, with no crossfade: a new chat's pill is drawn before its header shows
     private func refreshPill() {
         var title = AttributedString(name)
-        title.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        title.font = UIFont.systemFont(ofSize: 17, weight: .medium)
         UIView.performWithoutAnimation {
             pill.configuration?.attributedTitle = title
             pill.configuration?.baseForegroundColor = .label
@@ -486,7 +486,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     func setAvatar(_ data: String?) {
         guard data != avatarData else { return }
         avatarData = data
-        avatar = data.flatMap(Self.image(fromDataURL:)).map { Self.pixelScaled($0, to: CGSize(width: 30, height: 30)) }
+        avatar = data.flatMap(Self.image(fromDataURL:)).map { Self.pixelScaled($0, to: CGSize(width: 24, height: 24)) }
         refreshPill()
     }
 
