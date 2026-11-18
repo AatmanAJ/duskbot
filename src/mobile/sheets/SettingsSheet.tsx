@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, Palette, Plug, ShieldCheck, UserRound, Hand, Server } from "../../icons";
+import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, Palette, Plug, Plus, ShieldCheck, UserRound, Hand, Server } from "../../icons";
 import { accountDashboardUrl } from "@/lib/account-dashboard";
 import { useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
@@ -174,11 +174,10 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
         {rows.signIn && <SettingsRow icon={<UserRound />} label={t("mobile.entry.signIn")} detail={t("mobile.settings.signInDetail")} onClick={() => { onClose(); window.dispatchEvent(new Event("dusk:sign-in")); }} />}
       </SettingsSection>
 
-      {(places === null || places.length > 0 || error) && (
-        <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>
-          <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />
-        </SettingsSection>
-      )}
+      <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>
+        {(places === null || places.length > 0) && <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />}
+        {platform.native && <SettingsRow icon={<Plus />} label={t("mobile.settings.addPlace")} onClick={() => { haptic("selection"); onClose(); window.dispatchEvent(new Event("dusk:add-place")); }} />}
+      </SettingsSection>
 
       <SettingsSection card>
         <SettingsRow icon={<Bell />} label={t("mobile.settings.notifications")} value={unread || undefined} onClick={() => push("notifications")} />

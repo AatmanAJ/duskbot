@@ -48,8 +48,10 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   const [signInEmail, setSignInEmail] = useState<{ email: string; code?: string; sequence: number } | null>(null);
   useEffect(() => {
     const signIn = () => { setAddingStep("signin"); setAdding((n) => n + 1); };
+    const addPlace = () => { setAddingStep("welcome"); setAdding((n) => n + 1); };
     window.addEventListener("dusk:sign-in", signIn);
-    return () => window.removeEventListener("dusk:sign-in", signIn);
+    window.addEventListener("dusk:add-place", addPlace);
+    return () => { window.removeEventListener("dusk:sign-in", signIn); window.removeEventListener("dusk:add-place", addPlace); };
   }, []);
   // the app never reads the shelf shared by every workspace again; it may still hold an unlinked one's chats
   useEffect(() => { if (platform.native) void forgetTranscriptShelf(null); }, [platform]);
