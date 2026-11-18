@@ -9,7 +9,7 @@ import { usePlatform } from "../platform";
 import { useMobileAccount } from "../account/AccountGate";
 import { enrollWorkspace } from "../account/enroll-workspace";
 import { followSignInService, takeHeldSignIn } from "../account/environment";
-import { installTransport } from "../transport/transport";
+import { installTransport, type PhoneTransport } from "../transport/transport";
 import { Onboarding } from "../onboarding/Onboarding";
 import { SignInOffer } from "../account/SignInOffer";
 import { Success } from "../onboarding/Success";
@@ -23,6 +23,10 @@ import { registerPushForConnection } from "./push";
 import { Unreachable } from "./Unreachable";
 import { PhoneUpdateLine } from "./PhoneUpdateLine";
 import { markCloudAsleep, noteCloudPageActivity } from "@/lib/cloud-power";
+import { liveEventsHeardAt, retryLiveEventsNow } from "@/lib/live-events";
+import { phoneOffline } from "../network";
+import { workspaceAnsweredAt } from "./reachability";
+import { sameRoute, watchRoute } from "./route-watch";
 
 type GateState = { kind: "loading" } | { kind: "pair"; reason?: "revoked" } | { kind: "ready"; id: string }
   | { kind: "offline"; record: MobileConnectionRecord; others: MobileConnectionRecord[]; attempts: number; trying: boolean };
@@ -51,6 +55,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   useEffect(() => { if (platform.native) void forgetTranscriptShelf(null); }, [platform]);
   const sequence = useRef(0);
   const uninstall = useRef<(() => void) | null>(null);
+  const route = useRef<PhoneTransport | null>(null);
   const [attempt, setAttempt] = useState(0);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
@@ -68,6 +73,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
           const transport = await connectToWorkspace(active.record, active.token, platform, controller.signal);
           if (stopped) { if (transport.kind === "relay") transport.channel.close(); return; }
           uninstall.current = installTransport(transport, retry);
+          route.current = transport;
           if (transport.asleep) markCloudAsleep();
           setState({ kind: "ready", id: active.record.id });
           void store.touch(active.record.id).catch(() => {});
@@ -94,8 +100,37 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
       } else setState({ kind: "pair" });
     };
     void decide().catch(() => { if (!stopped) setState({ kind: "pair" }); });
-    return () => { stopped = true; controller.abort(); uninstall.current?.(); uninstall.current = null; };
+    return () => { stopped = true; controller.abort(); uninstall.current?.(); uninstall.current = null; route.current = null; };
   }, [forcePair, platform, store, attempt, retry]);
+
+  // a place with more than one route: when it goes quiet, the others are tried in the background and a working one
+  // takes over without leaving the chat
+  const readyId = state.kind === "ready" && state.id !== "same-origin" ? state.id : null;
+  useEffect(() => {
+    if (!readyId) return;
+    const controller = new AbortController();
+    const stop = watchRoute({
+      heardAt: () => Math.max(liveEventsHeardAt() ?? 0, workspaceAnsweredAt() ?? 0) || null,
+      online: () => !phoneOffline(),
+      visible: () => document.visibilityState === "visible",
+      rewalk: async () => {
+        const active = await store.active();
+        // a relay link already follows its tunnel from node to node, and a second one on the same channel would race it
+        if (!active || active.record.id !== readyId || (active.record.via?.length ?? 0) < 2 || route.current?.kind !== "bearer" || controller.signal.aborted) return;
+        const found = await connectToWorkspace(active.record, active.token, platform, controller.signal);
+        const current = route.current;
+        if (controller.signal.aborted || found.asleep || !current || sameRoute(found, current)) {
+          if (found.kind === "relay") found.channel.close();
+          return;
+        }
+        uninstall.current?.();
+        uninstall.current = installTransport(found, retry);
+        route.current = found;
+        retryLiveEventsNow();
+      },
+    });
+    return () => { controller.abort(); stop(); };
+  }, [readyId, store, platform, retry]);
 
   // the workspace stopped taking this phone's session (it was removed there): connecting again finds out which it is,
   // and a refused token leaves for pairing with the reason
@@ -153,6 +188,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
     const transport = await connectToWorkspace(record, token, platform, new AbortController().signal);
     uninstall.current?.();
     uninstall.current = installTransport(transport, retry);
+    route.current = transport;
     if (transport.asleep) markCloudAsleep();
     resetSessionEnded();
     setIncoming(null);
