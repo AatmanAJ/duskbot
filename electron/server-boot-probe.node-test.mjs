@@ -313,3 +313,24 @@ test("an answer in flight when the child starts listening gets the grace", async
   });
   assert.equal(outcome.outcome, "ready");
 });
+
+test("a child that has printed while loading gets the starting grace, a silent one does not", async () => {
+  const startedAt = Date.now();
+  const lateFetch = async (...args) => {
+    if (Date.now() - startedAt < 400) throw new Error("ECONNREFUSED");
+    return okFetch()(...args);
+  };
+  const probe = (starting) => pollServerIdentity({
+    port: 8799, pid: () => 4242, bootTimeoutMs: 200, startingGraceMs: 2_000,
+    isStarting: () => starting, fetchImpl: lateFetch,
+  });
+  assert.equal((await probe(false)).outcome, "timeout");
+  assert.equal((await probe(true)).outcome, "ready");
+  const signal = listeningSignal();
+  assert.equal(signal.spoke(), false);
+  signal.hear("\n");
+  assert.equal(signal.spoke(), false);
+  signal.hear("bot box: off (not-cloud)\n");
+  assert.equal(signal.spoke(), true);
+  assert.equal(signal.heard(), false);
+});
