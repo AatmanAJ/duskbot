@@ -2,6 +2,7 @@
 // in a 1:1 chat and a room alike. A place that could not be used also stores
 // its state, so the app words it again in the reader's language; the words
 // stay English and whole for the phones, which read only them.
+import { plainComputerFailure } from "./computer-unreachable.ts";
 import type { PlaceRow } from "./place-view.ts";
 
 const MARKER = "error:";
@@ -87,7 +88,7 @@ export function failedTurnTool(
   cause: string,
   flags: { setup?: boolean; terminal?: boolean; claudeUpdate?: boolean; place?: PlaceRow; limitResetsAt?: number; partial?: boolean; reason?: FailedReplyReason; blocker?: BrowserBlocker } = {},
 ): FailedTurnTool {
-  const clean = withoutEchoedPrompt(cause);
+  const clean = plainComputerFailure(withoutEchoedPrompt(cause));
   const words = clean.length > FAILED_TURN_MAX_CHARS ? `${clean.slice(0, FAILED_TURN_MAX_CHARS - 1)}…` : clean;
   return {
     name: `${MARKER} ${words}`,

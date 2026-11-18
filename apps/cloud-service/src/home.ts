@@ -38,6 +38,8 @@ export const HOME_NODE_BIN = `${NODE_DIR}/bin/node`;
 export const HOME_CONTROL = `${BIN}/omb-home`;
 /** what the bot computers' image is doing on this machine (building, ready, failed); the home's server reads it */
 export const DESKTOP_IMAGE_STATUS = `${CLOUD_HOME.run}/desktop-image`;
+/** The docker gate's runtime folder on a home set up from now on; one set up before keeps its own (the server finds either). */
+export const HOME_GATE_RUN = "duskbot-docker";
 /** merges cgroup-parent into docker's daemon.json; exits 0 only when it changed the file */
 const DOCKER_SLICE = `const fs = require("node:fs"), p = "/etc/docker/daemon.json";
 let c = {}; try { c = JSON.parse(fs.readFileSync(p, "utf8")); } catch {}
@@ -127,15 +129,16 @@ WantedBy=multi-user.target
 Description=dusk bot docker gate for bot computers
 After=docker.service
 Requires=docker.service
+StartLimitIntervalSec=0
 ConditionPathExists=${APP}/link/docker-gate.mjs
 
 [Service]
 User=omb-docker
 Group=maus
 SupplementaryGroups=docker
-RuntimeDirectory=${CLOUD_HOME.gate}
+RuntimeDirectory=${HOME_GATE_RUN}
 RuntimeDirectoryMode=0750
-ExecStart=${HOME_NODE_BIN} ${APP}/link/docker-gate.mjs --listen /run/${CLOUD_HOME.gate}/docker.sock --upstream /var/run/docker.sock
+ExecStart=${HOME_NODE_BIN} ${APP}/link/docker-gate.mjs --listen /run/${HOME_GATE_RUN}/docker.sock --upstream /var/run/docker.sock
 Restart=always
 RestartSec=2
 UMask=0007
@@ -147,7 +150,7 @@ RestrictAddressFamilies=AF_UNIX
 IPAddressDeny=any
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target docker.service
 `;
   // the bot computers' image, made ready by root beside the gate (which never builds): a failed try is tried again a
   // minute later, at low priority so the home answers while it builds
@@ -203,7 +206,7 @@ const boot = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 if (boot.v !== 1 || !boot.env || !boot.link || !/^c[0-9a-f]{24}$/.test(boot.machine)) process.exit(1);
 const env = { ...boot.env, HOME: "/data", DUSK_DATA_DIR: "${CLOUD_HOME.data}", NODE_ENV: "production", DUSK_STATIC_DIR: "${APP}/dist",
   DUSK_CLOUD_EDGE_BIN: "${BIN}/caddy", DUSK_CLOUD_EDGE_CONFIG: "${APP}/cloud/Caddyfile", PATH: "${NODE_DIR}/bin:${BIN}:/usr/local/bin:/usr/bin:/bin",
-  DUSK_VPS_DOCKER: "local", DOCKER_HOST: "unix:///run/${CLOUD_HOME.gate}/docker.sock", DUSK_BOT_DESKTOP_HOST_BUILD: "${DESKTOP_IMAGE_STATUS}",
+  DUSK_VPS_DOCKER: "local", DOCKER_HOST: "unix:///run/${HOME_GATE_RUN}/docker.sock", DUSK_BOT_DESKTOP_HOST_BUILD: "${DESKTOP_IMAGE_STATUS}",
   DUSK_SCREEN_DIRECT_PORTS: "${HOME_SCREEN_DIRECT_PORTS}" };
 if (Object.entries(env).some(([k, v]) => !/^[A-Z][A-Z0-9_]*$/.test(k) || typeof v !== "string" || /[\\r\\n\\0]/.test(v))) process.exit(1);
 fs.writeFileSync("${CLOUD_HOME.etc}/home.env", Object.entries(env).map(([k, v]) => k + "=" + v).join("\\n") + "\\n", { mode: 0o600 });
@@ -324,6 +327,7 @@ case "\${1:-}" in
     for f in installed installed-version; do if [ -f ${ROOT}/$f ]; then mv ${ROOT}/$f ${ROOT}/$f.prev; else rm -f ${ROOT}/$f.prev; fi; done
     echo "$sum" > ${ROOT}/installed; [ -z "$ver" ] || echo "$ver" > ${ROOT}/installed-version; rm -f "$file"
     rm -f ${DESKTOP_IMAGE_STATUS}; desktop
+    systemctl try-restart omb-docker-gate.service >/dev/null 2>&1 || true
     echo installed ;;
   rollback)
     # back to the app the last install replaced; the reconciler starts it again

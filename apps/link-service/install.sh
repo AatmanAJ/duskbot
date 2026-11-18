@@ -1393,6 +1393,7 @@ EOF
 Description=Docker gate for dusk bot
 After=docker.service
 Requires=docker.service
+StartLimitIntervalSec=0
 
 [Service]
 User=$GATE_USER
@@ -1416,7 +1417,7 @@ RestrictAddressFamilies=AF_UNIX
 IPAddressDeny=any
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target docker.service
 EOF
   put_file "$UNITS/omb-docker-gate.service" 0644 && changed=0
   cat > "$TMP/new" <<EOF
@@ -1471,6 +1472,17 @@ gate_up() {
   done
   echo "the docker gate did not answer; bot computers will not start"
   journalctl -u omb-docker-gate.service -n 20 --no-pager 2>/dev/null || true
+}
+
+# a docker restart stops the gate with it (Requires=) and, before docker.service wanted the gate, nothing started it
+# again: every round of the update timer starts a gate that does not answer the server account
+heal_gate() {
+  [ -f "$UNITS/omb-docker-gate.service" ] && docker info >/dev/null 2>&1 || return 0
+  systemctl add-wants docker.service omb-docker-gate.service >/dev/null 2>&1 || true
+  as_user env DOCKER_HOST="unix://$GATE_SOCK" docker version --format '{{.Server.Version}}' >/dev/null 2>&1 && return 0
+  echo "$(date -u '+%F %T') the docker gate did not answer $SVC_USER; starting it again"
+  systemctl reset-failed omb-docker-gate.service >/dev/null 2>&1 || true
+  x systemctl restart omb-docker-gate.service || true
 }
 
 wait_health() { # url seconds
@@ -2173,6 +2185,7 @@ update_server() {
   [ "$(id -u)" -eq 0 ] || { echo "--update-server runs as root"; return 1; }
   if command -v flock >/dev/null 2>&1; then exec 9>>"$INSTALL_LOCK"; flock -n 9 || { echo "an install is running; the update waits for the next round"; return 0; }; LOCKED=1; fi
   [ -f "$STATE/linked" ] || return 0
+  heal_gate
   TMP=$(mktemp -d) LINK_ID=$(state_get id) VPS_TOKEN="" OFFLINE=0 REQUIRE_SIGNED=1
   PROGRESS="$TMP/progress"
   trap 'rm -rf "$TMP"' EXIT
