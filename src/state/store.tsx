@@ -821,6 +821,7 @@ export type Action =
   | { type: "focusMessage"; threadId: string; messageId: string; matchText?: string }
   | { type: "focusMessageConsumed"; nonce: number }
   | { type: "unreadDividerDone"; threadId: string }
+  | { type: "chatBackInFront"; threadId: string; away: boolean }
   | { type: "toggleAppSettings"; open?: boolean; section?: AppSettingsSection; cloudLink?: boolean; phonePairing?: boolean }
   | { type: "toggleShortcuts"; open?: boolean }
   | { type: "openCloudAdd"; source: import("@/lib/cloud-plan").CloudSource; signIn?: true }
@@ -1533,6 +1534,21 @@ export function reducer(state: AppState, action: Action): AppState {
     case "focusMessageConsumed":
       if (!state.focusMessage || state.focusMessage.nonce !== action.nonce) return state;
       return { ...state, focusMessage: { ...state.focusMessage, consumed: true } };
+    case "chatBackInFront": {
+      const bot = state.activeView === "chat" ? state.bots.find((candidate) => candidate.id === state.selectedId && candidate.threadId === action.threadId) : undefined;
+      const room = state.activeView === "chat" ? state.groups.find((candidate) => candidate.id === state.selectedId && candidate.threadId === action.threadId) : undefined;
+      if (bot && threadOpensUnread(bot)) {
+        const divider = action.away ? firstUnreadMessageId(visibleMessages(bot), threadReadCursor(bot)) : null;
+        return updateBot({ ...state, ...(divider ? { unreadDivider: { threadId: action.threadId, messageId: divider } } : {}) }, bot.id,
+          (b) => ({ ...b, unread: Boolean(b.tasks?.some((task) => task.threadId !== b.threadId && task.unread)), tasks: b.tasks?.map((task) => task.threadId === b.threadId ? { ...task, unread: false } : task) }));
+      }
+      if (room?.unread) {
+        const divider = action.away ? firstUnreadMessageId(room.messages, room.lastReadMessageId) : null;
+        return { ...state, ...(divider ? { unreadDivider: { threadId: action.threadId, messageId: divider } } : {}),
+          groups: state.groups.map((group) => (group.id === room.id ? { ...group, unread: false } : group)) };
+      }
+      return state;
+    }
     case "unreadDividerDone":
       return state.unreadDivider?.threadId === action.threadId ? { ...state, unreadDivider: null } : state;
     case "openSignIn": {
@@ -2149,7 +2165,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     : null;
   useEffect(() => { noteChatInFront(shownChatThread); }, [shownChatThread]);
   useEffect(() => {
-    const note = () => noteChatInFront();
+    const note = () => {
+      const back = noteChatInFront();
+      if (!back) return;
+      const now = stateRef.current;
+      if (now.activeView !== "chat") return;
+      const bot = now.bots.find((candidate) => candidate.id === now.selectedId && candidate.threadId === back.threadId);
+      const room = now.groups.find((candidate) => candidate.id === now.selectedId && candidate.threadId === back.threadId);
+      if (bot && threadOpensUnread(bot)) api(`/api/bots/${bot.id}/read`, { method: "POST", body: JSON.stringify({ threadId: bot.threadId }) }).catch(() => {});
+      else if (room?.unread) api(`/api/groups/${room.id}/read`, { method: "POST" }).catch(() => {});
+      else return;
+      rawDispatch({ type: "chatBackInFront", ...back });
+    };
     window.addEventListener("focus", note);
     window.addEventListener("blur", note);
     document.addEventListener("visibilitychange", note);

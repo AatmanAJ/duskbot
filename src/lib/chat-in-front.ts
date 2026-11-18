@@ -19,12 +19,16 @@ const lastInFront = new Map<string, number>();
 let shownThread: string | null = null;
 let frontThread: string | null = null;
 
-/** Call with the chat on screen and whenever focus, visibility or the phone's list over it changes. */
-export function noteChatInFront(shown: string | null = shownThread, now = Date.now(), inFront = typeof document !== "undefined" && chatInFront()): void {
+/** Call with the chat on screen and whenever focus, visibility or the phone's list over it changes. Answers the chat
+ * that has just come in front, and whether the person had been away from it long enough for its New line. */
+export function noteChatInFront(shown: string | null = shownThread, now = Date.now(), inFront = typeof document !== "undefined" && chatInFront()): { threadId: string; away: boolean } | null {
   shownThread = shown;
   const next = shown && inFront ? shown : null;
-  if (frontThread && frontThread !== next) lastInFront.set(frontThread, now);
+  if (frontThread === next) return null;
+  if (frontThread) lastInFront.set(frontThread, now);
+  const back = next ? { threadId: next, away: awayFromChat(next, now) } : null;
   frontThread = next;
+  return back;
 }
 
 export function awayFromChat(threadId: string, now = Date.now()): boolean {

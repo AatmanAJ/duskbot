@@ -157,6 +157,40 @@ describe("the divider in the store", () => {
       expect(opened(base).unreadDivider).toEqual({ threadId: "pepper-a", messageId: "b2" });
     });
 
+    describe("when the window comes back with the chat still open", () => {
+      const open = { ...base, selectedId: "pepper", activeView: "chat" as const };
+      const returnAfter = (ms: number) => {
+        expect(noteChatInFront("pepper-a", now - ms - 60_000, true)).toEqual({ threadId: "pepper-a", away: true });
+        expect(noteChatInFront("pepper-a", now - ms, false)).toBeNull();
+        const back = noteChatInFront("pepper-a", now, true)!;
+        expect(back.threadId).toBe("pepper-a");
+        return reducer(open, { type: "chatBackInFront", ...back });
+      };
+
+      it("draws the line above the first reply that came in, after two minutes or more", () => {
+        const back = returnAfter(NEW_DIVIDER_AWAY_MS);
+        expect(back.unreadDivider).toEqual({ threadId: "pepper-a", messageId: "b2" });
+        expect(back.bots.find((b) => b.id === "pepper")!.tasks![0]!.unread).toBe(false);
+      });
+
+      it("only marks the replies read when it was back within two minutes", () => {
+        const back = returnAfter(NEW_DIVIDER_AWAY_MS - 1000);
+        expect(back.unreadDivider).toBeNull();
+        expect(back.bots.find((b) => b.id === "pepper")!.tasks![0]!.unread).toBe(false);
+      });
+
+      it("does the same for a room", () => {
+        const room = reducer({ ...base, selectedId: "room", activeView: "chat" }, { type: "chatBackInFront", threadId: "room-t", away: true });
+        expect(room.unreadDivider).toEqual({ threadId: "room-t", messageId: "b2" });
+        expect(room.groups[0]!.unread).toBe(false);
+      });
+
+      it("leaves a chat that is not on screen alone", () => {
+        expect(reducer({ ...open, activeView: "files" }, { type: "chatBackInFront", threadId: "pepper-a", away: true }).unreadDivider).toBeNull();
+        expect(reducer(open, { type: "chatBackInFront", threadId: "other-a", away: true }).unreadDivider).toBeNull();
+      });
+    });
+
     it("is never drawn for a line that lands while the person watches", () => {
       noteChatInFront("pepper-a", now - NEW_DIVIDER_AWAY_MS * 10, true);
       const watching = { ...base, selectedId: "pepper", activeView: "chat" as const,
