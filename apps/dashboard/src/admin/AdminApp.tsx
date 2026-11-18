@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpRight, Bug, ChartNoAxesColumn, ChartNoAxesCombined, ChevronDown, Cloud, CreditCard, Gauge, Globe as GlobeIcon, History, Inbox, LayoutDashboard, Menu, MessageSquare, Moon, Repeat, Server, Sun, Table2, Users, X } from "@/icons";
+import { AlertTriangle, Hourglass, ArrowUpRight, Bug, ChartNoAxesColumn, ChartNoAxesCombined, ChevronDown, Cloud, CreditCard, Gauge, Globe as GlobeIcon, History, Inbox, LayoutDashboard, Menu, MessageSquare, Moon, Repeat, Server, Sun, Table2, Users, X } from "@/icons";
 import { setTheme, useTheme } from "../lib/theme";
 import { ButtonLink, cx } from "../ui/kit";
 import { Modal } from "../ui/controls";
@@ -25,7 +25,7 @@ const load = {
   details: code(() => import("./Details")), retention: code(() => import("./Retention")), live: code(() => import("./Live")), product: code(() => import("./Product")),
   revenue: code(() => import("./RevenuePage")), users: code(() => import("./Users")), clouds: code(() => import("./Clouds")), waitlist: code(() => import("./Waitlist")),
   events: code(() => import("./Events")), health: code(() => import("./Health")), ops: code(() => import("./Ops")), opsAccounts: code(() => import("./OpsAccounts")),
-  feedback: code(() => import("./Feedback")), experience: code(() => import("./Experience")), bugReports: code(() => import("./BugReports")),
+  feedback: code(() => import("./Feedback")), experience: code(() => import("./Experience")), bugReports: code(() => import("./BugReports")), subscribers: code(() => import("./Subscribers")),
 };
 function pageOf<M, P extends object>(from: () => Promise<M>, pick: (m: M) => ComponentType<P>) {
   const Lazy = lazy(() => from().then((m) => ({ default: pick(m) })));
@@ -52,6 +52,7 @@ const AccountsUsagePage = pageOf(load.opsAccounts, (m) => m.AccountsUsagePage);
 const FeedbackPage = pageOf(load.feedback, (m) => m.FeedbackPage);
 const ExperiencePage = pageOf(load.experience, (m) => m.ExperiencePage);
 const BugReportsPage = pageOf(load.bugReports, (m) => m.BugReportsPage);
+const SubscribersPage = pageOf(load.subscribers, (m) => m.SubscribersPage);
 
 /** what a page reads first with its default view, warmed when its link is pointed at so it opens with its data */
 function warm(to: string) {
@@ -62,6 +63,7 @@ function warm(to: string) {
     "/admin/people": { code: load.users, data: () => ["/users?q=&filter=all&offset=0&limit=50"] },
     "/admin/waitlist": { code: load.waitlist, data: () => ["/waitlist?q=&offset=0&limit=50"] },
     "/admin/revenue": { code: load.revenue, data: () => [`/revenue?days=90&mode=${adminMoney()}`] },
+    "/admin/subscribers": { code: load.subscribers, data: () => ["/subscribers?filter=trial"] },
     "/admin/product": { code: load.product, data: () => [`/product?${window}`, `/usage?${window}`] },
     "/admin/experience": { code: load.experience, data: () => [`/experience?${window}`] },
     "/admin/feedback": { code: load.feedback, data: () => ["/feedback"] },
@@ -89,33 +91,34 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     { to: "/admin", key: "o", label: "overview", icon: <LayoutDashboard {...ICON} />, also: ["/admin/analytics"] },
     { to: "/admin/live", key: "l", label: "live", icon: <GlobeIcon {...ICON} /> },
     { to: "/admin/people", key: "p", label: "people", icon: <Users {...ICON} />, also: ["/admin/users"] },
-    { to: "/admin/waitlist", key: "w", label: "waitlist", icon: <Inbox {...ICON} /> },
+    { to: "/admin/subscribers", key: "s", label: "subscribers", icon: <Hourglass {...ICON} /> },
     { to: "/admin/revenue", key: "m", label: "revenue", icon: <CreditCard {...ICON} /> },
   ] },
   { label: "product", items: [
     { to: "/admin/product", key: "i", label: "product", icon: <ChartNoAxesCombined {...ICON} /> },
-    { to: "/admin/experience", key: "b", label: "experience", icon: <AlertTriangle {...ICON} /> },
     { to: "/admin/feedback", key: "f", label: "feedback", icon: <MessageSquare {...ICON} /> },
     { to: "/admin/bug-reports", key: "d", label: "bug reports", icon: <Bug {...ICON} /> },
     { to: "/admin/retention", key: "r", label: "retention", icon: <Repeat {...ICON} /> },
   ] },
   { label: "operations", items: [
     { to: "/admin/ops", key: "x", label: "ops", icon: <Server {...ICON} /> },
-    { to: "/admin/ops/accounts", key: "u", label: "accounts usage", icon: <Table2 {...ICON} /> },
     { to: "/admin/clouds", key: "c", label: "clouds", icon: <Cloud {...ICON} /> },
   ] },
 ];
 const NAV = GROUPS.flatMap((group) => group.items);
 const SMALL = { size: 15, strokeWidth: 1.75 } as const;
-/** on the overview as a tile each; their full pages stay one click away */
+/** pages looked at now and then: the overview has a tile for some, and each stays one click away */
 const MORE: NavItem[] = [
+  { to: "/admin/waitlist", key: "w", label: "waitlist", icon: <Inbox {...SMALL} /> },
+  { to: "/admin/experience", key: "b", label: "experience", icon: <AlertTriangle {...SMALL} /> },
+  { to: "/admin/ops/accounts", key: "u", label: "accounts usage", icon: <Table2 {...SMALL} /> },
   { to: "/admin/events", key: "e", label: "events", icon: <ChartNoAxesColumn {...SMALL} /> },
   { to: "/admin/health", key: "h", label: "health", icon: <Gauge {...SMALL} /> },
   { to: "/admin/audit", key: "a", label: "audit log", icon: <History {...SMALL} /> },
 ];
 const ALL = [...NAV, ...MORE];
 /** the pages a growth admin sees; the server refuses every other read for that role too */
-const GROWTH_PAGES = new Set(["/admin", "/admin/live", "/admin/waitlist", "/admin/revenue", "/admin/retention"]);
+const GROWTH_PAGES = new Set(["/admin", "/admin/live", "/admin/waitlist", "/admin/revenue", "/admin/retention", "/admin/subscribers"]);
 const opens = (role: AdminRole, path: string) => role === "owner" || GROWTH_PAGES.has(path) || /^\/admin\/analytics\/[a-z]+$/.test(path);
 const groupsFor = (role: AdminRole) => role === "owner" ? GROUPS : GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => GROWTH_PAGES.has(item.to)) })).filter((group) => group.items.length);
 const PEOPLE_TABS = [{ to: "/admin/people", label: "accounts" }, { to: "/admin/people/visitors", label: "visitors and journeys" }];
@@ -140,6 +143,7 @@ function page(path: string, role: AdminRole): ReactNode {
   if (user) return <UserPage id={decodeURIComponent(user[1]!)} />;
   if (path === "/admin/product" || path.startsWith("/admin/product/")) return <ProductPage path={path} />;
   if (path === "/admin/revenue") return <RevenuePage />;
+  if (path === "/admin/subscribers") return <SubscribersPage />;
   if (path === "/admin/ops") return <OpsPage />;
   if (path === "/admin/ops/accounts") return <AccountsUsagePage />;
   if (path === "/admin/retention") return <RetentionPage />;

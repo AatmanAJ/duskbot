@@ -36,6 +36,8 @@ export interface BugReportStore {
   summaries(options: { real?: boolean; max: number }): Promise<Array<{ id: string; description: string; status: BugReportStatus }>>;
   get(id: string): Promise<BugReport | null>;
   counts(options?: { real?: boolean }): Promise<Record<BugReportStatus, number>>;
+  /** the newest reports these app installs sent */
+  fromInstalls(installIds: readonly string[], limit: number): Promise<BugReportRow[]>;
   setStatus(id: string, status: BugReportStatus, fixedIn: string | null, at: number): Promise<BugReportRow | null>;
   /** only this install's own reports among `ids` */
   statuses(installId: string, ids: string[]): Promise<Array<{ id: string; status: BugReportStatus; fixedIn: string | null }>>;
@@ -89,6 +91,10 @@ export async function mongoBugReportStore(db: Db): Promise<BugReportStore> {
       for (const item of await reports.aggregate<{ _id: BugReportStatus; n: number }>([...(real ? [{ $match: REAL }] : []), { $group: { _id: "$status", n: { $sum: 1 } } }]).toArray()) if (item._id in out) out[item._id] = item.n;
       return out;
     },
+    async fromInstalls(installIds, limit) {
+      if (!installIds.length) return [];
+      return (await reports.find({ installId: { $in: [...installIds] } }, { projection: LIST_FIELDS }).sort({ receivedAt: -1 }).limit(limit).toArray()).map(row);
+    },
     async summaries({ real, max }) {
       return (await reports.find(real ? REAL : {}, { projection: { description: 1, status: 1 } }).sort({ receivedAt: -1 }).limit(max).toArray())
         .map(doc => ({ id: doc._id, description: doc.description, status: doc.status }));
@@ -133,6 +139,9 @@ export function memoryBugReportStore(): BugReportStore & { all: Map<string, Memo
     },
     async get(id) { const item = all.get(id); if (!item) return null; const { hash: _h, pictures: _p, ...rest } = item; return { ...rest }; },
     async counts({ real } = {}) { const out = zero(); for (const item of all.values()) if (!real || isReal(item)) out[item.status]++; return out; },
+    async fromInstalls(installIds, limit) {
+      return [...all.values()].filter(item => installIds.includes(item.installId)).sort((a, b) => b.receivedAt - a.receivedAt).slice(0, limit).map(view);
+    },
     async summaries({ real, max }) {
       return [...all.values()].filter(item => !real || isReal(item)).sort((a, b) => b.receivedAt - a.receivedAt).slice(0, max).map(({ id, description, status }) => ({ id, description, status }));
     },
