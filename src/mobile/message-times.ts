@@ -43,7 +43,8 @@ export function installMessageTimes(chat: HTMLElement): () => void {
     const touch = event.touches[0]!;
     const target = event.target instanceof Element ? event.target : null;
     const log = chat.querySelector<HTMLElement>("[role='log']");
-    if (!target || !log || !log.contains(target) || touch.clientX < EDGE || target.closest(IGNORED)) return;
+    const area = log?.closest<HTMLElement>(".glass-scroller") ?? log;
+    if (!target || !log || !area?.contains(target) || touch.clientX < EDGE || target.closest(IGNORED)) return;
     if (canScroll(target, log, "x", 1) || canScroll(target, log, "x", -1)) return;
     if (!(globalThis.getSelection?.()?.isCollapsed ?? true)) return;
     start = { x: touch.clientX, y: touch.clientY, log };
