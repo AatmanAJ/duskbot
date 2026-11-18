@@ -43,7 +43,7 @@ import { lowerFirst } from "@/lib/lower-first";
 import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
 import type { PlaceRow } from "../../shared/place-view";
 import { PartlyDoneRow } from "./PartlyDoneRow";
-import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "../../shared/system-message-guard.ts";
+import { botTextForDisplay, isPureLeakedBotText } from "../../shared/system-message-guard.ts";
 import { ConversationalReply, QuickModelNote, isConversational, useReplySegments, useThreadOpenedAt } from "./ConversationalReply";
 import { isProviderSafetyBlock, PROVIDER_SAFETY_GUIDANCE, PROVIDER_SAFETY_HELP_URL } from "../../shared/provider-safety";
 import { isCancelledTranscriptRow, isStoppedTurnName, PERSON_STOPPED_TURN_NAME } from "../../shared/client-cancel";
@@ -350,7 +350,7 @@ const Bubble = memo(function Bubble({
   const speech = useSpeech();
   const speaking = speech.messageId === message.id && speech.status !== "idle";
   const rawText = peer ? peer.body : (message.text ?? "");
-  const text = user ? rawText : stripLeakedSystemHarnessMessages(rawText);
+  const text = user ? rawText : botTextForDisplay(rawText);
   const botMenu = useBotMessageMenu({
     text,
     botId,
@@ -929,7 +929,7 @@ const MessagesList = memo(function MessagesList({
               const peer = peerLine(m) ?? peerRequest(m, botId);
               const user = m.role === "user" && !peer;
               if (user && routineStartName(m) !== null) return null;
-              if (!user && isPureLeakedSystemHarnessMessage(m.text) && !m.attachments?.length) return null;
+              if (!user && isPureLeakedBotText(m.text) && !m.attachments?.length) return null;
               return (
                 <Bubble
                   message={m}

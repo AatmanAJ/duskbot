@@ -57,7 +57,7 @@ import { ChatErrorBanner, ChatNotice } from "./ChatErrorBanner"; import { Compos
 import { FailedReplyCard, FoldedNoticesContext, foldedNoticeIds, useTrailingRows } from "./FailedReplyCard";
 import { RoomContextWarnings } from "./ContextWarning";
 import { ChatFindBar } from "./ChatFindBar";
-import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "../../shared/system-message-guard.ts";
+import { botTextForDisplay, isPureLeakedBotText } from "../../shared/system-message-guard.ts";
 import { QuotedText, ReplyQuote } from "./ReplyQuote";
 import { ConnectorCard } from "./ConnectorCard";
 import { SecretRequestCard } from "./SecretRequestCard";
@@ -173,7 +173,7 @@ function RoomTextMessage({
   const user = m.role === "user";
   const reactor = useReactor();
   const speaker = otherSpeaker(m, state.config?.team && reactor !== "user" ? reactor : null);
-  const rawText = user ? (m.text ?? "") : stripLeakedSystemHarnessMessages(m.text ?? "");
+  const rawText = user ? (m.text ?? "") : botTextForDisplay(m.text ?? "");
   const attachments = user && m.text ? splitTranscriptAttachments(withoutCitationMarkers(m.text)) : null;
   const display = attachments?.display ?? rawText;
   const [expanded, setExpanded] = useState(false);
@@ -417,7 +417,7 @@ export const Transcript = memo(function Transcript({
     ) : m.kind === "digest" ? (
       showToolCalls ? <DigestChip message={m} /> : null
     ) : m.publishedPage ? <PublishedPageCard message={m} /> : m.document ? <DocumentCard message={m} /> : m.kind === "text" && (m.text || m.attachments?.length) ? (
-      !user && isPureLeakedSystemHarnessMessage(m.text) && !m.attachments?.length ? null : (
+      !user && isPureLeakedBotText(m.text) && !m.attachments?.length ? null : (
         <RoomTextMessage
           group={group}
           message={m}
