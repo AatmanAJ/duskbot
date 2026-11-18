@@ -43,6 +43,20 @@ export const MODEL_FILES: readonly ModelFile[] = [
 
 export const TOTAL_BYTES = MODEL_FILES.reduce((sum, file) => sum + file.bytes, 0);
 
+/** dusk.bot's copy, one folder per hash (scripts/mirror-voice-models.sh); the pinned upstream is the fallback. */
+export const DEFAULT_MIRROR = "https://dusk.bot/voice";
+
+export function mirrorFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = env.DUSK_VOICE_MIRROR_URL?.trim();
+  if (value === "off") return null;
+  return (value || DEFAULT_MIRROR).replace(/\/+$/, "");
+}
+
+/** Where a file may come from, in the order tried; every copy is checked against the same hash. */
+export function sourcesFor(file: ModelFile, mirror: string | null): string[] {
+  return mirror ? [`${mirror}/${file.sha256}/${path.basename(file.path)}`, file.url] : [file.url];
+}
+
 /** Shared by every workspace on the computer, outside any data directory a backup copies. */
 export function defaultModelDir(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
   if (env.DUSK_VOICE_MODELS_DIR) return env.DUSK_VOICE_MODELS_DIR;
@@ -80,11 +94,13 @@ export class ModelStore {
   private running: Promise<void> | null = null;
   private readonly fetchImpl: Fetch;
   private readonly files: readonly ModelFile[];
+  private readonly mirror: string | null;
 
-  constructor({ dir = defaultModelDir(), fetchImpl = fetch, files = MODEL_FILES }: { dir?: string; fetchImpl?: Fetch; files?: readonly ModelFile[] } = {}) {
+  constructor({ dir = defaultModelDir(), fetchImpl = fetch, files = MODEL_FILES, mirror = mirrorFromEnv() }: { dir?: string; fetchImpl?: Fetch; files?: readonly ModelFile[]; mirror?: string | null } = {}) {
     this.dir = dir;
     this.fetchImpl = fetchImpl;
     this.files = files;
+    this.mirror = mirror;
     this.state = this.allPresent() ? { phase: "ready" } : { phase: "missing" };
   }
 
@@ -134,6 +150,7 @@ export class ModelStore {
     if (sizeOf(target) === file.bytes) return;
     mkdirSync(path.dirname(target), { recursive: true });
     const part = `${target}.part`;
+    const sources = sourcesFor(file, this.mirror);
     for (let attempt = 0; ; attempt += 1) {
       try {
         let have = sizeOf(part);
@@ -142,7 +159,7 @@ export class ModelStore {
           have = 0;
         }
         if (have < file.bytes) {
-          const res = await this.fetchImpl(file.url, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: "follow" });
+          const res = await this.fetchImpl(sources[attempt % sources.length]!, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: "follow" });
           if (!res.ok || !res.body) throw new Error(`downloading ${path.basename(file.path)} failed (${res.status})`);
           // A server that ignores Range answers 200 with the whole file.
           const append = have > 0 && res.status === 206;

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultModelDir, MODEL_FILES, ModelStore, TOTAL_BYTES, type ModelFile } from "./models.ts";
+import { defaultModelDir, mirrorFromEnv, MODEL_FILES, ModelStore, sourcesFor, TOTAL_BYTES, type ModelFile } from "./models.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -85,6 +85,21 @@ describe("ModelStore", () => {
     expect(store.status()).toMatchObject({ phase: "failed" });
     expect(store.has(file.path)).toBe(false);
   }, 20_000);
+
+  it("asks dusk.bot's copy first and falls back to the pinned upstream", async () => {
+    const dir = scratch();
+    const asked: string[] = [];
+    const fetchImpl = async (url: string) => {
+      asked.push(url);
+      return url.startsWith("https://dusk.bot/") ? new Response("gone", { status: 404 }) : new Response(body, { status: 200 });
+    };
+    await new ModelStore({ dir, fetchImpl, files: [file], mirror: "https://dusk.bot/voice" }).ensure();
+    expect(asked).toEqual([`https://dusk.bot/voice/${file.sha256}/test.bin`, file.url]);
+    expect(readFileSync(path.join(dir, file.path))).toEqual(body);
+    expect(sourcesFor(file, null)).toEqual([file.url]);
+    expect(mirrorFromEnv({ DUSK_VOICE_MIRROR_URL: "off" })).toBeNull();
+    expect(mirrorFromEnv({})).toBe("https://dusk.bot/voice");
+  });
 
   it("keeps models in the computer's cache, outside any workspace", () => {
     expect(defaultModelDir({}, "darwin")).toMatch(/Library\/Caches\/bot\.dusk\.app\/voice$/);

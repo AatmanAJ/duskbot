@@ -127,8 +127,16 @@ export function stageOnnxRuntime(nodeModules, modules, platform, arch) {
       if (os !== platform || cpu !== arch) rmSync(join(bins, os, cpu), { recursive: true, force: true });
     }
   }
-  return join(modules, ONNX_PACKAGES[0], onnxBinaryDir(platform, arch));
+  const kept = join(modules, ONNX_PACKAGES[0], onnxBinaryDir(platform, arch));
+  // onnxruntime.dll (1.31.1) only delay-loads DirectML.dll, for the DirectML provider the voice never asks for, and
+  // imports no dxcompiler.dll: about 37 MB the Windows app need not carry.
+  for (const unused of ONNX_WINDOWS_GPU_ONLY) rmSync(join(kept, unused), { force: true });
+  // the mac package carries the library twice; the addon links @rpath/libonnxruntime.1.dylib
+  for (const file of readdirSync(kept)) if (/^libonnxruntime\.\d+\.\d+\.\d+\.dylib$/.test(file)) rmSync(join(kept, file), { force: true });
+  return kept;
 }
+
+export const ONNX_WINDOWS_GPU_ONLY = ["DirectML.dll", "dxcompiler.dll"];
 
 export function pinnedDuckdbVersion(root) {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
