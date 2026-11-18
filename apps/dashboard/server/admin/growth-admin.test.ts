@@ -125,6 +125,19 @@ describe("growth admin role", () => {
     expect(audit.entries.some(entry => entry.action === "admin.role.grant" && entry.target === growthId)).toBe(true);
   });
 
+  it("takes the role from DUSK_GROWTH_ADMIN_EMAILS without a grant, still limited", async () => {
+    app.close();
+    await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
+    app = createDashboardApp({ dataDir, publicUrl: origin, mailer, staticDir: null, now: () => time, analytics: { sink, waitlist: null, infra: memoryInfraStore() },
+      admin: { emails: [OWNER], growthEmails: [GROWTH.toUpperCase()], env: {} } });
+    server = createServer(app.handle);
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const growth = await login(GROWTH);
+    expect(await (await call("/v1/admin/me", { cookie: growth })).json()).toMatchObject({ admin: true, role: "growth" });
+    expect((await call("/v1/admin/users", { cookie: growth })).status).toBe(403);
+  });
+
   it("answers every allowed read", async () => {
     const { growth } = await setup();
     for (const route of ALLOWED_GETS) expect([route, (await call(`/v1/admin${route}`, { cookie: growth })).status]).toEqual([route, 200]);

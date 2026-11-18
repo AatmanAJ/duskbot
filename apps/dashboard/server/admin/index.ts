@@ -46,6 +46,8 @@ type Billing = ReturnType<typeof createBilling>;
 export interface AdminOptions {
   /** DUSK_ADMIN_EMAILS: the accounts allowed in, by email; empty lets nobody in */
   emails: string[];
+  /** DUSK_GROWTH_ADMIN_EMAILS: accounts that get the growth role without a grant from the panel */
+  growthEmails?: string[];
   auth: Auth;
   billing: Billing;
   workspaces: () => StoredWorkspace[];
@@ -92,6 +94,7 @@ const int = (value: string | null, fallback: number, min: number, max: number) =
 export function createAdmin(options: AdminOptions) {
   const { auth, billing, analytics, now } = options;
   const allowed = new Set(options.emails.map(email => email.toLowerCase()));
+  const growthByEmail = new Set((options.growthEmails ?? []).map(email => email.toLowerCase()));
   const env = options.env ?? process.env;
   const brevo = brevoChecker({ apiKey: env.DUSK_BREVO_API_KEY, listId: env.DUSK_BREVO_WAITLIST_LIST_ID, fetch: options.fetch, now });
   const targets = healthTargets(env.DUSK_ADMIN_HEALTH_URLS);
@@ -208,6 +211,7 @@ export function createAdmin(options: AdminOptions) {
   /** a full admin by DUSK_ADMIN_EMAILS, or the limited role the owner granted on the account */
   function roleOf(account: Pick<Account, "email" | "adminRole">): PanelRole | null {
     if (allowed.has(account.email.toLowerCase())) return "owner";
+    if (growthByEmail.has(account.email.toLowerCase())) return "growth";
     return account.adminRole && ADMIN_ROLES.includes(account.adminRole) ? account.adminRole : null;
   }
   /** every admin route: a signed-in web session (401), an admin role (403), and the CSRF header on changes */
