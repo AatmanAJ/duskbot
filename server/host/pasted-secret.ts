@@ -3,15 +3,24 @@
 import type { Message } from "../store.ts";
 import { SECRET_VALUE_MAX_BYTES } from "../secret-vault.ts";
 
-/** How far back a pasted value is still the person's answer: their last few messages on the visible branch. */
-const RECENT_PERSON_MESSAGES = 12;
+/** A pasted block counts for the whole recent conversation, not only the last few turns. */
+const RECENT_PERSON_MESSAGES = 200;
 const MIN_VALUE_LENGTH = 3;
 const LONG_VALUE = 12;
+/** Words that say what kind of secret it is, not which: NITTER_KEY, "Nitter access key" and NITTER_API_TOKEN are one. */
+const FILLER = new Set(["access", "api", "token", "tokens", "key", "keys", "secret", "secrets", "auth", "bearer", "credential",
+  "credentials", "the", "my", "your", "a", "an", "for", "personal", "private", "mcp", "server", "service"]);
 
-function nameSource(name: string): string | null {
-  const words = name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-  if (!words.length) return null;
-  return words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[\\s_.-]*");
+const wordsOf = (name: string) => name.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** Two names for one secret: the same words, or the same words once the kind words (key, token, access...) are set aside. */
+export function sameSecretName(a: string, b: string): boolean {
+  const left = wordsOf(a), right = wordsOf(b);
+  if (!left.length || !right.length) return false;
+  if (left.join(" ") === right.join(" ")) return true;
+  const core = (words: string[]) => [...new Set(words.filter((word) => !FILLER.has(word)))].sort().join(" ");
+  const leftCore = core(left);
+  return leftCore !== "" && leftCore === core(right);
 }
 
 /** A key, token or address, not a word of prose ("Hindsight token: here it is") or a placeholder. */
@@ -21,32 +30,36 @@ function looksLikeValue(value: string): boolean {
   return /\d/.test(value) || value.length >= LONG_VALUE;
 }
 
-/** The value written under `name` in one line of text, if any. */
-export function valueUnderName(text: string, name: string): string | null {
-  const source = nameSource(name);
-  if (!source) return null;
-  const pattern = new RegExp(
-    `(?:^|[^\\p{L}\\p{N}_])(?:export\\s+)?${source}["'\`]?\\s*[=:]\\s*["'\`]?([^\\s"'\`]+)`,
-    "iu",
-  );
+const ENV_PAIR = /(?:^|[^\w$])(?:export\s+)?([A-Za-z][A-Za-z0-9_]*)\s*=\s*["'`]?([^\s"'`]+)/g;
+const LABEL_PAIR = /^[\s>*\-•]*(?:export\s+)?(\p{L}[\p{L}\p{N}_ .-]{0,60}?)\s*[:=]\s*["'`]?([^\s"'`]+)/u;
+
+/** Every name and value written as NAME=value or "Some name: value" in a text, in reading order. */
+export function namedValues(text: string): Array<{ name: string; value: string }> {
+  const out: Array<{ name: string; value: string }> = [];
   for (const line of text.split(/\r?\n/)) {
-    const value = pattern.exec(line)?.[1]?.replace(/[,;.]+$/, "");
-    if (value && looksLikeValue(value)) return value;
+    const labelled = LABEL_PAIR.exec(line);
+    if (labelled) out.push({ name: labelled[1]!.trim(), value: labelled[2]! });
+    for (const pair of line.matchAll(ENV_PAIR)) {
+      if (!labelled || pair[1] !== labelled[1]!.trim()) out.push({ name: pair[1]!, value: pair[2]! });
+    }
   }
-  return null;
+  return out.map(({ name, value }) => ({ name, value: value.replace(/[,;.]+$/, "") })).filter(({ value }) => looksLikeValue(value));
 }
 
-/** The newest value the person wrote under any of `names` in their own recent messages; never a bot's text. */
+/** The value written under a name that means `name` in one text, if any. */
+export function valueUnderName(text: string, name: string): string | null {
+  return namedValues(text).find((pair) => sameSecretName(pair.name, name))?.value ?? null;
+}
+
+/** The newest value the person wrote under any of `names` in their own messages on this branch; never a bot's text. */
 export function pastedSecret(path: readonly Message[], names: readonly string[]): string | null {
   let seen = 0;
   for (let index = path.length - 1; index >= 0 && seen < RECENT_PERSON_MESSAGES; index--) {
     const message = path[index]!;
     if (message.role !== "user" || typeof message.text !== "string") continue;
     seen++;
-    for (const name of names) {
-      const value = valueUnderName(message.text, name);
-      if (value) return value;
-    }
+    const pairs = namedValues(message.text).reverse();
+    for (const pair of pairs) if (names.some((name) => sameSecretName(pair.name, name))) return pair.value;
   }
   return null;
 }

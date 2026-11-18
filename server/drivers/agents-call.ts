@@ -963,6 +963,6 @@ async function requestCustomSecret(args: Json, context: ToolCallContext): Promis
   const vault = r.body.vault === "removed" ? ` The service said the saved ${label} is wrong, so dusk bot removed it from the Vault; the card tells the person and asks for a new one, so do not repeat that.`
     : r.body.vault === "flagged" ? ` The saved ${label} may be wrong, so dusk bot marked it for the person to check; the card asks them for a new one, so do not repeat that.` : "";
   return {
-    text: `A secure card for ${label} is now in this conversation, in the app and on a QR-paired phone, and the person was notified. If they can't find it, tell them it is in this conversation, and the notification opens it.${asked}${vault} End this turn now and say in one line that you are waiting for it; dusk bot resumes you when the person saves or declines, and tells you how to use it. Never ask for it in chat.`,
+    text: `A secure card for ${label} is now in this conversation, in the app and on a QR-paired phone, and the person was notified. If they can't find it, tell them it is in this conversation, and the notification opens it.${asked}${vault} End this turn now with one short line in Sentence case, such as "Add your ${label} in the card above.", and nothing more; dusk bot resumes you when the person saves or declines, and tells you how to use it. Never ask for it in chat.`,
   };
 }
