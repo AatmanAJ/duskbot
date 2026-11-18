@@ -78,6 +78,14 @@ export interface LimitHoldDeps {
   language?(threadId: string): string | undefined;
 }
 
+const WAITING_SCOPES: ReadonlySet<string> = new Set(["engine", "model"]);
+
+/** Whether a turn its AI's usage limit refused before it began waits for the reset, as one refused mid-turn does: the
+ * person's own request, or a held turn's resume (which then backs off). */
+export function refusedStartWaits(scope: string | undefined, turn: { person: boolean; resuming: boolean }): boolean {
+  return scope !== undefined && WAITING_SCOPES.has(scope) && (turn.person || turn.resuming);
+}
+
 export function resumeNote(held: Pick<HeldTurn, "engineName" | "request">, list: Checklist | null): string {
   const asked = held.request ? ` The person's request was: "${quoteInNote(held.request, REQUEST_QUOTE_MAX)}".` : "";
   const base = `[dusk bot: your previous turn here was cut off because ${held.engineName}'s usage limit was reached. The limit has reset.${asked} ` +
@@ -240,6 +248,11 @@ export function createLimitHold(deps: LimitHoldDeps) {
     /** Ends the wait: the person pressed Stop, sent another message, or chose another way on. */
     cancel(threadId: string): boolean {
       return Boolean(drop(threadId));
+    },
+
+    /** A resume of this conversation's held turn is under way. */
+    resuming(threadId: string): boolean {
+      return turns.get(threadId)?.resuming === true;
     },
 
     held(threadId: string): HeldTurn | undefined {
