@@ -224,12 +224,75 @@ describe("mobile HTTP forwarding", () => {
     expect(reached).toHaveBeenCalledTimes(2);
   });
 
-  it("refuses an unremembered bearer before reaching the harness", async () => {
-    const reached = vi.fn((_req: IncomingMessage, res: Parameters<RequestListener>[1]) => res.end());
-    const app = await fixture(reached);
-    const response = await fetch(`${app.url}/api/bots`, { headers: auth });
-    expect(response.status).toBe(401);
-    expect(reached).not.toHaveBeenCalled();
+  it("answers an unknown session with 503, never the 401 that unpairs a phone, and asks the harness once a minute", async () => {
+    const paths: string[] = [];
+    const app = await fixture((req, res) => { paths.push(req.url!); res.writeHead(401).end(); });
+    const response = await fetch(`${app.url}/api/auth/session`, { headers: auth });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "not_here" });
+    expect(paths.sort()).toEqual(["/api/auth/session", "/api/mobile/device"]);
+    expect((await fetch(`${app.url}/api/bots`, { headers: auth })).status).toBe(503);
+    expect(paths).toHaveLength(2);
+    expect(app.mobile.has(TOKEN)).toBe(false);
+  });
+
+  it("admits a phone paired through the relay once the harness says it is one of its phones", async () => {
+    const seen: IncomingMessage[] = [];
+    const app = await fixture((req, res) => {
+      seen.push(req);
+      if (req.url === "/api/mobile/device") return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ device: { id: "relay-phone" } }));
+      if (req.url === "/api/auth/session") return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ kind: "session", environmentId: "env-a" }));
+      res.end("bots");
+    });
+    const response = await fetch(`${app.url}/api/bots`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: "{\"name\":\"x\"}" });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("bots");
+    expect(app.mobile.has(TOKEN)).toBe(true);
+    expect(app.mobile.environmentOf(TOKEN)).toBe("env-a");
+    for (const req of seen) {
+      expect(req.headers.authorization).toBe(auth.authorization);
+      expect(req.headers["x-forwarded-for"]).toBe("127.0.0.1");
+      noCompanionHeaders(req);
+    }
+    expect(seen.map((req) => req.url).sort()).toEqual(["/api/auth/session", "/api/bots", "/api/mobile/device"]);
+  });
+
+  it("refuses a live session that is not a phone as before", async () => {
+    const app = await fixture((req, res) => res.writeHead(req.url === "/api/mobile/device" ? 404 : 200).end("{}"));
+    expect((await fetch(`${app.url}/api/bots`, { headers: auth })).status).toBe(401);
+    expect(app.mobile.has(TOKEN)).toBe(false);
+  });
+
+  it("says the harness is down, not refused, when it does not answer", async () => {
+    const app = await fixture((_req, res) => res.destroy());
+    expect((await fetch(`${app.url}/api/auth/session`, { headers: auth })).status).toBe(502);
+  });
+
+  it("keeps a phone of another workspace while that workspace is not the one running", async () => {
+    let environmentId = "env-b";
+    const app = await fixture((req, res) => {
+      if (req.url === "/.well-known/duskbot/environment") return res.writeHead(200).end(JSON.stringify({ environmentId }));
+      res.writeHead(401).end("{}");
+    });
+    app.mobile.remember(TOKEN, "phone", "env-a");
+    const elsewhere = await fetch(`${app.url}/api/auth/session`, { headers: auth });
+    expect(elsewhere.status).toBe(503);
+    expect(app.mobile.has(TOKEN)).toBe(true);
+    environmentId = "env-a";
+    expect((await fetch(`${app.url}/api/auth/session`, { headers: auth })).status).toBe(401);
+    expect(app.mobile.has(TOKEN)).toBe(false);
+  });
+
+  it("caps harness lookups for unknown sessions at 30 a minute", async () => {
+    let lookups = 0;
+    const app = await fixture((_req, res) => { lookups += 1; res.writeHead(401).end(); });
+    const statuses: number[] = [];
+    for (let i = 0; i < 32; i += 1) {
+      const token = `dusk_sess_${String(i).padStart(43, "b")}`;
+      statuses.push((await fetch(`${app.url}/api/bots`, { headers: { authorization: `Bearer ${token}` } })).status);
+    }
+    expect(statuses.every((status) => status === 503)).toBe(true);
+    expect(lookups).toBe(60);
   });
 
   it("forgets a session on harness 401 and closes the next request at the sidecar", async () => {
@@ -243,8 +306,8 @@ describe("mobile HTTP forwarding", () => {
     expect(await first.text()).toBe("revoked");
     expect(mobile.has(TOKEN)).toBe(false);
     expect(createMobileSessions({ file }).has(TOKEN)).toBe(false);
-    expect((await fetch(`${app.url}/api/bots`, { headers: auth })).status).toBe(401);
-    expect(reached).toHaveBeenCalledTimes(1);
+    expect((await fetch(`${app.url}/api/bots`, { headers: auth })).status).toBe(503);
+    expect(reached.mock.calls.map(([req]) => req.url).sort()).toEqual(["/api/auth/session", "/api/bots", "/api/mobile/device"]);
   });
 
   it("refuses Origin on redemption and remembered sessions before any authentication", async () => {
@@ -382,7 +445,7 @@ describe("mobile WebSocket forwarding", () => {
     expect(response.statusCode).toBe(401);
     expect((await bodyOf(response)).toString()).toBe('{"error":"revoked"}');
     expect(app.mobile.has(TOKEN)).toBe(false);
-    expect((await fetch(`${app.url}/api/bots`, { headers: auth })).status).toBe(401);
+    expect((await fetch(`${app.url}/api/bots`, { headers: auth })).status).toBe(503);
   });
 
   it.each(["origin", "unremembered"])("refuses %s upgrade before reaching the harness", async (reason) => {

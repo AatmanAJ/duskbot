@@ -8,6 +8,7 @@ import type { TLSSocket } from "node:tls";
 
 import { bearerToken } from "./devices.ts";
 import type { createMobileSessions } from "./mobile.ts";
+import { createMobileAdmission, NOT_HERE, sessionEndedHere } from "./mobile-admit.ts";
 import {
   COMPANION_ENDPOINT_KINDS,
   MAX_COMPANION_ENDPOINTS,
@@ -259,7 +260,12 @@ const forgetMobile = (options: ProxyOptions, token: string): void => {
   }
 };
 
-function forwardMobile(req: IncomingMessage, res: ServerResponse, options: ProxyOptions, token?: string): void {
+type Admission = ReturnType<typeof createMobileAdmission>;
+
+const endedHere = (options: ProxyOptions, admission: Admission, token: string): Promise<boolean> =>
+  sessionEndedHere(options.mobile?.environmentOf(token) ?? null, () => admission.environment());
+
+function forwardMobile(req: IncomingMessage, res: ServerResponse, options: ProxyOptions, admission: Admission, token?: string): void {
   const redeem = token === undefined;
   const headers = { ...forwardHeaders(req, undefined, undefined, false), ...remoteHeaders(req) };
   if (redeem) {
@@ -277,7 +283,19 @@ function forwardMobile(req: IncomingMessage, res: ServerResponse, options: Proxy
     headers,
   }, (harness) => {
     clearTimeout(deadline);
-    if (token && harness.statusCode === 401) forgetMobile(options, token);
+    if (token && harness.statusCode === 401) {
+      void endedHere(options, admission, token).then((ended) => {
+        if (!ended) {
+          harness.resume();
+          return sendJson(res, NOT_HERE.status, NOT_HERE.body);
+        }
+        forgetMobile(options, token);
+        res.writeHead(401, responseHeaders(harness.headers));
+        harness.on("error", () => res.destroy());
+        harness.pipe(res);
+      });
+      return;
+    }
     if (redeem) {
       void readBytes(harness, 256 * 1024).then((body) => {
         if (harness.statusCode === 200) {
@@ -288,7 +306,7 @@ function forwardMobile(req: IncomingMessage, res: ServerResponse, options: Proxy
             parsed = null;
           }
           if (typeof parsed?.token === "string" && typeof parsed?.device?.id === "string") {
-            options.mobile?.remember(parsed.token, parsed.device.id);
+            options.mobile?.remember(parsed.token, parsed.device.id, typeof parsed.workspace?.environmentId === "string" ? parsed.workspace.environmentId : null);
           }
         }
         res.writeHead(harness.statusCode ?? 502, {
@@ -338,7 +356,7 @@ function forwardMobile(req: IncomingMessage, res: ServerResponse, options: Proxy
   }
 }
 
-function upgradeMobile(req: IncomingMessage, socket: Duplex, head: Buffer, options: ProxyOptions, token: string): void {
+function upgradeMobile(req: IncomingMessage, socket: Duplex, head: Buffer, options: ProxyOptions, admission: Admission, token: string): void {
   const headers: Record<string, string> = {
     authorization: `Bearer ${token}`,
     upgrade: String(req.headers.upgrade ?? "websocket"),
@@ -386,9 +404,16 @@ function upgradeMobile(req: IncomingMessage, socket: Duplex, head: Buffer, optio
     peer.on("close", close);
     socket.pipe(peer).pipe(socket);
   });
-  upstream.on("response", (harness) => {
+  upstream.on("response", async (harness) => {
     clearTimeout(deadline);
-    if (harness.statusCode === 401) forgetMobile(options, token);
+    if (harness.statusCode === 401) {
+      if (!await endedHere(options, admission, token)) {
+        harness.resume();
+        socket.end(`HTTP/1.1 503 Service Unavailable\r\ncontent-type: application/json\r\nconnection: close\r\n\r\n${JSON.stringify(NOT_HERE.body)}`);
+        return;
+      }
+      forgetMobile(options, token);
+    }
     writeHeaders(harness, `${harness.statusCode ?? 502} ${harness.statusMessage ?? ""}`, false);
     harness.on("error", () => socket.destroy());
     socket.on("close", () => harness.destroy());
@@ -445,7 +470,25 @@ function harnessControlCheck(options: ProxyOptions) {
   });
 }
 
+/** an unremembered session: the harness says whether it is one of its phones, paired through the relay */
+async function admitMobile(options: ProxyOptions, admission: Admission, req: IncomingMessage, token: string): Promise<{ status: number; body: unknown } | "forward" | "not-phone"> {
+  const verdict = await admission.admit(token, remoteHeaders(req));
+  if (verdict.kind === "phone") {
+    try {
+      options.mobile?.remember(token, verdict.deviceId, verdict.environmentId);
+    } catch {
+      console.warn("companion: could not save a relay-paired phone");
+    }
+    return "forward";
+  }
+  if (verdict.kind === "not-phone") return "not-phone";
+  if (verdict.kind === "unknown") return NOT_HERE;
+  if (verdict.kind === "limited") return { status: 503, body: { error: "too many phone checks; try again in a minute", code: "limited" } };
+  return { status: 502, body: { error: "dusk bot is not running on this computer" } };
+}
+
 export function createProxyHandler(options: ProxyOptions) {
+  const admission = createMobileAdmission({ harnessPort: options.harnessPort });
   const viewers = new CompanionViewerRelay({ checkControl: harnessControlCheck(options) });
   const capabilityStreams = new Map<string, Set<() => void>>();
   const handle = function handle(req: IncomingMessage, res: ServerResponse): void {
@@ -472,11 +515,21 @@ export function createProxyHandler(options: ProxyOptions) {
       while (redeemCalls.length && redeemCalls[0] <= now - 60_000) redeemCalls.shift();
       if (redeemCalls.length >= 20) return sendJson(res, 429, { error: "too many mobile pairing attempts" });
       redeemCalls.push(now);
-      forwardMobile(req, res, options);
+      forwardMobile(req, res, options, admission);
       return;
     }
     if (hasTokenPrefix(token, "sess") && options.mobile?.has(token)) {
-      forwardMobile(req, res, options, token);
+      forwardMobile(req, res, options, admission, token);
+      return;
+    }
+    if (hasTokenPrefix(token, "sess") && options.mobile && !options.authenticate(token)) {
+      req.pause();
+      void admitMobile(options, admission, req, token!).then((verdict) => {
+        if (verdict === "forward") return forwardMobile(req, res, options, admission, token);
+        req.resume();
+        if (verdict === "not-phone") return sendJson(res, 401, { error: "pair this device from Remote access settings on the host computer" });
+        sendJson(res, verdict.status, verdict.body);
+      });
       return;
     }
     const device = options.authenticate(token);
@@ -847,7 +900,14 @@ export function createProxyHandler(options: ProxyOptions) {
         socket.destroy();
         return;
       }
-      upgradeMobile(req, socket, head, options, token);
+      upgradeMobile(req, socket, head, options, admission, token);
+      return;
+    }
+    if (hasTokenPrefix(token, "sess") && options.mobile && requestTarget(req.url) && !options.authenticate(token)) {
+      void admitMobile(options, admission, req, token!).then((verdict) => {
+        if (verdict === "forward") upgradeMobile(req, socket, head, options, admission, token!);
+        else socket.destroy();
+      });
       return;
     }
     const device = options.authenticate(token);
