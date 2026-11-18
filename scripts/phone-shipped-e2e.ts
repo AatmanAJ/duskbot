@@ -5,9 +5,13 @@
 // restart, a dropped tunnel, a Wi-Fi-only phone and unpairing from either end, checking where each phone ends up.
 //   node --experimental-strip-types scripts/phone-shipped-e2e.ts
 // It never touches the live relay or the person's app: everything listens on 127.0.0.1 and lives in temp folders.
+//   node --experimental-strip-types scripts/phone-shipped-e2e.ts --prod
+// runs the pairing, chat, hub-down fallback and removal through the production link node (https://link.dusk.bot) with a
+// test account on the preview account service (phone-e2e@qa.dusk.test: never mailed, its code read from the preview
+// test mailbox), and ends the tunnel it made.
 import { spawn, type ChildProcess } from "node:child_process";
 import { generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto";
-import { mkdtempSync, openSync, closeSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, openSync, closeSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,8 +20,9 @@ import { fileURLToPath } from "node:url";
 import { createMobileSessions } from "../apps/companion/src/mobile.ts";
 import { createProxyHandler } from "../apps/companion/src/proxy.ts";
 import { createLinkService } from "../apps/link-service/src/app.mjs";
-import { createPhoneRelay } from "../electron/phone-relay.mjs";
+import { createPhoneRelay, PHONE_RELAY_BASE } from "../electron/phone-relay.mjs";
 import { universalPairLink, type MobilePairingResponse } from "../shared/mobile-link.ts";
+import { smokeAccount } from "./smoke/account.mjs";
 import { waitForExit } from "../server/testing/cleanup.ts";
 import { launchVerificationServer, verificationServerArgs, verificationServerEnvironment, type VerificationServer } from "./control-dusk.ts";
 import { fakePlatform, loadShippedPhone, SHIPPED_PHONES, type FakePlatform, type PhoneRecord, type PhoneTransport, type ShippedPhone } from "./testing/shipped-phone.ts";
@@ -26,6 +31,7 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const LINK = join(ROOT, "apps", "link-service");
 const OWNER = randomBytes(32).toString("base64url");
 const ACCT = "0123456789abcdef0123456789abcdef";
+const PROD = process.argv.includes("--prod");
 
 const results: Array<{ step: string; ok: boolean; detail?: string }> = [];
 function check(step: string, ok: boolean, detail?: string) {
@@ -186,8 +192,19 @@ async function main() {
     check("harness in desktop mode makes a bot for the owner", bot.status < 300 && typeof botId === "string", `${bot.status}`);
 
     const signer = grantSigner();
-    const link = await linkNode(join(scratch, "link"), signer.keys);
-    cleanups.push(() => link.stop().catch(() => {}));
+    let link: Awaited<ReturnType<typeof linkNode>>;
+    let linkGrant: () => Promise<string | null>;
+    if (PROD) {
+      mkdirSync(join(scratch, "account"), { recursive: true });
+      const account = await smokeAccount({ root: ROOT, profile: join(scratch, "account"), email: "phone-e2e@qa.dusk.test" });
+      check("a test account signs in on the preview account service", account.state.status === "connected", account.how);
+      linkGrant = () => account.client.linkGrant();
+      link = { base: () => PHONE_RELAY_BASE, store: () => { throw new Error("production has no local store"); }, stop: async () => {}, start: async () => {} };
+    } else {
+      link = await linkNode(join(scratch, "link"), signer.keys);
+      cleanups.push(() => link.stop().catch(() => {}));
+      linkGrant = async () => signer.grant();
+    }
 
     const mobile = createMobileSessions({ file: join(scratch, "companion", "mobile-sessions.json") });
     const proxy = createProxyHandler({ harnessPort: desk.port, mobile, authenticate: () => null, redeem: () => ({ error: "not here" }), serverName: () => "E2E Mac" });
@@ -198,7 +215,7 @@ async function main() {
 
     const kept = new Map<string, unknown>();
     const relay = createPhoneRelay({
-      base: link.base(), wanted: () => true, signedIn: () => true, linkGrant: async () => signer.grant(), label: () => "E2E Mac phones",
+      base: link.base(), wanted: () => true, signedIn: () => true, linkGrant, label: () => "E2E Mac phones",
       store: { read: async (at: string) => structuredClone(kept.get(at) ?? null), write: async (at: string, value: unknown) => { kept.set(at, structuredClone(value)); } },
       loadHub: () => import("../apps/link-service/agent.mjs"), port: () => desk.port, ownerToken: () => OWNER, scope: () => "e2e",
       checkMs: 500, retryMs: [300, 1000], log: (line: string) => { if (process.env.E2E_VERBOSE) console.log(`  [desk] ${line}`); },
@@ -207,6 +224,15 @@ async function main() {
     cleanups.push(() => relay.stop());
     const tunnel = () => (kept.get("e2e") as { tunnel?: { id: string; token: string; base: string } } | undefined)?.tunnel ?? null;
     check("the desktop makes its tunnel and the hub comes up", (await relay.ready(15_000)).status === "ready", JSON.stringify(relay.state()));
+    // the tunnel this run made is ended whatever happens, so it never holds one of the account's slots
+    cleanups.push(async () => {
+      const made = tunnel();
+      if (!PROD || !made) return;
+      relay.stop();
+      const ended = await fetch(`${made.base}/v1/tunnels/${made.id}`, { method: "DELETE", headers: { authorization: `Bearer ${made.token}` }, signal: AbortSignal.timeout(15_000) }).then((res) => res.status, () => 0);
+      const after = await fetch(`${made.base}/v1/tunnels/${made.id}/node`, { headers: { authorization: `Bearer ${made.token}` }, signal: AbortSignal.timeout(15_000) }).then((res) => res.status, () => 0);
+      check(`the production tunnel ${made.id} is ended`, ended === 200 && after === 404, `DELETE ${ended}, then ${after}`);
+    });
 
     const pair = async (name: string, kind: "ios" | "android", how: "qr" | "code", expect: "relay" | "companion"): Promise<Phone | null> => {
       if (expect === "relay") await relay.ready(15_000);
@@ -245,6 +271,23 @@ async function main() {
     await expectRoute(android, "opens on the relay and chats", onRelay, true);
     const devices = await owner(desk.url, "GET", "/api/mobile/devices");
     check("the desktop lists both phones, each on the relay", devices.body?.devices?.filter((device: { relay: boolean }) => device.relay).length === 2, `${devices.body?.devices?.length}`);
+
+    if (PROD) {
+      // the computer's hub down (the app quit or asleep) while link.dusk.bot stays up: the phones' frames wait unread
+      relay.stop();
+      await expectRoute(iphone, "hub down: falls back to Wi-Fi and is not unpaired", onCompanion, true);
+      await expectRoute(android, "hub down: falls back to Wi-Fi and is not unpaired", onCompanion);
+      relay.start();
+      check("the hub comes back on the same tunnel", (await relay.ready(15_000)).status === "ready", JSON.stringify(relay.state()));
+      const back = await until(async () => (await launch(iphone).then((outcome) => { const route = routeOf(outcome); closeRoute(outcome); return route === "relay"; })), 60_000);
+      check("iPhone 1.2: back on the relay", Boolean(back));
+      for (const phone of [iphone, android]) {
+        const removed = await owner(desk.url, "DELETE", `/api/mobile/devices/${phone.record.deviceId}`);
+        check(`the desktop removes ${phone.name}`, removed.status === 200, `${removed.status}`);
+        await expectRoute(phone, "removed on the desktop: unpairs", (route) => route === "refused");
+      }
+      return;
+    }
 
     // the relay down: the shipped apps walk on to the computer's Wi-Fi address, which never saw these sessions
     await link.stop();
@@ -307,11 +350,11 @@ async function main() {
   } finally {
     for (const cleanup of cleanups.reverse()) { try { await cleanup(); } catch { /* best effort */ } }
   }
-  const failed = results.filter((result) => !result.ok);
-  console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
-  process.exit(failed.length ? 1 : 0);
 }
 
 // a phone app's relay fails what it still had in flight when its channel goes, unawaited; the web view only logs that
 process.on("unhandledRejection", (error: Error) => { if (error?.name !== "RelayGoneError") throw error; });
-await main().catch((error: Error) => { console.log(`FAIL the run stopped: ${error.stack ?? error}`); process.exit(1); });
+await main().catch((error: Error) => check("the run finished", false, error.stack ?? String(error)));
+const failed = results.filter((result) => !result.ok);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+process.exit(failed.length ? 1 : 0);
