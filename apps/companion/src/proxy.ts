@@ -6,6 +6,7 @@ import { isIP } from "node:net";
 import type { Duplex } from "node:stream";
 import type { TLSSocket } from "node:tls";
 
+import { admitPhoneAppRequest, answerPhoneAppPreflight, isPhoneAppOrigin } from "./app-origin.ts";
 import { bearerToken } from "./devices.ts";
 import type { createMobileSessions } from "./mobile.ts";
 import { createMobileAdmission, NOT_HERE, sessionEndedHere } from "./mobile-admit.ts";
@@ -497,13 +498,17 @@ export function createProxyHandler(options: ProxyOptions) {
     const path = (req.url ?? "/").split("?")[0];
     const method = req.method ?? "GET";
 
-    // A native app sends no Origin: anything with one is a browser, refused
-    // before the token is looked at.
-    if (req.headers.origin) {
-      return sendJson(res, 403, { error: "forbidden: cross-origin request" });
+    const token = bearerToken(req.headers.authorization);
+    // Native http sends no Origin. Anything with one is a browser, refused before
+    // the token is looked at, except the phone app's own WebView streaming a read.
+    const origin = req.headers.origin;
+    if (origin) {
+      if (isPhoneAppOrigin(origin) && method === "OPTIONS") return answerPhoneAppPreflight(req, res, origin);
+      if (!isPhoneAppOrigin(origin) || !admitPhoneAppRequest(req, res, origin, token)) {
+        return sendJson(res, 403, { error: "forbidden: cross-origin request" });
+      }
     }
 
-    const token = bearerToken(req.headers.authorization);
     if (method === "POST" && path === "/api/mobile/redeem") {
       if (!options.mobile) {
         const authenticated = Boolean(options.authenticate(token));
