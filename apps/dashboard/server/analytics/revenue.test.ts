@@ -11,7 +11,7 @@ const invoice = (id: string, accountId: string, subscriptionId: string | null, a
   ({ id, accountId, providerPaymentId: `pay_${id}`, subscriptionId, amountCents, currency: "USD", status, createdAt: at });
 
 describe("revenue", () => {
-  it("expects paying mrr plus the trial conversion share of trials not set to cancel, and keeps the full-price figure", () => {
+  it("drops everything set to cancel, then expects paying mrr plus the trial conversion share, and keeps the full-price figure", () => {
     const sub = (accountId: string, totalCents: number, extra: Partial<SubscriptionLike> = {}): SubscriptionLike =>
       ({ accountId, status: "active", totalCents, createdAt: T - DAY, currentPeriodStart: T - DAY, cart: { interval: "month" }, ...extra });
     const now = T + DAY, trialEnd = T + 7 * DAY;
@@ -24,11 +24,12 @@ describe("revenue", () => {
       sub("acct_trial_cancelled", 4900, { trialEndsAt: trialEnd, status: "cancelled" }),
       sub("acct_converted", 3000, { trialEndsAt: T }),
       sub("acct_gone", 9900, { status: "ended" }),
+      sub("acct_paid_cancel", 2000, { cancelAtPeriodEnd: true }),
     ];
     expect(TRIAL_CONVERSION).toBe(0.7);
-    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800, expected: 7000 + Math.round(14900 * 0.7), conversion: 0.7 });
-    // once the trials run out they count as paying in full; a cancelled trial is no longer counted
-    expect(mrrForecastAt(subs.filter(row => row.status === "active"), trialEnd, trialEnd).expected).toBe(7000 + 14900 + 9900);
+    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800 + 2000, expected: 7000 + Math.round(14900 * 0.7), conversion: 0.7 });
+    // once the trials run out they count as paying in full; anything set to cancel is gone, paying or not
+    expect(mrrForecastAt(subs.filter(row => row.status === "active"), trialEnd, trialEnd).expected).toBe(7000 + 14900);
     expect(mrrForecastAt(subs, now, now, 1).expected).toBe(7000 + 14900);
   });
 
