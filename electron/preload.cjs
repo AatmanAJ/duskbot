@@ -539,6 +539,11 @@ const bridge = {
     set: on => on !== true || isLocalPage || navigator.userActivation?.isActive === true
       ? ipcRenderer.invoke("open-at-login:set", on === true) : Promise.reject(new Error("Turn on the switch to open dusk bot at login.")),
   },
+  // An AppImage's own entry in the app menu (electron/appimage-menu-entry.mjs); this computer's page only.
+  appMenuEntry: {
+    state: () => ipcRenderer.invoke("app-menu-entry:state"),
+    set: on => ipcRenderer.invoke("app-menu-entry:set", on === true),
+  },
   setCredential: (name, value) => ipcRenderer.invoke("credential:set", name, value),
 
   /** A remote page may read the list but never change where this window goes. */

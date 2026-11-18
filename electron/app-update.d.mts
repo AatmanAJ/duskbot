@@ -40,6 +40,7 @@ export declare function updatePlace(bundle: string, writable?: (dir: string) => 
 export declare function verifiedRelease(body: unknown, keys?: readonly { kid: string; x: string }[]): { version: string; sums: string } | null;
 export declare function newer(a: string, b: string): boolean;
 export declare function zipIn(sums: string, version: string, arch: string): { name: string; sha256: string } | null;
+export declare function assetIn(sums: string, name: string): { name: string; sha256: string } | null;
 export declare function setupIn(sums: string, version: string): { name: string; sha256: string } | null;
 export declare function setupSources(version: string, name: string): string[];
 export declare function developerIdSigned(bundle: string, run?: (file: string, args: string[]) => Promise<string>): Promise<boolean>;
