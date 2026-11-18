@@ -56,8 +56,8 @@ export function spotFor(update: AppUpdateState, asked: boolean, restarting: bool
 
 /**
  * The sidebar's one spot above the account row: Give feedback, until this computer's app has an update. A mac that installs
- * or a Windows install that installs its own (electron/app-update.mjs) downloads it on a press and restarts into it once
- * ready; one that can't says what to do (move to Applications, or download from dusk.bot), and Linux downloads its installer.
+ * or a Windows install or Linux AppImage that installs its own (electron/app-update.mjs) downloads it on a press and restarts into it once
+ * ready; one that can't says what to do (move to Applications, or download from dusk.bot), and a .deb downloads its installer.
  */
 export function useSidebarSpot(bridge: AppUpdateBridge | undefined = ownBridge()) {
   const [update, setUpdate] = useState<AppUpdateState>({ ready: null });
