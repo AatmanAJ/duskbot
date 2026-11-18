@@ -406,10 +406,10 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
 .dusk-mobile [data-mobile-chat] [data-message-row][data-time]::after {
   content: attr(data-time);
   position: absolute;
-  inset-inline-end: -60px;
+  inset-inline-end: -72px;
   top: 50%;
   translate: 0 -50%;
-  width: 52px;
+  width: 66px;
   text-align: end;
   font-size: 13px;
   line-height: 16px;

@@ -2,7 +2,7 @@ import { canScroll } from "./gesture";
 import { prefersReducedMotion, rubberband } from "./motion";
 
 /** how far the transcript slides to show the times beside it */
-export const TIMES_GUTTER = 64;
+export const TIMES_GUTTER = 76;
 /** a drag this far in either direction decides what it is */
 const DECIDE = 10;
 /** from the screen's left edge a drag is the page's swipe back, never this */
