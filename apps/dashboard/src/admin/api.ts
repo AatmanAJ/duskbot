@@ -150,7 +150,7 @@ export interface Overview {
   bots: { workspaces: number; bots: number; turns30d: number };
 }
 export interface UserRow {
-  id: string; email: string; name: string | null; createdAt: number; methods: string[]; plan: { plan: string | null; status: string } | null;
+  id: string; email: string; name: string | null; createdAt: number; methods: string[]; plan: { plan: string | null; status: string; trial?: boolean } | null;
   clouds: number; devices: number; platforms: string[]; lastSeenAt: number | null; optOut: boolean;
 }
 export interface CloudRow {

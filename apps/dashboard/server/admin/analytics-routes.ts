@@ -14,7 +14,7 @@ import { paymentsOf, revenueReport } from "../analytics/revenue.ts";
 import { aligned, firstSeenOf, newVsReturningTally, peakHoursTally } from "../analytics/insights.ts";
 import { billingSteps, firstSourceOf, sessionsOf, spendOf, timeToPayOf, whereOf } from "../analytics/profile.ts";
 import type { StoredSubscription } from "../billing/store.ts";
-import { accountMrr, billingCardOf, livesOf, paysOf, subscriptionReport, type SubscriptionsInput } from "../analytics/subscriptions.ts";
+import { billingCardOf, paysOf, subscriptionReport, type SubscriptionsInput } from "../analytics/subscriptions.ts";
 import { LEDGER_LABELS } from "../billing/ledger.ts";
 import { BILLING_CONFIG } from "../billing/plans.ts";
 import { quote } from "../billing/pricing.ts";
@@ -330,6 +330,14 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
         page: event.ctx?.page ?? (typeof event.props.path === "string" ? event.props.path : null), goal: typeof event.props.goal === "string" ? event.props.goal : null,
         source: event.ctx?.source ?? null, country: where?.country ?? event.ctx?.country ?? null, city: where?.city ?? event.ctx?.city ?? null, lat: where?.lat ?? event.ctx?.lat ?? null, lon: where?.lon ?? event.ctx?.lon ?? null };
     });
+    // a trial beginning is a billing record, not an event: it joins the feed in its place
+    for (const sub of moneyState().subscriptions) {
+      if (sub.trialEndsAt === undefined || sub.status === "pending" || sub.createdAt < since || sub.createdAt > time) continue;
+      const visitor = [...(identity.visitorsOf.get(sub.accountId) ?? [])][0], where = visitor ? geo.get(visitor) : undefined;
+      feed.push({ id: `trial_${sub.id}`, at: sub.createdAt, name: "trial_started", seed: visitor ?? sub.accountId, email: accounts.get(sub.accountId)?.email ?? null, customer: true,
+        page: null, goal: null, source: null, country: where?.country ?? null, city: where?.city ?? null, lat: where?.lat ?? null, lon: where?.lon ?? null });
+    }
+    feed.sort((a, b) => b.at - a.at);
     const latest = new Map<string, (typeof feed)[number]>();
     for (const item of feed) if (item.at >= time - 5 * 60_000 && (item.name === "site_view" || item.name === "site_goal" || item.name === "page_view") && !latest.has(item.seed)) latest.set(item.seed, item);
     const present = analytics.presence.list(time);
@@ -356,9 +364,10 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
       const row = power.get(event.accountId) ?? power.set(event.accountId, { first: event.at, seen: new Set(), opens: 0, sent: 0, replies: 0, features: 0, lastAt: 0 }).get(event.accountId)!;
       row.first = Math.min(row.first, event.at); row.seen.add(Math.floor(event.at / DAY)); row.lastAt = Math.max(row.lastAt, event.at);
     }
+    const trialing = new Set(moneyState().subscriptions.filter(sub => sub.status === "active" && sub.trialEndsAt !== undefined && sub.trialEndsAt > time).map(sub => sub.accountId));
     // people in the order they were first seen, so equal rows keep their order
     const users = [...power].sort((a, b) => a[1].first - b[1].first).filter(([id]) => accounts.has(id)).map(([id, row]) => ({ id, email: accounts.get(id)!.email, name: accounts.get(id)!.name, ...face(accounts.get(id)!),
-      activeDays: [...row.seen].filter(day => days.get(id)?.has(day)).length, opens: row.opens, sent: row.sent, replies: row.replies, features: row.features, lastAt: row.lastAt, customer: p.paid.has(id) }))
+      activeDays: [...row.seen].filter(day => days.get(id)?.has(day)).length, opens: row.opens, sent: row.sent, replies: row.replies, features: row.features, lastAt: row.lastAt, customer: p.paid.has(id), trial: trialing.has(id) }))
       .sort((a, b) => b.activeDays - a.activeDays || b.sent - a.sent).slice(0, 25);
     return { now: time, cohorts, power: users };
   }
@@ -420,7 +429,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     await attribute(paying, identity, since);
     return { input: subscriptionInput(activity), seen, identity };
   }
-  /** visitor, signup, checkout, paid and still paying a month after: people first seen in the window */
+  /** visitor, signup, trial started and trial converted (of the trials already over): people first seen in the window */
   function revenueFunnel(input: SubscriptionsInput, seen: ReadonlyMap<string, { visitor: string; start: number }>, identity: ReturnType<typeof identityOf>, days: number) {
     const time = now(), from = time - days * DAY;
     const first = new Map<string, number>();
@@ -429,16 +438,15 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
       if (!first.has(who) || first.get(who)! > start) first.set(who, start);
     }
     for (const [id, account] of input.accounts) if (!first.has(id) || first.get(id)! > account.createdAt) first.set(id, account.createdAt);
-    const pays = paysOf(input), lives = livesOf(input, pays, time);
-    const firstPaid = new Map<string, number>();
-    for (const life of lives) if (!life.comp && (!firstPaid.has(life.accountId) || firstPaid.get(life.accountId)! > life.start)) firstPaid.set(life.accountId, life.start);
-    const checkout = new Set(input.checkouts.filter(row => row.source !== "ops_grant" && row.source !== "admin_comp").map(row => row.accountId));
+    const trials = new Map<string, StoredSubscription>();
+    for (const sub of input.subscriptions) if (sub.trialEndsAt !== undefined && sub.status !== "pending" && sub.source !== "ops_grant" && sub.source !== "admin_comp" && !sub.review
+      && (!trials.has(sub.accountId) || trials.get(sub.accountId)!.createdAt > sub.createdAt)) trials.set(sub.accountId, sub);
     const people = [...first].filter(([, at]) => at >= from && at < time).map(([id]) => id);
-    const signed = people.filter(id => input.accounts.has(id)), started = signed.filter(id => checkout.has(id) || firstPaid.has(id)), paid = started.filter(id => firstPaid.has(id));
-    const eligible = paid.filter(id => firstPaid.get(id)! + 30 * DAY <= time);
-    const retained = eligible.filter(id => (accountMrr(lives, firstPaid.get(id)! + 30 * DAY).get(id) ?? 0) > 0);
-    return { days, steps: [{ id: "visit", label: "visited", count: people.length }, { id: "signup", label: "signed up", count: signed.length }, { id: "checkout", label: "started checkout", count: started.length },
-      { id: "paid", label: "paid", count: paid.length }, { id: "retained", label: "still paying in month 2", count: retained.length, of: eligible.length }] };
+    const signed = people.filter(id => input.accounts.has(id)), started = signed.filter(id => trials.has(id));
+    const over = started.filter(id => trials.get(id)!.trialEndsAt! <= time);
+    const converted = over.filter(id => { const sub = trials.get(id)!; return sub.status === "active" || sub.status === "payment_problem" || (sub.status === "ended" && sub.updatedAt > sub.trialEndsAt! + 3_600_000); });
+    return { days, steps: [{ id: "visit", label: "visited", count: people.length }, { id: "signup", label: "signed up", count: signed.length },
+      { id: "trial", label: "started a trial", count: started.length }, { id: "converted", label: "trial converted", count: converted.length, of: over.length }] };
   }
   async function revenue(url: URL) {
     const days = Number(url.searchParams.get("days") ?? "90");

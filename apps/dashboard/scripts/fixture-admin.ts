@@ -170,6 +170,11 @@ function seedTrials(app: ReturnType<typeof createDashboardApp>, accounts: Seeded
     const install = `fixture-trial-${k}`, platform = k % 3 === 0 ? "win32" : "darwin";
     const ctx = { install, app: { platform, version: "0.2.20" }, country: pick(["IN", "US", "DE", "BR"]) };
     void app.analytics.sink.insert({ id: `ev_trial_id_${k}`, name: "identify", at: start - 60_000, accountId: account.id, props: { via: "app" }, ctx });
+    // the site visit that brought them, so the overview's cards can credit the trial
+    const visitor = `vtrial${k}`.padEnd(22, "x"), [source, channel] = ([["X", "social"], ["Google", "search"], ["ChatGPT", "ai"], ["Hacker News", "referral"]] as const)[k % 4]!;
+    void app.analytics.sink.insert({ id: `ev_trial_vid_${k}`, name: "identify", at: start - 50_000, accountId: account.id, props: { via: "page" }, ctx: { visitor } });
+    void app.analytics.sink.insert({ id: `ev_trial_site_${k}`, name: "site_view", at: start - 2 * 3_600_000, accountId: null, props: { path: "/" },
+      ctx: { visitor, session: `strial${k}`, pv: `pvtrial${k}`, page: "/", host: "dusk.bot", source, channel, country: ctx.country, device: "desktop", os: "mac", browser: k % 2 ? "chrome" : "safari" } });
     for (const [name, props, after] of [["onboarding_step", { step: "name" }, -40_000], ["onboarding_done", {}, -20_000], ["app_open", { kind: "desktop", platform, appVersion: "0.2.20" }, 0],
       ["first_bot_reply", {}, 120_000]] as const) void app.analytics.sink.insert({ id: `ev_trial_${name}_${k}`, name, at: start + after, accountId: account.id, props, ctx });
     for (let d = 0; start + d * DAY < now; d++) {

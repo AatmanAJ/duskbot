@@ -3,6 +3,7 @@ import { cx, Segmented } from "../ui/kit";
 import { Nil, Table, Td, Th } from "../ui/table";
 import { ago } from "../lib/format";
 import { useNow } from "../lib/now";
+import { Link } from "../lib/router";
 import { AnimatePresence } from "../ui/motion";
 import { useAdmin } from "./api";
 import { usd } from "./kit";
@@ -53,6 +54,23 @@ const COLUMNS: Array<{ key: Key; label: string; end?: boolean; value(row: Subscr
   { key: "platform", label: "platform", value: (row) => row.platforms.join(",") },
   { key: "where", label: "bots run", value: (row) => `${row.places.join(",")}${row.cloud ?? ""}` },
 ];
+
+interface TrialTotals { active: number; cancelling: number; mrrAtStake: number; ended: number; converted: number; conversion: number | null }
+/** the free trials in one line, over the revenue page's money: what is running, what it is worth, and how many finished trials paid */
+export function TrialsSummary() {
+  const { data } = useAdmin<{ trials: TrialTotals }>("/subscribers?filter=trial", 60_000);
+  const t = data?.trials;
+  const items: Array<[string, string]> = t ? [["running", n(t.active)], ["cancelling", n(t.cancelling)], ["mrr at stake", usd(t.mrrAtStake, true)],
+    ["trial to paid", t.conversion === null ? "-" : `${Math.round(t.conversion * 100)}%`], ["trials over", n(t.ended)]] : [];
+  return (
+    <section aria-label="free trials" className="mb-6 flex min-h-[46px] flex-wrap items-center gap-x-6 gap-y-2 rounded-[18px] bg-wash-sky px-4 py-2.5">
+      <Link to="/admin/subscribers" className="text-link text-13 text-ink">free trials</Link>
+      {items.map(([label, value]) => (
+        <span key={label} className="flex items-baseline gap-1.5"><span className="font-mono text-15 text-ink num">{value}</span><span className="text-12 text-ink-2">{label}</span></span>
+      ))}
+    </section>
+  );
+}
 
 /** the launch cohort in one line: what will bill, who is where in the trial, and what was taken */
 function LaunchStrip({ launch }: { launch: Launch }) {

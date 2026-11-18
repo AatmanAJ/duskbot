@@ -10,6 +10,34 @@ const identify = (accountId: string, visitor: string): StoredEvent => ({ id: `id
 const invoice = (id: string, accountId: string, subscriptionId: string | null, amountCents: number, at: number, status: InvoiceLike["status"] = "paid"): InvoiceLike =>
   ({ id, accountId, providerPaymentId: `pay_${id}`, subscriptionId, amountCents, currency: "USD", status, createdAt: at });
 
+describe("free trials", () => {
+  it("counts trials begun in the window, credits them like revenue, and says what is running and how many finished trials paid", () => {
+    const events = [view("v1", "s1", T, "X", "social", "US"), view("v2", "s2", T, "direct", "direct", "IN"), identify("acct_a", "v1"), identify("acct_b", "v2")];
+    const identity = identityOf(events), visits = visitsOf(events);
+    const trial = (accountId: string, createdAt: number, extra: Partial<SubscriptionLike> = {}): SubscriptionLike =>
+      ({ accountId, status: "active", totalCents: 2000, createdAt, currentPeriodStart: createdAt, cart: { interval: "month" }, trialEndsAt: createdAt + 3 * DAY, ...extra });
+    const now = T + 6 * DAY;
+    const subscriptions = [
+      trial("acct_a", T + DAY),
+      trial("acct_b", T + 2 * DAY, { status: "ended", updatedAt: T + 4 * DAY }),
+      trial("acct_c", T + 4 * DAY, { cancelAtPeriodEnd: true }),
+      trial("acct_d", T + 5 * DAY),
+      trial("acct_e", T - 3 * DAY),
+      { accountId: "acct_f", status: "active", totalCents: 2000, createdAt: T + DAY, currentPeriodStart: T + DAY, cart: { interval: "month" } } as SubscriptionLike,
+      trial("acct_g", T + DAY, { status: "pending" }),
+    ];
+    const base = { payments: [], subscriptions, visits, identity, accounts: new Map(), from: T, to: T + 7 * DAY, now };
+    const { trials } = revenueReport({ ...base, filters: {} });
+    expect(trials.current).toEqual({ started: 4, ended: 2, converted: 1, conversion: 0.5 });
+    expect(trials.previous).toMatchObject({ started: 1 });
+    expect(trials).toMatchObject({ active: 2, cancelling: 1, mrrAtStake: 2000 });
+    expect(trials.series).toEqual([0, 1, 1, 0, 1, 1, 0]);
+    expect(trials.cards.channel).toEqual({ social: 1, direct: 1, [NO_VISIT]: 2 });
+    expect(trials.byChannel.social).toEqual([0, 1, 0, 0, 0, 0, 0]);
+    expect(revenueReport({ ...base, filters: { country: "US" } }).trials.current.started).toBe(1);
+  });
+});
+
 describe("revenue", () => {
   it("drops everything set to cancel, then expects paying mrr plus the trial conversion share, and keeps the full-price figure", () => {
     const sub = (accountId: string, totalCents: number, extra: Partial<SubscriptionLike> = {}): SubscriptionLike =>

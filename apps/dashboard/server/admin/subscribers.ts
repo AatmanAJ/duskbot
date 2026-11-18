@@ -70,6 +70,17 @@ export function launchStrip(state: Pick<BillingState, "subscriptions" | "invoice
   return { since, label: LAUNCH_LABEL, accounts: cohort.size, mrrCents, ...counts, collectedCents };
 }
 
+export interface TrialTotals { active: number; cancelling: number; mrrAtStake: number; ended: number; converted: number; conversion: number | null }
+/** every free trial so far: what is running now, what it is worth if it converts, and how many finished trials went on to pay */
+export function trialTotals(subscriptions: readonly Sub[], now: number): TrialTotals {
+  const trials = subscriptions.filter(sub => countsAsBought(sub) && sub.trialEndsAt !== undefined);
+  const running = trials.filter(sub => sub.trialEndsAt! > now && bucketOf(sub, now) !== "cancelled");
+  const ended = trials.filter(sub => sub.trialEndsAt! <= now);
+  const converted = ended.filter(sub => sub.status === "active" || sub.status === "payment_problem").length;
+  return { active: running.length, cancelling: running.filter(sub => sub.cancelAtPeriodEnd).length, mrrAtStake: running.filter(sub => !sub.cancelAtPeriodEnd).reduce((sum, sub) => sum + monthlyOf(sub), 0),
+    ended: ended.length, converted, conversion: ended.length ? converted / ended.length : null };
+}
+
 export interface SubscriberRow {
   accountId: string; handle: string; email: string | null; name: string | null; country: string | null;
   plan: string; bucket: SubscriberBucket; status: string; reason: string | null; monthlyCents: number;

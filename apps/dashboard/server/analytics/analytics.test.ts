@@ -51,6 +51,15 @@ describe("analytics", () => {
     expect(deviceOf(chrome, { hint: "arc" }).browser).toBe("arc");
     expect(deviceOf(chrome, { hint: "netscape" }).browser).toBe("chrome");
     expect(deviceOf(SAFARI_UA, { hint: "arc" }).browser).toBe("safari");
+    const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
+    expect(deviceOf(`${iphone} Twitter for iPhone/11.20`).browser).toBe("x app");
+    expect(deviceOf(`${iphone} Barcelona 360.0.0.30.109`).browser).toBe("threads app");
+    expect(deviceOf(`${iphone} Instagram 360.0.0.30.109`).browser).toBe("instagram app");
+    expect(deviceOf(`${iphone} [FBAN/FBIOS;FBAV/490.0]`).browser).toBe("facebook app");
+    expect(deviceOf(`${iphone} [LinkedInApp]/9.30`).browser).toBe("linkedin app");
+    expect(deviceOf(iphone).browser, "an iOS web view with no app named is still Safari's engine").toBe("safari");
+    expect(deviceOf("Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122 Mobile Safari/537.36").browser).toBe("samsung");
+    expect(deviceOf(`${chrome} OPR/115.0`).browser).toBe("opera");
   });
 
   it("counts an app device active once a day, and the first bot reply once ever", async () => {

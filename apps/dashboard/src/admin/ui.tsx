@@ -113,7 +113,7 @@ export function FunnelStrip({ steps }: { steps: FunnelStep[] }) {
   );
 }
 
-const TONES: Record<string, "good" | "warn" | "bad" | "quiet" | "accent"> = {
+const TONES: Record<string, "good" | "warn" | "bad" | "quiet" | "accent"> = { trial: "accent",
   running: "good", active: "good", synced: "good", ok: "good", paid: "good",
   provisioning: "accent", checkout: "quiet", sleeping: "quiet", stopped: "quiet", destroyed: "quiet", ended: "quiet", pending: "quiet", not_configured: "quiet", cancelled: "warn",
   payment_problem: "warn", suspended: "warn", behind: "warn", destroying: "warn", error: "bad", failed: "bad", refunded: "warn",

@@ -32,7 +32,7 @@ import { isTestEvent, isTestInstall, testAccountIds, testBuyerIds, withoutAccoun
 import { moneyIn, moneyViewOf, withoutOps, type MoneyView } from "./money-mode.ts";
 import { ReadUnavailable, createReadCache } from "./read-cache.ts";
 import { SITE_VISIT_EVENTS, V2Error, overviewV2, paymentsV2, peopleV2, personV2, type V2Source } from "./v2.ts";
-import { countsAsBought, dailyMessages, launchStrip, SUBSCRIBER_FILTERS, subscriberRows, timelineOf, usageOf } from "./subscribers.ts";
+import { countsAsBought, dailyMessages, launchStrip, SUBSCRIBER_FILTERS, subscriberRows, timelineOf, trialTotals, usageOf } from "./subscribers.ts";
 import type { BugReportStore } from "../bug-reports/store.ts";
 import { quote } from "../billing/pricing.ts";
 import type { Money } from "./payments.ts";
@@ -254,7 +254,9 @@ export function createAdmin(options: AdminOptions) {
   function subsOf(accountId: string) { return billing.service.subscriptions(accountId); }
   function planOf(accountId: string) {
     const subs = subsOf(accountId).filter(sub => sub.status !== "ended" && sub.status !== "pending").sort((a, b) => b.createdAt - a.createdAt);
-    return subs[0] ? { plan: bundleLabel(subs[0].bundle), status: subs[0].status } : null;
+    if (!subs[0]) return null;
+    const time = now(), trial = store().subscriptions.some(sub => sub.accountId === accountId && sub.status === "active" && sub.trialEndsAt !== undefined && sub.trialEndsAt > time);
+    return { plan: bundleLabel(subs[0].bundle), status: subs[0].status, trial };
   }
   function lastSeen(accountId: string, sessions = directory().sessions) {
     return sessions.filter(session => session.accountId === accountId).reduce<number | null>((best, session) => best === null || session.lastSeenAt > best ? session.lastSeenAt : best, null);
@@ -460,7 +462,7 @@ export function createAdmin(options: AdminOptions) {
     const { input, state, accounts, partialBefore } = await subscriberInputs(v, null);
     const rows = subscriberRows(input);
     const counts = Object.fromEntries(SUBSCRIBER_FILTERS.map(name => [name, name === "all" ? rows.length : rows.filter(row => row.bucket === name).length]));
-    return { now: input.now, filter, counts, rows: filter === "all" ? rows : rows.filter(row => row.bucket === filter), launch: launchStrip(state, accounts, input.now), partialBefore };
+    return { now: input.now, filter, counts, rows: filter === "all" ? rows : rows.filter(row => row.bucket === filter), launch: launchStrip(state, accounts, input.now), trials: trialTotals(state.subscriptions, input.now), partialBefore };
   }
   async function subscriber(id: string, v: View) {
     const time = now(), account = v.directory().accounts.find(item => item.id === id);
