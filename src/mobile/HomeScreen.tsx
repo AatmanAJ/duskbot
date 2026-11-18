@@ -138,7 +138,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   const latestActions = useRef(actionsFor);
   latestActions.current = actionsFor;
   const native = useMemo(() => hold && ((entry: Entry): NativePress => ({
-    press: (el) => hold.press(el, () => heldChatMenu(entry, latestActions.current(entry))),
+    press: (el, opened) => hold.press(el, () => heldChatMenu(entry, latestActions.current(entry)), { onOpen: opened }),
     cancel: () => hold.cancel(),
   })), [hold]);
 
