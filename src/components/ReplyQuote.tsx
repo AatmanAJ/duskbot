@@ -104,7 +104,8 @@ export function ComposerSelectionQuote({ quote, onClear }: { quote: string; onCl
         onClick={onClear}
         aria-label={t("chat.selection.remove")}
         title={t("chat.selection.remove")}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-ink-tertiary hover:bg-ink/10 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        // -my-0.5: the 24px button never makes the row taller than the 20px text line, so the block stays even top and bottom
+        className="-my-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full text-ink-tertiary hover:bg-ink/10 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
       >
         <X size={14} strokeWidth={1.5} aria-hidden="true" />
       </button>
