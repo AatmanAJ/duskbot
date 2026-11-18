@@ -9,7 +9,7 @@ import bundledCatalog from "./dusk-models.json" with { type: "json" };
 /** Served from the site (apps/site/public/landing/releases/models.json), so a model can be added without a release. */
 export const DUSK_MODELS_URL = "https://dusk.bot/releases/models.json";
 export const DUSK_MODELS_URL_ENV = "DUSK_MODEL_CATALOG_URL";
-export const DUSK_MODELS_REFRESH_MS = 3 * 60 * 60_000;
+export const DUSK_MODELS_REFRESH_MS = 30 * 60_000;
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BYTES = 256 * 1024;
 const MAX_MODELS = 200;

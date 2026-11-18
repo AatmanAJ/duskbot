@@ -10,7 +10,7 @@ import { afterFirstEngineRead } from "./first-engine-read.ts";
 const SAFE_INSTANCE_ID = /^[\w.-]+$/;
 /** A list this server's build read this recently is used as it is at start; an older one, or one an earlier build read,
  * is read again in the background. A sleeping Cloud wakes many times an hour, and each read can start the engine's CLI. */
-export const STARTUP_MODEL_CACHE_FRESH_MS = 6 * 60 * 60_000;
+export const STARTUP_MODEL_CACHE_FRESH_MS = 60 * 60_000;
 /** Engines opened since this server started: opening one again means its key or settings just changed. */
 const openedThisRun = new Set<string>();
 
