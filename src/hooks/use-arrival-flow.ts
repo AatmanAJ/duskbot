@@ -43,13 +43,17 @@ export function visualSpring(visualDuration: number, bounce = 0): SpringTiming {
 /** How a transcript resting at its end follows a new row: one short ease that stops cleanly. A spring's long tail read
  * as the row landing and then creeping up a few more px. */
 export const FOLLOW: SpringTiming = { duration: 240, easing: "cubic-bezier(0.25, 0.46, 0.45, 0.94)" };
+/** The person's own send: the column follows on one short ease-out, the same one the bubble fades in on, and a send
+ * that lands with room to spare rises SEND_RISE_PX instead. */
+export const SEND_FLOW: SpringTiming = { duration: 200, easing: "cubic-bezier(0.22, 1, 0.36, 1)" };
+export const SEND_RISE_PX = 8;
 
 /** The column's glide from where the rows were drawn to where they now rest: `from` px below its place, back to 0. */
-export function columnGlide(column: HTMLElement, from: number): Animation | null {
+export function columnGlide(column: HTMLElement, from: number, timing: SpringTiming = FOLLOW): Animation | null {
   if (!canAnimate(column) || Math.abs(from) < 0.5) return null;
   return column.animate(
     [{ transform: `translateY(${from}px)` }, { transform: "translateY(0px)" }],
-    { duration: FOLLOW.duration, easing: FOLLOW.easing },
+    { duration: timing.duration, easing: timing.easing },
   );
 }
 
@@ -90,11 +94,11 @@ interface Snapshot {
 const canAnimate = (el: Element) => typeof (el as HTMLElement).animate === "function";
 
 /** One row's entrance: a rise with no fade, no scale and no stagger. */
-export function rowEnter(row: HTMLElement): Animation | null {
+export function rowEnter(row: HTMLElement, send = false): Animation | null {
   if (!canAnimate(row)) return null;
   return row.animate(
-    [{ transform: `translateY(${ROW_RISE_PX}px)` }, { transform: "translateY(0px)" }],
-    { duration: ROW_ENTER_MS, easing: ROW_ENTER_EASE },
+    [{ transform: `translateY(${send ? SEND_RISE_PX : ROW_RISE_PX}px)` }, { transform: "translateY(0px)" }],
+    send ? { duration: SEND_FLOW.duration, easing: SEND_FLOW.easing } : { duration: ROW_ENTER_MS, easing: ROW_ENTER_EASE },
   );
 }
 
@@ -186,7 +190,8 @@ export function useArrivalFlow({
       // running carries on from where it is drawn now
       const carried = glide.current ? glideOffset(column) : 0;
       if (glide.current) { glide.current.cancel(); rising.current.delete(glide.current); glide.current = null; }
-      const glided = columnGlide(column, shift + carried);
+      const send = arrivals.some((row) => row.getAttribute("data-arrival") === "end");
+      const glided = columnGlide(column, shift + carried, send ? SEND_FLOW : FOLLOW);
       if (glided) {
         glide.current = glided;
         glided.addEventListener("finish", () => { if (glide.current === glided) glide.current = null; });
@@ -194,7 +199,7 @@ export function useArrivalFlow({
       }
       // a row the column carries up needs no rise of its own; one landing with no glide (room already there) rises
       for (const row of glided ? [] : arrivals.filter((one) => !one.hasAttribute(OWN_ENTRANCE))) {
-        const anim = rowEnter(row);
+        const anim = rowEnter(row, row.getAttribute("data-arrival") === "end");
         if (anim) track(anim);
       }
     }

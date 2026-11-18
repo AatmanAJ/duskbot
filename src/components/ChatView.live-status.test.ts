@@ -7,7 +7,7 @@ import type { Bot, InstanceInfo, Message } from "@/state/store";
 import type { RuntimeEvent } from "../../shared/runtime-events";
 import type { ApprovalModeSelector } from "./ApprovalModeSelector";
 import type { ModelPicker } from "./ModelPicker";
-import { STATUS_HOLD_MS, STATUS_QUIET_MS } from "./TurnPresence";
+import { STATUS_DONE_EXIT_MS, STATUS_EXIT_MS, STATUS_HOLD_MS, STATUS_QUIET_MS } from "./TurnPresence";
 import { STATUS_MOUNT_MS } from "@/hooks/use-reached";
 import { TYPING_MIN_MS } from "@/hooks/use-typing-hold";
 
@@ -110,7 +110,7 @@ describe("the working line", () => {
     expect(statusLine()).toBe("Writing code");
   });
 
-  it("stays through the turn's bubbles and leaves only when the turn ends, in 140ms", () => {
+  it("stays through the turn's bubbles and leaves only when the turn ends, its words in 140ms, the mascot after a happy hop", () => {
     const reply: Message = { id: "reply", role: "bot", kind: "text", at: started + 9_000, text: "Fair, quiet day", turnId: "t1" };
     engine({ type: "turn.started" });
     render(busyBot([ask]));
@@ -118,8 +118,11 @@ describe("the working line", () => {
     expect(mascot()).not.toBeNull();
     engine({ type: "turn.completed", ok: true } as Partial<RuntimeEvent>);
     render(busyBot([ask, reply], false));
-    expect(host.querySelector(".turn-status-out"), "it leaves with a scale and fade").not.toBeNull();
-    act(() => void vi.advanceTimersByTime(140));
+    expect(host.querySelector(".turn-status-out.turn-status-done"), "a finished turn leaves happy").not.toBeNull();
+    expect(host.querySelector('[data-working-mascot][data-mood="done"]')).not.toBeNull();
+    act(() => void vi.advanceTimersByTime(STATUS_EXIT_MS));
+    expect(mascot(), "the words are gone; the mascot is still hopping").not.toBeNull();
+    act(() => void vi.advanceTimersByTime(STATUS_DONE_EXIT_MS - STATUS_EXIT_MS));
     expect(mascot()).toBeNull();
   });
 
@@ -248,7 +251,7 @@ describe("each bubble's typing beat", () => {
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS));
     expect(host.querySelector(".turn-status-out"), "the line starts leaving").not.toBeNull();
     expect(rows()).toEqual(["ask", "last"]);
-    act(() => void vi.advanceTimersByTime(140));
+    act(() => void vi.advanceTimersByTime(STATUS_DONE_EXIT_MS));
     expect(mascot()).toBeNull();
   });
 

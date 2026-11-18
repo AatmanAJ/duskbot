@@ -11,7 +11,9 @@ import type { StepQuiet } from "../../shared/turn-progress";
 
 const FADE_MS = 320;
 /** Grok's activity line leaves in 140ms. */
-const STATUS_EXIT_MS = 140;
+export const STATUS_EXIT_MS = 140;
+/** A turn that finished: the words leave as ever, the mascot stays for its happy hop, then fades. */
+export const STATUS_DONE_EXIT_MS = 380;
 
 export function useRotatingPhrase(
   phrases: readonly string[],
@@ -168,6 +170,7 @@ export function TurnPresence({
   quiet,
   card,
   cardLabel,
+  done = false,
   className,
 }: {
   avatar: ReactNode;
@@ -189,6 +192,8 @@ export function TurnPresence({
   quiet?: StepQuiet;
   card?: ReactNode;
   cardLabel?: string;
+  /** Simple mode: the turn finished well, so the mark lingers past the words for its happy hop. */
+  done?: boolean;
   className?: string;
 }) {
   const [mounted, setMounted] = useState(visible);
@@ -215,9 +220,9 @@ export function TurnPresence({
       return;
     }
     setPhase("out");
-    const timer = setTimeout(() => setMounted(false), simple ? STATUS_EXIT_MS : 280);
+    const timer = setTimeout(() => setMounted(false), simple ? (done ? STATUS_DONE_EXIT_MS : STATUS_EXIT_MS) : 280);
     return () => clearTimeout(timer);
-  }, [visible, answering, mounted, simple]);
+  }, [visible, answering, mounted, simple, done]);
 
   const showWorking = presencePhase === "think";
   // grok's line leaves with the words it was saying
@@ -245,7 +250,7 @@ export function TurnPresence({
   const step = useStatusLabel(label ? [label] : now, label ? `label:${label}` : phase ?? now?.[0] ?? "", seed, since, mounted && simpleStatus, label ? NOTHING : fun);
   if (!mounted) return null;
   const status = simpleStatus ? (
-    <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[14px] leading-[22px]" data-turn-status>
+    <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[13.5px] leading-[21px]" data-turn-status>
       <span className="grid min-w-0">
         {step && <StepPhrase key={step.key} text={step.text} hover={hover} />}
       </span>
@@ -289,7 +294,7 @@ export function TurnPresence({
         className={cn(
           simple ? "flex h-9 min-w-0 max-w-full items-center gap-[8.5px] ps-2" : "flex min-w-0 max-w-full items-center gap-2",
           presencePhase === "think" && (simple ? "turn-status-in" : "turn-mascot-in"),
-          presencePhase === "out" && (simple ? "turn-status-out" : "turn-mascot-out"),
+          presencePhase === "out" && (simple ? (done ? "turn-status-out turn-status-done" : "turn-status-out") : "turn-mascot-out"),
         )}
       >
         {/* a px down: the words' optical middle sits between cap and x-height, below their line box's middle */}

@@ -52,7 +52,8 @@ import { BotAvatar } from "./Avatar";
 import type { MarkState } from "./mascot-engine";
 import { poolWords } from "@/lib/friendly-activity";
 import type { LiveStatus } from "@/state/turn-status";
-import { TurnPresence, TYPING_PHASE } from "./TurnPresence";
+import { STATUS_DONE_EXIT_MS, STATUS_EXIT_MS, TurnPresence, TYPING_PHASE } from "./TurnPresence";
+import { workingMood } from "@/lib/working-mood";
 import { BrowserPartLine } from "./BrowserPartLine";
 import { browserPartFor } from "@/lib/browser-part";
 import { WorkingMascot } from "./WorkingMascot";
@@ -64,7 +65,7 @@ import { useNotesWork } from "@/lib/notes-arrival";
 import { useTypingHold } from "@/hooks/use-typing-hold";
 import { OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
-import { growFromMascot, hasSendLaunch, morphFromComposer } from "./bubble-entrance";
+import { enterFromComposer, growFromMascot, hasSendLaunch } from "./bubble-entrance";
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
 import { lifeDraw, lifeSpan } from "@/lib/reply-life";
 import { presenceKind, turnWorked, useHeldPresence } from "@/lib/presence-mark";
@@ -401,22 +402,22 @@ const Bubble = memo(function Bubble({
     if (focusedSearch && collapsible) setExpanded(true);
   }, [focusedSearch, collapsible, focus?.nonce]);
   const reduced = usePrefersReducedMotion();
-  const own = useRef<{ bubble: HTMLDivElement | null; fill: HTMLSpanElement | null; entered: boolean }>({ bubble: null, fill: null, entered: false });
-  // a send carries its words out of the composer; a reply grows out of the mascot; anything else rises with its row
-  const [entrance] = useState<"morph" | "grow" | null>(() => {
+  const own = useRef<{ bubble: HTMLDivElement | null; entered: boolean }>({ bubble: null, entered: false });
+  // a send fades in by the composer and rides the column's follow; a reply grows out of the mascot; anything else rises
+  // with its row
+  const [entrance] = useState<"send" | "grow" | null>(() => {
     if (!fresh) return null;
     if (!user) return message.kind === "text" ? "grow" : null;
     const plain = !webhookView && !hasAttachments && Boolean(visibleText.trim()) && !emojiOnly(visibleText);
-    return plain && !reduced && hasSendLaunch(message.sendId) ? "morph" : null;
+    return plain && hasSendLaunch(message.sendId) ? "send" : null;
   });
-  const [filling, setFilling] = useState(entrance === "morph");
   useLayoutEffect(() => {
     const parts = own.current;
     if (parts.entered || !entrance || !parts.bubble) return;
     parts.entered = true;
     // on the phone the words come with the bubble, so no frame shows an empty one where the typing line just was
     if (entrance === "grow") growFromMascot(parts.bubble, reduced, phoneApp());
-    else void morphFromComposer(parts.bubble, parts.fill, message.sendId).then(() => setFilling(false));
+    else enterFromComposer(parts.bubble, message.sendId, reduced);
   }, [entrance, reduced, message.sendId]);
 
   if (user && editing && !webhookView && !hasAttachments) {
@@ -452,7 +453,7 @@ const Bubble = memo(function Bubble({
   );
 
   return (
-    <div {...{ [MESSAGE_ROW]: "", ...(entrance ? { [OWN_ENTRANCE]: "" } : {}) }} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", (reactionsOnBubble || (mediaReactions && !group)) && "pt-[26px]", user ? "items-end" : "items-start", join?.above && SIMPLE_STACKED)}>
+    <div {...{ [MESSAGE_ROW]: "", ...(entrance === "grow" ? { [OWN_ENTRANCE]: "" } : {}) }} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", (reactionsOnBubble || (mediaReactions && !group)) && "pt-[26px]", user ? "items-end" : "items-start", join?.above && SIMPLE_STACKED)}>
       {message.relay ? <RelayLabel message={message} /> : peer && !underExchangeLine && <PeerLabel peer={peer} />}
       {speaker && <div className="mb-0.5 px-1 text-[12px] font-medium text-ink-secondary">{speaker}</div>}
       {imagesAbove && <AttachmentGallery media={message.media} images={imagesAbove.images} files={imagesAbove.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} align="end" className="mb-1" />}
@@ -476,7 +477,6 @@ const Bubble = memo(function Bubble({
           ref={(el) => { own.current.bubble = el; }}
           data-chat-bubble="simple"
           className={cn(
-            filling && "bubble-morph",
             tabled ? "w-full" : "w-fit",
             !tabled && SIMPLE_BUBBLE_MAX,
             emerging && "turn-answer",
@@ -497,10 +497,6 @@ const Bubble = memo(function Bubble({
           style={user && !webhookView && !attachmentsOnly && !bigEmoji ? ownBubbleStyle : undefined}
           data-reacted={reactionsOnBubble ? "" : undefined}
         >
-          {filling && (
-            <span ref={(el) => { own.current.fill = el; }} aria-hidden="true" data-chat-bubble="simple" style={{ ...ownBubbleStyle, borderRadius: "inherit" }}
-              className={cn(SIMPLE_USER_BUBBLE, ownBubbleStyle && "user-bubble-colored", "bubble-morph-fill")} />
-          )}
           {replyTarget && (
             <div className="mb-2">
               <ReplyQuote
@@ -1129,8 +1125,13 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // notes from another AI being brought in: the import's own steps are this bot's working row until its summary lands
   const importing = useNotesWork(bot.id);
   const presenceVisible = !stopCut && (hold.typing || (waiting && mountDue) || teammatesWorking || Boolean(importing));
+  // while the turn runs its notices are the working row's to say, not the chat's too; once it ends, what it left is one
+  // card above the composer
+  const trailing = useTrailingRows(messages, !bot.busy);
+  // a turn that ended on its own, with nothing failed, sends the mascot off with a happy hop
+  const turnDone = !presenceVisible && !turnBusy && !stopCut && !teammatesWorking && !importing && !trailing?.failures.length;
   // the bubble the line hangs under keeps its pinched corner until the line has finished leaving, as grok's does
-  const presenceLingers = useLingering(presenceVisible, 140);
+  const presenceLingers = useLingering(presenceVisible, turnDone ? STATUS_DONE_EXIT_MS : STATUS_EXIT_MS);
   const paintedMessages = useFirstPaintRows(transcriptKey, windowedMessages, Boolean(focus && !focus.consumed) || laterCount > 0, scrollRef, following);
   const lastShownRow = windowedMessages.findLast((message) => !quietRow(message, showToolCalls));
   const lastRowIsBubble = Boolean(lastShownRow && isBotTextRow(lastShownRow, bot.id));
@@ -1167,10 +1168,12 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
     ? turnStartedAt + mountDelay + lifeSpan(presenceSeed, 0) + lifeSpan(presenceSeed, 1)
     : null;
   const opening = !useReached(openingEnd) && openingEnd !== null && presence === "working";
-
-  // while the turn runs its notices are the working row's to say, not the chat's too; once it ends, what it left is one
-  // card above the composer
-  const trailing = useTrailingRows(messages, !bot.busy);
+  const mood = workingMood({
+    phase: writing ? TYPING_PHASE : now.phase,
+    waiting: teammatesWorking || pendingApprovals(messages).length > 0,
+    failed: lastForLine?.kind === "activity" && lastForLine.tool?.ok === false,
+    done: turnDone,
+  });
   const rescuing = useRescueGrace(Boolean(bot.busy), mayTakeOver(bot, state.instances), `${bot.id}:${bot.threadId}`);
   const answering = answeringModel(profile, bot.threadId, bot.modelSelection);
   const folded = useMemo(() => {
@@ -1403,9 +1406,10 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
             avatar={
-              <WorkingMascot bot={bot} size={phoneApp() ? 30 : 22} seed={presenceSeed} />
+              <WorkingMascot bot={bot} size={phoneApp() ? 30 : 22} seed={presenceSeed} mood={mood} />
             }
             simple
+            done={turnDone}
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}
             label={teammatesWorking ? t("chat.teammatesWorking") : importing && !turnBusy ? importing : undefined}
             visible={presenceVisible}

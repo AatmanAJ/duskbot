@@ -72,21 +72,15 @@ it("carries a send out of the composer, grows the reply out of the mascot, and k
   await act(async () => draw());
   expect(played.filter((one) => one.el.closest('[data-mid="hello"]')), "a row already there never animates").toHaveLength(0);
 
-  const field = document.createElement("textarea");
-  field.getBoundingClientRect = () => ({ left: 40, top: 500, width: 300, height: 20, right: 340, bottom: 520, x: 40, y: 500, toJSON: () => ({}) });
-  Object.defineProperty(field, "offsetWidth", { get: () => 300 });
-  noteSendLaunch("s1", field);
+  noteSendLaunch("s1");
   const optimistic: Message = { id: "optimistic-s1", kind: "text", role: "user", text: "plan my week", at: Date.now() + 5, sendId: "s1", parentId: "hello" };
   state = { ...state, bots: [{ ...bot, messages: [hello, optimistic], activeLeafId: optimistic.id }] };
   await act(async () => draw());
   const sent = host.querySelector('[data-mid="optimistic-s1"] [data-chat-bubble]')!;
-  expect(sent.closest("[data-arrival-own]"), "the send plays its own entrance instead of the row's rise").not.toBeNull();
-  expect(played.find((one) => one.el === sent)?.keyframes[0]?.transform).toMatch(/^translate\(/);
-  const fill = sent.querySelector(".bubble-morph-fill")!;
-  expect(played.find((one) => one.el === fill)?.keyframes).toEqual([{ opacity: 0 }, { opacity: 1 }]);
-  await act(async () => played.find((one) => one.el === fill)!.done());
-  expect(sent.querySelector(".bubble-morph-fill"), "the fill hands back to the bubble's own background").toBeNull();
-  expect(sent.classList.contains("bubble-morph")).toBe(false);
+  expect(sent.closest("[data-arrival-own]"), "the send rides the column's follow, so its row is the flow's to move").toBeNull();
+  // one fade and a small grow from its tail corner: nothing flies across the chat
+  expect(played.filter((one) => one.el === sent).map((one) => one.keyframes)).toEqual([[{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "scale(1)" }]]);
+  expect((sent as HTMLElement).style.transformOrigin).toBe("100% 100%");
 
   const before = played.length;
   const confirmed: Message = { ...optimistic, id: "server-1" };

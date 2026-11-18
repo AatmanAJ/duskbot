@@ -116,19 +116,6 @@
 :root:is([data-skin="grok"], [data-skin="grok-dark"]) [data-chat-bubble="simple"] {
   --grok-bubble: var(--grok-bubble-fill);
 }
-/* a send's words settle into their bubble as its fill comes in: the fill is its own layer under the words */
-[data-chat-bubble].bubble-morph {
-  position: relative;
-  isolation: isolate;
-  background-color: transparent !important;
-  background-image: none !important;
-}
-.bubble-morph-fill {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-}
 /* grok's New line is always in the bot's colour, its text tone for that hue */
 :root:is([data-skin="grok"], [data-skin="grok-dark"]) [data-unread-divider] {
   --grok-new: var(--grok-new-fill);
@@ -444,6 +431,16 @@
   transform-origin: 0 18px;
   animation: turn-status-out 140ms var(--dusk-ease-out) forwards;
 }
+/* a finished turn: the words leave in the same 140ms, the mark stays for its happy hop and fades last */
+.turn-status-out.turn-status-done {
+  animation: none;
+}
+.turn-status-done .turn-label-slot {
+  animation: dusk-fade-out 140ms var(--dusk-ease-out) forwards;
+}
+.turn-status-done .turn-status-mark {
+  animation: dusk-fade-out 120ms var(--dusk-ease-out) 260ms forwards;
+}
 .turn-label-in {
   animation: turn-label-rise 180ms var(--dusk-ease-out) backwards;
 }
@@ -472,6 +469,7 @@
 @media (prefers-reduced-motion: reduce) {
   .turn-status-in, .turn-status-in .turn-status-mark, .turn-status-in .turn-label-slot, .turn-label-in { animation-name: chat-row-fade; }
   .turn-status-out { animation-name: dusk-fade-out; }
+  .turn-status-out.turn-status-done { animation: none; }
   .status-shimmer { animation: none; background-image: none; color: var(--color-ink-secondary); }
 }
 
