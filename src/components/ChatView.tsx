@@ -84,7 +84,7 @@ import { NewConversationInstead } from "./NewConversationInstead";
 import { useColorUserBubbles } from "@/lib/user-bubble-preference";
 import { grokAccentText, userBubbleStyle } from "@/lib/user-bubble-tone";
 import { ToolActivity } from "./ToolActivity";
-import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard";
+import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard"; import { DocumentCard } from "./documents/DocumentCard";
 import { ThreadRefText } from "./ThreadRefs";
 import { optionsCardRow, settledCardGoes } from "./OptionsCardRow";
 import { MessageBoundary } from "./MessageBoundary";
@@ -925,6 +925,7 @@ const MessagesList = memo(function MessagesList({
               return showToolCalls ? <ScreenFrame threadId={threadId} message={m} /> : null;
             default: {
               if (m.publishedPage) return <PublishedPageCard message={m} />;
+              if (m.document) return <DocumentCard message={m} />;
               const peer = peerLine(m) ?? peerRequest(m, botId);
               const user = m.role === "user" && !peer;
               if (user && routineStartName(m) !== null) return null;

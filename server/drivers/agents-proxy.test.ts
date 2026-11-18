@@ -636,6 +636,9 @@ describe("agents-proxy MCP surface", () => {
       "list_bots",
       "usage_limits",
       "checklist",
+      "create_document",
+      "update_document",
+      "list_documents",
       "list_rooms",
       "select_computer",
       "list_threads",
@@ -757,7 +760,7 @@ describe("agents-proxy MCP surface", () => {
     const list = await rpc("tools/list");
     const readNames = [
       "set_status", "send_message", "tool_result_read", "list_room_targets",
-      "assignment_status", "list_bots", "usage_limits", "list_rooms", "list_threads",
+      "assignment_status", "list_bots", "usage_limits", "list_documents", "list_rooms", "list_threads",
       "list_team_setup", "list_team_library", "decide", "extract",
       "session_search", "trigger_info", "list_waits", "skills_list",
     ];

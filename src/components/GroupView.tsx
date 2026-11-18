@@ -94,7 +94,7 @@ import { useReplyDraft } from "@/lib/drafts";
 import { withoutCitationMarkers } from "@/lib/citations";
 import { latestFailure, latestReply, type TranscriptSnapshot } from "@/lib/transcript-announcer";
 import { pendingApprovals } from "./PendingApproval";
-import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard";
+import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard"; import { DocumentCard } from "./documents/DocumentCard";
 import { TranscriptAnnouncer } from "./TranscriptAnnouncer";
 import { localDay } from "@/lib/transcript-derivations";
 import { roomThreadWorking } from "@/lib/room-threads";
@@ -416,7 +416,7 @@ export const Transcript = memo(function Transcript({
       null
     ) : m.kind === "digest" ? (
       showToolCalls ? <DigestChip message={m} /> : null
-    ) : m.publishedPage ? <PublishedPageCard message={m} /> : m.kind === "text" && (m.text || m.attachments?.length) ? (
+    ) : m.publishedPage ? <PublishedPageCard message={m} /> : m.document ? <DocumentCard message={m} /> : m.kind === "text" && (m.text || m.attachments?.length) ? (
       !user && isPureLeakedSystemHarnessMessage(m.text) && !m.attachments?.length ? null : (
         <RoomTextMessage
           group={group}
@@ -443,7 +443,7 @@ export const Transcript = memo(function Transcript({
     const divider = dividerAbove(item.kind === "run" ? item.messages : [item.message]);
     const drawn = item.kind === "run" ? showToolCalls : messageRow(item.message, NO_JOIN) !== null;
     const m = item.kind === "message" ? item.message : null;
-    const bubble = m && m.kind === "text" && !m.publishedPage;
+    const bubble = m && m.kind === "text" && !m.publishedPage && !m.document;
     const slot: RoomSlot | null = drawn ? {
       group: bubble ? (m.role === "user" ? `user:${m.from?.name ?? ""}` : `bot:${m.from?.botId ?? ""}`) : null,
       // a hand-off row names both bots itself, so it carries no speaker line

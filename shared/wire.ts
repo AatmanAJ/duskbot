@@ -651,10 +651,10 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
   sentDirectly?: { name: string; room?: string };
   /** A page the bot published to a public link (publish_page), or why it couldn't. `text` carries the link too. */
   publishedPage?: PublishedPageCard;
+  /** A document the bot made or changed (create_document, update_document): its file card. */ document?: import("./documents.ts").ChatDocumentCard;
   /** A published Data result, linked to its bot's main viewer. */
   dataResult?: { botId: string; cardId: string; title: string; kind: "table" | "chart" | "text"; sql?: string };
-  /** user messages: the Data result the person was viewing when they sent
-   * this. `text` stays exactly what they typed. */
+  /** user messages: the Data result the person was viewing when they sent this. `text` stays exactly what they typed. */
   dataContext?: { cardId: string; draftSql?: string };
   /** user messages waiting in the steer-queue while the bot is mid-turn. */
   queued?: boolean;

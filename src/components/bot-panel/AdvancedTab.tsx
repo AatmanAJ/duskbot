@@ -5,6 +5,7 @@ import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerive
 import { openBotSettings } from "@/lib/open-settings";
 import { VoiceChatCard } from "./DetailsTab";
 import { LibrarySection } from "./LibraryTab";
+import { FilesSection, useFiles } from "../documents/FilesSection";
 import { takePanelModalRequest, usePanelModalRequest, type SheetPage } from "./modals/panel-modal";
 import type { SimplePageId } from "./page-registry";
 import { PanelSections } from "../ListRows";
@@ -24,6 +25,7 @@ export function AdvancedTab({ bot, derived, onOpen }: {
   const { dispatch } = useStore();
   const request = usePanelModalRequest();
   const link = usePanelLink();
+  const files = useFiles(bot, onOpen);
   const openPage = (page: SheetPage) => dispatch(openBotSettings({ kind: "bot", id: bot.id, row: page }));
 
   useEffect(() => {
@@ -37,7 +39,8 @@ export function AdvancedTab({ bot, derived, onOpen }: {
 
   return (
     <PanelSections data-panel-tabpanel="advanced">
-      <LibrarySection bot={bot} onOpen={onOpen} />
+      <FilesSection bot={bot} files={files} onOpen={onOpen} />
+      <LibrarySection bot={bot} onOpen={onOpen} quietWhenEmpty={Boolean(files.documents?.length)} />
       <VoiceChatCard bot={bot} patch={derived.patch} />
       <SettingsPage bot={bot} derived={derived} onOpen={openPage} />
     </PanelSections>

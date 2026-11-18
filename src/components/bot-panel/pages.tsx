@@ -18,6 +18,8 @@ import { BrowserLogins } from "./browser-logins";
 import { useOpenComputer, WherePage } from "./ComputerTab";
 import { ApiPage, BackupsPage, InstructionsPage, SettingsPage, ThreadsPage } from "./SettingsPage";
 import { LibraryPage } from "./LibraryTab";
+import { FilesPage } from "../documents/FilesSection";
+import { DocumentPage } from "../documents/DocumentPage";
 import type { SimplePageId } from "./page-registry";
 import { BotSwitch, buttonCls, Card, fieldCls, LinkRow, NoteRow, RadioRow, rowCls, SwitchRow, TextRow, TrashButton } from "./rows";
 import { ForgetUndoToast } from "./modals/MemoryModal";
@@ -267,7 +269,7 @@ export function BrowserPage({ bot, derived }: PageContext) {
   return <BrowserLogins bot={bot} browserEnabled={derived.browserEnabled} onOpenBrowser={() => openComputer("browser")} />;
 }
 
-export function PageBody({ page, onOpen: _onOpen, editingInstructions: _editing, onEditInstructions: _onEdit, ...context }: PageContext & {
+export function PageBody({ page, onOpen, editingInstructions: _editing, onEditInstructions: _onEdit, ...context }: PageContext & {
   page: SimplePageId;
   onOpen?: (page: SimplePageId) => void;
   editingInstructions?: boolean;
@@ -300,5 +302,9 @@ export function PageBody({ page, onOpen: _onOpen, editingInstructions: _editing,
       return <ApiPage {...context} />;
     case "library":
       return <LibraryPage bot={context.bot} />;
+    case "files":
+      return <FilesPage bot={context.bot} onOpen={onOpen ?? (() => {})} />;
+    case "document":
+      return <DocumentPage bot={context.bot} />;
   }
 }
