@@ -282,7 +282,7 @@ import {
 import { EventBus } from "./harness/bus.ts";
 import { ENGINE_LIST_REUSE_MS, engineMemory, enginesByUse, ProviderRegistry } from "./harness/registry.ts"; import { afterFirstEngineRead, holdUntilFirstEngineRead } from "./first-engine-read.ts";
 import { ManagedDesktopProviders } from "./managed-desktop.ts";
-import { mainThread, wasOldestThread } from "./main-thread.ts";
+import { mainThread, wasOldestThread } from "./main-thread.ts"; import { createOneChat } from "./host/one-chat.ts";
 import { computerKindForResource, ManagedDesktopPolicy, type ComputerKind } from "./managed-policy.ts"; import { nudgeCloudTeamPolicy, remoteAccessPaths, startCloudTeamPolicy, stopCloudTeamPolicy } from "./cloud-team-policy.ts";
 import { CLOUD_HOME_SECRET_KEYS, cloudHomeConfiguration, cloudHomeOffersPlace, cloudHomePlaceRefusal, firstCloudTurnPatch } from "./cloud-home.ts";
 import { botBox, startBotBoxAtBoot } from "./bot-box/boot.ts"; import { attachmentsForBox } from "./box-attachments.ts"; import { brokerPath } from "./bot-box/broker-probe.ts";
@@ -3005,7 +3005,8 @@ const outsideLineage = createOutsideLineage({
   node: (id) => coordinator.node(id), active: () => coordinator.active(), language: (threadId) => threadLanguage(threadId),
 });
 const { outsideDrivenThread, cloudGuestDriven, cloudGuestDrivenHandoff, outsideWorkStaysHere, confinedWhy, guestEngineRefusal } = outsideLineage; function botApiThread(id: string): boolean { const owner = store.botByThread(id); return Boolean(owner && store.taskByThread(owner.id, id)?.botApi); }
-const { messagePage, messageWindow } = messagePages(store);
+const { messagePage, messageWindow } = messagePages(store); const oneChat = createOneChat({ store, team: Boolean(CLOUD_TEAM), mainThread: (botId, apart) => mainThread(mainThreadTasks(botId).filter((task) => !apart.has(task.threadId)), store.bot(botId)?.threadId, store.bot(botId)?.mainThreadChoice),
+  confined: (from, to) => !outsideLineage.mayReach(from, to) || outsideDrivenThread(from) || outsideWorkStaysHere(from) || cloudGuestDriven(from) });
 const { cloudOwnerTurn, cloudThreadStarters, cloudBotOpened, cloudOwnerView, cloudReportFromOthers, roomTurnStarted, roomTurnEnded, roomRun } = createCloudOwnerTurns({
   store, cloudHome: CLOUD_HOME !== null, directRequest: (threadId) => directRequestOwners.get(threadId), threadStarter: (threadId) => threadStarters.get(threadId),
   ownerPerson: cloudProvenOwnerPerson, cardAnswerer: cloudCardAnswerer, activeRoutineRun: activeRoutineRunForThread, ownerStartedRun: (runId) => ownerStartedRoutineRuns.has(runId),
@@ -4010,7 +4011,10 @@ const queuedDeps = { botName: (id: string) => store.bot(id)?.name, threadBusy, g
 const teammatePrompts = createTeammatePrompts({ store, outstandingDirect: (threadId) => coordinator.outstandingDirect(threadId), openPersonCard, queuedStatus, isUnattended, fullAccess: fullAccessForSource, startedOutside, guestDriven: cloudGuestDriven, confined: (threadId) => proactive.fence.confines(threadId), readableFrom: threadReadableFrom, waitingForPerson: (chief, teammates, readable) => questionRouting.waitingForPerson(chief, teammates, readable) });
 
 function queuedBehindPerson(node: HandoffView): { threadId: string; kind: PersonWaitKind; title: string } | undefined {
-  if (node.groupId || node.status !== "queued" || threadBusy(node.botId, node.threadId) || !botAtThreadCapacity(node.botId, undefined, true)) return undefined;
+  if (node.groupId || node.status !== "queued") return undefined;
+  const own = store.taskByThread(node.botId, node.threadId), ownCard = own?.activity === "waiting-on-you" ? openPersonCard(node.threadId) : undefined;
+  if (threadBusy(node.botId, node.threadId)) return own && ownCard ? { threadId: node.threadId, kind: ownCard.kind, title: own.title } : undefined;
+  if (!botAtThreadCapacity(node.botId, undefined, true)) return undefined;
   for (const task of store.tasks(node.botId)) {
     if (task.threadId === node.threadId || task.activity !== "waiting-on-you" || !task.busy) continue;
     const card = openPersonCard(task.threadId);
@@ -15033,7 +15037,8 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const reply: NonNullable<HandoffOptions["reply"]> = call.reply === "none" ? "none" : EXTERNAL ? "poll" : "resume";
         const returns = reply === "none" ? "nothing comes back from it" : reply === "poll" ? "read its result with assignment_status" : "its result will resume you";
         const inRoom = targets.filter(target => target.groupId).length, lanes = inRoom > 0 && roomJobs.useLanes(destination!, roomThreadId!, inRoom, mode);
-        const receipts: PeerDeliveryReceipt[] = [];
+        const receipts: PeerDeliveryReceipt[] = [], waitingThreads = new Set<string>();
+        for (let hop = coordinator.node(internalCapability.roomHandoffId ?? generation); hop; hop = hop.parentId ? coordinator.node(hop.parentId) : undefined) waitingThreads.add(hop.threadId);
         const refused: string[] = [];
         for (const target of targets) {
           let createdThread: string | undefined;
@@ -15047,8 +15052,9 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
             // A Chief answers, for the person, the question a teammate it manages waits on in a thread the Chief did not open.
             const forPerson = EXTERNAL || room || fresh || call.answers || mode !== "work" || call.thread === "standing" || !teammatePrompts.actsForPerson(internalSender, internalCapability.threadId) || !canManage(internalSender, recipient) || !threadReadableFrom(internalCapability.threadId)(call.thread) ? undefined : await questionRouting.answerForPerson({ sender: internalSender, senderThreadId: address.threadId, target: recipient, threadId: call.thread, message: call.message });
             if (forPerson) { if (forPerson.outcome === "failed") refused.push(forPerson.detail); receipts.push(forPerson); continue; }
-            const continued = room || fresh ? undefined : workThreadFor(store, { botId: target.botId, botName: recipient.name, fromBotId: internalSender.id, fromThreadId: address.threadId, thread: call.thread, notice: mode === "notify",
-              answering: coordinator.answersTo(internalCapability.roomHandoffId ?? generation), also: (task) => !CLOUD_TEAM || threadStarters.get(task.threadId) === opener, reach: (task) => outsideLineage.mayReach(address.threadId, task.threadId) });
+            const home = room ? undefined : oneChat.home(target.botId, address.threadId, call.thread, waitingThreads);
+            const continued = home ?? (room || fresh ? undefined : workThreadFor(store, { botId: target.botId, botName: recipient.name, fromBotId: internalSender.id, fromThreadId: address.threadId, thread: call.thread, notice: mode === "notify",
+              answering: coordinator.answersTo(internalCapability.roomHandoffId ?? generation), also: (task) => !CLOUD_TEAM || threadStarters.get(task.threadId) === opener, reach: (task) => outsideLineage.mayReach(address.threadId, task.threadId) }));
             const relayed = EXTERNAL || (!call.answers && (room || fresh || mode === "consult")) ? undefined : await questionRouting.relay({ sender: internalSender, senderThreadId: address.threadId,
               senderNode: coordinator.node(internalCapability.roomHandoffId ?? generation), target: recipient, message: call.message, ...(call.answers ? { answers: call.answers } : {}), ...(continued ? { threadId: continued.threadId } : {}),
               ...(internalCapability.delegatedThisTurn ? { sentThisTurn: internalCapability.delegatedThisTurn } : {}) });
@@ -15065,12 +15071,12 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
               if (!task) throw new Error("The recipient no longer exists");
               target.threadId = task.threadId;
               if (!continued) createdThread = task.threadId;
-              delegatedLevel.apply(internalSender, internalCapability.threadId, internalCapability.roomHandoffId ?? generation, recipient, target.threadId);
+              if (!home) delegatedLevel.apply(internalSender, internalCapability.threadId, internalCapability.roomHandoffId ?? generation, recipient, target.threadId);
             }
             const routed = lane ? { botId: target.botId, threadId: lane.threadId } : target;
             outsideLineage.carry(address.threadId, routed.threadId);
             const { node, duplicate } = coordinator.enqueue(address, generation, internalCapability.roomHandoffId, routed, call.message, {
-              mode, reply, thread: lane || fresh ? "new" : "standing", approvalGranted, rework: call.rework, ...(lane ? {} : { requestBatchKey }),
+              mode, reply, thread: lane || (fresh && !home) ? "new" : "standing", approvalGranted, rework: call.rework, ...(lane ? {} : { requestBatchKey }),
               ...(call.doneWhen ? { doneWhen: call.doneWhen } : {}),
             });
             usageTrace.link(node.id, node.parentId, { threadId: internalCapability.threadId, turnId: liveTurnByThread.get(internalCapability.threadId) ?? "" }); if (!duplicate) actingPeople.handOn(internalCapability, node);
@@ -16750,6 +16756,7 @@ server.listen(PORT, "127.0.0.1", async () => {
   followupsReady = true;
   drainQueuedSends();
   drainQueuedChannelSends();
+  try { const folded = oneChat.fold({ inUse: (threadId) => coordinator.active().some((node) => node.threadId === threadId && !ENDED.has(node.status)) || Boolean(store.botByThread(threadId) && threadBusy(store.botByThread(threadId)!.id, threadId)), apart: cloudGuestDriven }); if (folded) console.log(`[chats] folded ${folded} teammate work thread(s) into their bots' chats`); } catch (error) { console.warn("[chats] folding teammate work threads failed:", error); }
   startUpkeep({ bots: () => store.bots, retentionDays: () => threadEventLogRetentionDays(cfg), busy: threadBusy, openDirectHandoff: (threadId) => coordinator.activeDirect(threadId) });
   setTimeout(() => void store.backfillMediaSizes().then((filled) => { if (filled) console.log(`[media] measured pictures on ${filled} stored message(s)`); }, (error) => console.warn("[media] picture size backfill failed:", error)), 5_000).unref();
   if (enginesRead) {

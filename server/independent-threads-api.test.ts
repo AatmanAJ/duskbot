@@ -113,6 +113,9 @@ describe("independent bot tasks through the isolated control surface", () => {
     await expect.poll(async () => (await botState(peer.id)).activity).toBe("waiting-on-you");
     // One thread per bot: the card's thread holds the peer's only slot.
     expect((await api("PATCH", "/api/config", { threads: { maxConcurrentPerBot: 1 } })).status).toBe(200);
+    // The peer's one chat is another conversation than the card's, so only the slot holds the work.
+    const chat = (await api("POST", `/api/bots/${peer.id}/tasks`, { title: "Review notes" })).body.task.threadId;
+    expect((await api("PATCH", `/api/bots/${peer.id}`, { mainThreadChoice: chat })).status).toBe(200);
     await control(["send", "--bot", chief.id, "--text", "Ask the reviewer to check the release notes, then return the result here."]);
     const token = (await dump(models[0])).mcpConfig.mcpServers.agents.env.DUSK_COMMS_TOKEN;
     const roster = await internal(token, "GET", "/api/internal/agents");
@@ -129,13 +132,13 @@ describe("independent bot tasks through the isolated control surface", () => {
       botId: peer.id,
       botName: "Mailbox Peer",
       outcome: "queued",
-      detail: "sent to \"@Mailbox Chief · work\"; it runs after anything still running there",
+      detail: "sent to \"Review notes\"; it runs after anything still running there",
       requestId: expect.any(String),
       threadId: expect.any(String),
     }]);
     const handoff = () => readHandoffs(session.info.dataDir).find((node) => node.id === requestId);
     const peerThread = handoff()!.threadId;
-    expect(peerThread).not.toBe(peer.activeTaskId);
+    expect(peerThread).toBe(chat);
     expect(queued.body.receipts[0].threadId).toBe(peerThread);
     writeFileSync(modelFile(models[0], "gate"), "finish");
     const chiefMessages = async () => (await api("GET", "/api/bots")).body.bots.find((bot: any) => bot.id === chief.id).messages as any[];
@@ -171,10 +174,8 @@ describe("independent bot tasks through the isolated control surface", () => {
       return !current.busy && current.messages.some((message: any) =>
         message.from?.botId === peer.id && message.roomRequest?.id === requestId && message.roomRequest.phase === "result");
     }, { timeout: 20_000 }).toBe(true);
-    const bots = (await api("GET", "/api/bots")).body.bots;
-    const peerState = bots.find((bot: any) => bot.id === peer.id);
-    expect(peerState.threadId).toBe(peer.activeTaskId);
-    expect(peerState.messages.some((message: any) => message.text?.includes("MAILBOX_REVIEW"))).toBe(false);
+    const cardThread = (await api("GET", `/api/threads/${peer.activeTaskId}/messages?limit=100`)).body.messages;
+    expect(cardThread.some((message: any) => message.text?.includes("MAILBOX_REVIEW"))).toBe(false);
     const targetMessages = (await api("GET", `/api/threads/${peerThread}/messages?limit=100`)).body.messages;
     expect(targetMessages.filter((message: any) => message.roomRequest?.id === requestId && message.roomRequest.phase === "request")).toHaveLength(1);
     expect(targetMessages.some((message: any) => message.text?.includes("MAILBOX_REVIEW"))).toBe(true);
@@ -350,6 +351,8 @@ describe("independent bot tasks through the isolated control surface", () => {
     try {
       await control(["send", "--bot", recipient.id, "--text", "Hold the recipient's slot."]);
       await expect.poll(async () => (await botState(recipient.id)).busy, { timeout: 15_000 }).toBe(true);
+      const chat = (await api("POST", `/api/bots/${recipient.id}/tasks`, { title: "Notes" })).body.task.threadId;
+      expect((await api("PATCH", `/api/bots/${recipient.id}`, { mainThreadChoice: chat })).status).toBe(200);
       await control(["send", "--bot", sender.id, "--text", "Prepare independent work."]);
       const launched = await dump(models[0]);
       const token = launched.mcpConfig.mcpServers.agents.env.DUSK_COMMS_TOKEN;
@@ -360,6 +363,7 @@ describe("independent bot tasks through the isolated control surface", () => {
       const receipt = sent.body.receipts[0];
       expect(receipt).toMatchObject({ botId: recipient.id, outcome: "queued", threadId: expect.any(String), requestId: expect.any(String) });
       const threadId = receipt.threadId as string;
+      expect(threadId).toBe(chat);
       const notice = () => readHandoffs(session.info.dataDir).find((node) => node.id === receipt.requestId);
       expect(notice()).toMatchObject({ mode: "notify", reply: "none", status: "queued", threadId });
       expect((await api("DELETE", `/api/bots/${recipient.id}/tasks/${threadId}`)).status).toBe(200);

@@ -1143,6 +1143,13 @@ export class Store {
     if (Number.isFinite(newest)) this.noteThreadActivity(threadId, newest, Number.isFinite(newestOrder), newestOrder);
   }
 
+  replaceTranscript(threadId: string, messages: Message[], activeLeafId: string | null): void {
+    mdb.replaceThread(threadId, messages, activeLeafId);
+    this.threads.delete(threadId);
+    const newest = messages.reduce((max, message) => Math.max(max, message.at), Number.NEGATIVE_INFINITY);
+    if (Number.isFinite(newest)) this.noteThreadActivity(threadId, newest, false, newest);
+  }
+
   activeLeaf(threadId: string): string | null {
     threadId = this.roomThreadOf(threadId);
     return this.thread(threadId).activeLeafId;
