@@ -52,11 +52,9 @@ import { BotAvatar } from "./Avatar";
 import type { MarkState } from "./mascot-engine";
 import { poolWords } from "@/lib/friendly-activity";
 import type { LiveStatus } from "@/state/turn-status";
-import { STATUS_DONE_EXIT_MS, STATUS_EXIT_MS, TurnPresence, TYPING_PHASE } from "./TurnPresence";
-import { workingMood } from "@/lib/working-mood";
+import { STATUS_EXIT_MS, TurnPresence, TYPING_PHASE } from "./TurnPresence";
 import { BrowserPartLine } from "./BrowserPartLine";
 import { browserPartFor } from "@/lib/browser-part";
-import { WorkingMascot } from "./WorkingMascot";
 import { liveCallEnabled, showToolCallsEnabled } from "@/lib/feature-flags";
 import { normalizeState } from "@/lib/mascot";
 import { peerLine, peerRequest, type PeerLine } from "@/lib/peer-message";
@@ -67,8 +65,7 @@ import { OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
 import { enterFromComposer, growFromMascot, hasSendLaunch } from "./bubble-entrance";
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
-import { lifeDraw, lifeSpan } from "@/lib/reply-life";
-import { presenceKind, turnWorked, useHeldPresence } from "@/lib/presence-mark";
+import { lifeDraw } from "@/lib/reply-life";
 import { lastNonReceipt } from "@/lib/receipts";
 import { routineStartName } from "./RoutineStartLine"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
 import { followSentTurn, sentTurn, useSentTurn } from "@/state/sent-turn";
@@ -1166,10 +1163,8 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // while the turn runs its notices are the working row's to say, not the chat's too; once it ends, what it left is one
   // card above the composer
   const trailing = useTrailingRows(messages, !bot.busy);
-  // a turn that ended on its own, with nothing failed, sends the mascot off with a happy hop
-  const turnDone = !presenceVisible && !turnBusy && !stopCut && !teammatesWorking && !importing && !trailing?.failures.length;
   // the bubble the line hangs under keeps its pinched corner until the line has finished leaving, as grok's does
-  const presenceLingers = useLingering(presenceVisible, turnDone ? STATUS_DONE_EXIT_MS : STATUS_EXIT_MS);
+  const presenceLingers = useLingering(presenceVisible, STATUS_EXIT_MS);
   const expandedTail = following && latestVisibleIndex >= 0 && latestVisibleIndex < tailWindowStart(messages.length);
   const paintedMessages = useFirstPaintRows(transcriptKey, windowedMessages, expandedTail || Boolean(focus && !focus.consumed) || laterCount > 0, scrollRef, following);
   const lastShownRow = windowedMessages.findLast((message) => !quietRow(message, showToolCalls));
@@ -1189,7 +1184,6 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
       approval: approval ? { id: approval.requestId, name: bot.name } : undefined,
     };
   }, [messages, bot.busy, bot.name]);
-  const worked = useMemo(() => turnWorked(messages), [messages]);
   const writing = !stopCut && (streamingReply || live.status?.activity === "reply" || hold.typing);
   // the person's Stop, said once and quietly where the working line was, until the next turn
   const stoppedShown = (stopCut || personStoppedLast(messages)) && !(turnBusy && !stopCut) && !presenceVisible;
@@ -1200,19 +1194,6 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   if (busySince !== null && shownLabel.current.seed !== presenceSeed) shownLabel.current = { seed: presenceSeed };
   if (live.label) shownLabel.current.label = live.label;
   const turnLabel = live.label ?? shownLabel.current.label;
-  const presence = useHeldPresence(turnBusy && bot.activity !== "waiting-on-you" ? presenceKind({ writing, activity: live.status?.activity, worked }) : null);
-  // every turn opens the same way, the working mascot alone for a beat before its first word, even when a step has
-  // already started
-  const openingEnd = turnBusy && turnStartedAt
-    ? turnStartedAt + mountDelay + lifeSpan(presenceSeed, 0) + lifeSpan(presenceSeed, 1)
-    : null;
-  const opening = !useReached(openingEnd) && openingEnd !== null && presence === "working";
-  const mood = workingMood({
-    phase: writing ? TYPING_PHASE : now.phase,
-    waiting: teammatesWorking || pendingApprovals(messages).length > 0,
-    failed: lastForLine?.kind === "activity" && lastForLine.tool?.ok === false,
-    done: turnDone,
-  });
   const rescuing = useRescueGrace(Boolean(bot.busy), mayTakeOver(bot, state.instances), `${bot.id}:${bot.threadId}`);
   const answering = answeringModel(profile, bot.threadId, bot.modelSelection);
   const folded = useMemo(() => {
@@ -1444,21 +1425,17 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           )}
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
-            avatar={
-              <WorkingMascot bot={bot} size={phoneApp() ? 30 : 22} seed={presenceSeed} mood={mood} />
-            }
             simple
-            done={turnDone}
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}
             label={teammatesWorking ? t("chat.teammatesWorking") : importing && !turnBusy ? importing : undefined}
             visible={presenceVisible}
             {...now}
             // grok shows no steps in the chat: the list under the line only with tool calls shown
             card={showToolCalls ? now.card : undefined}
-            phrases={teammatesWorking || (importing && !turnBusy) ? undefined : writing ? typingPhrases : opening ? undefined : turnLabel ? [turnLabel] : now.phrases}
+            phrases={teammatesWorking || (importing && !turnBusy) ? undefined : writing ? typingPhrases : turnLabel ? [turnLabel] : now.phrases}
             phase={writing ? TYPING_PHASE : turnLabel ? `label:${turnLabel}` : now.phase}
             seed={presenceSeed}
-            since={busySince}
+            since={busySince ?? (turnBusy ? turnStartedAt ?? null : null)}
           />}
           {stoppedShown && !presenceShown && (
             <div data-turn-stopped role="status" className={cn("turn-stopped flex h-9 items-center ps-3 text-[13px] text-ink-tertiary", !statusSlot && presenceUnderBubble && SIMPLE_STACKED)}>

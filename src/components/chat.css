@@ -438,16 +438,6 @@
   transform-origin: 0 18px;
   animation: turn-status-out 140ms var(--dusk-ease-out) forwards;
 }
-/* a finished turn: the words leave in the same 140ms, the mark stays for its happy hop and fades last */
-.turn-status-out.turn-status-done {
-  animation: none;
-}
-.turn-status-done .turn-label-slot {
-  animation: dusk-fade-out 140ms var(--dusk-ease-out) forwards;
-}
-.turn-status-done .turn-status-mark {
-  animation: dusk-fade-out 120ms var(--dusk-ease-out) 260ms forwards;
-}
 .turn-label-in {
   animation: turn-label-rise 180ms var(--dusk-ease-out) backwards;
 }
@@ -476,7 +466,6 @@
 @media (prefers-reduced-motion: reduce) {
   .turn-status-in, .turn-status-in .turn-status-mark, .turn-status-in .turn-label-slot, .turn-label-in { animation-name: chat-row-fade; }
   .turn-status-out { animation-name: dusk-fade-out; }
-  .turn-status-out.turn-status-done { animation: none; }
   .status-shimmer { animation: none; background-image: none; color: var(--color-ink-secondary); }
 }
 

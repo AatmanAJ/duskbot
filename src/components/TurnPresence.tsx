@@ -11,8 +11,6 @@ import type { StepQuiet } from "../../shared/turn-progress";
 const FADE_MS = 320;
 /** Grok's activity line leaves in 140ms. */
 export const STATUS_EXIT_MS = 140;
-/** A turn that finished: the words leave as ever, the mascot stays for its happy hop, then fades. */
-export const STATUS_DONE_EXIT_MS = 380;
 
 export function useRotatingPhrase(
   phrases: readonly string[],
@@ -79,7 +77,7 @@ const OPENING_WITHIN_MS = STATUS_QUIET_MS.max + 1_500;
 
 /** The step label the simple status line shows now, or null while the line is still quiet. Plain work rotates through
  * `phrases` with `fun` ones mixed in as the turn runs long (workingWord); a step leads with its own words. */
-export function useStatusLabel(phrases: readonly string[] | null, phase: string, seed: string, since: number | null, active: boolean, fun: readonly string[] = NOTHING): { key: string; text: string } | null {
+export function useStatusLabel(phrases: readonly string[] | null, phase: string, seed: string, since: number | null, active: boolean, fun: readonly string[] = NOTHING, wordsAtOnce = false): { key: string; text: string } | null {
   const [, wake] = useState(0);
   const shown = useRef<ShownLabel | null>(null);
   const firstSeen = useRef<number | null>(null);
@@ -88,7 +86,7 @@ export function useStatusLabel(phrases: readonly string[] | null, phase: string,
   else firstSeen.current ??= now;
   const typing = phase === TYPING_PHASE;
   const start = since ?? firstSeen.current ?? now;
-  const quietUntil = start + quietFor(`${seed}|quiet`);
+  const quietUntil = wordsAtOnce ? start : start + quietFor(`${seed}|quiet`);
   const pool = phrases && phrases.length > 0 ? phrases : null;
   const phaseSeed = `${seed}|${phase}`;
   const plain = startsAnywhere(phase);
@@ -222,10 +220,10 @@ export function TurnPresence({
   quiet,
   card,
   cardLabel,
-  done = false,
   className,
 }: {
-  avatar: ReactNode;
+  /** a mark before the words; without one the line is the words alone, from its first frame */
+  avatar?: ReactNode;
   visible: boolean;
   label?: string;
   phrases?: readonly string[];
@@ -244,8 +242,6 @@ export function TurnPresence({
   quiet?: StepQuiet;
   card?: ReactNode;
   cardLabel?: string;
-  /** Simple mode: the turn finished well, so the mark lingers past the words for its happy hop. */
-  done?: boolean;
   className?: string;
 }) {
   const [mounted, setMounted] = useState(visible);
@@ -272,9 +268,9 @@ export function TurnPresence({
       return;
     }
     setPhase("out");
-    const timer = setTimeout(() => setMounted(false), simple ? (done ? STATUS_DONE_EXIT_MS : STATUS_EXIT_MS) : 280);
+    const timer = setTimeout(() => setMounted(false), simple ? STATUS_EXIT_MS : 280);
     return () => clearTimeout(timer);
-  }, [visible, answering, mounted, simple, done]);
+  }, [visible, answering, mounted, simple]);
 
   const showWorking = presencePhase === "think";
   // grok's line leaves with the words it was saying
@@ -299,7 +295,9 @@ export function TurnPresence({
   const lead = label ?? t("chat.activity.working");
   const now = phrases && phrases.length > 0 ? phrases : null;
   const { current, previous } = useRotatingPhrase(now ?? NOTHING, phase ?? now?.[0] ?? "", seed, !simple && mounted && showWorking && now !== null);
-  const step = useStatusLabel(label ? [label] : now, label ? `label:${label}` : phase ?? now?.[0] ?? "", seed, since, mounted && simpleStatus, label ? NOTHING : fun);
+  const marked = avatar !== undefined;
+  const wordless = !label && !now;
+  const step = useStatusLabel(label ? [label] : now ?? (marked ? null : [plainWord("thinking")]), label ? `label:${label}` : wordless && !marked ? "label:thinking" : phase ?? now?.[0] ?? "", seed, since, mounted && simpleStatus, label ? NOTHING : fun, !marked);
   if (!mounted) return null;
   const status = simpleStatus ? (
     <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[13.5px] leading-[21px]" data-turn-status>
@@ -336,13 +334,13 @@ export function TurnPresence({
       <div
         title={simple && showWorking ? [lead, detail ?? (now ? current : null), size].filter(Boolean).join(" · ") : undefined}
         className={cn(
-          simple ? "flex h-9 min-w-0 max-w-full items-center gap-[8.5px] ps-2" : "flex min-w-0 max-w-full items-center gap-2",
+          simple ? cn("flex h-9 min-w-0 max-w-full items-center gap-[8.5px]", marked ? "ps-2" : "ps-3") : "flex min-w-0 max-w-full items-center gap-2",
           presencePhase === "think" && (simple ? "turn-status-in" : "turn-mascot-in"),
-          presencePhase === "out" && (simple ? (done ? "turn-status-out turn-status-done" : "turn-status-out") : "turn-mascot-out"),
+          presencePhase === "out" && (simple ? "turn-status-out" : "turn-mascot-out"),
         )}
       >
         {/* a px down: the words' optical middle sits between cap and x-height, below their line box's middle */}
-        {simple ? <span className="turn-status-mark relative top-px inline-flex shrink-0">{avatar}</span> : avatar}
+        {marked && (simple ? <span className="turn-status-mark relative top-px inline-flex shrink-0">{avatar}</span> : avatar)}
         {expandable && (!simple || step) ? (
           <button
             ref={toggle}
