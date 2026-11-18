@@ -77,6 +77,8 @@ UPDATER=/usr/local/lib/duskbot/install.sh
 PKGS=/var/lib/duskbot-link/packages
 SERVER_RELEASE=/var/lib/omb-link/.config/duskbot-link/server-release
 PORT=8799
+# `duskbot` for whoever is logged in: the server's own build lives in the server account's home, off root's PATH
+CLI=/usr/local/bin/duskbot
 UNITS=/etc/systemd/system
 CADDY_SITE=/etc/caddy/duskbot.caddy
 CADDY_MAIN=/etc/caddy/Caddyfile
@@ -1111,6 +1113,23 @@ note_failed() { # version
 get_package() { # file
   verified_download "$LINK_BASE/pkg/$LINK_ID/$PKG_SHA.tgz" "$1" "$PKG_SHA" "$PKG_SIZE" 1800 "dusk bot"
 }
+# the wrapper switches to the server account before it runs anything from that account's home, so root never executes
+# a file the server account can write
+put_command() {
+  if [ -e "$CLI" ] && ! grep -qs "managed by duskbot-link" "$CLI"; then echo "left $CLI as it is: it is not ours"; return 0; fi
+  _run="env HOME=$SVC_HOME PATH=$SVC_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin $SVC_HOME/.local/bin/duskbot"
+  cat > "$TMP/cli" <<EOF
+#!/bin/sh
+# managed by duskbot-link: this server's dusk bot, run as $SVC_USER
+if [ "\$(id -un)" = $SVC_USER ]; then exec $_run "\$@"; fi
+if [ "\$(id -u)" -eq 0 ]; then exec runuser -u $SVC_USER -- $_run "\$@"; fi
+exec sudo -u $SVC_USER -- $_run "\$@"
+EOF
+  if [ -f "$CLI" ] && cmp -s "$TMP/cli" "$CLI"; then return 0; fi
+  install -o root -g root -m 0755 "$TMP/cli" "$CLI"
+  echo "duskbot now runs from any login on this server"
+}
+
 do_app() {
   bin="$SVC_HOME/.local/bin/duskbot"
   if [ -n "$DUSK_PACKAGE" ]; then
@@ -2202,7 +2221,7 @@ update_server() {
     [ "$_rc" != 0 ] || state_set server-update-refused "$PKG_SHA"
     return 0
   fi
-  if [ "$_rc" = 0 ]; then refresh_updater "$_f"; refresh_gate "$_f"; fi
+  if [ "$_rc" = 0 ]; then refresh_updater "$_f"; refresh_gate "$_f"; put_command >/dev/null 2>&1 || true; fi
   restart_wait || return 0
   restart_settle
 }
@@ -2437,6 +2456,7 @@ main() {
   phase prepare; step check do_check; step basics do_basics; step docker do_docker; step user do_user; phase_end
   phase runtime; step node do_node; phase_end
   phase omb; step app do_app; step engines do_engines; step service do_service; phase_end
+  [ -n "$DEMO" ] || put_command >>"$LOGS/command.log" 2>&1 || true
   phase computer; step sandbox do_sandbox; step fence do_fence; step desktop do_desktop; phase_end
   phase link; step address do_address
   if [ "$OFFLINE" = 1 ]; then
