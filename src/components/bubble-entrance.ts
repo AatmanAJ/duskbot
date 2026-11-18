@@ -24,12 +24,18 @@ export function hasSendLaunch(sendId: string | undefined): boolean {
 
 const canAnimate = (el: Element) => typeof (el as HTMLElement).animate === "function";
 
+/** Right to left by the element's own `dir`, read without computing its style: a computed style here restyled the whole
+ * transcript for every bubble that arrived. */
+function rightToLeft(el: Element): boolean {
+  try { return el.matches(":dir(rtl)"); } catch { return el.closest("[dir]")?.getAttribute("dir") === "rtl"; }
+}
+
 /** The person's bubble scales up out of the composer from its bottom end corner; under reduced motion it only fades.
  * Transform and opacity alone, so it runs on the compositor and the layer it needs lives only as long. */
 export function enterFromComposer(bubble: HTMLElement, sendId: string | undefined, reduced: boolean): void {
   if (!hasSendLaunch(sendId) || !canAnimate(bubble)) return;
   launch = null;
-  const rtl = getComputedStyle(bubble).direction === "rtl";
+  const rtl = rightToLeft(bubble);
   bubble.style.transformOrigin = rtl ? "0% 100%" : "100% 100%";
   bubble.animate(reduced
     ? [{ opacity: 0 }, { opacity: 1 }]
@@ -40,7 +46,7 @@ export function enterFromComposer(bubble: HTMLElement, sendId: string | undefine
  * its words fade in once it is there. Under reduced motion it only fades. */
 export function growFromMascot(bubble: HTMLElement, reduced: boolean, wordsRevealed = false): void {
   if (!canAnimate(bubble)) return;
-  const rtl = getComputedStyle(bubble).direction === "rtl";
+  const rtl = rightToLeft(bubble);
   bubble.style.transformOrigin = rtl ? "100% 0%" : "0% 0%";
   bubble.animate(reduced
     ? [{ opacity: 0 }, { opacity: 1 }]
