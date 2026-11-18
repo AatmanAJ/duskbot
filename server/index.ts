@@ -656,8 +656,7 @@ import { createTodayRoutes } from "./routes/today.ts"; import { createInboxRoute
 import { createToolTimingRoute, createUsageRoutes } from "./routes/usage.ts"; import { createSpendRoutes } from "./routes/spend.ts"; import { createSpend } from "./spend.ts"; import { createRoutineGuard, DRY_RUN_REFUSAL } from "./host/routine-guard.ts"; import { createRoutineHost } from "./host/routine-quiet-host.ts";
 import { createReconnectResume } from "./host/reconnect-resume.ts"; import { mcpServerLabel } from "./remote-mcp-label.ts"; import { tokenApp as tokenAppSpec } from "../shared/app-tokens.ts";
 import { createFinishGuard } from "./host/finish-guard.ts"; import { createLimitHold, refusedStartWaits } from "./host/limit-hold.ts"; import { createBatchContinue } from "./host/batch-continue.ts"; import { checklistDir, readChecklist } from "./batch-checklist.ts"; import { createChecklistRoutes } from "./routes/checklist.ts"; import { createActionReceipts } from "./host/action-receipts.ts"; import { createDocumentRoutes } from "./routes/bot-documents.ts"; import { BotDocuments } from "./bot-documents.ts";
-import { createBrowserLoops } from "./host/browser-loops.ts";
-import { createBotMessageRoutes } from "./routes/bot-messages.ts";
+import { createBrowserLoops } from "./host/browser-loops.ts"; import { createBotMessageRoutes } from "./routes/bot-messages.ts";
 import { clearInternalTurn, isInternalTurn, markInternalTurn } from "./internal-turns.ts"; import { createFirstReplyRescue } from "./first-reply-rescue.ts"; import { createTurnBeats } from "./turn-beats.ts"; import { createSideReplies, repliesWhileWorking, type SideRequest, type SideSendFacts } from "./host/side-replies.ts";
 import { createReactionRoutes } from "./routes/reactions.ts";
 import { createReactions, withReactionNotes, type Reactor } from "./reactions.ts";
@@ -9730,11 +9729,7 @@ async function beginTurn(
         reportIncident({ kind: "could-not-start", bot, threadId, detail: message });
       }
       const owner = directRequestOwners.get(threadId), asked = owner?.origin?.kind === "user" ? owner.origin.request : undefined;
-      if (!introduction && e instanceof TurnUsageLimitRefusedError && !owner?.stopped &&
-          refusedStartWaits(e.scope, { person: personTurn && asked !== undefined, resuming: limitHold.resuming(threadId) })) {
-        limitHold.hold({ botId: bot.id, threadId, engine: instanceId, engineName: aiProductName(registry.get(instanceId) ?? undefined, instanceId),
-          resetsAt: e.resetsAt ?? limitClock.resetAt(instanceId), ...(asked ? { request: asked } : {}) });
-      }
+      if (!introduction && e instanceof TurnUsageLimitRefusedError && !owner?.stopped && refusedStartWaits(e.scope, { person: personTurn && asked !== undefined, resuming: limitHold.resuming(threadId) })) limitHold.hold({ botId: bot.id, threadId, engine: instanceId, engineName: aiProductName(registry.get(instanceId) ?? undefined, instanceId), resetsAt: e.resetsAt ?? limitClock.resetAt(instanceId), ...(asked ? { request: asked } : {}) });
       store.setTaskActivity(bot.id, threadId, "idle");
       directTurnBots.delete(threadId);
       opts?.onDispatchError?.(message);
