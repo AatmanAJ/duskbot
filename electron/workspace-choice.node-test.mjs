@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import environments from "./environments.cjs";
-import { CHOSEN, GONE, JOINED, settledActive, UNUSABLE } from "./workspace-choice.mjs";
+import { CHOSEN, GONE, JOINED, localPageStep, settledActive, UNUSABLE } from "./workspace-choice.mjs";
 import { world, LOCAL, TEAM, ACME, connected } from "./fixtures/home-window-world.mjs";
 import { HOME_SCREEN_PATH } from "./home-window.mjs";
 import { RECONNECT_PATH } from "./workspace-reconnect.mjs";
@@ -81,4 +81,17 @@ test("a team's Cloud that can't be reached, then the person picks another server
   again.team.down = false;
   await again.later(2_000);
   assert.deepEqual(again.went.at(-1), [TEAM, TEAM, "team-acme"], "it still comes back by itself while the person waits on it");
+});
+
+test("the window closed and opened again from the Dock opens the linked server it showed, never this computer's empty page", async () => {
+  const w = world({ journal: null, state: { status: "signed-out" }, url: "" });
+  await w.home.show();
+  assert.deepEqual(w.local, [true], "a window with no page yet asks for this computer's screen");
+  assert.equal(localPageStep({ leaving: w.local[0], url: "", serverChosen: true }), "open", "while a server is chosen it opens that server");
+  assert.equal(localPageStep({ leaving: true, url: "", serverChosen: false }), "switch");
+  assert.equal(localPageStep({ leaving: true, url: `${VPS.origin}/`, serverChosen: true }), "switch", "a window that showed a place goes back to this computer");
+  assert.equal(localPageStep({ leaving: false, url: "", serverChosen: true }), "stay");
+  const showLocal = MAIN.slice(MAIN.indexOf("  showLocal: leaving =>"), MAIN.indexOf("installHomeWindowIpc("));
+  assert.ok(showLocal.indexOf("localPageStep(") > 0 && showLocal.indexOf("localPageStep(") < showLocal.indexOf("withActive("), "main asks before it moves the choice");
+  assert.match(showLocal, /step === "open"\) return windowsWithoutPage\.has\(mainWindow\) \? navigateMainWindow\(activeOrigin\(\)\)/);
 });
