@@ -152,7 +152,9 @@ export function createPhoneRelay(deps) {
     // a sync reporting an applied revision means the relay took this computer's channels
     one.hub = createPhoneHub({
       base: tunnel.base, id: tunnel.id, token: tunnel.token, keys,
-      server: { host: "127.0.0.1", get port() { return deps.port(); } },
+      // a phone's request must never reach another workspace's harness, which would answer 401 and unpair it: until the
+      // check stops this hub, port 0 fails each one as unreachable
+      server: { host: "127.0.0.1", get port() { return one.scope === scope() ? deps.port() : 0; } },
       sync: async (input) => {
         // another workspace's harness must never replace this tunnel's channels: that would cut its phones off
         const moved = () => { if (one.scope === scope()) return; void check(); throw new Error("the workspace changed"); };
