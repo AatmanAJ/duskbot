@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ensureDirs, NATIVE_DIR } from "../config.ts";
 import type { ProviderInstance } from "../contracts.ts";
 import { recordEvents, type EventRecorder } from "../testing/events.ts";
-import { GrokDriver } from "./grok.ts";
+import { GrokDriver, grokModelsFrom } from "./grok.ts";
 
 const SSE_BODY = (text: string) =>
   [
@@ -47,7 +47,8 @@ describe("GrokDriver turns (fake fetch)", () => {
     calls = 0;
     requestedModels = [];
     bodies = [];
-    globalThis.fetch = (async (_url, init) => {
+    globalThis.fetch = (async (url, init) => {
+      if (String(url).endsWith("/models")) return new Response("{}");
       bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       requestedModels.push((bodies.at(-1) as { model: string }).model);
       const step = script.shift();
@@ -173,7 +174,8 @@ describe("GrokDriver turns (fake fetch)", () => {
         setTimeout(() => controller.error(new Error("connection reset by peer")), 10);
       },
     });
-    globalThis.fetch = (async () => {
+    globalThis.fetch = (async (url: string) => {
+      if (String(url).endsWith("/models")) return new Response("{}");
       calls++;
       return new Response(failingStream, { status: 200, headers: { "content-type": "text/event-stream" } });
     }) as typeof fetch;
@@ -231,4 +233,13 @@ it("grok preserves an explicit tools-off connection and rejects ambiguous flags"
   expect(GrokDriver.decodeConfig({ tools: false })).toMatchObject({ tools: false });
   expect(GrokDriver.decodeConfig({ tools: true })).toMatchObject({ tools: true });
   expect(() => GrokDriver.decodeConfig({ tools: "false" })).toThrow("tools must be a boolean");
+});
+
+it("offers the chat models xAI lists for the key, in its order, with our known details", () => {
+  expect(grokModelsFrom({ data: [{ id: "grok-5" }, { id: "grok-4.7" }, { id: "grok-imagine-image" }, { id: "grok-5" }, { id: 7 }] })).toEqual({
+    default: "grok-4.7",
+    options: [{ id: "grok-5", label: "grok-5" }, { id: "grok-4.7", label: "Grok 4.7", contextWindow: 500_000 }],
+  });
+  expect(grokModelsFrom({ data: [{ id: "grok-5" }] })?.default).toBe("grok-5");
+  expect(grokModelsFrom({})).toBeNull();
 });

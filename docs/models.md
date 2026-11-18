@@ -139,6 +139,35 @@ licensed and is the same one OpenCode uses.
   `GET /v1/models` for Anthropic-style servers). The search shows those models
   first, with the catalog's badges added where the ids match.
 
+## Engine model lists (Codex, Claude Code, Grok)
+
+The picker for an engine is the engine's own list where it has one, with our
+names and order on top, so a new model shows up without an app release.
+
+- **Live first.** Codex's list is what the installed Codex CLI answers to
+  `model/list` (ChatGPT's own catalog for the signed-in account). The Grok API
+  engine reads xAI's `GET /models` with the saved key. Connected API-key
+  providers read their own `GET /models`. Claude Code has no list command, so
+  its list is ours.
+- **Read again every few hours.** Each list is saved per engine; a list older
+  than 6 hours is read again at start and, on a server that keeps running
+  (dusk cloud), every 3 hours.
+- **Our catalog on top.** `server/model-catalog/dusk-models.json` names each
+  engine's models, and a model marked `"add": true` is offered even when the
+  engine's own list leaves it out (an engine CLI older than the model). A model
+  the engine lists that we have not named gets a clean name from its id
+  (`gpt-6.2-astra` → "GPT-6.2 Astra"). A ChatGPT plan sign-in and company
+  models keep exactly their own list.
+- **Updated from dusk.bot without a release.** The server fetches
+  `https://dusk.bot/releases/models.json` at start and every 3 hours, keeps it
+  in `<data dir>/providers/model-providers/dusk-models.json`, and uses the
+  newer (by `updatedAt`) of that and the copy built into the app. To add a
+  model the same day: edit `server/model-catalog/dusk-models.json`, copy it to
+  `apps/site/public/landing/releases/models.json` (a test keeps them equal),
+  raise `updatedAt`, and deploy the site (`apps/site/deploy.sh landing`).
+  `DUSK_MODEL_CATALOG_URL` points at another https address;
+  `DUSK_DISABLE_MODEL_CATALOG_FETCH=1` turns the download off.
+
 ## Where a connection lives
 
 Each window of the app talks to one server: this computer, your dusk cloud, or

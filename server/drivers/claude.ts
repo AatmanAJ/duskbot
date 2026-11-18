@@ -2032,6 +2032,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       get models() {
         return models;
       },
+      ...(config.managed || config.managedModels ? {} : { modelCatalogKey: "claude" }),
       refreshModels,
       ...(startupModelRefresh ? { startupModelRefresh } : {}),
       snapshot,

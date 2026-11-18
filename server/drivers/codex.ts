@@ -1680,6 +1680,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     get models() {
       return models;
     },
+    ...(plan || config.managed ? {} : { modelCatalogKey: DRIVER_KIND }),
     quickModelsUsable: smallModelsUsable,
     refreshModels,
     ...(startupModelRefresh ? { startupModelRefresh } : {}),

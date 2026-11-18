@@ -10,6 +10,8 @@ import { withLocalContext } from "../drivers/local-inject.ts";
 import { engineStatusFile, snapshotFrom } from "./engine-status-file.ts";
 import { withUnaskedStops } from "./unasked-stop.ts";
 import { withWslNotice } from "./wsl-launch.ts";
+import { DuskModelCatalog } from "../model-catalog/dusk-models.ts";
+import { refreshStaleModelLists } from "../startup-model-catalog.ts";
 export { engineMemory } from "../engine-memory.ts";
 import { clientInstall } from "../contracts.ts";
 import type {
@@ -124,10 +126,16 @@ export class ProviderRegistry {
   private readonly status: ReturnType<typeof engineStatusFile> | null;
   private readonly installStandalone: InstallStandalone;
   private readonly installScript: InstallScript;
+  private readonly modelCatalog: DuskModelCatalog | null;
 
   constructor(
     drivers: readonly AnyProviderDriver[],
-    options: { enginesBaseDir?: string; npmAvailable?: () => boolean; statusFile?: string; installStandalone?: InstallStandalone; installScript?: InstallScript } = {},
+    options: {
+      enginesBaseDir?: string; npmAvailable?: () => boolean; statusFile?: string; installStandalone?: InstallStandalone; installScript?: InstallScript;
+      /** Where dusk.bot's model catalog is cached; given, it is fetched now and every few hours, and stale engine lists are read again. */
+      modelCatalogDir?: string;
+      modelCatalog?: DuskModelCatalog;
+    } = {},
   ) {
     this.enginesBaseDir = options.enginesBaseDir;
     this.npmPresent = options.npmAvailable ?? npmAvailable;
@@ -135,6 +143,18 @@ export class ProviderRegistry {
     this.installStandalone = options.installStandalone ?? installStandaloneEngine;
     this.installScript = options.installScript ?? installScriptEngine;
     this.driversByKind = new Map(drivers.map((d) => [d.driverKind, d]));
+    this.modelCatalog = options.modelCatalog ?? (options.modelCatalogDir ? new DuskModelCatalog({ dataDir: options.modelCatalogDir }) : null);
+    if (options.modelCatalogDir) this.modelCatalog?.start(() => refreshStaleModelLists(this.instances()));
+  }
+
+  /** The instance's `models` read through dusk.bot's catalog, on the instance itself so every decorator sees it. */
+  private curateModels(instance: ProviderInstance): void {
+    const catalog = this.modelCatalog;
+    const key = instance.modelCatalogKey;
+    if (!catalog || !key) return;
+    const own = Object.getOwnPropertyDescriptor(instance, "models");
+    const read = own?.get ? own.get.bind(instance) : () => own?.value as ProviderInstance["models"];
+    Object.defineProperty(instance, "models", { configurable: true, enumerable: true, get: () => catalog.curate(key, read()) });
   }
 
   async load(configs: InstanceConfigMap, decorate?: (instance: ProviderInstance) => ProviderInstance) {
@@ -189,6 +209,7 @@ export class ProviderRegistry {
         config,
       })))));
       this.shareSnapshot(live);
+      this.curateModels(live);
       return { instanceId, live: decorate ? decorate(live) : live };
     } catch (e) {
       return {
@@ -561,6 +582,7 @@ export class ProviderRegistry {
   }
 
   async disposeAll() {
+    this.modelCatalog?.stop();
     await Promise.allSettled(this.instances().map((i) => i.dispose()));
     this.byId.clear();
     this.cliByInstance.clear();
