@@ -743,35 +743,36 @@ describe("Group Local VM ownership on the real isolated server", () => {
     }
   });
 
-  it("says why This computer cannot mount in a channel instead of dispatching without the promised tools", async () => {
+  // the turn goes on without screen tools instead of failing, and the bot is told this computer's apps are not available
+  async function speaksWithoutThisComputer(reason: string) {
     const { bots, group } = await room();
-    await api("PATCH", `/api/bots/${bots[0].id}`, { computer: "local" });
-    await send(group.id);
-    await until(() => api("GET", "/api/bots?messages=30"), state => JSON.stringify(state).includes(THIS_COMPUTER_NOT_READY));
-    await idle(bots[0].id);
-    expect(existsSync(dumpFile)).toBe(false);
-  });
-
-  it.skipIf(process.platform === "linux")("carries the recorded macOS permission failure into the failed turn", async () => {
-    const { bots, group } = await room();
-    const reason = "embedded host failed: Screen Recording required; grant access in System Settings and restart dusk bot";
     mkdirSync(dirname(cuaDescriptor), { recursive: true });
     writeFileSync(cuaDescriptor, JSON.stringify({ mode: "unavailable", reason }), { mode: 0o600 });
     await appHandsItOver();
     try {
       await api("PATCH", `/api/bots/${bots[0].id}`, { computer: "local" });
       await send(group.id);
-      // on a Mac the recorded failure is said as the grant to turn on and where; elsewhere it is passed on as recorded
-      const said = process.platform === "darwin"
-        ? `${THIS_COMPUTER_NOT_READY}Screen Recording required. Turn on dusk bot in System Settings > Privacy & Security > Screen Recording`
-        : `${THIS_COMPUTER_NOT_READY}${reason}`;
-      await until(() => api("GET", "/api/bots?messages=30"), value => JSON.stringify(value).includes(said));
+      const sent = await dump();
+      expect(sent.mcpConfig?.mcpServers?.computer).toBeUndefined();
+      writeFileSync(finishFile, "finish");
       await idle(bots[0].id);
-      expect(existsSync(dumpFile)).toBe(false);
+      expect(JSON.stringify(await api("GET", "/api/bots?messages=30"))).not.toContain(THIS_COMPUTER_NOT_READY);
+      return JSON.stringify(sent);
     } finally {
       rmSync(cuaDescriptor, { force: true });
       await appHandsItOver();
     }
+  }
+
+  it("lets a channel speaker on This computer reply without screen tools while the computer helper is not ready", async () => {
+    expect(await speaksWithoutThisComputer("embedded host failed: the computer helper did not start"))
+      .toContain("Control of this computer's desktop apps is not available");
+  });
+
+  it.skipIf(process.platform === "linux")("tells a channel speaker which macOS grant is still off, instead of failing the turn", async () => {
+    const sent = await speaksWithoutThisComputer("embedded host failed: Screen Recording required; grant access in System Settings and restart dusk bot");
+    expect(sent).toContain("Control of this computer's desktop apps is not available");
+    if (process.platform === "darwin") expect(sent).toContain("macOS has not given dusk bot Screen Recording on this Mac yet");
   });
 
   it("runs a channel speaker's own VPS destination on its engine, waking and reusing its computer", async () => {

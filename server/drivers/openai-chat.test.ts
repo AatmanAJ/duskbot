@@ -56,6 +56,9 @@ describe("createOpenAIChatRuntime one-shot usage", () => {
     });
   };
   const choices = [{ message: { content: "helper result" }, finish_reason: "stop" }];
+  const completionModels = () => vi.mocked(fetch).mock.calls
+    .filter((call) => String(call[0]).endsWith("/chat/completions"))
+    .map((call) => JSON.parse(call[1]!.body as string).model);
 
   it("reports the actual helper model and known provider usage once, preserving the text result", async () => {
     const instance = await fixture({
@@ -64,7 +67,7 @@ describe("createOpenAIChatRuntime one-shot usage", () => {
     });
     const onUsage = vi.fn();
     await expect(instance.generateText!("summarize", { onUsage })).resolves.toBe("helper result");
-    expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).model).toBe("grok-3-mini");
+    expect(completionModels()[0]).toBe("grok-3-mini");
     expect(instance.models.default).toBe("grok-4.7");
     expect(onUsage.mock.calls).toEqual([[{ model: "grok-3-mini-actual", input: 120, output: 20, cachedInput: 100, costUsd: 0.004 }]]);
     await expect(instance.generateText!("plain summary")).resolves.toBe("helper result");
@@ -99,7 +102,7 @@ describe("createOpenAIChatRuntime one-shot usage", () => {
     const instance = await fixture({ choices });
     await expect(instance.generateText!("summarize", { model: "grok-4.7" })).resolves.toBe("helper result");
     await instance.generateText!("summarize");
-    expect(vi.mocked(fetch).mock.calls.map((call) => JSON.parse(call[1]!.body as string).model)).toEqual(["grok-4.7", "grok-3-mini"]);
+    expect(completionModels()).toEqual(["grok-4.7", "grok-3-mini"]);
     await instance.dispose();
   });
 

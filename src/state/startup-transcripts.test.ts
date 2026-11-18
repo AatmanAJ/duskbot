@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { StoreProvider, useStore, type Action, type AppState, type Bot, type Group, type Message } from "./store";
+import { forgetChatsInFront } from "../lib/chat-in-front";
 import { LAST_CONVERSATION_KEY } from "../lib/last-conversation";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -33,6 +34,7 @@ afterEach(() => {
   root = undefined;
   FixtureEventSource.opened = [];
   vi.unstubAllGlobals();
+  forgetChatsInFront();
 });
 
 async function fixture(transcripts?: (path: string) => unknown) {
