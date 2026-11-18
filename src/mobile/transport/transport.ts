@@ -2,6 +2,7 @@ import { RelayGoneError, type RelayChannel } from "./relay";
 import { noteRefusedRequest } from "@/lib/session-ended";
 import { asleepAnswer, BACKGROUND_HEADERS, markCloudAsleep } from "@/lib/cloud-power";
 import { setUploadRoute } from "@/lib/upload-request";
+import { limitSendAttempts } from "@/state/optimistic-send";
 import { forgetWorkspaceAnswers, noteWorkspaceAnswer, placeAnswered } from "../connection/reachability";
 
 export type PhoneTransport =
@@ -263,6 +264,8 @@ function installMedia(): () => void {
 }
 
 export const ASLEEP_PROBE_GAP_MS = 10_000;
+/** how long one send to a place over the network waits for its answer before asking again on a new request */
+export const PHONE_SEND_ATTEMPT_MS = 20_000;
 
 /** The live stream goes through the WebView's own fetch, and a sleeping Cloud's edge answer carries no CORS headers, so
  * a failed stream cannot tell asleep from unreachable; one background read through native http can. */
@@ -363,12 +366,14 @@ export function installTransport(transport: PhoneTransport, onGone?: () => void)
     return overRelay(relayFetch(transport.channel, transport.token, onProgress))(url, { method: init.method, headers: init.headers, body: init.body as BodyInit, signal: init.signal, credentials: "omit", redirect: "error" });
   }) : () => {};
   const stopMedia = installMedia();
+  const stopSendLimit = limitSendAttempts(PHONE_SEND_ATTEMPT_MS);
   let stopped = false;
   return () => {
     if (stopped) return;
     stopped = true;
     stopUploads();
     stopMedia();
+    stopSendLimit();
     if (transport.kind === "relay") transport.channel.close();
     for (const source of sources) source.close();
     for (const socket of sockets) socket.close();

@@ -80,6 +80,19 @@ export interface LiveFrameListener {
 const liveFrameListeners = new Set<LiveFrameListener>();
 const screenWishListeners = new Set<() => void>();
 const retryListeners = new Set<() => void>();
+const openListeners = new Set<() => void>();
+let lastLiveAt: number | null = null;
+
+/** When any live stream last opened or carried a frame (a ping too), in this page's clock; null before the first. */
+export function liveEventsHeardAt(): number | null {
+  return lastLiveAt;
+}
+
+/** A live stream to the place opened: the place answers again, whatever an older request is still waiting on. */
+export function onLiveEventsOpen(listener: () => void): () => void {
+  openListeners.add(listener);
+  return () => { openListeners.delete(listener); };
+}
 
 /** The person asked to try again: every open stream that is not connected tries now, from the shortest wait. */
 export function retryLiveEventsNow(): void {
@@ -296,11 +309,14 @@ export function openLiveEvents(
       if (stopped || source !== current) return;
       lastHeardAt = platform.now();
       handlers.onOpen?.();
+      lastLiveAt = Date.now();
+      for (const listener of openListeners) listener();
     };
     current.onerror = () => connectionLost(current);
     current.onmessage = (event) => {
       if (stopped || source !== current) return;
       lastHeardAt = platform.now();
+      lastLiveAt = Date.now();
 
       const frame = parseLiveFrame(event.data);
       if (!frame) return;
