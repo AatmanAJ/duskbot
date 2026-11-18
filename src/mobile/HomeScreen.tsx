@@ -323,7 +323,7 @@ function RowFace({ entry }: { entry: Entry }) {
         <span className="mt-0.5 flex items-center gap-2">
           <span className={cn("min-w-0 flex-1 truncate text-[14px] leading-5", entry.unread ? "text-ink" : "text-ink-secondary")}>
             {entry.kind === "bot" && working && !entry.bot.waitingForTeammates && entry.bot.activity !== "waiting-on-you"
-              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} size={20} />
+              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} mascot={20} />
               : entry.preview || " "}
           </span>
         </span>
