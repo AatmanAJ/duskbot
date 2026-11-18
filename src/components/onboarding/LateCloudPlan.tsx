@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { CloudAccountState } from "../../../electron/cloud-account.mjs";
 import { hintSeenPatch, useWelcomeOnScreen, type WelcomeViewer } from "@/lib/onboarding";
+import { openedBySwitch } from "@/lib/place-switch";
 import { api, useStore } from "@/state/store";
 import { WindowDragStrip } from "../DesktopCapabilities";
-import { CLOUD_OPENED_HERE, lateCloudDue } from "./late-cloud";
+import { CLOUD_OPENED_HERE, lateCloudDue, setLateCloudOnScreen } from "./late-cloud";
 import { MakingStep } from "./MakingStep";
 import { localDesktopPage } from "./WelcomeGate";
 import "../../styles/onboarding.css";
@@ -24,15 +25,19 @@ export function LateCloudPlan({ viewer }: { viewer: WelcomeViewer | null }) {
     const stop = bridge.onState(seen);
     return () => { live = false; stop(); };
   }, [bridge]);
-  const due = lateCloudDue({ local: Boolean(bridge), canSave: viewer?.canSave === true, config: state.config, account, welcomeShown });
+  const due = lateCloudDue({ local: Boolean(bridge), canSave: viewer?.canSave === true, config: state.config, account, welcomeShown, switched: openedBySwitch() });
   useEffect(() => {
     if (!due || marked.current) return;
     marked.current = true;
-    setOpen(true);
+    if (due === "making") setOpen(true);
     const patch = hintSeenPatch(state.config?.onboarding, CLOUD_OPENED_HERE);
     if (patch) void api("/api/config", { method: "PUT", body: JSON.stringify(patch), signal: AbortSignal.timeout(10_000) })
       .then((config) => dispatch({ type: "configStatus", config: config as never }), () => {});
   }, [due, state.config?.onboarding, dispatch]);
+  useEffect(() => {
+    setLateCloudOnScreen(open);
+    return () => setLateCloudOnScreen(false);
+  }, [open]);
   if (!open) return null;
   return (
     <div role="dialog" aria-modal aria-labelledby="welcome-title" data-late-cloud=""

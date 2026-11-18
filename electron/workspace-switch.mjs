@@ -23,8 +23,8 @@ export function handedLook(value) {
  * @param {{ window: () => (import("electron").BrowserWindow | null), now?: () => number, log?: (line: string) => void }} deps
  */
 export function createWorkspaceSwitch({ window, now = Date.now, log = () => {} }) {
-  let depth = 0, navigated = false, watched = null, handed = null;
-  const onNavigation = (details) => { if (details?.isMainFrame !== false && details?.isSameDocument !== true) navigated = true; };
+  let depth = 0, navigated = false, watched = null, handed = null, arrivedAt = null;
+  const onNavigation = (details) => { if (details?.isMainFrame !== false && details?.isSameDocument !== true) { navigated = true; arrivedAt = now(); } };
   const tell = (win, on) => {
     try { win.webContents.send("workspaces:switching", on); } catch (error) { log(`switch: could not tell the page (${error?.message ?? error})`); }
   };
@@ -67,6 +67,12 @@ export function createWorkspaceSwitch({ window, now = Date.now, log = () => {} }
       if (age < 0 || age > HANDED_LOOK_MS) return null;
       return { ...was.look, elapsed: Math.min(HANDED_LOOK_MS, was.look.elapsed + age) };
     },
+    /** Whether a switch opened the window's page in the last HANDED_LOOK_MS. */
+    arrived() {
+      if (arrivedAt === null) return false;
+      const age = now() - arrivedAt;
+      return age >= 0 && age <= HANDED_LOOK_MS;
+    },
   };
 }
 
@@ -75,4 +81,5 @@ export function installWorkspaceSwitchIpc({ ipcMain, workspaceSwitch, window }) 
   const ours = (event) => { const win = window(); return Boolean(win && !win.isDestroyed() && event?.sender === win.webContents); };
   ipcMain.on("workspaces:switch-look", (event, value) => { if (ours(event)) workspaceSwitch.hand(value); });
   ipcMain.on("workspaces:switch-look-take", (event) => { event.returnValue = ours(event) ? workspaceSwitch.take() : null; });
+  ipcMain.on("workspaces:switch-arrived", (event) => { event.returnValue = ours(event) && workspaceSwitch.arrived(); });
 }

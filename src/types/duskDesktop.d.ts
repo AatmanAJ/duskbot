@@ -277,6 +277,8 @@ const __APP_VERSION__: string;
         handLook?: (look: import("../lib/mascot-loading").HandedLook) => void;
         /** The mascot the page before handed on, once, while it is fresh. */
         takeLook?: () => import("../lib/mascot-loading").HandedLook | null;
+        /** Whether a switch of place opened this page just now; absent on an older app. */
+        arrived?: () => boolean;
       };
       /** Buying another Cloud from the rail's ＋, on this app's page or a hosted Cloud's; absent on an older app. */
       cloudAdd?: {

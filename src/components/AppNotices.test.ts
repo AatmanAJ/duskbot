@@ -34,6 +34,7 @@ vi.mock("@/components/EngineLibrary", () => ({ engineReady: (instance: { snapsho
 const sleep = vi.hoisted(() => ({ found: null as null | { botId: string; name: string; wokeAt: number } }));
 vi.mock("@/lib/asleep-work", async original => ({ ...await original<typeof import("@/lib/asleep-work")>(), useAsleepWork: () => sleep.found }));
 import { AppNotices } from "./AppNotices";
+import { setLateCloudOnScreen } from "./onboarding/late-cloud";
 import { TwoPlacesCard } from "./TwoPlacesCard";
 import { ASLEEP_NOTICE, CLOUD_INTRO, GROK_MOVE_NOTICE, localDay, WHATS_NEW_NOTICE } from "@/lib/notices";
 import { track } from "@/lib/analytics";
@@ -310,6 +311,13 @@ describe("the card after the update", () => {
       f.state = saved;
     }
     expect(storage.get(`${CLOUD_INTRO}:days`)).toBeUndefined();
+    expect(await launch()).toContain(INTRO);
+  });
+
+  it("never over the late plan's making screen: the card waits until it closes", async () => {
+    returning();
+    setLateCloudOnScreen(true);
+    try { expect(await launch()).toBe(""); } finally { setLateCloudOnScreen(false); }
     expect(await launch()).toContain(INTRO);
   });
 });
