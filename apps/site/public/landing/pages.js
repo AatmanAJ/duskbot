@@ -43,7 +43,7 @@ if (dl) {
       const ph = $('[data-dl-phone]', dl), form = $('[data-dl-mail]', dl);
       if (!ph) return;
       $('.dl-cta', dl).hidden = true; note.hidden = true; ph.hidden = false;
-      if (/android/i.test(navigator.userAgent)) for (const x of $$('[data-dl-ios]', ph)) x.hidden = true;
+      if (/android/i.test(navigator.userAgent)) for (const x of $$('[data-dl-ios], [data-dl-android]', ph)) x.hidden = !x.hidden;
       form.addEventListener('submit', (e) => {
         e.preventDefault();
         const to = form.email.value.trim(), link = `${location.origin}/download`;

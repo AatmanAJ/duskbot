@@ -8,7 +8,8 @@
     "mac-x64": "DuskBot-intel.dmg",
     "windows": "DuskBot-setup.exe",
     "linux-deb": "DuskBot-amd64.deb",
-    "linux-appimage": "DuskBot.AppImage"
+    "linux-appimage": "DuskBot.AppImage",
+    "android": "DuskBot.apk"
   },
   "checksums": "SHA256SUMS",
   "macNotarized": true,
@@ -21,6 +22,7 @@
     "mac-x64": 185093039,
     "windows": 216364883,
     "linux-deb": 273597160,
-    "linux-appimage": 323488958
+    "linux-appimage": 323488958,
+    "android": 22857950
   }
 }
