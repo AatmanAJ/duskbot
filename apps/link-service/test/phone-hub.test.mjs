@@ -172,6 +172,15 @@ describe("phone hub without sockets", () => {
     expect(calls[1]).toMatchObject({ applied: 1, failed: [second] });
   });
 
+  it("leaves out every taken channel in turn, so one leftover tunnel never blocks the rest", async () => {
+    const third = "phoneaaaac";
+    registration = () => registrations.length === 1 ? new Response(JSON.stringify({ code: "taken", id: second }), { status: 409 })
+      : registrations.length === 2 ? new Response(JSON.stringify({ code: "taken", id: third }), { status: 409 }) : new Response("{}", { status: 200 });
+    await start([spec(), spec(second, anotherKey), spec(third, anotherKey)]);
+    expect(registrations.map((body) => body.channels.map((channel) => channel.id))).toEqual([[cid, second, third], [cid, third], [cid]]);
+    expect(calls[1]).toMatchObject({ applied: 1, failed: [second, third] });
+  });
+
   it("retries a taken registration exactly once and reports the failed id at the applied revision", async () => {
     registration = () => registrations.length === 1 ? new Response(JSON.stringify({ code: "taken", id: second }), { status: 409 }) : new Response("{}", { status: 200 });
     await start([spec(), spec(second, anotherKey)]);
