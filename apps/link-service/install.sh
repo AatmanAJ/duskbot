@@ -674,7 +674,8 @@ step() { # id function
   [ ! -f "$TMP/cancelled" ] || on_stop
   set -e
   took=$(fmt_ms $(($(now_ms) - PH_T0)))
-  why=$(tail -n 1 "$LOG" 2>/dev/null | tr -cd '\40-\176' | cut -c1-$((COLS - TW - 16)))
+  _ww=$((COLS - TW - 16)); [ "$_ww" -ge 20 ] || _ww=20
+  why=$(tail -n 1 "$LOG" 2>/dev/null | tr -cd '\40-\176' | cut -c1-"$_ww")
   case "$code" in
     0)
       report "$1" "done"; state_set "step-$1" "done"
