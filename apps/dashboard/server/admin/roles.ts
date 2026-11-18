@@ -2,10 +2,10 @@ import type { AdminRole } from "../auth/store.ts";
 
 export type PanelRole = "owner" | AdminRole;
 
-/** security invariant: the only admin requests a growth admin may make. reads of aggregate analytics, revenue and cost; every other
- *  route, and every change, is refused with 403, so a new route stays owner-only until it is added here */
+/** security invariant: the only admin requests a growth admin may make. reads of aggregate analytics and revenue, never cloud cost or
+ *  cloud figures; every other route, and every change, is refused with 403, so a new route stays owner-only until it is added here */
 export const GROWTH_ROUTES: readonly RegExp[] = [
-  /^\/me$/, /^\/overview$/, /^\/web$/, /^\/web\/[a-z_]{1,30}$/, /^\/funnel$/, /^\/realtime$/, /^\/retention$/, /^\/waitlist$/, /^\/revenue$/, /^\/revenue\/infra$/,
+  /^\/me$/, /^\/overview$/, /^\/web$/, /^\/web\/[a-z_]{1,30}$/, /^\/funnel$/, /^\/realtime$/, /^\/retention$/, /^\/waitlist$/, /^\/revenue$/,
 ];
 export const growthMay = (method: string, route: string) => method === "GET" && GROWTH_ROUTES.some(pattern => pattern.test(route));
 
@@ -29,7 +29,11 @@ export function forGrowth(route: string, data: unknown): unknown {
     const record = data as Record<string, unknown>;
     if (route === "/waitlist") shaped = { ...record, entries: [], total: typeof record.count === "number" ? record.count : 0, offset: 0 };
     else if (route === "/revenue") shaped = { ...record, customers: [], upcoming: [], risk: [] };
-    else if (route === "/revenue/infra") shaped = { ...record, customers: [], worst: [] };
+    else if (route === "/overview") {
+      const { clouds: _clouds, totals, ...rest } = record as { clouds?: unknown; totals?: Record<string, unknown> };
+      const { clouds: _count, ...kept } = totals ?? {};
+      shaped = { ...rest, ...(totals ? { totals: kept } : {}) };
+    }
   }
   // a live visitor's `name` is the event it sent, not the person's
   return scrub(shaped, route === "/realtime" ? PERSON_FIELDS.filter(key => key !== "name") : PERSON_FIELDS);

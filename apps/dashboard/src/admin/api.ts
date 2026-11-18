@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { CSRF_HEADER, readCsrfCookie } from "../../../../shared/account-api";
 import { lowercase } from "../lib/api";
 
-/** what the signed-in admin may open: the owner everything, a growth admin the analytics, revenue and cost reads */
+/** what the signed-in admin may open: the owner everything, a growth admin the analytics and revenue reads */
 export type AdminRole = "owner" | "growth";
 export const AdminRoleContext = createContext<AdminRole>("owner");
 export const useAdminRole = () => useContext(AdminRoleContext);

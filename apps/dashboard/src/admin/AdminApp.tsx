@@ -78,7 +78,7 @@ export function currentItem(path: string): NavItem | null {
 }
 
 function page(path: string, role: AdminRole): ReactNode {
-  if (!opens(role, path)) return <SkyEmpty art="cat" title="not part of your admin view." action={<ButtonLink to="/admin" variant="primary">overview</ButtonLink>}>your role covers growth, revenue and cost.</SkyEmpty>;
+  if (!opens(role, path)) return <SkyEmpty art="cat" title="not part of your admin view." action={<ButtonLink to="/admin" variant="primary">overview</ButtonLink>}>your role covers growth and revenue.</SkyEmpty>;
   if (path === "/admin") return <OverviewPage />;
   const details = /^\/admin\/analytics\/([a-z]+)$/.exec(path);
   if (details) return <DetailsPage dimension={details[1]!} />;

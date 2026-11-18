@@ -612,7 +612,7 @@ export function RevenuePage() {
               <Fold title="cohorts" meta="who keeps paying, month by month"><div className="rounded-[18px] bg-pop p-3"><CohortHeat cohorts={data.cohorts} /></div></Fold>
             </>
           )}
-          <Fold plain title="more" meta="churn, cash, funnel, margin, renewals and the feed">
+          <Fold plain title="more" meta={owner ? "churn, cash, funnel, margin, renewals and the feed" : "churn, cash, funnel and the feed"}>
             <div className="flex flex-col gap-4">
               {!empty && <OtherNumbers report={data} />}
               {!empty && <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1"><Churn report={data} /><Dunning report={data} /><Breakdown breakdown={data.breakdown} /><Cash report={data} /></div>}
@@ -623,7 +623,7 @@ export function RevenuePage() {
                 </Card>
                 <Checkout checkout={data.checkout} />
               </div>
-              <InfraMargin />
+              {owner && <InfraMargin />}
               {!empty && (
                 <div className="grid grid-cols-2 items-start gap-4 max-lg:grid-cols-1">
                   <div className="flex min-w-0 flex-col gap-4">{owner && <Renewals report={data} />}<TimeToPay data={data.timeToPay} /></div>
