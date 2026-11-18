@@ -4,7 +4,8 @@
 // feed on 127.0.0.1 that only this process knows.
 // Squirrel.Mac installs only an app signed with the same Developer ID as the running one (its designated requirement),
 // and only one it can replace where it runs, so an unsigned build, or one run from a disk image or a translocated copy,
-// is shown how to update by hand instead. Windows and Linux are shown a link to their own installer.
+// is shown how to update by hand instead. Windows does the same with the release's NSIS installer (app-update-windows.mjs);
+// Linux is shown a link to its own installer.
 // a downloaded update installs when the app quits, or at a quiet moment (locked, or no window focused and nobody touched
 // the mac for QUIET_IDLE_MS, with no turn, call or dictation running), and the app shows "restart to update" while it waits.
 import { execFile } from "node:child_process";
@@ -53,8 +54,11 @@ export function newer(a, b) {
 }
 
 /** this arch's zip in a SHA256SUMS text: `{ name, sha256 }`, or null */
-export function zipIn(sums, version, arch) {
-  const name = `DuskBot-${version}-${arch}.zip`;
+export const zipIn = (sums, version, arch) => assetIn(sums, `DuskBot-${version}-${arch}.zip`);
+/** the windows installer in a SHA256SUMS text: `{ name, sha256 }`, or null */
+export const setupIn = (sums, version) => assetIn(sums, `DuskBot-${version}-setup.exe`);
+
+function assetIn(sums, name) {
   for (const line of String(sums).split("\n")) {
     const match = /^([0-9a-f]{64}) {2}(\S+)$/.exec(line.trim());
     if (match && match[2] === name) return { name, sha256: match[1] };
@@ -154,6 +158,9 @@ export const DOWNLOAD_PAGE = "https://dusk.bot/download";
 export const mirrorUrl = (version, name) => `https://dusk.bot/releases/${version}/${name}`;
 /** where a release's update zip can come from, in the order they are tried */
 export const zipSources = (version, name) => [zipUrl(version, name), mirrorUrl(version, name)];
+/** where a release's windows installer can come from: dusk.bot's copy, then the downloads repo's stable name (the same
+ * bytes, checked against the same sha256) */
+export const setupSources = (version, name) => [mirrorUrl(version, name), zipUrl(version, "DuskBot-setup.exe")];
 
 // the downloads repo keeps the installers under the stable names dusk.bot/download links to
 const STABLE = { "setup.exe": "DuskBot-setup.exe", "x86_64.AppImage": "DuskBot.AppImage", "amd64.deb": "DuskBot-amd64.deb" };
@@ -178,18 +185,20 @@ export async function installerUrl(version, name, fetchImpl = fetch) {
 }
 
 /**
- * keeps the app current. on a mac (`installs`) that is Developer ID signed (`signed()`) and runs from a place it may
- * replace (`blocked()` is null), it downloads the update and restarts into it; otherwise the state names what the
- * person can do: `blocked: "move"` (move the app to Applications) or `manual` (`{ version, url }`, a link to download
- * the release by hand). `fallback.check()` (update-notice.mjs) also tells an unsigned build, and any failure.
+ * keeps the app current. on a mac or a windows install (`installs`) that may install it (`signed()`, a Developer ID on a
+ * mac) and runs from a place it may replace (`blocked()` is null), it downloads the update (`asset(sums, version)` from
+ * `sources(version, name)`) and restarts into it; otherwise the state names what the person can do: `blocked: "move"`
+ * (move the app to Applications) or `manual` (`{ version, url }`, a link to download the release by hand). a version
+ * `installer.failed(version)` says did not install is offered by hand too, until `check({ again: true })` (the person
+ * asked) tries it once more. `fallback.check()` (update-notice.mjs) also tells an unsigned build, and any failure.
  * `onState` hears: `available` (a newer version), `progress` (0 to 1) while it downloads, `retrying` while a failed try
  * waits for the next, `ready` once it waits for a restart, `checking` while a check runs, `failed` when the last could
  * not finish. `onFailed(message, { stage, reason })`: `reason` is a short word, never a path.
  */
 export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys = RELEASE_KEYS, installs = true, platform = "darwin", appImage = false, signed, blocked = async () => null,
-  installer, quiet, fallback, onState = () => {}, onFailed = () => {}, log = () => {}, firstDelayMs = 20_000, intervalMs = HOUR_MS, jitterMs = JITTER_MS, random = Math.random,
+  asset = (sums, version) => zipIn(sums, version, arch), sources = zipSources, keep = [], installer, quiet, fallback, onState = () => {}, onFailed = () => {}, log = () => {}, firstDelayMs = 20_000, intervalMs = HOUR_MS, jitterMs = JITTER_MS, random = Math.random,
   quietEveryMs = 60_000, timers = globalThis, download = {} }) {
-  let ready = null, available = null, progress = null, timer = null, quietTimer = null, checking = null, installing = false, failed = false, retrying = false, stuck = null, manual = null, kick = null;
+  let ready = null, available = null, progress = null, timer = null, quietTimer = null, checking = null, installing = false, failed = false, retrying = false, stuck = null, manual = null, kick = null, again = false;
   const toldBlocked = new Set();
   const state = () => ({ ready, available, progress, checking: checking !== null, failed, retrying, blocked: stuck, manual });
   const tell = () => onState(state());
@@ -231,15 +240,17 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
     const where = await blocked().catch(() => null);
     if (where === "move") { stuck = "move"; manual = null; report(version, "translocated"); return null; }
     if (where === "readonly") { stuck = null; manual = { version, url: DOWNLOAD_PAGE }; report(version, "read_only"); return null; }
+    if (where === "portable") { stuck = null; manual = { version, url: await installerUrl(version, installerIn(sums, version, platform), fetchImpl) }; report(version, "portable"); return null; }
+    if (installer.failed?.(version) && !again) { stuck = null; manual = { version, url: await installerUrl(version, installerIn(sums, version, platform), fetchImpl) }; report(version, "did_not_install"); return null; }
     stuck = manual = null;
-    const zip = zipIn(sums, version, arch);
-    if (!zip) throw new UpdateError("manifest", "no_zip", `release ${version} has no zip for ${arch}`);
+    const zip = asset(sums, version);
+    if (!zip) throw new UpdateError("manifest", "no_zip", `release ${version} has no update for ${platform} ${arch}`);
     mkdirSync(dir, { recursive: true });
-    for (const name of readdirSync(dir)) if (name !== zip.name && name !== `${zip.name}.part`) rmSync(join(dir, name), { recursive: true, force: true });
+    for (const name of readdirSync(dir)) if (name !== zip.name && name !== `${zip.name}.part` && !keep.includes(name)) rmSync(join(dir, name), { recursive: true, force: true });
     const file = join(dir, zip.name);
     progress = 0; retrying = false; tell();
     try {
-      await resumableDownload({ sources: zipSources(version, zip.name), file, sha256: zip.sha256, fetchImpl, ...download,
+      await resumableDownload({ sources: sources(version, zip.name), file, sha256: zip.sha256, fetchImpl, ...download,
         setKick: (fn) => { kick = fn; },
         onProgress: (fraction) => {
           // whole percents, so the window hears at most a hundred changes
@@ -256,7 +267,8 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
     return ready;
   }
 
-  function check() {
+  function check({ again: asked = false } = {}) {
+    if (asked) again = true;
     if (checking) return checking;
     failed = false;
     checking = run().catch(async (error) => {
@@ -292,13 +304,13 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
     return true;
   }
 
-  const again = (delay) => { timer = timers.setTimeout(() => { void check().finally(() => again(intervalMs + Math.floor(random() * jitterMs))); }, delay); timer?.unref?.(); };
+  const later = (delay) => { timer = timers.setTimeout(() => { void check().finally(() => later(intervalMs + Math.floor(random() * jitterMs))); }, delay); timer?.unref?.(); };
   return {
     check, restart,
     state,
     start() {
       if (timer) return;
-      again(firstDelayMs);
+      later(firstDelayMs);
     },
     /** the mac woke: a download in flight goes on from where it got (its socket died in the sleep), and the next check
      * comes after `delayMs` (the network needs a moment), then hourly from there */
@@ -306,7 +318,7 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
       kick?.();
       if (!timer) return;
       timers.clearTimeout(timer);
-      again(delayMs);
+      later(delayMs);
     },
     stop() { if (timer) timers.clearTimeout(timer); if (quietTimer) timers.clearTimeout(quietTimer); timer = quietTimer = null; },
   };
