@@ -1,4 +1,5 @@
 import { dataDirFor } from "../electron/legacy-names.mjs";
+import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -25,10 +26,13 @@ export interface HandoffInput {
   }>;
 }
 
-/** Keeps the newest handoffs of one conversation: the file name opens with its ISO stamp, so names sort in write order.
- * Best effort — a folder that cannot be listed or cleaned leaves the files behind, never the turn. */
-function pruneHandoffs(dir: string, threadId: string, keep: number): void {
-  const prefix = `cap-${String(threadId).slice(0, 8)}-`;
+function handoffPrefix(threadId: string): string {
+  const id = String(threadId);
+  return `cap-${id.slice(0, 8)}-${createHash("sha256").update(id).digest("hex").slice(0, 12)}-`;
+}
+
+/** Best effort: a folder that cannot be listed or cleaned leaves the files behind, never the turn. */
+function pruneHandoffs(dir: string, prefix: string, keep: number): void {
   try {
     const names = readdirSync(dir).filter((name) => name.startsWith(prefix)).sort();
     for (const name of names.slice(0, Math.max(0, names.length - keep))) rmSync(join(dir, name), { force: true });
@@ -40,7 +44,8 @@ export function writeTurnHandoff(input: HandoffInput, now = Date.now()): string 
     const dir = handoffDir();
     mkdirSync(dir, { recursive: true });
     const stamp = new Date(now).toISOString().replace(/[:.]/g, "-");
-    const file = join(dir, `cap-${String(input.threadId).slice(0, 8)}-${String(input.turnId).slice(0, 8)}-${stamp}.md`);
+    const prefix = handoffPrefix(input.threadId);
+    const file = join(dir, `${prefix}${stamp}-${String(input.turnId).slice(0, 8)}.md`);
     const L: string[] = [];
     L.push("# Handoff - turn ended without a final answer", "");
     L.push(`- Thread: ${input.threadId}`);
@@ -85,7 +90,7 @@ export function writeTurnHandoff(input: HandoffInput, now = Date.now()): string 
     L.push("3. Continue from the first unfinished step. Do not redo completed work.");
     L.push("4. If you get close to your own turn budget, append your progress to this file before stopping.");
     writeFileSync(file, L.join("\n"), { mode: 0o600 });
-    pruneHandoffs(dir, input.threadId, HANDOFFS_KEPT);
+    pruneHandoffs(dir, prefix, HANDOFFS_KEPT);
     return file;
   } catch {
     return null;

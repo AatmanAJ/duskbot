@@ -66,6 +66,21 @@ describe("writeTurnHandoff", () => {
     expect(existsSync(other!)).toBe(true);
   });
 
+  it("keeps threads that share their first characters apart and prunes by time, not turn id", () => {
+    const dir = withTempDataDir();
+    const start = Date.parse("2026-01-02T03:04:05.000Z");
+    const neighbour = writeTurnHandoff({ threadId: "summary-1111aaaa-0000-4000-8000-000000000000", turnId: "aaaa", toolCalls: 0, messages: [] }, start);
+    const written: string[] = [];
+    for (let index = 0; index < 7; index += 1) {
+      const path = writeTurnHandoff({ threadId: "summary-2222bbbb-0000-4000-8000-000000000000", turnId: `${9 - index}-turn`, toolCalls: 0, messages: [] }, start + index * 1_000);
+      written.push(path!);
+    }
+    expect(readdirSync(join(dir, "handoffs"))).toHaveLength(6);
+    expect(existsSync(neighbour!)).toBe(true);
+    for (const path of written.slice(0, 2)) expect(existsSync(path)).toBe(false);
+    for (const path of written.slice(2)) expect(existsSync(path)).toBe(true);
+  });
+
   it("returns null when the handoff cannot be written", () => {
     process.env.DUSK_DATA_DIR = join(tmpdir(), "dusk-handoff-", "does-not-exist", "nested");
     expect(writeTurnHandoff({ threadId: "t", turnId: "u", toolCalls: 0, messages: [] })).not.toBeNull();
