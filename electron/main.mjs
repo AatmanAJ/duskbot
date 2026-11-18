@@ -118,7 +118,7 @@ import { createOpenAtLogin, installOpenAtLogin } from "./open-at-login.mjs";
 import { createCleanWorkspace } from "./clean-workspace.mjs"; import { installOneHome } from "./one-home-main.mjs"; import { handSaved, installOwnHome } from "./own-home-main.mjs"; import { installVpsCloudMoveMain } from "./vps-cloud-move-main.mjs"; import { oneHomeCloud } from "./one-home-main.mjs"; import { newServerReach, serverOpens } from "./saved-server.mjs"; import { installTwoPlacesMain } from "./two-places-main.mjs"; import { installConnectorSyncMain } from "./connector-sync-main.mjs"; import { installSettingsSyncMain } from "./settings-sync-main.mjs"; import { installVpsLink, unlimitTunnelConnections } from "./vps-link-main.mjs"; import { installSealTrust } from "./seal-trust.mjs";
 import { askForMicrophone, openPrivacySettings } from "./privacy-settings.mjs"; import { installUserPresence } from "./user-presence.mjs";
 import { createHomeWindow, HOME_SCREEN_PATH, installHomeWindowIpc, WELCOMED_ROUTE } from "./home-window.mjs";
-import { settledActive } from "./workspace-choice.mjs"; import { createWorkspaceReconnect, installWorkspaceReconnectIpc, RECONNECT_PATH } from "./workspace-reconnect.mjs";
+import { settledActive } from "./workspace-choice.mjs"; import { createWorkspaceReconnect, installWorkspaceReconnectIpc, proxyAnswersForDownServer, RECONNECT_PATH } from "./workspace-reconnect.mjs";
 import { createTeamProfileSeeds } from "./team-profile-seed.mjs";
 import { createWorkspaceSwitch, installWorkspaceSwitchIpc } from "./workspace-switch.mjs";
 import { createHomePlaces } from "./home-places.mjs"; import { createDesktopRing, installAccounts } from "./accounts-main.mjs"; import { createAddedCloudNotice, installCloudRail, railPlaces } from "./cloud-rail.mjs"; import { createPlaceInboxWatch } from "./place-inbox-watch.mjs"; import { homeLook, otherOwnClouds, withoutOldCloudHome } from "./cloud-list.mjs"; import { installPlaceLook } from "./place-look.mjs"; import { CHROME_RAIL_PATH, createChromeRail } from "./chrome-rail.mjs";
@@ -2406,11 +2406,10 @@ function createWindow({ deferNavigation = false } = {}) {
   });
   win.webContents.on("did-navigate", (_event, url, code) => {
     homeWindow.navigated(url);
-    // a proxy in front of a stopped server answers its own 502 to 504 page: that server isn't answering either
     const remote = activeRemote(environmentsState);
     let origin = null;
     try { origin = new URL(url).origin; } catch {}
-    if (remote && code >= 502 && code <= 504 && origin === remote.origin) return void workspaceReconnect.lost(remote);
+    if (remote && proxyAnswersForDownServer(code) && origin === remote.origin) return void workspaceReconnect.lost(remote);
     workspaceReconnect.loaded(url);
   });
   // Not did-finish-load: Electron still reports the main frame as loading then.

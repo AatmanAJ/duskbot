@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import test from "node:test";
 
-import { createWorkspaceReconnect, FRAME_MAX_AGE_MS, frameOf, installWorkspaceReconnectIpc, RECONNECT_PATH, RETRY_MS } from "./workspace-reconnect.mjs";
+import { createWorkspaceReconnect, FRAME_MAX_AGE_MS, frameOf, installWorkspaceReconnectIpc, proxyAnswersForDownServer, RECONNECT_PATH, RETRY_MS } from "./workspace-reconnect.mjs";
 
 const LOCAL = "http://127.0.0.1:8799";
 const BOTS = {
@@ -166,4 +166,9 @@ test("a server added by hand that never opened says so, with nothing kept to sho
   assert.equal(w.reconnect.view().neverConnected, undefined);
   w.reconnect.stop();
   assert.throws(() => w.reconnect.remove(), /no server to remove/);
+});
+
+test("a proxy's own page for a gone server, Cloudflare's tunnel errors included, counts as the server not answering", () => {
+  for (const code of [502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527, 530]) assert.equal(proxyAnswersForDownServer(code), true, String(code));
+  for (const code of [200, 204, 301, 401, 403, 404, 500, 501, 505]) assert.equal(proxyAnswersForDownServer(code), false, String(code));
 });

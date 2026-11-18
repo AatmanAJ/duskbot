@@ -8,8 +8,9 @@ import { friendlyError } from "@/lib/plain-error";
 export type ConnectStageName = "waking" | "preparing" | "installing" | "opening" | "waiting" | "confirming";
 
 /** How the person finishes signing in: a code at the provider's page, a link that comes back here by itself, a code
- * pasted back (Claude), or a provider page that calls back to this machine (managed engines). */
-export type WaitKind = "device" | "browser" | "paste" | "callback";
+ * pasted back (Claude), a provider page that calls back to this machine (managed engines), or, when that callback can't
+ * reach the machine running the CLI (a remote server opened in a browser), the address it landed on pasted back. */
+export type WaitKind = "device" | "browser" | "paste" | "callback" | "redirect";
 
 export type ConnectState =
   | { stage: "idle" }
@@ -263,9 +264,9 @@ export class ConnectFlow {
     return opened;
   }
 
-  /** The code a provider showed after sign-in (Claude), pasted back. */
+  /** The code a provider showed after sign-in (Claude), or the address its sign-in landed on, pasted back. */
   submit(code: string): void {
-    if (this.state.stage === "waiting" && this.state.kind === "paste" && code.trim()) this.pasteDone?.(code.trim());
+    if (this.state.stage === "waiting" && (this.state.kind === "paste" || this.state.kind === "redirect") && code.trim()) this.pasteDone?.(code.trim());
   }
 
   private closeRelay(): void {
@@ -427,21 +428,14 @@ export class ConnectFlow {
         : method === "browser" ? loopbackOf(auth.authorizationUrl) : null;
       const viaLoopback = Boolean(loopback && (sameMachine || await this.openRelay(loopback)));
       if (signal.aborted) { this.closeRelay(); return; }
-      if (method === "browser" && !sameMachine && !viaLoopback) {
-        // the provider page would send the browser to a localhost nothing here listens on: never open it
-        void this.deps.api(`/api/instances/${encodeURIComponent(instance.instanceId)}/auth/cancel`, { method: "POST", body: JSON.stringify({ flowId: auth.flowId }) }).catch(() => {});
-        this.deps.trail("connect.fallback", { tile: target.tile, from: instance.instanceId, to: "none", port: loopback?.port ?? null });
-        throw new StageEnded("unavailable", !this.deps.relay
-          ? "This sign-in comes back to the computer you sign in on. Open dusk bot's desktop app and connect from there."
-          : loopback ? `Another app on this computer is using port ${loopback.port}, which this sign-in needs. Close it and try again.`
-            : "This sign-in can't come back to this computer. Try again in a moment.");
-      }
+      const pasteBack = method === "browser" && !sameMachine && !viaLoopback;
+      if (pasteBack) this.deps.trail("connect.fallback", { tile: target.tile, from: instance.instanceId, to: "redirect", port: loopback?.port ?? null });
       const code = !viaLoopback && method === "device-code" && isDeviceSignInCode(provider, auth.userCode) && auth.userCode ? auth.userCode : null;
       link = viaLoopback ? httpsLink(loopback!.authorizationUrl)
         : method === "browser-pkce" ? chatgptPlanLink(auth.authorizationUrl)
           : method === "paste-code" || method === "browser" ? httpsLink(auth.authorizationUrl)
             : deviceSignInLink(provider, auth.authorizationUrl, code ?? undefined);
-      const kind: WaitKind = viaLoopback ? (method === "browser" ? "callback" : "browser")
+      const kind: WaitKind = pasteBack ? "redirect" : viaLoopback ? (method === "browser" ? "callback" : "browser")
         : method === "browser-pkce" ? "browser" : method === "paste-code" ? "paste" : method === "browser" ? "callback" : "device";
       // a device code shows first: the person copies it, then opens the page with one press (Copy code and open)
       const opened = link && !code ? await this.deps.open(link).catch(() => false) : false;
@@ -523,17 +517,7 @@ export class ConnectFlow {
   /** Until the sign-in finishes: polling the server's flow, or the AI's status for a callback, or the pasted code. */
   private async wait(run: number, signal: AbortSignal, instance: ConnectInstance, flowId: string, kind: WaitKind, provider: DeviceSignInProvider, target: ConnectTarget): Promise<void> {
     const base = `/api/instances/${encodeURIComponent(instance.instanceId)}`;
-    if (kind === "paste") {
-      const code = await new Promise<string>((resolve, reject) => {
-        this.pasteDone = resolve;
-        signal.addEventListener("abort", () => reject(new StageEnded("timeout")), { once: true });
-      });
-      this.pasteDone = null;
-      const confirming: ConnectState = { stage: "confirming", since: this.now() };
-      this.set(confirming, run);
-      await this.deps.api(`${base}/auth/complete`, { method: "POST", body: JSON.stringify({ flowId, code }), signal });
-      return;
-    }
+    if (kind === "paste" || kind === "redirect") return this.pasted(run, signal, base, flowId, kind, provider, target);
     const quiet = { relaying: false };
     const polling = new AbortController();
     const stopPolling = () => polling.abort();
@@ -542,6 +526,33 @@ export class ConnectFlow {
     relayed.catch(() => {});
     try {
       await Promise.race([relayed, this.poll(run, polling.signal, base, flowId, kind, provider, target, quiet)]);
+    } finally {
+      polling.abort();
+      signal.removeEventListener("abort", stopPolling);
+    }
+  }
+
+  /** A pasted code or address; a redirect wait also ends when the sign-in reached the CLI by itself after all. */
+  private async pasted(run: number, signal: AbortSignal, base: string, flowId: string, kind: "paste" | "redirect", provider: DeviceSignInProvider, target: ConnectTarget): Promise<void> {
+    const polling = new AbortController();
+    const stopPolling = () => polling.abort();
+    signal.addEventListener("abort", stopPolling, { once: true });
+    try {
+      const typed = new Promise<string>((resolve, reject) => {
+        this.pasteDone = resolve;
+        signal.addEventListener("abort", () => reject(new StageEnded("timeout")), { once: true });
+      });
+      const byItself = kind === "redirect"
+        ? this.poll(run, polling.signal, base, flowId, "callback", provider, target, { relaying: false }).then(() => null)
+        : new Promise<null>(() => {});
+      byItself.catch(() => {});
+      const value = await Promise.race([typed, byItself]);
+      this.pasteDone = null;
+      polling.abort();
+      if (value === null) return;
+      this.set({ stage: "confirming", since: this.now() }, run);
+      const body = kind === "redirect" ? { flowId, callbackUrl: value } : { flowId, code: value };
+      await this.deps.api(`${base}/auth/complete`, { method: "POST", body: JSON.stringify(body), signal });
     } finally {
       polling.abort();
       signal.removeEventListener("abort", stopPolling);

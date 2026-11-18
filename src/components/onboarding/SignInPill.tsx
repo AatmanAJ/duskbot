@@ -76,14 +76,14 @@ function useSeconds(since: number | null): number {
   return since === null ? 0 : Math.max(0, Math.floor((now - since) / 1_000));
 }
 
-export function PasteSlot({ name, onSubmit }: { name: string; onSubmit: (code: string) => void }) {
+export function PasteSlot({ name, onSubmit, address = false }: { name: string; onSubmit: (code: string) => void; address?: boolean }) {
   const [code, setCode] = useState("");
+  const label = address ? t("connect.redirect.paste") : t("onboarding.meet.paste", { name });
   return (
-    <form data-sign-in="paste" className="flex w-[288px] max-w-full flex-col items-center gap-2" onSubmit={(event) => { event.preventDefault(); onSubmit(code); }}>
-      <input autoFocus value={code} onChange={(event) => setCode(event.target.value)} aria-label={t("onboarding.meet.paste", { name })}
-        placeholder={t("onboarding.meet.paste", { name })}
+    <form data-sign-in={address ? "redirect" : "paste"} className="flex w-[288px] max-w-full flex-col items-center gap-2" onSubmit={(event) => { event.preventDefault(); onSubmit(code); }}>
+      <input autoFocus value={code} onChange={(event) => setCode(event.target.value)} aria-label={label} placeholder={label}
         className="h-9 w-full rounded-[18px] border-0 bg-ink/[0.06] px-4 text-[14px] leading-5 text-ink outline-none placeholder:text-ink-tertiary focus-visible:bg-ink/[0.08]" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
-      <button type="submit" disabled={!code.trim()} className={SECONDARY}>{t("onboarding.meet.pasteSubmit")}</button>
+      <button type="submit" disabled={!code.trim()} className={SECONDARY}>{t(address ? "connect.redirect.submit" : "onboarding.meet.pasteSubmit")}</button>
     </form>
   );
 }
@@ -242,10 +242,10 @@ export function ConnectPanel({ flow, name, driverKind, onTrouble }: {
       );
       break;
     case "waiting":
-      if (state.kind === "paste") {
+      if (state.kind === "paste" || state.kind === "redirect") {
         body = <>
-          <PasteSlot name={name} onSubmit={flow.submit} />
-          <WaitHelp guide={t("connect.guide.paste", { site })} seconds={seconds} />
+          <PasteSlot name={name} onSubmit={flow.submit} address={state.kind === "redirect"} />
+          <WaitHelp guide={t(state.kind === "redirect" ? "connect.guide.redirect" : "connect.guide.paste", { site })} seconds={seconds} />
           <div className="flex items-center gap-1">
             {state.link && <button type="button" onClick={() => void flow.openAgain()} className={QUIET}>{t("connect.openAgain")}</button>}
             {cancel}

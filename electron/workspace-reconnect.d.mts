@@ -33,6 +33,7 @@ export declare const RECONNECT_PATH: "/reconnect";
 export declare const RETRY_MS: readonly number[];
 export declare const FRAME_MAX_AGE_MS: number;
 export declare const FRAME_EVERY_MS: number;
+export declare function proxyAnswersForDownServer(code: number): boolean;
 export declare function frameOf(body: unknown, at: number): WorkspaceFrame | null;
 export declare function createWorkspaceReconnect(deps: Record<string, unknown>): {
   lost(entry: { id: string; name: string; origin: string }): void;
