@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createAppUpdater, DESKTOP_MANIFEST_URL, DOWNLOAD_PAGE, installerIn, installerUrl, justUpdated, mirrorUrl, quietNow, RELEASE_KEYS, sumsUrl, updatePlace, verifiedRelease, zipIn, zipUrl } from "./app-update.mjs";
+import { createAppUpdater, DESKTOP_MANIFEST_URL, DOWNLOAD_PAGE, installerIn, installerUrl, justUpdated, LOOKUP_BACKOFF_MS, MANIFEST_SOURCES, mirrorUrl, OFFLINE_CHECKS_BEFORE_FAILED, quietNow, RELEASE_KEYS, sumsUrl, updatePlace, verifiedRelease, zipIn, zipUrl } from "./app-update.mjs";
 import { failReason, resumableDownload, UpdateError } from "./app-update-download.mjs";
 import { updateFailStage } from "./experience-relay.mjs";
 
@@ -189,6 +189,49 @@ test("GitHub failing (an error answer or no answer at all) falls back to dusk.bo
     assert.deepEqual(w.fetched.filter((u) => u.endsWith(".zip")), [zipUrl("1.1.0", name), mirrorUrl("1.1.0", name)]);
     done(w);
   }
+});
+
+const dnsMiss = () => { throw new TypeError("fetch failed", { cause: Object.assign(new Error("getaddrinfo ENOTFOUND dusk.bot"), { code: "ENOTFOUND" }) }); };
+
+test("dusk.bot unreachable (DNS, a proxy) takes the signed manifest and its sums from the downloads repo", async () => {
+  const probe = world();
+  const manifestCopy = probe.routes.get(DESKTOP_MANIFEST_URL), sumsCopy = probe.routes.get(sumsUrl("1.1.0"));
+  done(probe);
+  const w = world({ extra: { [DESKTOP_MANIFEST_URL]: dnsMiss, [sumsUrl("1.1.0")]: dnsMiss, [MANIFEST_SOURCES[1]]: manifestCopy, [zipUrl("1.1.0", "SHA256SUMS")]: sumsCopy } });
+  assert.equal(await w.updater.check(), "1.1.0");
+  assert.deepEqual(w.fetched.slice(0, 4), [DESKTOP_MANIFEST_URL, MANIFEST_SOURCES[1], sumsUrl("1.1.0"), zipUrl("1.1.0", "SHA256SUMS")]);
+  assert.deepEqual(w.failures, []);
+  done(w);
+  const forged = world({ extra: { [DESKTOP_MANIFEST_URL]: dnsMiss, [MANIFEST_SOURCES[1]]: JSON.stringify(manifest("1.1.0", "other sums", "test-desk", generateKeyPairSync("ed25519").privateKey)) } });
+  assert.equal(await forged.updater.check(), null);
+  assert.deepEqual(forged.failures.map((f) => [f.stage, f.reason]), [["manifest", "not_signed"]]);
+  assert.equal(forged.prepared.length, 0);
+  done(forged);
+});
+
+test("a network blip is waited out and tried again; an offline computer is not a failure until it lasts or the person asks", async () => {
+  const probe = world();
+  const manifestText = probe.routes.get(DESKTOP_MANIFEST_URL);
+  done(probe);
+  let hiccups = 2;
+  const waits = [];
+  const blip = world({ download: { wait: async (ms) => { waits.push(ms); } }, extra: { [DESKTOP_MANIFEST_URL]: (init) => (hiccups-- > 0 ? new Response("busy", { status: 503 }) : served(manifestText, init)), [MANIFEST_SOURCES[1]]: dnsMiss } });
+  assert.equal(await blip.updater.check(), "1.1.0");
+  assert.deepEqual(waits, LOOKUP_BACKOFF_MS);
+  done(blip);
+
+  const off = world({ extra: { [DESKTOP_MANIFEST_URL]: dnsMiss, [MANIFEST_SOURCES[1]]: () => { throw Object.assign(new Error("timed out"), { name: "TimeoutError" }); } } });
+  for (let i = 1; i < OFFLINE_CHECKS_BEFORE_FAILED; i += 1) {
+    assert.equal(await off.updater.check(), null);
+    assert.equal(off.updater.state().failed, false);
+  }
+  assert.deepEqual([off.failures.length, off.told], [0, 0]);
+  await off.updater.check();
+  assert.deepEqual(off.failures.map((f) => [f.stage, f.reason]), [["manifest", "enotfound"]]);
+  assert.equal(off.updater.state().failed, true);
+  await off.updater.check({ again: true });
+  assert.equal(off.failures.length, 2);
+  done(off);
 });
 
 test("a connection that goes quiet is given up after the stall time and resumed, not waited on for half an hour", async () => {
