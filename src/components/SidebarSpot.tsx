@@ -220,19 +220,21 @@ function UpdateCard({ spot, act, className }: { spot: Exclude<SpotState, { kind:
 /** The collapsed sidebar's form of the same spot: one round button over the account's. */
 export function RailSpot({ bridge }: { bridge?: AppUpdateBridge }) {
   const { spot, act } = useSidebarSpot(bridge ?? ownBridge());
-  const label = spot.kind === "feedback" ? t("giveFeedback.card") : spotWords(spot).title;
+  // the collapsed rail keeps no Give feedback: only an update takes this spot
+  if (spot.kind === "feedback") return null;
+  const label = spotWords(spot).title;
   return (
     <button
       type="button"
-      data-sidebar-spot={spot.kind === "feedback" ? "feedback" : "update"}
+      data-sidebar-spot="update"
       data-art-hover=""
-      aria-label={spot.kind === "feedback" || !spot.version ? label : `${label}, ${spot.version}`}
+      aria-label={spot.version ? `${label}, ${spot.version}` : label}
       title={label}
       aria-busy={spot.kind === "downloading" || spot.kind === "retrying" || spot.kind === "checking" || undefined}
       onClick={act}
-      className={cn("flex size-9 shrink-0 items-center justify-center rounded-full", PRESS, FOCUS, spot.kind === "feedback" ? TONAL : BLUE)}
+      className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", PRESS, FOCUS, BLUE)}
     >
-      <Art name={spot.kind === "feedback" ? "bubbles" : "parcel"} className="h-5 object-contain" />
+      <Art name="parcel" className="h-[18px] object-contain" />
     </button>
   );
 }
