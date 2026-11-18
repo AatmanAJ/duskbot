@@ -662,7 +662,8 @@ cd apps/link-service && npm start                       # PORT (default 8790)
 
 `.env.example` lists the same names. The proxy must set `X-Real-IP` to the connecting address (overwriting any the
 client sent), or every per-address rate limit can be dodged. A tunnel whose server has not polled for 7 days is
-dropped by the sweep; that server links again with a new command. Health: `GET /healthz` (or `/health`).
+dropped by the sweep (35 days when it carries a paired phone's channel, so a phone never hears "removed" from a
+computer that was off a week); that server links again with a new command. Health: `GET /healthz` (or `/health`).
 
 ## Limits
 

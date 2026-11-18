@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createLinkService, sha256hex } from "../src/app.mjs";
-import { MAX_CHANNELS_PER_TUNNEL, TUNNEL_IDLE_MS } from "../src/store.mjs";
+import { MAX_CHANNELS_PER_TUNNEL, PHONE_TUNNEL_IDLE_MS, TUNNEL_IDLE_MS } from "../src/store.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const id = "abcdefghij", other = "klmnopqrst", cid = "phoneaaaaa", second = "phoneaaaab";
@@ -409,7 +409,7 @@ describe("tunnel retention", () => {
   it("drops a tunnel whose server stayed silent past the idle limit, with its channels and readers", async () => {
     tunnel(other);
     await put();
-    time += TUNNEL_IDLE_MS - 1000;
+    time += PHONE_TUNNEL_IDLE_MS - 1000;
     expect((await request(`/v1/tunnels/${other}/to-vps`, vps)).status).toBe(200);
     const lines = await stream(`/v1/channels/${cid}/to-app`, phone);
     await next(lines);
@@ -420,6 +420,21 @@ describe("tunnel retention", () => {
     expect(service.store.tunnels.has(other)).toBe(true);
     expect(service.store.channels.size).toBe(0);
     expect((await request(`/v1/tunnels/${id}/to-vps`, vps)).status).toBe(404);
+  });
+
+  it("keeps a tunnel with paired phones past a week off, so its phones are not told they were removed", async () => {
+    tunnel(other);
+    await put();
+    expect((await put([{ id: second, verifier: sha256hex(phone), kind: "grant", expiresAt: time + 60_000 }], other)).status).toBe(200);
+    time += TUNNEL_IDLE_MS + 60_000;
+    service.store.sweep();
+    expect(service.store.tunnels.has(id)).toBe(true);
+    expect(service.store.tunnels.has(other)).toBe(false);
+    expect((await request(`/v1/channels/${cid}/to-vps`, phone, "POST", { frames: ["aaaa"], epoch, seq: 0 })).status).toBe(200);
+    time += PHONE_TUNNEL_IDLE_MS - TUNNEL_IDLE_MS;
+    service.store.sweep();
+    expect(service.store.tunnels.has(id)).toBe(false);
+    expect((await request(`/v1/channels/${cid}/to-vps`, phone, "POST", { frames: ["aaaa"], epoch, seq: 1 })).status).toBe(404);
   });
 
   it("counts the phone hub's channel poll as the server being alive", async () => {
