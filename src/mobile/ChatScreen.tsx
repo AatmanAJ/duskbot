@@ -8,6 +8,8 @@ import { GroupAvatar } from "@/components/GroupAvatar";
 import { t } from "@/lib/i18n";
 import { RoundButton } from "./RoundButton";
 import { ConnectionPill, useLiveConnection } from "./connection/ConnectionProblem";
+import { PhoneChatMenu } from "./PhoneChatMenu";
+import { usePlatform } from "./platform";
 
 const PRESS_CLICK_MS = 1000;
 
@@ -26,6 +28,9 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
   const live = Boolean(bot && (bot.busy || state.computerControl[bot.id]?.held));
   const link = useLiveConnection();
   const pressedAt = useRef(-Infinity);
+  // the native glass header draws back, title and computer only, from where these sit on the page
+  const glass = usePlatform().glass;
+  const more = Boolean(bot && !group && !glass);
   return (
     <div data-mobile-chat className="relative flex h-full flex-col">
       {group ? <GroupView key={group.id} group={group} /> : bot ? <ChatView bot={bot} /> : null}
@@ -33,7 +38,7 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
       <nav
         aria-label={t("mobile.chat.nav", { name })}
         data-glass-nav=""
-        className="pointer-events-none absolute inset-x-0 top-0 z-30 grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 pt-[calc(var(--m-safe-top)+6px)]"
+        className={`pointer-events-none absolute inset-x-0 top-0 z-30 grid items-center gap-2 px-3 pt-[calc(var(--m-safe-top)+6px)] ${more ? "grid-cols-[minmax(96px,1fr)_minmax(0,auto)_minmax(96px,1fr)]" : "grid-cols-[1fr_auto_1fr]"}`}
       >
         <RoundButton floating glass data-glass="back" label={t("mobile.chat.back")} onClick={onBack} className="pointer-events-auto">
           <ChevronLeft size={22} strokeWidth={2} />
@@ -58,7 +63,8 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
           </button>
           <ConnectionPill notice={link.notice === "reconnecting" ? null : link.notice} trying={link.trying} onRetry={link.retry} testId="mobile-chat-cloud-status" className="absolute top-[calc(100%+8px)] h-8 px-3" />
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {more && bot && <PhoneChatMenu bot={bot} />}
           <RoundButton floating glass data-glass="right" label={live ? `${t("mobile.chat.computer")}, ${t("place.live")}` : t("mobile.chat.computer")} onClick={onComputer} className="pointer-events-auto">
             <Monitor size={19} strokeWidth={1.8} />
             {live && <span aria-hidden data-glass-live="" className="absolute right-2.5 top-2.5 size-2 rounded-full bg-success" />}

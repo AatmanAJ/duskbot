@@ -383,3 +383,16 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
 .dusk-mobile [data-mobile-chat] [data-chat-bubble]:not([class*="rounded-es-"]):not([class*="rounded-ee-"]) { border-radius: 19px; }
 .dusk-mobile [data-mobile-chat] [data-chat-bubble] :is(.chat-text, .chat-md, p, li, blockquote, td, th) { font-size: inherit; line-height: inherit; }
 .dusk-mobile [data-mobile-chat] .turn-label-slot { font-size: 17px; }
+
+/* a touch screen always shows a code block's copy key (top right), so the code starts below it instead of under it;
+   inline code that wraps keeps its padding and corners on every line */
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] .chat-code-block[data-lang] pre { padding-top: 36px; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] .chat-code-block:not([data-lang]) pre { padding-top: 44px; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] .chat-md code.ui-code-chip { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+
+/* the shared desktop switch (a bot's own colour, 32 by 20) takes the phone's one switch: 51 by 31, ink when on */
+.dusk-mobile [data-ui-toggle] { width: 51px; height: 31px; }
+.dusk-mobile [data-ui-toggle][aria-checked="true"] { background-color: var(--color-ink); }
+.dusk-mobile [data-ui-toggle][aria-checked="false"] { background-color: color-mix(in srgb, var(--color-ink) 14%, transparent); }
+.dusk-mobile [data-ui-toggle] > span { width: 27px; height: 27px; background-color: var(--color-app); }
+.dusk-mobile [data-ui-toggle][aria-checked="true"] > span { translate: 20px 0; }

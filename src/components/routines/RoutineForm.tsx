@@ -13,6 +13,7 @@ import { buttonCls, fieldCls, Segmented } from "../bot-panel/rows";
 import { SelectPill } from "../ui/SelectPill";
 import { AlwaysOnNote } from "../CloudUpsell";
 import { friendlyError } from "@/lib/plain-error";
+import { deviceHourCycle } from "@/lib/format-time";
 
 const labelCls = "block text-[12px] leading-4 tracking-[0.01em] text-ink-secondary";
 const primaryCls = cn(buttonCls, "bg-ink text-app shadow-none enabled:hover:bg-ink/85");
@@ -38,7 +39,7 @@ export function aroundSavesSleep({ cloudHome, runOn }: { cloudHome: boolean; run
 
 const shownTime = (time: string) => {
   const [h, m] = time.split(":").map(Number);
-  return new Date(2026, 0, 1, h ?? 0, m ?? 0).toLocaleTimeString(activeLocale(), { hour: "numeric", minute: "2-digit" });
+  return new Date(2026, 0, 1, h ?? 0, m ?? 0).toLocaleTimeString(activeLocale(), { hour: "numeric", minute: "2-digit", hourCycle: deviceHourCycle() });
 };
 
 function TimeField({ value, onChange }: { value: string; onChange: (time: string) => void }) {

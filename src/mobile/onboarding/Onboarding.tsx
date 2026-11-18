@@ -4,6 +4,7 @@ import { AnimatePresence } from "motion/react";
 import { ClipboardPaste, Keyboard, QrCode, UserRound } from "../../icons";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
+import { upperFirst } from "@/lib/lower-first";
 import { THEME_SKINS } from "@/lib/skins";
 import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { haptic } from "../haptics";
@@ -36,9 +37,9 @@ export function phoneCodeFailure(outcome: Exclude<PhoneCodeOutcome, "signed-in">
 
 export const DOWNLOAD_URL = "https://dusk.bot/download";
 
-function installationName(payload: TypedPairing | null): string {
+function installationName(payload: TypedPairing | null, fallback = t("mobile.pair.workspace")): string {
   if (payload?.name) return payload.name;
-  try { return new URL(payload?.origin ?? "").host; } catch { return t("mobile.pair.workspace"); }
+  try { return new URL(payload?.origin ?? "").host; } catch { return fallback; }
 }
 
 /** Where a fresh start lands: a link that arrived goes to its confirmation, a signed-in phone to its clouds, a sign-in
@@ -61,7 +62,7 @@ function Failed({ failure, onSignIn }: { failure: Failure; onSignIn?: () => void
       </button>
     ) : null}>
       <span className="block font-semibold">{t(`mobile.onboarding.err.${key}.title` as Parameters<typeof t>[0])}</span>
-      <span className="block text-ink-secondary">{t(`mobile.onboarding.err.${key}.body` as Parameters<typeof t>[0], { name: failure.name })}</span>
+      <span className="block text-ink-secondary">{upperFirst(t(`mobile.onboarding.err.${key}.body` as Parameters<typeof t>[0], { name: failure.name }))}</span>
     </ErrorLine>
   );
 }
@@ -123,7 +124,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
           const result = await account.signIn.phoneCode(accountCode);
           if (result.outcome !== "signed-in") {
             haptic("error");
-            setFailure({ code: phoneCodeFailure(result.outcome), name: t("mobile.pair.workspace"), companion: false });
+            setFailure({ code: phoneCodeFailure(result.outcome), name: t("mobile.connection.yourComputer"), companion: false });
             if (from !== "code") { setStep("code"); setValue(formatCode(accountCode)); }
             return;
           }
@@ -139,7 +140,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
       await onLinked(result.record, result.token, result.record.label || installationName(payload));
     } catch (error) {
       haptic("error");
-      setFailure({ code: error instanceof PairError ? error.code : "unreachable", name: installationName(payload), companion: payload?.transport === "companion" });
+      setFailure({ code: error instanceof PairError ? error.code : "unreachable", name: installationName(payload, t("mobile.connection.yourComputer")), companion: payload?.transport === "companion" });
       if (from === "scan") { setStep("code"); setScanFailed(true); }
     } finally {
       locked.current = false;

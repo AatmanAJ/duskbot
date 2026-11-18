@@ -4,6 +4,7 @@ import { formatCost } from "@/lib/usage-trace";
 import { api } from "@/state/store";
 import type { AllowanceReport, AutoTopUp, BatteryReport, DailyUsageReport, RoutineForecast, SpendCapInput } from "../../shared/spend";
 import type { RoutinePause } from "../../shared/routines";
+import { deviceHourCycle } from "@/lib/format-time";
 
 export type { AllowanceReport, BatteryReport, BatteryRow, DailyUsageReport, DailyUsageSeries, RoutineForecast } from "../../shared/spend";
 
@@ -25,7 +26,7 @@ export const topUpOffer = (weeklyUsd: number): number => Math.max(0.01, Math.rou
 
 /** "Monday 12:00 AM" for a reset time, in the app's language. */
 export function resetWhen(at: number): string {
-  return new Date(at).toLocaleString(activeLocale(), { weekday: "long", hour: "numeric", minute: "2-digit" });
+  return new Date(at).toLocaleString(activeLocale(), { weekday: "long", hour: "numeric", minute: "2-digit", hourCycle: deviceHourCycle() });
 }
 
 /** "in 2 days" or "in 5 hours" until a reset. */

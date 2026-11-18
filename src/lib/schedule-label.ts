@@ -2,11 +2,12 @@ import { atLocalTime } from "@/lib/routine-calendar";
 import type { RoutineSchedule } from "@/lib/routines";
 import { cronScheduleLabel } from "../../shared/cron-label";
 import { limitResetWhen } from "@/lib/limit-resets";
+import { formatTime } from "@/lib/format-time";
 
 export const DAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 export function niceTime(at: number): string {
-  return new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return formatTime(at);
 }
 
 export function niceDate(at: number): string {

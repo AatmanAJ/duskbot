@@ -174,9 +174,11 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
         {rows.signIn && <SettingsRow icon={<UserRound />} label={t("mobile.entry.signIn")} detail={t("mobile.settings.signInDetail")} onClick={() => { onClose(); window.dispatchEvent(new Event("dusk:sign-in")); }} />}
       </SettingsSection>
 
-      <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>
-        <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />
-      </SettingsSection>
+      {(places === null || places.length > 0 || error) && (
+        <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>
+          <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />
+        </SettingsSection>
+      )}
 
       <SettingsSection card>
         <SettingsRow icon={<Bell />} label={t("mobile.settings.notifications")} value={unread || undefined} onClick={() => push("notifications")} />

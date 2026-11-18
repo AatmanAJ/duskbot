@@ -11,6 +11,7 @@ import type { SimplePageId } from "./page-registry";
 import { PanelSections } from "../ListRows";
 import { SettingsPage } from "./SettingsPage";
 import { usePanelLink } from "./panel-link";
+import { phoneApp } from "@/lib/store-app";
 
 // a link opens Settings once: a panel drawn again for the same link (it reads the link as it mounts) must not reopen it
 let openedForLink = -1;
@@ -40,7 +41,7 @@ export function AdvancedTab({ bot, derived, onOpen }: {
   return (
     <PanelSections data-panel-tabpanel="advanced">
       <FilesSection bot={bot} files={files} onOpen={onOpen} />
-      <LibrarySection bot={bot} onOpen={onOpen} quietWhenEmpty={Boolean(files.documents?.length)} />
+      <LibrarySection bot={bot} onOpen={onOpen} quietWhenEmpty={Boolean(files.documents?.length) || phoneApp()} />
       <VoiceChatCard bot={bot} patch={derived.patch} />
       <SettingsPage bot={bot} derived={derived} onOpen={openPage} />
     </PanelSections>

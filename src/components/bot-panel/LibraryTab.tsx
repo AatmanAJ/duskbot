@@ -238,7 +238,7 @@ export function LibraryPage({ bot }: { bot: Bot }) {
 const PREVIEW = 3;
 
 /** The Advanced tab's Library section: the newest few things the bot made, and View all for the whole Library. */
-/** `quietWhenEmpty`: the bot's Files sit just above, so an empty Library says nothing. */
+/** `quietWhenEmpty`: an empty Library says nothing, under the bot's Files or on the phone's Advanced tab. */
 export function LibrarySection({ bot, onOpen, quietWhenEmpty = false }: { bot: Bot; onOpen: (page: SimplePageId) => void; quietWhenEmpty?: boolean }) {
   const entries = useLibraryEntries(bot);
   const now = Date.now();

@@ -8,6 +8,8 @@ import type { Bot } from "@/state/store";
 vi.mock("@/components/ChatView", () => ({ ChatView: () => null }));
 vi.mock("@/components/GroupView", () => ({ GroupView: () => null }));
 vi.mock("./connection/ConnectionProblem", () => ({ ConnectionPill: () => null, useLiveConnection: () => ({ notice: null, trying: false, retry() {} }) }));
+vi.mock("./PhoneChatMenu", () => ({ PhoneChatMenu: () => null }));
+vi.mock("./platform", async (importOriginal) => ({ ...await importOriginal<typeof import("./platform")>(), usePlatform: () => ({}) }));
 vi.mock("@/state/store", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/state/store")>(),
   useStore: () => ({ state: { computerControl: {} }, dispatch: () => {} }),
