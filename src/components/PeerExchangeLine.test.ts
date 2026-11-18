@@ -19,6 +19,14 @@ describe("PeerExchangeLine", () => {
     expect(render({ kind: "single", direction: "inbound", peer: { id: "amy", name: "Amy" } })).toContain(">Message from<");
   });
 
+  it("reads a teammate's question and the answer inline in each bot's one chat", () => {
+    const asked = render({ kind: "single", direction: "inbound", peer: { id: "ghosty", name: "Ghosty" }, body: "@Amy  What is\nthe plan?" });
+    expect(asked).toMatch(/>Message from<.*>Ghosty<.*data-peer-said.*>What is the plan\?</);
+    expect(render({ kind: "single", direction: "outbound", as: "reply", peer: { id: "ghosty", name: "Ghosty" } })).toMatch(/data-peer-exchange="reply".*>Responded to<.*>Ghosty</);
+    expect(render({ kind: "single", direction: "outbound", as: "ask", peer: { id: "amy", name: "Amy" } })).toMatch(/>Asked<.*>Amy</);
+    expect(render({ kind: "single", direction: "inbound", as: "answer", peer: { id: "amy", name: "Amy" } })).toMatch(/>Amy<.*>replied</);
+  });
+
   it("names two bots with and, and counts three or more", () => {
     expect(render({ kind: "fanout", peers: [{ id: "ghosty", name: "Ghosty" }, { id: "amy", name: "Amy" }] })).toMatch(/>Ghosty<.*>and<.*>Amy</);
     expect(render({ kind: "fanout", peers: [{ id: "ghosty", name: "Ghosty" }, { id: "amy", name: "Amy" }, { name: "Nova" }] })).toContain(">3 bots<");

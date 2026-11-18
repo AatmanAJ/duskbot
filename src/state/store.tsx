@@ -263,6 +263,7 @@ export interface ThreadOpener {
   botId: string;
   name: string;
   delegationId?: string;
+  kind?: "pair" | "work";
   at: number;
 }
 

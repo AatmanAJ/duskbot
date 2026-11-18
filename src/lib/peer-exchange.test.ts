@@ -30,8 +30,8 @@ describe("exchangeEntries", () => {
     ];
     const entries = exchangeEntries(rows, "me");
     expect([...entries.keys()]).toEqual(["asked", "reply"]);
-    expect(entries.get("asked")).toEqual({ direction: "inbound", peer: ghosty });
-    expect(entries.get("reply")).toEqual({ direction: "outbound", peer: ghosty });
+    expect(entries.get("asked")).toEqual({ direction: "inbound", peer: ghosty, body: "status?" });
+    expect(entries.get("reply")).toEqual({ direction: "outbound", peer: ghosty, as: "reply" });
   });
 
   it("reads sent rows as outbound, results as inbound, and leaves a bot's question to the person alone", () => {
@@ -67,7 +67,7 @@ describe("exchangeRuns", () => {
   const runsOf = (rows: Message[], threadBotId: string) =>
     exchangeRuns(rows.map((row) => ({ rows: [row] })), (item: Item) => item.rows, exchangeEntries(rows, threadBotId)).map((run) => run.summary);
 
-  it("reads a hand-off in the asker's chat as Messaged then Message from, the resume row folded in", () => {
+  it("reads a hand-off in the asker's chat as Asked then replied, the resume row folded in", () => {
     const from = { botId: "dusk", name: "dusk bot", color: "blue" as const };
     const to = { botId: "writer", name: "writer", color: "green" as const };
     const ref = { botId: "writer", threadId: "w", title: "@dusk bot · work" };
@@ -80,23 +80,23 @@ describe("exchangeRuns", () => {
       msg("final", { text: "writer writes." }),
     ];
     expect(runsOf(rows, "dusk")).toEqual([
-      { kind: "single", direction: "outbound", peer: { id: "writer", name: "writer", color: "green" } },
-      { kind: "single", direction: "inbound", peer: { id: "writer", name: "writer", color: "green" } },
+      { kind: "single", direction: "outbound", as: "ask", peer: { id: "writer", name: "writer", color: "green" } },
+      { kind: "single", direction: "inbound", as: "answer", peer: { id: "writer", name: "writer", color: "green" } },
     ]);
     const entries = exchangeEntries(rows, "dusk");
     expect(entries.get("resumed")).toMatchObject({ step: true });
     expect(entries.has("final")).toBe(false);
   });
 
-  it("reads the same exchange in the asked bot's chat as Message from then Messaged", () => {
+  it("reads the same exchange in the asked bot's chat as Message from, with what was said, then Responded to", () => {
     const rows = [
       msg("ask", { text: "@writer What do you do?", roomRequest: { id: "r", phase: "request" }, from: { botId: "dusk", name: "dusk bot", color: "blue" }, at: 10 }),
       msg("step", { kind: "activity", tool: { name: "Read", ok: true }, at: 11 }),
       msg("reply", { text: "I write.", at: 12 }),
     ];
     expect(runsOf(rows, "writer")).toEqual([
-      { kind: "single", direction: "inbound", peer: { id: "dusk", name: "dusk bot", color: "blue" } },
-      { kind: "single", direction: "outbound", peer: { id: "dusk", name: "dusk bot", color: "blue" } },
+      { kind: "single", direction: "inbound", body: "@writer What do you do?", peer: { id: "dusk", name: "dusk bot", color: "blue" } },
+      { kind: "single", direction: "outbound", as: "reply", peer: { id: "dusk", name: "dusk bot", color: "blue" } },
     ]);
   });
 });
