@@ -231,6 +231,8 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private let voice = UILabel()
     private var actions: [UIButton] = []
     private var actionKinds: [String] = []
+    /// the page's text size over the system body size; 0 until the page says, and the field follows Larger Text alone
+    private var fontScale: CGFloat = 0
 
     private var leading: NSLayoutConstraint!
     private var width: NSLayoutConstraint!
@@ -502,6 +504,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         plus.isHidden = !(data["plus"] as? Bool ?? true)
         if let label = data["plusLabel"] as? String, !label.isEmpty { plus.accessibilityLabel = label }
         placeholder.text = data["placeholder"] as? String ?? ""
+        if let scale = (data["fontScale"] as? NSNumber)?.doubleValue, scale > 0 { applyFontScale(CGFloat(scale)) }
         text.isEditable = !(data["disabled"] as? Bool ?? false)
         returnSends = data["returnSends"] as? Bool ?? true
         text.returnKeyType = returnSends ? .send : .default
@@ -707,9 +710,26 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         textSeq = seq
         if text.text != value {
             text.text = value
+            // UIKit 26: text set after a dictation keeps the attributes dictation left in the field, its font among them
+            if let font = placeholder.font {
+                text.font = font
+                text.typingAttributes = [.font: font, .foregroundColor: UIColor.label]
+            }
             updatePlaceholder()
             layoutComposer(animated: false)
         }
+    }
+
+    /// The field's text at the size the page draws its own: the system body size times the page's scale.
+    private func applyFontScale(_ scale: CGFloat) {
+        guard abs(scale - fontScale) > 0.001 else { return }
+        fontScale = scale
+        let font = UIFont.systemFont(ofSize: (17 * scale).rounded())
+        for label in [placeholder, voice] { label.adjustsFontForContentSizeCategory = false; label.font = font }
+        text.adjustsFontForContentSizeCategory = false
+        text.font = font
+        text.typingAttributes = [.font: font, .foregroundColor: UIColor.label]
+        layoutComposer(animated: false)
     }
 
     func focus() {

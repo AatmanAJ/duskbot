@@ -1,3 +1,4 @@
+import { appliedTextScale } from "./text-scale";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
@@ -32,6 +33,8 @@ export interface GlassComposer {
   voice: string | null;
   buttons: GlassButton[];
   returnSends: boolean;
+  /** the page's text zoom, so the native field's text matches the page's (apps before 1.3 ignore it) */
+  fontScale: number;
 }
 
 export interface GlassState {
@@ -319,6 +322,7 @@ function readComposer(shell: HTMLElement, baseline: number, dx: number): { compo
       voice: recording ? spoken(voiceStrip) : null,
       buttons: actions.buttons,
       returnSends: field?.getAttribute("enterkeyhint") === "send",
+      fontScale: appliedTextScale(),
     },
     elements: actions.elements,
     field,
