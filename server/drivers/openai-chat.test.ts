@@ -4,6 +4,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+process.env.FAKE_CHAT_RETRY_SCALE = "0.001";
 
 import { ensureDirs, NATIVE_DIR } from "../config.ts";
 import { discardNativeLog, flushNativeLog } from "./native.ts";

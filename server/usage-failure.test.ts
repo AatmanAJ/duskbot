@@ -1,6 +1,6 @@
 // real-shaped failures per engine, as each driver emits them in runtime.error, read into a usage reason and a detail
 import { describe, expect, it } from "vitest";
-import { FAILURE_DETAIL, cleanUsageTurn, cliExitCode, failureOf, modelFamily, opencodeProvider } from "../shared/usage-signals.ts";
+import { FAILURE_DETAIL, cleanUsageTurn, cliExitCode, failureOf, modelFamily, opencodeProvider, rpcCode } from "../shared/usage-signals.ts";
 import { codexErrorCode } from "./drivers/codex-errors.ts";
 import { engineFailureMessage } from "./drivers/engine-errors.ts";
 import { exitDetail } from "./drivers/acp/exit-report.ts";
@@ -119,6 +119,26 @@ describe("copilot (ACP)", () => {
     expect(failureOf("", { stopReason: "exit_before_result" })).toEqual({ reason: "cli_exit_early" });
     expect(failureOf("something odd", { stopReason: "weird_stop" })).toEqual({ reason: "unknown", detail: "stop_weird_stop" });
     expect(failureOf("something odd", { stopReason: "Some long sentence the engine said" })).toEqual({ reason: "unknown" });
+  });
+});
+
+describe("a JSON-RPC failure with no words to go on (ACP agents, codex app-server)", () => {
+  it("keeps the RPC code in the detail instead of the bare stop reason", () => {
+    expect(failureOf("Internal error (session/prompt)", { code: rpcCode(-32603), stopReason: "rpc_error" })).toEqual({ reason: "unknown", detail: "rpc_32603" });
+    expect(failureOf("Invalid params (session/prompt)", { code: rpcCode(-32602), stopReason: "rpc_error" })).toEqual({ reason: "bad_request", detail: "rpc_32602" });
+    expect(rpcCode("x")).toBeUndefined();
+    expect(rpcCode(1.5)).toBeUndefined();
+  });
+});
+
+describe("the api engine's own stops", () => {
+  it.each([
+    ["The model announced another action without tool progress after a nudge. The task is incomplete.", "announced_no_action", "no_reply"],
+    ["Stopped after 64 steps without a final answer. The steps so far already ran, so ask only for what's left.", "max_steps", "no_reply"],
+    ["tool arguments are not complete JSON", "tool_args_malformed", "tool"],
+    ["provider reused a tool-call ID; refusing to repeat an operation", "reused_call_id", "tool"],
+  ])("%s", (text, code, reason) => {
+    expect(failureOf(text, { code, stopReason: "error" })).toEqual({ reason, detail: code });
   });
 });
 

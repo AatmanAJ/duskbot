@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+process.env.FAKE_CHAT_RETRY_SCALE = "0.001";
 
 import { ensureDirs, NATIVE_DIR } from "../config.ts";
 import { BUILT_IN_DATA_SYSTEM_PROMPT } from "../data/instructions.ts";
@@ -556,11 +557,11 @@ describe("optional built-in question compatibility", () => {
     });
     await f.start({ integrations: undefined });
     expect(await f.completed()).toMatchObject({ ok: false });
-    expect(f.requests).toHaveLength(1);
-    expect(f.requests[0].tools?.map(tool => tool.function.name)).toEqual(["ask_user"]);
+    expect(f.requests).toHaveLength(status === 429 || status === 500 ? 3 : 1);
+    for (const request of f.requests) expect(request.tools?.map(tool => tool.function.name)).toEqual(["ask_user"]);
   });
 
-  it("does not retry network failures or strip tools mounted by the person", async () => {
+  it("retries a network failure the same way and never strips tools mounted by the person", async () => {
     for (const network of [false, true]) {
       const f = await fixture((_body, response) => {
         if (network) return response.destroy(new Error("tools are not supported"));
@@ -569,7 +570,7 @@ describe("optional built-in question compatibility", () => {
       });
       await f.start(network ? { integrations: undefined } : {});
       expect(await f.completed()).toMatchObject({ ok: false });
-      expect(f.requests).toHaveLength(1);
+      expect(f.requests).toHaveLength(network ? 3 : 1);
       if (!network) expect(f.requests[0].tools?.some(tool => tool.function.name === "audit_write")).toBe(true);
       expect(f.effects()).toEqual([]);
     }
@@ -984,7 +985,7 @@ describe("structured tool execution boundaries", () => {
     });
     await f.start({ approvalMode: "full" });
     expect(await f.completed()).toMatchObject({ ok: false });
-    expect(f.requests).toHaveLength(2);
+    expect(f.requests).toHaveLength(status === 500 ? 4 : 2);
     expect(f.requests[1].messages.find((message) => message.role === "assistant")).toMatchObject({ reasoning_content: "Synthetic reasoning." });
     expect(f.effects()).toEqual([{ name: "receipt", value: "done" }]);
   });
@@ -1256,7 +1257,23 @@ describe("structured tool execution boundaries", () => {
     expect(f.recorder.events.some((event) => event.type === "runtime.error" || (event.type === "item.completed" && event.itemType === "tool" && !event.ok))).toBe(true);
   });
 
-  it("never retries a provider error after a tool's effect has already happened", async () => {
+  it("resends a request a provider hiccup refused after a step ran, carrying the step's result instead of repeating it", async () => {
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
+      else if (round === 2) { response.writeHead(503); response.end("Synthetic provider unavailable"); }
+      else sse(response, [chunk({ content: "The receipt is stored." }, "stop")]);
+    }, "grok");
+    await f.start();
+    await f.decide();
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toHaveLength(1);
+    expect(f.requests).toHaveLength(3);
+    expect(f.requests[2]).toEqual(f.requests[1]);
+    expect(f.requests[2].messages.some((entry) => entry.role === "tool" && entry.tool_call_id === "call_write")).toBe(true);
+    expect(f.recorder.events.filter((event) => event.type === "turn.retrying")).toEqual([expect.objectContaining({ attempt: 1, reason: "server_error" })]);
+  });
+
+  it("gives up on a provider that keeps refusing after a step ran, without repeating the step", async () => {
     const f = await fixture((_body, response, round) => {
       if (round === 1) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
       else { response.writeHead(503); response.end("Synthetic provider unavailable"); }
@@ -1265,8 +1282,7 @@ describe("structured tool execution boundaries", () => {
     await f.decide();
     expect(await f.completed()).toMatchObject({ ok: false });
     expect(f.effects()).toHaveLength(1);
-    expect(f.requests).toHaveLength(2);
-    expect(f.recorder.events.some((event) => event.type === "turn.retrying")).toBe(false);
+    expect(f.requests).toHaveLength(4);
     expect(f.recorder.events.filter((event) => event.type === "turn.completed")).toHaveLength(1);
   });
 
