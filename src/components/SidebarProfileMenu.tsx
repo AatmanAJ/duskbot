@@ -471,7 +471,6 @@ export function profileMenuItems({
 }): SidebarMenuItem[] {
   const help: SidebarMenuItem[] = [
     { key: "help", label: t("sidebar.menu.help"), icon: <HelpCircle size={18} />, onSelect: onHelp },
-    { key: "feedback", label: t("sidebar.menu.feedback"), icon: <MessageSquareText size={18} />, onSelect: onFeedback },
     ...(trailAvailable() ? [{ key: "usage-log", label: t("sidebar.menu.exportUsageLog"), icon: <FileText size={18} />, onSelect: () => void exportUsageLog("support").catch(() => {}) } satisfies SidebarMenuItem] : []),
     {
       key: "shortcuts",
@@ -494,11 +493,12 @@ export function profileMenuItems({
   } : null;
   const dashboardItem: SidebarMenuItem | null = onDashboard ? { key: "dashboard", label: t("sidebar.menu.accountDashboard"), icon: <LayoutDashboard size={18} />, onSelect: onDashboard } : null;
   const support: SidebarMenuItem = { key: "support", label: t("sidebar.menu.support"), icon: <LifeBuoy size={18} />, submenu: help, onSelect: () => {} };
+  const feedback: SidebarMenuItem = { key: "feedback", label: t("giveFeedback.card"), icon: <MessageSquareText size={18} />, onSelect: onFeedback };
   const settings: SidebarMenuItem = { key: "settings", label: t("sidebar.menu.settings"), icon: <SettingsIcon size={18} />, onSelect: onSettings };
   const accountItem: SidebarMenuItem | null = account ? { key: "account", label: account, icon: <CircleUserRound size={18} />, onSelect: onAccount } : null;
   const present = (...items: Array<SidebarMenuItem | null | false>) => items.filter((item): item is SidebarMenuItem => Boolean(item));
   if (!simple) {
-    const rest = [...present(usageItem, dashboardItem), ...phone, support, settings, ...present(update), ...(accountItem ? [{ ...accountItem, separatorBefore: true }] : []), ...accounts.map((item, index) => (index === 0 ? { ...item, separatorBefore: true } : item))];
+    const rest = [...present(usageItem, dashboardItem), ...phone, support, feedback, settings, ...present(update), ...(accountItem ? [{ ...accountItem, separatorBefore: true }] : []), ...accounts.map((item, index) => (index === 0 ? { ...item, separatorBefore: true } : item))];
     return [...move, ...rest.map((item, index) => (move.length && index === 0 ? { ...item, separatorBefore: true } : item))];
   }
   const raised: SidebarMenuItem | null = update && updateTop ? {
@@ -511,7 +511,7 @@ export function profileMenuItems({
   const groups = [
     move,
     present(raised),
-    [...present(usageItem, dashboardItem), ...phone, { ...support, submenu: raised ? help : [...help, ...present(update)] }, settings],
+    [...present(usageItem, dashboardItem), ...phone, { ...support, submenu: raised ? help : [...help, ...present(update)] }, feedback, settings],
     simple.tools,
     [...simple.places, ...present(accountItem)],
     accounts,
@@ -534,7 +534,7 @@ export interface MenuAccountHeader {
 }
 
 /** Grok's profile menu: the account (address and plan) first, then the phone app, the account dashboard, Support (help,
- * shortcuts, feedback, about) and Settings, and Sign out on its own last row. Everything else the menu once held is in Settings. */
+ * shortcuts, about), Give feedback and Settings, and Sign out on its own last row. Everything else the menu once held is in Settings. */
 export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback, onAbout, onSettings, onAddAccount, onNeedsYou, onDashboard, accounts, header = null }: {
   /** the account block; this app's own page draws it from the account in use when none is given */
   header?: MenuAccountHeader | null;
@@ -570,11 +570,11 @@ export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback
     { key: "support", label: t("sidebar.grok.support"), icon: icon("book"), onSelect: () => {}, submenu: [
       { key: "help", label: t("sidebar.menu.help"), icon: icon("question-circle"), onSelect: onHelp },
       { key: "shortcuts", label: t("sidebar.menu.shortcuts"), icon: icon("keyboard"), onSelect: onShortcuts },
-      { key: "feedback", label: t("sidebar.menu.feedback"), icon: icon("mail"), onSelect: onFeedback },
       ...(trailAvailable() ? [{ key: "usage-log", label: t("sidebar.menu.exportUsageLog"), icon: icon("file-list"), onSelect: () => void exportUsageLog("support").catch(() => {}) } satisfies SidebarMenuItem] : []),
       { key: "about", label: t("sidebar.menu.about"), icon: icon("info"), onSelect: onAbout },
       ...devItems(icon("code")),
     ] },
+    { key: "feedback", label: t("giveFeedback.card"), icon: icon("mail"), onSelect: onFeedback },
     { key: "settings", label: t("sidebar.menu.settings"), icon: icon("gear"), onSelect: onSettings },
   ];
   const needsYou: SidebarMenuItem[] = onNeedsYou ? [{ key: "needs-you", label: t("sidebar.account.automationsNeedYou"), icon: icon("alarm-clock"), attention: true, attentionTone: "danger", onSelect: onNeedsYou }] : [];
