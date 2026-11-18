@@ -140,6 +140,14 @@ class AccountRequestError extends Error {
   constructor(readonly status: number, readonly code?: string, readonly opaque = false) { super("Account request failed"); }
 }
 
+/** The phone the app runs on, as analytics counts it: the phone page in a browser says which phone from its user agent,
+ * so an iPhone opening it is not counted as a linux computer. */
+export function analyticsPlatform(kind: MobilePlatform["kind"], userAgent: string): "ios" | "android" | "linux" {
+  if (kind !== "web") return kind;
+  if (/iPhone|iPad|iPod/.test(userAgent)) return "ios";
+  return /Android/.test(userAgent) ? "android" : "linux";
+}
+
 export function createMobileAccount({ platform, origin, fetch: requestFetch = globalThis.fetch }: {
   platform: MobilePlatform; origin: string; fetch?: typeof globalThis.fetch;
 }) {
@@ -147,7 +155,7 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
   let attempt: { id: string; email: string; expiresAt: number; wrong: number } | null = null;
   let generation = 0;
   let iceCache: { grant: StoredGrant; until: number; servers: IceServer[] } | null = null;
-  const analytics = () => configureAnalytics({ origin, token: grant?.token ?? null, platform: platform.kind === "web" ? "linux" : platform.kind, version: platform.appVersion, kind: "mobile" });
+  const analytics = () => configureAnalytics({ origin, token: grant?.token ?? null, platform: analyticsPlatform(platform.kind, globalThis.navigator?.userAgent ?? ""), version: platform.appVersion, kind: "mobile" });
   analytics();
   const device = () => ({ deviceName: platform.deviceName().trim().slice(0, 100), platform: platform.kind === "web" ? "linux" : platform.kind,
     appVersion: /^[0-9A-Za-z][0-9A-Za-z.+-]{0,39}$/.test(platform.appVersion) ? platform.appVersion : "0.0.0" });
