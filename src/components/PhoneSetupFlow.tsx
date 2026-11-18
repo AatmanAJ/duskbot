@@ -43,6 +43,8 @@ import {
   preparePhonePairingRoute,
   queuePhonePairingAttempt,
   releasePhonePairingAttempt,
+  secureAccessRetryHelps,
+  secureAccessUnavailableMessage,
   secureAddressRequestLapsed,
   shouldArmPhoneSetupProvisioningTimeout,
   shouldPrepareSecureAddress,
@@ -949,14 +951,14 @@ export function PhoneSetupFlowView({ controller }: { controller: PhoneSetupContr
     const unavailable = !c.account?.available;
     const failed = c.account?.status === "error" || c.setupTimedOut;
     const problem = unavailable
-      ? t("phone.signIn.unavailable")
+      ? secureAccessUnavailableMessage(c.account)
       : c.setupTimedOut
         ? t("phone.signIn.timedOut")
         : failed ? c.account?.message ?? t("phone.signIn.failed") : null;
     return (
       <>
         <FlowRow title={unavailable || failed ? t("phone.signIn.attention") : t("phone.signIn.title")} detail={problem} alert={Boolean(c.setupTimedOut)}>
-          {(unavailable || failed) && (
+          {(failed || (unavailable && secureAccessRetryHelps(c.account))) && (
             <button type="button" disabled={c.accountBusy} onClick={c.retryAccount} className="ui-button">
               {c.accountBusy ? t("remote.account.retrying") : t("phone.signIn.retry")}
             </button>
