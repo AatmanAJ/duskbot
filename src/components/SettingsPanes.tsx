@@ -42,6 +42,7 @@ import { LoginsSettings } from "./LoginsSettings";
 import { McpServersPanel } from "./McpServersPanel";
 import { NotificationRows } from "./NotificationSettingsRows";
 import { OpenAtLoginRow } from "./OpenAtLoginRow";
+import { AppMenuEntryRow } from "./AppMenuEntryRow";
 import { OrganizationSettings } from "./OrganizationSettings";
 import { PeopleSection } from "./PeopleSection";
 import { PlanUsageSummary } from "./PlanUsage";
@@ -221,6 +222,7 @@ export function GeneralPane({ has, remoteActive }: { has: Has; remoteActive: boo
             <FollowUpRow simple />
             <QuickUpdatesRow />
             <OpenAtLoginRow simple />
+            <AppMenuEntryRow />
           </SettingsRows>
         </SettingsGroup>
       )}

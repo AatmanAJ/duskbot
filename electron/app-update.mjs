@@ -4,8 +4,8 @@
 // feed on 127.0.0.1 that only this process knows.
 // Squirrel.Mac installs only an app signed with the same Developer ID as the running one (its designated requirement),
 // and only one it can replace where it runs, so an unsigned build, or one run from a disk image or a translocated copy,
-// is shown how to update by hand instead. Windows does the same with the release's NSIS installer (app-update-windows.mjs);
-// Linux is shown a link to its own installer.
+// is shown how to update by hand instead. Windows does the same with the release's NSIS installer (app-update-windows.mjs)
+// and an AppImage by replacing its own file (app-update-linux.mjs); a .deb is shown a link to its own installer.
 // a downloaded update installs when the app quits, or at a quiet moment (locked, or no window focused and nobody touched
 // the mac for QUIET_IDLE_MS, with no turn, call or dictation running), and the app shows "restart to update" while it waits.
 import { execFile } from "node:child_process";
@@ -58,7 +58,8 @@ export const zipIn = (sums, version, arch) => assetIn(sums, `DuskBot-${version}-
 /** the windows installer in a SHA256SUMS text: `{ name, sha256 }`, or null */
 export const setupIn = (sums, version) => assetIn(sums, `DuskBot-${version}-setup.exe`);
 
-function assetIn(sums, name) {
+/** `name` in a SHA256SUMS text: `{ name, sha256 }`, or null */
+export function assetIn(sums, name) {
   for (const line of String(sums).split("\n")) {
     const match = /^([0-9a-f]{64}) {2}(\S+)$/.exec(line.trim());
     if (match && match[2] === name) return { name, sha256: match[1] };
@@ -239,9 +240,10 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
     if (!(await signed())) { manual = { version, url: DOWNLOAD_PAGE }; await fallback.check(); return null; }
     const where = await blocked().catch(() => null);
     if (where === "move") { stuck = "move"; manual = null; report(version, "translocated"); return null; }
-    if (where === "readonly") { stuck = null; manual = { version, url: DOWNLOAD_PAGE }; report(version, "read_only"); return null; }
-    if (where === "portable") { stuck = null; manual = { version, url: await installerUrl(version, installerIn(sums, version, platform), fetchImpl) }; report(version, "portable"); return null; }
-    if (installer.failed?.(version) && !again) { stuck = null; manual = { version, url: await installerUrl(version, installerIn(sums, version, platform), fetchImpl) }; report(version, "did_not_install"); return null; }
+    const byHand = async () => installerUrl(version, installerIn(sums, version, platform, { appImage }), fetchImpl);
+    if (where === "readonly") { stuck = null; manual = { version, url: platform === "darwin" ? DOWNLOAD_PAGE : await byHand() }; report(version, "read_only"); return null; }
+    if (where === "portable") { stuck = null; manual = { version, url: await byHand() }; report(version, "portable"); return null; }
+    if (installer.failed?.(version) && !again) { stuck = null; manual = { version, url: await byHand() }; report(version, "did_not_install"); return null; }
     stuck = manual = null;
     const zip = asset(sums, version);
     if (!zip) throw new UpdateError("manifest", "no_zip", `release ${version} has no update for ${platform} ${arch}`);
