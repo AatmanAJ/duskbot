@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveCompanionEntry } from "./companion-entry.mjs";
+import { UTILITY_NAMES } from "./utility-names.mjs";
 import {
   cleanupCompanionOriginEndpoint,
   companionOriginHealth,
@@ -181,6 +182,7 @@ async function start({ resourcesPath, harnessPort, mutationToken, hostedUrl = nu
       },
       execArgv: resolved.execArgv,
       stdio: ["ignore", "pipe", "pipe"],
+      serviceName: UTILITY_NAMES.companion,
     });
   } catch {
     cleanupOrigin();

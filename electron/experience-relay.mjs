@@ -1,3 +1,5 @@
+import { ownUtility } from "./utility-names.mjs";
+
 export const EVERY_MS = 30_000;
 const NAME = /^[a-z][a-z0-9_]{0,39}$/;
 
@@ -37,9 +39,10 @@ export function createExperienceRelay({ localRequest, events, setTimer = setTime
 }
 
 const CRASHES = new Set(["crashed", "oom", "launch-failed", "integrity-failure", "abnormal-exit", "killed"]);
-/** the crash signal's props for an Electron process-gone event, or null for an ordinary exit */
-export function crashProps(type, reason) {
-  if (!CRASHES.has(reason)) return null;
+/** the crash signal's props for an Electron process-gone event, or null for an ordinary exit, one of our own utility
+ * processes (its owner reports it) or any exit while the app quits or the computer's session ends */
+export function crashProps(type, reason, { name, ending = false } = {}) {
+  if (ending || !CRASHES.has(reason) || ownUtility({ type, name })) return null;
   const kind = type === "page" ? "page" : type === "GPU" ? "gpu" : type === "Utility" ? "utility" : type === "server" ? "server" : "other";
   return { kind, reason: reason.replace(/-/g, "_") };
 }
