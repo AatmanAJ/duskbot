@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomBytes, sign } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { createLinkService } from "../apps/link-service/src/app.mjs";
+import { jsonFile } from "./desktop-prefs.mjs";
 import { createPhoneRelay, phoneRelayStore } from "./phone-relay.mjs";
 import { createTunnelProxy, sealKeyOf, sha256hex, x25519Pair } from "./vps-link-protocol.mjs";
 
@@ -43,9 +44,15 @@ function grantSigner() {
   };
 }
 
+/** kept per workspace like the real store; `peek` reads the default workspace's entry */
 function memoryStore() {
-  let value = null;
-  return { read: async () => (value ? structuredClone(value) : null), write: async (next) => { value = structuredClone(next); }, peek: () => value };
+  const kept = new Map();
+  return {
+    read: async (at) => structuredClone(kept.get(at) ?? null),
+    write: async (at, next) => { kept.set(at, structuredClone(next)); },
+    peek: (at = "") => kept.get(at) ?? null,
+    kept,
+  };
 }
 
 /** a link service, a stand-in harness that answers the sync only for the owner token, and the pieces to drive them */
@@ -195,29 +202,68 @@ test("a tunnel the link service dropped is made again with the same phone keys",
   await until(() => relay.state().status === "ready" && f.harness.syncs.at(-1).tunnel === store.peek().tunnel.id);
 });
 
-test("the saved tunnel is encrypted and kept per workspace", async () => {
+const reversing = { available: async () => true, encrypt: async (text) => Buffer.from([...Buffer.from(text)].reverse()), decrypt: async (bytes) => ({ result: Buffer.from([...bytes].reverse()).toString() }) };
+
+test("the saved tunnel is encrypted, kept per workspace, and the first save works on a fresh install", async () => {
   const dir = mkdtempSync(join(tmpdir(), "dusk-phone-relay-store-"));
   try {
-    let data = null;
-    const jsonFile = () => ({ read: () => data, write: (value) => { data = value; } });
-    const encryption = { available: async () => true, encrypt: async (text) => Buffer.from([...Buffer.from(text)].reverse()), decrypt: async (bytes) => ({ result: Buffer.from([...bytes].reverse()).toString() }) };
-    let folder = "/data/one";
-    const store = phoneRelayStore({ jsonFile, userData: dir, dataDir: () => folder, encryption });
-    await store.write({ tunnel: { id: "abcdefghij", token: "secret-token" } });
-    assert.equal(JSON.stringify(data).includes("secret-token"), false);
-    assert.deepEqual(await store.read(), { tunnel: { id: "abcdefghij", token: "secret-token" } });
-    folder = "/data/two";
-    assert.equal(await store.read(), null);
+    const store = phoneRelayStore({ jsonFile, userData: dir, encryption: reversing });
+    assert.equal(await store.read("/data/one"), null);
+    await store.write("/data/one", { tunnel: { id: "abcdefghij", token: "secret-token" } });
+    assert.equal(readFileSync(join(dir, "phone-relay.json"), "utf8").includes("secret-token"), false);
+    await store.write("/data/two", { tunnel: { id: "bcdefghijk", token: "other-token" } });
+    assert.deepEqual(await store.read("/data/one"), { tunnel: { id: "abcdefghij", token: "secret-token" } });
+    assert.deepEqual(await store.read("/data/two"), { tunnel: { id: "bcdefghijk", token: "other-token" } });
+    assert.equal(await store.read("/data/three"), null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
+test("an unreadable store file is set aside, never overwritten in place", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "dusk-phone-relay-store-"));
+  try {
+    writeFileSync(join(dir, "phone-relay.json"), "{not json");
+    const store = phoneRelayStore({ jsonFile, userData: dir, encryption: reversing });
+    assert.equal(await store.read("/data/one"), null);
+    await store.write("/data/one", { tunnel: null });
+    assert.ok(readdirSync(dir).some((name) => name.startsWith("phone-relay.json.unreadable-")));
+    assert.deepEqual(await store.read("/data/one"), { tunnel: null });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a tunnel whose save failed is ended at once, so failed saves never use up the account's tunnels", async (t) => {
+  const f = await fixture(t);
+  const store = { read: async () => null, write: async () => { throw Object.assign(new Error("disk full"), { code: "ENOSPC" }); } };
+  const relay = f.relay({ store });
+  const state = await relay.ready(500);
+  assert.equal(state.status, "error");
+  assert.equal(state.code, "save_failed");
+  assert.equal(f.service.store.tunnels.size, 0);
+  assert.equal(f.harness.syncs.length, 0);
+});
+
+test("a workspace switch while its tunnel is made writes nothing for the other workspace and ends that tunnel", async (t) => {
+  const f = await fixture(t);
+  let folder = "/data/one";
+  const store = memoryStore();
+  const relay = f.relay({ store, scope: () => folder, fetch: async (url, init) => {
+    if (String(url).endsWith("/result")) folder = "/data/two";
+    return fetch(url, init);
+  } });
+  await relay.ready(500);
+  await relay.settled();
+  assert.equal(store.kept.size, 0, "no tunnel or key landed under either workspace");
+  assert.equal(f.service.store.tunnels.size, 0, "the tunnel made for the first workspace was ended");
+  assert.equal(f.harness.syncs.length, 0);
+});
+
 test("another workspace's harness never replaces a tunnel's channels", async (t) => {
   const f = await fixture(t);
   let folder = "/data/one";
-  const kept = new Map();
-  const store = { read: async () => structuredClone(kept.get(folder) ?? null), write: async (value) => { kept.set(folder, structuredClone(value)); } };
+  const store = memoryStore(), kept = store.kept;
   const relay = f.relay({ store, scope: () => folder });
   const phone = x25519Pair(), channel = "phoneaaaac";
   f.change([{ id: channel, kind: "device", pub: phone.pub, verifier: sha256hex("token") }]);

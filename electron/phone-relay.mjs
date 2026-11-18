@@ -105,7 +105,7 @@ export function desktopHarnessSync({ port, ownerToken, request = httpRequest }) 
  *   signedIn(): boolean,
  *   linkGrant(): Promise<string | null>,
  *   label(): string,
- *   store: { read(): Promise<{ keys?: { pub: string, priv: string }, tunnel?: { base: string, id: string, token: string } | null } | null>, write(value: unknown): Promise<void> },
+ *   store: { read(at: string): Promise<{ keys?: { pub: string, priv: string }, tunnel?: { base: string, id: string, token: string } | null } | null>, write(at: string, value: unknown): Promise<void> },
  *   loadHub(): Promise<{ createPhoneHub: Function }>,
  *   port(): number,
  *   ownerToken(): string,
@@ -133,7 +133,7 @@ export function createPhoneRelay(deps) {
   };
   const backoff = () => { notBefore = now() + retryMs[Math.min(failures, retryMs.length - 1)]; failures += 1; };
   const idle = async () => {
-    const saved = await deps.store.read().catch(() => null);
+    const saved = await deps.store.read(scope()).catch(() => null);
     return saved?.tunnel || deps.signedIn() ? { status: "off" } : { status: "signed-out" };
   };
 
@@ -143,10 +143,11 @@ export function createPhoneRelay(deps) {
     hub?.hub.stop();
   }
 
-  async function startHub(saved) {
+  async function startHub(saved, at) {
     const { createPhoneHub } = await deps.loadHub();
+    if (stopped || running || scope() !== at || !deps.wanted()) return;
     const { tunnel, keys } = saved;
-    const one = { scope: scope() };
+    const one = { scope: at };
     const sync = desktopHarnessSync({ port: deps.port, ownerToken: deps.ownerToken });
     // a sync reporting an applied revision means the relay took this computer's channels
     one.hub = createPhoneHub({
@@ -171,43 +172,67 @@ export function createPhoneRelay(deps) {
       // the hub ends by itself only when the relay refused the tunnel: ask, and make a new one when it is gone
       if ((await tunnelKnown(tunnel, fetchImpl)) === false) {
         log("phone relay: the link service no longer knows this computer's tunnel; making a new one");
-        await deps.store.write({ ...saved, tunnel: null }).catch(() => {});
+        await deps.store.write(one.scope, { ...saved, tunnel: null }).catch(() => {});
       } else backoff();
       set({ status: "starting" });
       schedule(0);
     });
   }
 
+  /** ends a tunnel this computer made but could not keep, so a failed save never holds one of the account's slots */
+  async function retire(tunnel) {
+    try {
+      const response = await fetchImpl(`${tunnel.base}/v1/tunnels/${tunnel.id}`, { method: "DELETE", headers: { authorization: `Bearer ${tunnel.token}` }, redirect: "error", signal: AbortSignal.timeout(10_000) });
+      await response.body?.cancel().catch(() => {});
+    } catch (error) {
+      log(`phone relay: an unsaved tunnel was not ended (${error?.message ?? error})`);
+    }
+  }
+
   async function checkNow() {
     if (stopped) return;
+    // the workspace this check is for: every read, write and hub below belongs to it, and a switch midway ends the check
+    const at = scope();
     if (!deps.wanted()) {
       stopHub();
       set(await idle());
       return;
     }
-    if (running && running.scope !== scope()) stopHub();
+    if (running && running.scope !== at) stopHub();
     if (running || now() < notBefore) return;
     lastTry = now();
-    let saved = await deps.store.read().catch(() => null);
+    let saved = await deps.store.read(at).catch(() => null);
+    if (scope() !== at) return;
     if (!saved?.keys) saved = { keys: x25519Pair(), tunnel: null };
     if (!saved.tunnel) {
       const grant = await deps.linkGrant().catch(() => null);
+      if (scope() !== at) return;
       if (!grant) { set({ status: "signed-out" }); return; }
       set({ status: "starting" });
+      let tunnel;
       try {
-        const tunnel = await createRelayTunnel({ base: deps.base, grant, label: deps.label(), fetch: fetchImpl });
-        saved = { ...saved, tunnel };
-        await deps.store.write(saved);
+        tunnel = await createRelayTunnel({ base: deps.base, grant, label: deps.label(), fetch: fetchImpl });
       } catch (error) {
         backoff();
         log(`phone relay: no tunnel (${error?.code ?? error?.message ?? error})`);
         set({ status: "error", code: error?.code ?? "unreachable", message: error instanceof RelaySetupError ? error.message : "dusk bot could not reach its relay." });
         return;
       }
+      if (scope() !== at) { await retire(tunnel); return; }
+      try {
+        await deps.store.write(at, { ...saved, tunnel });
+      } catch (error) {
+        await retire(tunnel);
+        backoff();
+        log(`phone relay: the tunnel could not be saved (${error?.message ?? error})`);
+        set({ status: "error", code: "save_failed", message: "dusk bot could not save its relay settings." });
+        return;
+      }
+      saved = { ...saved, tunnel };
     }
-    if (stopped || running) return;
+    if (stopped || running || scope() !== at) return;
     if (!deps.wanted()) { set(await idle()); return; }
-    await startHub(saved);
+    await startHub(saved, at);
   }
 
   function check() {
@@ -249,8 +274,8 @@ export function createPhoneRelay(deps) {
   };
 }
 
-/** the store for one workspace's relay: kept in userData, keyed by the workspace's data folder */
-export function phoneRelayStore({ jsonFile, userData, dataDir, encryption }) {
+/** every workspace's relay, in userData, keyed by the workspace's data folder */
+export function phoneRelayStore({ jsonFile, userData, encryption }) {
   const file = jsonFile(path.join(userData, "phone-relay.json"));
   // electron's async safeStorage decrypt answers { result }, not a bare string
   const unprotect = async (value) => {
@@ -258,17 +283,28 @@ export function phoneRelayStore({ jsonFile, userData, dataDir, encryption }) {
     const out = await encryption.decrypt(Buffer.from(value.slice(2), "base64"));
     return typeof out === "string" ? out : String(out?.result ?? "");
   };
-  const key = () => createHash("sha256").update(String(dataDir() ?? "")).digest("hex").slice(0, 16);
+  const key = (at) => createHash("sha256").update(String(at ?? "")).digest("hex").slice(0, 16);
+  /** a missing file is empty; an unreadable one is set aside on write, so the other workspaces' entries are never lost */
+  const entries = ({ setAside = false } = {}) => {
+    let value;
+    try {
+      value = file.read();
+    } catch (error) {
+      if (error?.code !== "ENOENT" && setAside) file.setAside();
+      return {};
+    }
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  };
   return {
-    async read() {
-      const value = (file.read() ?? {})[key()];
+    async read(at) {
+      const value = entries()[key(at)];
       if (typeof value !== "string") return null;
       try { return JSON.parse(await unprotect(value)); } catch { return null; }
     },
-    async write(value) {
+    async write(at, value) {
       const text = JSON.stringify(value);
       const sealed = (await encryption.available()) ? `e:${(await encryption.encrypt(text)).toString("base64")}` : `p:${text}`;
-      file.write({ ...file.read(), [key()]: sealed });
+      file.write({ ...entries({ setAside: true }), [key(at)]: sealed });
     },
   };
 }
@@ -280,7 +316,7 @@ export function phoneRelayStore({ jsonFile, userData, dataDir, encryption }) {
 export function installPhoneRelay({ ipcMain, guard, jsonFile, userData, dataDir, encryption, ...deps }) {
   const relay = createPhoneRelay({
     base: (process.env.DUSK_LINK_BASE || PHONE_RELAY_BASE).replace(/\/+$/, ""),
-    store: phoneRelayStore({ jsonFile, userData, dataDir, encryption }),
+    store: phoneRelayStore({ jsonFile, userData, encryption }),
     scope: () => String(dataDir() ?? ""),
     loadHub: () => import("../apps/link-service/agent.mjs"),
     ...deps,
