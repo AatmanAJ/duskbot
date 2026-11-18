@@ -64,12 +64,12 @@ export function createBrowsersFlush({ server, randomId, timeoutMs = BROWSERS_FLU
 
 /**
  * @param {{ app: { on(event: string, listener: (...args: any[]) => void): void }, windows: () => Array<{ on(event: string, listener: () => void): void }>, powerMonitor: { on(event: string, listener: (event: { preventDefault(): void }) => void): void },
- *   flusher: ReturnType<typeof createBrowsersFlush>, quit: () => void, log?: (line: string) => void }} deps
+ *   flusher: ReturnType<typeof createBrowsersFlush>, quit: () => void, log?: (line: string) => void, onSessionEnd?: () => void }} deps
  */
-export function installSessionEndFlush({ app, windows, powerMonitor, flusher, quit, log }) {
+export function installSessionEndFlush({ app, windows, powerMonitor, flusher, quit, log, onSessionEnd }) {
   const watch = (win) => {
     win.on("query-session-end", () => { void flusher.prepare(); });
-    win.on("session-end", () => { void flusher.flush(); });
+    win.on("session-end", () => { onSessionEnd?.(); void flusher.flush(); });
   };
   for (const win of windows()) watch(win);
   app.on("browser-window-created", (_event, win) => watch(win));
