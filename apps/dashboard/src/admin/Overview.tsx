@@ -12,7 +12,7 @@ import { adminCall, useAdmin, type Overview } from "./api";
 import { avatarOf } from "./names";
 import { centroid, countryName } from "./geo";
 import { Avatar, CHANNEL, Chip, Delta, FilterChips, NoteDialog, RangePicker, RankCard, duration, percent, personName, rangeOf, usd, type Mark, type Note, type Range, type RankRow, type SeriesData } from "./kit";
-import { CheerBubble, PaymentsCard, useCheer, type RevenueAnswer } from "./Revenue";
+import { CheerBubble, PaymentsCard, useCheer, type MrrForecast, type RevenueAnswer } from "./Revenue";
 import { PulseGrid } from "./Pulse";
 import { UsageSection } from "./Usage";
 import { ChartCard, ConversionList, LiveMap, LtvList, MainChart, PeakHours, SERIES, StackedBars, channelStacks, type ChartShow, type Insights } from "./charts";
@@ -93,10 +93,10 @@ const I = { size: 14, strokeWidth: 1.75 } as const;
 /** one number in the strip: money and traffic in the same plain tile, easing to each new value */
 /** one number in the strip, money and traffic alike; a charted one has a checkbox in its series colour that shows or hides
  * it on the chart, and the revenue tile sits on a soft green wash */
-function Kpi({ label, value, format, now, before, invert, toggle, money }: { label: string; value: number | null; format(v: number): string; now?: number | null; before?: number | null; invert?: boolean;
-  toggle?: { on: boolean; flip(): void; colour: string }; money?: boolean }) {
+function Kpi({ label, value, format, now, before, invert, toggle, money, note, hint }: { label: string; value: number | null; format(v: number): string; now?: number | null; before?: number | null; invert?: boolean;
+  toggle?: { on: boolean; flip(): void; colour: string }; money?: boolean; note?: string; hint?: string }) {
   return (
-    <div className={cx("min-w-0 rounded-[16px] px-4 py-3.5 transition-colors duration-200", money && toggle?.on !== false ? "bg-wash-lime" : "bg-pop")}>
+    <div title={hint} className={cx("min-w-0 rounded-[16px] px-4 py-3.5 transition-colors duration-200", money && toggle?.on !== false ? "bg-wash-lime" : "bg-pop")}>
       {toggle ? (
         <label className="flex cursor-pointer items-center gap-2 text-13 font-medium text-ink-2">
           <input type="checkbox" checked={toggle.on} onChange={toggle.flip} className="size-3.5 cursor-pointer rounded-[4px]" style={{ accentColor: toggle.colour }} />{label}
@@ -104,8 +104,15 @@ function Kpi({ label, value, format, now, before, invert, toggle, money }: { lab
       ) : <div className="text-13 font-medium text-ink-3">{label}</div>}
       <div className={cx("mt-1 truncate font-mono text-[26px] font-medium leading-9 tracking-[-0.045em] num", money ? "text-money" : "text-ink")}>{value === null ? "-" : <Figure value={format(value)} className="!font-mono !text-[26px] !leading-9 !tracking-[-0.045em] ![color:inherit]" />}</div>
       <div className="mt-0.5 h-5 truncate leading-5">{now !== undefined && <Delta now={now ?? null} before={before ?? null} invert={invert} />}</div>
+      {note && <div className="mt-0.5 truncate text-12 leading-4 text-ink-3">{note}</div>}
     </div>
   );
+}
+
+function mrrNote(f: MrrForecast | null | undefined) {
+  if (!f) return {};
+  const note = `expected · ${usd(f.paying)} paying + ${Math.round(f.conversion * 100)}% of ${usd(f.trials)} in trials`;
+  return { note, hint: `${note}. ${usd(f.full)} if every trial paid in full` };
 }
 
 function MapPanel({ rows }: { rows: RankRow[] }) {
@@ -283,7 +290,7 @@ export function OverviewPage() {
               <Kpi label="visitors" value={c.visitors} format={whole} now={c.visitors} before={p.visitors} toggle={{ on: show.visitors, flip: flip("visitors"), colour: SERIES.visitors }} />
               <Kpi label="revenue" value={r ? r.current.net : null} format={dollars} now={r?.current.net} before={r?.previous.net} money toggle={{ on: show.revenue, flip: flip("revenue"), colour: SERIES.revenue }} />
               <Kpi label="signups" value={c.signups} format={whole} now={c.signups} before={p.signups} toggle={{ on: show.signups, flip: flip("signups"), colour: SERIES.signups }} />
-              <Kpi label="mrr" value={r && !filtered ? r.current.mrr : null} format={dollars} now={r && !filtered ? r.current.mrr : undefined} before={r?.previous.mrr} />
+              <Kpi label="mrr" value={r && !filtered ? r.current.mrr : null} format={dollars} now={r && !filtered ? r.current.mrr : undefined} before={r?.previous.mrr} {...mrrNote(filtered ? null : r?.current.mrrForecast)} />
               <Kpi label="customers" value={r ? (overview.data?.totals.paying ?? r.current.customers) : null} format={whole} now={r?.current.customers} before={r?.previous.customers} />
               <Kpi label="per visitor" value={r && c.visitors ? r.current.net / c.visitors : null} format={(v) => usd(Math.round(v))} now={r && c.visitors ? r.current.net / c.visitors : undefined} before={r && p.visitors ? r.previous.net / p.visitors : undefined} />
               <Kpi label="conversion" value={c.conversion} format={share} now={c.conversion} before={p.conversion} />

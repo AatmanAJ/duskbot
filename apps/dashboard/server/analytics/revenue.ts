@@ -4,7 +4,7 @@ import { refundBeforeTax, taxIn } from "./subscriptions.ts";
 import { DIMENSIONS, bucketsOf, matches, valuesOf, type Dimension, type Filters, type Identity, type Visit } from "./web.ts";
 
 export interface InvoiceLike { id: string; accountId: string; providerPaymentId: string; subscriptionId: string | null; amountCents: number; taxCents?: number; currency: string; status: "paid" | "failed" | "refunded"; createdAt: number }
-export interface SubscriptionLike { accountId: string; status: string; totalCents: number; createdAt: number; currentPeriodStart: number | null; cart: { interval: string } }
+export interface SubscriptionLike { accountId: string; status: string; totalCents: number; createdAt: number; currentPeriodStart: number | null; cart: { interval: string }; trialEndsAt?: number; cancelAtPeriodEnd?: boolean }
 export interface BillingLike {
   invoices: readonly InvoiceLike[];
   subscriptions: readonly SubscriptionLike[];
@@ -51,9 +51,22 @@ const monthly = (sub: SubscriptionLike) => sub.cart.interval === "year" ? Math.r
 const PAYING = new Set(["active", "payment_problem", "cancelled"]);
 /** monthly recurring revenue: today it is every paying subscription; at an earlier moment, those already paid by then
  * that are still paying or ended later (an approximation: the records keep no status history) */
-export function mrrAt(subs: readonly SubscriptionLike[], at: number, now: number) {
-  return subs.filter(sub => sub.currentPeriodStart !== null || PAYING.has(sub.status)).filter(sub => sub.createdAt < at && (at >= now ? PAYING.has(sub.status) : PAYING.has(sub.status) || sub.status === "ended"))
-    .reduce((sum, sub) => sum + monthly(sub), 0);
+const countedAt = (subs: readonly SubscriptionLike[], at: number, now: number) =>
+  subs.filter(sub => sub.currentPeriodStart !== null || PAYING.has(sub.status)).filter(sub => sub.createdAt < at && (at >= now ? PAYING.has(sub.status) : PAYING.has(sub.status) || sub.status === "ended"));
+
+/** the share of free trials not set to cancel that the overview expects to start paying */
+export const TRIAL_CONVERSION = 0.6;
+/** `full` counts every trial at its price; `expected` is paying plus `conversion` of the trials not set to cancel */
+export interface MrrForecast { expected: number; paying: number; trials: number; full: number; conversion: number }
+export function mrrForecastAt(subs: readonly SubscriptionLike[], at: number, now: number, conversion = TRIAL_CONVERSION): MrrForecast {
+  let paying = 0, trials = 0, full = 0;
+  for (const sub of countedAt(subs, at, now)) {
+    const value = monthly(sub);
+    full += value;
+    if (sub.trialEndsAt === undefined || at >= sub.trialEndsAt) paying += value;
+    else if (!sub.cancelAtPeriodEnd && sub.status !== "cancelled") trials += value;
+  }
+  return { expected: paying + Math.round(trials * conversion), paying, trials, full, conversion };
 }
 
 export interface Touch { first: Visit | null; last: Visit | null }
@@ -65,7 +78,7 @@ export function touchOf(visits: readonly Visit[], at: number): Touch {
   return { first, last };
 }
 
-export interface RevenueKpis { net: number; gross: number; refunds: number; payments: number; customers: number; newCustomers: number; renewals: number; mrr: number }
+export interface RevenueKpis { net: number; gross: number; refunds: number; payments: number; customers: number; newCustomers: number; renewals: number; mrr: number; mrrForecast: MrrForecast | null }
 export interface RecentPayment {
   id: string; at: number; amountCents: number; currency: string; kind: PaymentKind; accountId: string; seed: string; email: string | null;
   source: string; channel: string; firstSource: string | null; campaign: string | null; country: string | null; city: string | null; device: string | null;
@@ -110,11 +123,12 @@ export function revenueReport(input: RevenueInput) {
   const kpis = (a: number, b: number, mrrTime: number): RevenueKpis => {
     const list = within(a, b), positive = list.filter(payment => payment.amountCents > 0);
     const customers = new Set(positive.map(payment => payment.accountId));
+    const forecast = filtered ? null : mrrForecastAt(input.subscriptions, mrrTime, input.now);
     return {
       net: list.reduce((sum, payment) => sum + payment.amountCents, 0), gross: positive.reduce((sum, payment) => sum + payment.amountCents, 0),
       refunds: -list.filter(payment => payment.kind === "refund").reduce((sum, payment) => sum + payment.amountCents, 0),
       payments: positive.length, customers: customers.size, newCustomers: [...customers].filter(id => { const at = firstPaid.get(id)!; return at >= a && at < b; }).length,
-      renewals: positive.filter(payment => payment.kind === "renewal").length, mrr: filtered ? 0 : mrrAt(input.subscriptions, mrrTime, input.now),
+      renewals: positive.filter(payment => payment.kind === "renewal").length, mrr: forecast?.expected ?? 0, mrrForecast: forecast,
     };
   };
 
