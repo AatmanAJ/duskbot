@@ -396,3 +396,7 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
 .dusk-mobile [data-ui-toggle][aria-checked="false"] { background-color: color-mix(in srgb, var(--color-ink) 14%, transparent); }
 .dusk-mobile [data-ui-toggle] > span { width: 27px; height: 27px; background-color: var(--color-app); }
 .dusk-mobile [data-ui-toggle][aria-checked="true"] > span { translate: 20px 0; }
+
+/* a reply's words arrive as the system's do: a short fade, no blur, so a long reply never repaints every word it adds */
+.dusk-mobile [data-mobile-chat] .md-rv { animation: md-rv-fade 140ms cubic-bezier(.2,0,0,1) both; animation-delay: calc(var(--rv, 0) * var(--rv-step, 0ms)); }
+@media (prefers-reduced-motion: reduce) { .dusk-mobile [data-mobile-chat] .md-rv { animation-delay: 0ms; } }

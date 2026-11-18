@@ -39,6 +39,13 @@ export const feel = {
   scrim: { in: 0.22, out: 0.16, blur: 10 },
 };
 
+/** UIKit's own transitions (push, pop, sheet), measured off an iOS 26 recording: they leave at full speed and decelerate
+ * with no overshoot. `speed` is the start velocity in distances per second: 10 for a push or a rising sheet, 14 for a
+ * tapped back. */
+export const system = { stiffness: 600, damping: 54, push: 10, back: 14 } as const;
+/** a surface dismissed by a tap or Escape accelerates away: 200ms for the full travel */
+export const dismiss = { ms: 200, minMs: 90, ease: [0.4, 0, 1, 1] as const };
+
 /** A spring as a WAAPI/CSS duration and linear() easing, for things that must not wait on React. */
 export function springEasing(stiffness: number, damping: number): { duration: number; easing: string } {
   const w = Math.sqrt(stiffness);
@@ -81,11 +88,12 @@ export function springPath(from: number, to: number, velocity: number, { stiffne
   return { duration: Math.round((points.length - 1) * step), points };
 }
 
-/** The software keyboard's own curve: iOS slides it on a damped spring that this bezier traces within a frame, Android
+const IOS_KEYBOARD = springEasing(500, 44.7);
+/** The software keyboard's own curve: iOS 26 slides it on a critically damped spring (stiffness 500, measured), Android
  * on its emphasized decelerate. */
 export const keyboardCurve = {
-  ios: { duration: 0.25, css: "cubic-bezier(.32,.72,0,1)", bezier: [0.32, 0.72, 0, 1] as const },
-  android: { duration: 0.28, css: "cubic-bezier(.2,0,0,1)", bezier: [0.2, 0, 0, 1] as const },
+  ios: { duration: IOS_KEYBOARD.duration / 1000, css: IOS_KEYBOARD.easing },
+  android: { duration: 0.28, css: "cubic-bezier(.2,0,0,1)" },
 };
 
 export function prefersReducedMotion(): boolean {
