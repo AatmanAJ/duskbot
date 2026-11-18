@@ -5,21 +5,25 @@ export interface FeatureFlagConfig {
   browserEngine?: { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; installing?: boolean; installError?: string };
 }
 
-/** The phone app, off while it is reworked: the first run's phone step, Settings → phone, "connect your phone" and every
- * pairing prompt follow this one switch. A build with `VITE_DUSK_PHONE_APP=1` brings them all back. */
-export function phoneAppEnabled(): boolean {
-  return import.meta.env?.VITE_DUSK_PHONE_APP === "1" || phoneAppByHand();
+/** a build made with `VITE_DUSK_PHONE_APP=0`: no phone app anywhere unless the Advanced switch brings its settings back */
+export function phoneAppHiddenByBuild(): boolean {
+  return import.meta.env?.VITE_DUSK_PHONE_APP === "0";
 }
 
-/** The first run's phone step and the intro's phone chip: only a build that ships the phone app asks for it at the
- * start; the Advanced switch shows the phone settings without ever prompting. */
+/** The phone app (iPhone on the App Store, Android as an APK on dusk.bot): the first run's phone step, Settings → phone,
+ * "connect your phone" and every pairing prompt follow this one switch. */
+export function phoneAppEnabled(): boolean {
+  return !phoneAppHiddenByBuild() || phoneAppByHand();
+}
+
+/** The first run's phone step and the intro's phone chip; the Advanced switch of a hiding build never prompts. */
 export function phoneAppPrompted(): boolean {
-  return import.meta.env?.VITE_DUSK_PHONE_APP === "1";
+  return !phoneAppHiddenByBuild();
 }
 
 const PHONE_APP_KEY = "dusk.phoneApp.manual";
 
-/** Settings → Advanced's own switch for the phone app, for developers and testers; nobody else is asked or shown it. */
+/** Settings → Advanced's own switch for the phone app in a build that hides it, for developers and testers. */
 export function phoneAppByHand(): boolean {
   try { return globalThis.localStorage?.getItem(PHONE_APP_KEY) === "1"; } catch { return false; }
 }

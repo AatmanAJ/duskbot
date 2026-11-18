@@ -19,7 +19,7 @@ import { StoreMark } from "./ui/StoreMarks";
 import { PRIMARY, QUIET, TILE } from "./onboarding/FunnelSteps";
 import type { PairedDevice } from "./ServerPairingCard";
 import { friendlyError } from "@/lib/plain-error";
-import { storeUrl } from "../mobile/connection/phone-update";
+import { ANDROID_APP_URL, storeUrl } from "../mobile/connection/phone-update";
 
 export function platformLabelKey(platform: string) {
   return platform === "ios" ? "settings.mobile.ios" : platform === "android" ? "settings.mobile.android" : "settings.mobile.phone";
@@ -50,8 +50,8 @@ export interface PhoneParts {
 type Flow = "loading" | "home" | "platform" | "link";
 export type PhoneKind = "ios" | "android";
 
-/** the Android app is not on Google Play yet: its card is shown, not pickable */
-export const ANDROID_APP_OUT = false;
+/** the Android app is out as a signed APK on dusk.bot (not Google Play): its card is pickable */
+export const ANDROID_APP_OUT = true;
 
 /** a live code is swapped for a new one this long before it ends, so the screen never shows a dead code */
 export const RENEW_BEFORE_MS = 60_000;
@@ -351,6 +351,13 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     </a>
   );
 
+  const apkBadge = (
+    <a data-phone-apk="" href={ANDROID_APP_URL} target="_blank" rel="noreferrer" aria-label={t("settings.phone.apkLabel")}
+      className="relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] bg-ink ps-3 pe-3 text-[13px] font-semibold leading-4 tracking-[-0.01em] text-app transition-opacity duration-150 ease-[ease] before:absolute before:-inset-y-1.5 before:inset-x-0 hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none">
+      {t("settings.phone.apk")}
+    </a>
+  );
+
   const backBar = (to: Flow | null) => to && (
     <div className="-ms-1.5 flex h-11 items-center">
       <button type="button" data-pairing-back="" onClick={() => go(to)}
@@ -401,7 +408,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
 
   const steps = (second: ReactNode) => (
     <ol data-phone-steps={kind} className="m-0 flex w-full list-none flex-col p-0 px-2">
-      {ios ? step(1, t("settings.phone.getIos"), appStoreBadge) : step(1, t("settings.phone.getAndroid"))}
+      {ios ? step(1, t("settings.phone.getIos"), appStoreBadge) : step(1, t("settings.phone.getAndroid"), apkBadge)}
       {step(2, second)}
     </ol>
   );

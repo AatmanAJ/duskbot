@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { builtInBrowserEnabled, llmThreadTitlesEnabled, parseSkillReviewSteps, phoneAppByHand, phoneAppEnabled, setPhoneAppByHand, roomMemoryCaptureEnabled, shareLearnedSkillsMode, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines } from "./feature-flags";
+import { builtInBrowserEnabled, llmThreadTitlesEnabled, parseSkillReviewSteps, phoneAppByHand, phoneAppEnabled, phoneAppPrompted, setPhoneAppByHand, roomMemoryCaptureEnabled, shareLearnedSkillsMode, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines } from "./feature-flags";
 
 describe("experimental feature flags", () => {
   it("keeps skill authoring on by default, before and after the config arrives", () => {
@@ -44,8 +44,8 @@ describe("experimental feature flags", () => {
     for (const bad of ["", "2", "101", "4.5", "-5", "ten"]) expect(parseSkillReviewSteps(bad)).toBeNull();
   });
 
-  it("shows the phone app on a computer whose Advanced switch is on, and only there", () => {
-    vi.stubEnv("VITE_DUSK_PHONE_APP", "");
+  it("shows the phone app on a computer whose Advanced switch is on, and only there, in a build that hides it", () => {
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     const store = new Map<string, string>();
     vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) });
     expect(phoneAppEnabled()).toBe(false);
@@ -58,13 +58,15 @@ describe("experimental feature flags", () => {
     vi.unstubAllEnvs();
   });
 
-  it("hides the phone app in a plain build while it is reworked, and shows it only when a build asks", () => {
+  it("shows and prompts the phone app in a plain build, since both phone apps are out, and hides it only when a build asks", () => {
     vi.stubEnv("VITE_DUSK_PHONE_APP", "");
-    expect(phoneAppEnabled()).toBe(false);
+    expect(phoneAppEnabled()).toBe(true);
+    expect(phoneAppPrompted()).toBe(true);
     vi.stubEnv("VITE_DUSK_PHONE_APP", "1");
     expect(phoneAppEnabled()).toBe(true);
     vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     expect(phoneAppEnabled()).toBe(false);
+    expect(phoneAppPrompted()).toBe(false);
     vi.unstubAllEnvs();
   });
 
