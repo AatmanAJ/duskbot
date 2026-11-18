@@ -28,7 +28,7 @@ import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream,
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
 import { carriedSteps, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
-import { announcesAction, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { announcesAction, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
 import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
@@ -625,7 +625,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           let completion: Completion;
           for (;;) {
             let streamed = false, answerStreamed = false;
-            const holdback = options.localModel && tools.definitions.length ? new TextCallHoldback() : undefined;
+            const holdback = options.localModel && tools.definitions.length ? new TextCallHoldback() : undefined, leakHold = new LeakHoldback();
             const pending = { assistant_text: "", reasoning_text: "" };
             const delta = (text: string, streamKind: keyof typeof pending, flush = false) => {
               let combined = pending[streamKind] + text;
@@ -646,7 +646,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               completion = await complete(messages, model, true, abort.signal, (text, streamKind) => {
                 streamed = true;
                 if (streamKind === "assistant_text" && text.trim()) answerStreamed = true;
-                const shown = holdback && streamKind === "assistant_text" ? holdback.feed(text) : text;
+                const shown = streamKind !== "assistant_text" ? text : leakHold.feed(holdback ? holdback.feed(text) : text);
                 if (shown) delta(shown, streamKind);
               }, tools.definitions, undefined, turn.effort);
               // A reply cut off at the token limit may be a call cut short; running half of one is worse than saying so.
@@ -661,7 +661,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 completion = { ...completion, text: written?.text ?? "" };
                 native("in", { recovered: "unreadable_tool_call" });
               } else {
-                const rest = holdback?.rest();
+                const rest = leakHold.flush(holdback?.rest() ?? "");
                 if (rest) delta(rest, "assistant_text");
               }
               delta("", "assistant_text", true);
@@ -670,6 +670,8 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               if (completion.toolCalls.length && !tools.definitions.length) throw noReplyError("tools_unavailable");
               break;
             } catch (value) {
+              const kept = leakHold.kept();
+              if (kept) delta(kept, "assistant_text");
               const error = asError(value);
               const verdict = classifyError(error);
               const nudge = answerStreamed || abort.signal.aborted ? null : nudgeOnce(error, nudged);

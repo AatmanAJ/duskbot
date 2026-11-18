@@ -1282,6 +1282,8 @@ describe("structured tool execution boundaries", () => {
     expect(f.requests).toHaveLength(2);
     const shown = f.recorder.events.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
     expect(shown).toEqual(["Nothing needed writing."]);
+    const streamed = f.recorder.events.flatMap((event) => event.type === "content.delta" ? [event.delta] : []).join("");
+    expect(streamed).toBe("Nothing needed writing.");
   });
 
   it("asks again for an answer when the model sent its working notes as the reply, and never shows them", async () => {
@@ -1295,6 +1297,8 @@ describe("structured tool execution boundaries", () => {
     expect(f.requests).toHaveLength(2);
     const shown = f.recorder.events.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
     expect(shown).toEqual(["Nothing needed storing."]);
+    const streamed = f.recorder.events.flatMap((event) => event.type === "content.delta" ? [event.delta] : []).join("");
+    expect(streamed).toBe("Nothing needed storing.");
   });
 
   it("ends a turn whose model leaks raw tool tokens twice as a broken tool call, never as its reply", async () => {

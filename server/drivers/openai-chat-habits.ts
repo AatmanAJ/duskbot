@@ -105,3 +105,45 @@ export function leakedReasoning(text: string): boolean {
   return REASONING_OPENER.test(reply) && (reply.match(REASONING_MARKS)?.length ?? 0) >= 3;
 }
 
+const DECIDE_AT = 24;
+const NOTES_START = /^\s*(?:we |the user|user |according to|let's |the system|the developer)/i;
+
+/** The live stream of one reply, held where it may be a leak: its first few words until they show it is not working
+ * notes (a reply that opens like notes is held to its end), and everything from a chat-format token on. What is held
+ * reaches the person through `flush` once the whole reply is known not to be a leak. */
+export class LeakHoldback {
+  private seen = "";
+  private held = "";
+  private holding: "start" | "all" | null = "start";
+
+  feed(text: string): string {
+    if (this.holding === "all") { this.held += text; return ""; }
+    const at = text.indexOf("<|");
+    const before = at < 0 ? text : text.slice(0, at);
+    let out = "";
+    if (this.holding === "start") {
+      this.held += before;
+      this.seen += before;
+      if (this.seen.trimStart().length >= DECIDE_AT) {
+        if (NOTES_START.test(this.seen)) this.holding = "all";
+        else { out = this.held; this.held = ""; this.holding = null; }
+      }
+    } else out = before;
+    if (at >= 0) { this.held += text.slice(at); this.holding = "all"; }
+    return out;
+  }
+
+  /** what was held for a reply cut short by an error, unless it already looked like a leak */
+  kept(): string {
+    return this.holding === "all" ? "" : this.flush();
+  }
+
+  /** what was held, with `rest` after it, for a reply that turned out not to be a leak */
+  flush(rest = ""): string {
+    const out = this.held + rest;
+    this.held = "";
+    this.holding = null;
+    return out;
+  }
+}
+
