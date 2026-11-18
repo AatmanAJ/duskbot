@@ -23,6 +23,7 @@ function rtcWay(screenIce) {
 }
 import { createEgressDialer, createEgressEndpoint, seenAsCache } from "./vps-link-egress.mjs";
 import { createVpsLink } from "./vps-link.mjs";
+import { serverRequests } from "./own-home-main.mjs";
 import { createHomeEgressLink } from "./home-egress-link.mjs";
 import { proxyFromPac } from "./vps-link-protocol.mjs";
 
@@ -197,6 +198,8 @@ export function installVpsLink(deps) {
       if (!pinned) { pinned = true; session.defaultSession.setCertificateVerifyProc((request, callback) => pins.verify(request, callback)); }
     },
     ownHome: deps.ownHome,
+    places: () => deps.environments().environments ?? [],
+    who: (place) => serverRequests(place, (...args) => session.defaultSession.fetch(...args)).who(),
     ownHomeReset: () => { for (const file of ownHomeFiles) { try { file.write(null); } catch (error) { log(`vps link: could not reset the move record (${error?.message ?? error})`); } } },
     localRequest: deps.localRequest,
     backups: {
@@ -250,11 +253,16 @@ export function installVpsLink(deps) {
     move: () => link.move(),
     retryMove: () => link.retryMove(),
     open: () => link.open(),
-    where: () => link.where(),
+    async where() {
+      const where = link.where();
+      if (where.place !== "mac") return where;
+      const { places, blocked } = await link.bringSources().catch(() => ({ places: [], blocked: null }));
+      return places.length ? { ...where, bring: places, ...(blocked ? { blocked } : {}) } : where;
+    },
     backups: () => link.backups(),
     backupNow: () => link.backupNow(),
     restore: (_event, id) => link.restore(String(id)),
-    moveBack: () => link.moveBack(),
+    moveBack: (_event, placeId) => link.moveBack(typeof placeId === "string" ? placeId : undefined),
     forget: () => link.forget(),
   };
   for (const method of METHODS) ipcMain.handle(`vps-link:${method}`, guard(`vps-link:${method}`, handlers[method]));

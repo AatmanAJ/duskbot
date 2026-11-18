@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "@/lib/i18n";
 import { useStore } from "@/state/store";
 import { openPlaceSetup } from "@/lib/place-setup";
-import { formatBytes, useVpsLink, type VpsBackup, type VpsWhere } from "@/lib/vps-link";
+import { formatBytes, useVpsLink, type VpsBackup, type VpsMoveBack, type VpsWhere } from "@/lib/vps-link";
 import { Card, CopyRow, ItemRow, NavRow, NoteRow } from "../ListRows";
 import { askConfirm, type ConfirmRequest } from "../ConfirmDialog";
 import { smallButtonCls } from "../ui/GrokDialog";
@@ -26,6 +26,25 @@ function backupContents(backup: VpsBackup): string {
 export function moveBackAsk(name: string, device: string): ConfirmRequest {
   return { art: <PlaceArt name="direct" size={44} />, title: t("vpsLink.transfer.moveBackTitle", { name, device }), body: t("vpsLink.transfer.moveBackBody"),
     confirmLabel: t("vpsLink.transfer.moveBackAction"), tone: "neutral" };
+}
+
+/** Asking before bots come here from a saved server this computer never moved to. */
+export function bringAsk(name: string, device: string): ConfirmRequest {
+  return { art: <PlaceArt name="direct" size={44} />, title: t("vpsLink.transfer.bringTitle", { name, device }), body: t("vpsLink.transfer.bringBody", { name }),
+    confirmLabel: t("vpsLink.transfer.moveBackAction"), tone: "neutral" };
+}
+
+const BACK_STEP_LINES = { check: "vpsLink.back.check", "backup-here": "vpsLink.back.backupHere", pause: "vpsLink.back.pause", copy: "vpsLink.back.copy", restore: "vpsLink.back.restore" } as const satisfies Record<VpsMoveBack["step"], string>;
+const BLOCKED = { "own-bots": "vpsLink.transfer.bringBlockedOwnBots", moved: "vpsLink.transfer.bringBlockedMoved", moving: "vpsLink.transfer.bringBlockedMoving" } as const;
+
+/** Where a move back is, in a line; null when none runs or it failed (its error shows instead). */
+export function moveBackLine(back: VpsMoveBack | undefined, device: string, size: (bytes: number) => string = formatBytes): string | null {
+  if (!back || back.status !== "running") return null;
+  const name = back.name;
+  if (!name) return t("vpsLink.back.starting");
+  if (back.step === "copy" && back.bytes?.total) return t("vpsLink.back.copyBytes", { name, done: size(back.bytes.done), total: size(back.bytes.total) });
+  const key = BACK_STEP_LINES[back.step];
+  return t(key, { name, device });
 }
 
 export function TransferSettings() {
@@ -69,6 +88,9 @@ export function TransferSettings() {
     finally { if (alive.current) { setBusy(false); load(); } }
   };
   const server = where?.place === "vps" ? where.server : null;
+  const blocked = where?.blocked && where.blocked !== "unknown" ? t(BLOCKED[where.blocked], { device }) : null;
+  const backLine = moveBackLine(view.back, device);
+  const backError = view.back?.status === "failed" ? view.back.error ?? null : null;
   return (
     <>
       <Card label={t("vpsLink.transfer.whereTitle")} data-settings-block="transfer">
@@ -78,7 +100,7 @@ export function TransferSettings() {
               hint={server ? t("vpsLink.transfer.onServer") : t("vpsLink.transfer.onDevice", { device })} />}
         {where && (server
           ? <>
-              <NavRow title={t("vpsLink.transfer.moveBack", { device })} hint={t("vpsLink.transfer.moveBackHint", { name: server.name, device })} disabled={busy}
+              <NavRow title={t("vpsLink.transfer.moveBack", { device })} hint={t("vpsLink.transfer.moveBackHint", { name: server.name, device })} disabled={busy || Boolean(backLine)}
                 onClick={() => void perform(moveBackAsk(server.name, device), () => bridge.moveBack(), t("vpsLink.transfer.moveBackStarted"))} />
               {where.uninstall && <>
                 <NavRow title={t("vpsLink.transfer.remove")} hint={t("vpsLink.transfer.removeHint", { name: server.name })} drill={false}
@@ -95,6 +117,13 @@ export function TransferSettings() {
             ? <NavRow data-settings-open="cloud-add" title={t("vpsLink.transfer.toCloud")} hint={t("vpsLink.transfer.toCloudHint", { device })}
                 onClick={() => dispatch({ type: "openCloudAdd", source: "app_settings" })} />
             : <NavRow title={t("vpsLink.add")} hint={t("vpsLink.addHint")} onClick={() => openPlaceSetup("server")} />)}
+        {where && !server && where.bring?.map((place) => (
+          <NavRow key={place.id} data-bring-from={place.id} title={t("vpsLink.transfer.bringFrom", { name: place.name })}
+            hint={blocked ?? t("vpsLink.transfer.bringFromHint", { name: place.name, device })} disabled={busy || Boolean(blocked) || Boolean(backLine)}
+            onClick={() => void perform(bringAsk(place.name, device), () => bridge.moveBack(place.id))} />
+        ))}
+        {backLine && <NoteRow>{backLine}</NoteRow>}
+        {backError && !busy && <NoteRow tone="danger">{backError}</NoteRow>}
       </Card>
       <Card label={t("vpsLink.transfer.backupsTitle")} footnote={t("vpsLink.transfer.backupsNote", { device })}>
         {backups === null

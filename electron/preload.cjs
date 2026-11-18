@@ -783,7 +783,7 @@ const bridge = {
     backups: () => ipcRenderer.invoke("vps-link:backups"),
     backupNow: () => ipcRenderer.invoke("vps-link:backupNow"),
     restore: id => ipcRenderer.invoke("vps-link:restore", String(id)),
-    moveBack: () => ipcRenderer.invoke("vps-link:moveBack"),
+    moveBack: (placeId) => ipcRenderer.invoke("vps-link:moveBack", typeof placeId === "string" ? placeId : undefined),
     forget: () => ipcRenderer.invoke("vps-link:forget"),
     onChange: cb => {
       const handler = (_event, view) => cb(view);
