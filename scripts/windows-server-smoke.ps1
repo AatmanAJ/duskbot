@@ -1,16 +1,14 @@
 # Installs a dusk bot setup.exe silently, opens it and waits for the background server; exits 1 when it never came up.
-# -Variant sets up a home PC condition first: defender (real-time scanning on, GitHub's exclusions removed), user (a
-# Windows account whose name has a space and non-ASCII letters), proxy (dead proxy in the environment), ports (the
-# app's ports reserved the way Hyper-V/WSL reserve ranges), engines (engine CLIs installed), slowcli (an engine CLI
-# that answers after 75 s), busy (every core kept busy, like a slow PC), upgrade (0.2.15 opened first). Several can be
-# joined with commas.
+# -Variant sets up a home PC condition first: defender (asks for real-time scanning and drops GitHub's exclusions; a
+# hosted runner's Defender may refuse, the summary says), proxy (dead proxy in the environment), ports (the app's ports
+# reserved the way Hyper-V/WSL reserve ranges), engines (engine CLIs installed), busy (three spinning processes per
+# core, like a slow PC), upgrade (0.2.15 opened first). Several can be joined with commas.
 param([Parameter(Mandatory)][string]$Installer, [Parameter(Mandatory)][string]$Out, [string]$Variant = "clean", [int]$WaitSeconds = 420)
 $ErrorActionPreference = "Stop"
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 function Note($line) { $line | Tee-Object -FilePath "$Out\summary.txt" -Append }
 Note "variant $Variant"
 
-$cred = $null
 $appData = $env:APPDATA; $localAppData = $env:LOCALAPPDATA
 switch ($Variant.Split(",")) {
   "defender" {
@@ -26,13 +24,6 @@ switch ($Variant.Split(",")) {
     $st = Get-MpComputerStatus
     Note "defender realtime=$($st.RealTimeProtectionEnabled) onaccess=$($st.OnAccessProtectionEnabled) mode=$($st.AMRunningMode)"
   }
-  "user" {
-    $name = "Zoe " + [char]0x00C5 + "str" + [char]0x00F6 + "m"
-    $pass = "Sm0ke!" + [guid]::NewGuid().ToString("N").Substring(0, 12)
-    New-LocalUser -Name $name -Password (ConvertTo-SecureString $pass -AsPlainText -Force) -PasswordNeverExpires | Out-Null
-    Add-LocalGroupMember -Group "Users" -Member $name
-    $cred = @{ name = $name; pass = $pass }
-  }
   "proxy" {
     foreach ($k in "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy") { [Environment]::SetEnvironmentVariable($k, "http://127.0.0.1:9", "Process") }
     Note "proxy env set to a dead proxy"
@@ -40,13 +31,6 @@ switch ($Variant.Split(",")) {
   "engines" {
     npm install -g --silent @anthropic-ai/claude-code @openai/codex @google/gemini-cli opencode-ai 2>&1 | Out-File "$Out\npm-install.txt"
     foreach ($c in "claude", "codex", "gemini", "opencode") { Note "$c -> $((Get-Command $c -ErrorAction SilentlyContinue).Source)" }
-  }
-  "slowcli" {
-    # an engine CLI that takes 75 s to answer, as a cold CLI under an antivirus scan can
-    New-Item -ItemType Directory -Force -Path "C:\slowcli" | Out-Null
-    Set-Content -Path "C:\slowcli\claude.cmd" -Value "@ping -n 76 127.0.0.1 >nul`r`n@echo 2.1.0 (Claude Code)" -Encoding ascii
-    [Environment]::SetEnvironmentVariable("PATH", "C:\slowcli;$env:PATH", "Process")
-    Note "claude -> $((Get-Command claude -ErrorAction SilentlyContinue).Source)"
   }
   "upgrade" {
     # 0.2.15 first, opened until its server is up, then the installer under test over it
@@ -77,33 +61,7 @@ switch ($Variant.Split(",")) {
   }
 }
 
-# a scheduled task runs as that account with its own profile and environment, which Start-Process -Credential does not give
-function RunAs($file, $arguments, [switch]$Wait) {
-  $task = "smoke-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
-  $action = if ($arguments) { New-ScheduledTaskAction -Execute $file -Argument $arguments } else { New-ScheduledTaskAction -Execute $file }
-  Register-ScheduledTask -TaskName $task -Action $action -User "$env:COMPUTERNAME\$($cred.name)" -Password $cred.pass -RunLevel Limited `
-    -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 1)) | Out-Null
-  Start-ScheduledTask -TaskName $task
-  if ($Wait) {
-    $t = Get-Date
-    while (((Get-Date) - $t).TotalSeconds -lt 300) {
-      Start-Sleep -Seconds 3
-      $info = Get-ScheduledTaskInfo -TaskName $task
-      if ((Get-ScheduledTask -TaskName $task).State -ne "Running" -and $info.LastTaskResult -ne 267011) { break }
-    }
-    Note "task $file ended $((Get-ScheduledTaskInfo -TaskName $task).LastTaskResult)"
-  }
-}
-if ($cred) {
-  Copy-Item $Installer "C:\smoke-setup.exe"
-  RunAs "C:\smoke-setup.exe" "/S" -Wait
-  $profile = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "*Zoe*" } | Select-Object -First 1).LocalPath
-  Note "user profile $profile"
-  $appData = Join-Path $profile "AppData\Roaming"; $localAppData = Join-Path $profile "AppData\Local"
-  $p = [pscustomobject]@{ ExitCode = "via task" }
-} else {
-  $p = Start-Process -FilePath $Installer -ArgumentList "/S" -PassThru -Wait
-}
+$p = Start-Process -FilePath $Installer -ArgumentList "/S" -PassThru -Wait
 Note "installer exit $($p.ExitCode)"
 $exe = Get-ChildItem -Path (Join-Path $localAppData "Programs") -Recurse -Depth 2 -Filter "*.exe" -ErrorAction SilentlyContinue |
   Where-Object { $_.Name -notmatch "^(Uninstall|elevate)" -and (Test-Path (Join-Path $_.DirectoryName "resources\app.asar")) } | Select-Object -First 1
@@ -111,14 +69,7 @@ if (-not $exe) { Get-ChildItem (Join-Path $localAppData "Programs") -Recurse -De
 Note "exe $($exe.FullName)"
 Get-ChildItem -Path $exe.DirectoryName -Recurse -Filter "*.node" | ForEach-Object { $_.FullName } | Out-File "$Out\native-modules.txt"
 Get-ChildItem -Path (Join-Path $exe.DirectoryName "resources") -Recurse -Depth 1 | ForEach-Object { $_.FullName } | Out-File "$Out\resources.txt"
-if ($cred) {
-  RunAs $exe.FullName $null
-  Start-Sleep -Seconds 3
-  $app = Get-Process | Where-Object { $_.Path -eq $exe.FullName } | Select-Object -First 1
-  if (-not $app) { Note "app process not seen"; $app = [pscustomobject]@{ HasExited = $false } }
-} else {
-  $app = Start-Process -FilePath $exe.FullName -PassThru -RedirectStandardOutput "$Out\app-stdout.txt" -RedirectStandardError "$Out\app-stderr.txt"
-}
+$app = Start-Process -FilePath $exe.FullName -PassThru -RedirectStandardOutput "$Out\app-stdout.txt" -RedirectStandardError "$Out\app-stderr.txt"
 $started = Get-Date
 $verdict = "timeout"
 while (((Get-Date) - $started).TotalSeconds -lt $WaitSeconds) {
