@@ -7,7 +7,7 @@ import { ago } from "../lib/format";
 import { Link } from "../lib/router";
 import { PersonLink } from "./sheet";
 import { useNow } from "../lib/now";
-import { adminCall, useAdmin, type Overview } from "./api";
+import { adminCall, useAdmin, useAdminRole, type Overview } from "./api";
 import { avatarOf } from "./names";
 import { centroid, countryName } from "./geo";
 import { Avatar, CHANNEL, Chip, FilterChips, NoteDialog, RangePicker, RankCard, duration, percent, personName, rangeOf, usd, type Mark, type Note, type Range, type RankRow, type SeriesData } from "./kit";
@@ -254,6 +254,7 @@ export function OverviewPage() {
   const [note, setNote] = useState<Note | { at: number } | null>(null);
   const { data, error, loading, reload } = useAdmin<WebAnswer>(`/web?${webQuery(range, surface, filters)}&tz=${new Date().getTimezoneOffset()}`, 60_000);
   const overview = useAdmin<Overview>("/overview?days=30", 120_000);
+  const owner = useAdminRole() === "owner";
   const pick = (dim: string, key: string) => setSel((s) => ({ ...s, filters: { ...s.filters, [dim]: s.filters[dim] === key ? undefined : key } }));
   const c = data?.current, p = data?.previous, r = data?.revenue;
   const online = data ? data.online.site + data.online.app : 0;
@@ -293,7 +294,7 @@ export function OverviewPage() {
             ]} />
             <div className="px-3 pb-2 pt-6 max-sm:px-1">
               {!data.tracked && <p className="mb-3 rounded-[14px] bg-wash-lemon px-4 py-2.5 text-13 text-ink">no visits recorded for this view yet.</p>}
-              <MainChart data={series} previous={data.insights?.previousVisitors ?? []} notes={data.notes} show={show} main={main} onNote={setNote}
+              <MainChart data={series} previous={data.insights?.previousVisitors ?? []} notes={data.notes} show={show} main={main} onNote={owner ? setNote : () => {}}
                 emptyMoney={!r?.live ? "payments aren't live yet" : mainId === "revenue" ? "no sales in this window" : mainId === "mrr" ? (filtered ? "mrr shows without filters" : "no expected mrr in this window") : null} />
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-1">
                 <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-12 text-ink-3" aria-label="legend">
@@ -306,7 +307,7 @@ export function OverviewPage() {
                   <li className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-coral" aria-hidden /> signups</li>
                   <li className="inline-flex items-center gap-1.5"><span className="size-2 rotate-45 rounded-[2px] bg-warn" aria-hidden /> notes</li>
                 </ul>
-                <Button size="sm" onClick={() => setNote({ at: Date.now() })}>add a note</Button>
+                {owner && <Button size="sm" onClick={() => setNote({ at: Date.now() })}>add a note</Button>}
               </div>
             </div>
           </section>
@@ -335,16 +336,16 @@ export function OverviewPage() {
             <ChartCard title="who signs up"><ConversionList cards={data.cards} /></ChartCard>
           </div>
 
-          <div className="mt-4"><UsageSection range={range} /></div>
+          {owner && <div className="mt-4"><UsageSection range={range} /></div>}
 
           <div className="mt-4"><FunnelChart range={range} /></div>
 
           <div className="mt-4 grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-4 max-lg:grid-cols-1">
             {r ? <PaymentsCard revenue={r} /> : <div />}
-            <PulseGrid overview={overview} />
+            {owner && <PulseGrid overview={overview} />}
           </div>
 
-          <div className="mt-4"><PeopleCard range={range} data={data} filters={filters} /></div>
+          {owner && <div className="mt-4"><PeopleCard range={range} data={data} filters={filters} /></div>}
           <div className="mt-4"><AiCard crawlers={data.crawlers} /></div>
           <p className="mt-4 text-center text-12 text-ink-4">tap a row to filter every number. sales go to the last place a payer came from before paying, or their first visit.</p>
         </div>

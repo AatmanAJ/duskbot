@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { CSRF_HEADER, readCsrfCookie } from "../../../../shared/account-api";
 import { lowercase } from "../lib/api";
+
+/** what the signed-in admin may open: the owner everything, a growth admin the analytics, revenue and cost reads */
+export type AdminRole = "owner" | "growth";
+export const AdminRoleContext = createContext<AdminRole>("owner");
+export const useAdminRole = () => useContext(AdminRoleContext);
 
 export class AdminApiError extends Error {
   readonly status: number; readonly code: string | null;
@@ -110,7 +115,9 @@ export interface CloudRow {
 }
 export interface TimelineItem { name: string; at: number; props: Record<string, string | number | boolean>; source: "event" | "record" }
 export interface UserDetail {
-  account: { id: string; email: string; name: string | null; createdAt: number; lastSeenAt: number | null; optOut: boolean };
+  account: { id: string; email: string; name: string | null; createdAt: number; lastSeenAt: number | null; optOut: boolean;
+    /** absent from an older service */
+    admin?: { owner: boolean; role: Exclude<AdminRole, "owner"> | null } };
   methods: string[]; plan: UserRow["plan"];
   subscriptions: PlanSubscription[];
   payments: Array<{ id: string; amountCents: number; currency: string; status: string; createdAt: number; description?: string; mode?: "test" | "live" }>;

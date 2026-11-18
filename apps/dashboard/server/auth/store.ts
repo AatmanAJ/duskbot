@@ -11,7 +11,11 @@ export interface Account { id: string; email: string; name: string | null; avata
   /** where the website's first steps put the bots: "free" (this computer) or "cloud" (a plan picked, checkout opened) */
   onboardedHome?: WebsiteHome;
   /** the app install whose sign-in made this account (its hand-back: the desktop sign-in code it opened the website with) */
-  signedUpFrom?: { name: string; platform: string; appVersion: string | null; at: number } }
+  signedUpFrom?: { name: string; platform: string; appVersion: string | null; at: number };
+  /** a limited admin role the owner grants from the panel; full admins come only from DUSK_ADMIN_EMAILS. never set by the account itself */
+  adminRole?: AdminRole }
+export const ADMIN_ROLES = ["growth"] as const;
+export type AdminRole = typeof ADMIN_ROLES[number];
 /** `revoke`: Apple's newest refresh token per client id (json), sealed with the auth secret, for the revoke on deletion;
  *  never sent to a client */
 export interface Identity { accountId: string; provider: OAuthProvider; subject: string; email: string | null; label: string | null; addedAt: number; revoke?: string }

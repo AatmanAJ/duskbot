@@ -7,7 +7,7 @@ import { generatePairingCode, PAIRING_CODE_ALPHABET } from "../../../../server/s
 import { CHECKOUT_SOURCES } from "../../../../shared/billing-api.ts";
 import { parseUserAvatarChoice } from "../../../../shared/user-avatar.ts";
 import { createAuthStore } from "./store.ts";
-import type { Account, Identity, Session, StoredPhoneCode } from "./store.ts";
+import type { Account, AdminRole, Identity, Session, StoredPhoneCode } from "./store.ts";
 import { codeMessage, isTestAddress, magicLinkMessage, recoveryMessage } from "./mail.ts";
 import type { Mailer } from "./mail.ts";
 import { emailConfig } from "../email/templates.ts";
@@ -848,6 +848,13 @@ export function createAuth(options: AuthOptions) {
     /** whether an optional email may go to this account; required mail (billing, security, deletion) never asks */
     wantsEmail: (accountId: string, kind: keyof NotificationPrefs) => { const owner = account(accountId); return owner !== null && notificationsOf(owner)[kind]; },
     accountByEmail: (email: string) => state.accounts.find(item => item.email === email) ?? null,
+    setAdminRole(accountId: string, role: AdminRole | null) {
+      const owner = account(accountId);
+      if (!owner) return null;
+      if (role) owner.adminRole = role; else delete owner.adminRole;
+      store.changed();
+      return owner;
+    },
     /** what the account holds, for its owner's export: no token, hash or code */
     exportAccount(owner: Account) {
       const { account: profile, identities, sessions, notifications, onboarded } = accountAnswer(owner, undefined);
