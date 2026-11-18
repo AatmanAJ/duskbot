@@ -141,6 +141,7 @@ const DuskNotifications = registerPlugin<NotificationsPlugin>("DuskNotifications
 /** android only (android/.../PushSetupPlugin.java): whether the build carries a Firebase config, without which push
  * registration crashes the app */
 const DuskPushSetup = registerPlugin<{ configured(): Promise<{ configured: boolean }> }>("DuskPushSetup");
+const DuskHaptics = registerPlugin<{ play(options: { kind: string }): Promise<void> }>("DuskHaptics");
 
 /** Android's delivered pushes: FCM's data block is flat (server/mobile/push.ts messageData). */
 async function androidDelivered(): Promise<DeliveredNotification[]> {
@@ -475,6 +476,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     menu: menu?.supported ? menuBridge(DuskMenu) : undefined,
     orientation: Capacitor.isPluginAvailable("DuskOrientation") ? orientationBridge(DuskOrientation) : undefined,
     haptic(type) {
+      if (Capacitor.isPluginAvailable("DuskHaptics")) { void DuskHaptics.play({ kind: type }).catch(() => {}); return; }
       void (async () => {
         switch (type) {
           case "light": case "soft":
