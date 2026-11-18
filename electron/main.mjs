@@ -24,7 +24,7 @@ import {
   installDesktopCrashListeners,
   readSafeLogTail,
 } from "./diagnostics.mjs";
-import { migrateWorkspaceCredentials, workspaceCredentialEnv } from "./workspace-credentials.mjs";
+import { workspaceCredentialEnv } from "./workspace-credentials.mjs";
 import { evictStartupCacheOnce } from "./startup-cache-eviction.mjs";
 import { activateExistingWindow, bringToFront, windowToReveal } from "./single-instance.mjs";
 import { createWindowPlacement } from "./window-placement.mjs";
@@ -83,7 +83,7 @@ import {
   withoutDesktopCompanionAccess,
 } from "./desktop-companion-client.mjs";
 import { isKnownSkin, skinChrome, skinIsLight } from "./skin-overlay.cjs";
-import { readSecureCredentials } from "./secure-credentials.mjs";
+import { createCredentialFile, secureComposioConfig, secureWorkspaceConfig } from "./secure-credentials.mjs";
 import { createControlPlaneClient } from "./control-plane-client.mjs";
 import {
   companionAccountCleanupPending,
@@ -103,10 +103,10 @@ import { analyticsAllowed, createProductEvents } from "./product-events.mjs"; im
 import { createAccountErrors } from "./account-errors.mjs";
 import { CHECKOUT_SOURCES, cloudMenuSublabel, cloudTarget, createCloudAccountClient, createCloudAccountStore } from "./cloud-account.mjs"; import { isAppLink } from "./cloud-signin.mjs";
 import { ACCOUNT_PAGES, installCloudPlanIpc } from "./cloud-plan-ipc.mjs";
-import { cloudLinkOpensSheet, colorDotIcons, createCloudLook, createCloudReadyNotice, installCloudBuy, lookFile } from "./cloud-buy.mjs";
+import { cloudLinkOpensSheet, colorDotIcons, createCloudLook, placeKindIcons, createCloudReadyNotice, installCloudBuy, lookFile } from "./cloud-buy.mjs";
 import { createAccountEnroll } from "./account-enroll.mjs"; import { cloudMoveLinkWorkspace, createServerEnroll } from "./server-enroll.mjs"; import { accountGateRequired, installAccountGate } from "./account-gate.mjs"; import { carryWelcomeToCloud } from "./cloud-welcome-carry.mjs"; import { carriedEngines, localAiSignIns } from "./ai-signins-carry.mjs"; import { holdUntilPainted, PAINTED_SCRIPT } from "./paint-hold.mjs";
 import { createTrialNotices } from "./cloud-trial-notice.mjs";
-import { createDesktopPrefs, DESKTOP_PORTS, jsonFile, registerDesktopPrefs, writeFileDurably } from "./desktop-prefs.mjs";
+import { createDesktopPrefs, DESKTOP_PORTS, jsonFile, registerDesktopPrefs } from "./desktop-prefs.mjs";
 import { installMacPermissions } from "./mac-permissions.mjs";
 import { createDesktopIncludedX } from "./included-x.mjs"; import { createDesktopIncludedPages } from "./included-pages.mjs";
 import { createLastSeenStore } from "./cloud-last-seen.mjs";
@@ -498,105 +498,8 @@ let desktopCompanionRelay = null;
 
 const CREDENTIALS_FILE = path.join(app.getPath("userData"), "credentials.bin");
 
-/** True when the store could not be read, which is not the same as nothing saved. */
-let credentialStoreUnavailable = false;
-
-async function loadSecureCredentials() {
-  const result = await readSecureCredentials({
-    exists: () => fs.existsSync(CREDENTIALS_FILE),
-    isAvailable: () => safeStorage.isAsyncEncryptionAvailable(),
-    readFile: () => fs.readFileSync(CREDENTIALS_FILE),
-    decrypt: (buffer) => safeStorage.decryptStringAsync(buffer),
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    roundTrips: async () => {
-      const probe = randomUUID();
-      const opened = await safeStorage.decryptStringAsync(await safeStorage.encryptStringAsync(probe));
-      return (typeof opened === "string" ? opened : opened?.result) === probe;
-    },
-  });
-  if (result.status === "unreadable") {
-    const aside = `${CREDENTIALS_FILE}.unreadable-${Date.now()}`;
-    try {
-      fs.renameSync(CREDENTIALS_FILE, aside);
-      slog(`credential store file does not open with this keychain (${result.error}); kept it as ${path.basename(aside)} and started an empty one`);
-    } catch (error) {
-      slog(`credential store file could not be set aside (${error?.message ?? error}); saved keys are not loaded this launch`);
-      credentialStoreUnavailable = true;
-      return {};
-    }
-  }
-  credentialStoreUnavailable = result.status === "unavailable";
-  if (credentialStoreUnavailable) {
-    slog(`credential store unreadable after retries (${result.error}); saved keys are not loaded this launch`);
-  }
-  return result.credentials;
-}
-
-async function saveSecureCredentials(credentials) {
-  // Writing from an unread store would drop the secrets it could not read.
-  if (credentialStoreUnavailable) {
-    throw new Error("The operating-system credential store could not be read this launch");
-  }
-  if (!(await safeStorage.isAsyncEncryptionAvailable())) {
-    throw new Error("The operating-system credential store is unavailable");
-  }
-  fs.mkdirSync(path.dirname(CREDENTIALS_FILE), { recursive: true });
-  const encrypted = await safeStorage.encryptStringAsync(JSON.stringify(credentials));
-  writeFileDurably(CREDENTIALS_FILE, encrypted);
-}
-
-async function secureComposioConfig() {
-  const dataDir = desktopDataDir();
-  const configPath = path.join(dataDir, "config.json");
-  try {
-    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    if (!config?.composio || typeof config.composio !== "object") return;
-    let changed = false;
-    const apiKey = config?.composio?.apiKey;
-    if (typeof apiKey === "string" && apiKey.trim().startsWith("ak_")) {
-      if (!secureCredentials.composioApiKey) {
-        secureCredentials.composioApiKey = apiKey.trim();
-        await saveSecureCredentials(secureCredentials);
-      }
-      config.composio.apiKey = "";
-      changed = true;
-    } else if (typeof apiKey === "string" && apiKey.trim()) {
-      config.composio.apiKey = "";
-      changed = true;
-    }
-    // Unread legacy fields, removed so an unused secret is not left in plaintext.
-    for (const field of ["key", "url"]) {
-      if (Object.hasOwn(config.composio, field)) {
-        delete config.composio[field];
-        changed = true;
-      }
-    }
-    if (!changed) return;
-    const temporary = `${configPath}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, JSON.stringify(config, null, 2), { mode: 0o600 });
-    fs.renameSync(temporary, configPath);
-  } catch (error) {
-    if (error?.code !== "ENOENT") slog(`credential migration failed: ${error?.message ?? error}`);
-  }
-}
-
-async function secureWorkspaceConfig() {
-  const dataDir = desktopDataDir();
-  const configPath = path.join(dataDir, "config.json");
-  try {
-    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    const migrated = migrateWorkspaceCredentials(config, secureCredentials);
-    // credentials.bin first, so a failed save never loses the only copy of a secret.
-    if (migrated.credentialsChanged) await saveSecureCredentials(migrated.credentials);
-    secureCredentials = migrated.credentials;
-    if (!migrated.configChanged) return;
-    const temporary = `${configPath}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, JSON.stringify(migrated.config, null, 2), { mode: 0o600 });
-    fs.renameSync(temporary, configPath);
-  } catch (error) {
-    if (error?.code !== "ENOENT") slog(`credential migration failed: ${error?.message ?? error}`);
-  }
-}
+const credentialFile = createCredentialFile({ file: CREDENTIALS_FILE, safeStorage, log: (line) => slog(line) });
+const saveSecureCredentials = (credentials) => credentialFile.save(credentials);
 
 function composioBrokerUrl() {
   return managedComposioBrokerUrl(process.env.DUSK_COMPOSIO_BROKER_URL, devDesktopUsesManagedApps());
@@ -1088,20 +991,7 @@ function cloudMenuSublabels() {
   return entry && line ? { [entry.id]: line } : {};
 }
 const cloudColorDot = colorDotIcons(nativeImage);
-// macOS tints template images (a "Template" file name) for light and dark menus; elsewhere a black glyph would vanish on a
-// dark menu, so the popup keeps its colour dots there.
-const placeKindIcon = (() => {
-  if (process.platform !== "darwin") return null;
-  const made = new Map(), file = { computer: "Computer", cloud: "Cloud", server: "Server" };
-  return kind => {
-    if (!made.has(kind)) {
-      let image = null;
-      try { image = file[kind] ? nativeImage.createFromPath(path.join(__dirname, "resources", `place${file[kind]}Template.png`)) : null; } catch {}
-      made.set(kind, image && !image.isEmpty() ? image : null);
-    }
-    return made.get(kind);
-  };
-})();
+const placeKindIcon = placeKindIcons(nativeImage, path.join(__dirname, "resources"), process.platform);
 function cloudMenuOptions(source = "app_menu") {
   return { sublabels: cloudMenuSublabels(), iconFor: cloudColorDot, ...(cloudOffersAllowed() ? { onAddCloud: () => void workspaceMenuAction(() => openCloudAdd(source)) } : {}) };
 }
@@ -1395,7 +1285,7 @@ async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmen
     ...(secureCredentials.composioApiKey
       ? { COMPOSIO_API_KEY: secureCredentials.composioApiKey }
       : {}),
-    DUSK_CREDENTIAL_STORE: credentialStoreUnavailable ? "unavailable" : "ok",
+    DUSK_CREDENTIAL_STORE: credentialFile.unavailable() ? "unavailable" : "ok",
     ...workspaceCredentialEnv(secureCredentials),
   });
   delete childEnv.DUSK_BROWSER_CONNECTION;
@@ -3473,7 +3363,7 @@ app.whenReady().then(async () => {
     currentVersion: app.getVersion(),
     clearCache: () => session.defaultSession.clearCache(),
     log: slog,
-  }).then(() => loadSecureCredentials());
+  }).then(() => credentialFile.load());
   credentialsLoading.catch(() => {});
   void startupScreen?.ready.then(() => startupTrace.mark("splash"));
   secureCredentials = await credentialsLoading;
@@ -3520,7 +3410,7 @@ app.whenReady().then(async () => {
   if (app.isPackaged) for (const scheme of ["duskbot", LEGACY.protocol]) app.setAsDefaultProtocolClient(scheme);
   if (process.platform === "darwin") app.dock.setIcon(APP_ICON);
   // An orphaned third-party key with no clear handler left: drop it rather than keep it at rest.
-  if (secureCredentials && Object.hasOwn(secureCredentials, "assemblyAiApiKey") && !credentialStoreUnavailable) {
+  if (secureCredentials && Object.hasOwn(secureCredentials, "assemblyAiApiKey") && !credentialFile.unavailable()) {
     try {
       const { assemblyAiApiKey: _removed, ...rest } = secureCredentials;
       await saveSecureCredentials(rest);
@@ -3530,12 +3420,13 @@ app.whenReady().then(async () => {
     }
   }
   if (app.isPackaged) {
-    await secureComposioConfig();
-    await secureWorkspaceConfig();
+    const migration = { configPath: path.join(desktopDataDir(), "config.json"), save: saveSecureCredentials, log: slog };
+    await secureComposioConfig({ ...migration, credentials: secureCredentials });
+    secureCredentials = await secureWorkspaceConfig({ ...migration, credentials: secureCredentials });
   }
   // From here on every credential writer must go through this serialized state.
   secureCredentialState = createSecureCredentialState(secureCredentials, saveSecureCredentials, {
-    writable: !credentialStoreUnavailable,
+    writable: !credentialFile.unavailable(),
   });
   secureCredentials = secureCredentialState.read();
   if (app.isPackaged) await ensurePhoneSecretIdentity();
@@ -3740,10 +3631,10 @@ app.whenReady().then(async () => {
   // Reconcile incomplete setup and resume interrupted sign-out only once the local app is usable.
   if (hostedAccount) void hostedAccount.restore().catch(() => {});
   // Registering from an unreadable store would mint a second installation identity.
-  if (credentialStoreUnavailable) {
+  if (credentialFile.unavailable()) {
     slog("skipping connected-apps registration: the credential store was unreadable this launch");
   }
-  if (!desktopRemoteAccess && composioBrokerUrl() && !credentialStoreUnavailable) {
+  if (!desktopRemoteAccess && composioBrokerUrl() && !credentialFile.unavailable()) {
     void updateSecureCredentialDocument(async (credentials) => {
       await ensureManagedComposioCredentials({
         brokerUrl: composioBrokerUrl(),

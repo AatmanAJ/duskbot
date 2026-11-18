@@ -205,7 +205,7 @@ import { createTraceRecorder } from "./usage-trace/recorder.ts";
 import { GroupUsageReader } from "./group-thread-usage.ts";
 import { ledgerCost } from "./model-prices.ts";
 import type { RequestAuth } from "./request-auth.ts";
-import { adminAuditPlan, type AuditPlan } from "./admin-audit-plan.ts";
+import { adminAuditPlan, requestedBotFields, type AuditPlan } from "./admin-audit-plan.ts";
 import { onKeyRejectionChange } from "./key-rejections.ts";
 import { cliProbeEnvironment, testCliBinary } from "./cli-probe.ts";
 import { buildMentionNotification, buildNoticeNotification, buildNotification, type Notification } from "./notify.ts";
@@ -1274,16 +1274,6 @@ const auditBot = (id: string | undefined) => (id ? botAuditSnapshot(store.bot(id
 const auditHook = (id: string | undefined) => (id ? webhooks.list().find((hook) => hook.id === id) : undefined);
 const hookFields = (hook: WebhookTrigger, fields: readonly string[] = WEBHOOK_AUDIT_FIELDS) =>
   Object.fromEntries(fields.map((field) => [field, (hook as unknown as Record<string, unknown>)[field] ?? null]));
-
-function requestedBotFields(req: IncomingMessage, path: string): string[] {
-  if (path.endsWith("/always-allow")) return ["alwaysAllow"];
-  if (path.endsWith("/model")) return ["modelSelection"];
-  const body = parsedBodyOf(req);
-  if (!body || typeof body !== "object" || Array.isArray(body)) return [];
-  const fields = new Set(Object.keys(body));
-  if (fields.has("autoApprove") || fields.has("approvalMode")) fields.add("autoApprove").add("approvalMode");
-  return [...fields];
-}
 
 /** Each row compares only what this request named or created, so another admin's concurrent change is not attributed here. */
 function beginAdminAudit(req: IncomingMessage, res: ServerResponse, method: string, path: string, auth: RequestAuth): void {
