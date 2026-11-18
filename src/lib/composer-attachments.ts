@@ -833,8 +833,8 @@ export async function intakeFiles<T extends DroppedFile & { type: string }>(
   const unsupported = rejectedNames.filter((name) => !ARCHIVE_NAME.test(name));
   const uploadErrors = results.flatMap((result) => result.uploadError ? [result.uploadError] : []);
   const pathless = [
-    unsupported.length ? `unable to attach ${unsupported.join(", ")}. choose a supported image, document, or audio file.` : "",
-    archives.length ? `archives can't be attached: unzip ${archives.join(", ")} and attach the files inside.` : "",
+    unsupported.length ? `Unable to attach ${unsupported.join(", ")}. Choose a supported image, document, or audio file.` : "",
+    archives.length ? `Archives can't be attached: unzip ${archives.join(", ")} and attach the files inside.` : "",
   ].filter(Boolean).join(" ") || null;
   const failed = uploadErrors.length ? uploadErrors.join("; ") : null;
   const notice = pathless && failed ? `${pathless} (${failed})` : (pathless ?? failed);
