@@ -3686,7 +3686,7 @@ process.once("SIGTERM", requestSignalQuit);
 // release is out
 let appUpdater = null, appUpdatedTo = null, appUpdateMode = app.isPackaged ? "notice" : "dev", windowsInstaller = null, windowsSessionEnding = false;
 const appUpdateState = () => ({ ...(appUpdater?.state() ?? { ready: null, available: null, progress: null }), mode: appUpdateMode, updated: appUpdatedTo });
-const tellAppUpdate = () => { if (mainWindow && !mainWindow.isDestroyed() && senderIsLocal({ sender: mainWindow.webContents })) mainWindow.webContents.send("app-update:changed", appUpdateState()); };
+const tellAppUpdate = () => { const page = mainWindow && !mainWindow.isDestroyed() ? { sender: mainWindow.webContents, senderFrame: mainWindow.webContents.mainFrame } : null; if (page && (senderIsLocal(page) || homeWindow.homePage(page))) page.sender.send("app-update:changed", appUpdateState()); };
 function startDemoUpdates() {
   const flag = demoUpdateFlag(app.getPath("userData"));
   if (!fs.existsSync(flag)) return;
@@ -3725,13 +3725,13 @@ function startAppUpdates(notice) {
   appUpdater.start();
   powerMonitor.on("resume", () => appUpdater?.soon?.());
 }
-ipcMain.handle("app-update:state", localOnly("app-update:state", appUpdateState));
-ipcMain.handle("app-update:restart", localOnly("app-update:restart", () => appUpdater?.restart() ?? false));
-ipcMain.handle("app-update:download", localOnly("app-update:download", () => appUpdater?.check({ again: true }) ?? null));
+ipcMain.handle("app-update:state", localOrHome("app-update:state", appUpdateState));
+ipcMain.handle("app-update:restart", localOrHome("app-update:restart", () => appUpdater?.restart() ?? false));
+ipcMain.handle("app-update:download", localOrHome("app-update:download", () => appUpdater?.check({ again: true }) ?? null));
 // only the link main found for this release (an installer on dusk.bot or the downloads repo), or the download page
-ipcMain.handle("app-update:open", localOnly("app-update:open", () => { const url = appUpdater?.state().manual?.url; void shell.openExternal(typeof url === "string" && /^https:\/\/(dusk\.bot|github\.com)\//.test(url) ? url : DOWNLOAD_PAGE); return true; }));
-ipcMain.handle("app-update:move", localOnly("app-update:move", () => { try { return app.moveToApplicationsFolder(); } catch (error) { slog(`app update: could not move to Applications (${error instanceof Error ? error.message : String(error)})`); void shell.openExternal(DOWNLOAD_PAGE); return false; } }));
-ipcMain.handle("app-update:seen", localOnly("app-update:seen", () => { if (appUpdatedTo) { appUpdatedTo = null; tellAppUpdate(); } }));
+ipcMain.handle("app-update:open", localOrHome("app-update:open", () => { const url = appUpdater?.state().manual?.url; void shell.openExternal(typeof url === "string" && /^https:\/\/(dusk\.bot|github\.com)\//.test(url) ? url : DOWNLOAD_PAGE); return true; }));
+ipcMain.handle("app-update:move", localOrHome("app-update:move", () => { try { return app.moveToApplicationsFolder(); } catch (error) { slog(`app update: could not move to Applications (${error instanceof Error ? error.message : String(error)})`); void shell.openExternal(DOWNLOAD_PAGE); return false; } }));
+ipcMain.handle("app-update:seen", localOrHome("app-update:seen", () => { if (appUpdatedTo) { appUpdatedTo = null; tellAppUpdate(); } }));
 
 // powerMonitor is usable only once the app is ready.
 void app.whenReady().then(() => installSessionEndFlush({ app, windows: () => BrowserWindow.getAllWindows(), powerMonitor, flusher: browsersFlush, quit: () => app.quit(), log: slog, onSessionEnd: () => { windowsSessionEnding = true; } }));

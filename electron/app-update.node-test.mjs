@@ -370,3 +370,14 @@ test("Squirrel.Mac gets the verified zip from a feed on 127.0.0.1 at an unguessa
   assert.equal(updater.quit, 1);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("My Cloud's page, once it is home, hears this app's own update and may restart into it, as this computer's page does", () => {
+  const main = readFileSync(new URL("./main.mjs", import.meta.url), "utf8");
+  const preload = readFileSync(new URL("./preload.cjs", import.meta.url), "utf8");
+  assert.match(/const HOME_PAGE = \[([^\]]*)\]/.exec(preload)?.[1] ?? "", /"appUpdate"/, "the home page's bridge has appUpdate");
+  for (const channel of ["state", "restart", "download", "open", "move", "seen"]) {
+    assert.match(main, new RegExp(`ipcMain\\.handle\\("app-update:${channel}", localOrHome\\("app-update:${channel}",`), channel);
+  }
+  const tell = /const tellAppUpdate = (.*)$/m.exec(main)?.[1] ?? "";
+  assert.match(tell, /senderIsLocal\(page\) \|\| homeWindow\.homePage\(page\)/, "a ready update is pushed to the home page too");
+});

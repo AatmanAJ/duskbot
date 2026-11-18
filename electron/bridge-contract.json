@@ -283,6 +283,7 @@
   "workspaces"
  ],
  "homePage": [
+  "appUpdate",
   "callActive",
   "exportDiagnostics",
   "home",

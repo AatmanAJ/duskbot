@@ -93,7 +93,7 @@ if (typeof window !== "undefined") {
 }
 const REMOTE_SAFE = new Set(["platform", "cloudMac", "app", "getCapabilities", "onCapabilitiesChanged", "applySkin", "setUnreadCount", "permStatus", "workspaces", "rail", "cloudAdd", "cloudPlan", "cloudSendPage", "accountSheet", "desktopNotices", "desktopNotifications", "desktopAnalytics", "desktopLanguage", "windowControls", "onOpenAppSettings", "windowFrame", "sealTrust", "linkDirect", "onSlackOAuth", "ambient", "desktopBots", "requireUserPresence", "vpsCloudMove", "trail"]);
 /** My Cloud's own page once it is the person's home (main checks the sender again): it is this app's page then. */
-const HOME_PAGE = ["home", "onChatLink", "onPackageInstall", "exportDiagnostics", "openLogsFolder", "openAtLogin", "callActive", "productEvents",
+const HOME_PAGE = ["home", "appUpdate", "onChatLink", "onPackageInstall", "exportDiagnostics", "openLogsFolder", "openAtLogin", "callActive", "productEvents",
   "speechStart", "speechStop", "speechFinish", "onSpeechTranscript", "onSpeechEnd", "onSpeechLevel"];
 function homePage() {
   try { return ipcRenderer.sendSync("home:page") === true; } catch { return false; }
@@ -696,7 +696,7 @@ const bridge = {
       return () => ipcRenderer.removeListener("vps-cloud-move:changed", handler);
     },
   },
-  // This computer's page only: a downloaded update of this app waiting for a restart (electron/app-update.mjs).
+  // This computer's page and My Cloud's once it is home: this app's own update (electron/app-update.mjs).
   appUpdate: {
     state: () => ipcRenderer.invoke("app-update:state"),
     restart: () => ipcRenderer.invoke("app-update:restart"),

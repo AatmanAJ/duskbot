@@ -23,6 +23,9 @@ export const LOOK_MS = 2_500;
  * offline screen, with Try again: never an endless spinner. */
 export const OPEN_MS = 30_000;
 export const RETRY_MS = Object.freeze([2_000, 4_000, 8_000, 15_000, 30_000]);
+/** A place that hasn't answered since the window set out to open it (a launch, a wake, a switch) may still be connecting:
+ * the opening screen stays, looking again on RETRY_MS, for this long before the offline screen says it can't be reached. */
+export const CONNECT_GRACE_MS = 20_000;
 /** A brand-new Cloud's name can be missing for minutes after the Admin says it is ready: a resolver that was asked while
  * it was set up keeps that "no such name" (RFC 2308 negative caching; Chromium's own host cache does too). For a Cloud
  * ready within FRESH_MS, a name not found keeps the setup screen up and the window tries again on NAME_RETRY_MS, with
@@ -254,6 +257,8 @@ export function createHomeWindow(deps) {
   /** My Cloud asked for before the move made it home (`{ open }`), until its page loads or the person goes elsewhere;
    * `naming`: since when, and how often, a brand-new My Cloud's name was not found. */
   let asked = null, naming = null;
+  /** since when the window has tried to open the place without it answering; null once it opened or the person left */
+  let connecting = null;
   /** My Cloud's origin while this window shows the page it loaded there as a saved server (before a move made it home). */
   let openedAsServer = null;
   const clock = createReadyClock({ store: readyStore, now });
@@ -358,7 +363,9 @@ export function createHomeWindow(deps) {
   /** The place didn't answer: this computer's screen says so, with the Admin's reason for My Cloud, and looks again by itself. */
   function offline(token) {
     if (!wanted(token)) return;
+    if (connecting !== null && now() - connecting < CONNECT_GRACE_MS && screen?.screen !== "offline") { toScreen({ screen: "opening" }); return later(); }
     const reason = otherPlace(opening) ? null : cloudUnreachableText(state(), cloudOrigin());
+    if (screen?.screen !== "offline") tries = 0;
     toScreen({ screen: "offline", ...(reason ? { reason } : {}) });
     later();
   }
@@ -381,7 +388,7 @@ export function createHomeWindow(deps) {
   }
   /** The person went somewhere else while My Cloud was asked for: nothing pulls the window back. */
   function letAskGo() {
-    asked = null; naming = null; screen = null; status = null; away = false;
+    asked = null; naming = null; connecting = null; screen = null; status = null; away = false;
     clearRetry();
   }
   const signInNeeded = () => ["reauth-required", "signed-out"].includes(state()?.status);
@@ -486,6 +493,7 @@ export function createHomeWindow(deps) {
     // A team's Cloud never sleeps, and the Admin wakes only My Cloud: a team that answers asleep is simply not reachable yet.
     // once the person asked My Cloud to wake, its page is only looked for through the wake: a waking machine answers nothing
     let asleep = place.kind === "cloud" && (power.asleep() || Boolean(wakeIntent));
+    connecting ??= now();
     say(asleep && wakeIntent ? "waking" : "opening");
     const handoff = blank ? timers.set(() => { if (wanted(token) && status) goScreen(); }, SPLASH_HANDOFF_MS) : null;
     try {
@@ -497,7 +505,7 @@ export function createHomeWindow(deps) {
         if (look === "asleep") { power.hold(); asleep = true; }
       }
       // opening never wakes My Cloud: its last-seen chats show, read-only, until the person types, clicks or sends there
-      if (asleep && place.kind === "cloud" && !wakeIntent) { clearRetry(); return toScreen(asleepScreen()); }
+      if (asleep && place.kind === "cloud" && !wakeIntent) { clearRetry(); connecting = null; return toScreen(asleepScreen()); }
       let session = null;
       const intent = wakeIntent;
       const signedIn = asleep
@@ -526,7 +534,7 @@ export function createHomeWindow(deps) {
       }
       // My Cloud opened before the move made it home is a saved server the window shows, as the Server menu opens one.
       const asHome = otherPlace(place) || home.kind !== "computer";
-      screen = null; status = null; tries = 0; away = asHome; shown = asHome ? place : null;
+      screen = null; status = null; tries = 0; connecting = null; away = asHome; shown = asHome ? place : null;
       openedAsServer = !asHome && place.kind === "cloud" ? origin : null;
       // A page that never finishes loading is the offline screen after OPEN_MS, which looks again by itself and has Try again.
       let slow = null;
@@ -601,7 +609,7 @@ export function createHomeWindow(deps) {
       // a server's frozen copy that can't give way to the clean workspace shows as it did before, never a sign-in screen
       if (current.clean && !(await clean.enter()) && !current.place) { if (wanted(token)) { ensureWindow(); clearRetry(); toScreen({ screen: "signin", ...(current.other ? { other: true } : {}) }); } return; }
       if (!wanted(token)) return;
-      clearRetry(); screen = null; status = null; shown = null;
+      clearRetry(); screen = null; status = null; shown = null; connecting = null;
       const win = window();
       const leaving = away || Boolean(win && !win.isDestroyed() && !originOf(win.webContents.getURL()));
       away = false; openedAsServer = null;
@@ -618,7 +626,7 @@ export function createHomeWindow(deps) {
     if (!clean || !(await clean.enter())) { here = false; log("home: this computer's fresh workspace could not start"); return false; }
     if (!wanted(token)) return true;
     clearRetry(); clearRenewal();
-    screen = null; status = null; shown = null; opening = null; asked = null; naming = null; away = false; openedAsServer = null;
+    screen = null; status = null; shown = null; opening = null; asked = null; naming = null; connecting = null; away = false; openedAsServer = null;
     const win = window();
     await showLocal(Boolean(win && !win.isDestroyed() && originOf(win.webContents.getURL()) !== localOrigin()));
     return true;
@@ -752,7 +760,7 @@ export function createHomeWindow(deps) {
     accountLeaving() {
       opens++; here = false;
       clearRetry(); clearRenewal();
-      asked = null; naming = null; shown = null; opening = null; screen = null; status = null; wakeIntent = null; held = null;
+      asked = null; naming = null; connecting = null; shown = null; opening = null; screen = null; status = null; wakeIntent = null; held = null;
       away = away || !shows(localOrigin());
       void lastSeen?.forget?.()?.catch?.(() => {});
     },
