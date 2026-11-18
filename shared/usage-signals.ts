@@ -467,6 +467,8 @@ function copies(note: string, sources: readonly string[]): boolean {
   for (let i = 0; i + COPIED_RUN <= mine.length; i++) if (runs.has(mine.slice(i, i + COPIED_RUN).join(" "))) return true;
   return false;
 }
+/** the writer saying it could not write the note (it saw no chat, or asks for one), not a note */
+const NOT_A_NOTE = /^i(?:'m| am)?\b.{0,40}\b(?:can't|cannot|can not|unable|don't have|do not have)\b|\b(?:paste|share|send) (?:the|that|your) (?:exchange|conversation|chat|transcript)\b|\b(?:conversation|chat|transcript) (?:itself )?(?:isn't|is not|wasn't|was not) (?:in|included|provided|given|shown)\b|\bno record of the work\b|\bthe summary can(?:'t|not)?\b/i;
 /** an engine's note as short lowercase prose with no message text, addresses, links, handles, paths, file names,
  * long numbers, ids or names; only small counts ("3 tries") and app names stay. `sources`, when given, are the chat
  * lines the engine read: a note that copies a run of their words is dropped, and their names are taken out. null when
@@ -474,7 +476,7 @@ function copies(note: string, sources: readonly string[]): boolean {
 export function scrubSummary(raw: unknown, max = SUMMARY_MAX, options: { sources?: readonly string[]; avoid?: readonly string[] } = {}): string | null {
   if (typeof raw !== "string") return null;
   const original = raw.replace(/\s+/g, " ").trim().slice(0, max * 2.5);
-  if (original.length < 12) return null;
+  if (original.length < 12 || NOT_A_NOTE.test(original)) return null;
   const sources = options.sources ?? [];
   if (sources.length && copies(original, sources)) return null;
   const avoid = new Set([...chatAvoidWords(sources), ...(options.avoid ?? []).flatMap(words)].filter(word => !NOTE_WORDS.has(word)));
