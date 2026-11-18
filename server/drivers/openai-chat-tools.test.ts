@@ -1284,6 +1284,19 @@ describe("structured tool execution boundaries", () => {
     expect(shown).toEqual(["Nothing needed writing."]);
   });
 
+  it("asks again for an answer when the model sent its working notes as the reply, and never shows them", async () => {
+    const notes = "We need to respond to the user. The user wants the receipt stored. According to guidelines we should call the tool.";
+    const f = await fixture((body, response, round) => {
+      if (round === 2) expect(String(body.messages.at(-1)?.content)).toContain("your own working notes");
+      sse(response, [chunk({ content: round === 1 ? notes : "Nothing needed storing." }, "stop")]);
+    }, "grok");
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.requests).toHaveLength(2);
+    const shown = f.recorder.events.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
+    expect(shown).toEqual(["Nothing needed storing."]);
+  });
+
   it("ends a turn whose model leaks raw tool tokens twice as a broken tool call, never as its reply", async () => {
     const leaked = "<|channel|>commentary to=functions.audit_write <|message|>{}<|call|>";
     const f = await fixture((_body, response) => sse(response, [chunk({ content: leaked }, "stop")]));

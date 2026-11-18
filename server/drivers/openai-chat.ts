@@ -28,7 +28,7 @@ import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream,
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
 import { carriedSteps, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
-import { announcesAction, claimsUnmadeChange, effectfulCall, leakedToolSyntax, NUDGE_ANNOUNCED_ACTION, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { announcesAction, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
 import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
@@ -598,7 +598,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let unread: string[] = [];
       let callsAtNudge = -1;
       const repeats = options.localModel ? new ChatRepeatGuard() : undefined;
-      let unreadable = false, askedAgain = false, nudged = false;
+      let unreadable: false | "call" | "reasoning" = false, askedAgain = false, nudged = false;
       try {
         const parsed = parseToolScope(turn.toolScope);
         if (!parsed.ok) throw new Error(parsed.error);
@@ -651,9 +651,9 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               }, tools.definitions, undefined, turn.effort);
               // A reply cut off at the token limit may be a call cut short; running half of one is worse than saying so.
               const written = holdback && !completion.toolCalls.length && completion.finishReason !== "length" ? textToolCalls(completion.text, tools.definitions) : null;
-              const leaked = !written && !completion.toolCalls.length && tools.definitions.length > 0 && leakedToolSyntax(completion.text);
-              if (leaked && askedAgain) throw noReplyError("tool_call_malformed");
-              unreadable = (written?.kind === "unreadable" || leaked) && !askedAgain;
+              const leaked = written || completion.toolCalls.length ? false : tools.definitions.length > 0 && leakedToolSyntax(completion.text) ? "call" : leakedReasoning(completion.text) ? "reasoning" : false;
+              if (leaked && askedAgain) throw noReplyError(leaked === "call" ? "tool_call_malformed" : "reasoning_leak");
+              unreadable = askedAgain ? false : leaked || (written?.kind === "unreadable" ? "call" : false);
               if (written?.kind === "calls") {
                 completion = { ...completion, text: written.text, toolCalls: written.calls, finishReason: "tool_calls" };
                 native("in", { recovered: "text_tool_calls", calls: written.calls.map((call) => call.function.name) });
@@ -733,7 +733,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           abort.signal.throwIfAborted();
           if (unreadable) {
             askedAgain = true;
-            messages.push(assistantReply(model, completion, completion.text), { role: "user", content: UNREADABLE_CALL });
+            messages.push(assistantReply(model, completion, completion.text), { role: "user", content: unreadable === "reasoning" ? REASONING_AGAIN : UNREADABLE_CALL });
             continue;
           }
           if (!completion.toolCalls.length) {

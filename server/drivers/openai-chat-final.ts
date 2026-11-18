@@ -13,6 +13,7 @@ const SAID = {
   stream_cut: `The model's reply stream closed before it finished. ${AGAIN}`,
   tool_call_malformed: `The model sent a broken tool call, so nothing ran. ${AGAIN}`,
   tools_unavailable: `The model kept calling tools in a chat that has none, so it said nothing. ${AGAIN}`,
+  reasoning_leak: `The model sent its working notes instead of a reply. ${AGAIN}`,
 } as const;
 
 /** the failure a provider error code stands for, worded for the person; the code rides along for usage reasons */

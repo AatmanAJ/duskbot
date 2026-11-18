@@ -92,3 +92,16 @@ const HARMONY_CALL = /<\|(?:start|channel|constrain|message|call)\|>[\s\S]*\bto=
 export function leakedToolSyntax(text: string): boolean {
   return HARMONY_CALL.test(text);
 }
+
+export const REASONING_AGAIN = "[dusk bot: your last reply was your own working notes about the request, not an answer, so the person did not see it. Do the work with your tools if it needs them, then answer the person directly in plain words.]";
+
+// gpt-oss's analysis channel passed on as the reply: it talks about "the user" and its instructions in the third person
+const REASONING_OPENER = /^(?:we need to|we should|we must|we have to|we can(?:not|'t)?|let's (?:respond|answer|reply|craft|produce|check|see)|the user (?:wants|asks|is asking|said|says|requests|asked)|user (?:wants|asks|says)|according to (?:the )?(?:guidelines|instructions|system|developer|policy)|the (?:system|developer) (?:prompt|message|instructions))\b/i;
+const REASONING_MARKS = /\b(?:the user|guidelines|system prompt|developer message|instructions say|we should|we need to|we must|according to)\b/gi;
+
+/** a reply that is the model's private reasoning about the request rather than words for the person */
+export function leakedReasoning(text: string): boolean {
+  const reply = text.trim();
+  return REASONING_OPENER.test(reply) && (reply.match(REASONING_MARKS)?.length ?? 0) >= 3;
+}
+
