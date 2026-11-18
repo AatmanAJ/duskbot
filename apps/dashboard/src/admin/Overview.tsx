@@ -96,7 +96,7 @@ function mainSeries(id: ChartedId, data: SeriesData): MainSeries {
   const money = data.revenue, net = (i: number) => money ? money.new[i]! + money.renewal[i]! + money.refund[i]! : 0;
   switch (id) {
     case "revenue": return { label: "revenue", kind: "revenue", values: null };
-    case "mrr": return { label: "expected mrr", kind: "money", values: money?.mrr ?? null };
+    case "mrr": return { label: "mrr", kind: "money", values: money?.mrr ?? null };
     case "customers": return { label: "new customers", kind: "count", values: data.paid };
     case "per visitor": return { label: "per visitor", kind: "money", values: data.visitors.map((v, i) => v ? net(i) / v : 0) };
     case "conversion": return { label: "conversion", kind: "share", values: data.visitors.map((v, i) => v ? data.signups[i]! / v : 0) };
@@ -294,7 +294,7 @@ export function OverviewPage() {
             <div className="px-3 pb-2 pt-6 max-sm:px-1">
               {!data.tracked && <p className="mb-3 rounded-[14px] bg-wash-lemon px-4 py-2.5 text-13 text-ink">no visits recorded for this view yet.</p>}
               <MainChart data={series} previous={data.insights?.previousVisitors ?? []} notes={data.notes} show={show} main={main} onNote={setNote}
-                emptyMoney={!r?.live ? "payments aren't live yet" : mainId === "revenue" ? "no sales in this window" : mainId === "mrr" ? (filtered ? "mrr shows without filters" : "no expected mrr in this window") : null} />
+                emptyMoney={!r?.live ? "payments aren't live yet" : mainId === "revenue" ? "no sales in this window" : mainId === "mrr" ? (filtered ? "mrr shows without filters" : "no mrr in this window") : null} />
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-1">
                 <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-12 text-ink-3" aria-label="legend">
                   <li className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full bg-viz-visitors" aria-hidden /> visitors</li>

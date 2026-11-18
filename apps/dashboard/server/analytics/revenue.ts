@@ -55,8 +55,8 @@ const countedAt = (subs: readonly SubscriptionLike[], at: number, now: number) =
   subs.filter(sub => sub.currentPeriodStart !== null || PAYING.has(sub.status)).filter(sub => sub.createdAt < at
     && (PAYING.has(sub.status) || (at < now && sub.status === "ended" && (sub.updatedAt === undefined || sub.updatedAt > at))));
 
-/** the share of free trials not set to cancel that the overview expects to start paying */
-export const TRIAL_CONVERSION = 0.7;
+/** free trials not set to cancel count in full: only cancellations come off */
+export const TRIAL_CONVERSION = 1;
 /** `full` counts every trial at its price; `expected` drops anything set to cancel, then counts `conversion` of the trials left,
  *  in whole dollars */
 export interface MrrForecast { expected: number; paying: number; trials: number; full: number; conversion: number }

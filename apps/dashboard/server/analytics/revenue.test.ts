@@ -26,8 +26,8 @@ describe("revenue", () => {
       sub("acct_gone", 9900, { status: "ended" }),
       sub("acct_paid_cancel", 2000, { cancelAtPeriodEnd: true }),
     ];
-    expect(TRIAL_CONVERSION).toBe(0.7);
-    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800 + 2000, expected: 17400, conversion: 0.7 });
+    expect(TRIAL_CONVERSION).toBe(1);
+    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800 + 2000, expected: 21900, conversion: 1 });
     // once the trials run out they count as paying in full; anything set to cancel is gone, paying or not
     expect(mrrForecastAt(subs.filter(row => row.status === "active"), trialEnd, trialEnd).expected).toBe(7000 + 14900);
     expect(mrrForecastAt(subs, now, now, 1).expected).toBe(7000 + 14900);
@@ -38,8 +38,8 @@ describe("revenue", () => {
       ({ accountId, status: "active", totalCents, createdAt: T, currentPeriodStart: T, cart: { interval: "month" }, trialEndsAt: T + 3 * DAY, ...extra });
     const now = T + DAY;
     const subs = [sub("acct_paid", 2000, { trialEndsAt: undefined }), sub("acct_trial", 5000), sub("acct_gone", 5000, { status: "ended", updatedAt: T + DAY / 2 })];
-    expect(mrrForecastAt(subs, now - 60_000, now).expected).toBe(2000 + 3500);
-    expect(mrrForecastAt(subs, T + DAY / 4, now).expected).toBe(2000 + 7000);
+    expect(mrrForecastAt(subs, now - 60_000, now).expected).toBe(2000 + 5000);
+    expect(mrrForecastAt(subs, T + DAY / 4, now).expected).toBe(2000 + 10000);
     expect(mrrForecastAt([sub("acct_odd", 1234, { trialEndsAt: undefined })], now, now).expected).toBe(1200);
   });
 
