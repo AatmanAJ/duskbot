@@ -406,12 +406,12 @@ describe("hosted dashboard service", () => {
     const asleep = await connect({ kind: "app.connect", target: "gmail" });
     expect(asleep.status).toBe(409);
     expect(await readJson(asleep)).toMatchObject({ code: "workspace_offline", error: expect.stringContaining("not answering") });
-    await signed("/v1/report", id, { ...report(), apps: { available: true, complete: true, services: [{ slug: "github", connected: true, pending: false }, { slug: "linear", connected: false, pending: true }] } }).send();
-    expect(await readJson(page("/v1/connectors", undefined, cookie))).toEqual({ byWorkspace: { [id]: ["github"] }, pending: { [id]: ["linear"] }, available: { [id]: true }, at: { [id]: time } });
+    await signed("/v1/report", id, { ...report(), apps: { available: true, complete: true, services: [{ slug: "github", connected: true, pending: false }, { slug: "linear", connected: false, pending: true }, { slug: "notion", connected: true, pending: false, via: "app" }] } }).send();
+    expect(await readJson(page("/v1/connectors", undefined, cookie))).toEqual({ byWorkspace: { [id]: ["github", "notion"] }, inApp: { [id]: ["notion"] }, pending: { [id]: ["linear"] }, available: { [id]: true }, at: { [id]: time } });
     expect((await connect({ kind: "app.connect", target: "../admin" })).status).toBe(400);
     const stranger = await login("stranger@example.com");
     expect((await connect({ kind: "app.connect", target: "gmail" }, stranger)).status).toBe(404);
-    expect(await readJson(page("/v1/connectors", undefined, stranger))).toEqual({ byWorkspace: {}, pending: {}, available: {}, at: {} });
+    expect(await readJson(page("/v1/connectors", undefined, stranger))).toEqual({ byWorkspace: {}, inApp: {}, pending: {}, available: {}, at: {} });
     const forged = await fetch(`${url}/v1/workspaces/${id}/commands`, { method: "POST", headers: { "content-type": "application/json", cookie, origin }, body: JSON.stringify({ kind: "app.connect", target: "gmail" }) });
     expect(forged.status).toBe(403);
     const queued = await readJson<{ command: CommandView }>(connect({ kind: "app.connect", target: "Gmail" }));

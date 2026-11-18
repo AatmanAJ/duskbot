@@ -2,7 +2,7 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { Check, ListFilter, Search } from "@/icons";
 import type { WorkspaceSummary } from "../../../../shared/dashboard-protocol";
 import { flowKey, useAppCommands, type AppFlow } from "../data/app-connect";
-import { CATEGORY_NAMES, composioSlug, connectedIn, inCategory, presentCategories, searchApps, useConnectorRows, useDashApps, type Category, type ConnectorRow, type DashApp } from "../data/connectors";
+import { CATEGORY_NAMES, composioSlug, connectedIn, connectedInAppOn, inCategory, presentCategories, searchApps, useConnectorRows, useDashApps, type Category, type ConnectorRow, type DashApp } from "../data/connectors";
 import { cloudForWorkspace, useCloud } from "../data/cloud";
 import { awayLine, reachOf } from "../data/place";
 import { useSession } from "../data/session";
@@ -16,8 +16,9 @@ import { NameDot, Nil, RowMenu, SectionHead, Table, Td, Th, type MenuItem } from
 const PAGE = 8;
 const CATALOG_PAGE = 30;
 
-// the desktop app has no link that starts a sign-in, so the app opens and the toast says where to go
-const openConnect = (app: { label: string }) => openApp(appLink.app, `opening dusk bot. connect ${app.label} from apps there.`);
+// the app opens on this app's page in whichever place it has open, so the toast names the workspace it is meant for
+const openConnect = (app: { id: string; label: string }, ws?: { name: string } | null) =>
+  openApp(appLink.connect(app.id), `opening ${app.label} in dusk bot. connect it there${ws ? ` with ${ws.name} open` : ""}.`);
 
 function ConnectAction({ app, flow, onConnect }: { app: DashApp; flow: AppFlow | undefined; onConnect(): void }) {
   if (flow?.phase === "waking") return <Button size="sm" disabled aria-label={`waking ${flow.workspaceName} to connect ${app.label}`}>waking</Button>;
@@ -146,7 +147,7 @@ function Catalog({ apps, connected, query, flowFor, onConnect }: { apps: DashApp
 
 export function ConnectorsPage() {
   const { workspaces, workspace } = useSession();
-  const { connections, clouds, appsAvailable } = useCloud();
+  const { connections, clouds, appsAvailable, appsInApp } = useCloud();
   const { flows, connect, disconnect } = useAppCommands();
   const { apps } = useDashApps();
   const { rows, loading, error } = useConnectorRows();
@@ -162,10 +163,11 @@ export function ConnectorsPage() {
     const cloud = cloudForWorkspace(clouds, ws.id), state = reachOf(ws.freshness, cloud);
     return { away: state === "away" ? awayLine(ws, cloud) : null, wake: state === "wake" && cloud ? cloud : undefined };
   };
-  const start = (ws: WorkspaceSummary | null | undefined, app: { label: string }, slug: string | null) => {
-    if (!ws || !slug) return openConnect(app);
+  const inApp = (ws: WorkspaceSummary, app: { id: string }, slug: string | null) => connectedInAppOn(appsInApp, ws.id, [app.id, slug]);
+  const start = (ws: WorkspaceSummary | null | undefined, app: { id: string; label: string }, slug: string | null) => {
+    if (!ws || !slug || inApp(ws, app, slug)) return openConnect(app, ws);
     // a computer with no Composio of its own connects apps in its own app; a dusk cloud signs in to Composio from here
-    if (!cloudForWorkspace(clouds, ws.id) && appsAvailable[ws.id] === false) return openConnect(app);
+    if (!cloudForWorkspace(clouds, ws.id) && appsAvailable[ws.id] === false) return openConnect(app, ws);
     const { away, wake } = reach(ws);
     if (away) return toast(away, "bad");
     connect(ws, slug, app.label, wake);
@@ -177,10 +179,11 @@ export function ConnectorsPage() {
   const filtered = Boolean(category) || needsOnly;
 
   const busy = (w: WorkspaceSummary, slug: string | null) => Boolean(slug) && ["waking", "waiting"].includes(flows[flowKey(w.id, slug!)]?.phase ?? "");
-  // website actions first; "manage in the app" only when there is nothing to do here
+  // website actions first; "manage in the app" when there is nothing to do here, or the app was connected in the app
   const menuFor = (row: ConnectorRow): MenuItem[] => {
-    const manage: MenuItem[] = [{ label: "manage in the app", onSelect: () => openApp(appLink.app) }];
+    const manage: MenuItem = { label: "manage in the app", onSelect: () => openApp(appLink.connect(row.id)) };
     const slug = rowSlug(row), one = row.workspaces.length === 1;
+    const inAppHere = (listed: { id: string }) => { const w = byId.get(listed.id); return Boolean(w && inApp(w, row, slug)); };
     const items: MenuItem[] = [];
     for (const listed of row.needsAuth) {
       const w = byId.get(listed.id);
@@ -189,9 +192,9 @@ export function ConnectorsPage() {
     for (const w of workspaces ?? []) if (!row.workspaces.some((x) => x.id === w.id)) items.push({ label: `add to ${w.name}`, onSelect: () => start(w, row, slug) });
     if (slug) for (const listed of row.workspaces) {
       const w = byId.get(listed.id);
-      if (w) items.push({ label: `disconnect from ${w.name}`, danger: true, disabled: busy(w, slug), onSelect: () => { const { away, wake } = reach(w); if (away) toast(away, "bad"); else disconnect(w, slug, row.label, wake); } });
+      if (w && !inAppHere(listed)) items.push({ label: `disconnect from ${w.name}`, danger: true, disabled: busy(w, slug), onSelect: () => { const { away, wake } = reach(w); if (away) toast(away, "bad"); else disconnect(w, slug, row.label, wake); } });
     }
-    return items.length ? items : manage;
+    return items.length && !row.workspaces.some(inAppHere) ? items : [...items, manage];
   };
   // the pill reconnects where sign-in is missing, never on a workspace where the app already works
   const authTarget = (row: ConnectorRow) => byId.get(row.needsAuth[0]?.id ?? "") ?? null;

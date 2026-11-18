@@ -3,7 +3,7 @@ import type { CommandKind, CommandView, ConnectorsAnswer, WorkspaceDetail } from
 import { PULSE_INTERVAL_MS, PULSE_SIZE, type PulseAnswer, type PulseSample } from "../../../../shared/machine-pulse";
 import { ApiError, FIXTURE } from "../lib/api";
 import type { BundleId, CheckoutRequest, CloudDesktop, DesktopId, MachineSpec, NotificationPrefs, Selection, Subscription } from "./contracts";
-import { fixtureAccount, fixtureBilling, fixtureCatalog, fixtureClouds, fixtureConnections, fixturePendingApps, fixtureWorkspace, fixtureWorkspaces } from "./fixtures";
+import { fixtureAccount, fixtureAppsInApp, fixtureBilling, fixtureCatalog, fixtureClouds, fixtureConnections, fixturePendingApps, fixtureWorkspace, fixtureWorkspaces } from "./fixtures";
 import { desktopOf, licenseOf, priceCart } from "./pricing";
 import { CANCEL_ANSWERS } from "./wire";
 
@@ -347,7 +347,7 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
   }
   if (method === "GET" && path === "/v1/connectors") {
     const ids = [...s.workspaces.keys()], each = <T,>(value: (id: string) => T) => Object.fromEntries(ids.map((id) => [id, value(id)]));
-    return { byWorkspace: each((id) => s.connections[id] ?? []), pending: each((id) => s.pendingApps[id] ?? []), available: each(() => true), at: each(() => now) } satisfies ConnectorsAnswer;
+    return { byWorkspace: each((id) => s.connections[id] ?? []), inApp: each((id) => fixtureAppsInApp()[id] ?? []), pending: each((id) => s.pendingApps[id] ?? []), available: each(() => true), at: each(() => now) } satisfies ConnectorsAnswer;
   }
   if (method === "GET" && path === "/v1/workspaces") return { workspaces: [...s.workspaces.values()].map((detail) => workspaceDetail(detail, now).workspace) };
   if (method === "POST" && path === "/v1/claim") {

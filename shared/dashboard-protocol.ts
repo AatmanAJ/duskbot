@@ -111,12 +111,17 @@ export interface PlansReport {
   providers: Array<{ id: string; name: string; plan: string | null; ok: boolean; windows: Array<{ label: string; usedPercent: number; resetsAt: number | null }> }>;
 }
 
-/** the connected apps (Composio toolkits) on a workspace; `available` is false when apps are not set up there */
+/** one connected app; `via: "app"` is one connected in the app itself (an MCP server, a token app, a mailbox), which only
+ * the app can change, so the website never sends app.* commands for it. Older workspaces leave `via` out (Composio) */
+export interface AppsReportService { slug: string; connected: boolean; pending: boolean; via?: "composio" | "app" }
+
+/** the connected apps on a workspace; `available` is false when Composio is not set up there, so the website can't
+ * connect one itself; apps connected in the app are listed either way */
 export interface AppsReport {
   available: boolean;
   /** false when the workspace could read the apps but not every account behind them */
   complete: boolean;
-  services: Array<{ slug: string; connected: boolean; pending: boolean }>;
+  services: AppsReportService[];
 }
 
 export type CommandKind = "computer.wake" | "computer.sleep" | "phone.revoke" | "session.revoke" | "routine.pause" | "routine.resume" | "app.connect" | "app.disconnect" | "phone.pair";
@@ -193,9 +198,11 @@ export interface ReportAnswer {
 export interface EnrollRequest { v: 1; publicKey: string; name: string; kind: WorkspaceKind; version: string }
 export interface EnrollAnswer { v: 1; workspaceId: string; claimUrl: string; claimExpiresAt: number; dashboardUrl: string }
 
-/** GET /v1/connectors: each owned workspace's connected app slugs, the ones waiting on a sign-in, and when they were read */
+/** GET /v1/connectors: each owned workspace's connected app slugs, the ones waiting on a sign-in, and when they were read;
+ * `inApp`: those of them connected in the app itself, which only the app can change (older services leave it out) */
 export interface ConnectorsAnswer {
   byWorkspace: Record<string, string[]>;
+  inApp?: Record<string, string[]>;
   pending: Record<string, string[]>;
   available: Record<string, boolean>;
   at: Record<string, number | null>;
@@ -304,7 +311,8 @@ const dashboardSections: Record<string, DashboardParser> = {
   plans: dashboardObject({ providers: dashboardArray(dashboardObject({ id: dashboardId, name: dashboardName, plan: dashboardNullable(dashboardText()), ok: dashboardBoolean,
     windows: dashboardArray(dashboardObject({ label: dashboardName, usedPercent: dashboardNumber, resetsAt: dashboardNullable(dashboardNumber) }), 20) }), 20) }),
   apps: dashboardObject({ available: dashboardBoolean, complete: dashboardBoolean,
-    services: dashboardArray(dashboardObject({ slug: input => appSlug(input) ?? dashboardInvalid, connected: dashboardBoolean, pending: dashboardBoolean }), 500) }),
+    services: dashboardArray(dashboardObject({ slug: input => appSlug(input) ?? dashboardInvalid, connected: dashboardBoolean, pending: dashboardBoolean,
+      via: dashboardOptional(dashboardEnum("composio", "app")) }), 500) }),
   pulse: input => parsePulse(input) ?? dashboardInvalid,
   usageOptOut: dashboardBoolean,
   usage: input => cleanUsageReport(input, Date.now(), (name, props) => cleanSignal(name, props, "workspace")) ?? dashboardInvalid,

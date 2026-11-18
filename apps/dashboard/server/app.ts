@@ -981,9 +981,11 @@ export function createDashboardApp(options: DashboardAppOptions) {
     if (method === "GET" && path === "/v1/connectors") {
       const owner = account(req);
       watch(owner);
-      const answer: ConnectorsAnswer = { byWorkspace: {}, pending: {}, available: {}, at: {} };
+      const inApp: Record<string, string[]> = {};
+      const answer: ConnectorsAnswer = { byWorkspace: {}, inApp, pending: {}, available: {}, at: {} };
       for (const ws of state.workspaces) if (ws.ownerAccountId === owner.id) {
         const apps = ws.report?.apps;
+        inApp[ws.id] = apps?.services.filter(service => service.via === "app" && (service.connected || service.pending)).map(service => service.slug) ?? [];
         answer.byWorkspace[ws.id] = apps?.services.filter(service => service.connected).map(service => service.slug) ?? [];
         answer.pending[ws.id] = apps?.services.filter(service => !service.connected && service.pending).map(service => service.slug) ?? [];
         answer.available[ws.id] = apps?.available ?? false;
