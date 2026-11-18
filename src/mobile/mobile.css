@@ -238,6 +238,15 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-
 @media (prefers-reduced-transparency: reduce) {
   .dusk-mobile [data-mobile-chat] :is(.m-glass, [data-tour="composer"]) { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+/* android webviews drop frames compositing backdrop-filter on many phones: there every glass surface is its solid twin */
+html[data-mobile-app="android"] :is(*, ::before, ::after) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] :is(.m-glass, [data-tour="composer"]) { background-color: var(--g-solid); }
+html[data-mobile-app="android"] .glass-surface { background: var(--color-menu); }
+html[data-mobile-app="android"] :is(.glass-card, .glass-surface .bg-card) { background: var(--color-card); }
+html[data-mobile-app="android"] .glass-rail { background: var(--color-app); }
+html[data-mobile-app="android"] .glass-scrim { background: color-mix(in srgb, black 50%, transparent); }
+html[data-mobile-app="android"] .glass-bar:not([data-glass-fade])::before { background: var(--glass-tint, var(--color-panel)); }
+html[data-mobile-app="android"] button.mobile-press.backdrop-blur-md { background-color: rgb(0 0 0 / .45); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .dusk-mobile [data-mobile-chat] :is(.m-glass, [data-tour="composer"]) { background-color: var(--g-solid); }
 }

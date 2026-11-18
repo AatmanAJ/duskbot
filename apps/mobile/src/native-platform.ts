@@ -138,6 +138,9 @@ interface NotificationsPlugin {
   remove(options: { ids: string[] }): Promise<void>;
 }
 const DuskNotifications = registerPlugin<NotificationsPlugin>("DuskNotifications");
+/** android only (android/.../PushSetupPlugin.java): whether the build carries a Firebase config, without which push
+ * registration crashes the app */
+const DuskPushSetup = registerPlugin<{ configured(): Promise<{ configured: boolean }> }>("DuskPushSetup");
 
 /** Android's delivered pushes: FCM's data block is flat (server/mobile/push.ts messageData). */
 async function androidDelivered(): Promise<DeliveredNotification[]> {
@@ -435,13 +438,15 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     const timer = setTimeout(() => { console.warn(`startup: ${label} did not answer`); resolve(undefined); }, 2000);
     work.then(resolve, () => resolve(undefined)).finally(() => clearTimeout(timer));
   });
-  const [info, launch, , glass, menu] = await Promise.all([
+  const [info, launch, , glass, menu, pushSetup] = await Promise.all([
     bounded(App.getInfo(), "app info"),
     bounded(App.getLaunchUrl(), "launch url"),
     bounded(overlayReady ?? Promise.resolve(), "status bar"),
     kind === "ios" && Capacitor.isPluginAvailable("DuskGlass") ? bounded(DuskGlass.supported(), "glass") : undefined,
     kind === "ios" && Capacitor.isPluginAvailable("DuskMenu") ? bounded(DuskMenu.supported(), "menu") : undefined,
+    kind === "android" && Capacitor.isPluginAvailable("DuskPushSetup") ? bounded(DuskPushSetup.configured(), "push setup") : undefined,
   ]);
+  const pushOn = kind === "ios" || Boolean(pushSetup?.configured);
   let pendingLaunchUrl = launch?.url;
   const secrets: MobilePlatform["secrets"] = {
     get: async (key) => {
@@ -556,7 +561,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
         throw error;
       }
     } : undefined,
-    async registerPush(options) {
+    registerPush: pushOn ? async (options) => {
       try {
         const asked = (await PushNotifications.checkPermissions()).receive;
         if (asked === "denied" || (asked !== "granted" && !options?.prompt)) return null;
@@ -582,7 +587,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       } catch {
         return null;
       }
-    },
+    } : undefined,
     setViewingThread: notificationsOn ? (threadId) => { void DuskNotifications.setViewing({ threadId }).catch(() => {}); } : undefined,
     async deliveredNotifications() {
       try {
