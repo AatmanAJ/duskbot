@@ -20,14 +20,26 @@ export interface FreeBackupPreinstallDeps {
   present?: () => boolean;
   install?: (release: StandaloneRelease, options: StandaloneInstallOptions) => Promise<StandaloneInstalled>;
   now?: () => number;
+  /** waits before each further try after a failed one */
+  retryMs?: readonly number[];
+  sleep?: (ms: number) => Promise<void>;
 }
+
+export const FREE_BACKUP_RETRY_MS: readonly number[] = [15_000, 60_000];
+
+const pause = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms).unref?.(); });
 
 let pending: Promise<FreeBackupPreinstall> | null = null;
 
 /** OpenCode's own build through the same install Settings uses, unless a copy (the app's or the person's) is already
- * found. Never throws: the outcome goes to the trail. Overlapping calls share one run. */
+ * found. A failed try is retried a few times. Never rejects: the outcome goes to the trail. Overlapping calls share one run. */
 export function preinstallFreeBackup(deps: FreeBackupPreinstallDeps = {}): Promise<FreeBackupPreinstall> {
-  pending ??= preinstallOnce(deps).finally(() => { pending = null; });
+  pending ??= preinstallOnce(deps)
+    .catch((error: unknown): FreeBackupPreinstall => {
+      trailError("free_backup.preinstall", error, { outcome: "failed" });
+      return { outcome: "failed", error: error instanceof Error ? error.message : String(error) };
+    })
+    .finally(() => { pending = null; });
   return pending;
 }
 
@@ -40,15 +52,24 @@ async function preinstallOnce(deps: FreeBackupPreinstallDeps): Promise<FreeBacku
     return { outcome: "unsupported" };
   }
   const now = deps.now ?? Date.now;
+  const retries = deps.retryMs ?? FREE_BACKUP_RETRY_MS;
   const startedAt = now();
   trail("free_backup.preinstall", { outcome: "started", version: release.version });
-  try {
-    await (deps.install ?? installStandaloneEngine)(release, { baseDir: deps.baseDir ?? DATA_DIR });
-    trail("free_backup.preinstall", { outcome: "installed", version: release.version, ms: now() - startedAt });
-    return { outcome: "installed" };
-  } catch (error) {
-    trailError("free_backup.preinstall", error, { outcome: "failed", ms: now() - startedAt });
-    return { outcome: "failed", error: error instanceof Error ? error.message : String(error) };
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await (deps.install ?? installStandaloneEngine)(release, { baseDir: deps.baseDir ?? DATA_DIR });
+      trail("free_backup.preinstall", { outcome: "installed", version: release.version, ms: now() - startedAt, tries: attempt + 1 });
+      return { outcome: "installed" };
+    } catch (error) {
+      const wait = retries[attempt];
+      if (wait === undefined) {
+        trailError("free_backup.preinstall", error, { outcome: "failed", ms: now() - startedAt, tries: attempt + 1 });
+        return { outcome: "failed", error: error instanceof Error ? error.message : String(error) };
+      }
+      trailError("free_backup.preinstall", error, { outcome: "retrying", tries: attempt + 1, waitMs: wait });
+      await (deps.sleep ?? pause)(wait);
+      if (present()) return { outcome: "present" };
+    }
   }
 }
 
@@ -60,6 +81,7 @@ export function startFreeBackupPreinstall(
 ): Promise<FreeBackupPreinstall> | null {
   if (env[PREINSTALL_FREE_BACKUP_ENV] !== "1") return null;
   const run = preinstallFreeBackup(deps);
-  void run.then(({ outcome }) => { if (outcome === "installed") installed(); });
+  void run.then(({ outcome }) => { if (outcome === "installed") installed(); })
+    .catch((error: unknown) => trailError("free_backup.installed", error));
   return run;
 }
