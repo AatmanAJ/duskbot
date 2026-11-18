@@ -112,15 +112,17 @@ describe("bearer event source", () => {
 });
 
 function transportFixture() {
-  class EmptyElement {
+  class EmptyElement extends EventTarget {
     readonly attributes = new Map<string, string>();
     readonly tagName = "IMG";
     getAttribute(name: string) { return this.attributes.get(name) ?? null; }
     setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+    hasAttribute(name: string) { return this.attributes.has(name); }
+    removeAttribute(name: string) { this.attributes.delete(name); }
     matches() { return true; }
     querySelectorAll() { return []; }
   }
-  class EmptyDocument {
+  class EmptyDocument extends EventTarget {
     elements: EmptyElement[] = [];
     querySelectorAll() { return this.elements; }
   }

@@ -31,6 +31,11 @@ import { sameRoute, watchRoute } from "./route-watch";
 type GateState = { kind: "loading" } | { kind: "pair"; reason?: "revoked" } | { kind: "ready"; id: string }
   | { kind: "offline"; record: MobileConnectionRecord; others: MobileConnectionRecord[]; attempts: number; trying: boolean };
 
+/** A first connect that failed after the computer accepted the pairing: only a refused token undoes it. */
+export function pairedButUnreachable(error: unknown): boolean {
+  return !(error instanceof PairError && error.code === "refused");
+}
+
 export function ConnectionGate({ children, forcePair }: { children: ReactNode; forcePair?: boolean }) {
   const platform = usePlatform();
   const account = useMobileAccount();
@@ -48,8 +53,10 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   const [signInEmail, setSignInEmail] = useState<{ email: string; code?: string; sequence: number } | null>(null);
   useEffect(() => {
     const signIn = () => { setAddingStep("signin"); setAdding((n) => n + 1); };
+    const addPlace = () => { setAddingStep("welcome"); setAdding((n) => n + 1); };
     window.addEventListener("dusk:sign-in", signIn);
-    return () => window.removeEventListener("dusk:sign-in", signIn);
+    window.addEventListener("dusk:add-place", addPlace);
+    return () => { window.removeEventListener("dusk:sign-in", signIn); window.removeEventListener("dusk:add-place", addPlace); };
   }, []);
   // the app never reads the shelf shared by every workspace again; it may still hold an unlinked one's chats
   useEffect(() => { if (platform.native) void forgetTranscriptShelf(null); }, [platform]);
@@ -185,7 +192,19 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
    * time the moment hands over. No reload. */
   const linked = useCallback(async (record: MobileConnectionRecord, token: string, name: string) => {
     await store.save(record, token);
-    const transport = await connectToWorkspace(record, token, platform, new AbortController().signal);
+    let transport: Awaited<ReturnType<typeof connectToWorkspace>>;
+    try {
+      transport = await connectToWorkspace(record, token, platform, new AbortController().signal);
+    } catch (error) {
+      if (!pairedButUnreachable(error)) { await store.remove(record.id); throw error; }
+      // the pairing took: the computer already lists this phone, so the phone keeps the link and says it can't reach it
+      // yet (with Try again) instead of a pairing error over a pairing that worked
+      setIncoming(null);
+      setAdding(0);
+      setEntered(true);
+      retry();
+      return;
+    }
     uninstall.current?.();
     uninstall.current = installTransport(transport, retry);
     route.current = transport;

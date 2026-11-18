@@ -288,7 +288,7 @@ export function WaySetup({ way, title, onBack, onClose }: { way: Way; title?: st
   return <AddressSetup way={way} title={title} onBack={onBack} onClose={onClose} />;
 }
 
-/** A dusk bot already running somewhere (`npx duskbot serve` prints its address and code): connected by those two. */
+/** A dusk bot already running somewhere: connected by the link `duskbot pair` prints, or by its address and code. */
 function AddressSetup({ way, title, onBack, onClose }: { way: Extract<Way, { key: "address" }>; title?: string; onBack?: () => void; onClose: () => void }) {
   const [address, setAddress] = useState("");
   const [code, setCode] = useState("");

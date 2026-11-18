@@ -2,17 +2,16 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { motion, useMotionValue, useTransform, type MotionValue } from "motion/react";
 import { TranscriptStaging } from "@/components/transcript-staging";
 import { canScroll, ownsDrag, useDrag } from "./gesture";
-import { prefersReducedMotion, projectRelease, settleTo, spring, springPath } from "./motion";
+import { prefersReducedMotion, projectRelease, settleTo, springPath, system } from "./motion";
 
 /** Parallax of the page underneath, as a share of the width: UIKit's navigation push moves it a third as far. */
 const UNDER_SHIFT = 0.3;
-const EXIT = { stiffness: 440, damping: 40 };
-/** A tapped push starts from rest: critically damped (zeta 1), so it eases in and lands without overshoot or creep. */
-const PUSH = { stiffness: 380, damping: 39 };
+const NAV = { stiffness: system.stiffness, damping: system.damping };
 /** A chat still loading its transcript slides in once it has it, or after this long with its loading rows. */
 const LOAD_WAIT_MS = 150;
 
-type Run = { stop: () => void };
+/** `stop` leaves the page where it is and says how fast it was moving there, in px/s, so what follows carries on. */
+type Run = { stop: () => number };
 /** A page slide as the compositor plays it: positions in px, one per 60 Hz frame, linear between them. */
 export type SlidePath = { duration: number; points: number[] };
 
@@ -62,9 +61,12 @@ function slideLayers(layers: { page: HTMLElement; base: HTMLElement | null; dim:
   runs[0]!.onfinish = () => { if (!over) { hand(path.points.at(-1)!); onDone(); } };
   return {
     stop: () => {
-      if (over) return;
+      if (over) return 0;
+      const frame = Math.floor(Number(runs[0]!.currentTime ?? 0) / (1000 / 60));
+      const speed = ((path.points[frame + 1] ?? path.points.at(-1)!) - (path.points[frame] ?? path.points.at(-1)!)) * 60;
       hand(new DOMMatrixReadOnly(getComputedStyle(layers.page).transform).m41);
       onStopped?.();
+      return speed;
     },
   };
 }
@@ -126,23 +128,27 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
     },
   }), []);
 
-  const go = useCallback((target: number, velocity: number, done?: () => void, push = false) => {
-    run.current?.stop();
+  /** `velocity` null: a tap, which leaves at the system's speed, or carries on at the speed of a slide it interrupts. */
+  const go = useCallback((target: number, velocity: number | null, done?: () => void, push = false) => {
+    const carried = run.current?.stop() ?? 0;
     setMoving(true);
     const finish = () => { setMoving(false); done?.(); };
     if (prefersReducedMotion()) {
       x.set(target === 0 ? 0 : width);
       pageOpacity.set(target === 0 ? 0 : 1);
-      run.current = settleTo(pageOpacity, target === 0 ? 1 : 0, 0, finish);
+      const fade = settleTo(pageOpacity, target === 0 ? 1 : 0, 0, finish);
+      run.current = { stop: () => { fade.stop(); return 0; } };
       return;
     }
     const page = pageRef.current;
-    const curve = target === 0 ? (push ? PUSH : spring.settle) : EXIT;
+    const toward = Math.sign(target - x.get());
+    const speed = velocity ?? (carried !== 0 ? carried : toward * width * (push || target === 0 ? system.push : system.back));
     if (!page || typeof page.animate !== "function") {
-      run.current = settleTo(x, target, velocity, finish, curve);
+      run.current = { stop: () => { controls.stop(); return 0; } };
+      const controls = settleTo(x, target, speed, finish, NAV);
       return;
     }
-    const path = springPath(x.get(), target, velocity, curve);
+    const path = springPath(x.get(), target, speed, NAV);
     run.current = slideLayers({ page, base: baseRef.current, dim: dimRef.current }, x, width, path, finish, () => slid.current?.(null));
     slid.current?.(path);
   }, [x, pageOpacity, width]);
@@ -164,7 +170,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
       void ready.then(() => {
         if (signal.cancelled) return;
         preparing.current = null;
-        go(0, 0, () => { landed(); settled.current?.(true); }, true);
+        go(0, null, () => { landed(); settled.current?.(true); }, true);
       });
     });
   }, [go, landed, x, pageOpacity, width]);
@@ -180,7 +186,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
       if (preparing.current) { preparing.current.cancelled = true; preparing.current = null; }
       sliding.current = true;
       leaving.current?.();
-      go(width, 0, () => { setShownKey(null); lastPage.current = null; gone(); settled.current?.(false); });
+      go(width, null, () => { setShownKey(null); lastPage.current = null; gone(); settled.current?.(false); });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey, Boolean(page)]);
@@ -210,7 +216,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
         go(0, s.vx, landed);
       }
     },
-    onCancel: () => go(0, 0, landed),
+    onCancel: () => go(0, null, landed),
   });
 
   const pageShown = Boolean(shownKey);

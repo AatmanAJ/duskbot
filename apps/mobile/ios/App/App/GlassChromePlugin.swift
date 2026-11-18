@@ -148,7 +148,8 @@ private final class SlotButton: DiscButton {
             guard isHighlighted != oldValue, !UIAccessibility.isReduceMotionEnabled else { return }
             let pressed = isHighlighted
             UIView.animate(springDuration: pressed ? 0.12 : 0.3, bounce: 0, initialSpringVelocity: 0, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
-                self.transform = pressed ? CGAffineTransform(scaleX: 0.94, y: 0.94) : .identity
+                self.transform = pressed ? CGAffineTransform(scaleX: 1.08, y: 1.08) : .identity
+                self.alpha = pressed ? 0.88 : 1
             }
         }
     }
@@ -224,13 +225,22 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private let liveDot = UIView()
 
     private let composer = PassthroughView()
-    private let capsule = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+    private let capsule = UIVisualEffectView(effect: ChatGlassChrome.interactiveGlass())
     private let plus = DiscButton(configuration: .glass())
     private let text = UITextView()
     private let placeholder = UILabel()
     private let voice = UILabel()
     private var actions: [UIButton] = []
     private var actionKinds: [String] = []
+    /// the page's text size over the system body size; 0 until the page says, and the field follows Larger Text alone
+    private var fontScale: CGFloat = 0
+
+    /// iOS 26 interactive glass: the capsule answers a touch by growing and brightening, as the system's glass buttons do
+    static func interactiveGlass() -> UIGlassEffect {
+        let effect = UIGlassEffect(style: .regular)
+        effect.isInteractive = true
+        return effect
+    }
 
     private var leading: NSLayoutConstraint!
     private var width: NSLayoutConstraint!
@@ -261,6 +271,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// from the composer's bottom to the line it rests on: the home indicator's edge, or the keyboard's top
     private var gap: CGFloat = 8
     private var keyboardOverlap: CGFloat = 0
+    /// where the page rests the composer; with the keyboard up it widens to `typingInset` from each edge
+    private var restingFrame: CGRect = .zero
+    private static let typingInset: CGFloat = 6
 
     init(host: UIView, emit: @escaping ([String: Any]) -> Void) {
         self.host = host
@@ -331,6 +344,13 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     }
 
+    /// the page's own frame at rest, nearly the full width while typing
+    private func applyComposerWidth() {
+        let typing = keyboardOverlap > 0 && (host?.bounds.width ?? 0) > 0
+        leading.constant = typing ? Self.typingInset : restingFrame.minX
+        width.constant = typing ? (host?.bounds.width ?? restingFrame.width) - Self.typingInset * 2 : restingFrame.width
+    }
+
     private func restingBottom() -> CGFloat {
         -(max(host?.safeAreaInsets.bottom ?? 0, keyboardOverlap) + gap)
     }
@@ -344,6 +364,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         guard overlap != keyboardOverlap else { return }
         keyboardOverlap = overlap
         bottom.constant = restingBottom()
+        if restingFrame.width > 0 { applyComposerWidth() }
         let duration = (info[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
         let curve = (info[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
         guard composerShown, duration > 0 else {
@@ -352,6 +373,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         }
         UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction]) {
             host.layoutIfNeeded()
+            self.layoutComposer(animated: false)
         }
     }
 
@@ -471,7 +493,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// name and avatar swap in one go, with no crossfade: a new chat's pill is drawn before its header shows
     private func refreshPill() {
         var title = AttributedString(name)
-        title.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        title.font = UIFont.systemFont(ofSize: 17, weight: .medium)
         UIView.performWithoutAnimation {
             pill.configuration?.attributedTitle = title
             pill.configuration?.baseForegroundColor = .label
@@ -484,7 +506,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     func setAvatar(_ data: String?) {
         guard data != avatarData else { return }
         avatarData = data
-        avatar = data.flatMap(Self.image(fromDataURL:)).map { Self.pixelScaled($0, to: CGSize(width: 30, height: 30)) }
+        avatar = data.flatMap(Self.image(fromDataURL:)).map { Self.pixelScaled($0, to: CGSize(width: 24, height: 24)) }
         refreshPill()
     }
 
@@ -494,14 +516,15 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             show(composer, false, &composerShown)
             return
         }
-        leading.constant = frame.rect.minX
-        width.constant = frame.rect.width
+        restingFrame = frame.rect
+        applyComposerWidth()
         if let gap = (data["gap"] as? NSNumber)?.doubleValue { self.gap = CGFloat(max(0, gap)) }
         let resting = restingBottom()
         if bottom.constant != resting { bottom.constant = resting }
         plus.isHidden = !(data["plus"] as? Bool ?? true)
         if let label = data["plusLabel"] as? String, !label.isEmpty { plus.accessibilityLabel = label }
         placeholder.text = data["placeholder"] as? String ?? ""
+        if let scale = (data["fontScale"] as? NSNumber)?.doubleValue, scale > 0 { applyFontScale(CGFloat(scale)) }
         text.isEditable = !(data["disabled"] as? Bool ?? false)
         returnSends = data["returnSends"] as? Bool ?? true
         text.returnKeyType = returnSends ? .send : .default
@@ -707,9 +730,26 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         textSeq = seq
         if text.text != value {
             text.text = value
+            // UIKit 26: text set after a dictation keeps the attributes dictation left in the field, its font among them
+            if let font = placeholder.font {
+                text.font = font
+                text.typingAttributes = [.font: font, .foregroundColor: UIColor.label]
+            }
             updatePlaceholder()
             layoutComposer(animated: false)
         }
+    }
+
+    /// The field's text at the size the page draws its own: the system body size times the page's scale.
+    private func applyFontScale(_ scale: CGFloat) {
+        guard abs(scale - fontScale) > 0.001 else { return }
+        fontScale = scale
+        let font = UIFont.systemFont(ofSize: (17 * scale).rounded())
+        for label in [placeholder, voice] { label.adjustsFontForContentSizeCategory = false; label.font = font }
+        text.adjustsFontForContentSizeCategory = false
+        text.font = font
+        text.typingAttributes = [.font: font, .foregroundColor: UIColor.label]
+        layoutComposer(animated: false)
     }
 
     func focus() {

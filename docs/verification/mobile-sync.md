@@ -13,6 +13,22 @@ app. The fixture has no desktop, so the websocket check proves the upgrade reach
 phone's session (409), not a live desktop; the byte-for-byte websocket echo is covered by
 `apps/link-service/test/phone-hub.test.mjs` and `apps/companion/test/mobile.test.ts`.
 
+## The phone apps already shipped, against this desktop
+
+The connection code of iPhone 1.2 and Android 1.2.1, taken from the commits they were built from
+(`scripts/testing/shipped-phone.ts`), against a harness in desktop mode, the desktop's own phone relay
+(`electron/phone-relay.mjs` with the link agent's hub), a local link service and the companion's handler: pair by QR and
+typed code, chat with a streamed reply, then the relay down (both phones go on over Wi-Fi), a link node restart, a
+harness restart (unreachable, never unpaired), a tunnel the link service dropped (made again with the same channels),
+a Wi-Fi-only phone, and removal from the desktop and from the phone.
+
+```sh
+node --experimental-strip-types scripts/phone-shipped-e2e.ts
+```
+
+Everything listens on 127.0.0.1. WebRTC direct is not driven (node has no RTCPeerConnection, so the phones stay on the
+relay); `src/mobile/transport/direct.e2e.test.ts` covers it.
+
 ## Two real clients
 
 The desktop renderer and the phone app, each in its own headless Chrome, on one isolated fixture: a message sent from

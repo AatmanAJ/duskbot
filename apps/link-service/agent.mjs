@@ -2574,13 +2574,13 @@ export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = 
         const register = () => fetchImpl(route, { method: "PUT", headers, body: JSON.stringify({ channels: wanted.map(({ id, verifier, kind, expiresAt }) => ({ id, verifier, kind, ...(kind === "grant" ? { expiresAt } : {}) })) }), signal: AbortSignal.any([abort.signal, AbortSignal.timeout(40_000)]) });
         let response = await register();
         const refused = [...unusable];
-        if (response.status === 409) {
-          const conflict = await response.json();
-          if (conflict.code === "taken" && wanted.some((channel) => channel.id === conflict.id)) {
-            refused.push(conflict.id);
-            wanted = wanted.filter((channel) => channel.id !== conflict.id);
-            response = await register();
-          }
+        // each taken id (still held by a tunnel this computer made before) is left out in turn, so the rest still register
+        while (response.status === 409) {
+          const conflict = await response.json().catch(() => null);
+          if (conflict?.code !== "taken" || !wanted.some((channel) => channel.id === conflict.id)) throw new Error("phone channel registration failed");
+          refused.push(conflict.id);
+          wanted = wanted.filter((channel) => channel.id !== conflict.id);
+          response = await register();
         }
         if (response.status === 404) { await response.body?.cancel(); stop(); break; }
         await response.text();

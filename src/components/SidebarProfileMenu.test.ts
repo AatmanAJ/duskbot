@@ -664,16 +664,30 @@ describe("the account on a Cloud's page", () => {
 
 describe("the account's name on this computer", () => {
   const account = { email: "robin@example.com", name: "Robin Field" };
+  const copy = { name: "Robin Field", accountName: "Robin Field" };
   it("takes the name set on the website where the profile has none or only the computer's", () => {
-    expect(adoptedAccountName(undefined, account, null)).toBe("Robin Field");
-    expect(adoptedAccountName({ name: "" }, account, "Siddharth Meena")).toBe("Robin Field");
-    expect(adoptedAccountName({ name: "Siddharth Meena" }, account, "Siddharth Meena")).toBe("Robin Field");
-    expect(adoptedAccountName({ name: "Siddharth Meena", email: "ROBIN@example.com" }, account, "Siddharth Meena")).toBe("Robin Field");
+    expect(adoptedAccountName(undefined, account, null)).toEqual(copy);
+    expect(adoptedAccountName({ name: "" }, account, "Siddharth Meena")).toEqual(copy);
+    expect(adoptedAccountName({ name: "Siddharth Meena" }, account, "Siddharth Meena")).toEqual(copy);
+    expect(adoptedAccountName({ name: "Siddharth Meena", email: "ROBIN@example.com" }, account, "Siddharth Meena")).toEqual(copy);
+  });
+  it("follows a rename on the website while the profile still has the name it copied from the account", () => {
+    expect(adoptedAccountName({ name: "Rob Field", accountName: "Rob Field" }, account, null)).toEqual(copy);
+    expect(adoptedAccountName({ name: " Rob Field ", accountName: "Rob Field", email: "robin@example.com" }, account, null)).toEqual(copy);
+  });
+  it("follows a change of letter case on the website, even for a copy made before copies were marked", () => {
+    expect(adoptedAccountName({ name: "robin field" }, account, null)).toEqual(copy);
+    expect(adoptedAccountName({ name: "ROBIN FIELD", accountName: "Someone Else" }, account, null)).toEqual(copy);
+  });
+  it("marks a profile that already has the account's name as its copy, once", () => {
+    expect(adoptedAccountName({ name: "Robin Field" }, account, null)).toEqual(copy);
+    expect(adoptedAccountName(copy, account, null)).toBeNull();
   });
   it("keeps a name the person typed, another person's profile, and an account without a name", () => {
     expect(adoptedAccountName({ name: "Rob" }, account, "Siddharth Meena")).toBeNull();
-    expect(adoptedAccountName({ name: "Robin Field" }, account, null)).toBeNull();
+    expect(adoptedAccountName({ name: "Rob", accountName: "Robin" }, account, null)).toBeNull();
     expect(adoptedAccountName({ name: "" , email: "someone@example.com" }, account, null)).toBeNull();
+    expect(adoptedAccountName({ name: "Rob Field", accountName: "Rob Field", email: "someone@example.com" }, account, null)).toBeNull();
     expect(adoptedAccountName({ name: "" }, { email: "robin@example.com" }, null)).toBeNull();
     expect(adoptedAccountName({ name: "" }, null, null)).toBeNull();
   });

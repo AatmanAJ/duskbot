@@ -83,21 +83,26 @@ export function withAccountFace(profile: { name?: string; email?: string; avatar
   return { ...profile, ...(!own ? { email: account.email } : {}), ...(!profile?.name?.trim() && account.name ? { name: account.name } : {}), ...(!profile?.avatarUrl && account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}), ...face };
 }
 
-/** The name this place's profile takes from the signed-in account: where the profile has none, or only the computer's own
- * (the first run's guess), and the account has one of its own, for the same person. Null keeps the profile as it is. */
-export function adoptedAccountName(profile: { name?: string; email?: string } | undefined, account: { email: string; name?: string } | null, computerName: string | null): string | null {
+type AccountNamedProfile = { name?: string; email?: string; accountName?: string };
+
+/** What this place's profile takes from the signed-in account's name, for the same person: the name where the profile has
+ * none, only the computer's own (the first run's guess), the account's last name copied here, or the same name in other
+ * letter case; and the copy's mark either way. A name the person typed here stays theirs. Null keeps the profile as it is. */
+export function adoptedAccountName(profile: AccountNamedProfile | undefined, account: { email: string; name?: string } | null, computerName: string | null): { name: string; accountName: string } | null {
   const wanted = account?.name?.trim();
   if (!wanted) return null;
   const own = profile?.email?.trim().toLowerCase();
   if (own && own !== account!.email.trim().toLowerCase()) return null;
   const current = profile?.name?.trim() ?? "";
-  if (current === wanted) return null;
-  return !current || (computerName !== null && current === computerName.trim()) ? wanted : null;
+  const copied = profile?.accountName?.trim() ?? "";
+  if (current === wanted) return copied === wanted ? null : { name: wanted, accountName: wanted };
+  const takes = !current || current === copied || current.toLowerCase() === wanted.toLowerCase() || (computerName !== null && current === computerName.trim());
+  return takes ? { name: wanted, accountName: wanted } : null;
 }
 
-/** This computer's page keeps the account's name once one is set (on the website's first step, often after the app's own
- * first run): the bots and the sidebar call the person by it. A name the person typed here stays theirs. */
-function useAccountName(enabled: boolean, profile: { name?: string; email?: string } | undefined, account: { email: string; name?: string } | null, dispatch: (action: Action) => void) {
+/** This computer's page keeps the account's name (set on the website's first step, often after the app's own first run, and
+ * renamed there later): the bots, the sidebar and a paired phone call the person by it. */
+function useAccountName(enabled: boolean, profile: AccountNamedProfile | undefined, account: { email: string; name?: string } | null, dispatch: (action: Action) => void) {
   const asked = useRef<string | null>(null);
   const wanted = account?.name?.trim() ?? null;
   useEffect(() => {
@@ -105,15 +110,17 @@ function useAccountName(enabled: boolean, profile: { name?: string; email?: stri
     let active = true;
     void (async () => {
       const computer = (await window.duskDesktop?.desktopProfile?.systemName().catch(() => null))?.trim() || null;
-      const name = active ? adoptedAccountName(profile, account, computer) : null;
+      if (!active) return;
+      const adopted = adoptedAccountName(profile, account, computer);
+      if (!adopted) { asked.current = wanted; return; }
+      const config = await api<ConfigStatus>("/api/config", { method: "PUT", body: JSON.stringify({ profile: adopted }) }).catch(() => null);
+      if (!config) return;
       asked.current = wanted;
-      if (!name) return;
-      const config = await api<ConfigStatus>("/api/config", { method: "PUT", body: JSON.stringify({ profile: { name } }) }).catch(() => null);
-      if (config && active) dispatch({ type: "configStatus", config });
+      if (active) dispatch({ type: "configStatus", config });
     })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, wanted, profile?.name]);
+  }, [enabled, wanted, profile?.name, profile?.accountName]);
 }
 
 /** What `UserFace` draws for a person: an id to seed the drawn head, and the photo and choice that may stand in for it. */

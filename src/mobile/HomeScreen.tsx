@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, useTransform, type MotionValue } from "motion/react";
-import { BellDot, Check, MonitorSmartphone, Pin, PinOff, Plus, RotateCcw, Search, Star, UserRound } from "../icons";
+import { BellDot, Check, ChevronDown, MonitorSmartphone, Pin, PinOff, Plus, RotateCcw, Search, Star, UserRound } from "../icons";
 import { api, retryLoad, useStore, type Bot, type Group } from "@/state/store";
 import { BotAvatar, MausAvatar } from "@/components/Avatar";
 import { MascotLoader } from "@/components/MascotLoader";
@@ -28,6 +28,7 @@ import { listTime } from "./time";
 import { EmptyState } from "./Illustration";
 import { useOffline } from "./network";
 import type { OpenSheet } from "./sheets";
+import { homeFolders, useCollapsedFolders } from "./home-folders";
 
 /** The row stays pressed while its chat builds offscreen, so the hand sees the tap land; cleared when the chat arrives. */
 function holdPressed(el: HTMLElement) {
@@ -53,8 +54,8 @@ function sameEntry(a: Entry, b: Entry): boolean {
   return a.group === other.group && a.members.length === other.members.length && a.members.every((member, i) => member === other.members[i]);
 }
 
-const BAR_TOP = "calc(var(--m-safe-top) + 6px)";
-const LIST_TOP = "calc(var(--m-safe-top) + 64px)";
+const BAR_TOP = "var(--m-safe-top)";
+const LIST_TOP = "calc(var(--m-safe-top) + 58px)";
 
 function lastAt(owner: Bot | Group): number {
   return lastPreviewable(sidebarPreviewMessages(owner))?.at ?? owner.tasks?.reduce((max, task) => Math.max(max, task.createdAt ?? 0), 0) ?? 0;
@@ -105,7 +106,9 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
     return { pinned: top, pinnedEntries: tiles, entries: listed };
   }, [state.bots, state.groups, state.instances]);
 
-  useListFlip(listRef, `${pinned.length}|${entries.map((entry) => entry.id).join(",")}`);
+  const { folders, loose } = useMemo(() => homeFolders(entries, (entry) => entry.kind === "bot" ? entry.bot.section : entry.group.section), [entries]);
+  const folding = useCollapsedFolders();
+  useListFlip(listRef, `${pinned.length}|${folders.map((folder) => `${folder.name}:${folding.collapsed(folder.name) ? "-" : folder.entries.map((entry) => entry.id).join(",")}`).join("|")}|${loose.map((entry) => entry.id).join(",")}`);
   // the loader hops away as the chats arrive under it; it never comes back once gone
   const [listIn, setListIn] = useState(state.hydrated === true);
   const [loaderGone, setLoaderGone] = useState(state.hydrated === true);
@@ -138,7 +141,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   const latestActions = useRef(actionsFor);
   latestActions.current = actionsFor;
   const native = useMemo(() => hold && ((entry: Entry): NativePress => ({
-    press: (el) => hold.press(el, () => heldChatMenu(entry, latestActions.current(entry))),
+    press: (el, opened) => hold.press(el, () => heldChatMenu(entry, latestActions.current(entry)), { onOpen: opened }),
     cancel: () => hold.cancel(),
   })), [hold]);
 
@@ -169,7 +172,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
               <div ref={reveal}>
                 {pinned.length > 0 && (
                   <section aria-labelledby="home-pinned" data-no-swipe>
-                  <h2 id="home-pinned" className="px-5 pb-1 text-[13px] font-semibold text-ink-secondary">{t("sidebar.section.pinned")}</h2>
+                  <h2 id="home-pinned" className="px-5 pb-1 text-[15px] text-ink-secondary">{t("sidebar.section.pinned")}</h2>
                   <div className="no-scrollbar flex gap-3 overflow-x-auto px-3 pb-2 pt-1">
                     {pinnedEntries.map((entry) => (
                       <PinnedTile key={entry.id} entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
@@ -179,14 +182,38 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
                 )}
                 {entries.length > 0 ? (
                   <>
-                  {pinned.length > 0 && <h2 className="px-5 pb-1 pt-3 text-[13px] font-semibold text-ink-secondary">{t("mobile.home.chats")}</h2>}
-                  <ul role="list" aria-label={t("mobile.home.chats")} className="px-2">
-                    {entries.map((entry) => (
-                      <li key={entry.id} data-flip-key={entry.id}>
-                        <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
-                      </li>
-                    ))}
-                  </ul>
+                  {folders.map((folder) => {
+                    const open = !folding.collapsed(folder.name);
+                    return (
+                      <section key={`folder:${folder.name}`} data-home-folder={folder.name}>
+                        <button type="button" aria-expanded={open} onClick={() => folding.toggle(folder.name)}
+                          className="flex min-h-11 w-full items-center gap-1.5 px-5 pt-2 text-left text-[15px] text-ink-secondary">
+                          <span className="min-w-0 truncate">{folder.name}</span>
+                          <ChevronDown aria-hidden size={14} className={cn("shrink-0 transition-transform duration-150 ease-[ease] motion-reduce:transition-none", !open && "-rotate-90")} />
+                          {!open && folder.unread > 0 && <span className="ms-auto rounded-full bg-ink px-2 text-[12px] leading-5 text-app">{t("mobile.home.folderUnread", { count: folder.unread })}</span>}
+                        </button>
+                        {open && (
+                          <ul role="list" aria-label={folder.name} className="px-2">
+                            {folder.entries.map((entry) => (
+                              <li key={entry.id} data-flip-key={entry.id}>
+                                <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </section>
+                    );
+                  })}
+                  {loose.length > 0 && (pinned.length > 0 || folders.length > 0) && <h2 className="px-5 pb-1 pt-3 text-[15px] text-ink-secondary">{t("mobile.home.chats")}</h2>}
+                  {loose.length > 0 && (
+                    <ul role="list" aria-label={t("mobile.home.chats")} className="px-2">
+                      {loose.map((entry) => (
+                        <li key={entry.id} data-flip-key={entry.id}>
+                          <HomeRow entry={entry} onOpen={onOpenChat} onMenu={openMenu} native={native} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   </>
                 ) : (
                   <div className="mx-4 mt-4 flex flex-col items-start gap-3 rounded-[20px] bg-ink/[0.04] px-5 py-5">
@@ -207,7 +234,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         </div>
       )}
       <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-0 z-[5] h-[calc(var(--m-safe-top)+72px)] bg-gradient-to-b from-app from-60% to-transparent transition-opacity duration-150", scrolled ? "opacity-100" : "opacity-0")} />
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-3" style={{ paddingTop: BAR_TOP }}>
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-4" style={{ paddingTop: BAR_TOP }}>
         <RoundButton floating label={t("mobile.home.you")} onClick={() => onOpenSheet({ kind: "settings" })} className="pointer-events-auto overflow-visible">
           {face
             ? <UserFace account={face} size={40} className="size-full" />
@@ -309,21 +336,21 @@ function RowFace({ entry }: { entry: Entry }) {
   const name = entry.kind === "bot" ? entry.bot.name : entry.group.name;
   const working = entry.kind === "bot" ? Boolean(entry.bot.busy) : Boolean(entry.group.working);
   const avatar: ReactNode = entry.kind === "bot"
-    ? <BotAvatar bot={entry.bot} size={52} state={working ? "working" : stateForBot(entry.bot) === "failed" ? "failed" : "idle"} animated={working} label="" />
-    : <GroupAvatar members={entry.members} size={52} />;
+    ? <BotAvatar bot={entry.bot} size={48} state={working ? "working" : stateForBot(entry.bot) === "failed" ? "failed" : "idle"} animated={working} label="" />
+    : <GroupAvatar members={entry.members} size={48} />;
   return (
-    <span className="flex min-h-[76px] items-center gap-3.5 px-2.5 py-3">
+    <span className="flex min-h-[80px] items-center gap-3.5 px-3 py-3">
       <span className="shrink-0">{avatar}</span>
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-[16px] font-semibold leading-5 text-ink">{name}</span>
-          {entry.at > 0 && <span className={cn("shrink-0 text-[13px] tabular-nums leading-5", entry.unread ? "font-semibold text-ink" : "text-ink-secondary")}>{listTime(entry.at)}</span>}
+          <span className={cn("min-w-0 flex-1 truncate text-[17px] leading-[22px] text-ink", entry.unread ? "font-semibold" : "font-normal")}>{name}</span>
+          {entry.at > 0 && <span className={cn("shrink-0 text-[13px] tabular-nums leading-[22px]", entry.unread ? "font-semibold text-ink" : "text-ink-tertiary")}>{listTime(entry.at)}</span>}
           {entry.unread && <span aria-hidden className="size-2.5 shrink-0 self-center rounded-full bg-ink" />}
         </span>
         <span className="mt-0.5 flex items-center gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-[14px] leading-5", entry.unread ? "text-ink" : "text-ink-secondary")}>
+          <span className={cn("min-w-0 flex-1 truncate text-[15px] leading-5", entry.unread ? "text-ink" : "text-ink-secondary")}>
             {entry.kind === "bot" && working && !entry.bot.waitingForTeammates && entry.bot.activity !== "waiting-on-you"
-              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} mascot={20} />
+              ? <SidebarWorkingWord bot={entry.bot} last={lastPreviewable(sidebarPreviewMessages(entry.bot))} />
               : entry.preview || " "}
           </span>
         </span>

@@ -230,6 +230,13 @@
   font-weight: 400;
   letter-spacing: 0.15px;
 }
+/* a streaming reply's blocks render apart (LiveReplyBubble), spaced as the one landed message will space them */
+[data-chat-bubble="simple"] [data-live-blocks] > .chat-md + .chat-md {
+  margin-top: 10px;
+}
+[data-chat-bubble="simple"] [data-live-blocks] > .chat-md + .chat-md:has(> [data-md-h]:first-child:not([data-md-h="1"])) {
+  margin-top: 18px;
+}
 /* a code block and a rule keep the 10px every block has from the one before */
 [data-chat-bubble="simple"] .chat-md > * + :is(.chat-code-block, hr) {
   margin-top: 10px;

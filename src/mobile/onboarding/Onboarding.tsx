@@ -168,6 +168,13 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     if (state === "granted") await new Promise((resolve) => setTimeout(resolve, 450));
     go(state === "granted" ? "scan" : "denied");
   };
+  // the phone holds one account: another one is reached by leaving this one, with the email field empty
+  const otherAccount = async () => {
+    await account?.signOut();
+    setSignInEmail("");
+    setNoClouds(false);
+    go("signin");
+  };
   const paste = async () => {
     const text = await platform.readClipboard?.();
     if (text) setValue(text.trim());
@@ -231,10 +238,11 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
               {noClouds && <button type="button" className={TONAL} onClick={() => void openScanner()}><QrCode size={20} />{t("mobile.entry.scan")}</button>}
               {noClouds && <button type="button" className={TONAL} onClick={() => go("code")}><Keyboard size={20} />{t("mobile.entry.code")}</button>}
               {!noClouds && <button type="button" disabled={busy} className={QUIET} onClick={() => go("welcome")}>{t("mobile.entry.otherWays")}</button>}
+              {signedIn && <button type="button" data-entry="other-account" disabled={busy} className={QUIET} onClick={() => void otherAccount()}>{t("mobile.clouds.otherAccount")}</button>}
             </>}>
               <h1 className={HEADLINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneTitleStore" : "mobile.clouds.noneTitle" : "mobile.clouds.pickTitle")}</h1>
               <p className={LINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneStore" : "mobile.clouds.none" : "mobile.clouds.pickBody", { email: account?.account?.email ?? "" })}</p>
-              <CloudPicker busy={busy} autoPick onNone={() => setNoClouds(true)} onPairing={(payload) => redeem(payload, "clouds")} />
+              <CloudPicker busy={busy} autoPick={!startAtLink} onNone={() => setNoClouds(true)} onPairing={(payload) => redeem(payload, "clouds")} />
               {failure && <Failed failure={failure} />}
             </Screen>
           </StepPane>

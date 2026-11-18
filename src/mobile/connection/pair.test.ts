@@ -230,6 +230,24 @@ describe("v2 pairing", () => {
     expect(channel.close).toHaveBeenCalledOnce();
   });
 
+  it("asks the relay once more when the desktop answered before its device channel was open, so the phone can reach it off wi-fi", async () => {
+    const late = { ...v2Answer(), relay: undefined };
+    const channel = { request: vi.fn().mockResolvedValueOnce(response(late)).mockResolvedValueOnce(response(v2Answer())), close: vi.fn() };
+    vi.spyOn(relay, "open").mockReturnValue(channel);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const { record, token } = await redeemPairing(pairingFromPayload(v2Payload()), fakePlatform().platform);
+    expect(record.relay).toEqual(v2Answer().relay);
+    expect(token).toBe("dusk_sess_test");
+    expect(channel.request).toHaveBeenCalledTimes(2);
+    expect(channel.request.mock.calls[1][3]).toEqual(channel.request.mock.calls[0][3]);
+
+    const stillLate = { request: vi.fn().mockResolvedValueOnce(response(late)).mockRejectedValueOnce(new TypeError("dropped")), close: vi.fn() };
+    vi.spyOn(relay, "open").mockReturnValue(stillLate);
+    const kept = await redeemPairing(pairingFromPayload(v2Payload()), fakePlatform().platform);
+    expect(kept.record).toMatchObject({ transport: "relay", deviceId: "device-1", relay: { base: grantRoute.base, channel: grantRoute.channel } });
+    expect(stillLate.close).toHaveBeenCalledOnce();
+  });
+
   it("stops on the first HTTP answer, including a refusal", async () => {
     const opened = vi.spyOn(relay, "open");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 401)));
