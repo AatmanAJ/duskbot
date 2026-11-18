@@ -58,7 +58,7 @@ import { FailedReplyCard, FoldedNoticesContext, foldedNoticeIds, useTrailingRows
 import { RoomContextWarnings } from "./ContextWarning";
 import { ChatFindBar } from "./ChatFindBar";
 import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "../../shared/system-message-guard.ts";
-import { ReplyQuote } from "./ReplyQuote";
+import { QuotedText, ReplyQuote } from "./ReplyQuote";
 import { ConnectorCard } from "./ConnectorCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { SignInRequestCard } from "./SignInRequestCard";
@@ -236,6 +236,7 @@ function RoomTextMessage({
                 ? cn("chat-text whitespace-pre-wrap [overflow-wrap:anywhere] text-ink", SIMPLE_USER_BUBBLE)
                 : SIMPLE_BOT_BUBBLE,
           )}
+          data-quotable={user ? undefined : ""}
           data-sending={user && m.id.startsWith("optimistic-") ? t("chat.sending") : undefined}
         >
           {m.replyToId && (() => {
@@ -257,7 +258,7 @@ function RoomTextMessage({
             <>
               {attachments && !mediaRow && <AttachmentGallery media={m.media} images={attachments.images} files={attachments.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} className={!attachments.display ? "mb-0" : undefined} />}
               <div className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}>
-                <ThreadRefText text={display} peers={peers} everyone={!group.dm} />
+                <QuotedText text={display} render={(rest) => <ThreadRefText text={rest} peers={peers} everyone={!group.dm} />} />
               </div>{m.bugReport && <BugReportNote report={m.bugReport} />}
               {m.via === "api" && (
                 <div className="mt-1 text-[11px] text-ink-tertiary">{t("chat.viaBotApi")}</div>

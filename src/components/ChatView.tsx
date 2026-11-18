@@ -93,7 +93,7 @@ import { CARD_ACTION, ChatErrorBanner, ChatErrorCard, ChatNotice } from "./ChatE
 import { ThreadContextWarning } from "./ContextWarning";
 import { UsageAlert, useLimitResetContinue } from "./EngineUsage";
 import { ChatFindBar } from "./ChatFindBar";
-import { ReplyQuote } from "./ReplyQuote";
+import { QuotedText, ReplyQuote } from "./ReplyQuote";
 import { ConnectorCard } from "./ConnectorCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { SignInRequestCard } from "./SignInRequestCard";
@@ -492,6 +492,7 @@ const Bubble = memo(function Bubble({
             join && !split && !attachmentsOnly && !tabled && !mediaSplit && joinedCorners(user ? "end" : "start", join),
           )}
           data-emoji-only={bigEmoji ? "" : undefined}
+          data-quotable={user ? undefined : ""}
           data-sending={user && message.id.startsWith("optimistic-") ? t("chat.sending") : undefined}
           style={user && !webhookView && !attachmentsOnly && !bigEmoji ? ownBubbleStyle : undefined}
           data-reacted={reactionsOnBubble ? "" : undefined}
@@ -531,7 +532,7 @@ const Bubble = memo(function Bubble({
               {attachments && !imagesAbove && <AttachmentGallery media={message.media} images={attachments.images} files={attachments.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} align="end" className={!visibleText ? "mb-0" : undefined} />}
               {visibleText && (
                 <div className={cn("chat-text", collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}>
-                  <ThreadRefText text={visibleText} peers={mentionPeers} />
+                  <QuotedText text={visibleText} render={(rest) => <ThreadRefText text={rest} peers={mentionPeers} />} />
                 </div>
               )}
               {message.quickModel && <QuickModelNote model={message.quickModel} />}

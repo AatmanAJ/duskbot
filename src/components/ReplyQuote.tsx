@@ -1,8 +1,11 @@
-import { Reply, X } from "../icons";
+import type { ReactNode } from "react";
+
+import { Reply, TextQuote, X } from "../icons";
 
 import { cn } from "@/lib/cn";
 import { peerLine } from "@/lib/peer-message";
 import { replyAuthor, replySnippet } from "@/lib/replies";
+import { splitSelectionQuote } from "@/lib/selection-quote";
 import { t } from "@/lib/i18n";
 import type { Message } from "@/state/store";
 
@@ -82,6 +85,46 @@ export function ComposerReplyStrip({
           <X size={14} strokeWidth={1.5} aria-hidden="true" />
         </button>
       )}
+    </div>
+  );
+}
+
+export function ComposerSelectionQuote({ quote, onClear }: { quote: string; onClear: () => void }) {
+  return (
+    <div
+      role="group"
+      aria-label={t("chat.selection.quoted")}
+      data-composer-selection-quote=""
+      className="mb-1 flex min-w-0 items-start gap-2 rounded-2xl bg-ink/[0.06] py-1.5 ps-3 pe-1.5 text-[13px] leading-5 text-ink-secondary"
+    >
+      <TextQuote size={15} strokeWidth={1.5} aria-hidden="true" className="mt-0.5 shrink-0" />
+      <span dir="auto" className="line-clamp-3 min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{quote}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={t("chat.selection.remove")}
+        title={t("chat.selection.remove")}
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-ink-tertiary hover:bg-ink/10 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+      >
+        <X size={14} strokeWidth={1.5} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+export function QuotedText({ text, render }: { text: string; render: (rest: string) => ReactNode }) {
+  const split = splitSelectionQuote(text);
+  if (!split) return <>{render(text)}</>;
+  return <><SentSelectionQuote quote={split.quote} />{split.rest && render(split.rest)}</>;
+}
+
+/** The quoted words at the top of a sent message, tinted from the bubble's own text colour so it reads on any bubble. */
+export function SentSelectionQuote({ quote }: { quote: string }) {
+  return (
+    <div data-sent-selection-quote="" className="mb-1.5 flex min-w-0 items-start gap-1.5 rounded-xl bg-[color-mix(in_srgb,currentColor_10%,transparent)] px-2.5 py-1 text-[13px] leading-5 opacity-80">
+      <TextQuote size={14} strokeWidth={1.5} aria-hidden="true" className="mt-[3px] shrink-0" />
+      <span className="sr-only">{t("chat.selection.quoted")}: </span>
+      <span dir="auto" className="line-clamp-4 min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{quote}</span>
     </div>
   );
 }
