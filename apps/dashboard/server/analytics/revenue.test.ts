@@ -27,10 +27,29 @@ describe("revenue", () => {
       sub("acct_paid_cancel", 2000, { cancelAtPeriodEnd: true }),
     ];
     expect(TRIAL_CONVERSION).toBe(0.7);
-    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800 + 2000, expected: 7000 + Math.round(14900 * 0.7), conversion: 0.7 });
+    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800 + 2000, expected: 17400, conversion: 0.7 });
     // once the trials run out they count as paying in full; anything set to cancel is gone, paying or not
     expect(mrrForecastAt(subs.filter(row => row.status === "active"), trialEnd, trialEnd).expected).toBe(7000 + 14900);
     expect(mrrForecastAt(subs, now, now, 1).expected).toBe(7000 + 14900);
+  });
+
+  it("counts an ended subscription only before it ended, so a window ending a moment ago is not inflated by gone trials", () => {
+    const sub = (accountId: string, totalCents: number, extra: Partial<SubscriptionLike> = {}): SubscriptionLike =>
+      ({ accountId, status: "active", totalCents, createdAt: T, currentPeriodStart: T, cart: { interval: "month" }, trialEndsAt: T + 3 * DAY, ...extra });
+    const now = T + DAY;
+    const subs = [sub("acct_paid", 2000, { trialEndsAt: undefined }), sub("acct_trial", 5000), sub("acct_gone", 5000, { status: "ended", updatedAt: T + DAY / 2 })];
+    expect(mrrForecastAt(subs, now - 60_000, now).expected).toBe(2000 + 3500);
+    expect(mrrForecastAt(subs, T + DAY / 4, now).expected).toBe(2000 + 7000);
+    expect(mrrForecastAt([sub("acct_odd", 1234, { trialEndsAt: undefined })], now, now).expected).toBe(1200);
+  });
+
+  it("charts expected mrr per bucket, the last one at the window's end, and none when filtered", () => {
+    const sub = (accountId: string, createdAt: number): SubscriptionLike => ({ accountId, status: "active", totalCents: 2000, createdAt, currentPeriodStart: createdAt, cart: { interval: "month" } });
+    const input = { payments: [], subscriptions: [sub("acct_a", T + DAY / 2), sub("acct_b", T + 2 * DAY + 1)], visits: [], identity: identityOf([]), accounts: new Map(), from: T, to: T + 3 * DAY - 1000, now: T + 3 * DAY, filters: {} };
+    const report = revenueReport(input);
+    expect(report.series.mrr).toEqual([2000, 2000, 4000]);
+    expect(report.current.mrr).toBe(4000);
+    expect(revenueReport({ ...input, filters: { country: "DE" } }).series.mrr).toBeNull();
   });
 
   it("splits new, renewal, one-time and refunds, with the refund on its webhook's day", () => {

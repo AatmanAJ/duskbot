@@ -4,7 +4,7 @@ import { refundBeforeTax, taxIn } from "./subscriptions.ts";
 import { DIMENSIONS, bucketsOf, matches, valuesOf, type Dimension, type Filters, type Identity, type Visit } from "./web.ts";
 
 export interface InvoiceLike { id: string; accountId: string; providerPaymentId: string; subscriptionId: string | null; amountCents: number; taxCents?: number; currency: string; status: "paid" | "failed" | "refunded"; createdAt: number }
-export interface SubscriptionLike { accountId: string; status: string; totalCents: number; createdAt: number; currentPeriodStart: number | null; cart: { interval: string }; trialEndsAt?: number; cancelAtPeriodEnd?: boolean }
+export interface SubscriptionLike { accountId: string; status: string; totalCents: number; createdAt: number; currentPeriodStart: number | null; cart: { interval: string }; trialEndsAt?: number; cancelAtPeriodEnd?: boolean; updatedAt?: number }
 export interface BillingLike {
   invoices: readonly InvoiceLike[];
   subscriptions: readonly SubscriptionLike[];
@@ -50,13 +50,15 @@ export function paymentsOf(state: BillingLike): Payment[] {
 const monthly = (sub: SubscriptionLike) => sub.cart.interval === "year" ? Math.round(sub.totalCents / 12) : sub.totalCents;
 const PAYING = new Set(["active", "payment_problem", "cancelled"]);
 /** monthly recurring revenue: today it is every paying subscription; at an earlier moment, those already paid by then
- * that are still paying or ended later (an approximation: the records keep no status history) */
+ * that are still paying or ended after it (an ended row's last update is its end; the records keep no other status history) */
 const countedAt = (subs: readonly SubscriptionLike[], at: number, now: number) =>
-  subs.filter(sub => sub.currentPeriodStart !== null || PAYING.has(sub.status)).filter(sub => sub.createdAt < at && (at >= now ? PAYING.has(sub.status) : PAYING.has(sub.status) || sub.status === "ended"));
+  subs.filter(sub => sub.currentPeriodStart !== null || PAYING.has(sub.status)).filter(sub => sub.createdAt < at
+    && (PAYING.has(sub.status) || (at < now && sub.status === "ended" && (sub.updatedAt === undefined || sub.updatedAt > at))));
 
 /** the share of free trials not set to cancel that the overview expects to start paying */
 export const TRIAL_CONVERSION = 0.7;
-/** `full` counts every trial at its price; `expected` drops anything set to cancel, then counts `conversion` of the trials left */
+/** `full` counts every trial at its price; `expected` drops anything set to cancel, then counts `conversion` of the trials left,
+ *  in whole dollars */
 export interface MrrForecast { expected: number; paying: number; trials: number; full: number; conversion: number }
 export function mrrForecastAt(subs: readonly SubscriptionLike[], at: number, now: number, conversion = TRIAL_CONVERSION): MrrForecast {
   let paying = 0, trials = 0, full = 0;
@@ -67,7 +69,7 @@ export function mrrForecastAt(subs: readonly SubscriptionLike[], at: number, now
     if (sub.trialEndsAt === undefined || at >= sub.trialEndsAt) paying += value;
     else trials += value;
   }
-  return { expected: paying + Math.round(trials * conversion), paying, trials, full, conversion };
+  return { expected: Math.round((paying + trials * conversion) / 100) * 100, paying, trials, full, conversion };
 }
 
 export interface Touch { first: Visit | null; last: Visit | null }
@@ -134,7 +136,8 @@ export function revenueReport(input: RevenueInput) {
   };
 
   const { size, starts } = bucketsOf(from, to);
-  const series = { new: starts.map(() => 0), renewal: starts.map(() => 0), refund: starts.map(() => 0) };
+  const mrr = filtered ? null : starts.map(start => mrrForecastAt(input.subscriptions, Math.min(start + size, to, input.now), input.now).expected);
+  const series = { new: starts.map(() => 0), renewal: starts.map(() => 0), refund: starts.map(() => 0), mrr };
   const byChannel: Record<string, number[]> = {};
   for (const payment of within(from, to)) {
     const i = Math.floor((payment.at - from) / size);
