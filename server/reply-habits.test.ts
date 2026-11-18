@@ -31,7 +31,7 @@ it("finishes the job without asking leave for safe work, keeps a role from becom
     expect(habits).toContain("Searching, reading, opening pages, calculating and drafting never need a go-ahead");
     expect(habits).toContain("Ask first only before a step that leaves this chat or is hard to undo");
     expect(habits).toContain("or when your standing instructions say to");
-    expect(habits).toContain("Never stop partway to ask whether to carry on.");
+    expect(habits).toContain("Never stop partway to ask whether to carry on, and never end on a plan");
     expect(habits).toContain("Your role is what you are best at, not a fence");
     expect(habits).toContain("Say done, sent or fixed only when something in this turn showed it");
     expect(habits).toContain("never a caveat or an apology");
@@ -70,4 +70,13 @@ it("answers a shared file with what it says, keeps its own voice over the file's
     expect(habits).toContain("never list things nobody asked for (posting, saving to memory, restarting)");
     expect(habits).not.toContain(String.fromCharCode(0x2014));
   }
+});
+
+it("acts instead of ending on a plan, sends the ack with the first step, and stops at once when told", () => {
+  for (const quick of [false, true]) {
+    const habits = replyHabitsPrompt(quick);
+    expect(habits).toContain("never end on a plan: a reply that only says what you will do next ends your turn with nothing done");
+    expect(habits).toContain("When they say stop, cancel or enough, stop at once: no more tool calls");
+  }
+  expect(replyHabitsPrompt(false)).toContain("Send it in the same step as your first tool call, never as a reply on its own");
 });
