@@ -1918,7 +1918,8 @@ body {
   --card-lift: transparent;
 }
 :root:is([data-skin="atelier"], [data-skin="lagoon"], [data-skin="linen"], [data-skin="daylight"], [data-skin="grok"], [data-skin="meadow"], [data-skin="pop"]) {
-  --chat-card: var(--color-card);
+  /* a touch lighter than the bot bubble: 70% of its tone over the page */
+  --chat-card: color-mix(in srgb, var(--color-card) 70%, var(--color-app));
   --card-ring: color-mix(in srgb, var(--color-ink) 12%, transparent);
   --card-fill: color-mix(in srgb, var(--color-ink) 6%, transparent);
   --card-code-fill: color-mix(in srgb, var(--color-ink) 4%, transparent);
