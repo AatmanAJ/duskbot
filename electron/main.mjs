@@ -28,7 +28,7 @@ import { workspaceCredentialEnv } from "./workspace-credentials.mjs";
 import { evictStartupCacheOnce } from "./startup-cache-eviction.mjs";
 import { activateExistingWindow, bringToFront, windowToReveal } from "./single-instance.mjs";
 import { createWindowPlacement } from "./window-placement.mjs";
-import { bootFailureMessage, listeningSignal, pollServerIdentity, SERVER_BOOT_TIMEOUT_MS, SERVER_LISTENING_GRACE_MS } from "./server-boot-probe.mjs";
+import { bootFailureMessage, listeningSignal, pollServerIdentity, SERVER_BOOT_TIMEOUT_MS, SERVER_LISTENING_GRACE_MS, SERVER_STARTING_GRACE_MS } from "./server-boot-probe.mjs";
 import { createServerSupervisor } from "./server-supervisor.mjs";
 import { createBrowsersFlush, installSessionEndFlush } from "./browser-flush.mjs";
 import { serverChildLaunch } from "./server-child-launch.mjs";
@@ -419,6 +419,7 @@ const includedX = createDesktopIncludedX({ account: () => cloudAccount, server: 
 const cloudPower = createCloudPowerGate({ power: () => cloudAccount?.power() ?? null, wanted: () => Boolean(cloudSync?.running()) });
 const utilityServerExits = new WeakMap();
 const UTILITY_SERVER_STOP_TIMEOUT_MS = 6_500;
+const UTILITY_SERVER_BOOT_STOP_TIMEOUT_MS = 30_000;
 const trustedApprovalMode = createTrustedApprovalModeCoordinator({ randomId: randomUUID });
 const desktopMutationToken = randomBytes(32).toString("base64url");
 const desktopLaunchId = randomUUID();
@@ -1340,10 +1341,13 @@ async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmen
     isExited: () => exited || desktopShutdownStarted,
     isListening: listening.heard,
     listeningGraceMs: SERVER_LISTENING_GRACE_MS,
+    isStarting: listening.spoke,
+    startingGraceMs: SERVER_STARTING_GRACE_MS,
   });
   if (identity.outcome === "ready" && serverSupervisor.isCurrent(proc)) return { proc };
   slog(bootFailureMessage(port, identity));
-  const stopped = await stopUtilityServer(proc);
+  // a loaded Windows PC may take longer than a quit's wait to end the child; giving up here would end every attempt
+  const stopped = await stopUtilityServer(proc, UTILITY_SERVER_BOOT_STOP_TIMEOUT_MS);
   if (!stopped) {
     slog(`child on port ${port} did not exit after termination; refusing to start a sibling server`);
   }
