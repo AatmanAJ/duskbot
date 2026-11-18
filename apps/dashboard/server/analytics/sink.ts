@@ -13,6 +13,20 @@ export const CRAWL_CAP = 200_000;
 export interface Note { id: string; at: number; text: string; by: string; createdAt: number }
 /** the most raw events one dashboard read scans; beyond it the read uses the newest ones and says so */
 export const SCAN_LIMIT = 400_000;
+/** a scan's events, oldest first; `partialBefore` is set when the read stopped at its limit: events before that time were left out */
+export type Scanned = StoredEvent[] & { partialBefore?: number };
+export const partialOf = (events: readonly StoredEvent[]): number | null => (events as Scanned).partialBefore ?? null;
+/** `out` (a filtered copy of `from`) keeps the mark of what `from` left out */
+export function keepPartial(from: readonly StoredEvent[], out: StoredEvent[]): Scanned {
+  const at = partialOf(from);
+  if (at !== null) (out as Scanned).partialBefore = at;
+  return out;
+}
+function capped(oldestFirst: StoredEvent[], hit: boolean): Scanned {
+  const out = oldestFirst as Scanned;
+  if (hit && out.length) out.partialBefore = out[0]!.at;
+  return out;
+}
 export interface EventQuery { accountId?: string; name?: string; since?: number; before?: number; limit: number }
 /** the longest one admin read may keep the database busy; past it the read fails with a clear error instead of hanging */
 export const READ_TIMEOUT_MS = 20_000;
@@ -47,7 +61,7 @@ export interface AnalyticsSink {
   health(): Promise<{ ok: boolean; detail: string; latencyMs: number | null }>;
   /** raw events in [since, until), oldest first, optionally only some names */
   /** `byTime` reads through the time index, so events of the same millisecond come in the order they were written (the rollups need one order) */
-  scan(since: number, until: number, names?: readonly string[], byTime?: boolean): Promise<StoredEvent[]>;
+  scan(since: number, until: number, names?: readonly string[], byTime?: boolean): Promise<Scanned>;
   notes(since: number, until: number): Promise<Note[]>;
   saveNote(note: Note): Promise<void>;
   deleteNote(id: string): Promise<boolean>;
@@ -91,7 +105,7 @@ export function anonymousOf(events: readonly StoredEvent[], since: number, until
 }
 
 let memorySinks = 0;
-export function memorySink(now: () => number = Date.now): AnalyticsSink & { all: StoredEvent[]; daySums: Map<string, number> } {
+export function memorySink(now: () => number = Date.now): AnalyticsSink & { all: StoredEvent[]; daySums: Map<string, number>; scanLimit: number } {
   let all: StoredEvent[] = [];
   const daySums = new Map<string, number>(), marks = new Map<string, number | null>(), audits: AuditEntry[] = [], notes = new Map<string, Note>(), crawlLog: Crawl[] = [];
   const listeners: Array<(at: number | null) => void> = [];
@@ -99,8 +113,8 @@ export function memorySink(now: () => number = Date.now): AnalyticsSink & { all:
   const match = (event: StoredEvent, q: Omit<EventQuery, "limit">) => (q.accountId === undefined || event.accountId === q.accountId) && (q.name === undefined || event.name === q.name)
     && (q.since === undefined || event.at >= q.since) && (q.before === undefined || event.at < q.before);
   const key = `memory${++memorySinks}`;
-  const sink: AnalyticsSink & { all: StoredEvent[]; daySums: Map<string, number> } = {
-    all, daySums,
+  const sink: AnalyticsSink & { all: StoredEvent[]; daySums: Map<string, number>; scanLimit: number } = {
+    all, daySums, scanLimit: SCAN_LIMIT,
     async insert(event) {
       all.push(event);
       changed(event.at);
@@ -133,7 +147,8 @@ export function memorySink(now: () => number = Date.now): AnalyticsSink & { all:
     async auditFor(targets, limit, skipActions = []) { return audits.filter(entry => entry.target !== null && targets.includes(entry.target) && !skipActions.includes(entry.action)).sort((a, b) => b.at - a.at).slice(0, limit); },
     async health() { return { ok: true, detail: "memory (fixture)", latencyMs: null }; },
     async scan(since, until, names) {
-      return all.filter(event => event.at >= since && event.at < until && (!names || names.includes(event.name))).sort((a, b) => a.at - b.at).slice(-SCAN_LIMIT);
+      const found = all.filter(event => event.at >= since && event.at < until && (!names || names.includes(event.name))).sort((a, b) => a.at - b.at);
+      return capped(found.slice(-sink.scanLimit), found.length > sink.scanLimit);
     },
     async notes(since, until) { return [...notes.values()].filter(note => note.at >= since && note.at < until).sort((a, b) => a.at - b.at); },
     async saveNote(note) { notes.set(note.id, note); },
@@ -288,9 +303,10 @@ function sinkOf(db: Db, key: string): AnalyticsSink {
     },
     async scan(since, until, names, byTime) {
       const filter = { at: { $gte: new Date(since), $lt: new Date(until) }, ...(names ? { name: { $in: [...names] } } : {}) };
-      const query = events.find(filter).sort({ at: -1 }).limit(SCAN_LIMIT).maxTimeMS(READ_TIMEOUT_MS);
+      const query = events.find(filter).sort({ at: -1 }).limit(SCAN_LIMIT + 1).maxTimeMS(READ_TIMEOUT_MS);
       const docs = await (byTime ? query.hint({ at: 1 }) : query).toArray();
-      return docs.reverse().map(toEvent);
+      const hit = docs.length > SCAN_LIMIT;
+      return capped(docs.slice(0, SCAN_LIMIT).reverse().map(toEvent), hit);
     },
     async notes(since, until) {
       return (await notes.find({ at: { $gte: new Date(since), $lt: new Date(until) } }).sort({ at: 1 }).toArray())

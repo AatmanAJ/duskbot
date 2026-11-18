@@ -93,7 +93,7 @@ export function useAdmin<T>(path: string | null, refreshMs?: number) {
 export interface FunnelStep { id: string; label: string; count: number; total: number }
 export interface Overview {
   now: number; days: number; range: string[];
-  totals: { accounts: number; newAccounts: number; activeToday: number; wau: number; mau: number; appWau: number; paying: number; waitlist: number | null; clouds: number; devices: number };
+  totals: { accounts: number; newAccounts: number; activeToday: number; untracked: number | null; wau: number; mau: number; appWau: number; paying: number; waitlist: number | null; clouds: number; devices: number };
   series: { signups: number[]; waitlist: number[]; active: number[]; visitors: number[]; views: number[]; apps: number[] };
   funnel: FunnelStep[];
   clouds: Array<{ state: string; count: number }>;

@@ -3,13 +3,13 @@ import { cancelFlowSummary } from "../analytics/cancel-flow.ts";
 import type { createAuth } from "../auth/index.ts";
 import type { createBilling } from "../billing/index.ts";
 import type { Analytics } from "../analytics/index.ts";
-import type { StoredEvent } from "../analytics/sink.ts";
+import { keepPartial, type StoredEvent } from "../analytics/sink.ts";
 import type { StoredWorkspace } from "../store.ts";
 import { DAY, DIMENSIONS, ONLINE_MS, SURFACES, breakdownTally, feed, funnel, identityOf, kpisTally, matches, online, retention, seriesTally, valuesOf, visitsFromPaced, visitsOf, type Dimension, type FunnelFacts, type Filters, type People, type Visit } from "../analytics/web.ts";
 import { BILLING_EVENTS, QUARTER, accountsDigest, appDigest, appDigestOf, appReport, seenDigest, upsellsDigest, visitsDigest, type AccountsDigest, type UpsellsDigest } from "../analytics/digests.ts";
 import { pacer, type Digest } from "../analytics/rollup.ts";
 import { choseCloud, wasPaid, workspaceTurns } from "./metrics.ts";
-import { productDigest, productReportOf } from "./product.ts";
+import { accountOfWho, productDigest, productReportOf, resolvePeople } from "./product.ts";
 import { paymentsOf, revenueReport } from "../analytics/revenue.ts";
 import { aligned, firstSeenOf, newVsReturningTally, peakHoursTally } from "../analytics/insights.ts";
 import { billingSteps, firstSourceOf, sessionsOf, spendOf, timeToPayOf, whereOf } from "../analytics/profile.ts";
@@ -83,7 +83,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     const events = await analytics.sink.scan(since, until, names);
     if (names && !names.includes("billing") && !names.includes("checkout_paid")) return events;
     const ops = opsEventOf(billing.store.state);
-    return events.filter(event => !ops(event));
+    return keepPartial(events, events.filter(event => !ops(event)));
   } };
   /** the money records the owner sees: with a real provider, the fake provider's checkouts (fake_ sessions) and fixture
    * ledger rows are never real money, whatever put them in the store */
@@ -377,7 +377,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     const [{ sessions, identity, identifies, people: p, facts }, digest] = await Promise.all([load(from, true), digestOf(productDigest, from, Math.min(to, now() + 60_000))]);
     const flow = funnel({ from, to, now: now(), mode: "visitors", visits: await visitsFromPaced(sessions, ["site"], pacer()), identity, facts: await funnelFactsOf(facts!, identifies, null), people: p,
       cloudChosen: p.cloudChosen, paired: p.paired, replied: p.replied });
-    return productReportOf(digest, from, to, flow.steps);
+    return productReportOf(resolvePeople(digest, accountOfWho(identity)), from, to, flow.steps);
   }
 
   const planLabel = (id: string) => BILLING_CONFIG.bundles.find(bundle => bundle.id === id)?.label.toLowerCase() ?? (id === "custom" ? "custom" : id.replace(/_/g, " "));

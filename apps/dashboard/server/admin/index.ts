@@ -10,11 +10,11 @@ import type { Analytics } from "../analytics/index.ts";
 import type { Usage } from "../analytics/usage.ts";
 import { summarize as summarizeUsage, type AdoptionInput } from "../analytics/usage-summary.ts";
 import { moreFocus, moreOf } from "../analytics/usage-more.ts";
-import { FEEDBACK_KINDS, feedbackAnswer } from "../analytics/feedback.ts";
+import { FEEDBACK_KINDS, allRecords, feedbackAnswer } from "../analytics/feedback.ts";
 /** the app and account events the deeper usage questions read */
 const MORE_EVENTS = ["app_action", "app_open", "app_close", "app_error", "app_feature", "onboarding_step", "onboarding_done", "page_view", "site_view", "cloud_state"] as const;
 import { EVENTS, EVENT_NAMES, isEventName } from "../analytics/events.ts";
-import type { AnalyticsSink, StoredEvent } from "../analytics/sink.ts";
+import { keepPartial, partialOf, type AnalyticsSink, type StoredEvent } from "../analytics/sink.ts";
 import type { LiveData } from "./live.ts";
 import { brevoChecker, waitlistCsv, type WaitlistSource } from "./waitlist.ts";
 import { healthTargets, newestBackup, probe, spoolCount, type ErrorCounter } from "./health.ts";
@@ -31,7 +31,7 @@ import type { OpsAccountsAnswer, OpsAccountsRange, OpsRelayCard } from "../../sr
 import { isTestEvent, isTestInstall, testAccountIds, testBuyerIds, withoutAccounts, withoutBilling } from "./test-accounts.ts";
 import { moneyIn, moneyViewOf, withoutOps, type MoneyView } from "./money-mode.ts";
 import { ReadUnavailable, createReadCache } from "./read-cache.ts";
-import { V2Error, overviewV2, paymentsV2, peopleV2, personV2, type V2Source } from "./v2.ts";
+import { SITE_VISIT_EVENTS, V2Error, overviewV2, paymentsV2, peopleV2, personV2, type V2Source } from "./v2.ts";
 import type { Money } from "./payments.ts";
 import { ADMIN_ROLES, type Account, type AdminRole } from "../auth/store.ts";
 import { forGrowth, growthMay, growthUrl, type PanelRole } from "./roles.ts";
@@ -120,7 +120,7 @@ export function createAdmin(options: AdminOptions) {
     const hidden = () => new Set([...testAccountIds(view.directory().accounts, reviewEmail), ...testBuyerIds(view.store().checkouts, reviewEmail)]);
     const directory = () => withoutAccounts(view.directory(), hidden());
     const store = () => withoutBilling(view.store(), hidden());
-    const sink: AnalyticsSink = { ...view.sink, scan: async (since, until, names) => { const ids = hidden(); return (await view.sink.scan(since, until, names)).filter(event => !isTestEvent(event, ids)); },
+    const sink: AnalyticsSink = { ...view.sink, scan: async (since, until, names) => { const ids = hidden(), all = await view.sink.scan(since, until, names); return keepPartial(all, all.filter(event => !isTestEvent(event, ids))); },
       // the rollups read the unfiltered events and drop the same ones, keyed apart from the unfiltered view's
       rollupScope: () => {
         const base = view.sink.rollupScope?.();
@@ -282,7 +282,7 @@ export function createAdmin(options: AdminOptions) {
     const store = options.usage.store;
     const [daily, previousDaily, people, previousPeople, snapshots, frustrations, digests, recentPeople, signals, spans, events] = await Promise.all([
       store.daily(days[0]!, days.at(-1)!), store.daily(previousDays[0]!, previousDays.at(-1)!), store.people(days[0]!, days.at(-1)!),
-      store.people(previousDays[0]!, previousDays.at(-1)!), store.snapshots(), store.records("frustration", start, end, 500), store.records("digest", start, end, 500),
+      store.people(previousDays[0]!, previousDays.at(-1)!), store.snapshots(), allRecords(store, "frustration", start, end).then(read => read.rows), allRecords(store, "digest", start, end).then(read => read.rows),
       store.people(dayKey(now() - 90 * DAY), dayKey(now())), store.records("signal", start, end, 50_000), store.routines(),
       v.sink.scan(start, end, MORE_EVENTS),
     ]).then(([daily, previousDaily, ...rows]) => {
@@ -300,7 +300,7 @@ export function createAdmin(options: AdminOptions) {
       billing: { checkouts: billingState.checkouts, subscriptions: billingState.subscriptions, feedback: billingState.feedback ?? [] },
       accounts: v.directory().accounts, from: start, to: end, now: now(), wake: wakeOf() });
     const focus = [...answer.focus, ...moreFocus(more)].sort((a, b) => b.weight - a.weight).slice(0, 5);
-    return { ...answer, focus, more };
+    return { ...answer, focus, more, partialBefore: partialOf(events) };
   }
   /** the slack edge's measured wakes: the kind with the most samples stands for all */
   function wakeOf() {
@@ -332,18 +332,21 @@ export function createAdmin(options: AdminOptions) {
   async function overview(days: number, v: View) {
     const time = now(), range = dayRange(time, days), since = Date.parse(`${range[0]}T00:00:00Z`);
     const { accounts, sessions } = v.directory();
-    const [daily, waitlistDays, waitlistCount, wau, mau, marked, appWau] = await Promise.all([
+    const today = Date.parse(`${range.at(-1)}T00:00:00Z`);
+    const [daily, waitlistDays, waitlistCount, wau, mau, marked, appWau, activeNow, siteVisitors] = await Promise.all([
       v.sink.daily(["active_accounts", "site_visitors", "site_view", "app_active"], range[0]!, range.at(-1)!),
       v.waitlist?.byDay(since).catch(() => []) ?? Promise.resolve([]),
       v.waitlist?.count().catch(() => null) ?? Promise.resolve(null),
       v.sink.accounts(ACTIVE_NAMES, time - 7 * DAY), v.sink.accounts(ACTIVE_NAMES, time - 30 * DAY),
       Promise.all(["onboarding_done", "app_paired", "first_bot_reply", "plan_chosen"].map(name => v.sink.accounts([name], since))),
-      v.sink.accounts(APP_NAMES, time - 7 * DAY),
+      v.sink.accounts(APP_NAMES, time - 7 * DAY), v.sink.accounts(ACTIVE_NAMES, today),
+      v.sink.visitorCount(since, time + 60_000, SITE_VISIT_EVENTS),
     ]);
     const hidden = v.hidden(), kept = (ids: Set<string>) => hidden.size ? new Set([...ids].filter(id => !hidden.has(id))) : ids;
     const [wauKept, mauKept, markedKept, appWauKept] = [kept(wau), kept(mau), marked.map(kept), kept(appWau)];
+    const activeToday = kept(new Set([...activeNow, ...sessions.filter(session => session.lastSeenAt >= today).map(session => session.accountId)])).size;
+    const untracked = v.live ? null : accounts.filter(account => analytics.optedOut(account.id)).length;
     const series = (name: string) => perDay(range, daily.filter(row => row.name === name));
-    const seenToday = new Set(sessions.filter(session => session.lastSeenAt >= Date.parse(`${range.at(-1)}T00:00:00Z`)).map(session => session.accountId));
     const activeSeries = series("active_accounts");
     const clouds = v.clouds();
     const byState = new Map<string, number>();
@@ -354,7 +357,7 @@ export function createAdmin(options: AdminOptions) {
       now: time, days, range, data: v.live ? live!.label : "own",
       totals: {
         accounts: accounts.length, newAccounts: accounts.filter(account => account.createdAt >= since).length,
-        activeToday: Math.max(activeSeries.at(-1) ?? 0, seenToday.size), wau: wauKept.size, mau: mauKept.size, appWau: appWauKept.size,
+        activeToday, untracked, wau: wauKept.size, mau: mauKept.size, appWau: appWauKept.size,
         paying: new Set(v.store().subscriptions.filter(isPaying).map(sub => sub.accountId)).size,
         waitlist: waitlistCount, clouds: [...byState].reduce((sum, [state, count]) => state === "destroyed" ? sum : sum + count, 0),
         devices: sessions.filter(session => session.kind !== "web").length,
@@ -363,7 +366,7 @@ export function createAdmin(options: AdminOptions) {
         signups: perDay(range, accounts.map(account => ({ day: dayKey(account.createdAt), count: 1 }))),
         waitlist: perDay(range, waitlistDays), active: activeSeries, visitors: series("site_visitors"), views: series("site_view"), apps: series("app_active"),
       },
-      funnel: funnel({ since, siteVisitors: series("site_visitors").reduce((a, b) => a + b, 0), accounts, checkouts: v.store().checkouts, subscriptions: v.store().subscriptions, sessions,
+      funnel: funnel({ since, siteVisitors, accounts, checkouts: v.store().checkouts, subscriptions: v.store().subscriptions, sessions,
         workspaces: owned, marked: { onboarded: markedKept[0]!, paired: markedKept[1]!, replied: markedKept[2]!, chosen: markedKept[3]! } }),
       clouds: [...byState].map(([state, count]) => ({ state, count })).sort((a, b) => b.count - a.count),
       bots: { workspaces: owned.length, bots: owned.reduce((sum, ws) => sum + (ws.report?.bots?.length ?? 0), 0), turns30d: owned.reduce((sum, ws) => sum + workspaceTurns(ws, sinceDay), 0) },
@@ -481,7 +484,7 @@ export function createAdmin(options: AdminOptions) {
     const time = now(), since = time - days * DAY;
     const [list, counts] = await Promise.all([v.sink.events({ name, accountId, since, before, limit: limit + 1 }), v.sink.counts(since, time + 1)]);
     const emails = new Map(v.directory().accounts.map(account => [account.id, account.email]));
-    return { names: EVENT_NAMES, counts, events: list.slice(0, limit).map(event => ({ ...event, email: event.accountId ? emails.get(event.accountId) ?? null : null })),
+    return { names: EVENT_NAMES, counts, untracked: v.live ? null : v.directory().accounts.filter(account => analytics.optedOut(account.id)).length, events: list.slice(0, limit).map(event => ({ ...event, email: event.accountId ? emails.get(event.accountId) ?? null : null })),
       next: list.length > limit ? list[limit - 1]!.at : null };
   }
 
@@ -617,14 +620,17 @@ export function createAdmin(options: AdminOptions) {
           view.live ? Promise.resolve([]) : options.usage.store.records("signal", since, until, 50_000)
             .then(rows => clean ? rows.filter(row => !isTestInstall(row.workspaceId) && !(row.accountId && ids.has(row.accountId))) : rows)]);
         const items = itemsOf(events, signals);
-        if (!timeline) return send(experienceAnswer(items, { from, to, now: time }));
+        // a read cut at its limit starts the chart at the first whole day it holds, so the cut never draws as growth
+        const partialBefore = partialOf(events), whole = partialBefore === null ? from : Math.max(from, Math.ceil(partialBefore / DAY) * DAY);
+        if (!timeline) return send({ ...experienceAnswer(items, { from: whole, to, now: time }), partialBefore });
         await audit(owner.id, "experience.timeline", who);
         return send(timelineAnswer(items, who, time));
       }
       if (route === "/ops/relays") return send(await relays.list());
       if (route === "/ops/sharing") {
         const time = now();
-        return send(sharingOf(await (await viewOf(req)).sink.scan(time - SHARING_LOOKBACK_DAYS * DAY, time + 1, ["app_action", "app_open"]), time));
+        const events = await (await viewOf(req)).sink.scan(time - SHARING_LOOKBACK_DAYS * DAY, time + 1, ["app_action", "app_open"]);
+        return send({ ...sharingOf(events, time), partialBefore: partialOf(events) });
       }
       if (route === "/ops/accounts") {
         if (!options.ops) throw new AdminError(404, "not_found", "The ops page is not connected.");
