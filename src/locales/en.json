@@ -2240,7 +2240,6 @@
   "chat.peer.requested": "Sent a request",
   "chat.event.messaged": "Messaged",
   "chat.event.messageFrom": "Message from",
-  "chat.event.askedPeer": "Asked",
   "chat.event.peerReplied": "replied",
   "chat.event.respondedTo": "Responded to",
   "chat.event.messagesWith": "{count} messages with",

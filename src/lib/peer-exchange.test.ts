@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "@/state/store";
-import { exchangeEntries, exchangeRuns, exchangeSummary } from "./peer-exchange";
+import { exchangeEntries, exchangeHidden, exchangeOpenByDefault, exchangeRuns, exchangeSummary } from "./peer-exchange";
 
 const msg = (id: string, fields: Partial<Message>): Message => ({ id, role: "bot", kind: "text", at: 1, ...fields } as Message);
 const ghosty = { id: "ghosty", name: "Ghosty" };
@@ -19,6 +19,18 @@ describe("exchangeSummary", () => {
   });
 });
 
+describe("one chat per bot", () => {
+  it("hides a teammate's question and the bot's own ask, and opens what came back", () => {
+    const peer = { id: "dusk", name: "dusk bot" };
+    expect(exchangeHidden({ kind: "single", direction: "inbound", peer })).toBe(true);
+    expect(exchangeHidden({ kind: "single", direction: "outbound", as: "ask", peer })).toBe(true);
+    expect(exchangeHidden({ kind: "single", direction: "outbound", as: "reply", peer })).toBe(false);
+    expect(exchangeHidden({ kind: "single", direction: "inbound", as: "answer", peer })).toBe(false);
+    expect(exchangeOpenByDefault({ kind: "single", direction: "inbound", as: "answer", peer })).toBe(true);
+    expect(exchangeOpenByDefault({ kind: "single", direction: "outbound", as: "reply", peer })).toBe(false);
+  });
+});
+
 describe("exchangeEntries", () => {
   it("folds another bot's line and this bot's reply to it, but not the person's lines or cards", () => {
     const rows = [
@@ -30,7 +42,7 @@ describe("exchangeEntries", () => {
     ];
     const entries = exchangeEntries(rows, "me");
     expect([...entries.keys()]).toEqual(["asked", "reply"]);
-    expect(entries.get("asked")).toEqual({ direction: "inbound", peer: ghosty, body: "status?" });
+    expect(entries.get("asked")).toEqual({ direction: "inbound", peer: ghosty });
     expect(entries.get("reply")).toEqual({ direction: "outbound", peer: ghosty, as: "reply" });
   });
 
@@ -88,14 +100,14 @@ describe("exchangeRuns", () => {
     expect(entries.has("final")).toBe(false);
   });
 
-  it("reads the same exchange in the asked bot's chat as Message from, with what was said, then Responded to", () => {
+  it("reads the same exchange in the asked bot's chat as Message from then Responded to", () => {
     const rows = [
       msg("ask", { text: "@writer What do you do?", roomRequest: { id: "r", phase: "request" }, from: { botId: "dusk", name: "dusk bot", color: "blue" }, at: 10 }),
       msg("step", { kind: "activity", tool: { name: "Read", ok: true }, at: 11 }),
       msg("reply", { text: "I write.", at: 12 }),
     ];
     expect(runsOf(rows, "writer")).toEqual([
-      { kind: "single", direction: "inbound", body: "@writer What do you do?", peer: { id: "dusk", name: "dusk bot", color: "blue" } },
+      { kind: "single", direction: "inbound", peer: { id: "dusk", name: "dusk bot", color: "blue" } },
       { kind: "single", direction: "outbound", as: "reply", peer: { id: "dusk", name: "dusk bot", color: "blue" } },
     ]);
   });

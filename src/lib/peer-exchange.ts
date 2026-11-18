@@ -14,12 +14,10 @@ export interface PeerEntry {
   step?: true;
   /** "ask": this bot asked the peer; "answer": the peer's answer came back; "reply": this bot answering the peer. */
   as?: "ask" | "answer" | "reply";
-  /** What the peer said, for an inbound message. */
-  body?: string;
 }
 
 export type ExchangeSummary =
-  | { kind: "single"; direction: "inbound" | "outbound"; peer: PeerRef; as?: PeerEntry["as"]; body?: string }
+  | { kind: "single"; direction: "inbound" | "outbound"; peer: PeerRef; as?: PeerEntry["as"] }
   | { kind: "fanout"; peers: PeerRef[] }
   | { kind: "thread"; count: number; peers: PeerRef[] };
 
@@ -71,7 +69,7 @@ export function exchangeEntries(messages: readonly Message[], threadBotId?: stri
       // an incident notice is about a bot's chat, for the person to read
       if (wire.peerAsk?.incident) continue;
       const ref = { id: peer.botId, name: peer.name };
-      entries.set(m.id, { direction: "inbound", peer: ref, ...(peer.body.trim() ? { body: peer.body } : {}) });
+      entries.set(m.id, { direction: "inbound", peer: ref });
       peerLines.set(m.id, ref);
       lastRequest = wire.aside ? null : { peer: ref, at: m.at };
       continue;
@@ -80,7 +78,7 @@ export function exchangeEntries(messages: readonly Message[], threadBotId?: stri
       const asked = peerRequest(m, threadBotId);
       if (asked) {
         const ref = { id: asked.botId, name: asked.name, color: m.from?.color };
-        entries.set(m.id, { direction: "inbound", peer: ref, ...(asked.body.trim() ? { body: asked.body } : {}) });
+        entries.set(m.id, { direction: "inbound", peer: ref });
         // what this bot says next, minutes later, is its answer to the ask
         lastRequest = { peer: ref, at: m.at };
         continue;
@@ -118,12 +116,18 @@ export function exchangeSummary(all: readonly PeerEntry[]): ExchangeSummary | nu
     peers.set(key, known && known.name ? known : entry.peer);
   }
   const unique = [...peers.values()];
-  if (entries.length === 1) return { kind: "single", direction: first.direction, peer: first.peer, ...(first.as ? { as: first.as } : {}), ...(first.body ? { body: first.body } : {}) };
+  if (entries.length === 1) return { kind: "single", direction: first.direction, peer: first.peer, ...(first.as ? { as: first.as } : {}) };
   if (unique.length >= 2 && entries.length === unique.length && entries.every((entry) => entry.direction === "outbound")) {
     return { kind: "fanout", peers: unique };
   }
   return { kind: "thread", count: entries.length, peers: unique };
 }
+
+/** Each bot has one chat: a teammate's question to it, and its own question to a teammate, draw no line; what came back
+ * of its own ask shows inline under its line. */
+export const exchangeHidden = (summary: ExchangeSummary): boolean =>
+  summary.kind === "single" && ((summary.direction === "inbound" && summary.as !== "answer") || summary.as === "ask");
+export const exchangeOpenByDefault = (summary: ExchangeSummary): boolean => summary.kind === "single" && summary.as === "answer";
 
 export interface ExchangeRun<T> { id: string; start: number; end: number; items: T[]; entries: PeerEntry[]; summary: ExchangeSummary }
 
