@@ -23,13 +23,13 @@ export async function connectToWorkspace(record: MobileConnectionRecord, token: 
   let gone = false;
   let sleeping: WorkspaceTransport | null = null;
   const startedAt = Date.now();
-  for (const route of routeOrder(routes)) {
+  for (const route of routeOrder(routes, platform.kind)) {
     signal.throwIfAborted();
-    if (!directStillWorthIt(route, routes, startedAt)) continue;
+    if (!directStillWorthIt(route, routes, startedAt, Date.now(), platform.kind)) continue;
     let transport: PhoneTransport | undefined;
     let response: Response;
     try {
-      const timed = AbortSignal.any([signal, AbortSignal.timeout(routeTimeout(route, routes, 15_000))]);
+      const timed = AbortSignal.any([signal, AbortSignal.timeout(routeTimeout(route, routes, 15_000, platform.kind))]);
       const headers = { Authorization: `Bearer ${token}` };
       if (route.kind === "relay") {
         const relay = record.relay;

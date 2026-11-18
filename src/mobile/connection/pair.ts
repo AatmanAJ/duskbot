@@ -219,10 +219,10 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
     };
     let lastError = new PairError("unreachable");
     const startedAt = Date.now();
-    for (const route of routeOrder(payload.via)) {
+    for (const route of routeOrder(payload.via, platform.kind)) {
       if (route.kind === "relay" && !keys) { lastError = new PairError("unsupported"); continue; }
       if (route.kind === "companion" && !platform.native) { lastError = new PairError("unsupported"); continue; }
-      if (!directStillWorthIt(route, payload.via, startedAt)) continue;
+      if (!directStillWorthIt(route, payload.via, startedAt, Date.now(), platform.kind)) continue;
       let channel: ReturnType<typeof openRelay> | undefined;
       let response: Response;
       let answer: unknown;
@@ -244,7 +244,7 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
             if (again?.reply.ok && (again.answer as MobileRedeemResponse | null)?.relay) ({ reply: response, answer } = again);
           }
         } else {
-          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(routeTimeout(route, payload.via, 15_000)) });
+          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(routeTimeout(route, payload.via, 15_000, platform.kind)) });
           answer = await response.json().catch(() => null);
         }
       } catch (error) { lastError = pairError(error); continue; }

@@ -29,3 +29,14 @@ describe("route order", () => {
     expect(directStillWorthIt(lan, [lan], 0, DIRECT_BUDGET_MS * 10)).toBe(true);
   });
 });
+
+describe("on Android", () => {
+  it("tries the relay first and keeps the computer's own network as the fallback, with its full time", () => {
+    const lan = { kind: "companion", url: "http://192.168.1.4:8810", net: "lan", priority: 0 } as const;
+    const relay = { kind: "relay", url: "wss://link.dusk.bot", channel: "c", agentPub: "k" } as unknown as MobileTransport;
+    expect(routeOrder([lan, relay], "android")).toEqual([relay, lan]);
+    expect(routeOrder([lan, relay], "ios")).toEqual([lan, relay]);
+    expect(routeTimeout(lan, [lan, relay], 15_000, "android")).toBe(15_000);
+    expect(directStillWorthIt(lan, [lan, relay], 0, 60_000, "android")).toBe(true);
+  });
+});
