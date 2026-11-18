@@ -3623,8 +3623,7 @@ app.whenReady().then(async () => {
   }
   setLocalOrigin(confirmedRendererOrigin());
   cloudSync.start();
-  // lending to a Cloud is gone: a login item it added earlier goes too (the person's own stays).
-  loginItem.follow(false);
+  if (loginItem.settle()) refreshApplicationMenu();
   let restoredOrganizationEntry = false;
   await workspaceMenuAction(async () => { restoredOrganizationEntry = await organizationEntry.restore(); });
   organizationEntryReady = true;
