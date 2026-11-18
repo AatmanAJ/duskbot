@@ -141,6 +141,20 @@ const __APP_VERSION__: string;
     at: number | null;
     onBattery: boolean;
   }
+  interface CloudMacBridge {
+    state(): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** Turning on asks on the Mac first; declined, it stays off. */
+    setEnabled(on: boolean): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** The Mac's own folder picker. */
+    addFolder(): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    removeFolder(path: string): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** auto: only risky actions wait for Allow; ask: every action but an ordinary read does; never: nothing asks. */
+    setMode(mode: import("../../shared/cloud-mac").CloudMacMode): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** On: reading, saving and downloads stay inside the listed folders. */
+    setLimitFolders(on: boolean): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    openLog(): Promise<void>;
+    onChange(listener: (state: import("../../shared/cloud-mac").CloudMacState) => void): () => void;
+  }
   interface DesktopRemoteClientState {
     active: boolean;
     endpoint?: string;
@@ -176,6 +190,9 @@ const __APP_VERSION__: string;
       sealTrust?: { check(identity: string): Promise<{ ok: boolean; pinned: boolean }> };
       /** A linked server's page only: the direct ssh path for that link (null where it does not apply). */
       linkDirect?: { state(): Promise<LinkDirectState | null>; set(on: boolean): Promise<LinkDirectState | null> };
+      /** This computer's page and the person's own dusk cloud page: whether that cloud's bots may use this Mac, its
+       * folders, the work running now and the kill switch. Absent in a browser, on the phone and on an older app. */
+      cloudMac?: CloudMacBridge;
       /** A VPS's own page: its bots straight to dusk cloud. Absent on an older app. */
       vpsCloudMove?: import("../lib/vps-cloud-move").VpsCloudMoveBridge;
       /** This computer's page only: Add your VPS, its install, sign-in, move, and the Transfer pane (electron/vps-link.mjs). */

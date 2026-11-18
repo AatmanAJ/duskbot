@@ -436,7 +436,7 @@ import { spillToolResult } from "./tool-result-spill.ts";
 import { gatedLocalComputer } from "./local-computer.ts";
 import { desktopComputer, missingScreenPermissions, thisComputerNotReady } from "./desktop-computer.ts";
 import { dismissRetiredCards } from "./retired-cards.ts";
-import { askToUseYourComputer, cancelYourComputerAsks, claimWithYourComputerConsent, dismissStaleYourComputerCards, yourComputerCallFrom, yourComputerWaiting } from "./your-computer-consent.ts";
+import { askToUseYourComputer, cancelYourComputerAsks, claimWithYourComputerConsent, dismissStaleYourComputerCards, yourComputerCallFrom, yourComputerWaiting } from "./your-computer-consent.ts"; import { askToUseMac, cancelMacAsks, dismissStaleMacCards, MAC_ASK_ENDED_TEXT, MAC_DENIED_TEXT } from "./mac-control/cloud-ask.ts";
 import { discoverExistingPerBotLocalVms, localVmInventoryEntry } from "./local-vm-inventory.ts";
 import { createLocalVmUpdater, createVpsDesktopUpdater, LOCAL_VM_UPDATING_PROBLEM, recoverLocalVms, VPS_OUTDATED_HINT, vpsDesktopOutdated, vpsDesktopSelfUpdates, withoutHostWhileUpdating } from "./desktop-updates.ts";
 import { keepInstalledAppsBeforeRemove } from "./local-vm-profiles.ts";
@@ -2089,7 +2089,7 @@ function claimTurnResource(owner: TurnOwner, resource: string): boolean {
 function releaseTurnResources(owner: TurnOwner | undefined): void {
   if (!owner) return;
   if (autoVmClaims.get(owner.threadId)?.owner.generation === owner.generation) autoVmClaims.delete(owner.threadId);
-  cancelYourComputerAsks(owner.threadId, owner.generation);
+  cancelYourComputerAsks(owner.threadId, owner.generation); cancelMacAsks(owner.threadId, owner.generation);
   if (settlingResourceOwners.get(owner.threadId) === owner.generation) settlingResourceOwners.delete(owner.threadId);
   releaseRemoteComputerTurn(owner);
   turnResources.release(owner);
@@ -3041,7 +3041,7 @@ const phoneHost = createPhones({
   mint: (botId, turn) => mintInternalCapability({ botId, ...turn, kind: "device", depth: 0, skillAuthoring: false, createdBots: 0, openedThreads: 0 }),
   active: (turn) => internalCapabilityIsActive(turn as InternalCapability),
 });
-const phones = createDevices({ phones: phoneHost, dataDir: DATA_DIR, offered: () => !CLOUD_HOME && desktopPhonesOffered({ sharedMembership: sharedMembership(), loopbackTrust: LOOPBACK.trust }), enabled: () => cfg.vps?.macControl !== false, setEnabled: (enabled) => { saveConfig({ vps: { macControl: enabled } }); Object.assign(cfg, loadConfig()); }, ownerOrAdmin, sessions, bot: (id) => store.bot(id), active: (turn) => internalCapabilityIsActive(turn as InternalCapability), log: (line) => console.warn(line), fileRoots: messageFileRootsForThread, attachmentsDir: ATTACHMENTS_DIR, attachmentInThread: (threadId, path) => attachmentNameInThread(threadId, path) !== null, computer: (bot) => { const team = inheritedTeamComputer(bot), alias = team ? vpsSshAlias(cfg) : vpsSshAliasForBot(cfg, bot); return alias ? { dockerArgs: (args) => vps.vpsDockerArgs(alias, args), container: team ? teamComputerVpsTarget(cfg, team).containerName : vps.vpsContainerName(bot.id) } : null; }, run: (args, timeoutMs) => vps.defaultRunner(args, { timeoutMs }) });
+const phones = createDevices({ phones: phoneHost, dataDir: DATA_DIR, offered: () => (CLOUD_HOME ? !sharedMembership() : desktopPhonesOffered({ sharedMembership: sharedMembership(), loopbackTrust: LOOPBACK.trust })), ...(CLOUD_HOME ? { cloud: { approve: (bot, turn, tool, args, reason) => { const record = store.bot(bot.id); return record ? askToUseMac(approvalBus, record, turn, tool, args, reason).then((answer) => (answer === "allow" ? null : answer === "deny" ? MAC_DENIED_TEXT : MAC_ASK_ENDED_TEXT)) : Promise.resolve("This bot no longer exists."); } } } : {}), enabled: () => cfg.vps?.macControl !== false, setEnabled: (enabled) => { saveConfig({ vps: { macControl: enabled } }); Object.assign(cfg, loadConfig()); }, ownerOrAdmin, sessions, bot: (id) => store.bot(id), active: (turn) => internalCapabilityIsActive(turn as InternalCapability), log: (line) => console.warn(line), fileRoots: messageFileRootsForThread, attachmentsDir: ATTACHMENTS_DIR, attachmentInThread: (threadId, path) => attachmentNameInThread(threadId, path) !== null, computer: (bot) => { const team = inheritedTeamComputer(bot), alias = team ? vpsSshAlias(cfg) : vpsSshAliasForBot(cfg, bot); return alias ? { dockerArgs: (args) => vps.vpsDockerArgs(alias, args), container: team ? teamComputerVpsTarget(cfg, team).containerName : vps.vpsContainerName(bot.id) } : null; }, run: (args, timeoutMs) => vps.defaultRunner(args, { timeoutMs }) });
 const cloudPlanTier = createCloudPlanTier({ dataDir: DATA_DIR, cloudHome: Boolean(CLOUD_HOME), changed: () => broadcast({ kind: "config", ...configStatus() }) }); const botLimit = createBotLimit({ starter: () => cloudPlanTier.starter(), bots: () => store.bots }); let cloudPower: CloudPower | null = null; let updateState: UpdateState | null = null; // A server install's own updates (server/update-state.ts): its self-test, the digest line, a rollback's free re-runs; made just before the server listens. // The sleep handshake of a plan that sleeps (server/cloud-power.ts), made just before the server listens.
 const { cloudHealth, cloudSigned } = createCloudSignedHost({ cloudHome: CLOUD_HOME, sessions, aiSignIns: async (items) => {
   const drivers = signedInDrivers(applyCloudAiSignIns(items, process.env).applied);
@@ -5209,7 +5209,7 @@ async function respondToCard(input: {
 function closeOpenApprovals(threadId: string): void {
   for (const key of pendingCommandRules.keys()) if (key.startsWith(`${threadId}:`)) pendingCommandRules.delete(key);
   // Resolve peer approvals' in-memory promises first; patching their cards alone leaves the queue waiting.
-  cancelPeerApprovalsForThread(threadId); cancelYourComputerAsks(threadId);
+  cancelPeerApprovalsForThread(threadId); cancelYourComputerAsks(threadId); cancelMacAsks(threadId);
   // A member run shares its conversation's cards: each run closes only its own member's.
   const run = parseMemberRun(threadId);
   const runningApart = run ? undefined : new Set(memberRunSpeakers(threadId).map(([, speaker]) => speaker.botId));
@@ -10722,7 +10722,7 @@ const { quotaSwitch, harnessCardOutcome } = createQuotaSwitchHost({ store, coord
 
 // Peer approvals live only in memory: settle every peer card still open on disk, or it locks the composer forever.
 {
-  const stale = dismissStalePeerCards(approvalBus) + dismissStaleYourComputerCards(store) + dismissRetiredCards(store);
+  const stale = dismissStalePeerCards(approvalBus) + dismissStaleYourComputerCards(store) + dismissStaleMacCards(store) + dismissRetiredCards(store);
   if (stale) console.log(`approvals: dismissed ${stale} card(s) left by a previous run`);
 }
 

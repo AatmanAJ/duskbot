@@ -91,7 +91,7 @@ function railKeepsItsSize() {
 if (typeof window !== "undefined") {
   for (const type of ["resize", "DOMContentLoaded"]) window.addEventListener(type, () => { leaveRailRoom(); railKeepsItsSize(); });
 }
-const REMOTE_SAFE = new Set(["platform", "app", "getCapabilities", "onCapabilitiesChanged", "applySkin", "setUnreadCount", "permStatus", "workspaces", "rail", "cloudAdd", "cloudPlan", "cloudSendPage", "accountSheet", "desktopNotices", "desktopNotifications", "desktopAnalytics", "desktopLanguage", "windowControls", "onOpenAppSettings", "windowFrame", "sealTrust", "linkDirect", "onSlackOAuth", "ambient", "desktopBots", "requireUserPresence", "vpsCloudMove", "trail"]);
+const REMOTE_SAFE = new Set(["platform", "cloudMac", "app", "getCapabilities", "onCapabilitiesChanged", "applySkin", "setUnreadCount", "permStatus", "workspaces", "rail", "cloudAdd", "cloudPlan", "cloudSendPage", "accountSheet", "desktopNotices", "desktopNotifications", "desktopAnalytics", "desktopLanguage", "windowControls", "onOpenAppSettings", "windowFrame", "sealTrust", "linkDirect", "onSlackOAuth", "ambient", "desktopBots", "requireUserPresence", "vpsCloudMove", "trail"]);
 /** My Cloud's own page once it is the person's home (main checks the sender again): it is this app's page then. */
 const HOME_PAGE = ["home", "onChatLink", "onPackageInstall", "exportDiagnostics", "openLogsFolder", "openAtLogin", "callActive", "productEvents",
   "speechStart", "speechStop", "speechFinish", "onSpeechTranscript", "onSpeechEnd", "onSpeechLevel"];
@@ -737,6 +737,20 @@ const bridge = {
       const handler = (_event, view) => cb(view);
       ipcRenderer.on("start-fresh:changed", handler);
       return () => ipcRenderer.removeListener("start-fresh:changed", handler);
+    },
+  },
+  cloudMac: {
+    state: () => ipcRenderer.invoke("cloud-mac:state"),
+    setEnabled: on => ipcRenderer.invoke("cloud-mac:setEnabled", on === true),
+    setMode: mode => ipcRenderer.invoke("cloud-mac:setMode", String(mode)),
+    setLimitFolders: on => ipcRenderer.invoke("cloud-mac:setLimitFolders", on === true),
+    addFolder: () => ipcRenderer.invoke("cloud-mac:addFolder"),
+    removeFolder: folder => ipcRenderer.invoke("cloud-mac:removeFolder", String(folder)),
+    openLog: () => ipcRenderer.invoke("cloud-mac:openLog"),
+    onChange: listener => {
+      const handler = (_event, view) => listener(view);
+      ipcRenderer.on("cloud-mac:changed", handler);
+      return () => ipcRenderer.removeListener("cloud-mac:changed", handler);
     },
   },
   vpsLink: {

@@ -120,6 +120,14 @@ function isDurable(pending: Pending): boolean {
     titledCard(card) || Boolean(card?.modelRequest);
 }
 
+/** A cloud bot's Mac card ends its subtitle with why it asks: that line reads as words, not as part of the command. */
+function macReason(tool: string, detail: string): { what: string; reason: string } | undefined {
+  if (!tool.startsWith("mac_")) return undefined;
+  const lines = detail.split("\n");
+  if (lines.length < 2) return undefined;
+  return { what: lines.slice(0, -1).join("\n"), reason: lines.at(-1)! };
+}
+
 /** What will happen, in plain words; the command shown whole when it is what will run, and everything the card holds
  * behind Details. */
 function approvalWords(pending: Pending, botName?: string): { line: string; summary?: string; inline?: string; detail: string } {
@@ -135,6 +143,8 @@ function approvalWords(pending: Pending, botName?: string): { line: string; summ
   if (card?.mcpRequest) return { line: card.title, inline: detail, detail };
   if (isDurable(pending)) return { line: label(pending), detail };
   const action = COMMAND_TOOLS.has(pending.tool) ? t("approval.tool.runCommand") : toolLabel(pending.tool);
+  const mac = macReason(pending.tool, detail);
+  if (mac && botName) return { line: t("approval.card.namedWantsTo", { name: botName, action: lowerFirst(action) }), summary: mac.reason, inline: mac.what, detail: mac.what };
   return { line: botName ? t("approval.card.namedWantsTo", { name: botName, action: lowerFirst(action) }) : label(pending), inline: detail, detail };
 }
 

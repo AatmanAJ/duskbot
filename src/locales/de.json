@@ -3589,5 +3589,16 @@
   "botPanel.moreSettings": "Weitere Einstellungen",
   "composer.add": "Hinzufügen",
   "failedReply.noAi.title": "Verbinde deine AI, um weiterzuchatten",
-  "failedReply.noAi": "Die kostenlose Ersatzlösung ist gerade ausgelastet. Verbinde eine AI, die du bereits nutzt, etwa Claude oder ChatGPT, und dein Bot antwortet damit."
+  "failedReply.noAi": "Die kostenlose Ersatzlösung ist gerade ausgelastet. Verbinde eine AI, die du bereits nutzt, etwa Claude oder ChatGPT, und dein Bot antwortet damit.",
+  "server.cloudMac.title.exec": "{name} möchte einen Befehl auf deinem Mac ausführen",
+  "server.cloudMac.title.download": "{name} möchte eine Datei auf deinen Mac laden",
+  "server.cloudMac.title.write": "{name} möchte eine Datei auf deinem Mac ändern",
+  "server.cloudMac.title.open": "{name} möchte etwas auf deinem Mac öffnen",
+  "server.cloudMac.title.read": "{name} möchte private Dateien auf deinem Mac ansehen",
+  "server.cloudMac.where.exec": "{command}\nin {folder}",
+  "server.cloudMac.where.download": "{url}\nnach {folder}",
+  "server.cloudMac.where.append": "{path}\nam Ende anfügen",
+  "server.cloudMac.where.openWith": "{target}\nmit {app}",
+  "server.cloudMac.why": "Rückfrage, weil es: {reason}.",
+  "server.cloudMac.why.every": "Du wolltest jede Aktion auf diesem Mac selbst freigeben."
 }

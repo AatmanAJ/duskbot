@@ -17,6 +17,7 @@ import { VpsComputersCard } from "./VpsComputersCard";
 import { DirectLinkRow } from "./DirectLinkRow";
 import { RouteTrafficRow } from "./RouteTrafficRow";
 import { MacControlRow } from "./MacControlRow";
+import { CloudMacCard } from "./CloudMacCard";
 import { friendlyError } from "@/lib/plain-error";
 import { ArtState } from "./ui/Art";
 
@@ -887,6 +888,7 @@ export function LocalComputerSection() {
 
       {cloudHome && (
         <RowsCard label={t("settings.grok.group.yourComputer")} data-settings-block="cloud-home-connection">
+          <CloudMacCard />
           <RouteTrafficRow blockedOnly />
         </RowsCard>
       )}
