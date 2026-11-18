@@ -38,7 +38,7 @@ const WASH: Record<Bucket, string> = { trial: "bg-wash-sky", cancelling: "bg-was
 const who = (row: { email: string | null; handle: string }) => row.email ?? row.handle;
 const day = (t: number | null) => t ? stamp(t).slice(0, 10) : null;
 
-type Key = "person" | "plan" | "status" | "started" | "ends" | "messages" | "turns" | "engines" | "apps" | "routines" | "bots" | "active" | "platform" | "where";
+type Key = "person" | "plan" | "status" | "started" | "ends" | "messages" | "turns" | "engines" | "setup" | "active" | "platform" | "where";
 const COLUMNS: Array<{ key: Key; label: string; end?: boolean; value(row: SubscriberRow): string | number }> = [
   { key: "person", label: "person", value: (row) => who(row) },
   { key: "plan", label: "plan", value: (row) => row.plan },
@@ -48,9 +48,7 @@ const COLUMNS: Array<{ key: Key; label: string; end?: boolean; value(row: Subscr
   { key: "messages", label: "messages 7d / all", end: true, value: (row) => row.messages7d * 1e6 + row.messages },
   { key: "turns", label: "turns", end: true, value: (row) => row.turns },
   { key: "engines", label: "engines", value: (row) => row.engines.join(",") },
-  { key: "apps", label: "apps", end: true, value: (row) => row.apps },
-  { key: "routines", label: "routines", end: true, value: (row) => row.routines },
-  { key: "bots", label: "bots", end: true, value: (row) => row.bots },
+  { key: "setup", label: "bots · routines · apps", value: (row) => row.bots * 1e6 + row.routines * 1e3 + row.apps },
   { key: "active", label: "last active", value: (row) => row.lastActive ?? 0 },
   { key: "platform", label: "platform", value: (row) => row.platforms.join(",") },
   { key: "where", label: "bots run", value: (row) => `${row.places.join(",")}${row.cloud ?? ""}` },
@@ -158,11 +156,9 @@ export function SubscribersPage() {
       case "started": return <span className="t-id whitespace-nowrap text-ink-2">{day(row.started)}</span>;
       case "ends": return <span className="t-id whitespace-nowrap text-ink-2">{day(row.trialEndsAt ?? row.renewsAt) ?? <Nil />}</span>;
       case "messages": return <span className="font-mono num">{n(row.messages7d)} <span className="text-ink-3">/ {n(row.messages)}</span></span>;
-      case "turns": return <span className="font-mono num">{n(row.turns)}{row.failed ? <span className="block text-12 text-bad">{n(row.failed)} failed</span> : null}</span>;
+      case "turns": return <span className="whitespace-nowrap font-mono num">{n(row.turns)}{row.failed ? <span className="block text-12 text-bad">{n(row.failed)} failed</span> : null}</span>;
       case "engines": return row.engines.length ? <span className="text-13 text-ink-2">{row.engines.join(", ")}</span> : <Nil />;
-      case "apps": return <span className="font-mono num">{row.apps || <Nil />}</span>;
-      case "routines": return <span className="font-mono num">{row.routines || <Nil />}</span>;
-      case "bots": return <span className="font-mono num">{row.bots || <Nil />}</span>;
+      case "setup": return row.bots + row.routines + row.apps ? <span className="whitespace-nowrap font-mono text-13 num">{row.bots} · {row.routines} · {row.apps}</span> : <Nil />;
       case "active": return <span className="whitespace-nowrap text-13 text-ink-3">{row.lastActive ? ago(row.lastActive, now) : <Nil />}</span>;
       case "platform": return row.platforms.length ? <span className="text-13 text-ink-2">{row.platforms.join(", ")}</span> : <Nil />;
       case "where": return row.places.length ? <span className="whitespace-nowrap text-13 text-ink-2">{row.places.join(", ")}{row.cloud ? <span className="block text-12 text-ink-3">cloud {row.cloud}</span> : null}</span> : <Nil />;
