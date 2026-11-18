@@ -47,6 +47,12 @@ export function moveBackLine(back: VpsMoveBack | undefined, device: string, size
   return t(key, { name, device });
 }
 
+/** A failed move back, said with what is still true: the server never loses its bots. */
+export function moveBackFailure(back: VpsMoveBack): string {
+  const error = back.error ?? t("vpsLink.back.failed");
+  return back.name ? t("vpsLink.back.failedKept", { error, name: back.name }) : error;
+}
+
 export function TransferSettings() {
   const { bridge, view, ready } = useVpsLink();
   const [where, setWhere] = useState<VpsWhere | null>(null);
@@ -90,7 +96,7 @@ export function TransferSettings() {
   const server = where?.place === "vps" ? where.server : null;
   const blocked = where?.blocked && where.blocked !== "unknown" ? t(BLOCKED[where.blocked], { device }) : null;
   const backLine = moveBackLine(view.back, device);
-  const backError = view.back?.status === "failed" ? view.back.error ?? null : null;
+  const backError = view.back?.status === "failed" ? moveBackFailure(view.back) : null;
   return (
     <>
       <Card label={t("vpsLink.transfer.whereTitle")} data-settings-block="transfer">
@@ -119,9 +125,10 @@ export function TransferSettings() {
             : <NavRow title={t("vpsLink.add")} hint={t("vpsLink.addHint")} onClick={() => openPlaceSetup("server")} />)}
         {where && !server && where.bring?.map((place) => (
           <NavRow key={place.id} data-bring-from={place.id} title={t("vpsLink.transfer.bringFrom", { name: place.name })}
-            hint={blocked ?? t("vpsLink.transfer.bringFromHint", { name: place.name, device })} disabled={busy || Boolean(blocked) || Boolean(backLine)}
+            hint={t("vpsLink.transfer.bringFromHint", { name: place.name, device })} disabled={busy || Boolean(blocked) || Boolean(backLine)}
             onClick={() => void perform(bringAsk(place.name, device), () => bridge.moveBack(place.id))} />
         ))}
+        {where && !server && where.bring?.length && blocked ? <NoteRow>{blocked}</NoteRow> : null}
         {backLine && <NoteRow>{backLine}</NoteRow>}
         {backError && !busy && <NoteRow tone="danger">{backError}</NoteRow>}
       </Card>

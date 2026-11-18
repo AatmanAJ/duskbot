@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { moveBackLine } from "./TransferSettings";
+import { moveBackFailure, moveBackLine } from "./TransferSettings";
 
 describe("moveBackLine", () => {
   it("says each step of bringing bots back, with the copy's size when known", () => {
@@ -14,5 +14,14 @@ describe("moveBackLine", () => {
   it("says nothing once it ended or when none runs", () => {
     expect(moveBackLine(undefined, "Mac")).toBeNull();
     expect(moveBackLine({ step: "copy", status: "failed", name: "box", error: "No." }, "Mac")).toBeNull();
+  });
+});
+
+describe("moveBackFailure", () => {
+  it("adds that the server still has its bots, once the server is known", () => {
+    expect(moveBackFailure({ step: "copy", status: "failed", name: "box", error: "The backup could not be saved." }))
+      .toBe("The backup could not be saved. box still has all its bots, so you can try again.");
+    expect(moveBackFailure({ step: "check", status: "failed", error: "That server isn't in this app any more." })).toBe("That server isn't in this app any more.");
+    expect(moveBackFailure({ step: "check", status: "failed" })).toBe("Your bots could not come here.");
   });
 });
