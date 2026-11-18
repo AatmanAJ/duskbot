@@ -200,9 +200,9 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   const back = (to: Step = home) => <BackButton onClick={() => go(to)} />;
   const close = startAtLink && onCancel ? <BackButton close onClick={onCancel} /> : null;
   const download = (
-    <p className="mt-4 text-[13px] leading-5 text-ink-tertiary">
+    <p className="mt-5 text-[14px] leading-5 text-ink-secondary">
       {t("mobile.entry.noApp")}{" "}
-      <button type="button" className="inline-flex min-h-11 items-center underline underline-offset-2" onClick={() => void platform.openExternal(DOWNLOAD_URL)}>{t("mobile.entry.download")}</button>
+      <button type="button" className="font-semibold text-ink underline underline-offset-2" onClick={() => void platform.openExternal(DOWNLOAD_URL)}>{t("mobile.entry.download")}</button>
     </p>
   );
 
