@@ -8,7 +8,8 @@
     "mac-x64": "DuskBot-intel.dmg",
     "windows": "DuskBot-setup.exe",
     "linux-deb": "DuskBot-amd64.deb",
-    "linux-appimage": "DuskBot.AppImage"
+    "linux-appimage": "DuskBot.AppImage",
+    "android": "DuskBot.apk"
   },
   "checksums": "SHA256SUMS",
   "macNotarized": true,
@@ -17,11 +18,11 @@
   "ios": "https://apps.apple.com/app/id6834725640",
   "android": "",
   "sizes": {
-    "mac-arm64": 164930292,
-    "mac-x64": 185023667,
-    "windows": 216360284,
-    "linux-deb": 273586352,
-    "linux-appimage": 323497204,
+    "mac-arm64": 165008265,
+    "mac-x64": 185093039,
+    "windows": 216364883,
+    "linux-deb": 273597160,
+    "linux-appimage": 323488958,
     "android": 22857950
   }
 }
