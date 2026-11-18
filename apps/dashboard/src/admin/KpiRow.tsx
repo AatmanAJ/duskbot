@@ -8,7 +8,7 @@ import { TINTS, TINT_STYLE, loadLayout, moveTo, saveLayout, slotAt, tintOf, type
 
 export interface KpiCard {
   id: KpiId; value: number | null; format(v: number): string; now?: number | null; before?: number | null; invert?: boolean;
-  toggle?: { on: boolean; flip(): void; colour: string };
+  toggle?: { on: boolean; flip(): void; colour: string }; note?: string; hint?: string;
 }
 
 const SETTLE = "transform 240ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease";
@@ -177,10 +177,10 @@ export function KpiRow({ cards }: { cards: KpiCard[] }) {
 }
 
 function Kpi({ label, card, tint }: { label: string; card: KpiCard; tint: Tint }) {
-  const { value, format, now, before, invert, toggle } = card;
+  const { value, format, now, before, invert, toggle, note, hint } = card;
   const style = tint !== "none" ? TINT_STYLE[tint] : null;
   return (
-    <div className="h-full min-w-0 select-none rounded-[16px] bg-pop px-4 py-3.5 transition-colors duration-200 [-webkit-touch-callout:none]" style={style && toggle?.on !== false ? { background: style.wash } : undefined}>
+    <div title={hint} className="h-full min-w-0 select-none rounded-[16px] bg-pop px-4 py-3.5 transition-colors duration-200 [-webkit-touch-callout:none]" style={style && toggle?.on !== false ? { background: style.wash } : undefined}>
       {toggle ? (
         <label className="flex cursor-pointer items-center gap-2 pe-7 text-13 font-medium text-ink-2">
           <input type="checkbox" checked={toggle.on} onChange={toggle.flip} className="size-3.5 cursor-pointer rounded-[4px]" style={{ accentColor: style?.accent ?? toggle.colour }} />{label}
@@ -188,6 +188,7 @@ function Kpi({ label, card, tint }: { label: string; card: KpiCard; tint: Tint }
       ) : <div className="truncate pe-7 text-13 font-medium text-ink-3">{label}</div>}
       <div className="mt-1 truncate font-mono text-[26px] font-medium leading-9 tracking-[-0.045em] text-ink num" style={style ? { color: style.ink } : undefined}>{value === null ? "-" : <Figure value={format(value)} className="!font-mono !text-[26px] !leading-9 !tracking-[-0.045em] ![color:inherit]" />}</div>
       <div className="mt-0.5 h-5 truncate leading-5">{now !== undefined && <Delta now={now ?? null} before={before ?? null} invert={invert} />}</div>
+      {note && <div className="mt-0.5 truncate text-12 leading-4 text-ink-3">{note}</div>}
     </div>
   );
 }

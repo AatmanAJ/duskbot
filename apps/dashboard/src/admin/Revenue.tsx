@@ -10,7 +10,9 @@ import { Avatar, duration, personName, usd, type Mark } from "./kit";
 import { n } from "./ui";
 
 export type PaymentKind = "new" | "renewal" | "one_time" | "refund";
-export interface RevenueKpis { net: number; gross: number; refunds: number; payments: number; customers: number; newCustomers: number; renewals: number; mrr: number }
+/** `expected` is paying plus `conversion` of the trials not set to cancel; `full` counts every trial at its price */
+export interface MrrForecast { expected: number; paying: number; trials: number; full: number; conversion: number }
+export interface RevenueKpis { net: number; gross: number; refunds: number; payments: number; customers: number; newCustomers: number; renewals: number; mrr: number; mrrForecast?: MrrForecast | null }
 export interface RecentPayment {
   id: string; at: number; amountCents: number; currency: string; kind: PaymentKind; accountId: string; seed: string; email: string | null;
   source: string; channel: string; firstSource: string | null; campaign: string | null; country: string | null; city: string | null; device: string | null;

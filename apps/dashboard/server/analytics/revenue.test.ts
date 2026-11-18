@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DAY, identityOf, visitsOf } from "./web.ts";
 import type { StoredEvent } from "./sink.ts";
-import { NO_VISIT, paymentsOf, revenueReport, type InvoiceLike } from "./revenue.ts";
+import { NO_VISIT, mrrForecastAt, paymentsOf, revenueReport, TRIAL_CONVERSION, type InvoiceLike, type SubscriptionLike } from "./revenue.ts";
 
 const T = Date.parse("2026-11-01T00:00:00Z");
 const view = (visitor: string, session: string, at: number, source: string, channel: string, country = "DE"): StoredEvent =>
@@ -11,6 +11,27 @@ const invoice = (id: string, accountId: string, subscriptionId: string | null, a
   ({ id, accountId, providerPaymentId: `pay_${id}`, subscriptionId, amountCents, currency: "USD", status, createdAt: at });
 
 describe("revenue", () => {
+  it("expects paying mrr plus the trial conversion share of trials not set to cancel, and keeps the full-price figure", () => {
+    const sub = (accountId: string, totalCents: number, extra: Partial<SubscriptionLike> = {}): SubscriptionLike =>
+      ({ accountId, status: "active", totalCents, createdAt: T - DAY, currentPeriodStart: T - DAY, cart: { interval: "month" }, ...extra });
+    const now = T + DAY, trialEnd = T + 7 * DAY;
+    const subs = [
+      sub("acct_paid", 2000),
+      sub("acct_yearly", 24000, { cart: { interval: "year" } }),
+      sub("acct_trial", 9900, { trialEndsAt: trialEnd }),
+      sub("acct_trial2", 5000, { trialEndsAt: trialEnd }),
+      sub("acct_trial_cancel", 9900, { trialEndsAt: trialEnd, cancelAtPeriodEnd: true }),
+      sub("acct_trial_cancelled", 4900, { trialEndsAt: trialEnd, status: "cancelled" }),
+      sub("acct_converted", 3000, { trialEndsAt: T }),
+      sub("acct_gone", 9900, { status: "ended" }),
+    ];
+    expect(TRIAL_CONVERSION).toBe(0.6);
+    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800, expected: 7000 + Math.round(14900 * 0.6), conversion: 0.6 });
+    // once the trials run out they count as paying in full; a cancelled trial is no longer counted
+    expect(mrrForecastAt(subs.filter(row => row.status === "active"), trialEnd, trialEnd).expected).toBe(7000 + 14900 + 9900);
+    expect(mrrForecastAt(subs, now, now, 1).expected).toBe(7000 + 14900);
+  });
+
   it("splits new, renewal, one-time and refunds, with the refund on its webhook's day", () => {
     const payments = paymentsOf({
       invoices: [invoice("a", "acct_a", "sub_a", 2900, T), invoice("b", "acct_a", "sub_a", 2900, T + 30 * DAY), invoice("c", "acct_b", null, 1000, T + DAY), invoice("d", "acct_c", "sub_c", 900, T, "failed")],
