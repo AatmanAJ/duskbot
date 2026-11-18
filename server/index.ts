@@ -280,7 +280,7 @@ import {
   SendSequencer,
 } from "./send-idempotency.ts";
 import { EventBus } from "./harness/bus.ts";
-import { ENGINE_LIST_REUSE_MS, engineMemory, enginesByUse, ProviderRegistry } from "./harness/registry.ts"; import { afterFirstEngineRead, holdUntilFirstEngineRead } from "./first-engine-read.ts";
+import { ENGINE_LIST_REUSE_MS, engineMemory, enginesByUse, ProviderRegistry } from "./harness/registry.ts"; import { afterFirstEngineRead, FIRST_START_ENGINE_WAIT_MS, holdUntilFirstEngineRead, settledBefore } from "./first-engine-read.ts";
 import { ManagedDesktopProviders } from "./managed-desktop.ts";
 import { mainThread, wasOldestThread } from "./main-thread.ts"; import { createOneChat } from "./host/one-chat.ts";
 import { computerKindForResource, ManagedDesktopPolicy, type ComputerKind } from "./managed-policy.ts"; import { nudgeCloudTeamPolicy, remoteAccessPaths, startCloudTeamPolicy, stopCloudTeamPolicy } from "./cloud-team-policy.ts";
@@ -3052,7 +3052,14 @@ let followupsReady = false;
 const sendSequencer = new SendSequencer();
 // Before the new-bot default is read: a saved default may name the engine.
 await retryComputerEngineMove(); mcpServersHost.boot();
-if (store.needsSeed()) { firstEngineRead(); await refreshUnsetModelSelections(); }
+if (store.needsSeed()) {
+  firstEngineRead();
+  const firstRead = refreshUnsetModelSelections().catch((error) => console.warn(`[engines] reading the engines at the first start failed: ${error instanceof Error ? error.message : String(error)}`));
+  if (!(await settledBefore(firstRead, FIRST_START_ENGINE_WAIT_MS))) {
+    console.warn(`[engines] first start: the engines are still being read after ${FIRST_START_ENGINE_WAIT_MS / 1000}s; starting without them`);
+    enginesRead = firstRead.then(() => broadcast({ kind: "config", ...configStatus() })).finally(() => { enginesRead = null; });
+  }
+}
 else enginesRead = registry.readAtStart(enginesByUse([cfg.defaultModelSelection, ...store.bots.map((bot) => bot.modelSelection)]), firstEngineRead,
   () => { if (engineProgressReady) broadcast({ kind: "config", ...configStatus() }); }).then(async ({ engines, changed }) => {
   await refreshUnsetModelSelections(engines); if (changed) broadcast({ kind: "config", ...configStatus() });
