@@ -1,4 +1,7 @@
 export const TRANSCRIPT_WINDOW_SIZE = 120;
+/** A phone mounts half as many rows: opening a long chat lays out and paints half the transcript, and older rows come in
+ * as the person scrolls up. */
+export const PHONE_TRANSCRIPT_WINDOW_SIZE = 60;
 
 export interface TranscriptWindow<T> {
   visible: T[];
@@ -17,9 +20,9 @@ export function tailWindowStart(total: number, size: number = TRANSCRIPT_WINDOW_
   return Math.max(0, total - size);
 }
 
-export function followWindowStart(messages: readonly { role?: string }[], start: number): number {
-  const tail = tailWindowStart(messages.length);
-  const oldest = Math.max(start, tail - TRANSCRIPT_WINDOW_SIZE);
+export function followWindowStart(messages: readonly { role?: string }[], start: number, size: number = TRANSCRIPT_WINDOW_SIZE): number {
+  const tail = tailWindowStart(messages.length, size);
+  const oldest = Math.max(start, tail - size);
   for (let index = messages.length - 1; index >= oldest; index--) {
     if (messages[index].role === "user") return Math.min(tail, index);
   }

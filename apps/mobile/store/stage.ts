@@ -143,8 +143,15 @@ function rewrite(threadId: string, real: Message[], threads: ReturnType<typeof s
   const kept = (firstUser < 0 ? [] : real.slice(firstUser)).map(({ unconfirmed: _unconfirmed, ...message }) => message as Message);
   const head = script.tail ? [...script.messages, script.tail] : script.messages;
   if (kept[0]) kept[0] = { ...kept[0], parentId: head.at(-1)!.id };
-  return [...head, ...kept];
+  const all = [...head, ...kept];
+  if (all.length <= SERVER_PAGE) return all;
+  const page = all.slice(-SERVER_PAGE);
+  page[0] = { ...page[0]!, parentId: null };
+  return page;
 }
+
+/** the newest messages a server hands over at once; the rest come as the phone asks for older ones */
+const SERVER_PAGE = 120;
 
 function patchOwner(owner: Record<string, any>, threads: ReturnType<typeof scripted>) {
   const script = threads.get(owner.threadId);
@@ -189,7 +196,7 @@ function startProxy(target: string, threads: () => ReturnType<typeof scripted> |
           for (const owner of [...(data.bots ?? []), ...(data.groups ?? [])]) patchOwner(owner, map);
           for (const thread of data.threads ?? []) {
             const messages = rewrite(thread.threadId, thread.messages ?? [], map);
-            if (messages) { thread.messages = messages; if ("activeLeafId" in thread) thread.activeLeafId = messages.at(-1)?.id ?? null; if ("hasMore" in thread) thread.hasMore = false; }
+            if (messages) { thread.messages = messages; if ("activeLeafId" in thread) thread.activeLeafId = messages.at(-1)?.id ?? null; if ("hasMore" in thread) thread.hasMore = messages.length >= SERVER_PAGE; }
           }
           body = JSON.stringify(data);
         } catch {}
