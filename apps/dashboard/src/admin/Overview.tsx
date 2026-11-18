@@ -14,9 +14,10 @@ import { Avatar, CHANNEL, Chip, FilterChips, NoteDialog, RangePicker, RankCard, 
 import { CheerBubble, PaymentsCard, useCheer, type RevenueAnswer } from "./Revenue";
 import { PulseGrid } from "./Pulse";
 import { UsageSection } from "./Usage";
-import { ChartCard, ConversionList, LiveMap, LtvList, MainChart, PeakHours, SERIES, StackedBars, channelStacks, type ChartShow, type Insights } from "./charts";
+import { ChartCard, ConversionList, LiveMap, LtvList, MainChart, PeakHours, SERIES, StackedBars, channelStacks, type ChartShow, type Insights, type MainSeries } from "./charts";
 import { FunnelChart } from "./FunnelChart";
-import { KpiRow } from "./KpiRow";
+import { KpiRow, useKpiLayout } from "./KpiRow";
+import { mainOf, type ChartedId } from "./kpi-layout";
 import { RevenueStrip } from "./RevenuePage";
 import { Failed, Loading, n } from "./ui";
 
@@ -90,6 +91,17 @@ function SitePicker({ value, onChange, counts }: { value: Surface; onChange(v: S
 }
 
 const I = { size: 14, strokeWidth: 1.75 } as const;
+
+function mainSeries(id: ChartedId, data: SeriesData): MainSeries {
+  const money = data.revenue, net = (i: number) => money ? money.new[i]! + money.renewal[i]! + money.refund[i]! : 0;
+  switch (id) {
+    case "revenue": return { label: "revenue", kind: "revenue", values: null };
+    case "mrr": return { label: "expected mrr", kind: "money", values: money?.mrr ?? null };
+    case "customers": return { label: "new customers", kind: "count", values: data.paid };
+    case "per visitor": return { label: "per visitor", kind: "money", values: data.visitors.map((v, i) => v ? net(i) / v : 0) };
+    case "conversion": return { label: "conversion", kind: "share", values: data.visitors.map((v, i) => v ? data.signups[i]! / v : 0) };
+  }
+}
 
 
 function MapPanel({ rows }: { rows: RankRow[] }) {
@@ -235,7 +247,9 @@ function Cheer({ data }: { data: WebAnswer | null }) {
 export function OverviewPage() {
   const [sel, setSel] = useSelection();
   const { range, surface, filters } = sel;
-  const [show, setShow] = useState<ChartShow>({ visitors: true, revenue: true, signups: true });
+  const [show, setShow] = useState<ChartShow>({ visitors: true, main: true, signups: true });
+  const [kpis, setKpis] = useKpiLayout();
+  const mainId = mainOf(kpis);
   const flip = (key: keyof ChartShow) => () => setShow((s) => ({ ...s, [key]: !s[key] }));
   const [note, setNote] = useState<Note | { at: number } | null>(null);
   const { data, error, loading, reload } = useAdmin<WebAnswer>(`/web?${webQuery(range, surface, filters)}&tz=${new Date().getTimezoneOffset()}`, 60_000);
@@ -247,6 +261,9 @@ export function OverviewPage() {
   const series = useMemo(() => data ? { ...data.series, revenue: data.revenue?.series } : null, [data]);
   const filtered = Object.values(filters).some((v) => v !== undefined);
   const whole = (v: number) => n(v), dollars = (v: number) => usd(v, true), share = (v: number) => percent(v);
+  const main = useMemo(() => series && mainId ? mainSeries(mainId, series) : null, [series, mainId]);
+  const charted = (id: ChartedId) => mainId === id ? { on: show.main, flip: flip("main"), colour: SERIES.revenue } : undefined;
+  const mrrMoved = r && !filtered ? r.current.mrr - r.previous.mrr : null;
   return (
     <>
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -263,25 +280,29 @@ export function OverviewPage() {
       {data && c && p && series && (
         <div className={cx("transition-opacity duration-150", loading && "opacity-80")}>
           <section className="rounded-[28px] bg-card p-2" aria-label="key numbers and chart">
-            <KpiRow cards={[
+            <KpiRow layout={kpis} onLayout={setKpis} cards={[
               { id: "visitors", value: c.visitors, format: whole, now: c.visitors, before: p.visitors, toggle: { on: show.visitors, flip: flip("visitors"), colour: SERIES.visitors } },
-              { id: "revenue", value: r ? r.current.net : null, format: dollars, now: r?.current.net, before: r?.previous.net, toggle: { on: show.revenue, flip: flip("revenue"), colour: SERIES.revenue } },
+              { id: "revenue", value: r ? r.current.net : null, format: dollars, now: r?.current.net, before: r?.previous.net, toggle: charted("revenue") },
               { id: "signups", value: c.signups, format: whole, now: c.signups, before: p.signups, toggle: { on: show.signups, flip: flip("signups"), colour: SERIES.signups } },
-              { id: "mrr", value: r && !filtered ? r.current.mrr : null, format: dollars, now: r && !filtered ? r.current.mrr : undefined, before: r?.previous.mrr },
-              { id: "customers", value: r ? (overview.data?.totals.paying ?? r.current.customers) : null, format: whole, now: r?.current.customers, before: r?.previous.customers },
-              { id: "per visitor", value: r && c.visitors ? r.current.net / c.visitors : null, format: (v) => usd(Math.round(v)), now: r && c.visitors ? r.current.net / c.visitors : undefined, before: r && p.visitors ? r.previous.net / p.visitors : undefined },
-              { id: "conversion", value: c.conversion, format: share, now: c.conversion, before: p.conversion },
+              { id: "mrr", value: r && !filtered ? r.current.mrr : null, format: dollars, toggle: charted("mrr"),
+                change: mrrMoved === null ? undefined : mrrMoved === 0 ? <span className="text-12 text-ink-4">no change in this range</span> : <span className="text-12 text-ink-4"><span className={cx("font-mono num", mrrMoved > 0 ? "text-good" : "text-bad")}>{mrrMoved > 0 ? "+" : ""}{usd(mrrMoved, true)}</span> in this range</span> },
+              { id: "customers", value: r ? (overview.data?.totals.paying ?? r.current.customers) : null, format: whole, now: r?.current.customers, before: r?.previous.customers, toggle: charted("customers") },
+              { id: "per visitor", value: r && c.visitors ? r.current.net / c.visitors : null, format: (v) => usd(Math.round(v)), now: r && c.visitors ? r.current.net / c.visitors : undefined, before: r && p.visitors ? r.previous.net / p.visitors : undefined, toggle: charted("per visitor") },
+              { id: "conversion", value: c.conversion, format: share, now: c.conversion, before: p.conversion, toggle: charted("conversion") },
               { id: "bounce rate", value: c.bounce, format: share, now: c.bounce, before: p.bounce, invert: true },
             ]} />
             <div className="px-3 pb-2 pt-6 max-sm:px-1">
               {!data.tracked && <p className="mb-3 rounded-[14px] bg-wash-lemon px-4 py-2.5 text-13 text-ink">no visits recorded for this view yet.</p>}
-              <MainChart data={series} previous={data.insights?.previousVisitors ?? []} notes={data.notes} show={show} onNote={setNote} emptyMoney={r?.live ? "no sales in this window" : "payments aren't live yet"} />
+              <MainChart data={series} previous={data.insights?.previousVisitors ?? []} notes={data.notes} show={show} main={main} onNote={setNote}
+                emptyMoney={!r?.live ? "payments aren't live yet" : mainId === "revenue" ? "no sales in this window" : mainId === "mrr" ? (filtered ? "mrr shows without filters" : "no expected mrr in this window") : null} />
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-1">
                 <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-12 text-ink-3" aria-label="legend">
                   <li className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full bg-viz-visitors" aria-hidden /> visitors</li>
                   <li className="inline-flex items-center gap-1.5"><svg width="16" height="2" aria-hidden><line x1="0" x2="16" y1="1" y2="1" stroke="var(--ink-4)" strokeWidth="1.5" strokeDasharray="3 3" /></svg> window before</li>
-                  <li className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-[2px] bg-viz-new" aria-hidden /> new revenue</li>
-                  <li className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-[2px] bg-viz-renewal" aria-hidden /> renewals</li>
+                  {mainId === "revenue" ? <>
+                    <li className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-[2px] bg-viz-new" aria-hidden /> new revenue</li>
+                    <li className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-[2px] bg-viz-renewal" aria-hidden /> renewals</li>
+                  </> : main && <li className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-[2px] bg-viz-new" aria-hidden /> {main.label}</li>}
                   <li className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-coral" aria-hidden /> signups</li>
                   <li className="inline-flex items-center gap-1.5"><span className="size-2 rotate-45 rounded-[2px] bg-warn" aria-hidden /> notes</li>
                 </ul>

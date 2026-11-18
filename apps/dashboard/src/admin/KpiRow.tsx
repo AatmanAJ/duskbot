@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cx } from "../ui/kit";
 import { useReducedMotion } from "../ui/motion";
 import { Figure } from "../ui/Figure";
@@ -9,6 +9,8 @@ import { TINTS, TINT_STYLE, loadLayout, moveTo, saveLayout, slotAt, tintOf, type
 export interface KpiCard {
   id: KpiId; value: number | null; format(v: number): string; now?: number | null; before?: number | null; invert?: boolean;
   toggle?: { on: boolean; flip(): void; colour: string }; note?: string; hint?: string;
+  /** said under the number instead of the change on the window before */
+  change?: ReactNode;
 }
 
 const SETTLE = "transform 240ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease";
@@ -16,9 +18,11 @@ const HOLD_MS = 280, SLOP = 4, TOUCH_SLOP = 8;
 
 type Press = { id: KpiId; pointer: number; touch: boolean; sx: number; sy: number; grab: { x: number; y: number }; active: boolean; timer?: number; off(): void };
 
-/** the strip of numbers over the chart; cards drag into a new order and take a colour from their menu, both kept per browser */
-export function KpiRow({ cards }: { cards: KpiCard[] }) {
-  const [layout, setLayout] = useState<KpiLayout>(() => loadLayout());
+/** the strip's order and colours, kept per browser; the page holds them so the chart can follow the green card */
+export const useKpiLayout = () => useState<KpiLayout>(() => loadLayout());
+
+/** the strip of numbers over the chart; cards drag into a new order and take a colour from their menu */
+export function KpiRow({ cards, layout, onLayout: setLayout }: { cards: KpiCard[]; layout: KpiLayout; onLayout(next: KpiLayout): void }) {
   const [dragging, setDragging] = useState<KpiId | null>(null);
   const [said, setSaid] = useState("");
   const reduced = useReducedMotion() ?? false;
@@ -177,7 +181,7 @@ export function KpiRow({ cards }: { cards: KpiCard[] }) {
 }
 
 function Kpi({ label, card, tint }: { label: string; card: KpiCard; tint: Tint }) {
-  const { value, format, now, before, invert, toggle, note, hint } = card;
+  const { value, format, now, before, invert, toggle, note, hint, change } = card;
   const style = tint !== "none" ? TINT_STYLE[tint] : null;
   return (
     <div title={hint} className="h-full min-w-0 select-none rounded-[16px] bg-pop px-4 py-3.5 transition-colors duration-200 [-webkit-touch-callout:none]" style={style && toggle?.on !== false ? { background: style.wash } : undefined}>
@@ -187,7 +191,7 @@ function Kpi({ label, card, tint }: { label: string; card: KpiCard; tint: Tint }
         </label>
       ) : <div className="truncate pe-7 text-13 font-medium text-ink-3">{label}</div>}
       <div className="mt-1 truncate font-mono text-[26px] font-medium leading-9 tracking-[-0.045em] text-ink num" style={style ? { color: style.ink } : undefined}>{value === null ? "-" : <Figure value={format(value)} className="!font-mono !text-[26px] !leading-9 !tracking-[-0.045em] ![color:inherit]" />}</div>
-      <div className="mt-0.5 h-5 truncate leading-5">{now !== undefined && <Delta now={now ?? null} before={before ?? null} invert={invert} />}</div>
+      <div className="mt-0.5 h-5 truncate leading-5">{change ?? (now !== undefined && <Delta now={now ?? null} before={before ?? null} invert={invert} />)}</div>
       {note && <div className="mt-0.5 truncate text-12 leading-4 text-ink-3">{note}</div>}
     </div>
   );

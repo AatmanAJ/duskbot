@@ -19,7 +19,7 @@ export interface RecentPayment {
   firstSeen: number | null; signedUpAt: number | null;
 }
 export interface RevenueAnswer {
-  current: RevenueKpis; previous: RevenueKpis; series: { new: number[]; renewal: number[]; refund: number[] };
+  current: RevenueKpis; previous: RevenueKpis; series: { new: number[]; renewal: number[]; refund: number[]; mrr?: number[] | null };
   cards: Record<string, Record<string, number>>; recent: RecentPayment[]; live: boolean; first: number | null;
 }
 
