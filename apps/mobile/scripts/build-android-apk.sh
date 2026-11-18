@@ -49,16 +49,20 @@ echo "== gradle assembleRelease ($DUSK_ANDROID_VERSION_NAME, code $DUSK_ANDROID_
   -q assembleRelease -PANDROID_UPLOAD_KEYSTORE_PATH=)
 
 built_dir="$mobile/android/app/build/outputs/apk/release"
-built=$(ls "$built_dir"/app-release-unsigned.apk "$built_dir"/app-release.apk 2>/dev/null | head -1)
+built=""
+for candidate in "$built_dir/app-release-unsigned.apk" "$built_dir/app-release.apk"; do
+  if [ -f "$candidate" ]; then built="$candidate"; break; fi
+done
 [ -n "$built" ] || { echo "error: gradle finished but no apk in $built_dir" >&2; exit 1; }
 
 mkdir -p "$out_dir"
 apk="$out_dir/dusk-bot-$DUSK_ANDROID_VERSION_NAME.apk"
-aligned=$(mktemp -t dusk-apk).apk
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+aligned="$work/aligned.apk"
 "${build_tools}zipalign" -f -p 4 "$built" "$aligned"
 "${build_tools}apksigner" sign --ks "$keystore" --ks-key-alias "$DUSK_ANDROID_KEY_ALIAS" \
   --ks-pass env:DUSK_ANDROID_KEYSTORE_PASSWORD --key-pass env:DUSK_ANDROID_KEY_PASSWORD --out "$apk" "$aligned"
-rm -f "$aligned" "$aligned.idsig" "${aligned%.apk}"
 "${build_tools}apksigner" verify --verbose "$apk" | grep -E "^Verifies|v[0-9].*scheme"
 echo "sha256: $(shasum -a 256 "$apk" | cut -d' ' -f1)"
 echo "$apk"
