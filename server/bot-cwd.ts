@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { isAbsolute, relative, resolve } from "node:path";
 
 import { isOwnThreadFolder } from "../shared/thread-folder.ts";
+import { DATA_DIR } from "./config.ts";
+import { foreignDataDir, pickedFolderLost } from "./own-folders.ts";
 
 export type CwdValidation = { ok: true; cwd: string | null } | { ok: false; error: string };
 
@@ -21,15 +23,16 @@ export function validateBotCwd(input: unknown): CwdValidation {
     return { ok: false, error: `that folder doesn't exist: ${cwd}` };
   }
   if (!stat.isDirectory()) return { ok: false, error: `that path is not a folder: ${cwd}` };
+  if (foreignDataDir(cwd, DATA_DIR)) return { ok: false, error: "that folder belongs to another dusk bot workspace" };
   return { ok: true, cwd };
 }
 
 /** The working folder a thread moves to on this turn: its bot's, while the thread is still in its own folder. Never for a
  * conversation that keeps a private folder (a Cloud guest's), nor for an engine that works in no folder. */
 export function folderToFollow(bot: { id: string; cwd?: string }, threadId: string, threadCwd: string | null | undefined,
-  opts: { worksInFolders: boolean; keepsPrivateFolder: boolean }): string | undefined {
+  opts: { worksInFolders: boolean; keepsPrivateFolder: boolean; dataDir: string }): string | undefined {
   if (!bot.cwd || !opts.worksInFolders || opts.keepsPrivateFolder) return undefined;
-  return isOwnThreadFolder(threadCwd, bot.id, threadId) ? bot.cwd : undefined;
+  return isOwnThreadFolder(threadCwd, bot.id, threadId) && !pickedFolderLost(bot.cwd, opts.dataDir) ? bot.cwd : undefined;
 }
 
 /** A conversation's folder a teammate may be sent to: one that still exists, outside dusk bot's own data (a bot's private workspace). */

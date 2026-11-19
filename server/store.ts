@@ -12,6 +12,7 @@ import type { TeamComputers } from "./team-computers.ts";
 import { removeBotFolder, soulFile, soulHash, writeSoulMirror } from "./bot-folder.ts";
 import type { BotProfilePatch } from "./bot-profile.ts";
 import { peerAllowKey, type PeerAction } from "./peer-approval-key.ts";
+import { rebaseStoredFolders } from "./own-folders.ts";
 import { DATA_DIR, EVENTS_DIR, NATIVE_DIR, loadBrowserProfileIdAliases } from "./config.ts";
 import * as mdb from "./message-db.ts";
 import { forgetBotMemoryJournal, journalFile, rotatedJournalFile } from "./memory-journal.ts";
@@ -279,10 +280,11 @@ export class Store {
     this.groups = groupsRead.records;
     if (groupsRead.state === "loaded") this.groupsFile.loaded(groupsRead.text);
     this.rememberSections([...this.bots, ...this.groups].map((record) => record.section));
-    let botsMigrated = false;
+    const isBot = (id: string) => this.bots.some((bot) => bot.id === id);
+    let botsMigrated = rebaseStoredFolders(this.bots, DATA_DIR, isBot);
     const browserProfileAliases = loadBrowserProfileIdAliases();
     const chiefSectionsSeen = new Set<string>();
-    let groupsMigrated = false;
+    let groupsMigrated = rebaseStoredFolders(this.groups, DATA_DIR, isBot);
     for (const b of this.bots) {
       if (b.busy || (b.activity !== undefined && b.activity !== "idle")) botsMigrated = true;
       b.busy = false;
@@ -1970,6 +1972,13 @@ export class Store {
     });
     this.emit({ type: "group", groupId: group.id });
     return cwd;
+  }
+
+  repinGroupCwd(groupId: string, threadId: string, cwd: string | null): void {
+    const group = this.group(groupId), task = this.groupTaskByThread(groupId, this.roomThreadOf(threadId));
+    if (!group) return;
+    this.commitGroupChange(group, "the thread's folder", () => { if (task) task.pinnedCwd = cwd; if (!task || group.threadId === task.threadId) group.pinnedCwd = cwd; });
+    this.emit({ type: "group", groupId: group.id });
   }
 
   project(botId: string, projectId: string): BotProjectRecord | undefined {
