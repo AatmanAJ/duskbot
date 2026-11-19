@@ -45,8 +45,9 @@ export type MobileTransport =
 export interface MobileLinkPayload {
   v: typeof MOBILE_LINK_VERSION;
   workspace: { name: string; environmentId: string | null; kind: "vps" | "mac" | "server" };
-  /** `secret` is a single-use pairing credential; `expiresAt` is epoch ms. */
-  grant: { id: string; secret: string; expiresAt: number };
+  /** `secret` is a single-use pairing credential; `expiresAt` is epoch ms; `issuedAt` is the issuing server's clock when
+   * it made the grant, so a phone can time the grant's lifetime on its own clock whatever either clock says. */
+  grant: { id: string; secret: string; expiresAt: number; issuedAt?: number };
   via: MobileTransport[];
 }
 
@@ -198,7 +199,7 @@ export function parseMobilePayload(value: unknown): MobileLinkPayload | null {
   return {
     v: MOBILE_LINK_VERSION,
     workspace: { name: workspace.name.slice(0, 80), environmentId: typeof workspace.environmentId === "string" ? workspace.environmentId : null, kind: workspace.kind },
-    grant: { id: grant.id, secret: grant.secret, expiresAt: grant.expiresAt },
+    grant: { id: grant.id, secret: grant.secret, expiresAt: grant.expiresAt, ...(Number.isSafeInteger(grant.issuedAt) && grant.issuedAt! <= grant.expiresAt ? { issuedAt: grant.issuedAt } : {}) },
     via,
   };
 }
@@ -232,6 +233,7 @@ export interface MobilePairingPayload {
   environmentId?: string;
   endpoints?: CompanionEndpoint[];
   expiresAt?: number;
+  issuedAt?: number;
   /** Every route of a v2 link, in the order to try them. Absent for an older link. */
   via?: MobileTransport[];
   grantId?: string;
@@ -302,6 +304,7 @@ export function pairingFromPayload(payload: MobileLinkPayload): MobilePairingPay
     ...(payload.workspace.environmentId ? { environmentId: payload.workspace.environmentId } : {}),
     ...(companions.length ? { endpoints: companions.map((route) => ({ url: route.url, kind: route.net, priority: route.priority })) } : {}),
     expiresAt: payload.grant.expiresAt,
+    ...(payload.grant.issuedAt !== undefined ? { issuedAt: payload.grant.issuedAt } : {}),
     via: payload.via,
     grantId: payload.grant.id,
     workspaceKind: payload.workspace.kind,

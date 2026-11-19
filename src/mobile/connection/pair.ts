@@ -15,6 +15,16 @@ type PairErrorCode = "expired" | "unknown" | "store-qr" | "used" | "sign-in" | "
 const CLOCK_SKEW_MS = 10 * 60_000;
 const lapsed = (expiresAt: number | undefined) => Boolean(expiresAt && expiresAt + CLOCK_SKEW_MS <= Date.now());
 
+/** A grant that says when it was issued lives its lifetime from when this phone first read it, timed on the phone's
+ * clock alone, so a phone or computer clock set wrong never ends it early. */
+async function grantLapsed(payload: MobilePairingPayload, platform: MobilePlatform): Promise<boolean> {
+  if (payload.issuedAt === undefined || !payload.grantId || !payload.expiresAt) return lapsed(payload.expiresAt);
+  const key = `dusk.mobile.grantSeen.${payload.grantId}`, now = Date.now();
+  const seen = Number(await platform.prefs.get(key));
+  if (!Number.isSafeInteger(seen) || seen <= 0 || seen > now) { await platform.prefs.set(key, String(now)); return false; }
+  return now - seen >= payload.expiresAt - payload.issuedAt;
+}
+
 export class PairError extends Error {
   readonly code: PairErrorCode;
   constructor(code: PairErrorCode) {
@@ -188,7 +198,7 @@ async function resolveTypedCodeResult(code: string, relayBase = DEFAULT_MOBILE_R
       payload = parseMobilePayload(JSON.parse(new TextDecoder().decode(await unseal(key, id, answer.sealed))));
     } catch { throw new PairError("invalid"); }
     if (!payload) throw new PairError("invalid");
-    if (lapsed(payload.grant.expiresAt)) throw new PairError("expired");
+    if (payload.grant.issuedAt === undefined && lapsed(payload.grant.expiresAt)) throw new PairError("expired");
     return pairingFromPayload(payload);
   } catch (error) { throw pairError(error); }
 }
@@ -214,7 +224,7 @@ async function relaySecrets(platform: MobilePlatform, id: string): Promise<Relay
 async function redeemPairingResult(payload: MobilePairingPayload, platform: MobilePlatform): Promise<{ record: MobileConnectionRecord; token: string }> {
   if (!payload.via) return redeemLegacyPairing(payload, platform);
   if (!payload.grantId || !payload.credential || !payload.via.length) throw new PairError("invalid");
-  if (lapsed(payload.expiresAt)) throw new PairError("expired");
+  if (await grantLapsed(payload, platform)) throw new PairError("expired");
   try {
     const id = await attemptId(payload, platform, payload.origin ?? "");
     const grantRelay = payload.via.find((route) => route.kind === "relay");

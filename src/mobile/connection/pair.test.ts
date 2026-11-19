@@ -230,6 +230,22 @@ describe("v2 pairing", () => {
     expect(preferences.get("dusk.mobile.install")).toBe(first);
   });
 
+  it("times a grant that says when it was issued on the phone's own clock, so a computer an hour slow still pairs", async () => {
+    const { platform, preferences } = fakePlatform();
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => response(v2Answer()));
+    vi.stubGlobal("fetch", fetcher);
+    vi.spyOn(relay, "open").mockReturnValue({ request: vi.fn().mockRejectedValue(new TypeError("offline")), close: vi.fn() });
+    const slow = Date.now() - 60 * 60_000;
+    const late = pairingFromPayload({ ...v2Payload(), grant: { ...v2Payload().grant, issuedAt: slow, expiresAt: slow + 10 * 60_000 } });
+    expect(late.issuedAt).toBe(slow);
+    await expect(redeemPairing(late, platform)).resolves.toMatchObject({ token: expect.any(String) });
+    expect(fetcher).toHaveBeenCalled();
+    fetcher.mockClear();
+    preferences.set("dusk.mobile.grantSeen.grant-id", String(Date.now() - 11 * 60_000));
+    await expect(redeemPairing(late, platform)).rejects.toMatchObject({ code: "expired" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("falls back to grant relay and records the device channel", async () => {
     const channel = { request: vi.fn().mockResolvedValue(response(v2Answer())), close: vi.fn() };
     const opened = vi.spyOn(relay, "open").mockReturnValue(channel);

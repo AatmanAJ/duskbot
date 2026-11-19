@@ -327,7 +327,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
       grants.delete(opened.id);
       return { status: 409, body: { error: "A phone cannot reach this workspace yet: turn on phone access or give it a public address first.", code: "unreachable" } };
     }
-    const payload: MobileLinkPayload = { v: MOBILE_LINK_VERSION, workspace: workspace(), grant: { id: opened.id, secret: opened.credential, expiresAt: opened.expiresAt }, via };
+    const payload: MobileLinkPayload = { v: MOBILE_LINK_VERSION, workspace: workspace(), grant: { id: opened.id, secret: opened.credential, expiresAt: opened.expiresAt, issuedAt: now() }, via };
     const lookupBase = relay?.base ?? deps.lookupRelay;
     const typed = lookupBase && await postLookup(lookupBase, opened.code, payload, opened.expiresAt - now(), deps.fetch) ? formatPairingCode(opened.code) : null;
     const answer: MobilePairingResponse = { payload, link: mobileLinkUrl(payload), code: typed, expiresAt: opened.expiresAt };
