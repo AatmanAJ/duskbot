@@ -1575,7 +1575,6 @@
   "phone.back": "Zurück",
   "phone.signIn.attention": "Der sichere Zugang braucht Aufmerksamkeit",
   "phone.signIn.title": "Anmelden, um sicher zu koppeln",
-  "phone.signIn.unavailable": "Der Online-Fernzugriff ist gerade nicht verfügbar. Du kannst trotzdem direkt im selben WLAN koppeln.",
   "phone.signIn.timedOut": "Der sichere Zugang dauert länger als erwartet. Versuch es erneut oder koppel direkt in diesem WLAN.",
   "phone.signIn.failed": "Wir konnten deine private Verbindung nicht fertig einrichten.",
   "phone.signIn.email": "E-Mail",
@@ -3589,5 +3588,7 @@
   "server.cloudMac.where.append": "{path}\nam Ende anfügen",
   "server.cloudMac.where.openWith": "{target}\nmit {app}",
   "server.cloudMac.why": "Rückfrage, weil es: {reason}.",
-  "server.cloudMac.why.every": "Du wolltest jede Aktion auf diesem Mac selbst freigeben."
+  "server.cloudMac.why.every": "Du wolltest jede Aktion auf diesem Mac selbst freigeben.",
+  "server.purchase.title": "Kauf bestätigen",
+  "server.emailReview.title": "Diese E-Mail senden?"
 }

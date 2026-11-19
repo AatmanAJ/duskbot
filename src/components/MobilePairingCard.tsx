@@ -549,7 +549,8 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
       signInEmail
         ? <span data-phone-cloud-sign-in="" className="max-w-[320px] break-all text-[14px] leading-5 text-ink-secondary">{t("settings.phone.logInWith")} <span className="font-medium text-ink">{signInEmail}</span></span>
         : <span className="max-w-[300px] text-pretty text-[13px] leading-[18px] text-ink-secondary">{t("settings.phone.cloudScanAny")}</span>,
-      null, status(t("settings.phone.waitingCloud"), null)),
+      <span data-phone-camera-hint="" className="text-pretty text-[13px] leading-[18px] text-ink-tertiary">{t(ios ? "settings.phone.cameraIos" : "settings.phone.cameraAndroid")}</span>,
+      status(t("settings.phone.waitingCloud"), null)),
     t("settings.phone.logInStep"));
 
   const doneStep = (live: boolean) => (

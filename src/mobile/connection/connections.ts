@@ -10,18 +10,26 @@ import { forgetTranscriptShelf } from "@/state/transcript-cache";
 import { outboxKey } from "./active";
 import { PairError } from "./pair";
 import { RACED_COMPANION_TRY_MS, raceRoutes, routeHeadStart, routeOrder, type RouteOutcome } from "./route-order";
-import { asleepAnswer, wakingAnswer } from "@/lib/cloud-power";
+import { asleepAnswer, goneAnswer, wakingAnswer } from "@/lib/cloud-power";
 
 /** `asleep`: the place's edge said its dusk cloud sleeps (or is waking). It is still the place: the app opens on it and
  * wakes it, because the edge never wakes a cloud for a read, so asking again could never get past this answer. */
 export type WorkspaceTransport = PhoneTransport & { asleep?: true };
+
+/** The place's edge says its dusk cloud was deleted: no route will ever reach it again. */
+export class PlaceGoneError extends Error {
+  constructor() {
+    super("this dusk cloud was deleted");
+    this.name = "PlaceGoneError";
+  }
+}
 
 export async function connectToWorkspace(record: MobileConnectionRecord, token: string, platform: MobilePlatform, signal: AbortSignal): Promise<WorkspaceTransport> {
   const routes: MobileTransport[] = record.via ?? (record.origin ? [record.transport === "companion"
     ? { kind: "companion", url: record.origin, net: "lan", priority: 0 }
     : { kind: "https", url: record.origin }] : []);
   const ordered = routeOrder(routes, platform.kind);
-  let gone = false, refused = false;
+  let gone = false, refused = false, deleted = false;
   const sleeping: WorkspaceTransport[] = [];
   const close = (transport: PhoneTransport) => { if (transport.kind === "relay") transport.channel.close(); };
   const attempt = async (route: MobileTransport, raced: AbortSignal): Promise<RouteOutcome<PhoneTransport>> => {
@@ -61,6 +69,7 @@ export async function connectToWorkspace(record: MobileConnectionRecord, token: 
       // a computer's companion knows only the phones that paired through it; one paired over the relay is answered there
       if (response.status === 401 && !(route.kind === "companion" && record.relay)) { refused = true; return { kind: "final" }; }
       if (transport.kind !== "relay" && (asleepAnswer(response) || wakingAnswer(response))) sleeping[ordered.indexOf(route)] = { ...transport, asleep: true };
+      if (transport.kind !== "relay" && goneAnswer(response)) deleted = true;
       return { kind: "failed" };
     }
     return { kind: "ok", value: transport };
@@ -70,6 +79,7 @@ export async function connectToWorkspace(record: MobileConnectionRecord, token: 
   if (refused) throw new PairError("refused");
   const asleep = sleeping.find(Boolean);
   if (asleep) return asleep;
+  if (deleted) throw new PlaceGoneError();
   // the relay dropping this phone's channel is the removal reaching a phone that has no other way to hear of it
   throw new PairError(gone ? "refused" : "unreachable");
 }

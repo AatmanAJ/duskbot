@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
 import type { HomeGlassState } from "./native-home-glass";
+import { kbTrace } from "./keyboard";
 
 /** A rect in css px from the top left of the screen, which on the phone is the native view's own point space. */
 export interface GlassFrame { x: number; y: number; w: number; h: number }
@@ -319,7 +320,16 @@ export function keyboardRide(shell: Element): number {
 /** The empty space between the transcript's last row and the bottom of its scroller, in whole px. */
 export function transcriptRoom(chat: Element | null): number {
   const list = chat?.querySelector(".glass-scroller");
-  return list ? Math.max(0, Math.round(list.clientHeight - list.scrollHeight)) : 0;
+  // scrollHeight never drops below clientHeight, so a short transcript is measured by its content's own boxes
+  if (!list || list.scrollHeight > list.clientHeight + 1) return 0;
+  const top = list.getBoundingClientRect().top;
+  let end = 0;
+  for (const child of list.children) {
+    const position = getComputedStyle(child).position;
+    if (position === "absolute" || position === "fixed") continue;
+    end = Math.max(end, child.getBoundingClientRect().bottom - top);
+  }
+  return Math.max(0, Math.round(list.clientHeight - end));
 }
 
 function readComposer(shell: HTMLElement, baseline: number, dx: number, room: number): { composer: GlassComposer; elements: HTMLElement[]; field: HTMLTextAreaElement | null } | null {
@@ -353,6 +363,15 @@ function readComposer(shell: HTMLElement, baseline: number, dx: number, room: nu
   };
 }
 
+/** Why the page keeps its own composer instead of the native one, for the trace. */
+function handoffReason(shell: HTMLElement | null, chat: HTMLElement): string {
+  if (!shell) return "no composer";
+  if (covered(shell, chat)) return "covered";
+  if (hasStrips(shell)) return "strip";
+  if (!composerButtons(shell.querySelector("[data-composer-actions]"))) return "button without a twin";
+  return "no field";
+}
+
 /** When a slide begun this frame shows its first moved frame, on the clock the native side reads (epoch ms): a web
  * animation started now draws from the next frame, about half a 60 Hz frame on average from here. */
 export function slideStart(now = performance.timeOrigin + performance.now()): number {
@@ -370,6 +389,9 @@ export function nextTextSeq(): number {
 const FRESH_FRAMES = 30;
 const IDLE_EVERY = 15;
 const AVATAR_MS = 1000;
+/** The native side gets the whole state again this often even when nothing changed: chrome it lost (a page reload's
+ * reset, a hide it missed) comes back within this long. */
+export const REASSERT_MS = 1000;
 
 /** Inside a chat's transcript, whose rows (a reply streaming in) never move the header or the composer. */
 function inTranscript(node: Node): boolean {
@@ -426,6 +448,8 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     let avatarAt = 0;
     let avatarName: string | null = null;
     let nativeFocused = false;
+    let sentAt = 0;
+    let composerShown = false;
     let safeBottom = cssPx(root, "var(--m-safe-bottom)");
 
     const chat = () => root.querySelector<HTMLElement>("[data-mobile-chat]");
@@ -441,6 +465,11 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     });
     changed.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
     const skinChanged = new MutationObserver(() => { fresh = FRESH_FRAMES; });
+    const onVisible = () => {
+      if (document.hidden) return;
+      fresh = FRESH_FRAMES;
+      last = null;
+    };
     skinChanged.observe(html, { attributes: true, attributeFilter: ["data-skin", "class", "style"] });
     const flag = (name: "nativeGlassHeader" | "nativeGlassComposer", on: boolean) => {
       if (on && html.dataset[name] === undefined) html.dataset[name] = "";
@@ -500,8 +529,15 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       }
       flag("nativeGlassHeader", Boolean(header));
       flag("nativeGlassComposer", Boolean(next.composer));
-      if (!sameState(last, next)) {
+      if (Boolean(next.composer) !== composerShown) {
+        composerShown = Boolean(next.composer);
+        kbTrace(composerShown ? "native composer" : "page composer", { why: composerShown ? "shown" : chatEl ? handoffReason(shellEl, chatEl) : "chat closed" });
+        // the page's field kept the keyboard while it had the composer (a reply, a popover): the native one takes it back
+        if (composerShown && field && document.activeElement === field) glass.focus();
+      }
+      if (!sameState(last, next) || (!slide && !dragged && now - sentAt > REASSERT_MS)) {
         last = next;
+        sentAt = now;
         glass.update(next);
       }
       if (field && field.value !== fromNative && field.value !== toNative) {
@@ -519,7 +555,11 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
           break;
         }
         // the control the native one stood in for, by kind: the page's set may have moved on since that frame
-        case "button": click((event.kind && elements.find((el) => buttonKind(el) === event.kind)) || elements[event.index]); break;
+        case "button": {
+          if (event.kind === "send" || event.kind === "micSend") kbTrace("send tap", { kind: event.kind, keyboard: root.dataset.keyboard ?? "down" });
+          click((event.kind && elements.find((el) => buttonKind(el) === event.kind)) || elements[event.index]);
+          break;
+        }
         case "text": {
           fromNative = event.text;
           toNative = null;
@@ -550,6 +590,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     };
     const onResize = () => { safeBottom = cssPx(root, "var(--m-safe-bottom)"); };
     document.addEventListener("focus", onFocus, true);
+    document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("resize", onResize);
     frame = requestAnimationFrame(tick);
     return () => {
@@ -558,6 +599,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       skinChanged.disconnect();
       stop();
       document.removeEventListener("focus", onFocus, true);
+      document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("resize", onResize);
       if (nativeFocused) glass.blur();
       delete root.dataset.glassFocused;

@@ -3318,7 +3318,6 @@
   "phone.back": "戻る",
   "phone.signIn.attention": "セキュアアクセスに対応が必要です",
   "phone.signIn.title": "安全にペアリングするためサインイン",
-  "phone.signIn.unavailable": "オンラインのリモートアクセスは今は利用できません。同じ Wi-Fi での直接ペアリングは可能です。",
   "phone.signIn.timedOut": "セキュアアクセスに想定より時間がかかっています。再試行するか、この Wi-Fi で直接ペアリングしてください。",
   "phone.signIn.failed": "プライベート接続の作成を完了できませんでした。",
   "phone.signIn.email": "メール",

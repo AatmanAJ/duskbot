@@ -1,7 +1,7 @@
 {
   "default": {
-    "bytes": 65206,
-    "sha256": "a70232f2a3379363a3fa46217aa575ca28246efac5656cadad7c82687711dea3",
+    "bytes": 67679,
+    "sha256": "f773c996ff1c25a87ebf07b221bdde9fd4a0c167190e7d7916c6b333d758340b",
     "tools": [
       "set_status",
       "send_message",
@@ -12,6 +12,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -26,6 +27,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -57,8 +60,8 @@
     ]
   },
   "voice": {
-    "bytes": 65984,
-    "sha256": "ffcf5bcca58d8e608b3b49ba626194dc34620c7821f503cade0852de813eeaf2",
+    "bytes": 68457,
+    "sha256": "00a948ba591825ddfeea87161c1067d79561567f252acf93b093a70367e6f8d0",
     "tools": [
       "set_status",
       "send_message",
@@ -69,6 +72,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -83,6 +87,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -115,8 +121,8 @@
     ]
   },
   "skills": {
-    "bytes": 68025,
-    "sha256": "7e55de58e0be6711be750ed6d7271404763de27c7dc9c569cb84f573a8e39f35",
+    "bytes": 70498,
+    "sha256": "3a68bf225533fad80b88d70c70d6039316c150123a10e25982c3a0148a6a6c02",
     "tools": [
       "set_status",
       "send_message",
@@ -127,6 +133,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -141,6 +148,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -174,8 +183,8 @@
     ]
   },
   "skills+voice": {
-    "bytes": 68803,
-    "sha256": "4d732a9c3c542b198e631d3fe7747f5dc692e013bdccdbdc1105a7fd66cde91b",
+    "bytes": 71276,
+    "sha256": "09ab8d1d394d0120be266111ee9c2ce561b3202edd7367fdde4fa99c2ab1cb25",
     "tools": [
       "set_status",
       "send_message",
@@ -186,6 +195,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -200,6 +210,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -234,8 +246,8 @@
     ]
   },
   "non-chief": {
-    "bytes": 57188,
-    "sha256": "7189db58c129accfa430476c076e6c9b724b36e6bed6005948d844916f61b9c0",
+    "bytes": 59661,
+    "sha256": "a79caebf45ea6d08ff6d437e3262594fc8a1a1ba45519869a04cc58666a66c6f",
     "tools": [
       "set_status",
       "send_message",
@@ -246,6 +258,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -260,6 +273,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -286,8 +301,8 @@
     ]
   },
   "voice+non-chief": {
-    "bytes": 57966,
-    "sha256": "31368ecdb0af2312abd63205f9e7cfb999d3664a78ea17ac0bcc0dbaadcc0646",
+    "bytes": 60439,
+    "sha256": "e5dc8a7566009cb3e2833a666605e9f7b599fcd8ec001f0d790349ca29751959",
     "tools": [
       "set_status",
       "send_message",
@@ -298,6 +313,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -312,6 +328,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -339,8 +357,8 @@
     ]
   },
   "skills+non-chief": {
-    "bytes": 60007,
-    "sha256": "e3bd713cee988cb0494bcbe1e9557160ca4d126ff4f63b67961a17d68b4e41b6",
+    "bytes": 62480,
+    "sha256": "f1c3ec226d638f5a1156fe73a4dada04770cf08d9d30bc5631ddc661ad085044",
     "tools": [
       "set_status",
       "send_message",
@@ -351,6 +369,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -365,6 +384,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -393,8 +414,8 @@
     ]
   },
   "skills+voice+non-chief": {
-    "bytes": 60785,
-    "sha256": "f326d7d3b2fc7394730b21f57e5934e5e6feecd51d2672f64d6ece93b7871539",
+    "bytes": 63258,
+    "sha256": "3775b3cf7e06a3bf8b065f91c8d6977572ce5e2c6461e6e3c30096bc51eda175",
     "tools": [
       "set_status",
       "send_message",
@@ -405,6 +426,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -419,6 +441,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -448,8 +472,8 @@
     ]
   },
   "skills+voice+cloud-home": {
-    "bytes": 67824,
-    "sha256": "94deec4e21edf24d20ad1a62edc75d21c5357200f8fd6f541a711b03b3d69cb3",
+    "bytes": 70297,
+    "sha256": "655fd21ff699d78171e4de5d9aa4d81cbd10be26c8ffc6d8d19350e847a7ce21",
     "tools": [
       "set_status",
       "send_message",
@@ -460,6 +484,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -473,6 +498,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -507,8 +534,8 @@
     ]
   },
   "skills+voice+non-chief+cloud-home": {
-    "bytes": 59806,
-    "sha256": "38f4cb201218e1b1b649dd2edefc97259229c797ab50c5cd01284809b6433905",
+    "bytes": 62279,
+    "sha256": "2cb5c43bf0d1715699181c76d360760d43dad4fbd0197a6abcb18fe795731f35",
     "tools": [
       "set_status",
       "send_message",
@@ -519,6 +546,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -532,6 +560,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -561,8 +591,8 @@
     ]
   },
   "skills+voice+x": {
-    "bytes": 73814,
-    "sha256": "02bd391fe7cfc8c46e35544bef3c908546b493ff340a806f25f52fba078718b8",
+    "bytes": 76287,
+    "sha256": "e5fe6f1684e5ae9574822405075a0bfa1bba448121575c57118930fd7cc62e84",
     "tools": [
       "set_status",
       "send_message",
@@ -573,6 +603,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -587,6 +618,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -626,8 +659,8 @@
     ]
   },
   "skills+voice+x+team": {
-    "bytes": 73814,
-    "sha256": "02bd391fe7cfc8c46e35544bef3c908546b493ff340a806f25f52fba078718b8",
+    "bytes": 76287,
+    "sha256": "e5fe6f1684e5ae9574822405075a0bfa1bba448121575c57118930fd7cc62e84",
     "tools": [
       "set_status",
       "send_message",
@@ -638,6 +671,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -652,6 +686,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -691,8 +727,8 @@
     ]
   },
   "default+legacy-switches": {
-    "bytes": 65206,
-    "sha256": "a70232f2a3379363a3fa46217aa575ca28246efac5656cadad7c82687711dea3",
+    "bytes": 67679,
+    "sha256": "f773c996ff1c25a87ebf07b221bdde9fd4a0c167190e7d7916c6b333d758340b",
     "tools": [
       "set_status",
       "send_message",
@@ -703,6 +739,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -717,6 +754,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -748,8 +787,8 @@
     ]
   },
   "default+dusk": {
-    "bytes": 65857,
-    "sha256": "1cde39b4b7b4a2472eedb478106b33a12d3e710fefc0ff5ec61b2a962f094b26",
+    "bytes": 68330,
+    "sha256": "60e34cd2f0d3f0dd2d84bd84fdd25569eb7fe702fc704f2fa3dc9f032338008a",
     "tools": [
       "set_status",
       "send_message",
@@ -760,6 +799,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -774,6 +814,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -807,8 +849,8 @@
     ]
   },
   "skills+voice+dusk": {
-    "bytes": 69454,
-    "sha256": "546f0d9fe40332f1fef3d9422a756f1dded19630fdc28ec8cf728ea1ac557d0a",
+    "bytes": 71927,
+    "sha256": "acb21d16778233c077b0bb9d05050dde021ce27a007c373f4f2fdb2b9549ced3",
     "tools": [
       "set_status",
       "send_message",
@@ -819,6 +861,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -833,6 +876,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -869,8 +914,8 @@
     ]
   },
   "default+no-computer-pick": {
-    "bytes": 63999,
-    "sha256": "2760c5ec52b62344e7c583f48bb1440d062c302b905bdbb83104a2e8c1f38ffc",
+    "bytes": 66472,
+    "sha256": "85a7c2f578ed1ed7df3af2eb0e8a79f1d5ea626ed0dbbfe280e60ecb798177f1",
     "tools": [
       "set_status",
       "send_message",
@@ -881,6 +926,7 @@
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -894,6 +940,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -925,8 +973,8 @@
     ]
   },
   "default+room": {
-    "bytes": 56921,
-    "sha256": "eecf4ec9e2fd3162de9ae487c664edde1c3cc419bb4a26d342a254a7c2a0fb4a",
+    "bytes": 58240,
+    "sha256": "06423d6f7dad84b6a0d1085907ef1e460267bc26b28a4ce9fc2db88a615511f1",
     "tools": [
       "set_status",
       "send_message",
@@ -948,6 +996,7 @@
       "attach_file",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -976,8 +1025,8 @@
     ]
   },
   "non-chief+room": {
-    "bytes": 48903,
-    "sha256": "350cf40e9daf3f483e688547cff529b6851accdb463df8f51ab0dbc1d1533d9c",
+    "bytes": 50222,
+    "sha256": "566cc1d50f43318d8eceed454455f37ee1647c1649ebfa84c3b9654cba2d940a",
     "tools": [
       "set_status",
       "send_message",
@@ -999,6 +1048,7 @@
       "attach_file",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
       "post_to_room",
       "create_bot",
       "list_team_library",

@@ -53,6 +53,7 @@ import type { MarkState } from "./mascot-engine";
 import { poolWords } from "@/lib/friendly-activity";
 import type { LiveStatus } from "@/state/turn-status";
 import { STATUS_EXIT_MS, TurnPresence, TYPING_PHASE } from "./TurnPresence";
+import { TranscriptCardSlot } from "./TranscriptCardSlot";
 import { workingMood } from "@/lib/working-mood";
 import { WorkingMascot } from "./WorkingMascot";
 import { BrowserPartLine } from "./BrowserPartLine";
@@ -1166,11 +1167,9 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   if (busySince !== null && shownLabel.current.seed !== presenceSeed) shownLabel.current = { seed: presenceSeed };
   if (live.label) shownLabel.current.label = live.label;
   const turnLabel = live.label ?? shownLabel.current.label;
-  const mood = workingMood({
-    phase: writing ? TYPING_PHASE : now.phase,
-    waiting: teammatesWorking || pendingApprovals(messages).length > 0,
-    failed: lastForLine?.kind === "activity" && lastForLine.tool?.ok === false,
-  });
+  const waitingOnSomeone = teammatesWorking || pendingApprovals(messages).length > 0;
+  const stepFailed = lastForLine?.kind === "activity" && lastForLine.tool?.ok === false;
+  const moodOfShownWords = (shown: string | null) => workingMood({ phase: shown && !shown.startsWith("label:") ? shown : writing ? TYPING_PHASE : now.phase, waiting: waitingOnSomeone, failed: stepFailed });
   const rescuing = useRescueGrace(Boolean(bot.busy), mayTakeOver(bot, state.instances), `${bot.id}:${bot.threadId}`);
   const answering = answeringModel(profile, bot.threadId, bot.modelSelection);
   const folded = useMemo(() => {
@@ -1400,10 +1399,10 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               </div>
             </div>
           )}
-          <div data-failed-reply-row="" className="empty:hidden [&>[data-failed-reply]]:mb-0 [&>[data-failed-reply]]:px-0"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
+          <TranscriptCardSlot key={transcriptKey}><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></TranscriptCardSlot>
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
-            avatar={<WorkingMascot bot={bot} size={phoneApp() ? 30 : 22} seed={presenceSeed} mood={mood} />}
+            avatar={(shown) => <WorkingMascot bot={bot} size={phoneApp() ? 24 : 26} seed={presenceSeed} mood={moodOfShownWords(shown)} />}
             wordsAtOnce
             simple
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}

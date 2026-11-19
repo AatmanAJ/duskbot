@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, Palette, Plug, Plus, ShieldCheck, UserRound, Hand, Server, ZoomIn } from "../../icons";
+import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, MonitorX, Palette, Plug, Plus, ShieldCheck, UserRound, Hand, Server, ZoomIn } from "../../icons";
 import { accountDashboardUrl } from "@/lib/account-dashboard";
 import { useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
@@ -26,13 +26,18 @@ import { usePlatform } from "../platform";
 import { Sheet, SheetStack, StackPage } from "../Sheet";
 import { NavStack } from "../NavStack";
 import { NotificationsSheet } from "./NotificationsSheet";
+import { NotificationSettings } from "./NotificationSettings";
 import { RoutinesSheet } from "./RoutinesSheet";
 import { ConnectorsSheet } from "./ConnectorsSheet";
 import { VaultSheet } from "./VaultSheet";
 import { DeleteAccountPage } from "./DeleteAccountPage";
+import { ConfirmPage } from "./ConfirmPage";
+import { placeKind } from "../connection/connection-notice";
+import { removePlace } from "../account/sign-out";
 import { SettingsRow, SettingsSection, SettingsSwitch } from "./SettingsRow";
 import { PixelArt } from "../Illustration";
 import type { SheetPageProps } from "./registry";
+import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 
 /** The account rows Settings shows. The account dashboard sells plans, so the store apps never link to it (App Store
  * guideline 3.1.1, Play payments policy); a signed-in account can be signed out and deleted here (App Store 5.1.1(v)), and a
@@ -73,7 +78,13 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-type SettingsPage = "language" | "textSize" | "voice" | "notifications" | "routines" | "connectors" | "vault" | "delete";
+type SettingsPage = "language" | "textSize" | "voice" | "notifications" | "routines" | "connectors" | "vault" | "delete" | "signOut" | "removeComputer";
+
+/** the computer on screen when it was paired with its own QR or code, which the account's sign-out never removes */
+export function shownComputer(connections: readonly MobileConnectionRecord[], activeId: string | null): MobileConnectionRecord | null {
+  const shown = connections.find((connection) => connection.id === activeId);
+  return shown && placeKind(shown) === "computer" ? shown : null;
+}
 const SETTINGS_PAGES: readonly string[] = ["language", "textSize", "voice", "notifications", "routines", "connectors", "vault"];
 
 /** Settings is a stack inside one sheet, as iOS Settings: the grouped list, and each page pushed over it with the
@@ -81,6 +92,11 @@ const SETTINGS_PAGES: readonly string[] = ["language", "textSize", "voice", "not
  * app opens as sheets, drawn here as pages, so nothing in Settings leaves it. */
 export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet, open, onClose, onOpenSheet, onOpenChat }) => {
   const account = useMobileAccount();
+  const platform = usePlatform();
+  const { connections, activeId } = useConnections();
+  const computer = shownComputer(connections, activeId);
+  const computerName = readableWorkspace(computer?.label) ?? t("mobile.connection.yourComputer");
+  const keepsComputers = connections.some((connection) => placeKind(connection) === "computer");
   const [page, setPage] = useState<SettingsPage | null>(SETTINGS_PAGES.includes(sheet.page ?? "") ? sheet.page as SettingsPage : null);
   const pop = useCallback(() => setPage(null), []);
   const stack = useMemo(() => ({ back: pop }), [pop]);
@@ -91,7 +107,12 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
     : page === "vault" ? <VaultSheet sheet={{ kind: "vault" }} {...pageProps} />
     : page === "language" ? <LanguagePage />
     : page === "textSize" ? <TextSizePage />
-    : page === "delete" && account?.account ? <DeleteAccountPage email={account.account.email} onDelete={account.deleteAccount} onCancel={pop} onDone={onClose} />
+    : page === "delete" && account?.account ? <DeleteAccountPage email={account.account.email} onDelete={account.deleteAccount} onCancel={pop} onDone={() => window.location.reload()} />
+    : page === "signOut" && account?.account ? <ConfirmPage title={t("accountGate.signOut")} heading={t("mobile.settings.signOutTitle")}
+      body={t(keepsComputers ? "mobile.settings.signOutKeepsComputers" : "mobile.settings.signOutBody")} action={t("accountGate.signOut")} onConfirm={account.signOutOfPhone} onCancel={pop} />
+    : page === "removeComputer" && computer ? <ConfirmPage title={t("mobile.settings.removeComputer")} heading={t("mobile.settings.removeComputerTitle", { name: computerName })}
+      body={t("mobile.settings.removeComputerBody", { name: computerName })} action={t("mobile.settings.removeComputerAction")}
+      onConfirm={async () => { await removePlace(platform, computer.id); window.location.reload(); }} onCancel={pop} />
     : page === "voice" ? <Sheet open onClose={pop} title={t("settings.voice.title")}><div data-settings-look="simple" className={`flex flex-col gap-6 px-4 pt-2 ${SIMPLE_BUTTONS}`}><VoiceInputSettings /></div></Sheet>
     : null;
   return (
@@ -122,6 +143,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
   const [error, setError] = useState<string | null>(null);
   const appearanceId = useId();
   const active = connections.find((connection) => connection.id === activeId);
+  const computer = shownComputer(connections, activeId);
   const email = account?.account?.email;
   const face = account?.account ?? you?.face ?? null;
   const identity = settingsIdentity({ name: state.config?.profile?.name, email, workspace: active?.label });
@@ -141,7 +163,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
   const switchServers = () => {
     if (!switching) { setSwitching(true); return; }
     chooseAccountOrigin(account?.origin === PREVIEW_ORIGIN ? PRODUCTION_ORIGIN : PREVIEW_ORIGIN);
-    void (account?.signOut() ?? Promise.resolve()).finally(() => window.location.reload());
+    void (account?.signOutOfPhone() ?? Promise.resolve()).finally(() => window.location.reload());
   };
 
   const choosePlace = async (place: Place) => {
@@ -184,6 +206,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
 
       <SettingsSection card>
         <SettingsRow icon={<Bell />} label={t("mobile.settings.notifications")} value={unread || undefined} onClick={() => push("notifications")} />
+        <NotificationSettings />
       </SettingsSection>
 
       <SettingsSection card title={t("mobile.settings.phone")}>
@@ -231,9 +254,10 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
             value={environment ?? "dusk.bot"} onClick={switchServers} />
         </SettingsSection>
       )}
-      {rows.signOut && (
+      {(rows.signOut || computer) && (
         <SettingsSection card>
-          <SettingsRow icon={<LogOut />} label={t("accountGate.signOut")} chevron={false} onClick={() => { haptic("light"); void account?.signOut(); onClose(); }} />
+          {computer && <SettingsRow icon={<MonitorX />} label={t("mobile.settings.removeComputer")} chevron={false} onClick={() => { haptic("light"); push("removeComputer"); }} />}
+          {rows.signOut && <SettingsRow icon={<LogOut />} label={t("accountGate.signOut")} chevron={false} onClick={() => { haptic("light"); push("signOut"); }} />}
         </SettingsSection>
       )}
       {rows.dashboard && !state.config?.cloudHome && <CloudCard onOpen={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}

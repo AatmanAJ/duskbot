@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AppEntry } from "@/components/connect-apps/catalog";
 import { appIsAdded } from "./ConnectorsSheet";
 import { routineResultsThread } from "./RoutinesSheet";
-import { accountRows } from "./SettingsSheet";
+import { accountRows, shownComputer } from "./SettingsSheet";
 import { LEGAL_LINKS, SUPPORT_EMAIL, supportMail } from "../legal";
 import { swipeOffset, swipeRestingPosition } from "./SwipeRow";
 
@@ -61,6 +61,14 @@ describe("settings account rows", () => {
   it("a signed-in phone can sign out and delete the account", () => {
     expect(accountRows({ native: true, signedIn: true })).toEqual({ dashboard: false, signOut: true, deleteAccount: true, signIn: false });
     expect(accountRows({ native: true, signedIn: false }).signOut).toBe(false);
+  });
+
+  it("offers Remove this computer only for a computer on screen, never for a dusk cloud", () => {
+    const place = (id: string, origin: string) => ({ id, origin, environmentId: id, label: id, transport: "https" as const, sessionRef: `token.${id}`, capabilities: {} as never, addedAt: 1, lastUsedAt: 1 });
+    const records = [place("cloud", "https://d0123456789abcdef0123.dusk.bot"), place("box", "https://box.example.org")];
+    expect(shownComputer(records, "box")?.id).toBe("box");
+    expect(shownComputer(records, "cloud")).toBeNull();
+    expect(shownComputer(records, null)).toBeNull();
   });
 
   it("a phone with no account is offered the sign-in, never the sign-out row", () => {

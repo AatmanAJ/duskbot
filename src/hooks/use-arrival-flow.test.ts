@@ -22,8 +22,9 @@ let scroller: HTMLDivElement, clip: HTMLDivElement, column: HTMLDivElement, slot
 let scrollHeight = 1000;
 const CLIENT = 600;
 
+let holds = 0;
 function Probe({ following, n, thread = "t" }: { following: boolean; n: number; thread?: string }) {
-  useArrivalFlow({ scrollRef: { current: scroller }, clipRef: { current: clip }, columnRef: { current: column }, transcriptKey: thread, following });
+  useArrivalFlow({ scrollRef: { current: scroller }, clipRef: { current: clip }, columnRef: { current: column }, transcriptKey: thread, following, onHold: () => { holds += 1; } });
   return createElement("span", null, n);
 }
 const draw = (following: boolean, n: number, thread?: string) => act(() => root.render(createElement(Probe, { following, n, thread })));
@@ -33,6 +34,7 @@ function addRow(top: number, arrival?: "start" | "end") {
   row.setAttribute("data-message-row", "");
   if (arrival) row.setAttribute("data-arrival", arrival);
   place(row, top, column);
+  row.getBoundingClientRect = () => ({ top: top - scroller.scrollTop }) as DOMRect;
   column.insertBefore(row, slot);
   return row;
 }
@@ -42,6 +44,7 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   recorded = [];
   finishers = [];
+  holds = 0;
   vi.spyOn(HTMLElement.prototype, "animate").mockImplementation(function (this: HTMLElement, keyframes, options) {
     recorded.push({ el: this, keyframes: keyframes as Keyframe[], options: options as KeyframeAnimationOptions });
     return fakeAnimation() as unknown as Animation;
@@ -89,6 +92,30 @@ describe("useArrivalFlow", () => {
     expect(rises(reply)).toHaveLength(0);
     expect(glide?.keyframes.every((frame) => frame.opacity === undefined && frame.clipPath === undefined)).toBe(true);
     expect(rises(slot)).toHaveLength(0);
+  });
+
+  it("stops a reply taller than the view at its top, under the end of the person's message, and stops following", () => {
+    draw(true, 0);
+    const before = scroller.scrollTop;
+    addRow(900, "start");
+    place(slot, 1800, column);
+    scrollHeight = 1900;
+    draw(true, 1);
+
+    expect(scroller.scrollTop).toBe(860);
+    expect(holds).toBe(1);
+    expect(moved(column)[0]?.keyframes[0]?.transform).toBe(`translateY(${860 - before}px)`);
+  });
+
+  it("follows a reply that fits to the end, as before", () => {
+    draw(true, 0);
+    addRow(900, "start");
+    place(slot, 1200, column);
+    scrollHeight = 1300;
+    draw(true, 1);
+
+    expect(scroller.scrollTop).toBe(scrollHeight - CLIENT);
+    expect(holds).toBe(0);
   });
 
   it("gives the person's own bubble the same glide, and clips the column only while it moves", () => {

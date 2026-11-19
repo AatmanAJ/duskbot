@@ -2,7 +2,7 @@ import { createCipheriv, hkdfSync, randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mobileLinkUrl, pairingFromPayload, type MobileLinkPayload, type MobilePairingPayload, type MobileRedeemResponse } from "../../../shared/mobile-link";
 import type { MobilePlatform } from "../platform";
-import { connectToWorkspace, createConnectionStore } from "./connections";
+import { connectToWorkspace, createConnectionStore, PlaceGoneError } from "./connections";
 import { PairError, parseTypedPairing, readScanned, redeemPairing, resolveTypedCode } from "./pair";
 import { MOBILE_LINK_VERSION, universalPairLink, universalSignInLink } from "../../../shared/mobile-link";
 import * as relay from "../transport/relay";
@@ -363,6 +363,17 @@ describe("workspace reconnect", () => {
     expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "bearer", origin: "https://workspace.test", token, asleep: true });
     // a plain outage is still unreachable
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 503)));
+    await expect(connectToWorkspace(record, token, platform, new AbortController().signal)).rejects.toMatchObject({ code: "unreachable" });
+  });
+
+  it("says a dusk cloud whose edge answers gone was deleted, never unreachable or unpaired", async () => {
+    const { record, token, platform } = await saved();
+    record.via = [{ kind: "https", url: "https://workspace.test" }];
+    const gone = () => new Response("This dusk bot was deleted.", { status: 410, headers: { "x-dusk-cloud-power": "gone" } });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => gone()));
+    await expect(connectToWorkspace(record, token, platform, new AbortController().signal)).rejects.toBeInstanceOf(PlaceGoneError);
+    // a 410 without the edge's word is no more than a failed route
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => response({}, 410)));
     await expect(connectToWorkspace(record, token, platform, new AbortController().signal)).rejects.toMatchObject({ code: "unreachable" });
   });
 

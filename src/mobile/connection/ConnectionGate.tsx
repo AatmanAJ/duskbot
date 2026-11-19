@@ -13,7 +13,7 @@ import { installTransport, type PhoneTransport } from "../transport/transport";
 import { Onboarding } from "../onboarding/Onboarding";
 import { SignInOffer } from "../account/SignInOffer";
 import { Success } from "../onboarding/Success";
-import { connectToWorkspace, createConnectionStore } from "./connections";
+import { connectToWorkspace, createConnectionStore, PlaceGoneError } from "./connections";
 import { PairError, parseTypedPairing, type TypedPairing } from "./pair";
 import { ActiveConnection } from "./active";
 import { TranscriptShelfScope } from "@/state/transcript-scope";
@@ -22,7 +22,7 @@ import { reportPresence } from "./presence";
 import { registerPushForConnection } from "./push";
 import { Unreachable } from "./Unreachable";
 import { PhoneUpdateLine } from "./PhoneUpdateLine";
-import { markCloudAsleep, noteCloudPageActivity } from "@/lib/cloud-power";
+import { markCloudAsleep, noteCloudPageActivity, onCloudGone } from "@/lib/cloud-power";
 import { liveEventsHeardAt, retryLiveEventsNow } from "@/lib/live-events";
 import { phoneOffline } from "../network";
 import { workspaceAnsweredAt } from "./reachability";
@@ -30,7 +30,7 @@ import { sameRoute, watchRoute } from "./route-watch";
 import { learnRoutes } from "./learn-routes";
 
 type GateState = { kind: "loading" } | { kind: "pair"; reason?: "revoked" } | { kind: "ready"; id: string }
-  | { kind: "offline"; record: MobileConnectionRecord; others: MobileConnectionRecord[]; attempts: number; trying: boolean };
+  | { kind: "offline"; record: MobileConnectionRecord; others: MobileConnectionRecord[]; attempts: number; trying: boolean; gone?: true };
 
 /** A first connect that failed after the computer accepted the pairing: only a refused token undoes it. */
 export function pairedButUnreachable(error: unknown): boolean {
@@ -94,7 +94,8 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
           } else {
             // offline is not unpaired: keep the link and the other saved installations reachable
             const others = (await store.list().catch(() => [])).filter((record) => record.id !== active.record.id);
-            if (!stopped) setState((s) => ({ kind: "offline", record: active.record, others, attempts: s.kind === "offline" ? s.attempts + 1 : 1, trying: false }));
+            const gone = error instanceof PlaceGoneError ? { gone: true as const } : {};
+            if (!stopped) setState((s) => ({ kind: "offline", record: active.record, others, attempts: s.kind === "offline" ? s.attempts + 1 : 1, trying: false, ...gone }));
           }
         }
         return;
@@ -142,6 +143,9 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
     });
     return () => { controller.abort(); stop(); };
   }, [readyId, store, platform, retry]);
+
+  // the place's edge said its dusk cloud was deleted: connecting again finds that out and shows it, final
+  useEffect(() => (state.kind === "ready" ? onCloudGone(retry) : undefined), [state.kind, retry]);
 
   // the workspace stopped taking this phone's session (it was removed there): connecting again finds out which it is,
   // and a refused token leaves for pairing with the reason
@@ -223,6 +227,9 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   }, [store, platform, retry]);
   const cancel = () => { ++sequence.current; setIncoming(null); };
   const switchTo = useCallback((id: string) => { void store.setActive(id).then(retry, retry); }, [store, retry]);
+  const removeGone = useCallback((id: string, next: string | undefined) => {
+    void store.remove(id).then(() => (next ? store.setActive(next) : undefined)).then(retry, retry);
+  }, [store, retry]);
 
   const success = (
     <AnimatePresence>
@@ -232,7 +239,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   const onboarding = state.kind !== "ready" || (forcePair && !entered);
   if (state.kind === "loading" && !incoming && !forcePair) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader naps={false} /></div>;
   if (state.kind === "offline" && !forcePair) {
-    if (!incoming && adding === 0) return <>{success}<Unreachable record={state.record} others={state.others} attempts={state.attempts} trying={state.trying} onRetry={retry} onSwitch={switchTo} /></>;
+    if (!incoming && adding === 0) return <>{success}<Unreachable record={state.record} others={state.others} attempts={state.attempts} trying={state.trying} gone={state.gone === true} onRetry={retry} onSwitch={switchTo} onRemove={() => removeGone(state.record.id, state.others[0]?.id)} /></>;
     return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;
   }
   if (onboarding) {

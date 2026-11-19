@@ -3261,7 +3261,6 @@
   "phone.back": "Wstecz",
   "phone.signIn.attention": "Bezpieczny dostęp wymaga uwagi",
   "phone.signIn.title": "Zaloguj się, aby sparować bezpiecznie",
-  "phone.signIn.unavailable": "Zdalny dostęp online nie jest teraz dostępny. Nadal możesz sparować bezpośrednio w tej samej sieci Wi-Fi.",
   "phone.signIn.timedOut": "Bezpieczny dostęp trwa dłużej niż oczekiwano. Możesz spróbować ponownie lub sparować bezpośrednio w tej sieci Wi-Fi.",
   "phone.signIn.failed": "Nie udało się dokończyć tworzenia twojego prywatnego połączenia.",
   "phone.signIn.email": "E-mail",

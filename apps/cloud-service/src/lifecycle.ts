@@ -14,7 +14,8 @@ import { linkKeys } from "../../dashboard/server/clouds/bootstrap.ts";
 import { ProviderBusyError, ProviderError, ProviderLimitError, type MachineProvider, type MachineImage } from "./provider.ts";
 import type { ReleaseKey } from "./release-signing.ts";
 import { homeBackupKey, homeVolumeScan, type BackupStore } from "./backups.ts";
-import { DAY_MS, DEFAULT_DELETE_DELAY_DAYS, DEFAULT_RETENTION_DAYS, deletionVerdict, dueNotice, type Entitlement, type NoticeKind, type Verdict } from "./retention.ts";
+import { volumeLayer } from "./bundle.ts";
+import { DAY_MS, DEFAULT_DELETE_DELAY_DAYS, DEFAULT_RETENTION_DAYS, deletionVerdict, dueNotice, prunableBackups, type Entitlement, type NoticeKind, type Verdict } from "./retention.ts";
 import type { Audit, AuditActor, AuditEntry } from "./audit.ts";
 import { RetryableCloudError } from "../../dashboard/server/clouds/http.ts";
 import { ManagedCloudError } from "../../dashboard/server/clouds/managed.ts";
@@ -36,7 +37,7 @@ export interface ManagedSettings {
   leaseSeconds: number;
   /** a backup at most this often (DUSK_MANAGED_BACKUP_HOURS) */
   backupEveryMs: number;
-  /** generations kept per cloud (DUSK_MANAGED_BACKUP_KEEP), at least 2 */
+  /** days whose newest generation is kept per cloud, besides the long-held oldest (DUSK_MANAGED_BACKUP_KEEP), at least 2 */
   backupKeep: number;
   retentionDays: number;
   deleteDelayDays: number;
@@ -60,7 +61,7 @@ export interface ManagedSettings {
   lostAfterMs: number;
 }
 export const DEFAULT_MANAGED_SETTINGS: ManagedSettings = {
-  idleMinutes: 15, leaseSeconds: 2 * 3600, backupEveryMs: 24 * HOUR, backupKeep: 3, retentionDays: DEFAULT_RETENTION_DAYS,
+  idleMinutes: 15, leaseSeconds: 2 * 3600, backupEveryMs: 24 * HOUR, backupKeep: 2, retentionDays: DEFAULT_RETENTION_DAYS,
   deleteDelayDays: DEFAULT_DELETE_DELAY_DAYS, backupTailMs: 30 * DAY_MS, wakeLeadMs: 2 * MINUTE, edgeWakesPerHour: 20, powerReadMs: MINUTE, package: null, requireSigned: false, publicDomain: null, claims: false, maxBackupBytes: 4 * 1024 ** 3, lostAfterMs: 30 * MINUTE,
 };
 
@@ -88,7 +89,7 @@ export function managedSettingsFromEnv(env: NodeJS.ProcessEnv, options: { loopba
     idleMinutes: number("DUSK_MANAGED_IDLE_MINUTES", 1, 24 * 60, 15),
     leaseSeconds: number("DUSK_MANAGED_LEASE_HOURS", 1, 720, 2) * 3600,
     backupEveryMs: number("DUSK_MANAGED_BACKUP_HOURS", 1, 24 * 7, 24) * HOUR,
-    backupKeep: number("DUSK_MANAGED_BACKUP_KEEP", 2, 30, 3),
+    backupKeep: number("DUSK_MANAGED_BACKUP_KEEP", 2, 30, 2),
     wakeLeadMs: number("DUSK_MANAGED_WAKE_LEAD_MINUTES", 1, 30, 2) * MINUTE,
     edgeWakesPerHour: number("DUSK_MANAGED_EDGE_WAKES_PER_HOUR", 1, 60, 20),
     retentionDays: number("DUSK_MANAGED_RETENTION_DAYS", DEFAULT_RETENTION_DAYS, 3650, DEFAULT_RETENTION_DAYS),
@@ -323,7 +324,8 @@ export function createLifecycle(deps: LifecycleDeps) {
     catch (error) { b.backupProblem = "snapshot_read"; deps.save(c); log(c, "backup_failed", "reconciler", "snapshot_read"); throw error; }
     // streamed to disk as it is read, sealed and hashed on the way, and checked as a tar on the way too: memory stays at
     // a chunk or two whatever the volume's size
-    const scan = homeVolumeScan(c.id), key = keyOf(c);
+    const layers: Record<string, number> = {};
+    const scan = homeVolumeScan(c.id, (name, bytes) => { const key = volumeLayer(name); layers[key] = (layers[key] ?? 0) + bytes; }), key = keyOf(c);
     let size = 0, tooLarge = false;
     const reader = stream.getReader();
     async function* pieces() {
@@ -360,19 +362,24 @@ export function createLifecycle(deps: LifecycleDeps) {
     const verified = opened.problem === null && opened.sha256 === record.sha256;
     b.backups.push({ ...record, verifiedAt: verified ? now() : null, snapshotAt: takenAt });
     b.backupProblem = verified ? null : "unverified";
-    log(c, "backup", "reconciler", reason, { file: record.file, bytes: record.bytes, verified });
-    // keep the newest `backupKeep` verified generations, and the newest one at least a week older than the newest, so a home
-    // that wiped its own data cannot push every good copy out within a few days
-    const verifiedOnes = b.backups.filter(g => g.verifiedAt !== null), newest = verifiedOnes.at(-1);
-    const pinned = newest ? [...verifiedOnes].reverse().find(g => newest.snapshotAt - g.snapshotAt >= 7 * DAY_MS) : undefined;
-    for (const old of verifiedOnes.slice(0, Math.max(0, verifiedOnes.length - settings.backupKeep))) {
-      if (old === pinned) continue;
-      deps.backups.remove(c.id, old.file); b.backups.splice(b.backups.indexOf(old), 1);
-      log(c, "backup_pruned", "reconciler", "generations", { file: old.file });
-    }
+    log(c, "backup", "reconciler", reason, { file: record.file, bytes: record.bytes, verified, ...Object.fromEntries(Object.entries(layers).map(([k, v]) => [`bytes_${k}`, v])) });
+    pruneBackups(c);
     syncBytes(c);
     deps.save(c);
     return verified;
+  }
+
+  /** the generations prunableBackups no longer needs; none while an operator hold is set */
+  function pruneBackups(c: StoredCloud) {
+    const b = state(c);
+    if (b.hold) return;
+    const keep = b.archive && c.serverId === null ? 1 : settings.backupKeep;
+    const drop = prunableBackups(b.backups, { keep, protect: b.restoreFrom ? [b.restoreFrom] : [] });
+    for (const old of drop) {
+      deps.backups.remove(c.id, old.file); b.backups.splice(b.backups.indexOf(old), 1);
+      log(c, "backup_pruned", "reconciler", keep === 1 ? "archived" : "generations", { file: old.file });
+    }
+    if (drop.length) { syncBytes(c); deps.save(c); }
   }
 
   /** a setup step still under way is waiting, not failing: polled again soon, and only a setup past 45 minutes fails */
@@ -752,6 +759,7 @@ export function createLifecycle(deps: LifecycleDeps) {
     const b = state(c);
     if (c.status === "checkout") return;
     if (c.status === "destroyed") { dropBackupsWhenDue(c); return; }
+    pruneBackups(c);
     const entitlement = deps.entitlement(c);
     const verdict = verdictFor(c, entitlement);
     if (verdict.delete || b.deletion) return deleteStep(c, verdict.delete ? verdict : { delete: true, reason: (b.deletion?.reason ?? "retention_over") as "retention_over", earliestAt: now() });
@@ -970,6 +978,11 @@ export function createLifecycle(deps: LifecycleDeps) {
     /** the edge's lookup: the machine's own hosted URL behind a public label */
     upstreamFor(value: string): string | null { return edgeCloud(value)?.managed?.upstream ?? null; },
     cloudOfLabel(value: string): string | undefined { return edgeCloud(value)?.id; },
+    /** the label was a home that has been deleted, and no live home has it: the edge says gone, never "not found yet" */
+    edgeGone(value: string): boolean {
+      if (!/^d[0-9a-f]{20}$/.test(value) || edgeCloud(value)) return false;
+      return deps.clouds().some(x => x.managed?.label === value && (x.status === "destroyed" || x.status === "destroying"));
+    },
     /** the same, and whether the home answers now: the edge forwards to an awake home and wakes a sleeping one */
     edgeRoute(value: string): { upstream: string; awake: boolean; wakeable: boolean } | null {
       const c = edgeCloud(value), upstream = c?.managed?.upstream;

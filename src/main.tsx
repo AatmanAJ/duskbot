@@ -26,6 +26,7 @@ import { HomeScreen, SignedOutAtHome } from "./components/HomeScreen";
 import { ReconnectScreen } from "./components/ReconnectScreen";
 import { PageBoundary } from "./components/PageBoundary";
 import { startBootReads } from "./state/boot-reads";
+import { onCloudGone } from "./lib/cloud-power";
 import { endedBeforeReload, forgetEndedSession, SESSION_ENDED_REASON } from "./lib/session-ended";
 import "./font-faces.css";
 import "./styles.css";
@@ -33,6 +34,8 @@ import "./styles/overlays.css";
 import "./styles/motion.css";
 
 watchStaleChunks();
+// a deleted dusk cloud: loading the page again gets the edge's 410, which the desktop window answers with its own screen
+onCloudGone(() => location.reload());
 
 // Before first paint.
 startDesktopAnalytics();

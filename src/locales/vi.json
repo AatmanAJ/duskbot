@@ -2689,7 +2689,6 @@
   "phone.back": "Quay lại",
   "phone.signIn.attention": "Cần xử lý kết nối bảo mật",
   "phone.signIn.title": "Đăng nhập để ghép nối bảo mật",
-  "phone.signIn.unavailable": "Tính năng truy cập từ xa qua mạng hiện không khả dụng. Bạn vẫn có thể ghép nối trực tiếp trên cùng mạng Wi-Fi.",
   "phone.signIn.timedOut": "Truy cập bảo mật mất nhiều thời gian hơn dự kiến. Bạn có thể thử lại hoặc ghép nối trực tiếp trên Wi-Fi này.",
   "phone.signIn.failed": "Chúng tôi không thể hoàn tất việc tạo kết nối riêng tư của bạn.",
   "phone.signIn.email": "Email",

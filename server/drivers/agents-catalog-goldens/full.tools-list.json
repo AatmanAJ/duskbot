@@ -262,6 +262,33 @@
       }
     },
     {
+      "name": "react",
+      "description": "React with one emoji to the person's latest message, as a person would. Sparingly, only when it fits (thanks, good news, a joke), never instead of a reply, at most once per message; a new emoji replaces yours.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "enum": [
+              "👍",
+              "❤️",
+              "😂",
+              "🎉",
+              "👀"
+            ]
+          },
+          "message_id": {
+            "type": "string",
+            "description": "Only for an earlier message of theirs in this chat."
+          }
+        },
+        "required": [
+          "emoji"
+        ]
+      }
+    },
+    {
       "name": "create_document",
       "description": "Save a long structured result (plan, report, draft, a table over ~15 rows) as a document the person can open, edit and download: a file card here, kept in your panel under Files. Then reply in a line or two, never repeating it. Short answers and small tables stay in your message.",
       "inputSchema": {
@@ -601,6 +628,137 @@
             "type": "string"
           }
         }
+      }
+    },
+    {
+      "name": "confirm_purchase",
+      "description": "Required before a purchase's final step (Place order, Buy now, Pay, Book, Subscribe, sending money): shows the person the order summary from the checkout page and waits for their tap; the browser refuses that step until they confirm. Money as the page shows it; payment masked to its last four. Confirmed: take the step once. Cancelled: do not buy. Only if the person said to buy without asking, set without_asking with their exact words as quote; the card is then a record.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "merchant": {
+                "type": "string"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "quantity": {
+                      "type": "integer"
+                    },
+                    "price": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "quantity"
+                  ]
+                }
+              },
+              "total": {
+                "type": "string",
+                "description": "Shipping and tax included."
+              },
+              "shipping": {
+                "type": "string"
+              },
+              "payment_method": {
+                "type": "string"
+              },
+              "address": {
+                "type": "string"
+              },
+              "delivery": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "order",
+                  "booking",
+                  "subscription",
+                  "payment"
+                ]
+              }
+            },
+            "required": [
+              "merchant",
+              "items",
+              "total"
+            ]
+          },
+          "without_asking": {
+            "type": "boolean"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary"
+        ]
+      }
+    },
+    {
+      "name": "show_products",
+      "description": "Show shopping results as cards in the chat: photo, name, price, link. Real products from pages you read, https links and image addresses. Then say in a sentence which you would pick.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "products": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "price": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "image": {
+                  "type": "string"
+                },
+                "merchant": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "url"
+              ]
+            }
+          }
+        },
+        "required": [
+          "products"
+        ]
       }
     },
     {

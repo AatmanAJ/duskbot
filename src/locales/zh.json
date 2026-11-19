@@ -3596,7 +3596,6 @@
   "phone.back": "返回",
   "phone.signIn.attention": "安全访问需要处理",
   "phone.signIn.title": "登录后安全配对",
-  "phone.signIn.unavailable": "当前无法使用在线远程访问。你仍可以在同一 Wi-Fi 下直接配对。",
   "phone.signIn.timedOut": "安全访问耗时比预期长。你可以重试，或在这个 Wi-Fi 下直接配对。",
   "phone.signIn.failed": "我们没能完成你的私密连接创建。",
   "phone.signIn.email": "邮箱",

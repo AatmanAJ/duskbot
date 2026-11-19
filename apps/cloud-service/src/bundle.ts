@@ -42,6 +42,17 @@ function esc(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** which layer a path under the volume's root belongs to */
 export function layerOf(path: string): Layer { return RULES.find(([pattern]) => pattern.test(path))?.[1] ?? "other"; }
 
+/** a tar entry's layer for a backup's size report (`data/...`): a cache or a top folder of the volume's own when the layer
+ *  says only "other", by name only when it is a tool's dot folder, never a person's */
+export function volumeLayer(entry: string): string {
+  const path = entry.replace(/^data\//, ""), layer = layerOf(path), parts = path.split("/");
+  const word = (name: string | undefined) => name && /^[a-z0-9_.-]{1,24}$/i.test(name) ? name.replace(/[^a-z0-9]/gi, "_").toLowerCase() : null;
+  if (layer === "disposable" || layer === "browser") return `${layer}_${word(parts[1]) ?? "x"}`;
+  if (layer !== "other") return layer;
+  if (parts.length > 2 && parts[0] === ".cache") return `cache_${word(parts[1]) ?? "x"}`;
+  return parts.length > 1 && parts[0]!.startsWith(".") && word(parts[0]) ? `dot${word(parts[0])}` : "other";
+}
+
 /** the manifest of a home volume's tar (a backup), with the root its entries share */
 export function volumeManifest(tar: Buffer, cloudId: string, source: BundleManifest["source"], now = Date.now()): BundleManifest & { root: string } {
   const entries = tarEntries(tar).filter(e => e.type === "0" || e.type === "");

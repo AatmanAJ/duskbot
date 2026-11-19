@@ -144,6 +144,8 @@ export interface MobilePlatform {
   /** Push registration; resolves the device token or null when refused or unsupported. Without `prompt` it never shows
    * the system's question: a phone not yet asked resolves null. */
   registerPush?(options?: { prompt?: boolean }): Promise<{ token: string; platform: "apns" | "fcm" } | null>;
+  /** Whether the system lets this app show notifications: `prompt` until the person has been asked. */
+  pushPermission?(): Promise<"granted" | "denied" | "prompt">;
   onNotificationOpen?(listener: (target: MobileOpenTarget) => void): () => void;
   /** The conversation on screen, null for none: a push about it shows nothing while the app is open, any other shows
    * the system's own banner. */

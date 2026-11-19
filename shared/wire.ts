@@ -13,7 +13,7 @@ import type { CredentialTargetId, CUSTOM_SECRET_TARGET, SecretDelivery } from ".
 import type { TeamSetupRequest } from "./team-setup.ts"; import type { DefaultBotFields, HelperIntroField } from "./default-bot.ts";
 import type { SetupCardFields } from "./setup-card.ts"; import type { BugReportField } from "./devs-report-status.ts"; import type { AccessRequestCardField, BotAccessFields } from "./bot-access.ts";
 import type { RoutineRequestCardData } from "./routine-request.ts";
-import type { WebhookRequestCardData } from "./webhook-request.ts"; import type { WaitCardField, WaitLineField } from "./wait-request.ts";
+import type { WebhookRequestCardData } from "./webhook-request.ts"; import type { WaitCardField, WaitLineField } from "./wait-request.ts"; import type { PurchaseCardField } from "./purchase.ts"; import type { EmailCardField } from "./email-review.ts"; import type { ProductsField } from "./products.ts";
 import type { AppEventAttempt, AppTrigger, AppTriggerRequestCardData, AppTriggerService } from "./app-triggers.ts";
 import type { ProfileRequestCardData } from "./profile-request.ts";
 import type { PlaceRow } from "./place-view.ts";
@@ -462,7 +462,7 @@ export interface MediaSize { w: number; h: number }
 /** One transcript line, serialized as stored. */
 /** An outbound action a reply can claim: a send, a booking, a purchase, a saved file or a download. */
 export type ActionKind = "send" | "book" | "buy" | "file" | "download";
-export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLineField, BugReportField {
+export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLineField, BugReportField, ProductsField {
   roomRequest?: { id: string; phase: "request" | "result" }; handoff?: import("./handoff-line.ts").HandoffLine;
   /** The coordinator's "resumed with X's results" row: the chat folds it into the reply line it follows. */
   peerResume?: true;
@@ -692,9 +692,9 @@ export function nextOpenThread<T extends OpenThreadCandidate>(tasks: readonly T[
   return [listed, open, own].map((candidates) => orderedThreadList(candidates)[0]).find((task) => task !== undefined);
 }
 
-export interface OptionCardData extends WaitCardField, AccessRequestCardField, OutsideWriteCardField {
-  /** calls: one per outbound call the card covers, in subtitle order. */
-  outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }> };
+export interface OptionCardData extends WaitCardField, AccessRequestCardField, OutsideWriteCardField, PurchaseCardField, EmailCardField {
+  /** calls: one per outbound call the card covers, in subtitle order. purchase: it buys, books, subscribes or moves money. */
+  outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }>; purchase?: true };
   /** @deprecated team memory is retired; only older messages carry this. */
   teamMemoryRequest?: { section: string; entryId: string; kind: string; revision?: string };
   title: string;

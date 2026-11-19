@@ -2,7 +2,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { productName } from "@/lib/brand";
 import { loadPageLanguage } from "@/lib/language-preference";
-import { setColorUserBubblesDefault } from "@/lib/user-bubble-preference";
 import { applySkinChoice, readSkinChoice, THEME_SKINS, type SkinChoice } from "@/lib/skins";
 import { applyFont, readFont } from "@/lib/fonts";
 import { PageBoundary } from "@/components/PageBoundary";
@@ -12,6 +11,7 @@ import "@/styles/overlays.css";
 import "@/styles/motion.css";
 import "./mobile.css";
 import { installHaptics } from "./haptics";
+import { installLiveActivitySetting } from "./live-activity-setting";
 import { followSystemTextSize } from "./text-scale";
 import { PlatformContext, type MobilePlatform } from "./platform";
 import { AccountGate } from "./account/AccountGate";
@@ -38,7 +38,6 @@ export function mountMobile(platform: MobilePlatform): void {
   if (!platform.native) watchStaleChunks();
   else installNativeAbort();
   followSystemTextSize(platform);
-  setColorUserBubblesDefault(false);
   document.documentElement.dataset.mobileApp = platform.kind;
   // the app never zooms: webkit's pinch gestures are stopped, a double tap never scales
   for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
@@ -47,7 +46,7 @@ export function mountMobile(platform: MobilePlatform): void {
   const dark = document.documentElement.dataset.skin === THEME_SKINS.dark;
   platform.setStatusBar?.(dark ? "light" : "dark");
   document.title = productName();
-  void Promise.all([loadPageLanguage(), installHaptics(platform)]).then(() => {
+  void Promise.all([loadPageLanguage(), installHaptics(platform), installLiveActivitySetting(platform)]).then(() => {
     createRoot(document.getElementById("root")!).render(
       <StrictMode>
         <PageBoundary>

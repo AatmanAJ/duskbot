@@ -10,6 +10,7 @@ import { SessionRegistry } from "../sessions.ts";
 import { generateKeyPairSync } from "node:crypto";
 
 import { createMobileLink, mobileLookupRelay, PUSH_GRACE_MS } from "./link.ts";
+import { PRESENCE_OVERDUE_MS } from "./presence.ts";
 import { lookupKeys, openLookup } from "./lookup.ts";
 import type { PushMessage, PushTarget } from "./push.ts";
 
@@ -296,9 +297,7 @@ describe("mobile link", () => {
       const mobile = link();
       const auth = await pushPhone(mobile, "attempt-0105");
       await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false, threadId: "t1" });
-      await mobile.notify(note("n1"));
       await vi.advanceTimersByTimeAsync(64_000);
-      expect(sent).toHaveLength(0);
       await mobile.notify(note("n2"));
       await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
       expect(sent.map((one) => one.message.id)).toEqual(["n2"]);
@@ -306,6 +305,31 @@ describe("mobile link", () => {
       await mobile.notify(note("n3"));
       await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
       expect(sent.map((one) => one.message.id)).toEqual(["n2", "n3"]);
+    });
+
+    it("pushes what the open chat showed when the phone then goes quiet, as one suspended before its away got out", async () => {
+      vi.useFakeTimers();
+      const mobile = link();
+      const auth = await pushPhone(mobile, "attempt-0106");
+      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false, threadId: "t1" });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await mobile.notify(note("n1"));
+      await vi.advanceTimersByTimeAsync(PRESENCE_OVERDUE_MS - 10_000 - 1);
+      expect(sent).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sent.map((one) => one.message.id)).toEqual(["n1"]);
+    });
+
+    it("never pushes what the open chat showed once the phone checks in again", async () => {
+      vi.useFakeTimers();
+      const mobile = link();
+      const auth = await pushPhone(mobile, "attempt-0107");
+      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: false, threadId: "t1" });
+      await mobile.notify(note("n1"));
+      await vi.advanceTimersByTimeAsync(20_000);
+      await call(mobile, auth, "PUT", "/api/mobile/presence", { away: true, threadId: null });
+      await vi.advanceTimersByTimeAsync(PRESENCE_OVERDUE_MS);
+      expect(sent).toHaveLength(0);
     });
 
     it("pushes after the grace to a phone that never reported, and tries a failed push again at 10 s and 60 s", async () => {

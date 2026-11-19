@@ -2689,7 +2689,6 @@
   "phone.back": "Geri",
   "phone.signIn.attention": "Güvenli erişim ilgilenmenizi gerektiriyor",
   "phone.signIn.title": "Güvenli bir şekilde eşleştirmek için giriş yapın",
-  "phone.signIn.unavailable": "Çevrim içi uzaktan erişim şu anda kullanılamıyor. Yine de aynı Wi-Fi üzerinden doğrudan eşleştirebilirsiniz.",
   "phone.signIn.timedOut": "Güvenli erişim beklenenden uzun sürüyor. Tekrar deneyebilir veya bu Wi-Fi üzerinde doğrudan eşleştirebilirsiniz.",
   "phone.signIn.failed": "Özel bağlantınızı oluşturma işlemi tamamlanamadı.",
   "phone.signIn.email": "E-posta",

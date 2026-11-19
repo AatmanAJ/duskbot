@@ -2327,7 +2327,6 @@
   "phone.back": "返回",
   "phone.signIn.attention": "安全存取需要處理",
   "phone.signIn.title": "登入以進行安全配對",
-  "phone.signIn.unavailable": "線上遠端存取目前無法使用。你仍可在同一個 Wi-Fi 上直接配對。",
   "phone.signIn.timedOut": "安全存取所需的時間比預期長。你可以重試，或直接在此 Wi-Fi 上配對。",
   "phone.signIn.failed": "我們無法完成建立你的私人連線。",
   "phone.signIn.email": "電子郵件",

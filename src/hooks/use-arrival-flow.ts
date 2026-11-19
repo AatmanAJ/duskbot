@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { probeMotion } from "@/lib/motion-probe";
+import { contentTop, headerInset, landingReply, replyHoldTop } from "@/lib/reply-hold";
 
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
 
@@ -113,12 +114,15 @@ export function useArrivalFlow({
   columnRef,
   transcriptKey,
   following,
+  onHold,
 }: {
   scrollRef: RefObject<HTMLElement | null>;
   clipRef: RefObject<HTMLElement | null>;
   columnRef: RefObject<HTMLElement | null>;
   transcriptKey: string;
   following: boolean;
+  /** a reply taller than the view stopped the follow at its top */
+  onHold?: () => void;
 }): void {
   const reduced = usePrefersReducedMotion();
   const snapshot = useRef<Snapshot | null>(null);
@@ -173,8 +177,14 @@ export function useArrivalFlow({
     // a transcript resting at its end stays there; mid-scroll (a jump to the latest in progress) is left alone
     const atEnd = scroller.scrollTop >= Math.min(before.max, max) - 2;
     if (following && atEnd && scroller.scrollTop !== max) scroller.scrollTop = max;
+    const reply = following && atEnd ? landingReply(arrivals) : null;
+    const hold = reply && replyHoldTop({ replyTop: contentTop(scroller, reply, glideOffset(column)), inset: headerInset(scroller), end: max, current: before.top });
+    if (hold !== null && hold !== undefined) {
+      scroller.scrollTop = hold;
+      onHold?.();
+    }
     // what the rows added under a view that was resting at its end (another hook may already have pinned it there)
-    const shift = before.top >= before.max - 2 ? Math.max(0, max - before.max) : 0;
+    const shift = before.top >= before.max - 2 ? Math.max(0, scroller.scrollTop - before.top) : 0;
 
     const track = (anim: Animation) => {
       if (clip) clip.style.overflowY = "clip";

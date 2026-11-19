@@ -20,7 +20,8 @@ const response = (value: unknown, status = 200) => new Response(JSON.stringify(v
 beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = null;
   setLocale("en"); window.history.replaceState({}, "", "/"); vi.stubEnv("VITE_DUSK_ALLOW_SIGNED_OUT", ""); vi.stubEnv("VITE_DUSK_ACCOUNT_ORIGIN", "");
-  secrets = new Map(); prefs = new Map(); listener = undefined; resume = undefined;
+  // an install launched before: a new one waits for the service before it shows a kept sign-in
+  secrets = new Map(); prefs = new Map([["dusk.mobile.installed", "1"]]); listener = undefined; resume = undefined;
   platform = { ...webPlatform(), native: true, kind: "ios", secrets: {
     get: async key => secrets.get(key) ?? null, set: async (key, value) => { secrets.set(key, value); }, remove: async key => { secrets.delete(key); },
   }, prefs: { get: async key => prefs.get(key) ?? null, set: async (key, value) => { prefs.set(key, value); }, remove: async key => { prefs.delete(key); } },
@@ -74,6 +75,15 @@ it("shows the saved sign-in before the service answers, and stays signed in when
   await mount(); expect(host.textContent).toBe(signedIn);
   await act(async () => { answer(response({ error: "failed" }, 503)); });
   expect(host.textContent).toBe(signedIn);
+});
+it("a new install shows a sign-in the Keychain kept only once the service says it still works", async () => {
+  prefs.clear(); save();
+  let answer: (value: Response) => void = () => {};
+  fetcher.mockImplementation(() => new Promise<Response>((resolve) => { answer = resolve; }));
+  await mount(); expect(host.textContent).not.toContain("workspace");
+  await act(async () => { answer(response({})); });
+  expect(host.textContent).toBe(signedIn);
+  expect(prefs.get("dusk.mobile.installed")).toBe("1");
 });
 it("stays signed in when the app comes back and the service is down", async () => {
   save(); fetcher.mockResolvedValue(response({}));
