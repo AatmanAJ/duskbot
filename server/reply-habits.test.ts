@@ -88,6 +88,22 @@ it("drafts, says it is not sent and how to connect, when asked to send or post t
   }
 });
 
+it("sounds like a friend, not a help desk: no stock phrases or flattery, wit only when it fits, their energy and length, no parroting", () => {
+  for (const quick of [false, true]) {
+    const habits = replyHabitsPrompt(quick);
+    expect(habits).toContain("You sound like a sharp friend who is good at this, texting back");
+    expect(habits).toContain("no \"Great question\", \"I'd be happy to help\", \"I apologize for the confusion\"");
+    expect(habits).toContain("never claim to be human");
+    expect(habits).toContain("never forced and never a stock joke");
+    expect(habits).toContain("when they are just chatting, chat back without offering help or explaining anything. Never echo their request back to them.");
+    expect(habits).toContain("Use emoji only after they have");
+    expect(habits).toContain("Never invent a number, price, quote, source or name");
+    expect(habits).toContain("then one per line: the linked name, the price when you have it, and a few words on why");
+    expect(habits).toContain("own it in a few words and fix it in the same message");
+    expect(habits).not.toContain(String.fromCharCode(0x2014));
+  }
+});
+
 it("never promises to run or test anything without a tool that runs code", () => {
   expect(TOOL_HABITS_PROMPT).toContain("with no tool that runs code or commands (a shell, a terminal, a computer), never promise to run, test or build anything");
 });
