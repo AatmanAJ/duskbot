@@ -2,7 +2,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { productName } from "@/lib/brand";
 import { loadPageLanguage } from "@/lib/language-preference";
-import { setColorUserBubblesDefault } from "@/lib/user-bubble-preference";
 import { applySkinChoice, readSkinChoice, THEME_SKINS, type SkinChoice } from "@/lib/skins";
 import { applyFont, readFont } from "@/lib/fonts";
 import { PageBoundary } from "@/components/PageBoundary";
@@ -39,7 +38,6 @@ export function mountMobile(platform: MobilePlatform): void {
   if (!platform.native) watchStaleChunks();
   else installNativeAbort();
   followSystemTextSize(platform);
-  setColorUserBubblesDefault(false);
   document.documentElement.dataset.mobileApp = platform.kind;
   // the app never zooms: webkit's pinch gestures are stopped, a double tap never scales
   for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
