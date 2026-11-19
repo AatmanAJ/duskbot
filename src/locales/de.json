@@ -3590,5 +3590,6 @@
   "server.cloudMac.why": "Rückfrage, weil es: {reason}.",
   "server.cloudMac.why.every": "Du wolltest jede Aktion auf diesem Mac selbst freigeben.",
   "server.purchase.title": "Kauf bestätigen",
-  "server.emailReview.title": "Diese E-Mail senden?"
+  "server.emailReview.title": "Diese E-Mail senden?",
+  "settings.simple.language.partial": "Bisher ist nur ein Teil der App übersetzt."
 }

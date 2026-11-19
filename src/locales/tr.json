@@ -5291,5 +5291,6 @@
   "server.freeModel.tryingNext": "Hâlâ üzerindeyiz: başka bir ücretsiz model devralıyor, böylece yanıt alırsınız.",
   "server.freeModel.emptyNext": "Ücretsiz yedek model boş bir yanıt verdi, bu yüzden yanıtı başka bir ücretsiz model veriyor.",
   "server.freeModel.limit": "Ücretsiz yedek model şimdilik ücretsiz yanıt hakkını doldurdu, bu yüzden bu mesaja yanıt verilmedi. Devam etmek için Claude veya ChatGPT gibi kendi AI'nızı bağlayın ya da mesajı daha sonra yeniden gönderin.",
-  "server.freeModel.noReply": "Şu anda hiçbir ücretsiz yedek model yanıt vermedi, bu yüzden bu mesaja yanıt verilmedi. Bir dakika sonra yeniden gönderin ya da güvenilir yanıtlar için Claude veya ChatGPT gibi kendi AI'nızı bağlayın."
+  "server.freeModel.noReply": "Şu anda hiçbir ücretsiz yedek model yanıt vermedi, bu yüzden bu mesaja yanıt verilmedi. Bir dakika sonra yeniden gönderin ya da güvenilir yanıtlar için Claude veya ChatGPT gibi kendi AI'nızı bağlayın.",
+  "settings.simple.language.partial": "Şimdilik uygulamanın yalnızca bir kısmı çevrildi."
 }

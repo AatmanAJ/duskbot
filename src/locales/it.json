@@ -6146,5 +6146,6 @@
   "server.freeModel.tryingNext": "Ci sto ancora lavorando: un altro modello gratuito se ne occupa così ricevi una risposta.",
   "server.freeModel.emptyNext": "Il modello di riserva gratuito ha risposto senza alcun contenuto, quindi risponde un altro modello gratuito.",
   "server.freeModel.limit": "Il modello di riserva gratuito ha esaurito per ora le risposte gratuite, quindi questo messaggio non ha ricevuto risposta. Collega la tua AI, come Claude o ChatGPT, per continuare, oppure invia di nuovo il messaggio più tardi.",
-  "server.freeModel.noReply": "Nessun modello di riserva gratuito ha risposto in questo momento, quindi questo messaggio non ha ricevuto risposta. Invialo di nuovo tra un minuto, oppure collega la tua AI, come Claude o ChatGPT, per avere risposte su cui poter contare."
+  "server.freeModel.noReply": "Nessun modello di riserva gratuito ha risposto in questo momento, quindi questo messaggio non ha ricevuto risposta. Invialo di nuovo tra un minuto, oppure collega la tua AI, come Claude o ChatGPT, per avere risposte su cui poter contare.",
+  "settings.simple.language.partial": "Per ora solo una parte dell'app è tradotta."
 }

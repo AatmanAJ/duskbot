@@ -5788,5 +5788,6 @@
   "products.showPhotos": "Mostrar fotos",
   "products.view": "Ver",
   "server.purchase.title": "Confirmar compra",
-  "server.emailReview.title": "¿Enviar este correo?"
+  "server.emailReview.title": "¿Enviar este correo?",
+  "settings.simple.language.partial": "Por ahora solo una parte de la app está traducida."
 }
