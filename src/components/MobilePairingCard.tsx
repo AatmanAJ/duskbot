@@ -62,11 +62,25 @@ export const AUTO_RENEWALS = 5;
 type Offer = { qr: string; code: string | null; expiresAt: number; email?: string };
 
 /** a dusk cloud's phone sign-in codes come from the desktop app's own account sign-in; a browser tab or an older app has none */
-function cloudCodeBridge(cloudHome: boolean): Required<Pick<CloudPlanBridge, "phoneSignIn">> | null {
+function cloudCodeBridge(cloudHome: boolean): (Required<Pick<CloudPlanBridge, "phoneSignIn">> & Pick<CloudPlanBridge, "signIn">) | null {
   if (!cloudHome || typeof window === "undefined") return null;
   const bridge = window.duskDesktop?.cloudPlan;
-  return typeof bridge?.phoneSignIn === "function" ? { phoneSignIn: bridge.phoneSignIn.bind(bridge) } : null;
+  return typeof bridge?.phoneSignIn === "function"
+    ? { phoneSignIn: bridge.phoneSignIn.bind(bridge), ...(typeof bridge.signIn === "function" ? { signIn: bridge.signIn.bind(bridge) } : {}) }
+    : null;
 }
+
+/** waits before each retry of a code that could not be made, while a connection or the account service comes back */
+export const MINT_RETRY_MS = [1_500, 4_000] as const;
+
+/** no account code for the phone right now: the link screen falls back to the qr that opens the app's email log in */
+class EmailLogInInstead extends Error {}
+class SignedOutHere extends Error {}
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const retryable = (cause: unknown) => !(cause instanceof EmailLogInInstead || cause instanceof SignedOutHere)
+  && !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500);
 
 export function MobilePairingCard({ remote, cloudHome = false, email, children }: {
   remote: boolean;
@@ -96,6 +110,8 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const [copied, setCopied] = useState<CopyFeedback>("idle");
   const [pairedName, setPairedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [signInFix, setSignInFix] = useState(false);
+  const [emailOnly, setEmailOnly] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const generation = useRef(0);
   const renewals = useRef(0);
@@ -172,6 +188,8 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     setPairedName(null);
     setFlow("loading");
     setError(null);
+    setSignInFix(false);
+    setEmailOnly(false);
     moved.current = false;
     void loadDevices(epoch);
     if (cloudHome) void loadCloudSignIns(epoch);
@@ -180,8 +198,8 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
 
   // the link screen makes its code as soon as it is up, the first time included
   useEffect(() => {
-    if (flow === "link" && (codesInCloud || (!cloudHome && devices)) && !offer && !busy && pairedName === null && error === null) void create();
-  }, [flow, cloudHome, codesInCloud, devices]);
+    if (flow === "link" && ((codesInCloud && !emailOnly) || (!cloudHome && devices)) && !offer && !busy && pairedName === null && error === null) void create();
+  }, [flow, cloudHome, codesInCloud, devices, emailOnly]);
 
   useEffect(() => {
     if (!offer) return;
@@ -228,6 +246,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     const epoch = generation.current;
     setBusy(true);
     setError(null);
+    setSignInFix(false);
     setPairedName(null);
     setOffer(null);
     baseline.current = null;
@@ -235,18 +254,36 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     try {
       // a cloud's code is checked in the desktop app itself, before it is made
       if ((!codesInCloud && !(await requireUserPresence())) || generation.current !== epoch) return;
-      const body = await mint(false);
+      const body = await mintWithRetries(epoch);
       if (!body || generation.current !== epoch) return;
       if (!codesInCloud) baseline.current = (devices ?? []).map((device) => device.id);
       setOffer(body);
       setNow(Date.now());
     } catch (cause) {
-      if (generation.current === epoch) {
-        setError(friendlyError(cause, t("settings.mobile.error")));
-        haptic("error");
-      }
+      if (generation.current !== epoch) return;
+      if (cause instanceof EmailLogInInstead) { setEmailOnly(true); return; }
+      setSignInFix(cause instanceof SignedOutHere && Boolean(cloudCodes?.signIn));
+      setError(friendlyError(cause, t("settings.mobile.error")));
+      haptic("error");
     } finally {
       if (generation.current === epoch) setBusy(false);
+    }
+  }
+
+  /** the first try is the person's (a cloud checks their presence for it); retries renew it, so nobody is asked twice */
+  async function mintWithRetries(epoch: number): Promise<Offer | null> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await mint(attempt > 0 && codesInCloud);
+      } catch (cause) {
+        const wait = MINT_RETRY_MS[attempt];
+        if (wait === undefined || !retryable(cause)) {
+          if (codesInCloud && !(cause instanceof SignedOutHere)) throw new EmailLogInInstead();
+          throw cause;
+        }
+        await pause(wait);
+        if (generation.current !== epoch) return null;
+      }
     }
   }
 
@@ -259,7 +296,9 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
         return { qr: universalSignInLink(result.email, result.code, result.service), code: result.code, expiresAt: result.expiresAt, email: result.email };
       }
       if (result.outcome === "canceled") return null;
-      throw new Error(t(result.outcome === "signed-out" ? "settings.phone.cloudSignedOut" : result.outcome === "limited" ? "settings.phone.cloudLimited" : "settings.mobile.error"));
+      if (result.outcome === "signed-out") throw new SignedOutHere(t("settings.phone.cloudSignedOut"));
+      if (result.outcome === "failed") throw new Error(t("settings.mobile.error"));
+      throw new EmailLogInInstead();
     }
     const request: MobilePairingRequest = {};
     const companion = remote ? null : companionBridge();
@@ -283,6 +322,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   function go(to: Flow) {
     moved.current = true;
     setError(null);
+    setSignInFix(false);
     setPairedName(null);
     if (to === "home") setOffer(null);
     setFlow(to);
@@ -453,14 +493,15 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   );
 
   // a code that could not be made, or ended, fills the card in place of its rows: one picture, one line, one way on
-  const notice = (art: PlaceArtName, line: ReactNode, action: string, attrs: Record<string, string>, role: "alert" | "status") => (
+  const notice = (art: PlaceArtName, line: ReactNode, action: string, attrs: Record<string, string>, role: "alert" | "status", onAction = () => void create(true)) => (
     <div {...attrs} className="flex w-full flex-1 flex-col items-center justify-center gap-3 text-center">
       <PlaceArt name={art} size={44} />
       <p role={role} className="m-0 max-w-[300px] text-pretty text-[14px] leading-5 text-ink-secondary">{line}</p>
-      <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className="ui-button ui-button-pill min-h-11">{action}</button>
+      <button type="button" data-phone-new-code="" onClick={onAction} disabled={busy} className="ui-button ui-button-pill min-h-11">{action}</button>
     </div>
   );
-  const failedBlock = notice("error", error, t("settings.phone.tryAgain"), { "data-pairing-failed": "" }, "alert");
+  const failedBlock = notice("error", error, t(signInFix ? "phone.relay.signInAction" : "settings.phone.tryAgain"), { "data-pairing-failed": "" }, "alert",
+    signInFix ? () => void cloudCodes?.signIn?.().finally(() => setSignInFix(false)) : undefined);
   const expiredBlock = notice("expired", t("settings.mobile.expired"), t("settings.mobile.newCode"), { "data-phone-expired": "" }, "status");
 
   const offerTile = (label: string) => qrTile(offer?.qr ?? null, label);
@@ -485,7 +526,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"));
 
   // a cloud in a browser tab or an older app: no code to make, the qr opens the app at its dusk cloud log in with the email filled in
-  const cloudLink = (live: boolean) => codesInCloud ? cloudCodeLink(live) : column(live, { "data-phone-cloud": "" }, t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"), undefined,
+  const cloudLink = (live: boolean) => codesInCloud && !emailOnly ? cloudCodeLink(live) : column(live, { "data-phone-cloud": "" }, t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"), undefined,
     card(qrTile(universalSignInLink(signInEmail), t("settings.phone.cloudQr")),
       signInEmail
         ? <span data-phone-cloud-sign-in="" className="max-w-[320px] break-all text-[14px] leading-5 text-ink-secondary">{t("settings.phone.logInWith")} <span className="font-medium text-ink">{signInEmail}</span></span>

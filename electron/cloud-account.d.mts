@@ -257,7 +257,9 @@ export interface CloudPlanSnapshot {
 }
 export type CloudPhoneSignIn = { outcome: "code"; code: string; expiresAt: number; email: string;
   /** the account service that made the code, which the phone must redeem it at; absent from an older app */
-  service?: string } | { outcome: "signed-out" | "limited" | "failed" | "canceled" };
+  service?: string }
+  /** "unsupported": the account service makes no phone codes, so the phone logs in with its email instead */
+  | { outcome: "signed-out" | "limited" | "unsupported" | "failed" | "canceled" };
 export interface CloudPlanBridge {
   state(): Promise<CloudPlanSnapshot>;
   manage(): Promise<void>;

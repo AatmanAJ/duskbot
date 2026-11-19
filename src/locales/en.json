@@ -8443,7 +8443,6 @@
   "settings.phone.cloudAs": "Logs in as {email}",
   "settings.phone.cloudCodeQr": "QR code that logs dusk bot in on your phone",
   "settings.phone.cloudSignedOut": "Sign in to dusk cloud on this computer first, then try again.",
-  "settings.phone.cloudLimited": "That's a lot of codes for now. Wait a few minutes, then try again.",
   "mobile.clouds.title": "Your clouds",
   "mobile.clouds.loading": "Looking for your clouds…",
   "mobile.clouds.none": "No dusk cloud on this account yet. Link your computer with its QR or code.",
