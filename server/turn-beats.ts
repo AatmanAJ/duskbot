@@ -133,7 +133,7 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
   if (kind === "ack") {
     return [...head, "",
       "Write the acknowledgement they see first.",
-      "- One sentence, 6 to 20 words, present tense, naming the concrete action and object, like \"On it, pulling this week's Delhi to Goa fares.\" or \"Got it, comparing the three plans now.\" Write names and products exactly as the person did (EndNote, not \"the endnote\").",
+      "- One sentence, 6 to 20 words, present tense, naming the concrete action and object, like \"On it, pulling this week's Delhi to Goa fares.\" or \"Got it, comparing the three plans now.\" Write names and products exactly as the person did (EndNote, not \"the endnote\"). Say it in your own words, never their sentence back, and never a stock phrase like \"I'd be happy to help\".",
       `- Reply exactly SKIP if the message is only a greeting, thanks or small talk, if it is outside what ${input.name} does, if ${input.name}'s setup says it asks before using tools or fetching data, or if ${input.name} would need to ask the person something before starting.`,
       SHARED_RULES(input.name),
     ].join("\n");
