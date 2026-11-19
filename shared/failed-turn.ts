@@ -4,8 +4,7 @@
 // stay English and whole for the phones, which read only them.
 import { plainComputerFailure } from "./computer-unreachable.ts";
 import type { PlaceRow } from "./place-view.ts";
-import { failurePlan } from "./failure-plan.ts";
-import { hasRawDetail } from "./raw-detail.ts";
+import { shortenHomePaths } from "./raw-detail.ts";
 
 const MARKER = "error:";
 
@@ -90,9 +89,7 @@ export function failedTurnTool(
   cause: string,
   flags: { setup?: boolean; terminal?: boolean; claudeUpdate?: boolean; place?: PlaceRow; limitResetsAt?: number; partial?: boolean; reason?: FailedReplyReason; blocker?: BrowserBlocker } = {},
 ): FailedTurnTool {
-  const said = plainComputerFailure(withoutEchoedPrompt(cause));
-  // a known reason has its own plain line, so developer detail never reaches a phone or a notification
-  const clean = flags.reason && hasRawDetail(said) ? failurePlan(flags.reason).line : said;
+  const clean = shortenHomePaths(plainComputerFailure(withoutEchoedPrompt(cause)));
   const words = clean.length > FAILED_TURN_MAX_CHARS ? `${clean.slice(0, FAILED_TURN_MAX_CHARS - 1)}…` : clean;
   return {
     name: `${MARKER} ${words}`,

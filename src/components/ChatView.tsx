@@ -53,6 +53,8 @@ import type { MarkState } from "./mascot-engine";
 import { poolWords } from "@/lib/friendly-activity";
 import type { LiveStatus } from "@/state/turn-status";
 import { STATUS_EXIT_MS, TurnPresence, TYPING_PHASE } from "./TurnPresence";
+import { workingMood } from "@/lib/working-mood";
+import { WorkingMascot } from "./WorkingMascot";
 import { BrowserPartLine } from "./BrowserPartLine";
 import { browserPartFor } from "@/lib/browser-part";
 import { liveCallEnabled, voiceCallsEnabled, showToolCallsEnabled } from "@/lib/feature-flags";
@@ -1164,6 +1166,11 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   if (busySince !== null && shownLabel.current.seed !== presenceSeed) shownLabel.current = { seed: presenceSeed };
   if (live.label) shownLabel.current.label = live.label;
   const turnLabel = live.label ?? shownLabel.current.label;
+  const mood = workingMood({
+    phase: writing ? TYPING_PHASE : now.phase,
+    waiting: teammatesWorking || pendingApprovals(messages).length > 0,
+    failed: lastForLine?.kind === "activity" && lastForLine.tool?.ok === false,
+  });
   const rescuing = useRescueGrace(Boolean(bot.busy), mayTakeOver(bot, state.instances), `${bot.id}:${bot.threadId}`);
   const answering = answeringModel(profile, bot.threadId, bot.modelSelection);
   const folded = useMemo(() => {
@@ -1395,6 +1402,8 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           )}
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
+            avatar={<WorkingMascot bot={bot} size={phoneApp() ? 30 : 22} seed={presenceSeed} mood={mood} />}
+            wordsAtOnce
             simple
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}
             label={teammatesWorking ? t("chat.teammatesWorking") : importing && !turnBusy ? importing : undefined}

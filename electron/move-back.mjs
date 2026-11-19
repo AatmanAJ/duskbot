@@ -117,7 +117,10 @@ export function createMoveBack(deps) {
       set({ name: from.name });
       const pause = await pauser(from);
       set({ step: "backup-here" });
-      await deps.backupHere().catch((error) => log(`move back: no backup of this computer before moving back (${error?.message ?? error})`));
+      await deps.backupHere().catch((error) => {
+        log(`move back: no backup of this computer before moving back (${error?.message ?? error})`);
+        throw new Error("A backup of this computer could not be saved first, so nothing was moved.");
+      });
       set({ step: "pause" });
       await pause.freeze(deps.label());
       paused = pause;

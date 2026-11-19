@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Bot, InstanceInfo, Message } from "@/state/store";
 import type { FailedReplyReason } from "../../shared/failed-turn";
-import { rawDetailIn } from "../../shared/raw-detail";
+import { rawDetailIn, shortenHomePaths } from "../../shared/raw-detail";
 
 const fixture = vi.hoisted(() => {
   vi.stubGlobal("fetch", () => new Promise(() => {}));
@@ -52,23 +52,32 @@ async function show(cause: string, reason: FailedReplyReason | undefined, group:
   root = createRoot(document.body.appendChild(document.createElement("div")));
   await act(async () => { root!.render(createElement(FailedReplyCard, { rows: trailingRows([ask, failed]), group, botId: "echo", threadId: "main", onRetry })); });
   const card = document.querySelector("[data-chat-error]");
-  return { text: card?.textContent ?? "", buttons: card ? card.querySelectorAll("button:not([aria-label])").length : 0 };
+  return {
+    card,
+    title: card?.querySelector(".font-medium")?.textContent ?? "",
+    plain: card?.querySelector("p:not([data-failure-cause])")?.textContent ?? "",
+    real: card?.querySelector("[data-failure-cause]")?.textContent ?? "",
+    buttons: card ? card.querySelectorAll("button:not([aria-label])").length : 0,
+  };
 }
 
 afterEach(async () => { await act(async () => root?.unmount()); root = null; });
 
 describe("a failure card, whatever the engine said", () => {
-  it("never shows a path, an address, a stack, JSON or an exit code, and always offers a way on", async () => {
+  it("is an error card with a plain line, the real cause readable under it, and a way on", async () => {
     const problems: string[] = [];
     for (const reason of REASONS) {
       for (const cause of RAW_CAUSES) {
         for (const group of [false, true]) {
           for (const onRetry of [undefined, () => {}]) {
-            const { text, buttons } = await show(cause, reason, group, onRetry);
-            const leak = rawDetailIn(text);
+            const { card, title, plain, real, buttons } = await show(cause, reason, group, onRetry);
             const at = `${reason ?? "no reason"} / ${group ? "group" : "direct"} / ${onRetry ? "retry" : "no retry"} / ${cause.slice(0, 40)}`;
-            if (!text) problems.push(`${at}: no card`);
-            if (leak) problems.push(`${at}: shows ${leak} in "${text}"`);
+            if (!card) { problems.push(`${at}: no card`); continue; }
+            if (card.getAttribute("role") !== "alert") problems.push(`${at}: not an error card`);
+            if (!/failed to respond|couldn't respond/.test(title)) problems.push(`${at}: title "${title}"`);
+            if (rawDetailIn(plain)) problems.push(`${at}: plain line "${plain}"`);
+            if (!real || !shortenHomePaths(cause).startsWith(real.replace(/…$/, ""))) problems.push(`${at}: real cause "${real}"`);
+            if (/\/Users\/sam\b/.test(card.textContent ?? "")) problems.push(`${at}: names the account's home folder`);
             if (buttons === 0) problems.push(`${at}: no button`);
           }
         }
@@ -77,10 +86,9 @@ describe("a failure card, whatever the engine said", () => {
     expect(problems).toEqual([]);
   });
 
-  it("is calm and says it in one sentence in a direct chat", async () => {
-    const { text } = await show("codex exited with code 137", "cli_exit", false, () => {});
-    expect(text).toContain("Claude stopped before it could reply. Try again.");
-    expect(text).not.toContain("failed to respond");
-    expect(document.querySelector("[data-chat-error][role=status]")).not.toBeNull();
+  it("keeps a stack's first line on the card and the whole of it behind Copy details", async () => {
+    const { real, card } = await show("Error: boom\n    at runTurn (/Users/sam/app/server.js:12:4)", undefined, false, () => {});
+    expect(real).toBe("Error: boom");
+    expect(card?.textContent).toContain("Copy details");
   });
 });

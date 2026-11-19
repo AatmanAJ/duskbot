@@ -64,8 +64,7 @@ describe("failed replies in a room", () => {
     expect(markup).toContain("Claude isn&#x27;t signed in on this computer");
     expect(markup).toContain("Sign in</button>");
     expect(markup).toContain('aria-label="Dismiss"');
-    expect(markup).not.toContain("/login");
-    expect(markup).not.toContain("Not logged in");
+    expect(markup, "and what the engine really said, under it").toContain("Not logged in · Please run /login");
   });
 
   it("says the most actionable reason when they differ, and never the engine's raw words", () => {
@@ -83,7 +82,7 @@ describe("failed replies in a room", () => {
     expect(plain).toContain("Your Pro plan includes 2 cloud computers at once.");
     const technical = card([ask, failed("Echo", "TypeError: Cannot read properties of undefined (reading 'id')")]);
     expect(technical).toContain("Something went wrong. Try again.");
-    expect(technical).not.toContain("TypeError");
+    expect(technical, "the real error stays readable under the plain line").toContain("TypeError: Cannot read properties of undefined (reading &#x27;id&#x27;)");
   });
 
   it("goes away once a bot replies or the person writes again", () => {
@@ -103,10 +102,8 @@ describe("failed replies in a room", () => {
     expect(markup).not.toContain("Settings → AI");
   });
 
-  it("says what happened as a direct chat's one sentence, never that the bot failed", () => {
-    const markup = card([ask, signedOut[0]!], false);
-    expect(markup).toContain('<span class="block font-medium">Claude isn&#x27;t signed in on this computer. Sign in to keep going.</span>');
-    expect(markup).not.toContain("failed to respond");
+  it("titles a direct chat's card the way grok does", () => {
+    expect(card([ask, signedOut[0]!], false)).toContain("Bot failed to respond");
   });
 
   it("says a member that timed out, or whose AI never answered, in the same card, with Try again", () => {
@@ -131,7 +128,7 @@ describe("failed replies in a room", () => {
       tool: { name: "notice: Echo didn't hear back from Claude.", ok: true, rescue: { ...rescue, over: true } } };
     const markup = renderToStaticMarkup(createElement(FailedReplyCard, { rows: trailingRows([ask, silent]), botId: "echo", threadId: "main", onRetry: () => {} }));
     expect(count(markup, "data-chat-error")).toBe(1);
-    expect(markup).not.toContain("failed to respond");
+    expect(markup).toContain("Bot failed to respond");
     expect(markup).toContain("Echo didn&#x27;t hear back from Claude.");
     expect(markup).toContain("Switch AI</button>");
     expect(markup).toContain("Connect your subscription</button>");

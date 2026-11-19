@@ -21,9 +21,9 @@ export type BotConfirmKind = "archive" | "delete";
 export function botConfirmCopy(kind: BotConfirmKind, name: string, chief = false) {
   return kind === "archive"
     ? {
-        title: t("sidebar.confirm.archiveTitle", { name }),
-        body: t("confirm.botArchive"),
-        confirmLabel: t("sidebar.bot.archive"),
+        title: t("sidebar.confirm.hideTitle", { name }),
+        body: t("confirm.botHide"),
+        confirmLabel: t("sidebar.bot.hide"),
         tone: "neutral" as const,
         art: <PixelIcon name="parcel" size={28} />,
       }

@@ -32,6 +32,7 @@ import { Icon } from "./Icon";
 import { imageReady, knownImageSize, noteImageLoaded, reservedAspect, type MediaSize } from "@/lib/image-cache";
 import { canonicalDownloadFilename } from "@/lib/download-filename";
 import { friendlyError } from "@/lib/plain-error";
+import { phoneBridge } from "@/lib/phone-bridge";
 
 export { canonicalDownloadFilename, contentDispositionFilename, safeDownloadFilename } from "@/lib/download-filename";
 
@@ -360,17 +361,27 @@ const VIEWER_BUTTON = "flex size-8 items-center justify-center rounded-full bord
 const ZOOMED = 2.5;
 
 /** grok's media viewer: the whole window fading in, the image rising into place, a caption and a filmstrip under it. */
-export function AttachmentPreviewDialog({
-  image,
-  images,
-  initialIndex = 0,
-  onClose,
-}: {
+interface PreviewDialogProps {
   image: PreviewImage;
   images?: PreviewImage[];
   initialIndex?: number;
   onClose: () => void;
-}) {
+}
+
+/** Full screen pictures: the phone's own viewer in the phone app, this dialog elsewhere. */
+export function AttachmentPreviewDialog(props: PreviewDialogProps) {
+  const phone = phoneBridge();
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!phone || opened.current) return;
+    opened.current = true;
+    const items = props.images?.length ? props.images : [props.image];
+    phone.view({ kind: "images", images: items.map(({ src, name, openUrl }) => ({ src, name, openUrl })), index: props.initialIndex ?? 0 }, props.onClose);
+  }, []);
+  return phone ? null : <PreviewDialog {...props} />;
+}
+
+function PreviewDialog({ image, images, initialIndex = 0, onClose }: PreviewDialogProps) {
   const items = images?.length ? images : [image];
   const [index, setIndex] = useState(() => Math.min(Math.max(initialIndex, 0), items.length - 1));
   const current = items[index] ?? image;

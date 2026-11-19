@@ -10,6 +10,7 @@ import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } fr
 import { useStore, type Message, type ModelSelection } from "@/state/store";
 import { failedTurnCause } from "../../shared/failed-turn";
 import { failurePlan, type FailureAction } from "../../shared/failure-plan";
+import { shortenHomePaths } from "../../shared/raw-detail";
 import { freeFallback } from "../../shared/ai-ranking";
 import { engineReady } from "./EngineLibrary";
 import { ConnectAiDialog } from "./onboarding/ConnectAi";
@@ -59,6 +60,20 @@ const FOLDER_GONE = /This bot's folder .* was moved or deleted\./;
 const openEngines = { type: "toggleAppSettings", open: true, section: "engines" } as const;
 
 type CardAction = { label: string; onClick: () => void };
+
+// kinds whose card line already is the whole cause, or whose cause is dusk bot's own record of the turn
+const OWN_WORDS: ReadonlySet<string> = new Set(["blocker", "no_answer", "restart_interrupted", "claude_update", "no_ai"]);
+const CAUSE_LINE_MAX = 240;
+
+/** What the engine or system really said, under the card's plain line: its first line in full (home folders as ~),
+ * the whole text behind Copy details when it runs longer. Null when the plain line already says it. */
+export function realCause(cause: string, plain: string | null): { line: string; whole: string; long: boolean } | null {
+  const whole = shortenHomePaths(cause.trim());
+  if (!whole || whole === plain?.trim()) return null;
+  const first = whole.split("\n")[0]!.trim();
+  const long = first !== whole || first.length > CAUSE_LINE_MAX;
+  return { line: first.length > CAUSE_LINE_MAX ? `${first.slice(0, CAUSE_LINE_MAX - 1)}…` : first, whole, long };
+}
 
 
 /** grok's failed-reply card: one card just above the composer for every reply the newest turn lost, gone once anything
@@ -218,8 +233,7 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   }
   if (FOLDER_GONE.test(cause) && leadBotId) actions.unshift({ label: t("botPanel.page.folder"), onClick: () => openBotSettings(dispatch, "access", { botId: leadBotId, page: "folder" }) });
   if (actions.length === 0 && !update && lead.kind !== "place" && leadBotId) actions.push({ label: t("chat.rescue.switchAi"), onClick: () => openBotSettings(dispatch, "model", { botId: leadBotId }) });
-  // a direct chat says what happened as the card's one sentence; a group first says who
-  const sentenceTitle = !group && lead.kind !== "blocker" && Boolean(detail);
+  const real = OWN_WORDS.has(lead.kind) ? null : realCause(cause, detail);
   // a sign-out notice beside a failure for another reason: still one card, its Sign in a pill on it
   const signInTile = lead.engine && aiTileOf(lead.engine);
   if (signInNotice && !actions.some((action) => action.label === t("chat.notice.signIn"))) actions.unshift({ label: t("chat.notice.signIn"), onClick: () => signInTile ? setConnecting(signInTile) : dispatch(openEngines) });
@@ -227,14 +241,15 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
     <div className="mb-2 w-full px-5" data-failed-reply="">
       <ChatErrorCard
         icon={lead.kind === "usage_limit" ? "batteryFull" : signInNotice ? "key" : lead.kind === "place" ? "offline" : undefined}
-        tone="info"
-        title={lead.kind === "blocker" ? t("chat.blocker.title") : sentenceTitle ? detail : failedReplyTitle(items.map((item) => item.bot?.name ?? item.message.from?.name ?? ""), group)}
+        title={lead.kind === "blocker" ? t("chat.blocker.title") : failedReplyTitle(items.map((item) => item.bot?.name ?? item.message.from?.name ?? ""), group)}
+        details={real?.long ? real.whole : null}
         onDismiss={close}
         actions={actions.length > 0 && actions.slice(0, lead.kind === "blocker" ? 3 : 2).map((action, index) => (
           <button key={action.label} type="button" onClick={action.onClick} className={index > 0 && lead.kind !== "blocker" ? QUIET_CARD_ACTION : CARD_ACTION}>{action.label}</button>
         ))}
       >
-        {detail && !sentenceTitle && <p dir="auto" className="text-ink-secondary">{detail}</p>}
+        {detail && <p dir="auto" className="text-ink-secondary">{detail}</p>}
+        {real && <p dir="auto" data-failure-cause="" className="mt-0.5 text-[12px] leading-4 break-words text-ink-secondary">{real.line}</p>}
         {did && <p dir="auto" className="text-ink-secondary">{t("failedReply.restartedDid", { done: did })}</p>}
         {update}
       </ChatErrorCard>

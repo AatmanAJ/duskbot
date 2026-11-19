@@ -11,6 +11,9 @@ describe("schedule labels", () => {
     ["0 9 * * 1#2", "Monthly on the second Monday at 9:00"],
     ["0 9 * * 1-5", "Every weekday at 9:00"],
     ["30 17 * * 5", "Weekly on Friday at 17:30"],
+    ["0 18 * * SUN", "Weekly on Sunday at 18:00"],
+    ["0 9 * * mon-fri", "Every weekday at 9:00"],
+    ["0 9 * * TUE#2", "Monthly on the second Tuesday at 9:00"],
     ["0 9 1 * 1", "Cron 0 9 1 * 1"],
     ["*/15 9-17 * * 1-5", "Cron */15 9-17 * * 1-5"],
   ])("labels %s without inventing a meaning for arbitrary expressions", (expression, description) => {

@@ -90,7 +90,7 @@ export function ChatErrorBanner({ message, onDismiss }: { message: string | null
   const plain = friendlyError(message);
   return (
     <div className="mb-2 w-full px-5">
-      <ChatErrorCard tone="info" title={plain} details={plain !== message ? message : null} onDismiss={onDismiss} />
+      <ChatErrorCard title={plain} details={plain !== message ? message : null} onDismiss={onDismiss} />
     </div>
   );
 }

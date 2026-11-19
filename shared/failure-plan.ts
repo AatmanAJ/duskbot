@@ -1,7 +1,6 @@
 // what a failed reply turns into for a person: what dusk bot tries by itself first, then one sentence and one button.
-// the desktop words these in the reader's language; `line` is the English a phone shows as it is.
+// the desktop words these in the reader's language; `line` is the English a phone shows above the real cause.
 import type { FailedReplyReason } from "./failed-turn.ts";
-import { hasRawDetail } from "./raw-detail.ts";
 
 /** Every way a reply can be lost, as the apps tell them apart: the server's reasons, plus what a client reads from the
  * row itself (`place`: the bot's computer or browser could not be used; `blocker`: dusk bot stopped a browser run that
@@ -33,7 +32,7 @@ export interface FailurePlan {
   instead?: FailureAction;
   /** a quiet second button beside it, for what comes right after the fix */
   after?: FailureAction;
-  /** the English sentence a client without translations shows: plain words, no codes, paths or addresses */
+  /** the English sentence a client without translations shows above the real cause: plain words, what to do next */
   line: string;
 }
 
@@ -61,11 +60,4 @@ export const FAILURE_PLANS: Readonly<Record<FailureKind, FailurePlan>> = {
 
 export function failurePlan(kind: FailureKind | undefined): FailurePlan {
   return (kind && FAILURE_PLANS[kind]) || FAILURE_PLANS.other;
-}
-
-/** What a failure says to a person: `text` when it is plain words, the kind's own line when it carries a path, an
- * address, a stack, JSON or a code. */
-export function plainFailureText(text: string | null | undefined, kind?: FailureKind): string {
-  const words = text?.trim() ?? "";
-  return words && !hasRawDetail(words) ? words : failurePlan(kind).line;
 }

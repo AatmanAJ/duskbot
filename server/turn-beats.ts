@@ -157,6 +157,9 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
   ].join("\n");
 }
 
+/** A line about the bot's own reply ("a brief confirmation", "check it matches your message") rather than the work. */
+const ABOUT_ITSELF = /\ba (?:brief |short |quick )?confirmation\b|\bmy (?:reply|response|answer)\b|\bmatch(?:es)? your (?:message|request)\b/i;
+
 /** The model's reply as a chat line, or null when it declined or wrote something that is not one short message. */
 export function cleanBeat(kind: BeatKind, reply: string): string | null {
   let text = reply.replace(/\r/g, "").trim();
@@ -164,7 +167,7 @@ export function cleanBeat(kind: BeatKind, reply: string): string | null {
   if (!text || /\bSKIP\b/.test(text) || text.includes("```") || text.split("\n").filter((line) => line.trim()).length > 2) return null;
   text = redactSecretsInText(text.replace(/\s+/g, " ")).replace(/\s*!+/g, ".").replace(/\.\.+$/, ".");
   const words = text.split(" ").length;
-  if (words < 3 || words > MAX_WORDS[kind] || /\?\s*$/.test(text)) return null;
+  if (words < 3 || words > MAX_WORDS[kind] || /\?\s*$/.test(text) || ABOUT_ITSELF.test(text)) return null;
   return text;
 }
 

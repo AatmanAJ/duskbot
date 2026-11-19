@@ -8,9 +8,10 @@ import type { ModelSelection, ProviderAdapter, ProviderSnapshot } from "./contra
 import { createCoordinator, type Coordinator, type HostTurnResult } from "./coordinator.ts";
 import { PROBE_TIMEOUT_MS } from "./engine-install.ts";
 import { closeMessageDb } from "./message-db.ts";
-import { createQuotaSwitch, NOT_NOW, quotaSwitchEnabled, type QuotaRequest, type QuotaSwitch, type QuotaSwitchDeps, type QuotaSwitchEngine } from "./quota-switch.ts";
+import { createQuotaSwitch, NOT_NOW, quotaSwitchEnabled, turnFailureRow, type QuotaRequest, type QuotaSwitch, type QuotaSwitchDeps, type QuotaSwitchEngine } from "./quota-switch.ts";
 import { Store, type BotRecord, type Message } from "./store.ts";
 import { toolFailureMessage } from "./drivers/tool-failure.ts";
+import { failedTurnTool } from "../shared/failed-turn.ts";
 
 const QUOTA = "You've hit your weekly limit · resets Oct 12 at 2:30pm (Asia/Calcutta)";
 const defaultSelection = (): ModelSelection => ({ instanceId: "claude", model: "claude-default" });
@@ -216,6 +217,33 @@ describe("quota switch", () => {
       expect(notices()).toContainEqual({ name: "notice: continuing on Codex after hitting the usage limit", ok: true });
       expect(told).toEqual([{ botId: bot.id, from: defaultSelection(), facts: { scope: "engine", backup: CODEX } }]);
       expect(moves, "so it goes back once the limit resets").toEqual([{ threadId: bot.threadId, from: defaultSelection(), to: CODEX }]);
+    });
+
+    it("keeps the failure card down while a backup takes the turn, so no error shows for a reply that carries on", async () => {
+      const messageId = said("plan my week");
+      const row = store.appendMessage(bot.threadId, { role: "bot", kind: "activity", tool: failedTurnTool(QUOTA, { reason: "usage_limit" }) });
+      await limited({ messageId });
+      expect(thread().modelSelection).toEqual(CODEX);
+      expect(store.messagesFor(bot.threadId).find((m) => m.id === row.id)!.tool!.resolvedAt).toBeTypeOf("number");
+    });
+
+    it("shows the failure card again, cause and all, when no backup could take the turn", async () => {
+      switchRefusal = "Codex can't run this thread.";
+      const messageId = said("plan my week");
+      const row = store.appendMessage(bot.threadId, { role: "bot", kind: "activity", tool: failedTurnTool(QUOTA, { reason: "usage_limit" }) });
+      await limited({ messageId });
+      const now = store.messagesFor(bot.threadId).find((m) => m.id === row.id)!.tool!;
+      expect(now.resolvedAt).toBeUndefined();
+      expect(now.name).toBe(row.tool!.name);
+    });
+
+    it("finds only the newest turn's own failure row, never an older one a reply already followed", () => {
+      const ask = { id: "a", role: "user", kind: "text", text: "hi", at: 1 } as Message;
+      const fail = { id: "f", role: "bot", kind: "activity", at: 2, tool: failedTurnTool("boom") } as Message;
+      const reply = { id: "r", role: "bot", kind: "text", text: "done", at: 3 } as Message;
+      expect(turnFailureRow([ask, fail], "a")?.id).toBe("f");
+      expect(turnFailureRow([ask, fail, reply], "a")).toBeUndefined();
+      expect(turnFailureRow([fail, ask], "a")).toBeUndefined();
     });
 
     it("never takes a failed tool call for the AI's usage limit, whatever the tool is called", async () => {

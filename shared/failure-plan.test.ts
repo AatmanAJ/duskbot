@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { failedTurnCause, failedTurnTool, type FailedReplyReason } from "./failed-turn";
-import { FAILURE_PLANS, failurePlan, plainFailureText, type FailureKind } from "./failure-plan";
+import { FAILURE_PLANS, failurePlan, type FailureKind } from "./failure-plan";
 import { hasRawDetail, rawDetailIn } from "./raw-detail";
 
 const REASONS: FailedReplyReason[] = ["signed_out", "credits", "usage_limit", "rate_limit", "overloaded", "timeout", "no_ai", "model_not_found",
@@ -55,20 +55,19 @@ describe("developer detail", () => {
     ]) expect(rawDetailIn(text), text).toBeNull();
   });
 
-  it("gives way to the kind's own line", () => {
-    expect(plainFailureText(RAW_CAUSES[0], "cli_missing")).toBe(FAILURE_PLANS.cli_missing.line);
-    expect(plainFailureText("", "timeout")).toBe(FAILURE_PLANS.timeout.line);
-    expect(plainFailureText("The workspace was restored from a backup.")).toBe("The workspace was restored from a backup.");
-  });
 });
 
 describe("a failed turn's stored row", () => {
-  it("keeps the plain line of a known reason instead of developer detail, for phones and notifications", () => {
+  it("keeps the real cause, whatever its reason, with home folders written as ~", () => {
     for (const reason of REASONS) {
-      for (const cause of RAW_CAUSES) {
-        expect(failedTurnCause(failedTurnTool(cause, { reason }).name), `${reason}: ${cause}`).toBe(FAILURE_PLANS[reason].line);
+      for (const cause of RAW_CAUSES.filter((text) => !text.includes("Users"))) {
+        expect(failedTurnCause(failedTurnTool(cause, { reason }).name), `${reason}: ${cause}`).toBe(cause);
       }
     }
+    expect(failedTurnCause(failedTurnTool(RAW_CAUSES[0]!, { reason: "cli_missing" }).name))
+      .toBe("spawn claude ENOENT: ~/.duskbot/workspaces/0f6c/chats/main does not exist");
+    expect(failedTurnCause(failedTurnTool("C:\\Users\\sam\\AppData\\Local\\dusk bot\\server.log has the details").name))
+      .toBe("~\\AppData\\Local\\dusk bot\\server.log has the details");
   });
 
   it("keeps the engine's own plain words, and any words with no known reason", () => {

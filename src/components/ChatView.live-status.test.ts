@@ -85,16 +85,15 @@ afterEach(() => {
 });
 
 describe("the working line", () => {
-  it("is one word and nothing else, Thinking first: no mascot, no dots, no seconds", () => {
+  it("is the bot's mascot and one word, Thinking from the first frame: no dots, no seconds", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     expect(line()).not.toBeNull();
     expect(statusLine()).toBe("Thinking");
-    expect(line()!.querySelector("[data-working-mascot]"), "no mascot on the line").toBeNull();
-    expect(line()!.querySelector(".turn-status-mark")).toBeNull();
+    expect(line()!.querySelector(".turn-status-mark [data-working-mascot]"), "the mascot before the word").not.toBeNull();
     expect(line()!.querySelector("[data-dusk-mark]"), "no engine-drawn mark, so no dots").toBeNull();
     const row = line()!.firstElementChild as HTMLElement;
-    expect([...row.classList]).toEqual(expect.arrayContaining(["h-9", "ps-3"]));
+    expect([...row.classList]).toEqual(expect.arrayContaining(["h-9", "ps-2"]));
     expect(row.title).toMatch(/^Working · /);
     expect(line()!.querySelector("[data-turn-status] .status-shimmer")).not.toBeNull();
     const slot = () => host.querySelector(".turn-status-slot")!;
@@ -117,13 +116,14 @@ describe("the working line", () => {
     expect(line()).not.toBeNull();
     engine({ type: "turn.completed", ok: true } as Partial<RuntimeEvent>);
     render(busyBot([ask, reply], false));
-    expect(host.querySelector(".turn-status-out"), "the words fade out").not.toBeNull();
-    expect(host.querySelector("[data-working-mascot]")).toBeNull();
+    expect(host.querySelector(".turn-status-out"), "the line fades out, its mascot with it").not.toBeNull();
+    expect(host.querySelector('.turn-status-out [data-working-mascot]')).not.toBeNull();
+    expect(host.querySelector('[data-working-mascot][data-mood="done"]'), "no happy hop under the message").toBeNull();
     act(() => void vi.advanceTimersByTime(STATUS_EXIT_MS));
     expect(line()).toBeNull();
   });
 
-  it("comes 0.55 to 1.2 s after the send saying Thinking at once, never the dots or a mascot", () => {
+  it("comes 0.55 to 1.2 s after the send with the mascot saying Thinking at once, never the dots", () => {
     vi.setSystemTime(started);
     engine({ type: "turn.started" });
     render(busyBot([ask]));
@@ -132,7 +132,7 @@ describe("the working line", () => {
     expect(line()).toBeNull();
     act(() => void vi.advanceTimersByTime(STATUS_MOUNT_MS.max - STATUS_MOUNT_MS.min + 60));
     expect(line(), "then the line, with its word").not.toBeNull();
-    expect(line()!.querySelector("[data-working-mascot]")).toBeNull();
+    expect(line()!.querySelector("[data-working-mascot]")).not.toBeNull();
     expect(statusLine()).toBe("Thinking");
     act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max + 1_500));
     expect(line()!.querySelector("[data-dusk-mark]"), "never the dots").toBeNull();
@@ -176,11 +176,11 @@ describe("the working line", () => {
     expect(statusLine()).toBe("Comparing standing desks");
   });
 
-  it("says Writing while the reply comes, with no mascot and never the dots", () => {
+  it("says Writing while the reply comes, by the mascot, never the dots", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     engine({ type: "content.delta", streamKind: "assistant_text", delta: "Hi" } as Partial<RuntimeEvent>);
-    expect(line()!.querySelector("[data-working-mascot]")).toBeNull();
+    expect(line()!.querySelector("[data-working-mascot]")).not.toBeNull();
     expect(statusLine()).toBe("Writing");
   });
 
