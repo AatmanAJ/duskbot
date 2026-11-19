@@ -2,8 +2,9 @@ import { feel, prefersReducedMotion, springEasing } from "./motion";
 
 /** Controls that already press in CSS (the shell's round buttons, the composer discs) or that move under the finger. */
 const OWN_PRESS = ".mobile-press, [data-long-press], [data-composer-send], [data-voice-mic], [data-composer-stop], [data-composer-plus], [role='slider'], input, textarea, select";
-/** On Android: controls that answer with a ripple of their own (the composer's), press in CSS, or move under the finger. */
-const OWN_RIPPLE = ".mobile-press, [data-tour='composer'] button, [role='slider'], input, textarea, select";
+/** On Android: controls that answer with a ripple of their own (the composer's), press in CSS, or move under the finger,
+ * and rows and menu items, where a ripple reads as the whole row flashing. */
+const OWN_RIPPLE = ".mobile-press, .mobile-row, [role='menuitem'], [role='menuitemradio'], [role='option'], [data-tour='composer'] button, [role='slider'], input, textarea, select";
 const TAPPABLE = "button, a[href], [role='button'], [role='menuitem'], [role='option'], [role='tab'], [role='radio'], [role='switch'], label[for], summary";
 
 export function pressTarget(target: EventTarget | null, root: Element, own = OWN_PRESS): HTMLElement | null {

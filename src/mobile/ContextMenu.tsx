@@ -72,7 +72,7 @@ export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: 
       timer = 0;
       fired = true;
       lift();
-      haptic("medium");
+      haptic("hold");
       latest.current(el.getBoundingClientRect());
     };
     const onTouchStart = (event: TouchEvent) => {
@@ -102,7 +102,7 @@ export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: 
     const onContextMenu = (event: MouseEvent) => {
       event.preventDefault();
       if (timer || fired) return;
-      haptic("medium");
+      haptic("hold");
       latest.current(el.getBoundingClientRect());
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -279,7 +279,7 @@ export function ContextMenu({ open, anchor, preview, actions, label, onClose, re
                     aria-label={reaction.label}
                     aria-pressed={reaction.selected}
                     variants={glyph}
-                    onClick={() => { haptic("selection"); onClose(); onReact?.(reaction.key); }}
+                    onClick={() => { haptic("pick"); onClose(); onReact?.(reaction.key); }}
                     className={cn("flex size-11 items-center justify-center rounded-full text-[26px] leading-none", reaction.selected && "bg-ink/[0.08]")}
                   >
                     <span aria-hidden>{reaction.glyph}</span>
@@ -307,7 +307,7 @@ export function ContextMenu({ open, anchor, preview, actions, label, onClose, re
                   role="menuitem"
                   variants={item}
                   disabled={action.disabled}
-                  onClick={() => { haptic("selection"); onClose(); action.onSelect(); }}
+                  onClick={() => { haptic("pick"); onClose(); action.onSelect(); }}
                   className={cn(
                     "mobile-row flex h-[46px] w-full items-center gap-3 px-4 text-left text-[16px] disabled:opacity-40",
                     action.danger ? "text-danger" : "text-ink",

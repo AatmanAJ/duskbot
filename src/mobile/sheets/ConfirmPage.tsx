@@ -20,7 +20,7 @@ export function ConfirmPage({ title, heading, body, action, onConfirm, onCancel 
   const confirm = async () => {
     if (working) return;
     setWorking(true);
-    haptic("light");
+    haptic("tap");
     await onConfirm().catch(() => setWorking(false));
   };
   return (

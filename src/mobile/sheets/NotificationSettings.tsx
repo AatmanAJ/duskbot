@@ -19,7 +19,7 @@ export function NotificationSettings() {
   }, [platform, check]);
 
   const allow = async () => {
-    haptic("selection");
+    haptic("pick");
     if (permission === "denied") { await platform.camera?.openSettings?.(); return; }
     await registerPushForConnection(platform, { prompt: true });
     check();
@@ -30,7 +30,7 @@ export function NotificationSettings() {
       <SettingsRow icon={<BellOff />} label={t("mobile.settings.allowNotifications")} detail={t(permission === "denied" ? "mobile.settings.allowNotificationsDenied" : "mobile.settings.allowNotificationsDetail")} onClick={() => { void allow(); }} />
     )}
     {platform.turnActivity && (
-      <SettingsSwitch icon={<Smartphone />} label={t("mobile.settings.liveActivity")} detail={t("mobile.settings.liveActivityDetail")} checked={liveActivity} onChange={(on) => { haptic("selection"); setLiveActivityEnabled(on); }} />
+      <SettingsSwitch icon={<Smartphone />} label={t("mobile.settings.liveActivity")} detail={t("mobile.settings.liveActivityDetail")} checked={liveActivity} onChange={(on) => { haptic("toggle"); setLiveActivityEnabled(on); }} />
     )}
   </>;
 }

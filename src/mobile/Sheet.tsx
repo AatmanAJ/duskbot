@@ -4,6 +4,7 @@ import { ChevronLeft, X } from "../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { canScroll, ownsDrag, useDrag } from "./gesture";
+import { haptic } from "./haptics";
 import { dismiss, projectRelease, rubberband, settleTo, springPath, system } from "./motion";
 import { RoundButton } from "./RoundButton";
 
@@ -140,6 +141,7 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
   const [moving, setMoving] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
   const scrimPressed = useRef(false);
+  const flungAway = useRef(false);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const reduced = useReducedMotion();
@@ -190,6 +192,8 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
     if (open) {
       opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       y.set(height.current);
+      haptic("sheet");
+      flungAway.current = false;
       sheet.focus({ preventScroll: true });
       // the rise starts on the first frame drawn with the sheet in place below the screen: started here, the spring's
       // clock would run through the frame that mounts its content and its first steps would lurch, then stall
@@ -202,6 +206,8 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
       });
       return () => cancelAnimationFrame(start);
     } else {
+      if (!flungAway.current) haptic("sheet");
+      flungAway.current = false;
       dismissFrom(height.current + 24, () => {
         setMounted(false);
         opener.current?.focus({ preventScroll: true });
@@ -231,6 +237,8 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
     onEnd: (s) => {
       const landing = projectRelease(Math.max(0, y.get()), s.vy);
       if (y.get() > 0 && (landing > height.current * 0.5 || s.vy > 700)) {
+        haptic("sheet");
+        flungAway.current = true;
         go(height.current + 24, Math.max(s.vy, 0), () => closeRef.current(), true);
       } else {
         go(0, s.vy);

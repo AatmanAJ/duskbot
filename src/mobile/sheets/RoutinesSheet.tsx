@@ -110,7 +110,7 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
                     <span className="min-w-0 flex-1"><span className="block truncate text-[16px] font-semibold text-ink">{routine.name}</span><span className="mt-0.5 block text-[14px] text-ink-secondary">{upperFirst(scheduleLabel(routine.schedule))}</span><span className="block text-[14px] text-ink-secondary">{routineNextLabel(routine)}</span></span>
                     <ChevronRight aria-hidden size={16} className="shrink-0 text-ink-tertiary" />
                   </button>
-                  <div className="w-[68px] shrink-0 [&_button>span:first-child]:sr-only [&_button]:justify-center [&_button]:gap-0 [&_button]:px-2"><SettingsSwitch label={t("mobile.routines.enable", { name: routine.name })} checked={routine.enabled} onChange={() => { if (!pending.current.has(routine.id)) { haptic("selection"); void work(routine, "toggle"); } }} /></div>
+                  <div className="w-[68px] shrink-0 [&_button>span:first-child]:sr-only [&_button]:justify-center [&_button]:gap-0 [&_button]:px-2"><SettingsSwitch label={t("mobile.routines.enable", { name: routine.name })} checked={routine.enabled} onChange={() => { if (!pending.current.has(routine.id)) { haptic("toggle"); void work(routine, "toggle"); } }} /></div>
                 </div>
               </SwipeRow>
             </li>;

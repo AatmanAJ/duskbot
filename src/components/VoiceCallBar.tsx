@@ -211,7 +211,7 @@ function RoundButton({ label, pressed, className, disabled, onClick, children, b
       aria-expanded={expanded}
       aria-haspopup={popup}
       disabled={disabled}
-      onPointerDown={() => haptic("light")}
+      onPointerDown={() => haptic("tap")}
       onClick={onClick}
       className={cn("voice-call-press flex size-9 shrink-0 items-center justify-center rounded-full disabled:opacity-50 sm:size-10", className)}
     >
@@ -352,13 +352,13 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, account,
           voice={voice === "account" && !account ? "af_heart" : voice}
           speed={speed}
           onVoice={(id) => {
-            haptic("selection");
+            haptic("pick");
             setCallPrefs({ voices: { ...callPrefs().voices, [bot.id]: id } });
             session.setVoice(id, speed);
             session.preview(t("call.voice.previewLine", { name: bot.name }));
           }}
           onSpeed={(value) => {
-            haptic("selection");
+            haptic("pick");
             setCallPrefs({ speed: value });
             session.setVoice(voice, value);
             session.preview(t("call.voice.previewLine", { name: bot.name }));

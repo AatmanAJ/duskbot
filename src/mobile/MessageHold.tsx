@@ -269,7 +269,7 @@ export function MessageHold({ rootRef }: { rootRef: RefObject<HTMLElement | null
         sink = null;
         // the bar's own long press would also bring up its pill
         row.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "touch" }));
-        haptic("medium");
+        haptic("hold");
         const rect = bubble.getBoundingClientRect();
         const { actions, reactions } = link ? { actions: linkActions(link), reactions: [] } : await readMessageActions(row);
         if (!actions.length && !reactions.length) return;

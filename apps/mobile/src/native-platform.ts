@@ -575,7 +575,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
             await Haptics.selectionEnd();
             break;
           case "error":
-            await Haptics.notification({ type: NotificationType.Error });
+            await Haptics.notification({ type: NotificationType.Warning });
             break;
           case "success":
             await Haptics.notification({ type: NotificationType.Success });

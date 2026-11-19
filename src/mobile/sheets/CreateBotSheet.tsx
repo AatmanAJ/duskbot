@@ -62,14 +62,14 @@ export function CreateBotSheet({ open, onClose, onOpenChat }: SheetPageProps<"cr
         <p id={`${nameId}-look`} className="-mb-2 px-1 text-[14px] font-semibold text-ink-secondary">{t("mobile.create.look")}</p>
         <div role="radiogroup" aria-label={t("mobile.create.body")} onKeyDown={moveRadio} className="grid grid-cols-5 justify-items-center gap-y-3">
           {BODIES.map((id) => (
-            <button key={id} type="button" role="radio" aria-checked={id === body} aria-label={DUSK_BODY_NAMES[id]} tabIndex={id === body ? 0 : -1} onClick={() => { if (id !== body) { setBody(id); setRevision((value) => value + 1); haptic("selection"); } }} className="mobile-press flex size-12 items-center justify-center rounded-full">
+            <button key={id} type="button" role="radio" aria-checked={id === body} aria-label={DUSK_BODY_NAMES[id]} tabIndex={id === body ? 0 : -1} onClick={() => { if (id !== body) { setBody(id); setRevision((value) => value + 1); haptic("pick"); } }} className="mobile-press flex size-12 items-center justify-center rounded-full">
               <span className={cn("flex size-10 items-center justify-center rounded-full", id === body && "ring-2 ring-ink ring-offset-[3px] ring-offset-app")}><MausAvatar bodyId={id} color={color} size={40} animated={false} label="" /></span>
             </button>
           ))}
         </div>
         <div role="radiogroup" aria-label={t("mobile.create.colour")} onKeyDown={moveRadio} className="grid grid-cols-5 justify-items-center self-center">
           {COLORS.map((value) => (
-            <button key={value} type="button" role="radio" aria-label={t(`mobile.create.colour.${value}`)} aria-checked={value === color} tabIndex={value === color ? 0 : -1} onClick={() => { if (value !== color) { setColor(value); setRevision((count) => count + 1); haptic("selection"); } }} className="mobile-press flex size-11 items-center justify-center rounded-full">
+            <button key={value} type="button" role="radio" aria-label={t(`mobile.create.colour.${value}`)} aria-checked={value === color} tabIndex={value === color ? 0 : -1} onClick={() => { if (value !== color) { setColor(value); setRevision((count) => count + 1); haptic("pick"); } }} className="mobile-press flex size-11 items-center justify-center rounded-full">
               <span className={cn("size-[30px] rounded-full", value === color && "ring-2 ring-ink ring-offset-[3px] ring-offset-app")} style={{ background: colorSwatch(value) }} />
             </button>
           ))}

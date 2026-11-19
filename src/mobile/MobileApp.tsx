@@ -34,6 +34,7 @@ import { t } from "@/lib/i18n";
 import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useNativeGlass } from "./native-glass";
 import { useNativeHomeGlass } from "./native-home-glass";
+import { haptic } from "./haptics";
 import { useChatHaptics } from "./use-chat-haptics";
 import { usePhoneActions } from "./use-phone-actions";
 import { useTurnActivities } from "./use-turn-activities";
@@ -112,6 +113,8 @@ function Shell() {
     else dispatch({ type: "select", id });
     setChatId(id);
   }, [dispatch]);
+  const tapChat = useCallback((id: string) => { haptic("openChat"); openChat(id); }, [openChat]);
+  const backToList = useCallback(() => { haptic("back"); setChatId(null); }, []);
 
   // a reload comes back to the chat that was open, opened as a tap would once the snapshot shows it is still here
   useEffect(() => {
@@ -224,7 +227,7 @@ function Shell() {
       bot={bot}
       group={group}
       members={members}
-      onBack={() => setChatId(null)}
+      onBack={backToList}
       onProfile={() => openSheet({ kind: "profile", id: chatId! })}
       onComputer={() => openSheet({ kind: "computer", botId: chatId! })}
     />
@@ -233,15 +236,15 @@ function Shell() {
   return (
     <div ref={rootRef} className="dusk-mobile relative">
       <NavStack
-        base={<HomeScreen onOpenChat={openChat} onOpenSheet={openSheet} />}
+        base={<HomeScreen onOpenChat={tapChat} onOpenSheet={openSheet} />}
         page={page}
         pageKey={page ? chatId : null}
-        onBack={() => setChatId(null)}
+        onBack={backToList}
         onSettled={pageSettled}
         onSlide={slideGlass}
         onLeave={leaveChat}
       />
-      <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); openChat(id); }} />
+      <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); tapChat(id); }} />
       <ConnectAppsHost />
       <MessageHold rootRef={rootRef} />
       <ViewerHost rootRef={rootRef} />

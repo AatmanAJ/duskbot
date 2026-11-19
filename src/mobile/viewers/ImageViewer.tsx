@@ -118,7 +118,7 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
   const resetZoom = () => { to(scale, 1); to(panX, 0); to(panY, 0); };
   const go = useCallback((step: -1 | 0 | 1, velocity = 0) => {
     const next = Math.max(0, Math.min(images.length - 1, index + step));
-    if (next !== index) { haptic("selection"); scale.set(1); panX.set(0); panY.set(0); }
+    if (next !== index) { haptic("pick"); scale.set(1); panX.set(0); panY.set(0); }
     to(track, -next * stage.w, { type: "spring", stiffness: 380, damping: 40, velocity });
     if (next !== index) setIndex(next);
   }, [index, images.length, stage.w]);
@@ -238,7 +238,7 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
       window.clearTimeout(tapTimer.current);
       lastTap.current = null;
       const next = doubleTapZoom(scale.get(), fromCentre(point), picture(), stage);
-      haptic("light");
+      haptic("tap");
       to(scale, next.scale);
       to(panX, next.pan.x);
       to(panY, next.pan.y);

@@ -65,7 +65,7 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
       onCode: (text) => {
         if (stopped) return;
         // the system's scanner gives its own haptic as it reads
-        if (!fullScreen) haptic("medium");
+        if (!fullScreen) haptic("hold");
         setSeen(true);
         read.current(text);
       },
@@ -94,7 +94,7 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
   const toggleTorch = () => {
     const live = session.current;
     if (!live?.torch || torch === null) return;
-    haptic("selection");
+    haptic("pick");
     void live.torch.set(!torch).then(() => setTorch(!torch)).catch(() => {});
   };
 

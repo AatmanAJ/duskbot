@@ -62,7 +62,7 @@ export function AiConsentProvider({ children }: { children: ReactNode }) {
     held?.();
   };
   const decline = async () => {
-    haptic("selection");
+    haptic("pick");
     await store.decline();
     close();
   };

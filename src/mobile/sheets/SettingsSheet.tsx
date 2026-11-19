@@ -172,7 +172,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
   const tapVersion = () => {
     const now = Date.now();
     taps.current = [...taps.current.filter((at) => now - at < 3_000), now];
-    if (taps.current.length >= 7) { setServersShown(true); haptic("selection"); }
+    if (taps.current.length >= 7) { setServersShown(true); haptic("pick"); }
   };
   const switchServers = () => {
     if (!switching) { setSwitching(true); return; }
@@ -182,7 +182,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
 
   const choosePlace = async (place: Place) => {
     if (opening || place.active) return;
-    haptic("selection");
+    haptic("pick");
     setOpening(place.key);
     setError(null);
     try {
@@ -215,7 +215,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
 
       <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>
         {(places === null || places.length > 0) && <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />}
-        <SettingsRow icon={<Plus />} label={t("mobile.settings.addPlace")} onClick={() => { haptic("selection"); onClose(); window.dispatchEvent(new Event("dusk:add-place")); }} />
+        <SettingsRow icon={<Plus />} label={t("mobile.settings.addPlace")} onClick={() => { haptic("pick"); onClose(); window.dispatchEvent(new Event("dusk:add-place")); }} />
       </SettingsSection>
 
       <SettingsSection card>
@@ -228,14 +228,14 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
           <Palette aria-hidden className="size-5 shrink-0 text-ink-secondary" />
           <div className="flex flex-1 rounded-full bg-ink/[0.06] p-1">
             {([{ choice: "system", label: t("mobile.settings.system") }, { choice: THEME_SKINS.light, label: t("mobile.settings.light") }, { choice: THEME_SKINS.dark, label: t("mobile.settings.dark") }] as const).map(({ choice, label }) => (
-              <button key={choice} type="button" aria-pressed={skin === choice} onClick={() => { haptic("selection"); applySkinChoice(choice); }} className="mobile-press relative flex min-h-10 flex-1 items-center justify-center rounded-full px-2 text-[15px] font-semibold">
+              <button key={choice} type="button" aria-pressed={skin === choice} onClick={() => { haptic("segment"); applySkinChoice(choice); }} className="mobile-press relative flex min-h-10 flex-1 items-center justify-center rounded-full px-2 text-[15px] font-semibold">
                 {skin === choice && <motion.span aria-hidden layoutId={`${appearanceId}-selection`} className="absolute inset-0 rounded-full bg-app shadow-sm" transition={spring.settle} />}
                 <span className={skin === choice ? "relative text-ink" : "relative text-ink-secondary"}>{label}</span>
               </button>
             ))}
           </div>
         </div>
-        <SettingsSwitch icon={<Hand />} label={t("mobile.settings.haptics")} checked={hapticsEnabled} onChange={(enabled) => { setHapticsEnabled(enabled); haptic("selection"); }} />
+        <SettingsSwitch icon={<Hand />} label={t("mobile.settings.haptics")} checked={hapticsEnabled} onChange={(enabled) => { setHapticsEnabled(enabled); haptic("toggle"); }} />
         <SettingsRow icon={<Mic />} label={t("settings.voice.title")} onClick={() => push("voice")} />
         <SettingsRow icon={<ZoomIn />} label={t("mobile.settings.textSize")} value={t(`mobile.settings.textSize.${textSize}`)} onClick={() => push("textSize")} />
         <SettingsRow icon={<Globe />} label={t("mobile.settings.language")} value={localeChoices.find((choice) => choice.code === language)?.label ?? t("mobile.settings.system")} onClick={() => push("language")} />
@@ -275,13 +275,13 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
       )}
       {(rows.signOut || computer) && (
         <SettingsSection card>
-          {computer && <SettingsRow icon={<MonitorX />} label={t("mobile.settings.removeComputer")} chevron={false} onClick={() => { haptic("light"); push("removeComputer"); }} />}
-          {rows.signOut && <SettingsRow icon={<LogOut />} label={t("accountGate.signOut")} chevron={false} onClick={() => { haptic("light"); push("signOut"); }} />}
+          {computer && <SettingsRow icon={<MonitorX />} label={t("mobile.settings.removeComputer")} chevron={false} onClick={() => { haptic("tap"); push("removeComputer"); }} />}
+          {rows.signOut && <SettingsRow icon={<LogOut />} label={t("accountGate.signOut")} chevron={false} onClick={() => { haptic("tap"); push("signOut"); }} />}
         </SettingsSection>
       )}
       {rows.dashboard && !state.config?.cloudHome && <CloudCard onOpen={() => void accountDashboardUrl().then((url) => platform.openExternal(url))} />}
       {rows.deleteAccount && (
-        <button type="button" data-settings-delete-account onClick={() => { haptic("light"); push("delete"); }} className="mx-auto mt-4 block min-h-11 px-4 text-center text-[13px] text-danger">
+        <button type="button" data-settings-delete-account onClick={() => { haptic("tap"); push("delete"); }} className="mx-auto mt-4 block min-h-11 px-4 text-center text-[13px] text-danger">
           {t("mobile.settings.deleteAccount")}
         </button>
       )}
@@ -296,7 +296,7 @@ function TextSizePage() {
       <p data-text-size-sample="" className="mx-4 mb-4 rounded-[19px] bg-ink/[0.05] px-[14px] py-2 text-[17px] font-[450] leading-[22px] text-ink">{t("mobile.settings.textSize.sample")}</p>
       <SettingsSection card>
         {TEXT_SIZES.map((choice) => (
-          <button key={choice} type="button" aria-pressed={size === choice} onClick={() => { haptic("selection"); setTextSize(choice); }} className="mobile-row flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left text-[16px] font-medium text-ink">
+          <button key={choice} type="button" aria-pressed={size === choice} onClick={() => { haptic("pick"); setTextSize(choice); }} className="mobile-row flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left text-[16px] font-medium text-ink">
             <span className="min-w-0 flex-1">{t(`mobile.settings.textSize.${choice}`)}</span>
             {size === choice && <Check aria-hidden size={20} />}
           </button>
@@ -313,7 +313,7 @@ function LanguagePage() {
     <Sheet open onClose={() => {}} title={t("mobile.settings.language")}>
       <SettingsSection card>
         {[{ code: "", label: t("mobile.settings.system") }, ...localeChoices].map(({ code, label }) => (
-          <button key={code} type="button" aria-pressed={language === code} onClick={() => { haptic("selection"); setLanguageChoice(code); }} className="mobile-row flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left text-[16px] font-medium text-ink">
+          <button key={code} type="button" aria-pressed={language === code} onClick={() => { haptic("pick"); setLanguageChoice(code); }} className="mobile-row flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left text-[16px] font-medium text-ink">
             <span className="min-w-0 flex-1">{label}</span>
             {language === code && <Check aria-hidden size={20} />}
           </button>

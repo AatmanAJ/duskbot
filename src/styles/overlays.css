@@ -180,7 +180,7 @@
   background: var(--color-danger);
   color: var(--color-danger-ink);
 }
-.ui-button.ui-button-danger:enabled:is(:hover, :active) {
+.ui-button.ui-button-danger:enabled:is(:hover, :active):where(:not(html[data-mobile-app] *)) {
   background: color-mix(in srgb, var(--color-danger) 88%, black);
   color: var(--color-danger-ink);
 }
@@ -232,7 +232,7 @@
   opacity: 0.7;
   cursor: pointer;
 }
-.ui-toast-close:hover { opacity: 1; background: color-mix(in srgb, currentColor 16%, transparent); }
+.ui-toast-close:hover:where(:not(html[data-mobile-app] *)) { opacity: 1; background: color-mix(in srgb, currentColor 16%, transparent); }
 .ui-toast-close:focus-visible { opacity: 1; outline: none; outline-offset: 1px; }
 
 /* A tooltip, as Grok Bot's: white on the inline lift, 12/16 text, 6px corners. Its edge is drawn inside it, a half-pixel

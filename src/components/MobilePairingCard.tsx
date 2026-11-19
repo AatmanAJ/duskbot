@@ -330,7 +330,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
 
   function pick(next: PhoneKind) {
     if (next === "android" && !ANDROID_APP_OUT) return;
-    haptic("selection");
+    haptic("pick");
     setKind(next);
     go("link");
   }
@@ -674,7 +674,7 @@ function PhoneWipe({ at, layer, onSwap }: { at: string; layer: (at: string, live
 
 function LinkAnother({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" data-phone-link-another="" onClick={() => { haptic("selection"); onClick(); }} className="ui-button ui-button-pill mobile-press min-h-11">
+    <button type="button" data-phone-link-another="" onClick={() => { haptic("pick"); onClick(); }} className="ui-button ui-button-pill mobile-press min-h-11">
       {t("mobile.desktop.linkAnother")}
     </button>
   );
