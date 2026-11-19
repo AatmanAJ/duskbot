@@ -54,6 +54,15 @@ describe("the purchase card", () => {
     expect(fixture.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: "allow", edits: undefined }));
   });
 
+  it("scrolls a long order inside the card, so the card never grows past a phone's screen and its buttons stay put", () => {
+    const items = Array.from({ length: 30 }, (_, index) => ({ name: `Item ${index}`, quantity: 1, price: "$1.00" }));
+    pendingView(card({ purchase: { ...purchase, items } }));
+    const list = container.querySelector("[data-purchase-items]")!;
+    expect(list.querySelectorAll("li")).toHaveLength(30);
+    expect(list.className).toMatch(/\bmax-h-40\b/);
+    expect(list.className).toMatch(/\boverflow-y-auto\b/);
+  });
+
   it("stays in the chat as the record once answered", () => {
     act(() => root.render(createElement(ApprovalCard, { message: card({ purchase: { ...purchase, recorded: true }, answered: "allow" }) })));
     expect(container.textContent).toContain("Order at Acme Kitchen");

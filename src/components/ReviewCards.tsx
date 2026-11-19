@@ -84,7 +84,7 @@ export function PurchaseSummaryView({ purchase }: { purchase: PurchaseSummary })
         <Store size={13} aria-hidden="true" className="shrink-0" />
         <span className="min-w-0 truncate">{purchase.merchant}</span>
       </p>
-      <ul className="space-y-1">
+      <ul data-purchase-items="" tabIndex={0} aria-label={t("purchase.recordTitle", { merchant: purchase.merchant })} className="max-h-40 space-y-1 overflow-y-auto overscroll-contain">
         {purchase.items.map((item, index) => (
           <li key={index} className="flex min-w-0 items-baseline gap-2 text-[14px] leading-5 text-ink">
             <span className="shrink-0 tabular-nums text-ink-secondary">{item.quantity} ×</span>
