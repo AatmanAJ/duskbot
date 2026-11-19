@@ -8,7 +8,7 @@ describe("workingMood", () => {
     ["friendly:thinking", "thinking"],
     ["friendly:generic", "thinking"],
     ["friendly:memory", "thinking"],
-    [TYPING_PHASE, "writing"],
+    [TYPING_PHASE, "replying"],
     ["friendly:code", "writing"],
     ["friendly:editing", "writing"],
     ["friendly:web", "searching"],

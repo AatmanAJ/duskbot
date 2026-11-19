@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/testing/quiet-canceled-animations";
 
 import { phraseAt, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
-import { STATUS_HOLD_MS, STATUS_QUIET_MS, TurnPresence } from "./TurnPresence";
+import { STATUS_HOLD_MS, STATUS_QUIET_MS, TurnPresence, WORD_DWELL_MS, WORD_SWAP } from "./TurnPresence";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -152,28 +152,28 @@ describe("Simple mode's rotating words", () => {
   const line = saying;
   const pool = Array.from({ length: 12 }, (_, index) => `Word ${index}`);
 
-  it("shows the mark alone first, then its first word, then a new word every 2.5 to 3.5 s, never the same one twice in a row", () => {
+  it("shows the mark alone first, then its first word, then a new word every 3.4 to 4.4 s (the 880ms swap and a 2.5 to 3.5 s read), never the same one twice in a row", () => {
     vi.setSystemTime(10_000);
     render({ simple: true, since: 10_000, phrases: pool, phase: "friendly:generic" });
     expect(line(), "the mascot alone for a beat").toBe("");
     act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max));
     const said = [line()];
-    for (let i = 0; i < 9; i++) {
-      act(() => void vi.advanceTimersByTime(3500));
+    for (let i = 0; i < 7; i++) {
+      act(() => void vi.advanceTimersByTime(4400));
       said.push(line());
     }
     expect(said[0], "it opens with the pool's first word").toBe("Word 0");
-    expect(new Set(said).size, "a 30 s turn says nine or ten different words").toBeGreaterThanOrEqual(9);
+    expect(new Set(said).size, "a 30 s turn says seven or eight different words").toBeGreaterThanOrEqual(7);
     for (let i = 1; i < said.length; i++) expect(said[i], `word ${i}`).not.toBe(said[i - 1]);
     for (const word of said) expect(pool).toContain(word);
     expect(host.querySelector("[data-turn-now]")?.classList, "a later word crossfades in place, it does not rise").not.toContain("turn-label-in");
   });
 
-  it("holds a word its seeded time before the next", () => {
+  it("holds a word for its swap and its seeded time before the next", () => {
     vi.setSystemTime(10_000);
     render({ simple: true, since: 0, phrases: pool, phase: "friendly:generic" });
     const first = line();
-    act(() => void vi.advanceTimersByTime(rotationHoldMs(`${seed}|friendly:generic`, 0) - 1));
+    act(() => void vi.advanceTimersByTime(WORD_SWAP.duration + rotationHoldMs(`${seed}|friendly:generic`, 0) - 1));
     expect(line()).toBe(first);
     act(() => void vi.advanceTimersByTime(1));
     expect(line()).not.toBe(first);
@@ -199,8 +199,24 @@ describe("Simple mode's rotating words", () => {
     vi.setSystemTime(10_000);
     render({ simple: true, since: 0, phrases: ["Writing", "Wrapping up"], phase: "friendly:chat.typing" });
     expect(line()).toBe("Writing");
-    act(() => void vi.advanceTimersByTime(3500));
+    act(() => void vi.advanceTimersByTime(4400));
     expect(line()).toBe("Wrapping up");
+  });
+
+  it("keeps each step's words readable 2.5 s past their swap however fast the steps come, then says only the newest", () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 0, phrases: ["Running a command"], phase: "friendly:commands" });
+    expect(STATUS_HOLD_MS).toBe(WORD_SWAP.duration + WORD_DWELL_MS);
+    expect(WORD_DWELL_MS).toBeGreaterThanOrEqual(2500);
+    const said = [line()];
+    for (const [phrase, phase] of [["Reading files", "friendly:files"], ["Searching", "friendly:web"], ["Opening a page", "friendly:page"]]) {
+      act(() => void vi.advanceTimersByTime(700));
+      render({ simple: true, since: 0, phrases: [phrase], phase });
+      said.push(line());
+    }
+    expect(said, "steps 0.7 s apart change nothing before the hold ends").toEqual(["Running a command", "Running a command", "Running a command", "Running a command"]);
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS - 2100));
+    expect(line(), "the newest step, the two between never said").toBe("Opening a page");
   });
 
   it("keeps fun words out of a short turn and mixes them into a long one, never one word twice in a row", () => {

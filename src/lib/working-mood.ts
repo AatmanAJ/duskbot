@@ -1,7 +1,7 @@
 import { TYPING_PHASE } from "./friendly-activity";
 
 /** How the chat's working mascot carries itself for what the bot is doing now. */
-export const WORKING_MOODS = ["thinking", "writing", "searching", "browsing", "running", "reading", "waiting", "error", "done"] as const;
+export const WORKING_MOODS = ["thinking", "writing", "replying", "searching", "browsing", "running", "reading", "waiting", "error", "done"] as const;
 export type WorkingMood = (typeof WORKING_MOODS)[number];
 
 const BY_POOL: Record<string, WorkingMood> = {
@@ -38,7 +38,7 @@ export function workingMood({ phase, waiting = false, failed = false, done = fal
   if (failed || phase?.startsWith("notice:")) return "error";
   if (waiting) return "waiting";
   if (!phase) return "thinking";
-  if (phase === TYPING_PHASE) return "writing";
+  if (phase === TYPING_PHASE) return "replying";
   if (phase.startsWith("friendly:service:")) return "browsing";
   return BY_POOL[phase.startsWith("friendly:") ? phase.slice("friendly:".length) : ""] ?? "thinking";
 }
