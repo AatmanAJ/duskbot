@@ -137,7 +137,7 @@ for (const model of new Set(all.map((r) => r.model))) {
   const runs = new Set(rows.map((r) => r.run)).size;
   const mean = (set: Result[]) => `${Math.round((set.filter((r) => r.pass).length / runs) * 10) / 10}/${set.length / runs}`;
   const by = (check: string) => mean(rows.filter((r) => r.check === check || (check === "act+deliver" && (r.check === "act" || r.check === "deliver"))));
-  summary[model] = { "act+deliver": by("act+deliver"), "no-false-done": by("no-false-done"), stop: by("stop"), all: mean(rows), runs: String(runs) };
+  summary[model] = { "act+deliver": by("act+deliver"), "no-false-done": by("no-false-done"), stop: by("stop"), vibe: by("vibe"), help: by("help"), all: mean(rows), runs: String(runs) };
 }
 console.table(summary);
 mkdirSync(join(here, "results"), { recursive: true });
