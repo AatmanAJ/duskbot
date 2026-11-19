@@ -551,8 +551,8 @@ const Bubble = memo(function Bubble({
                 </div>
               )}
               {!group && (mediaChips && (generatedPaths.length + linkedFiles.length > 0)
-                ? <div className="relative">{mediaChips}<AttachmentGallery media={message.media} images={generatedPaths} files={linkedFiles} message={{ threadId, messageId: message.id }} eager={eagerAttachments} /></div>
-                : <AttachmentGallery media={message.media} images={generatedPaths} files={linkedFiles} message={{ threadId, messageId: message.id }} eager={eagerAttachments} />)}
+                ? <div className="relative">{mediaChips}<AttachmentGallery media={message.media} images={attached.pictures} files={linkedFiles} message={{ threadId, messageId: message.id }} eager={eagerAttachments} /></div>
+                : <AttachmentGallery media={message.media} images={attached.pictures} files={linkedFiles} message={{ threadId, messageId: message.id }} eager={eagerAttachments} />)}
               {split ? (
                 <ConversationalReply join={join} segments={reply.segments} firstNew={reply.firstNew}
                   renderSegment={(segment) => <ChatMarkdown text={segment} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} />} />
@@ -566,8 +566,8 @@ const Bubble = memo(function Bubble({
                 <ChatMarkdown text={text} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} />
               ) : null}
               {group && (mediaChips
-                ? <div className="relative mt-[26px]">{mediaChips}<AttachmentGallery media={message.media} images={group.images} files={group.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} /></div>
-                : <AttachmentGallery media={message.media} images={group.images} files={group.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} />)}
+                ? <div className="relative mt-[26px]">{mediaChips}<AttachmentGallery media={message.media} images={group.pictures} files={group.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} /></div>
+                : <AttachmentGallery media={message.media} images={group.pictures} files={group.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} />)}
             </MessageBoundary>
           )}
           {reactionsOnBubble && <ReactionChips float threadId={threadId} message={message} bots={bots} align={user ? "end" : "start"} canReact={canReact} />}
