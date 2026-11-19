@@ -54,6 +54,7 @@ export function foldedNoticeIds(rows: TrailingRows | null): ReadonlySet<string> 
 }
 
 const noticeText = (m: Message) => (m.bugReport && bugReportFixedText(m.bugReport)) ?? statusActivity(m)?.text ?? "";
+const FOLDER_GONE = /This bot's folder .* was moved or deleted\./;
 const openEngines = { type: "toggleAppSettings", open: true, section: "engines" } as const;
 
 
@@ -202,6 +203,7 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   } else if (lead.kind !== "credits" && retry) {
     actions.push({ label: t("failedReply.tryAgain"), onClick: retry });
   }
+  if (FOLDER_GONE.test(cause) && leadBotId) actions.unshift({ label: t("botPanel.page.folder"), onClick: () => openBotSettings(dispatch, "access", { botId: leadBotId, page: "folder" }) });
   if (actions.length === 0 && !update && lead.kind !== "place" && leadBotId) actions.push({ label: t("chat.rescue.switchAi"), onClick: () => openBotSettings(dispatch, "model", { botId: leadBotId }) });
   // a sign-out notice beside a failure for another reason: still one card, its Sign in a pill on it
   const signInTile = lead.engine && aiTileOf(lead.engine);

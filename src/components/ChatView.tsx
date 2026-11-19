@@ -2,7 +2,7 @@ import { createContext, memo, startTransition, use, useCallback, useContext, use
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { phoneApp } from "@/lib/store-app";
 import { ThreadLinkContext } from "@/components/ThreadLinkMenu";
-import { ChevronLeft, ChevronRight, Copy, Monitor, RefreshCw, Square, Webhook } from "../icons";
+import { ChevronRight, Copy, Monitor, RefreshCw, Square, Webhook } from "../icons";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { ACTION_ICON, ChatBusyContext, MESSAGE_ROW, MessageActions, messageActionClass, ReplyAction, type MessageMenuItem } from "@/components/MessageActions";
 import { copyMessage } from "@/lib/message-copy";
@@ -435,11 +435,6 @@ const Bubble = memo(function Bubble({
   const mediaReactions = floatReactions && mediaSplit;
   const reactionsOnBubble = floatReactions && !mediaSplit && !tabled;
   const mediaChips = mediaReactions && <ReactionChips float threadId={threadId} message={message} bots={bots} align="start" canReact={canReact} />;
-  const forks = user && versions ? versions : [message];
-  const versionIndex = forks.findIndex((v) => v.id === message.id);
-  const switchTo = (v: Message | undefined) => {
-    if (v && !busy && !v.id.startsWith("optimistic-")) dispatch({ type: "switchBranch", botId, threadId, messageId: v.id });
-  };
   const togglePin = () =>
     dispatch({ type: "updateTask", botId, threadId, patch: { pinnedMessageId: pinned ? "" : message.id } });
   const botActions = !user && (
@@ -577,33 +572,6 @@ const Bubble = memo(function Bubble({
       </div>
       <time dateTime={new Date(message.at).toISOString()} className="chat-row-ts" aria-label={new Date(message.at).toLocaleTimeString()}>{formatTime(message.at)}</time>
       {!floatReactions && <ReactionChips threadId={threadId} message={message} bots={bots} align={user ? "end" : "start"} canReact={canReact} />}
-      {forks.length > 1 && (
-        <div className="mt-1 flex items-center gap-0.5 pr-1 text-[12px] text-ink-secondary">
-          <button
-            onClick={() => switchTo(forks[versionIndex - 1])}
-            disabled={versionIndex <= 0 || busy}
-            type="button"
-            className="rounded p-0.5 hover:bg-raised hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent pointer-coarse:p-2.5"
-            title={t("chat.previousVersion")}
-            aria-label={t("chat.previousVersion")}
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="tabular-nums">
-            {versionIndex + 1}/{forks.length}
-          </span>
-          <button
-            onClick={() => switchTo(forks[versionIndex + 1])}
-            disabled={versionIndex >= forks.length - 1 || busy}
-            type="button"
-            className="rounded p-0.5 hover:bg-raised hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent pointer-coarse:p-2.5"
-            title={t("chat.nextVersion")}
-            aria-label={t("chat.nextVersion")}
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      )}
     </div>
   );
 });

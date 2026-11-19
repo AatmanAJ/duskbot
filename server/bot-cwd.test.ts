@@ -76,7 +76,7 @@ describe("inMyFolderCwd", () => {
 describe("folderToFollow", () => {
   const own = join(dir, "dusk-data", "task-workspaces", "bot", "thread");
   const bot = { id: "bot", cwd: join(dir, "dusk-data-site") };
-  const folders = { worksInFolders: true, keepsPrivateFolder: false };
+  const folders = { worksInFolders: true, keepsPrivateFolder: false, dataDir: join(dir, "dusk-data") };
 
   it("moves a thread from its own folder to the working folder its bot has been given", () => {
     expect(folderToFollow(bot, "thread", own, folders)).toBe(bot.cwd);
@@ -89,6 +89,10 @@ describe("folderToFollow", () => {
     expect(folderToFollow(bot, "thread", join(dir, "dusk-data", "task-workspaces", "bot", "other-thread"), folders)).toBeUndefined();
     expect(folderToFollow(bot, "thread", null, folders)).toBeUndefined();
     expect(folderToFollow(bot, "thread", undefined, folders)).toBeUndefined();
+  });
+
+  it("never follows its bot to a working folder that was moved or deleted", () => {
+    expect(folderToFollow({ id: "bot", cwd: join(dir, "moved-away") }, "thread", own, folders)).toBeUndefined();
   });
 
   it("never moves a conversation that keeps a private folder, or one on an engine that works in no folder", () => {

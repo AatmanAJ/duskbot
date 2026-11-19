@@ -11,6 +11,7 @@ import { BotAvatar } from "./Avatar";
 import { InstanceProviderMark } from "./ProviderIcons";
 import { MENU_GUTTER, MENU_ICON, MENU_LABEL, MENU_LINE, MENU_NOTE, MENU_ROW, MENU_SEPARATOR, MENU_STROKE, MENU_TRAILING, SIMPLE_MENU_META, SIMPLE_MENU_ROW } from "./menu-recipe";
 import { effortLabel } from "./ModelPicker";
+import { EffortMenu } from "./EffortMenu";
 import { SlidingPills } from "./ui/SlidingPills";
 import { MotionDiv } from "./ui/SheetMotion";
 import { EASE_OUT, SPRING } from "@/lib/motion-presets";
@@ -254,6 +255,7 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
   const still = Boolean(query) || reducedMotionNow();
   const current = menu.current;
   const top = Boolean(current || menu.follow);
+  const onRow = current && props.thinking && !("variants" in props.thinking) ? props.thinking : null;
   return (
     <div data-simple-model-menu className="flex min-h-0 flex-1 flex-col">
       {menu.search && (
@@ -282,6 +284,7 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
         <div className="flex flex-col gap-0.5 p-1.5">
           {props.where && !query && <p data-picker-where className="px-2 pb-0.5 pt-1 text-[12px] leading-4 text-ink-tertiary">{props.where}</p>}
           {current && (
+            <div className="relative">
             <button
               type="button"
               data-menu-row
@@ -293,7 +296,7 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
                 if (setUp) props.onSetUp(setUp);
                 else props.onPickCurrent();
               }}
-              className={SIMPLE_MENU_ROW}
+              className={cn(SIMPLE_MENU_ROW, onRow && "pr-[104px]")}
             >
               <Gutter>
                 {current.instance
@@ -304,8 +307,10 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
                 {current.meta && <span className={cn(SIMPLE_MENU_META, current.warning && "text-warning")}>{current.meta}</span>}
               </RowLines>
               {current.pending && <Loader2 size={14} className="shrink-0 animate-spin text-ink-tertiary" aria-hidden="true" />}
-              <Check size={14} className="shrink-0 text-accent" aria-hidden="true" />
+              {!onRow && <Check size={14} className="shrink-0 text-accent" aria-hidden="true" />}
             </button>
+            {onRow && <EffortMenu {...onRow} />}
+            </div>
           )}
           {menu.follow && (
             <button type="button" data-menu-row data-follow-bot-model aria-pressed="false" tabIndex={-1} title={props.botModel.title}
@@ -398,9 +403,9 @@ export function SimpleModelMenu(props: SimpleModelMenuProps) {
         </div>
       </div>
 
-      {(props.thinking || props.onResetVariant || props.scope) && (
+      {((props.thinking && !onRow) || props.onResetVariant || props.scope) && (
         <div data-simple-effort-band className="flex shrink-0 flex-col gap-0.5 border-t-[0.5px] border-transparent p-1.5">
-          {props.thinking && <Thinking thinking={props.thinking} labelId={`${idPrefix}-thinking`} />}
+          {props.thinking && !onRow && <Thinking thinking={props.thinking} labelId={`${idPrefix}-thinking`} />}
           {props.scope && <Scope scope={props.scope} labelId={`${idPrefix}-scope`} />}
           {props.onResetVariant && (
             <button type="button" data-menu-row data-simple-variant-default onClick={props.onResetVariant} className={MENU_ROW}>
