@@ -1,4 +1,3 @@
-// loose types for the tests that import the mac app's cloud core
 export declare const CLOUD_MAC_TOOLS: readonly string[];
 export declare const DEFAULT_CWD: string;
 export declare const DEFAULT_FOLDERS: readonly string[];
