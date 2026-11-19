@@ -1,5 +1,5 @@
 // The rhythm of a working turn, kept by the harness rather than left to the engine: a short ack a few seconds after the
-// person asks for real work, then about 15 s in a second message saying what they will get, and on a long job a milestone
+// person asks for real work, then, on a job past half a minute, a second message saying what they will get, and on a long job a milestone
 // when nothing has been said for a while. A small fast model writes each one in the bot's voice from what the person asked
 // and the steps run so far; the engine's own turn runs on untouched. Each beat is dropped the moment the engine has said
 // the same kind of thing itself, or is writing its result. Never for routines, teammates, cards or other turns nobody
@@ -16,9 +16,10 @@ export const ACK_MIN_MS = 1_500;
 /** An ack for work that has run no tool yet waits this long for the engine to answer by itself first, and goes out only
  * once the engine shows it is thinking: an ack nothing follows is a promise the turn did not keep. */
 export const ACK_IDLE_MS = 4_000;
-/** The second message is written from here, once a tool has run, and goes out from PLAN_MIN_MS. */
-export const PLAN_WRITE_MS = 11_000;
-export const PLAN_MIN_MS = 15_000;
+/** The second message is written from here, once a tool has run, and goes out from PLAN_MIN_MS: only a job that runs
+ * past half a minute gets one, so a quick task reads as an ack and its result. */
+export const PLAN_WRITE_MS = 26_000;
+export const PLAN_MIN_MS = 30_000;
 /** A milestone after this long without any message from the bot, while tools keep running. */
 export const MILESTONE_QUIET_MS = 150_000;
 export const MAX_MILESTONES = 3;
