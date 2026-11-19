@@ -362,6 +362,8 @@ try {
   if (args.profile) {
     // where the page thread's time goes while a long chat opens: self time by function, heaviest first
     await stage.home("light");
+    // a reload reopens the chat that was open
+    if (await stage.page.evaluate(`Boolean(${BACK})`)) { await tap(stage, BACK); await home(stage); await delay(500); }
     await stage.page.send("Emulation.setCPUThrottlingRate", { rate: RATE });
     await stage.page.send("Profiler.enable");
     await stage.page.send("Profiler.setSamplingInterval", { interval: 200 });
@@ -379,6 +381,20 @@ try {
       self.set(key, (self.get(key) ?? 0) + (spent.get(node.id) ?? 0));
     }
     for (const [key, ms] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 30)) console.log(`${ms.toFixed(1).padStart(8)} ms  ${key}`);
+    // and the components that rendered, by the time spent inside them (their own and everything they called)
+    const byId = new Map(profile.nodes.map((node: { id: number }) => [node.id, node]));
+    const total = (node: { id: number; children?: number[] }): number => (spent.get(node.id) ?? 0) + (node.children ?? []).reduce((n, id) => n + total(byId.get(id) as { id: number }), 0);
+    const inside = new Map<string, number>();
+    const walk = (node: { id: number; children?: number[]; callFrame: { functionName: string } }, open: Set<string>) => {
+      const name = node.callFrame.functionName;
+      const component = /^[A-Z][A-Za-z0-9]+$/.test(name) && !open.has(name);
+      if (component) inside.set(name, (inside.get(name) ?? 0) + total(node));
+      const next = component ? new Set([...open, name]) : open;
+      for (const id of node.children ?? []) walk(byId.get(id) as typeof node, next);
+    };
+    walk(profile.nodes[0], new Set());
+    console.log("components, inclusive:");
+    for (const [key, ms] of [...inside].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`${ms.toFixed(1).padStart(8)} ms  ${key}`);
   }
 
   if (args.video) {

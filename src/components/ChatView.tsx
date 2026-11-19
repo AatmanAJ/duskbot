@@ -698,24 +698,28 @@ export const SIMPLE_STATUS_SLOT = 40;
 /** How many of a window's newest rows an opened chat paints in its first frame, and how many older ones each later step adds. */
 export const FIRST_PAINT_ROWS = 16;
 export const MOUNT_STEP_ROWS = 24;
+/** A phone's screen holds far fewer rows, and its slower CPU pays for each one before the chat can start sliding in. */
+export const PHONE_FIRST_PAINT_ROWS = 8;
+const firstPaintRows = () => phoneApp() ? PHONE_FIRST_PAINT_ROWS : FIRST_PAINT_ROWS;
 
 /** A chat opened on a long window paints its newest rows first, then mounts the older ones above them a step at a time in
  * interruptible renders, so switching into it never blocks a frame. A search jump or a window off the latest rows
  * (`hold`) mounts whole, since it scrolls to a row that may sit above the tail. */
 export function useFirstPaintRows(key: string, rows: Message[], hold: boolean, scrollRef?: RefObject<HTMLElement | null>, pinned = false): Message[] {
-  const [shown, setShown] = useState({ key, count: FIRST_PAINT_ROWS });
-  if (shown.key !== key) setShown({ key, count: FIRST_PAINT_ROWS });
+  const first = firstPaintRows();
+  const [shown, setShown] = useState({ key, count: first });
+  if (shown.key !== key) setShown({ key, count: first });
   // a chat whose rows all showed once keeps showing all of them as it grows, without another render to say so
   const whole = useRef<string | null>(null);
-  const count = hold || whole.current === key ? Infinity : shown.key === key ? shown.count : FIRST_PAINT_ROWS;
+  const count = hold || whole.current === key ? Infinity : shown.key === key ? shown.count : first;
   const total = rows.length;
   // Sixteen messages can fold into a few rows (a turn's tool steps are one): a first paint shorter than the viewport sits at
   // the top, then the chat jumps down as the older rows land. Such a paint grows before the browser shows it.
   useLayoutEffect(() => {
     const el = scrollRef?.current;
     if (!el || count >= total || el.scrollHeight > el.clientHeight + 1) return;
-    setShown({ key, count: count + MOUNT_STEP_ROWS >= total ? Infinity : count + MOUNT_STEP_ROWS });
-  }, [key, count, total, scrollRef]);
+    setShown({ key, count: count + first >= total ? Infinity : count + first });
+  }, [key, count, total, scrollRef, first]);
   // older rows mount above the ones on screen: a chat held at its newest row stays there in the same frame, rather than
   // a frame later when the transcript's resize is noticed, which would show the rows jumping down and back
   useLayoutEffect(() => {
