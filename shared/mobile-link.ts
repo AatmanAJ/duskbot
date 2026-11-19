@@ -105,7 +105,16 @@ export interface MobileRedeemResponse {
 export interface MobileRoutesResponse {
   https: Extract<MobileTransport, { kind: "https" }>[];
   companion: Extract<MobileTransport, { kind: "companion" }>[] | null;
+  /** The asking phone's relay channel as the place serves it now; null when the place has a relay but no channel for
+   * this phone (POST /api/mobile/relay with a MobileRelayAsk opens one); absent when the place has no relay now. */
+  relay?: MobileRelayChannel | null;
 }
+
+/** POST /api/mobile/relay with the phone's own session: its X25519 public key and sha256 hex of a token it made. */
+export interface MobileRelayAsk { pub: string; verifier: string }
+
+/** A phone's own relay channel: where it is, and the place's key half to derive the channel key with. */
+export interface MobileRelayChannel { base: string; channel: string; agentPub: string }
 
 /** PUT /api/mobile/push with the device's own session. */
 export interface MobilePushRegistration {
@@ -260,6 +269,8 @@ export interface MobileConnectionRecord {
   transport: MobileTransportKind;
   origin?: string;
   relay?: MobileRelayRoute;
+  /** The relay channel was opened after pairing, so `via` has no relay entry for it: it is walked as a route all the same. */
+  relayLate?: true;
   /** Every route the workspace offered, tried in order on reconnect. */
   via?: MobileTransport[];
   /** Key of the bearer token in secure storage. */

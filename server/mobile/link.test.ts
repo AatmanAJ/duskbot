@@ -185,6 +185,42 @@ describe("mobile link", () => {
     expect(answer.payload.via.map((one) => one.kind)).toEqual(["relay", "companion"]);
   });
 
+  it("gives a phone paired before the relay was up its own relay channel when it asks, without pairing again", async () => {
+    const mobile = link();
+    const answer = (await call(mobile, owner, "POST", "/api/mobile/pairing")).body as MobilePairingResponse;
+    const phone = (await redeem(mobile, { secret: answer.payload.grant.secret, attemptId: "attempt-0401", device: { name: "Pixel", platform: "android" } })).body as MobileRedeemResponse;
+    expect(phone.relay).toBeUndefined();
+    const auth: RequestAuth = { kind: "session", session: sessions.authenticate(phone.token)!, via: "bearer", scopes: phone.scopes };
+    expect((await call(mobile, auth, "GET", "/api/mobile/routes")).body).not.toHaveProperty("relay");
+
+    // the relay comes up later (the computer signed in, the link agent installed)
+    const agent = { base: "https://link.test", tunnel: "abcdefghij", pub: "A".repeat(43) };
+    const first = await call(mobile, owner, "POST", "/api/mobile/relay/sync", { ...agent, applied: 0, wait: 0 });
+    expect((await call(mobile, auth, "GET", "/api/mobile/routes")).body.relay).toBeNull();
+    const phonePub = generateKeyPairSync("x25519").publicKey.export({ format: "jwk" }).x!;
+    const asking = call(mobile, auth, "POST", "/api/mobile/relay", { pub: phonePub, verifier: "d".repeat(64) });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const next = await call(mobile, owner, "POST", "/api/mobile/relay/sync", { ...agent, applied: first.body.rev, wait: 0 });
+    const channel = next.body.channels.find((one: { kind: string }) => one.kind === "device");
+    expect(channel).toMatchObject({ pub: phonePub, verifier: "d".repeat(64) });
+    void call(mobile, owner, "POST", "/api/mobile/relay/sync", { ...agent, applied: next.body.rev, wait: 0 });
+    expect((await asking)).toMatchObject({ status: 200, body: { base: "https://link.test", channel: channel.id, agentPub: agent.pub } });
+    expect((await call(mobile, auth, "GET", "/api/mobile/routes")).body.relay).toEqual({ base: "https://link.test", channel: channel.id, agentPub: agent.pub });
+    expect((await call(mobile, auth, "POST", "/api/mobile/relay", { pub: "nope", verifier: "d".repeat(64) })).status).toBe(400);
+  });
+
+  it("keeps a paired phone's session until the phone is removed, used or not", async () => {
+    let clock = Date.now();
+    sessions.close();
+    sessions = new SessionRegistry({ file: join(dir, "sessions.json"), now: () => clock });
+    const mobile = link();
+    const answer = (await call(mobile, owner, "POST", "/api/mobile/pairing")).body as MobilePairingResponse;
+    const phone = (await redeem(mobile, { secret: answer.payload.grant.secret, attemptId: "attempt-0402", device: { name: "p", platform: "ios" } })).body as MobileRedeemResponse;
+    clock += 400 * 24 * 60 * 60_000;
+    expect(sessions.authenticate(phone.token)).not.toBeNull();
+    expect((await call(mobile, owner, "GET", "/api/mobile/devices")).body.devices).toHaveLength(1);
+  });
+
   it("refuses a relay key no agreement can use", async () => {
     const mobile = link();
     const answer = (await call(mobile, owner, "POST", "/api/mobile/pairing")).body as MobilePairingResponse;

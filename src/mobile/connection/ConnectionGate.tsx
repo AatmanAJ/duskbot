@@ -16,7 +16,7 @@ import { Onboarding } from "../onboarding/Onboarding";
 import { SignInOffer } from "../account/SignInOffer";
 import { Success } from "../onboarding/Success";
 import { connectToWorkspace, createConnectionStore, PlaceGoneError } from "./connections";
-import { LINK_DEADLINE_MS, linkDeadline, PairError, parseTypedPairing, type TypedPairing } from "./pair";
+import { LINK_DEADLINE_MS, linkDeadline, PairError, parseTypedPairing, relaySecrets, type TypedPairing } from "./pair";
 import { ActiveConnection } from "./active";
 import { TranscriptShelfScope } from "@/state/transcript-scope";
 import { forgetTranscriptShelf } from "@/state/transcript-cache";
@@ -87,7 +87,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
           if (transport.asleep) markCloudAsleep();
           setState({ kind: "ready", id: active.record.id });
           void store.touch(active.record.id).catch(() => {});
-          void learnRoutes(active.record, transport, store.setRoutes);
+          void learnRoutes(active.record, transport, store.setRoutes, fetch, () => relaySecrets(platform, active.record.id));
         } catch (error) {
           if (stopped) return;
           if (error instanceof PairError && error.code === "refused") {
@@ -140,7 +140,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
         uninstall.current = installTransport(found, retry);
         route.current = found;
         retryLiveEventsNow({ redial: true });
-        void learnRoutes(active.record, found, store.setRoutes);
+        void learnRoutes(active.record, found, store.setRoutes, fetch, () => relaySecrets(platform, active.record.id));
       },
     });
     return () => { controller.abort(); stop(); };
@@ -235,7 +235,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
     uninstall.current = installTransport(transport, retry);
     route.current = transport;
     if (transport.asleep) markCloudAsleep();
-    void learnRoutes(record, transport, store.setRoutes);
+    void learnRoutes(record, transport, store.setRoutes, fetch, () => relaySecrets(platform, record.id));
     resetSessionEnded();
     setIncoming(null);
     setAdding(0);

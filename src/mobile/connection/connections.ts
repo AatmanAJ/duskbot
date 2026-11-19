@@ -1,6 +1,6 @@
 import { feature } from "@/lib/product-analytics";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { MobileConnectionRecord, MobileTransport } from "../../../shared/mobile-link";
+import type { MobileConnectionRecord, MobileRelayChannel, MobileTransport } from "../../../shared/mobile-link";
 import { usePlatform, type MobilePlatform } from "../platform";
 import { deviceChannelKey, type RelaySecrets } from "../transport/link-crypto";
 import { withDirect } from "../transport/direct";
@@ -25,9 +25,11 @@ export class PlaceGoneError extends Error {
 }
 
 export async function connectToWorkspace(record: MobileConnectionRecord, token: string, platform: MobilePlatform, signal: AbortSignal): Promise<WorkspaceTransport> {
-  const routes: MobileTransport[] = record.via ?? (record.origin ? [record.transport === "companion"
+  const saved: MobileTransport[] = record.via ?? (record.origin ? [record.transport === "companion"
     ? { kind: "companion", url: record.origin, net: "lan", priority: 0 }
     : { kind: "https", url: record.origin }] : []);
+  const routes = record.relayLate && record.relay?.agentPub && !saved.some((route) => route.kind === "relay")
+    ? [...saved, { kind: "relay" as const, base: record.relay.base, channel: record.relay.channel, token: "", key: "" }] : saved;
   const ordered = routeOrder(routes, platform.kind);
   let gone = false, refused = false, deleted = false;
   const sleeping: WorkspaceTransport[] = [];
@@ -112,7 +114,8 @@ type ConnectionStore = {
   setActive(id: string): Promise<void>;
   remove(id: string): Promise<void>;
   touch(id: string): Promise<void>;
-  setRoutes(id: string, via: MobileTransport[]): Promise<void>;
+  /** `relay`: the phone's own relay channel as the place serves it now */
+  setRoutes(id: string, via: MobileTransport[], relay?: MobileRelayChannel): Promise<void>;
   setAccount(id: string, account: { id: string; email: string }): Promise<void>;
 };
 const stores = new WeakMap<MobilePlatform, ConnectionStore>();
@@ -188,8 +191,8 @@ export function createConnectionStore(platform: MobilePlatform): ConnectionStore
     touch(id) {
       return serialize(async () => write((await read()).map((entry) => entry.id === id ? { ...entry, lastUsedAt: Date.now() } : entry)));
     },
-    setRoutes(id, via) {
-      return serialize(async () => write((await read()).map((entry) => entry.id === id ? { ...entry, via } : entry)));
+    setRoutes(id, via, relay) {
+      return serialize(async () => write((await read()).map((entry) => entry.id === id ? { ...entry, via, ...(relay ? { relay, ...(via.some((route) => route.kind === "relay") ? {} : { relayLate: true as const }) } : {}) } : entry)));
     },
     setAccount(id, account) {
       return serialize(async () => write((await read()).map((entry) => entry.id === id ? { ...entry, account: { id: account.id, email: account.email } } : entry)));

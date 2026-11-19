@@ -216,7 +216,7 @@ async function resolveTypedCodeResult(code: string, relayBase = DEFAULT_MOBILE_R
 
 const pendingKeys = new WeakMap<MobilePlatform, Map<string, Promise<RelaySecrets>>>();
 
-async function relaySecrets(platform: MobilePlatform, id: string): Promise<RelaySecrets> {
+export async function relaySecrets(platform: MobilePlatform, id: string): Promise<RelaySecrets> {
   let pending = pendingKeys.get(platform);
   if (!pending) { pending = new Map(); pendingKeys.set(platform, pending); }
   const existing = pending.get(id);

@@ -81,7 +81,7 @@ interface Agent { base: string; tunnel: string; pub: string; origin: string | nu
 
 export interface MobileLinkDeps {
   dataDir: string;
-  sessions: Pick<SessionRegistry, "openPairing" | "exchange" | "list" | "isLive" | "revoke" | "onSessionRevoked">;
+  sessions: Pick<SessionRegistry, "openPairing" | "exchange" | "list" | "isLive" | "revoke" | "onSessionRevoked" | "holdForPairedDevice">;
   workspace(): { name: string; environmentId: string | null; kind: "mac" | "server" };
   /** this server's own https origin when it has one */
   publicOrigin(): string | null;
@@ -136,6 +136,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
   const push = deps.push ?? createPushSender(process.env, { relay: () => pushRelayBase(process.env, agentLive()?.base ?? deps.lookupRelay ?? DEFAULT_MOBILE_RELAY) });
   const file = join(deps.dataDir, "mobile-devices.json");
   let devices: DeviceRecord[] = load();
+  for (const device of devices) deps.sessions.holdForPairedDevice(device.sessionId);
   const grants = new Map<string, Grant>();
   let agent: Agent | null = null;
   let rev = 1, applied = 0, failed = new Set<string>();
@@ -286,14 +287,33 @@ export function createMobileLink(deps: MobileLinkDeps) {
       .map((url) => ({ kind: "https", url, ...(url === relay?.origin && relay.spki ? { spki: relay.spki } : {}) })));
   }
 
-  async function routes(): Promise<MobileRoutesResponse> {
+  async function routes(device: DeviceRecord): Promise<MobileRoutesResponse> {
     const companion = deps.companion ? await deps.companion().catch(() => null) : null;
     const isHttps = (route: MobileTransport): route is MobileRoutesResponse["https"][number] => route.kind === "https";
     const isCompanion = (route: MobileTransport): route is NonNullable<MobileRoutesResponse["companion"]>[number] => route.kind === "companion";
     return {
       https: httpsRoutes().filter(isHttps),
       companion: companion ? mobileTransports(companion.slice(0, 16).map((one) => ({ ...one, kind: "companion", net: one.kind }))).filter(isCompanion) : null,
+      ...relayOf(device),
     };
+  }
+
+  function relayOf(device: DeviceRecord): Pick<MobileRoutesResponse, "relay"> {
+    const relay = agentLive();
+    if (!relay) return {};
+    return { relay: device.relay && !failed.has(device.relay.channel) ? { base: relay.base, channel: device.relay.channel, agentPub: relay.pub } : null };
+  }
+
+  /** a paired phone with no relay channel (paired while this place had no relay, or its keys lost) asks for one */
+  async function relayFor(device: DeviceRecord, body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
+    if (typeof body.pub !== "string" || !usableX25519(body.pub) || typeof body.verifier !== "string" || !HEX64.test(body.verifier)) return { status: 400, body: { error: "relay needs pub (base64url x25519) and verifier (sha256 hex)" } };
+    const relay = agentLive();
+    if (!relay) return { status: 409, body: { error: "This place has no relay right now.", code: "no_relay" } };
+    device.relay = { channel: device.relay?.channel ?? relayId(), verifier: body.verifier, pub: body.pub };
+    persist();
+    bump();
+    if (!await applied_(rev, device.relay.channel)) return { status: 503, body: { error: "The relay did not take this phone yet.", code: "not_applied" } };
+    return { status: 200, body: { base: relay.base, channel: device.relay.channel, agentPub: relay.pub } };
   }
 
   async function pairing(auth: RequestAuth, body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
@@ -353,6 +373,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     // a wrong secret here is an expired or already used grant (the phone only has what the desktop made): 410 reads as
     // expired on every app version, where 401 read as "refused"
     if (!exchanged.ok) return exchanged.status === 401 ? { status: 410, body: { error: exchanged.error, code: "expired" } } : { status: exchanged.status, body: { error: exchanged.error } };
+    deps.sessions.holdForPairedDevice(exchanged.session.id);
     // a retried attempt gets the device it already opened
     let record = devices.find((one) => one.sessionId === exchanged.session.id);
     if (!record) {
@@ -476,8 +497,16 @@ export function createMobileLink(deps: MobileLinkDeps) {
         return true;
       }
       if (path === "/api/mobile/routes" && method === "GET") {
-        if (!deviceOf(auth)) { json(res, 404, { error: "this session is not a paired phone" }); return true; }
-        json(res, 200, await routes());
+        const device = deviceOf(auth);
+        if (!device) { json(res, 404, { error: "this session is not a paired phone" }); return true; }
+        json(res, 200, await routes(device));
+        return true;
+      }
+      if (path === "/api/mobile/relay" && method === "POST") {
+        const device = deviceOf(auth);
+        if (!device) { json(res, 404, { error: "this session is not a paired phone" }); return true; }
+        const answer = await relayFor(device, await body());
+        json(res, answer.status, answer.body);
         return true;
       }
       if (path === "/api/mobile/device" && method === "GET") {
