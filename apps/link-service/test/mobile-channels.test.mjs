@@ -335,7 +335,30 @@ describe("mobile channel rate limits", () => {
     expect(limited.status).toBe(429);
     expect(await limited.json()).toMatchObject({ code: "rate_limited" });
     time += 60_000;
+    await take();
     expect((await post()).status).toBe(200);
+  });
+});
+
+describe("a server that is not reading its channels", () => {
+  it("answers a phone's frames at once instead of holding them, from a short while after its last read", async () => {
+    await put();
+    expect((await post()).status).toBe(200);
+    time += 25_000;
+    const away = await post();
+    expect(away.status).toBe(503);
+    expect(await away.json()).toMatchObject({ code: "server_away" });
+    await take();
+    expect((await post()).status).toBe(200);
+  });
+
+  it("counts a server in the middle of a long read as there, however long it has waited", async () => {
+    await put();
+    const lines = await stream(`/v1/tunnels/${id}/channels/to-vps`, vps);
+    expect(await next(lines)).toEqual({ frames: [] });
+    time += 60_000;
+    expect((await post()).status).toBe(200);
+    expect(await next(lines)).toMatchObject({ channel: cid, frames: ["aaaa"] });
   });
 });
 
@@ -430,7 +453,9 @@ describe("tunnel retention", () => {
     service.store.sweep();
     expect(service.store.tunnels.has(id)).toBe(true);
     expect(service.store.tunnels.has(other)).toBe(false);
-    expect((await request(`/v1/channels/${cid}/to-vps`, phone, "POST", { frames: ["aaaa"], epoch, seq: 0 })).status).toBe(200);
+    const meanwhile = await request(`/v1/channels/${cid}/to-vps`, phone, "POST", { frames: ["aaaa"], epoch, seq: 0 });
+    expect(meanwhile.status).toBe(503);
+    expect(await meanwhile.json()).toMatchObject({ code: "server_away" });
     time += PHONE_TUNNEL_IDLE_MS - TUNNEL_IDLE_MS;
     service.store.sweep();
     expect(service.store.tunnels.has(id)).toBe(false);

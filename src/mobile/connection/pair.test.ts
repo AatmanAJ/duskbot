@@ -373,6 +373,23 @@ describe("workspace reconnect", () => {
     expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "bearer", origin: "http://mac.test:8810", token });
   });
 
+  it("opens on the computer's wi-fi at once while a secure access route and a tailnet name never answer", async () => {
+    const { record, token, platform } = await saved();
+    record.via = [
+      { kind: "companion", url: "https://mac.access.test", net: "hosted", priority: 0 },
+      { kind: "companion", url: "http://mac.tail.ts.net:8810", net: "tailnet", priority: 100 },
+      { kind: "companion", url: "http://192.168.1.20:8810", net: "lan", priority: 200 },
+    ];
+    const hung: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => url.startsWith("http://192.168.1.20")
+      ? Promise.resolve(response({}))
+      : new Promise((_, reject) => init.signal!.addEventListener("abort", () => { hung.push(url); reject(new DOMException("aborted", "AbortError")); }))));
+    const started = Date.now();
+    expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "bearer", origin: "http://192.168.1.20:8810", token });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(hung).toHaveLength(2);
+  });
+
   it("removes relay keys with a saved connection", async () => {
     const { record, token, platform, secrets } = await saved();
     const store = createConnectionStore(platform);

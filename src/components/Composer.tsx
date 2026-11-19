@@ -14,7 +14,7 @@ import { ELEVATED_CARD, ELEVATED_FLOAT } from "./elevated";
 import { activeLocale, t } from "@/lib/i18n";
 import { imeComposing, sendKeyLabel, sendsMessage, useSendKey } from "@/lib/send-key";
 import { phoneApp } from "@/lib/store-app";
-import { alternateSend, useFollowUpDefault } from "@/lib/follow-up"; import { resolveFollowUp, type FollowUp } from "../../shared/follow-up";
+import { alternateSend, useFollowUpDefault } from "@/lib/follow-up"; import { resolveFollowUp, sentFollowUp, type FollowUp } from "../../shared/follow-up";
 import {
   draftRevision,
   appendDraftAttachments,
@@ -609,8 +609,8 @@ export function Composer({
   const slotColor = bot?.color; const room = Boolean(group);
   const slot = useMemo(() => slotColors(slotColor, room), [slotColor, room]);
   // A one-to-one bot at work: Enter does the chosen follow-up and Ctrl/⌘ with it the other one. Rooms keep their own queue.
-  const followUpFor = (alternate: boolean) => resolveFollowUp({ running: busy && !group && Boolean(bot), alternate, preferred: followUpDefault, canSteer }) ?? undefined;
-  const steersNow = group ? canSteer : followUpFor(false) === "steer";
+  const followUpFor = (alternate: boolean) => sentFollowUp({ running: busy && !group && Boolean(bot), alternate, preferred: followUpDefault }) ?? undefined;
+  const steersNow = group ? canSteer : resolveFollowUp({ running: busy && !group && Boolean(bot), alternate: false, preferred: followUpDefault, canSteer }) === "steer";
   const sendNames = sendLabels({ busy, canSteer: steersNow, name: busyName, sendLabel });
   // grok's round button keeps one glyph stack and crossfades it; ours swaps the button, so the glyph it showed fades
   // out over the new one's
@@ -737,7 +737,7 @@ export function Composer({
         ...(points ? { pointed: points.pointed } : {}), ...(followUp ? { followUp } : {}),
         onError: () => { points?.restore(); restoreDraft(sentDraft); }, onSettled,
       });
-      directMessageSent(state.instances, bot.modelSelection?.instanceId, busy && followUp !== "steer");
+      directMessageSent(state.instances, bot.modelSelection?.instanceId, busy && (followUp !== "steer" || !canSteer));
     }
     setText("");
     setAttachments([]); picks.clear();

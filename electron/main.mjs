@@ -99,7 +99,7 @@ import { acquireDataDirLease } from "./data-dir-lease.mjs";
 import { offerMoveToApplications } from "./move-to-applications.mjs";
 import { switchLocalEnvironment } from "./environment-switch.mjs";
 import { createManagedDesktopClient, createManagedDesktopRelay, createManagedDesktopStore } from "./managed-desktop.mjs";
-import { analyticsAllowed, createProductEvents } from "./product-events.mjs"; import { crashProps, createExperienceRelay, updateFailStage } from "./experience-relay.mjs"; import { createUsageNotes } from "./usage-notes.mjs";
+import { analyticsAllowed, createProductEvents } from "./product-events.mjs"; import { crashProps, createExperienceRelay, updateFailStage } from "./experience-relay.mjs"; import { UTILITY_NAMES } from "./utility-names.mjs"; import { createUsageNotes } from "./usage-notes.mjs";
 import { createAccountErrors } from "./account-errors.mjs";
 import { CHECKOUT_SOURCES, cloudMenuSublabel, cloudTarget, createCloudAccountClient, createCloudAccountStore } from "./cloud-account.mjs"; import { isAppLink } from "./cloud-signin.mjs";
 import { ACCOUNT_PAGES, installCloudPlanIpc } from "./cloud-plan-ipc.mjs";
@@ -448,7 +448,7 @@ const serverSupervisor = createServerSupervisor({
       });
     }
   },
-  onCrash() { productEvents.action("crash", crashProps("server", "crashed")); },
+  onCrash() { const props = crashProps("server", "crashed", { ending: appEnding() }); if (props) productEvents.action("crash", props); },
   onUnavailable() {
     serverReady = false;
     serverProc = null;
@@ -518,6 +518,7 @@ const DESKTOP_CRASH_LOG = path.join(LOG_DIR, "desktop-crashes.log");
 const DESKTOP_CRASH_LOG_MAX_BYTES = 512 * 1024;
 let logStream = null;
 let desktopShutdownStarted = false;
+const appEnding = () => desktopShutdownStarted || windowsSessionEnding;
 import {
   companionAdvertisedHostedUrl,
   companionEnabledAtRest,
@@ -555,7 +556,7 @@ const localOrHome = (channel, handler) => (event, ...args) => (homeWindow.homePa
 const productEvents = createProductEvents({ origin: cloudTarget(process.env).origin, token: () => cloudAccount?.eventToken?.() ?? null, platform: process.platform, version: app.isPackaged ? app.getVersion() : `${app.getVersion()}+dev`,
   enabled: analyticsAllowed({ packaged: app.isPackaged, env: process.env, custom: cloudTarget(process.env).custom }) });
 for (const [kind, emitter] of [["page", "render-process-gone"], ["child", "child-process-gone"]]) {
-  app.on(emitter, (...args) => { const details = args.at(-1); const props = crashProps(kind === "page" ? "page" : details?.type, details?.reason); if (props) productEvents.action("crash", props); });
+  app.on(emitter, (...args) => { const details = args.at(-1); const props = crashProps(kind === "page" ? "page" : details?.type, details?.reason, { name: details?.name, ending: appEnding() }); if (props) productEvents.action("crash", props); });
 }
 ipcMain.handle("product-events:send", localOrHome("product-events:send", (_event, batch) => productEvents.send(batch)));
 ipcMain.handle("product-events:clear", localOrHome("product-events:clear", () => productEvents.clear()));
@@ -790,8 +791,9 @@ async function refreshDesktopCompanionTailscale() {
 }
 
 setCompanionLifecycleListener(({ expected, pid }) => {
-  if (expected) return;
+  if (expected || appEnding()) return;
   slog(`owned companion exited unexpectedly pid=${pid ?? "unknown"}`);
+  productEvents.action("crash", { kind: "utility", reason: "companion_exit" });
   companionDesiredThisLaunch = false;
   companionLaunchGeneration += 1;
   syncCompanionKeepAwake(false, false);
@@ -1296,6 +1298,7 @@ async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmen
   const proc = utilityProcess.fork(entry, [], {
     env: childEnv,
     stdio: ["ignore", "pipe", "pipe"],
+    serviceName: UTILITY_NAMES.server,
   });
   let resolveServerExit;
   utilityServerExits.set(proc, new Promise((resolve) => {

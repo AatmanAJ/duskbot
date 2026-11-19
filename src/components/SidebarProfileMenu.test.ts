@@ -273,9 +273,9 @@ describe("profileMenuItems", () => {
 
   it("groups usage and the phone, then help and settings, then the account under a divider", () => {
     const items = build();
-    expect(items.map((item) => item.key)).toEqual(["usage", "phone-app", "support", "settings", "account"]);
+    expect(items.map((item) => item.key)).toEqual(["usage", "phone-app", "support", "feedback", "settings", "account"]);
     expect(items.filter((item) => item.separatorBefore).map((item) => item.key)).toEqual(["account"]);
-    expect(items.find((item) => item.key === "support")!.submenu!.map((item) => item.key)).toEqual(["help", "feedback", "shortcuts", "about"]);
+    expect(items.find((item) => item.key === "support")!.submenu!.map((item) => item.key)).toEqual(["help", "shortcuts", "about"]);
     expect(items.find((item) => item.key === "account")!.label).toBe("dusk bot Cloud");
   });
 
@@ -283,7 +283,7 @@ describe("profileMenuItems", () => {
     vi.stubEnv("VITE_DUSK_DEV_TOOLS", "");
     try {
       const support = build().find((item) => item.key === "support")!.submenu!;
-      expect(support.map((item) => item.key)).toEqual(["help", "feedback", "shortcuts", "about", "dev-fresh-install"]);
+      expect(support.map((item) => item.key)).toEqual(["help", "shortcuts", "about", "dev-fresh-install"]);
       expect(support.at(-1)!.label).toBe("Dev: start fresh on this computer");
     } finally {
       vi.stubEnv("VITE_DUSK_DEV_TOOLS", "0");
@@ -292,13 +292,13 @@ describe("profileMenuItems", () => {
 
   it("only offers what this window has: no usage on a remote server, no account without one", () => {
     const items = build({ usage: false, account: null });
-    expect(items.map((item) => item.key)).toEqual(["phone-app", "support", "settings"]);
+    expect(items.map((item) => item.key)).toEqual(["phone-app", "support", "feedback", "settings"]);
     expect(items.some((item) => item.separatorBefore)).toBe(false);
   });
 
   it("keeps the update entry beside settings", () => {
     const update = { key: "update", label: "check for updates", onSelect: noop };
-    expect(build({ update }).map((item) => item.key)).toEqual(["usage", "phone-app", "support", "settings", "update", "account"]);
+    expect(build({ update }).map((item) => item.key)).toEqual(["usage", "phone-app", "support", "feedback", "settings", "update", "account"]);
   });
 
   it("opens the Usage and account pages of Settings", () => {
@@ -341,11 +341,11 @@ describe("Simple mode's account menu", () => {
   it("leads with usage, the phone app, support and Settings, then Archived bots, then where this window is and Cloud", () => {
     const items = build();
     expect(groups(items)).toEqual([
-      ["usage", "phone-app", "support", "settings"],
+      ["usage", "phone-app", "support", "feedback", "settings"],
       ["archived"],
       ["place", "account"],
     ]);
-    expect(items.find((item) => item.key === "support")!.submenu!.map((item) => item.key)).toEqual(["help", "feedback", "shortcuts", "about", "update"]);
+    expect(items.find((item) => item.key === "support")!.submenu!.map((item) => item.key)).toEqual(["help", "shortcuts", "about", "update"]);
   });
 
   it("raises an update that is ready or failed to its own top row with a pill, and keeps it out of support", () => {
@@ -375,7 +375,7 @@ describe("Simple mode's account menu", () => {
 
   it("keeps Advanced's account menu as it was", () => {
     const items = build({ simple: undefined, usageSummary: { value: "12% used" } });
-    expect(items.map((item) => item.key)).toEqual(["usage", "phone-app", "support", "settings", "update", "account"]);
+    expect(items.map((item) => item.key)).toEqual(["usage", "phone-app", "support", "feedback", "settings", "update", "account"]);
     expect(items[0]!.chevron).toBeUndefined();
   });
 
@@ -422,12 +422,12 @@ describe("Simple mode's account menu", () => {
     const update = { key: "update", label: "dusk bot 0.2.0 ready, restart", onSelect: noop };
     expect(groups(build({ move }))).toEqual([
       ["cloud-move"],
-      ["usage", "phone-app", "support", "settings"],
+      ["usage", "phone-app", "support", "feedback", "settings"],
       ["archived"],
       ["place", "account"],
     ]);
     expect(groups(build({ move, update, updateTop: { label: "update ready", action: "restart" } })).slice(0, 2)).toEqual([["cloud-move"], ["update"]]);
-    expect(groups(build({ move: [] }))[0]).toEqual(["usage", "phone-app", "support", "settings"]);
+    expect(groups(build({ move: [] }))[0]).toEqual(["usage", "phone-app", "support", "feedback", "settings"]);
   });
 
   it("gives a moving move one row shaped like Usage and Settings, and a failing one a friendly line under its Try again", () => {
@@ -445,8 +445,8 @@ describe("Simple mode's account menu", () => {
 
   it("puts the move's row first in Advanced's account menu too, under its own divider", () => {
     const move = [{ key: "cloud-move", label: "moving to dusk cloud…", title: "moving your bots to dusk cloud… 34 of 120 chats", onSelect: noop }];
-    expect(groups(build({ simple: undefined, move }))).toEqual([["cloud-move"], ["usage", "phone-app", "support", "settings", "update"], ["account"]]);
-    expect(groups(build({ simple: undefined }))).toEqual([["usage", "phone-app", "support", "settings", "update"], ["account"]]);
+    expect(groups(build({ simple: undefined, move }))).toEqual([["cloud-move"], ["usage", "phone-app", "support", "feedback", "settings", "update"], ["account"]]);
+    expect(groups(build({ simple: undefined }))).toEqual([["usage", "phone-app", "support", "feedback", "settings", "update"], ["account"]]);
   });
 
   it("draws a person instead of a question mark for someone with no name, at the trigger's own size", () => {
@@ -541,14 +541,24 @@ describe("grok's profile menu", () => {
 
   it("has no phone row while the phone app is hidden, and still sets the needs-you row apart", () => {
     const items = grokProfileMenuItems({ ...base, onGetApp: undefined, onNeedsYou: vi.fn() });
-    expect(items.map((item) => item.key)).toEqual(["needs-you", "sign-in", "support", "settings"]);
+    expect(items.map((item) => item.key)).toEqual(["needs-you", "sign-in", "support", "feedback", "settings"]);
     expect(items[1]).toMatchObject({ key: "sign-in", separatorBefore: true });
+  });
+
+  it("always offers Give feedback as its own row, outside Support, opening the feedback sheet", () => {
+    const onFeedback = vi.fn();
+    const items = grokProfileMenuItems({ ...base, onFeedback });
+    const row = items.find((item) => item.key === "feedback")!;
+    expect(row.label).toBe("Give feedback");
+    expect(items.find((item) => item.key === "support")!.submenu!.map((item) => item.key)).not.toContain("feedback");
+    row.onSelect();
+    expect(onFeedback).toHaveBeenCalledOnce();
   });
 
   it("keeps grok's own rows alone while nothing needs the person", () => {
     const items = grokProfileMenuItems(base);
     // signed out, the account block's place is the sign-in, by name, and nothing signs out
-    expect(items.map((item) => item.key)).toEqual(["sign-in", "mobile", "support", "settings"]);
+    expect(items.map((item) => item.key)).toEqual(["sign-in", "mobile", "support", "feedback", "settings"]);
     expect(items[0]).toMatchObject({ label: "Sign in" });
     expect(items[0]!.separatorBefore).toBeUndefined();
     expect(items[1]).toMatchObject({ key: "mobile", separatorBefore: true });
@@ -566,7 +576,7 @@ describe("grok's profile menu", () => {
     const signOut = vi.fn(), onSettings = vi.fn(), onDashboard = vi.fn();
     const active = { id: "acc-1", email: "ada@qa.dusk.test", name: "Ada Lovelace", plan: { status: "active", tier: "starter" } };
     const items = grokProfileMenuItems({ ...base, onSettings, onDashboard, accounts: { view: { active }, openSheet: null, signOut, add: vi.fn(), editAvatar: vi.fn() } as never });
-    expect(items.map((item) => item.key)).toEqual(["who", "mobile", "dashboard", "support", "settings", "log-out"]);
+    expect(items.map((item) => item.key)).toEqual(["who", "mobile", "dashboard", "support", "feedback", "settings", "log-out"]);
     expect(items[0]).toMatchObject({ label: "Ada Lovelace", labelNote: "Plus", subtitle: "ada@qa.dusk.test", title: "ada@qa.dusk.test", large: true });
     expect(items[1]).toMatchObject({ key: "mobile", separatorBefore: true });
     expect(items.at(-1)).toMatchObject({ label: "Sign out", separatorBefore: true });
@@ -587,21 +597,21 @@ describe("grok's profile menu", () => {
     const openSheet = vi.fn();
     const header = { email: "ada@qa.dusk.test", plan: "dusk cloud · Pro", face: null };
     const items = grokProfileMenuItems({ ...base, header, accounts: { view: null, openSheet, signOut: vi.fn(), add: vi.fn() } as never });
-    expect(items.map((item) => item.key)).toEqual(["who", "mobile", "support", "settings", "log-out"]);
+    expect(items.map((item) => item.key)).toEqual(["who", "mobile", "support", "feedback", "settings", "log-out"]);
     expect(items[0]).toMatchObject({ label: "ada@qa.dusk.test", labelNote: "Pro" });
     items.at(-1)!.onSelect();
     expect(openSheet).toHaveBeenCalledOnce();
     const lent = grokProfileMenuItems({ ...base, header, accounts: { view: null, openSheet: null, signOut: vi.fn(), add: vi.fn() } as never });
     expect(lent[0]).toMatchObject({ key: "who", label: "ada@qa.dusk.test" });
     const nobody = grokProfileMenuItems({ ...base, accounts: { view: null, openSheet, signOut: vi.fn(), add: vi.fn() } as never });
-    expect(nobody.map((item) => item.key)).toEqual(["mobile", "support", "settings", "log-out"]);
+    expect(nobody.map((item) => item.key)).toEqual(["mobile", "support", "feedback", "settings", "log-out"]);
     expect(nobody.at(-1)).toMatchObject({ label: "Sign out" });
   });
 
   it("puts the account dashboard right under the phone row when the menu can open it", () => {
     const onDashboard = vi.fn();
     const items = grokProfileMenuItems({ ...base, onDashboard });
-    expect(items.map((item) => item.key)).toEqual(["sign-in", "mobile", "dashboard", "support", "settings"]);
+    expect(items.map((item) => item.key)).toEqual(["sign-in", "mobile", "dashboard", "support", "feedback", "settings"]);
     expect(items[2]).toMatchObject({ label: "Account dashboard" });
     items[2]!.onSelect();
     expect(onDashboard).toHaveBeenCalledOnce();
