@@ -94,14 +94,18 @@ export function engineFailureKind(text: string, status = httpStatusOf(text)): En
 export function engineFailureMessage(
   provider: string,
   text: string,
-  { kind, status, resetsAt, timeZone }: { kind?: EngineFailureKind | null; status?: number | null; resetsAt?: number; timeZone?: string } = {},
+  { kind, status, resetsAt, timeZone, detailed = true }: {
+    kind?: EngineFailureKind | null; status?: number | null; resetsAt?: number; timeZone?: string;
+    /** false leaves out the status code and the provider's own words */
+    detailed?: boolean;
+  } = {},
 ): string | null {
   const http = status === undefined ? httpStatusOf(text) : status;
   const what = kind ?? engineFailureKind(text, http);
   if (!what) return null;
   const reason = providerReason(text);
   const says = reason ? `${provider} says: "${reason}"` : null;
-  const detail = (...parts: Array<string | null>) => parts.some(Boolean) ? ` (${parts.filter(Boolean).join("; ")})` : "";
+  const detail = (...parts: Array<string | null>) => detailed && parts.some(Boolean) ? ` (${parts.filter(Boolean).join("; ")})` : "";
   const code = http ? `HTTP ${http}` : null;
   switch (what) {
     case "credits": return `Your ${provider} account is out of credits${detail(says)}. Add credits with ${provider}, then run it again.`;

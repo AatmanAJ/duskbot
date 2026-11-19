@@ -2,6 +2,7 @@
 import type { ProviderInstance } from "./contracts.ts";
 import { engineFailureMessage } from "./drivers/engine-errors.ts";
 import { redactSecretsInText } from "./redact.ts";
+import { hasRawDetail } from "../shared/raw-detail.ts";
 
 export type EngineCheck = { ok: true } | { ok: false; error: string } | { ok: null };
 
@@ -13,9 +14,16 @@ const SIGNED_OUT = /not logged in|please run \/login|\blogin required\b|not sign
 export function engineCheckError(name: string, message: string): string {
   if (SIGNED_OUT.test(message)) return `${name} isn't signed in on this computer anymore. Sign in again, then check again.`;
   const plain = engineFailureMessage(name, message);
-  if (plain) return plain;
+  if (plain) return readable(plain) ? plain : engineFailureMessage(name, message, { detailed: false })!;
   const said = redactSecretsInText(message.replace(/\s+/g, " ").trim()).slice(0, 300);
-  return said ? `${name} couldn't answer: ${said}` : `${name} didn't answer. Check again in a minute.`;
+  return said && readable(said) ? `${name} couldn't answer: ${said}` : `${name} didn't answer. Check again in a minute.`;
+}
+
+/** snake_case codes, key=value pairs and redaction marks are a gateway's internals, not words for a person */
+const CODE_WORDS = /\b[a-z]+_[a-z0-9_]+\b|\b\w+=\S|\[REDACTED\]/;
+
+function readable(text: string): boolean {
+  return !hasRawDetail(text) && !CODE_WORDS.test(text);
 }
 
 const running = new Map<string, Promise<EngineCheck>>();

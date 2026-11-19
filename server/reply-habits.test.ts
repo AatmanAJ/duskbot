@@ -80,3 +80,7 @@ it("acts instead of ending on a plan, sends the ack with the first step, and sto
   }
   expect(replyHabitsPrompt(false)).toContain("Send it in the same step as your first tool call, never as a reply on its own");
 });
+
+it("names each change a tool confirmed in the result, and none it did not", () => {
+  for (const quick of [false, true]) expect(replyHabitsPrompt(quick)).toContain("When you made several changes, name each one its tool confirmed");
+});

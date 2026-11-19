@@ -101,14 +101,23 @@ describe("turn beats", () => {
     expect(tool.posts.map((p) => p.kind)).toEqual(["ack"]);
   });
 
-  it("waits for the engine before acking work that has run no tool yet", async () => {
+  it("waits for the engine before acking work that has run no tool yet, and acks only once it is thinking", async () => {
     const { beats, posts, send } = setup();
     beats.start({ botId: "b", threadId: THREAD, text: "Write a launch plan for the spring candle line", attachments: 0, unattended: false });
     send(event({ type: "turn.started" }));
+    send(event({ type: "content.delta", streamKind: "reasoning_text", delta: "Planning the sections." }));
     await vi.advanceTimersByTimeAsync(ACK_IDLE_MS - 500);
     expect(posts).toEqual([]);
     await vi.advanceTimersByTimeAsync(600);
     expect(posts.map((p) => p.kind)).toEqual(["ack"]);
+  });
+
+  it("never acks a silent turn that runs no tool, so no ack is left with nothing after it", async () => {
+    const { beats, posts, send } = setup();
+    beats.start({ botId: "b", threadId: THREAD, text: "Write three posts for X announcing dark mode", attachments: 0, unattended: false });
+    send(event({ type: "turn.started" }));
+    await vi.advanceTimersByTimeAsync(ACK_IDLE_MS * 3);
+    expect(posts).toEqual([]);
   });
 
   it("holds the ack for a bot set up to ask before it uses tools until a tool runs", async () => {

@@ -393,7 +393,7 @@ describe("focus around the hero", () => {
     click(avatar());
     await settle();
     expect(card()).not.toBeNull();
-    expect(document.activeElement?.getAttribute("data-avatar-tab")).toBe("bot");
+    expect(document.activeElement?.getAttribute("aria-pressed")).toBe("true");
 
     const event = press(document.activeElement, "Escape");
     expect(event.defaultPrevented).toBe(true);

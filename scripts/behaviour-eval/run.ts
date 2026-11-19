@@ -3,7 +3,7 @@
 // engine pointed at the recording proxy, which forwards to the gateway; each case runs in a fresh thread. Scored by the
 // tool calls the model made, timings over the app's own routes, and a judge model for what the person saw. Each case runs
 // in a workspace of its own with one new bot and no test bots, so no case sees another's automations or teammates.
-//   node --experimental-strip-types scripts/behaviour-eval/run.ts [--repo <checkout>] --label before --models gpt-6.1-terra,gpt-oss-120b-medium [--only id,id] [--judge gpt-6.1-terra]
+//   node --experimental-strip-types scripts/behaviour-eval/run.ts [--repo <checkout>] --label before --models gpt-6.1-terra,gpt-oss-120b-medium [--only id,id] [--judge gpt-6.1-terra] [--repeat 3]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,7 @@ const { values } = parseArgs({ options: {
   judge: { type: "string", default: "gpt-6.1-terra" },
   only: { type: "string", default: "" },
   keep: { type: "boolean", default: false },
+  repeat: { type: "string", default: "1" },
 } });
 const log = (...parts: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...parts);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -31,6 +32,7 @@ type Message = { id: string; role: string; kind?: string; text?: string; tool?: 
 
 interface Result {
   model: string;
+  run: number;
   id: string;
   cluster: string;
   check: Case["check"];
@@ -66,7 +68,7 @@ async function runModel(model: string): Promise<Result[]> {
   const proxy = await startProxy({ mode: "forward", gateway, port, models: [model] });
   const results: Result[] = [];
   try {
-    for (const item of cases) {
+    for (let run = 1; run <= Math.max(1, Number(values.repeat) || 1); run++) for (const item of cases) {
       const box = await launchSandbox(values.repo!, { ...gateway, url: proxy.url }, { captureQuietMs: 3_600_000 });
       const api = client(box.url);
       try {
@@ -103,7 +105,7 @@ async function runModel(model: string): Promise<Result[]> {
           pass = acted && verdict.pass;
           why = `${acted ? "" : `no matching tool call (called: ${tools.join(", ") || "none"}); `}${verdict.why}`;
         }
-        results.push({ model, id: item.id, cluster: item.cluster, check: item.check, pass, why, tools, state, ms, output: output.slice(0, 3_000) });
+        results.push({ model, run, id: item.id, cluster: item.cluster, check: item.check, pass, why, tools, state, ms, output: output.slice(0, 3_000) });
         log(model, item.id, pass ? "PASS" : "FAIL", "-", why);
       } finally {
         await box.close(values.keep);
@@ -132,8 +134,10 @@ for (const model of values.models!.split(",")) all.push(...await runModel(model)
 const summary: Record<string, Record<string, string>> = {};
 for (const model of new Set(all.map((r) => r.model))) {
   const rows = all.filter((r) => r.model === model);
-  const by = (check: string) => { const set = rows.filter((r) => r.check === check || (check === "act+deliver" && (r.check === "act" || r.check === "deliver"))); return `${set.filter((r) => r.pass).length}/${set.length}`; };
-  summary[model] = { "act+deliver": by("act+deliver"), "no-false-done": by("no-false-done"), stop: by("stop"), all: `${rows.filter((r) => r.pass).length}/${rows.length}` };
+  const runs = new Set(rows.map((r) => r.run)).size;
+  const mean = (set: Result[]) => `${Math.round((set.filter((r) => r.pass).length / runs) * 10) / 10}/${set.length / runs}`;
+  const by = (check: string) => mean(rows.filter((r) => r.check === check || (check === "act+deliver" && (r.check === "act" || r.check === "deliver"))));
+  summary[model] = { "act+deliver": by("act+deliver"), "no-false-done": by("no-false-done"), stop: by("stop"), all: mean(rows), runs: String(runs) };
 }
 console.table(summary);
 mkdirSync(join(here, "results"), { recursive: true });

@@ -201,9 +201,9 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
       if (action === "retry") return retry ? { label: t("failedReply.tryAgain"), onClick: retry } : null;
       if (action === "continue_after_reset") return resume ?? null;
       if (action === "sign_in") {
-        // Connect an AI, opened on this AI's card; the person presses it to sign in
-        const tile = lead.engine && aiTileOf(lead.engine);
-        return canOfferSignIn(lead.kind, lead.engine) || signInNotice ? { label: t("chat.notice.signIn"), onClick: () => tile ? setConnecting(tile) : dispatch(openEngines) } : null;
+        // Connect an AI, opened on this AI's card; an AI the flow can't sign in opens at its place in settings
+        const tile = (canOfferSignIn(lead.kind, lead.engine) || signInNotice) && lead.engine && aiTileOf(lead.engine);
+        return { label: t("chat.notice.signIn"), onClick: () => tile ? setConnecting(tile) : dispatch(openEngines) };
       }
       if (action === "set_up_engine") return { label: t("failedReply.setUp", { engine: engineName }), onClick: () => dispatch(openEngines) };
       if (action === "new_chat") return !group && leadBotId ? { label: t("failedReply.newChat"), onClick: () => { close(); dispatch({ type: "newTask", botId: leadBotId }); } } : null;

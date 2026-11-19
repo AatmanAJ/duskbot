@@ -13,7 +13,8 @@ export type BeatKind = "ack" | "plan" | "milestone";
 
 /** The earliest an ack goes out, so a fast reply never follows one. */
 export const ACK_MIN_MS = 1_500;
-/** An ack for work that has run no tool yet waits this long for the engine to answer by itself first. */
+/** An ack for work that has run no tool yet waits this long for the engine to answer by itself first, and goes out only
+ * once the engine shows it is thinking: an ack nothing follows is a promise the turn did not keep. */
 export const ACK_IDLE_MS = 4_000;
 /** The second message is written from here, once a tool has run, and goes out from PLAN_MIN_MS. */
 export const PLAN_WRITE_MS = 11_000;
@@ -81,6 +82,8 @@ interface Watch {
   /** Every message of the turn so far, the engine's and the harness's, in order. */
   said: string[];
   streaming: boolean;
+  /** The engine has shown it is working on it: reasoning streamed or a reasoning step began. */
+  thinking: boolean;
   planRewritten: boolean;
   steps: string[];
   stepsAtLastWord: number;
@@ -247,7 +250,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
     if (!deps.live(watch.threadId, watch.turnId)) return end(watch);
     if (ack.phase === "ready") {
       if (engineSpoke) ack.phase = "dropped";
-      else if (elapsed >= ACK_MIN_MS && (watch.tools > 0 || (elapsed >= ACK_IDLE_MS && !watch.asksFirst))) post(watch, "ack", ack);
+      else if (elapsed >= ACK_MIN_MS && (watch.tools > 0 || (elapsed >= ACK_IDLE_MS && !watch.asksFirst && watch.thinking))) post(watch, "ack", ack);
     }
     if (ack.phase === "writing" || (ack.phase === "idle" && !engineSpoke && !watch.tools)) return;
 
@@ -284,7 +287,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
       const watch: Watch = {
         botId: input.botId, threadId: input.threadId, ask: input.text, work: looksLikeWork(input.text, input.attachments), startedAt: now(),
         asksFirst: ASKS_FIRST.test(deps.bot(input.botId)?.soul ?? ""),
-        tools: 0, toolsDone: 0, engineTextAt: 0, engineMessages: 0, said: [], streaming: false, planRewritten: false, steps: [], stepsAtLastWord: 0, lastWordAt: 0, waiting: false,
+        tools: 0, toolsDone: 0, engineTextAt: 0, engineMessages: 0, said: [], streaming: false, thinking: false, planRewritten: false, steps: [], stepsAtLastWord: 0, lastWordAt: 0, waiting: false,
         ack: { phase: "idle" }, plan: { phase: "idle" }, milestone: { phase: "idle" }, milestones: 0, milestoneTriedAt: 0, posted: [],
         timer: setInterval(() => tick(watch), TICK_MS),
       };
@@ -304,6 +307,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
       if (event.turnId && watch.turnId && event.turnId !== watch.turnId) return;
       switch (event.type) {
         case "item.started":
+          if (event.itemType === "reasoning") watch.thinking = true;
           if (event.itemType !== "tool") return;
           watch.tools++;
           watch.streaming = false;
@@ -328,6 +332,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
           }
           break;
         case "content.delta":
+          if (event.streamKind === "reasoning_text") watch.thinking = true;
           if (event.streamKind === "assistant_text" && event.delta.trim()) {
             watch.engineTextAt = now();
             watch.streaming = true;

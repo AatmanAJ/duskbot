@@ -541,41 +541,15 @@ describe("the avatar editor", () => {
 
   it("switches back to the mascot when a body is picked over a picture", () => {
     const bot = makeBot({ avatarUrl: "/api/attachments/cat.webp", avatarCrop: "circle" });
-    click(find(editor(bot), "data-avatar-tab", "bot"));
     click(find(editor(bot), "aria-label", "starry character shape"));
     expect(patch).toHaveBeenLastCalledWith({ mascotBody: "starry", avatarCrop: "mascot" });
   });
 
-  it("resets the mascot as the Advanced card does", () => {
-    click(find(editor(makeBot()), "data-avatar-reset"));
-    expect(patch).toHaveBeenLastCalledWith({ avatarCrop: "mascot", color: "green", mascotExpression: null, mascotBody: "kit", mascotFaceColor: null });
-  });
-
-  it("generates with the shared generator, and uploads with shape and framing", () => {
-    const bot = makeBot();
-    click(find(editor(bot), "data-avatar-tab", "generate"));
-    const generate = editor(bot);
-    expect(ofType(generate, AvatarImageGenerator)!.props.botLabel).toBe("Researcher");
-
-    click(find(generate, "data-avatar-tab", "upload"));
-    const upload = editor(bot);
-    expect(upload.html).toContain("Drop a picture here, or choose one");
-    expect(upload.html).toContain("PNG, JPEG, GIF, or WebP · up to 10 MB");
-    expect(segment(upload, "data-avatar-crop").options.map((option) => [option.value, option.disabled])).toEqual([
-      ["circle", true], ["rounded", true], ["square", true],
-    ]);
-    expect(ofType(upload, AvatarFraming)).toBeUndefined();
-
-    fresh();
-    const pictured = makeBot({ avatarUrl: "/api/attachments/cat.webp", avatarCrop: "circle" });
-    const withImage = editor(pictured);
-    expect(find(withImage, "data-avatar-tab", "upload").props["aria-selected"]).toBe(true);
-    expect(ofType(withImage, AvatarFraming)!.props.bot).toBe(pictured);
-    expect(segment(withImage, "data-avatar-crop").value).toBe("circle");
-    segment(withImage, "data-avatar-crop").onChange("square");
-    expect(patch).toHaveBeenLastCalledWith({ avatarCrop: "square" });
-    click(find(withImage, "aria-label", "Remove custom avatar image"));
-    expect(patch).toHaveBeenLastCalledWith({ avatarUrl: null, avatarCrop: "mascot", avatarZoom: AVATAR_ZOOM_MIN, avatarFocusX: AVATAR_FOCUS_CENTER, avatarFocusY: AVATAR_FOCUS_CENTER });
+  it("shows only the character shapes and colors: no tabs, generator, upload or reset", () => {
+    const rendered = editor(makeBot());
+    expect(rendered.html).not.toContain("data-avatar-tab");
+    expect(rendered.html).not.toContain("data-avatar-reset");
+    expect(rendered.html).not.toContain("data-avatar-drop");
   });
 
   it("closes on Escape without letting the dialog close settings", () => {

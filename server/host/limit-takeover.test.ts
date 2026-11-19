@@ -86,6 +86,14 @@ describe("which AI carries on while one is limited", () => {
     expect(instance.heldAtStart(KAI, on("codex", "gpt-6")), "a new turn is tried on its own AI").toBeNull();
   });
 
+  it("leaves an API key's rate limit with its own AI, whatever other AIs are signed in, unless the person chose a backup", () => {
+    const keyed = engine("or", "openai-compat", ["deepseek/deepseek-chat"], { access: "api" });
+    const other = engine("groq", "openai-compat", ["llama-4"], { access: "api" });
+    const engines = () => [keyed, other, CLAUDE, CODEX, GO];
+    expect(takeover({ engines }).instance.backups("kai", on("or", "deepseek/deepseek-chat"), "engine")).toEqual([]);
+    expect(takeover({ engines, chosen: () => [on("groq", "llama-4")] }).instance.backups("kai", on("or", "deepseek/deepseek-chat"), "engine")).toEqual([on("groq", "llama-4")]);
+  });
+
   it("for one model's own limit tries that AI's default model first, and never the limited model", () => {
     const { instance } = takeover({ chosen: () => [on("codex", "gpt-6")] });
     expect(instance.backups("kai", on("claude", "claude-sonnet-5"), "model")).toEqual([on("claude", "claude-opus-5-5"), on("codex", "gpt-6")]);

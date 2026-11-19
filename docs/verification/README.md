@@ -331,6 +331,9 @@ The [Gemini speech fixture](gemini-speech.md) checks write-only credentials,
 voice selection and WAV synthesis against an offline provider in an isolated
 server, with manual steps for real Google access and playback.
 
+The [speed benchmark](speed.md) times server start, a reply from send to the first text on the live
+stream hop by hop, chat switches and opens, and the bookkeeping writes a chat open makes, on fake-engine fixtures.
+
 The [persistence responsiveness benchmark](persistence-performance.md) measures
 synthetic message/log bursts and history scans, with isolated chat, visibility
 and packaged-worker checks. It is not a production capacity qualification.
