@@ -28,7 +28,8 @@ afterEach(() => {
   fixture.pending = false;
 });
 
-const dialog = () => document.querySelector<HTMLElement>("[data-create-bot-dialog]");
+/** the open dialog: one on its way out (inert, still drawn) is closed */
+const dialog = () => [...document.querySelectorAll<HTMLElement>("[data-create-bot-dialog]")].find((el) => !el.closest("[data-leaving]")) ?? null;
 const button = (name: string) => [...dialog()!.querySelectorAll("button")].find((b) => b.textContent === name || b.getAttribute("aria-label") === name)!;
 function type(value: string) {
   const input = dialog()!.querySelector("input")!;

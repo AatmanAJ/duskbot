@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import {
   Archive,
   Check,
@@ -794,10 +795,11 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
         )}
       />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
-      {accounts.sheet && <AccountsSheet adding={accounts.sheet.email} note={accounts.sheet.note} onClose={accounts.closeSheet} />}
+      <AnimatePresence>{accounts.sheet && <AccountsSheet key="accounts" adding={accounts.sheet.email} note={accounts.sheet.note} onClose={accounts.closeSheet} />}</AnimatePresence>
       {accounts.signOutConfirm}
       {accounts.picking && accounts.view?.active && <AvatarPicker account={accounts.view.active} anchor={triggerRef.current?.closest("button") ?? null} onClose={accounts.closeAvatar} />}
-      {phoneAppOpen && <PhoneAppDialog
+      <AnimatePresence>{phoneAppOpen && <PhoneAppDialog
+        key="phone"
         open
         onClose={() => setPhoneAppOpen(false)}
         connect={destinations.map((destination) => ({
@@ -805,7 +807,7 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
           subtitle: destination.team ? t("sidebar.menu.connectPhone.team", { team: destination.team }) : t(destination.subtitleKey),
           onSelect: () => connectTo(destination),
         }))}
-      />}
+      />}</AnimatePresence>
     </>
   );
 }

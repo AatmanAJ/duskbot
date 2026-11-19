@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { AnimatePresence, useIsPresent, type HTMLMotionProps } from "motion/react";
@@ -83,9 +83,11 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   }, [open, props.pending]);
 
   const motion = dialogMotion(useMotionReduced());
-  if (typeof document === "undefined") return null;
+  const [opened, setOpened] = useState(open);
+  useEffect(() => { if (open) setOpened(true); }, [open]);
+  if (!open && !opened) return null;
   return createPortal(
-    <AnimatePresence onExitComplete={props.onClosed}>
+    <AnimatePresence onExitComplete={() => { setOpened(false); props.onClosed?.(); }}>
       {open && (
         <ConfirmLayer key="confirm" layer={props.layer} onCancel={onCancel} scrim={motion.scrim}>
           <ConfirmDialogCard ref={dialogRef} confirmRef={confirmRef} animated enter={motion.sheet} {...props} />

@@ -1,4 +1,6 @@
 import { ModalLayer } from "./ui/ModalLayer";
+import { ScrimMotion, SheetMotion, useDialogMotion } from "./ui/SheetMotion";
+import { AnimatePresence } from "motion/react";
 import { useEffect, useId, useRef, useState, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { DUSK_BODY_IDS, type DuskBodyId } from "../../shared/body-migration";
 import { takeImportName } from "../../shared/import-name";
@@ -37,8 +39,7 @@ function useOpenRequests(onOpen: () => void) {
 export function CreateBotDialog() {
   const [session, setSession] = useState<{ key: number; section?: string } | null>(null);
   useOpenRequests(() => { const section = takeCreateBotSection(); setSession((open) => open ?? { key: Date.now(), section }); });
-  if (!session) return null;
-  return <CreateBotForm key={session.key} section={session.section} onClose={() => setSession(null)} />;
+  return <AnimatePresence>{session && <CreateBotForm key={session.key} section={session.section} onClose={() => setSession(null)} />}</AnimatePresence>;
 }
 
 function CreateBotForm({ section, onClose }: { section?: string; onClose: () => void }) {
@@ -49,6 +50,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
   const [body, setBody] = useState<DuskBodyId>(() => pick(DUSK_BODY_IDS));
   const [color, setColor] = useState<MausColor>(() => pick(PICKER_COLORS));
   const dialog = useRef<HTMLDivElement>(null);
+  const played = useDialogMotion();
   const mascot = useRef<MausAvatarHandle>(null);
   const preview = useRef<HTMLSpanElement>(null);
   // the preview watches whichever shape or colour the pointer or focus is on
@@ -119,9 +121,10 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
   }, [onClose]);
 
   return (
-    <ModalLayer><div className="fixed inset-0 z-[60]">
-      <div aria-hidden className="absolute inset-0 bg-black/50" onMouseDown={onClose} />
-      <div
+    <ModalLayer><div {...played.layer} className="fixed inset-0 z-[60]">
+      <ScrimMotion {...played.scrim} aria-hidden className="absolute inset-0 bg-black/50" onMouseDown={onClose} />
+      <SheetMotion
+        {...played.sheet}
         ref={dialog}
         role="dialog"
         aria-modal="true"
@@ -209,7 +212,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
             <span>{creating ? t("createBot.creating") : "Create"}</span>
           </button>
         </div>
-      </div>
+      </SheetMotion>
     </div></ModalLayer>
   );
 }

@@ -382,12 +382,15 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       <SignInSheetHost />
       <FeedbackHost />
       <CloudMoveHost />
-      {state.shortcutsOpen && (
-        <KeyboardShortcutsModal
-          open={state.shortcutsOpen}
-          onClose={() => dispatch({ type: "toggleShortcuts", open: false })}
-        />
-      )}
+      <AnimatePresence>
+        {state.shortcutsOpen && (
+          <KeyboardShortcutsModal
+            key="shortcuts"
+            open
+            onClose={() => dispatch({ type: "toggleShortcuts", open: false })}
+          />
+        )}
+      </AnimatePresence>
       {/* After the modals: same z-50 tier, so DOM order keeps the palette on top. */}
       <CreateBotDialog />
       <CommandPalette onOpenChange={setPaletteOpen} />
