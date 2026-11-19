@@ -140,10 +140,13 @@ export function useArrivalFlow({
   useLayoutEffect(() => {
     const scroller = scrollRef.current, column = columnRef.current;
     if (!scroller || !column || typeof ResizeObserver === "undefined") return;
+    // the observer's first call, after the opened chat's first layout, takes its first snapshot; a scroll moves `top`
     const observer = new ResizeObserver(() => take(transcriptKey));
     observer.observe(column);
     observer.observe(scroller);
-    return () => observer.disconnect();
+    const scrolled = () => take(transcriptKey);
+    scroller.addEventListener("scroll", scrolled, { passive: true });
+    return () => { observer.disconnect(); scroller.removeEventListener("scroll", scrolled); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- take reads refs only
   }, [scrollRef, columnRef, transcriptKey]);
 
@@ -168,6 +171,10 @@ export function useArrivalFlow({
     const arrivals = [...column.querySelectorAll<HTMLElement>(ARRIVAL)].filter((row) => !played.current.has(row));
     arrivals.forEach((row) => played.current.add(row));
     if (import.meta.env.DEV && arrivals.some((row) => row.getAttribute("data-arrival") === "end")) probeMotion(scroller, column);
+    // a render with no new row leaves the snapshot to the observer and the scroll listener: reading the transcript's size
+    // here forced its whole style and layout on every render, four times over while a long chat opened; a chat's first
+    // render still takes one
+    if (arrivals.length === 0 && before?.key === transcriptKey) return;
     if (!before || before.key !== transcriptKey) {
       take(transcriptKey);
       return;

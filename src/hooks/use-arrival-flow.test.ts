@@ -184,17 +184,19 @@ describe("useArrivalFlow", () => {
     expect(moved(column)).toHaveLength(2);
   });
 
-  it("keeps the end pinned in the frame the composer changes height, with no glide", () => {
+  it("reads no layout on a render where no row arrives (the composer's own observer keeps the end pinned), and no glide", () => {
     draw(true, 0);
     addRow(900, "end");
     place(slot, 956, column);
     scrollHeight = 1056;
     draw(true, 1);
     const glides = moved(column).length;
-    // the composer's pad grows by 40px under a transcript resting at its end
+    let reads = 0;
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, get: () => { reads += 1; return scrollHeight; } });
     scrollHeight = 1096;
     draw(true, 2);
-    expect(scroller.scrollTop).toBe(scrollHeight - CLIENT);
+    draw(true, 3);
+    expect(reads, "each read forces the page's style and layout").toBe(0);
     expect(moved(column)).toHaveLength(glides);
   });
 
