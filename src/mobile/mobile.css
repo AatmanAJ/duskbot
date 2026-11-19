@@ -45,8 +45,11 @@
 }
 
 .dusk-mobile .mobile-page { box-shadow: -12px 0 32px rgb(10 10 12 / .10); }
-/* the list under an open chat is out of sight: its working dots and other loops hold still until it shows again */
-.dusk-mobile .mobile-nav > [inert] * { animation-play-state: paused !important; }
+/* the list under an open chat is out of sight: its working dots and other loops hold still until it shows again. Named
+   loops only: a rule on every element under it restyles the whole list each time a chat opens and closes */
+.dusk-mobile .mobile-nav > [inert] :is(.dusk-breathe, .dusk-zzz, .dusk-typing-dot, .working-mascot-bob, .working-mascot-glance, .working-mascot-blink, .maus-character, .maus-orbit, .maus-orbit-dot, .status-shimmer, .thinking-sheen > span) {
+  animation-play-state: paused !important;
+}
 
 .dusk-mobile :focus-visible {
   outline: none;
