@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mobileLinkUrl, pairingFromPayload, type MobileLinkPayload, type MobilePairingPayload, type MobileRedeemResponse } from "../../../shared/mobile-link";
 import type { MobilePlatform } from "../platform";
 import { connectToWorkspace, createConnectionStore, PlaceGoneError } from "./connections";
-import { PairError, parseTypedPairing, readScanned, redeemPairing, resolveTypedCode } from "./pair";
+import { LINK_DEADLINE_MS, linkDeadline, PairError, parseTypedPairing, readScanned, redeemPairing, resolveTypedCode } from "./pair";
 import { MOBILE_LINK_VERSION, universalPairLink, universalSignInLink } from "../../../shared/mobile-link";
 import * as relay from "../transport/relay";
 import { createRelaySecrets } from "../transport/link-crypto";
@@ -577,5 +577,23 @@ describe("the app's own scanner reads every qr the desktop, the site or an older
     expect(readScanned("https://dusk.bot/download")).toEqual({ kind: "store" });
     expect(readScanned("qwer-typl-kmnb")).toEqual({ kind: "code", code: "QWERTYPLKMNB" });
     for (const text of ["https://dusk.bot/m/pair?m=x", "https://evil.example/m/pair#m=x", "https://dusk.bot/pricing", "hello", ""]) expect(readScanned(text), text).toBeNull();
+  });
+});
+
+describe("a link attempt never spins forever", () => {
+  it("one the computer never answers ends at the deadline with can't reach, for Try again", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+      const attempt = redeemPairing(payload, fakePlatform().platform);
+      const outcome = expect(attempt).rejects.toMatchObject({ name: "PairError", code: "unreachable" });
+      await vi.advanceTimersByTimeAsync(LINK_DEADLINE_MS + 1);
+      await outcome;
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("the guard passes a result or a failure that comes in time through as it is", async () => {
+    await expect(linkDeadline(Promise.resolve("ok"), 50)).resolves.toBe("ok");
+    await expect(linkDeadline(Promise.reject(new PairError("used")), 50)).rejects.toMatchObject({ code: "used" });
   });
 });

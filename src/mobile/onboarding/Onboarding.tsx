@@ -10,7 +10,7 @@ import { universalSignInLink, type MobileConnectionRecord } from "../../../share
 import { haptic } from "../haptics";
 import { PixelArt, PixelMascot } from "../Illustration";
 import { usePlatform, type CameraPermission } from "../platform";
-import { PairError, readScanned, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
+import { LINK_DEADLINE_MS, linkDeadline, PairError, readScanned, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
 import { followSignInService } from "../account/environment";
 import { Scanner } from "./Scanner";
 import { CloudPicker } from "../account/CloudPicker";
@@ -141,7 +141,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
       }
       if (!payload) throw new PairError("invalid");
       const result = await redeemPairing(payload, platform);
-      await onLinked(result.record, result.token, result.record.label || installationName(payload));
+      await linkDeadline(Promise.resolve(onLinked(result.record, result.token, result.record.label || installationName(payload))), LINK_DEADLINE_MS + 5_000);
     } catch (error) {
       haptic("error");
       setFailure({ code: error instanceof PairError ? error.code : "unreachable", name: installationName(payload, t("mobile.connection.yourComputer")), companion: payload?.transport === "companion" });

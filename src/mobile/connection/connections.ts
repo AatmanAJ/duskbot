@@ -159,7 +159,8 @@ export function createConnectionStore(platform: MobilePlatform): ConnectionStore
           await platform.secrets.remove(`relay.${old.id}`);
           await platform.prefs.remove(`dusk.mobile.push.${old.id}`);
           await moveOutbox(platform, old.id, saved.id);
-          await forgetTranscriptShelf(old.id);
+          // IndexedDB can stall in WKWebView; the saved list never waits on it
+          void forgetTranscriptShelf(old.id).catch(() => {});
         }
       });
     },
@@ -180,7 +181,7 @@ export function createConnectionStore(platform: MobilePlatform): ConnectionStore
         await platform.secrets.remove(`relay.${id}`);
         await platform.prefs.remove(`dusk.mobile.push.${id}`);
         await platform.prefs.remove(outboxKey(id));
-        await forgetTranscriptShelf(id);
+        void forgetTranscriptShelf(id).catch(() => {});
         await write(records.filter((entry) => entry.id !== id));
       });
     },

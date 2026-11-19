@@ -16,7 +16,7 @@ import { Onboarding } from "../onboarding/Onboarding";
 import { SignInOffer } from "../account/SignInOffer";
 import { Success } from "../onboarding/Success";
 import { connectToWorkspace, createConnectionStore, PlaceGoneError } from "./connections";
-import { PairError, parseTypedPairing, type TypedPairing } from "./pair";
+import { LINK_DEADLINE_MS, linkDeadline, PairError, parseTypedPairing, type TypedPairing } from "./pair";
 import { ActiveConnection } from "./active";
 import { TranscriptShelfScope } from "@/state/transcript-scope";
 import { forgetTranscriptShelf } from "@/state/transcript-cache";
@@ -220,7 +220,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
     await store.save(record, token);
     let transport: Awaited<ReturnType<typeof connectToWorkspace>>;
     try {
-      transport = await connectToWorkspace(record, token, platform, new AbortController().signal);
+      transport = await linkDeadline(connectToWorkspace(record, token, platform, AbortSignal.timeout(LINK_DEADLINE_MS)));
     } catch (error) {
       if (!pairedButUnreachable(error)) { await store.remove(record.id); throw error; }
       // the pairing took: the computer already lists this phone, so the phone keeps the link and says it can't reach it
