@@ -905,7 +905,8 @@ function FileCard({ file, message, save, preview, retryable, className }: {
   const dot = file.name.lastIndexOf(".");
   const base = dot > 0 ? file.name.slice(0, dot) : file.name;
   const ext = dot > 0 ? file.name.slice(dot) : "";
-  const meta = save.state === "saving" ? t("attach.downloading") : save.state === "saved" ? t("attach.downloaded") : failed ? saveFailureText(save) : ext.slice(1).toUpperCase() || t("attach.file");
+  const kind = ext.slice(1).toUpperCase() || t("attach.file");
+  const meta = save.state === "saving" ? t("attach.downloading") : save.state === "saved" ? t("attach.downloaded") : failed ? saveFailureText(save) : file.bytes ? `${kind} · ${folderFileSize(file.bytes)}` : kind;
   return (
     <section data-file-card="" className={cn("chat-file-card relative flex h-[72px] w-[354px] max-w-full items-center gap-[14px] rounded-[22px] bg-composer ps-5 pe-5", className)}
       title={save.state === "saved" && save.savedTo ? t("attach.savedTo", { path: save.savedTo }) : file.name}>

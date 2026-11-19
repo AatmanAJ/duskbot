@@ -62,8 +62,8 @@ export const TEAM = [
     chat: [
       ["me", "send me the launch files", 50],
       ["Pip", "here they are: the report, the numbers and the landing page.", 49, { attachments: [
-        { kind: "file", path: "launch/report.pdf", mime: "application/pdf", name: "report.pdf" },
-        { kind: "file", path: "launch/numbers.csv", mime: "text/csv", name: "numbers.csv" },
+        { kind: "file", path: "launch/report.pdf", mime: "application/pdf", name: "report.pdf", bytes: 1_843_200 },
+        { kind: "file", path: "launch/numbers.csv", mime: "text/csv", name: "numbers.csv", bytes: 14_336 },
         { kind: "file", path: "launch/landing.html", mime: "text/html", name: "landing.html" },
         { kind: "file", path: "launch/notes.md", mime: "text/markdown", name: "notes.md" },
       ] }],
