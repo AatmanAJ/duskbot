@@ -6,7 +6,7 @@ import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
 import { upperFirst } from "@/lib/lower-first";
 import { THEME_SKINS } from "@/lib/skins";
-import type { MobileConnectionRecord } from "../../../shared/mobile-link";
+import { universalSignInLink, type MobileConnectionRecord } from "../../../shared/mobile-link";
 import { haptic } from "../haptics";
 import { PixelArt, PixelMascot } from "../Illustration";
 import { usePlatform, type CameraPermission } from "../platform";
@@ -19,7 +19,9 @@ import { useMobileAccount } from "../account/AccountGate";
 import { MascotTrio } from "./SkyScene";
 import { BackButton, ErrorLine, FIELD, HEADLINE, LINE, PRIMARY, QUIET, Screen, StepPane, TONAL } from "./parts";
 
-export type Step = "welcome" | "signin" | "clouds" | "confirm" | "permission" | "denied" | "scan" | "code" | "paste";
+export type Step = "welcome" | "signin" | "clouds" | "switch" | "confirm" | "permission" | "denied" | "scan" | "code" | "paste";
+/** a dusk cloud's QR or link: the account it logs in to, its code when it carries one, and the cloud it was drawn on */
+type CloudQr = { email: string; code?: string; cloud?: string };
 type Failure = { code: PairError["code"] | "account-offline"; name: string; companion: boolean };
 type PhoneCodeOutcome = Awaited<ReturnType<NonNullable<ReturnType<typeof useMobileAccount>>["signIn"]["phoneCode"]>>["outcome"];
 
@@ -70,7 +72,11 @@ function Failed({ failure, onSignIn }: { failure: Failure; onSignIn?: () => void
 /** First launch to linked. Pairing with your own computer needs no account (App Store guideline 5.1.1(v)): scan its QR
  * code first, or type its code. Signing in is only for a dusk cloud (the account finds it and pairs with it). The success moment and the hand-off
  * to Home belong to the connection gate. */
-export function Onboarding({ initial = null, reason = null, startAtLink = false, startAt = "welcome", email, signInCode, onLinked, onCancel }: {
+export function Onboarding({ initial = null, reason = null, startAtLink = false, startAt = "welcome", email, signInCode, signInCloud, onLinked, onOpen, onCancel }: {
+  /** the dusk cloud a QR or link was drawn on, opened once the phone is logged in */
+  signInCloud?: string;
+  /** a place this phone already links, to open instead of pairing it again */
+  onOpen?(id: string): void;
   /** where a sheet opened from inside the app starts */
   startAt?: "welcome" | "signin";
   /** a dusk cloud's qr named the account to sign in with */
@@ -98,6 +104,12 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   // a sign-in made here opens its only cloud at once; one the phone already held (the Keychain keeps it through a
   // delete and reinstall) lists the places to pick from
   const [justSignedIn, setJustSignedIn] = useState(false);
+  // a dusk cloud's QR or link logged in here: its cloud (or the account's only one) opens without a pick
+  const [qrTarget, setQrTarget] = useState<{ origin: string | null } | null>(null);
+  const [switchTo, setSwitchTo] = useState<CloudQr | null>(null);
+  // this screen signed an account out of the phone: the app under it may be on a place that is gone now
+  const left = useRef(false);
+  const leave = () => { if (left.current) window.location.reload(); else onCancel?.(); };
   const [signingOut, setSigningOut] = useState(false);
   const [withComputers, setWithComputers] = useState(false);
   const [value, setValue] = useState(() => signInCode ? formatCode(signInCode) : "");
@@ -123,22 +135,8 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
         const scanned = readScanned(text);
         if (scanned?.kind === "store") throw new PairError("store-qr");
         if (scanned?.kind === "signin" && followSignInService(text, scanned.service, account)) return;
-        const accountCode = scanned?.kind === "account" || scanned?.kind === "signin" ? scanned.code : undefined;
-        if (accountCode) {
-          if (!account) throw new PairError("sign-in");
-          const result = await account.signIn.phoneCode(accountCode);
-          if (result.outcome !== "signed-in") {
-            haptic("error");
-            setFailure({ code: phoneCodeFailure(result.outcome), name: t("mobile.connection.yourComputer"), companion: false });
-            if (from !== "code") { setStep("code"); setValue(formatCode(accountCode)); }
-            return;
-          }
-          haptic("success");
-          setJustSignedIn(true);
-          go("clouds");
-          return;
-        }
-        if (scanned?.kind === "signin") { await openSignInFor(scanned.email); return; }
+        if (scanned?.kind === "signin") { await fromQr(scanned, from); return; }
+        if (scanned?.kind === "account") { await codeSignIn(scanned.code, null, from); return; }
         payload = scanned?.kind === "code" ? await resolveTypedCode(scanned.code) : scanned?.kind === "pair" ? scanned.payload : null;
       }
       if (!payload) throw new PairError("invalid");
@@ -154,11 +152,59 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     }
   };
 
+  /** the 8 letters a desktop or dusk cloud showed: the phone logs in to their account and goes on to its cloud */
+  const codeSignIn = async (code: string, cloud: string | null, from: Step) => {
+    if (!account) throw new PairError("sign-in");
+    const result = await account.signIn.phoneCode(code);
+    if (result.outcome !== "signed-in") {
+      haptic("error");
+      setFailure({ code: phoneCodeFailure(result.outcome), name: t("mobile.connection.yourComputer"), companion: false });
+      if (from !== "code") { setStep("code"); setValue(formatCode(code)); }
+      return;
+    }
+    haptic("success");
+    setJustSignedIn(true);
+    setQrTarget({ origin: cloud });
+    setNoClouds(false);
+    go("clouds");
+  };
+  /** a dusk cloud's QR or link: a phone on another account asks before it switches; one on this account or none goes on */
+  const fromQr = async (qr: CloudQr, from: Step) => {
+    const current = account?.account?.email;
+    if (current && qr.email && current.toLowerCase() !== qr.email.toLowerCase()) { setSwitchTo(qr); go("switch"); return; }
+    if (qr.code) { await codeSignIn(qr.code, qr.cloud ?? null, from); return; }
+    if (current) { setQrTarget({ origin: qr.cloud ?? null }); setNoClouds(false); go("clouds"); return; }
+    setSignInEmail(qr.email);
+    setNoClouds(false);
+    go("signin");
+  };
+  const confirmSwitch = async () => {
+    const qr = switchTo;
+    if (!qr || !account || locked.current) return;
+    locked.current = true;
+    setBusy(true);
+    try {
+      await account.leaveAccount();
+      left.current = true;
+      setSwitchTo(null);
+      if (qr.code) { await codeSignIn(qr.code, qr.cloud ?? null, "switch"); return; }
+      setSignInEmail(qr.email);
+      setNoClouds(false);
+      go("signin");
+    } catch {
+      haptic("error");
+      setFailure({ code: "account-offline", name: t("mobile.connection.yourComputer"), companion: false });
+    } finally {
+      locked.current = false;
+      setBusy(false);
+    }
+  };
+
   const linkCode = useRef(signInCode);
   useEffect(() => {
     const code = linkCode.current;
     linkCode.current = undefined;
-    if (code) void redeem(code, "code");
+    if (code) void redeem(email ? universalSignInLink(email, code, null, signInCloud) : code, "code");
   }, []);
 
   const openScanner = async () => {
@@ -174,29 +220,23 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     if (state === "granted") await new Promise((resolve) => setTimeout(resolve, 450));
     go(state === "granted" ? "scan" : "denied");
   };
-  // the phone holds one account: another one is reached by leaving this one, with the email field empty
+  // the phone holds one account: another one is reached by leaving this one (its clouds with it), with the email field empty
   const otherAccount = async () => {
-    await account?.signOut();
+    await account?.leaveAccount();
+    left.current = true;
+    setQrTarget(null);
     setSignInEmail("");
     setNoClouds(false);
     go("signin");
   };
-  /** a dusk cloud's log in qr names its account: a phone signed in to another one logs in to that one, never back to its own clouds */
-  const openSignInFor = async (wanted: string) => {
-    const current = account?.account?.email;
-    if (current && wanted && current.toLowerCase() !== wanted.toLowerCase()) await account?.signOut();
-    else if (current) { setNoClouds(false); go("clouds"); return; }
-    setSignInEmail(wanted);
-    setNoClouds(false);
-    go("signin");
-  };
+
   const linkedEmail = useRef(startAt === "signin" && !signInCode ? email : undefined);
   const accountEmail = account?.account?.email;
   useEffect(() => {
     const wanted = linkedEmail.current;
     if (!wanted || !accountEmail) return;
     linkedEmail.current = undefined;
-    if (accountEmail.toLowerCase() !== wanted.toLowerCase()) void openSignInFor(wanted);
+    if (accountEmail.toLowerCase() !== wanted.toLowerCase()) void fromQr({ email: wanted, ...(signInCloud ? { cloud: signInCloud } : {}) }, "signin");
   }, [accountEmail]);
   const paste = async () => {
     const text = await platform.readClipboard?.();
@@ -210,21 +250,23 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     if (busy) return true;
     const canClose = Boolean(startAtLink && onCancel);
     switch (step) {
-      case "welcome": if (canClose) onCancel!(); return canClose;
-      case "clouds": if (canClose) onCancel!(); else go("welcome"); return true;
+      case "welcome": if (canClose) leave(); return canClose;
+      case "clouds": if (canClose) leave(); else go("welcome"); return true;
+      case "switch": setSwitchTo(null); if (canClose) leave(); else go(home); return true;
       case "signin": go("welcome"); return true;
       case "paste": go("code"); return true;
-      case "confirm": setConfirm(null); setFailure(null); if (canClose) onCancel!(); else go(home); return true;
+      case "confirm": setConfirm(null); setFailure(null); if (canClose) leave(); else go(home); return true;
       default: go(home); return true;
     }
   };
   const backListener = useRef(() => onBack.current());
   useEffect(() => platform.onBack?.(backListener.current), [platform]);
   const firstScreen = step === "welcome" && !busy && !(startAtLink && onCancel);
+  const canLeave = Boolean(startAtLink && onCancel);
   useEffect(() => platform.backAtRoot?.(backListener.current, firstScreen), [platform, firstScreen]);
 
   const back = (to: Step = home) => <BackButton onClick={() => go(to)} />;
-  const close = startAtLink && onCancel ? <BackButton close onClick={onCancel} /> : null;
+  const close = startAtLink && onCancel ? <BackButton close onClick={leave} /> : null;
   const download = (
     <p className="mt-5 text-[14px] leading-5 text-ink-secondary">
       {t("mobile.entry.noApp")}{" "}
@@ -270,7 +312,20 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
             </>}>
               <h1 className={HEADLINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneTitleStore" : "mobile.clouds.noneTitle" : withComputers ? "mobile.clouds.pickAnyTitle" : "mobile.clouds.pickTitle")}</h1>
               <p className={LINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneStore" : "mobile.clouds.none" : withComputers ? "mobile.clouds.pickAnyBody" : "mobile.clouds.pickBody", { email: account?.account?.email ?? "" })}</p>
-              <CloudPicker busy={busy} autoPick={!startAtLink && justSignedIn} onNone={() => setNoClouds(true)} onComputers={setWithComputers} onPairing={(payload) => redeem(payload, "clouds")} />
+              <CloudPicker busy={busy} autoPick={!startAtLink && justSignedIn} target={qrTarget} onOpen={onOpen} onNone={() => setNoClouds(true)} onComputers={setWithComputers} onPairing={(payload) => redeem(payload, "clouds")} />
+              {failure && <Failed failure={failure} />}
+            </Screen>
+          </StepPane>
+        )}
+
+        {step === "switch" && switchTo && (
+          <StepPane id="switch">
+            <Screen top={close ?? back()} art={<PixelArt name="key" size={84} />} actions={<>
+              <button type="button" data-entry="switch-account" disabled={busy} className={PRIMARY} onClick={() => void confirmSwitch()}>{busy ? <WorkingDots /> : t("mobile.clouds.switchAccount")}</button>
+              <button type="button" disabled={busy} className={QUIET} onClick={() => { setSwitchTo(null); if (canLeave) leave(); else go(home); }}>{t("mobile.pair.cancel")}</button>
+            </>}>
+              <h1 className={HEADLINE}>{t("mobile.clouds.switchTitle", { email: switchTo.email })}</h1>
+              <p className={LINE}>{t("mobile.clouds.switchBody", { current: account?.account?.email ?? "" })}</p>
               {failure && <Failed failure={failure} />}
             </Screen>
           </StepPane>
@@ -280,7 +335,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
           <StepPane id="confirm">
             <Screen art={<PixelArt name="computer" size={84} />} actions={<>
               <button type="button" disabled={busy} className={PRIMARY} onClick={() => void redeem(confirm, "confirm")}>{busy ? <WorkingDots /> : t("mobile.pair.link")}</button>
-              <button type="button" disabled={busy} className={QUIET} onClick={() => { setConfirm(null); setFailure(null); if (onCancel && startAtLink) onCancel(); else go(home); }}>{t("mobile.pair.cancel")}</button>
+              <button type="button" disabled={busy} className={QUIET} onClick={() => { setConfirm(null); setFailure(null); if (onCancel && startAtLink) leave(); else go(home); }}>{t("mobile.pair.cancel")}</button>
             </>}>
               <h1 className={HEADLINE}>{t("mobile.pair.confirm", { name: installationName(confirm) })}</h1>
               <p className={LINE}>{t("mobile.onboarding.confirmBody")}</p>

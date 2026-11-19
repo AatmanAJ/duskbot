@@ -376,16 +376,21 @@ export function universalPairLink(deepLink: string, code: string | null): string
 export type SignInService = "production" | "preview";
 const SIGN_IN_SERVICES: Record<string, SignInService> = { "https://dusk.bot": "production", "https://preview.dusk.bot": "preview" };
 
-export function universalSignInLink(email?: string | null, code?: string | null, serviceOrigin?: string | null): string {
+/** A dusk cloud's own address (`o=`): the cloud a QR drawn on it opens once the phone is logged in. */
+const CLOUD_ORIGIN = /^https:\/\/d[0-9a-f]{20}\.dusk\.bot$/;
+
+export function universalSignInLink(email?: string | null, code?: string | null, serviceOrigin?: string | null, cloudOrigin?: string | null): string {
   const value = email?.trim(), typed = code?.replace(/[^a-z]/gi, "").toUpperCase();
   const service = serviceOrigin ? SIGN_IN_SERVICES[serviceOrigin] : undefined;
-  const fields = [...(typed ? [`c=${typed}`] : []), ...(value ? [`email=${encodeURIComponent(value)}`] : []), ...(service ? [`s=${service}`] : [])];
+  const cloud = cloudOrigin && CLOUD_ORIGIN.test(cloudOrigin) ? cloudOrigin : undefined;
+  const fields = [...(typed ? [`c=${typed}`] : []), ...(value ? [`email=${encodeURIComponent(value)}`] : []), ...(service ? [`s=${service}`] : []),
+    ...(cloud ? [`o=${encodeURIComponent(cloud)}`] : [])];
   return `https://${UNIVERSAL_LINK_HOSTS[0]}/m/signin${fields.length ? `#${fields.join("&")}` : ""}`;
 }
 
 /** `duskbot://signin?c=...&email=...` (or the https link it stands for): the email to sign in with ("" when it names none)
  * and the phone sign-in code it carries, if any. */
-export function parseSignInLink(link: string): { email: string; code?: string; service?: SignInService } | null {
+export function parseSignInLink(link: string): { email: string; code?: string; service?: SignInService; cloud?: string } | null {
   const app = appLinkFromUniversal(link) ?? link.trim();
   let url: URL;
   try { url = new URL(app); } catch { return null; }
@@ -393,8 +398,9 @@ export function parseSignInLink(link: string): { email: string; code?: string; s
   const email = (url.searchParams.get("email") ?? "").trim();
   const code = (url.searchParams.get("c") ?? "").toUpperCase();
   const service = url.searchParams.get("s");
+  const cloud = url.searchParams.get("o") ?? "";
   return { email: email.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(email) ? email : "", ...(/^[A-Z]{8}$/.test(code) ? { code } : {}),
-    ...(service === "production" || service === "preview" ? { service } : {}) };
+    ...(service === "production" || service === "preview" ? { service } : {}), ...(CLOUD_ORIGIN.test(cloud) ? { cloud } : {}) };
 }
 
 /** `https://dusk.bot/m/open?...`, `https://dusk.bot/m/pair#...` and `https://dusk.bot/m/signin#...` as the `duskbot://`

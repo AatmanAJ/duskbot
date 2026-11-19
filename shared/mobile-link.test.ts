@@ -79,6 +79,14 @@ describe("mobile pairing link adapter", () => {
     expect(parseSignInLink("https://evil.example/m/signin#email=a@b.c")).toBeNull();
   });
 
+  it("a dusk cloud's qr names the cloud it was drawn on, and only a dusk cloud's own address", () => {
+    const cloud = "https://d0123456789abcdef0123.dusk.bot";
+    const link = universalSignInLink("a@b.test", "ABCD-EFGH", "https://dusk.bot", cloud);
+    expect(parseSignInLink(link)).toEqual({ email: "a@b.test", code: "ABCDEFGH", service: "production", cloud });
+    expect(universalSignInLink("a@b.test", null, null, "https://evil.example")).toBe("https://dusk.bot/m/signin#email=a%40b.test");
+    expect(parseSignInLink(`duskbot://signin?email=a@b.test&o=${encodeURIComponent("https://evil.example")}`)).toEqual({ email: "a@b.test" });
+  });
+
   it("a dusk cloud's qr with a desktop's code carries it beside the email, after the # where no server sees it", () => {
     const link = universalSignInLink("a@example.test", "ABCD-EFGH");
     expect(link).toBe("https://dusk.bot/m/signin#c=ABCDEFGH&email=a%40example.test");

@@ -41,13 +41,13 @@ export function isStoreLink(input: string): boolean {
 
 /** What a scanned qr is, whichever kind the desktop, the site or an older build drew: the https universal links and their
  * duskbot:// forms (a pairing, a dusk cloud log in), the old store qr, or a typed code. Null for anything else. */
-export type Scanned = { kind: "store" } | { kind: "signin"; email: string; code?: string; service?: SignInService } | { kind: "pair"; payload: TypedPairing } | TypedCode
+export type Scanned = { kind: "store" } | { kind: "signin"; email: string; code?: string; service?: SignInService; cloud?: string } | { kind: "pair"; payload: TypedPairing } | TypedCode
   /** a desktop's dusk cloud code (8 letters): it logs the phone in to the account */
   | { kind: "account"; code: string };
 export function readScanned(input: string): Scanned | null {
   if (isStoreLink(input)) return { kind: "store" };
   const signIn = parseSignInLink(input);
-  if (signIn) return { kind: "signin", email: signIn.email, ...(signIn.code ? { code: signIn.code } : {}), ...(signIn.service ? { service: signIn.service } : {}) };
+  if (signIn) return { kind: "signin", ...signIn };
   const account = cleanPhoneSignInCode(input);
   if (account) return { kind: "account", code: account };
   const parsed = parseTypedPairing(input);

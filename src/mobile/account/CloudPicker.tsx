@@ -39,6 +39,19 @@ export function autoPickCloud(clouds: readonly MobileCloud[], records: readonly 
   return ready.length === 1 && records.length === 0 ? ready[0]! : null;
 }
 
+/** The cloud a QR or link asked for: the one at its address, else the account's only cloud; a link the phone already
+ * keeps for it, or the cloud to pair. Null when it cannot tell which, so the person picks. */
+export function targetCloud(places: AccountPlaces, records: readonly MobileConnectionRecord[], origin: string | null):
+  MobileConnectionRecord | Extract<Target, { kind: "cloud" | "team" }> | null {
+  const all = [...places.clouds.map((cloud) => ({ kind: "cloud" as const, cloud })), ...places.teams.map((cloud) => ({ kind: "team" as const, cloud }))];
+  const candidates = origin ? all.filter((entry) => entry.cloud.origin === origin) : all.filter((entry) => entry.cloud.origin);
+  if (candidates.length !== 1) return null;
+  const one = candidates[0]!;
+  const kept = records.find((record) => linkedHere(one.cloud, [record]));
+  if (kept) return kept;
+  return pairable(one.cloud) ? one : null;
+}
+
 /** Everything the account has to open on this phone, in the order the picker lists it: its own clouds, its teams' clouds,
  * then its computers. */
 export function pickerRows(places: AccountPlaces, records: readonly Pick<MobileConnectionRecord, "origin" | "via" | "environmentId">[]): Array<{ target: Target; key: string; name: string; status: string; here: boolean; can: boolean }> {
@@ -55,8 +68,12 @@ export function pickerRows(places: AccountPlaces, records: readonly Pick<MobileC
 
 /** The signed-in account's clouds and computers: one tap pairs this phone with one, and with `autoPick` a single cloud
  * pairs on its own. */
-export function CloudPicker({ busy, onPairing, autoPick = false, onNone, onComputers }: {
+export function CloudPicker({ busy, onPairing, autoPick = false, target = null, onOpen, onNone, onComputers }: {
   busy: boolean;
+  /** a dusk cloud's QR or link logged in: its cloud (by address), else the account's only one, opens without a pick */
+  target?: { origin: string | null } | null;
+  /** a cloud this phone already links, opened as it is */
+  onOpen?(id: string): void;
   /** a cloud's pairing, or a computer's pairing link */
   onPairing(payload: TypedPairing | string): Promise<void>;
   autoPick?: boolean;
@@ -107,6 +124,13 @@ export function CloudPicker({ busy, onPairing, autoPick = false, onNone, onCompu
     if (!places || !loaded) return;
     onComputers?.(places.computers.length > 0);
     if (empty) { onNone?.(); return; }
+    const wanted = target && !picked.current ? targetCloud(places, connections, target.origin) : null;
+    if (wanted) {
+      picked.current = true;
+      if ("id" in wanted) onOpen?.(wanted.id);
+      else void pick(wanted, `${wanted.kind}:${wanted.cloud.id}`, wanted.cloud.name);
+      return;
+    }
     const only = autoPick && !picked.current ? autoPickCloud(places.clouds, connections) : null;
     if (only) { picked.current = true; void pick({ kind: "cloud", cloud: only }, `cloud:${only.id}`, only.name); }
   }, [places, loaded]); // eslint-disable-line react-hooks/exhaustive-deps

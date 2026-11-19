@@ -9716,5 +9716,8 @@
   "server.emailReview.title": "Send this email?",
   "mobile.settings.connectedTo": "Connected to {name}",
   "mobile.settings.cloudSignIn": "Sign in to dusk cloud",
-  "mobile.settings.cloudLinked": "dusk cloud"
+  "mobile.settings.cloudLinked": "dusk cloud",
+  "mobile.clouds.switchTitle": "Log in as {email}?",
+  "mobile.clouds.switchBody": "This phone is logged in as {current}. Switching signs that account out here first, with its dusk clouds.",
+  "mobile.clouds.switchAccount": "Switch account"
 }

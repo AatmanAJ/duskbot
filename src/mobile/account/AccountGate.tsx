@@ -19,6 +19,8 @@ type AccountContextValue = { account: MobileAccount | null; origin: string;
   signOut(): Promise<void>;
   /** Settings' Sign out: the account and its dusk clouds leave the phone, which opens again on what is left */
   signOutOfPhone(): Promise<void>;
+  /** the same, staying where it is: a sign-in screen moving to another account */
+  leaveAccount(): Promise<void>;
   /** deletes the account from the app; false when it could not be done (nothing changed) */
   deleteAccount(): Promise<boolean>; enrollGrant(): Promise<{ enrollToken: string; dashboardUrl: string } | null>;
   clouds(): Promise<MobileCloud[] | null>; pairCloud(cloud: MobileCloud): Promise<CloudPairResult>; wakeCloud(): Promise<boolean>;
@@ -149,6 +151,10 @@ export function AccountGate({ children }: { children: ReactNode }) {
     signOutOfPhone: async () => {
       await signOutPhone({ platform, signOutAccount: () => client.signOut() });
       window.location.reload();
+    },
+    leaveAccount: async () => {
+      setAccount(null); setProblem(undefined);
+      await signOutPhone({ platform, signOutAccount: () => client.signOut() });
     },
     deleteAccount: async () => {
       const outcome = await client.deleteAccount();
