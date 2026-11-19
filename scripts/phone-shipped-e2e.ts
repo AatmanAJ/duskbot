@@ -2,17 +2,20 @@
 // against this tree's desktop side: an isolated harness in desktop mode, the desktop's phone relay supervisor
 // (electron/phone-relay.mjs, with the link agent's hub), a link service and the companion sidecar's handler. Pairing by
 // QR and typed code, bots, a message and its streamed reply, then the relay down, a link node restart, a harness
-// restart, a dropped tunnel, a Wi-Fi-only phone and unpairing from either end, checking where each phone ends up.
+// restart, a dropped tunnel, a Wi-Fi-only phone and unpairing from either end, checking where each phone ends up. The
+// next phone build (this tree's src/mobile at HEAD) runs beside them, and every launch says how long its walk took: a
+// Wi-Fi address the computer no longer holds, the desktop app restarting and the relay coming back are timed too.
 //   node --experimental-strip-types scripts/phone-shipped-e2e.ts
 // It never touches the live relay or the person's app: everything listens on 127.0.0.1 and lives in temp folders.
 //   node --experimental-strip-types scripts/phone-shipped-e2e.ts --prod
 // runs the pairing, chat, hub-down fallback and removal through the production link node (https://link.dusk.bot) with a
 // test account on the preview account service (phone-e2e@qa.dusk.test: never mailed, its code read from the preview
 // test mailbox), and ends the tunnel it made.
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto";
 import { mkdirSync, mkdtempSync, openSync, closeSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+import { createServer as createTcpServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -151,13 +154,27 @@ function events(transport: PhoneTransport) {
 
 interface Phone { name: string; shipped: ShippedPhone; platform: FakePlatform; record: PhoneRecord; token: string }
 
+/** how long each phone's last walk took */
+const walked = new Map<string, number>();
+
 /** the gate's own decision on launch: a route, or "refused" (it unpairs itself), or "unreachable" (it keeps the link) */
 async function launch(phone: Phone): Promise<PhoneTransport | "refused" | "unreachable" | string> {
+  const started = Date.now();
   try {
     return await phone.shipped.connectToWorkspace(phone.record, phone.token, phone.platform, AbortSignal.timeout(90_000));
   } catch (error) {
     return error instanceof phone.shipped.PairError ? (error as { code: string }).code : `error ${(error as Error).message}`;
+  } finally {
+    walked.set(phone.name, Date.now() - started);
   }
+}
+
+/** a computer's old Wi-Fi address that a phone still has: something takes the connection there and never answers */
+async function silentAddress() {
+  const held = new Set<Socket>();
+  const server = createTcpServer((socket) => { held.add(socket); socket.on("error", () => {}); });
+  const port = await new Promise<number>((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as { port: number }).port)));
+  return { url: `http://127.0.0.1:${port}`, close: () => { for (const socket of held) socket.destroy(); return new Promise((resolve) => server.close(resolve)); } };
 }
 const routeOf = (outcome: Awaited<ReturnType<typeof launch>>) => (typeof outcome === "string" ? outcome : outcome.kind === "relay" ? "relay" : `bearer ${outcome.origin}`);
 const closeRoute = (outcome: Awaited<ReturnType<typeof launch>>) => { if (typeof outcome !== "string" && outcome.kind === "relay") outcome.channel.close(); };
@@ -182,8 +199,9 @@ async function main() {
   const scratch = mkdtempSync(join(tmpdir(), "phone-shipped-e2e-"));
   const cleanups: Array<() => unknown> = [() => rmSync(scratch, { recursive: true, force: true })];
   try {
-    const builds = { ios: await loadShippedPhone(ROOT, SHIPPED_PHONES.ios, join(scratch, "phones")), android: await loadShippedPhone(ROOT, SHIPPED_PHONES.android, join(scratch, "phones")) };
-    check("load the shipped phone code (iPhone 1.2 and Android 1.2.1)", true, `${SHIPPED_PHONES.ios}, ${SHIPPED_PHONES.android}`);
+    const head = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+    const builds = { ios: await loadShippedPhone(ROOT, SHIPPED_PHONES.ios, join(scratch, "phones")), android: await loadShippedPhone(ROOT, SHIPPED_PHONES.android, join(scratch, "phones")), next: await loadShippedPhone(ROOT, head, join(scratch, "phones")) };
+    check("load the shipped phone code (iPhone 1.2 and Android 1.2.1) and the next build's", true, `${SHIPPED_PHONES.ios}, ${SHIPPED_PHONES.android}, ${head}`);
 
     const desk = await harness();
     cleanups.push(() => desk.close());
@@ -214,12 +232,13 @@ async function main() {
     cleanups.push(() => shut(companionServer));
 
     const kept = new Map<string, unknown>();
-    const relay = createPhoneRelay({
+    const deskRelay = () => createPhoneRelay({
       base: link.base(), wanted: () => true, signedIn: () => true, linkGrant, label: () => "E2E Mac phones",
       store: { read: async (at: string) => structuredClone(kept.get(at) ?? null), write: async (at: string, value: unknown) => { kept.set(at, structuredClone(value)); } },
       loadHub: () => import("../apps/link-service/agent.mjs"), port: () => desk.port, ownerToken: () => OWNER, scope: () => "e2e",
       checkMs: 500, retryMs: [300, 1000], log: (line: string) => { if (process.env.E2E_VERBOSE) console.log(`  [desk] ${line}`); },
     });
+    let relay = deskRelay();
     relay.start();
     cleanups.push(() => relay.stop());
     const tunnel = () => (kept.get("e2e") as { tunnel?: { id: string; token: string; base: string } } | undefined)?.tunnel ?? null;
@@ -234,14 +253,14 @@ async function main() {
       check(`the production tunnel ${made.id} is ended`, ended === 200 && after === 404, `DELETE ${ended}, then ${after}`);
     });
 
-    const pair = async (name: string, kind: "ios" | "android", how: "qr" | "code", expect: "relay" | "companion"): Promise<Phone | null> => {
+    const pair = async (name: string, kind: "ios" | "android", how: "qr" | "code", expect: "relay" | "companion", build: "shipped" | "next" = "shipped"): Promise<Phone | null> => {
       if (expect === "relay") await relay.ready(15_000);
       const offer = await owner(desk.url, "POST", "/api/mobile/pairing", { companion: [{ url: companion, kind: "lan", priority: 0 }] });
       const body = offer.body as MobilePairingResponse;
       const kinds = offer.status === 200 ? body.payload.via.map((one) => one.kind).join(",") : `${offer.status} ${JSON.stringify(offer.body)}`;
       check(`${name}: the desktop's code carries ${expect === "relay" ? "relay first, then Wi-Fi" : "Wi-Fi only"}`, offer.status === 200 && kinds === (expect === "relay" ? "relay,companion" : "companion"), kinds);
       if (offer.status !== 200) return null;
-      const shipped = builds[kind], platform = fakePlatform(kind, name);
+      const shipped = build === "next" ? builds.next : builds[kind], platform = fakePlatform(kind, name);
       let payload: unknown;
       if (how === "qr") payload = shipped.readScanned(universalPairLink(body.link, body.code))?.payload;
       else payload = await shipped.resolveTypedCode(body.code!, link.base()).catch((error: Error) => { check(`${name}: typed code resolves`, false, error.message); return null; });
@@ -249,12 +268,14 @@ async function main() {
       const paired = await shipped.redeemPairing(payload, platform).catch((error: Error & { code?: string }) => { check(`${name}: pairs`, false, error.code ?? error.message); return null; });
       if (!paired) return null;
       await shipped.createConnectionStore(platform).save(paired.record, paired.token);
-      check(`${name}: pairs by ${how} over ${paired.record.transport}`, paired.record.transport === expect && (expect !== "relay" || Boolean(paired.record.relay?.agentPub)), `${paired.record.transport}, device ${paired.record.deviceId}`);
+      // the next build pairs over the Wi-Fi address when it answers first, and still takes its relay channel
+      const over = build === "next" && expect === "relay" ? ["relay", "companion"].includes(paired.record.transport) : paired.record.transport === expect;
+      check(`${name}: pairs by ${how} over ${paired.record.transport}`, over && (expect !== "relay" || Boolean(paired.record.relay?.agentPub)), `${paired.record.transport}, device ${paired.record.deviceId}`);
       return { name, shipped, platform, record: paired.record, token: paired.token };
     };
     const expectRoute = async (phone: Phone, label: string, want: (route: string) => boolean, chatWith = false) => {
       const outcome = await launch(phone);
-      const ok = check(`${phone.name}: ${label}`, want(routeOf(outcome)), routeOf(outcome));
+      const ok = check(`${phone.name}: ${label}`, want(routeOf(outcome)), `${routeOf(outcome)} in ${walked.get(phone.name)}ms`);
       if (ok && chatWith && typeof outcome !== "string") await chat(phone.name, outcome, botId);
       closeRoute(outcome);
       return outcome;
@@ -262,6 +283,7 @@ async function main() {
     const onRelay = (route: string) => route === "relay";
     const onCompanion = (route: string) => route === `bearer ${companion}`;
     const notUnpaired = (route: string) => route !== "refused";
+    const connected = (route: string) => onRelay(route) || onCompanion(route);
 
     // first pairs, both builds, two phones on one computer
     const iphone = await pair("iPhone 1.2", "ios", "qr", "relay");
@@ -271,6 +293,9 @@ async function main() {
     await expectRoute(android, "opens on the relay and chats", onRelay, true);
     const devices = await owner(desk.url, "GET", "/api/mobile/devices");
     check("the desktop lists both phones, each on the relay", devices.body?.devices?.filter((device: { relay: boolean }) => device.relay).length === 2, `${devices.body?.devices?.length}`);
+    // the next build: Wi-Fi first where it answers, the relay raced right behind
+    const nextPhone = PROD ? null : await pair("iPhone next", "ios", "qr", "relay", "next");
+    if (nextPhone) await expectRoute(nextPhone, "opens and chats", connected, true);
 
     if (PROD) {
       // the computer's hub down (the app quit or asleep) while link.dusk.bot stays up: the phones' frames wait unread
@@ -289,11 +314,30 @@ async function main() {
       return;
     }
 
+    // the Mac's Wi-Fi address changed: each phone still holds the old one, which takes the connection and never answers
+    const old = await silentAddress();
+    cleanups.push(() => old.close());
+    const withOldAddress = (phone: Phone): Phone => ({ ...phone, record: { ...phone.record, via: (phone.record.via ?? []).flatMap((route) => route.kind === "companion" ? [{ ...route, url: old.url }, route] : [route]) } });
+    for (const phone of [iphone, android, ...(nextPhone ? [nextPhone] : [])]) await expectRoute(withOldAddress(phone), "the Mac's old Wi-Fi address goes silent: still opens at once", connected);
+
+    // the desktop app restarts (an update): the same tunnel and keys come back and so do the phones
+    const before = tunnel()?.id;
+    relay.stop();
+    relay = deskRelay();
+    relay.start();
+    check("the desktop app starts again on the same tunnel", (await relay.ready(15_000)).status === "ready" && tunnel()?.id === before, `${tunnel()?.id}`);
+    await expectRoute(iphone, "back on the relay after the desktop app restarts", onRelay);
+    await expectRoute(android, "back on the relay after the desktop app restarts", onRelay, true);
+
     // the relay down: the shipped apps walk on to the computer's Wi-Fi address, which never saw these sessions
     await link.stop();
     await expectRoute(iphone, "relay down: falls back to Wi-Fi and is not unpaired", onCompanion, true);
     await expectRoute(android, "relay down: falls back to Wi-Fi and is not unpaired", onCompanion);
     check("the companion now knows both relay-paired phones", mobile.has(iphone.token) && mobile.has(android.token));
+    if (nextPhone) await expectRoute(nextPhone, "relay down: on Wi-Fi", onCompanion, true);
+    // relay down and the old Wi-Fi address first: the shipped builds wait out the silent one, the next build does not
+    await expectRoute(withOldAddress(iphone), "relay down, old Wi-Fi address first: reaches the new one", onCompanion);
+    if (nextPhone) await expectRoute(withOldAddress(nextPhone), "relay down, old Wi-Fi address first: reaches the new one", onCompanion);
 
     // a phone pairing while the relay is down gets the Wi-Fi route alone
     const wifiOnly = await pair("Android 1.2.1 (Wi-Fi only)", "android", "qr", "companion");
@@ -301,17 +345,19 @@ async function main() {
     // the link node restarts on its saved state
     await link.start();
     const back = await until(async () => (await launch(iphone).then((outcome) => { const route = routeOf(outcome); closeRoute(outcome); return route === "relay"; })), 60_000);
-    check("iPhone 1.2: back on the relay after the link node restarts", Boolean(back));
+    check("iPhone 1.2: back on the relay after the link node restarts", Boolean(back), `${walked.get("iPhone 1.2")}ms for the last walk`);
     await expectRoute(android, "back on the relay after the link node restarts", onRelay);
 
     // the harness restarts: unreachable meanwhile, never unpaired, and the same session works after
     await desk.stop();
     await expectRoute(iphone, "harness down: unreachable, still paired", (route) => route === "unreachable");
+    if (nextPhone) await expectRoute(nextPhone, "harness down: unreachable, still paired", (route) => route === "unreachable");
     await expectRoute(android, "harness down: unreachable, still paired", (route) => route === "unreachable");
     check("the harness starts again on the same workspace", await desk.start());
     const afterRestart = await until(async () => (await launch(iphone).then((outcome) => { const route = routeOf(outcome); closeRoute(outcome); return route === "relay"; })), 60_000);
     check("iPhone 1.2: back on the relay with its same session after the harness restart", Boolean(afterRestart));
     await expectRoute(android, "back after the harness restart, and chats", onRelay, true);
+    if (nextPhone) await expectRoute(nextPhone, "back after the harness restart, and chats", connected, true);
 
     // the tunnel dropped by the link service (the sweep of a computer that was off): Wi-Fi meanwhile, then the same
     // phones on a new tunnel with the same channels and keys
@@ -330,6 +376,11 @@ async function main() {
       const removed = await owner(desk.url, "DELETE", `/api/mobile/devices/${wifiOnly.record.deviceId}`);
       check("the desktop removes the Wi-Fi-only phone", removed.status === 200, `${removed.status}`);
       await expectRoute(wifiOnly, "removed on the desktop: unpairs over Wi-Fi", (route) => route === "refused");
+    }
+    if (nextPhone) {
+      const gone = await owner(desk.url, "DELETE", `/api/mobile/devices/${nextPhone.record.deviceId}`);
+      check("the desktop removes the next build's iPhone", gone.status === 200, `${gone.status}`);
+      await expectRoute(nextPhone, "removed on the desktop: unpairs", (route) => route === "refused");
     }
     const removed = await owner(desk.url, "DELETE", `/api/mobile/devices/${iphone.record.deviceId}`);
     check("the desktop removes the iPhone", removed.status === 200, `${removed.status}`);
