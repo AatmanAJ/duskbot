@@ -24,6 +24,7 @@ import { visibleNotificationThread } from "@/state/thread-navigation";
 import { supportMail } from "./legal";
 import { NavStack } from "./NavStack";
 import { ChatScreen } from "./ChatScreen";
+import { readOpenChat, rememberOpenChat, rereadDue, restoredChat } from "./open-chat-restore";
 import { HomeScreen, releasePressed } from "./HomeScreen";
 import { panelOpenAction, SheetHost } from "./SheetHost";
 import { closeTopSheet, Sheet } from "./Sheet";
@@ -44,7 +45,6 @@ import { PanelDetailsTab } from "@/components/bot-panel/PanelShell";
 import { loadLimits } from "@/lib/limit-resets";
 
 const SHEET_WARM_MS = 600;
-const OPEN_CHAT_KEY = "dusk.mobile.openChat";
 /** While the live stream is down the open chat is read again this often, so a reply still shows without a reopen. */
 export const STREAM_DOWN_READ_MS = 4000;
 
@@ -52,11 +52,9 @@ function Shell() {
   const platform = usePlatform();
   const { state, dispatch } = useStore();
   const rootRef = useRef<HTMLDivElement>(null);
-  // a reload (the system reclaiming a backgrounded web view, a live update) comes back to the chat that was open
-  const [chatId, setChatId] = useState<string | null>(() => { try { return sessionStorage.getItem(OPEN_CHAT_KEY); } catch { return null; } });
-  useEffect(() => {
-    try { if (chatId) sessionStorage.setItem(OPEN_CHAT_KEY, chatId); else sessionStorage.removeItem(OPEN_CHAT_KEY); } catch { /* storage off */ }
-  }, [chatId]);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const restoring = useRef(readOpenChat());
+  useEffect(() => { if (!restoring.current) rememberOpenChat(chatId); }, [chatId]);
   const [sheet, setSheet] = useState<MobileSheet | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   useProductScreen(sheetOpen && sheet ? `/${sheet.kind}` : chatId ? "/chats/:id" : "/", chatId);
@@ -110,6 +108,17 @@ function Shell() {
     else dispatch({ type: "select", id });
     setChatId(id);
   }, [dispatch]);
+
+  // a reload comes back to the chat that was open, opened as a tap would once the snapshot shows it is still here
+  useEffect(() => {
+    const id = restoring.current;
+    if (!id) return;
+    const restored = restoredChat(id, latest.current);
+    if (restored === "wait") return;
+    restoring.current = null;
+    if (restored && shownChat.current === null) openChat(restored);
+    else rememberOpenChat(shownChat.current);
+  }, [state.hydrated, state.bots, state.groups, openChat]);
 
   const openSheet = useCallback((next: MobileSheet) => {
     const panel = panelOpenAction(next);
@@ -175,7 +184,7 @@ function Shell() {
   const streamDown = state.hydrated === true && state.connected === false;
   useEffect(() => {
     if (!chatId || !streamDown) return;
-    const read = setInterval(() => { if (!document.hidden) rereadWithoutStream(); }, STREAM_DOWN_READ_MS);
+    const read = setInterval(() => { if (rereadDue(latest.current, document.hidden)) rereadWithoutStream(); }, STREAM_DOWN_READ_MS);
     return () => clearInterval(read);
   }, [chatId, streamDown]);
 

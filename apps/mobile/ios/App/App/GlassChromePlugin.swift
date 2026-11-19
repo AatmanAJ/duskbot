@@ -29,8 +29,16 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
     /// glass views to be made.
     @objc func supported(_ call: CAPPluginCall) {
         if #available(iOS 26.0, *) {
-            // a page that asks has just loaded: its text sequence starts again from 1
-            withChrome { $0.resetText() }
+            // a page that asks has just loaded, maybe in place of one the system reclaimed with a chat open: the chrome
+            // outlives the page, so nothing that page showed (header, composer, Home's bar, focus, text) stays up
+            withChrome { chrome in
+                chrome.blur()
+                chrome.stopSlide()
+                chrome.apply([:])
+                chrome.pageGone()
+                chrome.applyHome(nil)
+                chrome.resetText()
+            }
             call.resolve(["supported": true])
         } else {
             call.resolve(["supported": false])
