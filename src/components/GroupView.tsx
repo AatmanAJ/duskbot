@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence } from "motion/react";
 import { usePhoneLayout } from "@/lib/use-media-query";
+import { waitsForNetwork } from "@/state/network-wait";
+import { useOffline } from "@/mobile/network";
 import { splitReplyBlocks } from "@/lib/formatted-reply";
 import { activeLocale, t } from "@/lib/i18n";
 import { useReactor } from "@/lib/cloud-guest";
@@ -907,6 +909,7 @@ export function GroupView({ group: room }: { group: Group }) {
     };
   }, [group.messages, threadWorking, group.name, speaker?.name]);
   const presenceSpeaker = speaker ?? awaited ?? members[0];
+  const networkWait = waitsForNetwork(group.messages, useOffline());
   // a member's wait for its first reply is no phrase for the line: the line already says it is at work
   const lastForLine = useMemo(() => group.messages.findLast((m) => !m.tool?.rescue), [group.messages]);
   const now = useTurnNow(
@@ -1117,6 +1120,7 @@ export function GroupView({ group: room }: { group: Group }) {
             speaker={{ bot: presenceSpeaker, visible: presenceVisible, markState: statusMarkState, phrases: now.phrases, phase: now.phase, since: speaker ? group.turnStartedAt ?? null : null }}
             slot={statusSlot}
             landed={Boolean(landed.reply)}
+            networkWait={networkWait}
           />
           <TranscriptCardSlot key={`card:${group.threadId}`}>{Boolean(trailing?.failures.length || trailing?.notices.length || setupPending || group.dm) && <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />}</TranscriptCardSlot>
         </div>
