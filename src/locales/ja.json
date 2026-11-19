@@ -6334,5 +6334,7 @@
   "server.freeModel.emptyNext": "無料のバックアップモデルが空の応答を返したため、別の無料モデルが代わりに応答しています。",
   "server.freeModel.limit": "無料のバックアップモデルは、現在、無料の応答回数の上限に達したため、このメッセージには応答がありませんでした。ClaudeやChatGPTなど、ご自身のAIを接続して続けるか、しばらくしてからもう一度送信してください。",
   "server.freeModel.noReply": "現在、応答できる無料のバックアップモデルがなかったため、このメッセージには応答がありませんでした。1分ほどしてからもう一度送信するか、ClaudeやChatGPTなど、ご自身のAIを接続すると、安定して応答を受け取れます。",
-  "settings.simple.language.partial": "今のところ、アプリの一部だけが翻訳されています。"
+  "settings.simple.language.partial": "今のところ、アプリの一部だけが翻訳されています。",
+  "botPanel.closePanel": "パネルを閉じる",
+  "chat.setupCard.close": "質問を閉じる"
 }

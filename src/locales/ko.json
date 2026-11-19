@@ -5701,6 +5701,7 @@
   "botLimit.bodyElsewhere": "더 만들려면 요금제 페이지에서 이 Cloud를 업그레이드하세요. 지금 있는 봇은 모두 그대로 남아요.",
   "botLimit.openPlan": "요금제 페이지 열기",
   "chat.setupCard.title": "무엇부터 도와드릴까요?",
+  "chat.setupCard.close": "질문 닫기",
   "chat.setupCard.other": "다른 것",
   "chat.setupCard.answer": "내 답변",
   "chat.setupCard.research": "리서치와 주제 깊이 파고들기",
@@ -6716,5 +6717,6 @@
   "server.freeModel.tryingNext": "아직 처리 중입니다. 다른 무료 모델이 이어받아 답변을 드립니다.",
   "server.freeModel.emptyNext": "무료 백업 모델이 빈 응답을 반환하여 다른 무료 모델이 대신 답변하고 있습니다.",
   "server.freeModel.limit": "무료 백업 모델의 무료 답변을 모두 사용하여 이 메시지에는 답변하지 못했습니다. 계속하려면 Claude나 ChatGPT 같은 사용자의 AI를 연결하거나, 나중에 다시 보내 주세요.",
-  "server.freeModel.noReply": "방금은 응답한 무료 백업 모델이 없어 이 메시지에는 답변하지 못했습니다. 1분 후에 다시 보내 주시거나, Claude나 ChatGPT 같은 사용자의 AI를 연결하여 안정적인 답변을 받아 보세요."
+  "server.freeModel.noReply": "방금은 응답한 무료 백업 모델이 없어 이 메시지에는 답변하지 못했습니다. 1분 후에 다시 보내 주시거나, Claude나 ChatGPT 같은 사용자의 AI를 연결하여 안정적인 답변을 받아 보세요.",
+  "botPanel.closePanel": "패널 닫기"
 }

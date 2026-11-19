@@ -5178,6 +5178,7 @@
   "voice.libraryHint": "Ao escolher uma, ela é adicionada às suas vozes.",
   "voice.adding": "Adicionando…",
   "chat.setupCard.title": "Com o que eu te ajudo primeiro?",
+  "chat.setupCard.close": "Fechar pergunta",
   "chat.setupCard.other": "Outra coisa",
   "chat.setupCard.answer": "Sua resposta",
   "chat.setupCard.research": "Pesquisar e aprofundar temas",
@@ -6183,5 +6184,6 @@
   "server.freeModel.emptyNext": "O modelo reserva gratuito respondeu sem conteúdo, então outro modelo gratuito está respondendo no lugar.",
   "server.freeModel.limit": "O modelo reserva gratuito esgotou as respostas gratuitas por enquanto, e por isso esta mensagem ficou sem resposta. Conecte sua própria AI, como Claude ou ChatGPT, para continuar, ou envie a mensagem novamente mais tarde.",
   "server.freeModel.noReply": "Nenhum modelo reserva gratuito respondeu agora, e por isso esta mensagem ficou sem resposta. Envie-a novamente em um minuto ou conecte sua própria AI, como Claude ou ChatGPT, para ter respostas confiáveis.",
-  "settings.simple.language.partial": "Por enquanto, só parte do app está traduzida."
+  "settings.simple.language.partial": "Por enquanto, só parte do app está traduzida.",
+  "botPanel.closePanel": "Fechar painel"
 }

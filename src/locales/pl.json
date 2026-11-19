@@ -6308,5 +6308,7 @@
   "server.freeModel.emptyNext": "Bezpłatny model zapasowy zwrócił pustą odpowiedź, więc odpowiada inny bezpłatny model.",
   "server.freeModel.limit": "Bezpłatny model zapasowy wykorzystał na razie limit bezpłatnych odpowiedzi, dlatego ta wiadomość nie otrzymała odpowiedzi. Połącz własne AI, np. Claude lub ChatGPT, aby kontynuować, lub wyślij wiadomość ponownie później.",
   "server.freeModel.noReply": "Żaden bezpłatny model zapasowy nie odpowiedział, dlatego ta wiadomość nie otrzymała odpowiedzi. Wyślij ją ponownie za minutę lub połącz własne AI, np. Claude lub ChatGPT, aby mieć pewność odpowiedzi.",
-  "settings.simple.language.partial": "Na razie przetłumaczona jest tylko część aplikacji."
+  "settings.simple.language.partial": "Na razie przetłumaczona jest tylko część aplikacji.",
+  "botPanel.closePanel": "Zamknij panel",
+  "chat.setupCard.close": "Zamknij pytanie"
 }

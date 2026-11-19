@@ -4871,5 +4871,7 @@
   "server.freeModel.emptyNext": "免費備援模型的回覆內容為空,因此改由另一個免費模型來回覆。",
   "server.freeModel.limit": "免費備援模型目前的免費回覆額度已用完,因此這則訊息未獲得回覆。請連接您自己的 AI,例如 Claude 或 ChatGPT 以繼續使用,或稍後再重新傳送。",
   "server.freeModel.noReply": "剛才沒有任何免費備援模型回覆,因此這則訊息未獲得回覆。請於一分鐘後重新傳送,或連接您自己的 AI,例如 Claude 或 ChatGPT,以獲得穩定可靠的回覆。",
-  "settings.simple.language.partial": "目前只有部分介面已翻譯。"
+  "settings.simple.language.partial": "目前只有部分介面已翻譯。",
+  "botPanel.closePanel": "關閉面板",
+  "chat.setupCard.close": "關閉問題"
 }

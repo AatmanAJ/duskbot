@@ -5870,6 +5870,7 @@
   "roomCard.current": "此 Cloud 已是新容量。",
   "roomCard.restartFailed": "现在无法重启。它会在下次空闲时获得新容量。",
   "chat.setupCard.title": "你先想让我帮你做什么？",
+  "chat.setupCard.close": "关闭问题",
   "chat.setupCard.other": "其他事情",
   "chat.setupCard.answer": "你的回答",
   "chat.setupCard.research": "调研和深挖各种主题",
@@ -6880,5 +6881,6 @@
   "server.freeModel.tryingNext": "仍在处理中：由另一个免费模型接手，确保你能收到回复。",
   "server.freeModel.emptyNext": "免费备用模型返回了空内容,现由另一个免费模型接替回复。",
   "server.freeModel.limit": "免费备用模型的免费回复次数暂时已用完,因此这条消息没有得到回复。请连接你自己的 AI(例如 Claude 或 ChatGPT)以继续使用,或稍后重新发送。",
-  "server.freeModel.noReply": "刚才没有任何免费备用模型作出回复,因此这条消息没有得到回复。请一分钟后重新发送,或连接你自己的 AI(例如 Claude 或 ChatGPT),以获得稳定可靠的回复。"
+  "server.freeModel.noReply": "刚才没有任何免费备用模型作出回复,因此这条消息没有得到回复。请一分钟后重新发送,或连接你自己的 AI(例如 Claude 或 ChatGPT),以获得稳定可靠的回复。",
+  "botPanel.closePanel": "关闭面板"
 }
