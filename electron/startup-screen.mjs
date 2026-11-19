@@ -98,17 +98,20 @@ export function progressAt(t, expectedMs) {
   return 90 + 9 * (1 - Math.exp(-(t - expectedMs) / (expectedMs * 1.5)));
 }
 
+export const STARTUP_TRY_AGAIN = "Something got in the way. Try again: it starts fresh.";
+const PLAIN_STARTUP = /^[A-Z][^\n/\\{}[\]]{8,160}[.!]$/;
+
+/** What the startup card says went wrong: a plain sentence of ours as it is, else one line that says what to do (the
+ * error itself is in the log). */
+export function startupFailureWords(error) {
+  const text = String(error?.message ?? error ?? "").trim();
+  return PLAIN_STARTUP.test(text) && !/\b[A-Z]{4,}\b|Error\b|\bcode\b/.test(text) ? text : STARTUP_TRY_AGAIN;
+}
+
 /**
  * Light or dark for the card. `saved` is the last skin the app wore and whether the system was dark then:
  * a skin that matched the system then follows the system now, one that went against it was picked on purpose.
  */
-const HOME_FOLDER = /(?:\/Users\/|\/home\/)[^/\s"'`]+(?=\/)|[A-Za-z]:\\Users\\[^\\\s"'`]+(?=\\)/g;
-
-/** What the startup card says went wrong: the real error's first line, its home folder written as ~. */
-export function startupFailureWords(error) {
-  return String(error?.message ?? error ?? "").split("\n")[0].replace(HOME_FOLDER, "~").trim().slice(0, 200);
-}
-
 export function startupDark({ systemDark, saved }) {
   if (!saved || typeof saved.light !== "boolean" || typeof saved.systemDark !== "boolean") return systemDark;
   return saved.light === saved.systemDark ? !saved.light : systemDark;

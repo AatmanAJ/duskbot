@@ -17,23 +17,23 @@ function fakeWindow() {
 test("a page that fails to load tries once more by itself, then shows what to press", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const win = fakeWindow();
-  loadWithOneRetry(win, "http://127.0.0.1:7000/viewer", (why, url) => `data:failed,${why},${url}`);
+  loadWithOneRetry(win, "http://127.0.0.1:7000/viewer", (url) => `data:failed,${url}`);
   assert.deepEqual(win.loads, ["http://127.0.0.1:7000/viewer"]);
   win.fail("http://127.0.0.1:7000/viewer");
   assert.equal(win.loads.length, 1, "no failure page on the first miss");
   t.mock.timers.tick(2000);
   assert.deepEqual(win.loads, ["http://127.0.0.1:7000/viewer", "http://127.0.0.1:7000/viewer"]);
   win.fail("http://127.0.0.1:7000/viewer");
-  assert.equal(win.loads.at(-1), "data:failed,ERR_CONNECTION_REFUSED,http://127.0.0.1:7000/viewer");
+  assert.equal(win.loads.at(-1), "data:failed,http://127.0.0.1:7000/viewer");
 });
 
-test("a server that can't come back says so, where its log is, and offers Restart dusk bot", async () => {
+test("a server that can't come back says so in one sentence and offers Restart dusk bot", async () => {
   const calls = [];
   const app = { relaunch: () => calls.push("relaunch"), quit: () => calls.push("quit") };
   let shown;
-  await offerRestart({ dialog: { showMessageBox: async (options) => { shown = options; return { response: 0 }; } }, app, logFile: "/Users/sam/Library/Logs/dusk bot/server.log", home: "/Users/sam" });
+  await offerRestart({ dialog: { showMessageBox: async (options) => { shown = options; return { response: 0 }; } }, app });
   assert.equal(shown.buttons[0], "Restart dusk bot");
   assert.equal(shown.message, "The bot server stopped");
-  assert.match(shown.detail, /Server log: ~\/Library\/Logs\/dusk bot\/server\.log$/);
+  assert.equal(shown.detail, "Restart dusk bot to bring it back.");
   assert.deepEqual(calls, ["relaunch", "quit"]);
 });
