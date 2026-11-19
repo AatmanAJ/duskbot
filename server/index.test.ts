@@ -3140,8 +3140,8 @@ describe("harness HTTP API", () => {
       writeFileSync(fakeSharedVpsFixture, JSON.stringify({ failure: true }));
       const failed = await api("POST", "/api/team-computers", { requestId, name: "Build machine", acknowledgeCost: true });
       expect(failed.status).toBeGreaterThanOrEqual(400);
-      expect(failed.body.error).toMatch(/fixture refused VPS inspection/);
-      expect(await record()).toMatchObject({ id: requestId, name: "Build machine", section: null, problem: expect.stringMatching(/fixture refused VPS inspection/) });
+      expect(failed.body.error).toMatch(/Docker can.t be reached/);
+      expect(await record()).toMatchObject({ id: requestId, name: "Build machine", section: null, problem: expect.stringMatching(/Docker can.t be reached/) });
       const persisted = JSON.parse(readFileSync(join(home, ".duskbot", "team-computers.json"), "utf8"));
       expect(persisted.computers).toContainEqual(expect.objectContaining({ id: requestId, name: "Build machine", section: null }));
       expect((await api("POST", "/api/team-computers", { requestId, name: "Different machine", acknowledgeCost: true })).status).toBe(409);
@@ -5437,6 +5437,8 @@ describe("harness HTTP API", () => {
       const bot = (await api("POST", "/api/bots")).body.bot;
       botId = bot.id;
       expect((await api("PATCH", `/api/bots/${bot.id}`, { computer: "cloud" })).status).toBe(200);
+      // a bot's own computer that can't be prepared is worked around; the person's own pin to it is what stops the turn
+      expect((await api("PATCH", `/api/bots/${bot.id}/tasks/${bot.threadId}`, { surface: "cloud" })).status).toBe(200);
       stream = await openSse(`${BASE}/api/events`);
       await stream.until((frame) => frame.kind === "hello");
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "go" })).status).toBe(202);
@@ -5563,8 +5565,9 @@ describe("harness HTTP API", () => {
         messageId,
       })).status).toBe(200);
 
-      // The bot now works on a cloud computer with no Box account connected, so the execution cannot start.
+      // The person pins this chat to a cloud computer with no VPS connected, so the execution cannot start.
       expect((await api("PATCH", `/api/bots/${bot.id}`, { computer: "cloud" })).status).toBe(200);
+      expect((await api("PATCH", `/api/bots/${bot.id}/tasks/${bot.threadId}`, { surface: "cloud" })).status).toBe(200);
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/secret-cards/${messageId}/dismiss`, {
         threadId: bot.threadId,
@@ -6334,7 +6337,8 @@ describe("harness HTTP API", () => {
       expect((await api("PUT", "/api/config", { vps: { sshAlias: "" } })).status).toBe(200);
       const bot = (await api("POST", "/api/bots")).body.bot;
       botId = bot.id;
-      expect((await api("PATCH", `/api/bots/${bot.id}`, { computer: "cloud" })).status).toBe(200);
+      // a routine works on without a computer it can't prepare, so this one fails on the engine's own refusal
+      writeFileSync(fakeClaudeApiError, "API Error: 400 messages.0.content.0.text: invalid request");
       const created = await api("POST", "/api/routines", {
         name: "Cloud check",
         prompt: "look at the cloud desktop",
@@ -6364,6 +6368,7 @@ describe("harness HTTP API", () => {
         "routine-failed",
       ]);
     } finally {
+      rmSync(fakeClaudeApiError, { force: true });
       stream?.close();
       if (routineId) await api("DELETE", `/api/routines/${routineId}`);
       if (botId) await api("DELETE", `/api/bots/${botId}`);
@@ -10178,7 +10183,7 @@ describe("harness HTTP API", () => {
         expect(chatLines.filter((message) => message.automation?.runId === queued.body.run.id && message.automation?.failed)).toHaveLength(1);
         const failedRun = (await api("GET", "/api/routines")).body.runs.find((run: { id: string }) => run.id === queued.body.run.id);
         expect(failedRun).toMatchObject({ routineId, routineName: "Weekday brief", status: "failed" });
-        expect(failedRun.threadId).not.toBe(bot.threadId);
+        expect(failedRun.threadId).toBe(bot.threadId);
 
         expect((await api("POST", `/api/bots/${bot.id}/read`, { threadId: bot.threadId })).status).toBe(200);
         expect((await api("POST", `/api/routine-runs/${queued.body.run.id}/seen`)).status).toBe(200);
