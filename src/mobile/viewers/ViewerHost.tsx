@@ -29,8 +29,8 @@ function TextViewer({ text, open, onClose }: { text: string; open: boolean; onCl
   return (
     <Sheet open={open} onClose={onClose} full title={t("mobile.select.title")}
       trailing={<RoundButton label={t("mobile.select.copyAll")} onClick={copy}>{copied === "copied" ? <Check size={18} className="text-success" /> : <Copy size={18} />}</RoundButton>}>
-      <p className="px-2 pb-2 text-[13px] text-ink-tertiary">{t("mobile.select.hint")}</p>
-      <div data-select-text="" className="mx-2 select-text whitespace-pre-wrap break-words rounded-2xl bg-ink/[0.04] px-4 py-3 text-[17px] leading-[1.55] text-ink [-webkit-touch-callout:default] [-webkit-user-select:text]">
+      <p className="px-4 pb-2 text-[13px] text-ink-tertiary">{t("mobile.select.hint")}</p>
+      <div data-select-text="" className="mx-3 select-text whitespace-pre-wrap break-words rounded-2xl bg-ink/[0.04] px-4 py-3 text-[17px] leading-[1.55] text-ink [-webkit-touch-callout:default] [-webkit-user-select:text]">
         {text}
       </div>
       <ViewerNote show={copied !== "idle"} text={copied === "failed" ? t("common.copyFailed") : t("mobile.viewer.copied")} failed={copied === "failed"} />
