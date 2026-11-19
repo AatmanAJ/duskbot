@@ -152,9 +152,10 @@ export function snapshotPlanText(plan: CloudPlanSnapshot | null): string | null 
 }
 
 /** The person's face in the sidebar: their photo or drawn head; initials only for a computer's name, an icon for nobody. */
-function ProfileFace({ face, initials, size, fallback, fontSize, className }: { face: PersonFace | null; initials: string; size: number; fallback?: ReactNode; fontSize?: number; className?: string }) {
+export function ProfileFace({ face, initials, size, fallback, fontSize, className }: { face: PersonFace | null; initials: string; size: number; fallback?: ReactNode; fontSize?: number; className?: string }) {
   if (face) return <UserFace account={face} size={size} className="inset-ring inset-ring-ink/[0.08]" />;
-  return <InitialsAvatar initials={initials} size={size} fallback={fallback} fontSize={fontSize} className={className} />;
+  const nameless = initials === "?" ? <UserRound size={Math.round(size * 0.5)} strokeWidth={1.75} aria-hidden /> : undefined;
+  return <InitialsAvatar initials={initials} size={size} fallback={fallback ?? nameless} fontSize={fontSize} className={className} />;
 }
 
 export function profileInitials(profile?: { name?: string; email?: string }): string {
