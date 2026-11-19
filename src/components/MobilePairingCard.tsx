@@ -21,6 +21,8 @@ import type { PairedDevice } from "./ServerPairingCard";
 import { friendlyError } from "@/lib/plain-error";
 import { ANDROID_APP_URL, storeUrl } from "../mobile/connection/phone-update";
 
+const PHONE_ACCESS_COMMAND = "npx duskbot setup";
+
 export function platformLabelKey(platform: string) {
   return platform === "ios" ? "settings.mobile.ios" : platform === "android" ? "settings.mobile.android" : "settings.mobile.phone";
 }
@@ -111,6 +113,8 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const [pairedName, setPairedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [signInFix, setSignInFix] = useState(false);
+  const [unreachable, setUnreachable] = useState(false);
+  const [commandCopied, setCommandCopied] = useState(false);
   const [emailOnly, setEmailOnly] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const generation = useRef(0);
@@ -263,6 +267,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
       if (generation.current !== epoch) return;
       if (cause instanceof EmailLogInInstead) { setEmailOnly(true); return; }
       setSignInFix(cause instanceof SignedOutHere && Boolean(cloudCodes?.signIn));
+      setUnreachable(!window.duskDesktop && cause instanceof ApiError && cause.body?.code === "unreachable");
       setError(friendlyError(cause, t("settings.mobile.error")));
       haptic("error");
     } finally {
@@ -446,7 +451,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     </li>
   );
 
-  const steps = (second: ReactNode) => (
+  const steps = (second: ReactNode) => (failed && unreachable) ? null : (
     <ol data-phone-steps={kind} className="m-0 flex w-full list-none flex-col p-0 px-2">
       {ios ? step(1, t("settings.phone.getIos"), appStoreBadge) : step(1, t("settings.phone.getAndroid"), apkBadge)}
       {step(2, second)}
@@ -500,7 +505,20 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
       <button type="button" data-phone-new-code="" onClick={onAction} disabled={busy} className="ui-button ui-button-pill min-h-11">{action}</button>
     </div>
   );
-  const failedBlock = notice("error", error, t(signInFix ? "phone.relay.signInAction" : "settings.phone.tryAgain"), { "data-pairing-failed": "" }, "alert",
+  // a server of the person's own with no relay and no HTTPS address: the way on is a command on that server
+  const copyCommand = async () => { if (await copyText(PHONE_ACCESS_COMMAND) !== "failed") setCommandCopied(true); };
+  const unreachableBlock = (
+    <div data-pairing-unreachable="" className="flex w-full flex-1 flex-col items-center justify-center gap-3 text-center">
+      <PlaceArt name="error" size={44} />
+      <p role="alert" className="m-0 max-w-[320px] text-pretty text-[14px] leading-5 text-ink-secondary">{t("settings.phone.unreachable")}</p>
+      <code className="select-all rounded-[10px] bg-ink/[0.06] px-3 py-1.5 font-mono text-[13px] text-ink">{PHONE_ACCESS_COMMAND}</code>
+      <div className="flex items-center gap-2">
+        <button type="button" data-phone-access-copy="" onClick={() => void copyCommand()} className="ui-button ui-button-pill min-h-11">{t(commandCopied ? "settings.phone.commandCopied" : "settings.phone.copyCommand")}</button>
+        <button type="button" data-phone-new-code="" onClick={() => void create(true)} disabled={busy} className={quietButton}>{t("settings.phone.tryAgain")}</button>
+      </div>
+    </div>
+  );
+  const failedBlock = unreachable ? unreachableBlock : notice("error", error, t(signInFix ? "phone.relay.signInAction" : "settings.phone.tryAgain"), { "data-pairing-failed": "" }, "alert",
     signInFix ? () => void cloudCodes?.signIn?.().finally(() => setSignInFix(false)) : undefined);
   const expiredBlock = notice("expired", t("settings.mobile.expired"), t("settings.mobile.newCode"), { "data-phone-expired": "" }, "status");
 

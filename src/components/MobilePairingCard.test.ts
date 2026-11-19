@@ -43,6 +43,14 @@ describe("mobile workspace pairing", () => {
     expect(newDeviceSince(["old"], [device("old"), first, device("second")])).toBe(first);
   });
 
+  it("tells a server with no way in for phones the command that turns phone access on, with no steps for a code it can't make", () => {
+    const source = readFileSync(new URL("./MobilePairingCard.tsx", import.meta.url), "utf8");
+    expect(source).toContain('cause instanceof ApiError && cause.body?.code === "unreachable"');
+    expect(source).toContain('const PHONE_ACCESS_COMMAND = "npx duskbot setup";');
+    expect(source).toContain("(failed && unreachable) ? null");
+    expect((en as Record<string, string>)["settings.phone.unreachable"]).toMatch(/run this and pick phone access/);
+  });
+
   it("keeps the Mac companion out of remote workspace pairing", () => {
     const source = readFileSync(new URL("./MobilePairingCard.tsx", import.meta.url), "utf8");
     expect(source).toContain("const companion = remote ? null : companionBridge()");
