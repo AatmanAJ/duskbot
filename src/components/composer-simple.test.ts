@@ -12,3 +12,14 @@ describe("the composer's hint while a question waits", () => {
     expect(composerPlaceholder({ ...base, narrow: true })).toBe("Type your answer");
   });
 });
+
+describe("the composer's hint with a file attached", () => {
+  const attached = { ...base, question: false, attached: true };
+  it("asks for a message or a send where there is room", () => {
+    expect(composerPlaceholder(attached)).toBe("Add a message, or hit send");
+  });
+
+  it("keeps to the bot's name on a phone, where the longer hint is cut off", () => {
+    expect(composerPlaceholder({ ...attached, narrow: true })).toBe("Message Pip");
+  });
+});

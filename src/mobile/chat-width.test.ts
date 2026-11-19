@@ -131,6 +131,17 @@ describe("the composer on the phone", () => {
     expect(pill.className).toMatch(/\bflex-col\b/);
     expect(phone(pill, "align-items") ?? "stretch").toBe("stretch");
   });
+
+  it("keeps an attached file's small remove button its own size, not a 44px disc over the thumbnail", () => {
+    const dock = document.querySelector("[data-mobile-chat] [data-grok-inset]")!;
+    const tile = document.createElement("div");
+    tile.setAttribute("data-composer-attachment", "");
+    tile.innerHTML = "<button type=button>x</button>";
+    dock.append(tile);
+    expect(phone(tile.querySelector("button")!, "min-width")).toBe("0");
+    expect(phone(dock.querySelector("[data-tour=composer] button")!, "min-width")).toBe("44px");
+    tile.remove();
+  });
 });
 
 describe("bubbles that are not plain text, on the phone", () => {

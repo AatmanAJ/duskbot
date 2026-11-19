@@ -107,6 +107,8 @@ html[data-mobile-app] [data-selectable] :is(button, [role="button"]) { -webkit-u
 .dusk-mobile .side-panel > div > div > button[aria-label],
 .dusk-mobile .side-panel [data-panel-share],
 .dusk-mobile [data-mobile-chat] form button { min-width: 44px; min-height: 44px; }
+/* an attached file's remove button is a small disc on its thumbnail; it answers 44 through the rule below */
+.dusk-mobile [data-mobile-chat] [data-grok-inset] [data-composer-attachment] button:not([role="menuitem"]) { min-width: 0; min-height: 0; }
 
 /* the rest (a code block's copy, a message's actions, a panel switch, an inline link) answer a 44px square around
    their centre without changing how they look; in the base layer, so a control placed with a position utility keeps it */
