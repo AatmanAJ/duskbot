@@ -257,6 +257,18 @@ describe("the Simple composer in a bot chat", () => {
     }
   });
 
+  it("holds no Send for a message sent with no network: it waits in its own bubble and the field is free at once", () => {
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    try {
+      restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "hello", attachments: [] });
+      render({ bot });
+      click(sendButton());
+      expect(sendButton()).toBeNull();
+    } finally {
+      online.mockRestore();
+    }
+  });
+
   it("never shows Stop while the bot works: only voice and send, typed or not", () => {
     const busy = { ...bot, busy: true };
     render({ bot: busy });

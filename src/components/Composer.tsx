@@ -9,6 +9,7 @@ import { Mic } from "../icons";
 import { useStore, visibleMessages, currentTaskBot, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { usePhoneLayout } from "@/lib/use-media-query";
+import { phoneOffline } from "@/mobile/network";
 import { useMenuMotion } from "./MenuMotion";
 import { ELEVATED_CARD, ELEVATED_FLOAT } from "./elevated";
 import { activeLocale, t } from "@/lib/i18n";
@@ -716,7 +717,7 @@ export function Composer({
       channelMode: effectiveChannelMode, mentions: picks.ids(body),
     };
     const sendId = sentDraft.sendId;
-    const onSettled = holdSend(sendId);
+    const onSettled = phoneOffline() ? () => {} : holdSend(sendId);
     if (group) {
       dispatch({
         type: "sendGroup",

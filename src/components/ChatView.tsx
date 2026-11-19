@@ -73,6 +73,8 @@ import { lifeDraw } from "@/lib/reply-life";
 import { lastNonReceipt } from "@/lib/receipts";
 import { routineStartName } from "./RoutineStartLine"; import { useTurnLive } from "@/state/turn-status"; import { useLiveReplyActive } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
 import { followSentTurn, sentTurn, useSentTurn } from "@/state/sent-turn";
+import { waitsForNetwork } from "@/state/network-wait";
+import { useOffline } from "@/mobile/network";
 import { forgetLateRow, isLateRow, isSettledRow, noteLateRow, noteSettledRow, useStopPress, type StopPress } from "@/lib/stop-turn";
 import { shownReplyText } from "@/state/live-reply";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -1115,6 +1117,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // a send from this window is the turn's start here: its row shows with the bubble, before the server answers the send
   const sent = useSentTurn(bot.threadId);
   useEffect(() => { if (bot.threadId) followSentTurn(bot.threadId, Boolean(bot.busy)); }, [bot.threadId, bot.busy]);
+  const networkWait = waitsForNetwork(messages, useOffline());
   const turnBusy = Boolean(bot.busy) || sent?.phase === "sending";
   const turnStartedAt = sent?.at ?? bot.turnStartedAt;
   const landed = useLandedReply(`${bot.id}:${bot.threadId ?? ""}`, messages);
@@ -1140,7 +1143,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const mountDue = useReached(!turnBusy ? null : turnStartedAt && messages.length > 0 ? turnStartedAt + mountDelay : 0);
   // notes from another AI being brought in: the import's own steps are this bot's working row until its summary lands
   const importing = useNotesWork(bot.id);
-  const presenceVisible = !stopCut && (hold.typing || (waiting && mountDue) || teammatesWorking || Boolean(importing));
+  const presenceVisible = !stopCut && (hold.typing || (waiting && mountDue) || teammatesWorking || Boolean(importing) || networkWait);
   // while the turn runs its notices are the working row's to say, not the chat's too; once it ends, what it left is one
   // card above the composer
   const trailing = useTrailingRows(messages, !bot.busy);
@@ -1418,12 +1421,12 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
             wordsAtOnce
             simple
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}
-            label={teammatesWorking ? t("chat.teammatesWorking") : importing && !turnBusy ? importing : undefined}
+            label={networkWait ? t("mobile.chat.waitingForConnection") : teammatesWorking ? t("chat.teammatesWorking") : importing && !turnBusy ? importing : undefined}
             visible={presenceVisible}
             {...now}
             // grok shows no steps in the chat: the list under the line only with tool calls shown
             card={showToolCalls ? now.card : undefined}
-            phrases={teammatesWorking || (importing && !turnBusy) ? undefined : writing ? typingPhrases : turnLabel ? [turnLabel] : now.phrases}
+            phrases={networkWait || teammatesWorking || (importing && !turnBusy) ? undefined : writing ? typingPhrases : turnLabel ? [turnLabel] : now.phrases}
             phase={writing ? TYPING_PHASE : turnLabel ? `label:${turnLabel}` : now.phase}
             seed={presenceSeed}
             since={busySince ?? (turnBusy ? turnStartedAt ?? null : null)}
