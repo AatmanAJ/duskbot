@@ -349,3 +349,47 @@ describe("a dusk cloud in the desktop app", () => {
     expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/pair#m=offer1&c=ABCDEFGH0001");
   });
 });
+
+describe("no way for a phone to reach this workspace", () => {
+  const refuseUnreachable = async () => {
+    const { ApiError } = await import("@/state/store");
+    const base = api.getMockImplementation()!;
+    api.mockImplementation(async (path: string, init?: unknown) => {
+      if (path === "/api/mobile/pairing") throw Object.assign(new (ApiError as unknown as new (message: string) => Error)("A phone cannot reach this workspace yet: turn on phone access or give it a public address first."), { status: 409, body: { code: "unreachable" } });
+      return base(path, init);
+    });
+  };
+
+  it("asks for the account sign-in that turns on the relay when this computer is signed out", async () => {
+    const signIn = vi.fn(async () => {});
+    vi.stubGlobal("duskDesktop", { phoneRelay: { state: async () => ({ status: "signed-out" }) }, cloudPlan: { signIn } });
+    await refuseUnreachable();
+    await mount({ remote: false });
+    await flush();
+    const notice = host.querySelector("[data-pairing-failed]")!;
+    expect(notice.textContent).toContain("Sign in to your dusk bot account so your phone can reach this computer from anywhere.");
+    expect(notice.textContent).not.toMatch(/cannot reach this workspace|public address/);
+    await click("[data-pairing-failed] [data-phone-new-code]");
+    expect(signIn).toHaveBeenCalledOnce();
+  });
+
+  it("says this computer's phone access did not start, with Try again, when the relay is not the way", async () => {
+    vi.stubGlobal("duskDesktop", {});
+    await refuseUnreachable();
+    await mount({ remote: false });
+    await flush();
+    const notice = host.querySelector("[data-pairing-failed]")!;
+    expect(notice.textContent).toContain("Phone access could not start on this computer.");
+    expect(notice.querySelector("button")?.textContent).toBe("Try again");
+    expect(host.querySelector("[data-pairing-unreachable]")).toBeNull();
+  });
+
+  it("gives a server of the person's own the setup command, from the desktop app too", async () => {
+    vi.stubGlobal("duskDesktop", {});
+    await refuseUnreachable();
+    await mount({ remote: true });
+    await flush();
+    expect(host.querySelector("[data-pairing-unreachable]")?.textContent).toContain("npx duskbot setup");
+    expect(host.querySelector("[data-phone-access-copy]")).not.toBeNull();
+  });
+});

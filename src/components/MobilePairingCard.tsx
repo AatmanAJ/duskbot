@@ -5,7 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { universalPairLink, universalSignInLink, type MobileDevice, type MobilePairingRequest, type MobilePairingResponse } from "../../shared/mobile-link";
 import type { CloudPlanBridge } from "../../electron/cloud-account.mjs";
 import { companionBridge } from "@/lib/companion-bridge";
-import { relayBeforePairing } from "@/lib/phone-relay";
+import { phoneRelayBridge, relayBeforePairing } from "@/lib/phone-relay";
 import { copyText, type CopyFeedback } from "@/lib/copy-text";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -79,6 +79,15 @@ export const MINT_RETRY_MS = [1_500, 4_000] as const;
 class EmailLogInInstead extends Error {}
 class SignedOutHere extends Error {}
 
+/** why no phone can reach this workspace: a server needs its setup command, this computer needs an account for the relay, or its phone access did not start */
+export type NoRoute = "server" | "sign-in" | "computer";
+
+export async function noRouteFix(remote: boolean): Promise<NoRoute> {
+  if (remote || typeof window === "undefined" || !window.duskDesktop) return "server";
+  const relay = await phoneRelayBridge()?.state().catch(() => null);
+  return relay?.status === "signed-out" && typeof window.duskDesktop.cloudPlan?.signIn === "function" ? "sign-in" : "computer";
+}
+
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const retryable = (cause: unknown) => !(cause instanceof EmailLogInInstead || cause instanceof SignedOutHere)
@@ -113,7 +122,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const [pairedName, setPairedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [signInFix, setSignInFix] = useState(false);
-  const [unreachable, setUnreachable] = useState(false);
+  const [unreachable, setUnreachable] = useState<NoRoute | null>(null);
   const [commandCopied, setCommandCopied] = useState(false);
   const [emailOnly, setEmailOnly] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -267,7 +276,9 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
       if (generation.current !== epoch) return;
       if (cause instanceof EmailLogInInstead) { setEmailOnly(true); return; }
       setSignInFix(cause instanceof SignedOutHere && Boolean(cloudCodes?.signIn));
-      setUnreachable(!window.duskDesktop && cause instanceof ApiError && cause.body?.code === "unreachable");
+      const noRoute = cause instanceof ApiError && cause.body?.code === "unreachable" ? await noRouteFix(remote) : null;
+      if (generation.current !== epoch) return;
+      setUnreachable(noRoute);
       setError(friendlyError(cause, t("settings.mobile.error")));
       haptic("error");
     } finally {
@@ -518,7 +529,11 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
       </div>
     </div>
   );
-  const failedBlock = unreachable ? unreachableBlock : notice("error", error, t(signInFix ? "phone.relay.signInAction" : "settings.phone.tryAgain"), { "data-pairing-failed": "" }, "alert",
+  const signInForRelay = () => void window.duskDesktop?.cloudPlan?.signIn?.().then(() => create(true), () => {});
+  const failedBlock = unreachable === "server" ? unreachableBlock
+    : unreachable === "sign-in" ? notice("error", t("settings.phone.signInToPair"), t("phone.relay.signInAction"), { "data-pairing-failed": "" }, "alert", signInForRelay)
+    : unreachable === "computer" ? notice("error", t("settings.phone.computerUnreachable"), t("settings.phone.tryAgain"), { "data-pairing-failed": "" }, "alert")
+    : notice("error", error, t(signInFix ? "phone.relay.signInAction" : "settings.phone.tryAgain"), { "data-pairing-failed": "" }, "alert",
     signInFix ? () => void cloudCodes?.signIn?.().finally(() => setSignInFix(false)) : undefined);
   const expiredBlock = notice("expired", t("settings.mobile.expired"), t("settings.mobile.newCode"), { "data-phone-expired": "" }, "status");
 

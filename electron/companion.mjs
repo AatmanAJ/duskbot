@@ -10,10 +10,9 @@ import {
   companionOriginHealth,
   createCompanionOriginEndpoint,
 } from "./companion-origin-gateway.mjs";
+import { COMPANION_PORT, companionControlPort } from "./desktop-ports.mjs";
 
-// Must stay clear of the harness's 8799 and its webhook receiver's 8800.
-const CONTROL_PORT = 8811;
-const COMPANION_PORT = 8810;
+let controlPort = companionControlPort(8799);
 
 let proc = null;
 // New for each sidecar launch and held only by main and the sidecar, so a page served from the control port cannot drive it.
@@ -87,7 +86,7 @@ async function control(method, urlPath, body, { timeoutMs = 4_000 } = {}) {
     options.body = JSON.stringify(body);
     options.headers["content-type"] = "application/json";
   }
-  const res = await fetch(`http://127.0.0.1:${CONTROL_PORT}${urlPath}`, options);
+  const res = await fetch(`http://127.0.0.1:${controlPort}${urlPath}`, options);
   if (!res.ok && res.status !== 404) throw new Error(`companion control ${res.status}`);
   return res.json();
 }
@@ -171,6 +170,7 @@ async function start({ resourcesPath, harnessPort, mutationToken, hostedUrl = nu
   }
 
   controlToken = randomBytes(32).toString("base64url");
+  controlPort = companionControlPort(harnessPort);
   let child;
   try {
     child = utilityProcess.fork(resolved.entry, [], {
@@ -178,7 +178,7 @@ async function start({ resourcesPath, harnessPort, mutationToken, hostedUrl = nu
         ...childEnvironment,
         DUSK_PORT: String(harnessPort),
         DUSK_COMPANION_PORT: String(COMPANION_PORT),
-        DUSK_CONTROL_PORT: String(CONTROL_PORT),
+        DUSK_CONTROL_PORT: String(controlPort),
       },
       execArgv: resolved.execArgv,
       stdio: ["ignore", "pipe", "pipe"],
@@ -231,7 +231,7 @@ async function start({ resourcesPath, harnessPort, mutationToken, hostedUrl = nu
           child.kill();
         } catch {
         }
-        lastError = `Port ${CONTROL_PORT} is already serving another companion: stop it and try again`;
+        lastError = `Port ${controlPort} is already serving another companion: stop it and try again`;
         return companionState();
       }
       if (!Number.isSafeInteger(child.pid) || child.pid <= 0) {
