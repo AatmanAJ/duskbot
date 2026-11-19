@@ -20,6 +20,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "clear", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "slide", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "glyphs", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "home", returnType: CAPPluginReturnNone),
     ]
 
     private var chrome: AnyObject?
@@ -78,7 +79,16 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func clear(_ call: CAPPluginCall) {
         guard #available(iOS 26.0, *) else { return }
-        withChrome { $0.apply([:]) }
+        withChrome { chrome in
+            chrome.apply([:])
+            chrome.pageGone()
+        }
+    }
+
+    @objc func home(_ call: CAPPluginCall) {
+        guard #available(iOS 26.0, *) else { return }
+        let state = call.options["state"] as? [String: Any]
+        withChrome { $0.applyHome(state) }
     }
 
     /// The header's own symbols as the page can draw them: while a sheet covers the chat the page shows its header in
@@ -101,7 +111,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
 }
 
 /// Lets touches through everywhere but on its own controls.
-private class PassthroughView: UIView {
+class PassthroughView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let hit = super.hitTest(point, with: event)
         return hit === self ? nil : hit
@@ -200,7 +210,7 @@ private final class SlotButton: DiscButton {
     }
 }
 
-private struct Frame {
+struct Frame {
     let rect: CGRect
     init?(_ value: Any?) {
         guard let d = value as? [String: Any], let x = (d["x"] as? NSNumber)?.doubleValue, let y = (d["y"] as? NSNumber)?.doubleValue,
@@ -226,6 +236,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private let liveDot = UIView()
 
     private let composer = PassthroughView()
+    private var home: GlassHomeBar!
     private let capsule = UIVisualEffectView(effect: ChatGlassChrome.interactiveGlass())
     private let plus = DiscButton(configuration: .glass())
     private let text = UITextView()
@@ -305,6 +316,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         liveDot.isHidden = true
         right.addSubview(liveDot)
         [back, pill, right].forEach(header.addSubview)
+        home = GlassHomeBar(host: host, below: header, emit: emit)
 
         composer.translatesAutoresizingMaskIntoConstraints = false
         composer.alpha = 0
@@ -385,10 +397,19 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     // MARK: riding on the page
 
-    private func setOffset(_ x: CGFloat) {
+    private func setOffset(_ x: CGFloat, homeFollows: Bool = true) {
         offset = x
         let moved = CGAffineTransform(translationX: x, y: 0)
         for view in [header, composer] where view.transform != moved { view.transform = moved }
+        if homeFollows { home.follow(page: x) }
+    }
+
+    /// The chat's page is gone: Home's bar is the list's again, whole and in place.
+    func pageGone() { home.follow(page: nil) }
+
+    func applyHome(_ state: [String: Any]?) {
+        home.apply(state)
+        keepOnTop()
     }
 
     /// Plays the page's own slide: the same positions, one per 60 Hz frame and linear between, which is what the page
@@ -417,7 +438,8 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             animation.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
             view.layer.add(animation, forKey: Self.slideKey)
         }
-        setOffset(to)
+        home.slide(points, duration: duration, beginTime: now - skipped)
+        setOffset(to, homeFollows: false)
         CATransaction.commit()
         slideEnd = now + duration - skipped
     }
@@ -469,9 +491,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     /// views the system adds to the host later must not land over the chrome and take its taps
     private func keepOnTop() {
-        guard let host, headerShown || composerShown else { return }
-        let tail = Array(host.subviews.suffix(2))
-        if tail.first !== header || tail.last !== composer {
+        guard let host, headerShown || composerShown || !home.view.isHidden else { return }
+        let tail = Array(host.subviews.suffix(3))
+        if tail.count < 3 || tail[0] !== home.view || tail[1] !== header || tail[2] !== composer {
+            host.bringSubviewToFront(home.view)
             host.bringSubviewToFront(header)
             host.bringSubviewToFront(composer)
         }

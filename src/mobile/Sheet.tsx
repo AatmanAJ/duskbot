@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { animate, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform, type AnimationPlaybackControls } from "motion/react";
+import { animate, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform, type MotionValue } from "motion/react";
 import { ChevronLeft, X } from "../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { canScroll, ownsDrag, useDrag } from "./gesture";
-import { dismiss, projectRelease, rubberband, settleTo, system } from "./motion";
+import { dismiss, projectRelease, rubberband, settleTo, springPath, system } from "./motion";
 import { RoundButton } from "./RoundButton";
 
 const EXIT = { stiffness: 520, damping: 46 };
@@ -18,6 +18,38 @@ export function recedeStyle(progress: number): { transform: string; borderRadius
   return { transform: `translate3d(0, calc(var(--m-safe-top) * ${(p * 0.5).toFixed(3)}), 0) scale(${(1 - 0.07 * p).toFixed(4)})`, borderRadius: `${(p * 14).toFixed(1)}px` };
 }
 const OPEN_SHEETS: Array<() => void> = [];
+
+type Run = { stop: () => void };
+
+/** The rise as keyframes the compositor plays, the sheet, its scrim and the page stepping back together: a sheet whose
+ * content is still mounting (a bot's panel) never stalls its first frames. `y` takes over where it is on landing or
+ * on `stop` (a finger taking the sheet). */
+export function riseOnCompositor(layers: { sheet: HTMLElement; scrim: HTMLElement | null; page: HTMLElement | null }, y: MotionValue<number>, height: number, onDone: () => void): Run {
+  const path = springPath(height, 0, -system.push * height, SYSTEM);
+  const options: KeyframeAnimationOptions = { duration: path.duration, easing: "linear", fill: "forwards" };
+  const progress = (p: number) => Math.max(0, Math.min(1, 1 - p / Math.max(1, height)));
+  if (layers.page) Object.assign(layers.page.style, { transformOrigin: "50% 0", borderRadius: recedeStyle(1)!.borderRadius });
+  const runs = [
+    layers.sheet.animate(path.points.map((p) => ({ transform: `translateY(${p}px)` })), options),
+    layers.scrim?.animate(path.points.map((p) => ({ opacity: progress(p) })), options),
+    layers.page?.animate(path.points.map((p) => ({ transform: recedeStyle(progress(p))?.transform ?? "none" })), options),
+  ].filter((run): run is Animation => Boolean(run));
+  let over = false;
+  const hand = (at: number) => {
+    if (over) return;
+    over = true;
+    y.set(at);
+    for (const run of runs) run.cancel();
+  };
+  runs[0]!.onfinish = () => { if (!over) { hand(0); onDone(); } };
+  return {
+    stop: () => {
+      if (over) return;
+      hand(new DOMMatrixReadOnly(getComputedStyle(layers.sheet).transform).m42);
+      onDone();
+    },
+  };
+}
 
 /** Closes the top sheet, for Android's back and Escape. False when none is open. */
 export function closeTopSheet(): boolean {
@@ -84,7 +116,8 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
   const height = useRef(800);
   const y = useMotionValue(typeof window === "undefined" ? 800 : window.innerHeight);
   const scrim = useTransform(y, (value) => Math.max(0, Math.min(1, 1 - value / Math.max(1, height.current))));
-  const run = useRef<AnimationPlaybackControls | null>(null);
+  const run = useRef<Run | null>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
   const [moving, setMoving] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
   const scrimPressed = useRef(false);
@@ -141,7 +174,13 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
       sheet.focus({ preventScroll: true });
       // the rise starts on the first frame drawn with the sheet in place below the screen: started here, the spring's
       // clock would run through the frame that mounts its content and its first steps would lurch, then stall
-      const start = requestAnimationFrame(() => go(0, -system.push * height.current));
+      const start = requestAnimationFrame(() => {
+        const el = sheetRef.current;
+        if (reduced || !el || typeof el.animate !== "function") { go(0, -system.push * height.current); return; }
+        run.current?.stop();
+        setMoving(true);
+        run.current = riseOnCompositor({ sheet: el, scrim: scrimRef.current, page: recede ? page.current : null }, y, height.current, () => setMoving(false));
+      });
       return () => cancelAnimationFrame(start);
     } else {
       dismissFrom(height.current + 24, () => {
@@ -187,7 +226,7 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
   return (
     <div className="mobile-sheet-layer fixed inset-0 z-40" data-sheet-open="" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
       {/* only a press that began on the scrim closes the sheet: the finger that opened it on press lifts over it */}
-      <motion.div aria-hidden className={cn("absolute inset-0", full ? "bg-[rgb(12_12_14/0.42)]" : "bg-[rgb(12_12_14/0.30)]")} style={{ opacity: scrim }}
+      <motion.div ref={scrimRef} aria-hidden className={cn("absolute inset-0", full ? "bg-[rgb(12_12_14/0.42)]" : "bg-[rgb(12_12_14/0.30)]")} style={{ opacity: scrim }}
         onPointerDown={() => { scrimPressed.current = true; }}
         onClick={() => { if (scrimPressed.current) onClose(); scrimPressed.current = false; }} />
       <motion.div

@@ -22,6 +22,7 @@ import type { AppleCredential, CameraPermission, CameraScanner, DeliveredNotific
 import type { NativeAction } from "@/mobile/phone-actions";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
 import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
+import type { HomeGlassState } from "@/mobile/native-home-glass";
 import type { SlidePath } from "@/mobile/NavStack";
 import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
@@ -73,6 +74,7 @@ interface GlassPlugin {
   clear(): Promise<void>;
   slide(options: { path: SlidePath | null; at?: number }): Promise<void>;
   glyphs(): Promise<GlassGlyphs>;
+  home(options: { state: HomeGlassState | null }): Promise<void>;
   addListener(event: "glass", listener: (event: GlassEvent) => void): Promise<PluginListenerHandle>;
 }
 const DuskGlass = registerPlugin<GlassPlugin>("DuskGlass");
@@ -88,6 +90,7 @@ export function glassBridge(plugin: GlassPlugin): GlassBridge {
     clear: () => quiet(plugin.clear()),
     slide: (path, at) => quiet(plugin.slide({ path, at })),
     glyphs: () => plugin.glyphs().catch(() => ({})),
+    home: (state) => quiet(plugin.home({ state })),
     onEvent: (listener) => unsubscribe([plugin.addListener("glass", listener)]),
   };
 }

@@ -2,6 +2,7 @@ import { appliedTextScale } from "./text-scale";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
+import type { HomeGlassState } from "./native-home-glass";
 
 /** A rect in css px from the top left of the screen, which on the phone is the native view's own point space. */
 export interface GlassFrame { x: number; y: number; w: number; h: number }
@@ -52,7 +53,7 @@ export interface GlassState {
 }
 
 export type GlassEvent =
-  | { type: "tap"; target: "back" | "title" | "right" | "plus" }
+  | { type: "tap"; target: "back" | "title" | "right" | "plus" | "search" | "newBot" }
   | { type: "button"; index: number; kind?: GlassButtonKind }
   | { type: "text"; text: string }
   | { type: "submit" }
@@ -75,6 +76,8 @@ export interface GlassBridge {
   slide(path: SlidePath | null, at?: number): void;
   /** The native header's own symbols, for the page's header to draw while it stands in for the glass. */
   glyphs?(): Promise<GlassGlyphs>;
+  /** Home's top buttons, or null to hide them at once (apps before 1.3 have no home bar). */
+  home?(state: HomeGlassState | null): void;
   onEvent(listener: (event: GlassEvent) => void): () => void;
 }
 

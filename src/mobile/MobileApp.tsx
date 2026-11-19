@@ -30,6 +30,7 @@ import { closeTopSheet, Sheet } from "./Sheet";
 import { t } from "@/lib/i18n";
 import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useNativeGlass } from "./native-glass";
+import { useNativeHomeGlass } from "./native-home-glass";
 import { useChatHaptics } from "./use-chat-haptics";
 import { usePhoneActions } from "./use-phone-actions";
 import { useTurnActivities } from "./use-turn-activities";
@@ -182,6 +183,7 @@ function Shell() {
   if ((bot || group) && !glassHeld) setGlassHeld(true);
   const pageSettled = useCallback((shown: boolean) => { if (!shown) setGlassHeld(false); releasePressed(); }, []);
   const slideGlass = useNativeGlass(platform, rootRef, Boolean(bot || group) || glassHeld);
+  useNativeHomeGlass(platform, rootRef);
   const leaveChat = useCallback(() => { if (rootRef.current) dismissKeyboard(platform, rootRef.current); }, [platform]);
 
   const page = bot || group ? (

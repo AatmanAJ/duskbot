@@ -39,3 +39,14 @@
   .dusk-mobile .mobile-panel-sheet [data-panel-tabpanel="computer"] [class*="bg-[color-mix(in_srgb,var(--color-composer),var(--color-ink)_6%)]"] {
   background-color: var(--color-menu);
 }
+
+/* the bot's computer reads as a device's screen, not more chat: its sheet sits on its own tone, deeper than the chat
+   and the panel's other tabs, darker in a light skin and lighter in a dark one */
+.dusk-mobile .mobile-sheet:has([data-panel-tabpanel="computer"]) {
+  --panel-phone-computer: color-mix(in srgb, var(--color-ink) 9%, var(--color-app));
+  background-color: var(--panel-phone-computer);
+}
+.dusk-mobile .mobile-sheet:has([data-panel-tabpanel="computer"]) :is(.mobile-panel-sheet, .side-panel) {
+  --panel-phone-page: var(--panel-phone-computer);
+  background-color: var(--panel-phone-computer);
+}
