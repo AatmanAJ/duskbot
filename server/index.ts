@@ -375,6 +375,7 @@ import {
   journalTurnWrite,
   type MemoryJournalEntry,
 } from "./memory-journal.ts";
+import { chainsMentions, inMentionOrder } from "./room-chain.ts";
 import { introAllowed, introFallback, introMoment, introName, introPrompt, toneSamples, type IntroFacts } from "./bot-intro.ts";
 import { memoryTarget } from "./memory-for-bot.ts";
 import { readyBotTemplate, templateRoutineHints } from "./ready-bot-templates.ts";
@@ -12162,7 +12163,8 @@ function startGroupTurn(
       }
       const spoken = new Set<string>();
       const skillAuthoringClaim = { claimed: false };
-      if (round.length > 1 && operation.requestMessageId !== undefined && membersAnswerAtOnce(group, threadId)) {
+      const chained = round.length > 1 && chainsMentions(text); if (chained) round = inMentionOrder(round, text);
+      if (round.length > 1 && !chained && operation.requestMessageId !== undefined && membersAnswerAtOnce(group, threadId)) {
         await Promise.all(round.map((responder) => runMemberAtOnce(groupId, threadId, responder, operation, spoken, skillAuthoringClaim, routedBy)));
         return;
       }
