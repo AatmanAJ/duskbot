@@ -3,7 +3,8 @@ import { Check, Code2, Download, ExternalLink, Eye, LoaderCircle, RotateCcw } fr
 import { fileGone, requestMessageFile, useLocalFileSave, type MessageAttachmentContext } from "./AttachmentPreview";
 import { TableDialog } from "./RichTable";
 import { PdfFileContent } from "./PdfFilePreview";
-import { readTableResponse } from "./TableFilePreview";
+import { readTableResponse, TableFileContent } from "./TableFilePreview";
+import { tableDelimiter } from "@/lib/table-data";
 import { t } from "@/lib/i18n";
 import { friendlyError } from "@/lib/plain-error";
 
@@ -16,7 +17,7 @@ export function isHtmlFile(name: string): boolean {
   return /\.html?$/i.test(name);
 }
 
-export type FilePreviewKind = "html" | "markdown" | "text" | "pdf";
+export type FilePreviewKind = "html" | "markdown" | "text" | "pdf" | "table";
 
 /** A file a bot sends that opens in a preview first, where it can still be saved; any other file saves at once. */
 export function filePreviewKind(name: string): FilePreviewKind | null {
@@ -24,6 +25,7 @@ export function filePreviewKind(name: string): FilePreviewKind | null {
   if (/\.(md|markdown)$/i.test(name)) return "markdown";
   if (/\.(txt|log|json|ya?ml)$/i.test(name)) return "text";
   if (/\.pdf$/i.test(name)) return "pdf";
+  if (tableDelimiter(name)) return "table";
   return null;
 }
 
@@ -49,7 +51,7 @@ export function useFilePreview(path: string, name: string, message?: MessageAtta
   const key = message ? `${message.threadId}:${message.messageId}:${path}` : path;
   return {
     opens: kind !== null,
-    label: t(kind === "html" ? "html.preview" : "filePreview.open", { name }),
+    label: t(kind === "html" ? "html.preview" : kind === "table" ? "table.preview" : "filePreview.open", { name }),
     show: (event: { currentTarget: HTMLElement }) => {
       opener.current = event.currentTarget;
       setOpen(true);
@@ -59,6 +61,7 @@ export function useFilePreview(path: string, name: string, message?: MessageAtta
         {kind === "html"
           ? <HtmlFileContent key={key} path={path} name={name} message={message} />
           : kind === "pdf" ? <PdfFileContent key={key} path={path} message={message} />
+          : kind === "table" ? <TableFileContent key={key} path={path} name={name} message={message} delimiter={tableDelimiter(name) ?? tableDelimiter(path) ?? ","} />
           : <TextFileContent key={key} path={path} name={name} message={message} markdown={kind === "markdown"} />}
       </TableDialog>
       : null,
