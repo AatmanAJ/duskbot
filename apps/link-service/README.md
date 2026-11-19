@@ -269,7 +269,7 @@ secret set. The node checks its own coturn with a STUN binding every 30 s (`turn
   signature checks out when release keys are pinned (`RELEASE_KEYS` in agent.mjs or `DUSK_LINK_RELEASE_KEYS`; sign with
   `node release.mjs sign <key>`), and `agent.mjs selftest` runs; `ready.json` is written last. It never takes an older
   version or a lower protocol. It applies only after 5 minutes without a request, a stream byte or an egress stream
-  from the app (or at once for the `update` op with `apply: "now"`), by ending the tunnel so systemd starts it again.
+  from the app or a phone (or at once for the `update` op with `apply: "now"`), by ending the tunnel so systemd starts it again.
   The installed `/opt/duskbot-link/agent.mjs` then launches the staged file, and stops launching one that did not
   stay up for 2 minutes three starts in a row, so a bad release leaves the installed agent running.
   One release key is pinned (`RELEASE_KEYS`); its private half is the repository secret `DUSK_LINK_RELEASE_KEY` (and

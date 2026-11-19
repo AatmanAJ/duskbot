@@ -5,12 +5,13 @@ import { t } from "@/lib/i18n";
 import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { HEADLINE, LINE, PRIMARY, Screen } from "../onboarding/parts";
 import { LoadingMascot, PixelArt } from "../Illustration";
+import { usePlatform } from "../platform";
 
 /** seconds before each automatic retry; the last one repeats */
 export const RETRY_SECONDS = [5, 10, 20, 40, 60];
 
 /** A saved computer that did not answer at launch: the link is kept, so this is never the pairing screen. It retries
- * on its own, on demand, when the phone comes back online, and lets the person open another saved one. */
+ * on its own, on demand, when the phone comes back online or to the front, and lets the person open another saved one. */
 export function Unreachable({ record, others, attempts, trying, onRetry, onSwitch }: {
   record: MobileConnectionRecord;
   others: MobileConnectionRecord[];
@@ -31,11 +32,14 @@ export function Unreachable({ record, others, attempts, trying, onRetry, onSwitc
     }, 1000);
     return () => clearInterval(tick);
   }, [trying, wait, onRetry]);
+  const platform = usePlatform();
   useEffect(() => {
     if (trying) return;
     window.addEventListener("online", onRetry);
-    return () => window.removeEventListener("online", onRetry);
-  }, [trying, onRetry]);
+    const stopResume = platform.onResume?.(onRetry);
+    const stopNetwork = platform.onNetworkChange?.(onRetry);
+    return () => { window.removeEventListener("online", onRetry); stopResume?.(); stopNetwork?.(); };
+  }, [trying, onRetry, platform]);
 
   return (
     <main className="dusk-mobile relative flex size-full flex-col overflow-hidden bg-app text-ink" aria-busy={trying}>

@@ -3,6 +3,7 @@ import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { Keyboard } from "@capacitor/keyboard";
+import { Network } from "@capacitor/network";
 import { Preferences } from "@capacitor/preferences";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
@@ -540,6 +541,13 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     },
     onPause(listener) {
       return unsubscribe([App.addListener("pause", listener)]);
+    },
+    onNetworkChange(listener) {
+      let last: string | null = null;
+      return unsubscribe([Network.addListener("networkStatusChange", ({ connected, connectionType }) => {
+        const now = `${connected}:${connectionType}`;
+        if (now !== last) { last = now; listener(); }
+      })]);
     },
     prefs: {
       get: async (key) => (await Preferences.get({ key })).value,

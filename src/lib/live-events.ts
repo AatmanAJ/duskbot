@@ -9,6 +9,8 @@ export const LIVE_EVENTS_PATH = "/api/events";
 export const LIVE_EVENTS_STALE_MS = 40_000;
 export const LIVE_EVENTS_RETRY_MIN_MS = 500;
 export const LIVE_EVENTS_RETRY_MAX_MS = 10_000;
+/** the server pings every 15s: a page hidden this long that heard nothing meanwhile holds a socket the OS suspended */
+export const LIVE_EVENTS_RESUME_SILENT_MS = 15_000;
 
 export interface LiveFrame {
   kind: string;
@@ -79,7 +81,7 @@ export interface LiveFrameListener {
 
 const liveFrameListeners = new Set<LiveFrameListener>();
 const screenWishListeners = new Set<() => void>();
-const retryListeners = new Set<() => void>();
+const retryListeners = new Set<(redial: boolean) => void>();
 const openListeners = new Set<() => void>();
 let lastLiveAt: number | null = null;
 
@@ -94,9 +96,10 @@ export function onLiveEventsOpen(listener: () => void): () => void {
   return () => { openListeners.delete(listener); };
 }
 
-/** The person asked to try again: every open stream that is not connected tries now, from the shortest wait. */
-export function retryLiveEventsNow(): void {
-  for (const retry of retryListeners) retry();
+/** The person asked to try again: every open stream that is not connected tries now, from the shortest wait.
+ * `redial`: the way to the place changed, so a stream still open on the old one dials again too. */
+export function retryLiveEventsNow(options: { redial?: boolean } = {}): void {
+  for (const retry of retryListeners) retry(options.redial === true);
 }
 const screensWanted = () => [...liveFrameListeners].some((listener) => listener.screens);
 
@@ -242,6 +245,7 @@ export function openLiveEvents(
   let retryAttempt = 0;
   let cursor: string | null = handlers.since ?? null;
   let lastHeardAt = platform.now();
+  let hiddenAt: number | null = platform.isVisible() ? null : platform.now();
   let snapshotGeneration = 0;
   let pendingSnapshot: {
     generation: number;
@@ -409,17 +413,23 @@ export function openLiveEvents(
     if (platform.isVisible()) recover();
   };
   const onVisibilityChange = () => {
-    if (platform.isVisible()) recover();
+    if (!platform.isVisible()) { hiddenAt ??= platform.now(); return; }
+    const silentSince = hiddenAt;
+    hiddenAt = null;
+    if (source && silentSince !== null && lastHeardAt <= silentSince && platform.now() - silentSince >= LIVE_EVENTS_RESUME_SILENT_MS
+      && platform.isOnline() && !cloudAsleep()) reconnectNow(true);
+    else recover();
   };
 
   const onScreenWish = () => queueMicrotask(() => {
     if (source && cursor && !pendingSnapshot && screensWanted() !== sourceScreens) reconnectNow(false);
   });
   screenWishListeners.add(onScreenWish);
-  const onRetryNow = () => {
+  const onRetryNow = (redial: boolean) => {
     if (stopped || !platform.isOnline() || cloudAsleep()) return;
     retryAttempt = 0;
-    if (!source || shouldReconnectLiveEvents(lastHeardAt, platform.now(), staleMs)) reconnectNow(source !== null);
+    if (redial) reconnectNow(false);
+    else if (!source || shouldReconnectLiveEvents(lastHeardAt, platform.now(), staleMs)) reconnectNow(source !== null);
   };
   retryListeners.add(onRetryNow);
   connect();

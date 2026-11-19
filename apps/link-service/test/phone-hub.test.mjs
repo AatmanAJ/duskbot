@@ -298,9 +298,9 @@ describe("phone relay hub", () => {
     rev += 1;
     for (const reply of Array.from(waiters)) reply();
   }
-  async function start(list, { polling = false, aheadMs } = {}) {
+  async function start(list, { polling = false, aheadMs, where } = {}) {
     change(list);
-    hub = createPhoneHub({ base, id, token: vps, keys, server, sync: harnessSync(server), origin: "https://vps.example", spki: null, log: () => {}, ...(aheadMs ? { aheadMs } : {}), fetchImpl: (url, init) => {
+    hub = createPhoneHub({ base, id, token: vps, keys, server, sync: harnessSync(server), origin: "https://vps.example", spki: null, log: () => {}, ...(aheadMs ? { aheadMs } : {}), ...(where ? { where } : {}), fetchImpl: (url, init) => {
       if (init.method === "PUT") puts.push(JSON.parse(init.body));
       if (init.method === "POST") agentPosts.push({ url, ...JSON.parse(init.body) });
       return fetch(polling ? url.replace(/&stream=1$/, "") : url, init);
@@ -316,6 +316,23 @@ describe("phone relay hub", () => {
   }
   const post = (info, frames) => fetch(`${base}/v1/channels/${info.channel}/to-vps`, { method: "POST", headers: { authorization: `Bearer ${info.token}`, "content-type": "application/json" }, body: JSON.stringify({ frames }) });
 
+  it("tells the server where phones reach it now, each round, keeping the last one known when it cannot be read", async () => {
+    const spki = `${"A".repeat(43)}=`;
+    let address = { mode: "direct", via: "domain", origin: "https://box.example", spki };
+    await start([], { where: async () => address });
+    expect(syncSeen[0]).toMatchObject({ origin: "https://box.example", spki });
+    address = { mode: "direct", via: "quick", origin: "https://new-name.trycloudflare.com", spki: null };
+    change([]);
+    await until(() => syncSeen.some((input) => input.origin === "https://new-name.trycloudflare.com"));
+    address = null;
+    change([]);
+    await until(() => syncSeen.some((input) => input.applied === rev));
+    expect(syncSeen.at(-1)).toMatchObject({ origin: "https://new-name.trycloudflare.com", spki: null });
+    address = { mode: "relay", via: "relay", origin: null, spki: null };
+    change([]);
+    await until(() => syncSeen.at(-1).origin === null);
+  });
+
   it("registers through owner loopback sync and only forwards the grant's three allowed paths", async () => {
     const info = grant();
     await start([info.spec]);
@@ -323,8 +340,11 @@ describe("phone relay hub", () => {
     expect(syncSeen[1]).toMatchObject({ applied: rev, wait: 25 });
     expect(puts[0]).toEqual({ channels: [{ id: cid, verifier: info.spec.verifier, kind: "grant", expiresAt: info.spec.expiresAt }] });
     const client = await phone(info);
+    expect(hub.usedAt()).toBe(0);
     const redeemed = await client.get("/api/mobile/redeem?attempt=1", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     expect(await redeemed.json()).toEqual({ token: "omb_sess_test" });
+    // a phone in use keeps the agent's self-update waiting, like the app does
+    expect(hub.usedAt()).toBeGreaterThan(0);
     for (const path of ["/.well-known/duskbot/environment?x=1", "/api/health"]) expect((await client.get(path)).status).toBe(200);
     for (const [method, path] of [["GET", "/api/json"], ["POST", "/api/health"], ["GET", "/api/mobile/redeem"], ["GET", "/api/mobile/redeem/../relay/sync"]]) {
       const refused = await client.get(path, { method });

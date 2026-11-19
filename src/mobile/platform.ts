@@ -108,6 +108,8 @@ export interface MobilePlatform {
   onResume?(listener: () => void): () => void;
   /** The app went to the background. */
   onPause?(listener: () => void): () => void;
+  /** The phone moved to another network (Wi-Fi to cellular, another Wi-Fi) or lost or got one back. */
+  onNetworkChange?(listener: () => void): () => void;
   /** Non-secret key/value storage. */
   prefs: {
     get(key: string): Promise<string | null>;

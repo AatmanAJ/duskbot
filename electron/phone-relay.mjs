@@ -18,7 +18,7 @@ import { seal, sealKeyOf, sha256hex, x25519Pair } from "./vps-link-protocol.mjs"
 export const PHONE_RELAY_BASE = "https://link.dusk.bot";
 const DESKTOP_OWNER_HEADER = "x-dusk-desktop-owner";
 const CHECK_MS = 15_000;
-const RETRY_MS = [5_000, 30_000, 120_000, 600_000];
+const RETRY_MS = [5_000, 30_000, 120_000];
 const ID = /^[a-z2-7]{10}$/;
 
 /** what the link service said, as a reason the pane can show; `code` is the service's own when it gave one */
@@ -258,6 +258,13 @@ export function createPhoneRelay(deps) {
       set({ status: "off" });
     },
     state: () => ({ ...status }),
+    /** the computer woke or its network came back: a relay still waiting out a failure tries again now */
+    wake() {
+      if (stopped || running) return;
+      failures = 0;
+      notBefore = 0;
+      schedule(0);
+    },
     /** asked right before a pairing code is made: start now if wanted and wait for the relay, at most `timeoutMs` */
     async ready(timeoutMs = 8_000) {
       // a person asking skips the wait after a failure, but not more often than the first retry
@@ -315,7 +322,7 @@ export function phoneRelayStore({ jsonFile, userData, encryption }) {
  * Electron main's wiring: `phone-relay:state` and `phone-relay:ready` for the local page, and a relay kept up while
  * `wanted()`. Returns the relay.
  */
-export function installPhoneRelay({ ipcMain, guard, jsonFile, userData, dataDir, encryption, ...deps }) {
+export function installPhoneRelay({ ipcMain, guard, jsonFile, userData, dataDir, encryption, powerMonitor, ...deps }) {
   const relay = createPhoneRelay({
     base: (process.env.DUSK_LINK_BASE || PHONE_RELAY_BASE).replace(/\/+$/, ""),
     store: phoneRelayStore({ jsonFile, userData, encryption }),
@@ -325,6 +332,9 @@ export function installPhoneRelay({ ipcMain, guard, jsonFile, userData, dataDir,
   });
   ipcMain.handle("phone-relay:state", guard("phone-relay:state", () => relay.state()));
   ipcMain.handle("phone-relay:ready", guard("phone-relay:ready", () => relay.ready()));
-  if (process.env.DUSK_PHONE_RELAY !== "off") relay.start();
+  if (process.env.DUSK_PHONE_RELAY !== "off") {
+    relay.start();
+    for (const event of ["resume", "unlock-screen"]) powerMonitor?.on(event, () => relay.wake());
+  }
   return relay;
 }

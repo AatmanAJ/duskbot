@@ -72,6 +72,17 @@ function parseHostedWorkspaceLink(input) {
   }
 }
 
+/** `origin` is this app's own server: what `duskbot pair` prints as "this computer" on a server without a public
+ * address names port 8799 there, which here is this app, so it is never added as another place. */
+function isThisAppsServer(origin, port) {
+  try {
+    const url = new URL(origin);
+    return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) && Number(url.port || (url.protocol === "https:" ? 443 : 80)) === Number(port);
+  } catch {
+    return false;
+  }
+}
+
 /** Remote renderers learn only their current workspace, never the local list. */
 function workspaceSummary(state) {
   const active = activeEnvironment(state);
@@ -531,6 +542,7 @@ module.exports = {
   parseEnvironments,
   parsePairingLink,
   parseHostedWorkspaceLink,
+  isThisAppsServer,
   savedPlace,
   serializeEnvironments,
   startupEnvironmentDir,
