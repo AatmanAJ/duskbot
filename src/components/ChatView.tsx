@@ -1400,6 +1400,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               </div>
             </div>
           )}
+          <div data-failed-reply-row="" className="empty:hidden [&>[data-failed-reply]]:mb-0 [&>[data-failed-reply]]:px-0"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
             avatar={<WorkingMascot bot={bot} size={phoneApp() ? 30 : 22} seed={presenceSeed} mood={mood} />}
@@ -1449,7 +1450,6 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
             into the transcript's first time stamp */}
         <div className="pointer-events-auto"><ChatNotice notice={state.notice} /></div>
         <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
-        <div className="pointer-events-auto"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
         <div className="pointer-events-auto">{canWrite !== false && !trailing?.failures.length && !trailing?.notices.length && <ComposerSignInNotice bot={bot} />}</div>
         <div className="pointer-events-auto">{!trailing?.failures.length && <ScreenAccessNotice bot={bot} />}</div>
       </ComposerNoticeSlot>
