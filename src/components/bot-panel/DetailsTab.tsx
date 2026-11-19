@@ -13,7 +13,8 @@ import { ModelSelectRow } from "../native/ModelSelectRow";
 import { ModelRowSlot } from "./model-row-slot";
 import { UsageMeterRow } from "../native/UsageMeter";
 import { answeringModel, useThreadBackup } from "@/lib/thread-backup";
-import { setVoicePrefs, useVoicePrefs, VOICE_LANGUAGES, VOICE_SPEEDS, type VoiceSpeed } from "./voice-prefs";
+import { setVoicePrefs, useVoicePrefs, VOICE_LANGUAGES, VOICE_SPEEDS } from "./voice-prefs";
+import { useCallPrefs } from "@/lib/voice-call/prefs";
 
 type Derived = ReturnType<typeof useBotSettingsDerived>;
 
@@ -66,6 +67,9 @@ export function VoiceChatCard({ bot, patch }: { bot: Bot; patch: Derived["patch"
   const tts = state.config?.tts;
   const voices = useVoiceOptions(bot, Boolean(tts?.configured)) ?? [];
   const prefs = useVoicePrefs(bot.id);
+  const globalSpeed = useCallPrefs().speed;
+  const speed = prefs.speed ?? String(globalSpeed);
+  const speeds = (VOICE_SPEEDS as readonly string[]).includes(speed) ? VOICE_SPEEDS : [...VOICE_SPEEDS, speed].sort((a, b) => Number(a) - Number(b));
   // grok names the voice a bot speaks with by default, so the default row wears that voice's name
   const fallback = tts?.voice ? voices.find((entry) => entry.id === tts.voice) : undefined;
   const voice = bot.voice && bot.voice !== fallback?.id ? bot.voice : "";
@@ -83,16 +87,16 @@ export function VoiceChatCard({ bot, patch }: { bot: Bot; patch: Derived["patch"
         <SelectPill
           data-panel-select="speed"
           aria-label={t("botPanel.voice.speed")}
-          value={prefs.speed}
-          options={VOICE_SPEEDS.map((speed) => ({ value: speed, label: `${speed}x` }))}
-          onChange={(speed: VoiceSpeed) => setVoicePrefs(bot.id, { speed })}
+          value={speed}
+          options={speeds.map((value) => ({ value, label: `${value}x` }))}
+          onChange={(next: string) => setVoicePrefs(bot.id, { speed: next })}
         />
       </VoiceChatRow>
       <VoiceChatRow row="language" label={t("botPanel.voice.language")}>
         <SelectPill
           data-panel-select="language"
           aria-label={t("botPanel.voice.language")}
-          value={prefs.language}
+          value={prefs.language ?? "auto"}
           options={VOICE_LANGUAGES.map(([code, name]) => ({ value: code, label: name }))}
           onChange={(language: string) => setVoicePrefs(bot.id, { language })}
         />

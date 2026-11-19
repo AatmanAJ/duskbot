@@ -8,6 +8,7 @@ import { haptic } from "@/mobile/haptics";
 import { localVoiceCallKnown, markLocalVoiceUnavailable } from "@/lib/voice-call/availability";
 import { ease } from "@/lib/voice-call/meter";
 import { ACCOUNT_VOICE, CALL_SPEEDS, CALL_VOICES, callPrefs, setCallPrefs, useCallPrefs, voiceForBot, type CallVoiceId } from "@/lib/voice-call/prefs";
+import { callLanguageFor, callSpeedFor, setVoicePrefs, useVoicePrefs, voicePrefs } from "./bot-panel/voice-prefs";
 import { VoiceCallSession, type CallFacts, type CallSnapshot } from "@/lib/voice-call/session";
 import { useStore, visibleMessages, type Bot } from "@/state/store";
 import { BotAvatar } from "./Avatar";
@@ -71,6 +72,8 @@ export function VoiceCall({ bot }: { bot: Bot }) {
   const tts = state.config?.tts;
   const account = tts?.ready ? VOICE_SERVICES[tts.provider ?? "elevenlabs"] ?? null : null;
   const prefs = useCallPrefs();
+  const own = useVoicePrefs(bot.id);
+  const speed = callSpeedFor(own, prefs.speed);
   const voice = voiceForBot(bot.id, prefs);
   const [attempt, setAttempt] = useState(0);
   const [session, setSession] = useState<VoiceCallSession | null>(null);
@@ -86,7 +89,7 @@ export function VoiceCall({ bot }: { bot: Bot }) {
         decide: (requestId, allow) => dispatch({ type: "decideRequest", threadId, requestId, behavior: allow ? "allow" : "deny", message: allow ? undefined : t("call.denied") }),
         answer: (messageId, text) => dispatch({ type: "answerCard", botId: id, threadId, messageId, answer: text }),
       },
-      { voice: voiceForBot(id), speed: callPrefs().speed, accountVoiceId: botRef.current.voice },
+      { voice: voiceForBot(id), speed: callSpeedFor(voicePrefs(id), callPrefs().speed), language: callLanguageFor(voicePrefs(id)), accountVoiceId: botRef.current.voice },
     );
     next.skipSteps(visibleMessages(botRef.current).filter((m) => m.kind === "activity").map((m) => m.id));
     setSession(next);
@@ -105,11 +108,11 @@ export function VoiceCall({ bot }: { bot: Bot }) {
     };
   }, [bot.id]);
 
-  useEffect(() => session?.setVoice(voice, prefs.speed), [session, voice, prefs.speed]);
+  useEffect(() => session?.setVoice(voice, speed), [session, voice, speed]);
   useEffect(() => session?.update(factsFor(bot)), [session, bot]);
 
   if (!session) return null;
-  return <CallSurface bot={bot} session={session} transcript={prefs.transcript} voice={voice} speed={prefs.speed} account={account} onRetry={() => setAttempt((n) => n + 1)} />;
+  return <CallSurface bot={bot} session={session} transcript={prefs.transcript} voice={voice} speed={speed} account={account} onRetry={() => setAttempt((n) => n + 1)} />;
 }
 
 function CallSurface({ bot, session, transcript, voice, speed, account, onRetry }: {
@@ -359,7 +362,7 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, account,
           }}
           onSpeed={(value) => {
             haptic("pick");
-            setCallPrefs({ speed: value });
+            setVoicePrefs(bot.id, { speed: String(value) });
             session.setVoice(voice, value);
             session.preview(t("call.voice.previewLine", { name: bot.name }));
           }}
