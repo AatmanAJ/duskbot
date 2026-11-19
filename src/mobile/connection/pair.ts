@@ -62,6 +62,17 @@ export function parseTypedPairing(input: string): MobilePairingPayload | TypedCo
 
 const pendingAttempts = new WeakMap<MobilePlatform, Map<string, Promise<string>>>();
 
+const INSTALL_KEY = "dusk.mobile.install";
+
+/** this app install's own id, made on first use and kept in its preferences */
+export async function installId(platform: MobilePlatform): Promise<string> {
+  const saved = await platform.prefs.get(INSTALL_KEY);
+  if (saved) return saved;
+  const id = randomUuid();
+  await platform.prefs.set(INSTALL_KEY, id);
+  return id;
+}
+
 async function attemptId(payload: TypedPairing, platform: MobilePlatform, origin: string): Promise<string> {
   const digest = await subtle().digest("SHA-256", new TextEncoder().encode(payload.credential || `${origin}\0${payload.code}`));
   const hash = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 12);
@@ -214,7 +225,7 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
     }
     const request: MobileRedeemRequest = {
       secret: payload.credential, attemptId: id,
-      device: { name: platform.deviceName(), platform: platform.kind === "web" ? "other" : platform.kind, app: platform.appVersion },
+      device: { name: platform.deviceName(), platform: platform.kind === "web" ? "other" : platform.kind, app: platform.appVersion, install: await installId(platform) },
       ...(keys ? { relay: { pub: keys.pub, verifier: await sha256hex(keys.token) } } : {}),
     };
     let lastError = new PairError("unreachable");

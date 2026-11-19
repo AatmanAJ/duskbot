@@ -217,6 +217,19 @@ describe("v2 pairing", () => {
     expect(channel.close).toHaveBeenCalledOnce();
   });
 
+  it("sends this install's own id with every pairing, the same one each time, kept in its preferences", async () => {
+    const { platform, preferences } = fakePlatform();
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => response(v2Answer()));
+    vi.stubGlobal("fetch", fetcher);
+    vi.spyOn(relay, "open").mockReturnValue({ request: vi.fn().mockRejectedValue(new TypeError("offline")), close: vi.fn() });
+    await redeemPairing(pairingFromPayload(v2Payload()), platform);
+    await redeemPairing(pairingFromPayload({ ...v2Payload(), grant: { ...v2Payload().grant, id: "grant-two" } }), platform);
+    const [first, second] = fetcher.mock.calls.map((call) => JSON.parse(String(call[1]?.body)).device.install);
+    expect(first).toMatch(/^[0-9a-f-]{36}$/);
+    expect(second).toBe(first);
+    expect(preferences.get("dusk.mobile.install")).toBe(first);
+  });
+
   it("falls back to grant relay and records the device channel", async () => {
     const channel = { request: vi.fn().mockResolvedValue(response(v2Answer())), close: vi.fn() };
     const opened = vi.spyOn(relay, "open").mockReturnValue(channel);

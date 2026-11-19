@@ -54,12 +54,14 @@ export const PUSH_GRACE_MS = 4_000;
 
 const relayId = () => Array.from(randomBytes(10), (byte) => B32[byte & 31]).join("");
 
+const INSTALL_ID = /^[A-Za-z0-9-]{16,64}$/;
 const deviceSchema = z.object({
   id: z.string().uuid(),
   sessionId: z.string().min(1),
   name: z.string().max(80),
   platform: z.enum(MOBILE_PLATFORMS),
   app: z.string().max(40).optional(),
+  install: z.string().regex(INSTALL_ID).optional(),
   createdAt: z.number(),
   relay: z.object({ channel: z.string().regex(/^[a-z2-7]{10}$/), verifier: z.string().regex(HEX64), pub: z.string().regex(B64URL_KEY) }).nullable(),
   push: z.object({ service: z.enum(PUSH_SERVICES), token: z.string().min(8).max(4096), environment: z.enum(["sandbox", "production"]).optional(), updatedAt: z.number() }).nullable(),
@@ -341,6 +343,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     const name = typeof device?.name === "string" ? device.name.slice(0, 80) : "";
     const platform = MOBILE_PLATFORMS.find((one) => one === device?.platform) ?? "other";
     const app = typeof device?.app === "string" ? device.app.replace(/[^\w .+-]/g, "").slice(0, 40) : undefined;
+    const install = typeof device?.install === "string" && INSTALL_ID.test(device.install) ? device.install : undefined;
     const relayAsk = body.relay as Record<string, unknown> | undefined;
     if (relayAsk !== undefined && (typeof relayAsk?.pub !== "string" || !usableX25519(relayAsk.pub) || typeof relayAsk.verifier !== "string" || !HEX64.test(relayAsk.verifier))) {
       return { status: 400, body: { error: "relay needs pub (base64url x25519) and verifier (sha256 hex)" } };
@@ -353,8 +356,10 @@ export function createMobileLink(deps: MobileLinkDeps) {
     // a retried attempt gets the device it already opened
     let record = devices.find((one) => one.sessionId === exchanged.session.id);
     if (!record) {
-      record = { id: randomUUID(), sessionId: exchanged.session.id, name: exchanged.session.label, platform, ...(app ? { app } : {}), createdAt: now(), relay: null, push: null };
+      record = { id: randomUUID(), sessionId: exchanged.session.id, name: exchanged.session.label, platform, ...(app ? { app } : {}), ...(install ? { install } : {}), createdAt: now(), relay: null, push: null };
       devices.push(record);
+      const kept = record;
+      if (install) for (const replaced of devices.filter((one) => one !== kept && one.install === install)) revoke(replaced.id);
     }
     const relay = agentLive();
     let relayAnswer: MobileRedeemResponse["relay"];

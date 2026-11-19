@@ -70,7 +70,9 @@ export interface MobileRedeemRequest {
   secret: string;
   /** Stable across retries of one attempt, so a lost answer can be fetched again. */
   attemptId: string;
-  device: { name: string; platform: MobilePlatform; app?: string };
+  /** `install`: made once per phone app install and kept in its preferences; a pairing that carries the install of an
+   * earlier pairing with this workspace replaces it. */
+  device: { name: string; platform: MobilePlatform; app?: string; install?: string };
   /** Ask for a long-lived relay channel: the phone's X25519 public key and sha256 hex of a token it generated. */
   relay?: { pub: string; verifier: string };
 }

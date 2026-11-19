@@ -209,6 +209,24 @@ describe("mobile link", () => {
     vi.useRealTimers();
   });
 
+  it("a phone paired again with its install id replaces the pairing it made before, push or not", async () => {
+    const mobile = link();
+    const pairOnce = async (attemptId: string, install: string) => {
+      const answer = (await call(mobile, owner, "POST", "/api/mobile/pairing")).body as MobilePairingResponse;
+      return (await redeem(mobile, { secret: answer.payload.grant.secret, attemptId, device: { name: "p", platform: "android", install } })).body as MobileRedeemResponse;
+    };
+    const first = await pairOnce("attempt-0301", "0b5e6a52-6a0e-4f7e-9d0c-1f2e3d4c5b6a");
+    const other = await pairOnce("attempt-0302", "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d");
+    const again = await pairOnce("attempt-0303", "0b5e6a52-6a0e-4f7e-9d0c-1f2e3d4c5b6a");
+    const listed = (await call(mobile, owner, "GET", "/api/mobile/devices")).body.devices.map((one: { id: string }) => one.id);
+    expect(listed).toEqual([other.device.id, again.device.id]);
+    expect(sessions.authenticate(first.token)).toBeNull();
+    expect(sessions.authenticate(other.token)).not.toBeNull();
+    const odd = await pairOnce("attempt-0304", "not an id");
+    expect((await call(mobile, owner, "GET", "/api/mobile/devices")).body.devices).toHaveLength(3);
+    expect(sessions.authenticate(odd.token)).not.toBeNull();
+  });
+
   it("a phone paired again takes its push token from the pairing it replaced, which is removed, so each notification arrives once", async () => {
     vi.useFakeTimers();
     const mobile = link();
