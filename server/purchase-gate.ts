@@ -1,7 +1,8 @@
 // Security: the bots' browser may not take a purchase's last step (Place order, Buy now, Pay, Book now) until the person
 // tapped "Confirm purchase" on the card confirm_purchase posts, at every access level. The gate reads the control a
 // call names from the page as the bot last saw it (the snapshot lines with refs and the page's address), so it holds
-// for both browser engines. Known open risk: a click by point (x, y) names no control and is not recognised.
+// for both browser engines. A click by point (x, y) is named by the control the page has there (withPointNames); one
+// that cannot be named counts as the last step on a checkout page.
 import { CHECKOUT_PAGE, finishesPurchase } from "../shared/purchase.ts";
 
 /** How long one confirmation lets the browser finish the purchase it covers. */
@@ -23,6 +24,38 @@ const record = (value: unknown): Args => (value && typeof value === "object" && 
 function resultText(result: unknown): string {
   const content = record(result).content;
   return Array.isArray(content) ? content.flatMap((part) => (record(part).type === "text" && typeof record(part).text === "string" ? [String(record(part).text)] : [])).join("\n") : "";
+}
+
+/** Where a point click's control name is carried to the check: a string, or null when the page could not name it. */
+const HIT = "duskPointName";
+const HIT_MARK = /DUSK_HIT:([^\s"'\\]*):END/u;
+
+/** The control under a point, as an agent_browser_eval script: the clickable element around it and its words. A frame
+ * there (a card form) has no words this page can read. */
+export function pointNameScript(x: number, y: number): string {
+  return `(() => { const el = document.elementFromPoint(${Number(x)}, ${Number(y)}); if (!el || el.tagName === "IFRAME") return "DUSK_HIT::END"; const c = el.closest("button,a,[role=button],[role=link],input[type=submit],input[type=button],summary") || el; const t = (c.getAttribute("aria-label") || c.value || c.innerText || c.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 200); return "DUSK_HIT:" + encodeURIComponent(t || "-") + ":END"; })()`;
+}
+
+/** The name an eval of pointNameScript returned, or null. */
+export function pointName(result: unknown): string | null {
+  const found = HIT_MARK.exec(resultText(result))?.[1];
+  if (!found) return null;
+  try { return found === "-" ? "" : decodeURIComponent(found); } catch { return null; }
+}
+
+const isPoint = (args: Args) => typeof args.x === "number" && typeof args.y === "number" && args.ref === undefined && args.selector === undefined && args.text === undefined;
+
+/** The call's arguments with each click by point named through `nameAt`, which answers null when it cannot tell. */
+export async function withPointNames(name: string | undefined, args: unknown, nameAt: (x: number, y: number) => Promise<string | null>): Promise<unknown> {
+  const given = record(args);
+  if (name === "agent_browser_click" && isPoint(given)) return { ...given, [HIT]: await nameAt(given.x as number, given.y as number) };
+  if (name !== "agent_browser_batch" || !Array.isArray(given.steps)) return args;
+  const steps: unknown[] = [];
+  for (const step of given.steps) {
+    const one = record(step);
+    steps.push(one.do === "click" && isPoint(one) ? { ...one, [HIT]: await nameAt(one.x as number, one.y as number) } : step);
+  }
+  return { ...given, steps };
 }
 
 /** The words a selector names an element by: text=…, :has-text("…"), [name="…"], or its id and classes as words. */
@@ -97,6 +130,7 @@ export class PurchaseGate {
     if (name === "agent_browser_press") return /^(?:Enter|NumpadEnter)$/u.test(String(args.key ?? "")) && CHECKOUT_PAGE.test(address);
     if (name === "agent_browser_fill") return args.submit === true && CHECKOUT_PAGE.test(address);
     if (name !== "agent_browser_click") return false;
+    if (HIT in args) return typeof args[HIT] === "string" ? finishesPurchase(args[HIT], address) : CHECKOUT_PAGE.test(address);
     return finishesPurchase(this.#controlName(page, args), address);
   }
 
