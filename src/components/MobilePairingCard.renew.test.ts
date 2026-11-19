@@ -159,7 +159,7 @@ it("on a dusk cloud shows one qr that opens the app's log in with the account's 
   await click("[data-phone-platform=ios]");
   expect(host.querySelector("[data-phone-cloud]")).not.toBeNull();
   expect(host.textContent).toContain("Log in on your iPhone");
-  expect(host.querySelector("[data-phone-steps=ios]")?.textContent).toContain("Open it, tap Log in to dusk cloud and use the same email");
+  expect(host.querySelector("[data-phone-steps=ios]")?.textContent).toContain("Open it, tap log in to dusk cloud and use the same email");
   expect(host.querySelector("[data-phone-camera-hint]")?.textContent).toBe("Or scan this with your iPhone's Camera app");
   expect(host.querySelector("[data-phone-cloud-sign-in]")?.textContent).toContain("Log in with");
   expect(host.querySelector("[data-phone-cloud-sign-in]")?.textContent).toContain("owner@example.test");
