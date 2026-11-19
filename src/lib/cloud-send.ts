@@ -4,7 +4,6 @@ import type { OneHomeCounts, OneHomeNotCarried, OneHomeStayed, OneHomeView } fro
 import type { TeamMoveView } from "../../electron/team-move.mjs";
 import type { LocaleKey } from "@/locales";
 import { activeLocale, t } from "@/lib/i18n";
-import { friendlyError } from "@/lib/plain-error";
 
 const counted = (count: number, one: LocaleKey, many: LocaleKey) => t(count === 1 ? one : many, { count });
 
@@ -12,7 +11,7 @@ export const listOf = (parts: string[]) => new Intl.ListFormat(activeLocale(), {
 
 /** The words main threw, without Electron's "Error invoking remote method" wrapper; null when there are none. */
 export function ipcErrorText(cause: unknown): string | null {
-  return cause instanceof Error && cause.message ? friendlyError(cause, "") || null : null;
+  return cause instanceof Error && cause.message ? cause.message.replace(/^Error invoking remote method '[^']*':\s*(?:\w*Error:\s*)?/u, "") : null;
 }
 
 /** "12 bots, 3 skills, 2 logins, 1Password and 48 chats", from counts only. */

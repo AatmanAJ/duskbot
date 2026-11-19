@@ -1,4 +1,3 @@
-import { friendlyError } from "@/lib/plain-error";
 import { useEffect, useState } from "react";
 import { DesktopWorkspaceSwitcher } from "../components/DesktopWorkspaceSwitcher";
 import { productName } from "../lib/brand";
@@ -66,7 +65,7 @@ export function PairPage({ initialCode, initialEmail = null, reason }: { initial
       if (!active) return;
       if (result.ok) { location.replace(pairedDestination(location.search)); return; }
       setOpening(false);
-      setError(friendlyError(result.error));
+      setError(result.error);
     });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,7 +99,7 @@ export function PairPage({ initialCode, initialEmail = null, reason }: { initial
       location.replace(pairedDestination(location.search));
       return;
     }
-    setError(friendlyError(result.error));
+    setError(result.error);
   }
 
   async function submitEmail(e: React.FormEvent) {
@@ -110,7 +109,7 @@ export function PairPage({ initialCode, initialEmail = null, reason }: { initial
     const result = sent ? await verifyEmailSignIn({ email, code: otp, label }) : await startEmailSignIn(email);
     setBusy(false);
     if (!result.ok) {
-      setError(friendlyError(result.error));
+      setError(result.error);
       return;
     }
     if (sent) {

@@ -8,7 +8,6 @@ import { BotCreationDraft } from "./bot-creation-draft";
 import { isBotLimitRefusal } from "./bot-limit";
 import { createConfiguredBot } from "./create-configured-bot";
 import { t } from "./i18n";
-import { friendlyError } from "./plain-error";
 import { botCreated } from "./product-events";
 import { readBotDefaults, type BotDefaultsAnswer } from "./bot-defaults-prefetch";
 
@@ -90,7 +89,7 @@ export async function makeNewBot(action: Extract<Action, { type: "newBot" }>, bo
     made = await createNewBot(action.section, bots, currentTeamPeople(), request, action.look);
   } catch (cause) {
     if (isBotLimitRefusal(cause)) return;
-    const message = t("newBot.failed", { error: friendlyError(cause) });
+    const message = t("newBot.failed", { error: cause instanceof Error ? cause.message : String(cause) });
     if (action.onError) action.onError(message);
     else dispatch({ type: "error", message });
     return;
