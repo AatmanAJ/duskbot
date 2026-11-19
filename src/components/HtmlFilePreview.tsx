@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Check, Code2, Download, ExternalLink, Eye, LoaderCircle, RotateCcw } from "../icons";
 import { fileGone, requestMessageFile, useLocalFileSave, type MessageAttachmentContext } from "./AttachmentPreview";
 import { TableDialog } from "./RichTable";
+import { PdfFileContent } from "./PdfFilePreview";
 import { readTableResponse } from "./TableFilePreview";
 import { t } from "@/lib/i18n";
 import { friendlyError } from "@/lib/plain-error";
@@ -15,13 +16,14 @@ export function isHtmlFile(name: string): boolean {
   return /\.html?$/i.test(name);
 }
 
-export type FilePreviewKind = "html" | "markdown" | "text";
+export type FilePreviewKind = "html" | "markdown" | "text" | "pdf";
 
 /** A file a bot sends that opens in a preview first, where it can still be saved; any other file saves at once. */
 export function filePreviewKind(name: string): FilePreviewKind | null {
   if (isHtmlFile(name)) return "html";
   if (/\.(md|markdown)$/i.test(name)) return "markdown";
   if (/\.(txt|log|json|ya?ml)$/i.test(name)) return "text";
+  if (/\.pdf$/i.test(name)) return "pdf";
   return null;
 }
 
@@ -56,6 +58,7 @@ export function useFilePreview(path: string, name: string, message?: MessageAtta
       ? <TableDialog title={name} returnFocus={opener.current} onClose={() => setOpen(false)}>
         {kind === "html"
           ? <HtmlFileContent key={key} path={path} name={name} message={message} />
+          : kind === "pdf" ? <PdfFileContent key={key} path={path} message={message} />
           : <TextFileContent key={key} path={path} name={name} message={message} markdown={kind === "markdown"} />}
       </TableDialog>
       : null,
