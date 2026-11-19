@@ -9540,7 +9540,7 @@ async function beginTurn(
       if (strictResume && !(opts?.cardContinuation && continuingRoutine) && dispatchedConfig !== plannedConfig) dispatchContext = decideContext(dispatchedConfig);
       // Before sendTurn: an adapter may emit the whole turn before it resolves.
       handoffs.dispatching(threadId, dispatchClaimId, dispatchContext.handoff);
-      const clock = takesTurnClock(userTurnText) && !introTurns.has(threadId) ? personClock(Date.now(), personTimeZone(proactive.brief.timeZone()), previousPersonMessageAt(activeMessages, userMessage.id), askedElsewhereAt(store.bot(bot.id)?.tasks, threadId)) + habitReminder(chatMessageCount(activeMessages)) + nearLimitNote(limitClock.limit(instanceId), engineName(instanceId), personTimeZone(proactive.brief.timeZone())) : "";
+      const clock = takesTurnClock(userTurnText) && !introTurns.has(threadId) ? personClock(Date.now(), personTimeZone(proactive.brief.timeZone()), previousPersonMessageAt(activeMessages, userMessage.id), askedElsewhereAt(store.bot(bot.id)?.tasks, threadId)) + habitReminder(chatMessageCount(activeMessages), userTurnText) + nearLimitNote(limitClock.limit(instanceId), engineName(instanceId), personTimeZone(proactive.brief.timeZone())) : "";
       const shareNote = skillsHost.shareNote(bot, threadId, Boolean(privateWorkspace));
       const startupRecovery = (opts?.automaticRecoveryIndex ?? 0) < startupBackups(liveBot ?? bot, cfg.automaticRecovery).length;
       const held = limitTakeover.heldAtStart(bot, { instanceId, model }, startupRecovery); // a limit or a sign-out already known: straight to an AI that can carry on, with the reset only when one was named

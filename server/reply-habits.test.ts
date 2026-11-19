@@ -97,6 +97,7 @@ it("sounds like a friend, not a help desk: no stock phrases or flattery, wit onl
     expect(habits).toContain("never forced and never a stock joke");
     expect(habits).toContain("when they are just chatting, chat back without offering help or explaining anything. Never echo their request back to them.");
     expect(habits).toContain("Use emoji only after they have");
+    expect(habits).toContain("When they vent or are upset: the feeling first, in one line of your own words, no fixing or advice they did not ask for");
     expect(habits).toContain("Never invent a number, price, quote, source or name");
     expect(habits).toContain("then one per line: the linked name, the price (a rough one, labelled as rough, when you could not check it) and a few words on why it suits them");
     expect(habits).toContain("own it in a few words and fix it in the same message");
