@@ -159,7 +159,8 @@ export default defineConfig({
     // packager output lands inside the repo — its HTML files must never
     // trigger dev full-page reloads
     watch: {
-      ignored: ["**/release/**", "**/build/**", "**/dist/**", "**/electron/resources/**", "**/.claude/**"],
+      // only this checkout's own .claude: a dev server run inside .claude/worktrees still sees its edits
+      ignored: ["**/release/**", "**/build/**", "**/dist/**", "**/electron/resources/**", `${root.replace(/\\/g, "/")}.claude/**`],
     },
     // the harness server owns every provider process; the app only ever
     // talks to /api — clients hold no transports
