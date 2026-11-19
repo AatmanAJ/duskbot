@@ -4970,6 +4970,7 @@ describe("harness HTTP API", () => {
     expect(markdownExport.body.markdown).not.toMatch(/Archived|autoApprove|alwaysAllow|modelSelection|threadId/);
     expect((await api("GET", "/api/bots")).body.groups).toHaveLength(roomsBefore);
     expect((await api("POST", "/api/teams/export", {})).body.team.name).toBe("My dusk bot Team");
+    expect((await api("POST", "/api/teams/export", [])).status).toBe(400);
 
     const stream = await openSse(`${BASE}/api/events`);
     try {

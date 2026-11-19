@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildErrorPage, desktopViewerErrorPage, RENDERER_CRASHES, serverPageAction, serverProblemReportUrl, windowCrashedPage } from "./error-pages.mjs";
+import { loadWithOneRetry, offerRestart } from "./recovery-prompts.mjs";
 import { pickServerPort, strandedServerOn } from "./server-port.mjs";
 import { startCua, stopCua, registerCuaIpc, setCuaStateListener, grantLocalComputer } from "./cua.mjs";
 import { finishSpeech, speechBusy, startSpeech, stopSpeech } from "./speech.mjs";
@@ -461,11 +462,7 @@ const serverSupervisor = createServerSupervisor({
     if (earlyVpsOpened && activeRemote(environmentsState)?.id === earlyVpsOpened && mainWindow && !mainWindow.isDestroyed()) return;
     serverFailure = "crashed";
     if (app.isPackaged && !desktopRemoteAccess && showsLocalPage(mainWindow)) return void serverFailurePage(mainWindow);
-    dialog.showErrorBox(
-      "The bot server stopped",
-      "Automatic recovery could not restart the background server. Quit and reopen dusk bot to try again. Interrupted chat turns were not resent.\n\n" +
-        `Server log: ${path.join(LOG_DIR, "server.log")}`,
-    );
+    void offerRestart({ dialog, app });
   },
   log: slog,
 });
@@ -1547,16 +1544,8 @@ function openDesktopViewer(owner, rawUrl, rawTitle, contextId) {
     } catch {
     }
   });
-  viewer.webContents.on("did-fail-load", (_event, code, description, failedUrl, isMainFrame) => {
-    if (!isMainFrame || code === -3 || viewer.isDestroyed() || failedUrl.startsWith("data:")) return;
-    void viewer.loadURL(desktopViewerErrorPage(description || "The viewer did not respond.", url.toString()));
-  });
-
   notifyDesktopViewer(true);
-  void viewer.loadURL(url.toString()).catch((error) => {
-    if (viewer.isDestroyed()) return;
-    void viewer.loadURL(desktopViewerErrorPage(error?.message ?? "The viewer did not respond.", url.toString()));
-  });
+  loadWithOneRetry(viewer, url.toString(), desktopViewerErrorPage, (line) => slog(`desktop viewer: ${line}`));
   return true;
 }
 

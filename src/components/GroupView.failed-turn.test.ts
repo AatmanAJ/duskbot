@@ -76,8 +76,8 @@ describe("failed replies in a room", () => {
   });
 
   it("maps a stored reason, says a plain cause as it is, and a technical one as a short generic line", () => {
-    expect(card([ask, failed("Echo", "x", { reason: "rate_limit" })])).toContain("This request has been rate limited, try again shortly");
-    expect(card([ask, failed("Echo", "The operation timed out.")])).toContain("The reply timed out");
+    expect(card([ask, failed("Echo", "x", { reason: "rate_limit" })])).toContain("Your AI is getting too many requests. Try again in a moment.");
+    expect(card([ask, failed("Echo", "The operation timed out.")])).toContain("Your AI took too long to answer. Try again.");
     const plain = card([ask, failed("Echo", "Your Pro plan includes 2 cloud computers at once.")]);
     expect(plain).toContain("Echo couldn&#x27;t respond");
     expect(plain).toContain("Your Pro plan includes 2 cloud computers at once.");
@@ -103,8 +103,10 @@ describe("failed replies in a room", () => {
     expect(markup).not.toContain("Settings → AI");
   });
 
-  it("titles a direct chat's card the way grok does", () => {
-    expect(card([ask, signedOut[0]!], false)).toContain("Bot failed to respond");
+  it("says what happened as a direct chat's one sentence, never that the bot failed", () => {
+    const markup = card([ask, signedOut[0]!], false);
+    expect(markup).toContain('<span class="block font-medium">Claude isn&#x27;t signed in on this computer. Sign in to keep going.</span>');
+    expect(markup).not.toContain("failed to respond");
   });
 
   it("says a member that timed out, or whose AI never answered, in the same card, with Try again", () => {
@@ -129,7 +131,7 @@ describe("failed replies in a room", () => {
       tool: { name: "notice: Echo didn't hear back from Claude.", ok: true, rescue: { ...rescue, over: true } } };
     const markup = renderToStaticMarkup(createElement(FailedReplyCard, { rows: trailingRows([ask, silent]), botId: "echo", threadId: "main", onRetry: () => {} }));
     expect(count(markup, "data-chat-error")).toBe(1);
-    expect(markup).toContain("Bot failed to respond");
+    expect(markup).not.toContain("failed to respond");
     expect(markup).toContain("Echo didn&#x27;t hear back from Claude.");
     expect(markup).toContain("Switch AI</button>");
     expect(markup).toContain("Connect your subscription</button>");
@@ -153,7 +155,7 @@ describe("a member's hand-off that failed", () => {
     };
     const markup = renderToStaticMarkup(createElement(RoomToolChip, { message, roomId: "room" }));
     expect(markup).toContain('data-handoff-row="result"');
-    expect(markup).toContain("Model provider is overloaded");
+    expect(markup).toContain("Your AI is busy right now. Try again in a moment.");
     expect(markup).not.toContain("529");
     expect(markup).not.toContain("text-danger");
   });

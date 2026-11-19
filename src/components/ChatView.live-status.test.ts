@@ -235,7 +235,7 @@ describe("each bubble's typing beat", () => {
     expect(rows()).toEqual(["ask", "one", "two"]);
   });
 
-  it("ends a turn with the last bubble landing in the frame the line starts leaving", () => {
+  it("ends a turn with the last bubble taking the line's place in the same frame, with nothing of the line under it", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     const last = fresh("last", "It's 441, so yes.");
@@ -244,10 +244,13 @@ describe("each bubble's typing beat", () => {
     expect(statusLine()).toBe("Writing");
     expect(rows()).toEqual(["ask"]);
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS));
-    expect(host.querySelector(".turn-status-out"), "the line starts leaving").not.toBeNull();
     expect(rows()).toEqual(["ask", "last"]);
+    expect(line(), "no line fading out below the reply").toBeNull();
+    expect(host.querySelector("[data-turn-status]")).toBeNull();
+    const bubble = host.querySelector('[data-mid="last"] [data-chat-bubble]');
     act(() => void vi.advanceTimersByTime(STATUS_EXIT_MS));
     expect(line()).toBeNull();
+    expect(host.querySelector('[data-mid="last"] [data-chat-bubble]'), "the reply stays the same node").toBe(bubble);
   });
 
   it("never holds back the person's own words", () => {

@@ -102,6 +102,15 @@ export function progressAt(t, expectedMs) {
  * Light or dark for the card. `saved` is the last skin the app wore and whether the system was dark then:
  * a skin that matched the system then follows the system now, one that went against it was picked on purpose.
  */
+const RAW_STARTUP = /[\\/]|:\/\/|[{}[\]]|\b[A-Z][A-Za-z]*Error\b|\bE[A-Z]{3,}\b|\bERR_[A-Z_]+|\bat \S+ \(|\bexit(?:ed)? (?:with )?code\b|\bcode \d/;
+export const STARTUP_TRY_AGAIN = "Something on this computer got in the way. Try again: it starts fresh.";
+
+/** The words the startup card says for a failure: a sentence a person can read as it is, else one that says what to do. */
+export function plainStartupFailure(error) {
+  const text = String(error?.message ?? error ?? "").trim();
+  return text && text.length <= 160 && !RAW_STARTUP.test(text) ? text : STARTUP_TRY_AGAIN;
+}
+
 export function startupDark({ systemDark, saved }) {
   if (!saved || typeof saved.light !== "boolean" || typeof saved.systemDark !== "boolean") return systemDark;
   return saved.light === saved.systemDark ? !saved.light : systemDark;
@@ -440,7 +449,7 @@ export function createStartupScreen({
   };
   /** Startup gave up: the card says so and offers try again and quit instead of waiting forever. */
   const fail = (error) => {
-    failure = String(error?.message ?? error ?? "").slice(0, 200);
+    failure = plainStartupFailure(error);
     showSplash();
     tell();
   };

@@ -7,11 +7,13 @@ import { isTechnicalError, plainErrorKind, plainErrorLine, providerSentence } fr
 import { isReceipt } from "@/lib/receipts";
 import type { LocaleKey } from "@/locales";
 import type { InstanceInfo, Message } from "@/state/store";
-import { failedTurnCause, type BrowserBlocker, type FailedReplyReason } from "../../shared/failed-turn";
+import { failedTurnCause, type BrowserBlocker } from "../../shared/failed-turn";
 import { isCancelledTranscriptRow } from "../../shared/client-cancel";
 import { freeFallback } from "../../shared/ai-ranking";
+import { hasRawDetail } from "../../shared/raw-detail";
+import { failurePlan, type FailureKind } from "../../shared/failure-plan";
 
-export type FailedReplyKind = FailedReplyReason | "claude_update" | "place" | "restart_interrupted" | "no_answer" | "blocker" | "other";
+export type FailedReplyKind = FailureKind;
 
 /** A failed turn's row: a reply that never came, not one that came back with a step that failed. */
 export function isFailedReply(message: Message): boolean {
@@ -74,8 +76,10 @@ export function currentFailureWords(text: string): string {
 
 /** What a turn a restart cut had already done outside, in the server's words: "sent an email (gmail_send)". */
 export function restartAlreadyDid(cause: string): string | null {
-  return RESTART_DID.exec(cause)?.[1]?.trim() || null;
+  return RESTART_DID.exec(cause)?.[1]?.replace(TOOL_NAME_AFTER, "").trim() || null;
 }
+
+const TOOL_NAME_AFTER = /\s*\([\w.-]+\)/g;
 
 const SIGNED_OUT_WORDS = /not logged in|logged out|\/login|not signed in|sign in again|authentication required|unauthori[sz]ed|invalid api key|\b401\b/i;
 const USAGE_WORDS = /usage limit|limit reached|hit your [\w' -]{0,30}limit/i;
@@ -159,6 +163,13 @@ const AI_UNREACHABLE: ReadonlySet<string> = new Set(["error.plain.unreachable", 
 /** The card's one plain line for a kind; place, trial and update failures bring their own words. Any other failure says
  * the server's own cause, as the sidebar does, unless it is technical. */
 export function failedReplyDetail(kind: FailedReplyKind, engineName: string, onServer: boolean, cause = ""): string {
+  // the server's English line for a known reason reads better in the reader's own language
+  const said = cause.trim() === failurePlan(kind).line ? "" : cause;
+  const words = detailWords(kind, engineName, onServer, said);
+  return said && hasRawDetail(words) ? detailWords(kind, engineName, onServer, "") : words;
+}
+
+function detailWords(kind: FailedReplyKind, engineName: string, onServer: boolean, cause: string): string {
   if (kind === "signed_out") return t(onServer ? "failedReply.signedOutServer" : "failedReply.signedOutHere", { engine: engineName });
   if (kind === "credits") return t("failedReply.credits", { engine: engineName });
   if (kind === "claude_update") return t("chat.claudeUpdate.offer");

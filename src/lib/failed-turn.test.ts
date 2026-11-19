@@ -29,7 +29,7 @@ describe("failed turn text", () => {
 
   it("previews a turn the room stopped for making no progress in plain words", () => {
     expect(activityPreview({ name: "error: Rivet's room turn made no progress for 1 minute and was stopped", ok: false, reason: "timeout" }, engine()))
-      .toBe("The reply timed out");
+      .toBe("Your AI took too long to answer. Try again.");
   });
 
   it("says Grok Build is signed out through the same rule, now that its card is the in-app code", () => {
