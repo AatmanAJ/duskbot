@@ -533,3 +533,10 @@ test("with My Cloud home, this computer still leads the switcher and opens on it
   assert.equal(opened, 1);
   assert.equal(env.workspaceMenuTemplate(state, { onSwitch() {}, onConnect() {}, onForget() {}, homeOrigin: home, onLocal() {}, localShown: true })[0].checked, true);
 });
+
+test("a pasted link to this app's own server is told apart from an SSH tunnel to another one", () => {
+  assert.equal(env.isThisAppsServer("http://127.0.0.1:8799", 8799), true);
+  assert.equal(env.isThisAppsServer("http://localhost:8799", 8799), true);
+  assert.equal(env.isThisAppsServer("http://127.0.0.1:8790", 8799), false);
+  assert.equal(env.isThisAppsServer("https://bots.company.com:8799", 8799), false);
+});

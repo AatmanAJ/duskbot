@@ -1612,7 +1612,7 @@ ipcMain.on("desktop:unread-count", (event, value) => {
   applyUnreadBadge(sender);
 });
 
-const { LOCAL_ID, activeEnvironment, activeRemote, allowedOrigins, bootEnvironmentDir, otherPlaces, parseHostedWorkspaceLink, savedPlace, startupEnvironmentDir, withActive, withEnvironment, withEnvironmentLook, withLocalEnvironment, withMicrophone, withPlaceColor, withoutEnvironment, withOwnCloud, withTeam, placesMenuOptions, workspaceMenuTemplate, workspaceNavigationAllowed, workspaceSenderAllowed, workspaceSummary, workspaceWindowTitle } = environmentsModule;
+const { LOCAL_ID, activeEnvironment, activeRemote, allowedOrigins, bootEnvironmentDir, isThisAppsServer, otherPlaces, parseHostedWorkspaceLink, savedPlace, startupEnvironmentDir, withActive, withEnvironment, withEnvironmentLook, withLocalEnvironment, withMicrophone, withPlaceColor, withoutEnvironment, withOwnCloud, withTeam, placesMenuOptions, workspaceMenuTemplate, workspaceNavigationAllowed, workspaceSenderAllowed, workspaceSummary, workspaceWindowTitle } = environmentsModule;
 let environmentsState = { environments: [], activeId: LOCAL_ID };
 const cleanWorkspace = createCleanWorkspace({ dataDir: desktopDataDir, running: () => runningDataDir ?? devDataDir, swap: swapLocalData, allowed: () => !desktopRemoteAccess && (app.isPackaged || Boolean(devServer)), changed: () => { void oneHome.kick(); }, log: slog });
 /** This computer's default folder, or the clean workspace once a finished move to a server of the person's own froze it. */
@@ -2026,6 +2026,9 @@ async function connectHostedWorkspace(input, name) {
   const link = parseHostedWorkspaceLink(input);
   if (!link) {
     throw new Error("Enter an HTTPS server address or a full pairing link. Keep the pairing code after #, not in the URL query.");
+  }
+  if (isThisAppsServer(link.origin, SERVER_PORT)) {
+    throw new Error("That link is this computer's own dusk bot; on your computer run ssh -N -L 8790:127.0.0.1:8799 you@your-server, then paste http://127.0.0.1:8790 with the code.");
   }
   const host = new URL(link.origin).host;
   const { response } = await dialog.showMessageBox({
