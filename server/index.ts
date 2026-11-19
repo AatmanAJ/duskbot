@@ -11957,9 +11957,7 @@ function startGroupTurn(
 ) {
   const group = store.group(groupId);
   if (!group) throw Object.assign(new Error("no such group"), { status: 404 });
-  if (roomSetupPending(group)) {
-    throw Object.assign(new Error("finish room setup before sending the first message"), { status: 409 });
-  }
+  if (roomSetupPending(group)) store.patchGroup(groupId, { setupSkippedAt: Date.now() });
   const threadId = options.threadId ?? group.threadId;
   const ownsThread = group.dm
     ? group.threadId === threadId

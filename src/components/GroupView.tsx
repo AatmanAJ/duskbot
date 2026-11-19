@@ -1141,7 +1141,6 @@ export function GroupView({ group: room }: { group: Group }) {
         key={group.threadId}
         group={group}
         members={members}
-        locked={setupPending}
         replyTo={replyTo}
         onClearReply={clearReply}
         onConsumeReply={consumeReply}

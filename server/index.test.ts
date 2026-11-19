@@ -1786,16 +1786,28 @@ describe("harness HTTP API", () => {
     }
   });
 
-  it("persists room setup and blocks the first message until it is finished", async () => {
+  it("takes a first message sent before room setup, skipping the setup with its defaults", async () => {
+    const bot = (await api("GET", "/api/bots")).body.bots[0];
+    const group = (await api("POST", "/api/groups", { name: "Talk first", memberIds: [bot.id] })).body.group;
+    try {
+      expect(group).toMatchObject({ setupCompletedAt: null, setupSkippedAt: null });
+      expect((await api("POST", `/api/groups/${group.id}/messages`, { text: "before setup" })).status).toBeLessThan(300);
+      const room = (await api("GET", "/api/bots")).body.groups.find((candidate: { id: string }) => candidate.id === group.id);
+      expect(room).toMatchObject({ setupSkippedAt: expect.any(Number), setupCompletedAt: null });
+      expect(room.messages.some((message: { role: string; text?: string }) => message.role === "user" && message.text === "before setup")).toBe(true);
+      await releaseTurn(bot.id).catch(() => undefined);
+    } finally {
+      await api("DELETE", `/api/groups/${group.id}`);
+    }
+  });
+
+  it("persists room setup", async () => {
     const bot = (await api("GET", "/api/bots")).body.bots[0];
     const created = await api("POST", "/api/groups", { name: "Setup probe", memberIds: [bot.id] });
     expect(created.status).toBe(201);
     const group = created.body.group;
     try {
       expect(group).toMatchObject({ setupCompletedAt: null, setupSkippedAt: null, messages: [] });
-      const blocked = await api("POST", `/api/groups/${group.id}/messages`, { text: "before setup" });
-      expect(blocked.status).toBe(409);
-      expect((await api("GET", "/api/bots")).body.groups.find((candidate: { id: string }) => candidate.id === group.id).messages).toHaveLength(0);
 
       const invalid = await api("PATCH", `/api/groups/${group.id}/setup`, {
         action: "complete",
