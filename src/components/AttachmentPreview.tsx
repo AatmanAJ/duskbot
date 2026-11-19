@@ -137,10 +137,15 @@ export async function requestMessageFile(
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { error?: string; code?: string } | null;
+    if (response.status === 404 || response.status === 410) throw Object.assign(new Error(t("attach.gone")), { code: FILE_GONE });
     throw Object.assign(new Error(body?.error ?? t("attach.downloadFailed")), { code: body?.code });
   }
   return response;
 }
+
+/** The error code a message file request fails with when the file or its message is no longer there. */
+export const FILE_GONE = "gone";
+export const fileGone = (reason: unknown) => (reason as { code?: unknown } | null)?.code === FILE_GONE;
 
 export interface MessageFolderListing {
   name: string;

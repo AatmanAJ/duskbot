@@ -2775,6 +2775,7 @@
   "composer.followUp.buttonTitle": "{title} · {key}: {alternate}",
   "attach.unavailableOld": "This older file reference is no longer available to download",
   "attach.downloadFailed": "Couldn't download that file. Try again.",
+  "attach.gone": "This file isn't there any more. Ask the bot to send it again.",
   "attach.saveFailed": "That file could not be saved",
   "attach.previewAria": "Preview {name}",
   "attach.imagePreview": "Image preview",
