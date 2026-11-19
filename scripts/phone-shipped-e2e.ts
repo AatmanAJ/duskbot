@@ -23,7 +23,8 @@ import { fileURLToPath } from "node:url";
 import { createMobileSessions } from "../apps/companion/src/mobile.ts";
 import { createProxyHandler } from "../apps/companion/src/proxy.ts";
 import { createLinkService } from "../apps/link-service/src/app.mjs";
-import { createPhoneRelay, PHONE_RELAY_BASE } from "../electron/phone-relay.mjs";
+import { createPhoneRelay, createRelayTunnel, PHONE_RELAY_BASE } from "../electron/phone-relay.mjs";
+import { createPhoneHub, x25519Pair } from "../apps/link-service/agent.mjs";
 import { universalPairLink, type MobilePairingResponse } from "../shared/mobile-link.ts";
 import { smokeAccount } from "./smoke/account.mjs";
 import { waitForExit } from "../server/testing/cleanup.ts";
@@ -89,12 +90,12 @@ async function linkNode(dataDir: string, keys: Array<{ kid: string; x: string }>
   };
 }
 
-/** the isolated harness in desktop mode, restartable on the same folder and port */
-async function harness() {
-  const parentEnv = { ...process.env, DUSK_TEST_DESKTOP_OWNER_TOKEN: OWNER };
+/** the isolated harness, in desktop mode or as a server of your own runs it, restartable on the same folder and port */
+async function harness(desktop = true) {
+  const parentEnv = desktop ? { ...process.env, DUSK_TEST_DESKTOP_OWNER_TOKEN: OWNER } : { ...process.env };
   // the launcher's own setup calls go as the desktop app's window would; nothing else runs while it does
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (input, init = {}) => realFetch(input, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers)), "x-dusk-desktop-owner": OWNER } });
+  if (desktop) globalThis.fetch = (input, init = {}) => realFetch(input, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers)), "x-dusk-desktop-owner": OWNER } });
   let fixture: VerificationServer;
   try { fixture = await launchVerificationServer(parentEnv); } finally { globalThis.fetch = realFetch; }
   const url = fixture.info.url, port = Number(new URL(url).port), dataDir = fixture.info.dataDir;
@@ -113,9 +114,10 @@ async function harness() {
   };
 }
 
-async function owner(base: string, method: string, path: string, body?: unknown) {
+/** the owner's own call: as the desktop app on a computer, as its command line (loopback) on a server of your own */
+async function owner(base: string, method: string, path: string, body?: unknown, as: "desktop" | "cli" = "desktop") {
   const response = await fetch(`${base}${path}`, {
-    method, headers: { "x-dusk-desktop-owner": OWNER, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    method, headers: { ...(as === "desktop" ? { "x-dusk-desktop-owner": OWNER } : { "x-dusk-cli": "1" }), ...(body === undefined ? {} : { "content-type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30_000),
   });
   return { status: response.status, body: await response.json().catch(() => null) as any };
@@ -454,6 +456,61 @@ async function main() {
     const left = await owner(desk.url, "GET", "/api/mobile/devices");
     check("the desktop lists no phones", Array.isArray(left.body?.devices) && left.body.devices.length === 0, `${left.body?.devices?.length}`);
     await expectRoute(android, "after removing itself it opens on pairing", (route) => route === "refused");
+
+    // a server of your own: its harness as a server (no desktop app), the link agent's phone hub beside it on its own
+    // tunnel, as a VPS install runs them; the phones pair by QR and typed code and live through what a server goes through
+    const vps = await harness(false);
+    cleanups.push(() => vps.close());
+    const vpsBot = (await owner(vps.url, "POST", "/api/bots", { name: "Probe" }, "cli")).body?.bot?.id as string;
+    const vpsTunnel = await createRelayTunnel({ base: link.base(), grant: (await linkGrant())!, label: "E2E server phones" });
+    const vpsKeys = x25519Pair();
+    const vpsHub = () => { const hub = createPhoneHub({ base: vpsTunnel.base, id: vpsTunnel.id, token: vpsTunnel.token, keys: vpsKeys, server: { host: "127.0.0.1", port: vps.port }, proxy: null, log: () => {} }); void hub.run().catch(() => {}); return hub; };
+    let agentHub = vpsHub();
+    cleanups.push(() => agentHub.stop());
+    const pairServer = async (name: string, kind: "ios" | "android", how: "qr" | "code", build: keyof typeof builds): Promise<Phone | null> => {
+      const offer = await until(async () => { const one = await owner(vps.url, "POST", "/api/mobile/pairing", {}, "cli"); return one.body?.payload?.via?.some((route: { kind: string }) => route.kind === "relay") ? one : null; }, 30_000);
+      const body = offer?.body as MobilePairingResponse | undefined;
+      if (!check(`${name}: the server's code carries the relay`, Boolean(body), body ? body.payload.via.map((one) => one.kind).join(",") : "no relay")) return null;
+      const shipped = builds[build], platform = fakePlatform(kind, name, build === "1.2.3" || build === "1.2.4" ? build : undefined);
+      const payload = how === "qr" ? shipped.readScanned(universalPairLink(body!.link, body!.code))?.payload : await shipped.resolveTypedCode(body!.code!, link.base()).catch(() => null);
+      const paired = payload ? await shipped.redeemPairing(payload, platform).catch(() => null) : null;
+      if (!check(`${name}: pairs with the server by ${how} over the relay`, paired?.record.transport === "relay" && Boolean(paired.record.relay?.agentPub), paired?.record.transport ?? "failed")) return null;
+      await shipped.createConnectionStore(platform).save(paired!.record, paired!.token);
+      return { name, shipped, platform, record: paired!.record, token: paired!.token };
+    };
+    const onServer = (await Promise.all([
+      pairServer("iPhone 1.2 (own server)", "ios", "qr", "ios"),
+      pairServer("Android 1.2.4 (own server)", "android", "code", "1.2.4"),
+      pairServer("iPhone next (own server)", "ios", "qr", "next"),
+    ])).filter((phone): phone is Phone => Boolean(phone));
+    const serverRoute = async (phone: Phone, label: string, want: (route: string) => boolean, chatWith = false) => {
+      const outcome = await launch(phone);
+      const ok = check(`${phone.name}: ${label}`, want(routeOf(outcome)), `${routeOf(outcome)} in ${walked.get(phone.name)}ms`);
+      if (ok && chatWith && typeof outcome !== "string") await chat(phone.name, outcome, vpsBot);
+      closeRoute(outcome);
+    };
+    for (const phone of onServer) await serverRoute(phone, "opens on the relay and chats", onRelay, true);
+    // the link agent restarts (its self-update) on the same tunnel and keys
+    agentHub.stop();
+    agentHub = vpsHub();
+    for (const phone of onServer) {
+      const back = await until(async () => { const outcome = await launch(phone); closeRoute(outcome); return routeOf(outcome) === "relay"; }, 60_000);
+      check(`${phone.name}: back on the relay after the link agent restarts`, Boolean(back));
+    }
+    // the server updates: its harness restarts, phones wait as unreachable, never unpaired, and chat after
+    await vps.stop();
+    for (const phone of onServer) await serverRoute(phone, "server restarting: unreachable, still paired", (route) => route === "unreachable");
+    check("the server starts again on the same workspace", await vps.start());
+    for (const phone of onServer) {
+      await until(async () => { const outcome = await launch(phone); closeRoute(outcome); return routeOf(outcome) === "relay"; }, 60_000);
+      await serverRoute(phone, "back after the server's update, and chats", onRelay, true);
+    }
+    // removed on the server: each phone hears it over the relay and unpairs
+    for (const phone of onServer) {
+      const gone = await owner(vps.url, "DELETE", `/api/mobile/devices/${phone.record.deviceId}`, undefined, "cli");
+      check(`the server removes ${phone.name}`, gone.status === 200, `${gone.status}`);
+      await serverRoute(phone, "removed on the server: unpairs", (route) => route === "refused");
+    }
   } finally {
     for (const cleanup of cleanups.reverse()) { try { await cleanup(); } catch { /* best effort */ } }
   }
