@@ -518,13 +518,13 @@ describe("the avatar editor", () => {
     const bot = makeBot();
     const rendered = editor(bot);
     expect([...rendered.html.matchAll(/aria-label="(\w+) character shape"/g)].map((match) => match[1]))
-      .toEqual([...DUSK_BODY_IDS]);
+      .toEqual(DUSK_BODY_IDS.map((id) => id[0]!.toUpperCase() + id.slice(1)));
     expect([...rendered.html.matchAll(/aria-label="(\w+) character color"/g)].map((match) => match[1]))
       .toEqual(["Blue", "Cyan", "Teal", "Green", "Yellow", "Orange", "Coral", "Red", "Pink", "Purple"]);
     expect(rendered.html.toLowerCase()).not.toContain("more looks");
-    expect(find(rendered, "aria-label", "kit character shape").props["aria-pressed"]).toBe(true);
-    expect(find(editor(makeBot({ mascotBody: "teardrop" as Bot["mascotBody"] })), "aria-label", "drip character shape").props["aria-pressed"]).toBe(true);
-    click(find(rendered, "aria-label", "pip character shape"));
+    expect(find(rendered, "aria-label", "Kit character shape").props["aria-pressed"]).toBe(true);
+    expect(find(editor(makeBot({ mascotBody: "teardrop" as Bot["mascotBody"] })), "aria-label", "Drip character shape").props["aria-pressed"]).toBe(true);
+    click(find(rendered, "aria-label", "Pip character shape"));
     expect(patch).toHaveBeenLastCalledWith({ mascotBody: "pip" });
     click(find(rendered, "aria-label", "Blue character color"));
     expect(patch).toHaveBeenLastCalledWith({ color: "blue" });
@@ -533,7 +533,7 @@ describe("the avatar editor", () => {
 
   it("switches back to the mascot when a body is picked over a picture", () => {
     const bot = makeBot({ avatarUrl: "/api/attachments/cat.webp", avatarCrop: "circle" });
-    click(find(editor(bot), "aria-label", "starry character shape"));
+    click(find(editor(bot), "aria-label", "Starry character shape"));
     expect(patch).toHaveBeenLastCalledWith({ mascotBody: "starry", avatarCrop: "mascot" });
   });
 

@@ -3552,7 +3552,9 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
-      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
+      "botPanel.avatar.shapeNamed": "e704ba1df57ee8b3e3fc6e706a6aa9c1b1f11f57fafa6ade6201516c2adf4bb7",
+      "botPanel.avatar.colorNamed": "951b93a2f80c7c2093fb607f19b1ed55f65b65600e1ee582b1165f44af2f4a1a"
     },
     "es": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -9333,7 +9335,9 @@
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
-      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
+      "botPanel.avatar.shapeNamed": "e704ba1df57ee8b3e3fc6e706a6aa9c1b1f11f57fafa6ade6201516c2adf4bb7",
+      "botPanel.avatar.colorNamed": "951b93a2f80c7c2093fb607f19b1ed55f65b65600e1ee582b1165f44af2f4a1a"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",

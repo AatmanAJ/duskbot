@@ -9,6 +9,7 @@ import { stoppedAtBotLimit } from "@/lib/bot-limit";
 import { CREATE_BOT_EVENT, openCreateBot, takeCreateBotSection } from "@/lib/create-bot-request";
 import { openNewGroup } from "@/lib/new-group-request";
 import { t } from "@/lib/i18n";
+import { upperFirst } from "@/lib/lower-first";
 import { cn } from "@/lib/cn";
 import { MausAvatar, type MausAvatarHandle } from "./Avatar";
 import { Icon } from "./Icon";
@@ -171,7 +172,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
                   <button
                     key={swatch}
                     type="button"
-                    aria-label={`${t(MAUS_COLOR_LABEL[swatch])} character color`}
+                    aria-label={t("botPanel.avatar.colorNamed", { color: t(MAUS_COLOR_LABEL[swatch]) })}
                     aria-pressed={swatch === color}
                     onClick={() => pickColor(swatch)}
                     {...watch}
@@ -230,7 +231,7 @@ function ShapeTile({ id, color, selected, onPick, onPointerEnter, onFocus }: {
   return (
     <button
       type="button"
-      aria-label={`${id} character shape`}
+      aria-label={t("botPanel.avatar.shapeNamed", { name: upperFirst(id) })}
       aria-pressed={selected}
       onClick={onPick}
       onPointerEnter={onPointerEnter}

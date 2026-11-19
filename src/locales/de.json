@@ -3592,5 +3592,7 @@
   "server.cloudMac.why.every": "Du wolltest jede Aktion auf diesem Mac selbst freigeben.",
   "server.purchase.title": "Kauf bestätigen",
   "server.emailReview.title": "Diese E-Mail senden?",
-  "settings.simple.language.partial": "Bisher ist nur ein Teil der App übersetzt."
+  "settings.simple.language.partial": "Bisher ist nur ein Teil der App übersetzt.",
+  "botPanel.avatar.shapeNamed": "Figurenform {name}",
+  "botPanel.avatar.colorNamed": "Figurenfarbe {color}"
 }

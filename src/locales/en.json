@@ -4346,6 +4346,8 @@
   "botPanel.avatar.resetAria": "Reset character to default",
   "botPanel.avatar.shapes": "Character shape",
   "botPanel.avatar.colors": "Character color",
+  "botPanel.avatar.shapeNamed": "{name} character shape",
+  "botPanel.avatar.colorNamed": "{color} character color",
   "botPanel.avatar.tabBot": "Bot",
   "botPanel.avatar.tabGenerate": "Generate",
   "botPanel.avatar.tabUpload": "Upload",
