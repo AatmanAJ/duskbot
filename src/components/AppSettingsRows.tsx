@@ -47,7 +47,7 @@ export function NewBotEffortRow() {
       <SettingsSelect
         value={current}
         disabled={saving}
-        aria-label={t("settings.newBotEffort.aria")}
+        aria-label={t("settings.newBotEffort.title")}
         onChange={(event) => void save(event.target.value)}
       >
         <option value="">{t("settings.newBotEffort.default")}</option>
@@ -130,7 +130,7 @@ export function QuickUpdatesRow() {
     >
       <Switch
         checked={enabled}
-        aria-label={t("settings.quickUpdates.aria")}
+        aria-label={t("settings.quickUpdates.title")}
         disabled={saving}
         onClick={() => void save(!enabled)}
       />
