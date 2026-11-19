@@ -53,6 +53,7 @@ import type { MarkState } from "./mascot-engine";
 import { poolWords } from "@/lib/friendly-activity";
 import type { LiveStatus } from "@/state/turn-status";
 import { STATUS_EXIT_MS, TurnPresence, TYPING_PHASE } from "./TurnPresence";
+import { TranscriptCardSlot } from "./TranscriptCardSlot";
 import { workingMood } from "@/lib/working-mood";
 import { WorkingMascot } from "./WorkingMascot";
 import { BrowserPartLine } from "./BrowserPartLine";
@@ -1398,7 +1399,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
               </div>
             </div>
           )}
-          <div data-failed-reply-row="" className="empty:hidden [&>[data-failed-reply]]:mb-0 [&>[data-failed-reply]]:px-0"><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></div>
+          <TranscriptCardSlot key={transcriptKey}><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></TranscriptCardSlot>
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
             avatar={(shown) => <WorkingMascot bot={bot} size={phoneApp() ? 30 : 26} seed={presenceSeed} mood={moodOfShownWords(shown)} />}

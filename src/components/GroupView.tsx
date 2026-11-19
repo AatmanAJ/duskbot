@@ -55,6 +55,7 @@ import { botEngine, failedTurnCause } from "@/lib/failed-turn";
 import { RoomComposer } from "./bot-access/RoomComposer";
 import { ChatErrorBanner, ChatNotice } from "./ChatErrorBanner"; import { ComposerNoticeSlot } from "./ComposerNoticeSlot";
 import { FailedReplyCard, FoldedNoticesContext, foldedNoticeIds, useTrailingRows } from "./FailedReplyCard";
+import { TranscriptCardSlot } from "./TranscriptCardSlot";
 import { RoomContextWarnings } from "./ContextWarning";
 import { ChatFindBar } from "./ChatFindBar";
 import { botTextForDisplay, isPureLeakedBotText } from "../../shared/system-message-guard.ts";
@@ -1118,7 +1119,7 @@ export function GroupView({ group: room }: { group: Group }) {
             slot={statusSlot}
             landed={Boolean(landed.reply)}
           />
-          {(trailing?.failures.length || trailing?.notices.length || setupPending || group.dm) && <div data-failed-reply-row="" className="empty:hidden [&>[data-failed-reply]]:mb-0 [&>[data-failed-reply]]:px-0"><FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} /></div>}
+          <TranscriptCardSlot key={group.threadId}>{Boolean(trailing?.failures.length || trailing?.notices.length || setupPending || group.dm) && <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />}</TranscriptCardSlot>
         </div>
         </div>
         )}
