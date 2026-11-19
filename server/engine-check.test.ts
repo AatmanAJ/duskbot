@@ -21,6 +21,13 @@ describe("checking a just-connected engine with one tiny real message", () => {
     expect(engineCheckError("ChatGPT", "spawn codex ENOENT with key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789")).not.toContain("sk-proj-abcdefghijklmnop");
   });
 
+  it("never shows a gateway's codes, status or redacted internals on the setup screen", () => {
+    const gateway = `Other HTTP 503: {"error":{"message":"auth_unavailable: no auth available (providers=claude, model=claude-sonnet-5; last upstream error: token: [REDACTED] \\"error_description\\": \\"Refresh token expired\\")"}}`;
+    expect(engineCheckError("Other", gateway)).toBe("Other had a temporary server problem. Try again in a few minutes.");
+    expect(engineCheckError("Other", "spawn codex ENOENT")).toBe("Other didn't answer. Check again in a minute.");
+    expect(engineCheckError("Other", "HTTP 429: You are sending requests too quickly.")).toBe("Other hit a rate limit. Wait a minute, then run it again.");
+  });
+
   it("can't check an engine without a one-shot call, and runs one check per engine at a time", async () => {
     expect(await checkEngine(engine(undefined))).toEqual({ ok: null });
     let answer!: (text: string) => void;
