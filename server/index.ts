@@ -1052,7 +1052,7 @@ function cardAnswerRefusal(auth: RequestAuth, threadId: string, requestId: strin
   // A Cloud guest may read along but never answer: its words would reach the owner's turn.
   if (CLOUD_PERSONAL) return cloudCardRefusal(auth);
   if (auth.scopes.includes("admin") || !sharedMembership()) return null; const setupRefused = CLOUD_TEAM ? botAccess.cardRefusal(auth, threadId, requestId) : null; if (setupRefused) return setupRefused;
-  const known = [threadStarters.get(threadId), cardRequesterKey(threadId, requestId), (({ origin } = directRequestOwners.get(threadId) ?? {}) => origin?.kind === "user" ? origin.person : undefined)()].filter((person): person is string => Boolean(person));
+  const known = [threadStarters.get(threadId), cardRequesterKey(threadId, requestId), ((origin?: WorkOrigin) => origin?.kind === "user" ? origin.person : undefined)(directRequestOwners.get(threadId)?.origin)].filter((person): person is string => Boolean(person));
   if (!known.length || known.includes(personKey(auth.session)) || (CLOUD_TEAM && teamOwners.routing.askedPerson(store.messagesFor(threadId).find((line) => line.card?.requestId === requestId)?.from?.botId ?? store.botByThread(threadId)?.id, threadId) === personKey(auth.session))) return null;
   return "Only the person who started this conversation or sent this request, or a workspace admin, can answer this card.";
 }
