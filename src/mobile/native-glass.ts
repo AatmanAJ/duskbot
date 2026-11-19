@@ -345,6 +345,14 @@ export function slideStart(now = performance.timeOrigin + performance.now()): nu
   return Math.round(now + 1000 / 120);
 }
 
+/** The native field keeps the highest sequence it has taken for as long as the app runs, across chats: a count that
+ * started again with each chat had every later chat's text (a send clearing the field among it) refused as stale. */
+let textSeq = 0;
+export function nextTextSeq(): number {
+  textSeq += 1;
+  return textSeq;
+}
+
 const FRESH_FRAMES = 30;
 const IDLE_EVERY = 15;
 const AVATAR_MS = 1000;
@@ -397,9 +405,9 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     let last: GlassState | null = null;
     let elements: HTMLElement[] = [];
     let field: HTMLTextAreaElement | null = null;
-    let fromNative = "";
+    // null until the first frame: a chat opening hands the native field its own text (or none), whatever the last one left
+    let fromNative: string | null = null;
     let toNative: string | null = null;
-    let seq = 0;
     let avatar: string | null | undefined;
     let avatarAt = 0;
     let avatarName: string | null = null;
@@ -432,8 +440,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       // what the page itself put in its field (a draft, a cleared send, a picked mention) goes to the native field
       if (field && field.value !== fromNative && field.value !== toNative) {
         toNative = field.value;
-        seq += 1;
-        glass.setText(field.value, seq);
+        glass.setText(field.value, nextTextSeq());
       }
       const now = performance.now();
       // a slide holds its target until the page says it stopped: its compositor may land a frame after this clock
@@ -484,8 +491,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       }
       if (field && field.value !== fromNative && field.value !== toNative) {
         toNative = field.value;
-        seq += 1;
-        glass.setText(field.value, seq);
+        glass.setText(field.value, nextTextSeq());
       }
     };
 

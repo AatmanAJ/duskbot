@@ -29,7 +29,8 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
     /// glass views to be made.
     @objc func supported(_ call: CAPPluginCall) {
         if #available(iOS 26.0, *) {
-            withChrome { _ in }
+            // a page that asks has just loaded: its text sequence starts again from 1
+            withChrome { $0.resetText() }
             call.resolve(["supported": true])
         } else {
             call.resolve(["supported": false])
@@ -82,6 +83,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         withChrome { chrome in
             chrome.apply([:])
             chrome.pageGone()
+            chrome.resetText()
         }
     }
 
@@ -795,6 +797,16 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     @objc private func capsuleTapped() { focus() }
 
     // MARK: text
+
+    /// The chat is gone (or the page reloaded): the next one's text comes with a fresh sequence, and the field starts empty.
+    func resetText() {
+        textSeq = 0
+        if !(text.text ?? "").isEmpty {
+            text.text = ""
+            updatePlaceholder()
+            layoutComposer(animated: false)
+        }
+    }
 
     func setText(_ value: String, seq: Int) {
         guard seq > textSeq else { return }

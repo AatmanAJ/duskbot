@@ -347,17 +347,42 @@ describe("useNativeGlass", () => {
   it("sends the page's own edits to the native field, never echoing what was typed there", () => {
     const { glass, send, $ } = mount();
     runFrame();
+    expect(glass.setText, "a chat opening hands the field its own text, empty here").toHaveBeenCalledTimes(1);
+    expect(glass.setText.mock.calls[0]![0]).toBe("");
     send({ type: "text", text: "hel" });
     runFrame();
-    expect(glass.setText).not.toHaveBeenCalled();
+    expect(glass.setText).toHaveBeenCalledTimes(1);
     typeInto($("field") as HTMLTextAreaElement, "");
     runFrame();
-    expect(glass.setText).toHaveBeenCalledWith("", 1);
+    expect(glass.setText).toHaveBeenCalledTimes(2);
+    expect(glass.setText.mock.calls[1]![0]).toBe("");
     send({ type: "text", text: "again" });
     runFrame();
     typeInto($("field") as HTMLTextAreaElement, "");
     runFrame();
-    expect(glass.setText).toHaveBeenLastCalledWith("", 2);
+    expect(glass.setText).toHaveBeenCalledTimes(3);
+    const seqs = glass.setText.mock.calls.map((call) => call[1]);
+    expect(seqs[1]! > seqs[0]! && seqs[2]! > seqs[1]!).toBe(true);
+  });
+
+  // App Store 1.2: each chat counted from 1 again while the native field kept the highest count it had taken, so after
+  // the first chat a send never cleared the native field
+  it("keeps counting up across chats, so a send clears the native field in every chat, not only the first", () => {
+    const first = mount();
+    runFrame();
+    first.send({ type: "text", text: "one" });
+    typeInto(first.$("field") as HTMLTextAreaElement, "");
+    runFrame();
+    const highest = Math.max(...first.glass.setText.mock.calls.map((call) => call[1]));
+    flushSync(() => root.unmount());
+    const second = mount();
+    runFrame();
+    second.send({ type: "text", text: "two" });
+    typeInto(second.$("field") as HTMLTextAreaElement, "");
+    runFrame();
+    const cleared = second.glass.setText.mock.calls.at(-1)!;
+    expect(cleared[0]).toBe("");
+    expect(cleared[1]).toBeGreaterThan(highest);
   });
 
   it("keeps the composer's height to the native one and blurs it on the way out", () => {
