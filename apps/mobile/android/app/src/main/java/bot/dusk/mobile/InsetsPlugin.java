@@ -136,12 +136,16 @@ public class InsetsPlugin extends Plugin {
     public void setBars(PluginCall call) {
         String status = call.getString("status", "dark");
         String ground = call.getString("ground", "");
+        // a live scan draws the camera behind a see-through web view: its bars go light on it and nothing is painted
+        boolean camera = Boolean.TRUE.equals(call.getBoolean("camera", false));
         getBridge().executeOnMainThread(() -> {
             Window window = getActivity().getWindow();
             WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
-            controller.setAppearanceLightStatusBars("dark".equals(status));
+            controller.setAppearanceLightStatusBars(!camera && "dark".equals(status));
             Integer color = parse(ground);
-            if (color != null) {
+            if (camera) {
+                controller.setAppearanceLightNavigationBars(false);
+            } else if (color != null) {
                 controller.setAppearanceLightNavigationBars(luminance(color) > 0.5);
                 window.getDecorView().setBackgroundColor(color);
                 WebView web = getBridge().getWebView();

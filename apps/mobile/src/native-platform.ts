@@ -201,7 +201,7 @@ const DuskHaptics = registerPlugin<{ play(options: { kind: string }): Promise<vo
 /** android only (android/.../InsetsPlugin.java): the window's insets edge to edge, and the keyboard's for the page */
 interface InsetsPlugin {
   setMode(options: { ride: boolean }): Promise<void>;
-  setBars(options: { status: "dark" | "light"; ground: string }): Promise<void>;
+  setBars(options: { status: "dark" | "light"; ground: string; camera?: boolean }): Promise<void>;
   setBackGesture(options: { on: boolean }): Promise<void>;
   addListener(event: "keyboard", listener: (event: { height: number; settled: boolean; duration?: number; at?: number }) => void): Promise<PluginListenerHandle>;
   addListener(event: "back", listener: (event: { phase: "start" | "progress" | "cancel" | "commit"; progress?: number }) => void): Promise<PluginListenerHandle>;
@@ -456,7 +456,11 @@ function unsubscribe(handles: PendingHandle[]): () => void {
 
 function setScanning(on: boolean) {
   document.documentElement.classList.toggle("mobile-scanning", on);
+  paintBars?.();
 }
+
+/** Android: puts the bars' icons and the window's ground in step with the page, and with a live scan over it. */
+let paintBars: (() => void) | null = null;
 
 async function ensureBarcodeModule(): Promise<boolean> {
   if ((await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable()).available) return true;
@@ -626,7 +630,14 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     },
     keyboardMode: insetsOn ? (ride) => { void DuskInsets.setMode({ ride }).catch(() => {}); } : undefined,
     setStatusBar(style) {
-      if (insetsOn) { void groundHex().then((ground) => DuskInsets.setBars({ status: style, ground })).catch(() => {}); return; }
+      if (insetsOn) {
+        paintBars = () => {
+          const camera = document.documentElement.classList.contains("mobile-scanning");
+          void groundHex().then((ground) => DuskInsets.setBars({ status: style, ground, camera })).catch(() => {});
+        };
+        paintBars();
+        return;
+      }
       void StatusBar.setStyle({ style: style === "dark" ? Style.Light : Style.Dark }).catch(() => {});
     },
     onBack(listener) {
