@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { PhoneBridge, PhoneImage } from "@/lib/phone-bridge";
 import { haptic } from "../haptics";
-import { dismiss, dur, ease, prefersReducedMotion, velocityTracker } from "../motion";
+import { dur, ease, prefersReducedMotion, velocityTracker } from "../motion";
 import { closesOnBack } from "../Sheet";
 import { ViewerNote } from "./ViewerNote";
 import { clampPan, dismisses, doubleTapZoom, dragAxis, elasticPan, fitted, MAX_ZOOM, panLimit, pageStep, pinchTo, type Point, type Size } from "./image-gesture";
@@ -99,7 +99,7 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
     setChrome(false);
     const away = dragY.get() !== 0 ? Math.sign(dragY.get()) * stage.h : 0;
     if (away && !reduced) animate(dragY, away, { type: "spring", stiffness: 300, damping: 36, velocity });
-    animate(shown, 0, { duration: (reduced ? dur.fast : dismiss.ms / 1000), ease: dismiss.ease, onComplete: onClose });
+    animate(shown, 0, { duration: reduced ? dur.fast : dur.base, ease: ease.out, onComplete: onClose });
   }, [dragY, shown, stage.h, reduced, onClose]);
   const closeRef = useRef(close);
   closeRef.current = close;

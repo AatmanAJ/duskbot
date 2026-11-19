@@ -46,8 +46,6 @@ export const system = { stiffness: 600, damping: 54, push: 10 } as const;
 export const contentMove = { ms: 250, css: "cubic-bezier(0.1992, 0.0106, 0.2792, 0.9103)" } as const;
 /** A long press as Telegram iOS answers it: still for 120ms, then the held thing shrinks by 15pt of its width over 200ms. */
 export const holdPress = { stillMs: 120, shrinkMs: 200, inset: 15 } as const;
-/** a surface dismissed by a tap or Escape accelerates away: 200ms for the full travel */
-export const dismiss = { ms: 200, minMs: 90, ease: [0.4, 0, 1, 1] as const };
 
 /** A spring as a WAAPI/CSS duration and linear() easing, for things that must not wait on React. */
 export function springEasing(stiffness: number, damping: number): { duration: number; easing: string } {

@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/cn";
 import { haptic } from "./haptics";
 import { closesOnBack } from "./Sheet";
-import { dismiss, feel, holdPress, prefersReducedMotion, springEasing } from "./motion";
+import { ease, feel, holdPress, prefersReducedMotion, springEasing } from "./motion";
 
 export interface ContextAction {
   key: string;
@@ -222,7 +222,7 @@ export function ContextMenu({ open, anchor, preview, actions, label, onClose, re
     return () => { window.removeEventListener("keydown", onKey); unback(); };
   }, [open, onClose, layout]);
 
-  const fadeOut = { duration: feel.exit.fade, ease: dismiss.ease };
+  const fadeOut = { duration: feel.exit.fade, ease: ease.out };
   const item = {
     off: { opacity: 0, y: reduced ? 0 : 6 },
     on: { opacity: 1, y: 0, transition: { duration: feel.enter.fade, ease: [0.22, 1, 0.36, 1] as const } },
