@@ -498,7 +498,7 @@ import { flushAllProfileHistory, flushProfileHistory, readHistory, recordProfile
 import { describeTool } from "./activity.ts";
 import { OutboundCounts } from "./outbound-counts.ts";
 import { OutboundRequestService } from "./outbound-requests.ts";
-import { createOutboundHold, OUTBOUND_HOLD_MS, type OutboundHoldAnswer } from "./outbound-hold.ts";
+import { createOutboundHold, OUTBOUND_HOLD_MS, type OutboundHoldAnswer } from "./outbound-hold.ts"; import { readGmailDraft } from "./gmail-draft-read.ts";
 import { connectorCallsIn, outboundCallsIn } from "../shared/outbound.ts";
 import { connectorAccessDecision, describeConnectorScopes } from "../shared/connector-scopes.ts";
 import { bindThreadLogCapProvider } from "./thread-log-rotation.ts";
@@ -15834,7 +15834,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const fullAccess = outboundTool !== null && sendsFreely();
         const held: OutboundHoldAnswer = outboundTool
           ? await outboundHold.hold({
-            bot: currentSender, threadId: internalCapability.threadId, tool: outboundTool, calls: outboundCalls, opaque, fullAccess,
+            bot: currentSender, threadId: internalCapability.threadId, tool: outboundTool, calls: outboundCalls, opaque, fullAccess, readDraft: (draftId) => readGmailDraft((payload) => composio.relayMcp(cfg, payload as never, Array.isArray(req.headers["mcp-session-id"]) ? req.headers["mcp-session-id"][0] : req.headers["mcp-session-id"], requireActiveInternalCapability, undefined, actor.access), draftId),
             active: () => internalCapabilityIsActive(internalCapability),
           })
           : { ok: true, approved: false };

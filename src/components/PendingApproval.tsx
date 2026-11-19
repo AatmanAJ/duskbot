@@ -412,7 +412,7 @@ function ReviewActions({ requestId, purchase, email, marked, decide }: {
       <button type="button" {...marked("deny")} data-approval-deny="" onClick={() => { setDraft(null); decide("deny"); }} className={cardTertiary(CARD_BUTTON_MD)}>
         {purchase ? t("approval.action.cancel") : t("emailReview.dontSend")}
       </button>
-      {email && (
+      {email && !email.draft && (
         <button type="button" aria-pressed={Boolean(draft)} onClick={() => setDraft(draft ? null : draftOf(email))} className={cardSecondary(CARD_BUTTON_MD)}>
           {draft ? t("emailReview.undoEdits") : t("emailReview.edit")}
         </button>

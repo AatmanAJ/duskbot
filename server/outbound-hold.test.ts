@@ -245,6 +245,26 @@ describe("purchases and emails on their own cards", () => {
     expect(args.recipient_email).toBe("ana@example.com");
   });
 
+  it("a saved draft sent by id shows its real text, offers no edits, and asks at Full access", async () => {
+    const held = setup(bot(undefined));
+    const draft = { app: "Gmail", to: ["sam@example.com"], subject: "Friday", body: "See you at 5." };
+    const calls = [{ slug: "GMAIL_SEND_DRAFT", arguments: { user_id: "me", draft_id: "r-1" } }];
+    const readDraft = vi.fn(async () => draft);
+    const pending = held.hold.hold({ ...held.input, tool: "GMAIL_SEND_DRAFT", calls, fullAccess: true, active: () => true, readDraft });
+    await vi.waitFor(() => expect(held.appended).toHaveLength(1));
+    expect(readDraft).toHaveBeenCalledWith("r-1");
+    expect(held.appended[0]!.message.card).toMatchObject({ title: "Send this email?", email: { ...draft, draft: true } });
+    held.outboundRequests.resolve({ threadId: "t1", requestId: requestOf(held), behavior: "allow", edits: { body: "Changed" } });
+    await expect(pending).resolves.toMatchObject({ ok: false, text: expect.stringMatching(/saved draft goes out as saved/) });
+
+    const unread = setup(bot(undefined));
+    const plain = unread.hold.hold({ ...unread.input, tool: "GMAIL_SEND_DRAFT", calls, fullAccess: true, active: () => true, readDraft: async () => null });
+    await vi.waitFor(() => expect(unread.appended).toHaveLength(1));
+    expect(unread.appended[0]!.message.card).toMatchObject({ title: "Send on your behalf?" });
+    unread.outboundRequests.resolve({ threadId: "t1", requestId: requestOf(unread), behavior: "allow" });
+    await expect(plain).resolves.toEqual({ ok: true, approved: true });
+  });
+
   it("an email allowance the person set still sends on its own", async () => {
     const held = setup(bot({ policy: "allow", dailyCap: 5 }));
     const send = [{ slug: "GMAIL_SEND_EMAIL", arguments: { recipient_email: "ana@example.com", subject: "Hi", body: "Hello" } }];

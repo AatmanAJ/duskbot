@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { editedEmailArguments, editedEmailReview, emailReviewOf, type EmailEdits, type EmailReview } from "../shared/email-review.ts";
+import { draftSent, editedEmailArguments, editedEmailReview, emailReviewOf, type EmailEdits, type EmailReview } from "../shared/email-review.ts";
 import type { ConnectorCall, OutboundPolicy } from "../shared/outbound.ts";
 import { DEFAULT_OUTBOUND_POLICY, OUTBOUND_DEFAULT_CAP } from "../shared/outbound.ts";
 import type { Notification } from "../shared/notification.ts";
@@ -44,12 +44,14 @@ const EMAIL_OPTIONS = ["Send email", "Don't send"];
 const SEND_TITLE = "Send on your behalf?";
 
 /** What the card asks: a purchase to confirm, an email to review, or any other send. */
-type CardAsk = { kind: "purchase" } | { kind: "email"; email: EmailReview } | { kind: "send" };
+type CardAsk = { kind: "purchase" } | { kind: "email"; email: EmailReview } | { kind: "draft"; draftId: string } | { kind: "send" };
 
 function cardAsk(calls: ConnectorCall[]): CardAsk {
   if (calls.some((call) => isPurchaseTool(call.slug))) return { kind: "purchase" };
   const email = emailReviewOf(calls);
-  return email ? { kind: "email", email } : { kind: "send" };
+  if (email) return { kind: "email", email };
+  const draftId = draftSent(calls);
+  return draftId ? { kind: "draft", draftId } : { kind: "send" };
 }
 
 /** How many sends a day go out on their own, or null when each waits on the card. At Full access a bot with no sending
@@ -57,7 +59,7 @@ function cardAsk(calls: ConnectorCall[]): CardAsk {
  * rule is kept exactly as set. A purchase always waits on the card. */
 function outboundDailyCap(rule: OutboundPolicy | undefined, fullAccess: boolean, opaque: boolean, ask: CardAsk): { cap: number; fullAccess: boolean } | null {
   if (ask.kind === "purchase") return null;
-  if (fullAccess && rule === undefined) return ask.kind === "email" ? null : { cap: OUTBOUND_DEFAULT_CAP, fullAccess: true };
+  if (fullAccess && rule === undefined) return ask.kind === "email" || ask.kind === "draft" ? null : { cap: OUTBOUND_DEFAULT_CAP, fullAccess: true };
   const policy = rule ?? DEFAULT_OUTBOUND_POLICY;
   return policy.policy === "allow" && !opaque ? { cap: policy.dailyCap, fullAccess: false } : null;
 }
@@ -80,7 +82,9 @@ type Asked = { ok: true; messageId: string; edits: EmailEdits | null } | { ok: f
 export interface OutboundHold {
   /** A send spends the day's allowance (Full access with no rule of its own, or "allow") or waits on the "Send on your behalf?" card. `fullAccess`: the turn runs at Full access.
    * An email the person edited on its card before Send goes out as edited: its call's arguments are rewritten in place. */
-  hold(input: { bot: OutboundHoldBot; threadId: string; tool: string; calls: ConnectorCall[]; opaque: boolean; fullAccess: boolean; active: () => boolean }): Promise<OutboundHoldAnswer>;
+  hold(input: { bot: OutboundHoldBot; threadId: string; tool: string; calls: ConnectorCall[]; opaque: boolean; fullAccess: boolean; active: () => boolean;
+    /** Reads a Gmail draft sent by id, so its card shows the text that goes out; null when it cannot be read. */
+    readDraft?: (draftId: string) => Promise<EmailReview | null> }): Promise<OutboundHoldAnswer>;
   /** At dispatch time: a send with an allowance reserves against its cap; otherwise the hold must have been approved. Throws the refusal text. */
   reserve(input: { bot: OutboundHoldBot; threadId: string; tool: string; calls: ConnectorCall[]; opaque: boolean; fullAccess: boolean; approved: boolean }): void;
   /** The "Confirm purchase" card for a purchase the bot makes in its browser. `recorded`: the person said to buy without
@@ -154,7 +158,7 @@ export function createOutboundHold(deps: OutboundHoldDeps): OutboundHold {
   }
 
   return {
-    async hold({ bot: currentSender, threadId, tool: outboundTool, calls: outboundCalls, opaque, fullAccess, active }) {
+    async hold({ bot: currentSender, threadId, tool: outboundTool, calls: outboundCalls, opaque, fullAccess, active, readDraft }) {
       const refuseOutbound = (text: string): OutboundHoldAnswer => ({ ok: false, text });
       const ask = cardAsk(outboundCalls);
       const allowance = outboundDailyCap(currentSender.outbound, fullAccess, opaque, ask);
@@ -175,13 +179,16 @@ export function createOutboundHold(deps: OutboundHoldDeps): OutboundHold {
         return { ok: true, approved: false };
       }
       const outboundRequest = { tool: outboundTool, app, calls, ...(ask.kind === "purchase" ? { purchase: true as const } : {}) };
+      const draft = ask.kind === "draft" ? await readDraft?.(ask.draftId).catch(() => null) ?? null : null;
+      const email = ask.kind === "email" ? ask.email : draft ? { ...draft, draft: true as const } : null;
       const card: CardInput = ask.kind === "purchase"
         ? { title: PURCHASE_TITLE, subtitle: summary, options: PURCHASE_OPTIONS, outboundRequest }
-        : ask.kind === "email"
-          ? { title: EMAIL_TITLE, subtitle: emailText(ask.email), options: EMAIL_OPTIONS, email: ask.email, outboundRequest }
+        : email
+          ? { title: EMAIL_TITLE, subtitle: emailText(email), options: EMAIL_OPTIONS, email, outboundRequest }
           : { title: SEND_TITLE, subtitle: summary, options: ["Allow", "Deny"], outboundRequest };
       const asked = await askOnCard(currentSender, threadId, outboundTool, summary, active, card);
       if (!asked.ok) return refuseOutbound(asked.text);
+      if (ask.kind === "draft" && asked.edits) return refuseOutbound("dusk bot did not send this: a saved draft goes out as saved, and the person changed it on the card. Update the draft with their changes first, then send it again.");
       if (ask.kind === "email" && asked.edits) applyEdits(threadId, asked.messageId, outboundCalls[0]!, ask.email, asked.edits);
       return { ok: true, approved: true };
     },
