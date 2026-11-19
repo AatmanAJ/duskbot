@@ -53,7 +53,7 @@ export const SERVER = { host: "127.0.0.1", port: Number(process.env.LINK_SERVER_
 export const LINK_PROTOCOL = 2;
 export const LINK_MIN_APP = 1;
 export const LINK_MIN_SERVER = 1;
-export const AGENT_VERSION = "2.4.5";
+export const AGENT_VERSION = "2.4.6";
 export const AGENT_CAPS = Object.freeze(["direct-ssh", "direct-wss", "direct-rtc", "direct-cf", "egress", "egress-lane", "self-update", "cloud-relay"]);
 /** what this agent says about itself, in its direct hello and its answer to the app's `hello` */
 export const agentHello = () => ({ protocol: LINK_PROTOCOL, minApp: LINK_MIN_APP, minServer: LINK_MIN_SERVER, agent: AGENT_VERSION, caps: [...AGENT_CAPS] });
@@ -72,6 +72,8 @@ export function noteRelayDate(value, now = Date.now()) {
   relayOffsetMs = Math.abs(offset) < RELAY_CLOCK_SLACK_MS ? 0 : offset;
 }
 export const relayNow = () => Date.now() + relayOffsetMs;
+/** a time this computer stamped (a pairing grant's end from the harness beside it), as the link service reads it */
+const inRelayTime = (at) => at + relayOffsetMs;
 const CHUNK = 128 * 1024;
 /** one post stays well under a proxy's usual 1 MB body limit (nginx's default) */
 const BATCH_BYTES = 700 * 1024;
@@ -2593,7 +2595,7 @@ export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = 
           try { return [{ ...channel, key: channel.kind === "grant" ? Buffer.from(channel.key, "base64url") : sealKeyOf(keys.priv, keys.pub, channel.pub, channel.id) }]; }
           catch { unusable.push(channel.id); return []; }
         });
-        const register = () => fetchImpl(route, { method: "PUT", headers, body: JSON.stringify({ channels: wanted.map(({ id, verifier, kind, expiresAt }) => ({ id, verifier, kind, ...(kind === "grant" ? { expiresAt } : {}) })) }), signal: AbortSignal.any([abort.signal, AbortSignal.timeout(40_000)]) });
+        const register = () => fetchImpl(route, { method: "PUT", headers, body: JSON.stringify({ channels: wanted.map(({ id, verifier, kind, expiresAt }) => ({ id, verifier, kind, ...(kind === "grant" ? { expiresAt: inRelayTime(expiresAt) } : {}) })) }), signal: AbortSignal.any([abort.signal, AbortSignal.timeout(40_000)]) });
         let response = await register();
         const refused = [...unusable];
         // each taken id (still held by a tunnel this computer made before) is left out in turn, so the rest still register
