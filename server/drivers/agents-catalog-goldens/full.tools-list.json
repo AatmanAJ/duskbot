@@ -631,6 +631,137 @@
       }
     },
     {
+      "name": "confirm_purchase",
+      "description": "Required before a purchase's final step (Place order, Buy now, Pay, Book, Subscribe, sending money): shows the person the order summary from the checkout page and waits for their tap; the browser refuses that step until they confirm. Money as the page shows it; payment masked to its last four. Confirmed: take the step once. Cancelled: do not buy. Only if the person said to buy without asking, set without_asking with their exact words as quote; the card is then a record.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "merchant": {
+                "type": "string"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "quantity": {
+                      "type": "integer"
+                    },
+                    "price": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "quantity"
+                  ]
+                }
+              },
+              "total": {
+                "type": "string",
+                "description": "Shipping and tax included."
+              },
+              "shipping": {
+                "type": "string"
+              },
+              "payment_method": {
+                "type": "string"
+              },
+              "address": {
+                "type": "string"
+              },
+              "delivery": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "order",
+                  "booking",
+                  "subscription",
+                  "payment"
+                ]
+              }
+            },
+            "required": [
+              "merchant",
+              "items",
+              "total"
+            ]
+          },
+          "without_asking": {
+            "type": "boolean"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary"
+        ]
+      }
+    },
+    {
+      "name": "show_products",
+      "description": "Show shopping results as cards in the chat: photo, name, price, link. Real products from pages you read, https links and image addresses. Then say in a sentence which you would pick.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "products": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "price": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "image": {
+                  "type": "string"
+                },
+                "merchant": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "url"
+              ]
+            }
+          }
+        },
+        "required": [
+          "products"
+        ]
+      }
+    },
+    {
       "name": "post_to_room",
       "description": "Put one message into a shared room you belong to, for example when the user asks you to tell the team something. Get group_id from list_rooms. This posts and returns: no room member's turn starts, nobody replies, and nothing comes back except confirmation, so never use it to ask a question or hand out work (use coordinate_bots for those). Post once, say it in full, and tell the user what you posted. Set attach_voice_note true to attach this turn's voice note. If a post is refused, do not retry it unless the refusal says how: say what you wanted to post in your reply instead.",
       "inputSchema": {

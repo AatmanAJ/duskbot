@@ -3589,5 +3589,7 @@
   "server.cloudMac.where.append": "{path}\nam Ende anfügen",
   "server.cloudMac.where.openWith": "{target}\nmit {app}",
   "server.cloudMac.why": "Rückfrage, weil es: {reason}.",
-  "server.cloudMac.why.every": "Du wolltest jede Aktion auf diesem Mac selbst freigeben."
+  "server.cloudMac.why.every": "Du wolltest jede Aktion auf diesem Mac selbst freigeben.",
+  "server.purchase.title": "Kauf bestätigen",
+  "server.emailReview.title": "Diese E-Mail senden?"
 }

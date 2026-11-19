@@ -1,7 +1,7 @@
 {
   "default": {
-    "bytes": 65717,
-    "sha256": "27bbae8acc854c51472bcc4f404dcb116862508efd27db1f8f96589cf2d42792",
+    "bytes": 67679,
+    "sha256": "f773c996ff1c25a87ebf07b221bdde9fd4a0c167190e7d7916c6b333d758340b",
     "tools": [
       "set_status",
       "send_message",
@@ -27,6 +27,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -58,8 +60,8 @@
     ]
   },
   "voice": {
-    "bytes": 66495,
-    "sha256": "56ed63ba7babf406307faddea81a5c6b030f9b82b70b824f4707282f312886a2",
+    "bytes": 68457,
+    "sha256": "00a948ba591825ddfeea87161c1067d79561567f252acf93b093a70367e6f8d0",
     "tools": [
       "set_status",
       "send_message",
@@ -85,6 +87,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -117,8 +121,8 @@
     ]
   },
   "skills": {
-    "bytes": 68536,
-    "sha256": "256bfe9d2373a6299397da8c2d6e5da7360a42cbbd0266e4bd6d47eeebbbde5f",
+    "bytes": 70498,
+    "sha256": "3a68bf225533fad80b88d70c70d6039316c150123a10e25982c3a0148a6a6c02",
     "tools": [
       "set_status",
       "send_message",
@@ -144,6 +148,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -177,8 +183,8 @@
     ]
   },
   "skills+voice": {
-    "bytes": 69314,
-    "sha256": "92aaf90533ff4d367bd9d7ed648fdc50e9d9e9e43f5a3f8340f1260fec251144",
+    "bytes": 71276,
+    "sha256": "09ab8d1d394d0120be266111ee9c2ce561b3202edd7367fdde4fa99c2ab1cb25",
     "tools": [
       "set_status",
       "send_message",
@@ -204,6 +210,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -238,8 +246,8 @@
     ]
   },
   "non-chief": {
-    "bytes": 57699,
-    "sha256": "d9f30de900ab5c743570689bb14f0d3064c8712cba56025637874ef22b461495",
+    "bytes": 59661,
+    "sha256": "a79caebf45ea6d08ff6d437e3262594fc8a1a1ba45519869a04cc58666a66c6f",
     "tools": [
       "set_status",
       "send_message",
@@ -265,6 +273,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -291,8 +301,8 @@
     ]
   },
   "voice+non-chief": {
-    "bytes": 58477,
-    "sha256": "b3238d0ffaa2910a992a6887bce718e6a8064aae3cc7c3d67457d019865d9917",
+    "bytes": 60439,
+    "sha256": "e5dc8a7566009cb3e2833a666605e9f7b599fcd8ec001f0d790349ca29751959",
     "tools": [
       "set_status",
       "send_message",
@@ -318,6 +328,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -345,8 +357,8 @@
     ]
   },
   "skills+non-chief": {
-    "bytes": 60518,
-    "sha256": "5e646c2fa7d0718636979163b09b50653c1365c46772bb0bf3378193549783dd",
+    "bytes": 62480,
+    "sha256": "f1c3ec226d638f5a1156fe73a4dada04770cf08d9d30bc5631ddc661ad085044",
     "tools": [
       "set_status",
       "send_message",
@@ -372,6 +384,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -400,8 +414,8 @@
     ]
   },
   "skills+voice+non-chief": {
-    "bytes": 61296,
-    "sha256": "43bb3e5521c00200b42cd1903c707b7e81a04e812396efade4efd92afb5222ba",
+    "bytes": 63258,
+    "sha256": "3775b3cf7e06a3bf8b065f91c8d6977572ce5e2c6461e6e3c30096bc51eda175",
     "tools": [
       "set_status",
       "send_message",
@@ -427,6 +441,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -456,8 +472,8 @@
     ]
   },
   "skills+voice+cloud-home": {
-    "bytes": 68335,
-    "sha256": "016037b1e45317f844b80f3e54d7fad9e658058c289b9deebe44f56e14d23790",
+    "bytes": 70297,
+    "sha256": "655fd21ff699d78171e4de5d9aa4d81cbd10be26c8ffc6d8d19350e847a7ce21",
     "tools": [
       "set_status",
       "send_message",
@@ -482,6 +498,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -516,8 +534,8 @@
     ]
   },
   "skills+voice+non-chief+cloud-home": {
-    "bytes": 60317,
-    "sha256": "515f93e473bd63300b6afcd9086b3de49a64557c23e2c13a7b4dba815b9134b1",
+    "bytes": 62279,
+    "sha256": "2cb5c43bf0d1715699181c76d360760d43dad4fbd0197a6abcb18fe795731f35",
     "tools": [
       "set_status",
       "send_message",
@@ -542,6 +560,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_library",
@@ -571,8 +591,8 @@
     ]
   },
   "skills+voice+x": {
-    "bytes": 74325,
-    "sha256": "96f06228cdc81b8ae2166bfb29381f814a1158bd07b46f74bc5574cec77255ea",
+    "bytes": 76287,
+    "sha256": "e5fe6f1684e5ae9574822405075a0bfa1bba448121575c57118930fd7cc62e84",
     "tools": [
       "set_status",
       "send_message",
@@ -598,6 +618,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -637,8 +659,8 @@
     ]
   },
   "skills+voice+x+team": {
-    "bytes": 74325,
-    "sha256": "96f06228cdc81b8ae2166bfb29381f814a1158bd07b46f74bc5574cec77255ea",
+    "bytes": 76287,
+    "sha256": "e5fe6f1684e5ae9574822405075a0bfa1bba448121575c57118930fd7cc62e84",
     "tools": [
       "set_status",
       "send_message",
@@ -664,6 +686,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -703,8 +727,8 @@
     ]
   },
   "default+legacy-switches": {
-    "bytes": 65717,
-    "sha256": "27bbae8acc854c51472bcc4f404dcb116862508efd27db1f8f96589cf2d42792",
+    "bytes": 67679,
+    "sha256": "f773c996ff1c25a87ebf07b221bdde9fd4a0c167190e7d7916c6b333d758340b",
     "tools": [
       "set_status",
       "send_message",
@@ -730,6 +754,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -761,8 +787,8 @@
     ]
   },
   "default+dusk": {
-    "bytes": 66368,
-    "sha256": "8f08904ed6ca7abd7f8efabba3f10704a5c65357efced3060235298e6e6e6967",
+    "bytes": 68330,
+    "sha256": "60e34cd2f0d3f0dd2d84bd84fdd25569eb7fe702fc704f2fa3dc9f032338008a",
     "tools": [
       "set_status",
       "send_message",
@@ -788,6 +814,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -821,8 +849,8 @@
     ]
   },
   "skills+voice+dusk": {
-    "bytes": 69965,
-    "sha256": "69879924555dd433018ea979570138eec3062456354a09fb330ef1bed9aab3f6",
+    "bytes": 71927,
+    "sha256": "acb21d16778233c077b0bb9d05050dde021ce27a007c373f4f2fdb2b9549ced3",
     "tools": [
       "set_status",
       "send_message",
@@ -848,6 +876,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -884,8 +914,8 @@
     ]
   },
   "default+no-computer-pick": {
-    "bytes": 64510,
-    "sha256": "752b5d2e9b894deabc9c435b357df33bc88cf63f215da927ea9ab316511901ef",
+    "bytes": 66472,
+    "sha256": "85a7c2f578ed1ed7df3af2eb0e8a79f1d5ea626ed0dbbfe280e60ecb798177f1",
     "tools": [
       "set_status",
       "send_message",
@@ -910,6 +940,8 @@
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -941,8 +973,8 @@
     ]
   },
   "default+room": {
-    "bytes": 56921,
-    "sha256": "eecf4ec9e2fd3162de9ae487c664edde1c3cc419bb4a26d342a254a7c2a0fb4a",
+    "bytes": 58240,
+    "sha256": "06423d6f7dad84b6a0d1085907ef1e460267bc26b28a4ce9fc2db88a615511f1",
     "tools": [
       "set_status",
       "send_message",
@@ -964,6 +996,7 @@
       "attach_file",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -992,8 +1025,8 @@
     ]
   },
   "non-chief+room": {
-    "bytes": 48903,
-    "sha256": "350cf40e9daf3f483e688547cff529b6851accdb463df8f51ab0dbc1d1533d9c",
+    "bytes": 50222,
+    "sha256": "566cc1d50f43318d8eceed454455f37ee1647c1649ebfa84c3b9654cba2d940a",
     "tools": [
       "set_status",
       "send_message",
@@ -1015,6 +1048,7 @@
       "attach_file",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
       "post_to_room",
       "create_bot",
       "list_team_library",
