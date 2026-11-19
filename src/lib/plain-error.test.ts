@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { isTechnicalError, plainErrorLine } from "./plain-error";
+import { friendlyError, isTechnicalError, plainErrorLine } from "./plain-error";
 import { setLocale } from "./i18n";
 import { registrySaveFailure } from "../../shared/registry-save-failure";
 import { requestTooLargeMessage } from "../../shared/request-too-large";
@@ -77,4 +77,10 @@ it("never shows an engine's internal error or a wall of text, only the plain lin
   expect(plainErrorLine(echoed)).not.toContain("Campaign Manager");
   expect(isTechnicalError("The model said something long. ".repeat(12))).toBe(true);
   expect(isTechnicalError("Your OpenAI key has run out of credits.")).toBe(false);
+});
+
+it("never passes a server sentence that carries a path, an address or a code", () => {
+  expect(friendlyError(new Error("This chat's working folder no longer exists: /Users/sam/Projects/launch"), "Fallback.")).toBe("Fallback.");
+  expect(friendlyError("Couldn't reach https://relay.example.com/v1 from here.", "Fallback.")).toBe("Fallback.");
+  expect(friendlyError("The pairing code ran out. Make a new one on the other device.")).toBe("The pairing code ran out. Make a new one on the other device.");
 });

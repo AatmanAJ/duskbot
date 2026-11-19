@@ -5,6 +5,7 @@ import { Check, Copy, X } from "../../icons";
 import { useCopyFeedback } from "@/lib/copy-text";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { friendlyError } from "@/lib/plain-error";
 
 export const TITLE_ID = "vps-flow-title";
 // grok's lg pills from the first run: the 288px primary, and Back's quiet ink/6 one under it
@@ -19,7 +20,7 @@ export function deviceWord(): string {
   return platform === "darwin" ? t("vpsLink.device.mac") : t("vpsLink.device.computer");
 }
 
-export const message = (error: unknown) => String((error as Error)?.message ?? error).replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, "");
+export const message = (error: unknown) => friendlyError(error);
 
 export function useNow(every: number): number {
   const [now, setNow] = useState(() => Date.now());

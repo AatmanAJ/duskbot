@@ -2,6 +2,7 @@ import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import { requestTooLargeModel } from "../../shared/request-too-large";
 import { isStaleChunkError, STALE_CHUNK } from "./stale-chunks";
+import { hasRawDetail } from "../../shared/raw-detail";
 
 const UNREACHABLE = /^(?:TypeError:\s*)?(?:Failed to fetch|NetworkError when attempting to fetch resource\.?|Load failed|fetch failed)$/i;
 const TIMED_OUT = /^(?:TimeoutError:\s*)?(?:The operation was aborted due to timeout|signal timed out|The operation timed out\.?)$/i;
@@ -115,5 +116,5 @@ export function friendlyError(reason: unknown, fallback?: string): string {
 }
 
 function isPlainSentence(text: string): boolean {
-  return !RAW_FOR_PEOPLE.some((pattern) => pattern.test(text)) && !isTechnicalError(text);
+  return !RAW_FOR_PEOPLE.some((pattern) => pattern.test(text)) && !isTechnicalError(text) && !hasRawDetail(text);
 }
