@@ -7848,6 +7848,7 @@
   "vpsLink.back.copyBytes": "Copying everything from {name}: {done} of {total}",
   "vpsLink.back.restore": "Putting everything in place. This app restarts when it's done.",
   "vpsLink.back.failed": "Your bots could not come here.",
+  "vpsLink.back.retry": "Try again",
   "vpsLink.back.failedKept": "{error} {name} still has all its bots, so you can try again.",
   "vpsLink.transfer.forget": "Forget {name}",
   "vpsLink.transfer.forgetHint": "Unlink it from this app. Nothing on it is deleted.",

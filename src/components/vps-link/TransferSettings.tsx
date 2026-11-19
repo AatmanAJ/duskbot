@@ -97,6 +97,7 @@ export function TransferSettings() {
   const blocked = where?.blocked && where.blocked !== "unknown" ? t(BLOCKED[where.blocked], { device }) : null;
   const backLine = moveBackLine(view.back, device);
   const backError = view.back?.status === "failed" ? moveBackFailure(view.back) : null;
+  const retryPlace = where?.bring?.find((place) => place.name === view.back?.name)?.id;
   return (
     <>
       <Card label={t("vpsLink.transfer.whereTitle")} data-settings-block="transfer">
@@ -131,6 +132,14 @@ export function TransferSettings() {
         {where && !server && where.bring?.length && blocked ? <NoteRow>{blocked}</NoteRow> : null}
         {backLine && <NoteRow>{backLine}</NoteRow>}
         {backError && !busy && <NoteRow tone="danger">{backError}</NoteRow>}
+        {backError && !busy && (server || retryPlace) && (
+          <div className="flex justify-end px-3 pb-2">
+            <button type="button" data-move-back-retry="" className={smallButtonCls}
+              onClick={() => void perform(null, () => bridge.moveBack(server ? undefined : retryPlace))}>
+              {t("vpsLink.back.retry")}
+            </button>
+          </div>
+        )}
       </Card>
       <Card label={t("vpsLink.transfer.backupsTitle")} footnote={t("vpsLink.transfer.backupsNote", { device })}>
         {backups === null
