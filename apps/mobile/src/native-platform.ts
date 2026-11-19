@@ -28,6 +28,7 @@ import type { SlidePath } from "@/mobile/NavStack";
 import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
 import { registerPhoneVoice } from "@/lib/voice-input/device";
+import { attachToComposer, setNativeAttach } from "@/lib/native-attach";
 import { appLinkFromUniversal, type MobileOpenTarget } from "../../../shared/mobile-link";
 
 /** The app's own scanner on ios (ios/App/App/QrScannerPlugin.swift): the ML Kit plugin ships for CocoaPods only, and this
@@ -101,9 +102,29 @@ interface GlassPlugin {
   slide(options: { path: SlidePath | null; at?: number }): Promise<void>;
   glyphs(): Promise<GlassGlyphs>;
   home(options: { state: HomeGlassState | null }): Promise<void>;
-  addListener(event: "glass", listener: (event: GlassEvent) => void): Promise<PluginListenerHandle>;
+  addListener(event: "glass", listener: (event: GlassEvent | { type: "paste"; files: NativeFile[] }) => void): Promise<PluginListenerHandle>;
 }
 const DuskGlass = registerPlugin<GlassPlugin>("DuskGlass");
+
+/** A file the app wrote to its tmp folder for the page (ios/App/App/PickerPlugin.swift). */
+interface NativeFile { path: string; name: string; type: string }
+/** The composer's photo library and Files pickers, each opened straight (ios/App/App/PickerPlugin.swift). */
+const DuskPicker = registerPlugin<{
+  photos(options: { multiple: boolean }): Promise<{ files: NativeFile[] }>;
+  files(options: { multiple: boolean }): Promise<{ files: NativeFile[] }>;
+}>("DuskPicker");
+
+export async function nativeFiles(list: readonly NativeFile[], read: typeof fetch = fetch): Promise<File[]> {
+  const files = await Promise.all(list.map(async (one) => {
+    try {
+      const response = await read(Capacitor.convertFileSrc(one.path));
+      return response.ok ? new File([await response.blob()], one.name, { type: one.type }) : null;
+    } catch {
+      return null;
+    }
+  }));
+  return files.filter((file): file is File => file !== null);
+}
 
 export function glassBridge(plugin: GlassPlugin): GlassBridge {
   const quiet = (work: Promise<unknown>) => { void work.catch(() => {}); };
@@ -117,7 +138,10 @@ export function glassBridge(plugin: GlassPlugin): GlassBridge {
     slide: (path, at) => quiet(plugin.slide({ path, at })),
     glyphs: () => plugin.glyphs().catch(() => ({})),
     home: (state) => quiet(plugin.home({ state })),
-    onEvent: (listener) => unsubscribe([plugin.addListener("glass", listener)]),
+    onEvent: (listener) => unsubscribe([plugin.addListener("glass", (event) => {
+      if (event.type === "paste") void nativeFiles(event.files).then(attachToComposer);
+      else listener(event);
+    })]),
   };
 }
 
@@ -513,6 +537,12 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     backOn = on;
     void App.toggleBackButtonHandler({ enabled: on }).catch(() => {});
   };
+  if (kind === "ios" && Capacitor.isPluginAvailable("DuskPicker")) {
+    setNativeAttach({
+      photos: async () => nativeFiles((await DuskPicker.photos({ multiple: true })).files),
+      files: async () => nativeFiles((await DuskPicker.files({ multiple: true })).files),
+    });
+  }
   registerPhoneVoice({
     os: kind,
     speech: speech ? phoneSpeech(DuskSpeech) : undefined,

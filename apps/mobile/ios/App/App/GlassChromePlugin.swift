@@ -275,7 +275,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private var home: GlassHomeBar!
     private let capsule = UIVisualEffectView(effect: ChatGlassChrome.interactiveGlass())
     private let plus = DiscButton(configuration: .glass())
-    private let text = UITextView()
+    private let text = PastingTextView()
     private let placeholder = UILabel()
     private let voice = UILabel()
     private let wave = GlassVoiceWave()
@@ -392,6 +392,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         if let font = text.font { text.typingAttributes = fieldAttributes(font) }
         text.returnKeyType = .send
         text.delegate = self
+        text.onPasteImages = { [weak self] files in self?.emit(["type": "paste", "files": files]) }
         placeholder.font = text.font
         placeholder.adjustsFontForContentSizeCategory = true
         placeholder.textColor = .placeholderText
