@@ -191,6 +191,13 @@ function detailWords(kind: FailedReplyKind, engineName: string, onServer: boolea
 }
 
 /** Why dusk bot stopped a browser run itself, in one line. */
+/** A failed row as a list previews it: the plain line its failure card leads with, never the engine's raw words. */
+export function failurePreviewLine(tool: NonNullable<Message["tool"]>, engine: InstanceInfo | undefined): string {
+  const kind = failedReplyKind(tool, engine, true);
+  if (kind === "blocker" && tool.blocker) return blockerDetail(tool.blocker);
+  return failedReplyDetail(kind, engine?.displayName ?? t("failedReply.yourAi"), false, failedTurnCause(tool.name) ?? "");
+}
+
 export function blockerDetail(blocker: BrowserBlocker): string {
   const site = blocker.site ?? "";
   if (blocker.kind === "loop") return site ? t("chat.blocker.loopOn", { site }) : t("chat.blocker.loop");
