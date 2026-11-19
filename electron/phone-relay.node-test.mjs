@@ -10,7 +10,7 @@ import test from "node:test";
 
 import { createLinkService } from "../apps/link-service/src/app.mjs";
 import { jsonFile } from "./desktop-prefs.mjs";
-import { createPhoneRelay, phoneRelayStore } from "./phone-relay.mjs";
+import { createPhoneRelay, phoneRelayStore, proxyFromResolved, systemProxy } from "./phone-relay.mjs";
 import { createTunnelProxy, sealKeyOf, sha256hex, x25519Pair } from "./vps-link-protocol.mjs";
 
 const linkRoot = fileURLToPath(new URL("../apps/link-service/", import.meta.url));
@@ -308,4 +308,17 @@ test("a relay waiting out a failure tries again as soon as the computer wakes", 
   assert.equal(relay.state().status, "error", "the failure's wait still holds");
   relay.wake();
   await until(() => relay.state().status === "ready");
+});
+
+test("the computer's proxy settings reach the relay hub: the first plain http proxy, or direct", async () => {
+  assert.equal(proxyFromResolved("DIRECT"), null);
+  assert.deepEqual(proxyFromResolved("PROXY proxy.corp:3128; DIRECT"), { host: "proxy.corp", port: 3128 });
+  assert.deepEqual(proxyFromResolved("SOCKS5 s.corp:1080; PROXY [fd00::1]:8080"), { host: "fd00::1", port: 8080 });
+  assert.equal(proxyFromResolved("SOCKS5 s.corp:1080"), null);
+  assert.equal(proxyFromResolved(""), null);
+  const asked = [];
+  const proxy = systemProxy({ resolveProxy: async (url) => { asked.push(url); return "PROXY p.corp:8080"; } });
+  assert.deepEqual(await proxy(new URL("https://link.dusk.bot/v1/x")), { host: "p.corp", port: 8080 });
+  assert.deepEqual(asked, ["https://link.dusk.bot/v1/x"]);
+  assert.equal(await systemProxy({ resolveProxy: async () => { throw new Error("no"); } })(new URL("https://link.dusk.bot")), null);
 });

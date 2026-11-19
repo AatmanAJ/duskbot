@@ -21,6 +21,20 @@ const CHECK_MS = 15_000;
 const RETRY_MS = [5_000, 30_000, 120_000];
 const ID = /^[a-z2-7]{10}$/;
 
+/** One answer of Electron's `session.resolveProxy` ("PROXY host:port; DIRECT", a PAC script's list) as the link hub's
+ * proxy: the first plain http proxy, or null to go direct. SOCKS and https proxies are not spoken by the hub. */
+export function proxyFromResolved(answer) {
+  for (const entry of String(answer ?? "").split(";").map((part) => part.trim())) {
+    if (/^DIRECT$/i.test(entry)) return null;
+    const match = /^PROXY\s+(\[[^\]]+\]|[^\s:]+):(\d{1,5})$/i.exec(entry);
+    if (match) return { host: match[1].replace(/^\[|\]$/g, ""), port: Number(match[2]) };
+  }
+  return null;
+}
+
+/** the computer's own proxy settings (system, PAC or WPAD) for each relay address, as Chromium resolves them */
+export const systemProxy = (session) => async (target) => proxyFromResolved(await session.resolveProxy(target.href).catch(() => "DIRECT"));
+
 /** what the link service said, as a reason the pane can show; `code` is the service's own when it gave one */
 export class RelaySetupError extends Error {
   constructor(code, message) {
@@ -151,7 +165,7 @@ export function createPhoneRelay(deps) {
     const sync = desktopHarnessSync({ port: deps.port, ownerToken: deps.ownerToken });
     // a sync reporting an applied revision means the relay took this computer's channels
     one.hub = createPhoneHub({
-      base: tunnel.base, id: tunnel.id, token: tunnel.token, keys,
+      base: tunnel.base, id: tunnel.id, token: tunnel.token, keys, ...(deps.proxy ? { proxy: deps.proxy } : {}),
       // a phone's request must never reach another workspace's harness, which would answer 401 and unpair it: until the
       // check stops this hub, port 0 fails each one as unreachable
       server: { host: "127.0.0.1", get port() { return one.scope === scope() ? deps.port() : 0; } },
