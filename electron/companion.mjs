@@ -10,7 +10,7 @@ import {
   companionOriginHealth,
   createCompanionOriginEndpoint,
 } from "./companion-origin-gateway.mjs";
-import { companionFolder, companionPorts } from "./desktop-ports.mjs";
+import { companionFolder, companionLaunchPorts, companionPorts } from "./desktop-ports.mjs";
 
 let ports = companionPorts(8799);
 
@@ -171,7 +171,7 @@ async function start({ resourcesPath, harnessPort, mutationToken, hostedUrl = nu
   }
 
   controlToken = randomBytes(32).toString("base64url");
-  ports = companionPorts(harnessPort);
+  ports = await companionLaunchPorts(harnessPort, { packaged: app.isPackaged });
   let child;
   try {
     child = utilityProcess.fork(resolved.entry, [], {
