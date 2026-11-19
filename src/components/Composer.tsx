@@ -8,7 +8,7 @@ import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { Mic } from "../icons";
 import { useStore, visibleMessages, currentTaskBot, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
+import { usePhoneLayout } from "@/lib/use-media-query";
 import { useMenuMotion } from "./MenuMotion";
 import { ELEVATED_CARD, ELEVATED_FLOAT } from "./elevated";
 import { activeLocale, t } from "@/lib/i18n";
@@ -157,7 +157,7 @@ export function Composer({
   const { state, dispatch } = useStore();
   const { threads, currentBotId } = useThreadRefs();
   // On a phone the composer is a dock: a round + (attach and every other tool), then one pill with the field and the mic.
-  const singleRow = useMediaQuery(PHONE_LAYOUT);
+  const singleRow = usePhoneLayout();
   // On a wider screen: one pill holding a round +, the field, the mic and one round button in the bot's colour.
   const simpleDock = !singleRow;
   // a software keyboard has no shift to hold for a new line, so a phone's return adds one and Send sends

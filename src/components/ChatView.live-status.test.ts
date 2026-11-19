@@ -18,7 +18,7 @@ const dispatch = vi.hoisted(() => vi.fn());
 vi.mock("@/state/store", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/state/store")>();
   return { ...original, useStore: () => ({
-    state: { ...original.initialState, config: null, instances: [{ instanceId: "test", driverKind: "claudeAgent", displayName: "Test", snapshot: { state: "available" } } as InstanceInfo] },
+    state: { ...original.initialState, config: null, instances: [{ instanceId: "test", driverKind: "claudeAgent", displayName: "Test", snapshot: { state: "available" }, models: { default: "profile-default", options: [] } } as unknown as InstanceInfo] },
     dispatch,
   }) };
 });

@@ -1,5 +1,5 @@
 import { createContext, memo, startTransition, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type RefObject } from "react";
-import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
+import { usePhoneLayout } from "@/lib/use-media-query";
 import { phoneApp } from "@/lib/store-app";
 import { ThreadLinkContext } from "@/components/ThreadLinkMenu";
 import { ChevronRight, Copy, Monitor, RefreshCw, Square, Webhook } from "../icons";
@@ -971,7 +971,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const { dragProps: headerDragProps, noDragStyle: headerNoDragStyle } = useCaptionChrome();
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerDock = useComposerDockPad(composerDockRef, () => scrollRef.current);
-  const phone = useMediaQuery(PHONE_LAYOUT);
+  const phone = usePhoneLayout();
   const phoneMenu = phone && !remoteClient;
   const simpleHead = !remoteClient;
   const canWrite = useCanWriteIn(bot.threadId, bot.yourAccess);

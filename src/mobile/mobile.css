@@ -292,7 +292,7 @@ html[data-mobile-app="android"] .dusk-mobile [data-ripple] {
    still answers 44); a plain +, the field 10 after it at the body's 17/24, then the mic and the call, or send */
 .dusk-mobile [data-mobile-chat] [data-composer-backdrop] { display: none; }
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
-  align-items: flex-end;
+  align-items: stretch;
   gap: 0;
   /* the dock pads 16 */
   margin-inline: 14px;

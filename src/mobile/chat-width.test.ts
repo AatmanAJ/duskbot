@@ -125,6 +125,14 @@ describe("message width on the phone, on the rendered chat", () => {
   });
 });
 
+describe("the composer on the phone", () => {
+  it("stretches its rows across the pill, so a wide screen (an iPhone on its side) never pushes them to the right", () => {
+    const pill = document.querySelector("[data-mobile-chat] [data-tour=composer]")!;
+    expect(pill.className).toMatch(/\bflex-col\b/);
+    expect(phone(pill, "align-items") ?? "stretch").toBe("stretch");
+  });
+});
+
 describe("bubbles that are not plain text, on the phone", () => {
   it("keeps an emoji-only message at its large size, with no bubble around it", () => {
     const emoji = document.querySelector("[data-mobile-chat] [data-emoji-only]")!;
