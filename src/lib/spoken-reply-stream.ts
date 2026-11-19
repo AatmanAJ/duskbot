@@ -281,3 +281,9 @@ const silentStream: SpeechStream = {
 export const callReplyStream = new SpokenReplyStream({
   begin: (opts) => callSpeech?.sink.begin(opts) ?? silentStream,
 });
+
+/** A call says a reply once its message is in the chat, which shows each reply whole: streamed text is never said
+ * ahead of what the person can read. */
+export function callReplyEvent(event: RuntimeEvent): void {
+  callReplyStream.onRuntimeEvent(event, null);
+}

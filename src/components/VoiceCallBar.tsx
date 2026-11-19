@@ -305,7 +305,7 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, account,
             <span className="sr-only">{phaseLabel(snap, bot.name)}</span>
           </span>
         ) : (
-          <span key={status} className={cn("voice-call-swap max-w-[230px] truncate text-[13px] tabular-nums", failed ? "text-ink" : "text-ink-secondary")} title={snap.error?.message ?? status}>
+          <span key={status} className={cn("voice-call-swap max-w-[270px] truncate text-[13px] tabular-nums", failed ? "text-ink" : "text-ink-secondary")} title={snap.error?.message ?? status}>
             {status}
           </span>
         )}
@@ -348,6 +348,7 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, account,
       {menu !== "closed" && (
         <CallSettings
           closing={menu === "closing"}
+          narrow={narrow}
           account={account}
           voice={voice === "account" && !account ? "af_heart" : voice}
           speed={speed}
@@ -369,10 +370,12 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, account,
   );
 }
 
-function CallSettings({ voice, speed, closing, account, onVoice, onSpeed }: {
+function CallSettings({ voice, speed, closing, narrow, account, onVoice, onSpeed }: {
   voice: CallVoiceId;
   speed: number;
   closing: boolean;
+  /** A phone-width pill has no room left of the gear: the menu sits over the pill's left edge instead. */
+  narrow: boolean;
   /** The voice service set up in Settings, when there is one with a voice ready. */
   account: string | null;
   onVoice: (id: CallVoiceId) => void;
@@ -382,8 +385,10 @@ function CallSettings({ voice, speed, closing, account, onVoice, onSpeed }: {
     <div
       role="dialog"
       aria-label={t("call.live.settings")}
+      style={narrow ? { transformOrigin: "bottom left" } : undefined}
       className={cn(
-        "voice-call-menu absolute bottom-full right-[126px] mb-2 w-[248px] rounded-2xl p-1.5 text-left sm:right-[146px]",
+        "voice-call-menu absolute bottom-full mb-2 w-[248px] rounded-2xl p-1.5 text-left",
+        narrow ? "left-0" : "right-[126px] sm:right-[146px]",
         "bg-[color-mix(in_srgb,var(--color-ink)_6%,var(--color-app))]",
         closing && "voice-call-menu-out",
       )}

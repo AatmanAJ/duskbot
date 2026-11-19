@@ -7,7 +7,6 @@ import { CAPTURE_RATE, FRAME_MS, FrameRing, joinFrames, openCallMic, wavBytes, t
 import { playChime, type ChimeKind } from "./chime";
 import { SystemListener, systemListenerAvailable, systemSpeak, systemVoiceAvailable } from "./fallback";
 import { CallPlayer, type PlayerEvents, type Prepare, type Render, type SystemVoice } from "./player";
-import { untilShown, wordCount } from "./shown";
 import { levelDb, soundsUnfinished, Vad } from "./vad";
 
 export type CallPhase = "connecting" | "listening" | "hearing" | "thinking" | "speaking" | "error";
@@ -327,13 +326,7 @@ export class VoiceCallSession {
   }
 
   private replyStream(): SpeechStream {
-    // A reply is said only as far as the chat shows it.
-    const spokenWords: number[] = [];
-    const stream = this.player.begin(async (text, index) => {
-      spokenWords[index] = (index ? spokenWords[index - 1] ?? 0 : 0) + wordCount(text);
-      await this.chimed;
-      await untilShown(this.bot.threadId, Math.floor(spokenWords[index]! * 0.85));
-    });
+    const stream = this.player.begin(() => this.chimed);
     this.refresh();
     return stream;
   }

@@ -137,6 +137,7 @@ export class CallPlayer {
   }
 
   /** A stream of blocks for one reply; a new stream silences the one before it. */
+  /** `gate`: each block waits for it before it plays (the connect chime finishing). */
   begin(gate?: (text: string, index: number) => Promise<void>): SpeechStream {
     this.stop();
     const mine = this.generation;

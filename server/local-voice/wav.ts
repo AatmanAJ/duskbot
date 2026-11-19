@@ -19,10 +19,10 @@ export function encodeWav(samples: Float32Array, rate: number): Uint8Array {
   return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
 }
 
-const CEILING = 10 ** (-1 / 20);
+const CEILING = 10 ** (-1.5 / 20);
 const KNEE = 0.7;
 
-/** Soft limiting above KNEE: peaks bend smoothly towards -1 dBFS and never clip. */
+/** Soft limiting above KNEE: peaks bend smoothly towards -1.5 dBFS, under -1 dBTP once played, and never clip. */
 function limit(x: number): number {
   const magnitude = Math.abs(x);
   if (magnitude <= KNEE) return x;
