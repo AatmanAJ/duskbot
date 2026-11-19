@@ -103,7 +103,8 @@ export interface MobilePlatform {
    * of full height, or another, for which the window ends at the keyboard. */
   keyboardMode?(ride: boolean): void;
   setStatusBar?(style: "dark" | "light"): void;
-  /** Android's hardware back; return true when handled. */
+  /** Android's back; return true when handled. The newest listener is asked first and an older one only when it
+   * declines (`handleBack`); when none takes it the app goes to the background. */
   onBack?(listener: () => boolean): () => void;
   /** Links the OS hands the app: duskbot://pair, duskbot://open, the desktop's thread links. A listener returns
    * true when the link was its kind; the link that launched the app waits for the first listener that takes it. */
@@ -166,6 +167,12 @@ const memorySecrets = new Map<string, string>();
 
 function storageOf(kind: "localStorage" | "sessionStorage"): Storage | null {
   try { return globalThis[kind] ?? null; } catch { return null; }
+}
+
+/** Hands Android's back to the newest listener, then each older one while they decline; true when one took it. */
+export function handleBack(listeners: ReadonlyArray<() => boolean>): boolean {
+  for (let at = listeners.length - 1; at >= 0; at -= 1) if (listeners[at]!()) return true;
+  return false;
 }
 
 export function webPlatform(): MobilePlatform {

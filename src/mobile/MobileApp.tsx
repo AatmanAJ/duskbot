@@ -175,11 +175,14 @@ function Shell() {
   useEffect(() => platform.onNotificationOpen?.(openTarget), [platform, openTarget]);
   usePhoneActions(platform, state, dispatch, openTarget);
 
+  // registered once, so a layer that opens later (a full screen computer, adding a place) is asked before it
+  const openChatId = useRef(chatId);
+  openChatId.current = chatId;
   useEffect(() => platform.onBack?.(() => {
     if (closeTopSheet()) return true;
-    if (chatId) { setChatId(null); return true; }
+    if (openChatId.current) { setChatId(null); return true; }
     return false;
-  }), [platform, chatId]);
+  }), [platform]);
 
   // a resumed app reads the chat on screen, as a refocused desktop window does
   useEffect(() => platform.onResume?.(() => { if (chatId) dispatch({ type: "select", id: chatId }); }), [platform, chatId, dispatch]);

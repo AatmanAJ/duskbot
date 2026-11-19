@@ -19,7 +19,7 @@ const keystore = SecureStorage as unknown as {
 };
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import type { AppleCredential, CameraPermission, CameraScanner, DeliveredNotification, MobilePlatform, OrientationBridge, ScanOverlay, TurnActivityBridge } from "@/mobile/platform";
+import { handleBack, type AppleCredential, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobilePlatform, type OrientationBridge, type ScanOverlay, type TurnActivityBridge } from "@/mobile/platform";
 import type { NativeAction } from "@/mobile/phone-actions";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
 import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
@@ -503,6 +503,8 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   const turnActivityOn = kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity");
   const notificationsOn = kind === "ios" && Capacitor.isPluginAvailable("DuskNotifications");
   const insetsOn = kind === "android" && Capacitor.isPluginAvailable("DuskInsets");
+  const backs: Array<() => boolean> = [];
+  let backButton: Promise<PluginListenerHandle> | undefined;
   registerPhoneVoice({
     os: kind,
     speech: speech ? phoneSpeech(DuskSpeech) : undefined,
@@ -570,9 +572,11 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       void StatusBar.setStyle({ style: style === "dark" ? Style.Light : Style.Dark }).catch(() => {});
     },
     onBack(listener) {
-      return unsubscribe([App.addListener("backButton", () => {
-        if (listener() === false && kind === "android") void App.minimizeApp().catch(() => {});
-      })]);
+      backs.push(listener);
+      backButton ??= App.addListener("backButton", () => {
+        if (!handleBack(backs) && kind === "android") void App.minimizeApp().catch(() => {});
+      });
+      return () => { const at = backs.indexOf(listener); if (at >= 0) backs.splice(at, 1); };
     },
     onAppUrl(listener) {
       // a universal link (https://dusk.bot/m/...) arrives as the app link it stands for
