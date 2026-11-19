@@ -210,11 +210,13 @@ describe("archive / delete confirmation", () => {
     expect(currentArchivableBot([snapshot], snapshot.id)).toBeUndefined();
     expect(currentArchivableBot([other, bot({ id: "third" })], snapshot.id)).toBeUndefined();
   });
-  it("archive copy names the bot and says it can be restored", () => {
+  it("archive copy uses the menu's words and says how to bring the bot back", () => {
     const copy = botConfirmCopy("archive", "Juniper");
 
     expect(copy.title).toContain("Juniper");
-    expect(copy.body).toMatch(/restore/i);
+    expect(copy.title).toBe("Hide Juniper from the sidebar?");
+    expect(copy.confirmLabel).toBe("Hide");
+    expect(copy.body).toMatch(/search for it to bring it back/i);
     expect(copy.tone).toBe("neutral");
   });
 

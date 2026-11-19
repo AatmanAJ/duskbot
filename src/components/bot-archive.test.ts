@@ -44,7 +44,7 @@ describe("archiving a bot", () => {
     ]);
     expect(notify.mock.calls).toEqual([
       [null],
-      [{ error: false, text: "Scout archived", restoreBot: { id: "scout", name: "Scout" } }],
+      [{ error: false, text: "Scout hidden from the sidebar", restoreBot: { id: "scout", name: "Scout" } }],
     ]);
   });
 
@@ -119,7 +119,7 @@ describe("archiving from the bot panel", () => {
     stop();
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "toggleSettings", open: false });
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "select", id: "nova" });
-    expect(sidebar).toHaveBeenLastCalledWith({ error: false, text: "Scout archived", restoreBot: { id: "scout", name: "Scout" } });
+    expect(sidebar).toHaveBeenLastCalledWith({ error: false, text: "Scout hidden from the sidebar", restoreBot: { id: "scout", name: "Scout" } });
   });
 
   it("still reports a failure in the chat when no sidebar is on screen", async () => {
