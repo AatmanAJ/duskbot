@@ -225,7 +225,7 @@ describe("the panel's top", () => {
     render(null);
     await settle();
     const top = [...host.querySelectorAll("button")].slice(0, 2);
-    expect(top.map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"))).toEqual(["Share and more", "Close"]);
+    expect(top.map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"))).toEqual(["Share and more", "Close panel"]);
     expect(top[0]!.getAttribute("title")).toBe("Share");
     for (const button of [moreButton()!, top[1]!]) expect(button.querySelector("span, svg, i")).not.toBeNull();
     click(moreButton());

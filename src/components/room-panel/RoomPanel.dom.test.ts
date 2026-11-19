@@ -441,7 +441,7 @@ describe("Escape", () => {
 
   it("closes from the ✕ too", () => {
     render(room());
-    click($('[data-room-panel] [aria-label="Close"]'));
+    click($('[data-room-panel] [aria-label="Close panel"]'));
     expect(seen.open).toBeNull();
     expect(document.activeElement).toBe(opener);
   });

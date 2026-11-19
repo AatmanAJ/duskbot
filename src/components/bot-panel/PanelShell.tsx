@@ -273,7 +273,7 @@ export function BotPanel({ bot, derived, linkedSection, computerRequest = 0, onC
           )}
         </AnimatePresence>
         {page !== null && <span className="ms-auto" />}
-        <button type="button" onClick={onClose} aria-label={t("botPanel.close")} title={t("botPanel.close")} className={roundButtonCls}>
+        <button type="button" onClick={onClose} aria-label={t("botPanel.closePanel")} title={t("botPanel.closePanel")} className={roundButtonCls}>
           <Icon name="close" size={16} />
         </button>
       </div>
