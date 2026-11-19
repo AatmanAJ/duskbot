@@ -8237,6 +8237,7 @@ async function acceptDirectSend(
         let steered: SteerOutcome = "refused";
         const steerInput = extractTurnImages(text);
         const carriesImages = steerInput.images.length > 0;
+        if (!app && (trigger.kind === "user" || trigger.kind === "owner") && introTurns.has(threadId) && introAllowed(store.messagesFor(threadId))) { const queued = queueSteeredMessage(currentAtStart.id, threadId, text, { replyToId: replyTo?.id, sendId, dataContext, mentions, prompt: queuedPrompt, sender, trigger, via, callId, first: true }); await interruptDirectThread(botId, threadId); return { ok: true as const, queued: true as const, queueId: queued.id, threadId }; }
         if (repliesWhileWorking(sideSendFacts(botId, threadId, { personsOwn: personsOwn && !relayed, spoken: Boolean(via), images: carriesImages, followUp }))) {
           if (personPresent) clearUnattended(threadId);
           const message = store.appendMessage(threadId, {
@@ -8562,7 +8563,7 @@ async function introduceBot(botId: string, opts: { template?: string; origin?: "
   const language = conversationLanguage(threadId);
   const fallback = () => {
     introTurns.delete(threadId);
-    if (introAllowed(store.messagesFor(threadId))) store.appendMessage(threadId, { role: "bot", kind: "text", text: introFallback(language, bot) });
+    if (introAllowed(store.messagesFor(threadId)) && !hasQueuedPersonMessage(botId, threadId)) store.appendMessage(threadId, { role: "bot", kind: "text", text: introFallback(language, bot) });
     return "fallback" as const;
   };
   const instance = registry.get(bot.modelSelection.instanceId);
