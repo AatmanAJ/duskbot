@@ -9721,5 +9721,7 @@
   "mobile.settings.cloudLinked": "dusk cloud",
   "mobile.clouds.switchTitle": "Log in as {email}?",
   "mobile.clouds.switchBody": "This phone is logged in as {current}. Switching signs that account out here first, with its dusk clouds.",
-  "mobile.clouds.switchAccount": "Switch account"
+  "mobile.clouds.switchAccount": "Switch account",
+  "mobile.composer.approval": "Answer above",
+  "mobile.chat.waitingForConnection": "Waiting for connection"
 }

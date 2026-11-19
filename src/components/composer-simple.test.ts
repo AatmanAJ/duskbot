@@ -13,6 +13,14 @@ describe("the composer's hint while a question waits", () => {
   });
 });
 
+describe("the composer's hint while an approval waits", () => {
+  const approval = { ...base, question: false, approval: true };
+  it("points at the approval in full where there is room, and in two words on a phone", () => {
+    expect(composerPlaceholder(approval)).toBe("Answer the approval above");
+    expect(composerPlaceholder({ ...approval, narrow: true })).toBe("Answer above");
+  });
+});
+
 describe("the composer's hint with a file attached", () => {
   const attached = { ...base, question: false, attached: true };
   it("asks for a message or a send where there is room", () => {

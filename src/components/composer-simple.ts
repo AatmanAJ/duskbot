@@ -48,7 +48,7 @@ export function composerPlaceholder({ locked, approval, attaching, attached = fa
   setupHint: string | null | undefined;
 }): string {
   if (locked) return t("composer.placeholder.lockedChat");
-  if (approval) return t("composer.placeholder.approval");
+  if (approval) return t(narrow ? "mobile.composer.approval" : "composer.placeholder.approval");
   if (attaching) return t("composer.placeholder.attaching");
   if (listening) return t("composer.placeholder.listening");
   if (replying && !busy) return t("composer.placeholder.reply");
