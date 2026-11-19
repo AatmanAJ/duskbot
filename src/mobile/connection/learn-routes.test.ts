@@ -72,3 +72,14 @@ describe("a pairing without a working relay channel", () => {
     expect(save).not.toHaveBeenCalled();
   });
 });
+
+describe("a dusk cloud signed in with the account", () => {
+  it("keeps its https address beside the relay channel it opens", async () => {
+    const save = vi.fn(async () => {});
+    const channel = { base: "https://link.dusk.bot", channel: "cdefghijkl", agentPub: "C".repeat(43) };
+    const ask = (async (path: string) => new Response(JSON.stringify(path === "/api/mobile/routes" ? { https: [], companion: null, relay: null } : channel))) as typeof fetch;
+    const cloud: MobileConnectionRecord = { ...record([]), via: undefined, transport: "https", origin: "https://d1.dusk.bot" };
+    await learnRoutes(cloud, { kind: "bearer", origin: "https://d1.dusk.bot", token: "s" }, save, ask, async () => ({ pub: "P".repeat(43), priv: "x", token: "t" }));
+    expect(save).toHaveBeenCalledWith("mac", [{ kind: "https", url: "https://d1.dusk.bot" }], channel);
+  });
+});

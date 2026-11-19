@@ -3,13 +3,16 @@ import { mobileTransports, type MobileConnectionRecord, type MobileRelayChannel,
 import { sha256hex, type RelaySecrets } from "../transport/link-crypto";
 import type { PhoneTransport } from "../transport/transport";
 
+/** a pairing's routes as saved, an older pairing's one address included */
+const savedRoutes = (record: Pick<MobileConnectionRecord, "via" | "origin" | "transport">): MobileTransport[] => record.via ?? (record.origin ? [record.transport === "companion"
+  ? { kind: "companion", url: record.origin, net: "lan", priority: 0 }
+  : { kind: "https", url: record.origin }] : []);
+
 /** The saved routes with the place's current ones in: its https addresses and (when the computer said) its Wi-Fi and
  * tailnet addresses replace the old, the relay entries stay, and the route this connect just worked over is never
  * dropped. Null when nothing changes. */
 export function mergedRoutes(record: Pick<MobileConnectionRecord, "via" | "origin" | "transport">, now: MobileRoutesResponse, working: PhoneTransport): MobileTransport[] | null {
-  const saved: MobileTransport[] = record.via ?? (record.origin ? [record.transport === "companion"
-    ? { kind: "companion", url: record.origin, net: "lan", priority: 0 }
-    : { kind: "https", url: record.origin }] : []);
+  const saved = savedRoutes(record);
   const companion = now.companion ?? saved.filter((route) => route.kind === "companion");
   const fresh = mobileTransports([...now.https, ...saved.filter((route) => route.kind === "relay"), ...companion]);
   const urlOf = (route: MobileTransport) => (route.kind === "relay" ? null : route.url);
@@ -53,7 +56,7 @@ export async function learnRoutes(record: MobileConnectionRecord, working: Phone
     if (!Array.isArray(answer.https) || !(answer.companion === null || Array.isArray(answer.companion))) return;
     const via = mergedRoutes(record, { https: answer.https, companion: answer.companion }, working);
     const relay = await healedRelay(record, answer.relay, ask, keys).catch(() => null);
-    if (relay) await save(record.id, via ?? record.via ?? [], relay);
+    if (relay) await save(record.id, via ?? savedRoutes(record), relay);
     else if (via) await save(record.id, via);
   } catch { /* the saved routes stay */ }
 }

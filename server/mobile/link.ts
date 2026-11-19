@@ -94,6 +94,9 @@ export interface MobileLinkDeps {
   push?: PushSender;
   /** whether the person already read this notification (on any device) */
   isRead?: (notificationId: string) => boolean;
+  /** A dusk cloud: its phones sign in with the account instead of pairing, so a phone's own bearer session may ask for a
+   * relay channel, and is listed as a phone once it does. */
+  adoptSessions?: boolean;
   fetch?: typeof fetch;
   now?: () => number;
   log?: (line: string) => void;
@@ -287,7 +290,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
       .map((url) => ({ kind: "https", url, ...(url === relay?.origin && relay.spki ? { spki: relay.spki } : {}) })));
   }
 
-  async function routes(device: DeviceRecord): Promise<MobileRoutesResponse> {
+  async function routes(device: DeviceRecord | null): Promise<MobileRoutesResponse> {
     const companion = deps.companion ? await deps.companion().catch(() => null) : null;
     const isHttps = (route: MobileTransport): route is MobileRoutesResponse["https"][number] => route.kind === "https";
     const isCompanion = (route: MobileTransport): route is NonNullable<MobileRoutesResponse["companion"]>[number] => route.kind === "companion";
@@ -298,10 +301,10 @@ export function createMobileLink(deps: MobileLinkDeps) {
     };
   }
 
-  function relayOf(device: DeviceRecord): Pick<MobileRoutesResponse, "relay"> {
+  function relayOf(device: DeviceRecord | null): Pick<MobileRoutesResponse, "relay"> {
     const relay = agentLive();
     if (!relay) return {};
-    return { relay: device.relay && !failed.has(device.relay.channel) ? { base: relay.base, channel: device.relay.channel, agentPub: relay.pub } : null };
+    return { relay: device?.relay && !failed.has(device.relay.channel) ? { base: relay.base, channel: device.relay.channel, agentPub: relay.pub } : null };
   }
 
   /** a paired phone with no relay channel (paired while this place had no relay, or its keys lost) asks for one */
@@ -309,6 +312,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     if (typeof body.pub !== "string" || !usableX25519(body.pub) || typeof body.verifier !== "string" || !HEX64.test(body.verifier)) return { status: 400, body: { error: "relay needs pub (base64url x25519) and verifier (sha256 hex)" } };
     const relay = agentLive();
     if (!relay) return { status: 409, body: { error: "This place has no relay right now.", code: "no_relay" } };
+    if (!devices.includes(device)) { devices.push(device); deps.sessions.holdForPairedDevice(device.sessionId); }
     device.relay = { channel: device.relay?.channel ?? relayId(), verifier: body.verifier, pub: body.pub };
     persist();
     bump();
@@ -457,12 +461,26 @@ export function createMobileLink(deps: MobileLinkDeps) {
   }
 
   const deviceOf = (auth: RequestAuth) => (auth.kind === "session" ? devices.find((device) => device.sessionId === auth.session.id) ?? null : null);
+  const adoptable = (auth: RequestAuth) => Boolean(deps.adoptSessions) && auth.kind === "session" && auth.via === "bearer";
+  /** a cloud phone's own session, listed as a phone the first time it asks for a relay channel */
+  function adopt(auth: RequestAuth): DeviceRecord | null {
+    if (auth.kind !== "session" || devices.length >= MAX_DEVICES) return null;
+    return { id: randomUUID(), sessionId: auth.session.id, name: auth.session.label.slice(0, 80), platform: "other", createdAt: now(), relay: null, push: null };
+  }
 
   activeNotify = (notification, options) => { void notify(notification, options).catch((error) => log(`mobile: push failed (${(error as Error).message})`)); };
   activeTurnActivity = (threadId, event, context) => activities.event(threadId, event, context);
   activeRead = read;
 
   return {
+    /** the channel sync of a phone hub running in this process (a dusk cloud's), as POST /api/mobile/relay/sync answers it */
+    async relaySync(input: Record<string, unknown>): Promise<unknown> {
+      const closed = new AbortController();
+      if (input.signal instanceof AbortSignal) input.signal.addEventListener("abort", () => closed.abort(), { once: true });
+      const answer = await sync(input, closed.signal);
+      if (answer.status !== 200) throw new Error(`phone sync answered ${answer.status}`);
+      return answer.body;
+    },
     /** POST /api/mobile/redeem, before the auth gate: the grant's secret is the authorization */
     async publicRoute(req: IncomingMessage, res: import("node:http").ServerResponse, path: string, method: string, json: Json, readBody: ReadBody): Promise<boolean> {
       if (path !== "/api/mobile/redeem") return false;
@@ -498,12 +516,12 @@ export function createMobileLink(deps: MobileLinkDeps) {
       }
       if (path === "/api/mobile/routes" && method === "GET") {
         const device = deviceOf(auth);
-        if (!device) { json(res, 404, { error: "this session is not a paired phone" }); return true; }
+        if (!device && !adoptable(auth)) { json(res, 404, { error: "this session is not a paired phone" }); return true; }
         json(res, 200, await routes(device));
         return true;
       }
       if (path === "/api/mobile/relay" && method === "POST") {
-        const device = deviceOf(auth);
+        const device = deviceOf(auth) ?? (adoptable(auth) ? adopt(auth) : null);
         if (!device) { json(res, 404, { error: "this session is not a paired phone" }); return true; }
         const answer = await relayFor(device, await body());
         json(res, answer.status, answer.body);

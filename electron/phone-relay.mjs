@@ -123,6 +123,7 @@ export function desktopHarnessSync({ port, ownerToken, request = httpRequest }) 
  *   loadHub(): Promise<{ createPhoneHub: Function }>,
  *   port(): number,
  *   ownerToken(): string,
+ *   sync?: Function,
  *   scope?(): string,
  *   fetch?: typeof fetch,
  *   log?: (line: string) => void,
@@ -162,7 +163,7 @@ export function createPhoneRelay(deps) {
     if (stopped || running || scope() !== at || !deps.wanted()) return;
     const { tunnel, keys } = saved;
     const one = { scope: at };
-    const sync = desktopHarnessSync({ port: deps.port, ownerToken: deps.ownerToken });
+    const sync = deps.sync ?? desktopHarnessSync({ port: deps.port, ownerToken: deps.ownerToken });
     // a sync reporting an applied revision means the relay took this computer's channels
     one.hub = createPhoneHub({
       base: tunnel.base, id: tunnel.id, token: tunnel.token, keys, ...(deps.proxy ? { proxy: deps.proxy } : {}),
