@@ -70,3 +70,21 @@ the ack that waits for real work, persisted carried steps and plain failure word
 
 Failing cases over 12 tries each (4 models, 3 runs), before to after: `new-bot` 6 to 2, `stop-enough` 8 to 0,
 `stop-please` 5 to 0, `email-landlord` 8 to 8, `reminder-and-note` 6 to 6.
+
+### Round 4 (persona fixes), three runs per case
+
+`round4-before-x3.json` (dev at `4aa24abd9`) against `round4-after-x3.json` (dev at `cb90fb0a9`: silent corrective
+rounds, no Partly done card under a reply that explains, no promised checks, bots that cannot run code say so, timeless
+automation names, Sentence case, draft plus connect for an app that is not connected). Mean passes per run:
+
+| model | act+deliver | no-false-done | stop | all |
+| --- | --- | --- | --- | --- |
+| gpt-6.1-terra | 6.7/7 to 6.7/7 | 4/4 to 4/4 | 5/5 to 5/5 | 15.7/16 to 15.7/16 |
+| gpt-oss-120b-medium | 3.3/7 to 2.7/7 | 3.3/4 to 2.7/4 | 5/5 to 5/5 | 11.7/16 to 10.3/16 |
+| gemini-3.1-flash-lite | 6.3/7 to 5.7/7 | 3.3/4 to 3.7/4 | 5/5 to 5/5 | 14.7/16 to 14.3/16 |
+| grok-3-mini | 5.7/7 to 7/7 | 3/4 to 3.7/4 | 5/5 to 5/5 | 13.7/16 to 15.7/16 |
+| all | 22/28 to 22/28 | 13.7/16 to 14/16 | 20/20 to 20/20 | 55.7/64 to 56/64 |
+
+Flat overall: most of this round's fixes (one reply after a failed tool, the card, titles, casing, promised checks)
+are outside what these cases measure and are covered by unit tests instead. `email-landlord` failures went 6 to 3 of
+12; `reminder-and-note` 3 to 5 and `x-posts` 5 to 5 (mostly gpt-oss) did not improve.
