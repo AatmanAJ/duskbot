@@ -88,3 +88,23 @@ automation names, Sentence case, draft plus connect for an app that is not conne
 Flat overall: most of this round's fixes (one reply after a failed tool, the card, titles, casing, promised checks)
 are outside what these cases measure and are covered by unit tests instead. `email-landlord` failures went 6 to 3 of
 12; `reminder-and-note` 3 to 5 and `x-posts` 5 to 5 (mostly gpt-oss) did not improve.
+
+### Round 5 (voice and helpfulness, docs/bot-voice.md), three runs per case
+
+Seven new cases: a hello, a vent, thanks and a correction, judged for a friendly, human, concise voice with no stock
+phrases, flattery or cringe; gift picks, a standup reminder with a one-line offer to repeat it, and an honest limit (a
+price it cannot check). `round5-before-x3.json` (dev at `84edd241d`) against `round5-after-x3.json` (the voice
+commits) and `round5-after2-voice-x3.json` (the new cases again on the final build, after the no-computer note and
+the price and repeat-offer rules). Passes over 4 models x 3 runs:
+
+| | before | after | final build |
+| --- | --- | --- | --- |
+| voice (4 cases) | 6/48 | 21/48 | 19/48 |
+| helpfulness (3 cases) | 8/36 | 8/36 | 16/36 |
+| act+deliver | 65/84 | 64/84 | - |
+| no false done | 41/48 | 43/48 | - |
+| stop | 60/60 | 60/60 | - |
+
+By case, before to final: hello 2 to 8, thanks 4 to 5, correction 0 to 3, vent 0 to 3, gift picks 3 to 3, honest
+limits 5 to 12, a repeat offer on the standup reminder 0 to 1 (of 12 each). The vent case is judged strictly (no
+echo of their words); small models still skip per-pick prices and the repeat offer.
