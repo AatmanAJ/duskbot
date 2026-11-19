@@ -209,6 +209,26 @@ describe("mobile link", () => {
     vi.useRealTimers();
   });
 
+  it("a phone paired again takes its push token from the pairing it replaced, which is removed, so each notification arrives once", async () => {
+    vi.useFakeTimers();
+    const mobile = link();
+    const pairOnce = async (attemptId: string) => {
+      const answer = (await call(mobile, owner, "POST", "/api/mobile/pairing")).body as MobilePairingResponse;
+      const phone = (await redeem(mobile, { secret: answer.payload.grant.secret, attemptId, device: { name: "p", platform: "ios" } })).body as MobileRedeemResponse;
+      const auth: RequestAuth = { kind: "session", session: sessions.authenticate(phone.token)!, via: "bearer", scopes: phone.scopes };
+      expect((await call(mobile, auth, "PUT", "/api/mobile/push", { service: "apns", token: "abcdef0123456789" })).status).toBe(200);
+      return { phone, auth };
+    };
+    const first = await pairOnce("attempt-0201");
+    const again = await pairOnce("attempt-0202");
+    expect((await call(mobile, owner, "GET", "/api/mobile/devices")).body.devices.map((one: { id: string }) => one.id)).toEqual([again.phone.device.id]);
+    expect(sessions.authenticate(first.phone.token)).toBeNull();
+    await mobile.notify({ id: "n1", at: 1, read: false, kind: "mention", botId: "b1", botName: "Nova", threadId: "t1", title: "Nova", body: "x" });
+    await vi.advanceTimersByTimeAsync(PUSH_GRACE_MS);
+    expect(sent).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
   it("registers an iPhone's Live Activity and push-to-start tokens, and an approval's ask id travels with its push", async () => {
     const mobile = link();
     const answer = (await call(mobile, owner, "POST", "/api/mobile/pairing")).body as MobilePairingResponse;

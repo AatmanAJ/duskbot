@@ -490,6 +490,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
         const environment = value.environment === "sandbox" || value.environment === "production" ? value.environment : undefined;
         if (!service || !/^[\w:.-]{8,4096}$/.test(token)) { json(res, 400, { error: "service must be apns or fcm, with its device token" }); return true; }
         device.push = { service, token, ...(environment ? { environment } : {}), updatedAt: now() };
+        for (const replaced of devices.filter((one) => one !== device && one.push?.service === service && one.push.token === token)) revoke(replaced.id);
         persist();
         json(res, 200, { ok: true, delivering: push.delivers?.(service) ?? push.configured.includes(service) });
         return true;
