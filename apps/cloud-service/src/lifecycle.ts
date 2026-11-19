@@ -978,6 +978,11 @@ export function createLifecycle(deps: LifecycleDeps) {
     /** the edge's lookup: the machine's own hosted URL behind a public label */
     upstreamFor(value: string): string | null { return edgeCloud(value)?.managed?.upstream ?? null; },
     cloudOfLabel(value: string): string | undefined { return edgeCloud(value)?.id; },
+    /** the label was a home that has been deleted, and no live home has it: the edge says gone, never "not found yet" */
+    edgeGone(value: string): boolean {
+      if (!/^d[0-9a-f]{20}$/.test(value) || edgeCloud(value)) return false;
+      return deps.clouds().some(x => x.managed?.label === value && (x.status === "destroyed" || x.status === "destroying"));
+    },
     /** the same, and whether the home answers now: the edge forwards to an awake home and wakes a sleeping one */
     edgeRoute(value: string): { upstream: string; awake: boolean; wakeable: boolean } | null {
       const c = edgeCloud(value), upstream = c?.managed?.upstream;

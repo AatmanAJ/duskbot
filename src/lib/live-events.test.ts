@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  GONE_CHECK_MS,
   LIVE_EVENTS_KICK_AFTER_MS,
   LIVE_EVENTS_OPEN_MS,
   LIVE_EVENTS_RESUME_SILENT_MS,
@@ -15,7 +16,7 @@ import {
   type LiveEventSourceLike,
   type LiveEventsPlatform,
 } from "./live-events";
-import { cloudAsleep, markCloudAwake, resetCloudPowerForTests } from "./cloud-power";
+import { cloudAsleep, cloudGone, markCloudAwake, markCloudGone, resetCloudPowerForTests } from "./cloud-power";
 import { resetTurnLive, turnLive } from "@/state/turn-status";
 
 class FakeTarget {
@@ -485,6 +486,47 @@ describe("a dial left pending with no answer, as an iOS web view does after a re
     test.setNow(10 * LIVE_EVENTS_KICK_AFTER_MS);
     retryLiveEventsNow();
     expect(test.sources).toHaveLength(3);
+    stop();
+  });
+});
+
+describe("a dusk cloud that was deleted", () => {
+  it("asks once per check window whether the place is gone, and stops dialing for good once it is", async () => {
+    const test = harness();
+    const onError = vi.fn();
+    let gone = false;
+    const placeGone = vi.fn(async () => gone);
+    const stop = openLiveEvents({ onFrame: vi.fn(), onError, onSnapshotRequired: async () => true, retryMinMs: 100, retryMaxMs: 100 }, { ...test.platform, placeGone });
+    test.sources[0].error();
+    expect(placeGone).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(100);
+    test.sources[1].error();
+    expect(placeGone).toHaveBeenCalledTimes(1);
+    gone = true;
+    test.setNow(GONE_CHECK_MS);
+    vi.advanceTimersByTime(100);
+    test.sources[2].error();
+    expect(placeGone).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(cloudGone()).toBe(true));
+    const dialed = test.sources.length;
+    vi.advanceTimersByTime(10 * LIVE_EVENTS_STALE_MS);
+    retryLiveEventsNow({ redial: true });
+    test.windowTarget.emit("online");
+    test.windowTarget.emit("focus");
+    expect(test.sources).toHaveLength(dialed);
+    stop();
+  });
+
+  it("closes an open stream the moment the place is known to be gone", () => {
+    const test = harness();
+    const onError = vi.fn();
+    const stop = openLiveEvents({ onFrame: vi.fn(), onError, onSnapshotRequired: async () => true }, test.platform);
+    test.sources[0].open();
+    markCloudGone();
+    expect(test.sources[0].close).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(10 * LIVE_EVENTS_STALE_MS);
+    expect(test.sources).toHaveLength(1);
     stop();
   });
 });

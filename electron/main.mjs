@@ -2401,10 +2401,13 @@ function createWindow({ deferNavigation = false } = {}) {
     workspaceReconnect.lost(remote);
   });
   win.webContents.on("did-navigate", (_event, url, code) => {
+    // 410: the edge's answer for a deleted dusk cloud: its own screen says so instead of a bare error page
+    if (code === 410 && homeWindow.failed(url)) return;
     homeWindow.navigated(url);
     const remote = activeRemote(environmentsState);
     let origin = null;
     try { origin = new URL(url).origin; } catch {}
+    if (remote && code === 410 && origin === remote.origin) return void workspaceReconnect.lost({ ...remote, gone: true });
     if (remote && proxyAnswersForDownServer(code) && origin === remote.origin) return void workspaceReconnect.lost(remote);
     workspaceReconnect.loaded(url);
   });

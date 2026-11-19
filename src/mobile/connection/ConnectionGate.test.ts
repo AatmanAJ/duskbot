@@ -54,6 +54,26 @@ it("an offline server at launch keeps the link, retries, and offers the other sa
   expect(host.textContent).toBe("home");
 });
 
+it("a dusk cloud its edge says was deleted is said once, never retried, and Remove takes it off and opens the next place", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  fetcher.mockImplementation(async (input) => String(input).startsWith("https://mac.example.test")
+    ? new Response("This dusk bot was deleted.", { status: 410, headers: { "x-dusk-cloud-power": "gone" } })
+    : new Response("{}"));
+  await mount(); await settle();
+  expect(host.querySelector("h1")?.textContent).toBe("Studio Mac was deleted");
+  expect(host.textContent).not.toContain("Try again");
+  const asked = fetcher.mock.calls.length;
+  await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60_000); });
+  window.dispatchEvent(new Event("online"));
+  await settle();
+  expect(fetcher.mock.calls.length).toBe(asked);
+  await click("Remove from this phone"); await settle();
+  expect(JSON.parse(prefs.get("dusk.mobile.connections.v1")!).map((entry: MobileConnectionRecord) => entry.id)).toEqual(["vps"]);
+  expect(prefs.get("dusk.mobile.active.v1")).toBe("vps");
+  expect(host.textContent).toBe("home");
+  vi.useRealTimers();
+});
+
 it("the unreachable screen tries again as soon as the app is back in front or on another network", async () => {
   const resumed = new Set<() => void>(), moved = new Set<() => void>();
   platform = { ...platform,

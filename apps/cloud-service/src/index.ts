@@ -147,8 +147,9 @@ export function createManagedCloud(deps: ManagedCloudDeps): ManagedCloudFactory 
           const want = deps.edgeToken ? `Bearer ${deps.edgeToken}` : null;
           // only the edge proxy may ask; to anyone else the route does not exist
           if (req.method !== "GET" || !want || !digest(String(req.headers.authorization ?? "")).equals(digest(want))) { routes.json(res, 404, { error: "not_found" }); return true; }
-          const route = lifecycle.edgeRoute(url.searchParams.get("label") ?? "");
-          if (!route) { routes.json(res, 404, { error: "not_found" }); return true; }
+          const label = url.searchParams.get("label") ?? "";
+          const route = lifecycle.edgeRoute(label);
+          if (!route) { routes.json(res, lifecycle.edgeGone(label) ? 410 : 404, { error: lifecycle.edgeGone(label) ? "gone" : "not_found" }); return true; }
           res.setHeader("cache-control", "no-store");
           routes.json(res, 200, route);
           return true;

@@ -1,6 +1,6 @@
 // EventSource hides SSE comment keepalives, so liveness comes from the server's visible `ping` frame.
 import type { ServerFrame } from "../../shared/wire";
-import { asleepAnswer, BACKGROUND_HEADERS, cloudAsleep, markCloudAsleep, noteCloudAwake, onCloudPower, sleepingFrame } from "./cloud-power";
+import { asleepAnswer, BACKGROUND_HEADERS, cloudAsleep, cloudGone, goneAnswer, markCloudAsleep, markCloudGone, noteCloudAwake, onCloudGone, onCloudPower, sleepingFrame } from "./cloud-power";
 import { recordBotTextMessage, recordRuntimeEvent } from "./voice-latency-probe";
 import { noteTurnEvent } from "@/state/turn-status";
 import { noteReplyEvent, noteReplyLanded } from "@/state/live-reply";
@@ -51,7 +51,12 @@ export interface LiveEventsPlatform {
   now: () => number;
   /** A background read that never wakes a sleeping Cloud: true when it answers, so it was woken elsewhere. */
   cloudAnswers?: () => Promise<boolean>;
+  /** A read that tells a deleted dusk cloud from one that is only unreachable: true when the edge says it is gone. */
+  placeGone?: () => Promise<boolean>;
 }
+
+/** a stream that keeps failing asks at most this often whether its place was deleted */
+export const GONE_CHECK_MS = 30_000;
 
 /** How often a page that saw its Cloud go to sleep checks, while shown, whether something else woke it. */
 export const CLOUD_AWAKE_CHECK_MS = 30_000;
@@ -226,6 +231,8 @@ function browserPlatform(overrides: Partial<LiveEventsPlatform>): LiveEventsPlat
     now: overrides.now ?? Date.now,
     cloudAnswers: overrides.cloudAnswers ?? (() => fetch("/api/health", { cache: "no-store", headers: BACKGROUND_HEADERS })
       .then((response) => { void response.body?.cancel().catch(() => {}); return response.ok && !asleepAnswer(response); }, () => false)),
+    placeGone: overrides.placeGone ?? (() => fetch("/api/health", { cache: "no-store", headers: BACKGROUND_HEADERS })
+      .then((response) => { void response.body?.cancel().catch(() => {}); return goneAnswer(response); }, () => false)),
   };
 }
 
@@ -294,7 +301,7 @@ export function openLiveEvents(
   let connect: () => void;
   const scheduleReconnect = () => {
     // A Cloud home that went to sleep: reconnecting would wake it. The person's next action does (src/lib/cloud-power.ts).
-    if (stopped || retryTimer !== null || !platform.isOnline() || !platform.isVisible() || cloudAsleep()) return;
+    if (stopped || retryTimer !== null || !platform.isOnline() || !platform.isVisible() || cloudAsleep() || cloudGone()) return;
     const exponent = Math.min(retryAttempt, 20);
     const delay = Math.min(retryMaxMs, retryMinMs * 2 ** exponent);
     retryAttempt += 1;
@@ -305,15 +312,24 @@ export function openLiveEvents(
     }, delay);
   };
 
+  let goneCheckedAt = -Infinity;
+  const checkGone = () => {
+    const at = platform.now();
+    if (!platform.placeGone || at - goneCheckedAt < GONE_CHECK_MS) return;
+    goneCheckedAt = at;
+    void platform.placeGone().then((gone) => { if (gone) markCloudGone(); }, () => {});
+  };
+
   const connectionLost = (current: LiveEventSourceLike) => {
     if (stopped || source !== current) return;
     closeSource();
     handlers.onError?.();
+    checkGone();
     scheduleReconnect();
   };
 
   connect = () => {
-    if (stopped || source || !platform.isOnline() || cloudAsleep()) return;
+    if (stopped || source || !platform.isOnline() || cloudAsleep() || cloudGone()) return;
     let current: LiveEventSourceLike;
     try {
       sourceScreens = screensWanted();
@@ -420,7 +436,7 @@ export function openLiveEvents(
   };
 
   const reconnectNow = (reportDisconnect: boolean) => {
-    if (stopped || !platform.isOnline()) return;
+    if (stopped || !platform.isOnline() || cloudGone()) return;
     clearRetry();
     if (source) {
       closeSource();
@@ -465,6 +481,10 @@ export function openLiveEvents(
   const staleTimer = setInterval(recover, staleCheckMs);
   // The person is back after the Cloud slept: reconnect at once, which wakes it.
   const stopPower = onCloudPower((asleep) => { if (!asleep) reconnectNow(false); });
+  const stopGone = onCloudGone(() => {
+    clearRetry();
+    if (source) { closeSource(); handlers.onError?.(); }
+  });
   let checking = false;
   const awakeCheck = setInterval(() => {
     if (stopped || checking || !cloudAsleep() || !platform.isVisible() || !platform.isOnline() || !platform.cloudAnswers) return;
@@ -481,6 +501,7 @@ export function openLiveEvents(
     screenWishListeners.delete(onScreenWish);
     retryListeners.delete(onRetryNow);
     stopPower();
+    stopGone();
     clearInterval(staleTimer);
     clearInterval(awakeCheck);
     clearRetry();
