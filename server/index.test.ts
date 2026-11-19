@@ -4926,6 +4926,14 @@ describe("harness HTTP API", () => {
     expectStoppedTestServerCleanly(isolatedChild, isolatedStderr);
   }, 30_000);
 
+  it("names a second bot asked for under a taken name with a number, so no two share one", async () => {
+    const first = (await api("POST", "/api/bots", { name: "Twin Probe" })).body.bot;
+    const second = (await api("POST", "/api/bots", { name: "twin probe" })).body.bot;
+    const third = (await api("POST", "/api/bots", { name: "Twin Probe" })).body.bot;
+    expect([first.name, second.name, third.name]).toEqual(["Twin Probe", "twin probe 2", "Twin Probe 3"]);
+    for (const bot of [first, second, third]) await api("DELETE", `/api/bots/${bot.id}`);
+  });
+
   it("exports every visible bot and imports the team without creating a room", async () => {
     const first = (await api("POST", "/api/bots")).body.bot;
     const second = (await api("POST", "/api/bots")).body.bot;

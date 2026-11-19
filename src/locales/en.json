@@ -1987,6 +1987,7 @@
   "sidebar.bot.simple.isMainThread": "This is already the main thread",
   "sidebar.bot.archive": "Archive",
   "sidebar.bot.hide": "Hide",
+  "createBot.sameName": "You already have a bot called {name}, so this one will be {next}.",
   "sidebar.bot.archiveAria": "Archive {name}",
   "sidebar.bot.archiveBlockedChief": "Choose another chief of staff first",
   "sidebar.bot.archiveBlockedLast": "Keep at least one active bot",
