@@ -77,6 +77,11 @@ describe("failed turn text", () => {
     expect(activityPreview(tool, engine(), dataResult)).toBe("Revenue");
   });
 
+  it("previews a chat whose AI session is gone by the card's line, never the session id", () => {
+    expect(activityPreview({ name: "error: No conversation found with session ID: e8b9f01e-97e3-4be6-a55c-be988595628a", ok: false }, engine()))
+      .toBe("Your AI lost this chat's memory. Start a new chat to keep going.");
+  });
+
   it("previews a technical cause as its plain line", () => {
     expect(activityPreview({ name: 'error: API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}', ok: false }, engine()))
       .toBe("The service is busy right now. Try again in a moment.");
