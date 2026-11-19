@@ -2,6 +2,7 @@ import { appliedTextScale } from "./text-scale";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
+import { composerHandoff } from "./native-composer-ack";
 import type { HomeGlassState } from "./native-home-glass";
 import { kbTrace } from "./keyboard";
 
@@ -64,6 +65,8 @@ export type GlassEvent =
   | { type: "submit" }
   | { type: "focus"; focused: boolean }
   | { type: "height"; height: number }
+  /** answers every update that asked for a composer: whether it is on screen now, or why not */
+  | { type: "composer"; shown: boolean; reason?: string; frame?: GlassFrame }
   /** the keyboard starts to move: how far it will cover, its duration in seconds and when it started, in epoch ms. With
    * `lift` the native composer's field has it, and the native side lifts the whole web view by `lift` in the keyboard's
    * own animation; `settled` comes once that move has stopped, for the page to take the space itself. */
@@ -72,6 +75,8 @@ export type GlassEvent =
 /** The phone's native glass chrome (ios/App/App/GlassChromePlugin.swift): it draws the chat header and composer
  * over the web view so the glass bends the transcript under it, and hands taps and typing back to the page. */
 export interface GlassBridge {
+  /** the native side answers each composer it is asked for with a `composer` event (apps before 1.3.1 never do) */
+  acks?: boolean;
   update(state: GlassState): void;
   setText(text: string, seq: number): void;
   setAvatar(data: string | null): void;
@@ -450,6 +455,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     let nativeFocused = false;
     let sentAt = 0;
     let composerShown = false;
+    const handoff = composerHandoff();
     let safeBottom = cssPx(root, "var(--m-safe-bottom)");
 
     const chat = () => root.querySelector<HTMLElement>("[data-mobile-chat]");
@@ -469,6 +475,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       if (document.hidden) return;
       fresh = FRESH_FRAMES;
       last = null;
+      handoff.recheck();
     };
     skinChanged.observe(html, { attributes: true, attributeFilter: ["data-skin", "class", "style"] });
     const flag = (name: "nativeGlassHeader" | "nativeGlassComposer", on: boolean) => {
@@ -503,6 +510,9 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       const kb = parseFloat(root.style.getPropertyValue("--m-kb")) || 0;
       const baseline = window.innerHeight - Math.max(safeBottom, kb);
       const read = chatEl && shellEl && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline, left, transcriptRoom(chatEl)) : null;
+      handoff.want(Boolean(read));
+      const nativeComposer = read && (!glass.acks || handoff.native()) ? read.composer : null;
+      if (glass.acks && handoff.pending()) fresh = Math.max(fresh, 1);
       elements = read?.elements ?? [];
       field = read?.field ?? null;
       const styles = getComputedStyle(root);
@@ -513,8 +523,8 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
         accent: styles.getPropertyValue("--color-accent").trim(),
         ground: cssHex(styles.getPropertyValue("--color-app")) ?? "",
         header,
-        composer: read?.composer ?? null,
-        handoff: Boolean(chatEl) && (!header || !read),
+        composer: nativeComposer,
+        handoff: Boolean(chatEl) && (!header || !nativeComposer),
       };
       // the pill's picture goes before the update that shows it: a chat's header never arrives with the last chat's
       // avatar, and a new name brings its avatar along. A drawn one is checked again once a second, never mid-slide;
@@ -528,10 +538,11 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
         if (drawn !== avatar) { avatar = drawn; glass.setAvatar(drawn); }
       }
       flag("nativeGlassHeader", Boolean(header));
-      flag("nativeGlassComposer", Boolean(next.composer));
-      if (Boolean(next.composer) !== composerShown) {
-        composerShown = Boolean(next.composer);
-        kbTrace(composerShown ? "native composer" : "page composer", { why: composerShown ? "shown" : chatEl ? handoffReason(shellEl, chatEl) : "chat closed" });
+      const nativeOwns = glass.acks ? handoff.pageHidden() : Boolean(next.composer);
+      flag("nativeGlassComposer", nativeOwns);
+      if (nativeOwns !== composerShown) {
+        composerShown = nativeOwns;
+        kbTrace(composerShown ? "native composer" : "page composer", { why: composerShown ? "shown" : handoff.refusal() ?? (chatEl ? handoffReason(shellEl, chatEl) : "chat closed") });
         // the page's field kept the keyboard while it had the composer (a reply, a popover): the native one takes it back
         if (composerShown && field && document.activeElement === field) glass.focus();
       }
@@ -578,6 +589,12 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
           break;
         }
         case "height": shell()?.style.setProperty("--glass-composer-h", `${event.height}px`); break;
+        case "composer": {
+          handoff.ack(event);
+          fresh = FRESH_FRAMES;
+          kbTrace("composer ack", { shown: event.shown ? 1 : 0, reason: event.reason ?? "" });
+          break;
+        }
       }
     });
 

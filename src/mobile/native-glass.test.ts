@@ -209,8 +209,9 @@ describe("useNativeGlass", () => {
   let root: Root;
   let host: HTMLDivElement;
 
-  function mount() {
+  function mount(acks = false) {
     const { glass, send } = fakeGlass();
+    if (acks) Object.assign(glass, { acks: true });
     const platform = { kind: "ios", native: true, glass } as unknown as MobilePlatform;
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -301,6 +302,33 @@ describe("useNativeGlass", () => {
     const avatarAt = glass.setAvatar.mock.invocationCallOrder[0];
     const headerAt = glass.update.mock.invocationCallOrder[0];
     expect(avatarAt).toBeLessThan(headerAt!);
+  });
+
+  it("with acks the page keeps its composer until the native one is on screen, and takes it back when it is not", () => {
+    vi.useFakeTimers({ toFake: ["performance"] });
+    try {
+      const { glass, send } = mount(true);
+      const html = document.documentElement;
+      runFrame();
+      expect(glass.update.mock.lastCall![0].composer).not.toBeNull();
+      expect(html.dataset.nativeGlassComposer).toBeUndefined();
+      send({ type: "composer", shown: true });
+      runFrame();
+      expect(html.dataset.nativeGlassComposer).toBe("");
+      send({ type: "composer", shown: false, reason: "no host" });
+      runFrame();
+      expect(html.dataset.nativeGlassComposer).toBeUndefined();
+      expect(glass.update.mock.lastCall![0].composer).toBeNull();
+
+      // back in front it asks again; silence past the wait keeps the page's
+      document.dispatchEvent(new Event("visibilitychange"));
+      runFrame();
+      expect(glass.update.mock.lastCall![0].composer).not.toBeNull();
+      vi.advanceTimersByTime(500);
+      runFrame();
+      expect(html.dataset.nativeGlassComposer).toBeUndefined();
+      expect(glass.update.mock.lastCall![0].composer).toBeNull();
+    } finally { vi.useRealTimers(); }
   });
 
   it("drops the native chrome while a sheet covers the chat", () => {

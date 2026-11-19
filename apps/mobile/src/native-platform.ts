@@ -92,7 +92,7 @@ const DuskSpeech = registerPlugin<SpeechPlugin>("DuskSpeech");
 
 /** The app's own Liquid Glass chat chrome (ios/App/App/GlassChromePlugin.swift), iOS 26 and later. */
 interface GlassPlugin {
-  supported(): Promise<{ supported: boolean }>;
+  supported(): Promise<{ supported: boolean; acks?: boolean }>;
   update(state: GlassState): Promise<void>;
   setText(options: { text: string; seq: number }): Promise<void>;
   setAvatar(options: { data: string | null }): Promise<void>;
@@ -126,9 +126,10 @@ export async function nativeFiles(list: readonly NativeFile[], read: typeof fetc
   return files.filter((file): file is File => file !== null);
 }
 
-export function glassBridge(plugin: GlassPlugin): GlassBridge {
+export function glassBridge(plugin: GlassPlugin, acks = false): GlassBridge {
   const quiet = (work: Promise<unknown>) => { void work.catch(() => {}); };
   return {
+    acks,
     update: (state) => quiet(plugin.update(state)),
     setText: (text, seq) => quiet(plugin.setText({ text, seq })),
     setAvatar: (data) => quiet(plugin.setAvatar({ data })),
@@ -555,7 +556,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     native: true,
     appVersion: info?.version || __APP_VERSION__,
     deviceName: () => kind === "ios" ? "iPhone" : "Android phone",
-    glass: glass?.supported ? glassBridge(DuskGlass) : undefined,
+    glass: glass?.supported ? glassBridge(DuskGlass, glass.acks === true) : undefined,
     menu: menu?.supported ? menuBridge(DuskMenu) : undefined,
     orientation: Capacitor.isPluginAvailable("DuskOrientation") ? orientationBridge(DuskOrientation) : undefined,
     haptic(type) {

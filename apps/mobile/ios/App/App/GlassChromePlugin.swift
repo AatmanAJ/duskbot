@@ -40,7 +40,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
                 chrome.applyHome(nil)
                 chrome.resetText()
             }
-            call.resolve(["supported": true])
+            call.resolve(["supported": true, "acks": true])
         } else {
             call.resolve(["supported": false])
         }
@@ -51,7 +51,11 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if let chrome = self.chrome as? ChatGlassChrome { body(chrome); return }
-            guard let host = self.bridge?.nativeHost else { return }
+            guard let host = self.bridge?.nativeHost else {
+                KeyboardTrace.log("composer ack", ["shown": 0, "host": 0])
+                self.notifyListeners("glass", data: ["type": "composer", "shown": false, "reason": "no host"])
+                return
+            }
             let chrome = ChatGlassChrome(host: host) { [weak self] event in self?.notifyListeners("glass", data: event) }
             self.chrome = chrome
             body(chrome)
@@ -633,8 +637,24 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         instant = handing || handoff || sliding || abs(offset) > 0.5
         handoff = handing
         applyHeader(state["header"] as? [String: Any])
-        applyComposer(state["composer"] as? [String: Any])
+        let wanted = state["composer"] as? [String: Any]
+        applyComposer(wanted)
         keepOnTop()
+        if wanted != nil { ackComposer() }
+    }
+
+    /// tells the page whether the composer it asked for is on screen, so it hides its own only then
+    private func ackComposer() {
+        let shown = host != nil && composerShown && composer.superview === host && !composer.isHidden
+        KeyboardTrace.log("composer ack", ["shown": shown ? 1 : 0, "host": host == nil ? 0 : 1])
+        var event: [String: Any] = ["type": "composer", "shown": shown]
+        if shown {
+            let f = composer.frame
+            event["frame"] = ["x": f.minX, "y": f.minY, "w": f.width, "h": f.height]
+        } else {
+            event["reason"] = host == nil ? "no host" : "not drawn"
+        }
+        emit(event)
     }
 
     /// views the system adds to the host later must not land over the chrome and take its taps
