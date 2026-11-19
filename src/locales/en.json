@@ -9594,5 +9594,6 @@
   "call.voice.speed.slower": "Slower",
   "call.voice.speed.normal": "Normal",
   "call.voice.speed.faster": "Faster",
-  "call.voice.previewLine": "Hi, this is how I'll sound."
+  "call.voice.previewLine": "Hi, this is how I'll sound.",
+  "call.voice.account": "Your {provider} voice"
 }

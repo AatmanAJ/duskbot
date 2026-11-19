@@ -48,9 +48,9 @@ describe("ModelStore", () => {
     const dir = scratch();
     const { fetchImpl, calls } = server();
     const store = new ModelStore({ dir, fetchImpl, files: [file] });
-    expect(store.status()).toEqual({ phase: "missing" });
+    expect(store.status()).toEqual({ phase: "missing", hear: true, speak: false });
     await store.ensure();
-    expect(store.status()).toEqual({ phase: "ready" });
+    expect(store.status()).toEqual({ phase: "ready", hear: true, speak: true });
     expect(readFileSync(path.join(dir, file.path))).toEqual(body);
     expect(calls).toEqual([undefined]);
     await new ModelStore({ dir, fetchImpl, files: [file] }).ensure();

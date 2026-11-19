@@ -4,10 +4,13 @@ import { claimCallReplies } from "../spoken-reply-stream";
 import type { SpeechStream } from "../tts";
 import { MicError } from "../voice-input/mic-capture";
 import { CAPTURE_RATE, FRAME_MS, FrameRing, joinFrames, openCallMic, wavBytes, type CallMic } from "./capture";
-import { CallPlayer, type PlayerEvents, type Prepare, type Render } from "./player";
+import { playChime, type ChimeKind } from "./chime";
+import { SystemListener, systemListenerAvailable, systemSpeak, systemVoiceAvailable } from "./fallback";
+import { CallPlayer, type PlayerEvents, type Prepare, type Render, type SystemVoice } from "./player";
+import { untilShown, wordCount } from "./shown";
 import { levelDb, soundsUnfinished, Vad } from "./vad";
 
-export type CallPhase = "connecting" | "preparing" | "listening" | "hearing" | "thinking" | "speaking" | "error";
+export type CallPhase = "connecting" | "listening" | "hearing" | "thinking" | "speaking" | "error";
 export type CallErrorKind = "microphone-blocked" | "microphone-missing" | "microphone-failed" | "voice-failed" | "unsupported";
 
 export interface CallSnapshot {
@@ -17,8 +20,6 @@ export interface CallSnapshot {
   heard: string;
   /** The sentence the bot is saying. */
   caption: string;
-  /** 0 to 1 while the voice downloads the first time. */
-  progress: number | null;
   error: { kind: CallErrorKind; message?: string } | null;
   startedAt: number | null;
   /** The last answered turn's timings. */
@@ -48,14 +49,29 @@ export interface CallActions {
   answer(messageId: string, text: string): void;
 }
 
+/** The computer's own recognizer, used until the built-in one is on this computer. */
+export interface FallbackListener {
+  readonly active: boolean;
+  readonly failed: boolean;
+  start(): void;
+  stop(): void;
+}
+
 export interface CallIo {
   fetch: typeof fetch;
   openMic: (onFrame: (frame: Float32Array) => void) => Promise<CallMic>;
-  player: (render: Render, prepare: Prepare, events: PlayerEvents) => CallPlayer;
+  player: (render: Render, prepare: Prepare, events: PlayerEvents, system: SystemVoice | null) => CallPlayer;
   now: () => number;
+  /** Null where the computer has no voice of its own. */
+  systemVoice: (speed: () => number) => SystemVoice | null;
+  /** Null where the computer has no recognizer of its own. */
+  systemListener: (onSaid: (text: string) => void) => FallbackListener | null;
+  /** How often to look again while the models are still on their way. */
+  pollMs: number;
+  chime: (kind: ChimeKind) => Promise<void>;
 }
 
-type ModelPhase = { phase: "missing" | "ready" } | { phase: "downloading" | "failed"; received: number; total: number; error?: string };
+type ModelPhase = { phase: "missing" | "ready" | "downloading" | "failed"; hear?: boolean; speak?: boolean };
 
 const PRE_ROLL_FRAMES = 10;
 const PARTIAL_EVERY_MS = 700;
@@ -67,13 +83,17 @@ const REPLY_WAIT_MS = 15_000;
 const defaultIo = (): CallIo => ({
   fetch: (...args) => globalThis.fetch(...args),
   openMic: openCallMic,
-  player: (render, prepare, events) => new CallPlayer(render, prepare, events),
+  player: (render, prepare, events, system) => new CallPlayer(render, prepare, events, system),
   now: () => performance.now(),
+  systemVoice: (speed) => (systemVoiceAvailable() ? { use: () => true, speak: (text, signal) => systemSpeak(text, { speed: speed(), signal }) } : null),
+  systemListener: (onSaid) => (systemListenerAvailable() ? new SystemListener(onSaid) : null),
+  pollMs: 1_500,
+  chime: (kind) => playChime(kind),
 });
 
 export class VoiceCallSession {
   readonly callId: string;
-  private snapshot: CallSnapshot = { phase: "connecting", muted: false, heard: "", caption: "", progress: null, error: null, startedAt: null, lastTurn: null };
+  private snapshot: CallSnapshot = { phase: "connecting", muted: false, heard: "", caption: "", error: null, startedAt: null, lastTurn: null };
   private readonly watchers = new Set<() => void>();
   private readonly io: CallIo;
   private readonly vad = new Vad();
@@ -85,6 +105,8 @@ export class VoiceCallSession {
   private ready = false;
   private utterance: Float32Array[] | null = null;
   private heardPrefix = "";
+  /** Which utterance the caption belongs to: a late partial for an earlier one is dropped. */
+  private utteranceId = 0;
   private partialBusy = false;
   private lastPartialAt = 0;
   private bargeVoicedMs = 0;
@@ -99,28 +121,41 @@ export class VoiceCallSession {
   private spokenSteps = new Set<string>();
   private pendingTiming: { stoppedAt: number; timing: TurnTiming } | null = null;
   readonly timings: TurnTiming[] = [];
+  /** Which halves of the built-in voice are on this computer; until then the computer's own stand in. */
+  private halves = { hear: false, speak: false };
+  private waiting: Array<() => void> = [];
+  private listener: FallbackListener | null = null;
+  /** The connect chime: the bot's first words wait for it. */
+  private chimed: Promise<void> = Promise.resolve();
+  private endChimed = false;
   micLevel = 0;
   voice: string;
   speed: number;
+  /** The bot's voice in the voice account set up in Settings, for the "account" choice. */
+  accountVoiceId: string | undefined;
 
   constructor(
     private readonly bot: { id: string; threadId: string },
     private readonly actions: CallActions,
-    opts: { voice: string; speed: number; io?: Partial<CallIo> },
+    opts: { voice: string; speed: number; accountVoiceId?: string; io?: Partial<CallIo> },
   ) {
+    this.accountVoiceId = opts.accountVoiceId;
     this.io = { ...defaultIo(), ...opts.io };
     this.voice = opts.voice;
     this.speed = opts.speed;
     this.callId = `vc-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+    const system = this.io.systemVoice(() => this.speed);
     this.player = this.io.player(
       (text, signal) => this.render(text, signal),
       (text, signal) => this.prepareText(text, signal),
       {
         onBlockStart: (text) => this.blockStarted(text),
         onIdle: () => this.refresh(),
-        onError: (message) => this.set({ error: { kind: "voice-failed", message } }),
+        onError: () => {},
       },
+      system ? { use: () => this.voice !== "account" && !this.halves.speak, speak: (text, signal) => system.speak(text, signal) } : null,
     );
+    this.listener = this.io.systemListener((text) => this.heardBySystem(text));
   }
 
   subscribe(fn: () => void): () => void {
@@ -157,63 +192,119 @@ export class VoiceCallSession {
           ? "thinking"
           : "listening";
     if (phase !== this.snapshot.phase) this.set({ phase, ...(phase === "listening" ? { caption: "" } : {}) });
+    this.syncListener();
   }
 
-  async start(): Promise<void> {
-    const models = this.ensureVoice();
-    const mic = this.io.openMic((frame) => this.onFrame(frame)).then((opened) => {
-      if (this.closed) opened.close();
-      else this.mic = opened;
+  /** The computer's recognizer listens only while the built-in one is missing and nobody else holds the floor: it has no
+   * echo canceller, so it must never hear the bot. */
+  private syncListener(): void {
+    const listener = this.listener;
+    if (!listener) return;
+    const want = this.ready && !this.closed && !this.halves.hear && !listener.failed && !this.snapshot.muted && !this.player.speaking;
+    if (want && !listener.active) listener.start();
+    else if (!want && listener.active) listener.stop();
+  }
+
+  private heardBySystem(text: string): void {
+    if (this.closed || this.halves.hear) return;
+    this.utterance = null;
+    this.vad.reset();
+    const now = this.io.now();
+    this.set({ heard: text });
+    this.submit(text, { stoppedAt: now, endpointAt: now, transcribedAt: now });
+  }
+
+  /** Resolves once the named half has arrived. */
+  private whenReady(half: "hear" | "speak"): Promise<void> {
+    if (this.halves[half] || this.closed) return Promise.resolve();
+    return new Promise((resolve) => {
+      const check = () => {
+        if (this.halves[half] || this.closed) {
+          this.waiting = this.waiting.filter((fn) => fn !== check);
+          resolve();
+        }
+      };
+      this.waiting.push(check);
     });
+  }
+
+  /** The call starts as soon as the microphone is open, whether or not the built-in voice has arrived yet. */
+  async start(): Promise<void> {
+    void this.watchVoice().catch(() => undefined);
     try {
-      await mic;
+      const opened = await this.io.openMic((frame) => this.onFrame(frame));
+      if (this.closed) {
+        opened.close();
+        return;
+      }
+      this.mic = opened;
+      if (this.snapshot.muted) opened.setMuted(true);
     } catch (error) {
       const kind = error instanceof MicError ? error.reason : "microphone-failed";
       this.set({ phase: "error", error: { kind } });
       return;
     }
-    try {
-      await models;
-    } catch (error) {
-      this.set({ phase: "error", error: { kind: "voice-failed", message: error instanceof Error ? error.message : String(error) } });
-      return;
-    }
-    if (this.closed) return;
+    if (this.closed || this.snapshot.error?.kind === "unsupported") return;
     this.release = claimCallReplies({ botId: this.bot.id, threadId: this.bot.threadId, sink: { begin: () => this.replyStream() } });
     this.ready = true;
-    this.set({ phase: "listening", progress: null, startedAt: Date.now() });
+    this.chimed = this.io.chime("start").catch(() => undefined);
+    this.set({ phase: "listening", startedAt: Date.now() });
     this.refresh();
   }
 
-  private async ensureVoice(): Promise<void> {
+  /** Asks for the models (a call's request outranks the background download) and follows them in; a failed download
+   * is asked for again later while the computer's own voice carries on. */
+  private async watchVoice(): Promise<void> {
     const status = async (): Promise<{ available: boolean; model: ModelPhase }> => {
       const res = await this.io.fetch("/api/voice/local");
       if (!res.ok) throw new Error(`the voice service answered ${res.status}`);
       return res.json();
     };
-    let current = await status();
-    if (!current.available) throw new Error("unsupported");
-    if (current.model.phase === "ready") {
-      await this.io.fetch("/api/voice/local/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wait: true }) });
+    const prepare = () => this.io.fetch("/api/voice/local/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => undefined);
+    const first = await status();
+    if (!first.available) {
+      this.mic?.close();
+      this.mic = null;
+      this.set({ phase: "error", error: { kind: "unsupported" } });
       return;
     }
-    this.set({ phase: "preparing", progress: 0 });
-    const res = await this.io.fetch("/api/voice/local/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `the voice service answered ${res.status}`);
-    for (;;) {
+    this.take(first.model);
+    void prepare();
+    let askedAt = this.io.now();
+    while (!this.closed && !(this.halves.hear && this.halves.speak)) {
+      await new Promise((resolve) => setTimeout(resolve, this.io.pollMs));
       if (this.closed) return;
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      current = await status();
-      const model = current.model;
-      if (model.phase === "ready") break;
-      if (model.phase === "failed") throw new Error(model.error ?? "the voice could not be downloaded");
-      if (model.phase === "downloading") this.set({ progress: model.total ? model.received / model.total : 0 });
+      const now = await status().catch(() => null);
+      if (!now) continue;
+      this.take(now.model);
+      if (now.model.phase === "failed" && this.io.now() - askedAt > 60_000) {
+        askedAt = this.io.now();
+        void prepare();
+      }
     }
-    const warm = await this.io.fetch("/api/voice/local/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wait: true }) });
-    if (!warm.ok) throw new Error((await warm.json().catch(() => ({}))).error ?? "the voice could not start");
+  }
+
+  private take(model: ModelPhase): void {
+    const hear = model.phase === "ready" || model.hear === true;
+    const speak = model.phase === "ready" || model.speak === true;
+    if (hear === this.halves.hear && speak === this.halves.speak) return;
+    this.halves = { hear, speak };
+    for (const fn of Array.from(this.waiting)) fn();
+    this.syncListener();
   }
 
   private async render(text: string, signal: AbortSignal): Promise<ArrayBuffer> {
+    if (this.voice === "account") {
+      const res = await this.io.fetch("/api/tts/speak", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text, voiceId: this.accountVoiceId }),
+        signal,
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `the voice answered ${res.status}`);
+      return res.arrayBuffer();
+    }
+    await this.whenReady("speak");
     const res = await this.io.fetch("/api/voice/local/speak", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -236,7 +327,13 @@ export class VoiceCallSession {
   }
 
   private replyStream(): SpeechStream {
-    const stream = this.player.begin();
+    // A reply is said only as far as the chat shows it.
+    const spokenWords: number[] = [];
+    const stream = this.player.begin(async (text, index) => {
+      spokenWords[index] = (index ? spokenWords[index - 1] ?? 0 : 0) + wordCount(text);
+      await this.chimed;
+      await untilShown(this.bot.threadId, Math.floor(spokenWords[index]! * 0.85));
+    });
     this.refresh();
     return stream;
   }
@@ -259,7 +356,8 @@ export class VoiceCallSession {
     const now = this.io.now();
     const botTalking = this.player.speaking;
     const event = this.vad.feed(level, FRAME_MS, now, botTalking);
-    if (!this.ready) {
+    // The computer's own voice plays outside the echo canceller: while it talks the call takes turns.
+    if (!this.ready || (this.player.systemSpeaking && event === "start")) {
       if (event === "start") this.vad.reset();
       return;
     }
@@ -272,6 +370,8 @@ export class VoiceCallSession {
         this.holdTimer = null;
       }
       this.utterance = this.ring.take();
+      this.utteranceId += 1;
+      this.set({ heard: this.heardPrefix });
       if (botTalking) {
         this.barging = true;
         this.bargeVoicedMs = 0;
@@ -285,7 +385,7 @@ export class VoiceCallSession {
       if (this.bargeVoicedMs >= BARGE_CONFIRM_MS) {
         this.barging = false;
         this.player.stop();
-        this.set({ caption: "" });
+        this.set({ caption: "", heard: this.heardPrefix });
         this.refresh();
       }
     }
@@ -297,12 +397,12 @@ export class VoiceCallSession {
   }
 
   private async partial(): Promise<void> {
-    if (this.partialBusy || !this.utterance) return;
+    if (this.partialBusy || !this.utterance || !this.halves.hear) return;
     this.partialBusy = true;
-    const turn = this.turn;
+    const id = this.utteranceId;
     try {
       const text = await this.transcribe(joinFrames(this.utterance), true);
-      if (turn === this.turn && this.utterance && text) this.set({ heard: [this.heardPrefix, text].filter(Boolean).join(" ") });
+      if (id === this.utteranceId && this.utterance && text) this.set({ heard: [this.heardPrefix, text].filter(Boolean).join(" ") });
     } catch {
     } finally {
       this.partialBusy = false;
@@ -328,6 +428,12 @@ export class VoiceCallSession {
     this.turn += 1;
     const turn = this.turn;
     this.refresh();
+    if (!this.halves.hear) {
+      // The computer's recognizer has this turn; with none, the words wait for the built-in one.
+      if (this.listener && !this.listener.failed) return;
+      await this.whenReady("hear");
+      if (this.closed || turn !== this.turn) return;
+    }
     const voicedFrames = Math.max(1, frames.length - Math.floor((this.vad.endMs - 160) / FRAME_MS));
     const samples = joinFrames(frames.slice(0, voicedFrames));
     let text = "";
@@ -379,6 +485,7 @@ export class VoiceCallSession {
     } else {
       this.actions.send(said, this.callId);
     }
+    this.set({ heard: "" });
     const sentAt = this.io.now();
     const timing: TurnTiming = {
       endpoint: Math.round(at.endpointAt - at.stoppedAt),
@@ -433,7 +540,7 @@ export class VoiceCallSession {
         this.player.duck(false);
       }
     }
-    this.set({ muted });
+    this.set(muted ? { muted, heard: "" } : { muted });
     this.refresh();
   }
 
@@ -445,7 +552,7 @@ export class VoiceCallSession {
   /** The person tapped the bot quiet. */
   interrupt(): void {
     this.player.stop();
-    this.set({ caption: "" });
+    this.set({ caption: "", heard: "" });
     this.refresh();
   }
 
@@ -453,9 +560,20 @@ export class VoiceCallSession {
     void this.player.say(text);
   }
 
+  /** The hang-up sound, once, and only for a call that connected. */
+  endChime(): void {
+    if (this.endChimed || !this.ready) return;
+    this.endChimed = true;
+    void this.io.chime("end").catch(() => undefined);
+  }
+
   close(): void {
     if (this.closed) return;
+    this.endChime();
     this.closed = true;
+    this.listener?.stop();
+    for (const fn of Array.from(this.waiting)) fn();
+    this.snapshot = { ...this.snapshot, heard: "", caption: "" };
     if (this.holdTimer) clearTimeout(this.holdTimer);
     this.release?.();
     this.mic?.close();

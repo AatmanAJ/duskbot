@@ -1,3 +1,5 @@
+import { shownReplyText, useLiveReplyText } from "@/state/live-reply";
+import { plainPreviewText } from "@/lib/plain-preview";
 import { OrganizationIdentity } from "./OrganizationIdentity";
 import { StartFreshHost } from "./bot-panel/StartFresh";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type Dispatch } from "react";
@@ -533,8 +535,10 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
   const { unread } = useBotUnread(bot);
   const markState = useBotMarkState(bot);
   const workingLabel = useWorkingLabel(bot, simpleRow && working);
+  // a reply being written (and spoken on a call) previews as it streams, in step with the chat
+  const streamedLine = plainPreviewText(shownReplyText(useLiveReplyText(working ? bot.threadId : null)));
   // grok: hold ⌘ (⌃ elsewhere) and each row shows the number that opens it, where its dot sits
-  const preview = waiting ? simpleRow ? grokWaiting(waitingLine(bot, visible, instances)) : t("sidebar.preview.waiting") : teammateWait ? t("sidebar.preview.waitingOnTeammate") : queued ? t("task.queued") : simpleRow && working ? workingLabel ?? lastLine(bot, visible, instances) : botPreview(bot, visible, instances);
+  const preview = waiting ? simpleRow ? grokWaiting(waitingLine(bot, visible, instances)) : t("sidebar.preview.waiting") : teammateWait ? t("sidebar.preview.waitingOnTeammate") : queued ? t("task.queued") : working && streamedLine ? streamedLine : simpleRow && working ? workingLabel ?? lastLine(bot, visible, instances) : botPreview(bot, visible, instances);
   // grok names a row with what it is doing: "Manager, Main Bot, Needs attention", "Koder, Working", "Content, Unread activity"
   const grokName = [bot.name, main ? t("sidebar.grok.mainBot") : "", waiting ? t("sidebar.grok.needsAttention") : working ? t("sidebar.grok.working") : unread ? t("sidebar.grok.unreadActivity") : ""].filter(Boolean).join(", ");
   const onLiveCall = liveBadgeFor(bot.id, liveMedia, liveCall);

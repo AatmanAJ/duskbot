@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { nativeRequire } from "../data/engine.ts";
+import { normalizeLoudness, normalizePeak } from "./wav.ts";
 import { createG2p, type LexiconTable } from "./g2p.ts";
 import type { ModelStore } from "./models.ts";
 
@@ -148,9 +149,9 @@ export class LocalVoiceEngine {
   }
 
   /** Loads both models so the first turn of a call does not pay for it. */
-  async warm(): Promise<void> {
-    await Promise.all([this.kokoroReady(), this.moonshineReady()]);
-    await this.speak("Hi.", DEFAULT_VOICE, 1);
+  async warm(halves: { hear: boolean; speak: boolean } = { hear: true, speak: true }): Promise<void> {
+    await Promise.all([halves.speak ? this.kokoroReady() : null, halves.hear ? this.moonshineReady() : null]);
+    if (halves.speak) await this.speak("Hi.", DEFAULT_VOICE, 1);
   }
 
   private async style(voice: BuiltInVoice): Promise<Float32Array> {
@@ -182,7 +183,7 @@ export class LocalVoiceEngine {
         style: new ort.Tensor("float32", style, [1, 256]),
         speed: new ort.Tensor("float32", new Float32Array([speed]), [1]),
       });
-      return trimSilence(Object.values(out)[0]!.data as Float32Array, KOKORO_RATE);
+      return normalizeLoudness(trimSilence(Object.values(out)[0]!.data as Float32Array, KOKORO_RATE), KOKORO_RATE);
     });
   }
 
@@ -192,7 +193,7 @@ export class LocalVoiceEngine {
     const ort = await this.ort();
     const { encoder, decoder, tokenizer } = await this.moonshineReady();
     return this.serial.run(async () => {
-      const encoded = await encoder.run({ input_values: new ort.Tensor("float32", samples, [1, samples.length]) });
+      const encoded = await encoder.run({ input_values: new ort.Tensor("float32", normalizePeak(samples), [1, samples.length]) });
       const hidden = encoded.last_hidden_state!;
       const layers = decoder.inputNames.filter((name) => name.endsWith(".decoder.key")).length;
       const headDim = 52;

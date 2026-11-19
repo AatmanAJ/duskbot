@@ -3,6 +3,7 @@ import { cn } from "@/lib/cn";
 import type { MentionPeer } from "@/lib/mentions";
 import { closeOpenMarks, nextReveal, noteRevealed } from "@/lib/text-reveal";
 import { shownReplyText, useLiveReplyText } from "@/state/live-reply";
+import { noteShownWords, wordCount } from "@/lib/voice-call/shown";
 import { usePrefersReducedMotion } from "./mascot-clock";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { SIMPLE_BOT_BUBBLE, SIMPLE_BUBBLE_MAX } from "./chat-bubble";
@@ -58,6 +59,10 @@ export function LiveReplyBubble({ threadId, mentionPeers, onGrow }: {
   useEffect(() => {
     if (visible) noteRevealed(threadId, bubble.current?.querySelectorAll(".md-rv").length ?? 0);
   }, [threadId, text, visible]);
+  useEffect(() => {
+    noteShownWords(threadId, visible ? wordCount(text) : null);
+  }, [threadId, text, visible]);
+  useEffect(() => () => noteShownWords(threadId, null), [threadId]);
   useLayoutEffect(() => {
     const el = bubble.current;
     if (!el || typeof ResizeObserver === "undefined") return;

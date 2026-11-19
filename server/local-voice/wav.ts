@@ -19,6 +19,55 @@ export function encodeWav(samples: Float32Array, rate: number): Uint8Array {
   return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
 }
 
+const CEILING = 10 ** (-1 / 20);
+const KNEE = 0.7;
+
+/** Soft limiting above KNEE: peaks bend smoothly towards -1 dBFS and never clip. */
+function limit(x: number): number {
+  const magnitude = Math.abs(x);
+  if (magnitude <= KNEE) return x;
+  const room = CEILING - KNEE;
+  return Math.sign(x) * (KNEE + room * Math.tanh((magnitude - KNEE) / room));
+}
+
+/** The loudness of speech, in dBFS: the RMS of 20 ms windows that hold a voice, silence and breaths left out (close to
+ * LUFS for speech, which K-weighting barely moves). */
+export function speechLevelDb(samples: Float32Array, rate: number): number {
+  const window = Math.max(1, Math.round(rate * 0.02));
+  let sum = 0;
+  let count = 0;
+  for (let start = 0; start + window <= samples.length; start += window) {
+    let energy = 0;
+    for (let i = start; i < start + window; i += 1) energy += samples[i]! * samples[i]!;
+    const mean = energy / window;
+    if (mean > 1e-5) {
+      sum += mean;
+      count += 1;
+    }
+  }
+  return count ? 10 * Math.log10(sum / count) : -100;
+}
+
+/** Brings speech to `targetDb` (about -16 LUFS), at most +12 dB, with a gentle limiter so nothing clips. */
+export function normalizeLoudness(samples: Float32Array, rate: number, targetDb = -16): Float32Array {
+  const level = speechLevelDb(samples, rate);
+  if (level <= -90) return samples;
+  const gain = Math.min(4, 10 ** ((targetDb - level) / 20));
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i += 1) out[i] = limit(samples[i]! * gain);
+  return out;
+}
+
+/** A quiet microphone's turn raised so its loudest moment sits near -1 dBFS, at most +20 dB. */
+export function normalizePeak(samples: Float32Array, ceiling = 0.89, maxGain = 10): Float32Array {
+  let peak = 0;
+  for (const s of samples) peak = Math.max(peak, Math.abs(s));
+  if (peak < 1e-4) return samples;
+  const gain = Math.min(maxGain, ceiling / peak);
+  if (Math.abs(gain - 1) < 0.05) return samples;
+  return samples.map((s) => s * gain);
+}
+
 export function resample(samples: Float32Array, from: number, to: number): Float32Array {
   if (from === to) return samples;
   const ratio = from / to;

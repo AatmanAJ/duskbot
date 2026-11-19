@@ -22,7 +22,11 @@ const KITTEN = "https://huggingface.co/KittenML/kitten-tts-2-mini/resolve/8e89ae
 
 const voice = (id: string, sha256: string): ModelFile => ({ path: `kokoro/voices/${id}.bin`, url: `${KOKORO}/voices/${id}.bin`, bytes: 522240, sha256 });
 
+/** Hearing first: it is the smaller half, and a call can speak with the computer's own voice until the rest lands. */
 export const MODEL_FILES: readonly ModelFile[] = [
+  { path: "moonshine/encoder_model_quantized.onnx", url: `${MOONSHINE}/onnx/encoder_model_quantized.onnx`, bytes: 20513063, sha256: "1dd9ab0a7f987113d30affcba5a068d11c8f90fa0223caa3e491ade431ad9751" },
+  { path: "moonshine/decoder_model_merged_quantized.onnx", url: `${MOONSHINE}/onnx/decoder_model_merged_quantized.onnx`, bytes: 42498870, sha256: "cc9f3cd6698a369c6008b41aa60aa3fb3322e7f03c9bdf19d8e6b7200afca4f3" },
+  { path: "moonshine/tokenizer.json", url: `${MOONSHINE}/tokenizer.json`, bytes: 3761754, sha256: "7b913404bdd039af4756783218af4440bc07fb7d6d8258d677e34f95b3ec416f" },
   { path: "kokoro/model_q8f16.onnx", url: `${KOKORO}/onnx/model_q8f16.onnx`, bytes: 86033585, sha256: "04c658aec1b6008857c2ad10f8c589d4180d0ec427e7e6118ceb487e215c3cd0" },
   { path: "kokoro/tokenizer.json", url: `${KOKORO}/tokenizer.json`, bytes: 3497, sha256: "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34" },
   voice("af_heart", "d583ccff3cdca2f7fae535cb998ac07e9fcb90f09737b9a41fa2734ec44a8f0b"),
@@ -33,15 +37,18 @@ export const MODEL_FILES: readonly ModelFile[] = [
   voice("am_puck", "fcf73c989033e9233e0b98713eca600c8c74dcc1614b37009d5450ff4a2274a0"),
   voice("bf_emma", "669fe0647f9dd04fcab92f1439a40eeb4c8b4ab1f82e4996fe3d918ce4a63b73"),
   voice("bm_george", "c4b235a4c1f2cd3b939fed08b899ce9385638b763f7b73a59616c4fc9bd6c9bc"),
-  { path: "moonshine/encoder_model_quantized.onnx", url: `${MOONSHINE}/onnx/encoder_model_quantized.onnx`, bytes: 20513063, sha256: "1dd9ab0a7f987113d30affcba5a068d11c8f90fa0223caa3e491ade431ad9751" },
-  { path: "moonshine/decoder_model_merged_quantized.onnx", url: `${MOONSHINE}/onnx/decoder_model_merged_quantized.onnx`, bytes: 42498870, sha256: "cc9f3cd6698a369c6008b41aa60aa3fb3322e7f03c9bdf19d8e6b7200afca4f3" },
-  { path: "moonshine/tokenizer.json", url: `${MOONSHINE}/tokenizer.json`, bytes: 3761754, sha256: "7b913404bdd039af4756783218af4440bc07fb7d6d8258d677e34f95b3ec416f" },
   { path: "lexicon/us_gold.json", url: `${MISAKI}/us_gold.json`, bytes: 3000469, sha256: "dc414872a49a28ae6c141463d502fd945f3b2fde040484fdc47d00cc4612686f" },
   { path: "lexicon/us_silver.json", url: `${MISAKI}/us_silver.json`, bytes: 3099517, sha256: "de8f67be911bb6c659187b4a65fd966b6a30e56350e0f790d763210b053ac475" },
   { path: "lexicon/cmu_misaki_us.json", url: `${KITTEN}/g2p/cmu_misaki_us.json`, bytes: 3418388, sha256: "ae564e1a76df3501058a5ec99d135d016759c9475042fb6c3811374daee1ef04" },
 ];
 
 export const TOTAL_BYTES = MODEL_FILES.reduce((sum, file) => sum + file.bytes, 0);
+
+export type ModelGroup = "hear" | "speak";
+
+export function groupOf(file: ModelFile): ModelGroup {
+  return file.path.startsWith("moonshine/") ? "hear" : "speak";
+}
 
 /** dusk.bot's copy, one folder per hash (scripts/mirror-voice-models.sh); the pinned upstream is the fallback. */
 export const DEFAULT_MIRROR = "https://dusk.bot/voice";
@@ -67,10 +74,10 @@ export function defaultModelDir(env: NodeJS.ProcessEnv = process.env, platform: 
 }
 
 export type DownloadState =
-  | { phase: "missing" }
-  | { phase: "downloading"; received: number; total: number }
-  | { phase: "ready" }
-  | { phase: "failed"; error: string; received: number; total: number };
+  | { phase: "missing"; hear: boolean; speak: boolean }
+  | { phase: "downloading"; received: number; total: number; hear: boolean; speak: boolean; background: boolean }
+  | { phase: "ready"; hear: true; speak: true }
+  | { phase: "failed"; error: string; received: number; total: number; hear: boolean; speak: boolean };
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -88,10 +95,18 @@ function sizeOf(file: string): number {
   }
 }
 
+export class Paused extends Error {
+  constructor() {
+    super("the download was paused");
+  }
+}
+
 export class ModelStore {
   readonly dir: string;
   private state: DownloadState;
   private running: Promise<void> | null = null;
+  /** Set while the download runs in the background, so it can make way; a call's own request clears it. */
+  private backgroundStop: AbortController | null = null;
   private readonly fetchImpl: Fetch;
   private readonly files: readonly ModelFile[];
   private readonly mirror: string | null;
@@ -101,20 +116,31 @@ export class ModelStore {
     this.fetchImpl = fetchImpl;
     this.files = files;
     this.mirror = mirror;
-    this.state = this.allPresent() ? { phase: "ready" } : { phase: "missing" };
+    this.state = this.rest();
   }
 
   file(relative: string): string {
     return path.join(this.dir, relative);
   }
 
-  status(): DownloadState {
-    if (this.state.phase !== "ready" && !this.running && this.allPresent()) this.state = { phase: "ready" };
-    return this.state;
+  /** Whether every file one half of the voice needs is here. */
+  ready(group: ModelGroup): boolean {
+    return this.files.filter((file) => groupOf(file) === group).every((file) => this.present(file));
   }
 
-  private allPresent(): boolean {
-    return this.files.every((file) => sizeOf(this.file(file.path)) === file.bytes);
+  private present(file: ModelFile): boolean {
+    return sizeOf(this.file(file.path)) === file.bytes;
+  }
+
+  private rest(): DownloadState {
+    const hear = this.ready("hear");
+    const speak = this.ready("speak");
+    return hear && speak ? { phase: "ready", hear, speak } : { phase: "missing", hear, speak };
+  }
+
+  status(): DownloadState {
+    if (!this.running && this.state.phase !== "failed") this.state = this.rest();
+    return this.state;
   }
 
   private received(): number {
@@ -124,34 +150,57 @@ export class ModelStore {
     }, 0);
   }
 
-  /** Starts or joins the download; resolves when every file is present and verified. */
-  ensure(): Promise<void> {
+  /** Starts or joins the download; resolves when every file is present and verified. `background` downloads can be
+   * paused with pauseBackground() and reject with Paused; a later ensure() resumes where they stopped. */
+  ensure({ background = false }: { background?: boolean } = {}): Promise<void> {
     if (this.status().phase === "ready") return Promise.resolve();
-    this.running ??= this.download().finally(() => {
-      this.running = null;
-    });
+    if (!background) this.backgroundStop = null;
+    if (!this.running) {
+      const stop = background ? new AbortController() : null;
+      this.backgroundStop = stop;
+      this.running = this.download(stop?.signal).finally(() => {
+        this.running = null;
+        if (this.backgroundStop === stop) this.backgroundStop = null;
+      });
+    }
     return this.running;
   }
 
-  private async download(): Promise<void> {
+  /** Makes way for a turn, a call or a battery: the part files stay for the next ensure(). */
+  pauseBackground(): void {
+    this.backgroundStop?.abort();
+  }
+
+  private async download(signal?: AbortSignal): Promise<void> {
     const total = this.files.reduce((sum, file) => sum + file.bytes, 0);
-    this.state = { phase: "downloading", received: this.received(), total };
+    const halves = () => ({ hear: this.ready("hear"), speak: this.ready("speak") });
+    this.state = { phase: "downloading", received: this.received(), total, ...halves(), background: Boolean(signal) };
     try {
-      for (const file of this.files) await this.fetchFile(file, total);
-      this.state = { phase: "ready" };
+      for (const file of this.files) {
+        await this.fetchFile(file, signal);
+        if (this.state.phase === "downloading") this.state = { ...this.state, ...halves() };
+      }
+      this.state = { phase: "ready", hear: true, speak: true };
     } catch (error) {
-      this.state = { phase: "failed", error: error instanceof Error ? error.message : String(error), received: this.received(), total };
+      if (error instanceof Paused) {
+        this.state = this.rest();
+        throw error;
+      }
+      this.state = { phase: "failed", error: error instanceof Error ? error.message : String(error), received: this.received(), total, ...halves() };
       throw error;
     }
   }
 
-  private async fetchFile(file: ModelFile, total: number): Promise<void> {
+  private async fetchFile(file: ModelFile, signal?: AbortSignal): Promise<void> {
     const target = this.file(file.path);
-    if (sizeOf(target) === file.bytes) return;
+    if (this.present(file)) return;
     mkdirSync(path.dirname(target), { recursive: true });
     const part = `${target}.part`;
     const sources = sourcesFor(file, this.mirror);
+    // A background download that was asked to stop, unless a call has since taken it over.
+    const stopped = () => Boolean(signal?.aborted) && this.backgroundStop?.signal === signal;
     for (let attempt = 0; ; attempt += 1) {
+      if (stopped()) throw new Paused();
       try {
         let have = sizeOf(part);
         if (have > file.bytes) {
@@ -159,7 +208,7 @@ export class ModelStore {
           have = 0;
         }
         if (have < file.bytes) {
-          const res = await this.fetchImpl(sources[attempt % sources.length]!, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: "follow" });
+          const res = await this.fetchImpl(sources[attempt % sources.length]!, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: "follow", ...(signal ? { signal } : {}) });
           if (!res.ok || !res.body) throw new Error(`downloading ${path.basename(file.path)} failed (${res.status})`);
           // A server that ignores Range answers 200 with the whole file.
           const append = have > 0 && res.status === 206;
@@ -167,9 +216,9 @@ export class ModelStore {
           let written = 0;
           const counted = Readable.fromWeb(res.body as never).on("data", (chunk: Buffer) => {
             written += chunk.length;
-            if (this.state.phase === "downloading") this.state = { phase: "downloading", received: this.received() - sizeOf(part) + base + written, total };
+            if (this.state.phase === "downloading") this.state = { ...this.state, received: this.received() - sizeOf(part) + base + written };
           });
-          await pipeline(counted, createWriteStream(part, { flags: append ? "a" : "w" }));
+          await pipeline(counted, createWriteStream(part, { flags: append ? "a" : "w" }), ...(signal ? [{ signal }] : []));
         }
         if (sizeOf(part) !== file.bytes || (await sha256Of(part)) !== file.sha256) {
           rmSync(part, { force: true });
@@ -178,6 +227,7 @@ export class ModelStore {
         renameSync(part, target);
         return;
       } catch (error) {
+        if (stopped()) throw new Paused();
         if (attempt >= 3) throw error;
         await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
       }

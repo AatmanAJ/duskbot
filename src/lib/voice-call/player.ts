@@ -1,4 +1,5 @@
 import type { SpeechStream } from "../tts";
+import { loudnessChain } from "../tts/loudness";
 
 export type Render = (text: string, signal: AbortSignal) => Promise<ArrayBuffer>;
 export type Prepare = (text: string, signal: AbortSignal) => Promise<string[]>;
@@ -8,6 +9,12 @@ const AHEAD = 2;
 const SENTENCE_GAP_S = 0.09;
 const FADE_S = 0.06;
 const DUCKED = 0.18;
+
+/** The computer's own voice, for blocks said before the built-in voice is ready. */
+export interface SystemVoice {
+  use(): boolean;
+  speak(text: string, signal: AbortSignal): Promise<void>;
+}
 
 export interface PlayerEvents {
   /** Fires once for each block as its sound starts. */
@@ -28,11 +35,17 @@ export class CallPlayer {
   private readonly render: Render;
   private readonly prepareText: Prepare;
   private readonly events: PlayerEvents;
+  private readonly system: SystemVoice | null;
+  private systemStop: AbortController | null = null;
+  /** The computer's voice is talking: it plays outside the page, where the echo canceller cannot hear it. */
+  systemSpeaking = false;
+  private systemLevelPhase = 0;
 
-  constructor(render: Render, prepareText: Prepare, events: PlayerEvents = {}) {
+  constructor(render: Render, prepareText: Prepare, events: PlayerEvents = {}, system: SystemVoice | null = null) {
     this.render = render;
     this.prepareText = prepareText;
     this.events = events;
+    this.system = system;
   }
 
   private audio(): { context: AudioContext; gain: GainNode } {
@@ -43,18 +56,23 @@ export class CallPlayer {
       this.analyser.fftSize = 512;
       this.samples = new Float32Array(this.analyser.fftSize);
       this.gain.connect(this.analyser);
-      this.analyser.connect(this.context.destination);
+      this.analyser.connect(loudnessChain(this.context, this.context.destination));
     }
     void this.context.resume().catch(() => {});
     return { context: this.context, gain: this.gain! };
   }
 
   get speaking(): boolean {
-    return this.sources.size > 0 || this.busyStreams > 0;
+    return this.sources.size > 0 || this.busyStreams > 0 || this.systemSpeaking;
   }
 
   /** 0 to 1, what the bot's voice sounds like right now. */
   level(): number {
+    // the computer's voice cannot be measured from the page: a gentle talking motion stands in for it
+    if (this.systemSpeaking) {
+      this.systemLevelPhase += 0.21;
+      return 0.32 + 0.18 * Math.abs(Math.sin(this.systemLevelPhase) * Math.sin(this.systemLevelPhase * 0.37));
+    }
     if (!this.analyser || !this.samples || !this.sources.size) return 0;
     this.analyser.getFloatTimeDomainData(this.samples);
     let sum = 0;
@@ -73,6 +91,9 @@ export class CallPlayer {
   stop(): void {
     this.generation += 1;
     this.busyStreams = 0;
+    this.systemStop?.abort();
+    this.systemStop = null;
+    this.systemSpeaking = false;
     const context = this.context;
     const gain = this.gain;
     if (context && gain) {
@@ -116,7 +137,7 @@ export class CallPlayer {
   }
 
   /** A stream of blocks for one reply; a new stream silences the one before it. */
-  begin(): SpeechStream {
+  begin(gate?: (text: string, index: number) => Promise<void>): SpeechStream {
     this.stop();
     const mine = this.generation;
     const live = () => this.generation === mine;
@@ -133,15 +154,21 @@ export class CallPlayer {
       counted = false;
     };
 
+    type Rendered = { buffer: AudioBuffer } | { system: true } | null;
     const run = async () => {
       const { context } = this.audio();
-      const rendering: Promise<AudioBuffer | null>[] = [];
+      const rendering: Promise<Rendered>[] = [];
       const playing: Promise<void>[] = [];
       let index = 0;
       const fill = () => {
         while (rendering.length < AHEAD && index + rendering.length < pending.length) {
           const text = pending[index + rendering.length]!;
-          rendering.push(this.render(text, controller.signal).then((bytes) => context.decodeAudioData(bytes)).catch((error: unknown) => {
+          // Decided per sentence: once the built-in voice is ready the next sentence uses it, with no gap.
+          if (this.system?.use()) {
+            rendering.push(Promise.resolve({ system: true as const }));
+            continue;
+          }
+          rendering.push(this.render(text, controller.signal).then((bytes) => context.decodeAudioData(bytes)).then((buffer) => ({ buffer })).catch((error: unknown) => {
             if (live() && !controller.signal.aborted) this.events.onError?.(error instanceof Error ? error.message : String(error));
             return null;
           }));
@@ -155,15 +182,33 @@ export class CallPlayer {
           wake = null;
           continue;
         }
-        const buffer = await rendering.shift()!;
+        const rendered = await rendering.shift()!;
         const at = index;
         index += 1;
         if (!live()) break;
-        if (!buffer) continue;
-        const startsIn = Math.max(0, (this.playheadEnd ? this.playheadEnd + SENTENCE_GAP_S : context.currentTime) - context.currentTime);
+        if (!rendered) continue;
         const text = pending[at]!;
+        if (gate) {
+          await gate(text, at);
+          if (!live()) break;
+        }
+        if ("system" in rendered) {
+          await Promise.all(playing.splice(0));
+          if (!live() || !this.system) break;
+          const stop = new AbortController();
+          this.systemStop = stop;
+          this.systemSpeaking = true;
+          this.events.onBlockStart?.(text, at);
+          await this.system.speak(text, stop.signal);
+          if (this.systemStop === stop) {
+            this.systemStop = null;
+            this.systemSpeaking = false;
+          }
+          continue;
+        }
+        const startsIn = Math.max(0, (this.playheadEnd ? this.playheadEnd + SENTENCE_GAP_S : context.currentTime) - context.currentTime);
         setTimeout(() => { if (live()) this.events.onBlockStart?.(text, at); }, startsIn * 1000);
-        playing.push(this.play(buffer, live));
+        playing.push(this.play(rendered.buffer, live));
       }
       await Promise.all(playing);
     };

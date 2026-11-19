@@ -44,3 +44,10 @@ export function useLocalVoiceCall(): Availability {
 export function localVoiceCallKnown(): Availability {
   return current;
 }
+
+/** The runtime turned out not to load here: calls go back to Take turns. */
+export function markLocalVoiceUnavailable(): void {
+  if (current === false) return;
+  current = false;
+  for (const fn of Array.from(watchers)) fn();
+}

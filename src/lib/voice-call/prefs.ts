@@ -10,7 +10,9 @@ export const CALL_VOICES = [
   { id: "bf_emma", label: "Emma" },
   { id: "bm_george", label: "George" },
 ] as const;
-export type CallVoiceId = (typeof CALL_VOICES)[number]["id"];
+/** "account": the voice set up in Settings (ElevenLabs, Fish Audio, OpenAI…), with the bot's own voice there. */
+export const ACCOUNT_VOICE = "account";
+export type CallVoiceId = (typeof CALL_VOICES)[number]["id"] | typeof ACCOUNT_VOICE;
 
 export const CALL_SPEEDS = [
   { value: 0.9, label: "call.voice.speed.slower" },
@@ -32,7 +34,7 @@ function read(): CallPrefs {
   try {
     const parsed = JSON.parse(globalThis.localStorage?.getItem(KEY) ?? "null") as Partial<CallPrefs> | null;
     if (!parsed || typeof parsed !== "object") return DEFAULTS;
-    const voices = Object.fromEntries(Object.entries(parsed.voices ?? {}).filter(([, id]) => CALL_VOICES.some((voice) => voice.id === id))) as CallPrefs["voices"];
+    const voices = Object.fromEntries(Object.entries(parsed.voices ?? {}).filter(([, id]) => id === ACCOUNT_VOICE || CALL_VOICES.some((voice) => voice.id === id))) as CallPrefs["voices"];
     const speed = CALL_SPEEDS.some((entry) => entry.value === parsed.speed) ? parsed.speed! : 1;
     return { voices, speed, transcript: parsed.transcript !== false };
   } catch {

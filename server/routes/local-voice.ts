@@ -47,7 +47,7 @@ export function createLocalVoiceRoutes(deps: LocalVoiceDeps): RouteHandler {
       const available = await deps.available();
       return json(res, 200, {
         available,
-        model: available ? deps.status() : { phase: "missing" },
+        model: available ? deps.status() : { phase: "missing", hear: false, speak: false },
         voices: BUILT_IN_VOICES,
         defaultVoice: DEFAULT_VOICE,
       });
@@ -73,7 +73,7 @@ export function createLocalVoiceRoutes(deps: LocalVoiceDeps): RouteHandler {
       if (text.length > LOCAL_SPEAK_MAX_CHARS) return json(res, 413, { error: `spoken lines are limited to ${LOCAL_SPEAK_MAX_CHARS} characters` });
       const voice = isBuiltInVoice(body.voice) ? body.voice : DEFAULT_VOICE;
       const speed = typeof body.speed === "number" && Number.isFinite(body.speed) ? Math.min(1.4, Math.max(0.7, body.speed)) : 1;
-      if (deps.status().phase !== "ready") return json(res, 409, { error: "The built-in voice is still getting ready.", model: deps.status() });
+      if (!deps.status().speak) return json(res, 409, { error: "The built-in voice is still getting ready.", model: deps.status() });
       try {
         const wav = encodeWav(await deps.speak(text, voice, speed), KOKORO_RATE);
         res.writeHead(200, { "content-type": "audio/wav", "content-length": String(wav.byteLength), "cache-control": "no-store" });
@@ -96,7 +96,7 @@ export function createLocalVoiceRoutes(deps: LocalVoiceDeps): RouteHandler {
       }
       const audio = await readCapped(req, LOCAL_TRANSCRIBE_MAX_BYTES);
       if (!audio) return json(res, 413, { error: `audio exceeds ${LOCAL_TRANSCRIBE_MAX_BYTES} bytes` });
-      if (deps.status().phase !== "ready") return json(res, 409, { error: "The built-in voice is still getting ready.", model: deps.status() });
+      if (!deps.status().hear) return json(res, 409, { error: "The built-in voice is still getting ready.", model: deps.status() });
       let samples: Float32Array;
       try {
         samples = decodeWav(audio, MOONSHINE_RATE);

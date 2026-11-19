@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 async function fixture(over: Partial<LocalVoiceDeps> = {}) {
-  const state = { model: { phase: "ready" } as DownloadState, spoken: [] as Array<[string, string, number]>, heard: [] as number[], prepared: 0 };
+  const state = { model: { phase: "ready", hear: true, speak: true } as DownloadState, spoken: [] as Array<[string, string, number]>, heard: [] as number[], prepared: 0 };
   const deps: LocalVoiceDeps = {
     available: async () => true,
     status: () => state.model,
@@ -92,7 +92,7 @@ describe("built-in voice routes", () => {
     const { base, state } = await fixture();
     expect((await fetch(`${base}/api/voice/local/transcribe`, { method: "POST", headers: { "content-type": "audio/webm" }, body: "x" })).status).toBe(400);
     expect((await fetch(`${base}/api/voice/local/transcribe`, { method: "POST", headers: { "content-type": "audio/wav" }, body: "not a wav" })).status).toBe(400);
-    state.model = { phase: "downloading", received: 10, total: 100 };
+    state.model = { phase: "downloading", received: 10, total: 100, hear: true, speak: false, background: false };
     const busy = await fetch(`${base}/api/voice/local/speak`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "hi" }) });
     expect(busy.status).toBe(409);
     expect(await busy.json()).toMatchObject({ model: { phase: "downloading", received: 10 } });
