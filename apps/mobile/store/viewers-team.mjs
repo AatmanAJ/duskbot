@@ -58,6 +58,24 @@ export const TEAM = [
     ],
   },
   {
+    name: "Pip", color: "blue", body: "pip", pinned: true,
+    chat: [
+      ["me", "send me the launch files", 50],
+      ["Pip", "here they are: the report, the numbers and the landing page.", 49, { attachments: [
+        { kind: "file", path: "launch/report.pdf", mime: "application/pdf", name: "report.pdf" },
+        { kind: "file", path: "launch/numbers.csv", mime: "text/csv", name: "numbers.csv" },
+        { kind: "file", path: "launch/landing.html", mime: "text/html", name: "landing.html" },
+        { kind: "file", path: "launch/notes.md", mime: "text/markdown", name: "notes.md" },
+      ] }],
+      ["me", "post the update to the team", 30],
+      ["Pip", "", 29, { kind: "connector", connector: { slug: "slack", label: "Slack", description: "post the launch update to #launch", status: "required", resumeKey: "viewers-slack" } }],
+      ["Pip", "", 28, { kind: "options", card: { title: "Which channel should I post in?", subtitle: "", options: ["#launch", "#general", "#marketing"], requestType: "question", requestId: "viewers-ask" } }],
+      ["Pip", "Morning brief failed.", 20, { kind: "routine.run", routineRun: { runId: "viewers-run", routineId: "viewers-routine", routineName: "Morning brief", status: "failed", error: "Gmail needs you to sign in again." } }],
+      ["me", "and check the numbers again", 4],
+      ["Pip", "", 3, { kind: "activity", tool: { name: "error: The reply timed out.", ok: false, reason: "timeout" } }],
+    ],
+  },
+  {
     name: "Echo", color: "pink", body: "mochi", pinned: true,
     chat: [
       ["me", "reply to Maya and say we'll take the flat", 3],
@@ -72,7 +90,7 @@ export const TEAM = [
 
 export const ROOM = {
   name: "Launch room",
-  members: ["Nova", "Echo"],
+  members: ["Nova", "Echo", "Pip"],
   chat: [
     ["me", "where are we on the launch?", 22],
     ["Nova", "copy is done, Echo is lining up the emails.", 21],
