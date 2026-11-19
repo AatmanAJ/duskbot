@@ -127,23 +127,83 @@ it("a typed code the relay never had says so, not expired, and offers logging in
   expect(host.querySelector("[data-step]")?.getAttribute("data-step")).toBe("signin");
 });
 
-it("a signed-in phone pairs with its only cloud by itself, never saying it is asleep", async () => {
-  secrets.set("dusk.account", JSON.stringify({ origin, token, expiresAt: Date.now() + 60_000, account, deviceId: "phone" }));
+describe("a sign-in the Keychain kept through a delete and reinstall", () => {
   const cloud = { id: "home", name: "Home cloud", role: "owner", teamId: null, managed: true, status: "ready", origin: "https://home.example.com", primary: true, power: { state: "asleep" } };
-  const onLinked = vi.fn();
-  let pairs = 0;
-  fetcher.mockImplementation(async (input) => {
-    const url = String(input);
-    if (url.endsWith("/api/cloud/desktop/session")) return response({ ok: true, clouds: [cloud] });
-    if (url.endsWith("/api/cloud/desktop/pairing")) { pairs++; return response({ cloudContractVersion: 1, origin: cloud.origin, code: "ABCD-EFGH-JKLM", expiresAt: Date.now() + 60_000 }); }
-    return response({ error: "unreachable" }, 503);
+  const computer = { id: "ws_mac", name: "Studio Mac", kind: "mac", presence: "online", environmentId: "env-mac" };
+  let pairs: number, sessionEnded: boolean;
+  const keptSignIn = (session: () => Response = () => response({ ok: true, clouds: [cloud] })) => {
+    secrets.set("dusk.account", JSON.stringify({ origin, token, expiresAt: Date.now() + 60_000, account, deviceId: "phone" }));
+    pairs = 0; sessionEnded = false;
+    fetcher.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/api/cloud/desktop/session")) { if (init?.method === "DELETE") { sessionEnded = true; return response({ ok: true }); } return session(); }
+      if (url.endsWith("/v1/app/computers")) return response({ v: 1, computers: [computer] });
+      if (url.endsWith("/api/cloud/desktop/pairing")) { pairs++; return response({ cloudContractVersion: 1, origin: cloud.origin, code: "ABCD-EFGH-JKLM", expiresAt: Date.now() + 60_000 }); }
+      return response({ v: 1, providers: [], signupOpen: true });
+    });
+  };
+  const settle = async () => { for (let i = 0; i < 5; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); }); };
+
+  it("opens the account's places to pick from, with sign out and another account, and never opens one by itself", async () => {
+    keptSignIn();
+    const onLinked = vi.fn();
+    await mount(onboarding({ onLinked }));
+    await settle();
+    expect(heading()).toBe("Pick a cloud");
+    expect(host.textContent).not.toMatch(/asleep/i);
+    expect(pairs).toBe(0);
+    expect(onLinked).not.toHaveBeenCalled();
+    expect([...host.querySelectorAll<HTMLElement>("[data-place-kind]")].map((row) => row.dataset.placeKind)).toEqual(["cloud", "computer"]);
+    expect(host.querySelector("[data-entry=sign-out]")?.textContent).toBe("Sign out");
+    expect(host.querySelector("[data-entry=other-account]")).not.toBeNull();
+    expect(prefs.get("dusk.mobile.installed")).toBe("1");
+    await press("[data-testid=mobile-cloud-connect][data-place-kind=cloud]");
+    await settle();
+    expect(pairs).toBe(1);
+    expect(onLinked).toHaveBeenCalledWith(expect.objectContaining({ id: "linked" }), "session", "Home cloud");
   });
-  await mount(onboarding({ onLinked }));
-  expect(heading()).toBe("Pick a cloud");
-  expect(host.textContent).not.toMatch(/asleep/i);
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  expect(pairs).toBe(1);
-  expect(onLinked).toHaveBeenCalledWith(expect.objectContaining({ id: "linked" }), "session", "Home cloud");
+
+  it("Sign out there ends the session on the service and forgets it on the phone", async () => {
+    keptSignIn();
+    await mount(onboarding());
+    await settle();
+    await press("[data-entry=sign-out]");
+    await settle();
+    expect(sessionEnded).toBe(true);
+    expect(secrets.has("dusk.account")).toBe(false);
+  });
+
+  it("one the service no longer knows is forgotten, and the phone starts on its first screen", async () => {
+    keptSignIn(() => response({ error: "invalid_token", code: "invalid_token" }, 401));
+    await mount(onboarding());
+    await settle();
+    expect(secrets.has("dusk.account")).toBe(false);
+    expect(entries().map((button) => button.dataset.entry)).toEqual(["scan", "signin", "code"]);
+  });
+
+  it("a sign-in made on the phone still opens its only cloud by itself", async () => {
+    keptSignIn();
+    secrets.delete("dusk.account");
+    fetcher.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/cloud/app/sign-in/phone")) return response({ cloudContractVersion: 1, accessToken: token, expiresAt: Date.now() + 86_400_000, device: { id: "phone" }, account });
+      if (url.endsWith("/api/cloud/desktop/session")) return response({ ok: true, clouds: [cloud] });
+      if (url.endsWith("/api/cloud/desktop/pairing")) { pairs++; return response({ cloudContractVersion: 1, origin: cloud.origin, code: "ABCD-EFGH-JKLM", expiresAt: Date.now() + 60_000 }); }
+      return response({ v: 1, providers: [], signupOpen: true });
+    });
+    const onLinked = vi.fn();
+    await mount(onboarding({ onLinked }));
+    await press("[data-entry=code]");
+    await act(async () => {
+      const input = host.querySelector<HTMLInputElement>("input[autocomplete=one-time-code]")!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "ABCDEFGH");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await press("button[type=submit]");
+    await settle();
+    expect(pairs).toBe(1);
+    expect(onLinked).toHaveBeenCalledWith(expect.objectContaining({ id: "linked" }), "session", "Home cloud");
+  });
 });
 
 it("a signed-in account with no cloud is pointed at linking a computer", async () => {

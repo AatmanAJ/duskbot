@@ -95,6 +95,10 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   // a failed scan lands on the code screen with an empty field: its way forward is scanning again, not a dead submit
   const [scanFailed, setScanFailed] = useState(false);
   const [noClouds, setNoClouds] = useState(false);
+  // a sign-in made here opens its only cloud at once; one the phone already held (the Keychain keeps it through a
+  // delete and reinstall) lists the places to pick from
+  const [justSignedIn, setJustSignedIn] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [value, setValue] = useState(() => signInCode ? formatCode(signInCode) : "");
   const [signInEmail, setSignInEmail] = useState(email ?? "");
   const locked = useRef(false);
@@ -129,6 +133,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
             return;
           }
           haptic("success");
+          setJustSignedIn(true);
           go("clouds");
           return;
         }
@@ -247,7 +252,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
         {step === "signin" && (
           <StepPane id="signin">
             <Screen top={back("welcome")} align="top" actions={null}>
-              <MobileSignIn initialEmail={signInEmail} onSignedIn={() => go("clouds")} />
+              <MobileSignIn initialEmail={signInEmail} onSignedIn={() => { setJustSignedIn(true); go("clouds"); }} />
             </Screen>
           </StepPane>
         )}
@@ -258,11 +263,13 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
               {noClouds && <button type="button" className={TONAL} onClick={() => void openScanner()}><QrCode size={20} />{t("mobile.entry.scan")}</button>}
               {noClouds && <button type="button" className={TONAL} onClick={() => go("code")}><Keyboard size={20} />{t("mobile.entry.code")}</button>}
               {!noClouds && <button type="button" disabled={busy} className={QUIET} onClick={() => go("welcome")}>{t("mobile.entry.otherWays")}</button>}
-              {signedIn && <button type="button" data-entry="other-account" disabled={busy} className={QUIET} onClick={() => void otherAccount()}>{t("mobile.clouds.otherAccount")}</button>}
+              {signedIn && <button type="button" data-entry="other-account" disabled={busy || signingOut} className={QUIET} onClick={() => void otherAccount()}>{t("mobile.clouds.otherAccount")}</button>}
+              {signedIn && !startAtLink && <button type="button" data-entry="sign-out" disabled={busy || signingOut} className={QUIET}
+                onClick={() => { setSigningOut(true); void account?.signOutOfPhone().catch(() => setSigningOut(false)); }}>{signingOut ? <WorkingDots /> : t("accountGate.signOut")}</button>}
             </>}>
               <h1 className={HEADLINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneTitleStore" : "mobile.clouds.noneTitle" : "mobile.clouds.pickTitle")}</h1>
               <p className={LINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneStore" : "mobile.clouds.none" : "mobile.clouds.pickBody", { email: account?.account?.email ?? "" })}</p>
-              <CloudPicker busy={busy} autoPick={!startAtLink} onNone={() => setNoClouds(true)} onPairing={(payload) => redeem(payload, "clouds")} />
+              <CloudPicker busy={busy} autoPick={!startAtLink && justSignedIn}onNone={() => setNoClouds(true)} onPairing={(payload) => redeem(payload, "clouds")} />
               {failure && <Failed failure={failure} />}
             </Screen>
           </StepPane>

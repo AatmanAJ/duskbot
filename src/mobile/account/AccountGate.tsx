@@ -9,10 +9,16 @@ import { usePlatform, type MobilePlatform } from "../platform";
 import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AccountPlaces, type AuthResult, type CloudPairResult, type ComputerPairResult, type MobileAccount, type MobileComputer, type MobileCloud, type MobileTeamCloud, type PhoneCodeResult } from "./account-client";
 import { setTurnSource } from "../transport/direct-rtc";
 import { chosenAccountOrigin } from "./environment";
+import { claimFreshInstall } from "./install";
+import { signOutPhone } from "./sign-out";
 
 type AccountContextValue = { account: MobileAccount | null; origin: string;
   /** this app keeps a dusk account (the native app, or the preview's ?account=1) */
-  offered: boolean; signOut(): Promise<void>;
+  offered: boolean;
+  /** the account only, for a sign-in screen moving to another account */
+  signOut(): Promise<void>;
+  /** Settings' Sign out: the account and its dusk clouds leave the phone, which opens again on what is left */
+  signOutOfPhone(): Promise<void>;
   /** deletes the account from the app; false when it could not be done (nothing changed) */
   deleteAccount(): Promise<boolean>; enrollGrant(): Promise<{ enrollToken: string; dashboardUrl: string } | null>;
   clouds(): Promise<MobileCloud[] | null>; pairCloud(cloud: MobileCloud): Promise<CloudPairResult>; wakeCloud(): Promise<boolean>;
@@ -108,9 +114,13 @@ export function AccountGate({ children }: { children: ReactNode }) {
       follow(task);
       return true;
     });
-    // the Keychain's sign-in shows at once; the service's check runs behind it and only a gone session signs out
-    if (wanted && !pendingAuth.current) void client.cached().then(value => {
-      if (active && stamp === revision && value) { setAccount(value); setRestoring(false); }
+    // the Keychain's sign-in shows at once and the service's check runs behind it, where only a gone session signs out;
+    // a new install waits for the check, so a sign-in left from before the app was deleted shows only while it works
+    if (wanted && !pendingAuth.current) void claimFreshInstall(platform).then(async fresh => {
+      if (!fresh) {
+        const value = await client.cached();
+        if (active && stamp === revision && value) { setAccount(value); setRestoring(false); }
+      }
       return client.restore();
     }).then(value => { if (active && stamp === revision) setAccount(value); }).catch(() => {}).finally(() => { if (active) setRestoring(false); });
     else if (!pendingAuth.current) setRestoring(false);
@@ -124,9 +134,14 @@ export function AccountGate({ children }: { children: ReactNode }) {
   }, [client, platform, wanted]);
   const context = useMemo<AccountContextValue>(() => ({ account, origin, offered: wanted,
     signOut: async () => { setAccount(null); setProblem(undefined); await client.signOut(); },
+    signOutOfPhone: async () => {
+      await signOutPhone({ platform, signOutAccount: () => client.signOut() });
+      window.location.reload();
+    },
     deleteAccount: async () => {
       const outcome = await client.deleteAccount();
       if (outcome === "failed") return false;
+      await signOutPhone({ platform, signOutAccount: async () => {} });
       setAccount(null); setProblem(undefined);
       return true;
     },
@@ -151,7 +166,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
       },
       problem, signedIn: () => { setAccount(client.account()); setProblem(undefined); },
     },
-  }), [account, origin, wanted, client, platform.kind, platform.appleSignIn, problem]);
+  }), [account, origin, wanted, client, platform, problem]);
   if (wanted && restoring) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader naps={false} /></div>;
   return <AccountContext value={context}>{children}</AccountContext>;
 }
