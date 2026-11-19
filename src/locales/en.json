@@ -8116,6 +8116,7 @@
   "mobile.viewer.copied": "Copied",
   "mobile.table.rows.one": "{count} row",
   "mobile.table.rows": "{count} rows",
+  "mobile.table.moreColumns": "Swipe to see all {count} columns",
   "mobile.image.count": "{index} of {count}",
   "mobile.image.failed": "This picture didn't load",
   "mobile.image.share": "Share or save {name}",
