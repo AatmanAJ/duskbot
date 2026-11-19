@@ -1,3 +1,4 @@
+import { chatLimitFacts } from "./drivers/openai-chat-carry.ts";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -368,6 +369,13 @@ describe("quota switch", () => {
         expect(told).toHaveLength(1);
         expect(cards()).toEqual([]);
         expect(resend).not.toHaveBeenCalled();
+      });
+
+      it("holds an API engine's rate limit, the way its driver reports one, until the wait the provider named", async () => {
+        flags = chatLimitFacts(Object.assign(new Error("upstream HTTP 429: Rate limit reached"), { retryAfterMs: 120_000 }), 1_900_000_000_000)!;
+        await limited();
+        expect(holds).toEqual([{ botId: bot.id, threadId: bot.threadId, from: defaultSelection(), resetsAt: 1_900_000_120_000, request: "asked" }]);
+        expect(moves).toEqual([]);
       });
 
       it("holds even with carrying on switched off, which only stops other AIs taking over", async () => {

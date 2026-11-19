@@ -27,7 +27,7 @@ import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
-import { carriedSteps, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
+import { carriedSteps, carriedWorkFile, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
 import { announcesAction, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
@@ -227,7 +227,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     if (completion.responseOutput) responseOutputs.set(reply, completion.responseOutput);
     return reply;
   };
-  const delivered = new Map<string, DeliveredUserMessage[]>(), carried = createCarriedWork();
+  const delivered = new Map<string, DeliveredUserMessage[]>(), carried = createCarriedWork({ file: carriedWorkFile() });
   /** Not cleared on `sessionReset`: with no cursor the harness sends it on nearly every turn. */
   const sessionGrants = new Map<string, Set<string>>();
 
@@ -521,7 +521,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     const turnId = newId();
     const abort = new AbortController();
     const messages = messagesFor(turn);
-    messages.splice(-1, 0, ...carried.take(turn.threadId));
+    messages.splice(-1, 0, ...carried.take(turn.threadId, turn.text));
     const request = messages.at(-1)!;
     const retainImages = chatImageBudget();
     for (const message of messages) retainImages(message.content);

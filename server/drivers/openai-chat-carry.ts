@@ -2,6 +2,12 @@
 // one, so the turn waits for the reset (or a backup the person chose takes it) through the shared limit hold, and the
 // steps it ran ride into this conversation's next turn on this engine, so the resumed turn carries on instead of
 // starting over.
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { dataDirFor } from "../../electron/legacy-names.mjs";
+import { writeFileAtomic } from "../atomic.ts";
+import { isLimitResume } from "../limit-resume.ts";
 import type { ChatToolCall } from "./openai-chat-protocol.ts";
 import { classifyError } from "./retry.ts";
 
@@ -49,20 +55,53 @@ export function carriedSteps(messages: ReadonlyArray<{ role: string; content?: u
   return out;
 }
 
-/** per conversation, the steps a limited turn ran, taken once by the next turn there */
-export function createCarriedWork(now: () => number = Date.now) {
-  const kept = new Map<string, { at: number; steps: CarriedMessage[] }>();
+/** where the steps wait: next to the held turns (limit-held-turns.json), so a restart during the wait keeps them */
+export function carriedWorkFile(env: NodeJS.ProcessEnv = process.env): string {
+  return join(dataDirFor(env.DUSK_DATA_DIR, homedir()), "limit-carried-steps.json");
+}
+
+type Kept = { at: number; steps: CarriedMessage[] };
+
+function load(file: string | undefined): Map<string, Kept> {
+  if (!file) return new Map();
+  try {
+    const saved = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    return new Map(Object.entries(saved).flatMap(([threadId, value]): Array<[string, Kept]> => {
+      const row = value as Partial<Kept> | null;
+      return row && Number.isFinite(row.at) && Array.isArray(row.steps) ? [[threadId, { at: row.at!, steps: row.steps }]] : [];
+    }));
+  } catch {
+    return new Map();
+  }
+}
+
+/** Per conversation, the steps a limited turn ran. The next turn there on this engine takes them once: only the limit
+ * hold's resume gets them; any other turn (the person moved on, or a backup already finished the work) clears them. */
+export function createCarriedWork(options: { file?: string; now?: () => number } = {}) {
+  const now = options.now ?? Date.now;
+  const kept = load(options.file);
+  const save = () => {
+    if (!options.file) return;
+    try {
+      if (kept.size || existsSync(options.file)) writeFileAtomic(options.file, JSON.stringify(Object.fromEntries(kept)), { mode: 0o600 });
+    } catch (error) {
+      console.warn(`carried steps: could not save: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
   return {
     keep(threadId: string, steps: CarriedMessage[]): void {
       if (!steps.length) return;
       kept.delete(threadId);
       kept.set(threadId, { at: now(), steps });
       if (kept.size > THREADS_MAX) kept.delete(kept.keys().next().value!);
+      save();
     },
-    take(threadId: string): CarriedMessage[] {
+    take(threadId: string, text: string): CarriedMessage[] {
       const entry = kept.get(threadId);
+      if (!entry) return [];
       kept.delete(threadId);
-      return entry && now() - entry.at <= KEEP_MS ? entry.steps : [];
+      save();
+      return isLimitResume(text) && now() - entry.at <= KEEP_MS ? entry.steps : [];
     },
   };
 }
