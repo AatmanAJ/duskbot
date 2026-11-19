@@ -276,7 +276,7 @@ try {
 
   if (args.trace) {
     // a timeline of one long chat opening: every style and layout pass with the script that forced it
-    await stage.page.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.stack,v8.execute", transferMode: "ReturnAsStream" });
+    await stage.page.send("Tracing.start", { categories: ["devtools.timeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.stack,v8.execute", process.env.DUSK_TRACE_CATEGORIES].filter(Boolean).join(","), transferMode: "ReturnAsStream" });
     await openChat(stage, LONG);
     const done = new Promise<{ stream: string }>((resolve) => { const off = stage.page.on("Tracing.tracingComplete", (event) => { off(); resolve(event); }); });
     await stage.page.send("Tracing.end");
