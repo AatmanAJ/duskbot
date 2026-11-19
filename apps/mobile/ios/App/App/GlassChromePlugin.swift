@@ -112,6 +112,17 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 }
 
+/// A vertical fade from one colour, solid down to `solidUntil` (0...1), clear at the bottom.
+final class GradientView: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+
+    func paint(_ color: UIColor, solidUntil: CGFloat) {
+        guard let gradient = layer as? CAGradientLayer else { return }
+        gradient.colors = [color.cgColor, color.cgColor, color.withAlphaComponent(0).cgColor]
+        gradient.locations = [0, NSNumber(value: Double(solidUntil)), 1]
+    }
+}
+
 /// Lets touches through everywhere but on its own controls.
 class PassthroughView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -291,6 +302,18 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private var restingFrame: CGRect = .zero
     private static let typingInset: CGFloat = 6
 
+    /// The composer's keyboard is moving the page: the whole web view rises with it, in the same animation, and the page
+    /// takes the space itself only once the keyboard has stopped (see `keyboardSettled`).
+    private var keyboardRide = false
+    /// how far the page is lifted now; it rises less than the keyboard by the empty space under a short transcript
+    private var lift: CGFloat = 0
+    /// the empty space under the transcript's last row, as the page last measured it at rest
+    private var transcriptRoom: CGFloat = 0
+    private var keyboardMove = 0
+    /// the page's status bar band, drawn here while the page is lifted out from under it
+    private let topBand = GradientView()
+    private var ground: UIColor?
+
     init(host: UIView, emit: @escaping ([String: Any]) -> Void) {
         self.host = host
         self.emit = emit
@@ -317,7 +340,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         liveDot.isUserInteractionEnabled = false
         liveDot.isHidden = true
         right.addSubview(liveDot)
-        [back, pill, right].forEach(header.addSubview)
+        topBand.isUserInteractionEnabled = false
+        topBand.isHidden = true
+        [topBand, back, pill, right].forEach(header.addSubview)
         home = GlassHomeBar(host: host, below: header, emit: emit)
 
         composer.translatesAutoresizingMaskIntoConstraints = false
@@ -375,25 +400,73 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     }
 
     /// The composer rides the keyboard in the keyboard's own animation: the duration and curve its notification carries.
+    /// With the composer's own field focused the page rides in the same animation, lifted whole by a transform: one
+    /// clock for the keyboard, composer and transcript, and no page layout until the keyboard has stopped.
     @objc private func keyboardWillChangeFrame(_ note: Notification) {
         guard let host, let info = note.userInfo, let end = (info[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
         guard let window = host.window else { return }
         let local = host.convert(end, from: window.screen.coordinateSpace)
         let overlap = max(0, host.bounds.maxY - local.minY)
         guard overlap != keyboardOverlap else { return }
+        let safe = host.safeAreaInsets.bottom
+        let wasCovering = max(0, keyboardOverlap - safe)
+        let covering = max(0, overlap - safe)
         keyboardOverlap = overlap
         bottom.constant = restingBottom()
         if restingFrame.width > 0 { applyComposerWidth() }
+        if covering > 0 && text.isFirstResponder && page != nil { keyboardRide = true }
+        let newLift: CGFloat? = keyboardRide
+            ? (wasCovering == 0 ? max(0, covering - transcriptRoom) : min(covering, max(0, lift + covering - wasCovering)))
+            : nil
         let duration = (info[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
         let curve = (info[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
-        emit(["type": "keyboard", "height": overlap, "duration": duration, "at": Date().timeIntervalSince1970 * 1000])
-        guard composerShown, duration > 0 else {
-            UIView.performWithoutAnimation { host.layoutIfNeeded() }
-            return
-        }
-        UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction]) {
+        var event: [String: Any] = ["type": "keyboard", "height": overlap, "duration": duration, "at": Date().timeIntervalSince1970 * 1000]
+        if let newLift { event["lift"] = newLift }
+        emit(event)
+        if let newLift, newLift > 0 { showTopBand() }
+        keyboardMove += 1
+        let move = keyboardMove
+        let change = {
             host.layoutIfNeeded()
             self.layoutComposer(animated: false)
+            if let newLift { self.setLift(newLift) }
+        }
+        let settled = { [weak self] in
+            guard let self, move == self.keyboardMove, let newLift else { return }
+            self.keyboardSettled(height: overlap, lift: newLift)
+        }
+        guard composerShown || newLift != nil, duration > 0 else {
+            UIView.performWithoutAnimation(change)
+            settled()
+            return
+        }
+        UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction], animations: change) { _ in settled() }
+    }
+
+    private var page: PageWebView? { host?.subviews.lazy.compactMap { $0 as? PageWebView }.first }
+
+    private func setLift(_ value: CGFloat) {
+        lift = value
+        page?.keyboardLift = value
+    }
+
+    /// The keyboard has stopped: the page lays itself out for it and offsets its scroll by the lift in one frame, so
+    /// nothing on screen moves. Back down, the page is whole again and the band goes.
+    private func keyboardSettled(height: CGFloat, lift: CGFloat) {
+        emit(["type": "keyboard", "height": height, "lift": lift, "settled": true])
+        guard height <= (host?.safeAreaInsets.bottom ?? 0) else { return }
+        keyboardRide = false
+        topBand.isHidden = true
+        page?.landed()
+    }
+
+    private func showTopBand() {
+        guard let host, let ground else { return }
+        let height = host.safeAreaInsets.top + 16
+        UIView.performWithoutAnimation {
+            topBand.frame = CGRect(x: 0, y: 0, width: host.bounds.width, height: height)
+            topBand.paint(ground, solidUntil: (height - 16) / max(1, height))
+            topBand.isHidden = false
         }
     }
 
@@ -481,6 +554,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             composer.overrideUserInterfaceStyle = style
         }
         if let hex = state["accent"] as? String, let color = UIColor(cssHex: hex) { accent = color }
+        if let hex = state["ground"] as? String, let color = UIColor(cssHex: hex) {
+            ground = color
+            host?.backgroundColor = color
+        }
         if let x = (state["offset"] as? NSNumber).map({ CGFloat($0.doubleValue) }), !sliding { setOffset(x) }
         let handing = state["handoff"] as? Bool ?? false
         // off its resting place the chrome is riding a page in or out: it comes and goes with the page, never fades
@@ -565,6 +642,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         restingFrame = frame.rect
         applyComposerWidth()
         if let gap = (data["gap"] as? NSNumber)?.doubleValue { self.gap = CGFloat(max(0, gap)) }
+        if let room = (data["room"] as? NSNumber)?.doubleValue { transcriptRoom = CGFloat(max(0, room)) }
         let resting = restingBottom()
         if abs(bottom.constant - resting) >= 1 { bottom.constant = resting }
         plus.isHidden = !(data["plus"] as? Bool ?? true)

@@ -40,13 +40,13 @@
   background-color: var(--color-menu);
 }
 
-/* the bot's computer reads as a device's screen, not more chat: its sheet sits on its own tone, deeper than the chat
-   and the panel's other tabs, darker in a light skin and lighter in a dark one */
-.dusk-mobile .mobile-sheet:has([data-panel-tabpanel="computer"]) {
-  --panel-phone-computer: color-mix(in srgb, var(--color-ink) 9%, var(--color-app));
-  background-color: var(--panel-phone-computer);
+/* the bot's computer screen reads as a device's screen: a panel a step darker than the sheet round it, light or dark */
+.dusk-mobile .mobile-panel-sheet [data-panel-tabpanel="computer"] [data-panel-screen] {
+  border-radius: 18px;
+  background-color: color-mix(in srgb, #000 7%, var(--color-app));
 }
-.dusk-mobile .mobile-sheet:has([data-panel-tabpanel="computer"]) :is(.mobile-panel-sheet, .side-panel) {
-  --panel-phone-page: var(--panel-phone-computer);
-  background-color: var(--panel-phone-computer);
+:root:is([data-skin="grok-dark"], [data-skin="midnight"], [data-skin="dusk"], [data-skin="foundry"], [data-skin="graphite"], [data-skin="halloween"])
+  .dusk-mobile .mobile-panel-sheet [data-panel-tabpanel="computer"] [data-panel-screen],
+.dusk-mobile[data-scheme="dark"] .mobile-panel-sheet [data-panel-tabpanel="computer"] [data-panel-screen] {
+  background-color: color-mix(in srgb, #000 38%, var(--color-app));
 }

@@ -39,6 +39,8 @@ export interface GlassComposer {
   returnSends: boolean;
   /** the page's text zoom, so the native field's text matches the page's (apps before 1.3 ignore it) */
   fontScale: number;
+  /** the empty space under the transcript's last row: a keyboard opening over a short chat lifts the page that much less */
+  room: number;
 }
 
 export interface GlassState {
@@ -48,6 +50,8 @@ export interface GlassState {
   /** the chat is open but something covers its chrome: the page draws its own at once, so the native one goes at once */
   handoff: boolean;
   accent: string;
+  /** the page's ground colour (#rrggbb), which the native side paints where the page lifts away from */
+  ground: string;
   header: GlassHeader | null;
   composer: GlassComposer | null;
 }
@@ -59,8 +63,10 @@ export type GlassEvent =
   | { type: "submit" }
   | { type: "focus"; focused: boolean }
   | { type: "height"; height: number }
-  /** the keyboard starts to move: how far it will cover, its duration in seconds and when it started, in epoch ms */
-  | { type: "keyboard"; height: number; duration: number; at: number };
+  /** the keyboard starts to move: how far it will cover, its duration in seconds and when it started, in epoch ms. With
+   * `lift` the native composer's field has it, and the native side lifts the whole web view by `lift` in the keyboard's
+   * own animation; `settled` comes once that move has stopped, for the page to take the space itself. */
+  | { type: "keyboard"; height: number; duration?: number; at?: number; lift?: number; settled?: boolean };
 
 /** The phone's native glass chrome (ios/App/App/GlassChromePlugin.swift): it draws the chat header and composer
  * over the web view so the glass bends the transcript under it, and hands taps and typing back to the page. */
@@ -309,7 +315,13 @@ export function keyboardRide(shell: Element): number {
   return (matrix[1] ? parts[13] : parts[5]) || 0;
 }
 
-function readComposer(shell: HTMLElement, baseline: number, dx: number): { composer: GlassComposer; elements: HTMLElement[]; field: HTMLTextAreaElement | null } | null {
+/** The empty space between the transcript's last row and the bottom of its scroller, in whole px. */
+export function transcriptRoom(chat: Element | null): number {
+  const list = chat?.querySelector(".glass-scroller");
+  return list ? Math.max(0, Math.round(list.clientHeight - list.scrollHeight)) : 0;
+}
+
+function readComposer(shell: HTMLElement, baseline: number, dx: number, room: number): { composer: GlassComposer; elements: HTMLElement[]; field: HTMLTextAreaElement | null } | null {
   if (hasStrips(shell)) return null;
   const field = shell.querySelector<HTMLTextAreaElement>("textarea");
   const actions = composerButtons(shell.querySelector("[data-composer-actions]"));
@@ -333,6 +345,7 @@ function readComposer(shell: HTMLElement, baseline: number, dx: number): { compo
       buttons: actions.buttons,
       returnSends: field?.getAttribute("enterkeyhint") === "send",
       fontScale: appliedTextScale(),
+      room,
     },
     elements: actions.elements,
     field,
@@ -459,7 +472,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       const header = chatEl && navEl && title && !covered(title, chatEl) ? readHeader(navEl, left) : null;
       const kb = parseFloat(root.style.getPropertyValue("--m-kb")) || 0;
       const baseline = window.innerHeight - Math.max(safeBottom, kb);
-      const read = chatEl && shellEl && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline, left) : null;
+      const read = chatEl && shellEl && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline, left, transcriptRoom(chatEl)) : null;
       elements = read?.elements ?? [];
       field = read?.field ?? null;
       const styles = getComputedStyle(root);
@@ -468,6 +481,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
         // with nothing drawn natively (a sheet over the chat, scaling the page back) the offset has nothing to move
         offset: slide ? slide.to : header || read ? round(left) : last?.offset ?? round(left),
         accent: styles.getPropertyValue("--color-accent").trim(),
+        ground: cssHex(styles.getPropertyValue("--color-app")) ?? "",
         header,
         composer: read?.composer ?? null,
         handoff: Boolean(chatEl) && (!header || !read),

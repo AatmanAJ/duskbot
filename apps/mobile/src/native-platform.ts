@@ -509,7 +509,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       // with the glass chrome a move comes from the notification the native composer rides, with its timing
       if (glass?.supported) {
         return unsubscribe([...settled, DuskGlass.addListener("glass", (event) => {
-          if (event.type === "keyboard") listener({ height: event.height, phase: "will", duration: event.duration, at: event.at });
+          if (event.type === "keyboard") listener({ height: event.height, phase: event.settled ? "did" : "will", duration: event.duration, at: event.at, lift: event.lift });
         })]);
       }
       return unsubscribe([

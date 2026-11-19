@@ -17,6 +17,9 @@ export interface KeyboardFrame {
    * move, in epoch ms, so the page can start its ride as far in as the bridge hop cost. */
   duration?: number;
   at?: number;
+  /** The native side lifts the whole page by this many css px itself, in the keyboard's own animation; a `did` with it
+   * is that move stopped, for the page to take the space itself. */
+  lift?: number;
 }
 
 export interface ScanResult {

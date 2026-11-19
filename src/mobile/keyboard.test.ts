@@ -138,6 +138,38 @@ describe("riding the keyboard with the native composer", () => {
   });
 });
 
+describe("a keyboard the native side lifts the page for", () => {
+  it("moves nothing on the page while it moves, then takes the space with the scroll offset by the lift", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    scrollable(2000, 1600);
+    keyboard!({ height: 336, phase: "will", duration: 0.38, at: Date.now(), lift: 302 });
+    keyboard!({ height: 336, phase: "did" });
+    expect(list().scrollTop).toBe(1600);
+    expect(shell.style.getPropertyValue("--m-kb-shift")).toBe("");
+    expect(shell.dataset.kbMoving).toBeUndefined();
+    keyboard!({ height: 336, phase: "did", lift: 302 });
+    expect(shell.style.getPropertyValue("--m-lift")).toBe("302px");
+    expect(shell.style.getPropertyValue("--m-kb")).toBe("34px");
+    expect(list().scrollTop).toBe(1902);
+    keyboard!({ height: 0, phase: "will", duration: 0.38, at: Date.now(), lift: 0 });
+    expect(list().scrollTop).toBe(1902);
+    keyboard!({ height: 0, phase: "did", lift: 0 });
+    expect(shell.style.getPropertyValue("--m-lift")).toBe("0px");
+    expect(shell.style.getPropertyValue("--m-kb")).toBe("0px");
+    expect(list().scrollTop).toBe(1600);
+  });
+
+  it("leaves a field on the page to the page's own ride", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    keyboard!({ height: 336, phase: "will", lift: 302 });
+    keyboard!({ height: 0, phase: "did", lift: 0 });
+    keyboard!({ height: 336, phase: "will", duration: 0.38, at: Date.now() });
+    expect(shell.dataset.kbMoving).toBe("");
+  });
+});
+
 describe("leaving a chat", () => {
   it("puts away the keyboard of the native composer and of a field on the page", () => {
     const blur = vi.fn();

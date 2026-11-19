@@ -3,7 +3,7 @@ import { createElement, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyGlassGlyphs, buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, restingFrame, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
+import { applyGlassGlyphs, buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, restingFrame, transcriptRoom, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
 
@@ -446,5 +446,23 @@ describe("the header's symbols for the page", () => {
     expect(applyGlassGlyphs(html, {})).toBe(false);
     expect(applyGlassGlyphs(html, { right: { data: "javascript:alert(1)", w: 24, h: 17 } })).toBe(false);
     expect(html.dataset.nativeGlyphs).toBeUndefined();
+  });
+});
+
+describe("the transcript's room under its last row", () => {
+  it("is the empty space below a short chat and none under a long one", () => {
+    const chat = document.createElement("div");
+    const list = document.createElement("div");
+    list.className = "glass-scroller";
+    chat.append(list);
+    const size = (scroll: number) => {
+      Object.defineProperty(list, "clientHeight", { configurable: true, get: () => 700 });
+      Object.defineProperty(list, "scrollHeight", { configurable: true, get: () => scroll });
+    };
+    size(420.4);
+    expect(transcriptRoom(chat)).toBe(280);
+    size(2400);
+    expect(transcriptRoom(chat)).toBe(0);
+    expect(transcriptRoom(null)).toBe(0);
   });
 });

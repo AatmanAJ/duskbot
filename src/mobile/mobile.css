@@ -12,6 +12,7 @@
   --m-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
   --m-kb: 0px;
   --m-kb-shift: 0px;
+  --m-lift: 0px;
   --m-kb-dur: .25s;
   --m-kb-ease: cubic-bezier(.32, .72, 0, 1);
   height: 100%;
@@ -68,6 +69,8 @@
   will-change: transform;
 }
 .dusk-mobile [data-mobile-chat] { padding-bottom: max(var(--m-safe-bottom), var(--m-kb)); }
+/* the native side lifts the whole page with the composer's keyboard: the transcript starts that much lower to stay in reach */
+.dusk-mobile [data-mobile-chat] .glass-scroller-content { padding-top: calc(var(--glass-top, 0px) + var(--m-lift)); }
 
 /* the shared chat header row keeps its height as the spacer under the shell's floating nav */
 .dusk-mobile [data-mobile-chat] :is([data-chathead-row], [data-roomhead-row]) { visibility: hidden; }
