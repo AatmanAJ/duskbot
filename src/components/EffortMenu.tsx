@@ -64,7 +64,7 @@ export function EffortMenu({ levels, current, onPick, onReset }: EffortMenuProps
   };
 
   return (
-    <span ref={root} data-simple-thinking className="absolute right-1 top-1/2 -translate-y-1/2">
+    <span ref={root} data-simple-thinking className="absolute right-1 top-1/2 z-10 -translate-y-1/2">
       <button
         ref={trigger}
         type="button"
