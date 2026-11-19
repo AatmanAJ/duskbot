@@ -91,12 +91,14 @@ describe("composer buttons", () => {
     expect(buttonKind(button({ "data-composer-stop": "beside" }))).toBe("stop");
     expect(buttonKind(button({ "data-composer-discard": "" }))).toBe("discard");
     expect(buttonKind(button({ "aria-haspopup": "menu" }, "data-composer-follow-up"))).toBe("followUp");
-    expect(buttonKind(button({ "aria-label": "Call" }))).toBeNull();
+    expect(buttonKind(button({ "data-call-button": "composer" })), "the call keeps the composer native while the field is empty").toBe("call");
+    expect(buttonKind(button({ "data-call-button": "composer", "data-call-active": "" }))).toBe("hangUp");
+    expect(buttonKind(button({ "aria-label": "Help" }))).toBeNull();
   });
 
   it("leaves the composer to the page when one control has no twin", () => {
     const actions = document.createElement("div");
-    actions.append(button({ "data-voice-mic": "start" }), button({ "aria-label": "Call" }));
+    actions.append(button({ "data-voice-mic": "start" }), button({ "aria-label": "Help" }));
     expect(composerButtons(actions)).toBeNull();
     actions.lastElementChild!.remove();
     actions.append(button({ "data-composer-send": "", disabled: "" }));

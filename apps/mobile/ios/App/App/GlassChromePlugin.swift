@@ -723,8 +723,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
                 return last
             }()
             // the mic beside turns into discard as listening starts, and back as it ends
+            // the mic stays through the call turning into Send as well, where the round button itself is made anew
             let besideKept: UIButton? = {
-                guard keep != nil, oldKinds.count == 2, kinds.count == 2, Self.besideKinds.contains(oldKinds[0]),
+                guard oldKinds.count == 2, kinds.count == 2, Self.besideKinds.contains(oldKinds[0]),
                       Self.besideKinds.contains(kinds[0]) else { return nil }
                 return actions.first
             }()
@@ -756,7 +757,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             let had = Set(oldKinds)
             for (index, (button, kind)) in zip(actions, kinds).enumerated() where button !== keep && button !== besideKept {
                 if Self.besideKinds.contains(kind) && index < kinds.count - 1 && !hadBeside && keep != nil { ComposerMotion.micIn(button) }
-                else if (kind == "send" || kind == "micSend") && !had.contains(kind) { ComposerMotion.popIn(button) }
+                else if (kind == "send" || kind == "micSend" || kind == "call") && !had.contains(kind) { ComposerMotion.popIn(button) }
             }
         }
         for (button, data) in zip(actions, buttons) {
@@ -777,6 +778,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         case "followUp": (name, size, weight) = ("chevron.up", 15, .semibold)
         case "discard": (name, size, weight) = ("xmark", 15, .semibold)
         case "keep": (name, size, weight) = ("checkmark", 15, .bold)
+        // the call is the mic's quiet twin beside it: the same disc, glyph size and weight
+        case "call": (name, size, weight) = ("waveform", 17, .semibold)
+        case "hangUp": (name, size, weight) = ("phone.down.fill", 15, .semibold)
         default: (name, size, weight) = ("circle", 15, .semibold)
         }
         return (name, UIImage.SymbolConfiguration(pointSize: size, weight: weight))
@@ -804,7 +808,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         config.preferredSymbolConfigurationForImage = symbol.configuration
         config.image = UIImage(systemName: symbol.name)
         config.symbolContentTransition = UISymbolContentTransition(UIAccessibility.isReduceMotionEnabled ? .automatic : .replace)
-        config.baseForegroundColor = kind == "mic" ? .secondaryLabel : .label
+        config.baseForegroundColor = kind == "mic" || kind == "call" ? .secondaryLabel : kind == "hangUp" ? .systemRed : .label
         button.configuration = config
     }
 
