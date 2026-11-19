@@ -227,15 +227,13 @@ export function claudeCliUpdate(version: string | null, cli: string): ProviderSn
   const missing = (Object.keys(CLAUDE_FLAG_FLOORS) as (keyof typeof CLAUDE_FLAG_FLOORS)[])
     .filter((flag) => !claudeCliSupports(parsed, flag));
   const effects = [
-    ...(missing.includes("--autocompact") ? ["no compaction window picked by dusk bot"] : []),
-    ...(missing.includes("--setting-sources") ? ["bots still see this machine's own Claude Code setup"] : []),
-    ...(missing.includes("--system-prompt-snapshot") ? ["resumed turns cannot refresh stale system prompts"] : []),
+    ...(missing.includes("--autocompact") ? ["long chats are shortened later than they should be"] : []),
+    ...(missing.includes("--setting-sources") ? ["bots also follow this computer's own Claude Code setup"] : []),
+    ...(missing.includes("--system-prompt-snapshot") ? ["a bot can miss changes to its instructions in an ongoing chat"] : []),
   ];
   return {
-    title: "Update Claude Code for context controls",
-    message:
-      `Claude Code ${parsed.join(".")} predates ${floor}, so bots run without ${missing.join(", ")}: ` +
-      `${effects.join("; ")}. Update it, then refresh Engines.`,
+    title: "Update Claude Code",
+    message: `Claude Code ${parsed.join(".")} is older than ${floor}, so ${new Intl.ListFormat("en", { type: "conjunction" }).format(effects)}. Update it to fix this.`,
     command: cli === "claude" ? "claude update" : `${cli} update`,
   };
 }

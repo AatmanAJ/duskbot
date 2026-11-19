@@ -2119,7 +2119,7 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(await instance.snapshot()).toMatchObject({
       state: "available",
       version: "2.1.100 (Claude Code)",
-      update: { title: "Update Claude Code for context controls", command: expect.stringContaining("update") },
+      update: { title: "Update Claude Code", command: expect.stringContaining("update") },
     });
   });
 
@@ -2225,15 +2225,13 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(claudeCliUpdate("2.1.267 (Claude Code)", "claude")).toBeUndefined();
     expect(claudeCliUpdate(null, "claude")).toBeUndefined();
     const olderSnapshot = claudeCliUpdate("2.1.232 (Claude Code)", "claude");
-    expect(olderSnapshot?.message).toContain("--system-prompt-snapshot");
-    expect(olderSnapshot?.message).toContain("resumed turns cannot refresh stale system prompts");
-    expect(olderSnapshot?.message).not.toContain("coordinated");
-    expect(olderSnapshot?.message).not.toContain("no compaction window");
+    expect(olderSnapshot?.message).toBe("Claude Code 2.1.232 is older than 2.1.267, so a bot can miss changes to its instructions in an ongoing chat. Update it to fix this.");
+    expect(olderSnapshot?.message).not.toMatch(/--|Engines/);
     expect(claudeCliUpdate("2.1.121 (Claude Code)", "claude")).toMatchObject({
       command: "claude update",
-      message: expect.stringContaining("--autocompact"),
+      message: expect.stringContaining("long chats are shortened later than they should be"),
     });
-    expect(claudeCliUpdate("1.0.100 (Claude Code)", "/opt/bin/claude")?.message).toContain("this machine's own Claude Code setup");
+    expect(claudeCliUpdate("1.0.100 (Claude Code)", "/opt/bin/claude")?.message).toContain("this computer's own Claude Code setup");
     expect(claudeCliUpdate("1.0.100 (Claude Code)", "/opt/bin/claude")?.command).toBe("/opt/bin/claude update");
   });
 
