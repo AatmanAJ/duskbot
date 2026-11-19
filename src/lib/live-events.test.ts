@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  LIVE_EVENTS_KICK_AFTER_MS,
+  LIVE_EVENTS_OPEN_MS,
   LIVE_EVENTS_RESUME_SILENT_MS,
   LIVE_EVENTS_STALE_MS,
   isLivePing,
@@ -437,6 +439,52 @@ describe("a phone app back from the background", () => {
     test.setVisible(true);
     test.documentTarget.emit("visibilitychange");
     expect(test.sources).toHaveLength(1);
+    stop();
+  });
+});
+
+describe("a dial left pending with no answer, as an iOS web view does after a resume or a network change", () => {
+  it("is dialed again when its hello does not come, each wait twice as long, and the hello ends it", () => {
+    const test = harness();
+    const onError = vi.fn();
+    const stop = openLiveEvents({ onFrame: vi.fn(), onError, onSnapshotRequired: async () => true, retryMinMs: 100, retryMaxMs: 100 }, test.platform);
+    vi.advanceTimersByTime(LIVE_EVENTS_OPEN_MS - 1);
+    expect(test.sources).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(test.sources[0].close).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(100);
+    expect(test.sources).toHaveLength(2);
+    vi.advanceTimersByTime(2 * LIVE_EVENTS_OPEN_MS - 1);
+    expect(test.sources).toHaveLength(2);
+    vi.advanceTimersByTime(1 + 100);
+    expect(test.sources).toHaveLength(3);
+    test.sources[2].open();
+    test.sources[2].message({ kind: "hello", cursor: "c:1", resumed: true });
+    vi.advanceTimersByTime(LIVE_EVENTS_STALE_MS - 1);
+    expect(test.sources).toHaveLength(3);
+    stop();
+  });
+
+  it("is dialed again at once when the place answers something else, once the dial has had a moment", () => {
+    const test = harness();
+    const onError = vi.fn();
+    const stop = openLiveEvents({ onFrame: vi.fn(), onError, onSnapshotRequired: async () => true }, test.platform);
+    test.sources[0].open();
+    test.sources[0].message({ kind: "hello", cursor: "c:1", resumed: true });
+    retryLiveEventsNow({ redial: true });
+    expect(test.sources).toHaveLength(2);
+    test.setNow(LIVE_EVENTS_KICK_AFTER_MS - 1);
+    retryLiveEventsNow();
+    expect(test.sources).toHaveLength(2);
+    test.setNow(LIVE_EVENTS_KICK_AFTER_MS);
+    retryLiveEventsNow();
+    expect(test.sources).toHaveLength(3);
+    expect(test.sources[1].close).toHaveBeenCalledOnce();
+    test.sources[2].message({ kind: "hello", cursor: "c:1", resumed: true });
+    test.setNow(10 * LIVE_EVENTS_KICK_AFTER_MS);
+    retryLiveEventsNow();
+    expect(test.sources).toHaveLength(3);
     stop();
   });
 });

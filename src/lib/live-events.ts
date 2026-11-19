@@ -11,6 +11,12 @@ export const LIVE_EVENTS_RETRY_MIN_MS = 500;
 export const LIVE_EVENTS_RETRY_MAX_MS = 10_000;
 /** the server pings every 15s: a page hidden this long that heard nothing meanwhile holds a socket the OS suspended */
 export const LIVE_EVENTS_RESUME_SILENT_MS = 15_000;
+/** The server writes its hello as the stream opens. A WKWebView fetch made just after a resume or a network change can
+ * stay pending with no answer and no error, so a dial that has not heard its hello by then is dialed again, each wait
+ * twice the one before, up to the stale limit. */
+export const LIVE_EVENTS_OPEN_MS = 8_000;
+/** a dial this old that has not heard its hello is dialed again when the place is seen answering other requests */
+export const LIVE_EVENTS_KICK_AFTER_MS = 3_000;
 
 export interface LiveFrame {
   kind: string;
@@ -243,6 +249,10 @@ export function openLiveEvents(
   let sourceScreens = screensWanted();
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let retryAttempt = 0;
+  let helloTimer: ReturnType<typeof setTimeout> | null = null;
+  let unansweredDials = 0;
+  let dialedAt = 0;
+  let heardHello = false;
   let cursor: string | null = handlers.since ?? null;
   let lastHeardAt = platform.now();
   let hiddenAt: number | null = platform.isVisible() ? null : platform.now();
@@ -260,9 +270,16 @@ export function openLiveEvents(
     retryTimer = null;
   };
 
+  const clearHelloWait = () => {
+    if (helloTimer === null) return;
+    clearTimeout(helloTimer);
+    helloTimer = null;
+  };
+
   const closeSource = () => {
     const current = source;
     source = null;
+    clearHelloWait();
     if (!current) return;
     if (pendingSnapshot?.source === current) {
       snapshotGeneration += 1;
@@ -308,7 +325,13 @@ export function openLiveEvents(
     }
 
     source = current;
-    lastHeardAt = platform.now();
+    lastHeardAt = dialedAt = platform.now();
+    heardHello = false;
+    helloTimer = setTimeout(() => {
+      helloTimer = null;
+      unansweredDials += 1;
+      connectionLost(current);
+    }, Math.min(staleMs, LIVE_EVENTS_OPEN_MS * 2 ** Math.min(unansweredDials, 4)));
     current.onopen = () => {
       if (stopped || source !== current) return;
       lastHeardAt = platform.now();
@@ -321,6 +344,11 @@ export function openLiveEvents(
       if (stopped || source !== current) return;
       lastHeardAt = platform.now();
       lastLiveAt = Date.now();
+      if (!heardHello) {
+        heardHello = true;
+        unansweredDials = 0;
+        clearHelloWait();
+      }
 
       const frame = parseLiveFrame(event.data);
       if (!frame) return;
@@ -429,7 +457,8 @@ export function openLiveEvents(
     if (stopped || !platform.isOnline() || cloudAsleep()) return;
     retryAttempt = 0;
     if (redial) reconnectNow(false);
-    else if (!source || shouldReconnectLiveEvents(lastHeardAt, platform.now(), staleMs)) reconnectNow(source !== null);
+    else if (!source || shouldReconnectLiveEvents(lastHeardAt, platform.now(), staleMs)
+      || (!heardHello && platform.now() - dialedAt >= LIVE_EVENTS_KICK_AFTER_MS)) reconnectNow(source !== null);
   };
   retryListeners.add(onRetryNow);
   connect();
