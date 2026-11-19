@@ -1114,7 +1114,7 @@ export function GroupView({ group: room }: { group: Group }) {
             slot={statusSlot}
             landed={Boolean(landed.reply)}
           />
-          <TranscriptCardSlot key={group.threadId}>{Boolean(trailing?.failures.length || trailing?.notices.length || setupPending || group.dm) && <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />}</TranscriptCardSlot>
+          <TranscriptCardSlot key={`card:${group.threadId}`}>{Boolean(trailing?.failures.length || trailing?.notices.length || setupPending || group.dm) && <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />}</TranscriptCardSlot>
         </div>
         </div>
         )}
