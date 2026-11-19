@@ -86,8 +86,8 @@ export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<
   }, [platform, rootRef]);
 }
 
-/** Each keyboard step with its page clock, in the console, when localStorage has dusk.kbtrace. */
-function trace(step: string, detail: Record<string, number>): void {
+/** Each keyboard, composer and send step with its page clock, in the console, when localStorage has dusk.kbtrace. */
+export function kbTrace(step: string, detail: Record<string, number | string>): void {
   try {
     if (!localStorage.getItem("dusk.kbtrace")) return;
   } catch {
@@ -165,7 +165,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
      * chat's empty space), so its layout never moves anything on screen and nothing scrolls. */
     const liftedInset = (height: number, lift: number) => {
       const inset = Math.max(0, height - lift);
-      trace("page inset", { height, lift, inset });
+      kbTrace("page inset", { height, lift, inset });
       delete root.dataset.kbMoving;
       if (height > 0) root.dataset.keyboard = "open";
       else delete root.dataset.keyboard;
@@ -190,7 +190,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       const stop = platform.onKeyboard((frame) => {
         const { height, phase } = frame;
         if (frame.lift !== undefined) {
-          trace(phase === "did" ? "native settled" : "native will", { height, lift: frame.lift });
+          kbTrace(phase === "did" ? "native settled" : "native will", { height, lift: frame.lift });
           nativeRide = true;
           window.clearTimeout(settleTimer);
           // on the way down the covered part is under the keyboard still: given back at once, as it starts to go

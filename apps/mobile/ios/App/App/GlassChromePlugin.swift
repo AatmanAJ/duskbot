@@ -33,6 +33,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
             // outlives the page, so nothing that page showed (header, composer, Home's bar, focus, text) stays up
             withChrome { chrome in
                 chrome.blur()
+                chrome.dropStrandedLift("reload")
                 chrome.stopSlide()
                 chrome.apply([:])
                 chrome.pageGone()
@@ -336,6 +337,8 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// the empty space under the transcript's last row, as the page last measured it at rest
     private var transcriptRoom: CGFloat = 0
     private var keyboardMove = 0
+    /// a keyboard move came while the host had no window, so the composer and lift still stand where it found them
+    private var keyboardMissed = false
     private var fieldEditing = false
     /// the page's status bar band, drawn here while the page is lifted out from under it
     private let topBand = GradientView()
@@ -415,6 +418,8 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
         NotificationCenter.default.addObserver(self, selector: #selector(contentSizeChanged), name: UIContentSizeCategory.didChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardDidHide), name: UIResponder.keyboardDidHideNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(becameActive), name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
     /// the page's own frame at rest, nearly the full width while typing
@@ -433,7 +438,8 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// clock for the keyboard, composer and transcript, and no page layout until the keyboard has stopped.
     @objc private func keyboardWillChangeFrame(_ note: Notification) {
         guard let host, let info = note.userInfo, let end = (info[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
-        guard let window = host.window else { return }
+        guard let window = host.window else { keyboardMissed = true; return }
+        keyboardMissed = false
         let local = host.convert(end, from: window.screen.coordinateSpace)
         let overlap = max(0, host.bounds.maxY - local.minY)
         guard overlap != keyboardOverlap else { return }
@@ -471,6 +477,38 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             return
         }
         UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction], animations: change) { _ in settled() }
+    }
+
+    /// UIKit skips the frame change while the host has no window (a full screen camera or picker over the app): once the
+    /// keyboard is gone, the composer and the page come down from wherever that left them.
+    @objc private func keyboardDidHide() {
+        guard keyboardMissed else { return }
+        settleKeyboardGone("did hide")
+    }
+
+    @objc private func becameActive() { dropStrandedLift("active") }
+
+    /// The page is lifted for a keyboard the field no longer has (back from the background, a page reload): it comes
+    /// down at once.
+    func dropStrandedLift(_ why: String) {
+        guard lift > 0, !text.isFirstResponder, !fieldEditing else { return }
+        settleKeyboardGone(why)
+    }
+
+    private func settleKeyboardGone(_ why: String) {
+        KeyboardTrace.log("gone (\(why))", ["overlap": keyboardOverlap, "lift": lift])
+        keyboardMissed = false
+        keyboardMove += 1
+        keyboardOverlap = 0
+        bottom.constant = restingBottom()
+        if restingFrame.width > 0 { applyComposerWidth() }
+        UIView.performWithoutAnimation {
+            host?.layoutIfNeeded()
+            layoutComposer(animated: false)
+            setLift(0)
+        }
+        emit(["type": "keyboard", "height": 0, "duration": 0, "at": Date().timeIntervalSince1970 * 1000, "lift": 0])
+        keyboardSettled(height: 0, lift: 0)
     }
 
     private var page: PageWebView? { host?.subviews.lazy.compactMap { $0 as? PageWebView }.first }
@@ -666,7 +704,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     private func applyComposer(_ data: [String: Any]?) {
         guard let data, let frame = Frame(data["frame"]), host != nil else {
-            if text.isFirstResponder { text.resignFirstResponder() }
+            if text.isFirstResponder {
+                KeyboardTrace.log("resign (page composer)", [:])
+                text.resignFirstResponder()
+            }
             show(composer, false, &composerShown)
             return
         }
@@ -815,7 +856,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     private func configure(_ button: UIButton, kind: String, index: Int) {
         button.enumerateEventHandlers { action, _, event, _ in if let action { button.removeAction(action, for: event) } }
-        button.addAction(UIAction { [weak self] _ in self?.emit(["type": "button", "index": index, "kind": kind]) }, for: .touchUpInside)
+        button.addAction(UIAction { [weak self] _ in
+            KeyboardTrace.log("button \(kind)", ["index": CGFloat(index)])
+            self?.emit(["type": "button", "index": index, "kind": kind])
+        }, for: .touchUpInside)
         if button is SlotButton { return }
         var config: UIButton.Configuration = kind == "followUp" ? .plain() : .glass()
         let symbol = Self.symbol(kind)
@@ -829,7 +873,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     }
 
     private func show(_ view: UIView, _ visible: Bool, _ shown: inout Bool) {
-        guard visible != shown else { return }
+        guard visible != shown else {
+            if visible { reassert(view) }
+            return
+        }
         shown = visible
         if instant {
             view.layer.removeAllAnimations()
@@ -843,6 +890,22 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         } completion: { _ in
             if !visible && view.alpha == 0 { view.isHidden = true }
         }
+    }
+
+    /// The page says this view shows: whatever hid it since (an animation cut short, a view put over it) is undone.
+    private func reassert(_ view: UIView) {
+        guard let host else { return }
+        let lost = view.superview !== host || view.isHidden || (view.alpha < 1 && view.layer.animationKeys()?.isEmpty != false)
+        guard lost else { return }
+        KeyboardTrace.log("reassert", ["hidden": view.isHidden ? 1 : 0, "alpha": view.alpha, "attached": view.superview === host ? 1 : 0])
+        if view.superview !== host {
+            host.addSubview(view)
+            if view === composer { NSLayoutConstraint.activate([leading, width, height, bottom]) }
+        }
+        view.layer.removeAllAnimations()
+        view.isHidden = false
+        view.alpha = 1
+        keepOnTop()
     }
 
     // MARK: layout
@@ -922,6 +985,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     }
 
     func setText(_ value: String, seq: Int) {
+        KeyboardTrace.log("setText", ["seq": CGFloat(seq), "length": CGFloat(value.count), "stale": seq > textSeq ? 0 : 1])
         guard seq > textSeq else { return }
         textSeq = seq
         if text.text != value {

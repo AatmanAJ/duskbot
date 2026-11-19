@@ -3,7 +3,7 @@ import { createElement, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyGlassGlyphs, buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, restingFrame, transcriptRoom, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
+import { applyGlassGlyphs, buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, REASSERT_MS, restingFrame, transcriptRoom, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
 
@@ -425,6 +425,45 @@ describe("useNativeGlass", () => {
     ($("field") as HTMLTextAreaElement).focus();
     expect(glass.focus).toHaveBeenCalled();
   });
+
+  it("hands the keyboard back to the native field when the page's composer gives way to it again", () => {
+    const { glass, $ } = mount();
+    runFrame();
+    const strip = document.createElement("div");
+    place(strip, 10, 700, 370, 40);
+    $("field").closest("[data-composer-row]")!.parentElement!.prepend(strip);
+    for (let i = 0; i < 15; i += 1) runFrame();
+    expect(glass.update.mock.lastCall![0].composer).toBeNull();
+    ($("field") as HTMLTextAreaElement).focus();
+    expect(glass.focus).not.toHaveBeenCalled();
+    strip.remove();
+    for (let i = 0; i < 15; i += 1) runFrame();
+    expect(glass.update.mock.lastCall![0].composer).not.toBeNull();
+    expect(glass.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells the native side its chrome again every second, so a composer it lost comes back", () => {
+    let clock = 5000;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const { glass } = mount();
+    for (let i = 0; i < 31; i += 1) runFrame();
+    const sent = glass.update.mock.calls.length;
+    for (let i = 0; i < 15; i += 1) runFrame();
+    expect(glass.update).toHaveBeenCalledTimes(sent);
+    clock += REASSERT_MS + 1;
+    for (let i = 0; i < 15; i += 1) runFrame();
+    expect(glass.update).toHaveBeenCalledTimes(sent + 1);
+    expect(glass.update.mock.lastCall![0].composer).not.toBeNull();
+  });
+
+  it("tells the native side everything again when the app comes back to the front", () => {
+    const { glass } = mount();
+    for (let i = 0; i < 31; i += 1) runFrame();
+    const sent = glass.update.mock.calls.length;
+    document.dispatchEvent(new Event("visibilitychange"));
+    runFrame();
+    expect(glass.update).toHaveBeenCalledTimes(sent + 1);
+  });
 });
 
 describe("the header's symbols for the page", () => {
@@ -455,16 +494,26 @@ describe("the transcript's room under its last row", () => {
   it("is the empty space below a short chat and none under a long one", () => {
     const chat = document.createElement("div");
     const list = document.createElement("div");
+    const content = document.createElement("div");
+    const jump = document.createElement("div");
+    jump.style.position = "absolute";
     list.className = "glass-scroller";
+    list.append(content, jump);
     chat.append(list);
-    const size = (scroll: number) => {
+    document.body.append(chat);
+    place(list, 0, 54, 390, 700);
+    place(jump, 0, 700, 390, 40);
+    const size = (filled: number) => {
+      place(content, 0, 54, 390, filled);
       Object.defineProperty(list, "clientHeight", { configurable: true, get: () => 700 });
-      Object.defineProperty(list, "scrollHeight", { configurable: true, get: () => scroll });
+      // a browser never reports less than the box itself, however short the content
+      Object.defineProperty(list, "scrollHeight", { configurable: true, get: () => Math.max(700, filled) });
     };
     size(420.4);
     expect(transcriptRoom(chat)).toBe(280);
     size(2400);
     expect(transcriptRoom(chat)).toBe(0);
     expect(transcriptRoom(null)).toBe(0);
+    chat.remove();
   });
 });
