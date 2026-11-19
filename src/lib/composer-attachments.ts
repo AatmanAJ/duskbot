@@ -491,6 +491,7 @@ export type TranscriptFileAttachment = {
   path: string;
   name: string;
   private?: boolean;
+  bytes?: number;
 };
 
 export type TranscriptImageAttachment = {

@@ -1,4 +1,8 @@
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { RESUME_CAUSE, RESUME_OPENS } from "../limit-resume.ts";
 import { carriedSteps, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
 
 describe("chatLimitFacts", () => {
@@ -32,14 +36,36 @@ describe("carriedSteps", () => {
 });
 
 describe("createCarriedWork", () => {
-  it("hands a conversation's steps to its next turn once, and drops them after a week and a day", () => {
+  const resume = `${RESUME_OPENS}OpenRouter${RESUME_CAUSE} Read the conversation.]`;
+  const step = [{ role: "assistant" as const, content: null }];
+  it("hands the steps only to the limit hold's resume, once, and drops them after a week and a day", () => {
     let now = 0;
-    const work = createCarriedWork(() => now);
-    work.keep("t", [{ role: "assistant", content: null }]);
-    expect(work.take("t")).toHaveLength(1);
-    expect(work.take("t")).toEqual([]);
-    work.keep("t", [{ role: "assistant", content: null }]);
+    const work = createCarriedWork({ now: () => now });
+    work.keep("t", step);
+    expect(work.take("t", resume)).toHaveLength(1);
+    expect(work.take("t", resume)).toEqual([]);
+    work.keep("t", step);
     now = 9 * 24 * 60 * 60_000;
-    expect(work.take("t")).toEqual([]);
+    expect(work.take("t", resume)).toEqual([]);
+  });
+  it("clears them on any other turn there, so they never reach a later, unrelated one", () => {
+    const work = createCarriedWork();
+    work.keep("t", step);
+    expect(work.take("t", "thanks, the backup finished it")).toEqual([]);
+    expect(work.take("t", resume)).toEqual([]);
+    expect(work.take("other", resume)).toEqual([]);
+  });
+  it("keeps them across a restart in its file, which holds nothing once they are used", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dusk-carry-"));
+    try {
+      const file = join(dir, "limit-carried-steps.json");
+      createCarriedWork({ file }).keep("t", step);
+      const again = createCarriedWork({ file });
+      expect(again.take("t", resume)).toEqual(step);
+      expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({});
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -1,6 +1,7 @@
 import { ModalLayer } from "./ui/ModalLayer";
 import { useEffect, useId, useRef, useState, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { DUSK_BODY_IDS, type DuskBodyId } from "../../shared/body-migration";
+import { takeImportName } from "../../shared/import-name";
 import { MAUS_COLOR_LABEL, PICKER_COLORS, colorSwatch, rowsOfFive, type MausColor } from "@/lib/mascot";
 import { useStore } from "@/state/store";
 import { prefetchBotDefaults } from "@/lib/bot-defaults-prefetch";
@@ -42,6 +43,7 @@ export function CreateBotDialog() {
 function CreateBotForm({ section, onClose }: { section?: string; onClose: () => void }) {
   const { state, dispatch } = useStore();
   const [name, setName] = useState("");
+  const sameName = state.bots.find((bot) => bot.name.trim().toLowerCase() === name.trim().toLowerCase() && name.trim())?.name;
   // the dialog opens on a shape and colour of its own choosing, a new one each time
   const [body, setBody] = useState<DuskBodyId>(() => pick(DUSK_BODY_IDS));
   const [color, setColor] = useState<MausColor>(() => pick(PICKER_COLORS));
@@ -153,6 +155,7 @@ function CreateBotForm({ section, onClose }: { section?: string; onClose: () => 
               onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); create(); } }}
               className="my-1 h-9 w-full rounded-[10px] border border-transparent bg-transparent px-2.5 py-2 text-center text-[13px] tracking-[0.195px] text-ink outline-none placeholder:text-ink/56 focus:border-transparent!"
             />
+            {sameName && <p role="status" data-create-bot-same-name className="-mt-2 mb-0 text-center text-[12px] leading-4 text-ink-secondary">{t("createBot.sameName", { name: sameName, next: takeImportName(name, new Set(state.bots.map((bot) => bot.name.toLowerCase())), 80) })}</p>}
             <div className="flex flex-col gap-3">
               <div role="group" aria-label={t("botPanel.avatar.shapes")} className="flex flex-col gap-2 py-1.5" onPointerLeave={rest} onBlur={rest}>
                 {SHAPES.map((row) => (

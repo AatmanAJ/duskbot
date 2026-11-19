@@ -152,9 +152,10 @@ export function snapshotPlanText(plan: CloudPlanSnapshot | null): string | null 
 }
 
 /** The person's face in the sidebar: their photo or drawn head; initials only for a computer's name, an icon for nobody. */
-function ProfileFace({ face, initials, size, fallback, fontSize, className }: { face: PersonFace | null; initials: string; size: number; fallback?: ReactNode; fontSize?: number; className?: string }) {
+export function ProfileFace({ face, initials, size, fallback, fontSize, className }: { face: PersonFace | null; initials: string; size: number; fallback?: ReactNode; fontSize?: number; className?: string }) {
   if (face) return <UserFace account={face} size={size} className="inset-ring inset-ring-ink/[0.08]" />;
-  return <InitialsAvatar initials={initials} size={size} fallback={fallback} fontSize={fontSize} className={className} />;
+  const nameless = initials === "?" ? <UserRound size={Math.round(size * 0.5)} strokeWidth={1.75} aria-hidden /> : undefined;
+  return <InitialsAvatar initials={initials} size={size} fallback={fallback ?? nameless} fontSize={fontSize} className={className} />;
 }
 
 export function profileInitials(profile?: { name?: string; email?: string }): string {
@@ -740,10 +741,10 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
         renderTrigger={({ open }) => simple ? (<>
           <span
             ref={triggerRef}
-            data-sidebar-account=""
-            className={cn("relative flex items-center justify-center rounded-full", rail ? "size-8" : "size-9", !named && (open ? "bg-ink/[0.06]" : "hover:bg-ink/[0.06]"))}
+            data-sidebar-account="" data-morph="account"
+            className={cn("relative flex size-10 items-center justify-center rounded-full", !named && (open ? "bg-ink/[0.06]" : "hover:bg-ink/[0.06]"))}
           >
-            <ProfileFace face={computer ? null : face} initials={initials} size={rail ? (face && !computer ? 28 : 32) : face && !computer ? 32 : 36} fallback={nameless} fontSize={14} className="bg-composer leading-[14px] tracking-[-0.35px] text-ink-secondary inset-ring inset-ring-ink/[0.08] group-hover/acct:bg-[color-mix(in_srgb,var(--color-ink)_5%,var(--color-composer))] group-aria-expanded/acct:bg-[color-mix(in_srgb,var(--color-ink)_7%,var(--color-composer))]" />
+            <ProfileFace face={computer ? null : face} initials={initials} size={face && !computer ? 36 : 40} fallback={nameless} fontSize={14} className="bg-composer leading-[14px] tracking-[-0.35px] text-ink-secondary inset-ring inset-ring-ink/[0.08] group-hover/acct:bg-[color-mix(in_srgb,var(--color-ink)_5%,var(--color-composer))] group-aria-expanded/acct:bg-[color-mix(in_srgb,var(--color-ink)_7%,var(--color-composer))]" />
             {dot && <span aria-hidden data-account-dot={dot} className={cn("absolute -right-0.5 -top-0.5 size-2.5 rounded-full ring-2 ring-panel", DOT_COLOR[dot])} />}
           </span>
           {named && <span aria-hidden="true" data-sidebar-account-name="" className={cn("min-w-0 truncate text-[14px] font-medium leading-5 tracking-[0.01em] transition-[opacity,margin,max-width] ease-[cubic-bezier(.2,0,0,1)] motion-reduce:transition-none",

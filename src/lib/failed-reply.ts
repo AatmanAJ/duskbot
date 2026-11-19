@@ -7,11 +7,13 @@ import { isTechnicalError, plainErrorKind, plainErrorLine, providerSentence } fr
 import { isReceipt } from "@/lib/receipts";
 import type { LocaleKey } from "@/locales";
 import type { InstanceInfo, Message } from "@/state/store";
-import { failedTurnCause, type BrowserBlocker, type FailedReplyReason } from "../../shared/failed-turn";
+import { failedTurnCause, type BrowserBlocker } from "../../shared/failed-turn";
 import { isCancelledTranscriptRow } from "../../shared/client-cancel";
 import { freeFallback } from "../../shared/ai-ranking";
+import { hasRawDetail } from "../../shared/raw-detail";
+import { failurePlan, type FailureKind } from "../../shared/failure-plan";
 
-export type FailedReplyKind = FailedReplyReason | "claude_update" | "place" | "restart_interrupted" | "no_answer" | "blocker" | "other";
+export type FailedReplyKind = FailureKind;
 
 /** A failed turn's row: a reply that never came, not one that came back with a step that failed. */
 export function isFailedReply(message: Message): boolean {
@@ -77,8 +79,10 @@ export function restartAlreadyDid(cause: string): string | null {
   return RESTART_DID.exec(cause)?.[1]?.trim() || null;
 }
 
+
 const SIGNED_OUT_WORDS = /not logged in|logged out|\/login|not signed in|sign in again|authentication required|unauthori[sz]ed|invalid api key|\b401\b/i;
 const USAGE_WORDS = /usage limit|limit reached|hit your [\w' -]{0,30}limit/i;
+const SESSION_LOST_WORDS = /\bNo conversation found with session ID\b/i;
 const CREDIT_WORDS = /out of credits?|payment required|insufficient (?:funds|balance|credits?)/i;
 
 /** What stopped a failed row: the server's own reading when it stored one, its flags and words for an older row.
@@ -104,6 +108,7 @@ function failedKind(tool: NonNullable<Message["tool"]>, engine: InstanceInfo | u
     CREDIT_WORDS.test(cause) ? "credits"
     : tool.limitResetsAt || USAGE_WORDS.test(cause) ? "usage_limit"
     : tool.setup && SIGNED_OUT_WORDS.test(cause) ? "signed_out"
+    : SESSION_LOST_WORDS.test(cause) ? "session_lost"
     : PLAIN_KIND[plainErrorKind(cause) ?? ""] ?? "other");
   // signed in again since: signing in is no longer the fix
   if (kind === "signed_out" && engine?.snapshot?.state === "available" && engine.snapshot.authenticated !== false) kind = "other";
@@ -124,7 +129,7 @@ export function plainFailureWords(cause: string): string | null {
 }
 
 /** Most actionable first: when bots fail for different reasons, the card says the one a person can fix. */
-const PRIORITY: FailedReplyKind[] = ["blocker", "no_ai", "signed_out", "cli_missing", "claude_update", "credits", "usage_limit", "model_not_found", "context", "place",
+const PRIORITY: FailedReplyKind[] = ["blocker", "no_ai", "signed_out", "cli_missing", "claude_update", "credits", "usage_limit", "model_not_found", "context", "session_lost", "place",
   "restart_interrupted", "rate_limit", "overloaded", "provider_down", "timeout", "cli_exit", "bad_request", "no_answer", "other"];
 
 export function mostActionable<T extends { kind: FailedReplyKind }>(items: readonly T[]): T | undefined {
@@ -150,6 +155,7 @@ const DETAIL: Record<Exclude<FailedReplyKind, "signed_out" | "credits" | "claude
   timeout: "failedReply.timeout",
   no_ai: "failedReply.noAi",
   restart_interrupted: "failedReply.restarted",
+  session_lost: "failedReply.sessionLost",
   no_answer: "error.plain.generic",
   other: "error.plain.generic",
 };
@@ -159,10 +165,20 @@ const AI_UNREACHABLE: ReadonlySet<string> = new Set(["error.plain.unreachable", 
 /** The card's one plain line for a kind; place, trial and update failures bring their own words. Any other failure says
  * the server's own cause, as the sidebar does, unless it is technical. */
 export function failedReplyDetail(kind: FailedReplyKind, engineName: string, onServer: boolean, cause = ""): string {
+  // the server's English line for a known reason reads better in the reader's own language
+  const said = cause.trim() === failurePlan(kind).line ? "" : cause;
+  const words = detailWords(kind, engineName, onServer, said);
+  return said && hasRawDetail(words) ? detailWords(kind, engineName, onServer, "") : words;
+}
+
+function detailWords(kind: FailedReplyKind, engineName: string, onServer: boolean, cause: string): string {
   if (kind === "signed_out") return t(onServer ? "failedReply.signedOutServer" : "failedReply.signedOutHere", { engine: engineName });
   if (kind === "credits") return t("failedReply.credits", { engine: engineName });
   if (kind === "claude_update") return t("chat.claudeUpdate.offer");
   if (kind === "place" || kind === "blocker") return t("error.plain.generic");
+  // an engine's own words for a full context are token counts, never what to do next
+  if (kind === "context") return t(ENGINE_DETAIL.context, { engine: engineName });
+  if (kind === "session_lost") return t(DETAIL.session_lost);
   if (hasEngineDetail(kind)) {
     const text = cause.trim();
     if (text && !isTechnicalError(text)) return currentFailureWords(text);

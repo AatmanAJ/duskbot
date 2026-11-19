@@ -1299,6 +1299,10 @@ Environment=DOCKER_HOST=unix://$GATE_SOCK
 Environment=DUSK_PREINSTALL_FREE_BACKUP=1
 EnvironmentFile=-$ETC/engines.env
 ExecStart=$SVC_HOME/.local/bin/duskbot serve --port $PORT --no-pair --label $NAME$public
+# the link stops when the server is stopped, but stays up through a restart (an update, an engine sign-in) and a crash,
+# so the app's tunnel and the phones' links never drop: systemd propagates restarts along PartOf= and PropagatesStopTo=
+# alike, and only a running stop job shows as "stop" in list-jobs
+ExecStopPost=+/bin/sh -c 'systemctl list-jobs --no-legend duskbot.service 2>/dev/null | grep -qw stop && systemctl stop --no-block duskbot-link.service || true'
 Restart=always
 RestartSec=5
 # when memory runs out the kernel takes a bot computer (docker --oom-score-adj 500) long before the server
@@ -1378,7 +1382,6 @@ EOF
 Description=Link for dusk bot
 After=network-online.target duskbot.service
 Wants=network-online.target
-PartOf=duskbot.service
 
 [Service]
 User=$LINK_USER

@@ -1786,16 +1786,28 @@ describe("harness HTTP API", () => {
     }
   });
 
-  it("persists room setup and blocks the first message until it is finished", async () => {
+  it("takes a first message sent before room setup, skipping the setup with its defaults", async () => {
+    const bot = (await api("GET", "/api/bots")).body.bots[0];
+    const group = (await api("POST", "/api/groups", { name: "Talk first", memberIds: [bot.id] })).body.group;
+    try {
+      expect(group).toMatchObject({ setupCompletedAt: null, setupSkippedAt: null });
+      expect((await api("POST", `/api/groups/${group.id}/messages`, { text: "before setup" })).status).toBeLessThan(300);
+      const room = (await api("GET", "/api/bots")).body.groups.find((candidate: { id: string }) => candidate.id === group.id);
+      expect(room).toMatchObject({ setupSkippedAt: expect.any(Number), setupCompletedAt: null });
+      expect(room.messages.some((message: { role: string; text?: string }) => message.role === "user" && message.text === "before setup")).toBe(true);
+      await releaseTurn(bot.id).catch(() => undefined);
+    } finally {
+      await api("DELETE", `/api/groups/${group.id}`);
+    }
+  });
+
+  it("persists room setup", async () => {
     const bot = (await api("GET", "/api/bots")).body.bots[0];
     const created = await api("POST", "/api/groups", { name: "Setup probe", memberIds: [bot.id] });
     expect(created.status).toBe(201);
     const group = created.body.group;
     try {
       expect(group).toMatchObject({ setupCompletedAt: null, setupSkippedAt: null, messages: [] });
-      const blocked = await api("POST", `/api/groups/${group.id}/messages`, { text: "before setup" });
-      expect(blocked.status).toBe(409);
-      expect((await api("GET", "/api/bots")).body.groups.find((candidate: { id: string }) => candidate.id === group.id).messages).toHaveLength(0);
 
       const invalid = await api("PATCH", `/api/groups/${group.id}/setup`, {
         action: "complete",
@@ -3140,8 +3152,8 @@ describe("harness HTTP API", () => {
       writeFileSync(fakeSharedVpsFixture, JSON.stringify({ failure: true }));
       const failed = await api("POST", "/api/team-computers", { requestId, name: "Build machine", acknowledgeCost: true });
       expect(failed.status).toBeGreaterThanOrEqual(400);
-      expect(failed.body.error).toMatch(/fixture refused VPS inspection/);
-      expect(await record()).toMatchObject({ id: requestId, name: "Build machine", section: null, problem: expect.stringMatching(/fixture refused VPS inspection/) });
+      expect(failed.body.error).toMatch(/Docker can.t be reached/);
+      expect(await record()).toMatchObject({ id: requestId, name: "Build machine", section: null, problem: expect.stringMatching(/Docker can.t be reached/) });
       const persisted = JSON.parse(readFileSync(join(home, ".duskbot", "team-computers.json"), "utf8"));
       expect(persisted.computers).toContainEqual(expect.objectContaining({ id: requestId, name: "Build machine", section: null }));
       expect((await api("POST", "/api/team-computers", { requestId, name: "Different machine", acknowledgeCost: true })).status).toBe(409);
@@ -4926,6 +4938,14 @@ describe("harness HTTP API", () => {
     expectStoppedTestServerCleanly(isolatedChild, isolatedStderr);
   }, 30_000);
 
+  it("names a second bot asked for under a taken name with a number, so no two share one", async () => {
+    const first = (await api("POST", "/api/bots", { name: "Twin Probe" })).body.bot;
+    const second = (await api("POST", "/api/bots", { name: "twin probe" })).body.bot;
+    const third = (await api("POST", "/api/bots", { name: "Twin Probe" })).body.bot;
+    expect([first.name, second.name, third.name]).toEqual(["Twin Probe", "twin probe 2", "Twin Probe 3"]);
+    for (const bot of [first, second, third]) await api("DELETE", `/api/bots/${bot.id}`);
+  });
+
   it("exports every visible bot and imports the team without creating a room", async () => {
     const first = (await api("POST", "/api/bots")).body.bot;
     const second = (await api("POST", "/api/bots")).body.bot;
@@ -4970,6 +4990,7 @@ describe("harness HTTP API", () => {
     expect(markdownExport.body.markdown).not.toMatch(/Archived|autoApprove|alwaysAllow|modelSelection|threadId/);
     expect((await api("GET", "/api/bots")).body.groups).toHaveLength(roomsBefore);
     expect((await api("POST", "/api/teams/export", {})).body.team.name).toBe("My dusk bot Team");
+    expect((await api("POST", "/api/teams/export", [])).status).toBe(400);
 
     const stream = await openSse(`${BASE}/api/events`);
     try {
@@ -5428,6 +5449,8 @@ describe("harness HTTP API", () => {
       const bot = (await api("POST", "/api/bots")).body.bot;
       botId = bot.id;
       expect((await api("PATCH", `/api/bots/${bot.id}`, { computer: "cloud" })).status).toBe(200);
+      // a bot's own computer that can't be prepared is worked around; the person's own pin to it is what stops the turn
+      expect((await api("PATCH", `/api/bots/${bot.id}/tasks/${bot.threadId}`, { surface: "cloud" })).status).toBe(200);
       stream = await openSse(`${BASE}/api/events`);
       await stream.until((frame) => frame.kind === "hello");
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "go" })).status).toBe(202);
@@ -5554,8 +5577,9 @@ describe("harness HTTP API", () => {
         messageId,
       })).status).toBe(200);
 
-      // The bot now works on a cloud computer with no Box account connected, so the execution cannot start.
+      // The person pins this chat to a cloud computer with no VPS connected, so the execution cannot start.
       expect((await api("PATCH", `/api/bots/${bot.id}`, { computer: "cloud" })).status).toBe(200);
+      expect((await api("PATCH", `/api/bots/${bot.id}/tasks/${bot.threadId}`, { surface: "cloud" })).status).toBe(200);
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/secret-cards/${messageId}/dismiss`, {
         threadId: bot.threadId,
@@ -6325,7 +6349,8 @@ describe("harness HTTP API", () => {
       expect((await api("PUT", "/api/config", { vps: { sshAlias: "" } })).status).toBe(200);
       const bot = (await api("POST", "/api/bots")).body.bot;
       botId = bot.id;
-      expect((await api("PATCH", `/api/bots/${bot.id}`, { computer: "cloud" })).status).toBe(200);
+      // a routine works on without a computer it can't prepare, so this one fails on the engine's own refusal
+      writeFileSync(fakeClaudeApiError, "API Error: 400 messages.0.content.0.text: invalid request");
       const created = await api("POST", "/api/routines", {
         name: "Cloud check",
         prompt: "look at the cloud desktop",
@@ -6355,6 +6380,7 @@ describe("harness HTTP API", () => {
         "routine-failed",
       ]);
     } finally {
+      rmSync(fakeClaudeApiError, { force: true });
       stream?.close();
       if (routineId) await api("DELETE", `/api/routines/${routineId}`);
       if (botId) await api("DELETE", `/api/bots/${botId}`);
@@ -10169,7 +10195,7 @@ describe("harness HTTP API", () => {
         expect(chatLines.filter((message) => message.automation?.runId === queued.body.run.id && message.automation?.failed)).toHaveLength(1);
         const failedRun = (await api("GET", "/api/routines")).body.runs.find((run: { id: string }) => run.id === queued.body.run.id);
         expect(failedRun).toMatchObject({ routineId, routineName: "Weekday brief", status: "failed" });
-        expect(failedRun.threadId).not.toBe(bot.threadId);
+        expect(failedRun.threadId).toBe(bot.threadId);
 
         expect((await api("POST", `/api/bots/${bot.id}/read`, { threadId: bot.threadId })).status).toBe(200);
         expect((await api("POST", `/api/routine-runs/${queued.body.run.id}/seen`)).status).toBe(200);

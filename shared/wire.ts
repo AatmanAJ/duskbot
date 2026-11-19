@@ -482,7 +482,7 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
    * entries are opened through the message-scoped file route, never by path. */
   attachments?: Array<
     | { kind: "image"; path: string; mime: string; name?: string }
-    | { kind: "file"; path: string; mime: string; name: string }
+    | { kind: "file"; path: string; mime: string; name: string; /** the stored copy's size; older messages have none */ bytes?: number }
     /** `text` is the words the note speaks (secret-redacted when stored): clients show it behind a
      * collapsed transcript, never as message body, and the model's replay folds it back after `text`. */
     | { kind: "audio"; path: string; mime: string; durationMs?: number; text?: string }
@@ -545,8 +545,8 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
     resolvedAt?: number;
     /** error rows: epoch ms when the usage limit that stopped the turn resets. */
     limitResetsAt?: number;
-    /** error rows: the reply came back; only a step the turn ran failed or wasn't allowed. */
-    partial?: boolean;
+    /** error rows: the reply came back; only a step the turn ran failed or wasn't allowed (`owned`: and it says so itself, so no card repeats it). */
+    partial?: boolean; owned?: boolean;
     reason?: import("./failed-turn.ts").FailedReplyReason; blocker?: import("./failed-turn.ts").BrowserBlocker; // error rows: what stopped the reply, when the server could tell
     /** Provider item identity, scoped to the owning turn. */
     itemId?: string;

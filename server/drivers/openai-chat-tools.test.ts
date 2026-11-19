@@ -1325,7 +1325,7 @@ describe("structured tool execution boundaries", () => {
     expect((limited as { limitResetsAt?: number }).limitResetsAt).toBeGreaterThanOrEqual(before + 120_000);
     expect(f.effects()).toHaveLength(1);
     f.recorder.events.length = 0;
-    await f.start({ approvalMode: "full", text: "[dusk bot: the limit has reset. Carry on.]" });
+    await f.start({ approvalMode: "full", text: "[dusk bot: your previous turn here was cut off because Fixture's usage limit was reached. The limit has reset. Carry on.]" });
     expect(await f.completed()).toMatchObject({ ok: true });
     expect(f.effects()).toHaveLength(1);
     const resumed = f.requests[2]!.messages;

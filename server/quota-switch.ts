@@ -2,6 +2,8 @@
 // so a bot's own shell with decline-only service trust can never switch the engine or resend the person's message.
 // A request the job runtime still holds is never sent again: the runtime reruns its root itself.
 import { approvalModeFor, modelSwitchNeedsAsk } from "../shared/approval-mode.ts";
+import { failedTurnCause } from "../shared/failed-turn.ts";
+import { failedReplyReason } from "./failed-reply-reason.ts";
 import { randomUUID } from "node:crypto";
 
 import type { LimitMode, QuotaSwitchCardData } from "../shared/wire.ts";
@@ -80,12 +82,24 @@ export type QuotaAnswer = "answered" | "rejected" | "unavailable";
 export const NOT_NOW = "Not now";
 
 /** A limit that resets on a clock: an engine's window or one model's. Credits and sign-ins wait for the person. */
+const FAILURE_SCAN = 40;
 const RESETS: ReadonlySet<TakeoverScope> = new Set<TakeoverScope>(["engine", "model"]);
 
 const ENDED: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
 
 /** On unless DUSK_QUOTA_SWITCH=0: a limited AI's work carries on with another AI by itself. Off, only the backups
  * Automatic recovery names take over, as before. */
+/** The failed-reply row a turn left after the person's message `afterId`, while nothing newer has answered it. */
+export function turnFailureRow(messages: readonly Message[], afterId: string | undefined): Message | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]!;
+    if (message.id === afterId || message.role === "user" || message.kind === "text") return undefined;
+    const tool = message.kind === "activity" ? message.tool : undefined;
+    if (tool && !tool.ok && !tool.partial && failedTurnCause(tool.name) !== null) return tool.resolvedAt ? undefined : message;
+  }
+  return undefined;
+}
+
 export function quotaSwitchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.DUSK_QUOTA_SWITCH?.trim() !== "0";
 }
@@ -207,6 +221,27 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
     return true;
   };
 
+  /** An engine that quit before it showed or did anything gets the person's message once more, on the same AI, with no
+   * card and no line; a second crash of the same message fails as before. */
+  const retriedCrash = async (bot: BotRecord, threadId: string, internal: boolean, request: QuotaRequest | undefined,
+    stop: { acted?: boolean } | undefined, cause: string | undefined): Promise<boolean> => {
+    if (!enabled() || internal || !stop || stop.acted || !request?.messageId || request.stopped || request.origin?.kind !== "user") return false;
+    if (failedReplyReason(cause ?? "", {}) !== "cli_exit" || rerun.has(request.messageId)) return false;
+    if (heldBy(bot.id, threadId, rootOf(threadId, request)) || openCard(threadId)) return false;
+    const original = resendable(store, threadId, request.messageId);
+    if (!original) return false;
+    rerun.add(request.messageId);
+    const failure = turnFailureRow(store.messagesTail(threadId, FAILURE_SCAN).messages, request.messageId);
+    if (failure) store.patchMessage(threadId, failure.id, { tool: { ...failure.tool!, resolvedAt: Date.now() } });
+    try {
+      await deps.resend(bot.id, threadId, original, original.replyToId ? store.messagesFor(threadId).find((message) => message.id === original.replyToId) : undefined, spokenLineFields(original.via, original.callId));
+      return true;
+    } catch {
+      if (failure) store.patchMessage(threadId, failure.id, { tool: failure.tool! });
+      return false;
+    }
+  };
+
   /** A turn its AI's usage limit refused, or that met its AI signed out: the person's own message carries on with the
    * first AI that can take it, the person hears once for this stretch what carries on meanwhile (a sign-out also in this
    * conversation, where signing in fixes it), and the AI's later turns go there too until the limit resets or it is
@@ -219,6 +254,7 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       const stop = deps.turnStops.read?.(threadId, event.turnId);
       const flags = stop?.flags;
       const cause = deps.turnStops.failureCause(event);
+      if (await retriedCrash(bot, threadId, internal, request, stop, cause)) return null;
       // A tool call's failure names the tool, never the engine's own limit, whatever its words.
       const scope: TakeoverScope | undefined = signedOutStop(event.stopReason, cause) ? "signed-out"
         : flags?.limit ?? (event.stopReason !== "tool_error" && classifyError({ text: cause ?? "" }).reason === "quota" ? "engine"
@@ -249,6 +285,10 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       if (enabled()) {
         const build = { threadId, stale: false };
         building.add(build);
+        // the failure card stays down while a backup takes the turn, and comes back only if none could
+        const failure = backups.length ? turnFailureRow(store.messagesTail(threadId, FAILURE_SCAN).messages, request.messageId) : undefined;
+        if (failure) store.patchMessage(threadId, failure.id, { tool: { ...failure.tool!, resolvedAt: Date.now() } });
+        let carried = false;
         try {
           if (scope === "provider" && request.messageId) {
             rerun.add(request.messageId);
@@ -256,12 +296,14 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
           }
           for (const selection of backups) {
             if (await continueOn(bot.id, threadId, selection, request, build, resetsAt, scope)) {
+              carried = true;
               tell(selection);
               return null;
             }
           }
         } finally {
           building.delete(build);
+          if (failure && !carried) store.patchMessage(threadId, failure.id, { tool: failure.tool! });
         }
       }
       if (RESETS.has(scope) && store.taskByThread(bot.id, threadId)) {

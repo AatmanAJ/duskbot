@@ -1,6 +1,7 @@
 import { offersSignIn } from "@/components/EngineSetup";
 import { t } from "@/lib/i18n";
 import { plainErrorLine } from "@/lib/plain-error";
+import { failedReplyDetail, failedReplyKind } from "@/lib/failed-reply";
 import type { Bot, InstanceInfo, Message } from "@/state/store";
 import { failedTurnCause } from "../../shared/failed-turn";
 import { toolStepLabel } from "@/lib/tool-step-label";
@@ -51,5 +52,7 @@ export function activityPreview(tool: ActivityTool, engine: InstanceInfo | undef
   if (cause !== null && tool.reason === "timeout") return t("failedReply.timeout");
   if (cause === null) return STATUS_MARKER.test(tool.name) ? tool.name.replace(STATUS_MARKER, "") : toolStepLabel(tool);
   const signedOut = signedOutEngine(tool, engine);
-  return signedOut ? t("sidebar.preview.signedOut", { name: signedOut.displayName }) : plainErrorLine(cause) ?? cause;
+  if (signedOut) return t("sidebar.preview.signedOut", { name: signedOut.displayName });
+  if (failedReplyKind(tool, engine, true) === "session_lost") return failedReplyDetail("session_lost", engine?.displayName ?? "", false, cause);
+  return plainErrorLine(cause) ?? cause;
 }

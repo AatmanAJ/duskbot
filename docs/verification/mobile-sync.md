@@ -29,6 +29,20 @@ node --experimental-strip-types scripts/phone-shipped-e2e.ts
 Everything listens on 127.0.0.1. WebRTC direct is not driven (node has no RTCPeerConnection, so the phones stay on the
 relay); `src/mobile/transport/direct.e2e.test.ts` covers it.
 
+## Launch to first content, and a reply heard live
+
+iPhone 1.2's connection code and this tree's, each timed from launch to the chat list against routes that never answer
+(a secure access address, a tailnet name) ahead of the computer's Wi-Fi address; then the live stream asked the way the
+iPhone's web view asks it (a preflight and a read with `Origin: capacitor://localhost`) of desktop 0.2.20's companion
+and of this tree's, with a message sent and its reply waited for on that stream.
+
+```sh
+node --experimental-strip-types scripts/phone-cold-start.ts
+```
+
+Node's fetch gives up connecting after 10 s, so a route that never answers costs iPhone 1.2 10 to 15 s here where the
+device waits its full 15 s.
+
 ## Two real clients
 
 The desktop renderer and the phone app, each in its own headless Chrome, on one isolated fixture: a message sent from

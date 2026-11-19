@@ -1,7 +1,7 @@
 import { useProductScreen } from "@/lib/product-analytics-app";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { MotionConfig } from "motion/react";
-import { openBot, openBotThread, openRoomThread, StoreProvider, useStore } from "@/state/store";
+import { openBot, openBotThread, openRoomThread, rereadWithoutStream, StoreProvider, useStore } from "@/state/store";
 import { useTeamChats } from "@/state/team-chats";
 import { useWarmChatImages } from "@/components/use-warm-chat-images";
 import { ThreadRefsProvider } from "@/components/ThreadRefs";
@@ -18,36 +18,44 @@ import { readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
 import { AiConsentProvider, AiConsentSheet } from "./consent/AiConsent";
 import { installAiReport } from "@/lib/ai-report";
 import { registerPushForConnection } from "./connection/push";
+import { useExternalPages } from "./external-pages";
 import { setPresenceThread } from "./connection/presence";
 import { useSeenNotifications } from "./connection/seen-notifications";
 import { visibleNotificationThread } from "@/state/thread-navigation";
 import { supportMail } from "./legal";
 import { NavStack } from "./NavStack";
 import { ChatScreen } from "./ChatScreen";
+import { readOpenChat, rememberOpenChat, rereadDue, restoredChat } from "./open-chat-restore";
 import { HomeScreen, releasePressed } from "./HomeScreen";
 import { panelOpenAction, SheetHost } from "./SheetHost";
 import { closeTopSheet, Sheet } from "./Sheet";
 import { t } from "@/lib/i18n";
 import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useNativeGlass } from "./native-glass";
+import { useNativeHomeGlass } from "./native-home-glass";
 import { useChatHaptics } from "./use-chat-haptics";
 import { usePhoneActions } from "./use-phone-actions";
 import { useTurnActivities } from "./use-turn-activities";
 import { useOutbox } from "./outbox";
 import { installPress } from "./press";
 import { MessageHold } from "./MessageHold";
+import { ViewerHost } from "./viewers/ViewerHost";
 import { usePlatform } from "./platform";
 import type { MobileSheet } from "./sheets";
 import { PanelDetailsTab } from "@/components/bot-panel/PanelShell";
 import { loadLimits } from "@/lib/limit-resets";
 
 const SHEET_WARM_MS = 600;
+/** While the live stream is down the open chat is read again this often, so a reply still shows without a reopen. */
+export const STREAM_DOWN_READ_MS = 4000;
 
 function Shell() {
   const platform = usePlatform();
   const { state, dispatch } = useStore();
   const rootRef = useRef<HTMLDivElement>(null);
   const [chatId, setChatId] = useState<string | null>(null);
+  const restoring = useRef(readOpenChat());
+  useEffect(() => { if (!restoring.current) rememberOpenChat(chatId); }, [chatId]);
   const [sheet, setSheet] = useState<MobileSheet | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   useProductScreen(sheetOpen && sheet ? `/${sheet.kind}` : chatId ? "/chats/:id" : "/", chatId);
@@ -55,6 +63,7 @@ function Shell() {
   useWarmChatImages(state.bots);
   usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language));
   useKeyboardSync(platform, rootRef);
+  useExternalPages(platform);
   useKeyboardDismiss(platform, rootRef);
   const startTurnActivity = useTurnActivities(platform, state);
   const shownChat = useRef(chatId);
@@ -101,6 +110,17 @@ function Shell() {
     else dispatch({ type: "select", id });
     setChatId(id);
   }, [dispatch]);
+
+  // a reload comes back to the chat that was open, opened as a tap would once the snapshot shows it is still here
+  useEffect(() => {
+    const id = restoring.current;
+    if (!id) return;
+    const restored = restoredChat(id, latest.current);
+    if (restored === "wait") return;
+    restoring.current = null;
+    if (restored && shownChat.current === null) openChat(restored);
+    else rememberOpenChat(shownChat.current);
+  }, [state.hydrated, state.bots, state.groups, openChat]);
 
   const openSheet = useCallback((next: MobileSheet) => {
     const panel = panelOpenAction(next);
@@ -163,6 +183,12 @@ function Shell() {
 
   // a resumed app reads the chat on screen, as a refocused desktop window does
   useEffect(() => platform.onResume?.(() => { if (chatId) dispatch({ type: "select", id: chatId }); }), [platform, chatId, dispatch]);
+  const streamDown = state.hydrated === true && state.connected === false;
+  useEffect(() => {
+    if (!chatId || !streamDown) return;
+    const read = setInterval(() => { if (rereadDue(latest.current, document.hidden)) rereadWithoutStream(); }, STREAM_DOWN_READ_MS);
+    return () => clearInterval(read);
+  }, [chatId, streamDown]);
 
   // the bot's sheet is a tap away from an open chat: its first tab's code and the usage it shows load once the chat has
   // landed, so the tap only has to draw it
@@ -182,6 +208,7 @@ function Shell() {
   if ((bot || group) && !glassHeld) setGlassHeld(true);
   const pageSettled = useCallback((shown: boolean) => { if (!shown) setGlassHeld(false); releasePressed(); }, []);
   const slideGlass = useNativeGlass(platform, rootRef, Boolean(bot || group) || glassHeld);
+  useNativeHomeGlass(platform, rootRef);
   const leaveChat = useCallback(() => { if (rootRef.current) dismissKeyboard(platform, rootRef.current); }, [platform]);
 
   const page = bot || group ? (
@@ -209,6 +236,7 @@ function Shell() {
       <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); openChat(id); }} />
       <ConnectAppsHost />
       <MessageHold rootRef={rootRef} />
+      <ViewerHost rootRef={rootRef} />
       <AiConsentSheet />
       <Sheet open={desktopOnly} onClose={() => setDesktopOnly(false)} title={t("mobile.desktopOnly.title")}>
         <div className="px-5 pb-[calc(var(--m-safe-bottom)+16px)]">

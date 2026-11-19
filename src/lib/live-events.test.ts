@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  LIVE_EVENTS_RESUME_SILENT_MS,
   LIVE_EVENTS_STALE_MS,
   isLivePing,
   listenLiveFrames,
@@ -384,6 +385,59 @@ describe("live events supervisor", () => {
     expect(test.windowTarget.count("online")).toBe(0);
     expect(test.windowTarget.count("focus")).toBe(0);
     expect(test.documentTarget.count("visibilitychange")).toBe(0);
+  });
+});
+
+describe("a phone that moved to another route", () => {
+  it("dials its open stream again over the new route without reporting a lost connection", () => {
+    const test = harness();
+    const onError = vi.fn();
+    const stop = openLiveEvents({ onFrame: vi.fn(), onError, onSnapshotRequired: async () => true }, test.platform);
+    test.sources[0].open();
+    retryLiveEventsNow();
+    expect(test.sources).toHaveLength(1);
+    retryLiveEventsNow({ redial: true });
+    expect(test.sources).toHaveLength(2);
+    expect(test.sources[0].close).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
+    stop();
+  });
+});
+
+describe("a phone app back from the background", () => {
+  it("dials again at once when the stream heard nothing while hidden long enough to have been suspended", () => {
+    const test = harness();
+    const stop = openLiveEvents({ onFrame: vi.fn(), onSnapshotRequired: async () => true }, test.platform);
+    test.sources[0].open();
+    test.setVisible(false);
+    test.documentTarget.emit("visibilitychange");
+    test.setNow(LIVE_EVENTS_RESUME_SILENT_MS);
+    test.setVisible(true);
+    test.documentTarget.emit("visibilitychange");
+    expect(test.sources).toHaveLength(2);
+    expect(test.sources[0].close).toHaveBeenCalledOnce();
+    stop();
+  });
+
+  it("keeps a stream that went on pinging while hidden, and one hidden only briefly", () => {
+    const test = harness();
+    const stop = openLiveEvents({ onFrame: vi.fn(), onSnapshotRequired: async () => true }, test.platform);
+    test.sources[0].open();
+    test.setVisible(false);
+    test.documentTarget.emit("visibilitychange");
+    test.setNow(LIVE_EVENTS_RESUME_SILENT_MS - 1);
+    test.setVisible(true);
+    test.documentTarget.emit("visibilitychange");
+    expect(test.sources).toHaveLength(1);
+    test.setVisible(false);
+    test.documentTarget.emit("visibilitychange");
+    test.setNow(LIVE_EVENTS_RESUME_SILENT_MS + 5_000);
+    test.sources[0].message({ kind: "ping" });
+    test.setNow(3 * LIVE_EVENTS_RESUME_SILENT_MS);
+    test.setVisible(true);
+    test.documentTarget.emit("visibilitychange");
+    expect(test.sources).toHaveLength(1);
+    stop();
   });
 });
 

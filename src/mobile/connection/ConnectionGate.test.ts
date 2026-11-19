@@ -54,6 +54,26 @@ it("an offline server at launch keeps the link, retries, and offers the other sa
   expect(host.textContent).toBe("home");
 });
 
+it("the unreachable screen tries again as soon as the app is back in front or on another network", async () => {
+  const resumed = new Set<() => void>(), moved = new Set<() => void>();
+  platform = { ...platform,
+    onResume: (listener) => { resumed.add(listener); return () => resumed.delete(listener); },
+    onNetworkChange: (listener) => { moved.add(listener); return () => moved.delete(listener); } };
+  fetcher.mockRejectedValue(new TypeError("offline"));
+  await mount(); await settle();
+  expect(host.querySelector("h1")?.textContent).toBe("Can't reach Studio Mac");
+  fetcher.mockResolvedValue(new Response("{}"));
+  await act(async () => { for (const listener of resumed) listener(); }); await settle();
+  expect(host.textContent).toBe("home");
+  await act(async () => root.unmount());
+  fetcher.mockRejectedValue(new TypeError("offline"));
+  await mount(); await settle();
+  expect(host.querySelector("h1")?.textContent).toBe("Can't reach Studio Mac");
+  fetcher.mockResolvedValue(new Response("{}"));
+  await act(async () => { for (const listener of moved) listener(); }); await settle();
+  expect(host.textContent).toBe("home");
+});
+
 it("switches to another saved installation from the unreachable screen", async () => {
   fetcher.mockImplementation(async (input) => String(input).startsWith("https://vps.") ? new Response("{}") : Promise.reject(new TypeError("offline")));
   await mount(); await settle();

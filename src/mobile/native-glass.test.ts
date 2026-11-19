@@ -3,7 +3,7 @@ import { createElement, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyGlassGlyphs, buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, restingFrame, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
+import { applyGlassGlyphs, buttonKind, composerButtons, covered, cssColor, cssHex, darkGround, frameOf, restingFrame, transcriptRoom, typeInto, useNativeGlass, type GlassBridge, type GlassEvent, type GlassState } from "./native-glass";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
 
@@ -175,7 +175,7 @@ function fakeGlass() {
     focus: vi.fn(),
     blur: vi.fn(),
     clear: vi.fn(),
-    slide: vi.fn<(path: SlidePath | null) => void>(),
+    slide: vi.fn<(path: SlidePath | null, at?: number) => void>(),
     onEvent: (fn: (event: GlassEvent) => void) => { listener = fn; return () => { listener = null; }; },
   } satisfies GlassBridge;
   return { glass, send: (event: GlassEvent) => listener?.(event) };
@@ -279,7 +279,7 @@ describe("useNativeGlass", () => {
     const sent = glass.update.mock.calls.length;
     $("page").dataset.moving = "";
     slideGlass({ duration: 400, points: [390, 200, 0] });
-    expect(glass.slide).toHaveBeenCalledWith({ duration: 400, points: [390, 200, 0] });
+    expect(glass.slide).toHaveBeenCalledWith({ duration: 400, points: [390, 200, 0] }, expect.any(Number));
     for (const dx of [300, 120, 30]) { slideBy(dx); runFrame(); }
     expect(glass.update).toHaveBeenCalledTimes(sent + 1);
     expect(glass.update.mock.lastCall![0]).toMatchObject({ offset: 0, header: { back: { x: 12 } } });
@@ -347,17 +347,42 @@ describe("useNativeGlass", () => {
   it("sends the page's own edits to the native field, never echoing what was typed there", () => {
     const { glass, send, $ } = mount();
     runFrame();
+    expect(glass.setText, "a chat opening hands the field its own text, empty here").toHaveBeenCalledTimes(1);
+    expect(glass.setText.mock.calls[0]![0]).toBe("");
     send({ type: "text", text: "hel" });
     runFrame();
-    expect(glass.setText).not.toHaveBeenCalled();
+    expect(glass.setText).toHaveBeenCalledTimes(1);
     typeInto($("field") as HTMLTextAreaElement, "");
     runFrame();
-    expect(glass.setText).toHaveBeenCalledWith("", 1);
+    expect(glass.setText).toHaveBeenCalledTimes(2);
+    expect(glass.setText.mock.calls[1]![0]).toBe("");
     send({ type: "text", text: "again" });
     runFrame();
     typeInto($("field") as HTMLTextAreaElement, "");
     runFrame();
-    expect(glass.setText).toHaveBeenLastCalledWith("", 2);
+    expect(glass.setText).toHaveBeenCalledTimes(3);
+    const seqs = glass.setText.mock.calls.map((call) => call[1]);
+    expect(seqs[1]! > seqs[0]! && seqs[2]! > seqs[1]!).toBe(true);
+  });
+
+  // App Store 1.2: each chat counted from 1 again while the native field kept the highest count it had taken, so after
+  // the first chat a send never cleared the native field
+  it("keeps counting up across chats, so a send clears the native field in every chat, not only the first", () => {
+    const first = mount();
+    runFrame();
+    first.send({ type: "text", text: "one" });
+    typeInto(first.$("field") as HTMLTextAreaElement, "");
+    runFrame();
+    const highest = Math.max(...first.glass.setText.mock.calls.map((call) => call[1]));
+    flushSync(() => root.unmount());
+    const second = mount();
+    runFrame();
+    second.send({ type: "text", text: "two" });
+    typeInto(second.$("field") as HTMLTextAreaElement, "");
+    runFrame();
+    const cleared = second.glass.setText.mock.calls.at(-1)!;
+    expect(cleared[0]).toBe("");
+    expect(cleared[1]).toBeGreaterThan(highest);
   });
 
   it("keeps the composer's height to the native one and blurs it on the way out", () => {
@@ -421,5 +446,23 @@ describe("the header's symbols for the page", () => {
     expect(applyGlassGlyphs(html, {})).toBe(false);
     expect(applyGlassGlyphs(html, { right: { data: "javascript:alert(1)", w: 24, h: 17 } })).toBe(false);
     expect(html.dataset.nativeGlyphs).toBeUndefined();
+  });
+});
+
+describe("the transcript's room under its last row", () => {
+  it("is the empty space below a short chat and none under a long one", () => {
+    const chat = document.createElement("div");
+    const list = document.createElement("div");
+    list.className = "glass-scroller";
+    chat.append(list);
+    const size = (scroll: number) => {
+      Object.defineProperty(list, "clientHeight", { configurable: true, get: () => 700 });
+      Object.defineProperty(list, "scrollHeight", { configurable: true, get: () => scroll });
+    };
+    size(420.4);
+    expect(transcriptRoom(chat)).toBe(280);
+    size(2400);
+    expect(transcriptRoom(chat)).toBe(0);
+    expect(transcriptRoom(null)).toBe(0);
   });
 });

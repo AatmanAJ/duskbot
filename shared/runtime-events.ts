@@ -195,6 +195,8 @@ export type RuntimeEvent = RuntimeEventBase &
     // ("model"), or that model's extra usage credits ("credits"); the engine's other models still work for the last two.
     | { type: "runtime.error"; message: string; partial?: boolean; setup?: boolean; terminal?: boolean; claudeUpdate?: boolean;
         stalled?: boolean; limitResetsAt?: number; limit?: "engine" | "model" | "credits";
+        /** with `partial`: the reply the person already saw says what failed */
+        owned?: boolean;
         /** the engine's own error code or class when the driver has one (codex's codexErrorInfo, a free model's failure), for usage reasons only */
         errorCode?: string }
     /** Something the person should know that did not fail the turn, for

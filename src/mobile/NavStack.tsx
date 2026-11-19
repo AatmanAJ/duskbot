@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { motion, useMotionValue, useTransform, type MotionValue } from "motion/react";
 import { TranscriptStaging } from "@/components/transcript-staging";
 import { canScroll, ownsDrag, useDrag } from "./gesture";
+import { replyRowAt } from "./swipe-reply";
 import { prefersReducedMotion, projectRelease, settleTo, springPath, system } from "./motion";
 
 /** Parallax of the page underneath, as a share of the width: UIKit's navigation push moves it a third as far. */
@@ -196,7 +197,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   useDrag(pageRef, {
     axis: "x",
     enabled: Boolean(shownKey),
-    claim: (s) => s.dx > 0 && !ownsDrag(s.target) && !canScroll(s.target, pageRef.current!, "x", -1),
+    claim: (s, start) => s.dx > 0 && !ownsDrag(s.target) && !canScroll(s.target, pageRef.current!, "x", -1) && !replyRowAt(s.target, start.x),
     onStart: () => {
       run.current?.stop();
       // a slide that already landed is over for the chrome too: from here it follows the finger

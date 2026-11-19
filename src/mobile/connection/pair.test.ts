@@ -109,7 +109,7 @@ describe("pairing exchange", () => {
     vi.stubGlobal("fetch", fetcher);
     const { platform } = fakePlatform();
     await expect(redeemPairing({ ...payload, transport: "relay" }, platform)).rejects.toEqual(new PairError("relay-unavailable"));
-    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 3 * 60_000 }, platform)).rejects.toMatchObject({ code: "expired" });
+    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 11 * 60_000 }, platform)).rejects.toMatchObject({ code: "expired" });
     await expect(redeemPairing({ ...payload, origin: "https://workspace.test/path" }, platform)).rejects.toMatchObject({ code: "invalid" });
     await expect(redeemPairing({ ...payload, credential: "placeholder" }, platform)).rejects.toMatchObject({ code: "invalid" });
     expect(fetcher).not.toHaveBeenCalled();
@@ -118,7 +118,7 @@ describe("pairing exchange", () => {
   it("leaves a grant that only just ended by the phone's clock for the desktop to judge", async () => {
     const fetcher = vi.fn().mockResolvedValue(response({}, 410));
     vi.stubGlobal("fetch", fetcher);
-    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 30_000 }, fakePlatform().platform)).rejects.toMatchObject({ code: "expired" });
+    await expect(redeemPairing({ ...payload, expiresAt: Date.now() - 8 * 60_000 }, fakePlatform().platform)).rejects.toMatchObject({ code: "expired" });
     expect(fetcher).toHaveBeenCalled();
   });
 });
@@ -373,6 +373,23 @@ describe("workspace reconnect", () => {
     expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "bearer", origin: "http://mac.test:8810", token });
   });
 
+  it("opens on the computer's wi-fi at once while a secure access route and a tailnet name never answer", async () => {
+    const { record, token, platform } = await saved();
+    record.via = [
+      { kind: "companion", url: "https://mac.access.test", net: "hosted", priority: 0 },
+      { kind: "companion", url: "http://mac.tail.ts.net:8810", net: "tailnet", priority: 100 },
+      { kind: "companion", url: "http://192.168.1.20:8810", net: "lan", priority: 200 },
+    ];
+    const hung: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => url.startsWith("http://192.168.1.20")
+      ? Promise.resolve(response({}))
+      : new Promise((_, reject) => init.signal!.addEventListener("abort", () => { hung.push(url); reject(new DOMException("aborted", "AbortError")); }))));
+    const started = Date.now();
+    expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "bearer", origin: "http://192.168.1.20:8810", token });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(hung).toHaveLength(2);
+  });
+
   it("removes relay keys with a saved connection", async () => {
     const { record, token, platform, secrets } = await saved();
     const store = createConnectionStore(platform);
@@ -414,6 +431,23 @@ describe("workspace reconnect", () => {
     expect(preferences.has(outboxKey(record.id))).toBe(false);
     expect(preferences.get(outboxKey(again.id))).toBe("[\"held\"]");
     expect(deleted).toEqual([`dusk-transcripts.${record.id}`]);
+  });
+
+  it("replaces a dusk cloud linked again at its new address, and keeps two places that only share an address fallback", async () => {
+    const { record, token, platform, preferences } = await saved();
+    deletedShelves();
+    const store = createConnectionStore(platform);
+    const cloud = { ...record, transport: "https" as const, origin: "https://old.dusk.bot", environmentId: "env-cloud", relay: undefined, via: undefined };
+    await store.save(cloud, token);
+    preferences.set(outboxKey(cloud.id), "[\"held\"]");
+    const moved = { ...cloud, id: `${cloud.id}-moved`, sessionRef: `token.${cloud.id}-moved`, origin: "https://new.dusk.bot" };
+    await store.save(moved, "token-2");
+    expect((await store.list()).map((one) => one.origin)).toEqual(["https://new.dusk.bot"]);
+    expect(preferences.get(outboxKey(moved.id))).toBe("[\"held\"]");
+    const bare = { ...cloud, id: "bare-a", sessionRef: "token.bare-a", origin: "https://a.example", environmentId: "https://a.example" };
+    await store.save(bare, "token-3");
+    await store.save({ ...bare, id: "bare-b", sessionRef: "token.bare-b", origin: "https://b.example" }, "token-4");
+    expect((await store.list()).map((one) => one.id)).toEqual([moved.id, "bare-a", "bare-b"]);
   });
 });
 

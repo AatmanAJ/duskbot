@@ -66,6 +66,7 @@ Use only mapped, tested commands:
 - [Taking control of a bot's computer](take-control.md)
 - [What a bot can do on its VPS desktop](vps-computer-tools.md)
 - [Native dictation retention and send-to-stop](dictation.md)
+- [Voice calls with the built-in voice](voice-calls.md)
 - [Proactive routines and the brief](proactive-routines.md)
 - [Waits: tell me when, with no AI while waiting](waits.md)
 - [Chat widgets](widgets.md)
@@ -329,6 +330,9 @@ desktop routing, cancellation, and computer authority cleanup.
 The [Gemini speech fixture](gemini-speech.md) checks write-only credentials,
 voice selection and WAV synthesis against an offline provider in an isolated
 server, with manual steps for real Google access and playback.
+
+The [speed benchmark](speed.md) times server start, a reply from send to the first text on the live
+stream hop by hop, chat switches and opens, and the bookkeeping writes a chat open makes, on fake-engine fixtures.
 
 The [persistence responsiveness benchmark](persistence-performance.md) measures
 synthetic message/log bursts and history scans, with isolated chat, visibility

@@ -34,7 +34,7 @@ export function PanelResizeEdge() {
         aria-orientation="vertical"
         aria-valuemin={PANEL_MIN}
         aria-valuemax={panelRestMax()}
-        aria-valuenow={panelRest()}
+        aria-valuenow={Math.min(panelRest(), panelRestMax())}
         tabIndex={0}
         data-panel-resize={dragging ? "dragging" : ""}
         className={cn("absolute inset-y-0 left-0 z-20 hidden w-2 cursor-col-resize touch-none outline-none md:block",

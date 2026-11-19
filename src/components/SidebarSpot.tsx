@@ -151,7 +151,7 @@ export function SpotCloudCard({ cta, card }: { cta: SpotCta; card: NonNullable<S
   );
 }
 
-const CARD = cn("flex h-10 w-full items-center gap-2.5 rounded-full px-3.5 text-start", PRESS, FOCUS);
+const CARD = cn("flex h-10 w-full items-center gap-2.5 rounded-full ps-[17px] pe-3.5 text-start", PRESS, FOCUS);
 
 /** Give feedback, the update, or an offer: the same one-line card each time, so the spot only changes state. */
 export function SidebarSpot({ className, bridge, cta = null }: { className?: string; bridge?: AppUpdateBridge; cta?: SpotCta | null }) {

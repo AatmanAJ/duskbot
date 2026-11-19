@@ -11,6 +11,7 @@ import { ConnectionPill, useLiveConnection } from "./connection/ConnectionProble
 import { PhoneChatMenu } from "./PhoneChatMenu";
 import { usePlatform } from "./platform";
 import { installMessageTimes } from "./message-times";
+import { installSwipeReply } from "./swipe-reply";
 
 const PRESS_CLICK_MS = 1000;
 
@@ -33,7 +34,13 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
   const glass = usePlatform().glass;
   const more = Boolean(bot && !group && !glass);
   const chatRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { const chat = chatRef.current; return chat ? installMessageTimes(chat) : undefined; }, []);
+  useEffect(() => {
+    const chat = chatRef.current;
+    if (!chat) return;
+    const stopTimes = installMessageTimes(chat);
+    const stopReply = installSwipeReply(chat);
+    return () => { stopTimes(); stopReply(); };
+  }, []);
   return (
     <div ref={chatRef} data-mobile-chat className="relative flex h-full flex-col">
       {group ? <GroupView key={group.id} group={group} /> : bot ? <ChatView bot={bot} /> : null}
@@ -41,7 +48,7 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
       <nav
         aria-label={t("mobile.chat.nav", { name })}
         data-glass-nav=""
-        className={`pointer-events-none absolute inset-x-0 top-0 z-30 grid items-center gap-2 px-4 pt-[var(--m-safe-top)] ${more ? "grid-cols-[minmax(96px,1fr)_minmax(0,auto)_minmax(96px,1fr)]" : "grid-cols-[1fr_auto_1fr]"}`}
+        className={`pointer-events-none absolute inset-x-0 top-0 z-30 grid items-center gap-2 px-4 pt-[var(--m-safe-top)] ${more ? "grid-cols-[minmax(44px,1fr)_minmax(0,auto)_minmax(96px,1fr)]" : "grid-cols-[1fr_auto_1fr]"}`}
       >
         <RoundButton floating glass data-glass="back" label={t("mobile.chat.back")} onClick={onBack} className="pointer-events-auto">
           <ChevronLeft size={22} strokeWidth={2} />

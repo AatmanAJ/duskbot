@@ -8,7 +8,7 @@ export const PANEL_NARROW = 320;
 /** The narrowest a drag of the panel's edge leaves it. */
 export const PANEL_MIN = 280;
 /** The chat keeps at least this much beside a widened panel. */
-const CHAT_KEEPS = 400;
+const CHAT_KEEPS = 420;
 const WIDE_MAX = 880;
 const REST_KEY = "dusk-bot-panel-width";
 
@@ -68,6 +68,8 @@ export function wideWidth(shared: number): number {
 
 /** The room the chat and a docked panel share; a panel over the chat (a narrow window) has the window's. */
 function sharedRoom(): number {
+  // a server render (and its tests) has no page to measure: the panel may take its widest
+  if (typeof document === "undefined" || typeof document.querySelector !== "function") return WIDE_MAX + CHAT_KEEPS;
   const slot = document.querySelector<HTMLElement>("[data-panel-slot]");
   const chat = slot?.parentElement?.querySelector<HTMLElement>(":scope > main");
   if (slot && chat) return slot.getBoundingClientRect().right - chat.getBoundingClientRect().left;
@@ -82,16 +84,16 @@ function apply(next: number): void {
 }
 
 function onResize(): void {
-  if (panelWide()) apply(wideWidth(sharedRoom()));
+  if (width > rest) apply(wideWidth(sharedRoom()));
+  else apply(Math.min(rest, panelRestMax()));
 }
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") window.addEventListener("resize", onResize);
 
 /** Widens the panel beside the chat, or brings it back. The chat and panel move as one spring through a view transition,
  * snapshots only, so the live page never lays out mid-motion; with less motion it simply changes. */
 export function setPanelWide(on: boolean): void {
   const next = on ? Math.max(rest, wideWidth(sharedRoom())) : rest;
   if (next === width) return;
-  if (on) window.addEventListener("resize", onResize);
-  else window.removeEventListener("resize", onResize);
   const root = document.documentElement;
   if (reducedMotion() || typeof document.startViewTransition !== "function") { apply(next); return; }
   root.classList.add("panel-widening");

@@ -9,6 +9,7 @@ import { writeFileAtomic } from "../atomic.ts";
 import { batchNote } from "./batch-continue.ts";
 import { counts, type Checklist } from "../batch-checklist.ts";
 import { quoteInNote } from "../peer-provenance.ts";
+import { RESUME_CAUSE, RESUME_OPENS } from "../limit-resume.ts";
 import { serverLine } from "../server-lines.ts";
 import type { RuntimeEvent } from "../contracts.ts";
 import type { LimitHoldState } from "../../shared/wire.ts";
@@ -88,7 +89,7 @@ export function refusedStartWaits(scope: string | undefined, turn: { person: boo
 
 export function resumeNote(held: Pick<HeldTurn, "engineName" | "request">, list: Checklist | null): string {
   const asked = held.request ? ` The person's request was: "${quoteInNote(held.request, REQUEST_QUOTE_MAX)}".` : "";
-  const base = `[dusk bot: your previous turn here was cut off because ${held.engineName}'s usage limit was reached. The limit has reset.${asked} ` +
+  const base = `${RESUME_OPENS}${held.engineName}${RESUME_CAUSE}${asked} ` +
     "Read the conversation, pick up exactly where you left off and finish that request; do not redo anything already done. This adds no approval for anything else.]";
   return list && counts(list).open > 0 ? `${base}\n${batchNote(list)}` : base;
 }

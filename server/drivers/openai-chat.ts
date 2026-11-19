@@ -27,8 +27,8 @@ import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
-import { carriedSteps, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
-import { announcesAction, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { carriedSteps, carriedWorkFile, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
+import { CORRECTIVE_ROUND, LOCAL_CORRECTIVE_ROUNDS, announcesAction, ownsFailure, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
 import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
@@ -196,9 +196,7 @@ function replayDelivered(
   return { content, matched: found.map(({ record }) => record), volatile };
 }
 
-const CORRECTIVE_ROUND = "[dusk bot: a tool call in this turn failed (its result is marked ok:false). Re-run the failed operations with corrected inputs where possible, check the results, then give your final answer. Do not report results you did not get.]";
 const UNREADABLE_CALL = "[dusk bot: your last tool call could not be read, so nothing ran. Call the tool again using only the tools you were given, with valid JSON arguments.]";
-const LOCAL_CORRECTIVE_ROUNDS = 2;
 
 const TEXT_ONLY_ATTACHMENT_NOTE = "[The person attached image(s), but this model cannot see images. Say so if the request depends on them.]";
 const TEXT_ONLY_SCREENSHOT_NOTE = "[Screenshot not shown: this model cannot see images. Read the page with a snapshot or a text tool instead.]";
@@ -227,7 +225,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     if (completion.responseOutput) responseOutputs.set(reply, completion.responseOutput);
     return reply;
   };
-  const delivered = new Map<string, DeliveredUserMessage[]>(), carried = createCarriedWork();
+  const delivered = new Map<string, DeliveredUserMessage[]>(), carried = createCarriedWork({ file: carriedWorkFile() });
   /** Not cleared on `sessionReset`: with no cursor the harness sends it on nearly every turn. */
   const sessionGrants = new Map<string, Set<string>>();
 
@@ -521,7 +519,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     const turnId = newId();
     const abort = new AbortController();
     const messages = messagesFor(turn);
-    messages.splice(-1, 0, ...carried.take(turn.threadId));
+    messages.splice(-1, 0, ...carried.take(turn.threadId, turn.text));
     const request = messages.at(-1)!;
     const retainImages = chatImageBudget();
     for (const message of messages) retainImages(message.content);
@@ -592,9 +590,12 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let failure: string | undefined, failureCode: string | undefined, limitFacts: ReturnType<typeof chatLimitFacts> = null;
       let toolFailed = false;
       let correctiveRounds = 0;
+      const correctiveMax = Math.max(turn.toolErrorCorrectiveRounds ?? 0, options.localModel ? LOCAL_CORRECTIVE_ROUNDS : 0);
+      // a text-only answer after a failed tool, while rounds to fix it remain: it is not shown; the next answer is
+      const correcting = (done: Completion) => toolFailed && !done.toolCalls.length && !denials.length && !turnEntry.ending && correctiveRounds < correctiveMax;
       const denials: string[] = [], failedCalls: string[] = [];
       const seenCalls = new Set<string>();
-      let nudges = 0, effectful = 0, claimNudged = false;
+      let nudges = 0, effectful = 0, claimNudged = false, lastReply = "";
       let unread: string[] = [];
       let callsAtNudge = -1;
       const repeats = options.localModel ? new ChatRepeatGuard() : undefined;
@@ -625,7 +626,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           let completion: Completion;
           for (;;) {
             let streamed = false, answerStreamed = false;
-            const holdback = options.localModel && tools.definitions.length ? new TextCallHoldback() : undefined, leakHold = new LeakHoldback();
+            const holdback = options.localModel && tools.definitions.length ? new TextCallHoldback() : undefined, leakHold = new LeakHoldback(toolFailed && correctiveRounds < correctiveMax);
             const pending = { assistant_text: "", reasoning_text: "" };
             const delta = (text: string, streamKind: keyof typeof pending, flush = false) => {
               let combined = pending[streamKind] + text;
@@ -662,7 +663,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 native("in", { recovered: "unreadable_tool_call" });
               } else {
                 const rest = leakHold.flush(holdback?.rest() ?? "");
-                if (rest) delta(rest, "assistant_text");
+                if (rest && !correcting(completion)) delta(rest, "assistant_text");
               }
               delta("", "assistant_text", true);
               delta("", "reasoning_text", true);
@@ -731,7 +732,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           }
           // Reasoning on a tool-call round belongs to the protocol, not a final reply.
           const reply = completion.text.trim() ? completion.text : completion.toolCalls.length || unreadable ? "" : completion.reasoning;
-          if (reply.trim()) emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_text", text: safeText(reply) });
+          if (reply.trim() && !correcting(completion)) emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_text", text: safeText(reply) });
           abort.signal.throwIfAborted();
           if (unreadable) {
             askedAgain = true;
@@ -743,22 +744,22 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
             if (unfinished) throw unfinished;
             if (toolFailed) {
               // A person's "no" is never answered with another attempt; a failure may first get the configured corrective rounds.
-              if (!denials.length && !turnEntry.ending && correctiveRounds < Math.max(turn.toolErrorCorrectiveRounds ?? 0, options.localModel ? LOCAL_CORRECTIVE_ROUNDS : 0)) {
+              if (correcting(completion)) {
                 correctiveRounds += 1;
-                messages.push({ role: "user", content: CORRECTIVE_ROUND });
+                messages.push(assistantReply(model, completion, reply), { role: "user", content: CORRECTIVE_ROUND });
                 continue;
               }
-              stopReason = "tool_error";
+              stopReason = "tool_error"; lastReply = reply;
               throw new ChatProtocolError(toolFailureMessage(failedCalls, denials.filter((name) => name !== ASK_USER_TOOL)));
             }
             if (options.nudgeAnnouncedAction !== false && tools.definitions.length && announcesAction(completion.text, effectful > 0)) {
               if (nudges >= MAX_ANNOUNCEMENT_NUDGES || turnEntry.ending) {
                 stopReason = "incomplete_action";
-                throw new ChatProtocolError(`Stopped after ${turnEntry.ending ? `${MAX_CHAT_ROUNDS} steps` : `${MAX_ANNOUNCEMENT_NUDGES} announcement nudges`} without a verified final answer. Earlier operations may have taken effect; inspect their state and continue only the remaining work.`, "announced_no_action");
+                throw new ChatProtocolError(`Stopped after ${turnEntry.ending ? `${MAX_CHAT_ROUNDS} steps` : `${MAX_ANNOUNCEMENT_NUDGES} announcement nudges`} without a final answer. Anything it already did stays done; ask again for what's left, or switch this bot to another model.`, "announced_no_action");
               }
               if (callsAtNudge === seenCalls.size) {
                 stopReason = "incomplete_action";
-                throw new ChatProtocolError("The model announced another action without tool progress after a nudge. The task is incomplete; earlier operations may have taken effect. Inspect their state before continuing.", "announced_no_action");
+                throw new ChatProtocolError("The model kept saying what it would do next without doing it, so this stopped. Anything it already did stays done; ask again for what's left, or switch this bot to another model.", "announced_no_action");
               }
               nudges += 1;
               callsAtNudge = seenCalls.size;
@@ -901,7 +902,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           // "upstream" (an OpenAI-compatible URL) names no provider, so its raw line is kept.
           const message = options.httpErrorLabel === "upstream" ? failure : plainFailureMessage(options.httpErrorLabel, failure);
           const replyShownFirst = stopReason === "tool_error";
-          emit({ ...base(turn.threadId, turnId), type: "runtime.error", message, terminal: !abort.signal.aborted, ...(replyShownFirst ? { partial: true } : {}), ...(failureCode ? { errorCode: failureCode } : {}), ...limitFacts });
+          emit({ ...base(turn.threadId, turnId), type: "runtime.error", message, terminal: !abort.signal.aborted, ...(replyShownFirst ? { partial: true, ...(ownsFailure(lastReply) ? { owned: true } : {}) } : {}), ...(failureCode ? { errorCode: failureCode } : {}), ...limitFacts });
         }
         if (!ok && !abort.signal.aborted) {
           const continuable = classifyContinuable(stopReason, failure);

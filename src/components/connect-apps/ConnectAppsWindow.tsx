@@ -4,12 +4,14 @@ import { api, useStore, type Action } from "@/state/store";
 import type { LocaleKey } from "@/locales";
 import { t } from "@/lib/i18n";
 import { connectorDescription } from "@/lib/app-catalog";
+import { closeExternalPage } from "@/lib/app-links";
 import { listLogins } from "@/lib/logins";
 import { connectorStatusMemory, preloadConnectedApps } from "@/lib/connected-apps";
 import { useMcpServers } from "@/lib/mcp-servers";
 import { HOSTED_MCP_APPS, type HostedConnections, type HostedMcpAppId } from "@/lib/hosted-mcp-apps";
 import { managedConnectorUnavailableReason } from "../../../shared/connector-availability";
 import { hasActiveConnection } from "@/lib/connector-status";
+import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import type { SkillsLibrarySkillWire } from "../../../shared/wire";
 import { Icon } from "../Icon";
 import { DuskMark } from "../mascot-view";
@@ -226,8 +228,8 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   useEffect(() => {
     let alive = true;
     listLogins().then((answer) => { if (alive) setOnePassword(answer.onePassword ?? { connected: false }); }).catch(() => { if (alive) setOnePassword(null); });
-    fetch("/api/skills-library")
-      .then(async (response) => (response.ok ? ((await response.json()) as { skills?: SkillsLibrarySkillWire[] }).skills ?? [] : []))
+    (skillsLibraryEnabled(state.config) ? fetch("/api/skills-library") : Promise.resolve(null))
+      .then(async (response) => (response?.ok ? ((await response.json()) as { skills?: SkillsLibrarySkillWire[] }).skills ?? [] : []))
       .then((list) => { if (alive) setSkills(list); })
       .catch(() => { if (alive) setSkills([]); });
     return () => { alive = false; };
@@ -316,7 +318,9 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
       if (now === "connected" && known.current.get(entry.id) === "disconnected") added ??= entry;
       if (now !== "unknown") known.current.set(entry.id, now);
     }
-    if (added) setToast({ kind: "success", text: t("connectApps.added", { name: added.label }) });
+    if (!added) return;
+    closeExternalPage();
+    setToast({ kind: "success", text: t("connectApps.added", { name: added.label }) });
   }, [entries, connection, connectors.phase]);
   useEffect(() => {
     if (!connectors.error) return;

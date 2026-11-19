@@ -96,6 +96,14 @@ export interface MobileRedeemResponse {
   relay?: { base: string; channel: string; agentPub: string };
 }
 
+/** GET /api/mobile/routes with a paired phone's own session: the ways to this workspace now, so a phone that paired
+ * before an address changed (a new Wi-Fi address, a domain, a renamed tunnel) learns them. `companion` is null when
+ * the computer did not say, and the phone keeps the ones it has; a relay is the phone's own channel and never listed. */
+export interface MobileRoutesResponse {
+  https: Extract<MobileTransport, { kind: "https" }>[];
+  companion: Extract<MobileTransport, { kind: "companion" }>[] | null;
+}
+
 /** PUT /api/mobile/push with the device's own session. */
 export interface MobilePushRegistration {
   service: PushService;

@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Check, Code2, Download, ExternalLink, Eye, LoaderCircle, RotateCcw } from "../icons";
-import { requestMessageFile, useLocalFileSave, type MessageAttachmentContext } from "./AttachmentPreview";
+import { fileGone, requestMessageFile, useLocalFileSave, type MessageAttachmentContext } from "./AttachmentPreview";
 import { TableDialog } from "./RichTable";
+import { PdfFileContent } from "./PdfFilePreview";
 import { readTableResponse } from "./TableFilePreview";
 import { t } from "@/lib/i18n";
 import { friendlyError } from "@/lib/plain-error";
@@ -15,13 +16,14 @@ export function isHtmlFile(name: string): boolean {
   return /\.html?$/i.test(name);
 }
 
-export type FilePreviewKind = "html" | "markdown" | "text";
+export type FilePreviewKind = "html" | "markdown" | "text" | "pdf";
 
 /** A file a bot sends that opens in a preview first, where it can still be saved; any other file saves at once. */
 export function filePreviewKind(name: string): FilePreviewKind | null {
   if (isHtmlFile(name)) return "html";
   if (/\.(md|markdown)$/i.test(name)) return "markdown";
   if (/\.(txt|log|json|ya?ml)$/i.test(name)) return "text";
+  if (/\.pdf$/i.test(name)) return "pdf";
   return null;
 }
 
@@ -56,6 +58,7 @@ export function useFilePreview(path: string, name: string, message?: MessageAtta
       ? <TableDialog title={name} returnFocus={opener.current} onClose={() => setOpen(false)}>
         {kind === "html"
           ? <HtmlFileContent key={key} path={path} name={name} message={message} />
+          : kind === "pdf" ? <PdfFileContent key={key} path={path} message={message} />
           : <TextFileContent key={key} path={path} name={name} message={message} markdown={kind === "markdown"} />}
       </TableDialog>
       : null,
@@ -107,7 +110,7 @@ export function OpenInBrowserButton({ source, name, onError }: { source: string;
 function useFileText(path: string, message: MessageAttachmentContext) {
   const [attempt, setAttempt] = useState(0);
   const [source, setSource] = useState<string | null>(null);
-  const [error, setError] = useState<"size" | "load" | null>(null);
+  const [error, setError] = useState<PreviewError | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     setError(null);
@@ -118,7 +121,7 @@ function useFileText(path: string, message: MessageAttachmentContext) {
         const text = await readTableResponse(response, controller.signal, HTML_PREVIEW_MAX_BYTES);
         if (!controller.signal.aborted) setSource(text);
       } catch (reason) {
-        if (!controller.signal.aborted) setError(reason instanceof Error && reason.message === "size" ? "size" : "load");
+        if (!controller.signal.aborted) setError(fileGone(reason) ? "gone" : reason instanceof Error && reason.message === "size" ? "size" : "load");
       }
     })();
     return () => controller.abort();
@@ -126,9 +129,11 @@ function useFileText(path: string, message: MessageAttachmentContext) {
   return { source, error, reload: () => setAttempt(attempt + 1) };
 }
 
-function PreviewTrouble({ error, page, reload }: { error: "size" | "load"; page: boolean; reload: () => void }) {
-  const line = page ? (error === "size" ? "html.tooLarge" : "html.loadFailed") : error === "size" ? "filePreview.tooLarge" : "filePreview.loadFailed";
-  return <div className="p-8 text-center text-sm"><p role="alert" className="mb-3 text-ink-secondary">{t(line)}</p><button type="button" className="rounded-lg border border-transparent px-3 py-2 hover:bg-raised" onClick={reload}>{t("chat.retry")}</button></div>;
+type PreviewError = "size" | "load" | "gone";
+
+function PreviewTrouble({ error, page, reload }: { error: PreviewError; page: boolean; reload: () => void }) {
+  const line = error === "gone" ? "attach.gone" : page ? (error === "size" ? "html.tooLarge" : "html.loadFailed") : error === "size" ? "filePreview.tooLarge" : "filePreview.loadFailed";
+  return <div className="p-8 text-center text-sm"><p role="alert" className="mb-3 text-ink-secondary">{t(line)}</p>{error !== "gone" && <button type="button" className="rounded-lg border border-transparent px-3 py-2 hover:bg-raised" onClick={reload}>{t("chat.retry")}</button>}</div>;
 }
 
 function PreviewLoading({ page }: { page: boolean }) {

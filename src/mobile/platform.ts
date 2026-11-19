@@ -13,6 +13,13 @@ export interface KeyboardFrame {
   height: number;
   /** Starting to move (`will`) or settled (`did`). */
   phase: "will" | "did";
+  /** A `will` straight from the system's notification: the keyboard's own duration in seconds and when it started to
+   * move, in epoch ms, so the page can start its ride as far in as the bridge hop cost. */
+  duration?: number;
+  at?: number;
+  /** The native side lifts the whole page by this many css px itself, in the keyboard's own animation; a `did` with it
+   * is that move stopped, for the page to take the space itself. */
+  lift?: number;
 }
 
 export interface ScanResult {
@@ -101,6 +108,8 @@ export interface MobilePlatform {
   onResume?(listener: () => void): () => void;
   /** The app went to the background. */
   onPause?(listener: () => void): () => void;
+  /** The phone moved to another network (Wi-Fi to cellular, another Wi-Fi) or lost or got one back. */
+  onNetworkChange?(listener: () => void): () => void;
   /** Non-secret key/value storage. */
   prefs: {
     get(key: string): Promise<string | null>;
@@ -120,6 +129,8 @@ export interface MobilePlatform {
   /** Closes the in-app browser sheet openExternal showed, if one is up. */
   closeBrowser?(): void;
   share?(data: { title?: string; text?: string; url?: string }): Promise<void>;
+  /** A file to the system share sheet (Save to Files, Save Image); absent in a build without the file plugin. */
+  shareFile?(file: File): Promise<void>;
   /** Sign in with Apple through the system sheet (iPhone): Apple binds `nonceHash` (sha-256 hex) into the identity token.
    * Null when the person closed the sheet; throws when it failed. */
   appleSignIn?(nonceHash: string): Promise<AppleCredential | null>;

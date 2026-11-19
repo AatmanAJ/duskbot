@@ -3,7 +3,7 @@ import { createElement, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
+import { dismissKeyboard, keyboardRide, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import type { KeyboardFrame, MobilePlatform } from "./platform";
 
 let root: Root;
@@ -107,6 +107,66 @@ describe("the phone keyboard", () => {
     expect(document.activeElement).toBe(field());
     (host.querySelector("#bubble") as HTMLElement).click();
     expect(document.activeElement).not.toBe(field());
+  });
+});
+
+describe("riding the keyboard with the native composer", () => {
+  it("takes the system's duration and starts as far in as the bridge hop cost", () => {
+    expect(keyboardRide({ height: 336, phase: "will", duration: 0.383, at: 1_000 }, 0.4, 1_032)).toEqual({ duration: 0.383, delayMs: 32 });
+    expect(keyboardRide({ height: 0, phase: "will", duration: 0.25, at: 1_000 }, 0.4, 1_000)).toEqual({ duration: 0.25, delayMs: 0 });
+  });
+
+  it("falls back to its own spring without the system's timing, and never skips more than a stalled hop", () => {
+    expect(keyboardRide({ height: 336, phase: "will" }, 0.4, 5_000)).toEqual({ duration: 0.4, delayMs: 0 });
+    expect(keyboardRide({ height: 336, phase: "will", duration: 0, at: 1_000 }, 0.4, 1_900)).toEqual({ duration: 0.4, delayMs: 150 });
+    expect(keyboardRide({ height: 336, phase: "will", duration: 0.383, at: 2_000 }, 0.4, 1_000).delayMs, "a clock that runs behind").toBe(0);
+  });
+
+  it("starts the transcript's ride with a negative delay for a late event, on both the way up and down", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(10_040);
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    keyboard!({ height: 336, phase: "will", duration: 0.383, at: 10_000 });
+    expect(shell.style.getPropertyValue("--m-kb-dur")).toBe("0.383s");
+    expect(shell.style.getPropertyValue("--m-kb-delay")).toBe("-40ms");
+    keyboard!({ height: 336, phase: "did" });
+    now.mockReturnValue(20_050);
+    keyboard!({ height: 0, phase: "will", duration: 0.383, at: 20_000 });
+    expect(shell.style.getPropertyValue("--m-kb-delay")).toBe("-50ms");
+    expect(shell.style.getPropertyValue("--m-kb-shift")).toBe("0px");
+    now.mockRestore();
+  });
+});
+
+describe("a keyboard the native side lifts the page for", () => {
+  it("moves nothing on the page while it moves, then takes the space with the scroll offset by the lift", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    scrollable(2000, 1600);
+    keyboard!({ height: 336, phase: "will", duration: 0.38, at: Date.now(), lift: 302 });
+    keyboard!({ height: 336, phase: "did" });
+    expect(list().scrollTop).toBe(1600);
+    expect(shell.style.getPropertyValue("--m-kb-shift")).toBe("");
+    expect(shell.dataset.kbMoving).toBeUndefined();
+    keyboard!({ height: 336, phase: "did", lift: 302 });
+    expect(shell.style.getPropertyValue("--m-lift")).toBe("302px");
+    expect(shell.style.getPropertyValue("--m-kb")).toBe("34px");
+    expect(list().scrollTop).toBe(1902);
+    keyboard!({ height: 0, phase: "will", duration: 0.38, at: Date.now(), lift: 0 });
+    expect(list().scrollTop).toBe(1902);
+    keyboard!({ height: 0, phase: "did", lift: 0 });
+    expect(shell.style.getPropertyValue("--m-lift")).toBe("0px");
+    expect(shell.style.getPropertyValue("--m-kb")).toBe("0px");
+    expect(list().scrollTop).toBe(1600);
+  });
+
+  it("leaves a field on the page to the page's own ride", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    keyboard!({ height: 336, phase: "will", lift: 302 });
+    keyboard!({ height: 0, phase: "did", lift: 0 });
+    keyboard!({ height: 336, phase: "will", duration: 0.38, at: Date.now() });
+    expect(shell.dataset.kbMoving).toBe("");
   });
 });
 

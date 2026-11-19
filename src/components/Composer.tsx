@@ -96,7 +96,7 @@ import {
   doubleEnterSteerWindowExpiresAt,
   doubleEnterSteersQueue,
 } from "./ComposerQueuedMessages";
-import { liveCallEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
+import { liveCallEnabled, voiceCallsEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
 import { mentionChoicesForQuery, mentionQueryAt } from "@/lib/mentions"; import { mentionPicksFor, restoreMentionPicks } from "@/lib/mention-picks";
 import { serializeThreadRefs, threadTokenFromPaste, threadTokenSpacing } from "@/lib/thread-refs";
 import {
@@ -597,7 +597,7 @@ export function Composer({
   // a Stop pressed here takes the button away at once: the turn reads as over before the server says so
   const stopPressed = Boolean(useStopPress(threadId || undefined));
   const stoppable = (busy || Boolean(!group && bot?.waitingForTeammates)) && !stopPressed;
-  const live = liveCallEnabled();
+  const live = liveCallEnabled() || voiceCallsEnabled();
   // the composer never shows Stop (the owner's rule): only send and voice, even while the bot works
   const stopInSlot = false;
   const callShown = !filled;
@@ -993,22 +993,13 @@ export function Composer({
           />
         <div ref={shellRef} data-tour="composer" data-multiline={multiline ? "" : undefined} data-drag-over={simpleDock && dragOver ? "" : undefined}
           style={pillHeight === undefined ? undefined : { height: pillHeight }} className={cn("@container/composer relative z-[1]", singleRow ? "flex items-end gap-2" : simpleDock ? cn(SIMPLE_COMPOSER, multiline ? "rounded-[18px]" : "rounded-[22px]") : cn("rounded-2xl px-2 py-1.5", ELEVATED_FLOAT))}>
-        {singleRow && !locked && (
-          <div className="flex shrink-0 items-center">
-            <PhonePlus
-              onAttach={pickers.files} attachChoices={pickers.choices}
-              goal={goal}
-              teach={canLearn ? teachTask : undefined}
-              approval={approvalChoice && modeBot && { name: modeBot.name, choice: approvalChoice }}
-              callBotId={live && bot && !group ? bot.id : undefined}
-            />
-          </div>
-        )}
-        <div ref={pillContentRef} className={singleRow ? cn("flex min-h-[52px] min-w-0 flex-1 flex-col justify-center rounded-[26px] py-1 pl-3 pr-1", ELEVATED_FLOAT) : simpleDock ? "flex shrink-0 flex-col" : "contents"}>
+        <div ref={pillContentRef} className={singleRow ? cn("flex min-h-[48px] min-w-0 flex-1 flex-col justify-center rounded-[24px] p-2", ELEVATED_FLOAT) : simpleDock ? "flex shrink-0 flex-col" : "contents"}>
         {replyTo && <ComposerReplyStrip message={replyTo} fallbackName={bot?.name} onClear={onClearReply} />}
         {quote && <ComposerSelectionQuote quote={quote} onClear={clearQuote} />}<SelectionAskPill enabled={!singleRow && !locked} onAsk={askAboutSelection} /><ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} notice={attachmentNotice} onNotice={setAttachmentNotice} />
         <div data-composer-row data-glyph-swap={glyphs.swapped ? "" : undefined} data-glyph-from-held={glyphs.swapped && glyphs.fromHeld ? "" : undefined} style={simpleDock ? slot.vars : undefined} className={cn("flex items-end", simpleDock ? cn("gap-2", stacked && "gap-y-2") : "gap-1", !singleRow && !simpleDock && "@max-[30rem]/composer:flex-wrap", stacked && "flex-wrap")}>
           {pickers.inputs}
+          {/* the phone's + is the pill's first control, at its left edge, the size of the others */}
+          {singleRow && !locked && <PhonePlus onAttach={pickers.files} attachChoices={pickers.choices} goal={goal} teach={canLearn ? teachTask : undefined} approval={approvalChoice && modeBot && { name: modeBot.name, choice: approvalChoice }} callBotId={live && bot && !group ? bot.id : undefined} />}
           {!locked && !singleRow && (
             <div className={cn("flex items-center gap-1", simpleDock ? "shrink-0" : "flex-wrap")}>
               {simpleDock && <ComposerPlusMenu onAttach={pickers.files} attachChoices={pickers.choices} goal={goal} teach={canLearn ? teachTask : undefined} />}
@@ -1019,7 +1010,7 @@ export function Composer({
           )}
           <MentionTextarea
           // grok keeps 80px clear at the field's end for its mic and voice buttons, whether or not the mic shows
-          wrapperClassName={cn(singleRow ? undefined : simpleDock ? cn(stacked ? "order-first basis-full" : locked && "me-9") : cn("@max-[30rem]/composer:order-first @max-[30rem]/composer:basis-full", stacked && "order-first basis-full"), recording && "hidden")}
+          wrapperClassName={cn(singleRow ? "px-1.5" : simpleDock ? cn(stacked ? "order-first basis-full" : locked && "me-9") : cn("@max-[30rem]/composer:order-first @max-[30rem]/composer:basis-full", stacked && "order-first basis-full"), recording && "hidden")}
           inputRef={inputRef}
           peers={[...(group ? members ?? [] : state.bots.filter((member) => member.id !== bot?.id)), ...teammates.peers]}
           everyone={Boolean(group && !group.dm)}
@@ -1156,7 +1147,7 @@ export function Composer({
             title={t("composer.voice.cancelHint")}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
-              simpleDock ? "size-7" : "size-8 max-md:size-10",
+              simpleDock ? "size-7" : "size-8",
               singleRow ? "text-ink-secondary hover:bg-raised hover:text-ink" : SIMPLE_CONTROL,
               phoneVoice && cn("composer-press", listenedFrom.empty && "composer-mic-in"),
             )}
@@ -1166,7 +1157,7 @@ export function Composer({
         )}
         {/* the mic in the round button's place keeps the small control's place beside it, so Send or Discard takes
             that spot and nothing in the bar moves when the field fills, empties or starts listening */}
-        {micInSlot && !stoppable && <span aria-hidden="true" data-mic-spacer="" className={cn("shrink-0", simpleDock ? "size-7" : "size-8 max-md:size-10")} />}
+        {micInSlot && !stoppable && <span aria-hidden="true" data-mic-spacer="" className={cn("shrink-0", simpleDock ? "size-7" : "size-8")} />}
         {!locked && (
           <button
             key={micPlace}
@@ -1181,7 +1172,7 @@ export function Composer({
             aria-label={recording ? t("composer.dictation.stop") : t("composer.dictation.start")}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
-              simpleDock ? "size-7" : "size-8 max-md:size-10",
+              simpleDock ? "size-7" : "size-8",
               (micPlace === "stop" || micOut) && "composer-mic-in",
               micBack && "composer-mic-back",
               phoneVoice ? cn("composer-press", slot.button.className)
@@ -1197,7 +1188,7 @@ export function Composer({
               : simpleDock ? <Icon name="mic" variant="filled" size={16} className={micInSlot ? "composer-glyph" : undefined} /> : <Mic size={16} strokeWidth={1.75} absoluteStrokeWidth className="[&_rect]:fill-current" />}
           </button>
         )}
-        {live && callShown && bot && !group && <CallButton bot={bot} placement="composer" fill={singleRow ? undefined : slot.fill} ink={slot.ink} inverse={singleRow} />}
+        {live && callShown && bot && !group && <CallButton bot={bot} placement="composer" fill={singleRow ? undefined : slot.fill} ink={slot.ink} inverse={singleRow} live={liveCallEnabled()} />}
         {filled && !locked && !phoneVoice && (
           <ComposerSendButton compact={simpleDock} waits={!held && busy && !steersNow && !phoneApp()} label={sendNames.label} title={sendNames.title} look={slot.button}
             disabled={(held && !singleRow) || attachmentPending || unsentUpload} onSend={(alternate) => { if (!held) send(followUpFor(alternate)); }} onChoose={send}
@@ -1205,7 +1196,7 @@ export function Composer({
           )}
           {ghostGlyph && <SlotGlyphGhost key={glyphs.swaps} glyph={ghostGlyph} ink={slot.ink} />}
           {micBack && (
-            <span aria-hidden="true" data-composer-stop-ghost key={`stop-${micTrail.swaps}`} className="composer-glyph-out pointer-events-none absolute bottom-0 right-0 z-[1] flex size-10 items-center justify-center rounded-full bg-ink text-app">
+            <span aria-hidden="true" data-composer-stop-ghost key={`stop-${micTrail.swaps}`} className="composer-glyph-out pointer-events-none absolute bottom-0 right-0 z-[1] flex size-8 items-center justify-center rounded-full bg-ink text-app">
               <span className="block size-[12px] rounded-[2.5px] bg-current" />
             </span>
           )}

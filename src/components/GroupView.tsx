@@ -1118,6 +1118,7 @@ export function GroupView({ group: room }: { group: Group }) {
             slot={statusSlot}
             landed={Boolean(landed.reply)}
           />
+          {(trailing?.failures.length || trailing?.notices.length || setupPending || group.dm) && <div data-failed-reply-row="" className="empty:hidden [&>[data-failed-reply]]:mb-0 [&>[data-failed-reply]]:px-0"><FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} /></div>}
         </div>
         </div>
         )}
@@ -1133,16 +1134,13 @@ export function GroupView({ group: room }: { group: Group }) {
       )}
       <ComposerNoticeSlot>
         <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
-        {/* one card above the composer: what went wrong first, else who the person stopped */}
-        <div className="pointer-events-auto">{trailing?.failures.length || trailing?.notices.length || setupPending || group.dm
-          ? <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />
-          : <RoomHoldsBanner group={group} members={members} />}</div>
+        {/* what went wrong sits in the transcript; above the composer only who the person stopped */}
+        <div className="pointer-events-auto">{!(trailing?.failures.length || trailing?.notices.length || setupPending || group.dm) && <RoomHoldsBanner group={group} members={members} />}</div>
       </ComposerNoticeSlot>
       {!(phone && setupPending) && <RoomComposer
         key={group.threadId}
         group={group}
         members={members}
-        locked={setupPending}
         replyTo={replyTo}
         onClearReply={clearReply}
         onConsumeReply={consumeReply}

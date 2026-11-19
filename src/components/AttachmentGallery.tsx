@@ -75,14 +75,14 @@ export function isAudioAttachment(path: string): boolean {
   return /\.(?:mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i.test(fileIdentity(path));
 }
 
-type MessageAttachmentEntry = { path: string; kind?: string; name?: string };
+type MessageAttachmentEntry = { path: string; kind?: string; name?: string; bytes?: number };
 const NO_GENERATED_ATTACHMENTS: readonly MessageAttachmentEntry[] = [];
 
 export function splitMessageAttachments(attachments: readonly MessageAttachmentEntry[] = NO_GENERATED_ATTACHMENTS): { images: string[]; files: GalleryFile[] } {
   const images: string[] = [];
   const files: GalleryFile[] = [];
   for (const attachment of attachments) {
-    if (attachment.kind === "file") files.push({ path: attachment.path, name: attachment.name || attachmentBasename(attachment.path), private: true });
+    if (attachment.kind === "file") files.push({ path: attachment.path, name: attachment.name || attachmentBasename(attachment.path), private: true, ...(attachment.bytes ? { bytes: attachment.bytes } : {}) });
     else if (attachment.kind === "image" || attachment.kind === undefined) images.push(attachment.path);
   }
   return { images, files };

@@ -23,8 +23,10 @@ import {
   type MobileLinkPayload,
   type MobilePairingResponse,
   type MobileRedeemResponse,
+  type MobileRoutesResponse,
   type MobileTransport,
 } from "../../shared/mobile-link.ts";
+import type { CompanionEndpoint } from "../../shared/pairing-link.ts";
 import type { NotificationLogEntry } from "../../shared/notification.ts";
 import { labelFromUserAgent, ownerOrAdmin, requestSource, type RequestAuth } from "../request-auth.ts";
 import { cloudPowerNow } from "../cloud-power.ts";
@@ -85,6 +87,8 @@ export interface MobileLinkDeps {
   refusal(): string | null;
   /** the relay that holds typed-code lookups; null turns typed codes off */
   lookupRelay: string | null;
+  /** the Mac companion's addresses now, null when the desktop does not say (a server has none) */
+  companion?: () => Promise<CompanionEndpoint[] | null>;
   push?: PushSender;
   /** whether the person already read this notification (on any device) */
   isRead?: (notificationId: string) => boolean;
@@ -264,6 +268,22 @@ export function createMobileLink(deps: MobileLinkDeps) {
     return { name: own.name.slice(0, 80), environmentId: own.environmentId, kind: own.kind === "server" && agentLive() ? "vps" : own.kind };
   }
 
+  function httpsRoutes(): MobileTransport[] {
+    const relay = agentLive();
+    return mobileTransports([deps.publicOrigin(), relay?.origin ?? null].filter((url): url is string => typeof url === "string")
+      .map((url) => ({ kind: "https", url, ...(url === relay?.origin && relay.spki ? { spki: relay.spki } : {}) })));
+  }
+
+  async function routes(): Promise<MobileRoutesResponse> {
+    const companion = deps.companion ? await deps.companion().catch(() => null) : null;
+    const isHttps = (route: MobileTransport): route is MobileRoutesResponse["https"][number] => route.kind === "https";
+    const isCompanion = (route: MobileTransport): route is NonNullable<MobileRoutesResponse["companion"]>[number] => route.kind === "companion";
+    return {
+      https: httpsRoutes().filter(isHttps),
+      companion: companion ? mobileTransports(companion.slice(0, 16).map((one) => ({ ...one, kind: "companion", net: one.kind }))).filter(isCompanion) : null,
+    };
+  }
+
   async function pairing(auth: RequestAuth, body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
     if (!ownerOrAdmin(auth) || (auth.kind === "loopback" && auth.companionDevice)) return { status: 403, body: { error: "Only the owner or an admin can pair a phone." } };
     const refusal = deps.refusal();
@@ -290,11 +310,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
       if (await applied_(rev, grant.channel.id)) relayTransport = { kind: "relay", base: relay.base, channel: grant.channel.id, token, key: grant.channel.key };
       else log("mobile: the link agent did not open the pairing's relay channel in time");
     }
-    const via = mobileTransports([
-      ...[deps.publicOrigin(), relay?.origin ?? null].filter((url): url is string => typeof url === "string").map((url) => ({ kind: "https", url, ...(url === relay?.origin && relay.spki ? { spki: relay.spki } : {}) })),
-      ...(relayTransport ? [relayTransport] : []),
-      ...companion,
-    ]);
+    const via = mobileTransports([...httpsRoutes(), ...(relayTransport ? [relayTransport] : []), ...companion]);
     if (!via.length) {
       grants.delete(opened.id);
       return { status: 409, body: { error: "A phone cannot reach this workspace yet: turn on phone access or give it a public address first.", code: "unreachable" } };
@@ -441,6 +457,11 @@ export function createMobileLink(deps: MobileLinkDeps) {
         if (!own && !ownerOrAdmin(auth)) { json(res, 403, { error: "Only the owner or an admin can remove a phone." }); return true; }
         const removed = revoke(one[1]);
         json(res, removed ? 200 : 404, removed ? { ok: true } : { error: "no such phone" });
+        return true;
+      }
+      if (path === "/api/mobile/routes" && method === "GET") {
+        if (!deviceOf(auth)) { json(res, 404, { error: "this session is not a paired phone" }); return true; }
+        json(res, 200, await routes());
         return true;
       }
       if (path === "/api/mobile/device" && method === "GET") {

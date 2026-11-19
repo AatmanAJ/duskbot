@@ -234,7 +234,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         </div>
       )}
       <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-0 z-[5] h-[calc(var(--m-safe-top)+72px)] bg-gradient-to-b from-app from-60% to-transparent transition-opacity duration-150", scrolled ? "opacity-100" : "opacity-0")} />
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-4" style={{ paddingTop: BAR_TOP }}>
+      <header data-home-bar="" className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-4" style={{ paddingTop: BAR_TOP }}>
         <RoundButton floating label={t("mobile.home.you")} onClick={() => onOpenSheet({ kind: "settings" })} className="pointer-events-auto overflow-visible">
           {face
             ? <UserFace account={face} size={40} className="size-full" />
@@ -242,8 +242,8 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
         </RoundButton>
         <div className="flex-1" />
         <ConnectionPill notice={live.notice} trying={live.trying} onRetry={live.retry} testId="mobile-connection-status" />
-        <RoundButton floating label={t("mobile.home.search")} onClick={() => onOpenSheet({ kind: "search" })} className="pointer-events-auto"><Search size={19} strokeWidth={1.9} /></RoundButton>
-        <RoundButton floating label={t("mobile.home.newBot")} onClick={() => onOpenSheet({ kind: "create" })} className="pointer-events-auto"><Plus size={21} strokeWidth={1.9} /></RoundButton>
+        <RoundButton floating glass data-home-glass="search" label={t("mobile.home.search")} onClick={() => onOpenSheet({ kind: "search" })} className="pointer-events-auto"><Search size={19} strokeWidth={1.9} /></RoundButton>
+        <RoundButton floating glass data-home-glass="newBot" label={t("mobile.home.newBot")} onClick={() => onOpenSheet({ kind: "create" })} className="pointer-events-auto"><Plus size={21} strokeWidth={1.9} /></RoundButton>
       </header>
 
       <ContextMenu

@@ -372,6 +372,7 @@ describe("createOpenAIChatRuntime tool approvals", () => {
       + 'data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n';
     const answer = 'data: {"choices":[{"index":0,"delta":{"content":"Done."}}]}\n\n'
       + 'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
+    let seen: RuntimeEvent[] = [];
     const run = async (replies: string[], rounds?: number, integrations?: SendTurnInput["integrations"]) => {
       const bodies: any[] = [];
       vi.stubGlobal("fetch", vi.fn(async (input: unknown, init?: RequestInit) => {
@@ -385,6 +386,7 @@ describe("createOpenAIChatRuntime tool approvals", () => {
         environment: { K: "synthetic" },
       });
       const events: RuntimeEvent[] = [];
+      seen = events;
       instance.adapter.onEvent((event) => events.push(event));
       try {
         await instance.adapter.sendTurn({
@@ -401,6 +403,23 @@ describe("createOpenAIChatRuntime tool approvals", () => {
     it("sends a failed call back once per round, then ends the turn as failed", async () => {
       expect(await run([toolCall("c1", "nope"), answer, toolCall("c2", "nope"), answer], 1))
         .toEqual({ requests: 4, corrective: 1, ok: false, stopReason: "tool_error" });
+    }, 20_000);
+
+    it("shows one reply however many rounds the failure gets: an answer a round may still replace is never streamed or posted", async () => {
+      const first = 'data: {"choices":[{"index":0,"delta":{"content":"X did not open."}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
+      const last = 'data: {"choices":[{"index":0,"delta":{"content":"I could not post it: X is not connected. Connect X and I will post it."}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n';
+      expect(await run([toolCall("c1", "nope"), first, first, last], 2)).toEqual({ requests: 4, corrective: 2, ok: false, stopReason: "tool_error" });
+      const replies = seen.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
+      expect(replies).toEqual(["I could not post it: X is not connected. Connect X and I will post it."]);
+      expect(seen.flatMap((event) => event.type === "content.delta" && event.streamKind === "assistant_text" ? [event.delta] : []).join("")).toBe(replies[0]);
+      expect(seen.find((event) => event.type === "runtime.error")).toMatchObject({ partial: true, owned: true });
+    }, 20_000);
+
+    it("leaves the failure card for a reply that does not say what failed", async () => {
+      await run([toolCall("c1", "nope"), answer], 0);
+      const error = seen.find((event) => event.type === "runtime.error");
+      expect(error).toMatchObject({ partial: true });
+      expect(error).not.toHaveProperty("owned");
     }, 20_000);
 
     it("keeps the failure when the bot answers the round without running a tool", async () => {

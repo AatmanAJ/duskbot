@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { appleNonce, createMobileAccount, isAccountAuthUrl, mobileFace } from "./account-client";
+import { appleNonce, createMobileAccount, isAccountAuthUrl, mobileFace, parseComputerPair, parsePairGrant } from "./account-client";
 import { webPlatform, type MobilePlatform } from "../platform";
 
 const origin = "https://accounts.example";
@@ -401,5 +401,19 @@ describe("the platform analytics counts a phone as", () => {
     expect(analyticsPlatform("web", "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X)")).toBe("ios");
     expect(analyticsPlatform("web", "Mozilla/5.0 (Linux; Android 16; SM-S931B)")).toBe("android");
     expect(analyticsPlatform("web", "Mozilla/5.0 (X11; Linux x86_64)")).toBe("linux");
+  });
+});
+
+describe("a pairing grant on a phone whose clock is off", () => {
+  const at = 1_900_000_000_000;
+  const cloudGrant = (expiresAt: number) => ({ cloudContractVersion: 1, origin: "https://d1.dusk.bot", code: "ABCD-EFGH-JKLM", expiresAt });
+  const computerPair = (expiresAt: number) => ({ v: 1, link: "duskbot://pair?m=abc", expiresAt });
+  it("takes a fresh grant with the phone minutes ahead or behind, and refuses nonsense", () => {
+    for (const skew of [-8 * 60_000, 8 * 60_000]) {
+      expect(parsePairGrant(cloudGrant(at + 5 * 60_000), null, at + skew)).not.toBeNull();
+      expect(parseComputerPair(computerPair(at + 5 * 60_000), at + skew)).toBe("duskbot://pair?m=abc");
+    }
+    expect(parsePairGrant(cloudGrant(at + 24 * 60 * 60_000), null, at)).toBeNull();
+    expect(parsePairGrant(cloudGrant(at - 60 * 60_000), null, at)).toBeNull();
   });
 });

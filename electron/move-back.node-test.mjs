@@ -108,3 +108,14 @@ test("a linked server is paused through its agent", async () => {
   await back.run();
   assert.deepEqual(calls, ["backup-here", "link-freeze", "backup-from https://box.example", "restore b1", "finish"]);
 });
+
+test("a backup of this computer that fails stops before the server is touched, and a retry can go through", async () => {
+  let failing = true;
+  const { back, calls, server } = fixture({ backupHere: async () => { calls.push("backup-here"); if (failing) throw new Error("disk full"); } });
+  await assert.rejects(back.run("env-box"), /backup of this computer could not be saved first, so nothing was moved/);
+  assert.deepEqual(calls, ["backup-here"]);
+  assert.equal(server.frozen, false);
+  assert.equal(back.view().status, "failed");
+  failing = false;
+  assert.deepEqual(await back.run("env-box"), { ok: true });
+});

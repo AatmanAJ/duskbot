@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { announcesAction, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, MAX_RETRY_WAIT_MS, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { announcesAction, claimsUnmadeChange, effectfulCall, ownsFailure, leakedReasoning, leakedToolSyntax, LeakHoldback, MAX_RETRY_WAIT_MS, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 
 describe("announcesAction before anything ran", () => {
   it.each([
@@ -137,6 +137,15 @@ describe("LeakHoldback", () => {
     expect(short.hold.kept()).toBe("Already started.");
     const notes = stream(["We need to move your standup to 11."]);
     expect(notes.hold.flush()).toBe("We need to move your standup to 11.");
+  });
+});
+
+describe("ownsFailure", () => {
+  it("reads a reply that says what failed, and not one that claims it worked or says nothing of it", () => {
+    expect(ownsFailure("I couldn't post it: X isn't connected. Connect X under Connect apps and I'll post it.")).toBe(true);
+    expect(ownsFailure("Nothing was sent; the page did not load.")).toBe(true);
+    expect(ownsFailure("Done.")).toBe(false);
+    expect(ownsFailure("I've posted it, though the preview failed to load.")).toBe(false);
   });
 });
 

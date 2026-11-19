@@ -24,6 +24,7 @@ import {
   selectPhoneDestination,
   profileLabel,
   grokProfileMenuItems,
+  ProfileFace,
 } from "./SidebarProfileMenu";
 import { DOCS_URL, FEEDBACK_URL, HELP_CENTER_URL, platformLabel } from "@/lib/app-links";
 import { profileForSession } from "@/lib/session";
@@ -456,6 +457,8 @@ describe("Simple mode's account menu", () => {
     expect(nameless).not.toContain("?");
     expect(nameless).toContain("font-size:14px");
     expect(renderToStaticMarkup(createElement(InitialsAvatar, { initials: "AL", size: 50 }))).toContain("font-size:19px");
+    expect(renderToStaticMarkup(createElement(ProfileFace, { face: null, initials: profileInitials({}), size: 26 }))).not.toContain(">?<");
+    expect(renderToStaticMarkup(createElement(ProfileFace, { face: null, initials: "AL", size: 26 }))).toContain(">AL<");
   });
 
   it("ticks the current place, which opens the same native list as the top row's place button; no second switch to…", () => {

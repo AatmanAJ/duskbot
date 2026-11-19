@@ -852,6 +852,20 @@ describe("Store", () => {
     expect(new Store(selection).taskByThread(bot.id, bot.threadId)?.usage?.turns).toBe(20);
   });
 
+  it("defers the write of a read marker, so reading a chat never rewrites and fsyncs bots.json", () => {
+    const store = new Store(selection);
+    const bot = store.createBot({ name: "Reading" });
+    const reply = store.appendMessage(bot.threadId, { role: "bot", kind: "text", text: "hello" });
+    store.patchTask(bot.id, bot.threadId, { unread: true });
+    flushDeferredSaves();
+    const save = vi.spyOn(store as unknown as { saveBots(): void }, "saveBots");
+    store.patchTask(bot.id, bot.threadId, { unread: false, lastReadMessageId: reply.id });
+    expect(save).not.toHaveBeenCalled();
+    flushDeferredSaves();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(new Store(selection).taskByThread(bot.id, bot.threadId)).toMatchObject({ unread: false, lastReadMessageId: reply.id });
+  });
+
   it("addTaskUsage accumulates settled-turn totals per task and survives a restart", () => {
     const store = new Store(selection);
     const bot = store.createBot();

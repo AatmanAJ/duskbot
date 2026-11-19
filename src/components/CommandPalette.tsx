@@ -24,6 +24,7 @@ type Command = { id: string; name: string; detail?: string; also?: string; icon:
 
 type PaletteEntry =
   | { kind: "bot"; bot: Bot }
+  | { kind: "archived"; bot: Bot }
   | { kind: "room"; group: Group }
   | { kind: "message"; hit: SearchHit }
   | { kind: "command"; command: Command };
@@ -180,8 +181,10 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   const slot = new Map(liveBots.slice(0, 9).map((bot, index) => [bot.id, index + 1]));
   const bots = q ? ranked(liveBots, (bot) => bot.name, q) : liveBots;
   const rooms = ranked(state.groups, (group) => group.name, q);
+  const archived = q ? ranked(state.bots.filter((b) => b.hidden), (bot) => bot.name, q) : [];
   const entries: PaletteEntry[] = [
     ...bots.map((bot): PaletteEntry => ({ kind: "bot", bot })),
+    ...archived.map((bot): PaletteEntry => ({ kind: "archived", bot })),
     ...rooms.map((group): PaletteEntry => ({ kind: "room", group })),
     ...(q ? messageHits.map((hit): PaletteEntry => ({ kind: "message", hit })) : []),
     ...shownCommands.map((command): PaletteEntry => ({ kind: "command", command })),
@@ -199,6 +202,14 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
       }
     } else if (entry.kind === "bot") {
       openBot(dispatch, entry.bot);
+    } else if (entry.kind === "archived") {
+      try {
+        const response = await api(`/api/bots/${entry.bot.id}`, { method: "PATCH", body: JSON.stringify({ hidden: false }) });
+        dispatch({ type: "botPatched", bot: response.bot });
+        openBot(dispatch, response.bot);
+      } catch (error) {
+        dispatch({ type: "error", message: friendlyError(error) });
+      }
     } else if (entry.kind === "room") {
       dispatch({ type: "select", id: entry.group.id });
     } else {
@@ -314,6 +325,12 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
                       {/* grok's rows carry no keycap; the shortcut stays, read out only */}
                       {key && <span className="sr-only">Command {key}</span>}
                     </>);
+                }
+                if (entry.kind === "archived") {
+                  const { bot } = entry;
+                  return row(`archived:${bot.id}`, index, entry, <BotAvatar bot={bot} size={24} animated={false} trackPointer={false} />,
+                    <Marked text={bot.name} query={q} />, t("search.archivedBot"), t("sidebar.archived.restore"),
+                    <span className="shrink-0 rounded-full bg-ink/6 px-2 py-0.5 text-[12px] text-ink-secondary">{t("sidebar.archived.restore")}</span>);
                 }
                 if (entry.kind === "room") {
                   const { group } = entry;

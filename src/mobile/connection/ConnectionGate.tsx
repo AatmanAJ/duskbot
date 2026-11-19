@@ -27,6 +27,7 @@ import { liveEventsHeardAt, retryLiveEventsNow } from "@/lib/live-events";
 import { phoneOffline } from "../network";
 import { workspaceAnsweredAt } from "./reachability";
 import { sameRoute, watchRoute } from "./route-watch";
+import { learnRoutes } from "./learn-routes";
 
 type GateState = { kind: "loading" } | { kind: "pair"; reason?: "revoked" } | { kind: "ready"; id: string }
   | { kind: "offline"; record: MobileConnectionRecord; others: MobileConnectionRecord[]; attempts: number; trying: boolean };
@@ -84,6 +85,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
           if (transport.asleep) markCloudAsleep();
           setState({ kind: "ready", id: active.record.id });
           void store.touch(active.record.id).catch(() => {});
+          void learnRoutes(active.record, transport, store.setRoutes);
         } catch (error) {
           if (stopped) return;
           if (error instanceof PairError && error.code === "refused") {
@@ -120,6 +122,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
       heardAt: () => Math.max(liveEventsHeardAt() ?? 0, workspaceAnsweredAt() ?? 0) || null,
       online: () => !phoneOffline(),
       visible: () => document.visibilityState === "visible",
+      onNetworkChange: platform.onNetworkChange && ((listener) => platform.onNetworkChange!(() => { retryLiveEventsNow({ redial: true }); listener(); })),
       rewalk: async () => {
         const active = await store.active();
         // a relay link already follows its tunnel from node to node, and a second one on the same channel would race it
@@ -133,7 +136,8 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
         uninstall.current?.();
         uninstall.current = installTransport(found, retry);
         route.current = found;
-        retryLiveEventsNow();
+        retryLiveEventsNow({ redial: true });
+        void learnRoutes(active.record, found, store.setRoutes);
       },
     });
     return () => { controller.abort(); stop(); };
@@ -209,6 +213,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
     uninstall.current = installTransport(transport, retry);
     route.current = transport;
     if (transport.asleep) markCloudAsleep();
+    void learnRoutes(record, transport, store.setRoutes);
     resetSessionEnded();
     setIncoming(null);
     setAdding(0);

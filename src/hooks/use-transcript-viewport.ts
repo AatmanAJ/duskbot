@@ -232,7 +232,14 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     setBottomFollow(true);
     setTranscriptWindow({ key: transcriptKey, start: tailStart, end: null });
     requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: reducedMotion() ? "auto" : "smooth" });
+      const el = scrollRef.current;
+      if (!el) return;
+      const smooth = !reducedMotion();
+      // from far up the list cuts to one screen above the end and eases the rest, so it never scrolls through everything
+      // in between
+      const end = el.scrollHeight - el.clientHeight;
+      if (smooth && end - el.scrollTop > el.clientHeight) el.scrollTop = end - el.clientHeight;
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
     });
   };
 

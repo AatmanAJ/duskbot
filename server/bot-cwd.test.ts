@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { folderToFollow, inMyFolderCwd, sharedProjectFolder, validateBotCwd } from "./bot-cwd.ts";
+import { folderToFollow, inMyFolderCwd, isSystemFolder, sharedProjectFolder, validateBotCwd } from "./bot-cwd.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "dusk-cwd-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -32,6 +32,17 @@ describe("validateBotCwd", () => {
     expect(validateBotCwd(file)).toEqual({ ok: false, error: expect.stringMatching(/not a folder/) });
     expect(validateBotCwd(join(dir, "nope"))).toEqual({ ok: false, error: expect.stringMatching(/doesn't exist/) });
     expect(validateBotCwd(42)).toEqual({ ok: false, error: expect.stringMatching(/path/) });
+  });
+
+  it.skipIf(process.platform === "win32")("refuses a disk's root or a system folder with a plain reason", () => {
+    for (const root of ["/", "/usr", "/etc/", "/Users"].filter((path) => existsSync(path))) {
+      expect(validateBotCwd(root)).toEqual({ ok: false, error: expect.stringMatching(/^Pick a project folder/) });
+    }
+  });
+
+  it("knows Windows roots and system folders too", () => {
+    for (const root of ["C:\\", "D:", "C:\\Windows", "c:\\program files", "C:\\Users"]) expect(isSystemFolder(root)).toBe(true);
+    for (const project of ["C:\\Users\\ada\\shop", "/Users/ada/shop", "/usr/local/src/app"]) expect(isSystemFolder(project)).toBe(false);
   });
 });
 

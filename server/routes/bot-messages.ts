@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parseVoiceCall, VOICE_CALL_NOTE } from "../local-voice/call-note.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 
@@ -206,6 +207,8 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       const mentions = parseMentionPicks(body.mentions);
       if (mentions === null) return json(res, 400, { error: "mentions must be a list of up to 20 bot ids" });
       if (followUp && (guarded || pressed || fromAnApp)) return json(res, 400, { error: "only a typed message can choose how it meets the running turn" });
+      const voiceCall = parseVoiceCall(body.voiceCall);
+      if (voiceCall === null || (voiceCall && (guarded || pressed || fromAnApp || pointing))) return json(res, 400, { error: "voiceCall must be { callId } on a plain spoken message" });
       // A distinct route, so an older server answers 404 instead of ignoring the safety preconditions.
       const guardedBody = guarded ? guardedSendSchema.safeParse(body) : null;
       if (guardedBody && !guardedBody.success) {
@@ -289,7 +292,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       if (appSent && !slot) return json(res, 429, { error: "This app has sent too many messages. Wait a while, or type your message." });
       // A relay is not the person at this screen: it never carries what their apps last showed.
       const appContext = guarded || retried ? null : appContextBlock(store, threadId);
-      const context = `${appContext?.block ?? ""}${pointed?.block ?? ""}`;
+      const context = `${voiceCall ? VOICE_CALL_NOTE : ""}${appContext?.block ?? ""}${pointed?.block ?? ""}`;
       const app = context || appSent || pointed
         ? {
             ...(context ? { context } : {}),
@@ -333,7 +336,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       try {
         const receipt = await acceptDirectSend({
           botId: bot.id, threadId, text, sendId, replyTo, sender, trigger, dataContext, ...(app ? { app } : {}),
-          personPresent, ...(followUp ? { followUp } : {}),
+          personPresent, ...(followUp ? { followUp } : {}), ...(voiceCall ? { via: "call" as const, callId: voiceCall.callId } : {}),
           ...(mentions?.length && !press && !appSent ? { mentions } : {}),
         }, guardedStart);
         press?.settle("queueId" in receipt ? receipt.queueId : undefined);

@@ -29,7 +29,7 @@ describe("failed turn text", () => {
 
   it("previews a turn the room stopped for making no progress in plain words", () => {
     expect(activityPreview({ name: "error: Rivet's room turn made no progress for 1 minute and was stopped", ok: false, reason: "timeout" }, engine()))
-      .toBe("The reply timed out");
+      .toBe("Your AI took too long to answer. Try again.");
   });
 
   it("says Grok Build is signed out through the same rule, now that its card is the in-app code", () => {
@@ -75,6 +75,11 @@ describe("failed turn text", () => {
     const tool = { name: "mcp__dusk__computer_batch", ok: true };
     const dataResult = { botId: "bot", cardId: "result", title: "Revenue", kind: "chart" as const };
     expect(activityPreview(tool, engine(), dataResult)).toBe("Revenue");
+  });
+
+  it("previews a chat whose AI session is gone by the card's line, never the session id", () => {
+    expect(activityPreview({ name: "error: No conversation found with session ID: e8b9f01e-97e3-4be6-a55c-be988595628a", ok: false }, engine()))
+      .toBe("Your AI lost this chat's memory. Start a new chat to keep going.");
   });
 
   it("previews a technical cause as its plain line", () => {

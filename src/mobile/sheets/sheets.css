@@ -39,3 +39,14 @@
   .dusk-mobile .mobile-panel-sheet [data-panel-tabpanel="computer"] [class*="bg-[color-mix(in_srgb,var(--color-composer),var(--color-ink)_6%)]"] {
   background-color: var(--color-menu);
 }
+
+/* the bot's computer screen reads as a device's screen: a panel a step darker than the sheet round it, light or dark */
+.dusk-mobile .mobile-panel-sheet [data-panel-tabpanel="computer"] [data-panel-screen] {
+  border-radius: 18px;
+  background-color: color-mix(in srgb, #000 7%, var(--color-app));
+}
+:root:is([data-skin="grok-dark"], [data-skin="midnight"], [data-skin="dusk"], [data-skin="foundry"], [data-skin="graphite"], [data-skin="halloween"])
+  .dusk-mobile .mobile-panel-sheet [data-panel-tabpanel="computer"] [data-panel-screen],
+.dusk-mobile[data-scheme="dark"] .mobile-panel-sheet [data-panel-tabpanel="computer"] [data-panel-screen] {
+  background-color: color-mix(in srgb, #000 38%, var(--color-app));
+}

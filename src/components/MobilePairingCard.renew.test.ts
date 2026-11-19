@@ -16,7 +16,7 @@ vi.mock("motion/react", async (original) => {
   return { ...actual, motion, AnimatePresence: ({ children }: { children: ReactNode }) => createElement(Fragment, null, children), useReducedMotion: () => true };
 });
 
-import { AUTO_RENEWALS, MobilePairingCard, RENEW_BEFORE_MS } from "./MobilePairingCard";
+import { AUTO_RENEWALS, MINT_RETRY_MS, MobilePairingCard, RENEW_BEFORE_MS } from "./MobilePairingCard";
 import { ServerPairingCard } from "./ServerPairingCard";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -200,6 +200,8 @@ it("stops renewing after an hour or so and then says the code ended, with a new 
   expect(host.querySelector("[data-phone-code]")).not.toBeNull();
 });
 
+const retries = () => act(async () => { await vi.advanceTimersByTimeAsync(MINT_RETRY_MS.reduce((sum, ms) => sum + ms, 0) + 100); });
+
 it("when no code can be made, says why with one way to try again, and shows no empty code to copy", async () => {
   const base = api.getMockImplementation()!;
   let refuse = true;
@@ -209,6 +211,8 @@ it("when no code can be made, says why with one way to try again, and shows no e
   });
   await mount({ remote: false });
   await flush();
+  expect(host.querySelector("[data-pairing-failed]"), "it asks again before it says anything").toBeNull();
+  await retries();
   expect(host.querySelector("[data-pairing-failed] [role=alert]")?.textContent).toContain("cannot reach");
   expect(host.querySelector("[data-phone-qr]")).toBeNull();
   expect(host.querySelector("[data-phone-copy]")).toBeNull();
@@ -289,6 +293,51 @@ describe("a dusk cloud in the desktop app", () => {
     await mount({ remote: false, cloudHome: true });
     await flush();
     expect(host.querySelector("[data-pairing-failed] [role=alert]")?.textContent).toBe("Sign in to dusk cloud on this computer first, then try again.");
+  });
+
+  it("asks again by itself while the account service does not answer, and shows the code once it does", async () => {
+    const real = answer;
+    let fails = 1;
+    answer = () => (fails-- > 0 ? { outcome: "failed" } : real());
+    await mount({ remote: false, cloudHome: true });
+    await flush();
+    expect(host.querySelector("[data-pairing-failed]")).toBeNull();
+    await retries();
+    expect(signIns, "the retry renews the checked code, so the person is not asked twice").toEqual([false, true]);
+    expect(host.querySelector("[data-phone-code]")?.textContent).toBe("ABCD EFGH");
+  });
+
+  it("when no account code can be made, the qr opens the app's email log in instead of an error", async () => {
+    answer = () => ({ outcome: "failed" });
+    await mount({ remote: false, cloudHome: true, email: "owner@example.test" });
+    await flush();
+    await retries();
+    expect(signIns).toEqual([false, true, true]);
+    expect(host.querySelector("[data-pairing-failed]")).toBeNull();
+    expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/signin#email=owner%40example.test");
+    expect(host.querySelector("[data-phone-cloud-sign-in]")?.textContent).toContain("owner@example.test");
+  });
+
+  it("an account service without phone codes goes straight to the email log in, without retrying", async () => {
+    answer = () => ({ outcome: "unsupported" });
+    await mount({ remote: false, cloudHome: true, email: "owner@example.test" });
+    await flush();
+    expect(signIns).toEqual([false]);
+    expect(host.querySelector("[data-pairing-failed]")).toBeNull();
+    expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/signin#email=owner%40example.test");
+  });
+
+  it("a signed-out desktop offers Sign in, not Try again", async () => {
+    const signIn = vi.fn(async () => {});
+    vi.stubGlobal("duskDesktop", { cloudPlan: { phoneSignIn: async () => ({ outcome: "signed-out" }), signIn } });
+    await mount({ remote: false, cloudHome: true });
+    await flush();
+    expect(host.querySelector("[data-pairing-failed] [role=alert]")?.textContent).toBe("Sign in to dusk cloud on this computer first, then try again.");
+    expect(host.querySelector("[data-pairing-failed] [data-phone-new-code]")?.textContent).toBe("Sign in");
+    await click("[data-pairing-failed] [data-phone-new-code]");
+    await flush();
+    expect(signIn).toHaveBeenCalledOnce();
+    expect(host.querySelector("[data-pairing-failed] [data-phone-new-code]")?.textContent).toBe("Try again");
   });
 
   it("the local computer's pairing never asks the account for a phone code", async () => {

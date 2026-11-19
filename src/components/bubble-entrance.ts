@@ -5,10 +5,9 @@ import { SEND_FLOW, springTiming } from "@/hooks/use-arrival-flow";
 export const SEND_ENTER = SEND_FLOW;
 export const SEND_ENTER_FROM = 0.9;
 export const SEND_ENTER_RISE_PX = 16;
-/** A reply grows out of its top corner, by the mascot, then its words fade in whole. */
+/** A reply grows out of its top corner, by the mascot, its words with it. */
 export const REPLY_GROW = springTiming(420, 32);
 export const REPLY_GROW_FROM = 0.94;
-export const REPLY_WORDS = { duration: 200, delay: 90, easing: "cubic-bezier(0.22, 1, 0.36, 1)" } as const;
 
 const STALE_MS = 2_000;
 let launch: { sendId: string; at: number } | null = null;
@@ -43,16 +42,13 @@ export function enterFromComposer(bubble: HTMLElement, sendId: string | undefine
 }
 
 /** The reply grows out of its top start corner, the mascot's side, so its top edge moves only with the conversation;
- * its words fade in once it is there. Under reduced motion it only fades. */
-export function growFromMascot(bubble: HTMLElement, reduced: boolean, wordsRevealed = false): void {
+ * its words come with it, so no frame shows an empty bubble where the working line just was. Under reduced motion it
+ * only fades. */
+export function growFromMascot(bubble: HTMLElement, reduced: boolean): void {
   if (!canAnimate(bubble)) return;
   const rtl = rightToLeft(bubble);
   bubble.style.transformOrigin = rtl ? "100% 0%" : "0% 0%";
   bubble.animate(reduced
     ? [{ opacity: 0 }, { opacity: 1 }]
     : [{ opacity: 0, transform: `scale(${REPLY_GROW_FROM})` }, { opacity: 1, transform: "scale(1)" }], REPLY_GROW);
-  if (wordsRevealed) return;
-  for (const part of bubble.children) {
-    if (canAnimate(part)) part.animate([{ opacity: 0 }, { opacity: 1 }], { ...REPLY_WORDS, fill: "backwards" });
-  }
 }

@@ -2484,8 +2484,8 @@ export function keepHubRunning(make, { againMs = PHONES_AGAIN_MS, log = () => {}
   return { done, usedAt: () => hub?.usedAt?.() ?? 0, stop() { stopped = true; hub?.stop(); pause?.(); } };
 }
 
-export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = harnessSync(server), origin = null, spki = null, where = null, fetchImpl: given, log = (line) => console.error(line), waitS = 25, aheadMs = STREAM_AHEAD_MS }) {
-  const fetchImpl = given ?? relayFetch({ proxy: envProxy() }), stream = streamChoice(), startedAt = relayNow();
+export function createPhoneHub({ base, id, token, keys, server = SERVER, sync = harnessSync(server), origin = null, spki = null, where = null, proxy = envProxy(), fetchImpl: given, log = (line) => console.error(line), waitS = 25, aheadMs = STREAM_AHEAD_MS }) {
+  const fetchImpl = given ?? relayFetch({ proxy }), stream = streamChoice(), startedAt = relayNow();
   const abort = new AbortController(), channels = new Map();
   let usedAt = 0;
   // a channel the relay dropped and the sync brought back keeps its replay guard, or the relay could replay its frames

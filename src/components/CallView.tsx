@@ -28,6 +28,8 @@ import { callCapabilityHelp, type CallCapabilityHelp } from "@/lib/call-capabili
 import { onCallStartRequest } from "@/lib/call-start-request";
 import { serverListeningReady, listensHere, speechBridge } from "@/lib/speech";
 import { VoiceSetupDialog } from "./lazy-screens";
+import { useLocalVoiceCall } from "@/lib/voice-call/availability";
+import { VoiceCall } from "./VoiceCallBar";
 import { openBotSettings } from "./bot-panel/panel-link";
 import { MENU_SHEET } from "./menu-recipe";
 
@@ -40,8 +42,9 @@ export type CallButtonPlacement = "header" | "composer" | "panel";
 
 /** `fill` (Simple composer): a round button in that colour with its glyph in `ink`, and no chevron; the + menu picks the
  * call mode. */
-/** `inverse` (phone composer): a round ink-coloured button with an app-coloured glyph: white on Midnight, dark on Meadow. */
-export function CallButton({ bot, placement = "header", fill, ink, inverse }: { bot: Bot; placement?: CallButtonPlacement; fill?: string; ink?: string; inverse?: boolean }) {
+/** `inverse` (phone composer): one of the pill's own 32 px controls, a plain glyph in the quiet ink, like its mic. */
+/** `live`: offer a Live call beside the built-in voice. */
+export function CallButton({ bot, placement = "header", fill, ink, inverse, live = true }: { bot: Bot; placement?: CallButtonPlacement; fill?: string; ink?: string; inverse?: boolean; live?: boolean }) {
   const { state } = useStore();
   return (
     <CallTargetButton
@@ -55,7 +58,7 @@ export function CallButton({ bot, placement = "header", fill, ink, inverse }: { 
       voices={[bot.voice]}
       setupBotId={bot.id}
       requireExplicitVoices={false}
-      liveCapable
+      liveCapable={live}
       onStart={(mode) => callStarted(state.instances, bot.modelSelection?.instanceId, mode)}
     />
   );
@@ -103,17 +106,18 @@ export function CallTargetButton({
   const capabilityHelp = capabilitiesReady
     ? callCapabilityHelp(capabilities, Boolean(speechBridge()?.speechStart), serverListeningReady(state.config))
     : null;
-  const supported = capabilitiesReady && !capabilityHelp;
-  const localVoice = localSystemVoiceActive();
+  const builtInVoice = useLocalVoiceCall() === true;
+  const supported = builtInVoice || (capabilitiesReady && !capabilityHelp);
+  const localVoice = builtInVoice || localSystemVoiceActive();
   const configured = localVoice || Boolean(state.config?.tts?.configured);
   const everyTargetHasVoice = voices.length > 0 && voices.every((voice) => Boolean(voice));
   const voiceReady =
     localVoice ||
     (configured && (requireExplicitVoices ? everyTargetHasVoice : Boolean(state.config?.tts?.ready || everyTargetHasVoice)));
-  const turnsHere = !capabilitiesReady || listensHere(capabilities, state.config);
+  const turnsHere = builtInVoice || !capabilitiesReady || listensHere(capabilities, state.config);
   const mode = effectiveCallMode(useCallMode(), { turnsHere, canLive });
   const liveMode = canLive && mode === "live";
-  const turnsReady = capabilitiesReady && supported && voiceReady;
+  const turnsReady = builtInVoice || (capabilitiesReady && supported && voiceReady);
   const unavailable = !active && !liveElsewhere && !liveMode && !turnsReady;
   const lineHeldElsewhere = liveMode && !onCall && liveLineHeldElsewhere(media, state.liveCall);
   const voiceSetupRequired = capabilitiesReady && supported && !voiceReady;
@@ -143,6 +147,8 @@ export function CallTargetButton({
       ? elsewhereName ? t("call.live.pill", { name: elsewhereName }) : t("call.live.badge")
       : liveMode
       ? t("call.live.callWith", { name: targetName })
+      : builtInVoice
+      ? t("call.callWith", { name: targetName })
       : !capabilitiesReady
       ? t("call.checking")
       : !supported
@@ -153,7 +159,9 @@ export function CallTargetButton({
             ? t("call.pickVoice")
             : t("call.callWith", { name: targetName });
 
-  const reason = !capabilitiesReady
+  const reason = builtInVoice
+    ? ""
+    : !capabilitiesReady
     ? t("call.checkingReason")
     : capabilityHelp
       ? capabilityHelp.reason
@@ -253,6 +261,7 @@ export function CallTargetButton({
         aria-label={label}
         title={label}
         data-call-button={placement}
+        data-call-active={active ? "" : undefined}
         style={fill && !active ? { backgroundColor: fill, color: ink } : undefined}
         className={cn(
           "relative flex shrink-0 items-center justify-center disabled:opacity-60",
@@ -261,7 +270,7 @@ export function CallTargetButton({
           active
             ? "bg-danger text-white hover:brightness-110"
             : inverse
-              ? "bg-ink text-app hover:opacity-90 max-md:size-10"
+              ? "size-8 text-ink-tertiary hover:text-ink"
             : fill
               ? composer ? "composer-press hover:brightness-[0.88]" : "hover:brightness-110"
             : placement === "panel"
@@ -451,8 +460,10 @@ export function CallModeMenu({ id, mode, onChoose, onClose, placement = "header"
 export function CallOverlay({ bot }: { bot: Bot }) {
   const active = useOnCall() === bot.id;
   const media = useLiveMedia();
+  const builtInVoice = useLocalVoiceCall() === true;
   const onLiveCall = media.botId === bot.id && isLiveCallRunning(media.phase);
   if (!active || onLiveCall) return null;
+  if (builtInVoice) return <VoiceCall key={bot.threadId} bot={bot} />;
   return (
     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-app/95 backdrop-blur-sm">
       <Call key="turns" bot={bot} />
