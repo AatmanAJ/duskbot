@@ -258,6 +258,33 @@ html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-tour="comp
   background-color: var(--g-container);
   box-shadow: inset 0 0 0 .5px var(--g-rim);
 }
+/* and the chat's header is M3's center-aligned top app bar: one surface from under the status bar, a soft edge below it,
+   and plain icon buttons and title (no discs, no pill) that answer the same centred ripple */
+html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-glass-nav] {
+  background-color: var(--color-app);
+  padding-block-end: 6px;
+}
+html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-glass-nav]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  height: 12px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, var(--color-app), transparent);
+}
+html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-glass-nav] .m-glass {
+  background-color: transparent;
+  box-shadow: none;
+}
+html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-glass-nav] .mobile-press:active:not(:disabled) { scale: 1; }
+html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-glass-nav] button { position: relative; }
+/* Home's top buttons: M3's tonal icon buttons, flat on the page */
+html[data-mobile-app="android"] .dusk-mobile [data-home-bar] :is(.m-glass, .mobile-float) {
+  background-color: var(--g-container);
+  box-shadow: none;
+}
+html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-glass-nav] button::after,
 html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-tour="composer"] button:not([role="menuitem"])::after {
   content: "";
   position: absolute;
@@ -268,6 +295,7 @@ html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-tour="comp
   opacity: 0;
   transition: background-size 400ms cubic-bezier(.05, .7, .1, 1), opacity 300ms linear 100ms;
 }
+html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-glass-nav] button:active::after,
 html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-tour="composer"] button:not([role="menuitem"]):active::after {
   background-size: 300% 300%;
   opacity: .12;
@@ -282,7 +310,8 @@ html[data-mobile-app="android"] .dusk-mobile [data-ripple] {
   background-image: radial-gradient(circle at var(--m-rx, 50%) var(--m-ry, 50%),
     color-mix(in srgb, currentColor calc(8% * var(--m-ripple-a)), transparent) var(--m-ripple),
     transparent calc(var(--m-ripple) + 1px));
-}@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .dusk-mobile :is([data-mobile-chat] :is(.m-glass, [data-tour="composer"]), [data-home-bar] .m-glass) { background-color: var(--g-solid); }
 }
 @media (forced-colors: active) {
