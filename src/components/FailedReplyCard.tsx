@@ -10,7 +10,6 @@ import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } fr
 import { useStore, type Message, type ModelSelection } from "@/state/store";
 import { failedTurnCause } from "../../shared/failed-turn";
 import { failurePlan, type FailureAction } from "../../shared/failure-plan";
-import { shortenHomePaths } from "../../shared/raw-detail";
 import { freeFallback } from "../../shared/ai-ranking";
 import { engineReady } from "./EngineLibrary";
 import { ConnectAiDialog } from "./onboarding/ConnectAi";
@@ -60,15 +59,6 @@ const FOLDER_GONE = /This bot's folder .* was moved or deleted\./;
 const openEngines = { type: "toggleAppSettings", open: true, section: "engines" } as const;
 
 type CardAction = { label: string; onClick: () => void };
-
-// kinds whose card line already is the whole cause, or whose cause is dusk bot's own record of the turn
-const OWN_WORDS: ReadonlySet<string> = new Set(["blocker", "no_answer", "restart_interrupted", "claude_update", "no_ai"]);
-
-/** What the engine or system really said, for Copy details only (home folders as ~); null when the card's line is it. */
-export function causeDetails(cause: string, plain: string | null): string | null {
-  const whole = shortenHomePaths(cause.trim());
-  return whole && whole !== plain?.trim() ? whole : null;
-}
 
 /** grok's failed-reply card: one card just above the composer for every reply the newest turn lost, gone once anything
  * newer lands or it is closed. In a group it names who couldn't reply and says the reason a person can fix. */
@@ -227,7 +217,6 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
   }
   if (FOLDER_GONE.test(cause) && leadBotId) actions.unshift({ label: t("botPanel.page.folder"), onClick: () => openBotSettings(dispatch, "access", { botId: leadBotId, page: "folder" }) });
   if (actions.length === 0 && !update && lead.kind !== "place" && leadBotId) actions.push({ label: t("chat.rescue.switchAi"), onClick: () => openBotSettings(dispatch, "model", { botId: leadBotId }) });
-  const copied = OWN_WORDS.has(lead.kind) ? null : causeDetails(cause, detail);
   // a sign-out notice beside a failure for another reason: still one card, its Sign in a pill on it
   const signInTile = lead.engine && aiTileOf(lead.engine);
   if (signInNotice && !actions.some((action) => action.label === t("chat.notice.signIn"))) actions.unshift({ label: t("chat.notice.signIn"), onClick: () => signInTile ? setConnecting(signInTile) : dispatch(openEngines) });
@@ -236,7 +225,6 @@ export function FailedReplyCard({ rows, group = false, botId: ownBotId, threadId
       <ChatErrorCard
         icon={lead.kind === "usage_limit" ? "batteryFull" : signInNotice ? "key" : lead.kind === "place" ? "offline" : undefined}
         title={lead.kind === "blocker" ? t("chat.blocker.title") : failedReplyTitle(items.map((item) => item.bot?.name ?? item.message.from?.name ?? ""), group)}
-        details={copied}
         onDismiss={close}
         actions={actions.length > 0 && actions.slice(0, lead.kind === "blocker" ? 3 : 2).map((action, index) => (
           <button key={action.label} type="button" onClick={action.onClick} className={index > 0 && lead.kind !== "blocker" ? QUIET_CARD_ACTION : CARD_ACTION}>{action.label}</button>

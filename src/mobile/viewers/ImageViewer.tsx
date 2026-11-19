@@ -21,16 +21,17 @@ type Gesture =
   | { kind: "pan"; start: Point; from: Point }
   | { kind: "pinch"; scale: number; pan: Point; focus: Point; distance: number };
 
-function Slide({ image, index, width, scale, panX, panY, current, onNatural }: {
+function Slide({ image, index, width, scale, panX, panY, current, neighbours, onNatural }: {
   image: PhoneImage; index: number; width: number; current: boolean;
   scale: MotionValue<number>; panX: MotionValue<number>; panY: MotionValue<number>;
+  neighbours: MotionValue<number>;
   onNatural: (size: Size) => void;
 }) {
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
   const transform = useTransform(() => `translate3d(${panX.get()}px, ${panY.get()}px, 0) scale(${scale.get()})`);
   return (
-    <div className="absolute inset-y-0 flex items-center justify-center" style={{ left: index * width, width }} aria-hidden={!current}>
+    <motion.div className="absolute inset-y-0 flex items-center justify-center" style={{ left: index * width, width, opacity: current ? 1 : neighbours }} aria-hidden={!current}>
       {state === "loading" && <span role="status" aria-label={t("attach.loadingImage")} className="absolute inset-0 flex items-center justify-center text-[rgb(245_245_245/0.6)]">
         <LoaderCircle size={24} className="animate-spin" aria-hidden="true" />
       </span>}
@@ -50,7 +51,7 @@ function Slide({ image, index, width, scale, panX, panY, current, onNatural }: {
           style={current ? { transform } : undefined}
           className={cn("block max-h-full max-w-full select-none object-contain [-webkit-touch-callout:none] transition-opacity duration-150", state === "ready" ? "opacity-100" : "opacity-0")} />
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -82,6 +83,7 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
     return `translate3d(${dragX.get()}px, ${dragY.get()}px, 0) scale(${enter * (1 - pulled * 0.3)})`;
   });
   const trackTransform = useTransform(() => `translate3d(${track.get()}px, 0, 0)`);
+  const neighbours = useTransform(dragY, (y) => Math.max(0, 1 - Math.abs(y) / 24));
   const runs = useRef<AnimationPlaybackControls[]>([]);
   const stopAll = () => { for (const run of runs.current) run.stop(); runs.current = []; };
   const to = (value: MotionValue<number>, target: number, options: Parameters<typeof animate>[2] = SPRING) => {
@@ -283,13 +285,13 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
         <motion.div className="absolute inset-0" style={{ transform: lift, opacity: reduced ? shown : undefined }}>
           <motion.div className="absolute inset-y-0 start-0" style={{ transform: trackTransform, width: stage.w * images.length }}>
             {images.map((image, i) => Math.abs(i - index) <= 1 && (
-              <Slide key={`${i}:${image.src}`} image={image} index={i} width={stage.w} current={i === index} scale={scale} panX={panX} panY={panY}
+              <Slide key={`${i}:${image.src}`} image={image} index={i} width={stage.w} current={i === index} scale={scale} panX={panX} panY={panY} neighbours={neighbours}
                 onNatural={(size) => { naturals.current.set(i, size); }} />
             ))}
           </motion.div>
         </motion.div>
       </div>
-      <div className={cn("viewer-chrome pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 px-4 pt-[calc(var(--m-safe-top)+8px)]", chrome ? "opacity-100" : "opacity-0")}>
+      <div data-viewer-controls="" className={cn("viewer-chrome pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 ps-[calc(var(--m-safe-left)+16px)] pe-[calc(var(--m-safe-right)+16px)] pt-[calc(var(--m-safe-top)+8px)]", chrome ? "opacity-100" : "opacity-0")}>
         <button type="button" onClick={() => close()} aria-label={t("attach.close")} className="viewer-key pointer-events-auto"><X size={20} /></button>
         <span className="min-w-0 flex-1 truncate text-center text-[15px] font-semibold text-[rgb(245_245_245)] tabular-nums">
           {images.length > 1 ? t("mobile.image.count", { index: index + 1, count: images.length }) : ""}
@@ -298,7 +300,7 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
           {sharing ? <LoaderCircle size={18} className="animate-spin" /> : <Share size={18} />}
         </button> : <span className="size-11" />}
       </div>
-      <div className={cn("viewer-chrome pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 px-6 pb-[calc(var(--m-safe-bottom)+16px)]", chrome ? "opacity-100" : "opacity-0")}>
+      <div className={cn("viewer-chrome pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 ps-[calc(var(--m-safe-left)+24px)] pe-[calc(var(--m-safe-right)+24px)] pb-[calc(var(--m-safe-bottom)+16px)]", chrome ? "opacity-100" : "opacity-0")}>
         {images.length > 1 && <div className="flex gap-1.5" aria-hidden="true">
           {images.map((_, i) => <span key={i} className={cn("size-1.5 rounded-full transition-colors duration-150", i === index ? "bg-[rgb(245_245_245)]" : "bg-[rgb(245_245_245/0.35)]")} />)}
         </div>}

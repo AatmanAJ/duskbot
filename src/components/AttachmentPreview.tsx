@@ -208,13 +208,22 @@ export function useLocalFileSave(filePath: string, name?: string, message?: Mess
       }
       const blob = await response.blob();
       if (!mounted.current || controller.signal.aborted) return;
-      const url = URL.createObjectURL(blob);
       const saved = canonicalDownloadFilename({
         contentDisposition: response.headers.get("content-disposition"),
         fallback: name || entry || attachmentBasename(filePath),
         source: filePath,
         mime: blob.type || response.headers.get("content-type"),
       });
+      const phone = phoneBridge();
+      // a phone's web view drops a download link's click: the file goes to the share sheet (Save to Files) instead
+      if (phone) {
+        if (!phone.shareFile) throw new Error(t("mobile.file.cannotSave"));
+        await phone.shareFile(new File([blob], saved, { type: blob.type || "application/octet-stream" }));
+        if (!mounted.current || controller.signal.aborted) return;
+        setState("idle");
+        return;
+      }
+      const url = URL.createObjectURL(blob);
       try {
         const link = document.createElement("a");
         link.href = url;
@@ -482,7 +491,7 @@ function PreviewDialog({ image, images, initialIndex = 0, onClose }: PreviewDial
       className="fixed inset-0 z-[70] bg-black/95 outline-none"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
-      <div className="absolute end-3 top-3 z-[1] flex items-center gap-2">
+      <div data-viewer-controls="" className="absolute end-[calc(var(--safe-area-inset-right,env(safe-area-inset-right,0px))+12px)] top-[calc(var(--safe-area-inset-top,env(safe-area-inset-top,0px))+12px)] z-[1] flex items-center gap-2">
         {current.downloadUrl && (
           <a
             href={current.downloadUrl}
@@ -505,7 +514,7 @@ function PreviewDialog({ image, images, initialIndex = 0, onClose }: PreviewDial
         </button>
       </div>
       <SheetMotion
-        className={cn("absolute inset-x-0 top-11 flex items-center justify-center overflow-hidden px-[38px] pt-[38px]", strip ? "bottom-[132px]" : "bottom-[68px]")}
+        className={cn("absolute inset-x-0 top-[calc(var(--safe-area-inset-top,env(safe-area-inset-top,0px))+44px)] flex items-center justify-center overflow-hidden px-[38px] pt-[38px]", strip ? "bottom-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))+132px)]" : "bottom-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))+68px)]")}
         onMouseDown={(event) => event.target === event.currentTarget && onClose()}
       >
         {!loaded && !failed && (
@@ -565,7 +574,7 @@ function PreviewDialog({ image, images, initialIndex = 0, onClose }: PreviewDial
           </button>
         </>
       )}
-      <div className="absolute inset-x-0 bottom-5 flex flex-col items-center gap-4">
+      <div className="absolute inset-x-0 bottom-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))+20px)] flex flex-col items-center gap-4">
         <span className="flex h-8 max-w-[80vw] items-center truncate text-[12px] leading-4 text-[rgb(245_245_245/0.54)]">{caption}</span>
         {strip && (
           <div className="flex max-w-[90vw] gap-2 overflow-x-auto [scrollbar-width:none]">

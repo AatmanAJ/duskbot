@@ -26,7 +26,18 @@ export interface RichTableProps {
 }
 
 /** The native modal supplies focus containment, Escape, an inert background and focus restoration. */
-export function TableDialog({ title, onClose, children, returnFocus }: { title: string; onClose: () => void; children: ReactNode; returnFocus: HTMLElement | null }) {
+export function TableDialog(props: { title: string; onClose: () => void; children: ReactNode; returnFocus: HTMLElement | null }) {
+  const phone = phoneBridge();
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!phone || opened.current) return;
+    opened.current = true;
+    phone.view({ kind: "page", title: props.title, body: <div className="px-3">{props.children}</div> }, props.onClose);
+  }, []);
+  return phone ? null : <ModalTableDialog {...props} />;
+}
+
+function ModalTableDialog({ title, onClose, children, returnFocus }: { title: string; onClose: () => void; children: ReactNode; returnFocus: HTMLElement | null }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {

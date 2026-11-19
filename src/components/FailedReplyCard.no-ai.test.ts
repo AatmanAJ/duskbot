@@ -57,7 +57,7 @@ describe("a first reply with no AI connected", () => {
     expect(card?.textContent).toContain("Connect your AI to keep chatting");
     expect(card?.textContent).toContain("The free backup is busy right now.");
     expect(card?.textContent).not.toContain("failed to respond");
-    const buttons = [...card!.querySelectorAll<HTMLButtonElement>("button:not([aria-label]):not([data-error-details-copy])")];
+    const buttons = [...card!.querySelectorAll<HTMLButtonElement>("button:not([aria-label])")];
     expect(buttons.map((button) => button.textContent)).toEqual(["Connect your AI", "Try again"]);
     expect(buttons[1]!.className).toContain("bg-transparent");
     await act(async () => buttons[1]!.click());

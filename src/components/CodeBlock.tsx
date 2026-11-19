@@ -169,9 +169,9 @@ export interface CodeBlockProps {
   initialWrap?: boolean;
 }
 
-const PLATE_BUTTON_SMALL = "composer-press relative inline-flex touch:before:absolute touch:before:-inset-2 touch:before:content-[''] size-5 touch:size-7 items-center justify-center rounded-[4px] border border-transparent bg-composer text-ink/[0.66] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus";
+const PLATE_BUTTON_SMALL = "composer-press inline-flex size-5 touch:size-7 items-center justify-center rounded-[4px] border border-transparent bg-composer text-ink/[0.66] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus";
 /** Grok's copy-code button: a 24px white key with a hairline and a small drop, top right of the block. */
-const PLATE_BUTTON = "composer-press relative inline-flex touch:before:absolute touch:before:-inset-1.5 touch:before:content-[''] size-6 touch:size-8 items-center justify-center rounded-[6px] border border-transparent bg-composer text-ink/[0.66] shadow-[0_1px_3px_rgb(28_28_28/0.12)] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus";
+const PLATE_BUTTON = "composer-press inline-flex size-6 touch:size-8 items-center justify-center rounded-[6px] border border-transparent bg-composer text-ink/[0.66] shadow-[0_1px_3px_rgb(28_28_28/0.12)] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus";
 
 /** The hover plate on a code block or diagram: Copy, and a ⋯ menu for the rest. It shows on hover, on
  * keyboard focus and always on touch screens, and stays while its menu is open. */

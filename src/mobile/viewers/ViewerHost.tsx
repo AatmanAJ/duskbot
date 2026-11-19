@@ -24,6 +24,12 @@ export function inAppLink(target: EventTarget | null): string | null {
   return /^https?:\/\//i.test(href) ? href : null;
 }
 
+/** A button on a card in the chat (an approval, a question, a connect, a retry), not one inside a reply's own words. */
+function cardAction(target: EventTarget | null): boolean {
+  const button = target instanceof Element ? target.closest("button:not(:disabled), [role='button']:not([aria-disabled='true'])") : null;
+  return Boolean(button?.closest("[data-mobile-chat] [data-mid]") && !button.closest("[data-chat-bubble], [data-testid='message-actions']"));
+}
+
 function TextViewer({ text, open, onClose }: { text: string; open: boolean; onClose: () => void }) {
   const { state: copied, copy } = useCopyFeedback(text);
   return (
@@ -60,6 +66,7 @@ export function ViewerHost({ rootRef }: { rootRef: RefObject<HTMLElement | null>
     const root = rootRef.current;
     if (!root) return;
     const onClick = (event: MouseEvent) => {
+      if (cardAction(event.target)) haptic("selection");
       if (event.defaultPrevented) return;
       const url = inAppLink(event.target);
       if (!url) return;

@@ -5,8 +5,11 @@
   --m-ease-release: cubic-bezier(.28, 1.4, .36, 1);
   --m-fast: .16s;
   --m-base: .22s;
-  --m-safe-top: env(safe-area-inset-top, 0px);
-  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Capacitor 8 SystemBars (insetsHandling "css") injects --safe-area-inset-*: Android WebView before 140 reports 0 in env() */
+  --m-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --m-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --m-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --m-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
   --m-kb: 0px;
   --m-kb-shift: 0px;
   --m-kb-dur: .25s;

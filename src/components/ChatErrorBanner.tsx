@@ -66,8 +66,8 @@ export function ChatErrorCard({ tone = "danger", icon, title, details, children,
       <NoticeGlyph tone={tone} icon={icon} />
       <div className="min-w-0 flex-1 break-words">
         <span className="block font-medium">{title}</span>
-        {children}
         {details && <ErrorDetailsCopy details={details} />}
+        {children}
         {actions && <div className="mt-2 flex flex-wrap items-center gap-1.5">{actions}</div>}
       </div>
       {onDismiss && (

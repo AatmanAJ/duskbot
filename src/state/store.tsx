@@ -2575,7 +2575,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 }
               }
               const response = await respond();
-              if (response?.settlementPending && typeof response.message === "string") {
+              if (response?.outcome === "unavailable") action.onError?.(t("ask.unavailable"));
+              else if (response?.settlementPending && typeof response.message === "string") {
                 showError(new Error(response.message));
               }
             })

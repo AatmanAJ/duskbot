@@ -48,11 +48,11 @@ function search(value: string) {
   return input;
 }
 
-describe("Command palette and bots hidden from the sidebar", () => {
+describe("Command palette and archived bots", () => {
   it("finds a hidden bot by name and brings it back with one pick", async () => {
     const input = search("bas");
     const row = [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent?.includes("Basil"));
-    expect(row?.textContent).toContain("Hidden from the sidebar");
+    expect(row?.textContent).toContain("Archived. Pick it to bring it back.");
     flushSync(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
     await vi.waitFor(() => expect(fixture.dispatch).toHaveBeenCalledWith({ type: "botPatched", bot: { ...hidden, hidden: false } }));
     expect(fixture.api).toHaveBeenCalledWith("/api/bots/basil", { method: "PATCH", body: JSON.stringify({ hidden: false }) });
