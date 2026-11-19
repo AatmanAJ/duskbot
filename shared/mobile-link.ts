@@ -371,13 +371,35 @@ export function mobileOpenLink(target: MobileOpenTarget): string {
 /** The hosts whose `/m/` pages the phone app opens itself (the app's associated domains). */
 export const UNIVERSAL_LINK_HOSTS: readonly string[] = ["dusk.bot"];
 
+/** The account sign-in a signed-in desktop's pairing QR carries beside the pairing: its phone sign-in code (`a=`,
+ * shared/account-api.ts PhoneSignInGrant), the account's email (`ae=`) and its service (`as=`). The phone logs in to that
+ * account and pairs in one step; apps that predate it pair alone. */
+export type PairSignIn = { code: string; email: string; service?: SignInService };
+
 /** The desktop's one QR: `https://dusk.bot/m/pair#m=...&c=CODE`. With the app, iOS opens it there (the `m` pairs); without
  * it, the site's page sends them to the store and shows the typed code. Both ride after the `#`, which no server sees. */
-export function universalPairLink(deepLink: string, code: string | null): string {
+export function universalPairLink(deepLink: string, code: string | null, signIn?: { code: string; email: string; serviceOrigin?: string | null } | null): string {
   let query = "";
   try { query = new URL(deepLink).search.slice(1); } catch {}
   const typed = code?.replace(/[^a-z0-9]/gi, "").toUpperCase();
-  return `https://${UNIVERSAL_LINK_HOSTS[0]}/m/pair#${query}${typed ? `${query ? "&" : ""}c=${typed}` : ""}`;
+  const account = signIn?.code.replace(/[^a-z]/gi, "").toUpperCase();
+  const service = signIn?.serviceOrigin ? SIGN_IN_SERVICES[signIn.serviceOrigin] : undefined;
+  const fields = [query, ...(typed ? [`c=${typed}`] : []), ...(account && signIn?.email.trim() ? [`a=${account}`, `ae=${encodeURIComponent(signIn.email.trim())}`] : []),
+    ...(account && service ? [`as=${service}`] : [])].filter(Boolean);
+  return `https://${UNIVERSAL_LINK_HOSTS[0]}/m/pair#${fields.join("&")}`;
+}
+
+/** The account sign-in a pairing QR or link carries, or null for one without it. */
+export function pairSignIn(link: string): PairSignIn | null {
+  const app = appLinkFromUniversal(link) ?? link.trim();
+  let url: URL;
+  try { url = new URL(app); } catch { return null; }
+  if (url.protocol !== "duskbot:" || (url.hostname || url.pathname.replace(/^\/+/, "")) !== "pair") return null;
+  const code = (url.searchParams.get("a") ?? "").toUpperCase();
+  const email = (url.searchParams.get("ae") ?? "").trim();
+  const service = url.searchParams.get("as");
+  if (!/^[A-Z]{8}$/.test(code) || email.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(email)) return null;
+  return { code, email, ...(service === "production" || service === "preview" ? { service } : {}) };
 }
 
 /** A dusk cloud's QR: `https://dusk.bot/m/signin#c=CODE&email=...`. `c`, a desktop's phone sign-in code

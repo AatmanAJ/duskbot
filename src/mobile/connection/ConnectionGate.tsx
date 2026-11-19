@@ -4,7 +4,7 @@ import { MascotLoader } from "@/components/MascotLoader";
 import { readSessionState } from "@/lib/session";
 import { resetSessionEnded, useSessionEnded } from "@/lib/session-ended";
 import { THEME_SKINS } from "@/lib/skins";
-import { parseMobilePairingLink, parseSignInLink, type MobileConnectionRecord } from "../../../shared/mobile-link";
+import { pairSignIn, parseMobilePairingLink, parseSignInLink, type MobileConnectionRecord, type PairSignIn } from "../../../shared/mobile-link";
 import { usePlatform } from "../platform";
 import { useMobileAccount } from "../account/AccountGate";
 import { enrollWorkspace } from "../account/enroll-workspace";
@@ -46,7 +46,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   accountRef.current = account;
   const store = useMemo(() => createConnectionStore(platform), [platform]);
   const [state, setState] = useState<GateState>({ kind: "loading" });
-  const [incoming, setIncoming] = useState<{ payload: TypedPairing; sequence: number } | null>(null);
+  const [incoming, setIncoming] = useState<{ payload: TypedPairing; signIn?: PairSignIn; sequence: number } | null>(null);
   const [celebrate, setCelebrate] = useState<{ name: string; sequence: number } | null>(null);
   const [entered, setEntered] = useState(false);
   const [adding, setAdding] = useState(0);
@@ -198,7 +198,8 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
         return true;
       }
       const payload = parseMobilePairingLink(url);
-      if (payload) setIncoming({ payload, sequence: ++sequence.current });
+      const carried = payload ? pairSignIn(url) : null;
+      if (payload) setIncoming({ payload, ...(carried ? { signIn: carried } : {}), sequence: ++sequence.current });
       return Boolean(payload);
     };
     const customLink = (event: Event) => {
@@ -237,6 +238,8 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
     if (transport.asleep) markCloudAsleep();
     void learnRoutes(record, transport, store.setRoutes, fetch, () => relaySecrets(platform, record.id));
     resetSessionEnded();
+    // the system's own notifications question, over the screen, right as the link is made
+    if (platform.native) void registerPushForConnection(platform, { prompt: true });
     setIncoming(null);
     setAdding(0);
     setEntered(true);
@@ -259,10 +262,10 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   if (state.kind === "loading" && !incoming && !forcePair) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader naps={false} /></div>;
   if (state.kind === "offline" && !forcePair) {
     if (!incoming && adding === 0) return <>{success}<Unreachable record={state.record} others={state.others} attempts={state.attempts} trying={state.trying} gone={state.gone === true} onRetry={retry} onSwitch={switchTo} onRemove={() => removeGone(state.record.id, state.others[0]?.id)} /></>;
-    return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;
+    return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} initialSignIn={incoming?.signIn} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;
   }
   if (onboarding) {
-    return <>{success}<Onboarding key={incoming?.sequence ?? signInEmail?.sequence ?? 0} initial={incoming?.payload} reason={state.kind === "pair" ? state.reason : null}
+    return <>{success}<Onboarding key={incoming?.sequence ?? signInEmail?.sequence ?? 0} initial={incoming?.payload} initialSignIn={incoming?.signIn} reason={state.kind === "pair" ? state.reason : null}
       startAt={!incoming && signInEmail ? "signin" : undefined} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept} onLinked={linked} onCancel={cancel} /></>;
   }
   return (
@@ -271,7 +274,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
       <PhoneUpdateLine connection={state.kind === "ready" ? state.id : null} />
       {(incoming || adding > 0) && (
         <div className="fixed inset-0 z-50">
-          <Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept}
+          <Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} initialSignIn={incoming?.signIn} startAtLink startAt={incoming ? undefined : addingStep} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept}
             onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} />
         </div>
       )}

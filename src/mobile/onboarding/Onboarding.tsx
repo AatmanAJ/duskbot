@@ -6,12 +6,12 @@ import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
 import { upperFirst } from "@/lib/lower-first";
 import { THEME_SKINS } from "@/lib/skins";
-import { universalSignInLink, type MobileConnectionRecord } from "../../../shared/mobile-link";
+import { pairSignIn, universalSignInLink, type MobileConnectionRecord, type PairSignIn } from "../../../shared/mobile-link";
 import { haptic } from "../haptics";
 import { PixelArt, PixelMascot } from "../Illustration";
 import { usePlatform, type CameraPermission } from "../platform";
 import { LINK_DEADLINE_MS, linkDeadline, PairError, readScanned, redeemPairing, resolveTypedCode, type TypedPairing } from "../connection/pair";
-import { followSignInService } from "../account/environment";
+import { followSignInService, signInServiceSwitch } from "../account/environment";
 import { Scanner } from "./Scanner";
 import { CloudPicker } from "../account/CloudPicker";
 import { MobileSignIn } from "../account/MobileSignIn";
@@ -19,9 +19,9 @@ import { useMobileAccount } from "../account/AccountGate";
 import { MascotTrio } from "./SkyScene";
 import { BackButton, ErrorLine, FIELD, HEADLINE, LINE, PRIMARY, QUIET, Screen, StepPane, TONAL } from "./parts";
 
-export type Step = "welcome" | "signin" | "clouds" | "switch" | "confirm" | "permission" | "denied" | "scan" | "code" | "paste";
+export type Step = "welcome" | "signin" | "clouds" | "switch" | "confirm" | "scan" | "code" | "paste";
 /** a dusk cloud's QR or link: the account it logs in to, its code when it carries one, and the cloud it was drawn on */
-type CloudQr = { email: string; code?: string; cloud?: string };
+type CloudQr = { email: string; code?: string; cloud?: string; pair?: TypedPairing };
 type Failure = { code: PairError["code"] | "account-offline"; name: string; companion: boolean };
 type PhoneCodeOutcome = Awaited<ReturnType<NonNullable<ReturnType<typeof useMobileAccount>>["signIn"]["phoneCode"]>>["outcome"];
 
@@ -72,7 +72,9 @@ function Failed({ failure, onSignIn }: { failure: Failure; onSignIn?: () => void
 /** First launch to linked. Pairing with your own computer needs no account (App Store guideline 5.1.1(v)): scan its QR
  * code first, or type its code. Signing in is only for a dusk cloud (the account finds it and pairs with it). The success moment and the hand-off
  * to Home belong to the connection gate. */
-export function Onboarding({ initial = null, reason = null, startAtLink = false, startAt = "welcome", email, signInCode, signInCloud, onLinked, onOpen, onCancel }: {
+export function Onboarding({ initial = null, initialSignIn, reason = null, startAtLink = false, startAt = "welcome", email, signInCode, signInCloud, onLinked, onOpen, onCancel }: {
+  /** the account sign-in a signed-in desktop's pairing QR carried with `initial` */
+  initialSignIn?: PairSignIn;
   /** the dusk cloud a QR or link was drawn on, opened once the phone is logged in */
   signInCloud?: string;
   /** a place this phone already links, to open instead of pairing it again */
@@ -109,6 +111,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   const [switchTo, setSwitchTo] = useState<CloudQr | null>(null);
   // this screen signed an account out of the phone: the app under it may be on a place that is gone now
   const left = useRef(false);
+  const carriedSignIn = useRef(initialSignIn);
   const leave = () => { if (left.current) window.location.reload(); else onCancel?.(); };
   const [signingOut, setSigningOut] = useState(false);
   const [withComputers, setWithComputers] = useState(false);
@@ -121,11 +124,24 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     platform.setStatusBar?.(step === "scan" || document.documentElement.dataset.skin === THEME_SKINS.dark ? "light" : "dark");
   }, [platform, step]);
 
-  const go = (next: Step) => { setFailure(null); setScanFailed(false); setValue(""); setStep(next); };
+  // the link under way: any way out of its screen (Cancel, Back, closing the scanner) stops it, and its answer is dropped
+  const attempt = useRef<AbortController | null>(null);
+  const cancelLink = () => {
+    if (!attempt.current) return;
+    attempt.current.abort();
+    attempt.current = null;
+    locked.current = false;
+    setBusy(false);
+  };
+  const go = (next: Step) => { cancelLink(); setFailure(null); setScanFailed(false); setValue(""); setStep(next); };
+  const [cameraDenied, setCameraDenied] = useState(false);
 
   const redeem = async (text: string | TypedPairing, from: Step) => {
     if (locked.current) return;
     locked.current = true;
+    const controller = new AbortController();
+    attempt.current = controller;
+    const live = () => !controller.signal.aborted;
     setBusy(true);
     setFailure(null);
     setScanFailed(false);
@@ -136,19 +152,28 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
         if (scanned?.kind === "store") throw new PairError("store-qr");
         if (scanned?.kind === "signin" && followSignInService(text, scanned.service, account)) return;
         if (scanned?.kind === "signin") { await fromQr(scanned, from); return; }
+        if (scanned?.kind === "pair") carriedSignIn.current = pairSignIn(text) ?? undefined;
         if (scanned?.kind === "account") { await codeSignIn(scanned.code, null, from); return; }
         payload = scanned?.kind === "code" ? await resolveTypedCode(scanned.code) : scanned?.kind === "pair" ? scanned.payload : null;
       }
       if (!payload) throw new PairError("invalid");
-      const result = await redeemPairing(payload, platform);
+      const carried = carriedSignIn.current;
+      carriedSignIn.current = undefined;
+      if (carried && !(await signInWithPairing(carried, payload))) return;
+      const result = await redeemPairing(payload, platform, controller.signal);
+      if (!live()) return;
       await linkDeadline(Promise.resolve(onLinked(result.record, result.token, result.record.label || installationName(payload))), LINK_DEADLINE_MS + 5_000);
     } catch (error) {
+      if (!live()) return;
       haptic("error");
       setFailure({ code: error instanceof PairError ? error.code : "unreachable", name: installationName(payload, t("mobile.connection.yourComputer")), companion: payload?.transport === "companion" });
       if (from === "scan") { setStep("code"); setScanFailed(true); }
     } finally {
-      locked.current = false;
-      setBusy(false);
+      if (attempt.current === controller) {
+        attempt.current = null;
+        locked.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -167,6 +192,16 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     setQrTarget({ origin: cloud });
     setNoClouds(false);
     go("clouds");
+  };
+  /** A signed-in desktop's QR logs the phone in to its account as it pairs: a phone on another account is asked first
+   * (false: the pairing waits for that answer); a sign-in that does not take never stops the pairing. */
+  const signInWithPairing = async (signIn: PairSignIn, pair: TypedPairing): Promise<boolean> => {
+    if (!account || signInServiceSwitch(signIn.service, account.origin)) return true;
+    const current = account.account?.email;
+    if (current && current.toLowerCase() === signIn.email.toLowerCase()) return true;
+    if (current) { setSwitchTo({ email: signIn.email, code: signIn.code, pair }); go("switch"); return false; }
+    await account.signIn.phoneCode(signIn.code).catch(() => null);
+    return true;
   };
   /** a dusk cloud's QR or link: a phone on another account asks before it switches; one on this account or none goes on */
   const fromQr = async (qr: CloudQr, from: Step) => {
@@ -187,6 +222,12 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
       await account.leaveAccount();
       left.current = true;
       setSwitchTo(null);
+      if (qr.pair && qr.code) {
+        await account.signIn.phoneCode(qr.code).catch(() => null);
+        const pair = qr.pair;
+        queueMicrotask(() => void redeem(pair, "confirm"));
+        return;
+      }
       if (qr.code) { await codeSignIn(qr.code, qr.cloud ?? null, "switch"); return; }
       setSignInEmail(qr.email);
       setNoClouds(false);
@@ -207,19 +248,27 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     if (code) void redeem(email ? universalSignInLink(email, code, null, signInCloud) : code, "code");
   }, []);
 
+  // the system's own camera question comes up over this screen the moment the scanner is asked for; a no stays here, said
+  // in one line with the way to Settings
   const openScanner = async () => {
     setFailure(null);
+    setCameraDenied(false);
     const camera = platform.camera;
     if (!camera) { go("code"); return; }
-    const state: CameraPermission = await camera.permission().catch(() => "prompt");
-    go(state === "granted" ? "scan" : state === "denied" ? "denied" : "permission");
+    let state: CameraPermission = await camera.permission().catch(() => "prompt");
+    if (state === "prompt") {
+      state = await camera.request().catch(() => "denied" as const);
+      // the OS prompt pauses the app; the camera only opens once it is back in front
+      if (state === "granted") await new Promise((resolve) => setTimeout(resolve, 450));
+    }
+    if (state === "granted") go("scan");
+    else { haptic("error"); setCameraDenied(true); }
   };
-  const askCamera = async () => {
-    const state = await platform.camera?.request().catch(() => "denied" as const);
-    // the OS prompt pauses the app; the camera only opens once it is back in front
-    if (state === "granted") await new Promise((resolve) => setTimeout(resolve, 450));
-    go(state === "granted" ? "scan" : "denied");
-  };
+  const cameraLine = cameraDenied ? (
+    <ErrorLine action={platform.camera?.openSettings ? <button type="button" data-camera-settings="" onClick={() => void platform.camera?.openSettings?.()} className="mobile-press -ms-2 mt-1 flex min-h-11 items-center rounded-full px-2 text-[15px] font-semibold text-ink underline underline-offset-2">{t("mobile.onboarding.openSettings")}</button> : null}>
+      {t("mobile.onboarding.deniedBody")}
+    </ErrorLine>
+  ) : null;
   // the phone holds one account: another one is reached by leaving this one (its clouds with it), with the email field empty
   const otherAccount = async () => {
     await account?.leaveAccount();
@@ -247,7 +296,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   // listener capacitor swallows the press, so back did nothing at all before pairing
   const onBack = useRef<() => boolean>(() => false);
   onBack.current = () => {
-    if (busy) return true;
+    cancelLink();
     const canClose = Boolean(startAtLink && onCancel);
     switch (step) {
       case "welcome": if (canClose) leave(); return canClose;
@@ -287,6 +336,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
               {reason === "revoked" && <ErrorLine>{t("mobile.pair.revoked")}</ErrorLine>}
               <h1 className={`${HEADLINE} ${reason === "revoked" ? "mt-5" : ""}`}>{t(startAtLink ? "mobile.entry.addTitle" : "mobile.entry.title")}</h1>
               <p className={LINE}>{t(storeApp() ? "mobile.entry.bodyStore" : "mobile.entry.body")}</p>
+              {cameraLine}
               {download}
             </Screen>
           </StepPane>
@@ -314,6 +364,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
               <p className={LINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneStore" : "mobile.clouds.none" : withComputers ? "mobile.clouds.pickAnyBody" : "mobile.clouds.pickBody", { email: account?.account?.email ?? "" })}</p>
               <CloudPicker busy={busy} autoPick={!startAtLink && justSignedIn} target={qrTarget} onOpen={onOpen} onNone={() => setNoClouds(true)} onComputers={setWithComputers} onPairing={(payload) => redeem(payload, "clouds")} />
               {failure && <Failed failure={failure} />}
+              {cameraLine}
             </Screen>
           </StepPane>
         )}
@@ -335,25 +386,11 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
           <StepPane id="confirm">
             <Screen art={<PixelArt name="computer" size={84} />} actions={<>
               <button type="button" disabled={busy} className={PRIMARY} onClick={() => void redeem(confirm, "confirm")}>{busy ? <WorkingDots /> : t("mobile.pair.link")}</button>
-              <button type="button" disabled={busy} className={QUIET} onClick={() => { setConfirm(null); setFailure(null); if (onCancel && startAtLink) leave(); else go(home); }}>{t("mobile.pair.cancel")}</button>
+              <button type="button" data-link-cancel="" className={QUIET} onClick={() => { cancelLink(); setConfirm(null); setFailure(null); if (onCancel && startAtLink) leave(); else go(home); }}>{t("mobile.pair.cancel")}</button>
             </>}>
               <h1 className={HEADLINE}>{t("mobile.pair.confirm", { name: installationName(confirm) })}</h1>
               <p className={LINE}>{t("mobile.onboarding.confirmBody")}</p>
               {failure && <Failed failure={failure} onSignIn={() => go(signedIn ? "clouds" : "signin")} />}
-            </Screen>
-          </StepPane>
-        )}
-
-        {(step === "permission" || step === "denied") && (
-          <StepPane id={step}>
-            <Screen top={back()} art={<PixelArt name={step === "denied" ? "signpost" : "computer"} size={84} />} actions={<>
-              {step === "permission"
-                ? <button type="button" className={PRIMARY} onClick={() => void askCamera()}>{t("mobile.onboarding.allowCamera")}</button>
-                : platform.camera?.openSettings && <button type="button" className={PRIMARY} onClick={() => void platform.camera?.openSettings?.()}>{t("mobile.onboarding.openSettings")}</button>}
-              <button type="button" className={QUIET} onClick={() => go("code")}>{t("mobile.onboarding.codeInstead")}</button>
-            </>}>
-              <h1 className={HEADLINE}>{t(step === "denied" ? "mobile.onboarding.deniedTitle" : "mobile.onboarding.cameraTitle")}</h1>
-              <p className={LINE}>{t(step === "denied" ? "mobile.onboarding.deniedBody" : "mobile.entry.cameraBody")}</p>
             </Screen>
           </StepPane>
         )}
@@ -383,6 +420,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
                     </div>
                   )}
                   {failure && <Failed failure={failure} onSignIn={() => go(signedIn ? "clouds" : "signin")} />}
+                  {cameraLine}
                 </div>
               </div>
               <div className="flex shrink-0 flex-col items-center gap-1 px-6 pb-[calc(var(--m-safe-bottom)+16px)] pt-4">

@@ -8468,6 +8468,8 @@
   "settings.phone.cloudQr": "QR code that opens dusk bot's log in on your phone",
   "settings.phone.logInWith": "Log in with",
   "settings.phone.cloudAs": "Logs in as {email}",
+  "settings.phone.signInFirst": "Sign in to link your phone. The QR then signs your phone in to the same account as it links.",
+  "settings.phone.signInFirstSub": "Your phone signs in when it scans, no separate login.",
   "settings.phone.cloudCodeQr": "QR code that logs dusk bot in on your phone",
   "settings.phone.cloudSignedOut": "Sign in to dusk cloud on this computer first, then try again.",
   "mobile.clouds.title": "Your clouds",

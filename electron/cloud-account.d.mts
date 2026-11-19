@@ -270,6 +270,8 @@ export interface CloudPlanBridge {
   /** A code (and its QR) that logs a phone in to this account, after main's presence check; `renew` swaps the one on
    * screen without asking again for about an hour. Absent on an older app. */
   phoneSignIn?(renew?: boolean): Promise<CloudPhoneSignIn>;
+  /** Whether this computer is signed in to a dusk bot account. Absent on an older app. */
+  signedIn?(): Promise<boolean>;
   /** The trial's popup due now was shown: main shows it no more today. Absent on an older app. */
   noticeSeen?(): Promise<void>;
   /** The usage meter's Upgrade: the preview, then the change (only from the person's click). Absent on an older app. */

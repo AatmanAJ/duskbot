@@ -393,3 +393,38 @@ describe("no way for a phone to reach this workspace", () => {
     expect(host.querySelector("[data-phone-access-copy]")).not.toBeNull();
   });
 });
+
+describe("the Mac app's own account", () => {
+  const desktop = (signedIn: boolean, outcome: Record<string, unknown> = { outcome: "code", code: "WXYZ-QRST", expiresAt: Date.now() + 5 * 60_000, email: "owner@example.test", service: "https://preview.dusk.bot" }) => {
+    const bridge = { signedIn: vi.fn(async () => signedIn), signIn: vi.fn(async () => {}), phoneSignIn: vi.fn(async () => outcome) };
+    vi.stubGlobal("duskDesktop", undefined);
+    (window as unknown as { duskDesktop: unknown }).duskDesktop = { cloudPlan: bridge };
+    return bridge;
+  };
+  afterEach(() => { delete (window as unknown as { duskDesktop?: unknown }).duskDesktop; });
+
+  it("signed out: one card to sign in, no QR and no code made", async () => {
+    const bridge = desktop(false);
+    await mount({ remote: false });
+    expect(host.querySelector("[data-phone-sign-in-first]")?.textContent).toContain("Sign in to link your phone");
+    expect(host.querySelector("[data-phone-qr]")).toBeNull();
+    expect(minted).toBe(0);
+    expect(bridge.phoneSignIn).not.toHaveBeenCalled();
+    await click("[data-phone-sign-in]");
+    expect(bridge.signIn).toHaveBeenCalledOnce();
+  });
+
+  it("signed in: the QR pairs and carries the account's sign-in for the phone, with the account named", async () => {
+    const bridge = desktop(true);
+    await mount({ remote: false });
+    expect(bridge.phoneSignIn).toHaveBeenCalledOnce();
+    expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/pair#m=offer1&c=ABCDEFGH0001&a=WXYZQRST&ae=owner%40example.test&as=preview");
+    expect(host.querySelector("[data-phone-account-as]")?.textContent).toBe("Logs in as owner@example.test");
+  });
+
+  it("an account service that makes no phone codes yet still shows a QR that pairs", async () => {
+    desktop(true, { outcome: "unsupported" });
+    await mount({ remote: false });
+    expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/pair#m=offer1&c=ABCDEFGH0001");
+  });
+});

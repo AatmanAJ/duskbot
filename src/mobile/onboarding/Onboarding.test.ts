@@ -7,6 +7,8 @@ import { AccountGate } from "../account/AccountGate";
 import { SignInOffer, SIGN_IN_OFFER_KEY } from "../account/SignInOffer";
 import { PlatformContext, webPlatform, type MobilePlatform } from "../platform";
 import { firstStep, Onboarding, typedCodeComplete } from "./Onboarding";
+import { redeemPairing } from "../connection/pair";
+import { MOBILE_LINK_VERSION, mobileLinkUrl, universalPairLink, type MobileLinkPayload } from "../../../shared/mobile-link";
 
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => createElement("span"), BotAvatar: () => createElement("span") }));
 // steps swap without waiting on exit animations, so each choice lands on its screen at once
@@ -467,5 +469,114 @@ describe("another account is always a tap away", () => {
     expect(host.querySelector<HTMLInputElement>("input[type=email]")?.value).toBe("");
     expect(secrets.has("dusk.account")).toBe(false);
     expect(JSON.parse(prefs.get("dusk.mobile.connections.v1") ?? "[]")).toEqual([]);
+  });
+});
+
+describe("a signed-in desktop's QR signs the phone in as it pairs", () => {
+  const linkPayload: MobileLinkPayload = {
+    v: MOBILE_LINK_VERSION, workspace: { name: "Studio Mac", environmentId: "env-mac", kind: "vps" },
+    grant: { id: "grant-1", secret: "s3cret", expiresAt: Date.now() + 5 * 60_000 },
+    via: [{ kind: "https", url: "https://mac.example.org" }],
+  } as MobileLinkPayload;
+  const qr = universalPairLink(mobileLinkUrl(linkPayload), null, { code: "WXYZQRST", email: "owner@example.com" });
+  const owner = { id: "owner", email: "owner@example.com" };
+  const phoneCalls = () => fetcher.mock.calls.filter(([input]) => String(input).endsWith("/api/cloud/app/sign-in/phone"));
+  const scanning = () => ({ ...platform, camera: {
+    permission: async () => "granted", request: async () => "granted",
+    start: async ({ onCode }: { onCode: (value: string) => void }) => { setTimeout(() => onCode(qr), 0); return { stop: async () => {} }; },
+  } as unknown as MobilePlatform["camera"] });
+  const settle = async (done: () => boolean) => { for (let i = 0; i < 100 && !done(); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); }); };
+  beforeEach(() => {
+    fetcher.mockImplementation(async (input) => String(input).endsWith("/api/cloud/app/sign-in/phone")
+      ? response({ cloudContractVersion: 1, accessToken: token, expiresAt: Date.now() + 86_400_000, device: { id: "phone" }, account: owner })
+      : response({ v: 1, providers: [], signupOpen: true }));
+  });
+
+  it("a signed-out phone logs in to the desktop's account and pairs in one scan", async () => {
+    platform = scanning();
+    const onLinked = vi.fn();
+    await mount(onboarding({ onLinked }));
+    await press("[data-entry=scan]");
+    await settle(() => onLinked.mock.calls.length > 0);
+    expect(phoneCalls()).toHaveLength(1);
+    expect(secrets.has("dusk.account")).toBe(true);
+    expect(onLinked).toHaveBeenCalledWith(expect.objectContaining({ id: "linked" }), "session", expect.any(String));
+  });
+
+  it("a phone on another account is asked first, then switches and pairs", async () => {
+    secrets.set("dusk.account", JSON.stringify({ origin, token, expiresAt: Date.now() + 60_000, account, deviceId: "phone" }));
+    platform = scanning();
+    const onLinked = vi.fn();
+    await mount(onboarding({ onLinked, startAtLink: true, onCancel: vi.fn() }));
+    await press("[data-entry=scan]");
+    await settle(() => Boolean(host.querySelector("[data-entry=switch-account]")));
+    expect(heading()).toBe("Log in as owner@example.com?");
+    expect(onLinked).not.toHaveBeenCalled();
+    await press("[data-entry=switch-account]");
+    await settle(() => onLinked.mock.calls.length > 0);
+    expect(phoneCalls()).toHaveLength(1);
+    expect(onLinked).toHaveBeenCalled();
+  });
+
+  it("a sign-in that does not take never stops the pairing", async () => {
+    fetcher.mockImplementation(async (input) => String(input).endsWith("/api/cloud/app/sign-in/phone") ? response({ error: "not found" }, 404) : response({ v: 1, providers: [], signupOpen: true }));
+    platform = scanning();
+    const onLinked = vi.fn();
+    await mount(onboarding({ onLinked }));
+    await press("[data-entry=scan]");
+    await settle(() => onLinked.mock.calls.length > 0);
+    expect(onLinked).toHaveBeenCalled();
+    expect(secrets.has("dusk.account")).toBe(false);
+  });
+});
+
+describe("linking can always be left", () => {
+  const payload = { v: 1, transport: "https", origin: "https://mac.example.org", credential: `omb_pair_${"a".repeat(43)}`, name: "Studio Mac" } as const;
+  it("Cancel works while it links, stops the attempt, and a late answer is dropped", async () => {
+    let finish: (value: unknown) => void = () => {};
+    let seen: AbortSignal | undefined;
+    vi.mocked(redeemPairing).mockImplementationOnce((_payload, _platform, signal) => { seen = signal; return new Promise((resolve) => { finish = resolve as (value: unknown) => void; }) as never; });
+    const onLinked = vi.fn();
+    const onCancel = vi.fn();
+    await mount(onboarding({ initial: payload, onLinked, onCancel, startAtLink: true }));
+    const link = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Link")!;
+    await act(async () => { link.click(); });
+    const cancel = host.querySelector<HTMLButtonElement>("[data-link-cancel]")!;
+    expect(cancel.disabled).toBe(false);
+    await act(async () => { cancel.click(); });
+    expect(seen?.aborted).toBe(true);
+    expect(onCancel).toHaveBeenCalledOnce();
+    await act(async () => { finish({ record: { id: "late", label: "x" }, token: "t" }); });
+    expect(onLinked).not.toHaveBeenCalled();
+  });
+
+  it("Android back while it links stops it and steps back", async () => {
+    let back: (() => boolean) | undefined;
+    platform = { ...platform, onBack: (listener) => { back = listener; return () => { back = undefined; }; } };
+    let seen: AbortSignal | undefined;
+    vi.mocked(redeemPairing).mockImplementationOnce((_payload, _platform, signal) => { seen = signal; return new Promise(() => {}) as never; });
+    await mount(onboarding({ initial: payload }));
+    const link = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Link")!;
+    await act(async () => { link.click(); });
+    let handled: boolean | undefined;
+    await act(async () => { handled = back?.(); });
+    expect(handled).toBe(true);
+    expect(seen?.aborted).toBe(true);
+    expect(entries().map((button) => button.dataset.entry)).toEqual(["scan", "signin", "code"]);
+  });
+});
+
+describe("the camera question comes up in place", () => {
+  it("asks the system right away, opens the scanner on yes, and on no stays with one line and Open settings", async () => {
+    const request = vi.fn(async () => "denied" as const);
+    const openSettings = vi.fn(async () => {});
+    platform = { ...platform, camera: { permission: async () => "prompt", request, openSettings, start: async () => ({ stop: async () => {} }) } as unknown as MobilePlatform["camera"] };
+    await mount(onboarding());
+    await press("[data-entry=scan]");
+    expect(request).toHaveBeenCalledOnce();
+    expect(heading()).toBe("Your bots, on your phone");
+    expect(host.textContent).toContain("Turn the camera on in settings");
+    await press("[data-camera-settings]");
+    expect(openSettings).toHaveBeenCalledOnce();
   });
 });

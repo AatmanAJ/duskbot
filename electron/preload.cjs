@@ -831,6 +831,7 @@ const bridge = {
     noticeSeen: () => ipcRenderer.invoke("cloud-plan:notice-seen"),
     // a code that logs a phone in to the account; main checks the person is here first (renew: a silent swap of the code on screen)
     phoneSignIn: renew => ipcRenderer.invoke("cloud-plan:phone-sign-in", renew === true),
+    signedIn: () => ipcRenderer.invoke("cloud-plan:signed-in"),
     openPage: (page, workspaceId) => isLocalPage || navigator.userActivation?.isActive === true
       ? ipcRenderer.invoke("cloud-plan:open-page", String(page), workspaceId === undefined ? undefined : String(workspaceId)) : Promise.reject(new Error("Choose the account dashboard to open it.")),
     // The usage meter's Upgrade: both only from the person's click (Upgrade, then the confirm's Upgrade), never by themselves.

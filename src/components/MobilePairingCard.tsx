@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Apple, ChevronLeft } from "../icons";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -72,6 +72,18 @@ function cloudCodeBridge(cloudHome: boolean): (Required<Pick<CloudPlanBridge, "p
     : null;
 }
 
+type AccountBridge = Required<Pick<CloudPlanBridge, "phoneSignIn" | "signIn" | "signedIn">>;
+
+/** The desktop app's own dusk bot account, for its phone QR: the QR shows only once this computer is signed in, and
+ * carries a code that logs the phone in to the same account as it pairs. A browser tab, a remote server's page and an
+ * older app have none. */
+function desktopAccountBridge(remote: boolean, cloudHome: boolean): AccountBridge | null {
+  if (remote || cloudHome || typeof window === "undefined") return null;
+  const bridge = window.duskDesktop?.cloudPlan;
+  return typeof bridge?.phoneSignIn === "function" && typeof bridge.signIn === "function" && typeof bridge.signedIn === "function"
+    ? { phoneSignIn: bridge.phoneSignIn.bind(bridge), signIn: bridge.signIn.bind(bridge), signedIn: bridge.signedIn.bind(bridge) } : null;
+}
+
 /** waits before each retry of a code that could not be made, while a connection or the account service comes back */
 export const MINT_RETRY_MS = [1_500, 4_000] as const;
 
@@ -108,6 +120,9 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   signInsSeen.current = cloudSignIns;
   const [offer, setOffer] = useState<Offer | null>(null);
   const cloudCodes = cloudCodeBridge(cloudHome);
+  const desktopAccount = useMemo(() => desktopAccountBridge(remote, cloudHome), [remote, cloudHome]);
+  // null while asked; false shows only the sign-in card
+  const [deskSignedIn, setDeskSignedIn] = useState<boolean | null>(desktopAccount ? null : true);
   const codesInCloud = cloudCodes !== null;
   // the account's email, once a code named it: kept for the linked phones row after the code is gone
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
@@ -211,8 +226,18 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
 
   // the link screen makes its code as soon as it is up, the first time included
   useEffect(() => {
-    if (flow === "link" && ((codesInCloud && !emailOnly) || (!cloudHome && devices)) && !offer && !busy && pairedName === null && error === null) void create();
-  }, [flow, cloudHome, codesInCloud, devices, emailOnly]);
+    if (flow === "link" && deskSignedIn === true && ((codesInCloud && !emailOnly) || (!cloudHome && devices)) && !offer && !busy && pairedName === null && error === null) void create();
+  }, [flow, cloudHome, codesInCloud, devices, emailOnly, deskSignedIn]);
+  const askSignedIn = useCallback(() => {
+    if (!desktopAccount) return;
+    void desktopAccount.signedIn().then((on) => setDeskSignedIn(on), () => setDeskSignedIn(true));
+  }, [desktopAccount]);
+  useEffect(() => {
+    if (!desktopAccount || flow !== "link") return;
+    askSignedIn();
+    window.addEventListener("focus", askSignedIn);
+    return () => window.removeEventListener("focus", askSignedIn);
+  }, [flow, askSignedIn, desktopAccount]);
 
   useEffect(() => {
     if (!offer) return;
@@ -265,8 +290,8 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     baseline.current = null;
     renewals.current = 0;
     try {
-      // a cloud's code is checked in the desktop app itself, before it is made
-      if ((!codesInCloud && !(await requireUserPresence())) || generation.current !== epoch) return;
+      // a cloud's code, and a signed-in desktop's QR with its account code, are checked in the desktop app itself
+      if ((!codesInCloud && !desktopAccount && !(await requireUserPresence())) || generation.current !== epoch) return;
       const body = await mintWithRetries(epoch);
       if (!body || generation.current !== epoch) return;
       if (!codesInCloud) baseline.current = (devices ?? []).map((device) => device.id);
@@ -324,8 +349,16 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
       } catch {}
       await relayBeforePairing();
     }
+    let signIn: { code: string; email: string; serviceOrigin?: string | null; expiresAt: number } | null = null;
+    if (desktopAccount) {
+      const grant = await desktopAccount.phoneSignIn(renew);
+      if (grant.outcome === "canceled") return null;
+      if (grant.outcome === "signed-out") { setDeskSignedIn(false); return null; }
+      // a service that makes no phone codes yet (or a failed one) still pairs; the phone then logs in on its own
+      if (grant.outcome === "code") { signIn = { code: grant.code, email: grant.email, serviceOrigin: grant.service ?? null, expiresAt: grant.expiresAt }; setAccountEmail(grant.email); }
+    }
     const body = await api<MobilePairingResponse>("/api/mobile/pairing", { method: "POST", body: JSON.stringify(request) });
-    return { qr: universalPairLink(body.link, body.code), code: body.code, expiresAt: body.expiresAt };
+    return { qr: universalPairLink(body.link, body.code, signIn), code: body.code, expiresAt: signIn ? Math.min(body.expiresAt, signIn.expiresAt) : body.expiresAt, ...(signIn ? { email: signIn.email } : {}) };
   }
 
   function pick(next: PhoneKind) {
@@ -548,9 +581,22 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     </div>
   );
 
-  const localLink = (live: boolean) => column(live, { "data-phone-link": "" }, t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"), t("settings.phone.whichSub"),
-    card(offerTile(t("settings.mobile.qr")), typed, codeActions, status(t("mobile.desktop.waiting"), countdown)),
-    t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"));
+  const signInDesktop = () => void desktopAccount?.signIn().then(askSignedIn, () => {});
+  const signInCard = (
+    <div data-phone-card="" className="flex min-h-[384px] w-full flex-col items-center rounded-[24px] bg-ink/[0.035] p-6">
+      <div data-phone-sign-in-first="" className="flex w-full flex-1 flex-col items-center justify-center gap-3 text-center">
+        <PlaceArt name="phone" size={44} />
+        <p role="status" className="m-0 max-w-[300px] text-pretty text-[14px] leading-5 text-ink-secondary">{t("settings.phone.signInFirst")}</p>
+        <button type="button" data-phone-sign-in="" onClick={signInDesktop} className="ui-button ui-button-pill min-h-11">{t("phone.relay.signInAction")}</button>
+      </div>
+    </div>
+  );
+  const localLink = (live: boolean) => deskSignedIn === false
+    ? column(live, { "data-phone-link": "" }, t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"), t("settings.phone.signInFirstSub"), signInCard, t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"))
+    : column(live, { "data-phone-link": "" }, t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"),
+      signInEmail && desktopAccount ? <span data-phone-account-as="" className="break-all">{t("settings.phone.cloudAs", { email: signInEmail })}</span> : t("settings.phone.whichSub"),
+      card(offerTile(t("settings.mobile.qr")), typed, codeActions, status(t("mobile.desktop.waiting"), countdown)),
+      t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"));
 
   // a cloud from the desktop app: one qr and one letters-only code that log the phone in to the account, no email step
   const cloudCodeLink = (live: boolean) => column(live, { "data-phone-cloud": "", "data-phone-cloud-code": "" }, t(ios ? "settings.phone.cloudIos" : "settings.phone.cloudAndroid"),

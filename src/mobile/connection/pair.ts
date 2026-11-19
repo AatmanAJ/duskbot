@@ -28,12 +28,19 @@ async function grantLapsed(payload: MobilePairingPayload, platform: MobilePlatfo
 /** Every link attempt ends this soon: one the computer never answers says it could not be reached, with Try again. */
 export const LINK_DEADLINE_MS = 15_000;
 
-export function linkDeadline<T>(work: Promise<T>, ms = LINK_DEADLINE_MS): Promise<T> {
+export function linkDeadline<T>(work: Promise<T>, ms = LINK_DEADLINE_MS, signal?: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new PairError("unreachable")), ms);
-    work.then((value) => { clearTimeout(timer); resolve(value); }, (error: unknown) => { clearTimeout(timer); reject(error); });
+    const stop = () => { clearTimeout(timer); signal?.removeEventListener("abort", canceled); };
+    const canceled = () => { stop(); reject(new PairError("unreachable")); };
+    const timer = setTimeout(() => { stop(); reject(new PairError("unreachable")); }, ms);
+    if (signal?.aborted) { canceled(); return; }
+    signal?.addEventListener("abort", canceled, { once: true });
+    work.then((value) => { stop(); resolve(value); }, (error: unknown) => { stop(); reject(error); });
   });
 }
+
+/** a request's own time limit, ended early when the person cancels the link */
+const limit = (ms: number, signal?: AbortSignal) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms));
 
 export class PairError extends Error {
   readonly code: PairErrorCode;
@@ -139,7 +146,7 @@ function responseError(status: number, answer: PairAnswer): PairError {
   return new PairError(status >= 500 ? "unreachable" : "invalid");
 }
 
-async function redeemLegacyPairing(payload: MobilePairingPayload, platform: MobilePlatform): Promise<{ record: MobileConnectionRecord; token: string }> {
+async function redeemLegacyPairing(payload: MobilePairingPayload, platform: MobilePlatform, signal?: AbortSignal): Promise<{ record: MobileConnectionRecord; token: string }> {
   if (payload.transport === "relay") throw new PairError("relay-unavailable");
   let origin: URL;
   try {
@@ -153,13 +160,13 @@ async function redeemLegacyPairing(payload: MobilePairingPayload, platform: Mobi
     const response = await fetch(`${origin.origin}/api/pair`, {
       method: "POST", headers: { "Content-Type": "application/json" }, credentials: "omit", mode: "cors", redirect: "error",
       body: JSON.stringify({ ...(payload.credential ? { credential: payload.credential } : {}), ...(payload.code ? { code: payload.code } : {}), deviceName: platform.deviceName(), pairRequestId }),
-      signal: AbortSignal.timeout(LINK_DEADLINE_MS),
+      signal: limit(LINK_DEADLINE_MS, signal),
     });
     const paired = await answerOf(response);
     if (response.status !== 200 && response.status !== 201) throw responseError(response.status, paired);
     if (typeof paired.token !== "string" || !paired.token) throw new PairError("invalid");
     const sessionResponse = await fetch(`${origin.origin}/api/auth/session`, {
-      headers: { Authorization: `Bearer ${paired.token}` }, credentials: "omit", mode: "cors", redirect: "error", signal: AbortSignal.timeout(LINK_DEADLINE_MS),
+      headers: { Authorization: `Bearer ${paired.token}` }, credentials: "omit", mode: "cors", redirect: "error", signal: limit(LINK_DEADLINE_MS, signal),
     });
     const session = await answerOf(sessionResponse);
     const companionRefused = payload.transport === "companion" && [403, 404].includes(sessionResponse.status);
@@ -232,8 +239,8 @@ export async function relaySecrets(platform: MobilePlatform, id: string): Promis
   return request;
 }
 
-async function redeemPairingResult(payload: MobilePairingPayload, platform: MobilePlatform): Promise<{ record: MobileConnectionRecord; token: string }> {
-  if (!payload.via) return redeemLegacyPairing(payload, platform);
+async function redeemPairingResult(payload: MobilePairingPayload, platform: MobilePlatform, signal?: AbortSignal): Promise<{ record: MobileConnectionRecord; token: string }> {
+  if (!payload.via) return redeemLegacyPairing(payload, platform, signal);
   if (!payload.grantId || !payload.credential || !payload.via.length) throw new PairError("invalid");
   if (await grantLapsed(payload, platform)) throw new PairError("expired");
   try {
@@ -252,6 +259,7 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
     let lastError = new PairError("unreachable");
     const startedAt = Date.now();
     for (const route of routeOrder(payload.via, platform.kind)) {
+      if (signal?.aborted) break;
       if (route.kind === "relay" && !keys) { lastError = new PairError("unsupported"); continue; }
       if (route.kind === "companion" && !platform.native) { lastError = new PairError("unsupported"); continue; }
       if (!directStillWorthIt(route, payload.via, startedAt, Date.now(), platform.kind)) continue;
@@ -265,7 +273,7 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
           const grant = openRelay(route.base, route.channel, route.token, unbase64(route.key));
           channel = grant;
           const ask = async () => {
-            const reply = await grant.request("POST", "/api/mobile/redeem", headers, utf8(body), AbortSignal.timeout(12_000));
+            const reply = await grant.request("POST", "/api/mobile/redeem", headers, utf8(body), limit(12_000, signal));
             return { reply, answer: await reply.json().catch(() => null) as unknown };
           };
           ({ reply: response, answer } = await ask());
@@ -276,7 +284,7 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
             if (again?.reply.ok && (again.answer as MobileRedeemResponse | null)?.relay) ({ reply: response, answer } = again);
           }
         } else {
-          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(routeTimeout(route, payload.via, 15_000, platform.kind)) });
+          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: limit(routeTimeout(route, payload.via, 15_000, platform.kind), signal) });
           answer = await response.json().catch(() => null);
         }
       } catch (error) { lastError = pairError(error); continue; }
@@ -305,4 +313,5 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
 }
 
 export const resolveTypedCode = (code: string, relayBase = DEFAULT_MOBILE_RELAY) => observePairing(() => linkDeadline(resolveTypedCodeResult(code, relayBase)));
-export const redeemPairing = (payload: MobilePairingPayload, platform: MobilePlatform) => observePairing(() => linkDeadline(redeemPairingResult(payload, platform)));
+export const redeemPairing = (payload: MobilePairingPayload, platform: MobilePlatform, signal?: AbortSignal) =>
+  observePairing(() => linkDeadline(redeemPairingResult(payload, platform, signal), LINK_DEADLINE_MS, signal));
