@@ -8,6 +8,8 @@ import { parseMobilePairingLink, parseSignInLink, type MobileConnectionRecord } 
 import { usePlatform } from "../platform";
 import { useMobileAccount } from "../account/AccountGate";
 import { enrollWorkspace } from "../account/enroll-workspace";
+import { linkedHere } from "../account/CloudPicker";
+import { placeKind } from "./connection-notice";
 import { followSignInService, takeHeldSignIn } from "../account/environment";
 import { installTransport, type PhoneTransport } from "../transport/transport";
 import { Onboarding } from "../onboarding/Onboarding";
@@ -167,6 +169,22 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   useEffect(() => {
     if (state.kind === "ready" && account?.account) void enrollWorkspace(platform, state.id, account.account.id, account.enrollGrant);
   }, [state, platform, account]);
+
+  // a dusk cloud the signed-in account lists keeps that account, so the phone still knows whose it is without the session
+  const tagged = useRef(new Set<string>());
+  useEffect(() => {
+    const signedIn = account?.account;
+    if (state.kind !== "ready" || !signedIn || !account) return;
+    const key = `${state.id}:${signedIn.id}`;
+    if (tagged.current.has(key)) return;
+    tagged.current.add(key);
+    void (async () => {
+      const record = (await store.list()).find((entry) => entry.id === state.id);
+      if (!record || placeKind(record) !== "cloud" || (record.account?.id === signedIn.id && record.account.email === signedIn.email)) return;
+      const places = await account.places();
+      if (places && [...places.clouds, ...places.teams].some((cloud) => linkedHere(cloud, [record]))) await store.setAccount(record.id, signedIn);
+    })().catch(() => {});
+  }, [state, store, account]);
 
   useEffect(() => {
     const receive = (url: string) => {

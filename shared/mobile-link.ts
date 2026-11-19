@@ -265,6 +265,8 @@ export interface MobileConnectionRecord {
   capabilities: MobileCapabilities;
   /** Server identity pin (SPKI) recorded at pairing. */
   identityPin?: string;
+  /** The dusk bot account this place belongs to, as that account listed it while the phone was signed in to it. */
+  account?: { id: string; email: string };
   addedAt: number;
   lastUsedAt: number;
 }

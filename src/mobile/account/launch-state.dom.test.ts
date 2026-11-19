@@ -11,6 +11,10 @@ import { readOpenChat, rememberOpenChat } from "../open-chat-restore";
 import { PlatformContext, webPlatform, type MobilePlatform } from "../platform";
 import { INSTALLED_KEY } from "./install";
 import { signOutPhone } from "./sign-out";
+import { phoneIdentity } from "./identity";
+import { useConnections } from "../connection/connections";
+import { accountRows, settingsIdentity } from "../sheets/SettingsSheet";
+import { PREVIEW_ORIGIN } from "./environment";
 
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => createElement("span") }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -64,6 +68,25 @@ function Inside() {
   const place = useContext(ActiveConnection);
   return createElement("p", { "data-inside": "" }, `${account?.account?.email ?? "signed out"} on ${place} chat ${readOpenChat(place)}`);
 }
+/** what Settings would say and offer, read the way Settings reads it; its presence means the chats are open */
+function Settings() {
+  const account = useMobileAccount();
+  const { connections, activeId, loaded } = useConnections();
+  if (!loaded) return null;
+  const who = phoneIdentity({ account: account?.account, connections, activeId });
+  const rows = accountRows({ native: true, identity: who, offered: account?.offered });
+  const shown = Object.entries(rows).filter(([, on]) => on).map(([row]) => row).join(",");
+  return createElement("p", { "data-settings": "" }, `${settingsIdentity({ identity: who }).subtitle} | ${shown}`);
+}
+const settings = () => host.querySelector("[data-settings]")?.textContent ?? null;
+const launchSettings = async () => {
+  await act(async () => {
+    root = createRoot(host);
+    root.render(createElement(StrictMode, null, createElement(PlatformContext, { value: platform },
+      createElement(AccountGate, null, createElement(ConnectionGate, null, createElement(Settings))))));
+  });
+  await settle();
+};
 const settle = () => act(async () => { for (let i = 0; i < 6; i++) await new Promise((resolve) => setTimeout(resolve, 5)); });
 const launch = async () => {
   await act(async () => {
@@ -141,5 +164,74 @@ describe("what a launch shows", () => {
     expect(inside()).toBe("person@example.com on cloud chat nova");
     rememberOpenChat("nova", "other-place");
     expect(readOpenChat("cloud")).toBeNull();
+  });
+});
+
+describe("Settings in each storage state, and the chats", () => {
+  let stored: Map<string, string>;
+  beforeEach(() => {
+    prefs.set(INSTALLED_KEY, "1");
+    stored = new Map();
+    vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => { stored.set(key, value); }, removeItem: (key: string) => { stored.delete(key); } });
+  });
+
+  it("a dusk cloud link with no account session (the owner's phone): chats open, Settings says the cloud and Sign out, never Log in", async () => {
+    keepCloud();
+    await launchSettings();
+    expect(settings()).toBe("my cloud | signOut");
+  });
+
+  it("a dusk cloud link whose account the phone learned, with the session gone: signed in as that email, Sign out", async () => {
+    keepCloud();
+    prefs.set("dusk.mobile.connections.v1", JSON.stringify([{ ...cloudRecord, account: person }]));
+    await launchSettings();
+    expect(settings()).toBe("person@example.com | signOut");
+  });
+
+  it("a dusk cloud link and an expired session the service refuses: still the cloud and Sign out, never Log in", async () => {
+    keepCloud();
+    secrets.set("dusk.account", JSON.stringify({ origin: ACCOUNT, token: accountToken, expiresAt: Date.now() - 1000, account: person, deviceId: "phone" }));
+    accountAnswer = async () => json({ error: "invalid_token", code: "invalid_token" }, 401);
+    await launchSettings();
+    expect(settings()).toBe("my cloud | signOut");
+  });
+
+  it("both: signed in as the account, Sign out and Delete account, and the cloud learns whose it is", async () => {
+    keepSignIn(); keepCloud();
+    await launchSettings();
+    expect(settings()).toBe("person@example.com | signOut,deleteAccount");
+    const [saved] = JSON.parse(prefs.get("dusk.mobile.connections.v1")!) as MobileConnectionRecord[];
+    expect(saved?.account).toEqual(person);
+  });
+
+  it("an account session with no link: the account's places to pick from, signed in", async () => {
+    keepSignIn();
+    await launchSettings();
+    expect(settings()).toBeNull();
+    expect(heading()).toBe("Pick a cloud");
+  });
+
+  it("neither: the first screen; with only a paired computer, Connected to it and the dusk cloud sign-in apart", async () => {
+    await launchSettings();
+    expect(heading()).toBe("Your bots, on your phone");
+    await act(async () => root?.unmount());
+    prefs.set("dusk.mobile.connections.v1", JSON.stringify([{ ...cloudRecord, id: "mac", label: "Studio Mac", origin: CLOUD.replace("d0123456789abcdef0123.dusk.bot", "mac.example.org"), sessionRef: "token.mac" }]));
+    prefs.set("dusk.mobile.active.v1", "mac");
+    secrets.set("token.mac", "mac-token");
+    platform = launchPlatform();
+    vi.stubGlobal("fetch", vi.fn(async () => json({})));
+    await launchSettings();
+    expect(settings()).toBe("Connected to Studio Mac | cloudSignIn");
+  });
+
+  it("a sign-in kept from the preview stack is followed there instead of showing signed out", async () => {
+    secrets.set("dusk.account", JSON.stringify({ origin: PREVIEW_ORIGIN, token: accountToken, expiresAt: Date.now() + 86_400_000, account: person, deviceId: "phone" }));
+    keepCloud();
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => { asked.push(String(input)); return String(input).startsWith(PREVIEW_ORIGIN) ? session() : json({}); }));
+    await launchSettings();
+    expect(stored.get("dusk.mobile.environment")).toBe("preview");
+    expect(settings()).toBe("person@example.com | signOut,deleteAccount");
+    expect(asked.some((url) => url.startsWith(`${PREVIEW_ORIGIN}/`))).toBe(true);
   });
 });

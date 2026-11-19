@@ -34,16 +34,23 @@ import { DeleteAccountPage } from "./DeleteAccountPage";
 import { ConfirmPage } from "./ConfirmPage";
 import { placeKind } from "../connection/connection-notice";
 import { removePlace } from "../account/sign-out";
+import { phoneIdentity, type PhoneIdentity } from "../account/identity";
 import { SettingsRow, SettingsSection, SettingsSwitch } from "./SettingsRow";
 import { PixelArt } from "../Illustration";
 import type { SheetPageProps } from "./registry";
 import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 
 /** The account rows Settings shows. The account dashboard sells plans, so the store apps never link to it (App Store
- * guideline 3.1.1, Play payments policy); a signed-in account can be signed out and deleted here (App Store 5.1.1(v)), and a
- * phone with no account (a paired computer needs none) is offered the sign-in that finds a dusk cloud. */
-export function accountRows(input: { native: boolean; signedIn: boolean; offered?: boolean }): { dashboard: boolean; signOut: boolean; deleteAccount: boolean; signIn: boolean } {
-  return { dashboard: !input.native, signOut: input.signedIn, deleteAccount: input.signedIn, signIn: Boolean(input.offered) && !input.signedIn };
+ * guideline 3.1.1, Play payments policy); a phone on an account (its session, or a dusk cloud of it) signs out here, and
+ * deletes the account with its session (App Store 5.1.1(v)). Log in leads only on a phone that links nothing; one with
+ * only its own computers (they need no account) gets the dusk cloud sign-in lower down, apart from who it is. */
+export function accountRows(input: { native: boolean; identity: PhoneIdentity; offered?: boolean }): { dashboard: boolean; signOut: boolean; deleteAccount: boolean; signIn: boolean; cloudSignIn: boolean } {
+  const { identity } = input;
+  const onAccount = identity.kind === "account" || identity.kind === "cloud";
+  return {
+    dashboard: !input.native, signOut: onAccount, deleteAccount: identity.kind === "account" && identity.session,
+    signIn: Boolean(input.offered) && identity.kind === "none", cloudSignIn: Boolean(input.offered) && identity.kind === "computer",
+  };
 }
 
 /** A label a person would recognise for where these bots live: never an address like 127.0.0.1:5331 or a URL. */
@@ -54,10 +61,15 @@ export function readableWorkspace(label: string | null | undefined): string | nu
   return value;
 }
 
-/** The header's two lines: the person's name, then their account email, else the computer they're linked to. */
-export function settingsIdentity(input: { name?: string | null; email?: string | null; workspace?: string | null }): { title: string; subtitle: string } {
-  const title = input.name?.trim() || input.email?.split("@")[0] || t("mobile.settings.you");
-  const subtitle = input.email?.trim() || readableWorkspace(input.workspace) || t("mobile.settings.onComputer");
+/** The header's two lines: the person's name, then the account's email, the dusk cloud, or the computer they're linked to. */
+export function settingsIdentity(input: { name?: string | null; identity: PhoneIdentity }): { title: string; subtitle: string } {
+  const { identity } = input;
+  const email = identity.kind === "account" ? identity.email.trim() : "";
+  const title = input.name?.trim() || email.split("@")[0] || t("mobile.settings.you");
+  const subtitle = email
+    || (identity.kind === "cloud" ? readableWorkspace(identity.name) ?? t("mobile.settings.cloudLinked") : "")
+    || (identity.kind === "computer" ? t("mobile.settings.connectedTo", { name: readableWorkspace(identity.name) ?? t("mobile.connection.yourComputer") }) : "")
+    || t("mobile.settings.onComputer");
   return { title, subtitle };
 }
 
@@ -97,6 +109,8 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
   const computer = shownComputer(connections, activeId);
   const computerName = readableWorkspace(computer?.label) ?? t("mobile.connection.yourComputer");
   const keepsComputers = connections.some((connection) => placeKind(connection) === "computer");
+  const identity = phoneIdentity({ account: account?.account, connections, activeId });
+  const signsOut = identity.kind === "account" || identity.kind === "cloud";
   const [page, setPage] = useState<SettingsPage | null>(SETTINGS_PAGES.includes(sheet.page ?? "") ? sheet.page as SettingsPage : null);
   const pop = useCallback(() => setPage(null), []);
   const stack = useMemo(() => ({ back: pop }), [pop]);
@@ -108,7 +122,7 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
     : page === "language" ? <LanguagePage />
     : page === "textSize" ? <TextSizePage />
     : page === "delete" && account?.account ? <DeleteAccountPage email={account.account.email} onDelete={account.deleteAccount} onCancel={pop} onDone={() => window.location.reload()} />
-    : page === "signOut" && account?.account ? <ConfirmPage title={t("accountGate.signOut")} heading={t("mobile.settings.signOutTitle")}
+    : page === "signOut" && account && signsOut ? <ConfirmPage title={t("accountGate.signOut")} heading={t("mobile.settings.signOutTitle")}
       body={t(keepsComputers ? "mobile.settings.signOutKeepsComputers" : "mobile.settings.signOutBody")} action={t("accountGate.signOut")} onConfirm={account.signOutOfPhone} onCancel={pop} />
     : page === "removeComputer" && computer ? <ConfirmPage title={t("mobile.settings.removeComputer")} heading={t("mobile.settings.removeComputerTitle", { name: computerName })}
       body={t("mobile.settings.removeComputerBody", { name: computerName })} action={t("mobile.settings.removeComputerAction")}
@@ -142,12 +156,12 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const appearanceId = useId();
-  const active = connections.find((connection) => connection.id === activeId);
   const computer = shownComputer(connections, activeId);
-  const email = account?.account?.email;
+  const who = phoneIdentity({ account: account?.account, connections, activeId });
+  const email = who.kind === "account" ? who.email : undefined;
   const face = account?.account ?? you?.face ?? null;
-  const identity = settingsIdentity({ name: state.config?.profile?.name, email, workspace: active?.label });
-  const rows = accountRows({ native: platform.native, signedIn: Boolean(email), offered: account?.offered });
+  const identity = settingsIdentity({ name: state.config?.profile?.name, identity: who });
+  const rows = accountRows({ native: platform.native, identity: who, offered: account?.offered });
   const consent = useAiConsent();
   const unread = state.notifications.filter((entry) => !entry.read).length;
   const environment = account ? environmentName(account.origin) : null;
@@ -252,6 +266,11 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
         <SettingsSection card>
           <SettingsRow icon={<Server />} label={t("mobile.settings.servers")} detail={t(switching ? "mobile.settings.serversConfirm" : "mobile.settings.serversHint")}
             value={environment ?? "dusk.bot"} onClick={switchServers} />
+        </SettingsSection>
+      )}
+      {rows.cloudSignIn && (
+        <SettingsSection card>
+          <SettingsRow icon={<UserRound />} label={t("mobile.settings.cloudSignIn")} detail={t("mobile.settings.signInDetail")} onClick={() => { onClose(); window.dispatchEvent(new Event("dusk:sign-in")); }} />
         </SettingsSection>
       )}
       {(rows.signOut || computer) && (

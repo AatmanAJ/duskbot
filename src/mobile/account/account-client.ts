@@ -56,6 +56,12 @@ const savedGrant = (value: unknown): StoredGrant | null =>
   object(value) && typeof value.origin === "string" && typeof value.token === "string" && TOKEN.test(value.token) && expiry(value.expiresAt)
     && identity(value.account) && typeof value.deviceId === "string" && value.deviceId ? value as StoredGrant : null;
 const parse = (value: string | null): unknown => { try { return value ? JSON.parse(value) : null; } catch { return null; } };
+
+/** The account service the sign-in kept in the Keychain was made on, whatever this launch would sign in to. */
+export async function keptSignInOrigin(platform: Pick<MobilePlatform, "secrets">): Promise<string | null> {
+  const saved = savedGrant(parse(await platform.secrets.get(SECRET).catch(() => null)));
+  return saved?.origin ?? null;
+}
 const CLOUD_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const GRANT_CODE = /^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/;
 const MAX_GRANT_MS = 10 * 60_000;

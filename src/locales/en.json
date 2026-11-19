@@ -9710,5 +9710,8 @@
   "products.showPhotos": "Show photos",
   "products.view": "View",
   "server.purchase.title": "Confirm purchase",
-  "server.emailReview.title": "Send this email?"
+  "server.emailReview.title": "Send this email?",
+  "mobile.settings.connectedTo": "Connected to {name}",
+  "mobile.settings.cloudSignIn": "Sign in to dusk cloud",
+  "mobile.settings.cloudLinked": "dusk cloud"
 }

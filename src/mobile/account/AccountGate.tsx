@@ -6,9 +6,9 @@ import { t } from "@/lib/i18n";
 import type { CloudSignInStart } from "../../../electron/cloud-account.mjs";
 import type { OAuthProvider } from "../../../shared/account-api";
 import { usePlatform, type MobilePlatform } from "../platform";
-import { createMobileAccount, isAccountAuthUrl, type AppleProblem, type AccountPlaces, type AuthResult, type CloudPairResult, type ComputerPairResult, type MobileAccount, type MobileComputer, type MobileCloud, type MobileTeamCloud, type PhoneCodeResult } from "./account-client";
+import { createMobileAccount, isAccountAuthUrl, keptSignInOrigin, type AppleProblem, type AccountPlaces, type AuthResult, type CloudPairResult, type ComputerPairResult, type MobileAccount, type MobileComputer, type MobileCloud, type MobileTeamCloud, type PhoneCodeResult } from "./account-client";
 import { setTurnSource } from "../transport/direct-rtc";
-import { chosenAccountOrigin } from "./environment";
+import { chooseAccountOrigin, chosenAccountOrigin, PREVIEW_ORIGIN, PRODUCTION_ORIGIN } from "./environment";
 import { claimFreshInstall } from "./install";
 import { signOutPhone } from "./sign-out";
 
@@ -84,7 +84,10 @@ export function AccountGate({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const params = new URLSearchParams(location.search);
   const wanted = platform.native ? import.meta.env.VITE_DUSK_ALLOW_SIGNED_OUT !== "1" : params.get("account") === "1";
+  // a sign-in kept from the other service (production or the preview stack) is followed there, never left unread
+  const [, setFollowed] = useState<string | null>(null);
   const origin = mobileAccountOrigin(platform.native, params);
+  const follows = platform.native && !import.meta.env.VITE_DUSK_ACCOUNT_ORIGIN;
   const client = useMemo(() => createMobileAccount({ platform, origin }), [platform, origin]);
   const [account, setAccount] = useState<MobileAccount | null>(null);
   // the phone's direct link to its server asks this account for TURN; signed out it uses STUN only
@@ -116,13 +119,22 @@ export function AccountGate({ children }: { children: ReactNode }) {
     });
     // the Keychain's sign-in shows at once and the service's check runs behind it, where only a gone session signs out;
     // a new install waits for the check, so a sign-in left from before the app was deleted shows only while it works
-    if (wanted && !pendingAuth.current) void claimFreshInstall(platform).then(async fresh => {
+    if (wanted && !pendingAuth.current) void (async () => {
+      const kept = follows ? await keptSignInOrigin(platform) : null;
+      if (kept && kept !== origin && (kept === PRODUCTION_ORIGIN || kept === PREVIEW_ORIGIN)) {
+        chooseAccountOrigin(kept);
+        if (active) setFollowed(kept);
+        return;
+      }
+      const fresh = await claimFreshInstall(platform);
       if (!fresh) {
         const value = await client.cached();
         if (active && stamp === revision && value) { setAccount(value); setRestoring(false); }
       }
-      return client.restore();
-    }).then(value => { if (active && stamp === revision) setAccount(value); }).catch(() => {}).finally(() => { if (active) setRestoring(false); });
+      const value = await client.restore();
+      if (active && stamp === revision) setAccount(value);
+      if (active) setRestoring(false);
+    })().catch(() => { if (active) setRestoring(false); });
     else if (!pendingAuth.current) setRestoring(false);
     // signed out or deleted somewhere else (the website, another device): the app finds out when it comes back
     const stopResume = wanted ? platform.onResume?.(() => {
@@ -131,7 +143,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
       void client.restore().then(value => { if (active && resumed === revision) setAccount(value); }).catch(() => {});
     }) : undefined;
     return () => { active = false; stop?.(); stopResume?.(); };
-  }, [client, platform, wanted]);
+  }, [client, platform, wanted, origin, follows]);
   const context = useMemo<AccountContextValue>(() => ({ account, origin, offered: wanted,
     signOut: async () => { setAccount(null); setProblem(undefined); await client.signOut(); },
     signOutOfPhone: async () => {

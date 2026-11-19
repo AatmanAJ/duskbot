@@ -51,16 +51,31 @@ describe("routine results navigation", () => {
   });
 });
 
+const session = { kind: "account", email: "sam@example.com", session: true } as const;
+const fromCloud = { kind: "account", email: "sam@example.com", session: false } as const;
+const cloudOnly = { kind: "cloud", name: "my cloud" } as const;
+const computerOnly = { kind: "computer", name: "Studio Mac" } as const;
+const nothing = { kind: "none" } as const;
+
 describe("settings account rows", () => {
   it("the store apps never link to the dashboard that sells plans", () => {
-    expect(accountRows({ native: true, signedIn: true }).dashboard).toBe(false);
-    expect(accountRows({ native: true, signedIn: false }).dashboard).toBe(false);
-    expect(accountRows({ native: false, signedIn: false }).dashboard).toBe(true);
+    expect(accountRows({ native: true, identity: session }).dashboard).toBe(false);
+    expect(accountRows({ native: true, identity: nothing }).dashboard).toBe(false);
+    expect(accountRows({ native: false, identity: nothing }).dashboard).toBe(true);
   });
 
   it("a signed-in phone can sign out and delete the account", () => {
-    expect(accountRows({ native: true, signedIn: true })).toEqual({ dashboard: false, signOut: true, deleteAccount: true, signIn: false });
-    expect(accountRows({ native: true, signedIn: false }).signOut).toBe(false);
+    expect(accountRows({ native: true, identity: session, offered: true })).toEqual({ dashboard: false, signOut: true, deleteAccount: true, signIn: false, cloudSignIn: false });
+    expect(accountRows({ native: true, identity: nothing }).signOut).toBe(false);
+  });
+
+  it("a phone on a dusk cloud is on its account even without the session: Sign out, never Log in", () => {
+    expect(accountRows({ native: true, identity: fromCloud, offered: true })).toEqual({ dashboard: false, signOut: true, deleteAccount: false, signIn: false, cloudSignIn: false });
+    expect(accountRows({ native: true, identity: cloudOnly, offered: true })).toEqual({ dashboard: false, signOut: true, deleteAccount: false, signIn: false, cloudSignIn: false });
+  });
+
+  it("a phone with only its own computers gets the dusk cloud sign-in lower down, not Log in", () => {
+    expect(accountRows({ native: true, identity: computerOnly, offered: true })).toMatchObject({ signIn: false, cloudSignIn: true, signOut: false });
   });
 
   it("offers Remove this computer only for a computer on screen, never for a dusk cloud", () => {
@@ -72,9 +87,9 @@ describe("settings account rows", () => {
   });
 
   it("a phone with no account is offered the sign-in, never the sign-out row", () => {
-    expect(accountRows({ native: true, signedIn: false, offered: true })).toMatchObject({ signIn: true, signOut: false });
-    expect(accountRows({ native: true, signedIn: true, offered: true }).signIn).toBe(false);
-    expect(accountRows({ native: true, signedIn: false, offered: false }).signIn).toBe(false);
+    expect(accountRows({ native: true, identity: nothing, offered: true })).toMatchObject({ signIn: true, signOut: false });
+    expect(accountRows({ native: true, identity: session, offered: true }).signIn).toBe(false);
+    expect(accountRows({ native: true, identity: nothing, offered: false }).signIn).toBe(false);
     expect(LEGAL_LINKS.privacy).toBe("https://dusk.bot/privacy");
   });
 

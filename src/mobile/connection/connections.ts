@@ -113,6 +113,7 @@ type ConnectionStore = {
   remove(id: string): Promise<void>;
   touch(id: string): Promise<void>;
   setRoutes(id: string, via: MobileTransport[]): Promise<void>;
+  setAccount(id: string, account: { id: string; email: string }): Promise<void>;
 };
 const stores = new WeakMap<MobilePlatform, ConnectionStore>();
 
@@ -188,6 +189,9 @@ export function createConnectionStore(platform: MobilePlatform): ConnectionStore
     },
     setRoutes(id, via) {
       return serialize(async () => write((await read()).map((entry) => entry.id === id ? { ...entry, via } : entry)));
+    },
+    setAccount(id, account) {
+      return serialize(async () => write((await read()).map((entry) => entry.id === id ? { ...entry, account: { id: account.id, email: account.email } } : entry)));
     },
   };
   stores.set(platform, store);
