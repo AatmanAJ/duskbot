@@ -1105,7 +1105,7 @@ export function GroupView({ group: room }: { group: Group }) {
             </div>
           )}
           <RoomWorkingLines
-            key={group.threadId}
+            key={`working:${group.threadId}`}
             group={group}
             members={members}
             workingIds={workingIds}
