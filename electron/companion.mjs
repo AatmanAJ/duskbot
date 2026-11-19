@@ -213,6 +213,7 @@ async function start({ resourcesPath, harnessPort, mutationToken, hostedUrl = nu
         type: "exit",
         expected: expectedStops.has(child),
         pid: child.pid,
+        code,
       });
     }
     cleanupOrigin();
