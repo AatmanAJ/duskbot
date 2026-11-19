@@ -1402,7 +1402,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           <TranscriptCardSlot key={transcriptKey}><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></TranscriptCardSlot>
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
-            avatar={(shown) => <WorkingMascot bot={bot} size={phoneApp() ? 30 : 26} seed={presenceSeed} mood={moodOfShownWords(shown)} />}
+            avatar={(shown) => <WorkingMascot bot={bot} size={phoneApp() ? 24 : 26} seed={presenceSeed} mood={moodOfShownWords(shown)} />}
             wordsAtOnce
             simple
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}
