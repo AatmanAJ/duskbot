@@ -38,6 +38,7 @@ describe("the working mascot's face", () => {
     reduce(false);
     const resting = stillSvgPaths("kit", { scale: 1 }).eyes;
     for (const mood of WORKING_MOODS) expect(MOOD_FACES[mood].length, mood).toBeGreaterThan(0);
+    for (const face of Object.values(MOOD_FACES).flat()) expect(face.ms, "a face changes no faster than every 2 s").toBeGreaterThanOrEqual(2000);
     draw("thinking");
     expect(mascot().dataset.face).toBe("thinking");
     expect(eyes()).not.toBe(resting);

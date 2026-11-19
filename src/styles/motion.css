@@ -100,7 +100,7 @@
 [data-mood="thinking"] .working-mascot-bob { animation: mood-lean 3.2s step-end infinite; }
 [data-mood="thinking"] .working-mascot-blink { animation: mood-blink-slow 4.2s ease-in-out infinite; }
 [data-mood="writing"] .working-mascot-bob { animation: mood-bounce 0.48s step-end infinite; }
-[data-mood="replying"] .working-mascot-bob { animation: mood-hop 420ms step-end, mood-bounce 0.48s step-end 1100ms infinite; }
+[data-mood="replying"] .working-mascot-bob { animation: mood-hop 420ms step-end, mood-bounce 0.48s step-end 2000ms infinite; }
 [data-mood="reading"] .working-mascot-bob { animation: none; }
 [data-mood="running"] .working-mascot-bob { animation: mood-nod 0.8s step-end infinite; }
 [data-mood="waiting"] .working-mascot-bob { animation: mood-tap 1.8s step-end infinite; }

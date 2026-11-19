@@ -42,3 +42,22 @@ export function workingMood({ phase, waiting = false, failed = false, done = fal
   if (phase.startsWith("friendly:service:")) return "browsing";
   return BY_POOL[phase.startsWith("friendly:") ? phase.slice("friendly:".length) : ""] ?? "thinking";
 }
+
+const WORD_GROUP: Record<WorkingMood, string> = {
+  thinking: "thinking",
+  searching: "looking",
+  browsing: "looking",
+  reading: "looking",
+  running: "working",
+  writing: "working",
+  replying: "writing",
+  waiting: "waiting",
+  error: "error",
+  done: "done",
+};
+
+/** The coarse step a working line's words stand for (thinking, looking things up, working on it, writing): steps in
+ * one group never change the words. The bot's own labels and notices each stand alone. */
+export function wordGroup(phase: string): string {
+  return phase.startsWith("friendly:") ? WORD_GROUP[workingMood({ phase })] : phase;
+}

@@ -179,6 +179,7 @@ describe("the working line", () => {
   it("says Writing while the reply comes, by the mascot, never the dots", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
     engine({ type: "content.delta", streamKind: "assistant_text", delta: "Hi" } as Partial<RuntimeEvent>);
     expect(line()!.querySelector("[data-working-mascot]")).not.toBeNull();
     expect(statusLine()).toBe("Writing");
@@ -209,13 +210,13 @@ describe("each bubble's typing beat", () => {
   const fresh = (id: string, text: string): Message => ({ id, role: "bot", kind: "text", at: Date.now(), text, turnId: "t1" });
   const rows = () => [...host.querySelectorAll("[data-mid]")].map((row) => row.getAttribute("data-mid"));
 
-  it("says Writing for at least 500ms before each bubble lands, the line staying for the turn", () => {
+  it("holds each bubble 500ms for its typing beat, the line staying for the turn", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     const ack = fresh("ack", "On it, checking reviews now.");
     render(busyBot([ask, ack]));
     expect(rows(), "held while the line types").toEqual(["ask"]);
-    expect(statusLine()).toBe("Writing");
+    expect(statusLine(), "a short turn keeps its one phrase while the bubble types").toBe("Thinking");
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS - 10));
     expect(rows()).toEqual(["ask"]);
     act(() => void vi.advanceTimersByTime(10));
@@ -230,7 +231,7 @@ describe("each bubble's typing beat", () => {
     render(busyBot([ask, fresh("one", "First."), fresh("two", "Second.")]));
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS));
     expect(rows()).toEqual(["ask", "one"]);
-    expect(statusLine()).toBe("Writing");
+    expect(statusLine(), "a short turn keeps its one phrase").toBe("Thinking");
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS));
     expect(rows()).toEqual(["ask", "one", "two"]);
   });
@@ -241,7 +242,7 @@ describe("each bubble's typing beat", () => {
     const last = fresh("last", "It's 441, so yes.");
     engine({ type: "turn.completed", ok: true } as Partial<RuntimeEvent>);
     render(busyBot([ask, last], false));
-    expect(statusLine()).toBe("Writing");
+    expect(statusLine(), "a short turn keeps its one phrase").toBe("Thinking");
     expect(rows()).toEqual(["ask"]);
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS));
     expect(rows()).toEqual(["ask", "last"]);

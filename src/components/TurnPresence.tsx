@@ -6,6 +6,7 @@ import { phraseAt, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
 import { quietText } from "@/lib/now-steps";
 import { t } from "@/lib/i18n";
 import { plainWord, startsAnywhere, TYPING_PHASE, workingWord } from "@/lib/friendly-activity";
+import { wordGroup } from "@/lib/working-mood";
 import type { StepQuiet } from "../../shared/turn-progress";
 
 const FADE_MS = 320;
@@ -59,13 +60,15 @@ function ShimmerPhrase({ text, className }: { text: string; className?: string }
  * once, so the line never shows neither; the cell's width eases from the old words' to the new. */
 export const WORD_SWAP = { duration: 880, easing: "cubic-bezier(0.22, 1, 0.36, 1)", blurPx: 4 } as const;
 /** How long words stay fully readable once their blur in has ended, before anything may replace them. */
-export const WORD_DWELL_MS = 2500;
+export const WORD_DWELL_MS = 5000;
+/** A pool's words rotate only once the turn has run this long; a shorter turn keeps its one phrase. */
+export const LONG_TURN_MS = 15_000;
 
 /** The status label rules: the mark comes alone, its first words follow 1.8 to 2.6 s after the send (drawn per turn,
  * about 1.2 to 1.4 s after the mark). Whatever the line says then stays for its swap and a full dwell (STATUS_HOLD_MS)
  * before the next step's words, however fast the steps come: the newest step wins and the ones between are never said.
- * "Typing…" alone comes at once, as a bubble waits on it. A step with a pool of words moves to another of them 2.5 to
- * 3.5 s after the last swap ended. */
+ * Steps in one coarse group (wordGroup) keep the words they found. In a long turn a pool's words move to another of them
+ * 7 to 9 s after the last swap ended. */
 export const STATUS_QUIET_MS = { min: 1800, max: 2600 } as const;
 export const STATUS_HOLD_MS = WORD_SWAP.duration + WORD_DWELL_MS;
 const wordHoldMs = (seed: string, step: number) => WORD_SWAP.duration + rotationHoldMs(seed, step);
@@ -102,17 +105,17 @@ export function useStatusLabel(phrases: readonly string[] | null, phase: string,
   const say = (step: number, previous?: string) => pool ? (plain ? workingWord(pool, fun, phaseSeed, step, now - start, previous) : phraseAt(pool, phaseSeed, step)) : "";
   const label = (step: number, previous?: string): ShownLabel => ({ phase, step, text: say(step, previous), at: now, key: `${phase}#${step}` });
   const held = shown.current;
-  const holdUntil = held && !typing ? held.at + STATUS_HOLD_MS : 0;
-  const rotateAt = held && pool && held.phase === phase && pool.length > 1 ? held.at + wordHoldMs(phaseSeed, held.step) : 0;
+  const holdUntil = held ? held.at + STATUS_HOLD_MS : 0;
+  const rotateAt = (from: ShownLabel) => Math.max(from.at + wordHoldMs(phaseSeed, from.step), start + LONG_TURN_MS);
   let next: ShownLabel | null;
-  if (held?.phase === OPENING_PHASE && plain && pool) next = { ...held, phase };
+  if (held && pool && held.phase !== phase && wordGroup(held.phase) === wordGroup(phase)) next = { ...held, phase };
   else if (held && (held.phase !== phase || !pool) && now < holdUntil) next = held;
-  else if (held && pool && held.phase === phase) next = rotateAt && now >= rotateAt ? label(held.step + 1, held.text) : held;
+  else if (held && pool && held.phase === phase) next = pool.length > 1 && now >= rotateAt(held) ? label(held.step + 1, held.text) : held;
   else if (!pool || !(typing || now >= quietUntil)) next = null;
   else if (!held && !typing && !plain && phase.startsWith("friendly:") && now - start < OPENING_WITHIN_MS) next = { phase: OPENING_PHASE, step: 0, text: plainWord("thinking"), at: now, key: OPENING_PHASE };
   else next = label(0);
   shown.current = next;
-  const nextTurn = next && pool && next.phase === phase && pool.length > 1 ? next.at + wordHoldMs(phaseSeed, next.step) : 0;
+  const nextTurn = next && pool && next.phase === phase && pool.length > 1 ? rotateAt(next) : 0;
   const opened = next?.phase === OPENING_PHASE ? next.at + STATUS_HOLD_MS : 0;
   const due = Math.min(...[quietUntil, holdUntil, nextTurn, opened].filter((at) => at > now));
   useEffect(() => {

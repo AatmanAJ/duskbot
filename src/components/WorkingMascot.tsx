@@ -17,14 +17,14 @@ export type Face = { state: PixelState; flip?: boolean; ms: number; once?: boole
 
 /** The faces each mood runs through, in order and on a loop. */
 export const MOOD_FACES: Record<WorkingMood, readonly Face[]> = {
-  thinking: [{ state: "thinking", ms: 2200 }, { state: "thinking", flip: true, ms: 1800 }, { state: "confused", ms: 1400 }],
+  thinking: [{ state: "thinking", ms: 2800 }, { state: "thinking", flip: true, ms: 2400 }, { state: "confused", ms: 2000 }],
   reading: [{ state: "working", ms: 3000 }],
   writing: [{ state: "working", ms: 3000 }],
-  replying: [{ state: "happy", ms: 1100, once: true }, { state: "working", ms: 3000 }],
-  running: [{ state: "working", ms: 2400 }, { state: "listening", ms: 600 }],
-  searching: [{ state: "searching", ms: 1400 }, { state: "listening", ms: 500 }, { state: "searching", flip: true, ms: 1400 }, { state: "listening", ms: 500 }],
-  browsing: [{ state: "listening", ms: 2400 }, { state: "searching", ms: 1200 }, { state: "listening", ms: 1800 }, { state: "searching", flip: true, ms: 1200 }],
-  waiting: [{ state: "idle", ms: 2600 }, { state: "confused", ms: 1600 }],
+  replying: [{ state: "happy", ms: 2000, once: true }, { state: "working", ms: 3000 }],
+  running: [{ state: "working", ms: 3200 }, { state: "listening", ms: 2000 }],
+  searching: [{ state: "searching", ms: 2400 }, { state: "listening", ms: 2000 }, { state: "searching", flip: true, ms: 2400 }, { state: "listening", ms: 2000 }],
+  browsing: [{ state: "listening", ms: 2800 }, { state: "searching", ms: 2000 }, { state: "listening", ms: 2400 }, { state: "searching", flip: true, ms: 2000 }],
+  waiting: [{ state: "idle", ms: 3000 }, { state: "confused", ms: 2000 }],
   error: [{ state: "sad", ms: 4000 }],
   done: [{ state: "happy", ms: 4000 }],
 };
