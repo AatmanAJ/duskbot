@@ -292,19 +292,19 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, account,
       aria-label={t("call.callWith", { name: bot.name })}
       data-voice-call={snap.phase}
       data-turn-ms={snap.lastTurn ? `${snap.lastTurn.endpoint},${snap.lastTurn.transcribed},${snap.lastTurn.sent},${snap.lastTurn.firstAudio}` : undefined}
-      className={cn("voice-call-pill pointer-events-auto relative flex h-[52px] items-center gap-1 rounded-full py-1.5 pl-1.5 pr-1.5 text-ink sm:h-14 sm:gap-1.5 sm:py-2 sm:pl-2 sm:pr-2", TONE, leaving && "voice-call-pill-out")}
+      className={cn("voice-call-pill pointer-events-auto relative flex h-[52px] max-w-full items-center gap-1 rounded-full py-1.5 pl-1.5 pr-1.5 text-ink sm:h-14 sm:gap-1.5 sm:py-2 sm:pl-2 sm:pr-2", TONE, leaving && "voice-call-pill-out")}
     >
       <div ref={face} className="shrink-0 origin-bottom will-change-transform">
         <BotAvatar bot={bot} size={narrow ? 36 : 40} state={mascotMood(snap)} animated />
       </div>
-      <div className="relative flex h-10 min-w-[104px] items-center justify-center px-1.5 sm:min-w-[150px] sm:px-2" aria-live="polite">
+      <div className={cn("relative flex h-10 items-center justify-center px-1.5 sm:px-2", live ? "min-w-[104px] sm:min-w-[150px]" : "min-w-0")} aria-live="polite">
         {live ? (
           <span key="wave" className="voice-call-swap flex items-center">
             <VoiceCallWave source={wave} bars={narrow ? 16 : 26} botColor={botColor} onFrame={onFrame} />
             <span className="sr-only">{phaseLabel(snap, bot.name)}</span>
           </span>
         ) : (
-          <span key={status} className={cn("voice-call-swap max-w-[270px] truncate text-[13px] tabular-nums", failed ? "text-ink" : "text-ink-secondary")} title={snap.error?.message ?? status}>
+          <span key={status} className={cn("voice-call-swap max-w-[270px] text-[13px] tabular-nums", narrow ? "line-clamp-2 leading-4" : "truncate", failed ? "text-ink" : "text-ink-secondary")} title={snap.error?.message ?? status}>
             {status}
           </span>
         )}
