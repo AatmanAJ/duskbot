@@ -59,6 +59,8 @@ const parse = (value: string | null): unknown => { try { return value ? JSON.par
 const CLOUD_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const GRANT_CODE = /^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/;
 const MAX_GRANT_MS = 10 * 60_000;
+/** the account service stamps a grant's end by its clock; a phone whose clock is this far off either way still takes it */
+const CLOCK_SLACK_MS = 10 * 60_000;
 const MAX_CLOUDS = 20;
 const CLOUD_PAIRING = "/api/cloud/desktop/pairing";
 const CLOUD_WAKE = "/api/cloud/desktop/wake";
@@ -121,13 +123,13 @@ export function parseComputers(input: unknown): MobileComputer[] {
 /** the computer's pairing link, only a v2 phone link whose grant is still live */
 export function parseComputerPair(input: unknown, now = Date.now()): string | null {
   if (!object(input) || input.v !== 1 || typeof input.link !== "string" || input.link.length > 8192 || !/^duskbot:\/\/pair\?m=[A-Za-z0-9_-]+$/.test(input.link)) return null;
-  return expiry(input.expiresAt) && input.expiresAt > now && input.expiresAt <= now + MAX_GRANT_MS + 60_000 ? input.link : null;
+  return expiry(input.expiresAt) && input.expiresAt > now - CLOCK_SLACK_MS && input.expiresAt <= now + MAX_GRANT_MS + CLOCK_SLACK_MS ? input.link : null;
 }
 
 export function parsePairGrant(input: unknown, origin: string | null, now = Date.now()): CloudPairGrant | null {
   if (!object(input) || input.cloudContractVersion !== 1 || !httpsOrigin(input.origin) || (origin !== null && input.origin !== origin)) return null;
   if (typeof input.code !== "string" || !GRANT_CODE.test(input.code)) return null;
-  if (!expiry(input.expiresAt) || input.expiresAt <= now || input.expiresAt > now + MAX_GRANT_MS) return null;
+  if (!expiry(input.expiresAt) || input.expiresAt <= now - CLOCK_SLACK_MS || input.expiresAt > now + MAX_GRANT_MS + CLOCK_SLACK_MS) return null;
   return { origin: input.origin as string, code: input.code, expiresAt: input.expiresAt };
 }
 const base64url = (value: Uint8Array) => btoa(String.fromCharCode(...value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

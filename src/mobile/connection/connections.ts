@@ -83,6 +83,15 @@ async function moveOutbox(platform: MobilePlatform, from: string, to: string): P
   await platform.prefs.set(outboxKey(to), held);
 }
 
+/** The same installation linked again: at the same address, or a dusk cloud (https, with its own environment id) that
+ * moved to another one, whose old address will never answer again. */
+function sameInstallation(a: MobileConnectionRecord, b: MobileConnectionRecord): boolean {
+  if (a.environmentId !== b.environmentId) return false;
+  if (a.origin === b.origin) return true;
+  const ownId = (record: MobileConnectionRecord) => record.environmentId !== record.origin && record.environmentId !== record.relay?.channel;
+  return a.transport === "https" && b.transport === "https" && ownId(a) && ownId(b);
+}
+
 const CONNECTIONS_KEY = "dusk.mobile.connections.v1";
 const ACTIVE_KEY = "dusk.mobile.active.v1";
 type ActiveConnection = { record: MobileConnectionRecord; token: string };
@@ -127,7 +136,7 @@ export function createConnectionStore(platform: MobilePlatform): ConnectionStore
     save(record, token) {
       return serialize(async () => {
         const records = await read();
-        const replaced = records.filter((entry) => entry.id === record.id || entry.environmentId === record.environmentId && entry.origin === record.origin);
+        const replaced = records.filter((entry) => entry.id === record.id || sameInstallation(entry, record));
         const saved = { ...record, sessionRef: `token.${record.id}` };
         await platform.secrets.set(saved.sessionRef, token);
         await write([...records.filter((entry) => !replaced.includes(entry)), saved]);

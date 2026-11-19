@@ -12,7 +12,7 @@ export type TypedCode = { kind: "code"; code: string };
 type PairErrorCode = "expired" | "unknown" | "store-qr" | "used" | "sign-in" | "limited" | "unreachable" | "mismatch" | "refused" | "relay-unavailable" | "invalid" | "unsupported";
 
 // the desktop's clock stamps a grant's end; a phone a little ahead of it still tries, and the desktop decides
-const CLOCK_SKEW_MS = 2 * 60_000;
+const CLOCK_SKEW_MS = 10 * 60_000;
 const lapsed = (expiresAt: number | undefined) => Boolean(expiresAt && expiresAt + CLOCK_SKEW_MS <= Date.now());
 
 export class PairError extends Error {
