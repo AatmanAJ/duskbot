@@ -4,9 +4,12 @@ A call from a chat's composer with no key or account: the page's microphone
 (echo-cancelled by Chromium, so the person can talk over the bot), a turn
 detector in the page, Moonshine base hearing on the harness, the bot's normal
 turn (marked `via: "call"` with the call's id, and told its reply is spoken),
-and Kokoro-82M speaking the reply as it streams. The models (about 160 MB) download
-on the first call into the computer's cache (`server/local-voice/models.ts`),
-from pinned revisions, resumable and hash-checked.
+and Kokoro-82M saying the reply once it is in the chat. The models (about 160 MB)
+are fetched by the desktop app's harness (and a Cloud's) while it is quiet: 90 s
+after start, making way for turns and batteries, resuming, retrying 10 minutes
+after a failure (`server/local-voice/prefetch.ts`). They come from
+`https://dusk.bot/voice/<sha256>/<name>` first and the pinned upstream after,
+hash-checked (`scripts/mirror-voice-models.sh` puts them on dusk.bot).
 
 ## Sub-features
 
@@ -22,6 +25,18 @@ from pinned revisions, resumable and hash-checked.
 - Talking over the bot dips it at once and stops it after a further 160 ms of
   voice; a short noise only dips it. A turn that ends on "and", "um" and the
   like waits 900 ms for the rest.
+- A call starts as soon as the microphone opens. Until a half of the models has
+  arrived, the computer's own voice speaks (the best Premium or Enhanced system
+  voice) and its own recognizer hears (the dictation helper; none on Linux
+  without a key, where the turn waits for the models); the call takes turns
+  while they stand in, and takes each half as it lands, sentence by sentence.
+  No download text is ever shown.
+- Voices come out near -16 LUFS: the built-in voice is normalised on the
+  harness, and every played clip (read-aloud too) goes through a soft
+  compressor and a -1.5 dBFS limiter. A quiet microphone turn is raised before
+  it is heard.
+- Soft connect and hang-up chimes (`src/lib/voice-call/chime.ts`), where the
+  app's sounds are on; the first words wait for the connect chime.
 
 ## Recipe
 
@@ -57,8 +72,12 @@ listening; the chat shows the question "Via call" and the reply.
 
 ## Last exercised
 
-2026-11-19, macOS on an M5 Pro, headless Chromium 151, fake engine: two turns
-answered with first audio 1,211 ms and 1,158 ms after the person stopped
-(580 ms of that is the end-of-turn pause, about 60 ms hearing). Kokoro speaks
-a short sentence in about 150 ms and six seconds of speech in about 500 ms;
-Moonshine hears 3.7 s in about 70 ms.
+2026-11-19, macOS on an M5 Pro, headless Chromium 151, fake engine, models
+already on the computer. From the person stopping to the bot's first sound:
+1,625 ms for a 130-character reply and 1,281 ms for a short one on the desktop
+size, 1,628 and 1,481 ms on the phone size (580 ms of it is the end-of-turn
+pause, about 100 ms hearing). Saying a reply only once it is in the chat costs
+the reply's whole generation time; with a real model that is the model's time
+to finish a short spoken answer. Kokoro speaks a short sentence in about 150 ms
+and six seconds of speech in about 500 ms; Moonshine hears 3.7 s in about 70 ms.
+The samples measure -16.3 to -16.8 LUFS, peaks -0.8 to -1.3 dBTP.
