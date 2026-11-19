@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { editedEmailArguments, emailReviewOf, normalizeEmailEdits } from "./email-review.ts";
+import { liveCardKind, liveDecisionRefusal } from "./live-approval.ts";
 import { isOutboundTool } from "./outbound.ts";
 import { finishesPurchase, isPurchaseTool, maskPaymentMethod, parsePurchaseSummary } from "./purchase.ts";
 import { parseProductsCard } from "./products.ts";
@@ -87,6 +88,16 @@ describe("the email review", () => {
     expect(editedEmailArguments(outlook, { to: ["b@x.com", "c@x.com"], subject: "Hey" })).toEqual({ to_email: "b@x.com, c@x.com", subject: "Hey", body: "Hello" });
     const gmail = { slug: "GMAIL_SEND_EMAIL", arguments: { recipient_email: "a@x.com", extra_recipients: ["b@x.com"], body: "Hello" } };
     expect(editedEmailArguments(gmail, { to: ["c@x.com"] })).toEqual({ recipient_email: "c@x.com", body: "Hello" });
+  });
+});
+
+describe("a voice call never confirms a purchase", () => {
+  it("reads every purchase card as one to review on screen", () => {
+    const card = { title: "Confirm purchase", subtitle: "", options: [], requestId: "r1", tool: "confirm_purchase" };
+    expect(liveCardKind({ ...card, purchase: { merchant: "Acme", items: [{ name: "Kettle", quantity: 1 }], total: "$1" } })).toBe("review");
+    expect(liveCardKind({ ...card, tool: "SHOPIFY_CREATE_ORDER", outboundRequest: { tool: "SHOPIFY_CREATE_ORDER", app: "Shopify", purchase: true } })).toBe("review");
+    expect(liveDecisionRefusal({ ...card, tool: "STRIPE_CREATE_PAYMENT_INTENT" })).toMatch(/on screen/);
+    expect(liveCardKind({ ...card, tool: "GMAIL_SEND_EMAIL" })).toBe("approval");
   });
 });
 
