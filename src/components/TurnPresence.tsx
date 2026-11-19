@@ -87,6 +87,11 @@ const OPENING_PHASE = "friendly:opening";
 /** A line first seen this long into its turn (a chat opened mid-turn) says what is happening at once. */
 const OPENING_WITHIN_MS = STATUS_QUIET_MS.max + 1_500;
 
+/** Writing a reply only moves forward: its words in order, then the last one held, never back to the first. */
+export function typingWord(pool: readonly string[], step: number): string {
+  return pool[Math.min(step, pool.length - 1)] ?? "";
+}
+
 /** The step label the simple status line shows now, or null while the line is still quiet. Plain work rotates through
  * `phrases` with `fun` ones mixed in as the turn runs long (workingWord); a step leads with its own words. */
 export function useStatusLabel(phrases: readonly string[] | null, phase: string, seed: string, since: number | null, active: boolean, fun: readonly string[] = NOTHING, wordsAtOnce = false): { key: string; text: string; phase: string } | null {
@@ -102,20 +107,21 @@ export function useStatusLabel(phrases: readonly string[] | null, phase: string,
   const pool = phrases && phrases.length > 0 ? phrases : null;
   const phaseSeed = `${seed}|${phase}`;
   const plain = startsAnywhere(phase);
-  const say = (step: number, previous?: string) => pool ? (plain ? workingWord(pool, fun, phaseSeed, step, now - start, previous) : phraseAt(pool, phaseSeed, step)) : "";
+  const say = (step: number, previous?: string) => !pool ? "" : typing ? typingWord(pool, step) : plain ? workingWord(pool, fun, phaseSeed, step, now - start, previous) : phraseAt(pool, phaseSeed, step);
   const label = (step: number, previous?: string): ShownLabel => ({ phase, step, text: say(step, previous), at: now, key: `${phase}#${step}` });
   const held = shown.current;
   const holdUntil = held ? held.at + STATUS_HOLD_MS : 0;
   const rotateAt = (from: ShownLabel) => Math.max(from.at + wordHoldMs(phaseSeed, from.step), start + LONG_TURN_MS);
+  const rotates = (from: ShownLabel) => Boolean(pool && pool.length > 1 && !(typing && from.step >= pool.length - 1));
   let next: ShownLabel | null;
   if (held && pool && held.phase !== phase && wordGroup(held.phase) === wordGroup(phase)) next = { ...held, phase };
   else if (held && (held.phase !== phase || !pool) && now < holdUntil) next = held;
-  else if (held && pool && held.phase === phase) next = pool.length > 1 && now >= rotateAt(held) ? label(held.step + 1, held.text) : held;
+  else if (held && pool && held.phase === phase) next = rotates(held) && now >= rotateAt(held) ? label(held.step + 1, held.text) : held;
   else if (!pool || !(typing || now >= quietUntil)) next = null;
   else if (!held && !typing && !plain && phase.startsWith("friendly:") && now - start < OPENING_WITHIN_MS) next = { phase: OPENING_PHASE, step: 0, text: plainWord("thinking"), at: now, key: OPENING_PHASE };
   else next = label(0);
   shown.current = next;
-  const nextTurn = next && pool && next.phase === phase && pool.length > 1 ? rotateAt(next) : 0;
+  const nextTurn = next && pool && next.phase === phase && rotates(next) ? rotateAt(next) : 0;
   const opened = next?.phase === OPENING_PHASE ? next.at + STATUS_HOLD_MS : 0;
   const due = Math.min(...[quietUntil, holdUntil, nextTurn, opened].filter((at) => at > now));
   useEffect(() => {
