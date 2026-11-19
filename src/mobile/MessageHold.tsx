@@ -177,7 +177,7 @@ const NATIVE_PREFETCH_MS = 280;
 export function heldBubble(target: EventTarget | null): { bubble: HTMLElement; row: HTMLElement } | null {
   const el = target instanceof Element ? target : null;
   const bubble = el?.closest<HTMLElement>(BUBBLE);
-  if (!bubble || el?.closest("button, input, textarea, [contenteditable='true'], [aria-hidden='true']")) return null;
+  if (!bubble || el?.closest("button, input, textarea, [contenteditable='true'], [aria-hidden='true'], [data-selectable]")) return null;
   const row = bubble.closest<HTMLElement>("[data-message-row]");
   if (!row?.querySelector("[data-testid='message-actions']")) return null;
   return { bubble, row };

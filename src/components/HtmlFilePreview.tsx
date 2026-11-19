@@ -159,7 +159,7 @@ function HtmlFileContent({ path, name, message }: { path: string; name: string; 
     {save.state === "failed" && <p role="alert" className="text-end text-[12px] text-danger">{save.reason}</p>}
     {openFailed && <p role="alert" className="text-end text-[12px] text-danger">{openFailed}</p>}
     {showSource
-      ? <pre className={SOURCE_CLASS}>{source}</pre>
+      ? <pre data-selectable="" className={SOURCE_CLASS}>{source}</pre>
       : <HtmlPreviewFrame source={source} name={name} />}
   </div>;
 }
@@ -182,10 +182,10 @@ export function TextFileContent({ path, name, message, markdown }: { path: strin
     </div>
     {save.state === "failed" && <p role="alert" className="text-end text-[12px] text-danger">{save.reason}</p>}
     {formatted
-      ? <div data-file-preview="markdown" className="h-[72dvh] overflow-auto rounded-lg bg-inset px-4 py-3 text-[15px] leading-6 text-ink">
+      ? <div data-file-preview="markdown" data-selectable="" className="h-[72dvh] overflow-auto rounded-lg bg-inset px-4 py-3 text-[15px] leading-6 text-ink">
         <Suspense fallback={<PreviewLoading page={false} />}><ChatMarkdown text={source} /></Suspense>
       </div>
-      : <pre data-file-preview="text" className={`${SOURCE_CLASS} font-mono`}>{source}</pre>}
+      : <pre data-file-preview="text" data-selectable="" className={`${SOURCE_CLASS} font-mono`}>{source}</pre>}
   </div>;
 }
 

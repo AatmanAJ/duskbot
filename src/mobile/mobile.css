@@ -102,6 +102,9 @@ html[data-mobile-app], html[data-mobile-app] body { overflow: hidden; overscroll
 /* an app, not a page: no pinch or double-tap zoom, no text-size jumps, no stray text selection outside what you type */
 html[data-mobile-app] { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-user-select: none; user-select: none; }
 html[data-mobile-app] :is(input, textarea, [contenteditable="true"]) { -webkit-user-select: text; user-select: text; }
+/* what a viewer shows (a file, code, a table, a message's words) selects with the system's handles and its Copy, Look Up and Share menu; its own buttons stay taps */
+html[data-mobile-app] [data-selectable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+html[data-mobile-app] [data-selectable] :is(button, [role="button"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
 /* touch targets the shared desktop components draw smaller than a thumb needs: at least 44px inside the phone shell */
 .dusk-mobile [data-mobile-chat] [data-grok-inset] button:not([role="menuitem"]),
