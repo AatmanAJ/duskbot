@@ -461,11 +461,18 @@ const serverSupervisor = createServerSupervisor({
     if (earlyVpsOpened && activeRemote(environmentsState)?.id === earlyVpsOpened && mainWindow && !mainWindow.isDestroyed()) return;
     serverFailure = "crashed";
     if (app.isPackaged && !desktopRemoteAccess && showsLocalPage(mainWindow)) return void serverFailurePage(mainWindow);
-    dialog.showErrorBox(
-      "The bot server stopped",
-      "Automatic recovery could not restart the background server. Quit and reopen dusk bot to try again. Interrupted chat turns were not resent.\n\n" +
-        `Server log: ${path.join(LOG_DIR, "server.log")}`,
-    );
+    void dialog.showMessageBox({
+      type: "info",
+      message: "dusk bot needs a restart",
+      detail: "Its background part stopped and couldn't come back by itself. Restarting brings it back. Chats that were mid-reply weren't sent again.",
+      buttons: ["Restart dusk bot", "Not now"],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response !== 0) return;
+      app.relaunch();
+      app.quit();
+    });
   },
   log: slog,
 });
@@ -1547,18 +1554,25 @@ function openDesktopViewer(owner, rawUrl, rawTitle, contextId) {
     } catch {
     }
   });
+  let viewerRetried = false;
   viewer.webContents.on("did-fail-load", (_event, code, description, failedUrl, isMainFrame) => {
     if (!isMainFrame || code === -3 || viewer.isDestroyed() || failedUrl.startsWith("data:")) return;
-    void viewer.loadURL(desktopViewerErrorPage(description || "The viewer did not respond.", url.toString()));
+    slog(`desktop viewer failed to load: ${code} ${description}`);
+    if (!viewerRetried) {
+      viewerRetried = true;
+      setTimeout(() => { if (!viewer.isDestroyed()) void viewer.loadURL(url.toString()).catch(() => {}); }, DESKTOP_VIEWER_RETRY_MS);
+      return;
+    }
+    void viewer.loadURL(desktopViewerErrorPage(url.toString()));
   });
 
   notifyDesktopViewer(true);
-  void viewer.loadURL(url.toString()).catch((error) => {
-    if (viewer.isDestroyed()) return;
-    void viewer.loadURL(desktopViewerErrorPage(error?.message ?? "The viewer did not respond.", url.toString()));
-  });
+  // a failed load also fires did-fail-load, which retries once and then shows the page with its buttons
+  void viewer.loadURL(url.toString()).catch(() => {});
   return true;
 }
+
+const DESKTOP_VIEWER_RETRY_MS = 2000;
 
 function ensureDesktopWorkspace(owner) {
   if (!owner || owner.isDestroyed()) throw new Error("The dusk bot window is unavailable");

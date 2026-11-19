@@ -53,8 +53,8 @@ export function serverProblemReportUrl({ reason, version, platform, arch }) {
   return url.toString();
 }
 
-/** The page the live-desktop viewer shows when it cannot open. */
-export function desktopViewerErrorPage(message, retryUrl) {
+/** The page the live-desktop viewer shows when it cannot open: what to press, never the browser's error code. */
+export function desktopViewerErrorPage(retryUrl) {
   const escape = (value) =>
     String(value)
       .replaceAll("&", "&amp;")
@@ -64,7 +64,7 @@ export function desktopViewerErrorPage(message, retryUrl) {
   return dataUrl(handoffPage({
     title: "Desktop unavailable",
     mood: "oops",
-    content: `<h1>Couldn't open the live desktop</h1><p>${escape(message)}</p><p class="go"><a href="${escape(retryUrl)}" target="_blank" rel="noreferrer">Open in browser</a></p>`,
+    content: `<h1>The live desktop isn't answering yet</h1><p>It may still be starting. Try again in a moment.</p><p class="go"><a href="${escape(retryUrl)}">Try again</a> <a href="${escape(retryUrl)}" target="_blank" rel="noreferrer">Open in browser</a></p>`,
   }));
 }
 
