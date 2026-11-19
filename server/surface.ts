@@ -40,7 +40,7 @@ const NO_BROWSER_NOTE =
   " This bot is set to work in the built-in browser, but the built-in browser is switched off in App Settings, so you have no browser and no computer this turn: say so instead of guessing.";
 
 const OFF_NOTE =
-  " This bot's \"Works on\" setting is Off, so no computer and no built-in browser are mounted this turn: you cannot open a page, click, or type on any screen. If the user asks for something that needs one, tell them Works on is Off in this bot's settings, never claim you are opening a browser you do not have.";
+  " This bot's \"Works on\" setting is Off, so no computer and no built-in browser are mounted this turn: you cannot open a page, click, or type on any screen. Never claim you are opening a browser you do not have. Take the other routes first: a connected app does sending and posting (for an app that is not connected, the draft and the way to connect it), and a question you can answer from what you know gets that answer. Only when nothing but a screen would do, say in plain words that this bot has no computer or browser to use yet, and that the person can choose one under Works on in its settings.";
 
 const NO_PERMISSION_TALK = " Never explain permissions or System Settings yourself, and never claim to have used this computer's screen.";
 
