@@ -132,7 +132,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
           go("clouds");
           return;
         }
-        if (scanned?.kind === "signin") { setSignInEmail(scanned.email); go(signedIn ? "clouds" : "signin"); return; }
+        if (scanned?.kind === "signin") { await openSignInFor(scanned.email); return; }
         payload = scanned?.kind === "code" ? await resolveTypedCode(scanned.code) : scanned?.kind === "pair" ? scanned.payload : null;
       }
       if (!payload) throw new PairError("invalid");
@@ -175,6 +175,23 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     setNoClouds(false);
     go("signin");
   };
+  /** a dusk cloud's log in qr names its account: a phone signed in to another one logs in to that one, never back to its own clouds */
+  const openSignInFor = async (wanted: string) => {
+    const current = account?.account?.email;
+    if (current && wanted && current.toLowerCase() !== wanted.toLowerCase()) await account?.signOut();
+    else if (current) { setNoClouds(false); go("clouds"); return; }
+    setSignInEmail(wanted);
+    setNoClouds(false);
+    go("signin");
+  };
+  const linkedEmail = useRef(startAt === "signin" && !signInCode ? email : undefined);
+  const accountEmail = account?.account?.email;
+  useEffect(() => {
+    const wanted = linkedEmail.current;
+    if (!wanted || !accountEmail) return;
+    linkedEmail.current = undefined;
+    if (accountEmail.toLowerCase() !== wanted.toLowerCase()) void openSignInFor(wanted);
+  }, [accountEmail]);
   const paste = async () => {
     const text = await platform.readClipboard?.();
     if (text) setValue(text.trim());

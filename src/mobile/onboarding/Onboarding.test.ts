@@ -207,6 +207,50 @@ it("a scan of the desktop's App Store qr says so, and the screen after a failed 
   expect(host.querySelector("button[type=submit]")).toBeNull();
 });
 
+it("a scan of a dusk cloud's log in qr with no code opens the log in with its email filled in", async () => {
+  platform = { ...platform, camera: {
+    permission: async () => "granted", request: async () => "granted",
+    start: async ({ onCode }: { onCode: (text: string) => void }) => { setTimeout(() => onCode("https://dusk.bot/m/signin#email=person%40example.com"), 0); return { stop: async () => {} }; },
+  } as unknown as MobilePlatform["camera"] };
+  await mount(onboarding());
+  await press("[data-entry=scan]");
+  for (let i = 0; i < 100 && !host.querySelector("input[type=email]"); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  expect(heading()).toBe("Log in to dusk bot");
+  expect(host.querySelector<HTMLInputElement>("input[type=email]")?.value).toBe("person@example.com");
+});
+
+describe("a dusk cloud's log in qr for another account than the phone's", () => {
+  const signedInWithoutClouds = () => {
+    secrets.set("dusk.account", JSON.stringify({ origin, token, expiresAt: Date.now() + 60_000, account, deviceId: "phone" }));
+    fetcher.mockImplementation(async (input) => String(input).endsWith("/api/cloud/desktop/session") ? response({ ok: true, clouds: [] }) : response({ v: 1, providers: [], signupOpen: true }));
+  };
+  const settle = async (done: () => boolean) => { for (let i = 0; i < 100 && !done(); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); }); };
+
+  it("scanned from the no-cloud screen, logs in to the qr's account instead of landing back on the same screen", async () => {
+    signedInWithoutClouds();
+    platform = { ...platform, camera: {
+      permission: async () => "granted", request: async () => "granted",
+      start: async ({ onCode }: { onCode: (text: string) => void }) => { setTimeout(() => onCode("https://dusk.bot/m/signin#email=owner%40example.com"), 0); return { stop: async () => {} }; },
+    } as unknown as MobilePlatform["camera"] };
+    await mount(onboarding());
+    const scan = () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Scan a QR code");
+    await settle(() => Boolean(scan()));
+    expect(heading()).toBe("No cloud yet");
+    await act(async () => { scan()!.click(); });
+    await settle(() => Boolean(host.querySelector("input[type=email]")));
+    expect(heading()).toBe("Log in to dusk bot");
+    expect(host.querySelector<HTMLInputElement>("input[type=email]")?.value).toBe("owner@example.com");
+    expect(secrets.has("dusk.account")).toBe(false);
+  });
+
+  it("opened from the camera, does the same", async () => {
+    signedInWithoutClouds();
+    await mount(onboarding({ startAt: "signin", email: "owner@example.com" }));
+    await settle(() => Boolean(host.querySelector("input[type=email]")));
+    expect(host.querySelector<HTMLInputElement>("input[type=email]")?.value).toBe("owner@example.com");
+  });
+});
+
 describe("a dusk cloud's code from the desktop", () => {
   const phoneGrant = { cloudContractVersion: 1, accessToken: token, expiresAt: Date.now() + 86_400_000, device: { id: "phone" }, account };
   const route = (phone: () => Response) => fetcher.mockImplementation(async (input) => {
