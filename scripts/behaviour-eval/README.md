@@ -3,7 +3,7 @@
 Does a bot do the work instead of narrating a plan, stop when told, and never claim a change it did not make? Black-box,
 like the memory eval: `run.ts` starts `server/index.ts` of `--repo` in a throwaway sandbox (`../memory-eval/sandbox.ts`)
 whose one engine is OpenAI-compatible and points at the recording proxy (`../memory-eval/proxy.ts`), which forwards to the
-gateway. Each case gets its own new bot in a fresh thread, with no seeded test bots.
+gateway. Each case runs in a workspace of its own (a new sandbox) with one new bot and no seeded test bots.
 
 ```
 node --experimental-strip-types scripts/behaviour-eval/run.ts --repo /path/to/checkout --label after \
@@ -36,6 +36,21 @@ people run (Nemotron and DeepSeek are not on the gateway).
 | grok-3-mini | 5/7 to 7/7 | 3/4 to 3/4 | 3/5 to 5/5 | 11/16 to 15/16 |
 | all | 19/28 to 22/28 | 10/16 to 11/16 | 16/20 to 20/20 | 45/64 to 53/64 |
 
-`cancel-summary` is not clean yet: bots share one workspace, so the automation `routine-weekday` made is "your morning
-summary" to a later bot, and pausing it is a fair reading. `before-shared-bot.json` is an earlier baseline where all cases
-shared one bot.
+That first pair ran every case in one workspace, so `cancel-summary` could see the automation `routine-weekday` made
+(`before-shared-bot.json` is an even earlier baseline where all cases shared one bot). The second pair runs each case in
+its own workspace (`before-isolated.json`, `after-isolated.json`); "after" here also has the limit hold for long rate
+limits, the guards for leaked tool tokens and working notes, and the stream hold:
+
+| model | act+deliver | no-false-done | stop | all |
+| --- | --- | --- | --- | --- |
+| gpt-6.1-terra | 6/7 to 7/7 | 3/4 to 4/4 | 5/5 to 5/5 | 14/16 to 16/16 |
+| gpt-oss-120b-medium | 3/7 to 3/7 | 1/4 to 3/4 | 3/5 to 5/5 | 7/16 to 11/16 |
+| gemini-3.1-flash-lite | 7/7 to 5/7 | 3/4 to 3/4 | 4/5 to 5/5 | 14/16 to 13/16 |
+| grok-3-mini | 6/7 to 4/7 | 3/4 to 3/4 | 3/5 to 5/5 | 12/16 to 12/16 |
+| all | 22/28 to 19/28 | 10/16 to 13/16 | 15/20 to 20/20 | 47/64 to 52/64 |
+
+Across both pairs, stop (31/40 to 40/40) and no false done (20/32 to 24/32) moved the same way twice; act+deliver
+moved by about three cases either way between runs of the same build (19 and 22 of 28 for both builds), which is this
+eval's run-to-run noise at one run per case. The failures left are mostly small models handing a job to the Chief
+(`coordinate_bots`) instead of `create_bot`, a reminder confirmed without saying the note was saved, and an ack posted
+with no draft after it.
