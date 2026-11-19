@@ -77,7 +77,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
   const [menu, setMenu] = useState<{ entry: Entry; rect: DOMRect; pinnedTile: boolean; source: HTMLElement | null } | null>(null);
 
   const kept = useRef(new Map<string, Entry>());
-  const { pinned, pinnedEntries, entries } = useMemo(() => {
+  const { pinned, pinnedEntries, entries, alwaysFirstTileId } = useMemo(() => {
     const previous = kept.current;
     const next = new Map<string, Entry>();
     const keep = <T extends Entry>(entry: T): T => {
@@ -103,7 +103,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
     const tiles = top.map((bot) => keep(botEntry(bot, state.instances)));
     const listed = rows.map(keep);
     kept.current = next;
-    return { pinned: top, pinnedEntries: tiles, entries: listed };
+    return { pinned: top, pinnedEntries: tiles, entries: listed, alwaysFirstTileId: primary?.id ?? null };
   }, [state.bots, state.groups, state.instances]);
 
   const { folders, loose } = useMemo(() => homeFolders(entries, (entry) => entry.kind === "bot" ? entry.bot.section : entry.group.section), [entries]);
@@ -125,7 +125,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
     const list: ContextAction[] = [];
     if (entry.kind === "bot") {
       const bot = entry.bot;
-      list.push({ key: "pin", label: bot.pinned ? t("sidebar.bot.unpin") : t("sidebar.bot.pin"), icon: bot.pinned ? <PinOff size={18} /> : <Pin size={18} />, onSelect: () => dispatch({ type: "updateBot", botId: bot.id, patch: { pinned: !bot.pinned } }) });
+      if (bot.id !== alwaysFirstTileId) list.push({ key: "pin", label: bot.pinned ? t("sidebar.bot.unpin") : t("sidebar.bot.pin"), icon: bot.pinned ? <PinOff size={18} /> : <Pin size={18} />, onSelect: () => dispatch({ type: "updateBot", botId: bot.id, patch: { pinned: !bot.pinned } }) });
       list.push(botUnreadThreadIds(bot).length > 0
         ? { key: "read", label: t("sidebar.grok.markRead"), icon: <Check size={18} />, onSelect: () => { void markBotRead(bot, api, (updated) => dispatch({ type: "botPatched", bot: updated })).catch(() => {}); } }
         : { key: "unread", label: t("sidebar.grok.markUnread"), icon: <BellDot size={18} />, onSelect: () => dispatch({ type: "markUnread", botId: bot.id }) });
@@ -135,7 +135,7 @@ export function HomeScreen({ onOpenChat, onOpenSheet }: { onOpenChat: (id: strin
       list.push({ key: "desktop", label: t("mobile.home.openOnDesktop"), icon: <MonitorSmartphone size={18} />, onSelect: () => { void platform.share?.({ title: entry.kind === "bot" ? entry.bot.name : entry.group.name, url: desktopLink }); } });
     }
     return list;
-  }, [dispatch, onOpenSheet, platform]);
+  }, [dispatch, onOpenSheet, platform, alwaysFirstTileId]);
 
   const hold = useNativeHold(platform.menu, "chat");
   const latestActions = useRef(actionsFor);
