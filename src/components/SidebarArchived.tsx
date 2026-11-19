@@ -82,10 +82,10 @@ function ArchivedRow({ bot, selected, onMenu, onUnarchive }: {
           event.preventDefault();
           onMenu({ botId: bot.id, x: event.clientX, y: event.clientY + 4 });
         }}
-        className={cn("flex w-full items-center gap-2.5 rounded-[12px] p-2 text-left md:h-[54px]", SIMPLE_ROW_FOCUS, rowSurface(selected))}
+        className={cn("flex w-full items-center gap-2.5 rounded-[12px] p-2 text-left md:h-[58px]", SIMPLE_ROW_FOCUS, rowSurface(selected))}
       >
         <span className="flex shrink-0 opacity-60 transition-opacity duration-150 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100">
-          <BotAvatar bot={bot} size={36} />
+          <BotAvatar bot={bot} size={40} />
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-px pr-7 opacity-60 transition-opacity duration-150 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100">
           <span className="truncate text-[14px] font-medium leading-5 tracking-[0.01em] text-ink">{bot.name}</span>

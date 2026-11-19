@@ -85,6 +85,17 @@ function sameScroll(from: Element, to: Element) {
   source.forEach((node, index) => { if (node.scrollTop && copy[index]) copy[index]!.scrollTop = node.scrollTop; });
 }
 
+/** A copy that still shows the mascots: a cloned canvas comes out blank, so each is painted again from its original. */
+function copyOf<T extends HTMLElement>(node: T): T {
+  const copy = node.cloneNode(true) as T;
+  const painted = node.querySelectorAll("canvas");
+  copy.querySelectorAll("canvas").forEach((canvas, index) => {
+    const source = painted[index];
+    if (source?.width && source.height) canvas.getContext("2d")?.drawImage(source, 0, 0);
+  });
+  return copy;
+}
+
 function overlay(z: number, style: Partial<CSSStyleDeclaration>): HTMLDivElement {
   const node = document.createElement("div");
   node.setAttribute("aria-hidden", "true");
@@ -118,7 +129,7 @@ export function useRailMorph(root: RefObject<HTMLElement | null>) {
     for (const flyer of el.querySelectorAll<HTMLElement>("[data-morph-fly]")) before.set(flyer.dataset.morphFly!, flyer.getBoundingClientRect());
     const ghost = frame ? overlay(30, { left: "0", height: `${box.height}px`, width: `${edgeBefore - box.left}px`, display: "flex", flexDirection: "column" }) : null;
     if (ghost && frame) {
-      const copy = frame.cloneNode(true) as HTMLElement;
+      const copy = copyOf(frame);
       copy.querySelectorAll("[data-morph-layer]").forEach((node) => node.remove());
       copy.style.flex = "1 1 0%";
       ghost.append(copy);
@@ -166,7 +177,7 @@ export function useRailMorph(root: RefObject<HTMLElement | null>) {
       if (!from || !to.width || !from.width) continue;
       const dx = from.left - to.left, dy = from.top - to.top, scale = from.width / to.width;
       if (Math.abs(dy) > after.height || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(scale - 1) < 0.01)) continue;
-      const flyer = node.cloneNode(true) as HTMLElement;
+      const flyer = copyOf(node);
       flyer.removeAttribute("data-morph");
       flyer.dataset.morphFly = key;
       Object.assign(flyer.style, { position: "absolute", margin: "0", left: `${to.left - after.left}px`, top: `${to.top - after.top}px`, width: `${to.width}px`, height: `${to.height}px` });

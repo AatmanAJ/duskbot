@@ -1,6 +1,6 @@
 // The sidebar opening and closing in the real app, against a disposable fake-engine server: stills of it open and as
 // avatars in each skin, a frame strip of each move sampled every 1/60 s, and the frame times of each move with the CPU
-// slowed 4x. Run: node --experimental-strip-types scripts/verify-sidebar-motion.ts <dir> [--label before]
+// slowed 4x, with what layout, style and script cost each toggle. Run: node --experimental-strip-types scripts/verify-sidebar-motion.ts <dir> [--label before]
 // Headless Chrome (DUSK_CDP_CHROME, else the installed Google Chrome) in a throwaway profile; files go to <dir>.
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -16,7 +16,8 @@ const label = labelAt === -1 ? "after" : process.argv[labelAt + 1]!;
 const CHROME = process.env.DUSK_CDP_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const [WIDTH, HEIGHT] = [1280, 800];
 const FRAME_MS = 1000 / 60;
-const BOTS: Record<string, string> = { Research: "pink", Inbox: "teal", Writer: "yellow", Travel: "blue", Recipes: "coral", Notes: "green", Ledger: "purple" };
+const BOTS: Record<string, string> = { Research: "pink", Inbox: "teal", Writer: "yellow", Travel: "blue", Recipes: "coral", Notes: "green", Ledger: "purple", Garden: "green", Taxes: "blue" };
+const ARCHIVED = ["Garden", "Taxes"];
 const NAMES = Object.keys(BOTS);
 
 async function openChrome(profile: string) {
@@ -69,22 +70,35 @@ async function openChrome(profile: string) {
 /** The ⌘\ the sidebar listens for, sent the way a key press reaches the page. */
 const TOGGLE = `window.dispatchEvent(new KeyboardEvent("keydown", { key: "\\\\", metaKey: true, ctrlKey: true, bubbles: true, cancelable: true }))`;
 
-/** rAF deltas over the 900ms after one toggle. */
+/** rAF deltas over the 900ms after one toggle, the time the toggle's own handler took, and the main thread's long tasks
+ * meanwhile. */
 const TIMED_TOGGLE = `(async () => {
   const stamps = [];
+  const long = [];
+  const observer = new PerformanceObserver((list) => { for (const entry of list.getEntries()) long.push(entry.duration); });
+  observer.observe({ entryTypes: ["longtask"] });
   let on = true;
   const tick = (now) => { stamps.push(now); if (on) requestAnimationFrame(tick); };
   await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
   requestAnimationFrame(tick);
   await new Promise((done) => setTimeout(done, 50));
+  const start = performance.now();
   ${TOGGLE};
+  const handler = performance.now() - start;
   await new Promise((done) => setTimeout(done, 900));
   on = false;
-  const deltas = stamps.slice(1).map((stamp, index) => stamp - stamps[index]);
-  return deltas;
+  observer.disconnect();
+  return { deltas: stamps.slice(1).map((stamp, index) => stamp - stamps[index]), handler, long };
 })()`;
 
-function summary(deltas: number[]) {
+type Run = { deltas: number[]; handler: number; long: number[]; cost: Record<string, number> };
+const COST = ["LayoutCount", "RecalcStyleCount", "LayoutDuration", "RecalcStyleDuration", "ScriptDuration", "TaskDuration"];
+const diff = (from: Record<string, number>, to: Record<string, number>) =>
+  Object.fromEntries(COST.map((name) => [name, name.endsWith("Duration") ? +((to[name]! - from[name]!) * 1000).toFixed(1) : to[name]! - from[name]!]));
+
+function summary(runs: Run[]) {
+  const deltas = runs.flatMap((run) => run.deltas);
+  const long = runs.flatMap((run) => run.long);
   const sorted = [...deltas].sort((a, b) => a - b);
   const pick = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!;
   return {
@@ -94,6 +108,9 @@ function summary(deltas: number[]) {
     maxMs: +sorted[sorted.length - 1]!.toFixed(1),
     over20ms: deltas.filter((value) => value > 20).length,
     over34ms: deltas.filter((value) => value > 34).length,
+    toggleHandlerMs: runs.map((run) => +run.handler.toFixed(1)),
+    longTasksMs: long.map((value) => Math.round(value)),
+    perToggle: Object.fromEntries(COST.map((name) => [name.endsWith("Duration") ? `${name}Ms` : name, +(runs.reduce((sum, run) => sum + run.cost[name]!, 0) / runs.length).toFixed(1)])),
   };
 }
 
@@ -108,7 +125,8 @@ try {
   for (const name of NAMES) await api("PATCH", `/api/bots/${ids[name]}`, { color: BOTS[name] });
   for (const name of ["Writer", "Travel", "Recipes"]) await api("PATCH", `/api/bots/${ids[name]}`, { pinned: true });
   await api("POST", "/api/sidebar-sections", { name: "Work", botIds: [ids.Research, ids.Notes] });
-  for (const text of ["Plan the week from my inbox", "Draft a reply to the landlord about the heater", "Summarise the three newsletters"]) {
+  for (const name of ARCHIVED) await api("PATCH", `/api/bots/${ids[name]}`, { hidden: true });
+  for (const text of ["Plan the week from my inbox", "Draft a reply to the landlord about the heater", "What is left on the tax return", "Book the dentist for Tuesday", "Find the cheapest train to Leeds on Friday", "Which bills are due this month", "Sort the receipts folder by month", "Summarise the three newsletters"]) {
     await runControlDusk(["run", "Inbox", text, "--url", fixture.info.url, "--timeout", "60s"]).catch(() => undefined);
   }
   ui = await mountPreview(fixture, { entry: "/scripts/testing/sidebar-motion-preview.tsx", route: "/__sidebar-motion.html", title: "Isolated sidebar motion", logLevel: "warn" });
@@ -131,6 +149,13 @@ try {
       await chrome.shot(file);
       console.log(file);
     }
+    await load("daylight", false);
+    await chrome.evaluate(`[...document.querySelectorAll("[data-sidebar] button")].find((node) => node.textContent.trim().startsWith("Archived"))?.click()`);
+    await delay(700);
+    await chrome.shot(join(out, `${label}-expanded-archived-open-daylight.png`));
+    await chrome.evaluate(`[...document.querySelectorAll("[data-sidebar] [role=button]")].find((node) => node.textContent.includes("Taxes"))?.click()`);
+    await delay(900);
+    await chrome.shot(join(out, `${label}-archived-chat-opened-daylight.png`));
     // the frame strips: every animation the toggle starts, paused and stepped by hand, 1/60 s a frame
     for (const [move, rail] of [["close", false], ["open", true]] as const) {
       await load("daylight", rail);
@@ -152,10 +177,14 @@ try {
     }
     await chrome.send("Emulation.setCPUThrottlingRate", { rate: 4 });
     for (const [move, rail] of [["close", false], ["open", true]] as const) {
-      const runs: number[] = [];
+      const runs: Run[] = [];
+      const metrics = async () => Object.fromEntries((await chrome.send("Performance.getMetrics")).metrics.map((metric: { name: string; value: number }) => [metric.name, metric.value])) as Record<string, number>;
       for (let attempt = 0; attempt < 3; attempt++) {
         await load("daylight", rail);
-        runs.push(...await chrome.evaluate(TIMED_TOGGLE) as number[]);
+        await chrome.send("Performance.enable", { timeDomain: "threadTicks" });
+        const before = await metrics();
+        runs.push({ ...await chrome.evaluate(TIMED_TOGGLE), cost: diff(before, await metrics()) });
+        await chrome.send("Performance.disable");
       }
       timings[move] = summary(runs);
     }
