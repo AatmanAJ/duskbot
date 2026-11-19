@@ -54,3 +54,19 @@ moved by about three cases either way between runs of the same build (19 and 22 
 eval's run-to-run noise at one run per case. The failures left are mostly small models handing a job to the Chief
 (`coordinate_bots`) instead of `create_bot`, a reminder confirmed without saying the note was saved, and an ack posted
 with no draft after it.
+
+### Three runs per case (`--repeat 3`), isolated workspaces
+
+`before-x3.json` (dev at `73296a0ab`) against `after-x3.json` (dev at `f4df20eda`, adding the forwarded-ask guard,
+the ack that waits for real work, persisted carried steps and plain failure wording). Mean passes per run:
+
+| model | act+deliver | no-false-done | stop | all |
+| --- | --- | --- | --- | --- |
+| gpt-6.1-terra | 7/7 to 7/7 | 4/4 to 3.7/4 | 5/5 to 5/5 | 16/16 to 15.7/16 |
+| gpt-oss-120b-medium | 3/7 to 3.7/7 | 2.3/4 to 2.7/4 | 3/5 to 5/5 | 8.3/16 to 11.3/16 |
+| gemini-3.1-flash-lite | 5.3/7 to 5.3/7 | 2.3/4 to 3.7/4 | 4/5 to 5/5 | 11.7/16 to 14/16 |
+| grok-3-mini | 5.7/7 to 6.3/7 | 3/4 to 3/4 | 3.7/5 to 5/5 | 12.3/16 to 14.3/16 |
+| all | 21/28 to 22.3/28 | 11.7/16 to 13/16 | 15.7/20 to 20/20 | 48.3/64 to 55.3/64 |
+
+Failing cases over 12 tries each (4 models, 3 runs), before to after: `new-bot` 6 to 2, `stop-enough` 8 to 0,
+`stop-please` 5 to 0, `email-landlord` 8 to 8, `reminder-and-note` 6 to 6.
