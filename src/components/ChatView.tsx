@@ -61,7 +61,8 @@ import { browserPartFor } from "@/lib/browser-part";
 import { liveCallEnabled, voiceCallsEnabled, showToolCallsEnabled } from "@/lib/feature-flags";
 import { normalizeState } from "@/lib/mascot";
 import { peerLine, peerRequest, type PeerLine } from "@/lib/peer-message";
-import { showWorkingDots } from "@/lib/turn-tail";
+import { replyHidesLine, showWorkingDots } from "@/lib/turn-tail";
+import { useLandedReply } from "@/hooks/use-landed-reply";
 import { useNotesWork } from "@/lib/notes-arrival";
 import { useTypingHold } from "@/hooks/use-typing-hold";
 import { OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
@@ -1111,8 +1112,11 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   useEffect(() => { if (bot.threadId) followSentTurn(bot.threadId, Boolean(bot.busy)); }, [bot.threadId, bot.busy]);
   const turnBusy = Boolean(bot.busy) || sent?.phase === "sending";
   const turnStartedAt = sent?.at ?? bot.turnStartedAt;
-  // The mascot and its status line stay for the whole turn, through every bubble it sends; only its end hides them.
-  const waiting = Boolean(turnBusy && bot.activity !== "waiting-on-you" && showWorkingDots(turnBusy, lastMessage, undefined, sent?.phase === "sending" ? false : live.ended));
+  const landed = useLandedReply(`${bot.id}:${bot.threadId ?? ""}`, messages);
+  // a reply takes the line's place in the frame it lands, even before the turn's end reaches this client; the line comes
+  // back under it for a named step or once the turn has gone on a while
+  const waiting = Boolean(turnBusy && bot.activity !== "waiting-on-you" && showWorkingDots(turnBusy, lastMessage, undefined, sent?.phase === "sending" ? false : live.ended))
+    && !replyHidesLine(landed.sinceMs, now.phase);
   const teammatesWorking = !bot.busy && Boolean(bot.waitingForTeammates);
   // the reply is written whole; while the engine types it the mark only looks like it is answering
   const streamingReply = useLiveReplyActive(bot.threadId);
@@ -1144,7 +1148,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const presenceUnderBubble = lastRowIsBubble;
   const lastRowUnderLine = useRef<string | undefined>(undefined);
   if (presenceVisible) lastRowUnderLine.current = lastShownRow?.id;
-  const replyTookLine = lastRowIsBubble && (phoneApp() || lastShownRow?.id !== lastRowUnderLine.current);
+  const replyTookLine = lastRowIsBubble && lastShownRow?.id !== lastRowUnderLine.current;
   // a reply landing as the line leaves takes its place in the same frame: the line fading on under it, pushed below the
   // new bubble, read as a flicker
   const presenceShown = presenceLingers && (presenceVisible || !replyTookLine);
