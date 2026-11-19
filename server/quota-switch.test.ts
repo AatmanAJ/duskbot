@@ -237,6 +237,33 @@ describe("quota switch", () => {
       expect(now.name).toBe(row.tool!.name);
     });
 
+    it("sends the message once more on the same AI, quietly, when the engine crashed before it showed or did anything", async () => {
+      deps.turnStops = { failureCause: () => cause, read: () => ({ error: cause }) };
+      quota = createQuotaSwitch(deps);
+      const messageId = said("plan my week");
+      const row = store.appendMessage(bot.threadId, { role: "bot", kind: "activity", tool: failedTurnTool("claude exited with code 137 before it replied", { reason: "cli_exit" }) });
+      const before = notices().length;
+      await limited({ messageId }, "claude exited with code 137 before it replied");
+      expect(resend).toHaveBeenCalledTimes(1);
+      expect(resend.mock.calls[0]![2]).toMatchObject({ id: messageId });
+      expect(thread().modelSelection, "the same AI").toEqual(defaultSelection());
+      expect(notices().length, "no line about it").toBe(before);
+      expect(store.messagesFor(bot.threadId).find((m) => m.id === row.id)!.tool!.resolvedAt, "no failure card while it tries again").toBeTypeOf("number");
+
+      resend.mockClear();
+      const again = store.appendMessage(bot.threadId, { role: "bot", kind: "activity", tool: failedTurnTool("claude exited with code 137 before it replied", { reason: "cli_exit" }) });
+      await limited({ messageId }, "claude exited with code 137 before it replied");
+      expect(resend, "a second crash fails as before").not.toHaveBeenCalled();
+      expect(store.messagesFor(bot.threadId).find((m) => m.id === again.id)!.tool!.resolvedAt).toBeUndefined();
+    });
+
+    it("never sends again a turn that crashed after it showed words or ran a tool", async () => {
+      deps.turnStops = { failureCause: () => cause, read: () => ({ acted: true }) };
+      quota = createQuotaSwitch(deps);
+      await limited({ messageId: said("plan my week") }, "claude exited with code 137 before it replied");
+      expect(resend).not.toHaveBeenCalled();
+    });
+
     it("finds only the newest turn's own failure row, never an older one a reply already followed", () => {
       const ask = { id: "a", role: "user", kind: "text", text: "hi", at: 1 } as Message;
       const fail = { id: "f", role: "bot", kind: "activity", at: 2, tool: failedTurnTool("boom") } as Message;
