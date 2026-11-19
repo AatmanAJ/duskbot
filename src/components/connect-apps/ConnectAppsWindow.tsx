@@ -4,6 +4,7 @@ import { api, useStore, type Action } from "@/state/store";
 import type { LocaleKey } from "@/locales";
 import { t } from "@/lib/i18n";
 import { connectorDescription } from "@/lib/app-catalog";
+import { closeExternalPage } from "@/lib/app-links";
 import { listLogins } from "@/lib/logins";
 import { connectorStatusMemory, preloadConnectedApps } from "@/lib/connected-apps";
 import { useMcpServers } from "@/lib/mcp-servers";
@@ -317,7 +318,9 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
       if (now === "connected" && known.current.get(entry.id) === "disconnected") added ??= entry;
       if (now !== "unknown") known.current.set(entry.id, now);
     }
-    if (added) setToast({ kind: "success", text: t("connectApps.added", { name: added.label }) });
+    if (!added) return;
+    closeExternalPage();
+    setToast({ kind: "success", text: t("connectApps.added", { name: added.label }) });
   }, [entries, connection, connectors.phase]);
   useEffect(() => {
     if (!connectors.error) return;
