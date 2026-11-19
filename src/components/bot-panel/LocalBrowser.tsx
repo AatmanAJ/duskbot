@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { AnimatePresence } from "motion/react";
 import { Hand, Loader2 } from "../../icons";
 
 import { resolveAddressBarInput } from "@/lib/browser-address";
@@ -416,8 +417,8 @@ export function LocalBrowserSection({ bot, after, askFirst = null }: {
       {live ? <LocalBrowserLive key={`${bot.id}\n${bot.threadId ?? ""}`} bot={bot} from={from} started={override?.kind === "started"} onClosed={ended("closed")} onEnded={ended("ended")} />
         : known || late || override ? <LocalBrowserClosed bot={bot} pill={pill} starting={checking} onStart={start} /> : null}
       <div ref={below} className="mt-3 empty:hidden">{(known || late) && !wide && after}</div>
-      {asking && askFirst && <MacPermissionsDialog bridge={askFirst} onClose={() => setAsking(false)} onAllowed={openBrowser}
-        relaunch={typeof window.duskDesktop?.relaunch === "function" ? () => void window.duskDesktop!.relaunch!() : null} />}
+      <AnimatePresence>{asking && askFirst && <MacPermissionsDialog key="mac-permissions-dialog" bridge={askFirst} onClose={() => setAsking(false)} onAllowed={openBrowser}
+        relaunch={typeof window.duskDesktop?.relaunch === "function" ? () => void window.duskDesktop!.relaunch!() : null} />}</AnimatePresence>
     </>
   );
 }

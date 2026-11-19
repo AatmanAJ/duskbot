@@ -220,7 +220,7 @@ function AccountRow({ group, instance, signingIn, onSignIn, onSignInDone }: {
         )}
         <AccountMenu group={group} instance={instance} onRename={() => setRenaming(true)} />
       </div>
-      {renaming && <RenameForm instance={instance} onDone={() => setRenaming(false)} />}
+      <AnimatePresence>{renaming && <RenameForm key="rename-form" instance={instance} onDone={() => setRenaming(false)} />}</AnimatePresence>
       {signingIn && (
         <div className="ps-4">
           {group === "claude"

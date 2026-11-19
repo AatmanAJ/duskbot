@@ -1,4 +1,5 @@
 import { useId, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { openSignIn } from "@/lib/sign-in-sheet";
 import { importFirst, previousOpenAt } from "@/lib/import-first";
 import { ChevronRight } from "../icons";
@@ -143,11 +144,11 @@ export function AccountRows() {
       )}
       {/* signed out: sign in continues in the browser for its context (the account context redirect), never an in-app form */}
       {!active && window.duskDesktop?.accounts && <NavRow data-settings-open="sign-in" title={t("accounts.signIn")} onClick={() => window.duskDesktop?.cloudAccount?.continueInBrowser ? openSignIn() : setAdding(true)} />}
-      {editing && (
-        <FormDialog data-panel-modal="profile" title={t("settings.w6.group.aboutYou")} width={460} onClose={() => setEditing(false)}>
+      <AnimatePresence>{editing && (
+        <FormDialog key="profile" data-panel-modal="profile" title={t("settings.w6.group.aboutYou")} width={460} onClose={() => setEditing(false)}>
           <div data-settings-look="simple" className="-mx-2 flex flex-col"><ProfileFields face={face} /></div>
         </FormDialog>
-      )}
+      )}</AnimatePresence>
       {(adding || accounts.sheet) && (
         <AccountsSheet
           adding={adding ? "" : accounts.sheet?.email ?? null}

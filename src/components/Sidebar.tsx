@@ -1,7 +1,7 @@
 import { OrganizationIdentity } from "./OrganizationIdentity";
 import { StartFreshHost } from "./bot-panel/StartFresh";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type Dispatch } from "react";
-import { motion, type MotionStyle } from "motion/react";
+import { motion, type MotionStyle, AnimatePresence } from "motion/react";
 import { createPortal } from "react-dom";
 import { Bot as BotIcon, Check, ClipboardCopy, Crown, FolderPlus, Library, Loader2, MoreHorizontal, Pencil, Phone, Pin, Plus, TextQuote, Trash2, Users, X } from "../icons";
 import { api, useStore, formatTime, visibleMessages, botOpensTo, openBot, openThread, type Action, type AppState, type Bot, type Group, type InstanceInfo, type Message } from "@/state/store";
@@ -1367,7 +1367,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
             dispatch({ type: "patchGroup", groupId: roomSectionPicker.groupId, patch: { section } });
           }}
         />
-      {newRoom && <NewRoomPanel onClose={() => setNewRoom(false)} />}
+      <AnimatePresence>{newRoom && <NewRoomPanel key="new-room-panel" onClose={() => setNewRoom(false)} />}</AnimatePresence>
       {!remoteClient && archivedBotsOpen && (
         <ArchivedBotsPanel
           bots={archivedBots}

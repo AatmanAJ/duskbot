@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { createPortal } from "react-dom";
 import { Check, Copy } from "../../icons";
 
@@ -149,13 +150,13 @@ function AutomationRow({ bot, automation, routine, open, editing, onOpen, onClos
         )}
       </div>
       {!open && actions.error && <p role="alert" className="m-0 px-2 pb-1.5 text-[12px] leading-4 text-danger">{actions.error}</p>}
-      {open && !(editing && automation.kind !== "schedule") && (
-        <GrokDialog data-panel-modal="routine" title={name} onClose={onClose}>
+      <AnimatePresence>{open && !(editing && automation.kind !== "schedule") && (
+        <GrokDialog key="routine" data-panel-modal="routine" title={name} onClose={onClose}>
           {editing && routine
             ? <RoutineForm bot={bot} routine={routine} onDone={() => onEdit(false)} />
             : <AutomationDetail id={detailId} bot={bot} automation={automation} routine={routine} actions={actions} onEdit={() => onEdit(true)} />}
         </GrokDialog>
-      )}
+      )}</AnimatePresence>
       {editing && automation.kind !== "schedule" && <ForeignEditor automation={automation} onClose={() => onEdit(false)} />}
     </div>
   );

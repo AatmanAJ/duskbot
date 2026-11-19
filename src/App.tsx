@@ -363,7 +363,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       ) : (
         <AppEmptyMain loading={loading} notice={state.notice} />
       )}
-      {macPrompt && macFrom && !firstRun && !noEngines && <MacEmptyMain from={macFrom} onClose={dismissMacPrompt} />}
+      <AnimatePresence>{macPrompt && macFrom && !firstRun && !noEngines && <MacEmptyMain key="mac-empty-main" from={macFrom} onClose={dismissMacPrompt} />}</AnimatePresence>
       {/* Sibling panels need distinct keys: two keyed `bot.id` collide in React's keyed reconciliation. */}
       {state.settingsOpen && bot && remoteClient && <RemoteAgentSettingsPanel bot={bot} />}
       <AnimatePresence custom={Boolean(overlayBot)}>

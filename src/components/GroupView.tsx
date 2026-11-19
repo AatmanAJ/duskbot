@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { usePhoneLayout } from "@/lib/use-media-query";
 import { splitReplyBlocks } from "@/lib/formatted-reply";
 import { activeLocale, t } from "@/lib/i18n";
@@ -971,9 +972,9 @@ export function GroupView({ group: room }: { group: Group }) {
 
   return (
     <main className="relative flex h-full min-w-0 flex-1 flex-col bg-app">
-      {membersOpen && !remoteClient && !group.dm && (
-        <ManageMembersPanel group={group} onClose={closeMembers} triggerRef={membersTriggerRef} />
-      )}
+      <AnimatePresence>{membersOpen && !remoteClient && !group.dm && (
+        <ManageMembersPanel key="manage-members-panel" group={group} onClose={closeMembers} triggerRef={membersTriggerRef} />
+      )}</AnimatePresence>
       <GlassScrollFrame className="flex-1 [--glass-tint:var(--color-app)]">
       {/* z-[25]: above the room set-up card (z-20). */}
       <GlassBar edge="top" fade={!remoteClient} className="z-[25]">

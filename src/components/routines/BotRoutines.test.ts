@@ -53,7 +53,7 @@ function mount() {
 const row = (id: string) => container.querySelector<HTMLElement>(`[data-panel-routine="${id}"]`)!;
 const open = (id: string) => flushSync(() => row(id).querySelector<HTMLButtonElement>("button[aria-haspopup=dialog]")!.click());
 /** a routine's details and actions open in a small sheet over the panel, never inside the list */
-const sheet = () => document.querySelector<HTMLElement>('[data-panel-modal="routine"]')!;
+const sheet = () => [...document.querySelectorAll<HTMLElement>('[data-panel-modal="routine"]')].find((el) => !el.closest("[data-leaving]"))!;
 const action = (_id: string, name: string) => sheet().querySelector<HTMLButtonElement>(`[data-routine-action="${name}"]`)!;
 const writes = () => fixture.api.mock.calls.filter(([, init]) => (init as { method?: string } | undefined)?.method).map(([path, init]) => {
   const { method, body } = init as { method: string; body?: string };

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { Check, Loader2 } from "../icons";
 
 import { api, useStore, type InstanceInfo } from "@/state/store";
@@ -215,14 +216,14 @@ function EngineAdvanced({ instance }: { instance: InstanceInfo }) {
       <NavRow data-settings-open="engine-cli" title={t("engines.setCli")} hint={t("settings.s2.engine.setCliHint")} disabled={updating} onClick={() => setOpen(true)} />
       {updatedVersion && <NoteRow>{t("engines.claudeUpdated", { version: updatedVersion })}</NoteRow>}
       {error && <NoteRow tone="danger">{error}</NoteRow>}
-      {open && (
-        <CustomPicker
+      <AnimatePresence>{open && (
+        <CustomPicker key="custom-picker"
           instance={instance}
           cliDefault={instance.cliDefault}
           onClose={() => setOpen(false)}
           onSaved={refreshInstances}
         />
-      )}
+      )}</AnimatePresence>
     </RowsCard>
   );
 }
