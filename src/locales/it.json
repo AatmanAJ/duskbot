@@ -3183,7 +3183,6 @@
   "phone.back": "Indietro",
   "phone.signIn.attention": "L'accesso sicuro richiede attenzione",
   "phone.signIn.title": "Accedi per abbinare in sicurezza",
-  "phone.signIn.unavailable": "L'accesso remoto online non è disponibile in questo momento. Puoi comunque abbinare direttamente sulla stessa rete Wi-Fi.",
   "phone.signIn.timedOut": "L'accesso sicuro sta richiedendo più del previsto. Puoi riprovare oppure abbinare direttamente su questo Wi-Fi.",
   "phone.signIn.failed": "Non è stato possibile completare la creazione della tua connessione privata.",
   "phone.signIn.code": "Codice di 8 cifre",

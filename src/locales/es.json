@@ -2971,7 +2971,6 @@
   "phone.back": "Atrás",
   "phone.signIn.attention": "El acceso seguro necesita atención",
   "phone.signIn.title": "Inicia sesión para emparejar de forma segura",
-  "phone.signIn.unavailable": "El acceso remoto en línea no está disponible ahora. Aún puedes emparejar directamente en la misma Wi-Fi.",
   "phone.signIn.timedOut": "El acceso seguro está tardando más de lo esperado. Inténtalo otra vez o empareja directamente en esta Wi-Fi.",
   "phone.signIn.failed": "No pudimos terminar de crear tu conexión privada.",
   "phone.signIn.email": "Correo",

@@ -3127,7 +3127,6 @@
   "phone.back": "Voltar",
   "phone.signIn.attention": "O acesso seguro precisa de atenção",
   "phone.signIn.title": "Entre para parear com segurança",
-  "phone.signIn.unavailable": "O acesso remoto online não está disponível agora. Você ainda pode parear direto na mesma Wi-Fi.",
   "phone.signIn.timedOut": "O acesso seguro está demorando mais que o esperado. Tente de novo ou pareie direto nesta Wi-Fi.",
   "phone.signIn.failed": "Não conseguimos concluir a criação da sua conexão privada.",
   "phone.signIn.email": "E-mail",

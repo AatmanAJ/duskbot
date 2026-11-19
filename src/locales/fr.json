@@ -1495,7 +1495,6 @@
   "phone.back": "Retour",
   "phone.signIn.attention": "L’accès sécurisé demande votre attention",
   "phone.signIn.title": "Connectez-vous pour associer en toute sécurité",
-  "phone.signIn.unavailable": "L’accès à distance en ligne n’est pas disponible pour l’instant. Vous pouvez tout de même associer directement sur le même Wi-Fi.",
   "phone.signIn.timedOut": "L’accès sécurisé prend plus de temps que prévu. Réessayez ou associez directement sur ce Wi-Fi.",
   "phone.signIn.failed": "Nous n’avons pas pu terminer la création de votre connexion privée.",
   "phone.signIn.email": "E-mail",

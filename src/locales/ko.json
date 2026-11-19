@@ -3494,7 +3494,6 @@
   "phone.back": "뒤로",
   "phone.signIn.attention": "안전한 접근을 확인해야 해요",
   "phone.signIn.title": "안전하게 페어링하려면 로그인하세요",
-  "phone.signIn.unavailable": "지금은 온라인 원격 접근을 쓸 수 없어요. 같은 Wi-Fi에서 직접 페어링할 수는 있어요.",
   "phone.signIn.timedOut": "안전한 접근이 예상보다 오래 걸리고 있어요. 다시 시도하거나 이 Wi-Fi에서 직접 페어링하세요.",
   "phone.signIn.failed": "비공개 연결을 만들지 못했어요.",
   "phone.signIn.email": "이메일",
