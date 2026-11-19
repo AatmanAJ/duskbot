@@ -1,7 +1,7 @@
 import { useProductScreen } from "@/lib/product-analytics-app";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { MotionConfig } from "motion/react";
-import { openBot, openBotThread, openRoomThread, StoreProvider, useStore } from "@/state/store";
+import { openBot, openBotThread, openRoomThread, rereadWithoutStream, StoreProvider, useStore } from "@/state/store";
 import { useTeamChats } from "@/state/team-chats";
 import { useWarmChatImages } from "@/components/use-warm-chat-images";
 import { ThreadRefsProvider } from "@/components/ThreadRefs";
@@ -30,6 +30,7 @@ import { closeTopSheet, Sheet } from "./Sheet";
 import { t } from "@/lib/i18n";
 import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useNativeGlass } from "./native-glass";
+import { useNativeHomeGlass } from "./native-home-glass";
 import { useChatHaptics } from "./use-chat-haptics";
 import { usePhoneActions } from "./use-phone-actions";
 import { useTurnActivities } from "./use-turn-activities";
@@ -42,12 +43,19 @@ import { PanelDetailsTab } from "@/components/bot-panel/PanelShell";
 import { loadLimits } from "@/lib/limit-resets";
 
 const SHEET_WARM_MS = 600;
+const OPEN_CHAT_KEY = "dusk.mobile.openChat";
+/** While the live stream is down the open chat is read again this often, so a reply still shows without a reopen. */
+export const STREAM_DOWN_READ_MS = 4000;
 
 function Shell() {
   const platform = usePlatform();
   const { state, dispatch } = useStore();
   const rootRef = useRef<HTMLDivElement>(null);
-  const [chatId, setChatId] = useState<string | null>(null);
+  // a reload (the system reclaiming a backgrounded web view, a live update) comes back to the chat that was open
+  const [chatId, setChatId] = useState<string | null>(() => { try { return sessionStorage.getItem(OPEN_CHAT_KEY); } catch { return null; } });
+  useEffect(() => {
+    try { if (chatId) sessionStorage.setItem(OPEN_CHAT_KEY, chatId); else sessionStorage.removeItem(OPEN_CHAT_KEY); } catch { /* storage off */ }
+  }, [chatId]);
   const [sheet, setSheet] = useState<MobileSheet | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   useProductScreen(sheetOpen && sheet ? `/${sheet.kind}` : chatId ? "/chats/:id" : "/", chatId);
@@ -163,6 +171,12 @@ function Shell() {
 
   // a resumed app reads the chat on screen, as a refocused desktop window does
   useEffect(() => platform.onResume?.(() => { if (chatId) dispatch({ type: "select", id: chatId }); }), [platform, chatId, dispatch]);
+  const streamDown = state.hydrated === true && state.connected === false;
+  useEffect(() => {
+    if (!chatId || !streamDown) return;
+    const read = setInterval(() => { if (!document.hidden) rereadWithoutStream(); }, STREAM_DOWN_READ_MS);
+    return () => clearInterval(read);
+  }, [chatId, streamDown]);
 
   // the bot's sheet is a tap away from an open chat: its first tab's code and the usage it shows load once the chat has
   // landed, so the tap only has to draw it
@@ -182,6 +196,7 @@ function Shell() {
   if ((bot || group) && !glassHeld) setGlassHeld(true);
   const pageSettled = useCallback((shown: boolean) => { if (!shown) setGlassHeld(false); releasePressed(); }, []);
   const slideGlass = useNativeGlass(platform, rootRef, Boolean(bot || group) || glassHeld);
+  useNativeHomeGlass(platform, rootRef);
   const leaveChat = useCallback(() => { if (rootRef.current) dismissKeyboard(platform, rootRef.current); }, [platform]);
 
   const page = bot || group ? (

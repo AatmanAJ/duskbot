@@ -22,6 +22,7 @@ import type { AppleCredential, CameraPermission, CameraScanner, DeliveredNotific
 import type { NativeAction } from "@/mobile/phone-actions";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
 import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
+import type { HomeGlassState } from "@/mobile/native-home-glass";
 import type { SlidePath } from "@/mobile/NavStack";
 import type { MenuBridge, NativeMenuArm, NativeMenuContent, NativeMenuEvent } from "@/mobile/native-menu";
 import { createVoiceEvents, type VoiceBridge, type VoiceEnd } from "@/lib/voice-input/bridge";
@@ -71,8 +72,9 @@ interface GlassPlugin {
   focus(): Promise<void>;
   blur(): Promise<void>;
   clear(): Promise<void>;
-  slide(options: { path: SlidePath | null }): Promise<void>;
+  slide(options: { path: SlidePath | null; at?: number }): Promise<void>;
   glyphs(): Promise<GlassGlyphs>;
+  home(options: { state: HomeGlassState | null }): Promise<void>;
   addListener(event: "glass", listener: (event: GlassEvent) => void): Promise<PluginListenerHandle>;
 }
 const DuskGlass = registerPlugin<GlassPlugin>("DuskGlass");
@@ -86,8 +88,9 @@ export function glassBridge(plugin: GlassPlugin): GlassBridge {
     focus: () => quiet(plugin.focus()),
     blur: () => quiet(plugin.blur()),
     clear: () => quiet(plugin.clear()),
-    slide: (path) => quiet(plugin.slide({ path })),
+    slide: (path, at) => quiet(plugin.slide({ path, at })),
     glyphs: () => plugin.glyphs().catch(() => ({})),
+    home: (state) => quiet(plugin.home({ state })),
     onEvent: (listener) => unsubscribe([plugin.addListener("glass", listener)]),
   };
 }
@@ -141,6 +144,7 @@ const DuskNotifications = registerPlugin<NotificationsPlugin>("DuskNotifications
 /** android only (android/.../PushSetupPlugin.java): whether the build carries a Firebase config, without which push
  * registration crashes the app */
 const DuskPushSetup = registerPlugin<{ configured(): Promise<{ configured: boolean }> }>("DuskPushSetup");
+const DuskHaptics = registerPlugin<{ play(options: { kind: string }): Promise<void> }>("DuskHaptics");
 
 /** Android's delivered pushes: FCM's data block is flat (server/mobile/push.ts messageData). */
 async function androidDelivered(): Promise<DeliveredNotification[]> {
@@ -475,6 +479,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     menu: menu?.supported ? menuBridge(DuskMenu) : undefined,
     orientation: Capacitor.isPluginAvailable("DuskOrientation") ? orientationBridge(DuskOrientation) : undefined,
     haptic(type) {
+      if (Capacitor.isPluginAvailable("DuskHaptics")) { void DuskHaptics.play({ kind: type }).catch(() => {}); return; }
       void (async () => {
         switch (type) {
           case "light": case "soft":
@@ -497,11 +502,20 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       })().catch(() => {});
     },
     onKeyboard(listener) {
-      return unsubscribe([
-        Keyboard.addListener("keyboardWillShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "will" })),
+      const settled = [
         Keyboard.addListener("keyboardDidShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "did" })),
-        Keyboard.addListener("keyboardWillHide", () => listener({ height: 0, phase: "will" })),
         Keyboard.addListener("keyboardDidHide", () => listener({ height: 0, phase: "did" })),
+      ];
+      // with the glass chrome a move comes from the notification the native composer rides, with its timing
+      if (glass?.supported) {
+        return unsubscribe([...settled, DuskGlass.addListener("glass", (event) => {
+          if (event.type === "keyboard") listener({ height: event.height, phase: "will", duration: event.duration, at: event.at });
+        })]);
+      }
+      return unsubscribe([
+        ...settled,
+        Keyboard.addListener("keyboardWillShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "will" })),
+        Keyboard.addListener("keyboardWillHide", () => listener({ height: 0, phase: "will" })),
       ]);
     },
     hideKeyboard() {

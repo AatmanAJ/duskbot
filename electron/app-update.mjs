@@ -20,6 +20,19 @@ import { failReason, resumableDownload, UpdateError } from "./app-update-downloa
 export const DESKTOP_MANIFEST_URL = "https://dusk.bot/releases/latest.json";
 export const sumsUrl = (version) => `https://dusk.bot/releases/${version}/SHA256SUMS`;
 export const zipUrl = (version, name) => `https://github.com/DuskBotAI/duskbot-releases/releases/download/v${version}/${name}`;
+/** where the signed manifest can come from, in the order they are tried: dusk.bot, then the downloads repo's latest
+ * release (scripts/publish-downloads.sh uploads the same signed file there) */
+export const MANIFEST_SOURCES = Object.freeze([DESKTOP_MANIFEST_URL, "https://github.com/DuskBotAI/duskbot-releases/releases/latest/download/latest.json"]);
+/** where a release's SHA256SUMS can come from; either copy must hash to the signed manifest's sha256 */
+export const sumsSources = (version) => [sumsUrl(version), zipUrl(version, "SHA256SUMS")];
+/** a lookup tries every source once per round, waiting this long before each next round */
+export const LOOKUP_BACKOFF_MS = Object.freeze([3_000, 15_000]);
+// failure codes that mean this computer reached no server at all (offline, DNS down, a dropped wifi)
+const UNREACHABLE = new Set(["enotfound", "eai_again", "eai_fail", "timeout", "etimedout", "und_err_connect_timeout", "und_err_headers_timeout", "und_err_socket",
+  "enetunreach", "enetdown", "ehostunreach", "ehostdown", "econnrefused", "econnreset", "econnaborted", "epipe", "terminated", "fetch_failed"]);
+export const unreachable = (reason) => UNREACHABLE.has(String(reason));
+/** an unreachable check counts as a failure only after this many in a row (hours apart), or when the person asked */
+export const OFFLINE_CHECKS_BEFORE_FAILED = 6;
 /** CI's release keys (apps/cloud-service/src/release-signing.ts pins the same ones; a test keeps them equal) */
 export const RELEASE_KEYS = Object.freeze([{ kid: "rel-2026-11", x: "wtwZypDwVPBXZ25XsZOVpd0PZPBbVMhugheUj5_NLIM" }]);
 const HOUR_MS = 60 * 60_000;
@@ -209,24 +222,53 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
     try { onFailed(why, { stage: "other", reason: why }); } catch {}
   };
 
-  async function text(url, limit) {
+  let offlineChecks = 0;
+  const wait = download.wait ?? ((ms) => new Promise((resolve) => timers.setTimeout(resolve, ms)));
+
+  async function textFrom(url, limit) {
     let response;
     try { response = await fetchImpl(url, { signal: AbortSignal.timeout(20_000), cache: "no-store" }); } catch (error) { throw new UpdateError("manifest", failReason(error), String(error?.message ?? error)); }
-    if (!response.ok) throw new UpdateError("manifest", `http_${response.status}`, `${new URL(url).pathname} answered ${response.status}`);
+    if (!response.ok) { await response.body?.cancel?.().catch(() => {}); throw new UpdateError("manifest", `http_${response.status}`, `${new URL(url).pathname} answered ${response.status}`); }
     const body = await response.text();
     if (body.length > limit) throw new UpdateError("manifest", "too_large");
     return body;
   }
 
-  /** the newest signed release when it is newer than this app: `{ version, sums }` (the verified SHA256SUMS text) */
-  async function lookup() {
+  /** what `accept` makes of the first of `urls` it takes. every source is tried each round, and another round follows
+   * (after a wait) only while every failure looks like the network: unreachable, a 5xx or a 429. throws the last
+   * round's first failure that is not the network, else its first */
+  async function firstOf(urls, limit, accept) {
+    for (let round = 0; ; round += 1) {
+      let first = null, telling = null;
+      for (const url of urls) {
+        try { return accept(await textFrom(url, limit)); } catch (error) {
+          first ??= error;
+          const reason = failReason(error);
+          if (!unreachable(reason) && !/^http_(5\d\d|429)$/.test(reason)) telling ??= error;
+        }
+      }
+      if (telling || round >= LOOKUP_BACKOFF_MS.length) throw telling ?? first;
+      await wait(LOOKUP_BACKOFF_MS[round]);
+    }
+  }
+
+  const signedRelease = (text) => {
     let body;
-    try { body = JSON.parse(await text(DESKTOP_MANIFEST_URL, 64 * 1024)); } catch (error) { throw error instanceof UpdateError ? error : new UpdateError("manifest", "bad_json", String(error?.message ?? error)); }
+    try { body = JSON.parse(text); } catch (error) { throw new UpdateError("manifest", "bad_json", String(error?.message ?? error)); }
     const release = verifiedRelease(body, keys);
     if (!release) throw new UpdateError("manifest", "not_signed", "the release manifest is not signed by a pinned key");
+    return release;
+  };
+  const matchingSums = (release) => (text) => {
+    if (createHash("sha256").update(text).digest("hex") !== release.sums) throw new UpdateError("checksum", "sums_mismatch", "SHA256SUMS does not match the signed manifest");
+    return text;
+  };
+
+  /** the newest signed release when it is newer than this app: `{ version, sums }` (the verified SHA256SUMS text) */
+  async function lookup() {
+    const release = await firstOf(MANIFEST_SOURCES, 64 * 1024, signedRelease);
     if (!newer(release.version, current)) return null;
-    const sums = await text(sumsUrl(release.version), 64 * 1024);
-    if (createHash("sha256").update(sums).digest("hex") !== release.sums) throw new UpdateError("checksum", "sums_mismatch", "SHA256SUMS does not match the signed manifest");
+    const sums = await firstOf(sumsSources(release.version), 64 * 1024, matchingSums(release));
     return { version: release.version, sums };
   }
 
@@ -273,7 +315,11 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
     if (asked) again = true;
     if (checking) return checking;
     failed = false;
-    checking = run().catch(async (error) => {
+    checking = run().then((result) => { offlineChecks = 0; return result; }, async (error) => {
+      const offline = error instanceof UpdateError && error.stage === "manifest" && unreachable(error.code);
+      offlineChecks = offline ? offlineChecks + 1 : 0;
+      if (offline && !asked && offlineChecks < OFFLINE_CHECKS_BEFORE_FAILED) { log(`app update: no network for the check (${error.code}); trying at the next one`); return null; }
+      offlineChecks = 0;
       failed = true;
       const message = error instanceof Error ? error.message : String(error);
       log(`app update: ${message}; telling the person instead`);

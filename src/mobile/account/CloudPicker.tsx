@@ -8,6 +8,8 @@ import { ErrorLine } from "../onboarding/parts";
 import { useMobileAccount } from "./AccountGate";
 import type { CloudPairResult, MobileCloud } from "./account-client";
 import { cloudPairing, cloudPairingPayload } from "./cloud-pair";
+import { useConnections } from "../connection/connections";
+import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 
 type Problem = { outcome: Exclude<CloudPairResult["outcome"], "paired">; name: string };
 
@@ -20,6 +22,19 @@ function statusLine(cloud: MobileCloud): string {
 
 export const pairable = (cloud: MobileCloud) => Boolean(cloud.origin) && (cloud.status === "ready" || cloud.status === "offline");
 
+type SavedLink = Pick<MobileConnectionRecord, "origin" | "via">;
+
+/** a cloud this phone already links to, by any of the saved links' addresses */
+export function linkedHere(cloud: MobileCloud, records: readonly SavedLink[]): boolean {
+  return Boolean(cloud.origin) && records.some((record) => record.origin === cloud.origin || (record.via ?? []).some((route) => route.kind === "https" && route.url === cloud.origin));
+}
+
+/** the one cloud to open without asking: only on a phone that links nothing yet */
+export function autoPickCloud(clouds: readonly MobileCloud[], records: readonly SavedLink[]): MobileCloud | null {
+  const ready = clouds.filter((cloud) => pairable(cloud) && !linkedHere(cloud, records));
+  return ready.length === 1 && records.length === 0 ? ready[0]! : null;
+}
+
 /** The signed-in account's own clouds: one tap pairs this phone with one, and with only one it pairs on its own. */
 export function CloudPicker({ busy, onPairing, autoPick = false, onNone }: {
   busy: boolean;
@@ -30,6 +45,7 @@ export function CloudPicker({ busy, onPairing, autoPick = false, onNone }: {
 }) {
   const account = useMobileAccount();
   const signedIn = Boolean(account?.account);
+  const { connections, loaded } = useConnections();
   const [clouds, setClouds] = useState<MobileCloud[] | null | undefined>(undefined);
   const [working, setWorking] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -64,11 +80,11 @@ export function CloudPicker({ busy, onPairing, autoPick = false, onNone }: {
   };
 
   useEffect(() => {
-    if (!clouds) return;
+    if (!clouds || !loaded) return;
     if (clouds.length === 0) { onNone?.(); return; }
-    const ready = clouds.filter(pairable);
-    if (autoPick && !picked.current && ready.length === 1) { picked.current = true; void pick(ready[0]!); }
-  }, [clouds]); // eslint-disable-line react-hooks/exhaustive-deps
+    const only = autoPick && !picked.current ? autoPickCloud(clouds, connections) : null;
+    if (only) { picked.current = true; void pick(only); }
+  }, [clouds, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!signedIn || !account || clouds?.length === 0) return null;
 
@@ -85,7 +101,8 @@ export function CloudPicker({ busy, onPairing, autoPick = false, onNone }: {
         <ul className="flex flex-col gap-2">
           {clouds.map((cloud) => {
             const mine = working === cloud.id;
-            const can = pairable(cloud);
+            const here = linkedHere(cloud, connections);
+            const can = pairable(cloud) && !here;
             return (
               <li key={cloud.id}>
                 <button type="button" data-testid="mobile-cloud-connect" data-cloud-id={cloud.id} disabled={busy || Boolean(working) || !can}
@@ -94,7 +111,7 @@ export function CloudPicker({ busy, onPairing, autoPick = false, onNone }: {
                   <Cloud size={22} className={can ? "text-ink" : "text-ink-tertiary"} />
                   <span className="min-w-0 flex-1">
                     <span className={`block truncate text-[17px] font-semibold ${can ? "" : "text-ink-secondary"}`}>{cloud.name}</span>
-                    <span className="mt-0.5 block text-[14px] text-ink-secondary">{mine ? t("mobile.clouds.connecting") : statusLine(cloud)}</span>
+                    <span className="mt-0.5 block text-[14px] text-ink-secondary">{mine ? t("mobile.clouds.connecting") : here ? t("mobile.clouds.linked") : statusLine(cloud)}</span>
                   </span>
                   {mine ? <LoadingMascot size={24} /> : can && <ChevronRight size={18} className="text-ink-tertiary" />}
                 </button>

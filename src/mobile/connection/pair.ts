@@ -219,10 +219,10 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
     };
     let lastError = new PairError("unreachable");
     const startedAt = Date.now();
-    for (const route of routeOrder(payload.via)) {
+    for (const route of routeOrder(payload.via, platform.kind)) {
       if (route.kind === "relay" && !keys) { lastError = new PairError("unsupported"); continue; }
       if (route.kind === "companion" && !platform.native) { lastError = new PairError("unsupported"); continue; }
-      if (!directStillWorthIt(route, payload.via, startedAt)) continue;
+      if (!directStillWorthIt(route, payload.via, startedAt, Date.now(), platform.kind)) continue;
       let channel: ReturnType<typeof openRelay> | undefined;
       let response: Response;
       let answer: unknown;
@@ -230,12 +230,23 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
         const headers = { "Content-Type": "application/json" };
         const body = JSON.stringify(request);
         if (route.kind === "relay") {
-          channel = openRelay(route.base, route.channel, route.token, unbase64(route.key));
-          response = await channel.request("POST", "/api/mobile/redeem", headers, utf8(body), AbortSignal.timeout(20_000));
+          const grant = openRelay(route.base, route.channel, route.token, unbase64(route.key));
+          channel = grant;
+          const ask = async () => {
+            const reply = await grant.request("POST", "/api/mobile/redeem", headers, utf8(body), AbortSignal.timeout(20_000));
+            return { reply, answer: await reply.json().catch(() => null) as unknown };
+          };
+          ({ reply: response, answer } = await ask());
+          // without its device channel the phone could never use the relay again; the same attempt asked again gets the device
+          // it already opened, now with the channel once the desktop's link agent has opened it
+          if (response.ok && !(answer as MobileRedeemResponse | null)?.relay) {
+            const again = await ask().catch(() => null);
+            if (again?.reply.ok && (again.answer as MobileRedeemResponse | null)?.relay) ({ reply: response, answer } = again);
+          }
         } else {
-          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(routeTimeout(route, payload.via, 15_000)) });
+          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(routeTimeout(route, payload.via, 15_000, platform.kind)) });
+          answer = await response.json().catch(() => null);
         }
-        answer = await response.json().catch(() => null);
       } catch (error) { lastError = pairError(error); continue; }
       finally { channel?.close(); }
       if (!response.ok) throw responseError(response.status, answer && typeof answer === "object" ? answer as PairAnswer : {});

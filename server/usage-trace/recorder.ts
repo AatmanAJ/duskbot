@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RuntimeEvent } from "../../shared/runtime-events.ts";
 import { TOOL_NAMESPACE } from "../../shared/tool-surface.ts";
 import { failureOf, type UsageFailure } from "../../shared/usage-signals.ts";
-import type { TraceParent, TraceStatus, TraceTokens, TraceUsageStatus } from "../../shared/usage-trace.ts";
+import { runnerActions, type TraceParent, type TraceStatus, type TraceTokens, type TraceUsageStatus } from "../../shared/usage-trace.ts";
 import { onJsonBody, parsedBodyOf } from "../harness/http.ts";
 import { errorLine, pageTitle, toolDetail } from "./detail.ts";
 import { appendSpans, type SpanRecord, type StepSpan, type ToolSpan } from "./spans.ts";
@@ -73,6 +73,8 @@ interface Turn {
   byItem: Map<string, Tool>;
   openTools: Set<string>;
   receipts: Tool[];
+  /** the app actions each connected-apps runner call ran, by the call's item id */
+  actions: Map<string, string[]>;
   usage?: { cachedInput?: number };
   sawTokens: boolean;
   turnTotals?: TraceTokens;
@@ -168,7 +170,7 @@ export function createTraceRecorder(options: { dataDir: string; now?: () => numb
     const startedAt = at(event);
     const turn: Turn = {
       threadId: event.threadId, turnId, provider: event.provider, startedAt,
-      steps: [], openStep: null, stepByCall: new Map(), tools: new Map(), byItem: new Map(), openTools: new Set(), receipts: [],
+      steps: [], openStep: null, stepByCall: new Map(), tools: new Map(), byItem: new Map(), openTools: new Set(), receipts: [], actions: new Map(),
       sawTokens: false, flushed: false, lastEventAt: startedAt,
     };
     const replaced = live.get(event.threadId);
@@ -206,6 +208,8 @@ export function createTraceRecorder(options: { dataDir: string; now?: () => numb
       turn.tools.set(id, tool);
       turn.byItem.set(itemId, tool);
     }
+    const actions = runnerActions(name, event.input);
+    if (actions.length) turn.actions.set(itemId, actions);
     turn.openTools.add(itemId);
   }
 
@@ -440,17 +444,18 @@ export function createTraceRecorder(options: { dataDir: string; now?: () => numb
     receipt,
     timeServed,
     settle,
-    /** The names of the tools an ended, not yet settled turn called, for usage-signals.ts to fold into words. */
+    /** The names of the tools an ended, not yet settled turn called, for usage-signals.ts to fold into words; a
+     * connected-apps runner call by the app actions it ran. */
     toolNames(threadId: string): string[] {
       const turn = ended.get(threadId)?.turn;
-      return turn ? [...turn.tools.values()].map((tool) => tool.name) : [];
+      return turn ? [...turn.tools.values()].flatMap((tool) => (tool.itemId && turn.actions.get(tool.itemId)) || [tool.name]) : [];
     },
     /** The tools that failed in an ended, not yet settled turn, and when its first model step ended. */
     turnDetail(threadId: string): { failedNames: string[]; firstStepAt?: number } {
       const turn = ended.get(threadId)?.turn;
       if (!turn) return { failedNames: [] };
       const first = turn.steps.find((step) => typeof step.endedAt === "number");
-      return { failedNames: [...turn.tools.values()].filter((tool) => tool.status === "error").map((tool) => tool.name), ...(first?.endedAt ? { firstStepAt: first.endedAt } : {}) };
+      return { failedNames: [...turn.tools.values()].filter((tool) => tool.status === "error").flatMap((tool) => (tool.itemId && turn.actions.get(tool.itemId)) || [tool.name]), ...(first?.endedAt ? { firstStepAt: first.endedAt } : {}) };
     },
     liveTurns,
     /** The next turn to start on `threadId` belongs to coordinator node `node`, or to an explicit parent turn. */

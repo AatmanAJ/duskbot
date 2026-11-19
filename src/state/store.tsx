@@ -2087,6 +2087,13 @@ export function retryLoad(): void {
   retryHydrate?.();
 }
 
+let rereadSnapshot: (() => void) | null = null;
+/** Reads the whole snapshot again while the live stream cannot open, so what it would have brought (a reply, a turn
+ * ending) still arrives. A no-op while a read is already under way. */
+export function rereadWithoutStream(): void {
+  rereadSnapshot?.();
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const taskWrites = useRef(new Map<string, { botId: string; updatesDefault: boolean; promise: Promise<BotAnnouncement>; execution: Promise<unknown>; patch: TaskUpdatePatch }>()).current;
   const withTaskWrites = (bot: BotAnnouncement): BotAnnouncement => ({
@@ -3350,6 +3357,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
     }); };
     retryHydrate = () => { if (!hydrated) { clearTimeout(loadRetry); void hydrate(); } };
+    rereadSnapshot = () => { if (!hydrationPromise) void hydrate(); };
     if (!bootChat) startLive(null);
     else void bootChat.then((answer) => {
       if (!alive) return;
@@ -3371,6 +3379,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       clearTimeout(hydrationFallback);
       clearTimeout(loadRetry);
       retryHydrate = null;
+      rereadSnapshot = null;
       for (const refresh of peripheralRefresh.values()) {
         if (refresh.timer) clearTimeout(refresh.timer);
       }

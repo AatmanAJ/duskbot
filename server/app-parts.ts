@@ -100,6 +100,8 @@ export async function downloadPart(part: PartSpec, options: {
   onProgress?: (progress: PartProgress) => void;
   /** a connection that sends nothing for this long is given up, so a waiting turn is never stuck on it */
   stallMs?: number;
+  /** where to fetch it from this time: one of `partSources(part.url)` */
+  url?: string;
 }): Promise<string> {
   const stall = new AbortController();
   const stallMs = options.stallMs ?? 60_000;
@@ -118,6 +120,7 @@ async function fetchPart(part: PartSpec, options: {
   signal: AbortSignal;
   alive: () => void;
   onProgress?: (progress: PartProgress) => void;
+  url?: string;
 }): Promise<string> {
   const directory = join(options.root, DOWNLOADS);
   await mkdir(directory, { recursive: true });
@@ -126,7 +129,7 @@ async function fetchPart(part: PartSpec, options: {
   if (have > part.bytes) { await rm(file, { force: true }); have = 0; }
   options.onProgress?.({ phase: "download", received: have, total: part.bytes });
   if (have < part.bytes) {
-    const response = await (options.fetchImpl ?? fetch)(part.url, {
+    const response = await (options.fetchImpl ?? fetch)(options.url ?? part.url, {
       redirect: "follow",
       signal: options.signal,
       headers: have > 0 ? { range: `bytes=${have}-` } : {},
@@ -265,6 +268,14 @@ export type PartState =
 /** Tries after a failure: soon, then less often; offline it keeps trying every ten minutes. */
 export const PART_RETRY_MS = [5_000, 30_000, 120_000, 600_000];
 
+const DOWNLOADS_PART = /^https:\/\/github\.com\/DuskBotAI\/duskbot-releases\/releases\/download\/v(\d+\.\d+\.\d+)\/(DuskBot-\1-[A-Za-z0-9_.-]+\.zip)$/;
+/** where a part can come from, tried in turn after each failure: its pinned url, then dusk.bot's copy of a downloads-repo
+ * part (scripts/mirror-release.sh puts it there). either is checked against the same pinned size and SHA-256 */
+export function partSources(url: string): string[] {
+  const match = DOWNLOADS_PART.exec(url);
+  return match ? [url, `https://dusk.bot/releases/${match[1]}/${match[2]}`] : [url];
+}
+
 export interface PartsDownloader {
   start(): void;
   state(name: PartName): PartState | null;
@@ -316,8 +327,9 @@ export function createPartsDownloader(options: {
     let last: PartProgress = { phase: "download", received: 0, total: part.bytes };
     try {
       options.log?.(`app parts: getting ${part.name} ${part.id} (${Math.round(part.bytes / 1024 / 1024)} MB, digest pinned)`);
+      const sources = partSources(part.url);
       const archive = await downloadPart(part, {
-        root: options.root, fetchImpl: options.fetchImpl, signal: controller.signal,
+        root: options.root, fetchImpl: options.fetchImpl, signal: controller.signal, url: sources[(failures.get(part.name) ?? 0) % sources.length],
         onProgress: (progress) => { last = progress; set(part.name, progress); },
       });
       const directory = await installPart(part, archive, {

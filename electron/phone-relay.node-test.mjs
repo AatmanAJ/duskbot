@@ -276,3 +276,23 @@ test("another workspace's harness never replaces a tunnel's channels", async (t)
   assert.notEqual(kept.get("/data/two").tunnel.id, first);
   assert.equal(f.service.store.channels.get(channel)?.tunnel, first, "the first workspace's phone keeps its channel");
 });
+
+test("a phone request that lands after a workspace switch never reaches the other workspace's harness", async (t) => {
+  const f = await fixture(t);
+  let folder = "/data/one";
+  const store = memoryStore();
+  const relay = f.relay({ store, scope: () => folder, checkMs: 60_000 });
+  const phone = x25519Pair(), token = randomBytes(32).toString("base64url"), channel = "phoneaaaad";
+  f.change([{ id: channel, kind: "device", pub: phone.pub, verifier: sha256hex(token) }]);
+  assert.equal((await relay.ready(5000)).status, "ready");
+  await until(() => f.service.store.channels.has(channel));
+  const { pub } = f.harness.syncs.at(-1);
+  const get = await f.phone(channel, sealKeyOf(phone.priv, phone.pub, pub, channel), token);
+  assert.equal((await get("/api/auth/session")).status, 200);
+  const before = f.harness.seen.length;
+  folder = "/data/two";
+  const late = await get("/api/auth/session").then((response) => response.status, () => "failed");
+  assert.notEqual(late, 200);
+  assert.notEqual(late, 401);
+  assert.equal(f.harness.seen.length, before, "the request never reached a harness");
+});

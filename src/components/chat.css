@@ -230,6 +230,13 @@
   font-weight: 400;
   letter-spacing: 0.15px;
 }
+/* a streaming reply's blocks render apart (LiveReplyBubble), spaced as the one landed message will space them */
+[data-chat-bubble="simple"] [data-live-blocks] > .chat-md + .chat-md {
+  margin-top: 10px;
+}
+[data-chat-bubble="simple"] [data-live-blocks] > .chat-md + .chat-md:has(> [data-md-h]:first-child:not([data-md-h="1"])) {
+  margin-top: 18px;
+}
 /* a code block and a rule keep the 10px every block has from the one before */
 [data-chat-bubble="simple"] .chat-md > * + :is(.chat-code-block, hr) {
   margin-top: 10px;
@@ -431,16 +438,6 @@
   transform-origin: 0 18px;
   animation: turn-status-out 140ms var(--dusk-ease-out) forwards;
 }
-/* a finished turn: the words leave in the same 140ms, the mark stays for its happy hop and fades last */
-.turn-status-out.turn-status-done {
-  animation: none;
-}
-.turn-status-done .turn-label-slot {
-  animation: dusk-fade-out 140ms var(--dusk-ease-out) forwards;
-}
-.turn-status-done .turn-status-mark {
-  animation: dusk-fade-out 120ms var(--dusk-ease-out) 260ms forwards;
-}
 .turn-label-in {
   animation: turn-label-rise 180ms var(--dusk-ease-out) backwards;
 }
@@ -469,7 +466,6 @@
 @media (prefers-reduced-motion: reduce) {
   .turn-status-in, .turn-status-in .turn-status-mark, .turn-status-in .turn-label-slot, .turn-label-in { animation-name: chat-row-fade; }
   .turn-status-out { animation-name: dusk-fade-out; }
-  .turn-status-out.turn-status-done { animation: none; }
   .status-shimmer { animation: none; background-image: none; color: var(--color-ink-secondary); }
 }
 

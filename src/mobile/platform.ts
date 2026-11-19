@@ -13,6 +13,10 @@ export interface KeyboardFrame {
   height: number;
   /** Starting to move (`will`) or settled (`did`). */
   phase: "will" | "did";
+  /** A `will` straight from the system's notification: the keyboard's own duration in seconds and when it started to
+   * move, in epoch ms, so the page can start its ride as far in as the bridge hop cost. */
+  duration?: number;
+  at?: number;
 }
 
 export interface ScanResult {

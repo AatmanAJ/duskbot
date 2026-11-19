@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Check, ListFilter, Search } from "@/icons";
 import type { WorkspaceSummary } from "../../../../shared/dashboard-protocol";
 import { flowKey, useAppCommands, type AppFlow } from "../data/app-connect";
@@ -7,13 +7,17 @@ import { cloudForWorkspace, useCloud } from "../data/cloud";
 import { awayLine, reachOf } from "../data/place";
 import { useSession } from "../data/session";
 import { appLink, openApp } from "../lib/app-link";
+import { navigate, useLocation } from "../lib/router";
+import { CONNECT_CALLBACK_PATH } from "../../../../shared/dashboard-protocol";
 import { toast } from "../lib/toast";
 import { AppLogo } from "../ui/AppLogo";
 import { Button, cx, PageHeader, Skeleton } from "../ui/kit";
 import { Pill, usePill } from "../ui/motion";
 import { NameDot, Nil, RowMenu, SectionHead, Table, Td, Th, type MenuItem } from "../ui/table";
+import { ConnectPill } from "../ui/ConnectPill";
 
 const PAGE = 8;
+const BUSY: AppFlow["phase"][] = ["waiting", "redirecting", "finishing"];
 const CATALOG_PAGE = 30;
 
 // the app opens on this app's page in whichever place it has open, so the toast names the workspace it is meant for
@@ -22,7 +26,7 @@ const openConnect = (app: { id: string; label: string }, ws?: { name: string } |
 
 function ConnectAction({ app, flow, onConnect }: { app: DashApp; flow: AppFlow | undefined; onConnect(): void }) {
   if (flow?.phase === "waking") return <Button size="sm" disabled aria-label={`waking ${flow.workspaceName} to connect ${app.label}`}>waking</Button>;
-  if (flow?.phase === "waiting") return <Button size="sm" disabled aria-label={`connecting ${app.label}`}>connecting</Button>;
+  if (flow && BUSY.includes(flow.phase)) return <Button size="sm" disabled aria-label={`connecting ${app.label}`}>connecting</Button>;
   if (flow?.phase === "sign-in" && flow.url) return <a className="text-link shrink-0 px-2 text-13" href={flow.url} target="_blank" rel="noopener noreferrer">finish sign-in</a>;
   if (flow?.phase === "failed") return <Button size="sm" onClick={onConnect} aria-label={`try connecting ${app.label} again`} title={flow.message ?? undefined}>try again</Button>;
   return <Button size="sm" onClick={onConnect} aria-label={`connect ${app.label}`}>connect</Button>;
@@ -46,7 +50,7 @@ function WorkspacesCell({ list }: { list: ConnectorRow["workspaces"] }) {
 function Reconnect({ row, where, flow, onAuth }: { row: ConnectorRow; where: string | null; flow: AppFlow | undefined; onAuth(): void }) {
   const on = where ? ` on ${where}` : "";
   if (flow?.phase === "waking") return <Button variant="outline" size="sm" disabled aria-label={`waking ${flow.workspaceName} to reconnect ${row.label}`}>waking</Button>;
-  if (flow?.phase === "waiting") return <Button variant="outline" size="sm" disabled aria-label={`reconnecting ${row.label}${on}`}>connecting</Button>;
+  if (flow && BUSY.includes(flow.phase)) return <Button variant="outline" size="sm" disabled aria-label={`reconnecting ${row.label}${on}`}>connecting</Button>;
   if (flow?.phase === "sign-in" && flow.url) return <a className="text-link shrink-0 whitespace-nowrap px-2 text-13" href={flow.url} target="_blank" rel="noopener noreferrer">finish sign-in</a>;
   return <Button variant="outline" size="sm" onClick={onAuth} aria-label={`reconnect ${row.label}${on}`} title={flow?.phase === "failed" ? flow.message ?? undefined : undefined}>{flow?.phase === "failed" ? "try again" : "reconnect"}</Button>;
 }
@@ -148,7 +152,7 @@ function Catalog({ apps, connected, query, flowFor, onConnect }: { apps: DashApp
 export function ConnectorsPage() {
   const { workspaces, workspace } = useSession();
   const { connections, clouds, appsAvailable, appsInApp } = useCloud();
-  const { flows, connect, disconnect } = useAppCommands();
+  const { flows, connect, disconnect, finish, dismiss } = useAppCommands();
   const { apps } = useDashApps();
   const { rows, loading, error } = useConnectorRows();
   const [query, setQuery] = useState("");
@@ -172,13 +176,24 @@ export function ConnectorsPage() {
     if (away) return toast(away, "bad");
     connect(ws, slug, app.label, wake);
   };
+  // back from a sign-in this page started: the app appended its word (status) to the callback; the state goes once
+  const { query: params } = useLocation();
+  const returning = params.get("connect");
+  useEffect(() => {
+    if (!returning || !workspaces || !apps) return;
+    const status = params.get("status");
+    navigate(CONNECT_CALLBACK_PATH, { replace: true });
+    const appName = (slug: string) => apps.find((app) => composioSlug(app) === slug || app.id === slug)?.label ?? slug;
+    void finish(returning, status, { workspace: (id) => byId.get(id)?.name ?? "your workspace", app: appName });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returning, workspaces, apps]);
   const rowSlug = (row: ConnectorRow) => (row.app ? composioSlug(row.app) : row.type === "Connector" ? row.id.toLowerCase() : null);
   const q = query.trim().toLowerCase();
   const shown = rows.filter((r) => (!q || r.label.toLowerCase().includes(q) || r.category.toLowerCase().includes(q)) && (!category || r.category === category) && (!needsOnly || r.status === "needs-auth"));
   const categories = [...new Set(rows.map((r) => r.category))].sort();
   const filtered = Boolean(category) || needsOnly;
 
-  const busy = (w: WorkspaceSummary, slug: string | null) => Boolean(slug) && ["waking", "waiting"].includes(flows[flowKey(w.id, slug!)]?.phase ?? "");
+  const busy = (w: WorkspaceSummary, slug: string | null) => Boolean(slug) && ["waking", ...BUSY].includes(flows[flowKey(w.id, slug!)]?.phase ?? "");
   // website actions first; "manage in the app" when there is nothing to do here, or the app was connected in the app
   const menuFor = (row: ConnectorRow): MenuItem[] => {
     const manage: MenuItem = { label: "manage in the app", onSelect: () => openApp(appLink.connect(row.id)) };
@@ -201,6 +216,7 @@ export function ConnectorsPage() {
 
   return (
     <div className="min-w-0">
+      <ConnectPill flows={flows} onDismiss={dismiss} />
       <PageHeader title="apps" sub={workspace ? `connect an app and your bots on ${workspace.name} can use it.` : "connect an app in the dusk bot app and your bots can use it."} />
       {workspace && reach(workspace).away && <p role="status" className="-mt-4 mb-6 text-14 text-ink-3">{reach(workspace).away}</p>}
 

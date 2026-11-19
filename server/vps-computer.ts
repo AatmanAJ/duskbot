@@ -41,6 +41,7 @@ import { killCliTree, spawnCli } from "./procs.ts";
 import { prepareVpsSsh } from "./vps-ssh.ts";
 import { boxChromeExecArgs, boxChromeRelay, forwardViewer, isThisServerVps } from "./vps-local.ts";
 import { sshViewer } from "./vps-viewer.ts";
+import { dockerUnreachableProblem, gateDockerHost, retryTransient } from "./vps-docker-transport.ts";
 import { loadEnvironmentId } from "./environment.ts";
 import { SPAWNED_PROXIES } from "./proxy-paths.ts";
 import { MANAGED_VPS_CONTAINER_NAME, VPS_CONTAINER_LABEL, VPS_MANAGED_LABEL, isRenamedManagedCopy } from "./vps-managed-names.ts";
@@ -120,6 +121,7 @@ const statusCache = new Map<string, { status: VpsComputerStatus; expiresAt: numb
 // the last passing desktop probe per container: opening a viewer right after a wake need not repeat it
 const verifiedDesktops = new Map<string, { containerId: string; startedAt: string | undefined; at: number }>();
 const JOIN_REUSES_PROBE_MS = 10_000;
+export const vpsTransportTiming = { retryDelays: [400, 1_500] as readonly number[] };
 const pendingStatuses = new Map<string, Promise<VpsComputerStatus>>();
 const pendingFreshStatuses = new Map<string, Promise<VpsComputerStatus>>();
 const pendingProvisions = new Map<string, Promise<VpsComputerStatus>>();
@@ -299,7 +301,7 @@ export function defaultRunner(args: string[], options: VpsCommandOptions = {}): 
     const ssh = prepareVpsSsh(DATA_DIR, augmentedPath());
     const child = spawnCli("docker", args, {
       shell: false,
-      env: { ...process.env, PATH: ssh.path },
+      env: { ...process.env, PATH: ssh.path, ...(process.env.DOCKER_HOST ? { DOCKER_HOST: gateDockerHost(process.env.DOCKER_HOST) } : {}) },
       stdio: ["pipe", "pipe", "pipe"],
     });
     const stdout = tailCollector();
@@ -395,11 +397,8 @@ function isMissingObjectMessage(message: string): boolean {
   return /no such (object|image|container)/i.test(message);
 }
 
-function transportFailure(message: string): string {
-  if (/timed out/i.test(message)) {
-    return "Docker over SSH failed while checking the VPS: the connection timed out. Check that the VPS is online, SSH is reachable from this computer, and Docker is running on the VPS, then retry. No computer was reset.";
-  }
-  return `Docker over SSH failed while checking the VPS: ${message.trim().slice(0, 200) || "unknown transport error"}`;
+function transportFailure(message: string, alias: string | null): string {
+  return dockerUnreachableProblem(message, { thisServer: isThisServerVps(alias), alias });
 }
 
 function privateDockerIpv4(value: string | undefined): boolean {
@@ -482,14 +481,7 @@ async function computeVpsComputerStatus(
   const run = (args: string[], timeoutMs = 10_000, input?: string) =>
     runner(vpsDockerArgs(alias, args), { timeoutMs, input });
   // Retry only read-only inspections, never an exec or mutation whose outcome a lost connection hides.
-  const inspect = async (args: string[]) => {
-    try { return await run(args); }
-    catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/timed out|connection reset by peer|broken pipe/i.test(message)) throw error;
-      return run(args);
-    }
-  };
+  const inspect = (args: string[]) => retryTransient(() => run(args), vpsTransportTiming.retryDelays);
 
   let inspectedImageId: string | null = null;
   // false only on a transport failure, with the problem already set
@@ -511,7 +503,7 @@ async function computeVpsComputerStatus(
       status.image = Boolean(inspectedImageId) && (desktop === "cua" ? imageLabelsMatch(labels) : botDesktopLabelsMatch(labels));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!isMissingObjectMessage(message)) { status.problem = transportFailure(message); return false; }
+      if (!isMissingObjectMessage(message)) { status.problem = transportFailure(message, alias); return false; }
     }
     status.daemonUp = true;
     return true;
@@ -634,7 +626,7 @@ async function computeVpsComputerStatus(
       status.container = "missing";
     } else {
       status.daemonUp = false;
-      status.problem = transportFailure(message);
+      status.problem = transportFailure(message, alias);
       return status;
     }
   }

@@ -185,8 +185,11 @@ function syncedFoldersPrompt(synced: ReadonlyArray<{ computerName: string; pcPat
 /** Slack's send tool takes a channel or a person in one field, so the place it posts is easy to get wrong. */
 export const SLACK_PLACE_NOTE = " In Slack, a message sent to a channel id or #name is posted in that channel and one sent to a person's user id is a direct message to them: send it to the place they asked for, and find a channel's id by listing channels, not by messaging a member.";
 
+/** What a bot does when a connected app's call fails, so a lapsed sign-in becomes a Reconnect card instead of retries. */
+export const CONNECTED_APP_FAILURE_NOTE = " When a connected app's call says its connection expired, was revoked, is missing or needs signing in again (401, invalid_grant, no connected account), do not retry it or ask for a password: call COMPOSIO_MANAGE_CONNECTIONS for that app so the person gets a Reconnect card, do the parts that do not need it, and say in one line what waits on reconnecting. A call that timed out or hit a rate limit may go once more after a short pause; a call refused for its arguments goes again only after reading the tool's schema with COMPOSIO_GET_TOOL_SCHEMAS.";
+
 export const COMPOSIO_PROMPT =
-  " The user's connected apps (Gmail, Calendar, Slack, Notion, and the rest) are reachable through the composio tools: find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Reach for them before telling the user you have no access to a service." + SLACK_PLACE_NOTE;
+  " The user's connected apps (Gmail, Calendar, Slack, Notion, and the rest) are reachable through the composio tools: find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Reach for them before telling the user you have no access to a service." + CONNECTED_APP_FAILURE_NOTE + SLACK_PLACE_NOTE;
 
 /** The app tools a bot with these apps can call by name, on every engine. */
 const APP_TOOLS_PROMPT: Record<string, { label: string; tools: string; note?: string }> = {
@@ -211,7 +214,7 @@ export function composioSystemPrompt(grants: Record<string, ConnectorToolGrant> 
     return " No connected apps are assigned to this bot. If a task needs one, or an app's sign-in has expired, call COMPOSIO_MANAGE_CONNECTIONS to show the user a card that connects it, and ask them to allow that app for this bot in dusk bot.";
   }
   const named = services.map(connectorServiceLabel).join(", ");
-  return withFallback(` The user's connected apps assigned to this bot (${named}) are reachable through the composio tools: find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Only the tools this bot was granted will run; when a needed tool is refused, tell the user and ask them to grant it in dusk bot. Reach for the granted services before telling the user you have no access.${services.includes("slack") ? SLACK_PLACE_NOTE : ""}${appToolsPrompt(services)}`);
+  return withFallback(` The user's connected apps assigned to this bot (${named}) are reachable through the composio tools: find the right one with COMPOSIO_SEARCH_TOOLS, read its arguments with COMPOSIO_GET_TOOL_SCHEMAS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Only the tools this bot was granted will run; when a needed tool is refused, tell the user and ask them to grant it in dusk bot. Reach for the granted services before telling the user you have no access.${CONNECTED_APP_FAILURE_NOTE}${services.includes("slack") ? SLACK_PLACE_NOTE : ""}${appToolsPrompt(services)}`);
 }
 
 function connectorServiceLabel(slug: string): string {
@@ -271,7 +274,7 @@ export const PROFILE_PROMPT =
   " If the user asks you to change who you are (your name, title, description, or standing instructions in SOUL.md) or to set yourself up, use propose_profile. dusk bot has native bot-creation and team-setup tools: use them rather than computer control to click through this app. Any bot makes a new bot with create_bot when the person asks it directly in their own chat; changing or deleting other bots is for Chiefs, so ask a reachable Chief through the peer tools, or explain the team-access blocker instead of clicking around it or claiming bots cannot be created programmatically." + APPLIED_RESULT_PROMPT;
 
 const WORKSPACE_COMMON =
-  " remember, correct and forget things (memory_update: your own notebook; prefer for a wish every bot should know; for_bot_id to pass one note to a teammate the person named), find earlier chats and notes (session_search), ask a teammate or hand it work and get the result back (coordinate_bots; post_to_room only announces), pick or start a computer (select_computer), connect an app (your connected-app tools show the person a Connect card with its link) or add an MCP server (mcp_server). Do these yourself when asked instead of telling the person where to click, then say in one line what you did. Ask first only before deleting something.";
+  " remember, correct and forget things (memory_update: your own notebook; prefer for a wish every bot should know; for_bot_id to pass one note to a teammate the person named), find earlier chats and notes (session_search), ask a teammate or hand it work and get the result back (coordinate_bots; post_to_room only announces), pick or start a computer (select_computer), connect an app (your connected-app tools show the person a Connect card with its link) or add an MCP server (mcp_server). Do these yourself when asked instead of telling the person where to click, then say in one line what you did. Ask first only before deleting something. Work you can do with your own tools is yours: hand it to a teammate only when the person named that teammate or it has an app or access you lack, never to pass on an ask you were given, such as making a bot, which you do with create_bot.";
 
 /** What a bot can do to the workspace by chat, so every engine knows its tools are for this. A Chief-level bot also makes
  * and changes other bots. */

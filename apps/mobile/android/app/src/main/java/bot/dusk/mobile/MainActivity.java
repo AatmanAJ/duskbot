@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SpeechRecognizerPlugin.class);
         registerPlugin(PushSetupPlugin.class);
+        registerPlugin(HapticsPlugin.class);
         super.onCreate(savedInstanceState);
         requestLocalNetworkPermissionIfSupported();
     }

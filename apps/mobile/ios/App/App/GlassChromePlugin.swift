@@ -20,6 +20,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "clear", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "slide", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "glyphs", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "home", returnType: CAPPluginReturnNone),
     ]
 
     private var chrome: AnyObject?
@@ -28,7 +29,8 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
     /// glass views to be made.
     @objc func supported(_ call: CAPPluginCall) {
         if #available(iOS 26.0, *) {
-            withChrome { _ in }
+            // a page that asks has just loaded: its text sequence starts again from 1
+            withChrome { $0.resetText() }
             call.resolve(["supported": true])
         } else {
             call.resolve(["supported": false])
@@ -78,7 +80,17 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func clear(_ call: CAPPluginCall) {
         guard #available(iOS 26.0, *) else { return }
-        withChrome { $0.apply([:]) }
+        withChrome { chrome in
+            chrome.apply([:])
+            chrome.pageGone()
+            chrome.resetText()
+        }
+    }
+
+    @objc func home(_ call: CAPPluginCall) {
+        guard #available(iOS 26.0, *) else { return }
+        let state = call.options["state"] as? [String: Any]
+        withChrome { $0.applyHome(state) }
     }
 
     /// The header's own symbols as the page can draw them: while a sheet covers the chat the page shows its header in
@@ -93,14 +105,15 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let path = call.options["path"] as? [String: Any]
         let points = (path?["points"] as? [Any] ?? []).compactMap { ($0 as? NSNumber).map { CGFloat($0.doubleValue) } }
         let duration = ((path?["duration"] as? NSNumber)?.doubleValue ?? 0) / 1000
+        let startedAt = (call.options["at"] as? NSNumber)?.doubleValue
         withChrome { chrome in
-            if points.isEmpty { chrome.stopSlide() } else { chrome.slide(points, duration: duration) }
+            if points.isEmpty { chrome.stopSlide() } else { chrome.slide(points, duration: duration, elapsed: ChatGlassChrome.sinceEpoch(ms: startedAt)) }
         }
     }
 }
 
 /// Lets touches through everywhere but on its own controls.
-private class PassthroughView: UIView {
+class PassthroughView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let hit = super.hitTest(point, with: event)
         return hit === self ? nil : hit
@@ -148,7 +161,8 @@ private final class SlotButton: DiscButton {
             guard isHighlighted != oldValue, !UIAccessibility.isReduceMotionEnabled else { return }
             let pressed = isHighlighted
             UIView.animate(springDuration: pressed ? 0.12 : 0.3, bounce: 0, initialSpringVelocity: 0, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
-                self.transform = pressed ? CGAffineTransform(scaleX: 0.94, y: 0.94) : .identity
+                self.transform = pressed ? CGAffineTransform(scaleX: 1.08, y: 1.08) : .identity
+                self.alpha = pressed ? 0.88 : 1
             }
         }
     }
@@ -198,7 +212,7 @@ private final class SlotButton: DiscButton {
     }
 }
 
-private struct Frame {
+struct Frame {
     let rect: CGRect
     init?(_ value: Any?) {
         guard let d = value as? [String: Any], let x = (d["x"] as? NSNumber)?.doubleValue, let y = (d["y"] as? NSNumber)?.doubleValue,
@@ -224,13 +238,25 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private let liveDot = UIView()
 
     private let composer = PassthroughView()
-    private let capsule = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+    private var home: GlassHomeBar!
+    private let capsule = UIVisualEffectView(effect: ChatGlassChrome.interactiveGlass())
     private let plus = DiscButton(configuration: .glass())
     private let text = UITextView()
     private let placeholder = UILabel()
     private let voice = UILabel()
+    private let wave = GlassVoiceWave()
+    private var listening = false
     private var actions: [UIButton] = []
     private var actionKinds: [String] = []
+    /// the page's text size over the system body size; 0 until the page says, and the field follows Larger Text alone
+    private var fontScale: CGFloat = 0
+
+    /// iOS 26 interactive glass: the capsule answers a touch by growing and brightening, as the system's glass buttons do
+    static func interactiveGlass() -> UIGlassEffect {
+        let effect = UIGlassEffect(style: .regular)
+        effect.isInteractive = true
+        return effect
+    }
 
     private var leading: NSLayoutConstraint!
     private var width: NSLayoutConstraint!
@@ -261,6 +287,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// from the composer's bottom to the line it rests on: the home indicator's edge, or the keyboard's top
     private var gap: CGFloat = 8
     private var keyboardOverlap: CGFloat = 0
+    /// where the page rests the composer; with the keyboard up it widens to `typingInset` from each edge
+    private var restingFrame: CGRect = .zero
+    private static let typingInset: CGFloat = 6
 
     init(host: UIView, emit: @escaping ([String: Any]) -> Void) {
         self.host = host
@@ -289,6 +318,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         liveDot.isHidden = true
         right.addSubview(liveDot)
         [back, pill, right].forEach(header.addSubview)
+        home = GlassHomeBar(host: host, below: header, emit: emit)
 
         composer.translatesAutoresizingMaskIntoConstraints = false
         composer.alpha = 0
@@ -317,8 +347,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         voice.font = text.font
         voice.textColor = .secondaryLabel
         voice.lineBreakMode = .byTruncatingHead
-        voice.isHidden = true
-        [plus, text, placeholder, voice].forEach(capsule.contentView.addSubview)
+        voice.alpha = 0
+        wave.alpha = 0
+        wave.tintColor = .secondaryLabel
+        [plus, text, placeholder, voice, wave].forEach(capsule.contentView.addSubview)
         capsule.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(capsuleTapped)))
 
         leading = composer.leadingAnchor.constraint(equalTo: host.leadingAnchor)
@@ -329,6 +361,13 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
         NotificationCenter.default.addObserver(self, selector: #selector(contentSizeChanged), name: UIContentSizeCategory.didChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+    }
+
+    /// the page's own frame at rest, nearly the full width while typing
+    private func applyComposerWidth() {
+        let typing = keyboardOverlap > 0 && (host?.bounds.width ?? 0) > 0
+        leading.constant = typing ? Self.typingInset : restingFrame.minX
+        width.constant = typing ? (host?.bounds.width ?? restingFrame.width) - Self.typingInset * 2 : restingFrame.width
     }
 
     private func restingBottom() -> CGFloat {
@@ -344,34 +383,50 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         guard overlap != keyboardOverlap else { return }
         keyboardOverlap = overlap
         bottom.constant = restingBottom()
+        if restingFrame.width > 0 { applyComposerWidth() }
         let duration = (info[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
         let curve = (info[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+        emit(["type": "keyboard", "height": overlap, "duration": duration, "at": Date().timeIntervalSince1970 * 1000])
         guard composerShown, duration > 0 else {
             UIView.performWithoutAnimation { host.layoutIfNeeded() }
             return
         }
         UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction]) {
             host.layoutIfNeeded()
+            self.layoutComposer(animated: false)
         }
     }
 
     // MARK: riding on the page
 
-    private func setOffset(_ x: CGFloat) {
+    private func setOffset(_ x: CGFloat, homeFollows: Bool = true) {
         offset = x
         let moved = CGAffineTransform(translationX: x, y: 0)
         for view in [header, composer] where view.transform != moved { view.transform = moved }
+        if homeFollows { home.follow(page: x) }
+    }
+
+    /// The chat's page is gone: Home's bar is the list's again, whole and in place.
+    func pageGone() { home.follow(page: nil) }
+
+    func applyHome(_ state: [String: Any]?) {
+        home.apply(state)
+        keepOnTop()
     }
 
     /// Plays the page's own slide: the same positions, one per 60 Hz frame and linear between, which is what the page
     /// hands its compositor in the same frame. Both views share one transaction, so they start together.
-    func slide(_ points: [CGFloat], duration: TimeInterval) {
+    /// The page's slide started `elapsed` seconds before its message got here (the bridge hop): the chrome starts that far
+    /// into the same path, so it sits on the page from its first frame instead of trailing it.
+    func slide(_ points: [CGFloat], duration: TimeInterval, elapsed: TimeInterval = 0) {
         guard let to = points.last else { return }
-        guard points.count > 1, duration > 0 else {
+        let skipped = min(max(0, elapsed), Self.maxCatchUp)
+        guard points.count > 1, duration > skipped else {
             stopSlide()
             setOffset(to)
             return
         }
+        let now = CACurrentMediaTime()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for view in [header, composer] {
@@ -380,12 +435,24 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             animation.values = points.map { NSNumber(value: Double($0)) }
             animation.duration = duration
             animation.calculationMode = .linear
+            animation.beginTime = view.layer.convertTime(now, from: nil) - skipped
+            animation.fillMode = .backwards
             animation.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
             view.layer.add(animation, forKey: Self.slideKey)
         }
-        setOffset(to)
+        home.slide(points, duration: duration, beginTime: now - skipped)
+        setOffset(to, homeFollows: false)
         CATransaction.commit()
-        slideEnd = CACurrentMediaTime() + duration
+        slideEnd = now + duration - skipped
+    }
+
+    /// a message older than this is a stalled page, not a bridge hop: the chrome plays the rest from where it is due
+    private static let maxCatchUp: TimeInterval = 0.12
+
+    /// Seconds since a page clock reading in epoch milliseconds (performance.timeOrigin + now()), 0 without one.
+    static func sinceEpoch(ms: Double?) -> TimeInterval {
+        guard let ms, ms > 0 else { return 0 }
+        return max(0, Date().timeIntervalSince1970 - ms / 1000)
     }
 
     /// A finger took the page mid-slide: the chrome stays where it is drawn, and follows the page's frames from here.
@@ -426,9 +493,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     /// views the system adds to the host later must not land over the chrome and take its taps
     private func keepOnTop() {
-        guard let host, headerShown || composerShown else { return }
-        let tail = Array(host.subviews.suffix(2))
-        if tail.first !== header || tail.last !== composer {
+        guard let host, headerShown || composerShown || !home.view.isHidden else { return }
+        let tail = Array(host.subviews.suffix(3))
+        if tail.count < 3 || tail[0] !== home.view || tail[1] !== header || tail[2] !== composer {
+            host.bringSubviewToFront(home.view)
             host.bringSubviewToFront(header)
             host.bringSubviewToFront(composer)
         }
@@ -471,7 +539,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// name and avatar swap in one go, with no crossfade: a new chat's pill is drawn before its header shows
     private func refreshPill() {
         var title = AttributedString(name)
-        title.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        title.font = UIFont.systemFont(ofSize: 17, weight: .medium)
         UIView.performWithoutAnimation {
             pill.configuration?.attributedTitle = title
             pill.configuration?.baseForegroundColor = .label
@@ -484,7 +552,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     func setAvatar(_ data: String?) {
         guard data != avatarData else { return }
         avatarData = data
-        avatar = data.flatMap(Self.image(fromDataURL:)).map { Self.pixelScaled($0, to: CGSize(width: 30, height: 30)) }
+        avatar = data.flatMap(Self.image(fromDataURL:)).map { Self.pixelScaled($0, to: CGSize(width: 24, height: 24)) }
         refreshPill()
     }
 
@@ -494,26 +562,51 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             show(composer, false, &composerShown)
             return
         }
-        leading.constant = frame.rect.minX
-        width.constant = frame.rect.width
+        restingFrame = frame.rect
+        applyComposerWidth()
         if let gap = (data["gap"] as? NSNumber)?.doubleValue { self.gap = CGFloat(max(0, gap)) }
         let resting = restingBottom()
-        if bottom.constant != resting { bottom.constant = resting }
+        if abs(bottom.constant - resting) >= 1 { bottom.constant = resting }
         plus.isHidden = !(data["plus"] as? Bool ?? true)
         if let label = data["plusLabel"] as? String, !label.isEmpty { plus.accessibilityLabel = label }
         placeholder.text = data["placeholder"] as? String ?? ""
+        if let scale = (data["fontScale"] as? NSNumber)?.doubleValue, scale > 0 { applyFontScale(CGFloat(scale)) }
         text.isEditable = !(data["disabled"] as? Bool ?? false)
         returnSends = data["returnSends"] as? Bool ?? true
         text.returnKeyType = returnSends ? .send : .default
-        let heard = data["voice"] as? String
-        voice.isHidden = heard == nil
-        voice.text = heard
-        text.isHidden = heard != nil
-        if heard != nil, text.isFirstResponder { text.resignFirstResponder() }
+        setListening(data["voice"] as? String, spoken: data["voiceHeard"] as? Bool ?? true)
         applyActions(data["buttons"] as? [[String: Any]] ?? [])
         updatePlaceholder()
         layoutComposer()
         show(composer, true, &composerShown)
+    }
+
+    /// Dictation shows in the capsule itself: the waveform and what it has heard take the field's place in one crossfade,
+    /// and the field (with any draft) comes back the same way when it stops, is discarded or fails.
+    private func setListening(_ heard: String?, spoken: Bool) {
+        voice.text = heard
+        voice.textColor = spoken ? .label : .placeholderText
+        let now = heard != nil
+        guard now != listening else { return }
+        listening = now
+        if now {
+            if text.isFirstResponder { text.resignFirstResponder() }
+            wave.start()
+        }
+        text.isUserInteractionEnabled = !now
+        let change = { [self] in
+            text.alpha = now ? 0 : 1
+            placeholder.alpha = now ? 0 : 1
+            voice.alpha = now ? 1 : 0
+            wave.alpha = now ? 1 : 0
+        }
+        let done: (Bool) -> Void = { [self] _ in if !listening { wave.stop() } }
+        guard composerShown, !instant, host?.window != nil else {
+            change()
+            done(true)
+            return
+        }
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0.12 : 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: change, completion: done)
     }
 
     /// the round button at the end of the pill: the mic at rest, Send once there is text, Stop while the bot works, keep
@@ -663,7 +756,10 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             plus.frame = CGRect(x: Self.inset, y: discY, width: Self.disc, height: Self.disc)
             text.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: h - pad * 2)
             placeholder.frame = CGRect(x: leadingX, y: pad, width: fieldWidth, height: line)
-            voice.frame = placeholder.frame
+            let waveHeight: CGFloat = 20
+            wave.frame = CGRect(x: leadingX, y: (h - waveHeight) / 2, width: GlassVoiceWave.width, height: waveHeight)
+            let afterWave = GlassVoiceWave.width + 10
+            voice.frame = CGRect(x: leadingX + afterWave, y: (h - line) / 2, width: max(0, fieldWidth - afterWave), height: line)
             var x = w - Self.inset
             for (button, kind) in zip(actions, actionKinds).reversed() {
                 let bw = Self.actionWidth(kind)
@@ -702,18 +798,45 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
 
     // MARK: text
 
-    func setText(_ value: String, seq: Int) {
-        guard seq > textSeq else { return }
-        textSeq = seq
-        if text.text != value {
-            text.text = value
+    /// The chat is gone (or the page reloaded): the next one's text comes with a fresh sequence, and the field starts empty.
+    func resetText() {
+        textSeq = 0
+        if !(text.text ?? "").isEmpty {
+            text.text = ""
             updatePlaceholder()
             layoutComposer(animated: false)
         }
     }
 
+    func setText(_ value: String, seq: Int) {
+        guard seq > textSeq else { return }
+        textSeq = seq
+        if text.text != value {
+            text.text = value
+            // UIKit 26: text set after a dictation keeps the attributes dictation left in the field, its font among them
+            if let font = placeholder.font {
+                text.font = font
+                text.typingAttributes = [.font: font, .foregroundColor: UIColor.label]
+            }
+            updatePlaceholder()
+            layoutComposer(animated: false)
+        }
+    }
+
+    /// The field's text at the size the page draws its own: the system body size times the page's scale.
+    private func applyFontScale(_ scale: CGFloat) {
+        guard abs(scale - fontScale) > 0.001 else { return }
+        fontScale = scale
+        let font = UIFont.systemFont(ofSize: (17 * scale).rounded())
+        for label in [placeholder, voice] { label.adjustsFontForContentSizeCategory = false; label.font = font }
+        text.adjustsFontForContentSizeCategory = false
+        text.font = font
+        text.typingAttributes = [.font: font, .foregroundColor: UIColor.label]
+        layoutComposer(animated: false)
+    }
+
     func focus() {
-        guard composerShown, text.isEditable, !text.isHidden else { return }
+        guard composerShown, text.isEditable, !listening else { return }
         text.becomeFirstResponder()
     }
 
@@ -722,7 +845,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     }
 
     private func updatePlaceholder() {
-        placeholder.isHidden = !(text.text ?? "").isEmpty || !voice.isHidden
+        placeholder.isHidden = !(text.text ?? "").isEmpty
     }
 
     func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText replacement: String) -> Bool {

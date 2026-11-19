@@ -57,9 +57,16 @@ export function screenAccessMissingNote(browser: boolean, missing: readonly stri
     : " Control of this computer's desktop apps is not available this turn. Answer and chat normally, with web search and page fetches for lookups." + desktop + NO_PERMISSION_TALK;
 }
 
-export function computerSkippedNote(cause: string): string {
+export function computerSkippedNote(cause: string, incident = true): string {
+  if (!incident) return " Your computer is not answering right now, so no computer is mounted this turn: answer and work without it. Only if the request truly needs a screen, say in one short sentence that your computer isn't answering and the person can try again in a minute; never quote an error, and never claim to have used that computer.";
   const why = cause.trim().replace(/[\s.]+$/, "");
   return ` This turn answers a Team incidents report and your computer could not be prepared for it (${why}), so no computer is mounted: you cannot open, click or check anything on it this turn. Act through your teammates, or tell the person what only they can fix, never claim to have checked that computer yourself.`;
+}
+
+/** Whether a turn goes on with no computer when its computer could not be prepared: an incident report always does, any
+ * turn does when the computer was unreachable, and a cancelled or parked setup never does. */
+export function continuesWithoutComputer(input: { incident: boolean; unreachable: boolean; cancelled: boolean }): boolean {
+  return !input.cancelled && (input.incident || input.unreachable);
 }
 
 /** One place per turn, plus the browser beside it in a thread a bot opened. A person's pin beats the bot's default (only Off overrides it), an Auto pin yields to a Works on change, and a pin the turn cannot honour is reported, never swapped. */

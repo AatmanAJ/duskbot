@@ -141,12 +141,32 @@ export function appSlug(input: unknown): string | null {
 }
 
 /** `target` is a bot id for computer.*, a phone or session id for *.revoke, a routine id for routine.*, a toolkit slug for app.*,
- * the phone's own name for phone.pair */
-export interface DashboardCommand { id: string; kind: CommandKind; target: string; issuedAt: number; expiresAt: number }
-/** `url` is app.connect's sign-in page: https only, shown only to the workspace's owner, never stored. `link` is
+ * the phone's own name for phone.pair. `callback`: app.connect only, the website's page the app's sign-in sends the browser
+ * back to (connectCallback); a workspace that can't send it there leaves `returnsHere` out of its result */
+export interface DashboardCommand { id: string; kind: CommandKind; target: string; issuedAt: number; expiresAt: number; callback?: string }
+/** `url` is app.connect's sign-in page: https only, shown only to the workspace's owner, never stored. `returnsHere`: that
+ * sign-in ends on the command's `callback`, so the website may send its own tab there. `link` is
  * phone.pair's one-time pairing link (duskbot://pair?m=..., shared/mobile-link.ts): handed to the waiting phone only, never
  * stored. `reason` says why a phone.pair failed: no route a phone could use, or refused (policy, too many phones) */
-export interface CommandResult { id: string; ok: boolean; message: string | null; at: number; url?: string | null; link?: string; reason?: "unreachable" | "refused" }
+export interface CommandResult { id: string; ok: boolean; message: string | null; at: number; url?: string | null; returnsHere?: true; link?: string; reason?: "unreachable" | "refused" }
+
+/** where a sign-in started from the website comes back: the website's apps page carrying the connect's one-time state */
+export const CONNECT_CALLBACK_PATH = "/connectors";
+/** POST /v1/connect/finish answer: which sign-in the state was for, and whether the app said it went through */
+export interface ConnectFinishAnswer { workspaceId: string; slug: string; outcome: "signed-in" | "cancelled" }
+const CONNECT_STATE = /^[A-Za-z0-9_-]{32,64}$/;
+/** a command's callback a workspace hands to the app's sign-in: https (http only on a loopback host, for local testing),
+ *  no credentials or fragment, the apps page with just its `connect` state; anything else is dropped */
+export function connectCallback(input: unknown): string | null {
+  if (typeof input !== "string" || input.length > 512) return null;
+  try {
+    const url = new URL(input);
+    const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost";
+    if (!(url.protocol === "https:" || (url.protocol === "http:" && loopback)) || url.username || url.password || url.hash) return null;
+    if (!url.pathname.endsWith(CONNECT_CALLBACK_PATH) || [...url.searchParams.keys()].join() !== "connect" || !CONNECT_STATE.test(url.searchParams.get("connect") ?? "")) return null;
+    return url.toString();
+  } catch { return null; }
+}
 
 /** a phone pairing link a workspace may hand back for phone.pair; anything else is dropped */
 export function commandPairLink(input: unknown): string | null {
@@ -222,7 +242,7 @@ export interface WorkspaceSummary {
 
 export interface MachineSample { t: number; cpu: number; mem: number; rx: number; tx: number }
 export type CommandStatus = "queued" | "sent" | "done" | "failed" | "expired";
-export interface CommandView extends DashboardCommand { status: CommandStatus; message: string | null; doneAt: number | null; url?: string | null }
+export interface CommandView extends DashboardCommand { status: CommandStatus; message: string | null; doneAt: number | null; url?: string | null; returnsHere?: true }
 
 /** GET /v1/workspaces/:id: the newest of each section, when it came, recent machine samples and recent commands */
 export interface WorkspaceDetail {
@@ -322,7 +342,7 @@ const dashboardSections: Record<string, DashboardParser> = {
     const raw = input as Record<string, unknown>;
     const url = commandUrl(raw.url), link = commandPairLink(raw.link);
     const reason = raw.reason === "unreachable" || raw.reason === "refused" ? raw.reason : undefined;
-    return { ...(result as object), ...(url ? { url } : {}), ...(link ? { link } : {}), ...(reason ? { reason } : {}) };
+    return { ...(result as object), ...(url ? { url } : {}), ...(url && raw.returnsHere === true ? { returnsHere: true } : {}), ...(link ? { link } : {}), ...(reason ? { reason } : {}) };
   }, 50),
 };
 

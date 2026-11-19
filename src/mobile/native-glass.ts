@@ -1,6 +1,8 @@
+import { appliedTextScale } from "./text-scale";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { SlidePath } from "./NavStack";
 import type { MobilePlatform } from "./platform";
+import type { HomeGlassState } from "./native-home-glass";
 
 /** A rect in css px from the top left of the screen, which on the phone is the native view's own point space. */
 export interface GlassFrame { x: number; y: number; w: number; h: number }
@@ -28,10 +30,15 @@ export interface GlassComposer {
   plusLabel: string;
   placeholder: string;
   disabled: boolean;
-  /** what dictation has heard so far, while it listens; the field is hidden then */
+  /** what dictation has heard so far, or its waiting words, while it listens: the capsule shows it by a live waveform in
+   * the field's place */
   voice: string | null;
+  /** `voice` is words heard, not the waiting words (apps before 1.3 ignore it) */
+  voiceHeard?: boolean;
   buttons: GlassButton[];
   returnSends: boolean;
+  /** the page's text zoom, so the native field's text matches the page's (apps before 1.3 ignore it) */
+  fontScale: number;
 }
 
 export interface GlassState {
@@ -46,12 +53,14 @@ export interface GlassState {
 }
 
 export type GlassEvent =
-  | { type: "tap"; target: "back" | "title" | "right" | "plus" }
+  | { type: "tap"; target: "back" | "title" | "right" | "plus" | "search" | "newBot" }
   | { type: "button"; index: number; kind?: GlassButtonKind }
   | { type: "text"; text: string }
   | { type: "submit" }
   | { type: "focus"; focused: boolean }
-  | { type: "height"; height: number };
+  | { type: "height"; height: number }
+  /** the keyboard starts to move: how far it will cover, its duration in seconds and when it started, in epoch ms */
+  | { type: "keyboard"; height: number; duration: number; at: number };
 
 /** The phone's native glass chrome (ios/App/App/GlassChromePlugin.swift): it draws the chat header and composer
  * over the web view so the glass bends the transcript under it, and hands taps and typing back to the page. */
@@ -62,11 +71,13 @@ export interface GlassBridge {
   focus(): void;
   blur(): void;
   clear(): void;
-  /** The chat's page starts a slide along `path`: the header and composer play the same path natively from this frame,
-   * with no frame updates in between. null stops them where they are. */
-  slide(path: SlidePath | null): void;
+  /** The chat's page starts a slide along `path` at `at` (epoch ms): the header and composer play the same path natively,
+   * as far into it as the message took to arrive, with no frame updates in between. null stops them where they are. */
+  slide(path: SlidePath | null, at?: number): void;
   /** The native header's own symbols, for the page's header to draw while it stands in for the glass. */
   glyphs?(): Promise<GlassGlyphs>;
+  /** Home's top buttons, or null to hide them at once (apps before 1.3 have no home bar). */
+  home?(state: HomeGlassState | null): void;
   onEvent(listener: (event: GlassEvent) => void): () => void;
 }
 
@@ -311,18 +322,35 @@ function readComposer(shell: HTMLElement, baseline: number, dx: number): { compo
   return {
     composer: {
       frame,
-      gap: round(baseline - (frame.y + frame.h - keyboardRide(shell))),
+      // whole pixels: mid-ride the measured gap wobbles by half a pixel, and each wobble would re-pin the native composer
+      gap: Math.round(baseline - (frame.y + frame.h - keyboardRide(shell))),
       plus: Boolean(plus),
       plusLabel: plus?.closest("button")?.getAttribute("aria-label") ?? plus?.getAttribute("aria-label") ?? "",
       placeholder: field?.placeholder ?? "",
       disabled: Boolean(field?.disabled),
       voice: recording ? spoken(voiceStrip) : null,
+      voiceHeard: recording && Boolean(voiceStrip?.querySelector("[data-voice-heard]")),
       buttons: actions.buttons,
       returnSends: field?.getAttribute("enterkeyhint") === "send",
+      fontScale: appliedTextScale(),
     },
     elements: actions.elements,
     field,
   };
+}
+
+/** When a slide begun this frame shows its first moved frame, on the clock the native side reads (epoch ms): a web
+ * animation started now draws from the next frame, about half a 60 Hz frame on average from here. */
+export function slideStart(now = performance.timeOrigin + performance.now()): number {
+  return Math.round(now + 1000 / 120);
+}
+
+/** The native field keeps the highest sequence it has taken for as long as the app runs, across chats: a count that
+ * started again with each chat had every later chat's text (a send clearing the field among it) refused as stale. */
+let textSeq = 0;
+export function nextTextSeq(): number {
+  textSeq += 1;
+  return textSeq;
 }
 
 const FRESH_FRAMES = 30;
@@ -361,7 +389,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       return;
     }
     slideRef.current = { until: performance.now() + path.duration, to: path.points.at(-1) ?? 0 };
-    glass.slide(path);
+    glass.slide(path, slideStart());
   }, [platform]);
 
   useEffect(() => {
@@ -377,9 +405,9 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     let last: GlassState | null = null;
     let elements: HTMLElement[] = [];
     let field: HTMLTextAreaElement | null = null;
-    let fromNative = "";
+    // null until the first frame: a chat opening hands the native field its own text (or none), whatever the last one left
+    let fromNative: string | null = null;
     let toNative: string | null = null;
-    let seq = 0;
     let avatar: string | null | undefined;
     let avatarAt = 0;
     let avatarName: string | null = null;
@@ -412,8 +440,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       // what the page itself put in its field (a draft, a cleared send, a picked mention) goes to the native field
       if (field && field.value !== fromNative && field.value !== toNative) {
         toNative = field.value;
-        seq += 1;
-        glass.setText(field.value, seq);
+        glass.setText(field.value, nextTextSeq());
       }
       const now = performance.now();
       // a slide holds its target until the page says it stopped: its compositor may land a frame after this clock
@@ -464,8 +491,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       }
       if (field && field.value !== fromNative && field.value !== toNative) {
         toNative = field.value;
-        seq += 1;
-        glass.setText(field.value, seq);
+        glass.setText(field.value, nextTextSeq());
       }
     };
 

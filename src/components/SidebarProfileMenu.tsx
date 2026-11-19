@@ -83,21 +83,26 @@ export function withAccountFace(profile: { name?: string; email?: string; avatar
   return { ...profile, ...(!own ? { email: account.email } : {}), ...(!profile?.name?.trim() && account.name ? { name: account.name } : {}), ...(!profile?.avatarUrl && account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}), ...face };
 }
 
-/** The name this place's profile takes from the signed-in account: where the profile has none, or only the computer's own
- * (the first run's guess), and the account has one of its own, for the same person. Null keeps the profile as it is. */
-export function adoptedAccountName(profile: { name?: string; email?: string } | undefined, account: { email: string; name?: string } | null, computerName: string | null): string | null {
+type AccountNamedProfile = { name?: string; email?: string; accountName?: string };
+
+/** What this place's profile takes from the signed-in account's name, for the same person: the name where the profile has
+ * none, only the computer's own (the first run's guess), the account's last name copied here, or the same name in other
+ * letter case; and the copy's mark either way. A name the person typed here stays theirs. Null keeps the profile as it is. */
+export function adoptedAccountName(profile: AccountNamedProfile | undefined, account: { email: string; name?: string } | null, computerName: string | null): { name: string; accountName: string } | null {
   const wanted = account?.name?.trim();
   if (!wanted) return null;
   const own = profile?.email?.trim().toLowerCase();
   if (own && own !== account!.email.trim().toLowerCase()) return null;
   const current = profile?.name?.trim() ?? "";
-  if (current === wanted) return null;
-  return !current || (computerName !== null && current === computerName.trim()) ? wanted : null;
+  const copied = profile?.accountName?.trim() ?? "";
+  if (current === wanted) return copied === wanted ? null : { name: wanted, accountName: wanted };
+  const takes = !current || current === copied || current.toLowerCase() === wanted.toLowerCase() || (computerName !== null && current === computerName.trim());
+  return takes ? { name: wanted, accountName: wanted } : null;
 }
 
-/** This computer's page keeps the account's name once one is set (on the website's first step, often after the app's own
- * first run): the bots and the sidebar call the person by it. A name the person typed here stays theirs. */
-function useAccountName(enabled: boolean, profile: { name?: string; email?: string } | undefined, account: { email: string; name?: string } | null, dispatch: (action: Action) => void) {
+/** This computer's page keeps the account's name (set on the website's first step, often after the app's own first run, and
+ * renamed there later): the bots, the sidebar and a paired phone call the person by it. */
+function useAccountName(enabled: boolean, profile: AccountNamedProfile | undefined, account: { email: string; name?: string } | null, dispatch: (action: Action) => void) {
   const asked = useRef<string | null>(null);
   const wanted = account?.name?.trim() ?? null;
   useEffect(() => {
@@ -105,15 +110,17 @@ function useAccountName(enabled: boolean, profile: { name?: string; email?: stri
     let active = true;
     void (async () => {
       const computer = (await window.duskDesktop?.desktopProfile?.systemName().catch(() => null))?.trim() || null;
-      const name = active ? adoptedAccountName(profile, account, computer) : null;
+      if (!active) return;
+      const adopted = adoptedAccountName(profile, account, computer);
+      if (!adopted) { asked.current = wanted; return; }
+      const config = await api<ConfigStatus>("/api/config", { method: "PUT", body: JSON.stringify({ profile: adopted }) }).catch(() => null);
+      if (!config) return;
       asked.current = wanted;
-      if (!name) return;
-      const config = await api<ConfigStatus>("/api/config", { method: "PUT", body: JSON.stringify({ profile: { name } }) }).catch(() => null);
-      if (config && active) dispatch({ type: "configStatus", config });
+      if (active) dispatch({ type: "configStatus", config });
     })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, wanted, profile?.name]);
+  }, [enabled, wanted, profile?.name, profile?.accountName]);
 }
 
 /** What `UserFace` draws for a person: an id to seed the drawn head, and the photo and choice that may stand in for it. */
@@ -464,7 +471,6 @@ export function profileMenuItems({
 }): SidebarMenuItem[] {
   const help: SidebarMenuItem[] = [
     { key: "help", label: t("sidebar.menu.help"), icon: <HelpCircle size={18} />, onSelect: onHelp },
-    { key: "feedback", label: t("sidebar.menu.feedback"), icon: <MessageSquareText size={18} />, onSelect: onFeedback },
     ...(trailAvailable() ? [{ key: "usage-log", label: t("sidebar.menu.exportUsageLog"), icon: <FileText size={18} />, onSelect: () => void exportUsageLog("support").catch(() => {}) } satisfies SidebarMenuItem] : []),
     {
       key: "shortcuts",
@@ -487,11 +493,12 @@ export function profileMenuItems({
   } : null;
   const dashboardItem: SidebarMenuItem | null = onDashboard ? { key: "dashboard", label: t("sidebar.menu.accountDashboard"), icon: <LayoutDashboard size={18} />, onSelect: onDashboard } : null;
   const support: SidebarMenuItem = { key: "support", label: t("sidebar.menu.support"), icon: <LifeBuoy size={18} />, submenu: help, onSelect: () => {} };
+  const feedback: SidebarMenuItem = { key: "feedback", label: t("giveFeedback.card"), icon: <MessageSquareText size={18} />, onSelect: onFeedback };
   const settings: SidebarMenuItem = { key: "settings", label: t("sidebar.menu.settings"), icon: <SettingsIcon size={18} />, onSelect: onSettings };
   const accountItem: SidebarMenuItem | null = account ? { key: "account", label: account, icon: <CircleUserRound size={18} />, onSelect: onAccount } : null;
   const present = (...items: Array<SidebarMenuItem | null | false>) => items.filter((item): item is SidebarMenuItem => Boolean(item));
   if (!simple) {
-    const rest = [...present(usageItem, dashboardItem), ...phone, support, settings, ...present(update), ...(accountItem ? [{ ...accountItem, separatorBefore: true }] : []), ...accounts.map((item, index) => (index === 0 ? { ...item, separatorBefore: true } : item))];
+    const rest = [...present(usageItem, dashboardItem), ...phone, support, feedback, settings, ...present(update), ...(accountItem ? [{ ...accountItem, separatorBefore: true }] : []), ...accounts.map((item, index) => (index === 0 ? { ...item, separatorBefore: true } : item))];
     return [...move, ...rest.map((item, index) => (move.length && index === 0 ? { ...item, separatorBefore: true } : item))];
   }
   const raised: SidebarMenuItem | null = update && updateTop ? {
@@ -504,7 +511,7 @@ export function profileMenuItems({
   const groups = [
     move,
     present(raised),
-    [...present(usageItem, dashboardItem), ...phone, { ...support, submenu: raised ? help : [...help, ...present(update)] }, settings],
+    [...present(usageItem, dashboardItem), ...phone, { ...support, submenu: raised ? help : [...help, ...present(update)] }, feedback, settings],
     simple.tools,
     [...simple.places, ...present(accountItem)],
     accounts,
@@ -527,7 +534,7 @@ export interface MenuAccountHeader {
 }
 
 /** Grok's profile menu: the account (address and plan) first, then the phone app, the account dashboard, Support (help,
- * shortcuts, feedback, about) and Settings, and Sign out on its own last row. Everything else the menu once held is in Settings. */
+ * shortcuts, about), Give feedback and Settings, and Sign out on its own last row. Everything else the menu once held is in Settings. */
 export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback, onAbout, onSettings, onAddAccount, onNeedsYou, onDashboard, accounts, header = null }: {
   /** the account block; this app's own page draws it from the account in use when none is given */
   header?: MenuAccountHeader | null;
@@ -563,11 +570,11 @@ export function grokProfileMenuItems({ onGetApp, onHelp, onShortcuts, onFeedback
     { key: "support", label: t("sidebar.grok.support"), icon: icon("book"), onSelect: () => {}, submenu: [
       { key: "help", label: t("sidebar.menu.help"), icon: icon("question-circle"), onSelect: onHelp },
       { key: "shortcuts", label: t("sidebar.menu.shortcuts"), icon: icon("keyboard"), onSelect: onShortcuts },
-      { key: "feedback", label: t("sidebar.menu.feedback"), icon: icon("mail"), onSelect: onFeedback },
       ...(trailAvailable() ? [{ key: "usage-log", label: t("sidebar.menu.exportUsageLog"), icon: icon("file-list"), onSelect: () => void exportUsageLog("support").catch(() => {}) } satisfies SidebarMenuItem] : []),
       { key: "about", label: t("sidebar.menu.about"), icon: icon("info"), onSelect: onAbout },
       ...devItems(icon("code")),
     ] },
+    { key: "feedback", label: t("giveFeedback.card"), icon: icon("mail"), onSelect: onFeedback },
     { key: "settings", label: t("sidebar.menu.settings"), icon: icon("gear"), onSelect: onSettings },
   ];
   const needsYou: SidebarMenuItem[] = onNeedsYou ? [{ key: "needs-you", label: t("sidebar.account.automationsNeedYou"), icon: icon("alarm-clock"), attention: true, attentionTone: "danger", onSelect: onNeedsYou }] : [];

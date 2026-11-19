@@ -1,3 +1,4 @@
+import { friendlyError } from "@/lib/plain-error";
 import { useState } from "react";
 
 import { newAttemptId, signInWithBrowserGrant } from "../lib/session";
@@ -17,7 +18,7 @@ export function BrowserSignInPage({ credential, owner }: { credential: string; o
       return;
     }
     setBusy(false);
-    setError(result.error);
+    setError(friendlyError(result.error));
   }
 
   return (

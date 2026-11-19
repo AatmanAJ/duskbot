@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createPartsDownloader, downloadPart, installPart, parsePartsManifest, partInstalled, verifyMacSignatures, type PartSpec,
+  createPartsDownloader, downloadPart, installPart, parsePartsManifest, partInstalled, partSources, verifyMacSignatures, type PartSpec,
 } from "./app-parts.ts";
 import { browserPartPending, browserEngineStatus, resolveAgentBrowserBinary } from "./browser-engine.ts";
 import { createBrowserPartHost, type BrowserPartFrame } from "./host/browser-part.ts";
@@ -181,6 +181,28 @@ describe("createPartsDownloader", () => {
     expect(await downloader.ready("browser")).toBe(true);
     expect(states).toContain("failed");
     expect(states.at(-1)).toBe("ready");
+    downloader.stop();
+  });
+
+  it("GitHub failing for a downloads-repo part takes dusk.bot's copy on the next try, resuming the kept bytes", async () => {
+    const root = temp();
+    const zip = bundleZip();
+    const github = "https://github.com/DuskBotAI/duskbot-releases/releases/download/v0.2.20/DuskBot-0.2.20-browser-darwin-arm64.zip";
+    const mirror = "https://dusk.bot/releases/0.2.20/DuskBot-0.2.20-browser-darwin-arm64.zip";
+    expect(partSources(github)).toEqual([github, mirror]);
+    expect(partSources("https://example.test/part.zip")).toEqual(["https://example.test/part.zip"]);
+    const cut = Math.floor(zip.length / 2);
+    const asked: Array<[string, string | null]> = [];
+    const { fetchImpl: served } = server(zip, { cutAt: cut });
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      asked.push([url, (init?.headers as Record<string, string> | undefined)?.range ?? null]);
+      if (url === github && asked.length > 1) return new Response("unavailable", { status: 503 });
+      return served(url, init);
+    }) as unknown as typeof fetch;
+    const downloader = createPartsDownloader({ manifest: { v: 1, parts: [spec(zip, { url: github })] }, root, platform: "linux", fetchImpl, retryMs: [10] });
+    downloader.start();
+    await vi.waitFor(() => expect(downloader.state("browser")?.phase).toBe("ready"));
+    expect(asked).toEqual([[github, null], [mirror, `bytes=${cut}-`]]);
     downloader.stop();
   });
 

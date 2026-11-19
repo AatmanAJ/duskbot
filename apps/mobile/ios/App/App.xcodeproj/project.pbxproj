@@ -22,6 +22,9 @@
 		D05C000B2F00000100B07D05 /* SpeechRecognizerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C000C2F00000100B07D05 /* SpeechRecognizerPlugin.swift */; };
 		D05C000D2F00000100B07D05 /* GlassChromePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */; };
 		D05C000F2F00000100B07D05 /* NativeMenuPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */; };
+		D05C00F12F00000100B07D05 /* HapticsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00F22F00000100B07D05 /* HapticsPlugin.swift */; };
+		D05C01112F00000100B07D05 /* GlassVoiceWave.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C01122F00000100B07D05 /* GlassVoiceWave.swift */; };
+		D05C01132F00000100B07D05 /* GlassHomeBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C01142F00000100B07D05 /* GlassHomeBar.swift */; };
 		D05C00052F00000100B07D05 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D05C00062F00000100B07D05 /* PrivacyInfo.xcprivacy */; };
 		E1A100112F00000100B07D05 /* TurnActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100012F00000100B07D05 /* TurnActivityPlugin.swift */; };
 		F2B100112F00000100B07D05 /* PhoneNotificationsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B100012F00000100B07D05 /* PhoneNotificationsPlugin.swift */; };
@@ -75,6 +78,9 @@
 		D05C000C2F00000100B07D05 /* SpeechRecognizerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizerPlugin.swift; sourceTree = "<group>"; };
 		D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassChromePlugin.swift; sourceTree = "<group>"; };
 		D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMenuPlugin.swift; sourceTree = "<group>"; };
+		D05C00F22F00000100B07D05 /* HapticsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsPlugin.swift; sourceTree = "<group>"; };
+		D05C01122F00000100B07D05 /* GlassVoiceWave.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassVoiceWave.swift; sourceTree = "<group>"; };
+		D05C01142F00000100B07D05 /* GlassHomeBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassHomeBar.swift; sourceTree = "<group>"; };
 		D05C00062F00000100B07D05 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D05C00072F00000100B07D05 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		E1A100012F00000100B07D05 /* TurnActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivityPlugin.swift; sourceTree = "<group>"; };
@@ -156,6 +162,9 @@
 				D05C000C2F00000100B07D05 /* SpeechRecognizerPlugin.swift */,
 				D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */,
 				D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */,
+				D05C00F22F00000100B07D05 /* HapticsPlugin.swift */,
+				D05C01122F00000100B07D05 /* GlassVoiceWave.swift */,
+				D05C01142F00000100B07D05 /* GlassHomeBar.swift */,
 				E1A100012F00000100B07D05 /* TurnActivityPlugin.swift */,
 				F2B100012F00000100B07D05 /* PhoneNotificationsPlugin.swift */,
 				F2B100022F00000100B07D05 /* NotificationPresentation.swift */,
@@ -317,6 +326,9 @@
 				D05C000B2F00000100B07D05 /* SpeechRecognizerPlugin.swift in Sources */,
 				D05C000D2F00000100B07D05 /* GlassChromePlugin.swift in Sources */,
 				D05C000F2F00000100B07D05 /* NativeMenuPlugin.swift in Sources */,
+				D05C00F12F00000100B07D05 /* HapticsPlugin.swift in Sources */,
+				D05C01112F00000100B07D05 /* GlassVoiceWave.swift in Sources */,
+				D05C01132F00000100B07D05 /* GlassHomeBar.swift in Sources */,
 				E1A100112F00000100B07D05 /* TurnActivityPlugin.swift in Sources */,
 				E1A100122F00000100B07D05 /* TurnActivity.swift in Sources */,
 				F2B100112F00000100B07D05 /* PhoneNotificationsPlugin.swift in Sources */,
@@ -488,7 +500,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = bot.dusk.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -512,7 +524,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = bot.dusk.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "$(DUSK_APP_PROFILE)";
@@ -536,7 +548,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = bot.dusk.mobile.activity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -560,7 +572,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = bot.dusk.mobile.activity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "$(DUSK_WIDGET_PROFILE)";

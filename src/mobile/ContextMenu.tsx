@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/cn";
 import { haptic } from "./haptics";
-import { feel, prefersReducedMotion, springEasing } from "./motion";
+import { dismiss, feel, holdPress, prefersReducedMotion, springEasing } from "./motion";
 
 export interface ContextAction {
   key: string;
@@ -14,8 +14,9 @@ export interface ContextAction {
   onSelect: () => void;
 }
 
-/** A touch handed to the system's context menu instead of the page's own hold. */
-export interface NativePress { press(el: HTMLElement): void; cancel(): void }
+/** A touch handed to the system's context menu instead of the page's own hold. `opened` runs when the system menu
+ * shows, so the tap that ends the hold does not also open the item under it. */
+export interface NativePress { press(el: HTMLElement, opened: () => void): void; cancel(): void }
 
 const HOLD_MS = 430;
 const MOVE_CANCEL = 8;
@@ -31,14 +32,15 @@ export function holdSink(el: HTMLElement): (on: boolean | null) => void {
     anim?.cancel();
     anim = null;
     if (on) {
-      // a tap presses as fast as any button; a hold keeps sinking until the menu takes over
-      const wide = el.getBoundingClientRect().width > 180;
-      const press = wide ? feel.press.wide : feel.press.scale;
-      const deep = press - (wide ? 0.015 : 0.03);
+      // still for a moment (a tap or a scroll never moves it), then it shrinks by 15pt of its width until the menu takes over
+      const width = Math.max(holdPress.inset * 2, el.getBoundingClientRect().width);
+      const shrunk = (width - holdPress.inset) / width;
+      const still = holdPress.stillMs / HOLD_MS;
       anim = el.animate([
-        { scale: "1", easing: "cubic-bezier(.22,1,.36,1)" },
-        { scale: String(press), offset: feel.press.inMs / HOLD_MS, easing: "ease-in-out" },
-        { scale: String(deep) },
+        { scale: "1", offset: 0 },
+        { scale: "1", offset: still, easing: "cubic-bezier(.22,1,.36,1)" },
+        { scale: String(shrunk), offset: Math.min(1, still + holdPress.shrinkMs / HOLD_MS) },
+        { scale: String(shrunk) },
       ], { duration: HOLD_MS, fill: "forwards" });
     } else if (on === false && now !== 1) {
       el.animate([{ scale: String(now) }, { scale: "1" }], { duration: release.duration, easing: release.easing });
@@ -77,7 +79,7 @@ export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: 
       if (event.touches.length !== 1) { cancel(); press?.cancel(); return; }
       fired = false;
       start = { x: event.touches[0].clientX, y: event.touches[0].clientY };
-      if (press) { press.press(el); return; }
+      if (press) { press.press(el, () => { fired = true; window.clearTimeout(timer); timer = 0; }); return; }
       sink(true);
       timer = window.setTimeout(fire, HOLD_MS);
     };
@@ -218,14 +220,14 @@ export function ContextMenu({ open, anchor, preview, actions, label, onClose, re
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose, layout]);
 
-  const fadeOut = { duration: feel.exit.fade, ease: [0.22, 1, 0.36, 1] as const };
+  const fadeOut = { duration: feel.exit.fade, ease: dismiss.ease };
   const item = {
-    off: { opacity: 0, y: reduced ? 0 : 6, filter: reduced ? "blur(0px)" : "blur(3px)" },
-    on: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: feel.enter.fade, ease: [0.22, 1, 0.36, 1] as const } },
+    off: { opacity: 0, y: reduced ? 0 : 6 },
+    on: { opacity: 1, y: 0, transition: { duration: feel.enter.fade, ease: [0.22, 1, 0.36, 1] as const } },
   };
   const glyph = {
-    off: { opacity: 0, scale: reduced ? 1 : 0.5, y: reduced ? 0 : 8, filter: reduced ? "blur(0px)" : "blur(3px)" },
-    on: { opacity: 1, scale: 1, y: 0, filter: "blur(0px)", transition: { type: "spring" as const, stiffness: 600, damping: 30, opacity: { duration: feel.enter.fade } } },
+    off: { opacity: 0, scale: reduced ? 1 : 0.5, y: reduced ? 0 : 8 },
+    on: { opacity: 1, scale: 1, y: 0, transition: { type: "spring" as const, stiffness: 600, damping: 30, opacity: { duration: feel.enter.fade } } },
   };
 
   return createPortal(
@@ -243,7 +245,7 @@ export function ContextMenu({ open, anchor, preview, actions, label, onClose, re
             aria-hidden
             className="pointer-events-none absolute"
             style={{ left: layout.left, top: anchor.top, width: anchor.width, height: layout.height, transformOrigin: layout.end ? "right center" : "left center" }}
-            initial={{ scale: reduced ? 1 : anchor.width > 180 ? feel.press.wide - 0.015 : feel.press.scale - 0.03, y: 0 }}
+            initial={{ scale: reduced ? 1 : Math.max(0, anchor.width - holdPress.inset) / Math.max(holdPress.inset * 2, anchor.width), y: 0 }}
             animate={{ scale: reduced ? 1 : layout.height > 240 ? 1.01 : feel.lift.scale, y: layout.top - anchor.top }}
             exit={{ scale: 1, y: 0, transition: reduced ? { duration: 0 } : feel.soft }}
             transition={reduced ? { duration: 0 } : feel.lift.spring}

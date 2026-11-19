@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+process.env.FAKE_CHAT_RETRY_SCALE = "0.001";
 
 import { ensureDirs, NATIVE_DIR } from "../config.ts";
 import { BUILT_IN_DATA_SYSTEM_PROMPT } from "../data/instructions.ts";
@@ -556,11 +557,11 @@ describe("optional built-in question compatibility", () => {
     });
     await f.start({ integrations: undefined });
     expect(await f.completed()).toMatchObject({ ok: false });
-    expect(f.requests).toHaveLength(1);
-    expect(f.requests[0].tools?.map(tool => tool.function.name)).toEqual(["ask_user"]);
+    expect(f.requests).toHaveLength(status === 429 || status === 500 ? 3 : 1);
+    for (const request of f.requests) expect(request.tools?.map(tool => tool.function.name)).toEqual(["ask_user"]);
   });
 
-  it("does not retry network failures or strip tools mounted by the person", async () => {
+  it("retries a network failure the same way and never strips tools mounted by the person", async () => {
     for (const network of [false, true]) {
       const f = await fixture((_body, response) => {
         if (network) return response.destroy(new Error("tools are not supported"));
@@ -569,7 +570,7 @@ describe("optional built-in question compatibility", () => {
       });
       await f.start(network ? { integrations: undefined } : {});
       expect(await f.completed()).toMatchObject({ ok: false });
-      expect(f.requests).toHaveLength(1);
+      expect(f.requests).toHaveLength(network ? 3 : 1);
       if (!network) expect(f.requests[0].tools?.some(tool => tool.function.name === "audit_write")).toBe(true);
       expect(f.effects()).toEqual([]);
     }
@@ -984,7 +985,7 @@ describe("structured tool execution boundaries", () => {
     });
     await f.start({ approvalMode: "full" });
     expect(await f.completed()).toMatchObject({ ok: false });
-    expect(f.requests).toHaveLength(2);
+    expect(f.requests).toHaveLength(status === 500 ? 4 : 2);
     expect(f.requests[1].messages.find((message) => message.role === "assistant")).toMatchObject({ reasoning_content: "Synthetic reasoning." });
     expect(f.effects()).toEqual([{ name: "receipt", value: "done" }]);
   });
@@ -1256,7 +1257,84 @@ describe("structured tool execution boundaries", () => {
     expect(f.recorder.events.some((event) => event.type === "runtime.error" || (event.type === "item.completed" && event.itemType === "tool" && !event.ok))).toBe(true);
   });
 
-  it("never retries a provider error after a tool's effect has already happened", async () => {
+  it("resends a request a provider hiccup refused after a step ran, carrying the step's result instead of repeating it", async () => {
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
+      else if (round === 2) { response.writeHead(503); response.end("Synthetic provider unavailable"); }
+      else sse(response, [chunk({ content: "The receipt is stored." }, "stop")]);
+    }, "grok");
+    await f.start();
+    await f.decide();
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toHaveLength(1);
+    expect(f.requests).toHaveLength(3);
+    expect(f.requests[2]).toEqual(f.requests[1]);
+    expect(f.requests[2].messages.some((entry) => entry.role === "tool" && entry.tool_call_id === "call_write")).toBe(true);
+    expect(f.recorder.events.filter((event) => event.type === "turn.retrying")).toEqual([expect.objectContaining({ attempt: 1, reason: "server_error" })]);
+  });
+
+  it.each(["openai-compat", "grok"] as const)("asks a %s model once more for a tool call it leaked as raw harmony tokens, and never shows or runs the tokens", async (provider) => {
+    const leaked = "<|start|>assistant<|channel|>commentary to=functions.audit_write <|constrain|>json<|message|>{\"value\":\"done\"}<|call|>";
+    const f = await fixture((_body, response, round) => sse(response, [chunk({ content: round === 1 ? leaked : "Nothing needed writing." }, "stop")]), provider);
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toEqual([]);
+    expect(f.requests).toHaveLength(2);
+    const shown = f.recorder.events.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
+    expect(shown).toEqual(["Nothing needed writing."]);
+    const streamed = f.recorder.events.flatMap((event) => event.type === "content.delta" ? [event.delta] : []).join("");
+    expect(streamed).toBe("Nothing needed writing.");
+  });
+
+  it("asks again for an answer when the model sent its working notes as the reply, and never shows them", async () => {
+    const notes = "We need to respond to the user. The user wants the receipt stored. According to guidelines we should call the tool.";
+    const f = await fixture((body, response, round) => {
+      if (round === 2) expect(String(body.messages.at(-1)?.content)).toContain("your own working notes");
+      sse(response, [chunk({ content: round === 1 ? notes : "Nothing needed storing." }, "stop")]);
+    }, "grok");
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.requests).toHaveLength(2);
+    const shown = f.recorder.events.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
+    expect(shown).toEqual(["Nothing needed storing."]);
+    const streamed = f.recorder.events.flatMap((event) => event.type === "content.delta" ? [event.delta] : []).join("");
+    expect(streamed).toBe("Nothing needed storing.");
+  });
+
+  it("ends a turn whose model leaks raw tool tokens twice as a broken tool call, never as its reply", async () => {
+    const leaked = "<|channel|>commentary to=functions.audit_write <|message|>{}<|call|>";
+    const f = await fixture((_body, response) => sse(response, [chunk({ content: leaked }, "stop")]));
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: false });
+    expect(f.requests).toHaveLength(2);
+    expect(f.recorder.events.some((event) => event.type === "item.completed" && event.itemType === "assistant_text")).toBe(false);
+  });
+
+  it("reports a long rate limit after a step ran as the engine's limit, and the next turn here carries the step instead of repeating it", async () => {
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
+      else if (round === 2) { response.writeHead(429, { "content-type": "application/json", "retry-after": "120" }); response.end('{"error":{"message":"Rate limit reached"}}'); }
+      else sse(response, [chunk({ content: "The receipt is stored." }, "stop")]);
+    });
+    const before = Date.now();
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: false });
+    expect(f.requests).toHaveLength(2);
+    const limited = f.recorder.events.find((event) => event.type === "runtime.error");
+    expect(limited).toMatchObject({ limit: "engine" });
+    expect((limited as { limitResetsAt?: number }).limitResetsAt).toBeGreaterThanOrEqual(before + 120_000);
+    expect(f.effects()).toHaveLength(1);
+    f.recorder.events.length = 0;
+    await f.start({ approvalMode: "full", text: "[dusk bot: the limit has reset. Carry on.]" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toHaveLength(1);
+    const resumed = f.requests[2]!.messages;
+    expect(resumed.at(-1)).toMatchObject({ role: "user" });
+    expect(resumed.at(-3)).toMatchObject({ role: "assistant", tool_calls: [expect.objectContaining({ id: "call_write" })] });
+    expect(resumed.at(-2)).toMatchObject({ role: "tool", tool_call_id: "call_write" });
+  });
+
+  it("gives up on a provider that keeps refusing after a step ran, without repeating the step", async () => {
     const f = await fixture((_body, response, round) => {
       if (round === 1) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
       else { response.writeHead(503); response.end("Synthetic provider unavailable"); }
@@ -1265,8 +1343,7 @@ describe("structured tool execution boundaries", () => {
     await f.decide();
     expect(await f.completed()).toMatchObject({ ok: false });
     expect(f.effects()).toHaveLength(1);
-    expect(f.requests).toHaveLength(2);
-    expect(f.recorder.events.some((event) => event.type === "turn.retrying")).toBe(false);
+    expect(f.requests).toHaveLength(4);
     expect(f.recorder.events.filter((event) => event.type === "turn.completed")).toHaveLength(1);
   });
 

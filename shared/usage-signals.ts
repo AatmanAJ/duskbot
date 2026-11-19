@@ -77,6 +77,8 @@ const CODE_TOKEN = /^(?:[a-z][a-z0-9]*(?:_[a-z0-9]+){1,6}|[a-z]+(?:[A-Z][a-z0-9]
 const DRIVER_CODE = /^(?:[a-z][a-zA-Z0-9_]{1,39}|[A-Z][A-Za-z0-9]{1,40}Error)$/;
 /** a driver's own error code, kept only when it is an identifier; anything else is dropped */
 export const failureCode = (value: unknown): string | undefined => typeof value === "string" && value.length <= 40 && DRIVER_CODE.test(value) ? value : undefined;
+/** a JSON-RPC error's numeric code as a driver code ("rpc_32603"), for an engine whose error named no code of its own */
+export const rpcCode = (value: unknown): string | undefined => Number.isInteger(value) && Math.abs(value as number) < 100_000 ? `rpc_${Math.abs(value as number)}` : undefined;
 /** a driver's code hint ("httpConnectionFailed:http_502") as its checked parts */
 const hintParts = (value: unknown): string[] => typeof value === "string" && value.length <= DETAIL_MAX
   ? value.split(":").filter((part, index) => index === 0 ? !!failureCode(part) : /^http_\d{3}$/.test(part) || !!failureCode(part)) : [];
@@ -99,7 +101,9 @@ const CODE_REASONS: ReadonlyArray<[RegExp, UsageReason]> = [
   [/^(?:rate_limit_exceeded|rate_limit_error|free_rate_limited)$/, "rate_limit"],
   [/^(?:unauthorized|invalid_api_key|authentication_error|permission_error|ProviderAuthError|invalid_credentials|inactive_subscription)$/, "auth"],
   [/^(?:model_not_found|ProviderModelNotFoundError|unknown_model|provider_not_configured)$/, "model_not_found"],
-  [/^(?:badRequest|invalid_request_error|invalid_request)$/, "bad_request"],
+  [/^(?:badRequest|invalid_request_error|invalid_request|rpc_32700|rpc_32600|rpc_32601|rpc_32602)$/, "bad_request"],
+  [/^(?:announced_no_action|max_steps)$/, "no_reply"],
+  [/^(?:tool_args_malformed|reused_call_id)$/, "tool"],
   [/^(?:internalServerError|serverOverloaded|responseTooManyFailedAttempts|overloaded_error|api_error|server_error|upstream_outage|free_busy)$/, "provider_down"],
   [/^(?:httpConnectionFailed|responseStreamConnectionFailed|responseStreamDisconnected)$/, "network"],
   [/^(?:free_timeout)$/, "timeout"],

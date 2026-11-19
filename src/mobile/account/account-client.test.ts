@@ -392,3 +392,14 @@ describe("phone code", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("the platform analytics counts a phone as", () => {
+  it("is the native app's own, or the browser's phone from its user agent", async () => {
+    const { analyticsPlatform } = await import("./account-client");
+    expect(analyticsPlatform("ios", "")).toBe("ios");
+    expect(analyticsPlatform("android", "")).toBe("android");
+    expect(analyticsPlatform("web", "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X)")).toBe("ios");
+    expect(analyticsPlatform("web", "Mozilla/5.0 (Linux; Android 16; SM-S931B)")).toBe("android");
+    expect(analyticsPlatform("web", "Mozilla/5.0 (X11; Linux x86_64)")).toBe("linux");
+  });
+});

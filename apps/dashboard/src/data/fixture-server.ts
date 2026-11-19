@@ -1,5 +1,5 @@
 import { appSlug, COMMAND_KINDS } from "../../../../shared/dashboard-protocol";
-import type { CommandKind, CommandView, ConnectorsAnswer, WorkspaceDetail } from "../../../../shared/dashboard-protocol";
+import type { CommandKind, CommandView, ConnectFinishAnswer, ConnectorsAnswer, WorkspaceDetail } from "../../../../shared/dashboard-protocol";
 import { PULSE_INTERVAL_MS, PULSE_SIZE, type PulseAnswer, type PulseSample } from "../../../../shared/machine-pulse";
 import { ApiError, FIXTURE } from "../lib/api";
 import type { BundleId, CheckoutRequest, CloudDesktop, DesktopId, MachineSpec, NotificationPrefs, Selection, Subscription } from "./contracts";
@@ -101,12 +101,23 @@ function syncCloud(selection: Selection, id: string, now: number) {
 
 export const FIXTURE_SIGN_IN_MS = 4000;
 
+/** the fixture keeps no state across the sign-in's page load, so its connect state carries the workspace and app */
+const fixtureConnectState = (workspaceId: string, slug: string) => btoa(JSON.stringify([workspaceId, slug])).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_").padEnd(32, "A");
+function fixtureConnectTarget(state: string): { workspaceId: string; slug: string } | null {
+  try {
+    const [workspaceId, slug] = JSON.parse(atob(state.replace(/A+$/, "").replace(/-/g, "+").replace(/_/g, "/"))) as unknown[];
+    return typeof workspaceId === "string" && typeof slug === "string" ? { workspaceId, slug } : null;
+  } catch { return null; }
+}
+
 function completeCommand(detail: WorkspaceDetail, command: CommandView, now: number) {
   command.status = "done"; command.doneAt = command.issuedAt + 1200; command.message = "Done.";
   const s = current(), id = detail.workspace.id;
   if (command.kind === "app.connect") {
     command.message = "Sign-in is ready.";
     command.url = `https://connect.composio.dev/link/fixture-${command.target}`;
+    // the fixture's provider says yes at once and sends the tab back, as Composio does to a callback
+    if (command.callback) { command.url = `${command.callback}&status=success`; command.returnsHere = true; return; }
     s.pendingApps[id] = [...new Set([...(s.pendingApps[id] ?? []), command.target])];
     s.signIns.set(command.id, { workspaceId: id, slug: command.target, at: now + FIXTURE_SIGN_IN_MS });
   }
@@ -345,6 +356,16 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     }
     return cloud;
   }
+  if (method === "POST" && path === "/v1/connect/finish") {
+    const found = typeof b.state === "string" ? fixtureConnectTarget(b.state) : null;
+    if (!found || !s.workspaces.has(found.workspaceId)) fail("This sign-in link expired. Connect the app again.", 404, "connect_expired");
+    const outcome = b.status === "success" ? "signed-in" : "cancelled";
+    if (outcome === "signed-in") {
+      s.pendingApps[found!.workspaceId] = [...new Set([...(s.pendingApps[found!.workspaceId] ?? []), found!.slug])];
+      s.signIns.set(`finish-${found!.slug}`, { ...found!, at: now + FIXTURE_SIGN_IN_MS });
+    }
+    return { ...found!, outcome } satisfies ConnectFinishAnswer;
+  }
   if (method === "GET" && path === "/v1/connectors") {
     const ids = [...s.workspaces.keys()], each = <T,>(value: (id: string) => T) => Object.fromEntries(ids.map((id) => [id, value(id)]));
     return { byWorkspace: each((id) => s.connections[id] ?? []), inApp: each((id) => fixtureAppsInApp()[id] ?? []), pending: each((id) => s.pendingApps[id] ?? []), available: each(() => true), at: each(() => now) } satisfies ConnectorsAnswer;
@@ -372,7 +393,8 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
         if (!appSlug(b.target)) fail("Command is invalid.", 400, "invalid_command");
         if (workspaceDetail(detail, now).workspace.freshness === "offline") fail(detail.workspace.kind === "vps" ? "This cloud is asleep or not answering. Wake it from clouds, then try again." : "Your computer is asleep. Connect from the dusk bot app on it, or use dusk cloud.", 409, "workspace_offline");
       }
-      const command: CommandView = { id: `fx-command-${s.nextId++}`, kind: b.kind as CommandKind, target: b.target as string, issuedAt: now, expiresAt: now + 600_000, status: "sent", message: null, doneAt: null };
+      const command: CommandView = { id: `fx-command-${s.nextId++}`, kind: b.kind as CommandKind, target: b.target as string, issuedAt: now, expiresAt: now + 600_000, status: "sent", message: null, doneAt: null,
+        ...(b.kind === "app.connect" && b.returnHere === true ? { callback: `${location.origin}${location.pathname}?connect=${fixtureConnectState(id, b.target as string)}` } : {}) };
       detail.commands.push(command); return { command };
     }
     if (!workspace[2]) {

@@ -230,6 +230,24 @@ describe("v2 pairing", () => {
     expect(channel.close).toHaveBeenCalledOnce();
   });
 
+  it("asks the relay once more when the desktop answered before its device channel was open, so the phone can reach it off wi-fi", async () => {
+    const late = { ...v2Answer(), relay: undefined };
+    const channel = { request: vi.fn().mockResolvedValueOnce(response(late)).mockResolvedValueOnce(response(v2Answer())), close: vi.fn() };
+    vi.spyOn(relay, "open").mockReturnValue(channel);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const { record, token } = await redeemPairing(pairingFromPayload(v2Payload()), fakePlatform().platform);
+    expect(record.relay).toEqual(v2Answer().relay);
+    expect(token).toBe("dusk_sess_test");
+    expect(channel.request).toHaveBeenCalledTimes(2);
+    expect(channel.request.mock.calls[1][3]).toEqual(channel.request.mock.calls[0][3]);
+
+    const stillLate = { request: vi.fn().mockResolvedValueOnce(response(late)).mockRejectedValueOnce(new TypeError("dropped")), close: vi.fn() };
+    vi.spyOn(relay, "open").mockReturnValue(stillLate);
+    const kept = await redeemPairing(pairingFromPayload(v2Payload()), fakePlatform().platform);
+    expect(kept.record).toMatchObject({ transport: "relay", deviceId: "device-1", relay: { base: grantRoute.base, channel: grantRoute.channel } });
+    expect(stillLate.close).toHaveBeenCalledOnce();
+  });
+
   it("stops on the first HTTP answer, including a refusal", async () => {
     const opened = vi.spyOn(relay, "open");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 401)));
@@ -353,6 +371,23 @@ describe("workspace reconnect", () => {
     record.via = [{ kind: "https", url: "https://workspace.test" }, { kind: "companion", url: "http://mac.test:8810", net: "lan", priority: 1 }];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response({}, 503)).mockResolvedValueOnce(response({})));
     expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "bearer", origin: "http://mac.test:8810", token });
+  });
+
+  it("opens on the computer's wi-fi at once while a secure access route and a tailnet name never answer", async () => {
+    const { record, token, platform } = await saved();
+    record.via = [
+      { kind: "companion", url: "https://mac.access.test", net: "hosted", priority: 0 },
+      { kind: "companion", url: "http://mac.tail.ts.net:8810", net: "tailnet", priority: 100 },
+      { kind: "companion", url: "http://192.168.1.20:8810", net: "lan", priority: 200 },
+    ];
+    const hung: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => url.startsWith("http://192.168.1.20")
+      ? Promise.resolve(response({}))
+      : new Promise((_, reject) => init.signal!.addEventListener("abort", () => { hung.push(url); reject(new DOMException("aborted", "AbortError")); }))));
+    const started = Date.now();
+    expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "bearer", origin: "http://192.168.1.20:8810", token });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(hung).toHaveLength(2);
   });
 
   it("removes relay keys with a saved connection", async () => {
