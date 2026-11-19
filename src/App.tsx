@@ -52,6 +52,7 @@ import { useTeamChats } from "@/state/team-chats";
 import { needsYouVersion, useTeamPeopleLoader } from "@/state/team-people";
 import { inboxVersion, useInboxLoader, useInboxPanel, useInboxReady } from "@/state/inbox";
 import { InboxPanel } from "@/components/inbox/InboxPanel";
+import { InboxColumn } from "@/components/inbox/InboxColumn";
 import { PlacesRail } from "@/components/PlacesRail";
 import { CloudHowTo } from "@/components/CloudHowTo";
 import { DesktopCapabilitiesProvider, useCaptionChrome, useDesktopCapabilities, windowFramed } from "@/components/DesktopCapabilities";
@@ -299,6 +300,10 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   }, [dispatch]);
 
   const settingsOverlay = !botPanelDocks;
+  const overlayBot = state.settingsOpen && bot && !remoteClient && settingsOverlay ? bot : null;
+  const overlayBefore = useRef(false);
+  const overlaySlidesIn = !overlayBefore.current;
+  useEffect(() => { overlayBefore.current = overlayBot !== null; });
   // a reload with the panel open keeps its column from the first frame, not only once the bots arrive
   const panelLoading = state.settingsOpen && !bot && !group && state.hydrated !== true && !remoteClient && !settingsOverlay;
   const framed = windowFramed(capabilities);
@@ -361,13 +366,15 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       {macPrompt && macFrom && !firstRun && !noEngines && <MacEmptyMain from={macFrom} onClose={dismissMacPrompt} />}
       {/* Sibling panels need distinct keys: two keyed `bot.id` collide in React's keyed reconciliation. */}
       {state.settingsOpen && bot && remoteClient && <RemoteAgentSettingsPanel bot={bot} />}
-      {state.settingsOpen && bot && !remoteClient && settingsOverlay && <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} overlay />}
+      <AnimatePresence custom={Boolean(overlayBot)}>
+        {overlayBot && <BotSettingsDialog key={`settings:${overlayBot.id}`} bot={overlayBot} overlay slideIn={overlaySlidesIn} />}
+      </AnimatePresence>
       {/* bot and room panels share one slot, so moving between a bot and a room swaps the content without the column closing */}
       <PanelSlot open={Boolean(state.settingsOpen && bot && !remoteClient && !settingsOverlay) || Boolean(roomPanelOpen && group) || panelLoading}>
         {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} />
           : panelLoading ? <PanelPlaceholder onClose={() => dispatch({ type: "toggleSettings", open: false })} /> : null}
       </PanelSlot>
-      {inboxShown && <InboxPanel />}
+      <AnimatePresence initial={false}>{inboxShown && <InboxColumn key="inbox"><InboxPanel /></InboxColumn>}</AnimatePresence>
       </div>
       </div>
       <AnimatePresence>{state.appSettingsOpen && <SettingsModal key="settings" />}</AnimatePresence>
