@@ -96,7 +96,8 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     followRef.current = next;
     setFollow(next);
   }, []);
-  useBottomFollowResize(scrollRef, transcriptRef, followRef, transcriptShown ? transcriptKey : null);
+  const holdAtReply = useCallback(() => setBottomFollow(false), [setBottomFollow]);
+  useBottomFollowResize(scrollRef, transcriptRef, followRef, transcriptShown ? transcriptKey : null, holdAtReply);
 
   useEffect(() => setBottomFollow(true), [transcriptKey, setBottomFollow]);
 
@@ -307,7 +308,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     },
   };
 
-  useArrivalFlow({ scrollRef, clipRef, columnRef: transcriptRef, transcriptKey, following: follow });
+  useArrivalFlow({ scrollRef, clipRef, columnRef: transcriptRef, transcriptKey, following: follow, onHold: holdAtReply });
 
   return {
     scrollRef,
