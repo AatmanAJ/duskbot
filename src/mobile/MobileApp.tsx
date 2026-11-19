@@ -37,6 +37,7 @@ import { useTurnActivities } from "./use-turn-activities";
 import { useOutbox } from "./outbox";
 import { installPress } from "./press";
 import { MessageHold } from "./MessageHold";
+import { ViewerHost } from "./viewers/ViewerHost";
 import { usePlatform } from "./platform";
 import type { MobileSheet } from "./sheets";
 import { PanelDetailsTab } from "@/components/bot-panel/PanelShell";
@@ -224,6 +225,7 @@ function Shell() {
       <SheetHost sheet={sheet} open={sheetOpen} onClose={closeSheet} onOpenSheet={openSheet} onOpenChat={(id) => { closeSheet(); openChat(id); }} />
       <ConnectAppsHost />
       <MessageHold rootRef={rootRef} />
+      <ViewerHost rootRef={rootRef} />
       <AiConsentSheet />
       <Sheet open={desktopOnly} onClose={() => setDesktopOnly(false)} title={t("mobile.desktopOnly.title")}>
         <div className="px-5 pb-[calc(var(--m-safe-bottom)+16px)]">

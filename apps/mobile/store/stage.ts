@@ -106,6 +106,7 @@ async function startLiveTurns(base: string, seeded: Seeded) {
 }
 
 type Message = Record<string, unknown> & { id: string; at: number; role: string; kind: string; parentId?: string | null };
+type Line = [string, string, number, Record<string, unknown>?];
 
 function scripted(seeded: Seeded) {
   const now = Date.now();
@@ -114,16 +115,17 @@ function scripted(seeded: Seeded) {
     const bot = seeded.bots.get(name);
     return bot ? { from: { botId: bot.id, name: bot.name, color: bot.color } } : {};
   };
-  const build = (threadId: string, chat: Array<[string, string, number]>, room: boolean) => {
+  /** a chat line is [who, text, minutesAgo] and may add message fields (attachments, a card) as a fourth entry */
+  const build = (threadId: string, chat: Line[], room: boolean) => {
     const messages: Message[] = [];
-    chat.forEach(([who, text, ago], index) => {
-      messages.push({ id: `store-${threadId}-${index}`, at: now - ago * MINUTE, parentId: messages.at(-1)?.id ?? null, role: who === "me" ? "user" : "bot", kind: "text", text, ...(room && who !== "me" ? from(who) : {}) });
+    chat.forEach(([who, text, ago, extra], index) => {
+      messages.push({ id: `store-${threadId}-${index}`, at: now - ago * MINUTE, parentId: messages.at(-1)?.id ?? null, role: who === "me" ? "user" : "bot", kind: "text", text, ...(room && who !== "me" ? from(who) : {}), ...extra });
     });
     return messages;
   };
   for (const one of TEAM) {
     const bot = seeded.bots.get(one.name)!;
-    const messages = build(bot.threadId, one.chat as Array<[string, string, number]>, false);
+    const messages = build(bot.threadId, one.chat as Line[], false);
     let tail: Message | undefined;
     if ("approval" in one && one.approval) {
       tail = { id: `store-${bot.threadId}-approval`, at: now - MINUTE, parentId: messages.at(-1)!.id, role: "bot", kind: "options", text: "",
@@ -131,7 +133,7 @@ function scripted(seeded: Seeded) {
     }
     threads.set(bot.threadId, { messages, unread: Boolean(one.unread), tail });
   }
-  if (seeded.room) threads.set(seeded.room.threadId, { messages: build(seeded.room.threadId, ROOM.chat as Array<[string, string, number]>, true), unread: false });
+  if (seeded.room) threads.set(seeded.room.threadId, { messages: build(seeded.room.threadId, ROOM.chat as Line[], true), unread: false });
   return threads;
 }
 
@@ -287,5 +289,5 @@ export async function startStage(serve: Serve = DEV_SERVER) {
     writeFileSync(join(work, "release"), "");
     stopAll();
   };
-  return { page, open, home, chat, stop };
+  return { page, open, home, chat, stop, base, fixture };
 }

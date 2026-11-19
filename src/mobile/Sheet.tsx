@@ -51,6 +51,12 @@ export function riseOnCompositor(layers: { sheet: HTMLElement; scrim: HTMLElemen
   };
 }
 
+/** A full screen layer that is not a sheet (the picture viewer) closes on Android's back as one does. */
+export function closesOnBack(close: () => void): () => void {
+  OPEN_SHEETS.push(close);
+  return () => { const at = OPEN_SHEETS.indexOf(close); if (at >= 0) OPEN_SHEETS.splice(at, 1); };
+}
+
 /** Closes the top sheet, for Android's back and Escape. False when none is open. */
 export function closeTopSheet(): boolean {
   const close = OPEN_SHEETS.at(-1);
