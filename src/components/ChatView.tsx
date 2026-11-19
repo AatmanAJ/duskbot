@@ -413,8 +413,7 @@ const Bubble = memo(function Bubble({
     const parts = own.current;
     if (parts.entered || !entrance || !parts.bubble) return;
     parts.entered = true;
-    // on the phone the words come with the bubble, so no frame shows an empty one where the typing line just was
-    if (entrance === "grow") growFromMascot(parts.bubble, reduced, phoneApp());
+    if (entrance === "grow") growFromMascot(parts.bubble, reduced);
     else enterFromComposer(parts.bubble, message.sendId, reduced);
   }, [entrance, reduced, message.sendId]);
 
@@ -1138,9 +1137,12 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const lastShownRow = windowedMessages.findLast((message) => !quietRow(message, showToolCalls));
   const lastRowIsBubble = Boolean(lastShownRow && isBotTextRow(lastShownRow, bot.id));
   const presenceUnderBubble = lastRowIsBubble;
-  // on the phone a landing reply takes the typing line's place in the same frame: the line fading on under it, pushed
-  // below the new bubble, read as a flicker
-  const presenceShown = presenceLingers && !(phoneApp() && !presenceVisible && lastRowIsBubble);
+  const lastRowUnderLine = useRef<string | undefined>(undefined);
+  if (presenceVisible) lastRowUnderLine.current = lastShownRow?.id;
+  const replyTookLine = lastRowIsBubble && (phoneApp() || lastShownRow?.id !== lastRowUnderLine.current);
+  // a reply landing as the line leaves takes its place in the same frame: the line fading on under it, pushed below the
+  // new bubble, read as a flicker
+  const presenceShown = presenceLingers && (presenceVisible || !replyTookLine);
   // grok keeps the status line's slot at the end of the conversation whether it shows or not, so it never moves a row
   const statusSlot = windowedMessages.length > 0 || busy;
   const announcement = useMemo((): TranscriptSnapshot => {
