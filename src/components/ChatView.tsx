@@ -1116,11 +1116,13 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const teammatesWorking = !bot.busy && Boolean(bot.waitingForTeammates);
   // the reply is written whole; while the engine types it the mark only looks like it is answering
   const streamingReply = useLiveReplyActive(bot.threadId);
-  const [busySince, setBusySince] = useState<number | null>(null);
+  const chatKey = `${bot.id}:${bot.threadId ?? ""}`;
+  const [busyMark, setBusyMark] = useState<{ chat: string; at: number } | null>(null);
   useEffect(() => {
-    setBusySince(turnBusy ? turnStartedAt ?? Date.now() : null);
-  }, [turnBusy, bot.id, bot.threadId, turnStartedAt]);
-  const presenceSeed = `${bot.id}:${bot.threadId ?? ""}:${busySince ?? ""}`;
+    setBusyMark(turnBusy ? { chat: chatKey, at: turnStartedAt ?? Date.now() } : null);
+  }, [turnBusy, chatKey, turnStartedAt]);
+  const busySince = busyMark?.chat === chatKey ? busyMark.at : null;
+  const presenceSeed = `${chatKey}:${busySince ?? ""}`;
   // grok's line comes 0.55 to 1.2 s after a send, wordless; a bubble waiting on its typing beat brings it at once
   // a turn whose start this client does not know (a chat opened mid-turn from an older server) shows its line at once,
   // and so does a new bot's hello in a chat with nothing in it yet: there is no send for the wait to follow
@@ -1162,9 +1164,9 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const stoppedShown = (stopCut || personStoppedLast(messages)) && !(turnBusy && !stopCut) && !presenceVisible;
   const typingPhrases = useMemo(() => poolWords("typing"), [locale]);
   // the bot's own label stays on the line while it leaves, after the turn's end has cleared it
-  const shownLabel = useRef<{ seed: string; label?: string }>({ seed: presenceSeed });
+  const shownLabel = useRef<{ chat: string; seed: string; label?: string }>({ chat: chatKey, seed: presenceSeed });
   // a new turn starts clean; the end of this one (busySince gone) keeps it
-  if (busySince !== null && shownLabel.current.seed !== presenceSeed) shownLabel.current = { seed: presenceSeed };
+  if (shownLabel.current.chat !== chatKey || (busySince !== null && shownLabel.current.seed !== presenceSeed)) shownLabel.current = { chat: chatKey, seed: presenceSeed };
   if (live.label) shownLabel.current.label = live.label;
   const turnLabel = live.label ?? shownLabel.current.label;
   const waitingOnSomeone = teammatesWorking || pendingApprovals(messages).length > 0;
@@ -1402,6 +1404,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           <TranscriptCardSlot key={transcriptKey}><FailedReplyCard rows={rescuing ? null : trailing} botId={bot.id} threadId={bot.threadId} onRetry={lastUserMessage ? regenerate : undefined} /></TranscriptCardSlot>
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
+            key={chatKey}
             avatar={(shown) => <WorkingMascot bot={bot} size={phoneApp() ? 24 : 26} seed={presenceSeed} mood={moodOfShownWords(shown)} />}
             wordsAtOnce
             simple
