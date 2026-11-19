@@ -162,7 +162,7 @@ export const botWireProjectionIsExact: BotWireProjectionIsExact = true;
 
 const BOTS_FILE = join(DATA_DIR, "bots.json");
 /** Task fields every turn rewrites (store.saveBotsLater). */
-const TURN_MARKS = new Set(["unread", "lastContextModel"]);
+const TURN_MARKS = new Set(["unread", "lastReadMessageId", "lastContextModel"]);
 const GROUPS_FILE = join(DATA_DIR, "groups.json");
 const THREAD_MODEL_COPIES_CLEARED = join(DATA_DIR, "thread-model-copies-cleared");
 const ASKED_AT_FILLED = join(DATA_DIR, "asked-at-filled");
