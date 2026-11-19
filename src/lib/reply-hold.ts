@@ -11,10 +11,16 @@ export function replyHoldTop({ replyTop, inset, end, current }: { replyTop: numb
   return hold;
 }
 
-/** The header's height over the transcript, which the glass skins draw over its top. */
-export function headerInset(scroller: HTMLElement): number {
-  const value = parseFloat(getComputedStyle(scroller).getPropertyValue("--glass-top"));
+const px = (style: CSSStyleDeclaration, name: string) => {
+  const value = parseFloat(style.getPropertyValue(name));
   return Number.isFinite(value) ? value : 0;
+};
+
+/** How much of the transcript's top the person does not see: the header the glass skins draw over it, and on the
+ * iPhone with the keyboard up, the part of the page the native side lifts above the screen (`--m-lift`). */
+export function readingInset(scroller: HTMLElement): number {
+  const style = getComputedStyle(scroller);
+  return px(style, "--glass-top") + px(style, "--m-lift");
 }
 
 /** A row's top in the scroller's content, without whatever translateY the column is drawn at (`drawnAt`). */

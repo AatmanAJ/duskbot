@@ -192,6 +192,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
         if (frame.lift !== undefined) {
           kbTrace(phase === "did" ? "native settled" : "native will", { height, lift: frame.lift });
           nativeRide = true;
+          root.style.setProperty("--m-lift", `${height > 0 ? frame.lift : 0}px`);
           window.clearTimeout(settleTimer);
           // on the way down the covered part is under the keyboard still: given back at once, as it starts to go
           if (phase === "did" || height === 0) liftedInset(height, frame.lift);
@@ -199,6 +200,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
         }
         if (nativeRide && phase === "did") return;
         nativeRide = false;
+        root.style.setProperty("--m-lift", "0px");
         if (height > 0) {
           if (phase === "did") { commitShown(height); return; }
           if (!committed && !root.dataset.keyboard) toLatest(root);

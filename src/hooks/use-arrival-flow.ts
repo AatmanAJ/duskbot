@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { probeMotion } from "@/lib/motion-probe";
-import { contentTop, headerInset, landingReply, replyHoldTop } from "@/lib/reply-hold";
+import { contentTop, readingInset, landingReply, replyHoldTop } from "@/lib/reply-hold";
 
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
 
@@ -178,7 +178,7 @@ export function useArrivalFlow({
     const atEnd = scroller.scrollTop >= Math.min(before.max, max) - 2;
     if (following && atEnd && scroller.scrollTop !== max) scroller.scrollTop = max;
     const reply = following && atEnd ? landingReply(arrivals) : null;
-    const hold = reply && replyHoldTop({ replyTop: contentTop(scroller, reply, glideOffset(column)), inset: headerInset(scroller), end: max, current: before.top });
+    const hold = reply && replyHoldTop({ replyTop: contentTop(scroller, reply, glideOffset(column)), inset: readingInset(scroller), end: max, current: before.top });
     if (hold !== null && hold !== undefined) {
       scroller.scrollTop = hold;
       onHold?.();

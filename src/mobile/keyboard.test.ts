@@ -149,9 +149,11 @@ describe("a keyboard the native side lifts the page for", () => {
     expect(shell.dataset.kbMoving).toBeUndefined();
     keyboard!({ height: 336, phase: "did", lift: 302 });
     expect(shell.style.getPropertyValue("--m-kb")).toBe("34px");
+    expect(shell.style.getPropertyValue("--m-lift"), "what the transcript's follow reads as off screen").toBe("302px");
     expect(shell.dataset.keyboard).toBe("open");
     keyboard!({ height: 0, phase: "will", duration: 0.38, at: Date.now(), lift: 0 });
     expect(shell.style.getPropertyValue("--m-kb")).toBe("0px");
+    expect(shell.style.getPropertyValue("--m-lift")).toBe("0px");
     keyboard!({ height: 0, phase: "did" });
     keyboard!({ height: 0, phase: "did", lift: 0 });
     expect(list().scrollTop).toBe(1600);

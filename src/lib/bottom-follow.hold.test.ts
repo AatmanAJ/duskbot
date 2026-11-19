@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { growthHold } from "./bottom-follow";
 
 const CLIENT = 600;
@@ -13,6 +13,7 @@ function row(top: number, arrival?: "start" | "end") {
   return el;
 }
 
+afterEach(() => { vi.restoreAllMocks(); });
 beforeEach(() => {
   scroller = document.createElement("div");
   transcript = document.createElement("div");
@@ -35,6 +36,16 @@ describe("a reply growing while the transcript follows its end", () => {
     row(700, "start");
     height = 1600;
     expect(growthHold(scroller, transcript)).toBe(660);
+  });
+
+  it("on the iPhone with the keyboard up, rests the reply's top under the header on screen, not in the part lifted above it", () => {
+    // inherited from the phone shell in the app; happy-dom computes no custom properties
+    const vars: Record<string, string> = { "--glass-top": "61px", "--m-lift": "302px" };
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({ getPropertyValue: (name: string) => vars[name] ?? "" } as CSSStyleDeclaration);
+    row(1200, "start");
+    height = 2400;
+    scroller.scrollTop = 400;
+    expect(growthHold(scroller, transcript)).toBe(1200 - 61 - 302 - 40);
   });
 
   it("leaves growth after the person's own message to the usual follow", () => {

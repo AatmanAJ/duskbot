@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
-import { contentTop, growingReply, headerInset, replyHoldTop } from "./reply-hold";
+import { contentTop, growingReply, readingInset, replyHoldTop } from "./reply-hold";
 
 export const BOTTOM_FOLLOW_THRESHOLD = 4;
 
@@ -32,7 +32,7 @@ export function followBottomGrowth(scroller: BottomFollowScroller, following: bo
 export function growthHold(scroller: HTMLElement, transcript: HTMLElement): number | null {
   const reply = growingReply(transcript);
   if (!reply) return null;
-  return replyHoldTop({ replyTop: contentTop(scroller, reply), inset: headerInset(scroller), end: scroller.scrollHeight - scroller.clientHeight, current: scroller.scrollTop });
+  return replyHoldTop({ replyTop: contentTop(scroller, reply), inset: readingInset(scroller), end: scroller.scrollHeight - scroller.clientHeight, current: scroller.scrollTop });
 }
 
 export function useBottomFollowResize(
