@@ -10,6 +10,7 @@ import { useMcpServers } from "@/lib/mcp-servers";
 import { HOSTED_MCP_APPS, type HostedConnections, type HostedMcpAppId } from "@/lib/hosted-mcp-apps";
 import { managedConnectorUnavailableReason } from "../../../shared/connector-availability";
 import { hasActiveConnection } from "@/lib/connector-status";
+import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import type { SkillsLibrarySkillWire } from "../../../shared/wire";
 import { Icon } from "../Icon";
 import { DuskMark } from "../mascot-view";
@@ -226,8 +227,8 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   useEffect(() => {
     let alive = true;
     listLogins().then((answer) => { if (alive) setOnePassword(answer.onePassword ?? { connected: false }); }).catch(() => { if (alive) setOnePassword(null); });
-    fetch("/api/skills-library")
-      .then(async (response) => (response.ok ? ((await response.json()) as { skills?: SkillsLibrarySkillWire[] }).skills ?? [] : []))
+    (skillsLibraryEnabled(state.config) ? fetch("/api/skills-library") : Promise.resolve(null))
+      .then(async (response) => (response?.ok ? ((await response.json()) as { skills?: SkillsLibrarySkillWire[] }).skills ?? [] : []))
       .then((list) => { if (alive) setSkills(list); })
       .catch(() => { if (alive) setSkills([]); });
     return () => { alive = false; };
