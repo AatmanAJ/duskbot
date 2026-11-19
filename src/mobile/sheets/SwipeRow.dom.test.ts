@@ -9,7 +9,7 @@ import { SwipeRow } from "./SwipeRow";
 it("draws no action under a closed row, so its colour never shows at the row's rounded corners", async () => {
   const root = createRoot(document.body.appendChild(document.createElement("div")));
   await act(async () => {
-    root.render(createElement(SwipeRow, { actions: [{ label: "Delete", danger: true, onPress: () => {} }] }, "Morning brief"));
+    root.render(createElement(SwipeRow, { actions: [{ label: "Delete", danger: true, onPress: () => {} }], children: "Morning brief" }));
   });
   const actions = document.querySelector<HTMLElement>("[data-swipe-actions]")!;
   expect(actions.style.visibility).toBe("hidden");
