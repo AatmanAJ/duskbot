@@ -9654,9 +9654,10 @@
   "call.voice.speed.faster": "Faster",
   "call.voice.previewLine": "Hi, this is how I'll sound.",
   "call.voice.account": "Your {provider} voice",
-  "mobile.settings.liveActivity": "Live Activity",
-  "mobile.settings.liveActivityDetail": "Shows a bot's progress on the Lock Screen. Reply notifications still come when it's off.",
+  "mobile.settings.liveActivity": "Live activity",
+  "mobile.settings.liveActivityDetail": "Shows a bot's progress on the lock screen. Reply notifications still come when it's off.",
   "mobile.settings.allowNotifications": "Turn on notifications",
   "mobile.settings.allowNotificationsDetail": "Get a notification when a bot replies.",
-  "mobile.settings.allowNotificationsDenied": "Notifications are off for dusk bot. Turn them on in Settings."
+  "mobile.settings.allowNotificationsDenied": "Notifications are off for dusk bot. Turn them on in settings.",
+  "composer.dictation.language": "Dictation can't listen in this language on this phone. Pick another in settings › voice, then try again."
 }

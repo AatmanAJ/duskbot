@@ -5760,5 +5760,6 @@
   "mobile.settings.liveActivityDetail": "Muestra el progreso de un bot en la pantalla bloqueada. Las notificaciones de respuesta siguen llegando aunque esté desactivada.",
   "mobile.settings.allowNotifications": "Activar notificaciones",
   "mobile.settings.allowNotificationsDetail": "Recibe una notificación cuando un bot responda.",
-  "mobile.settings.allowNotificationsDenied": "Las notificaciones de dusk bot están desactivadas. Actívalas en Ajustes."
+  "mobile.settings.allowNotificationsDenied": "Las notificaciones de dusk bot están desactivadas. Actívalas en Ajustes.",
+  "composer.dictation.language": "El dictado no puede escuchar en este idioma en este teléfono. Elige otro en Ajustes › Voz y vuelve a intentarlo."
 }
