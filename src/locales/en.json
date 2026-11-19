@@ -9673,7 +9673,7 @@
   "purchase.cancelled": "Cancelled, nothing was bought",
   "purchase.expired": "Not answered in time, nothing was bought",
   "emailReview.title": "Send this email?",
-  "emailReview.recordTitle": "Email from {app}",
+  "emailReview.recordTitle": "Email via {app}",
   "emailReview.to": "To",
   "emailReview.cc": "Cc",
   "emailReview.subject": "Subject",

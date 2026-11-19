@@ -337,10 +337,7 @@ export function PendingApprovalActions({
         : !pending.allowKey && pending.allowSession
           ? { name: t("approval.action.alwaysAllowSession"), hint: t("approval.action.alwaysAllowSessionHint"), run: () => decide("allow", true) }
           : null;
-  if (purchase || email) {
-    if (part === "more") return null;
-    return <ReviewActions requestId={pending.requestId} purchase={Boolean(purchase)} email={email} marked={marked} decide={decide} />;
-  }
+  if ((purchase || email) && part !== "more") return <ReviewActions requestId={pending.requestId} purchase={Boolean(purchase)} email={email} marked={marked} decide={decide} />;
   const more = showMore && !durableRequest ? [
     <button key="cancel" type="button" onClick={onCancelTurn} className={cardTertiary(CARD_BUTTON_MD)}>
       {t("approval.action.cancelTurn")}

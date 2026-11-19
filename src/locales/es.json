@@ -5773,7 +5773,7 @@
   "purchase.cancelled": "Cancelado, no se compró nada",
   "purchase.expired": "Sin respuesta a tiempo, no se compró nada",
   "emailReview.title": "¿Enviar este correo?",
-  "emailReview.recordTitle": "Correo de {app}",
+  "emailReview.recordTitle": "Correo por {app}",
   "emailReview.to": "Para",
   "emailReview.cc": "Cc",
   "emailReview.subject": "Asunto",

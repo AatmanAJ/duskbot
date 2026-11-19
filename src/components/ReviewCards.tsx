@@ -161,7 +161,7 @@ export function ProductsMessage({ message }: { message: Message }) {
       <ul role="list" aria-label={card.title ?? t("products.label")} className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
         {card.items.map((item, index) => (
           <li key={index} className="flex w-44 shrink-0 snap-start flex-col overflow-hidden rounded-[16px] bg-panel pointer-coarse:w-40">
-            <div className="flex aspect-square items-center justify-center overflow-hidden bg-(--card-fill)">
+            <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-(--card-fill)">
               {item.image && photos
                 ? <img src={item.image} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" draggable={false} className="size-full object-contain" />
                 : <Store size={22} aria-hidden="true" className="text-ink-tertiary" />}
