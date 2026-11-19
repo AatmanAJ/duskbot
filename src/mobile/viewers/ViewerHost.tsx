@@ -104,7 +104,7 @@ function bridgeFor(platform: ReturnType<typeof usePlatform>, view: PhoneBridge["
     haptic,
     openLink: (url) => void platform.openExternal(url).catch(() => {}),
     share: platform.share,
-    shareFile: webFileShare(),
+    shareFile: platform.shareFile ?? webFileShare(),
     view,
   };
 }

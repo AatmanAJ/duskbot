@@ -129,6 +129,8 @@ export interface MobilePlatform {
   /** Closes the in-app browser sheet openExternal showed, if one is up. */
   closeBrowser?(): void;
   share?(data: { title?: string; text?: string; url?: string }): Promise<void>;
+  /** A file to the system share sheet (Save to Files, Save Image); absent in a build without the file plugin. */
+  shareFile?(file: File): Promise<void>;
   /** Sign in with Apple through the system sheet (iPhone): Apple binds `nonceHash` (sha-256 hex) into the identity token.
    * Null when the person closed the sheet; throws when it failed. */
   appleSignIn?(nonceHash: string): Promise<AppleCredential | null>;

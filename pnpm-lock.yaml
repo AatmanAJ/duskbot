@@ -262,6 +262,9 @@ importers:
       '@capacitor/core':
         specifier: 8.6.0
         version: 8.6.0
+      '@capacitor/filesystem':
+        specifier: 8.1.5
+        version: 8.1.5(@capacitor/core@8.6.0)
       '@capacitor/haptics':
         specifier: 8.0.2
         version: 8.0.2(@capacitor/core@8.6.0)
@@ -423,6 +426,11 @@ packages:
   '@capacitor/core@8.6.0':
     resolution: {integrity: sha512-9F2zzuGYTJu+wqmQSEmqnFBfGrhC/njjMCfmxbvg9mq8xJT4wNh5pxbMFZxvW/yDhYJWPEBFQxeqzfo1gKrvxg==}
 
+  '@capacitor/filesystem@8.1.5':
+    resolution: {integrity: sha512-m1RkI8L83NJeppEKyRWioK3MDp2vjlA+QfUQcF8/xRlcXNC2HYxqoyYJ+K4M0EcVovy+g+4F24S05+bhK4Vgdg==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
   '@capacitor/haptics@8.0.2':
     resolution: {integrity: sha512-c2hZzRR5Fk1tbTvhG1jhh2XBAf3EhnIerMIb2sl7Mt41Gxx1fhBJFDa0/BI1IbY4loVepyyuqNC9820/GZuoWQ==}
     peerDependencies:
@@ -467,6 +475,9 @@ packages:
     resolution: {integrity: sha512-ZMzBUyHBzwDUxcHadEhvOvmoPmMQGMZgaMRJu8ohELeI6IaxoVH9ZhdF/OHnY3/yykv3Glev8Tnbh4aZY/0B0w==}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
+
+  '@capacitor/synapse@1.0.4':
+    resolution: {integrity: sha512-/C1FUo8/OkKuAT4nCIu/34ny9siNHr9qtFezu4kxm6GY1wNFxrCFWjfYx5C1tUhVGz3fxBABegupkpjXvjCHrw==}
 
   '@chevrotain/cst-dts-gen@13.2.0':
     resolution: {integrity: sha512-bA9dvWlhAUcHkNwU+8w9yiUxJPlj/Lm3VqS7MD+NbIR/7LmpNLuK/AWNFdCo/T3SK5ND0/UHf3IJvl/Jn/i6yg==}
@@ -5150,6 +5161,11 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
+  '@capacitor/filesystem@8.1.5(@capacitor/core@8.6.0)':
+    dependencies:
+      '@capacitor/core': 8.6.0
+      '@capacitor/synapse': 1.0.4
+
   '@capacitor/haptics@8.0.2(@capacitor/core@8.6.0)':
     dependencies:
       '@capacitor/core': 8.6.0
@@ -5185,6 +5201,8 @@ snapshots:
   '@capacitor/status-bar@8.0.4(@capacitor/core@8.6.0)':
     dependencies:
       '@capacitor/core': 8.6.0
+
+  '@capacitor/synapse@1.0.4': {}
 
   '@chevrotain/cst-dts-gen@13.2.0':
     dependencies:

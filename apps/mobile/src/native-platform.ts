@@ -47,6 +47,31 @@ interface QrScannerPlugin {
 const QrScanner = registerPlugin<QrScannerPlugin>("QrScanner");
 /** The app's own Sign in with Apple (ios/App/App/AppleSignInPlugin.swift): AuthenticationServices, no SDK. */
 const AppleSignIn = registerPlugin<{ signIn(options: { nonce: string }): Promise<AppleCredential> }>("AppleSignIn");
+/** @capacitor/filesystem 8's native methods, reached by name so a build without the plugin still loads. */
+const Filesystem = registerPlugin<{
+  writeFile(options: { path: string; data: string; directory: "CACHE"; recursive: boolean }): Promise<{ uri: string }>;
+}>("Filesystem");
+
+function base64Of(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** A file through the system share sheet (Save to Files, Save Image, another app). @capacitor/share 8 shares only files
+ * in the app's cache folder on Android without a FileProvider entry of our own, so the copy goes there. */
+async function shareFileNatively(file: File): Promise<void> {
+  const name = file.name.replace(/[\\/:*?"<>|]/g, "_").slice(-120) || "file";
+  const { uri } = await Filesystem.writeFile({ path: `shared/${Date.now()}/${name}`, data: await base64Of(file), directory: "CACHE", recursive: true });
+  try {
+    await Share.share({ files: [uri], title: file.name });
+  } catch (error) {
+    if (!/cancel/i.test(String((error as { message?: unknown })?.message ?? error))) throw error;
+  }
+}
 
 /** The app's own dictation (ios/App/App/SpeechRecognizerPlugin.swift, android .../SpeechRecognizerPlugin.java): the
  * phone's recognizer, offline where it can be. Events carry the session number `start` was given. */
@@ -577,6 +602,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     openExternal: async (url) => { if (/^https?:/i.test(url)) await Browser.open({ url, presentationStyle: "popover" }); else window.location.href = url; },
     closeBrowser() { void Browser.close().catch(() => {}); },
     share: async (data) => { await Share.share(data); },
+    shareFile: Capacitor.isPluginAvailable("Filesystem") ? shareFileNatively : undefined,
     appleSignIn: kind === "ios" && Capacitor.isPluginAvailable("AppleSignIn") ? async (nonceHash) => {
       try { return await AppleSignIn.signIn({ nonce: nonceHash }); } catch (error) {
         if ((error as { code?: unknown }).code === "canceled") return null;
