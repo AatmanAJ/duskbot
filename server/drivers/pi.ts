@@ -803,7 +803,7 @@ export const PiDriver: ProviderDriver<PiConfig> = {
       const failTurn = (message: string, setup?: boolean) => { rejectWaiters(new Error(message)); emit({ ...base(threadId, turnId), type: "runtime.error", message, setup }); settle(false); };
       child.on("error", (err) => { const fail = describeSpawnFailure(err as NodeJS.ErrnoException, config.cli, turn.cwd); failTurn(fail.message, fail.setup); });
       const exitMessage = earlyExitReport("pi", child.stderr);
-      child.on("close", (code, signal) => { if (!settled) failTurn(exitMessage(code, signal)); });
+      child.on("close", (code, signal) => { if (!settled) failTurn(exitMessage(code, signal)); else if (!completion) void settle(false); });
 
       emit({ ...base(threadId, turnId), type: "turn.started" });
 

@@ -12,7 +12,6 @@
   --m-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
   --m-kb: 0px;
   --m-kb-shift: 0px;
-  --m-lift: 0px;
   --m-kb-dur: .25s;
   --m-kb-ease: cubic-bezier(.32, .72, 0, 1);
   height: 100%;
@@ -45,8 +44,11 @@
 }
 
 .dusk-mobile .mobile-page { box-shadow: -12px 0 32px rgb(10 10 12 / .10); }
-/* the list under an open chat is out of sight: its working dots and other loops hold still until it shows again */
-.dusk-mobile .mobile-nav > [inert] * { animation-play-state: paused !important; }
+/* the list under an open chat is out of sight: its working dots and other loops hold still until it shows again. Named
+   loops only: a rule on every element under it restyles the whole list each time a chat opens and closes */
+.dusk-mobile .mobile-nav > [inert] :is(.dusk-breathe, .dusk-zzz, .dusk-typing-dot, .working-mascot-bob, .working-mascot-glance, .working-mascot-blink, .maus-character, .maus-orbit, .maus-orbit-dot, .status-shimmer, .thinking-sheen > span) {
+  animation-play-state: paused !important;
+}
 
 .dusk-mobile :focus-visible {
   outline: none;
@@ -55,7 +57,7 @@
 
 /* rows press like a list cell: a quick tint, no travel (high frequency) */
 .dusk-mobile .mobile-row { transition: background-color .15s ease; }
-.dusk-mobile .mobile-row:active { background-color: color-mix(in srgb, var(--color-ink) 6%, transparent); }
+html:not([data-mobile-app="android"]) .dusk-mobile .mobile-row:active { background-color: color-mix(in srgb, var(--color-ink) 6%, transparent); }
 
 /* the keyboard: during its slide the transcript and composer ride it on the compositor; once it settles the layout
    takes the space and the transform returns to zero in the same frame (src/mobile/keyboard.ts) */
@@ -69,8 +71,6 @@
   will-change: transform;
 }
 .dusk-mobile [data-mobile-chat] { padding-bottom: max(var(--m-safe-bottom), var(--m-kb)); }
-/* the native side lifts the whole page with the composer's keyboard: the transcript starts that much lower to stay in reach */
-.dusk-mobile [data-mobile-chat] .glass-scroller-content { padding-top: calc(var(--glass-top, 0px) + var(--m-lift)); }
 
 /* the shared chat header row keeps its height as the spacer under the shell's floating nav */
 .dusk-mobile [data-mobile-chat] :is([data-chathead-row], [data-roomhead-row]) { visibility: hidden; }
@@ -277,7 +277,15 @@ html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-tour="comp
   transition: background-size 400ms cubic-bezier(.05, .7, .1, 1), opacity 0ms;
 }
 html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] :active > [data-composer-plus] { scale: 1; }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+/* every other control's touch ripple (press.ts installRipple): a disc from the finger, painted over the control's own
+   background so nothing round it moves or is clipped; the ripple is the pressed state, so rows drop their tint */
+@property --m-ripple { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --m-ripple-a { syntax: "<number>"; inherits: false; initial-value: 1; }
+html[data-mobile-app="android"] .dusk-mobile [data-ripple] {
+  background-image: radial-gradient(circle at var(--m-rx, 50%) var(--m-ry, 50%),
+    color-mix(in srgb, currentColor calc(12% * var(--m-ripple-a)), transparent) var(--m-ripple),
+    transparent calc(var(--m-ripple) + 1px));
+}@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .dusk-mobile :is([data-mobile-chat] :is(.m-glass, [data-tour="composer"]), [data-home-bar] .m-glass) { background-color: var(--g-solid); }
 }
 @media (forced-colors: active) {
@@ -311,10 +319,14 @@ html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] :active > [data-
   line-height: 24px;
   /* one line sits in the 32 row whatever the text size does to the line */
   padding-block: max(0px, calc((32px - 1lh) / 2));
+  /* the wrapper's 6 after the row's 4 is the field's 10 after the +, as the native field sits */
+  padding-inline: 0;
   min-height: 32px;
   max-height: calc(5lh + 2 * max(0px, calc((32px - 1lh) / 2)));
 }
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea::placeholder { color: var(--color-ink-tertiary); opacity: 1; }
+/* a placeholder longer than the field ends in an ellipsis on its one line, as the native field's does */
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea:placeholder-shown { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 .dusk-mobile [data-mobile-chat] [data-composer-plus] {
   width: 32px;
   height: 32px;
@@ -417,7 +429,7 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
   height: var(--glass-composer-h, auto) !important;
 }
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea { visibility: visible; opacity: 0; caret-color: transparent; }
-html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] :is([role="menu"], [role="listbox"], [data-sidebar-popover-menu], [data-composer-menu]) { visibility: visible; }
+html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] :is([role="menu"], [role="listbox"], [data-sidebar-popover-menu], [data-composer-menu], [data-call-popover]) { visibility: visible; }
 /* the + menu is its own surface over the chat: a tone off the chat's ground (deeper in a light skin, lifted in a dark
    one) rather than the chat's own colour under a shadow */
 .dusk-mobile [data-mobile-chat] [data-composer-menu] {

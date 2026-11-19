@@ -6,6 +6,7 @@ import { PixelArt } from "../Illustration";
 import { usePlatform, type MobilePlatform } from "../platform";
 import { spring } from "../motion";
 import { BackButton } from "../onboarding/parts";
+import { closesOnBack } from "../Sheet";
 import { useMobileAccount } from "./AccountGate";
 import { MobileSignIn } from "./MobileSignIn";
 
@@ -39,6 +40,8 @@ export function SignInOffer({ paused = false }: { paused?: boolean }) {
     }, SHOW_AFTER_MS);
     return () => { alive = false; clearTimeout(timer); };
   }, [wanted, paused, platform]);
+
+  useEffect(() => signingIn ? closesOnBack(() => setSigningIn(false)) : undefined, [signingIn]);
 
   const dismiss = () => { setVisible(false); setSigningIn(false); void dismissSignInOffer(platform); };
   if (!wanted && !signingIn) return null;

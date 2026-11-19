@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/cn";
 import { haptic } from "./haptics";
+import { closesOnBack } from "./Sheet";
 import { dismiss, feel, holdPress, prefersReducedMotion, springEasing } from "./motion";
 
 export interface ContextAction {
@@ -217,7 +218,8 @@ export function ContextMenu({ open, anchor, preview, actions, label, onClose, re
     (menuRef.current?.parentElement?.querySelector<HTMLButtonElement>("[role='toolbar'] button, [role='menu'] button:not(:disabled)"))?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); onClose(); } };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const unback = closesOnBack(onClose);
+    return () => { window.removeEventListener("keydown", onKey); unback(); };
   }, [open, onClose, layout]);
 
   const fadeOut = { duration: feel.exit.fade, ease: dismiss.ease };

@@ -333,6 +333,7 @@ export function CallTargetButton({
         <div
           ref={keyRef}
           id={keyId}
+          data-call-popover=""
           className={cn("animate-pop-in absolute right-0 z-30 max-h-[calc(100dvh-80px)] w-[340px] max-w-[90vw] overflow-y-auto overscroll-contain rounded-xl shadow-2xl", composer ? "bottom-full mb-1.5" : "top-full mt-1.5")}
         >
           <LiveKeyNeeded />
@@ -343,6 +344,7 @@ export function CallTargetButton({
         <div
           id={helpId}
           role="group"
+          data-call-popover=""
           aria-label={t("call.unavailable")}
           className={cn("absolute right-0 z-30 w-[280px]", composer ? "bottom-full mb-1.5" : "mt-1.5", "rounded-xl border border-transparent bg-panel p-3 text-left shadow-2xl", helpMotion.className)} {...helpMotion.exitProps}
         >

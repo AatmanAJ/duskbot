@@ -120,6 +120,18 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 }
 
+/// Each keyboard step with the native clock in the device log, when the app's defaults have DuskKeyboardTrace
+/// (`xcrun simctl spawn booted defaults write bot.dusk.mobile DuskKeyboardTrace -bool YES`).
+enum KeyboardTrace {
+    static let on = UserDefaults.standard.bool(forKey: "DuskKeyboardTrace")
+
+    static func log(_ step: String, _ detail: [String: CGFloat]) {
+        guard on else { return }
+        let fields = detail.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+        NSLog("[kb] %.4f %@ %@", CACurrentMediaTime(), step, fields)
+    }
+}
+
 /// A vertical fade from one colour, solid down to `solidUntil` (0...1), clear at the bottom.
 final class GradientView: UIView {
     override class var layerClass: AnyClass { CAGradientLayer.self }
@@ -324,6 +336,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// the empty space under the transcript's last row, as the page last measured it at rest
     private var transcriptRoom: CGFloat = 0
     private var keyboardMove = 0
+    private var fieldEditing = false
     /// the page's status bar band, drawn here while the page is lifted out from under it
     private let topBand = GradientView()
     private var ground: UIColor?
@@ -429,7 +442,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         keyboardOverlap = overlap
         bottom.constant = restingBottom()
         if restingFrame.width > 0 { applyComposerWidth() }
-        if covering > 0 && text.isFirstResponder && page != nil { keyboardRide = true }
+        if covering > 0 && (text.isFirstResponder || fieldEditing) && page != nil { keyboardRide = true }
         let newLift: CGFloat? = keyboardRide
             ? (wasCovering == 0 ? max(0, covering - transcriptRoom) : min(covering, max(0, lift + covering - wasCovering)))
             : nil
@@ -437,6 +450,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         let curve = (info[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
         var event: [String: Any] = ["type": "keyboard", "height": overlap, "duration": duration, "at": Date().timeIntervalSince1970 * 1000]
         if let newLift { event["lift"] = newLift }
+        KeyboardTrace.log("will", ["overlap": overlap, "lift": newLift ?? -1, "duration": CGFloat(duration), "room": transcriptRoom])
         emit(event)
         if let newLift, newLift > 0 { showTopBand() }
         keyboardMove += 1
@@ -468,6 +482,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// The keyboard has stopped: the page lays itself out for it and offsets its scroll by the lift in one frame, so
     /// nothing on screen moves. Back down, the page is whole again and the band goes.
     private func keyboardSettled(height: CGFloat, lift: CGFloat) {
+        KeyboardTrace.log("settled", ["overlap": height, "lift": lift])
         emit(["type": "keyboard", "height": height, "lift": lift, "settled": true])
         guard height <= (host?.safeAreaInsets.bottom ?? 0) else { return }
         keyboardRide = false
@@ -723,8 +738,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
                 return last
             }()
             // the mic beside turns into discard as listening starts, and back as it ends
+            // the mic stays through the call turning into Send as well, where the round button itself is made anew
             let besideKept: UIButton? = {
-                guard keep != nil, oldKinds.count == 2, kinds.count == 2, Self.besideKinds.contains(oldKinds[0]),
+                guard oldKinds.count == 2, kinds.count == 2, Self.besideKinds.contains(oldKinds[0]),
                       Self.besideKinds.contains(kinds[0]) else { return nil }
                 return actions.first
             }()
@@ -756,7 +772,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             let had = Set(oldKinds)
             for (index, (button, kind)) in zip(actions, kinds).enumerated() where button !== keep && button !== besideKept {
                 if Self.besideKinds.contains(kind) && index < kinds.count - 1 && !hadBeside && keep != nil { ComposerMotion.micIn(button) }
-                else if (kind == "send" || kind == "micSend") && !had.contains(kind) { ComposerMotion.popIn(button) }
+                else if (kind == "send" || kind == "micSend" || kind == "call") && !had.contains(kind) { ComposerMotion.popIn(button) }
             }
         }
         for (button, data) in zip(actions, buttons) {
@@ -777,6 +793,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         case "followUp": (name, size, weight) = ("chevron.up", 15, .semibold)
         case "discard": (name, size, weight) = ("xmark", 15, .semibold)
         case "keep": (name, size, weight) = ("checkmark", 15, .bold)
+        // the call is the mic's quiet twin beside it: the same disc, glyph size and weight
+        case "call": (name, size, weight) = ("waveform", 17, .semibold)
+        case "hangUp": (name, size, weight) = ("phone.down.fill", 15, .semibold)
         default: (name, size, weight) = ("circle", 15, .semibold)
         }
         return (name, UIImage.SymbolConfiguration(pointSize: size, weight: weight))
@@ -804,7 +823,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         config.preferredSymbolConfigurationForImage = symbol.configuration
         config.image = UIImage(systemName: symbol.name)
         config.symbolContentTransition = UISymbolContentTransition(UIAccessibility.isReduceMotionEnabled ? .automatic : .replace)
-        config.baseForegroundColor = kind == "mic" ? .secondaryLabel : .label
+        config.baseForegroundColor = kind == "mic" || kind == "call" ? .secondaryLabel : kind == "hangUp" ? .systemRed : .label
         button.configuration = config
     }
 
@@ -970,8 +989,17 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         emit(["type": "text", "text": textView.text ?? ""])
     }
 
+    /// UIKit asks this before the field takes focus, so the keyboard's first frame notification already knows it is ours
+    func textViewShouldBeginEditing(_ textView: UITextView) -> Bool {
+        fieldEditing = true
+        return true
+    }
+
     func textViewDidBeginEditing(_ textView: UITextView) { emit(["type": "focus", "focused": true]) }
-    func textViewDidEndEditing(_ textView: UITextView) { emit(["type": "focus", "focused": false]) }
+    func textViewDidEndEditing(_ textView: UITextView) {
+        fieldEditing = false
+        emit(["type": "focus", "focused": false])
+    }
 
     // MARK: images
 

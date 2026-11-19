@@ -77,7 +77,7 @@ export function brandCaseEntry(key: string, value: string): string {
 /** the pieces the app fills into the middle of another line ("on a live call from {device}", "your {list}", "turn {name} {state}");
  * they stay lowercase so the line around them reads as one sentence. Everything else starts with a capital. */
 const FRAGMENT_KEYS = new RegExp(`^(${[
-  "chat\\.event\\.(and|andMore|for)", "approval\\.voice\\.action\\w+", "helperIntro\\.followup\\.(botsNone|botOne|bots|routinesNone|routineOne|routines|more)",
+  "chat\\.event\\.(and|andMore|for|peerReplied)", "approval\\.voice\\.action\\w+", "helperIntro\\.followup\\.(botsNone|botOne|bots|routinesNone|routineOne|routines|more)",
   "call\\.live\\.device\\.\\w+", "vm\\.confirm\\.orphanVps", "vm\\.idle\\.minutes", "mcp\\.state\\.(on|off)", "sidebar\\.preview\\.aBot",
   "vpsLink\\.yourServer", "mobile\\.connection\\.your(Cloud|Computer)", "mobile\\.entry\\.legalAnd", "remote\\.client\\.fallbackName", "remote\\.time\\.justNow", "app\\.sentFrom", "botAccess\\.(theAdmins|folder\\.home)",
   "browser\\.panel\\.tab", "cloudBuy\\.team\\.unnamed", "bring\\.topic\\w+", "cloudTrial\\.yourPlan",

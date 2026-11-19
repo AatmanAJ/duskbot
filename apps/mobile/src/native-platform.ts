@@ -19,7 +19,7 @@ const keystore = SecureStorage as unknown as {
 };
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import type { AppleCredential, CameraPermission, CameraScanner, DeliveredNotification, MobilePlatform, OrientationBridge, ScanOverlay, TurnActivityBridge } from "@/mobile/platform";
+import { handleBack, type AppleCredential, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobilePlatform, type OrientationBridge, type ScanOverlay, type TurnActivityBridge } from "@/mobile/platform";
 import type { NativeAction } from "@/mobile/phone-actions";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
 import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
@@ -171,6 +171,19 @@ const DuskNotifications = registerPlugin<NotificationsPlugin>("DuskNotifications
  * registration crashes the app */
 const DuskPushSetup = registerPlugin<{ configured(): Promise<{ configured: boolean }> }>("DuskPushSetup");
 const DuskHaptics = registerPlugin<{ play(options: { kind: string }): Promise<void> }>("DuskHaptics");
+/** android only (android/.../InsetsPlugin.java): the window's insets edge to edge, and the keyboard's for the page */
+interface InsetsPlugin {
+  setMode(options: { ride: boolean }): Promise<void>;
+  setBars(options: { status: "dark" | "light"; ground: string }): Promise<void>;
+  addListener(event: "keyboard", listener: (event: { height: number; settled: boolean; duration?: number; at?: number }) => void): Promise<PluginListenerHandle>;
+}
+const DuskInsets = registerPlugin<InsetsPlugin>("DuskInsets");
+
+async function groundHex(): Promise<string> {
+  const { cssHex } = await import("@/mobile/native-glass");
+  const root = document.querySelector(".dusk-mobile") ?? document.documentElement;
+  return cssHex(getComputedStyle(root).getPropertyValue("--color-app")) ?? "";
+}
 
 /** Android's delivered pushes: FCM's data block is flat (server/mobile/push.ts messageData). */
 async function androidDelivered(): Promise<DeliveredNotification[]> {
@@ -489,6 +502,17 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   const speech = Capacitor.isPluginAvailable("DuskSpeech");
   const turnActivityOn = kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity");
   const notificationsOn = kind === "ios" && Capacitor.isPluginAvailable("DuskNotifications");
+  const insetsOn = kind === "android" && Capacitor.isPluginAvailable("DuskInsets");
+  const backs: Array<() => boolean> = [];
+  let backButton: Promise<PluginListenerHandle> | undefined;
+  const atRoot = new WeakSet<() => boolean>();
+  let backOn = true;
+  const backRoute = () => {
+    const on = backs.some((one) => !atRoot.has(one));
+    if (kind !== "android" || on === backOn) return;
+    backOn = on;
+    void App.toggleBackButtonHandler({ enabled: on }).catch(() => {});
+  };
   registerPhoneVoice({
     os: kind,
     speech: speech ? phoneSpeech(DuskSpeech) : undefined,
@@ -528,6 +552,9 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       })().catch(() => {});
     },
     onKeyboard(listener) {
+      if (insetsOn) {
+        return unsubscribe([DuskInsets.addListener("keyboard", ({ height, settled, duration, at }) => listener({ height, phase: settled ? "did" : "will", duration, at }))]);
+      }
       const settled = [
         Keyboard.addListener("keyboardDidShow", ({ keyboardHeight }) => listener({ height: keyboardHeight, phase: "did" })),
         Keyboard.addListener("keyboardDidHide", () => listener({ height: 0, phase: "did" })),
@@ -547,13 +574,23 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     hideKeyboard() {
       void Keyboard.hide().catch(() => {});
     },
+    keyboardMode: insetsOn ? (ride) => { void DuskInsets.setMode({ ride }).catch(() => {}); } : undefined,
     setStatusBar(style) {
+      if (insetsOn) { void groundHex().then((ground) => DuskInsets.setBars({ status: style, ground })).catch(() => {}); return; }
       void StatusBar.setStyle({ style: style === "dark" ? Style.Light : Style.Dark }).catch(() => {});
     },
     onBack(listener) {
-      return unsubscribe([App.addListener("backButton", () => {
-        if (listener() === false && kind === "android") void App.minimizeApp().catch(() => {});
-      })]);
+      backs.push(listener);
+      backButton ??= App.addListener("backButton", () => {
+        if (!handleBack(backs) && kind === "android") void App.minimizeApp().catch(() => {});
+      });
+      backRoute();
+      return () => { const at = backs.indexOf(listener); if (at >= 0) backs.splice(at, 1); backRoute(); };
+    },
+    backAtRoot(listener, root) {
+      if (root) atRoot.add(listener);
+      else atRoot.delete(listener);
+      backRoute();
     },
     onAppUrl(listener) {
       // a universal link (https://dusk.bot/m/...) arrives as the app link it stands for

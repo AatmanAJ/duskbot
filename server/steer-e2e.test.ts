@@ -88,7 +88,7 @@ posixOnly("mid-turn steering e2e", () => {
     quickFinishGate = join(home, "finish-quick-turn.gate");
     const quickRoutes = join(home, "quick-routes.json");
     writeFileSync(quickRoutes, JSON.stringify({
-      "<<<\nok please stop now": JSON.stringify({ kind: "stop", reply: "Okay, I've stopped." }),
+      "<<<\nok please stop now, I'll book it myself": JSON.stringify({ kind: "stop", reply: "Okay, I've stopped." }),
       "<<<\nonly direct flights please": JSON.stringify({ kind: "steer", reply: "Got it, direct flights only." }),
       "<<<\nare you doing this yourself?": JSON.stringify({ kind: "answer", reply: "Yes, I'm doing this myself, comparing fares now." }),
     }));
@@ -585,6 +585,8 @@ posixOnly("mid-turn steering e2e", () => {
   }, 40_000);
 
   it("rejects a delayed steer acknowledgement after the bot is deleted", async () => {
+    // the direct steer path: with replies while working on, the send returns at once and steers in the background
+    expect((await api("PATCH", "/api/config", { features: { quickUpdates: false } })).status).toBe(200);
     const created = (await api("POST", "/api/bots")).body.bot;
     await api("PATCH", `/api/bots/${created.id}`, {
       modelSelection: { instanceId: "claudeRace", model: "claude-fake" },
@@ -615,6 +617,7 @@ posixOnly("mid-turn steering e2e", () => {
     const rejected = await delayed;
     expect(rejected.status).toBe(404);
     expect(rejected.body.error).toMatch(/no such bot/i);
+    expect((await api("PATCH", "/api/config", { features: { quickUpdates: true } })).status).toBe(200);
   }, 40_000);
 
   it("an engine without a live session preserves the message in the server-side queue", async () => {
@@ -680,7 +683,9 @@ posixOnly("mid-turn steering e2e", () => {
     rmSync(quickFinishGate, { force: true });
     expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "and hotels too" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "the second turn to start");
-    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "ok please stop now" })).status).toBe(202);
+    // a line made only of stop words ("ok please stop now") is the person's Stop itself and gets no side reply; one with
+    // more in it is the side writer's to read
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "ok please stop now, I'll book it myself" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === false, "the stop", 15_000);
     expect((await sideReplies()).at(-1).text).toBe("Okay, I've stopped.");
     writeFileSync(quickFinishGate, "finish");

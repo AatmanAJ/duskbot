@@ -24,9 +24,9 @@ final class PageWebView: WKWebView {
 
     /// Back at rest, once the move down has finished: the safe area follows the screen again.
     func landed() {
-        guard keyboardLift <= 0, restingSafeArea != nil else { return }
+        guard keyboardLift <= 0, let resting = restingSafeArea else { return }
         restingSafeArea = nil
-        safeAreaInsetsDidChange()
+        if super.safeAreaInsets != resting { safeAreaInsetsDidChange() }
     }
 }
 

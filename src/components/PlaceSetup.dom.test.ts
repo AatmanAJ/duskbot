@@ -254,7 +254,7 @@ it("a dusk bot already running is connected by its address and code, and what wa
   await act(async () => { root.render(createElement(PlaceSetup, { onClose })); });
   expect(q("[data-setup-method=tailscale]"), "line ways need the relay").toBeNull();
   await click(q("[data-setup-method=address]"));
-  expect(document.body.textContent).toContain("The https:// address it prints.");
+  expect(document.body.textContent, "the one field takes the pairing link too (0118a37aea)").toContain("Its pairing link, or the https:// address it prints.");
   await type(q<HTMLInputElement>("[data-setup-address]")!, "http://10.0.0.5:8799");
   await act(async () => { q<HTMLFormElement>("form")!.requestSubmit(); });
   expect(q("[role=alert]")?.textContent).toBe("Use an https:// address. Plain http only works through an SSH tunnel, at http://127.0.0.1.");

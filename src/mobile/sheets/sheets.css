@@ -7,6 +7,10 @@
    for 200ms, drawing it open at once and then pulling it down before it rises */
 .dusk-mobile .mobile-sheet.mobile-sheet[role="dialog"] { animation: none; }
 
+/* the bot sheet's share and close sit where every other sheet's buttons do, 22 under its top and 16 in, clear of its
+   rounded corner */
+.dusk-mobile .mobile-panel-sheet [data-panel-bar] { height: auto; margin-inline-start: 0; padding: 22px 16px 0; }
+
 /* the profile's pencil sits on its own small dark disc at the avatar's corner, visible on every mascot colour */
 .dusk-mobile .mobile-panel-sheet [data-panel-avatar] > span[aria-hidden="true"] {
   inset: auto -14px -10px auto;

@@ -99,9 +99,16 @@ export interface MobilePlatform {
   /** Native keyboard events; absent where the visual viewport is the only signal. */
   onKeyboard?(listener: (frame: KeyboardFrame) => void): () => void;
   hideKeyboard?(): void;
+  /** Android: the field that now has focus is the chat composer's (`true`), whose keyboard the page rides in a window
+   * of full height, or another, for which the window ends at the keyboard. */
+  keyboardMode?(ride: boolean): void;
   setStatusBar?(style: "dark" | "light"): void;
-  /** Android's hardware back; return true when handled. */
+  /** Android's back; return true when handled. The newest listener is asked first and an older one only when it
+   * declines (`handleBack`); when none takes it the app goes to the background. */
   onBack?(listener: () => boolean): () => void;
+  /** A back listener is on its first screen and would decline (default: it is not). While every listener is, back goes
+   * to the system, which plays its predictive back-to-home. */
+  backAtRoot?(listener: () => boolean, atRoot: boolean): void;
   /** Links the OS hands the app: duskbot://pair, duskbot://open, the desktop's thread links. A listener returns
    * true when the link was its kind; the link that launched the app waits for the first listener that takes it. */
   onAppUrl?(listener: (url: string) => boolean): () => void;
@@ -163,6 +170,12 @@ const memorySecrets = new Map<string, string>();
 
 function storageOf(kind: "localStorage" | "sessionStorage"): Storage | null {
   try { return globalThis[kind] ?? null; } catch { return null; }
+}
+
+/** Hands Android's back to the newest listener, then each older one while they decline; true when one took it. */
+export function handleBack(listeners: ReadonlyArray<() => boolean>): boolean {
+  for (let at = listeners.length - 1; at >= 0; at -= 1) if (listeners[at]!()) return true;
+  return false;
 }
 
 export function webPlatform(): MobilePlatform {

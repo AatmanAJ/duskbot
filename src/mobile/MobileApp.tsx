@@ -28,7 +28,7 @@ import { ChatScreen } from "./ChatScreen";
 import { readOpenChat, rememberOpenChat, rereadDue, restoredChat } from "./open-chat-restore";
 import { HomeScreen, releasePressed } from "./HomeScreen";
 import { panelOpenAction, SheetHost } from "./SheetHost";
-import { closeTopSheet, Sheet } from "./Sheet";
+import { backLayerCount, closeTopSheet, Sheet, subscribeBackLayers } from "./Sheet";
 import { t } from "@/lib/i18n";
 import { dismissKeyboard, useKeyboardDismiss, useKeyboardSync } from "./keyboard";
 import { useNativeGlass } from "./native-glass";
@@ -175,11 +175,17 @@ function Shell() {
   useEffect(() => platform.onNotificationOpen?.(openTarget), [platform, openTarget]);
   usePhoneActions(platform, state, dispatch, openTarget);
 
-  useEffect(() => platform.onBack?.(() => {
+  // registered once, so a layer that opens later (a full screen computer, adding a place) is asked before it
+  const openChatId = useRef(chatId);
+  openChatId.current = chatId;
+  const back = useRef(() => {
     if (closeTopSheet()) return true;
-    if (chatId) { setChatId(null); return true; }
+    if (openChatId.current) { setChatId(null); return true; }
     return false;
-  }), [platform, chatId]);
+  });
+  useEffect(() => platform.onBack?.(back.current), [platform]);
+  const backLayers = useSyncExternalStore(subscribeBackLayers, backLayerCount, () => 0);
+  useEffect(() => platform.backAtRoot?.(back.current, !chatId && backLayers === 0), [platform, chatId, backLayers]);
 
   // a resumed app reads the chat on screen, as a refocused desktop window does
   useEffect(() => platform.onResume?.(() => { if (chatId) dispatch({ type: "select", id: chatId }); }), [platform, chatId, dispatch]);

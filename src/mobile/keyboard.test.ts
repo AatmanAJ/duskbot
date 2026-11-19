@@ -139,25 +139,35 @@ describe("riding the keyboard with the native composer", () => {
 });
 
 describe("a keyboard the native side lifts the page for", () => {
-  it("moves nothing on the page while it moves, then takes the space with the scroll offset by the lift", () => {
+  it("never scrolls the transcript or moves its layout for a full lift, up or down", () => {
     flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
     const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
     scrollable(2000, 1600);
     keyboard!({ height: 336, phase: "will", duration: 0.38, at: Date.now(), lift: 302 });
     keyboard!({ height: 336, phase: "did" });
-    expect(list().scrollTop).toBe(1600);
     expect(shell.style.getPropertyValue("--m-kb-shift")).toBe("");
     expect(shell.dataset.kbMoving).toBeUndefined();
     keyboard!({ height: 336, phase: "did", lift: 302 });
-    expect(shell.style.getPropertyValue("--m-lift")).toBe("302px");
     expect(shell.style.getPropertyValue("--m-kb")).toBe("34px");
-    expect(list().scrollTop).toBe(1902);
+    expect(shell.dataset.keyboard).toBe("open");
     keyboard!({ height: 0, phase: "will", duration: 0.38, at: Date.now(), lift: 0 });
-    expect(list().scrollTop).toBe(1902);
-    keyboard!({ height: 0, phase: "did", lift: 0 });
-    expect(shell.style.getPropertyValue("--m-lift")).toBe("0px");
     expect(shell.style.getPropertyValue("--m-kb")).toBe("0px");
+    keyboard!({ height: 0, phase: "did" });
+    keyboard!({ height: 0, phase: "did", lift: 0 });
     expect(list().scrollTop).toBe(1600);
+    expect(shell.dataset.keyboard).toBeUndefined();
+  });
+
+  it("covers only what a short chat's partial lift leaves under the keyboard, and gives it back as the keyboard starts down", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: platform(true) })));
+    const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    scrollable(300, 0);
+    keyboard!({ height: 336, phase: "will", duration: 0.38, at: Date.now(), lift: 102 });
+    keyboard!({ height: 336, phase: "did", lift: 102 });
+    expect(shell.style.getPropertyValue("--m-kb")).toBe("234px");
+    keyboard!({ height: 0, phase: "will", duration: 0.38, at: Date.now(), lift: 0 });
+    expect(shell.style.getPropertyValue("--m-kb")).toBe("0px");
+    expect(list().scrollTop).toBe(0);
   });
 
   it("leaves a field on the page to the page's own ride", () => {
@@ -167,6 +177,45 @@ describe("a keyboard the native side lifts the page for", () => {
     keyboard!({ height: 0, phase: "did", lift: 0 });
     keyboard!({ height: 336, phase: "will", duration: 0.38, at: Date.now() });
     expect(shell.dataset.kbMoving).toBe("");
+  });
+});
+
+describe("the Android keyboard", () => {
+  const android = (mode: (ride: boolean) => void) => ({ ...platform(true), kind: "android", keyboardMode: mode }) as MobilePlatform;
+
+  it("rides the composer's field in a window of full height and has any other field's window end at the keyboard", () => {
+    const mode = vi.fn();
+    flushSync(() => root.render(createElement(Shell, { platform: android(mode) })));
+    const chat = host.querySelector("[data-mobile-chat]")!;
+    const composer = document.createElement("div");
+    composer.dataset.tour = "composer";
+    const own = document.createElement("textarea");
+    composer.append(own);
+    chat.append(composer);
+    const search = document.createElement("input");
+    host.querySelector(".dusk-mobile")!.append(search);
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    host.querySelector(".dusk-mobile")!.append(box);
+    own.focus();
+    search.focus();
+    box.focus();
+    expect(mode.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("rides up on the system's clock, takes the space once it stops, and gives it back at once when a sheet's field takes the keyboard", () => {
+    flushSync(() => root.render(createElement(Shell, { platform: android(() => {}) })));
+    const shell = host.querySelector<HTMLElement>(".dusk-mobile")!;
+    scrollable(2000, 1600);
+    keyboard!({ height: 300, phase: "will", duration: 0.285, at: Date.now() });
+    expect(shell.dataset.kbMoving).toBe("");
+    expect(shell.style.getPropertyValue("--m-kb-dur")).toBe("0.285s");
+    keyboard!({ height: 300, phase: "did" });
+    expect(shell.style.getPropertyValue("--m-kb")).toBe("300px");
+    expect(shell.dataset.kbMoving).toBeUndefined();
+    keyboard!({ height: 0, phase: "did" });
+    expect(shell.style.getPropertyValue("--m-kb")).toBe("0px");
+    expect(shell.dataset.keyboard).toBeUndefined();
   });
 });
 

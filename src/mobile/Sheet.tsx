@@ -51,10 +51,23 @@ export function riseOnCompositor(layers: { sheet: HTMLElement; scrim: HTMLElemen
   };
 }
 
-/** A full screen layer that is not a sheet (the picture viewer) closes on Android's back as one does. */
+/** An open sheet, or a full screen layer that is not one (the picture viewer), closes on Android's back. */
 export function closesOnBack(close: () => void): () => void {
   OPEN_SHEETS.push(close);
-  return () => { const at = OPEN_SHEETS.indexOf(close); if (at >= 0) OPEN_SHEETS.splice(at, 1); };
+  layersChanged();
+  return () => { const at = OPEN_SHEETS.indexOf(close); if (at >= 0) { OPEN_SHEETS.splice(at, 1); layersChanged(); } };
+}
+
+const layerWatchers = new Set<() => void>();
+function layersChanged() { for (const watcher of layerWatchers) watcher(); }
+
+/** For useSyncExternalStore: how many sheets and layers that close on back are open. */
+export function subscribeBackLayers(watcher: () => void): () => void {
+  layerWatchers.add(watcher);
+  return () => { layerWatchers.delete(watcher); };
+}
+export function backLayerCount(): number {
+  return OPEN_SHEETS.length;
 }
 
 /** Closes the top sheet, for Android's back and Escape. False when none is open. */
@@ -198,9 +211,7 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
 
   useEffect(() => {
     if (!open) return;
-    const close = () => closeRef.current();
-    OPEN_SHEETS.push(close);
-    return () => { OPEN_SHEETS.splice(OPEN_SHEETS.indexOf(close), 1); };
+    return closesOnBack(() => closeRef.current());
   }, [open]);
 
   useDrag(sheetRef, {

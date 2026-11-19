@@ -21,6 +21,12 @@ function toLatest(root: HTMLElement): void {
   if (list) list.scrollTop = list.scrollHeight;
 }
 
+const TEXT_FIELD = "textarea, [contenteditable=true], input:not([type=checkbox], [type=radio], [type=button], [type=submit], [type=reset], [type=range], [type=file], [type=color], [type=hidden])";
+
+function isComposerField(field: HTMLElement): boolean {
+  return Boolean(field.closest("[data-mobile-chat] [data-tour=composer]"));
+}
+
 /** The composer's field, when it holds focus (the keyboard is up for it). */
 function composerField(root: HTMLElement): HTMLElement | null {
   const active = document.activeElement;
@@ -80,6 +86,16 @@ export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<
   }, [platform, rootRef]);
 }
 
+/** Each keyboard step with its page clock, in the console, when localStorage has dusk.kbtrace. */
+function trace(step: string, detail: Record<string, number>): void {
+  try {
+    if (!localStorage.getItem("dusk.kbtrace")) return;
+  } catch {
+    return;
+  }
+  console.info(`[kb] ${performance.now().toFixed(1)} ${step}`, JSON.stringify(detail));
+}
+
 /** A keyboard event that reached the page later than this was a stalled page, not a bridge hop. */
 const MAX_CATCH_UP_MS = 150;
 
@@ -102,8 +118,7 @@ function safeBottom(root: HTMLElement): number {
 }
 
 /** Moves the chat with the software keyboard. For the native glass composer's own field the native side lifts the whole
- * page in the keyboard's animation, and the page only takes the space once that has stopped: the inset under it, and the
- * same lift as room above the transcript with the scroll offset by it, so nothing on screen moves. Otherwise the transcript
+ * page in the keyboard's animation and the page's layout stays as it is (see `liftedInset`). Otherwise the transcript
  * and composer ride up on the compositor with the keyboard's own curve, and the layout takes the space only once it has
  * settled (and gives it back before it leaves), each swap paired with a scroll offset so nothing visibly jumps. In a
  * browser the visual viewport is the only signal and the browser already animates it, so the inset simply follows. */
@@ -140,31 +155,46 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       committed = height;
     };
 
-    // android resizes the whole webview with the window (adjustResize; the keyboard plugin's resize mode is ios only), so
-    // there the layout already ends at the keyboard and only ios gets the ride-along choreography
-    if (platform.kind === "android") return;
-    let lifted = 0;
+    const mode = platform.keyboardMode;
+    const focused = (event: FocusEvent) => {
+      if (event.target instanceof HTMLElement && event.target.matches(TEXT_FIELD)) mode?.(isComposerField(event.target));
+    };
+    if (mode) root.addEventListener("focusin", focused);
     let nativeRide = false;
-    const settleLifted = (height: number, lift: number) => {
-      const list = scroller(root);
-      const top = list?.scrollTop ?? 0;
+    /** The page's own share of a keyboard the native side lifts it for: only the part the lift leaves covered (a short
+     * chat's empty space), so its layout never moves anything on screen and nothing scrolls. */
+    const liftedInset = (height: number, lift: number) => {
+      const inset = Math.max(0, height - lift);
+      trace("page inset", { height, lift, inset });
       delete root.dataset.kbMoving;
-      root.style.setProperty("--m-lift", `${lift}px`);
-      set(Math.max(0, height - lift), 0);
       if (height > 0) root.dataset.keyboard = "open";
       else delete root.dataset.keyboard;
-      if (list) list.scrollTop = top + lift - lifted;
-      lifted = lift;
-      committed = Math.max(0, height - lift);
+      if (inset === committed) return;
+      set(inset, 0);
+      committed = inset;
+    };
+
+    /** At once, with the scroll offset so the transcript stays still: the keyboard went without a move to ride. */
+    const giveBack = () => {
+      window.clearTimeout(settleTimer);
+      const list = scroller(root);
+      const top = list?.scrollTop ?? 0;
+      const shift = Math.max(0, committed - safeBottom(root));
+      set(0, 0);
+      delete root.dataset.keyboard;
+      if (list) list.scrollTop = Math.max(0, top - shift);
+      committed = 0;
     };
 
     if (platform.onKeyboard) {
       const stop = platform.onKeyboard((frame) => {
         const { height, phase } = frame;
         if (frame.lift !== undefined) {
+          trace(phase === "did" ? "native settled" : "native will", { height, lift: frame.lift });
           nativeRide = true;
           window.clearTimeout(settleTimer);
-          if (phase === "did") settleLifted(height, frame.lift);
+          // on the way down the covered part is under the keyboard still: given back at once, as it starts to go
+          if (phase === "did" || height === 0) liftedInset(height, frame.lift);
           return;
         }
         if (nativeRide && phase === "did") return;
@@ -181,7 +211,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
           settleTimer = window.setTimeout(() => commitShown(height), timing.duration * 1000 - timing.delayMs + 40);
           return;
         }
-        if (phase === "did") { delete root.dataset.kbMoving; return; }
+        if (phase === "did") { delete root.dataset.kbMoving; if (committed) giveBack(); return; }
         window.clearTimeout(settleTimer);
         const shift = Math.max(0, committed - safeBottom(root));
         delete root.dataset.kbMoving;
@@ -198,7 +228,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
           root.style.setProperty("--m-kb-shift", "0px");
         }));
       });
-      return () => { stop(); window.clearTimeout(settleTimer); };
+      return () => { stop(); window.clearTimeout(settleTimer); root.removeEventListener("focusin", focused); };
     }
 
     const vv = window.visualViewport;

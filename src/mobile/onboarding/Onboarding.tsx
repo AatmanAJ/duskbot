@@ -195,7 +195,10 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
       default: go(home); return true;
     }
   };
-  useEffect(() => platform.onBack?.(() => onBack.current()), [platform]);
+  const backListener = useRef(() => onBack.current());
+  useEffect(() => platform.onBack?.(backListener.current), [platform]);
+  const firstScreen = step === "welcome" && !busy && !(startAtLink && onCancel);
+  useEffect(() => platform.backAtRoot?.(backListener.current, firstScreen), [platform, firstScreen]);
 
   const back = (to: Step = home) => <BackButton onClick={() => go(to)} />;
   const close = startAtLink && onCancel ? <BackButton close onClick={onCancel} /> : null;
