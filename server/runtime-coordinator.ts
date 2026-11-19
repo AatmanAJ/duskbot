@@ -354,6 +354,7 @@ export class RuntimeCoordinator implements Coordinator {
     this.ready();
     const a = this.store.get(id);
     if (!a || a.status !== "needs_input") return false;
+    if (by?.kind === "bot" && a.decide === undefined && this.requesterAnswers(id) >= MAX_REQUESTER_ANSWERS) return false;
     return this.runtime.answer(id, text, by);
   }
 

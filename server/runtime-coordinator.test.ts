@@ -1752,6 +1752,8 @@ describe("RuntimeCoordinator: who answers a teammate's question", () => {
     w.coordinator.tick(); await flush();
     expect(w.coordinator.node(node.id)).toMatchObject({ status: "waiting", question: "Can you give me a shell for this?" });
     expect(w.coordinator.node(node.id)?.decide).toBeUndefined();
+    expect(w.coordinator.answerNode(node.id, "Try once more.", { kind: "bot", botId: "chief" })).toBe(false);
+    expect(w.coordinator.answerNode(node.id, "Here is a VPS now.")).toBe(true);
   });
 
   it("puts only what the person alone can give to the person at Full access, and every question to the person below it", async () => {
