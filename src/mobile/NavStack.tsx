@@ -129,21 +129,20 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
     },
   }), []);
 
-  /** `velocity` null: a tap, which leaves at the system's speed, or carries on at the speed of a slide it interrupts. */
-  const go = useCallback((target: number, velocity: number | null, done?: () => void, push = false) => {
+  /** `velocity` null: a tap, which pushes and pops at the system's speed, or carries on at the speed of a slide it interrupts. */
+  const go = useCallback((target: number, velocity: number | null, done?: () => void) => {
     const carried = run.current?.stop() ?? 0;
     setMoving(true);
     const finish = () => { setMoving(false); done?.(); };
     if (prefersReducedMotion()) {
-      x.set(target === 0 ? 0 : width);
-      pageOpacity.set(target === 0 ? 0 : 1);
-      const fade = settleTo(pageOpacity, target === 0 ? 1 : 0, 0, finish);
+      x.set(0);
+      const fade = settleTo(pageOpacity, target === 0 ? 1 : 0, 0, () => { x.set(target); finish(); });
       run.current = { stop: () => { fade.stop(); return 0; } };
       return;
     }
     const page = pageRef.current;
     const toward = Math.sign(target - x.get());
-    const speed = velocity ?? (carried !== 0 ? carried : toward * width * (push || target === 0 ? system.push : system.back));
+    const speed = velocity ?? (carried !== 0 ? carried : toward * width * system.push);
     if (!page || typeof page.animate !== "function") {
       run.current = { stop: () => { controls.stop(); return 0; } };
       const controls = settleTo(x, target, speed, finish, NAV);
@@ -171,23 +170,60 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
       void ready.then(() => {
         if (signal.cancelled) return;
         preparing.current = null;
-        go(0, null, () => { landed(); settled.current?.(true); }, true);
+        go(0, null, () => { landed(); settled.current?.(true); });
       });
     });
   }, [go, landed, x, pageOpacity, width]);
 
+  // a pop starts on the next frame like a push, so the commit that asked for it never eats its first frames, and the
+  // native chrome told to start then starts with it
+  const popping = useRef(false);
+  const popped = useCallback(() => {
+    popping.current = false;
+    setShownKey(null);
+    lastPage.current = null;
+    gone();
+    settled.current?.(false);
+  }, [gone]);
+  const pop = useCallback(() => {
+    if (preparing.current) preparing.current.cancelled = true;
+    const signal = { cancelled: false };
+    preparing.current = signal;
+    popping.current = true;
+    sliding.current = true;
+    leaving.current?.();
+    setMoving(true);
+    requestAnimationFrame(() => {
+      if (signal.cancelled) return;
+      preparing.current = null;
+      go(width, null, popped);
+    });
+  }, [go, popped, width]);
+  const unpop = useCallback(() => {
+    if (preparing.current) preparing.current.cancelled = true;
+    const signal = { cancelled: false };
+    preparing.current = signal;
+    popping.current = false;
+    sliding.current = true;
+    run.current?.stop();
+    requestAnimationFrame(() => {
+      if (signal.cancelled) return;
+      preparing.current = null;
+      go(0, null, () => { landed(); settled.current?.(true); });
+    });
+  }, [go, landed]);
+
   useLayoutEffect(() => {
     if (pageKey && page) {
+      // opened again while it leaves (the same chat or another): the leaving page turns around with what is asked for
+      if (popping.current) { setShownKey(pageKey); unpop(); return; }
       if (shownKey === pageKey) return;
       // a page swapped for another (a notification opening a different chat) cuts over; only list to page slides
       if (shownKey && x.get() < width / 2) { setShownKey(pageKey); return; }
       setShownKey(pageKey);
       push();
-    } else if (shownKey) {
-      if (preparing.current) { preparing.current.cancelled = true; preparing.current = null; }
-      sliding.current = true;
-      leaving.current?.();
-      go(width, null, () => { setShownKey(null); lastPage.current = null; gone(); settled.current?.(false); });
+    } else if (shownKey && !popping.current) {
+      pop();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey, Boolean(page)]);
@@ -200,6 +236,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
     claim: (s, start) => s.dx > 0 && !ownsDrag(s.target) && !canScroll(s.target, pageRef.current!, "x", -1) && !replyRowAt(s.target, start.x),
     onStart: () => {
       run.current?.stop();
+      popping.current = false;
       // a slide that already landed is over for the chrome too: from here it follows the finger
       slid.current?.(null);
       sliding.current = true;
@@ -212,7 +249,8 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
     onEnd: (s) => {
       const landing = projectRelease(x.get(), s.vx);
       if ((landing > width / 2 && s.vx > -200) || s.vx > 500) {
-        go(width, Math.max(s.vx, 0), () => { setShownKey(null); lastPage.current = null; gone(); settled.current?.(false); onBack(); });
+        popping.current = true;
+        go(width, Math.max(s.vx, 0), () => { popped(); onBack(); });
       } else {
         go(0, s.vx, landed);
       }
@@ -221,17 +259,18 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   });
 
   const pageShown = Boolean(shownKey);
+  const still = prefersReducedMotion();
   return (
     <div className="mobile-nav relative h-full w-full overflow-hidden bg-app">
       <motion.div
         ref={baseRef}
         className="absolute inset-0"
-        style={{ x: pageShown ? baseX : 0, willChange: moving ? "transform" : undefined }}
+        style={{ x: pageShown && !still ? baseX : 0, willChange: moving ? "transform" : undefined }}
         inert={pageShown && !moving ? true : undefined}
         aria-hidden={pageShown && !moving ? true : undefined}
       >
         {base}
-        {pageShown && <motion.div ref={dimRef} aria-hidden className="pointer-events-none absolute inset-0 bg-[rgb(10_10_12/0.16)]" style={{ opacity: dim }} />}
+        {pageShown && <motion.div ref={dimRef} aria-hidden className="pointer-events-none absolute inset-0 bg-[rgb(10_10_12/0.16)]" style={{ opacity: still ? pageOpacity : dim }} />}
       </motion.div>
       {pageShown && (
         <motion.div
