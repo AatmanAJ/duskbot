@@ -3551,7 +3551,8 @@
       "models.place.server": "1b188194b80e61b67a3451a88a51a768929f17a7e052e71b8b08cf152bf47acc",
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "es": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -9331,7 +9332,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -12807,7 +12809,8 @@
       "models.place.server": "1b188194b80e61b67a3451a88a51a768929f17a7e052e71b8b08cf152bf47acc",
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "hi": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -16280,7 +16283,8 @@
       "models.place.server": "1b188194b80e61b67a3451a88a51a768929f17a7e052e71b8b08cf152bf47acc",
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "it": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -22453,7 +22457,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "ja": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -28812,7 +28817,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "ko": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -35553,7 +35559,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "composer.dictation.permission": "1be9cbb919211c6d42d40471f2b53fbb47c25cb7d10d36745ab74e973a808f94"
+      "composer.dictation.permission": "1be9cbb919211c6d42d40471f2b53fbb47c25cb7d10d36745ab74e973a808f94",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "pl": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -41886,7 +41893,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "pt-br": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -48093,7 +48101,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "ru": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -54433,7 +54442,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "tr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -59749,7 +59759,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "uk": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -63526,7 +63537,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "vi": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -68842,7 +68854,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "zh": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -75749,7 +75762,8 @@
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
       "composer.dictation.permission": "1be9cbb919211c6d42d40471f2b53fbb47c25cb7d10d36745ab74e973a808f94",
-      "keys.row.engineMissing": "5c0ac920b4fd7b754d696536bd006bc700846b41ade0975a99a6c761b0b997b0"
+      "keys.row.engineMissing": "5c0ac920b4fd7b754d696536bd006bc700846b41ade0975a99a6c761b0b997b0",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     },
     "zh-tw": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -80638,7 +80652,8 @@
       "slack.notReady": "d020042f5eb3f6e14502e1e480c94118968df257aa4228848c19efe3ac75b8ae",
       "server.freeModel.tryingNext": "581a2d4a1d20a6165e8f0c08fe1f09ab0292d51bcc1b309c281ff8ab9b09d0da",
       "engineSetup.serverInstallDesc": "78df2477837544b92cda9527d5af76e76602a82ecc549594a3d3faa9a986de06",
-      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d"
+      "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
+      "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9"
     }
   }
 }

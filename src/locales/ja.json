@@ -3908,6 +3908,7 @@
   "routines.inline.when": "いつ",
   "routines.cost.term": "費用",
   "routines.cost.runs": "週に約{count}回実行",
+  "routines.cost.runs.one": "週に約1回実行",
   "routines.cost.week": "週に約{amount}",
   "routines.cost.share": "週の使用量の{percent}",
   "routines.cost.noPrice": "初回実行後に費用を表示",

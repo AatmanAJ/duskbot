@@ -64,7 +64,7 @@ export function useLoadedState<T>(load: () => Promise<T>, version: unknown): { v
 /** "About 168 runs a week · about $3.20 a week · 12% of your week", saying only what is known. */
 export function forecastLine(forecast: RoutineForecast): string {
   const parts: string[] = [];
-  if (forecast.runsPerWeek !== null) parts.push(t("routines.cost.runs", { count: String(forecast.runsPerWeek) }));
+  if (forecast.runsPerWeek !== null) parts.push(forecast.runsPerWeek === 1 ? t("routines.cost.runs.one") : t("routines.cost.runs", { count: String(forecast.runsPerWeek) }));
   if (forecast.weekUsd !== null) parts.push(t("routines.cost.week", { amount: formatCost(forecast.weekUsd) }));
   else parts.push(t("routines.cost.noPrice"));
   if (forecast.shareOfWeek !== null) parts.push(t("routines.cost.share", { percent: sharePercent(forecast.shareOfWeek) }));

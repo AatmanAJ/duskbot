@@ -5394,6 +5394,7 @@
   "routines.inline.when": "When",
   "routines.cost.term": "Cost",
   "routines.cost.runs": "About {count} runs a week",
+  "routines.cost.runs.one": "About once a week",
   "routines.cost.week": "About {amount} a week",
   "routines.cost.share": "{percent} of your week",
   "routines.cost.noPrice": "Cost shows after its first run",

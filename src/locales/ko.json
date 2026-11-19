@@ -4187,6 +4187,7 @@
   "routines.inline.when": "언제",
   "routines.cost.term": "비용",
   "routines.cost.runs": "주당 약 {count}회 실행",
+  "routines.cost.runs.one": "주당 약 1회 실행",
   "routines.cost.week": "주당 약 {amount}",
   "routines.cost.share": "주간 사용량의 {percent}",
   "routines.cost.noPrice": "첫 실행 후 비용 표시",

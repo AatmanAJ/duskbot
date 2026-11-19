@@ -3045,6 +3045,7 @@
   "routines.inline.when": "Ne zaman",
   "routines.cost.term": "Maliyet",
   "routines.cost.runs": "Haftada yaklaşık {count} çalıştırma",
+  "routines.cost.runs.one": "Haftada yaklaşık bir kez",
   "routines.cost.week": "Haftada yaklaşık {amount}",
   "routines.cost.share": "Haftalık kullanımının {percent} kadarı",
   "routines.cost.noPrice": "Maliyet ilk çalıştırmadan sonra görünür",

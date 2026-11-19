@@ -3879,6 +3879,7 @@
   "routines.inline.when": "Когда",
   "routines.cost.term": "Стоимость",
   "routines.cost.runs": "Около {count} запусков в неделю",
+  "routines.cost.runs.one": "Примерно раз в неделю",
   "routines.cost.week": "Около {amount} в неделю",
   "routines.cost.share": "{percent} вашего недельного использования",
   "routines.cost.noPrice": "Стоимость появится после первого запуска",

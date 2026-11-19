@@ -2798,6 +2798,7 @@
   "routines.inline.when": "कब",
   "routines.cost.term": "लागत",
   "routines.cost.runs": "हर हफ़्ते लगभग {count} रन",
+  "routines.cost.runs.one": "हफ़्ते में लगभग एक बार",
   "routines.cost.week": "हर हफ़्ते लगभग {amount}",
   "routines.cost.share": "आपके साप्ताहिक उपयोग का {percent}",
   "routines.cost.noPrice": "पहले रन के बाद लागत दिखेगी",

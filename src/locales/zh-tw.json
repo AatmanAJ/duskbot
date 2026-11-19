@@ -2676,6 +2676,7 @@
   "routines.inline.when": "何時",
   "routines.cost.term": "費用",
   "routines.cost.runs": "每週約執行 {count} 次",
+  "routines.cost.runs.one": "每週約執行 1 次",
   "routines.cost.week": "每週約 {amount}",
   "routines.cost.share": "占你每週用量的 {percent}",
   "routines.cost.noPrice": "首次執行後顯示費用",

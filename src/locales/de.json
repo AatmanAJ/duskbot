@@ -2920,6 +2920,7 @@
   "routines.inline.when": "Wann",
   "routines.cost.term": "Kosten",
   "routines.cost.runs": "Etwa {count} Ausführungen pro Woche",
+  "routines.cost.runs.one": "Etwa einmal pro Woche",
   "routines.cost.week": "Etwa {amount} pro Woche",
   "routines.cost.share": "{percent} deiner Wochennutzung",
   "routines.cost.noPrice": "Kosten erscheinen nach der ersten Ausführung",

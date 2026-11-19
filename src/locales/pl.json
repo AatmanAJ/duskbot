@@ -3850,6 +3850,7 @@
   "routines.inline.when": "Kiedy",
   "routines.cost.term": "Koszt",
   "routines.cost.runs": "Około {count} uruchomień tygodniowo",
+  "routines.cost.runs.one": "Około raz w tygodniu",
   "routines.cost.week": "Około {amount} tygodniowo",
   "routines.cost.share": "{percent} twojego tygodniowego wykorzystania",
   "routines.cost.noPrice": "Koszt pojawi się po pierwszym uruchomieniu",

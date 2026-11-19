@@ -3045,6 +3045,7 @@
   "routines.inline.when": "Khi nào",
   "routines.cost.term": "Chi phí",
   "routines.cost.runs": "Khoảng {count} lần chạy mỗi tuần",
+  "routines.cost.runs.one": "Khoảng một lần mỗi tuần",
   "routines.cost.week": "Khoảng {amount} mỗi tuần",
   "routines.cost.share": "{percent} mức sử dụng hằng tuần của bạn",
   "routines.cost.noPrice": "Chi phí sẽ hiện sau lần chạy đầu tiên",

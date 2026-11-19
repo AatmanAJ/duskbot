@@ -4302,6 +4302,7 @@
   "routines.inline.when": "何时",
   "routines.cost.term": "费用",
   "routines.cost.runs": "每周约运行 {count} 次",
+  "routines.cost.runs.one": "每周约运行 1 次",
   "routines.cost.week": "每周约 {amount}",
   "routines.cost.share": "占你每周用量的 {percent}",
   "routines.cost.noPrice": "首次运行后显示费用",

@@ -2800,6 +2800,7 @@
   "routines.inline.when": "Quand",
   "routines.cost.term": "Coût",
   "routines.cost.runs": "Environ {count} exécutions par semaine",
+  "routines.cost.runs.one": "Environ une fois par semaine",
   "routines.cost.week": "Environ {amount} par semaine",
   "routines.cost.share": "{percent} de votre utilisation hebdomadaire",
   "routines.cost.noPrice": "Le coût s’affiche après la première exécution",

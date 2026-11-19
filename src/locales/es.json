@@ -3558,6 +3558,7 @@
   "routines.inline.when": "Cuándo",
   "routines.cost.term": "Coste",
   "routines.cost.runs": "Unas {count} ejecuciones por semana",
+  "routines.cost.runs.one": "Más o menos una vez por semana",
   "routines.cost.week": "Unos {amount} por semana",
   "routines.cost.share": "{percent} de tu uso semanal",
   "routines.cost.noPrice": "El coste aparece tras la primera ejecución",

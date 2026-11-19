@@ -3102,6 +3102,7 @@
   "routines.inline.when": "Коли",
   "routines.cost.term": "Вартість",
   "routines.cost.runs": "Близько {count} запусків на тиждень",
+  "routines.cost.runs.one": "Приблизно раз на тиждень",
   "routines.cost.week": "Близько {amount} на тиждень",
   "routines.cost.share": "{percent} вашого тижневого використання",
   "routines.cost.noPrice": "Вартість з’явиться після першого запуску",
