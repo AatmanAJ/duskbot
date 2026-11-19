@@ -156,6 +156,16 @@ export function createMobileLink(deps: MobileLinkDeps) {
     timer.unref?.();
     waiting.set(key, { timer, id: message.id });
   }
+  /** a phone showing this conversation that then goes quiet without saying it went away was likely suspended before it
+   * could, and never saw this: it gets the push. One that checks in again was open and showed it. */
+  function unlessCheckedIn(device: DeviceRecord, message: PushMessage) {
+    const at = now();
+    const timer = setTimeout(() => {
+      if (!devices.includes(device) || !device.push || presence.reportedSince(device.id, at) || deps.isRead?.(message.id)) return;
+      void deliver(device, message);
+    }, Math.max(0, presence.overdueIn(device.id)));
+    timer.unref?.();
+  }
   function read(ids: readonly string[]) {
     const done = new Set(ids);
     for (const [key, one] of waiting) if (done.has(one.id)) { clearTimeout(one.timer); waiting.delete(key); }
@@ -416,6 +426,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
       const session = sessions.get(device.sessionId);
       if (!session || (options.adminOnly && !session.scopes.includes("admin")) || !device.push) return;
       if (!presence.viewing(device.id, message.threadId)) later(device, message);
+      else unlessCheckedIn(device, message);
     }));
   }
 
