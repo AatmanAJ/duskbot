@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, useMotionValue, useTransform, type MotionValue } from "motion/react";
 import { TranscriptStaging } from "@/components/transcript-staging";
 import { canScroll, ownsDrag, useDrag } from "./gesture";
 import { replyRowAt } from "./swipe-reply";
 import { prefersReducedMotion, projectRelease, settleTo, springPath, system } from "./motion";
+import { PlatformContext } from "./platform";
 
 /** Parallax of the page underneath, as a share of the width: UIKit's navigation push moves it a third as far. */
 const UNDER_SHIFT = 0.3;
@@ -230,21 +231,53 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
 
   useEffect(() => { if (shownKey && !moving) x.set(0); }, [width]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const takeHold = useCallback(() => {
+    run.current?.stop();
+    popping.current = false;
+    // a slide that already landed is over for the chrome too: from here it follows the finger
+    slid.current?.(null);
+    sliding.current = true;
+    setMoving(true);
+    leaving.current?.();
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && pageRef.current?.contains(active)) active.blur();
+  }, []);
+
+  // Android 14+'s back gesture moves the page as a finger on it does, and lands or returns on the same spring
+  const platform = useContext(PlatformContext);
+  const backed = useRef(onBack);
+  backed.current = onBack;
+  const shownNow = useRef(shownKey);
+  shownNow.current = shownKey;
+  const gesture = useRef(false);
+  useEffect(() => platform?.onBackGesture?.((event) => {
+    if (event.phase === "start") {
+      if (!shownNow.current || popping.current) return false;
+      takeHold();
+      gesture.current = true;
+    }
+    if (!gesture.current) return false;
+    switch (event.phase) {
+      case "start": case "progress":
+        x.set(Math.max(0, event.progress) * width);
+        return true;
+      case "cancel":
+        gesture.current = false;
+        go(0, null, landed);
+        return true;
+      case "commit":
+        gesture.current = false;
+        popping.current = true;
+        go(width, null, () => { popped(); backed.current(); });
+        return true;
+    }
+  }), [platform, takeHold, go, landed, popped, x, width]);
+
   useDrag(pageRef, {
     axis: "x",
     enabled: Boolean(shownKey),
     claim: (s, start) => s.dx > 0 && !ownsDrag(s.target) && !canScroll(s.target, pageRef.current!, "x", -1) && !replyRowAt(s.target, start.x),
-    onStart: () => {
-      run.current?.stop();
-      popping.current = false;
-      // a slide that already landed is over for the chrome too: from here it follows the finger
-      slid.current?.(null);
-      sliding.current = true;
-      setMoving(true);
-      leaving.current?.();
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && pageRef.current?.contains(active)) active.blur();
-    },
+    onStart: takeHold,
     onMove: (s) => x.set(Math.max(0, s.dx)),
     onEnd: (s) => {
       const landing = projectRelease(x.get(), s.vx);

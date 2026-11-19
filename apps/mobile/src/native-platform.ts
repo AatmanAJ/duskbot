@@ -19,7 +19,7 @@ const keystore = SecureStorage as unknown as {
 };
 const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
-import { handleBack, type AppleCredential, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobilePlatform, type OrientationBridge, type ScanOverlay, type TurnActivityBridge } from "@/mobile/platform";
+import { handleBack, type AppleCredential, type BackGestureEvent, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobilePlatform, type OrientationBridge, type ScanOverlay, type TurnActivityBridge } from "@/mobile/platform";
 import type { NativeAction } from "@/mobile/phone-actions";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
 import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
@@ -202,7 +202,9 @@ const DuskHaptics = registerPlugin<{ play(options: { kind: string }): Promise<vo
 interface InsetsPlugin {
   setMode(options: { ride: boolean }): Promise<void>;
   setBars(options: { status: "dark" | "light"; ground: string }): Promise<void>;
+  setBackGesture(options: { on: boolean }): Promise<void>;
   addListener(event: "keyboard", listener: (event: { height: number; settled: boolean; duration?: number; at?: number }) => void): Promise<PluginListenerHandle>;
+  addListener(event: "back", listener: (event: { phase: "start" | "progress" | "cancel" | "commit"; progress?: number }) => void): Promise<PluginListenerHandle>;
 }
 const DuskInsets = registerPlugin<InsetsPlugin>("DuskInsets");
 
@@ -534,12 +536,27 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   let backButton: Promise<PluginListenerHandle> | undefined;
   const atRoot = new WeakSet<() => boolean>();
   let backOn = true;
+  let gestureOwner: (() => boolean) | null = null;
+  let gestureOn = false;
+  const gestures: Array<(event: BackGestureEvent) => boolean> = [];
   const backRoute = () => {
+    const gesture = insetsOn && Boolean(gestureOwner) && backs.at(-1) === gestureOwner;
+    if (gesture !== gestureOn) {
+      gestureOn = gesture;
+      void DuskInsets.setBackGesture({ on: gesture }).catch(() => {});
+    }
     const on = backs.some((one) => !atRoot.has(one));
     if (kind !== "android" || on === backOn) return;
     backOn = on;
     void App.toggleBackButtonHandler({ enabled: on }).catch(() => {});
   };
+  if (insetsOn) {
+    void DuskInsets.addListener("back", ({ phase, progress }) => {
+      const event: BackGestureEvent = phase === "start" || phase === "progress" ? { phase, progress: progress ?? 0 } : { phase };
+      const taken = gestures.reduce((any, listener) => listener(event) || any, false);
+      if (phase === "commit" && !taken && !handleBack(backs)) void App.minimizeApp().catch(() => {});
+    }).catch(() => {});
+  }
   if (kind === "ios" && Capacitor.isPluginAvailable("DuskPicker")) {
     setNativeAttach({
       photos: async () => nativeFiles((await DuskPicker.photos({ multiple: true })).files),
@@ -619,6 +636,14 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       });
       backRoute();
       return () => { const at = backs.indexOf(listener); if (at >= 0) backs.splice(at, 1); backRoute(); };
+    },
+    backGesture(listener, on) {
+      gestureOwner = on ? listener : gestureOwner === listener ? null : gestureOwner;
+      backRoute();
+    },
+    onBackGesture(listener) {
+      gestures.push(listener);
+      return () => { const at = gestures.indexOf(listener); if (at >= 0) gestures.splice(at, 1); };
     },
     backAtRoot(listener, root) {
       if (root) atRoot.add(listener);

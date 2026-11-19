@@ -3,9 +3,12 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NavStack } from "./NavStack";
+import { PlatformContext, type BackGestureEvent, type MobilePlatform } from "./platform";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+let backGesture: ((event: BackGestureEvent) => boolean) | null = null;
+const gesturePlatform = { onBackGesture: (listener) => { backGesture = listener; return () => { backGesture = null; }; } } as MobilePlatform;
 let root: Root;
 let host: HTMLDivElement;
 let log: string[];
@@ -14,7 +17,7 @@ let slides: Array<{ el: Element; to: string; animation: { onfinish: (() => void)
 
 function render(open: boolean | string) {
   const key = open === true ? "chat" : open || null;
-  act(() => root.render(createElement(NavStack, {
+  act(() => root.render(createElement(PlatformContext.Provider, { value: gesturePlatform }, createElement(NavStack, {
     base: createElement("p", null, "home"),
     page: key ? createElement("div", { id: key }, createElement("textarea", { id: "field" })) : null,
     pageKey: key,
@@ -22,7 +25,7 @@ function render(open: boolean | string) {
     onSettled: (shown) => log.push(shown ? "in" : "out"),
     onSlide: (path) => { if (path) log.push(`slide ${path.points.at(-1)}`); },
     onLeave: () => log.push("leave"),
-  })));
+  }))));
 }
 
 const nextFrame = () => act(() => { const due = frames!.splice(0); for (const fn of due) fn(performance.now()); });
@@ -163,5 +166,32 @@ describe("going back", () => {
     await act(async () => { await new Promise((done) => setTimeout(done, 400)); });
     expect(shown()).toBe(null);
     expect(host.querySelector<HTMLElement>(".mobile-nav")!.firstElementChild!.getAttribute("style") ?? "").not.toMatch(/translateX\(-/);
+  });
+});
+
+describe("Android's back gesture", () => {
+  it("moves the page with its progress and lands it back on the list on the push's spring when it commits", async () => {
+    await opened();
+    let taken = false;
+    act(() => { taken = backGesture!({ phase: "start", progress: 0 }); });
+    expect(taken).toBe(true);
+    expect(log).toEqual(["leave"]);
+    act(() => { backGesture!({ phase: "progress", progress: 0.4 }); });
+    act(() => { taken = backGesture!({ phase: "commit" }); });
+    expect(taken).toBe(true);
+    expect(log.at(-1)).toBe(`slide ${innerWidth}`);
+    land();
+    expect(log.slice(-2)).toEqual(["out", "back"]);
+  });
+
+  it("returns the page when the gesture is cancelled, and leaves a back button's commit to the app", async () => {
+    await opened();
+    act(() => { backGesture!({ phase: "start", progress: 0.1 }); });
+    act(() => { backGesture!({ phase: "cancel" }); });
+    expect(log.at(-1)).toBe("slide 0");
+    land();
+    let taken = true;
+    act(() => { taken = backGesture!({ phase: "commit" }); });
+    expect(taken).toBe(false);
   });
 });

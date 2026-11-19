@@ -191,6 +191,12 @@ function Shell() {
   useEffect(() => platform.onBack?.(back.current), [platform]);
   const backLayers = useSyncExternalStore(subscribeBackLayers, backLayerCount, () => 0);
   useEffect(() => platform.backAtRoot?.(back.current, !chatId && backLayers === 0), [platform, chatId, backLayers]);
+  // with a chat open and nothing over it, Android's back gesture slides the chat itself (NavStack)
+  useEffect(() => {
+    const listener = back.current;
+    platform.backGesture?.(listener, Boolean(chatId) && backLayers === 0);
+    return () => platform.backGesture?.(listener, false);
+  }, [platform, chatId, backLayers]);
 
   // a resumed app reads the chat on screen, as a refocused desktop window does
   useEffect(() => platform.onResume?.(() => { if (chatId) dispatch({ type: "select", id: chatId }); }), [platform, chatId, dispatch]);

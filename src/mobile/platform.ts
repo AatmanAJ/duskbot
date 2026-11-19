@@ -22,6 +22,10 @@ export interface KeyboardFrame {
   lift?: number;
 }
 
+export type BackGestureEvent =
+  | { phase: "start" | "progress"; progress: number }
+  | { phase: "cancel" | "commit" };
+
 export interface ScanResult {
   text: string;
 }
@@ -109,6 +113,11 @@ export interface MobilePlatform {
   /** A back listener is on its first screen and would decline (default: it is not). While every listener is, back goes
    * to the system, which plays its predictive back-to-home. */
   backAtRoot?(listener: () => boolean, atRoot: boolean): void;
+  /** Android 14+: while `on` and this back listener is the newest, the back gesture drives the page itself. */
+  backGesture?(listener: () => boolean, on: boolean): void;
+  /** The back gesture's start, its progress (0 to 1 of the way the system lets it go), a cancel, and its commit. A
+   * listener returns true for a commit it plays itself; a commit nobody takes (a back button) goes to `onBack`. */
+  onBackGesture?(listener: (event: BackGestureEvent) => boolean): () => void;
   /** Links the OS hands the app: duskbot://pair, duskbot://open, the desktop's thread links. A listener returns
    * true when the link was its kind; the link that launched the app waits for the first listener that takes it. */
   onAppUrl?(listener: (url: string) => boolean): () => void;

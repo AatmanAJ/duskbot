@@ -5,6 +5,8 @@ import android.view.View;
 import android.view.Window;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import androidx.activity.BackEventCompat;
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -52,6 +54,8 @@ public class InsetsPlugin extends Plugin {
             ViewCompat.setOnApplyWindowInsetsListener(decor, this::onInsets);
             ViewCompat.setWindowInsetsAnimationCallback(decor, new KeyboardMove());
             ViewCompat.requestApplyInsets(decor);
+            // added after @capacitor/app's own, so while enabled it hears back first
+            getActivity().getOnBackPressedDispatcher().addCallback(getActivity(), backGesture);
         });
         WebView web = getBridge().getWebView();
         if (web != null) {
@@ -83,6 +87,48 @@ public class InsetsPlugin extends Plugin {
             }
             call.resolve();
         });
+    }
+
+    /**
+     * While on, back goes to the page as a gesture: its start and progress (Android 14 and later report them), a cancel,
+     * and the commit, which a back button or an older Android sends alone.
+     */
+    @PluginMethod
+    public void setBackGesture(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        getBridge().executeOnMainThread(() -> {
+            backGesture.setEnabled(on);
+            call.resolve();
+        });
+    }
+
+    private final OnBackPressedCallback backGesture = new OnBackPressedCallback(false) {
+        @Override
+        public void handleOnBackStarted(@NonNull BackEventCompat event) {
+            back("start", event.getProgress());
+        }
+
+        @Override
+        public void handleOnBackProgressed(@NonNull BackEventCompat event) {
+            back("progress", event.getProgress());
+        }
+
+        @Override
+        public void handleOnBackCancelled() {
+            back("cancel", null);
+        }
+
+        @Override
+        public void handleOnBackPressed() {
+            back("commit", null);
+        }
+    };
+
+    private void back(String phase, Float progress) {
+        JSObject event = new JSObject();
+        event.put("phase", phase);
+        if (progress != null) event.put("progress", progress);
+        notifyListeners("back", event);
     }
 
     /** The bars' icons, light or dark, and the page's ground (#rrggbb) for the window behind the web view. */
