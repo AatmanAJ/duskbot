@@ -337,6 +337,13 @@ async function main() {
     cleanups.push(() => slow.close());
     const overSlowLink = (phone: Phone): Phone => ({ ...phone, record: { ...phone.record, ...(phone.record.relay ? { relay: { ...phone.record.relay, base: slow.url } } : {}), via: (phone.record.via ?? []).flatMap((route) => route.kind === "relay" ? [{ ...route, base: slow.url }] : []) } });
     for (const phone of [iphone, android, ...(nextPhone ? [nextPhone] : [])]) await expectRoute(overSlowLink(phone), "a slow link to the relay: opens on it and chats", onRelay, true);
+    // this computer's own link to the relay is slow too: a phone pairing now still gets the relay
+    const onTunnel = (base: string) => { const saved = kept.get("e2e") as { tunnel: { base: string } }; kept.set("e2e", { ...saved, tunnel: { ...saved.tunnel, base } }); relay.stop(); relay = deskRelay(); relay.start(); };
+    onTunnel(slow.url);
+    const slowPair = await pair("Android 1.2.1 (slow computer link)", "android", "qr", "relay");
+    if (slowPair) await expectRoute(slowPair, "paired over a slow computer link: opens on the relay and chats", onRelay, true);
+    onTunnel(link.base());
+    if (slowPair) await owner(desk.url, "DELETE", `/api/mobile/devices/${slowPair.record.deviceId}`);
 
     // the Mac's Wi-Fi address changed: each phone still holds the old one, which takes the connection and never answers
     const old = await silentAddress();
