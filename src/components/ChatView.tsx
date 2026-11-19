@@ -1346,6 +1346,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           // groups sit 16px apart
           data-simple-rows=""
           className="glass-scroller-content chat-column relative flex w-full flex-col gap-4 rounded-[18px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          data-dock-pad=""
           // 64px between the last row and the composer (grok leaves 54), so the working line has room above the message box
           style={{ paddingBottom: `calc(${composerDock.pad} + ${SIMPLE_TRAILING_GAP - (statusSlot ? SIMPLE_STATUS_SLOT : 0)}px)` }}
           role="log"

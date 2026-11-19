@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* the composer's live height (src/lib/composer-dock.ts): set on each element that reads it, never inherited, so a change
+   restyles those elements alone instead of the whole transcript under the scroller */
+@property --composer-dock { syntax: "*"; inherits: false; }
+
 /* Phones and tablets have no hover, and Tailwind only applies `hover:` and
    `group-hover:` under `@media (hover: hover)`. A control revealed on hover
    (`opacity-0 group-hover:opacity-100`) is therefore invisible there. Pair

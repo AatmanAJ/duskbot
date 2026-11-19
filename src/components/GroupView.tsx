@@ -1056,6 +1056,7 @@ export function GroupView({ group: room }: { group: Group }) {
           ref={transcriptRef}
           data-simple-rows=""
           className="glass-scroller-content chat-column relative flex w-full flex-col gap-4 rounded-[18px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          data-dock-pad=""
           style={{ paddingBottom: `calc(${composerDock.pad} + ${SIMPLE_TRAILING_GAP + USAGE_ROW_GAP - (statusSlot ? SIMPLE_STATUS_SLOT : 0)}px)` }}
           tabIndex={0}
           role="log"
