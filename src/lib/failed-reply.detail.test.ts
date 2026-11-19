@@ -21,6 +21,8 @@ describe("a failed reply's line", () => {
     expect(failedReplyDetail("model_not_found", "DeepSeek", false, "upstream HTTP 400: Model Not Exist")).toBe("DeepSeek doesn't offer this model. Pick another model for this bot.");
     expect(failedReplyDetail("provider_down", "GLM", true, "upstream HTTP 500: {\"error\":{\"type\":\"server_error\"}}")).toBe("GLM is having trouble right now. Try again in a few minutes.");
     expect(failedReplyDetail("context", "Codex", false, "")).toBe("This chat is too long for the model. Start a new chat, or pick a model with more room.");
+    expect(failedReplyDetail("session_lost", "Claude", false, "No conversation found with session ID: e8b9f01e-97e3-4be6-a55c-be988595628a"))
+      .toBe("Your AI lost this chat's memory. Start a new chat to keep going.");
   });
 
   it("keeps the engine's own sentence when it says more", () => {

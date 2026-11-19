@@ -5,7 +5,7 @@ import { FAILURE_PLANS, failurePlan, type FailureKind } from "./failure-plan";
 import { hasRawDetail, rawDetailIn } from "./raw-detail";
 
 const REASONS: FailedReplyReason[] = ["signed_out", "credits", "usage_limit", "rate_limit", "overloaded", "timeout", "no_ai", "model_not_found",
-  "bad_request", "context", "provider_down", "cli_missing", "cli_exit"];
+  "bad_request", "context", "session_lost", "provider_down", "cli_missing", "cli_exit"];
 const KINDS: FailureKind[] = [...REASONS, "claude_update", "place", "restart_interrupted", "no_answer", "blocker", "other"];
 
 /** What engines and the system really say when they fail, as people must never read it. */

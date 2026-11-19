@@ -47,6 +47,7 @@ export const FAILURE_PLANS: Readonly<Record<FailureKind, FailurePlan>> = {
   model_not_found: { heal: ["backup"], action: "switch_ai", line: "Your AI doesn't offer this model. Pick another one for this bot." },
   bad_request: { heal: [], action: "retry", instead: "switch_ai", line: "Your AI turned this request down. Try again, or pick another model." },
   context: { heal: [], action: "new_chat", instead: "switch_ai", line: "This chat is too long for the model. Start a new chat to keep going." },
+  session_lost: { heal: [], action: "new_chat", instead: "retry", line: "Your AI lost this chat's memory. Start a new chat to keep going." },
   provider_down: { heal: ["retry", "backup"], action: "retry", instead: "switch_ai", line: "Your AI is having trouble right now. Try again in a few minutes." },
   cli_missing: { heal: ["backup"], action: "set_up_engine", line: "Your AI isn't set up where this bot runs. Set it up again to keep going." },
   cli_exit: { heal: [], action: "retry", instead: "switch_ai", line: "Your AI stopped before it could reply. Try again." },
