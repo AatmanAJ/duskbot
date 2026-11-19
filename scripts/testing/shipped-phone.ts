@@ -13,6 +13,10 @@ export const SHIPPED_PHONES = {
   ios: "95f534fd04",
   /** Android 1.2.1, the signed APK on dusk.bot, built 2026-11-18 */
   android: "00b99aea78",
+  /** Android 1.2.3, built from release/0.2.23 */
+  android123: "28577ae9cb",
+  /** Android 1.2.4, built from release/0.2.24 */
+  android124: "40d0befb13",
 } as const;
 
 export interface PhoneRecord {
@@ -47,12 +51,12 @@ export interface FakePlatform {
   secrets: { get(key: string): Promise<string | null>; set(key: string, value: string): Promise<void>; remove(key: string): Promise<void> };
 }
 
-export function fakePlatform(kind: "ios" | "android", name: string): FakePlatform {
+export function fakePlatform(kind: "ios" | "android", name: string, appVersion = kind === "ios" ? "1.2" : "1.2.1"): FakePlatform {
   const store = () => {
     const kept = new Map<string, string>();
     return { get: async (key: string) => kept.get(key) ?? null, set: async (key: string, value: string) => { kept.set(key, value); }, remove: async (key: string) => { kept.delete(key); } };
   };
-  return { kind, native: true, appVersion: kind === "ios" ? "1.2" : "1.2.1", deviceName: () => name, prefs: store(), secrets: store() };
+  return { kind, native: true, appVersion, deviceName: () => name, prefs: store(), secrets: store() };
 }
 
 /** `git archive` of the build's sources into `scratch`, bundled with its own `@/` paths and this tree's node_modules */
