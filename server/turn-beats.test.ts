@@ -230,6 +230,8 @@ describe("beat text", () => {
     expect(cleanBeat("ack", "Want me to check prices too?")).toBeNull();
     expect(cleanBeat("ack", "word ".repeat(40))).toBeNull();
     expect(cleanBeat("plan", "one\ntwo\nthree")).toBeNull();
+    expect(cleanBeat("plan", "I'll give you a brief confirmation, leaving the other details unchanged. Before sending, I'll check that both corrections match your message.")).toBeNull();
+    expect(cleanBeat("plan", "You'll get a short table of the three plans with prices, and I'll check each price is current.")).not.toBeNull();
     expect(cleanBeat("ack", "On it, testing sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 now")).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
   });
 
