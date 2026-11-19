@@ -86,6 +86,16 @@ export function useKeyboardDismiss(platform: MobilePlatform, rootRef: RefObject<
   }, [platform, rootRef]);
 }
 
+/** Each keyboard step with its page clock, in the console, when localStorage has dusk.kbtrace. */
+function trace(step: string, detail: Record<string, number>): void {
+  try {
+    if (!localStorage.getItem("dusk.kbtrace")) return;
+  } catch {
+    return;
+  }
+  console.info(`[kb] ${performance.now().toFixed(1)} ${step}`, JSON.stringify(detail));
+}
+
 /** A keyboard event that reached the page later than this was a stalled page, not a bridge hop. */
 const MAX_CATCH_UP_MS = 150;
 
@@ -108,8 +118,7 @@ function safeBottom(root: HTMLElement): number {
 }
 
 /** Moves the chat with the software keyboard. For the native glass composer's own field the native side lifts the whole
- * page in the keyboard's animation, and the page only takes the space once that has stopped: the inset under it, and the
- * same lift as room above the transcript with the scroll offset by it, so nothing on screen moves. Otherwise the transcript
+ * page in the keyboard's animation and the page's layout stays as it is (see `liftedInset`). Otherwise the transcript
  * and composer ride up on the compositor with the keyboard's own curve, and the layout takes the space only once it has
  * settled (and gives it back before it leaves), each swap paired with a scroll offset so nothing visibly jumps. In a
  * browser the visual viewport is the only signal and the browser already animates it, so the inset simply follows. */
@@ -151,19 +160,18 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       if (event.target instanceof HTMLElement && event.target.matches(TEXT_FIELD)) mode?.(isComposerField(event.target));
     };
     if (mode) root.addEventListener("focusin", focused);
-    let lifted = 0;
     let nativeRide = false;
-    const settleLifted = (height: number, lift: number) => {
-      const list = scroller(root);
-      const top = list?.scrollTop ?? 0;
+    /** The page's own share of a keyboard the native side lifts it for: only the part the lift leaves covered (a short
+     * chat's empty space), so its layout never moves anything on screen and nothing scrolls. */
+    const liftedInset = (height: number, lift: number) => {
+      const inset = Math.max(0, height - lift);
+      trace("page inset", { height, lift, inset });
       delete root.dataset.kbMoving;
-      root.style.setProperty("--m-lift", `${lift}px`);
-      set(Math.max(0, height - lift), 0);
       if (height > 0) root.dataset.keyboard = "open";
       else delete root.dataset.keyboard;
-      if (list) list.scrollTop = top + lift - lifted;
-      lifted = lift;
-      committed = Math.max(0, height - lift);
+      if (inset === committed) return;
+      set(inset, 0);
+      committed = inset;
     };
 
     /** At once, with the scroll offset so the transcript stays still: the keyboard went without a move to ride. */
@@ -182,9 +190,11 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       const stop = platform.onKeyboard((frame) => {
         const { height, phase } = frame;
         if (frame.lift !== undefined) {
+          trace(phase === "did" ? "native settled" : "native will", { height, lift: frame.lift });
           nativeRide = true;
           window.clearTimeout(settleTimer);
-          if (phase === "did") settleLifted(height, frame.lift);
+          // on the way down the covered part is under the keyboard still: given back at once, as it starts to go
+          if (phase === "did" || height === 0) liftedInset(height, frame.lift);
           return;
         }
         if (nativeRide && phase === "did") return;

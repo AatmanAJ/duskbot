@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { animate, motion, useMotionValue, useTransform, type Transition } from "motion/react";
 
 import { cn } from "@/lib/cn";
@@ -21,6 +21,9 @@ export function SegmentedTabs<V extends string>({ tabs, value, onChange, label, 
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const sliding = slide !== undefined;
+  // until the fill has measured its tab (a sheet still laying out, a font still loading) the chosen tab wears its own
+  // fill, so the first frame already shows it in place
+  const [filled, setFilled] = useState(false);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
@@ -35,7 +38,7 @@ export function SegmentedTabs<V extends string>({ tabs, value, onChange, label, 
 
   return (
     <div ref={listRef} role="tablist" aria-label={label} onKeyDown={onKeyDown} className={cn("flex gap-0.5", sliding && "relative", className)}>
-      {sliding && <SlidingFill index={tabs.findIndex((tab) => tab.value === value)} transition={slide} />}
+      {sliding && <SlidingFill index={tabs.findIndex((tab) => tab.value === value)} transition={slide} shown={filled} onPlaced={() => setFilled(true)} />}
       {tabs.map((tab) => {
         const selected = tab.value === value;
         return (
@@ -50,7 +53,7 @@ export function SegmentedTabs<V extends string>({ tabs, value, onChange, label, 
             className={cn(
               "h-[26px] min-w-0 shrink truncate rounded-full px-2 py-1 text-[13px] leading-[18px] tracking-normal",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-              sliding ? cn("relative transition-colors duration-150 ease-[ease]", selected ? "text-ink" : "text-ink-secondary")
+              sliding ? cn("relative transition-colors duration-150 ease-[ease]", selected ? "text-ink" : "text-ink-secondary", selected && !filled && "bg-ink/[0.06]")
                 : selected ? "bg-ink/[0.06] text-ink" : "text-ink-secondary hover:bg-ink/[0.06]",
             )}
           >
@@ -64,13 +67,15 @@ export function SegmentedTabs<V extends string>({ tabs, value, onChange, label, 
 
 /** The chosen tab's fill, moved and stretched by transform only. Its corners are counter-scaled so the pill keeps its
  * round ends while it stretches between tabs of different widths. */
-function SlidingFill({ index, transition }: { index: number; transition: Transition | null }) {
+function SlidingFill({ index, transition, shown, onPlaced }: { index: number; transition: Transition | null; shown: boolean; onPlaced: () => void }) {
   const base = useRef(0);
   const x = useMotionValue(0);
   const scaleX = useMotionValue(1);
   const radius = useTransform(scaleX, (s) => `${9999 / Math.max(s, 0.01)}px / 9999px`);
   const fill = useRef<HTMLSpanElement>(null);
   const placed = useRef(false);
+  const placedOnce = useRef(onPlaced);
+  placedOnce.current = onPlaced;
 
   useLayoutEffect(() => {
     const row = fill.current?.parentElement;
@@ -90,6 +95,7 @@ function SlidingFill({ index, transition }: { index: number; transition: Transit
         x.jump(to.x);
         scaleX.jump(to.scaleX);
       }
+      if (!placed.current) placedOnce.current();
       placed.current = true;
     };
     place(true);
@@ -105,7 +111,7 @@ function SlidingFill({ index, transition }: { index: number; transition: Transit
       aria-hidden="true"
       data-tab-fill=""
       className="pointer-events-none absolute inset-y-0 left-0 bg-ink/[0.06]"
-      style={{ x, scaleX, borderRadius: radius, transformOrigin: "0 50%" }}
+      style={{ x, scaleX, borderRadius: radius, transformOrigin: "0 50%", opacity: shown ? 1 : 0 }}
     />
   );
 }
