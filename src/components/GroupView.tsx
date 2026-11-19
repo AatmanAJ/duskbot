@@ -59,7 +59,7 @@ import { TranscriptCardSlot } from "./TranscriptCardSlot";
 import { RoomContextWarnings } from "./ContextWarning";
 import { ChatFindBar } from "./ChatFindBar";
 import { botTextForDisplay, isPureLeakedBotText } from "../../shared/system-message-guard.ts";
-import { QuotedText, ReplyQuote } from "./ReplyQuote";
+import { QuotedText, ThreadReplyQuote } from "./ReplyQuote";
 import { ConnectorCard } from "./ConnectorCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { SignInRequestCard } from "./SignInRequestCard";
@@ -240,21 +240,15 @@ function RoomTextMessage({
           data-quotable={user ? undefined : ""}
           data-sending={user && m.id.startsWith("optimistic-") ? t("chat.sending") : undefined}
         >
-          {m.replyToId && (() => {
-            const target = transcript.find((candidate) => candidate.id === m.replyToId);
-            return target ? (
-              <div className="mb-2">
-                <ReplyQuote
-                  message={target}
-                  fallbackName={t("room.fallbackBot")}
-                  compact
-                  onJump={() =>
-                    dispatch({ type: "focusMessage", threadId: group.threadId, messageId: target.id })
-                  }
-                />
-              </div>
-            ) : null;
-          })()}
+          {m.replyToId && (
+            <ThreadReplyQuote
+              threadId={group.threadId}
+              replyToId={m.replyToId}
+              loaded={transcript.find((candidate) => candidate.id === m.replyToId)}
+              fallbackName={t("room.fallbackBot")}
+              onJump={(target) => dispatch({ type: "focusMessage", threadId: group.threadId, messageId: target.id })}
+            />
+          )}
           {user ? (
             <>
               {attachments && !mediaRow && <AttachmentGallery media={m.media} images={attachments.images} files={attachments.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} className={!attachments.display ? "mb-0" : undefined} />}

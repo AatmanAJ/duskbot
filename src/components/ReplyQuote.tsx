@@ -1,10 +1,11 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Reply, TextQuote, X } from "../icons";
 
 import { cn } from "@/lib/cn";
 import { peerLine } from "@/lib/peer-message";
-import { replyAuthor, replySnippet } from "@/lib/replies";
+import { useQuotedMessage } from "@/lib/quoted-messages";
+import { replyAuthor, replySnippet, replyThumbnail } from "@/lib/replies";
 import { splitSelectionQuote } from "@/lib/selection-quote";
 import { t } from "@/lib/i18n";
 import type { Message } from "@/state/store";
@@ -23,9 +24,15 @@ export function ReplyQuote({
   compact?: boolean;
 }) {
   const name = replyAuthor(message, fallbackName);
+  const thumbnail = replyThumbnail(message);
+  const [thumbnailFailed, setThumbnailFailed] = useState<string | null>(null);
   const body = (
     <>
       <Reply size={compact ? 14 : 15} strokeWidth={1.5} aria-hidden="true" className="shrink-0 rtl:-scale-x-100" />
+      {thumbnail && thumbnailFailed !== thumbnail && (
+        <img src={thumbnail} alt="" data-reply-thumbnail="" loading="lazy" draggable={false} onError={() => setThumbnailFailed(thumbnail)}
+          className="-my-0.5 size-6 shrink-0 rounded-md bg-inset object-cover" />
+      )}
       <span className="sr-only">{t("chat.reply.replyingTo", { name })}: </span>
       <span aria-hidden="true" className="shrink-0 font-medium text-ink">{name}</span>
       <span dir="auto" className="min-w-0 flex-1 truncate">{replySnippet(peerLine(message)?.body ?? message.text ?? "")}</span>
@@ -48,6 +55,23 @@ export function ReplyQuote({
           <X size={14} strokeWidth={1.5} aria-hidden="true" />
         </button>
       )}
+    </div>
+  );
+}
+
+/** A sent reply's quote, found however far back the quoted message is from the rows this client holds. */
+export function ThreadReplyQuote({ threadId, replyToId, loaded, fallbackName, onJump }: {
+  threadId: string;
+  replyToId: string;
+  loaded: Message | undefined;
+  fallbackName?: string;
+  onJump: (target: Message) => void;
+}) {
+  const target = useQuotedMessage(threadId, replyToId, loaded);
+  if (!target) return null;
+  return (
+    <div className="mb-2">
+      <ReplyQuote message={target} fallbackName={fallbackName} compact onJump={() => onJump(target)} />
     </div>
   );
 }

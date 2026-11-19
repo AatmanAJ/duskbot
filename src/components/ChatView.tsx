@@ -94,7 +94,7 @@ import { CARD_ACTION, ChatErrorBanner, ChatErrorCard, ChatNotice } from "./ChatE
 import { ThreadContextWarning } from "./ContextWarning";
 import { UsageAlert, useLimitResetContinue } from "./EngineUsage";
 import { ChatFindBar } from "./ChatFindBar";
-import { QuotedText, ReplyQuote } from "./ReplyQuote";
+import { QuotedText, ReplyQuote } from "./ReplyQuote"; import { useQuotedMessage } from "@/lib/quoted-messages";
 import { ConnectorCard } from "./ConnectorCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { SignInRequestCard } from "./SignInRequestCard";
@@ -318,7 +318,7 @@ const Bubble = memo(function Bubble({
   onCancelEdit,
   onSubmitEdit,
   onRegenerate,
-  replyTarget,
+  replyTarget: loadedReplyTarget,
   onReply,
   underExchangeLine = false,
 }: {
@@ -341,7 +341,7 @@ const Bubble = memo(function Bubble({
   onReply: (message: Message) => void;
 }) {
   const { botId, threadId, botName, voiceId, tts, localVoice, bots, mentionPeers, mentionPerson, focus, dispatch, bubbleStyle, conversational, canReact, openedAt, speakerViewer } = useChatRows(), busy = onRegenerate || versions ? use(ChatBusyContext) : false;
-  const remoteClient = window.duskDesktop?.remoteClient?.active === true;
+  const remoteClient = window.duskDesktop?.remoteClient?.active === true, replyTarget = useQuotedMessage(threadId, message.replyToId, loadedReplyTarget);
   const peer = peerLine(message) ?? peerRequest(message, botId);
   const user = message.role === "user" && !peer;
   const speaker = user ? otherSpeaker(message, speakerViewer ?? null) : null;
