@@ -6487,7 +6487,7 @@ async function mountTeamVps(computer: TeamComputerRecord, botId: string, owner: 
     computerStateChanged(target.ownerId, vpsSshAlias(target.config)!, "failed", error instanceof Error ? error.message : String(error), botId);
     throw error;
   }
-  if (!remote.ready || !remote.sshAlias) throw new Error(remote.problem ?? "The team's VPS computer is not ready");
+  if (!remote.ready || !remote.sshAlias) throw Object.assign(new Error(remote.problem ?? "The team's VPS computer is not ready"), remote.container === "missing" && !canStart ? { code: "computer-gone" } : {});
   requireCurrent();
   const targetCfg = { vps: { sshAlias: remote.sshAlias } };
   await rememberVpsReady(target.ownerId, remote, true);
@@ -8674,7 +8674,7 @@ async function beginTurn(
     throw Object.assign(new Error("this bot's approval level is still being confirmed: try again"), { status: 409, code: "settling" });
   }
   const answer = turnAnswers(threadId, opts);
-  let computerSkipped: string | undefined;
+  let computerSkipped: string | undefined, computerGone = false;
   const transitionError = providerTransitionForTurn(bot, opts?.runOn, threadId);
   if (transitionError && !answer.incident) throw Object.assign(new Error(transitionError), { status: 409 });
   if (transitionError) computerSkipped = transitionError;
@@ -9045,9 +9045,9 @@ async function beginTurn(
       const deferredSharedComputer = teamComputer?.scope === "workspace" && Boolean(vpsSshAliasForBot(cfg, bot)) && canSelectComputer && ((bot.computer === undefined && plan.computer === undefined)
         || (bot.computer === undefined && plan.pinned === "cloud" && pinSource(plan.pinned, dispatchTask, bot.computer) === "auto-pin" && vpsDefaults().autoStart && !botScreens.get(bot.id)?.lease.live()));
       let wants: ComputerWant = computerSkipped ? "off" : plan.computer;
-      const skipComputer = (error: unknown, unreachable = false) => {
+      const skipComputer = (error: unknown, unreachable = false, gone = false) => {
         if (!continuesWithoutComputer({ incident: answer.incident, unreachable, cancelled: error instanceof DirectTurnSetupCancelled || error instanceof ComputerWaitParked })) throw error;
-        computerSkipped ??= error instanceof Error ? error.message : String(error);
+        computerSkipped ??= error instanceof Error ? error.message : String(error); computerGone ||= gone;
         wants = "off";
         teamComputer = undefined;
         delete integrations.localComputer;
@@ -9307,7 +9307,7 @@ async function beginTurn(
         const failedPlace = namedPlace ?? (teamComputer ? "cloud" as const : undefined), from = placeSource ?? (plan.pinned ? pinSource(plan.pinned, dispatchTask, bot.computer) : "works-on");
         const failure = !failedPlace ? error : await asPlaceFailure(error, failedPlace, from, bot);
         if (failure instanceof PlaceUnavailableError) clearFailedAutoPin(bot.id, threadId, failure.place);
-        skipComputer(failure, wantedKind === "vps" && from !== "pin" && from !== "auto-pin");
+        skipComputer(failure, wantedKind === "vps" && from !== "pin" && from !== "auto-pin", (error as { code?: unknown } | null)?.code === "computer-gone");
       }
 
       // a bot whose Local VM awaits its update goes through attachLocalVm, which waits for it or bars this computer
@@ -9486,7 +9486,7 @@ async function beginTurn(
         { id: "computer", label: "Computer", text: computerPrompt(computerPromptKind) + (computerPromptKind === "vps" && !integrations.browser && Boolean(integrations.agents) ? savedLoginsPrompt(botLogins.sitesFor(bot.id)) : "") },
         { id: "team-computer", label: "Team computer", text: teamComputerPrompt(teamComputer) },
         { id: "route-traffic", label: "Network", text: computerEgress.prompt() },
-        { id: "plan", label: "Surface", text: surfacePrompt({ computer: mountedComputer, browser: Boolean(integrations.browser) }, { pinned: hostScreenMissing ? null : plan.pinned, note: plan.note + vpsUnavailableNote + vmUpdateNote + (hostScreenMissing ? screenAccessMissingNote(Boolean(integrations.browser), missingScreenPermissions(), Boolean(integrations.agents)) : "") + (computerSkipped && plan.computer !== "off" ? computerSkippedNote(redactSecretsInText(computerSkipped), answer.incident) : ""), canSelect: computerSelectionTurns.has(threadId), cloudHome: Boolean(CLOUD_HOME), botOpened: plan.botOpened, browserInComputerTab }) },
+        { id: "plan", label: "Surface", text: surfacePrompt({ computer: mountedComputer, browser: Boolean(integrations.browser) }, { pinned: hostScreenMissing ? null : plan.pinned, note: plan.note + vpsUnavailableNote + vmUpdateNote + (hostScreenMissing ? screenAccessMissingNote(Boolean(integrations.browser), missingScreenPermissions(), Boolean(integrations.agents)) : "") + (computerSkipped && plan.computer !== "off" ? computerSkippedNote(redactSecretsInText(computerSkipped), answer.incident, computerGone) : ""), canSelect: computerSelectionTurns.has(threadId), cloudHome: Boolean(CLOUD_HOME), botOpened: plan.botOpened, browserInComputerTab }) },
         { id: "cloud-home", label: "My Cloud", text: CLOUD_HOME ? cloudHomePrompt(syncedFolders(DATA_DIR)) : "" },
         { id: "composio", label: "Connected apps", text: integrations.composio ? composioSystemPrompt(liveBot?.connectorTools ?? bot.connectorTools, Boolean(integrations.browser)) + describeConnectorScopes((liveBot ?? bot).connectorScopes) : "" },
         { id: "mcp", label: "MCP servers", text: mcpPrompt(bot, integrations.custom ?? {}) }, { id: "to-connect", label: "Connections to make", text: cloudConnections.prompt(liveBot ?? bot) + teamConnections.prompt(threadId, dispatchClaimId, integrations) },

@@ -57,7 +57,8 @@ export function screenAccessMissingNote(browser: boolean, missing: readonly stri
     : " Control of this computer's desktop apps is not available this turn. Answer and chat normally, with web search and page fetches for lookups." + desktop + NO_PERMISSION_TALK;
 }
 
-export function computerSkippedNote(cause: string, incident = true): string {
+export function computerSkippedNote(cause: string, incident = true, gone = false): string {
+  if (!incident && gone) return " Your computer is not set up right now, so no computer is mounted this turn: answer and work without it. Only if the request truly needs a screen, say in one short sentence that your computer isn't set up and the person can set it up again in Settings > Computers; never quote an error, and never claim to have used that computer.";
   if (!incident) return " Your computer is not answering right now, so no computer is mounted this turn: answer and work without it. Only if the request truly needs a screen, say in one short sentence that your computer isn't answering and the person can try again in a minute; never quote an error, and never claim to have used that computer.";
   const why = cause.trim().replace(/[\s.]+$/, "");
   return ` This turn answers a Team incidents report and your computer could not be prepared for it (${why}), so no computer is mounted: you cannot open, click or check anything on it this turn. Act through your teammates, or tell the person what only they can fix, never claim to have checked that computer yourself.`;

@@ -3358,7 +3358,8 @@ describe("harness HTTP API", () => {
       await expect.poll(() => claudePrompts().length, { timeout: 5_000 }).toBe(missingPromptBaseline + 1);
       const withoutComputer = await readJsonFileWhenReady<ComputerDump>(fakeClaudeDump);
       expect(withoutComputer.mcpConfig.mcpServers.computer).toBeUndefined();
-      expect(JSON.stringify(withoutComputer)).toMatch(/no computer is mounted this turn/);
+      expect(JSON.stringify(withoutComputer)).toMatch(/your computer isn't set up and the person can set it up again in Settings > Computers/);
+      expect(JSON.stringify(withoutComputer)).not.toMatch(/try again in a minute/);
       expect((await api("POST", `/api/bots/${botIds[0]}/interrupt`, {})).status).toBe(200);
       await idle(botIds[0]);
       const missingThread = JSON.stringify((await api("GET", "/api/bots?messages=30")).body.bots.find((bot: { id: string }) => bot.id === botIds[0]).messages);
