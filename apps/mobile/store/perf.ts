@@ -230,7 +230,7 @@ const STREAMED = Array.from({ length: 12 }, (_, i) => `${i + 1}. **${["mon", "tu
 
 /** a finger drags a bot message 120 px to the right over about 300 ms, past the reply threshold, and lets go */
 async function swipeReply(stage: Stage) {
-  const at = await stage.page.evaluate(`(() => { const b = [...document.querySelectorAll("[data-mobile-chat] [data-message-row]:not(.items-end) [data-chat-bubble]")].at(-1).getBoundingClientRect(); return { x: b.left + 60, y: b.top + Math.min(24, b.height / 2) }; })()`);
+  const at = await stage.page.evaluate(`(() => { const b = [...document.querySelectorAll("[data-mobile-chat] [data-message-row]:not(.items-end)")].filter((row) => row.querySelector("[data-testid=message-actions] button[aria-label^='Reply' i]") && row.querySelector("[data-chat-bubble]")).at(-1).querySelector("[data-chat-bubble]").getBoundingClientRect(); return { x: b.left + 60, y: b.top + Math.min(24, b.height / 2) }; })()`);
   await stage.page.evaluate(`window.__perf.tapAt = performance.now()`);
   await stage.page.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: at.x, y: at.y }] });
   for (let step = 1; step <= 18; step += 1) {
