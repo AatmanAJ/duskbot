@@ -85,7 +85,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   const motion = dialogMotion(useMotionReduced());
   const [opened, setOpened] = useState(open);
   useEffect(() => { if (open) setOpened(true); }, [open]);
-  if (!open && !opened) return null;
+  if ((!open && !opened) || typeof document === "undefined" || !document.body) return null;
   return createPortal(
     <AnimatePresence onExitComplete={() => { setOpened(false); props.onClosed?.(); }}>
       {open && (
