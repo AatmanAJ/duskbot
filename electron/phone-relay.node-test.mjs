@@ -296,3 +296,16 @@ test("a phone request that lands after a workspace switch never reaches the othe
   assert.notEqual(late, 401);
   assert.equal(f.harness.seen.length, before, "the request never reached a harness");
 });
+
+test("a relay waiting out a failure tries again as soon as the computer wakes", async (t) => {
+  const f = await fixture(t);
+  let down = true;
+  const relay = f.relay({ retryMs: [600_000], fetch: (...args) => (down ? Promise.reject(new TypeError("fetch failed")) : fetch(...args)) });
+  relay.start();
+  await until(() => relay.state().status === "error");
+  down = false;
+  await delay(200);
+  assert.equal(relay.state().status, "error", "the failure's wait still holds");
+  relay.wake();
+  await until(() => relay.state().status === "ready");
+});
