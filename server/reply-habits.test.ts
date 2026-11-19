@@ -82,6 +82,12 @@ it("acts instead of ending on a plan, sends the ack with the first step, and sto
   expect(replyHabitsPrompt(false)).toContain("Send it in the same step as your first tool call, never as a reply on its own");
 });
 
+it("drafts, says it is not sent and how to connect, when asked to send or post through an app that is not connected", () => {
+  for (const quick of [false, true]) {
+    expect(replyHabitsPrompt(quick)).toContain("do not try it in a browser or ask for an address first. In one reply: the finished draft in the chat, one line that it is not sent because the app isn't connected, and the way to connect it");
+  }
+});
+
 it("never promises to run or test anything without a tool that runs code", () => {
   expect(TOOL_HABITS_PROMPT).toContain("with no tool that runs code or commands (a shell, a terminal, a computer), never promise to run, test or build anything");
 });
