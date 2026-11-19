@@ -149,7 +149,7 @@ describe("a sign-in the Keychain kept through a delete and reinstall", () => {
     const onLinked = vi.fn();
     await mount(onboarding({ onLinked }));
     await settle();
-    expect(heading()).toBe("Pick a cloud");
+    expect(heading()).toBe("Pick where to work");
     expect(host.textContent).not.toMatch(/asleep/i);
     expect(pairs).toBe(0);
     expect(onLinked).not.toHaveBeenCalled();

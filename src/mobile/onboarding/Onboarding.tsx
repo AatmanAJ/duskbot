@@ -99,6 +99,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
   // delete and reinstall) lists the places to pick from
   const [justSignedIn, setJustSignedIn] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [withComputers, setWithComputers] = useState(false);
   const [value, setValue] = useState(() => signInCode ? formatCode(signInCode) : "");
   const [signInEmail, setSignInEmail] = useState(email ?? "");
   const locked = useRef(false);
@@ -267,9 +268,9 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
               {signedIn && !startAtLink && <button type="button" data-entry="sign-out" disabled={busy || signingOut} className={QUIET}
                 onClick={() => { setSigningOut(true); void account?.signOutOfPhone().catch(() => setSigningOut(false)); }}>{signingOut ? <WorkingDots /> : t("accountGate.signOut")}</button>}
             </>}>
-              <h1 className={HEADLINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneTitleStore" : "mobile.clouds.noneTitle" : "mobile.clouds.pickTitle")}</h1>
-              <p className={LINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneStore" : "mobile.clouds.none" : "mobile.clouds.pickBody", { email: account?.account?.email ?? "" })}</p>
-              <CloudPicker busy={busy} autoPick={!startAtLink && justSignedIn}onNone={() => setNoClouds(true)} onPairing={(payload) => redeem(payload, "clouds")} />
+              <h1 className={HEADLINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneTitleStore" : "mobile.clouds.noneTitle" : withComputers ? "mobile.clouds.pickAnyTitle" : "mobile.clouds.pickTitle")}</h1>
+              <p className={LINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneStore" : "mobile.clouds.none" : withComputers ? "mobile.clouds.pickAnyBody" : "mobile.clouds.pickBody", { email: account?.account?.email ?? "" })}</p>
+              <CloudPicker busy={busy} autoPick={!startAtLink && justSignedIn} onNone={() => setNoClouds(true)} onComputers={setWithComputers} onPairing={(payload) => redeem(payload, "clouds")} />
               {failure && <Failed failure={failure} />}
             </Screen>
           </StepPane>

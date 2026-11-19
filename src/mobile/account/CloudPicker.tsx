@@ -55,13 +55,15 @@ export function pickerRows(places: AccountPlaces, records: readonly Pick<MobileC
 
 /** The signed-in account's clouds and computers: one tap pairs this phone with one, and with `autoPick` a single cloud
  * pairs on its own. */
-export function CloudPicker({ busy, onPairing, autoPick = false, onNone }: {
+export function CloudPicker({ busy, onPairing, autoPick = false, onNone, onComputers }: {
   busy: boolean;
   /** a cloud's pairing, or a computer's pairing link */
   onPairing(payload: TypedPairing | string): Promise<void>;
   autoPick?: boolean;
   /** the list came back empty */
   onNone?(): void;
+  /** the list holds computers, not only clouds */
+  onComputers?(some: boolean): void;
 }) {
   const account = useMobileAccount();
   const signedIn = Boolean(account?.account);
@@ -103,6 +105,7 @@ export function CloudPicker({ busy, onPairing, autoPick = false, onNone }: {
   const empty = places ? places.clouds.length + places.teams.length + places.computers.length === 0 : false;
   useEffect(() => {
     if (!places || !loaded) return;
+    onComputers?.(places.computers.length > 0);
     if (empty) { onNone?.(); return; }
     const only = autoPick && !picked.current ? autoPickCloud(places.clouds, connections) : null;
     if (only) { picked.current = true; void pick({ kind: "cloud", cloud: only }, `cloud:${only.id}`, only.name); }
