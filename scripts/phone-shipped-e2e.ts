@@ -376,12 +376,32 @@ async function main() {
 
     // a phone pairing while the relay is down gets the Wi-Fi route alone
     const wifiOnly = await pair("Android 1.2.1 (Wi-Fi only)", "android", "qr", "companion");
+    const healing = PROD ? null : await pair("iPhone next (Wi-Fi only)", "ios", "qr", "companion", "next");
 
     // the link node restarts on its saved state
     await link.start();
     const back = await until(async () => (await launch(iphone).then((outcome) => { const route = routeOf(outcome); closeRoute(outcome); return route === "relay"; })), 60_000);
     check("iPhone 1.2: back on the relay after the link node restarts", Boolean(back), `${walked.get("iPhone 1.2")}ms for the last walk`);
     await expectRoute(android, "back on the relay after the link node restarts", onRelay);
+
+    // the next build paired while the relay was down: its next connect over Wi-Fi opens its own relay channel, so with
+    // the Wi-Fi gone it reaches the computer through the relay, never pairing again
+    if (healing?.shipped.learnRoutes && healing.shipped.relaySecrets) {
+      const overWifi = await launch(healing);
+      if (typeof overWifi !== "string") {
+        const ask = (async (path: string, init: RequestInit = {}) => {
+          const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
+          return phoneRequest(overWifi, init.method ?? "GET", String(path), body);
+        }) as typeof fetch;
+        let healed: PhoneRecord | null = null;
+        await healing.shipped.learnRoutes(healing.record, overWifi, async (_id, via, relay) => { if (relay) healed = { ...healing.record, via, relay, ...(via?.some((route) => route.kind === "relay") ? {} : { relayLate: true as const }) }; },
+          ask, () => healing.shipped.relaySecrets!(healing.platform, healing.record.id));
+        closeRoute(overWifi);
+        const record = healed as PhoneRecord | null;
+        check("iPhone next (Wi-Fi only): opens its own relay channel on its next connect", Boolean(record?.relay?.agentPub), JSON.stringify(record?.relay ?? null));
+        if (record) await expectRoute({ ...healing, record: { ...record, via: [] } }, "Wi-Fi gone: reaches the computer through the relay it opened, not paired again", onRelay, true);
+      } else check("iPhone next (Wi-Fi only): opens on Wi-Fi", false, overWifi);
+    }
 
     // the harness restarts: unreachable meanwhile, never unpaired, and the same session works after
     await desk.stop();
@@ -406,6 +426,7 @@ async function main() {
     await expectRoute(android, "on the relay again through the new tunnel", onRelay);
 
     // removed on the desktop: the phone hears it (relay channel gone) and unpairs
+    if (healing) await owner(desk.url, "DELETE", `/api/mobile/devices/${healing.record.deviceId}`);
     if (wifiOnly) {
       await expectRoute(wifiOnly, "Wi-Fi-only phone opens on Wi-Fi and chats", onCompanion, true);
       const removed = await owner(desk.url, "DELETE", `/api/mobile/devices/${wifiOnly.record.deviceId}`);
