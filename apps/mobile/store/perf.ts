@@ -4,7 +4,8 @@
 // glass bridge (a recording stand-in), and style and layout work. `--video <dir>` also keeps the screencast of each chat
 // switch for frame strips.
 //
-//   node --experimental-strip-types apps/mobile/store/perf.ts --out perf.json [--rate 4] [--runs 3] [--video dir] [--only sheet]
+//   node --experimental-strip-types apps/mobile/store/perf.ts --out perf.json [--rate 4] [--runs 3] [--video dir] [--only sheet] [--long 320]
+//   DUSK_STAGE_PLATFORM=android runs it as the Android app: a Pixel 7's screen, no native glass, typed into the page's composer
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,16 +16,17 @@ import { parseArgs } from "node:util";
 import { startStage, js, type Stage } from "./stage.ts";
 import { TEAM } from "./team.mjs";
 
-const { values: args } = parseArgs({ options: { out: { type: "string" }, rate: { type: "string", default: "4" }, runs: { type: "string", default: "3" }, video: { type: "string" }, profile: { type: "string" }, only: { type: "string" } } });
+const { values: args } = parseArgs({ options: { out: { type: "string" }, rate: { type: "string", default: "4" }, runs: { type: "string", default: "3" }, video: { type: "string" }, profile: { type: "string" }, only: { type: "string" }, long: { type: "string", default: "320" } } });
+const ANDROID = process.env.DUSK_STAGE_PLATFORM === "android";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const RATE = Number(args.rate);
 const RUNS = Number(args.runs);
 const LONG = "Quill";
 
-// a long chat to scroll and switch into: 320 messages of lists, code and links, as a working chat reads after a few weeks
+// a long chat to scroll and switch into: 320 messages by default of lists, code and links, as a working chat reads after a few weeks
 const quill = TEAM.find((one) => one.name === LONG)!;
 const long: Array<[string, string, number]> = [];
-for (let i = 0; i < 320; i += 1) {
+for (let i = 0; i < Number(args.long); i += 1) {
   const ago = 60 * 24 * 6 - i * 40;
   long.push(i % 2 === 0
     ? ["me", `draft ${i / 2 + 1}: can you tighten the intro and give me three options for the closing line?`, ago]
@@ -271,10 +273,17 @@ try {
 
   await openChat(stage, "Nova");
   if (args.only !== "sheet") results.push(await measure(stage, "send a message (and its reply)", async () => {
-    // typed and sent through the glass bridge, as the native composer does
-    await stage.page.evaluate(`window.__perf.emit({ type: "text", text: "what's on for tomorrow?" })`);
-    await delay(300);
-    await stage.page.evaluate(`window.__perf.emit({ type: "button", index: 0, kind: "send" })`);
+    if (ANDROID) {
+      await tap(stage, `document.querySelector("[data-mobile-chat] textarea")`);
+      await stage.page.send("Input.insertText", { text: "what's on for tomorrow?" });
+      await delay(300);
+      await tap(stage, `[...document.querySelectorAll("[data-mobile-chat] [data-tour=composer] button")].find((el) => /^send/i.test(el.getAttribute("aria-label") ?? ""))`);
+    } else {
+      // typed and sent through the glass bridge, as the native composer does
+      await stage.page.evaluate(`window.__perf.emit({ type: "text", text: "what's on for tomorrow?" })`);
+      await delay(300);
+      await stage.page.evaluate(`window.__perf.emit({ type: "button", index: 0, kind: "send" })`);
+    }
     await stage.page.until(`[...document.querySelectorAll("[data-mobile-chat] [data-message-row]")].some((row) => row.textContent.includes("on for tomorrow"))`, 5000);
   }, 5000, true));
   results.push(await measure(stage, "open the bot sheet", async () => {
@@ -287,7 +296,7 @@ try {
     await sheetGone();
   }, 400, true));
   // as on an iPhone: the native pill's touch reaches the page over the glass bridge
-  for (let run = 0; run < RUNS; run += 1) {
+  for (let run = 0; run < (ANDROID ? 0 : RUNS); run += 1) {
     results.push(await measure(stage, "open the bot sheet from the native pill", async () => {
       await stage.page.evaluate(`(() => { window.__perf.tapAt = performance.now(); window.__perf.emit({ type: "tap", target: "title" }); })()`);
       await stage.page.until(`[...document.querySelectorAll("[role=dialog]")].some((el) => el.getBoundingClientRect().width > 0)`, 10_000);

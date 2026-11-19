@@ -55,7 +55,7 @@
 
 /* rows press like a list cell: a quick tint, no travel (high frequency) */
 .dusk-mobile .mobile-row { transition: background-color .15s ease; }
-.dusk-mobile .mobile-row:active { background-color: color-mix(in srgb, var(--color-ink) 6%, transparent); }
+html:not([data-mobile-app="android"]) .dusk-mobile .mobile-row:active { background-color: color-mix(in srgb, var(--color-ink) 6%, transparent); }
 
 /* the keyboard: during its slide the transcript and composer ride it on the compositor; once it settles the layout
    takes the space and the transform returns to zero in the same frame (src/mobile/keyboard.ts) */
@@ -277,7 +277,15 @@ html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-tour="comp
   transition: background-size 400ms cubic-bezier(.05, .7, .1, 1), opacity 0ms;
 }
 html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] :active > [data-composer-plus] { scale: 1; }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+/* every other control's touch ripple (press.ts installRipple): a disc from the finger, painted over the control's own
+   background so nothing round it moves or is clipped; the ripple is the pressed state, so rows drop their tint */
+@property --m-ripple { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --m-ripple-a { syntax: "<number>"; inherits: false; initial-value: 1; }
+html[data-mobile-app="android"] .dusk-mobile [data-ripple] {
+  background-image: radial-gradient(circle at var(--m-rx, 50%) var(--m-ry, 50%),
+    color-mix(in srgb, currentColor calc(12% * var(--m-ripple-a)), transparent) var(--m-ripple),
+    transparent calc(var(--m-ripple) + 1px));
+}@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .dusk-mobile :is([data-mobile-chat] :is(.m-glass, [data-tour="composer"]), [data-home-bar] .m-glass) { background-color: var(--g-solid); }
 }
 @media (forced-colors: active) {

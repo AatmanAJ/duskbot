@@ -253,7 +253,9 @@ export async function startStage(serve: Serve = DEV_SERVER) {
 
   const profile = mkdtempSync(join(tmpdir(), "dusk-store-chrome-"));
   const page = await openHeadlessChrome(profile);
-  await page.send("Emulation.setDeviceMetricsOverride", { width: 440, height: 956, deviceScaleFactor: 3, mobile: true });
+  // a Pixel 7 for an android run
+  const screen = process.env.DUSK_STAGE_PLATFORM === "android" ? { width: 412, height: 915, deviceScaleFactor: 2.625 } : { width: 440, height: 956, deviceScaleFactor: 3 };
+  await page.send("Emulation.setDeviceMetricsOverride", { ...screen, mobile: true });
   await page.send("Emulation.setTouchEmulationEnabled", { enabled: true });
   await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   // the store build marks <html data-mobile-app="ios"> from the native shell, which hides screen view (4.2.7) and every
