@@ -673,6 +673,14 @@ export async function nativePlatform(): Promise<MobilePlatform> {
         return null;
       }
     } : undefined,
+    pushPermission: pushOn ? async () => {
+      try {
+        const { receive } = await PushNotifications.checkPermissions();
+        return receive === "granted" || receive === "denied" ? receive : "prompt";
+      } catch {
+        return "prompt";
+      }
+    } : undefined,
     setViewingThread: notificationsOn ? (threadId) => { void DuskNotifications.setViewing({ threadId }).catch(() => {}); } : undefined,
     async deliveredNotifications() {
       try {

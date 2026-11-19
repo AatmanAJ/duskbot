@@ -12,6 +12,7 @@ import "@/styles/overlays.css";
 import "@/styles/motion.css";
 import "./mobile.css";
 import { installHaptics } from "./haptics";
+import { installLiveActivitySetting } from "./live-activity-setting";
 import { followSystemTextSize } from "./text-scale";
 import { PlatformContext, type MobilePlatform } from "./platform";
 import { AccountGate } from "./account/AccountGate";
@@ -47,7 +48,7 @@ export function mountMobile(platform: MobilePlatform): void {
   const dark = document.documentElement.dataset.skin === THEME_SKINS.dark;
   platform.setStatusBar?.(dark ? "light" : "dark");
   document.title = productName();
-  void Promise.all([loadPageLanguage(), installHaptics(platform)]).then(() => {
+  void Promise.all([loadPageLanguage(), installHaptics(platform), installLiveActivitySetting(platform)]).then(() => {
     createRoot(document.getElementById("root")!).render(
       <StrictMode>
         <PageBoundary>

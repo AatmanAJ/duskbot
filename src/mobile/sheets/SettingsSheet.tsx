@@ -26,6 +26,7 @@ import { usePlatform } from "../platform";
 import { Sheet, SheetStack, StackPage } from "../Sheet";
 import { NavStack } from "../NavStack";
 import { NotificationsSheet } from "./NotificationsSheet";
+import { NotificationSettings } from "./NotificationSettings";
 import { RoutinesSheet } from "./RoutinesSheet";
 import { ConnectorsSheet } from "./ConnectorsSheet";
 import { VaultSheet } from "./VaultSheet";
@@ -184,6 +185,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
 
       <SettingsSection card>
         <SettingsRow icon={<Bell />} label={t("mobile.settings.notifications")} value={unread || undefined} onClick={() => push("notifications")} />
+        <NotificationSettings />
       </SettingsSection>
 
       <SettingsSection card title={t("mobile.settings.phone")}>

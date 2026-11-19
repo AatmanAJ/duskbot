@@ -9653,5 +9653,10 @@
   "call.voice.speed.normal": "Normal",
   "call.voice.speed.faster": "Faster",
   "call.voice.previewLine": "Hi, this is how I'll sound.",
-  "call.voice.account": "Your {provider} voice"
+  "call.voice.account": "Your {provider} voice",
+  "mobile.settings.liveActivity": "Live Activity",
+  "mobile.settings.liveActivityDetail": "Shows a bot's progress on the Lock Screen. Reply notifications still come when it's off.",
+  "mobile.settings.allowNotifications": "Turn on notifications",
+  "mobile.settings.allowNotificationsDetail": "Get a notification when a bot replies.",
+  "mobile.settings.allowNotificationsDenied": "Notifications are off for dusk bot. Turn them on in Settings."
 }
