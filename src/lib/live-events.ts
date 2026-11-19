@@ -144,12 +144,13 @@ export function isLivePing(frame: Pick<LiveFrame, "kind">): boolean {
   return frame.kind === "ping";
 }
 
+/** A clock set back since the stream was last heard counts as stale: the gap since then is unknown. */
 export function shouldReconnectLiveEvents(
   lastHeardAt: number,
   now: number,
   staleMs = LIVE_EVENTS_STALE_MS,
 ): boolean {
-  return now - lastHeardAt >= staleMs;
+  return now < lastHeardAt || now - lastHeardAt >= staleMs;
 }
 
 function parseLiveFrame(data: string): LiveFrame | null {

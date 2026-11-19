@@ -537,6 +537,20 @@ describe("live event liveness predicates", () => {
     expect(isLivePing({ kind: "message" })).toBe(false);
     expect(shouldReconnectLiveEvents(0, LIVE_EVENTS_STALE_MS - 1)).toBe(false);
     expect(shouldReconnectLiveEvents(0, LIVE_EVENTS_STALE_MS)).toBe(true);
+    expect(shouldReconnectLiveEvents(10_000, 9_999)).toBe(true);
+  });
+});
+
+describe("a computer clock set back", () => {
+  it("still notices a stream that went silent, instead of waiting until the clock catches up", () => {
+    const test = harness({ now: 3_600_000 });
+    const stop = openLiveEvents({ onFrame: vi.fn(), onSnapshotRequired: async () => true, staleMs: 1_000 }, test.platform);
+    test.sources[0].open();
+    test.sources[0].message({ kind: "hello", cursor: "c:1", resumed: true });
+    test.setNow(0);
+    vi.advanceTimersByTime(600);
+    expect(test.sources).toHaveLength(2);
+    stop();
   });
 });
 
