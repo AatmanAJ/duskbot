@@ -904,9 +904,11 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             if visible { reassert(view) }
             return
         }
+        // a view riding a page's slide goes off with it and is hidden by the first update after the slide
+        if !visible && sliding { return }
         shown = visible
         if instant {
-            view.layer.removeAllAnimations()
+            stopFades(view)
             view.alpha = visible ? 1 : 0
             view.isHidden = !visible
             return
@@ -929,10 +931,15 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             host.addSubview(view)
             if view === composer { NSLayoutConstraint.activate([leading, width, height, bottom]) }
         }
-        view.layer.removeAllAnimations()
+        stopFades(view)
         view.isHidden = false
         view.alpha = 1
         keepOnTop()
+    }
+
+    /// Ends a view's fades, never the page slide it plays.
+    private func stopFades(_ view: UIView) {
+        for key in view.layer.animationKeys() ?? [] where key != Self.slideKey { view.layer.removeAnimation(forKey: key) }
     }
 
     // MARK: layout
