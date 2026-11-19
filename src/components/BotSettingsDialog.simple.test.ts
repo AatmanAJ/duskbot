@@ -6,7 +6,6 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Routine } from "@/lib/routines";
 import type { MemoryDoc } from "@/lib/memory";
 import type { Bot, BotSettingsSection, InstanceInfo } from "@/state/store";
-import { AVATAR_FOCUS_CENTER, AVATAR_ZOOM_MIN } from "../../shared/bot-avatar";
 import type { ManagedSkill } from "./bot-settings/SkillsSection";
 import type { BotApps } from "./bot-settings/useBotApps";
 
@@ -147,8 +146,6 @@ const { VOICE_LANGUAGES, VOICE_SPEEDS } = await import("./bot-panel/voice-prefs"
 const { LocalComputerAutoWarning } = await import("./LocalComputerAutoWarning");
 const { BotRoutines } = await import("./routines/BotRoutines");
 const { SignedInSites } = await import("./SignedInSites");
-const { AvatarImageGenerator } = await import("./AvatarImageGenerator");
-const { AvatarFraming } = await import("./avatar-editing");
 
 afterAll(() => vi.unstubAllGlobals());
 
@@ -211,11 +208,6 @@ const find = (rendered: { nodes: Node[] }, attr: string, value: unknown = true) 
   const found = rendered.nodes.find((node) => node.props[attr] === value);
   if (!found) throw new Error(`no node with ${attr}=${String(value)}`);
   return found;
-};
-const segment = (rendered: { nodes: Node[] }, attr: string) => {
-  const found = rendered.nodes.find((node) => node.props.attr === attr);
-  if (!found) throw new Error(`no segmented control ${attr}`);
-  return found.props as { value: unknown; onChange: (value: string) => void; options: Array<{ value: string; label: unknown; disabled?: boolean }> };
 };
 const has = (rendered: { nodes: Node[] }, attr: string, value: unknown = true) => rendered.nodes.some((node) => node.props[attr] === value);
 const panelWrappers = new Map<unknown, unknown>([[DetailsTab, PanelDetailsTab], [AdvancedTab, PanelAdvancedTab], [AvatarEditorCard, PanelAvatarEditor]]);
