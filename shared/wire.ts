@@ -545,8 +545,8 @@ export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLine
     resolvedAt?: number;
     /** error rows: epoch ms when the usage limit that stopped the turn resets. */
     limitResetsAt?: number;
-    /** error rows: the reply came back; only a step the turn ran failed or wasn't allowed. */
-    partial?: boolean;
+    /** error rows: the reply came back; only a step the turn ran failed or wasn't allowed (`owned`: and it says so itself, so no card repeats it). */
+    partial?: boolean; owned?: boolean;
     reason?: import("./failed-turn.ts").FailedReplyReason; blocker?: import("./failed-turn.ts").BrowserBlocker; // error rows: what stopped the reply, when the server could tell
     /** Provider item identity, scoped to the owning turn. */
     itemId?: string;

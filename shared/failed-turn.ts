@@ -37,6 +37,8 @@ export interface FailedTurnTool {
   limitResetsAt?: number;
   /** the turn's reply came back; only a step it ran failed or wasn't allowed */
   partial?: boolean;
+  /** with `partial`: the reply itself says what failed */
+  owned?: boolean;
   /** what stopped it, when the server could tell */
   reason?: FailedReplyReason;
   blocker?: BrowserBlocker;
@@ -87,7 +89,7 @@ export function argumentTexts(value: unknown, depth = 6): string[] {
 /** The activity row a failed turn is stored as. */
 export function failedTurnTool(
   cause: string,
-  flags: { setup?: boolean; terminal?: boolean; claudeUpdate?: boolean; place?: PlaceRow; limitResetsAt?: number; partial?: boolean; reason?: FailedReplyReason; blocker?: BrowserBlocker } = {},
+  flags: { setup?: boolean; terminal?: boolean; claudeUpdate?: boolean; place?: PlaceRow; limitResetsAt?: number; partial?: boolean; owned?: boolean; reason?: FailedReplyReason; blocker?: BrowserBlocker } = {},
 ): FailedTurnTool {
   const clean = shortenHomePaths(plainComputerFailure(withoutEchoedPrompt(cause)));
   const words = clean.length > FAILED_TURN_MAX_CHARS ? `${clean.slice(0, FAILED_TURN_MAX_CHARS - 1)}…` : clean;
@@ -100,6 +102,7 @@ export function failedTurnTool(
     ...(flags.place ? { place: flags.place } : {}),
     ...(flags.limitResetsAt ? { limitResetsAt: flags.limitResetsAt } : {}),
     ...(flags.partial ? { partial: true } : {}),
+    ...(flags.partial && flags.owned ? { owned: true } : {}),
     ...(flags.reason ? { reason: flags.reason } : {}),
     ...(flags.blocker ? { blocker: flags.blocker } : {}),
   };

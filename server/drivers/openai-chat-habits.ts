@@ -93,6 +93,10 @@ export function leakedToolSyntax(text: string): boolean {
   return HARMONY_CALL.test(text);
 }
 
+export const CORRECTIVE_ROUND = "[dusk bot: a tool call in this turn failed (its result is marked ok:false). Re-run the failed operations with corrected inputs where possible, check the results, then give your one final answer: what worked, what did not and what the person can do about it. Do not report results you did not get.]";
+/** rounds a local model gets to fix a failed tool call before its answer stands */
+export const LOCAL_CORRECTIVE_ROUNDS = 2;
+
 export const REASONING_AGAIN = "[dusk bot: your last reply was your own working notes about the request, not an answer, so the person did not see it. Do the work with your tools if it needs them, then answer the person directly in plain words.]";
 
 // gpt-oss's analysis channel passed on as the reply: it talks about "the user" and its instructions in the third person
@@ -114,7 +118,12 @@ const NOTES_START = /^\s*(?:we |the user|user |according to|let's |the system|th
 export class LeakHoldback {
   private seen = "";
   private held = "";
-  private holding: "start" | "all" | null = "start";
+  private holding: "start" | "all" | null;
+
+  /** `whole`: hold the entire reply, for one that may not be shown at all */
+  constructor(whole = false) {
+    this.holding = whole ? "all" : "start";
+  }
 
   feed(text: string): string {
     if (this.holding === "all") { this.held += text; return ""; }
@@ -145,5 +154,12 @@ export class LeakHoldback {
     this.holding = null;
     return out;
   }
+}
+
+const FAILURE_WORDS = /\b(?:could(?:n['’]t| not)|can(?:['’]t|not)|did(?:n['’]t| not)|was(?:n['’]t| not)|is(?:n['’]t| not) (?:connected|available|set up)|failed|unable|not connected|nothing (?:was|went|got)|no (?:access|connection)|blocked|refused|went wrong)\b/i;
+
+/** a reply that tells the person a step failed and does not claim it worked: a failure card under it would say it twice */
+export function ownsFailure(reply: string): boolean {
+  return FAILURE_WORDS.test(reply) && !claimsUnmadeChange(reply, 0);
 }
 

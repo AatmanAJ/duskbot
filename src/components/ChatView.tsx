@@ -283,7 +283,7 @@ export function FailedTurnRow({ tool, engine, onRetry, botId, threadId }: {
   const resume = useLimitResetContinue(botId, threadId, tool.limitResetsAt);
   if (tool.place && botId) return <PlaceFailedRow place={tool.place} botId={botId} threadId={threadId} onRetry={onRetry} />;
   const cause = failedTurnCause(tool.name) ?? tool.name;
-  if (tool.partial) return <PartlyDoneRow cause={cause} onRetry={onRetry} />;
+  if (tool.partial) return tool.owned ? null : <PartlyDoneRow cause={cause} onRetry={onRetry} />;
   const signedOut = signedOutEngine(tool, engine);
   return (
     <ErrorRow
