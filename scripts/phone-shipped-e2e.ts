@@ -15,7 +15,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto";
 import { mkdirSync, mkdtempSync, openSync, closeSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { createServer as createTcpServer, type Socket } from "node:net";
+import { connect, createServer as createTcpServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -176,6 +176,24 @@ async function silentAddress() {
   const port = await new Promise<number>((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as { port: number }).port)));
   return { url: `http://127.0.0.1:${port}`, close: () => { for (const socket of held) socket.destroy(); return new Promise((resolve) => server.close(resolve)); } };
 }
+/** a slow mobile link in front of `target`: every chunk each way arrives `ms` late, in order */
+async function slowLink(target: string, ms: number) {
+  const to = new URL(target);
+  const held = new Set<Socket>();
+  const late = (from: Socket, into: Socket) => {
+    let last = 0;
+    from.on("data", (chunk) => { last = Math.max(Date.now() + ms, last); setTimeout(() => { if (!into.destroyed) into.write(chunk); }, last - Date.now()); });
+    from.on("end", () => setTimeout(() => into.end(), Math.max(0, last - Date.now())));
+  };
+  const server = createTcpServer((socket) => {
+    const upstream = connect(Number(to.port), to.hostname);
+    for (const one of [socket, upstream]) { held.add(one); one.on("error", () => { socket.destroy(); upstream.destroy(); }); one.on("close", () => held.delete(one)); }
+    late(socket, upstream);
+    late(upstream, socket);
+  });
+  const port = await new Promise<number>((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as { port: number }).port)));
+  return { url: `http://127.0.0.1:${port}`, close: () => { for (const socket of held) socket.destroy(); return new Promise((resolve) => server.close(resolve)); } };
+}
 const routeOf = (outcome: Awaited<ReturnType<typeof launch>>) => (typeof outcome === "string" ? outcome : outcome.kind === "relay" ? "relay" : `bearer ${outcome.origin}`);
 const closeRoute = (outcome: Awaited<ReturnType<typeof launch>>) => { if (typeof outcome !== "string" && outcome.kind === "relay") outcome.channel.close(); };
 
@@ -313,6 +331,12 @@ async function main() {
       }
       return;
     }
+
+    // a slow mobile link to the relay (every chunk 400 ms late each way): the phones still open and chat over it
+    const slow = await slowLink(link.base(), Number(process.env.E2E_SLOW_MS ?? 400));
+    cleanups.push(() => slow.close());
+    const overSlowLink = (phone: Phone): Phone => ({ ...phone, record: { ...phone.record, ...(phone.record.relay ? { relay: { ...phone.record.relay, base: slow.url } } : {}), via: (phone.record.via ?? []).flatMap((route) => route.kind === "relay" ? [{ ...route, base: slow.url }] : []) } });
+    for (const phone of [iphone, android, ...(nextPhone ? [nextPhone] : [])]) await expectRoute(overSlowLink(phone), "a slow link to the relay: opens on it and chats", onRelay, true);
 
     // the Mac's Wi-Fi address changed: each phone still holds the old one, which takes the connection and never answers
     const old = await silentAddress();
