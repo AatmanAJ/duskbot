@@ -6,8 +6,6 @@
 Use the ChatGPT, Claude or Grok subscription you already pay for,<br>
 and get a team of bots, each with its own memory and computer.</p>
 
-<p><sub>Forked from <a href="https://github.com/milind-soni/OpenMausBot">OpenMausBot</a> by Milind Soni and contributors (Apache 2.0).</sub></p>
-
 <p>
 <a href="https://dusk.bot/download"><b>Download for Mac, Windows and Linux</b></a> &nbsp;·&nbsp;
 <a href="https://dusk.bot">dusk.bot</a> &nbsp;·&nbsp;
@@ -386,4 +384,4 @@ Source available under [PolyForm Noncommercial 1.0.0](LICENSE). Free for persona
 
 <br>
 
-<p align="center"><img src="apps/site/public/landing/art/cat.webp" alt="" width="120"><br><sub>Made at dusk. The bots did most of it. <a href="https://dusk.bot">dusk.bot</a></sub></p>
+<p align="center"><img src="apps/site/public/landing/art/cat.webp" alt="" width="120"><br><sub>Made at dusk. The bots did most of it. <a href="https://dusk.bot">dusk.bot</a><br>Started as a fork of <a href="https://github.com/milind-soni/OpenMausBot">OpenMausBot</a> (Apache 2.0).</sub></p>

@@ -309,7 +309,7 @@ ${macros(body).replace(/(src=")\/(art\/[\w./-]+)"/g, (_, lead, file) => `${lead}
 <div class="foot-brand">${brand}<p>a team of ai bots that runs where you want it to.</p><a class="foot-mail" href="mailto:hello@dusk.bot">hello@dusk.bot</a></div>
 ${FOOT.map(foot).join('\n')}
 </div>
-<p class="foot-fine"><span data-dusk>made at dusk. the bots did most of it.</span> forked from <a href="https://github.com/milind-soni/OpenMausBot">openmausbot</a>.${home ? ' the bots, chats and numbers shown on this page are samples.' : ''}</p>
+<p class="foot-fine"><span data-dusk>made at dusk. the bots did most of it.</span>${home ? ' the bots, chats and numbers shown on this page are samples.' : ''}</p>
 </footer>
 ${trackerTag()}${tail}
 </body>
