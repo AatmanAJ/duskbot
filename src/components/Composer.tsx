@@ -993,7 +993,7 @@ export function Composer({
           />
         <div ref={shellRef} data-tour="composer" data-multiline={multiline ? "" : undefined} data-drag-over={simpleDock && dragOver ? "" : undefined}
           style={pillHeight === undefined ? undefined : { height: pillHeight }} className={cn("@container/composer relative z-[1]", singleRow ? "flex items-end gap-2" : simpleDock ? cn(SIMPLE_COMPOSER, multiline ? "rounded-[18px]" : "rounded-[22px]") : cn("rounded-2xl px-2 py-1.5", ELEVATED_FLOAT))}>
-        <div ref={pillContentRef} className={singleRow ? cn("flex min-h-[44px] min-w-0 flex-1 flex-col justify-center rounded-[22px] p-1", ELEVATED_FLOAT) : simpleDock ? "flex shrink-0 flex-col" : "contents"}>
+        <div ref={pillContentRef} className={singleRow ? cn("flex min-h-[48px] min-w-0 flex-1 flex-col justify-center rounded-[24px] p-2", ELEVATED_FLOAT) : simpleDock ? "flex shrink-0 flex-col" : "contents"}>
         {replyTo && <ComposerReplyStrip message={replyTo} fallbackName={bot?.name} onClear={onClearReply} />}
         {quote && <ComposerSelectionQuote quote={quote} onClear={clearQuote} />}<SelectionAskPill enabled={!singleRow && !locked} onAsk={askAboutSelection} /><ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} notice={attachmentNotice} onNotice={setAttachmentNotice} />
         <div data-composer-row data-glyph-swap={glyphs.swapped ? "" : undefined} data-glyph-from-held={glyphs.swapped && glyphs.fromHeld ? "" : undefined} style={simpleDock ? slot.vars : undefined} className={cn("flex items-end", simpleDock ? cn("gap-2", stacked && "gap-y-2") : "gap-1", !singleRow && !simpleDock && "@max-[30rem]/composer:flex-wrap", stacked && "flex-wrap")}>
@@ -1147,7 +1147,7 @@ export function Composer({
             title={t("composer.voice.cancelHint")}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
-              simpleDock ? "size-7" : "size-9",
+              simpleDock ? "size-7" : "size-8",
               singleRow ? "text-ink-secondary hover:bg-raised hover:text-ink" : SIMPLE_CONTROL,
               phoneVoice && cn("composer-press", listenedFrom.empty && "composer-mic-in"),
             )}
@@ -1157,7 +1157,7 @@ export function Composer({
         )}
         {/* the mic in the round button's place keeps the small control's place beside it, so Send or Discard takes
             that spot and nothing in the bar moves when the field fills, empties or starts listening */}
-        {micInSlot && !stoppable && <span aria-hidden="true" data-mic-spacer="" className={cn("shrink-0", simpleDock ? "size-7" : "size-9")} />}
+        {micInSlot && !stoppable && <span aria-hidden="true" data-mic-spacer="" className={cn("shrink-0", simpleDock ? "size-7" : "size-8")} />}
         {!locked && (
           <button
             key={micPlace}
@@ -1172,7 +1172,7 @@ export function Composer({
             aria-label={recording ? t("composer.dictation.stop") : t("composer.dictation.start")}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-full",
-              simpleDock ? "size-7" : "size-9",
+              simpleDock ? "size-7" : "size-8",
               (micPlace === "stop" || micOut) && "composer-mic-in",
               micBack && "composer-mic-back",
               phoneVoice ? cn("composer-press", slot.button.className)
@@ -1196,7 +1196,7 @@ export function Composer({
           )}
           {ghostGlyph && <SlotGlyphGhost key={glyphs.swaps} glyph={ghostGlyph} ink={slot.ink} />}
           {micBack && (
-            <span aria-hidden="true" data-composer-stop-ghost key={`stop-${micTrail.swaps}`} className="composer-glyph-out pointer-events-none absolute bottom-0 right-0 z-[1] flex size-9 items-center justify-center rounded-full bg-ink text-app">
+            <span aria-hidden="true" data-composer-stop-ghost key={`stop-${micTrail.swaps}`} className="composer-glyph-out pointer-events-none absolute bottom-0 right-0 z-[1] flex size-8 items-center justify-center rounded-full bg-ink text-app">
               <span className="block size-[12px] rounded-[2.5px] bg-current" />
             </span>
           )}

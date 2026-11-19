@@ -211,6 +211,7 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-
   --g-tint-press: rgb(255 255 255 / .75);
   --g-tint-quiet: rgb(24 24 32 / .055);
   --g-solid: rgb(250 250 252 / .97);
+  --g-container: rgb(240 240 244);
   --g-rim: rgb(20 20 28 / .08);
   --g-shadow: 0 8px 24px -12px rgb(30 32 40 / .25);
 }
@@ -219,6 +220,7 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-
   --g-tint-press: rgb(72 72 78 / .65);
   --g-tint-quiet: rgb(255 255 255 / .07);
   --g-solid: rgb(38 38 42 / .97);
+  --g-container: rgb(43 43 47);
   --g-rim: rgb(255 255 255 / .07);
   --g-shadow: 0 8px 24px -12px rgb(0 0 0 / .6);
 }
@@ -253,12 +255,12 @@ html[data-mobile-app="android"] .glass-rail { background: var(--color-app); }
 html[data-mobile-app="android"] .glass-scrim { background: color-mix(in srgb, black 50%, transparent); }
 html[data-mobile-app="android"] .glass-bar:not([data-glass-fade])::before { background: var(--glass-tint, var(--color-panel)); }
 html[data-mobile-app="android"] button.mobile-press.backdrop-blur-md { background-color: rgb(0 0 0 / .45); }
-/* android is Material, not glass: the composer rests at M3's first elevation, tonal and unblurred, and its controls
-   answer a touch with a ripple from the centre (M3's emphasized decelerate) instead of a scale */
+/* android is Material, not glass: the composer is a tonal surface (M3's surface container) with a hairline and no
+   shadow, and its controls answer a touch with a ripple from the centre (M3's emphasized decelerate) instead of a scale */
 html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
-  box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 1px 3px 1px rgb(0 0 0 / .15);
+  background-color: var(--g-container);
+  box-shadow: inset 0 0 0 .5px var(--g-rim);
 }
-html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-tour="composer"] button:not([role="menuitem"]) { position: relative; overflow: hidden; }
 html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] [data-tour="composer"] button:not([role="menuitem"])::after {
   content: "";
   position: absolute;
@@ -282,63 +284,74 @@ html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] :active > [data-
   .dusk-mobile :is([data-mobile-chat], [data-home-bar]) .m-glass { background: Canvas; border: 1px solid CanvasText; }
 }
 
-/* the composer is one glass pill: a quiet +, the field, the mic and the bot's send button inside it */
+/* the composer is one glass pill, measured on the reference (docs: dusk-review 2026-11-19 spec): 30 in from each side at
+   rest and 6 with the keyboard up, riding the keyboard's curve; 48 high on one line with 8 round its 32 controls (each
+   still answers 44); a plain +, the field 10 after it at the body's 17/24, then the mic and the call, or send */
 .dusk-mobile [data-mobile-chat] [data-composer-backdrop] { display: none; }
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] {
   align-items: flex-end;
-  gap: 2px;
-  /* out to the top bar's 12px edge (the dock pads 16), so the field takes the width the buttons leave, as in Messages */
-  margin-inline: -4px;
-  padding: 6px;
-  border-radius: 26px;
+  gap: 0;
+  /* the dock pads 16 */
+  margin-inline: 14px;
+  padding: 8px;
+  border-radius: 24px;
+  box-shadow: inset 0 0 0 .5px var(--g-rim), 0 2px 10px -6px rgb(20 20 28 / .14);
+  transition: margin-inline var(--m-kb-dur, .35s) var(--m-kb-ease, ease) var(--m-kb-delay, 0s);
 }
+.dusk-mobile[data-keyboard="open"] [data-mobile-chat] [data-tour="composer"] { margin-inline: -10px; }
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] > div:has(> [data-composer-row]) {
-  min-height: 36px;
+  min-height: 32px;
   padding: 0;
-  border-radius: 20px;
+  border-radius: 16px;
   background: transparent;
   box-shadow: none;
 }
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea {
+  font-size: 17px;
+  line-height: 24px;
+  /* one line sits in the 32 row whatever the text size does to the line */
+  padding-block: max(0px, calc((32px - 1lh) / 2));
+  min-height: 32px;
+  max-height: calc(5lh + 2 * max(0px, calc((32px - 1lh) / 2)));
+}
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea::placeholder { color: var(--color-ink-tertiary); opacity: 1; }
 .dusk-mobile [data-mobile-chat] [data-composer-plus] {
-  width: 36px;
-  height: 36px;
-  color: color-mix(in srgb, var(--color-ink) 82%, transparent);
-  background-color: var(--g-tint-quiet);
-  transition: scale .2s var(--m-ease-release), background-color .15s ease;
+  width: 32px;
+  height: 32px;
+  color: var(--color-ink-secondary);
+  background-color: transparent;
+  transition: scale .2s var(--m-ease-release);
 }
-.dusk-mobile [data-mobile-chat] [data-composer-plus] svg { width: 19px; height: 19px; }
-/* the discs inside the capsule draw at 36px; the coarse-pointer hit area keeps each at 44 */
-.dusk-mobile [data-mobile-chat] [data-grok-inset] [data-tour="composer"] button:not([role="menuitem"]):is([data-composer-send], [data-voice-mic], [data-composer-stop], :has(> [data-composer-plus])) {
-  width: 36px; height: 36px; min-width: 36px; min-height: 36px;
+.dusk-mobile [data-mobile-chat] [data-composer-plus] svg { width: 22px; height: 22px; }
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] button:not([role="menuitem"]):is([data-composer-send], [data-voice-mic], [data-composer-stop], [data-composer-discard], [data-call-button], :has(> [data-composer-plus])) {
+  position: relative;
+  width: 32px; height: 32px; min-width: 32px; min-height: 32px;
 }
-/* the mic's held spot draws at the discs' size, or the empty bar stands taller than a typed one */
+/* each control draws at 32 and answers the 44 round it */
+.dusk-mobile [data-mobile-chat] [data-tour="composer"] button:not([role="menuitem"]):is([data-composer-send], [data-voice-mic], [data-composer-stop], [data-composer-discard], [data-call-button], :has(> [data-composer-plus]))::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+/* the mic's held spot draws at the controls' size, or the empty bar stands taller than a typed one */
 .dusk-mobile [data-mobile-chat] [data-composer-stop-ghost],
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-mic-spacer] { width: 36px; height: 36px; min-width: 36px; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-mic-spacer] { width: 32px; height: 32px; min-width: 32px; }
 /* desktop's hold-the-spot swap: Stop turns in where the mic was, the mic springs in beside it, and when the turn ends
    the stop disc fades out over the mic's glyph popping back (keyframes in src/styles/composer.css) */
 .dusk-mobile [data-mobile-chat] [data-composer-stop="slot"] .composer-stop-glyph { animation: composer-stop-in 260ms var(--composer-glyph-ease); }
 .dusk-mobile [data-mobile-chat] .composer-mic-back > svg { animation: composer-glyph-in 200ms var(--composer-glyph-ease); }
 @media (prefers-reduced-motion: reduce) {
   .dusk-mobile [data-mobile-chat] :is([data-composer-stop="slot"] .composer-stop-glyph, .composer-mic-back > svg) { animation-name: composer-glyph-fade; }
+  .dusk-mobile [data-mobile-chat] [data-tour="composer"] { transition: none; }
 }
-.dusk-mobile [data-mobile-chat] :active > [data-composer-plus] { scale: .92; background-color: var(--g-tint-press); transition-duration: .16s, .15s; }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] { gap: 6px; }
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-voice-mic="start"] {
-  background-color: var(--g-tint-quiet);
-  color: var(--color-ink-secondary);
+.dusk-mobile [data-mobile-chat] :active > [data-composer-plus] { scale: .9; transition-duration: .14s; }
+.dusk-mobile [data-mobile-chat] [data-composer-actions] { gap: 8px; }
+/* the mic, the call and discard are plain glyphs in the quiet ink, no disc behind them */
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-voice-mic="start"], [data-call-button="composer"]:not([data-call-active]), [data-composer-discard], [data-composer-mic-ghost]) {
+  background-color: transparent;
+  color: var(--color-ink-tertiary);
 }
-/* the call is the mic's twin, shown while the field is empty; send takes its place once there is text */
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-call-button="composer"]:not([data-call-active]) {
-  width: 36px; height: 36px; min-width: 36px;
-  background-color: var(--g-tint-quiet);
-  color: var(--color-ink-secondary);
-}
-/* listening: discard sits where the mic sat beside the round button, which turns into keep */
-.dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-discard] {
-  width: 36px; height: 36px; min-width: 36px;
-  background-color: var(--g-tint-quiet);
-  color: var(--color-ink-secondary);
-}
+.dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-voice-mic="start"], [data-call-button="composer"], [data-composer-discard]) svg { width: 22px; height: 22px; }
 .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-discard], [data-voice-mic="done"]) svg { animation: composer-glyph-in 200ms var(--composer-glyph-ease); }
 /* a press scales; the narrow layout's dim on top of it read as the button flashing lighter */
 .dusk-mobile [data-mobile-chat] [data-composer-actions] button:active { opacity: 1; }
@@ -356,11 +369,9 @@ html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] :active > [data-
    turns, while the mic springs out beside it (composer-mic-in) and slips back in as the field empties (composer-mic-out) */
 .dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-send] svg { animation: composer-glyph-in 200ms var(--composer-glyph-ease); }
 .dusk-mobile [data-mobile-chat] [data-composer-actions] [data-composer-mic-ghost] {
-  right: 42px;
-  width: 36px;
-  height: 36px;
-  background-color: var(--g-tint-quiet);
-  color: var(--color-ink-secondary);
+  right: 40px;
+  width: 32px;
+  height: 32px;
 }
 .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic], [data-composer-discard]) { transition: scale .2s var(--m-ease-release); }
 .dusk-mobile [data-mobile-chat] [data-composer-actions] :is([data-composer-send], [data-voice-mic], [data-composer-discard]):active:not(:disabled) { scale: .9; transition-duration: .14s; }

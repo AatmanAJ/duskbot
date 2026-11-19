@@ -139,7 +139,7 @@ class PassthroughView: UIView {
     }
 }
 
-/// A 36pt disc that answers the 44pt square around it (HIG minimum hit region).
+/// A 32pt disc that answers the 44pt square around it (HIG minimum hit region).
 private class DiscButton: UIButton {
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         bounds.insetBy(dx: min(0, (bounds.width - 44) / 2), dy: min(0, (bounds.height - 44) / 2)).contains(point)
@@ -242,9 +242,12 @@ struct Frame {
 
 @available(iOS 26.0, *)
 final class ChatGlassChrome: NSObject, UITextViewDelegate {
+    /// The reference composer's metrics (the page's mobile.css draws the same): 48 high, 32pt controls 8 in from the
+    /// capsule's edge and 8 apart, the field 10 after the +.
     private static let capsuleHeight: CGFloat = 48
-    private static let inset: CGFloat = 6
-    private static let disc: CGFloat = 36
+    private static let inset: CGFloat = 8
+    private static let disc: CGFloat = 32
+    private static let between: CGFloat = 8
     private static let maxLines: CGFloat = 5
 
     private weak var host: UIView?
@@ -269,6 +272,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private var actionKinds: [String] = []
     /// the page's text size over the system body size; 0 until the page says, and the field follows Larger Text alone
     private var fontScale: CGFloat = 0
+    /// The page's 24 line for 17 text, times its scale: the field's lines stand as tall as the page's, so a wrapping
+    /// draft grows both composers by the same steps.
+    private var lineHeight: CGFloat = 24
 
     /// iOS 26 interactive glass: the capsule answers a touch by growing and brightening, as the system's glass buttons do
     static func interactiveGlass() -> UIGlassEffect {
@@ -370,6 +376,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         text.textContainerInset = .zero
         text.textContainer.lineFragmentPadding = 0
         text.isScrollEnabled = false
+        if let font = text.font { text.typingAttributes = fieldAttributes(font) }
         text.returnKeyType = .send
         text.delegate = self
         placeholder.font = text.font
@@ -824,9 +831,9 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// the same frame, so the capsule must not spring there behind it
     private func layoutComposer(animated: Bool = true) {
         let w = width.constant
-        let line = text.font?.lineHeight ?? 20
-        let side = Self.inset + Self.disc + 8
-        let actionsWidth = actionKinds.reduce(CGFloat(0)) { $0 + Self.actionWidth($1) + 6 }
+        let line = lineHeight
+        let side = Self.inset + Self.disc + 10
+        let actionsWidth = actionKinds.reduce(CGFloat(0)) { $0 + Self.actionWidth($1) + Self.between }
         let leadingX = plus.isHidden ? 16 : side
         let fieldWidth = max(40, w - leadingX - actionsWidth - (actions.isEmpty ? 16 : Self.inset + 2))
         let fitted = text.sizeThatFits(CGSize(width: fieldWidth, height: .greatestFiniteMagnitude)).height
@@ -851,7 +858,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
                 let bw = Self.actionWidth(kind)
                 x -= bw
                 button.frame = CGRect(x: x, y: discY, width: bw, height: Self.disc)
-                x -= 6
+                x -= Self.between
             }
         }
         if height.constant != h {
@@ -902,7 +909,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             // UIKit 26: text set after a dictation keeps the attributes dictation left in the field, its font among them
             if let font = placeholder.font {
                 text.font = font
-                text.typingAttributes = [.font: font, .foregroundColor: UIColor.label]
+                applyFieldAttributes(font)
             }
             updatePlaceholder()
             layoutComposer(animated: false)
@@ -914,11 +921,26 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         guard abs(scale - fontScale) > 0.001 else { return }
         fontScale = scale
         let font = UIFont.systemFont(ofSize: (17 * scale).rounded())
+        lineHeight = (24 * scale).rounded()
         for label in [placeholder, voice] { label.adjustsFontForContentSizeCategory = false; label.font = font }
         text.adjustsFontForContentSizeCategory = false
         text.font = font
-        text.typingAttributes = [.font: font, .foregroundColor: UIColor.label]
+        applyFieldAttributes(font)
         layoutComposer(animated: false)
+    }
+
+    /// Lines at the page's height, the glyphs centred in each (a minimum line height alone sets them on its floor).
+    private func fieldAttributes(_ font: UIFont) -> [NSAttributedString.Key: Any] {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = lineHeight
+        paragraph.maximumLineHeight = lineHeight
+        return [.font: font, .foregroundColor: UIColor.label, .paragraphStyle: paragraph, .baselineOffset: (lineHeight - font.lineHeight) / 4]
+    }
+
+    private func applyFieldAttributes(_ font: UIFont) {
+        let attributes = fieldAttributes(font)
+        text.typingAttributes = attributes
+        text.textStorage.setAttributes(attributes, range: NSRange(location: 0, length: text.textStorage.length))
     }
 
     func focus() {

@@ -42,7 +42,7 @@ export type CallButtonPlacement = "header" | "composer" | "panel";
 
 /** `fill` (Simple composer): a round button in that colour with its glyph in `ink`, and no chevron; the + menu picks the
  * call mode. */
-/** `inverse` (phone composer): one of the pill's own 36 px controls, an inline glyph with no disc, like its mic. */
+/** `inverse` (phone composer): one of the pill's own 32 px controls, a plain glyph in the quiet ink, like its mic. */
 /** `live`: offer a Live call beside the built-in voice. */
 export function CallButton({ bot, placement = "header", fill, ink, inverse, live = true }: { bot: Bot; placement?: CallButtonPlacement; fill?: string; ink?: string; inverse?: boolean; live?: boolean }) {
   const { state } = useStore();
@@ -270,7 +270,7 @@ export function CallTargetButton({
           active
             ? "bg-danger text-white hover:brightness-110"
             : inverse
-              ? "size-9 text-ink-secondary hover:bg-ink/[0.06] hover:text-ink"
+              ? "size-8 text-ink-tertiary hover:text-ink"
             : fill
               ? composer ? "composer-press hover:brightness-[0.88]" : "hover:brightness-110"
             : placement === "panel"
