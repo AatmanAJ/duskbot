@@ -30,8 +30,8 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 const session = () => json({ account: person, expiresAt: Date.now() + 86_400_000, clouds: [{ id: "c1", name: "my cloud", role: "owner", status: "ready", origin: CLOUD }], teams: [] });
 
 /** each launch is a new platform object, as a new process is: nothing kept in memory from the last one */
-function launchPlatform(): MobilePlatform {
-  return { ...webPlatform(), native: true, kind: "ios",
+function launchPlatform(kind: "ios" | "android" = "ios"): MobilePlatform {
+  return { ...webPlatform(), native: true, kind,
     prefs: { get: async (key) => prefs.get(key) ?? null, set: async (key, value) => { prefs.set(key, value); }, remove: async (key) => { prefs.delete(key); }, keys: async () => [...prefs.keys()] },
     secrets: { get: async (key) => secrets.get(key) ?? null, set: async (key, value) => { secrets.set(key, value); }, remove: async (key) => { secrets.delete(key); } } };
 }
@@ -77,7 +77,8 @@ const inside = () => host.querySelector("[data-inside]")?.textContent ?? null;
 const heading = () => host.querySelector("h1")?.textContent ?? null;
 
 describe("what a launch shows", () => {
-  it("an update from a build without the install marker opens signed in on its place at once, never as a reinstall", async () => {
+  it.each(["ios", "android"] as const)("%s: an update from a build without the install marker opens signed in on its place at once, never as a reinstall", async (kind) => {
+    platform = launchPlatform(kind);
     keepSignIn(); keepCloud();
     // an older build kept the open chat as a bare id
     sessionStorage.setItem("dusk.mobile.openChat", "nova");
@@ -88,7 +89,8 @@ describe("what a launch shows", () => {
     expect(secrets.has("dusk.account")).toBe(true);
   });
 
-  it("an update holding a sign-in and other settings but no place is not a reinstall either: the account's places show at once", async () => {
+  it.each(["ios", "android"] as const)("%s: an update holding a sign-in and other settings but no place is not a reinstall either: the account's places show at once", async (kind) => {
+    platform = launchPlatform(kind);
     keepSignIn();
     prefs.set("dusk.mobile.signInOffer", "dismissed");
     accountAnswer = () => new Promise<Response>(() => {});
