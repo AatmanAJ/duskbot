@@ -290,7 +290,7 @@ describe("the bot panel in Simple mode", () => {
     const rendered = panel(bot);
     expect(ofType(rendered, PanelShareMenu)!.props.bot).toBe(bot);
     expect(has(rendered, "data-panel-gear")).toBe(false);
-    click(find(rendered, "aria-label", "Close"));
+    click(find(rendered, "aria-label", "Close panel"));
     expect(onClose).toHaveBeenCalled();
     const hero = ofType(rendered, PanelHero)!;
     expect(hero.props.bot).toBe(bot);
