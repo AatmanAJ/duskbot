@@ -64,7 +64,9 @@ describe("failed replies in a room", () => {
     expect(markup).toContain("Claude isn&#x27;t signed in on this computer");
     expect(markup).toContain("Sign in</button>");
     expect(markup).toContain('aria-label="Dismiss"');
-    expect(markup, "and what the engine really said, under it").toContain("Not logged in · Please run /login");
+    expect(markup).not.toContain("/login");
+    expect(markup).not.toContain("Not logged in");
+    expect(markup, "what the engine said is behind Copy details").toContain("Copy details");
   });
 
   it("says the most actionable reason when they differ, and never the engine's raw words", () => {
@@ -82,7 +84,7 @@ describe("failed replies in a room", () => {
     expect(plain).toContain("Your Pro plan includes 2 cloud computers at once.");
     const technical = card([ask, failed("Echo", "TypeError: Cannot read properties of undefined (reading 'id')")]);
     expect(technical).toContain("Something went wrong. Try again.");
-    expect(technical, "the real error stays readable under the plain line").toContain("TypeError: Cannot read properties of undefined (reading &#x27;id&#x27;)");
+    expect(technical).not.toContain("TypeError");
   });
 
   it("goes away once a bot replies or the person writes again", () => {
