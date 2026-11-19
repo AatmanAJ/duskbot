@@ -11,6 +11,9 @@ export function useListFlip(listRef: RefObject<HTMLElement | null>, signature: s
     useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
+    // the same rows in the same order have not moved: reading every row's place forced the list's whole layout on each
+    // render of the list (a chat opening over it re-renders it), so it is read only when the order changes
+    if (last.current?.signature === signature) return;
     const rows = [...list.querySelectorAll<HTMLElement>(`[${KEY}]`)];
     // relative to the rows' own container: something above the list growing between renders is not a move
     const now = new Map(rows.map((row) => [row.getAttribute(KEY)!, row.offsetTop - (row.parentElement?.offsetTop ?? 0)]));
