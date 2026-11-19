@@ -120,6 +120,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
       heardAt: () => Math.max(liveEventsHeardAt() ?? 0, workspaceAnsweredAt() ?? 0) || null,
       online: () => !phoneOffline(),
       visible: () => document.visibilityState === "visible",
+      onNetworkChange: platform.onNetworkChange && ((listener) => platform.onNetworkChange!(() => { retryLiveEventsNow({ redial: true }); listener(); })),
       rewalk: async () => {
         const active = await store.active();
         // a relay link already follows its tunnel from node to node, and a second one on the same channel would race it
@@ -133,7 +134,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
         uninstall.current?.();
         uninstall.current = installTransport(found, retry);
         route.current = found;
-        retryLiveEventsNow();
+        retryLiveEventsNow({ redial: true });
       },
     });
     return () => { controller.abort(); stop(); };
