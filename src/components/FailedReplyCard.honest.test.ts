@@ -19,12 +19,6 @@ vi.mock("./DesktopCapabilities", async (importOriginal) => ({
   useDesktopCapabilities: () => ({ capabilities: { dictation: { available: false }, host: { packaged: true, platform: "darwin" }, localComputer: { available: true } }, ready: true }),
 }));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
-const copied = vi.hoisted(() => ({ texts: [] as string[] }));
-vi.mock("@/lib/copy-text", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/copy-text")>(),
-  copyText: async (text: string) => { copied.texts.push(text); return "copied" as const; },
-}));
-vi.mock("@/lib/error-reports", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/error-reports")>(), reportShownError: () => {} }));
 
 const { FailedReplyCard } = await import("./FailedReplyCard");
 const { trailingRows } = await import("@/lib/failed-reply");
@@ -62,21 +56,20 @@ async function show(cause: string, reason: FailedReplyReason | undefined, group:
     card,
     title: card?.querySelector(".font-medium")?.textContent ?? "",
     plain: card?.querySelector("p")?.textContent ?? "",
-    copy: card?.querySelector<HTMLButtonElement>("[data-error-details-copy]") ?? null,
-    buttons: card ? card.querySelectorAll("button:not([aria-label]):not([data-error-details-copy])").length : 0,
+    buttons: card ? card.querySelectorAll("button:not([aria-label])").length : 0,
   };
 }
 
 afterEach(async () => { await act(async () => root?.unmount()); root = null; });
 
 describe("a failure card, whatever the engine said", () => {
-  it("is an error card with one plain sentence and a way on; the real cause is only behind Copy details", async () => {
+  it("is an error card with one plain sentence and a way on, and nothing else: the real cause stays in the logs", async () => {
     const problems: string[] = [];
     for (const reason of REASONS) {
       for (const cause of RAW_CAUSES) {
         for (const group of [false, true]) {
           for (const onRetry of [undefined, () => {}]) {
-            const { card, title, plain, copy, buttons } = await show(cause, reason, group, onRetry);
+            const { card, title, plain, buttons } = await show(cause, reason, group, onRetry);
             const at = `${reason ?? "no reason"} / ${group ? "group" : "direct"} / ${onRetry ? "retry" : "no retry"} / ${cause.slice(0, 40)}`;
             if (!card) { problems.push(`${at}: no card`); continue; }
             if (card.getAttribute("role") !== "alert") problems.push(`${at}: not an error card`);
@@ -85,10 +78,8 @@ describe("a failure card, whatever the engine said", () => {
             const firstLine = shortenHomePaths(cause).split("\n")[0]!;
             if ((card.textContent ?? "").includes(firstLine)) problems.push(`${at}: shows the raw cause`);
             if (buttons === 0) problems.push(`${at}: no button`);
-            if (!copy) { problems.push(`${at}: no Copy details`); continue; }
-            copied.texts.length = 0;
-            await act(async () => copy.click());
-            if (copied.texts[0] !== shortenHomePaths(cause)) problems.push(`${at}: copies "${copied.texts[0]}"`);
+            if (card.querySelectorAll("p").length !== 1) problems.push(`${at}: more than one line under the title`);
+            if (card.querySelector("[data-error-details-copy]")) problems.push(`${at}: shows Copy details`);
           }
         }
       }

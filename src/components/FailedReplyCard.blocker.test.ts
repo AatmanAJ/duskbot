@@ -36,7 +36,7 @@ const show = async (tool: NonNullable<Message["tool"]>) => {
   root = createRoot(document.body.appendChild(document.createElement("div")));
   const row: Message = { id: `row-${Math.random()}`, role: "bot", kind: "activity", at: T0 + 2, tool };
   await act(async () => { root!.render(createElement(FailedReplyCard, { rows: trailingRows([ask, row]), botId: "echo", threadId: "main", onRetry: vi.fn() })); });
-  return [...document.querySelectorAll<HTMLButtonElement>("[data-chat-error] button:not([aria-label]):not([data-error-details-copy])")];
+  return [...document.querySelectorAll<HTMLButtonElement>("[data-chat-error] button:not([aria-label])")];
 };
 
 beforeEach(() => fixture.dispatch.mockClear());

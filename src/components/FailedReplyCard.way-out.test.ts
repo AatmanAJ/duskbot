@@ -40,7 +40,7 @@ const show = async (message: Message, onRetry?: () => void) => {
   document.body.innerHTML = "";
   root = createRoot(document.body.appendChild(document.createElement("div")));
   await act(async () => { root!.render(createElement(FailedReplyCard, { rows: trailingRows([ask, message]), botId: "echo", threadId: "main", onRetry })); });
-  return [...document.querySelectorAll<HTMLButtonElement>("[data-chat-error] button:not([aria-label]):not([data-error-details-copy])")];
+  return [...document.querySelectorAll<HTMLButtonElement>("[data-chat-error] button:not([aria-label])")];
 };
 const labels = (buttons: HTMLButtonElement[]) => buttons.map((button) => button.textContent);
 
@@ -98,7 +98,7 @@ describe("the card says what really stopped the reply", () => {
     await act(async () => buttons[0]!.click());
     expect(onRetry).not.toHaveBeenCalled();
     expect(text()).toContain("could happen twice");
-    const confirm = [...document.querySelectorAll<HTMLButtonElement>("[data-chat-error] button:not([aria-label]):not([data-error-details-copy])")];
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>("[data-chat-error] button:not([aria-label])")];
     expect(labels(confirm)).toEqual(["Try again anyway", "Don't retry"]);
     await act(async () => confirm[0]!.click());
     expect(onRetry).toHaveBeenCalledOnce();

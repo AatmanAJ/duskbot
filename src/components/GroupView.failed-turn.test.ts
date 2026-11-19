@@ -66,7 +66,7 @@ describe("failed replies in a room", () => {
     expect(markup).toContain('aria-label="Dismiss"');
     expect(markup).not.toContain("/login");
     expect(markup).not.toContain("Not logged in");
-    expect(markup, "what the engine said is behind Copy details").toContain("Copy details");
+    expect(markup).not.toContain("Copy details");
   });
 
   it("says the most actionable reason when they differ, and never the engine's raw words", () => {

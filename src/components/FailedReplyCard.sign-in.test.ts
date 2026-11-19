@@ -65,7 +65,7 @@ describe("a signed-out AI reads signed out everywhere, from the workspace's own 
     await mount(createElement(FailedReplyCard, { rows: trailingRows([ask, refused]), botId: "dusk", threadId: "main", onRetry: vi.fn() }));
     const card = document.querySelector("[data-chat-error]")!;
     expect(card.textContent).not.toMatch(/terminal|copilot login/i);
-    const buttons = [...card.querySelectorAll<HTMLButtonElement>("button:not([aria-label]):not([data-error-details-copy])")];
+    const buttons = [...card.querySelectorAll<HTMLButtonElement>("button:not([aria-label])")];
     expect(buttons.map((button) => button.textContent)).toEqual(["Sign in", "Try again"]);
     await act(async () => buttons[0]!.click());
     expect(fixture.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "toggleAppSettings" }));
