@@ -9,7 +9,7 @@ import { cloudPageSenderAllowed, myCloudOrigin } from "./cloud-home.mjs";
 import { otherOwnClouds } from "./cloud-list.mjs";
 import environments from "./environments.cjs";
 import localOrigin from "./local-origin.cjs";
-import { HOME_SCREEN_PATH, homeOf, installHomeWindowIpc, LOOK_MS, placeOf, QUIET_MS, routeOf, SPLASH_TEXT, splashText, TEAM_RENEW_EARLY_MS, TEAM_RENEW_MS, TEAM_RENEW_RETRY_MS, UPDATING_MS } from "./home-window.mjs";
+import { CONNECT_GRACE_MS, HOME_SCREEN_PATH, homeOf, installHomeWindowIpc, LOOK_MS, placeOf, QUIET_MS, routeOf, SPLASH_TEXT, splashText, TEAM_RENEW_EARLY_MS, TEAM_RENEW_MS, TEAM_RENEW_RETRY_MS, UPDATING_MS } from "./home-window.mjs";
 import { ACCOUNT, ACME, CLIENT, CLIENT_A, CLOUD, connected, done, LOCAL, TEAM, world } from "./fixtures/home-window-world.mjs";
 
 test("home is My Cloud only once the move switched and the same account is signed in; anything else is this computer or the sign-in screen", () => {
@@ -198,18 +198,22 @@ test("another account: the sign-in screen says so, and My Cloud is never opened 
   assert.deepEqual([w.fetched, w.pairs], [[], 0]);
 });
 
-test("with the network down the offline screen shows at once, with the Admin's reason, and goes away by itself", async () => {
+test("with the network down the opening screen stays while it may still be connecting, then the offline screen with the Admin's reason, and it goes away by itself", async () => {
   const w = world({ state: connected({ unreachable: { cause: "host", since: 1 } }), cloud: { down: true } });
   const started = Date.now();
   await w.home.show();
   assert.ok(Date.now() - started < LOOK_MS);
   assert.deepEqual(w.went, [[`${LOCAL}${HOME_SCREEN_PATH}`, null]]);
+  assert.deepEqual(w.home.view(), { screen: "opening" }, "a launch that hasn't connected yet is the loader, never \"can't reach\"");
+  w.url = `${LOCAL}${HOME_SCREEN_PATH}`;
+  w.fetched.length = 0;
+  await w.later(CONNECT_GRACE_MS);
+  assert.deepEqual(w.went, [[`${LOCAL}${HOME_SCREEN_PATH}`, null]], "the screen stays where it is");
   const view = w.home.view();
   assert.equal(view.screen, "offline");
   assert.match(view.reason, /being restarted by our hosting provider/);
   assert.deepEqual([w.fetched, w.pairs], [[["/api/health", "1"]], 0], "a My Cloud that fails the look is asked nothing else, and never paired");
   assert.deepEqual(w.published.at(-1), view, "the screen is told");
-  w.url = `${LOCAL}${HOME_SCREEN_PATH}`;
   await w.later(2_000);
   assert.equal(w.went.length, 1, "still down: it stays, and looks again later");
   w.cloud.down = false;
@@ -223,6 +227,23 @@ test("with the network down the offline screen shows at once, with the Admin's r
   w.home.failed(`${CLOUD}/chats`);
   assert.equal(w.home.view().screen, "offline", "My Cloud's page failing to load is the same screen");
   assert.deepEqual(w.went.at(-1), [`${LOCAL}${HOME_SCREEN_PATH}`, null]);
+});
+
+test("a launch while My Cloud is still connecting shows the loader until it answers, and never says it can't be reached", async () => {
+  const w = world({ cloud: { down: true } });
+  await w.home.show();
+  w.url = `${LOCAL}${HOME_SCREEN_PATH}`;
+  await w.later(2_000);
+  await w.later(4_000);
+  w.cloud.down = false;
+  await w.later(8_000);
+  assert.deepEqual(w.went.at(-1), [CLOUD, CLOUD], "it opened by itself");
+  assert.equal(w.published.some((view) => view.screen === "offline"), false, "no can't-reach screen on the way");
+  assert.ok(w.published.some((view) => view.screen === "opening"));
+  w.cloud.down = true;
+  w.url = `${CLOUD}/`;
+  w.home.failed(`${CLOUD}/`);
+  assert.equal(w.home.view().screen, "offline", "once open, a page that fails to load is a real failure: said at once");
 });
 
 test("a plan problem shows the Admin's state and never knocks on My Cloud", async () => {
@@ -638,6 +659,8 @@ test("a team's Cloud that can't be reached shows this computer's screen with the
   const w = world({ state: { ...connected(), teams: [ACME] }, team: { down: true }, url: `${CLOUD}/` });
   await w.home.show({ place: { team: "team-acme" } });
   assert.deepEqual(w.went, [[`${LOCAL}${HOME_SCREEN_PATH}`, null]]);
+  assert.deepEqual(w.home.view(), { screen: "opening", name: "Acme" }, "still connecting: the loader");
+  await w.later(CONNECT_GRACE_MS);
   assert.deepEqual(w.home.view(), { screen: "offline", name: "Acme" }, "named, with no reason of My Cloud's");
   assert.equal(w.fetched.some(([route]) => !route.startsWith("team:")), false, "nothing asks My Cloud");
   w.team.down = false;
@@ -647,6 +670,7 @@ test("a team's Cloud that can't be reached shows this computer's screen with the
   // The team's Cloud answering asleep is simply not reachable yet: no wake through the Admin.
   w.team.health = 503; w.url = `${LOCAL}/`;
   await w.home.show({ place: { team: "team-acme" } });
+  await w.later(CONNECT_GRACE_MS);
   assert.deepEqual(w.home.view(), { screen: "offline", name: "Acme" });
   assert.equal(w.wakes, 0);
 });

@@ -11,6 +11,7 @@ import { DEVS_TOOL_DEFINITIONS } from "./agents-devs-tools.ts";
 import { HELPER_TOOL_DEFINITIONS } from "./agents-helper-tools.ts";
 import { USAGE_LIMITS_TOOL_DEFINITION } from "./agents-usage-tool.ts";
 import { CHECKLIST_TOOL_DEFINITION } from "./agents-checklist-tool.ts";
+import { DOCUMENT_TOOL_DEFINITIONS } from "./agents-document-tools.ts";
 import { WAIT_TOOL_DEFINITIONS, WAIT_TOOL_NAMES } from "./agents-wait-tools.ts";
 import { DUSK_TOOL_DEFINITIONS } from "./agents-dusk-tools.ts";
 import { PERSON_TOOL_DEFINITIONS } from "./agents-person-tools.ts";
@@ -245,6 +246,7 @@ const TOOL_DEFINITIONS = [
   },
   USAGE_LIMITS_TOOL_DEFINITION,
   CHECKLIST_TOOL_DEFINITION,
+  ...DOCUMENT_TOOL_DEFINITIONS,
   {
     name: "list_rooms",
     description:
@@ -452,7 +454,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "request_credential",
     description:
-      "Ask the person for a secret on a secure card in the app or a QR-paired phone, never in chat. credential_id: a key dusk bot keeps (onePasswordToken: a 1Password service account token; email: a mailbox on any mail host, one card for its address and password; login: a site's password, for fill_login). Other secrets: label, reason, delivery. You never see the value; end the turn, and you resume when they save or decline.",
+      "Ask the person for a secret on a secure card in the app or a QR-paired phone, never in chat. credential_id: a key dusk bot keeps (onePasswordToken: a 1Password service account token; email: a mailbox on any mail host, one card for its address and password; login: a site's password, for fill_login). Other secrets: label, reason, delivery. Pasted in their message (NAME=value)? Call with pasted_as: dusk bot saves it, no card; carry on, never copy the value. You never see the value of a card; end the turn, and you resume when they save or decline.",
     inputSchema: {
       type: "object",
       properties: {
@@ -471,6 +473,7 @@ const TOOL_DEFINITIONS = [
           description: "ref: a one-use secretRef for mcp_server. file: a private file your commands read.",
         },
         failed: { type: "string", maxLength: 600, description: "A saved one was refused: the service's error (status and message), never the value." },
+        pasted_as: { type: "string", maxLength: 80, description: "The name they pasted it under, e.g. XACTIONS_TOKEN; not the value." },
       },
     },
   },

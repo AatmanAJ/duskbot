@@ -24,12 +24,14 @@ describe("the bot's own status label", () => {
 });
 
 describe("a working row's one short word", () => {
-  it("is the mascot at work and a plain word, never the dots", () => {
+  it("is just a plain word in the sidebar, never the dots, and the phone list's has the mascot at work before it", () => {
     live.value = { ended: false, status: { activity: "web", itemId: "s1" } };
-    const markup = renderToStaticMarkup(createElement(SidebarWorkingWord, { bot: { ...bot, id: "b", color: "green" } }));
-    expect(markup).toContain("data-working-mascot");
+    const working = { ...bot, id: "b", color: "green" as const };
+    const markup = renderToStaticMarkup(createElement(SidebarWorkingWord, { bot: working }));
+    expect(markup).not.toContain("data-working-mascot");
     expect(markup).toContain(">Searching</span>");
     expect(markup).not.toMatch(/status-pulse|…/);
+    expect(renderToStaticMarkup(createElement(SidebarWorkingWord, { bot: working, mascot: 20 }))).toContain("data-working-mascot");
   });
 
   it("never truncates: every word it can say fits the narrowest sidebar, and it is never a fun word", () => {

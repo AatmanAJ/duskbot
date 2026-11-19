@@ -779,6 +779,21 @@ describe("the Computer tab", () => {
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "openCloudAdd", source: "app_bot_panel" });
   });
 
+  it("in the store phone app shows this computer's bot its browser, never a blank tab or the dusk cloud offer", () => {
+    fixture.otherServer = null;
+    const before = globalThis.document;
+    vi.stubGlobal("document", { documentElement: { dataset: { mobileApp: "android" } } });
+    try {
+      const rendered = computer(cloudBot());
+      const section = rendered.nodes.find((node) => "askFirst" in node.props);
+      expect(section?.props.bot).toMatchObject({ id: "scout" });
+      expect(section?.props.after).toBe(false);
+      expect(rendered.html).not.toContain('data-panel-card="dusk-cloud"');
+    } finally {
+      vi.stubGlobal("document", before);
+    }
+  });
+
   it("on this computer still shows a Private desktop bot's own screen, with the dusk cloud offer under it", () => {
     fixture.otherServer = null;
     const rendered = computer(makeBot({ computer: "vm" }));

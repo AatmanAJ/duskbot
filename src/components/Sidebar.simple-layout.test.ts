@@ -278,27 +278,28 @@ describe("Simple-mode sidebar layout", () => {
     handle.onAvatars(true);
     expect(fixture.storage.get(SIDEBAR_DENSITY_KEY)).toBe("avatars");
     const { root, tree } = render();
-    expect(root.props.className).toContain("w-[92px]");
+    expect(root.props.className).toContain("w-[68px]");
     expect(sectionOrder(tree)).toEqual([userSectionId("Work"), BOTS_SECTION_ID, CHANNELS_SECTION_ID]);
     expect(listedBots(tree)).toEqual(["dodo", "atlas", "bea"]);
     expect(headers(tree)).toEqual([]);
     expect(tree.filter((node) => node.type === SidebarRailSeparator)).toHaveLength(2);
     expect(tree.some((node) => node.type === SidebarSearchToggle)).toBe(false);
     expect(edge(tree)?.avatars, "the rail keeps its edge, to drag it open again").toBe(true);
-    expect(edge(tree)?.avatarsWidth).toBe(92);
+    expect(edge(tree)?.avatarsWidth).toBe(68);
     expect(tree.some((node) => node.props["data-sidebar-top-buttons"] !== undefined)).toBe(false);
   });
 
-  it("puts round search and the same + menu at the top of the rail, and dragging its edge out opens it again", () => {
+  it("puts the same + menu at the foot of the rail, opening upward, and dragging its edge out opens it again", () => {
     setSidebarDensity("icons");
-    const top = () => render().tree.find((node) => node.props["data-sidebar-rail-top"] !== undefined)!;
-    const plus = () => nodes(top().props.children).find((node) => node.type === "button" && node.props["aria-label"] === "New or share")!;
-    expect(plus().props.className).toEqual(expect.stringContaining("size-9"));
+    const plusSlot = () => render().tree.find((node) => node.type === SimpleRailFooter)!.props.plus as ReactElement<Props>;
+    const top = () => nodes(plusSlot());
+    const plus = () => top().find((node) => node.type === "button" && node.props["aria-label"] === "New or share")!;
+    expect(plus().props.className).toEqual(expect.stringContaining("size-8"));
     (plus().props.onClick as () => void)();
-    const menu = nodes(top().props.children).find((node) => /\bmin-w-\[200px\]/.test(node.props.className ?? ""))!;
-    expect(menu.props.className).toEqual(expect.stringContaining("left-full top-0"));
+    const menu = top().find((node) => /\bmin-w-\[200px\]/.test(node.props.className ?? ""))!;
+    expect(menu.props.className).toEqual(expect.stringContaining("left-full bottom-0"));
     expect(menu.props.className).toEqual(expect.stringContaining("rounded-[var(--radius-menu)]"));
-    const item = (label: string) => nodes(top().props.children).find((node) => node.type === "button" && nodes(node.props.children).concat(node).some((part) => Children.toArray(part.props.children).includes(label)));
+    const item = (label: string) => top().find((node) => node.type === "button" && nodes(node.props.children).concat(node).some((part) => Children.toArray(part.props.children).includes(label)));
     expect(item("Create department"), "Simple makes a department from its bots, by dragging one onto another or from a bot's menu").toBeUndefined();
     expect(item("New chat"), "a new conversation starts from the bot panel").toBeUndefined();
     expect(item("New bot")).toBeDefined();
@@ -319,24 +320,11 @@ describe("Simple-mode sidebar layout", () => {
     fixture.values = [];
   });
 
-  const railSearch = (tree: ReactElement<Props>[]) => tree.find((node) => node.type === "button" && node.props["aria-label"] === "Search bots and messages")!.props.onClick as () => void;
-
-  it("opens the search pill from the rail's search button by expanding the sidebar", () => {
+  it("keeps no search button on the rail, collapsed by hand or by a side panel", () => {
     setSidebarDensity("icons");
-    expect(render().tree.some((node) => node.type === SidebarSearchPill)).toBe(false);
-    railSearch(render().tree)();
-    const { tree } = render();
-    expect(tree.some((node) => node.type === SimpleRailFooter)).toBe(false);
-    expect(tree.some((node) => node.type === SidebarSearchPill)).toBe(true);
-  });
-
-  it("opens the command palette instead when a side panel holds the sidebar collapsed", () => {
-    const opened = vi.fn();
-    window.addEventListener("dusk:open-command-palette", opened);
-    const search = railSearch(render(true).tree);
-    expect(edge(render(true).tree), "no edge to drag while a side panel holds it collapsed").toBeUndefined();
-    search();
-    expect(opened).toHaveBeenCalledOnce();
+    const searchButton = (tree: ReactElement<Props>[]) => tree.some((node) => node.type === "button" && node.props["aria-label"] === "Search bots and messages");
+    expect(searchButton(render().tree)).toBe(false);
+    expect(searchButton(render(true).tree)).toBe(false);
     expect(render(true).tree.some((node) => node.type === SimpleRailFooter)).toBe(true);
   });
 });

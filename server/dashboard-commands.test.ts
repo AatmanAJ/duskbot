@@ -25,6 +25,25 @@ describe("dashboard commands", () => {
   it("returns the sign-in page an app hands back", async () => {
     expect(await commands(200, { url: "https://connect.composio.dev/link/lk_abc" }).execute(command("app.connect", "gmail"))).toMatchObject({ ok: true, url: "https://connect.composio.dev/link/lk_abc" });
   });
+
+  it("sends a website sign-in back only to the website this workspace reports to", async () => {
+    const state = "k".repeat(43);
+    const run = async (callback: string, dashboard = "https://dusk.bot") => {
+      const sent: unknown[] = [];
+      const runner = createDashboardCommands({ port: 1, collect: {} as never, dashboardUrl: () => dashboard,
+        fetch: (async (_url: string, init: RequestInit) => { sent.push(JSON.parse(String(init.body))); return new Response(JSON.stringify({ url: "https://connect.composio.dev/link/x", returnsHere: true })); }) as typeof fetch });
+      return { result: await runner.execute({ ...command("app.connect", "gmail"), callback }), sent };
+    };
+    const ok = await run(`https://dusk.bot/connectors?connect=${state}`);
+    expect(ok.sent).toEqual([{ callbackUrl: `https://dusk.bot/connectors?connect=${state}` }]);
+    expect(ok.result).toMatchObject({ ok: true, url: "https://connect.composio.dev/link/x", returnsHere: true });
+    expect((await run(`https://dusk.bot/connectors?connect=${state}`, "https://app.dusk.bot")).sent).toEqual([{ callbackUrl: `https://dusk.bot/connectors?connect=${state}` }]);
+    for (const other of [`https://evil.example/connectors?connect=${state}`, `https://dusk.bot/connectors?connect=${state}&next=x`, `https://dusk.bot/elsewhere?connect=${state}`]) {
+      const refused = await run(other);
+      expect(refused.sent, other).toEqual([{}]);
+      expect(refused.result.returnsHere, other).toBeUndefined();
+    }
+  });
 });
 
 describe("a phone signed in to the account asking to link", () => {

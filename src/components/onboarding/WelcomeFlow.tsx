@@ -156,7 +156,7 @@ export function WelcomeFlow({
   // requires one
   const accountStep = Boolean(account) && (!firstKnown.current?.signedIn || firstKnown.current.website === "open");
   const stepsFor = (picked: FunnelPath | null) => funnelSteps({ account: accountStep, desktop, bring: offersMove,
-    path: picked, hello: window.duskDesktop?.remoteClient?.active !== true, phone: phoneAppPrompted(), permissions, cloudBring });
+    path: picked, hello: window.duskDesktop?.remoteClient?.active !== true, phone: phoneAppPrompted(), permissions, cloudBring, aiAsked: cloudHome && !replay });
   const steps = stepsFor(path);
 
   const [at, setAt] = useState<FunnelStep>(() => resumeBeat(steps, saved));
@@ -358,7 +358,7 @@ export function WelcomeFlow({
       body = <CheckoutStep start={checkoutStart} onPaid={cloudPaid} onMac={toMac} />;
       break;
     case "ai":
-      body = <AiStep tested={tested} cloud={cloud} auto={from === "next"} computerAis={cloudHome ? computerAiIds(state.config?.onboarding) : []} onNext={(how) => { track("onboarding_ai", { action: how }); next(); }} />;
+      body = <AiStep tested={tested} cloud={cloud} computerAis={cloudHome ? computerAiIds(state.config?.onboarding) : []} onNext={(how) => { track("onboarding_ai", { action: how }); next(); }} />;
       break;
     case "bring":
       body = cloudHome ? <CloudBringStep onNext={next} /> : <BringStep finds={finds} grokWaiting={move.plan?.grokWaiting ?? []} run={bringRun} onBring={bring} onNext={next} />;

@@ -178,7 +178,7 @@ export function bootstrapScript(base, token, way) {
 # dusk bot: gets the installer for this setup, then runs it
 dusk_install() {
   for f in "" -4 "" -4 ""; do
-    if s=$(curl -fsSL $f ${base}/i/${token}); then printf '%s\\n' "$s" | sh${args}; exit $?; fi
+    if s=$(curl -fsSL --connect-timeout 15 -m 120 $f ${base}/i/${token}); then printf '%s\\n' "$s" | sh${args}; exit $?; fi
     sleep 2
   done
   echo "dusk bot could not be downloaded. check the internet and paste the line again." >&2

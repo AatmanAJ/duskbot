@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ServerFrame } from "../../shared/wire";
-import { publishLiveFrame, publishMissedFrames } from "../lib/live-events";
+import { openLiveEvents, publishLiveFrame, publishMissedFrames } from "../lib/live-events";
 import { ApiError } from "./api";
-import { LOST_SEND_RETRY_MS, optimisticMessageId, sendReconciled, type SendDelivery } from "./optimistic-send";
+import { limitSendAttempts, LOST_SEND_RETRY_MS, optimisticMessageId, SEND_ATTEMPT_CUTS, SendAttemptCutError, sendAnswerLost, sendReconciled, type SendDelivery } from "./optimistic-send";
 
 const delivery: SendDelivery = { threadId: "thread-one", sendId: "send-0123456789abcdef", text: "Hello", replyToId: "reply-one" };
 const message = (patch = {}): ServerFrame => ({ kind: "message", threadId: delivery.threadId,
@@ -119,5 +119,78 @@ describe("canonical send confirmation", () => {
       message: { id: `accepted-${own.sendId}`, role: "user", kind: "text", text: own.text, at: 1, sendId: own.sendId, replyToId: own.replyToId } });
     expect(await Promise.all(sends.map((send) => send.result))).toEqual(Array.from({ length: 20 }, () => ({ arrived: true })));
     expect(posts.every((post) => post.mock.calls.length === 1)).toBe(true);
+  });
+});
+
+describe("a phone's send on a dead connection", () => {
+  const body = { ok: true, threadId: delivery.threadId, message: { id: "accepted" } };
+  const hangs = (signal: AbortSignal) => new Promise<object>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+  const reopen = () => {
+    const source = { onopen: null as (() => void) | null, onerror: null, onmessage: null, close: () => {} };
+    const stop = openLiveEvents({ onFrame: () => {}, onSnapshotRequired: async () => true }, {
+      createEventSource: () => source, isOnline: () => true, isVisible: () => true, now: Date.now,
+    });
+    source.onopen?.();
+    stop();
+  };
+  let stopLimit = () => {};
+  afterEach(() => stopLimit());
+
+  it("asks again on a new request after the attempt limit instead of waiting on the native 600 s timeout", async () => {
+    vi.useFakeTimers();
+    stopLimit = limitSendAttempts(20_000);
+    const post = vi.fn(hangs).mockImplementationOnce(hangs).mockImplementationOnce(async () => body);
+    const result = sendReconciled(post, () => false, undefined, delivery);
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(post).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toEqual({ body });
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks again at once when the live stream opens again, the place being back", async () => {
+    vi.useFakeTimers();
+    stopLimit = limitSendAttempts(20_000);
+    const post = vi.fn(hangs).mockImplementationOnce(hangs).mockImplementationOnce(async () => body);
+    const result = sendReconciled(post, () => false, undefined, delivery);
+    await vi.advanceTimersByTimeAsync(5_000);
+    reopen();
+    await expect(result).resolves.toEqual({ body });
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it("ends a retry wait when the live stream opens again", async () => {
+    vi.useFakeTimers();
+    stopLimit = limitSendAttempts(20_000);
+    const post = vi.fn().mockRejectedValueOnce(new TypeError("Load failed")).mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockRejectedValueOnce(new TypeError("Load failed")).mockResolvedValueOnce(body);
+    const result = sendReconciled(post, () => false, undefined, delivery);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(post).toHaveBeenCalledTimes(3);
+    reopen();
+    await expect(result).resolves.toEqual({ body });
+    expect(post).toHaveBeenCalledTimes(4);
+  });
+
+  it("hands the send to the outbox after its cut tries", async () => {
+    vi.useFakeTimers();
+    stopLimit = limitSendAttempts(1_000);
+    const post = vi.fn(hangs);
+    const result = sendReconciled(post, () => false, undefined, delivery);
+    const settled = expect(result).rejects.toBeInstanceOf(SendAttemptCutError);
+    await vi.advanceTimersByTimeAsync((SEND_ATTEMPT_CUTS + 1) * 1_000);
+    await settled;
+    expect(post).toHaveBeenCalledTimes(SEND_ATTEMPT_CUTS + 1);
+    expect(sendAnswerLost(new SendAttemptCutError())).toBe(true);
+  });
+
+  it("leaves a desktop's slow send alone: no limit is installed there", async () => {
+    vi.useFakeTimers();
+    const post = vi.fn(() => new Promise((resolve) => setTimeout(() => resolve(body), 120_000)));
+    const result = sendReconciled(post, () => false, undefined, delivery);
+    reopen();
+    await vi.advanceTimersByTimeAsync(120_000);
+    await expect(result).resolves.toEqual({ body });
+    expect(post).toHaveBeenCalledOnce();
   });
 });

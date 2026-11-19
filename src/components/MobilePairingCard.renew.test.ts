@@ -56,18 +56,32 @@ const mount = async (props: Parameters<typeof MobilePairingCard>[0], pickIphone 
 };
 const qrs = () => host.querySelectorAll("[aria-label*=\"QR code\"]").length;
 
-it("always opens on the phone picker, Android shown but not pickable, then shows the iPhone's two numbered steps beside one qr", async () => {
+it("opens Android's link page with the APK download beside the same qr", async () => {
+  await mount({ remote: false }, false);
+  const android = host.querySelector<HTMLButtonElement>("[data-phone-platform=android]")!;
+  expect(android.getAttribute("aria-disabled")).toBeNull();
+  expect(android.textContent).not.toContain("Coming soon");
+  expect(android.textContent).not.toContain("Google Play");
+  expect(minted, "no code before a phone is picked").toBe(0);
+  await click("[data-phone-platform=android]");
+  await flush();
+  expect(host.textContent).toContain("Link your Android phone");
+  expect(minted).toBe(1);
+  const steps = host.querySelector("[data-phone-steps=android]")!;
+  expect(steps.querySelectorAll(":scope > li")).toHaveLength(2);
+  expect(steps.textContent).toContain("Get the dusk bot app");
+  const apk = steps.querySelector("[data-phone-apk]")!;
+  expect(apk.getAttribute("href")).toBe("https://dusk.bot/download#android");
+  expect(apk.textContent).toBe("Download");
+  expect(apk.getAttribute("aria-label")).toBe("Download dusk bot for Android");
+  expect(host.querySelector("[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe("https://dusk.bot/m/pair#m=offer1&c=ABCDEFGH0001");
+});
+
+it("always opens on the phone picker, then shows the iPhone's two numbered steps beside one qr", async () => {
   window.localStorage.setItem("dusk.settings.phoneKind", "ios");
   await mount({ remote: false }, false);
   expect(host.textContent, "never straight to a remembered phone").toContain("Which phone do you have?");
   expect(host.querySelector("[data-phone-platform=ios] [data-store-mark=apple]")).not.toBeNull();
-  const android = host.querySelector<HTMLButtonElement>("[data-phone-platform=android]")!;
-  expect(android.getAttribute("aria-disabled")).toBe("true");
-  expect(android.textContent).toContain("Coming soon");
-  expect(android.className).not.toContain("hover:");
-  await click("[data-phone-platform=android]");
-  await flush();
-  expect(host.querySelector("[data-phone-flow=platform]"), "Android does not open a link page").not.toBeNull();
   expect(minted, "no code before a phone is picked").toBe(0);
   await click("[data-phone-platform=ios]");
   await flush();

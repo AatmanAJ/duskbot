@@ -422,6 +422,27 @@ describe("surface pin provenance against the real server", () => {
     await stop();
   });
 
+  it("answers without its computer when the computer it works on is unreachable, with no error card", async () => {
+    await start();
+    const { bot } = await apiOk("POST", "/api/bots", { name: "Works on cloud bot" });
+    const { task } = await apiOk("POST", `/api/bots/${bot.id}/tasks`, {});
+    await apiOk("PUT", "/api/config", { vps: { sshAlias: "fixture-vps", mode: "per-bot" } });
+    await apiOk("PATCH", `/api/bots/${bot.id}`, { computer: "cloud" });
+    vpsState({ unreachable: 'error during connect: Get "http://%2Frun%2Fopenmausbot-docker%2Fdocker.sock/v1.56/images/x/json": EOF' });
+    resetTurn();
+    await apiOk("POST", `/api/bots/${bot.id}/messages`, { text: "Review this paragraph for me.", threadId: task.threadId });
+    const sent = await dump();
+    expect(mountedComputer(sent)).toBeUndefined();
+    expect(sent.systemPrompt).toContain("Your computer is not answering right now");
+    expect(sent.systemPrompt).not.toMatch(/%2F|docker\.sock/);
+    writeFileSync(finishFile, "finish");
+    await idle(bot.id, task.threadId);
+    const { messages } = await apiOk("GET", `/api/threads/${task.threadId}/messages?limit=30`);
+    expect(messages.filter((message: any) => String(message.tool?.name ?? "").startsWith("error:"))).toEqual([]);
+    await apiOk("DELETE", `/api/bots/${bot.id}`);
+    await stop();
+  });
+
   it("clears a select_computer pin to the shared workspace computer that fails, in one plain sentence", async () => {
     await start();
     const { bot } = await apiOk("POST", "/api/bots", { name: "Shared place bot" });

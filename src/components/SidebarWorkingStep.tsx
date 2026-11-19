@@ -28,7 +28,7 @@ export function SidebarWorkingStep({ bot, last }: { bot: Pick<Bot, "threadId" | 
   return <span dir="auto" data-sidebar-working-phrase="" className="truncate">{phrase ?? t("chat.activity.thinking")}</span>;
 }
 
-/** The longest word a row's working line says: it fits beside the mascot in the narrowest sidebar without being cut. */
+/** The longest word a row's working line says: it fits the narrowest sidebar (and the phone list beside its mascot) without being cut. */
 export const SIDEBAR_WORD_MAX = 21;
 
 /** One short word for what a working bot does now: its own label when that is short, else the step's plain word, else
@@ -44,14 +44,14 @@ export function sidebarWorkingWord(status: LiveStatus | null, label: string | un
 
 type WorkingRowBot = Pick<Bot, "id" | "threadId" | "tasks" | "color" | "mascotBody" | "mascotFaceColor">;
 
-/** A working row's preview: the bot's tiny mascot at work and one short word. */
-export function SidebarWorkingWord({ bot, last, size = 16, className }: { bot: WorkingRowBot; last?: Message; size?: number; className?: string }) {
+/** A working row's preview: one short word, after the bot's tiny mascot at work when `mascot` gives its size. */
+export function SidebarWorkingWord({ bot, last, mascot, className }: { bot: WorkingRowBot; last?: Message; mascot?: number; className?: string }) {
   const threadId = workingThreadId(bot);
   const live = useTurnLive(threadId);
   const word = sidebarWorkingWord(live.status, live.label, threadId === bot.threadId ? last : undefined);
   return (
     <span data-sidebar-working-word="" className={cn("flex min-w-0 items-center gap-1.5", className)}>
-      <WorkingMascot bot={bot} size={size} seed={threadId} />
+      {mascot !== undefined && <WorkingMascot bot={bot} size={mascot} seed={threadId} />}
       <span dir="auto" className="truncate">{word}</span>
     </span>
   );

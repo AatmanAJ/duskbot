@@ -13,9 +13,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { openHeadlessChrome, type HeadlessPage } from "../../../scripts/testing/headless-chrome.ts";
-import { ROOM, ROUTINES, TEAM } from "./team.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+/** DUSK_STAGE_TEAM names another team module shaped like team.mjs, for screens the store set does not show */
+const { ROOM, ROUTINES, TEAM } = await import(process.env.DUSK_STAGE_TEAM ?? "./team.mjs") as typeof import("./team.mjs");
 const RESERVED = new Set([5199, 8799, 5299, 8899, 9335, 5320]);
 const work = mkdtempSync(join(tmpdir(), "dusk-store-"));
 const children = new Set<ChildProcess>();
@@ -80,7 +81,7 @@ async function seed(base: string): Promise<Seeded> {
   const starter = existing.find((bot: { chiefOfStaff?: boolean }) => bot.chiefOfStaff) ?? existing[0];
   for (const one of TEAM) {
     const created = one.chief && starter ? starter : (await api(base, "POST", "/api/bots", { name: one.name })).bot;
-    const { bot } = await api(base, "PATCH", `/api/bots/${encodeURIComponent(created.id)}`, { name: one.name, color: one.color, mascotBody: one.body, ...(one.pinned ? { pinned: true } : {}) });
+    const { bot } = await api(base, "PATCH", `/api/bots/${encodeURIComponent(created.id)}`, { name: one.name, color: one.color, mascotBody: one.body, ...(one.pinned ? { pinned: true } : {}), ...("section" in one && one.section ? { section: one.section } : {}) });
     bots.set(one.name, bot);
   }
   const memberIds = ROOM.members.map((name) => bots.get(name)!.id);
@@ -142,8 +143,15 @@ function rewrite(threadId: string, real: Message[], threads: ReturnType<typeof s
   const kept = (firstUser < 0 ? [] : real.slice(firstUser)).map(({ unconfirmed: _unconfirmed, ...message }) => message as Message);
   const head = script.tail ? [...script.messages, script.tail] : script.messages;
   if (kept[0]) kept[0] = { ...kept[0], parentId: head.at(-1)!.id };
-  return [...head, ...kept];
+  const all = [...head, ...kept];
+  if (all.length <= SERVER_PAGE) return all;
+  const page = all.slice(-SERVER_PAGE);
+  page[0] = { ...page[0]!, parentId: null };
+  return page;
 }
+
+/** the newest messages a server hands over at once; the rest come as the phone asks for older ones */
+const SERVER_PAGE = 120;
 
 function patchOwner(owner: Record<string, any>, threads: ReturnType<typeof scripted>) {
   const script = threads.get(owner.threadId);
@@ -188,7 +196,7 @@ function startProxy(target: string, threads: () => ReturnType<typeof scripted> |
           for (const owner of [...(data.bots ?? []), ...(data.groups ?? [])]) patchOwner(owner, map);
           for (const thread of data.threads ?? []) {
             const messages = rewrite(thread.threadId, thread.messages ?? [], map);
-            if (messages) { thread.messages = messages; if ("activeLeafId" in thread) thread.activeLeafId = messages.at(-1)?.id ?? null; if ("hasMore" in thread) thread.hasMore = false; }
+            if (messages) { thread.messages = messages; if ("activeLeafId" in thread) thread.activeLeafId = messages.at(-1)?.id ?? null; if ("hasMore" in thread) thread.hasMore = messages.length >= SERVER_PAGE; }
           }
           body = JSON.stringify(data);
         } catch {}
@@ -249,7 +257,8 @@ export async function startStage(serve: Serve = DEV_SERVER) {
   // the store build marks <html data-mobile-app="ios"> from the native shell, which hides screen view (4.2.7) and every
   // plan line; the browser preview would say "web", so the mark is pinned before the app renders
   await page.send("Page.enable");
-  await page.send("Page.addScriptToEvaluateOnNewDocument", { source: `new MutationObserver(() => { const root = document.documentElement; if (root && root.dataset.mobileApp && root.dataset.mobileApp !== "ios") root.dataset.mobileApp = "ios"; }).observe(document, { attributes: true, subtree: true, attributeFilter: ["data-mobile-app"] });` });
+  const mark = process.env.DUSK_STAGE_PLATFORM === "android" ? "android" : "ios";
+  await page.send("Page.addScriptToEvaluateOnNewDocument", { source: `new MutationObserver(() => { const root = document.documentElement; if (root && root.dataset.mobileApp && root.dataset.mobileApp !== "${mark}") root.dataset.mobileApp = "${mark}"; }).observe(document, { attributes: true, subtree: true, attributeFilter: ["data-mobile-app"] });` });
 
   const open = async (scheme: Scheme, query = "", storage: Record<string, string> = { "dusk.mobile.introSeen": "1" }) => {
     await page.send("Page.navigate", { url: `${base}/?frame=1&scheme=${scheme}${query}` });

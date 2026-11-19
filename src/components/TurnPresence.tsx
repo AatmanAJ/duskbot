@@ -1,17 +1,18 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronDown } from "../icons";
 import { cn } from "@/lib/cn";
-import { WorkingTimer } from "@/components/WorkingIndicator";
+import { usePrefersReducedMotion } from "@/components/mascot-clock";
 import { phraseAt, phraseHoldMs, rotationHoldMs } from "@/lib/live-activity";
 import { quietText } from "@/lib/now-steps";
 import { t } from "@/lib/i18n";
 import { plainWord, startsAnywhere, TYPING_PHASE, workingWord } from "@/lib/friendly-activity";
-import { formatElapsed } from "@/lib/working-time";
 import type { StepQuiet } from "../../shared/turn-progress";
 
 const FADE_MS = 320;
 /** Grok's activity line leaves in 140ms. */
-const STATUS_EXIT_MS = 140;
+export const STATUS_EXIT_MS = 140;
+/** A turn that finished: the words leave as ever, the mascot stays for its happy hop, then fades. */
+export const STATUS_DONE_EXIT_MS = 380;
 
 export function useRotatingPhrase(
   phrases: readonly string[],
@@ -121,11 +122,65 @@ function StatusShimmer({ text }: { text: string }) {
   return <span className="status-shimmer">{text}</span>;
 }
 
-/** One step's words. New words swap in and rise 4px over 180ms, as Grok Bot's line does: no crossfade. */
-function StepPhrase({ text, hover }: { text: string; hover?: string }) {
+/** How the line's words change: the old words blur out as the new ones come in from a blur, both in the same cell at
+ * once, so the line never shows neither; the cell's width eases from the old words' to the new. */
+export const WORD_SWAP = { duration: 880, easing: "cubic-bezier(0.22, 1, 0.36, 1)", blurPx: 4 } as const;
+
+type StepWords = { key: string; text: string };
+
+/** The step's words. The first ones rise in with the line; each later change is a WORD_SWAP crossfade, and under
+ * reduced motion an instant swap. */
+function StepPhrase({ step, hover }: { step: StepWords; hover?: string }) {
+  const reduced = usePrefersReducedMotion();
+  const [shown, setShown] = useState(step);
+  const [leaving, setLeaving] = useState<StepWords | null>(null);
+  const [swapped, setSwapped] = useState(false);
+  if (shown.key !== step.key || shown.text !== step.text) {
+    setLeaving(reduced ? null : shown);
+    setShown(step);
+    setSwapped(true);
+  }
+  const cell = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const box = cell.current;
+    const out = box?.querySelector<HTMLElement>("[data-word-out]");
+    const into = box?.querySelector<HTMLElement>("[data-word-in]");
+    if (!leaving || !box || !out || !into || typeof into.animate !== "function") {
+      if (leaving) setLeaving(null);
+      return;
+    }
+    const from = out.offsetWidth, to = into.offsetWidth;
+    // whole words while the width eases, so no ellipsis slides along them
+    for (const word of [out, into]) word.style.width = "max-content";
+    const timing = { duration: WORD_SWAP.duration, easing: WORD_SWAP.easing };
+    const blur = (px: number) => `blur(${px}px)`;
+    const fade = out.animate([{ opacity: 1, filter: blur(0) }, { opacity: 0, filter: blur(WORD_SWAP.blurPx) }], { ...timing, fill: "forwards" });
+    into.animate([{ opacity: 0, filter: blur(WORD_SWAP.blurPx) }, { opacity: 1, filter: blur(0) }], { ...timing, fill: "backwards" });
+    const width = Math.abs(from - to) >= 1 ? box.animate([{ width: `${from}px` }, { width: `${to}px` }], { ...timing, fill: "forwards" }) : null;
+    fade.onfinish = () => setLeaving(null);
+    return () => {
+      fade.onfinish = null;
+      fade.cancel();
+      width?.cancel();
+      into.style.width = "";
+    };
+  }, [leaving]);
+  const word = (words: StepWords, out: boolean) => (
+    <span
+      key={`${words.key}|${words.text}`}
+      className={cn("flex min-w-0 items-center justify-self-start [grid-area:1/1]", !swapped && "turn-label-in")}
+      title={out ? undefined : hover}
+      aria-hidden={out || undefined}
+      data-turn-now={out ? undefined : ""}
+      {...(out ? { "data-word-out": "" } : leaving ? { "data-word-in": "" } : {})}
+    >
+      <StatusShimmer text={words.text} />
+    </span>
+  );
   return (
-    <span className="turn-label-in flex min-w-0 items-center [grid-area:1/1]" title={hover} data-turn-now="">
-      <StatusShimmer text={text} />
+    <span ref={cell} className="grid min-w-0">
+      {leaving && word(leaving, true)}
+      {word(shown, false)}
     </span>
   );
 }
@@ -146,10 +201,9 @@ function QuietPart({ quiet }: { quiet: StepQuiet }) {
   return <><Dot /><span data-turn-quiet="" className="text-[12px] text-ink-tertiary">{quietText(quiet, now)}</span></>;
 }
 
-/** The turn's live status line: "Working · 1m 12s · Running scrape.py · busy, no output yet". The lead word and the
- * timer stay for the whole turn; `phrases` say what is happening now and rotate through their alternates; `size` is how
- * much of the file is written; `quiet` is how a long step is doing. With nothing to say the line is the lead and the timer
- * alone. The part that is live shimmers. `simple` draws Simple mode's quiet line instead: the avatar and one phrase for
+/** The turn's live status line: "Working · Running scrape.py · busy, no output yet". It never counts seconds. The lead
+ * word stays for the whole turn; `phrases` say what is happening now and rotate through their alternates; `size` is how
+ * much of the file is written; `quiet` is how a long step is doing. With nothing to say the line is the lead alone. The part that is live shimmers. `simple` draws Simple mode's quiet line instead: the avatar and one phrase for
  * what is happening now. With a `card`, the line is a button that unfolds it underneath. */
 export function TurnPresence({
   avatar,
@@ -168,6 +222,7 @@ export function TurnPresence({
   quiet,
   card,
   cardLabel,
+  done = false,
   className,
 }: {
   avatar: ReactNode;
@@ -182,13 +237,15 @@ export function TurnPresence({
   since?: number | null;
   size?: string;
   simple?: boolean;
-  /** Simple mode: Advanced's wording for what is happening now, kept in the row's tooltip with the timer and size. */
+  /** Simple mode: Advanced's wording for what is happening now, kept in the row's tooltip with the size. */
   detail?: string;
   /** The whole command, query or address behind the phrase. */
   hover?: string;
   quiet?: StepQuiet;
   card?: ReactNode;
   cardLabel?: string;
+  /** Simple mode: the turn finished well, so the mark lingers past the words for its happy hop. */
+  done?: boolean;
   className?: string;
 }) {
   const [mounted, setMounted] = useState(visible);
@@ -215,9 +272,9 @@ export function TurnPresence({
       return;
     }
     setPhase("out");
-    const timer = setTimeout(() => setMounted(false), simple ? STATUS_EXIT_MS : 280);
+    const timer = setTimeout(() => setMounted(false), simple ? (done ? STATUS_DONE_EXIT_MS : STATUS_EXIT_MS) : 280);
     return () => clearTimeout(timer);
-  }, [visible, answering, mounted, simple]);
+  }, [visible, answering, mounted, simple, done]);
 
   const showWorking = presencePhase === "think";
   // grok's line leaves with the words it was saying
@@ -245,21 +302,13 @@ export function TurnPresence({
   const step = useStatusLabel(label ? [label] : now, label ? `label:${label}` : phase ?? now?.[0] ?? "", seed, since, mounted && simpleStatus, label ? NOTHING : fun);
   if (!mounted) return null;
   const status = simpleStatus ? (
-    <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[15px] leading-[22px]" data-turn-status>
-      <span className="grid min-w-0">
-        {step && <StepPhrase key={step.key} text={step.text} hover={hover} />}
-      </span>
+    <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[13.5px] leading-[21px]" data-turn-status>
+      {step && <StepPhrase step={step} hover={hover} />}
       {step && quiet && <QuietPart quiet={quiet} />}
     </span>
   ) : showWorking ? (
     <span id={statusId} className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1 leading-none" data-turn-status>
       {now ? <span className="text-[13px] text-ink-secondary">{lead}</span> : <ShimmerPhrase text={lead} className="text-[13px]" />}
-      {since !== null && (
-        <>
-          <Dot />
-          <WorkingTimer since={since} className="text-[12px] text-ink-tertiary" />
-        </>
-      )}
       {now && (
         <>
           <Dot />
@@ -285,11 +334,11 @@ export function TurnPresence({
   return (
     <div ref={root} className={cn("turn-presence flex min-w-0 max-w-full flex-col items-start", className)}>
       <div
-        title={simple && showWorking ? [lead, since !== null ? formatElapsed(Date.now() - since) : null, detail ?? (now ? current : null), size].filter(Boolean).join(" · ") : undefined}
+        title={simple && showWorking ? [lead, detail ?? (now ? current : null), size].filter(Boolean).join(" · ") : undefined}
         className={cn(
           simple ? "flex h-9 min-w-0 max-w-full items-center gap-[8.5px] ps-2" : "flex min-w-0 max-w-full items-center gap-2",
           presencePhase === "think" && (simple ? "turn-status-in" : "turn-mascot-in"),
-          presencePhase === "out" && (simple ? "turn-status-out" : "turn-mascot-out"),
+          presencePhase === "out" && (simple ? (done ? "turn-status-out turn-status-done" : "turn-status-out") : "turn-mascot-out"),
         )}
       >
         {/* a px down: the words' optical middle sits between cap and x-height, below their line box's middle */}

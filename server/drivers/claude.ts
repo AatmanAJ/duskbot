@@ -333,6 +333,7 @@ type AskResolutionSource = "user" | "timeout" | "system";
 const DENY_TIMEOUT_NOTE =
   "dusk bot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
 const DUPLICATE_ASK_ID_NOTE = "dusk bot: duplicate ask id, skipping this request.";
+const ASK_UNAVAILABLE_NOTE = "dusk bot: the app could not show this request, so it was denied. Ask again if it is still needed.";
 
 function systemEndedReply(kind: Ask["kind"]): { behavior: AskBehavior; message: string } {
   return kind === "question"
@@ -423,16 +424,15 @@ export function permissionSocketPath(threadId: string, botId?: string) {
 }
 
 /** Broker bind paths, in order. Windows pipe names are never unlinkable (a hung child can hold one
- * for minutes), and macOS rejects socket paths past `sun_path`, hence the short temp fallbacks; the last is fresh each
- * launch, so a path another process still holds never fails a turn on its own. */
+ * for minutes), and macOS rejects socket paths past `sun_path` (104 bytes), hence the short temp fallbacks, then /tmp
+ * for a TMPDIR too deep for even those (every socket is chmod 0600); a `dp-` path is fresh each launch, so a path another
+ * process still holds never fails a turn on its own. */
 export function brokerSocketCandidates(threadId: string, botId?: string): string[] {
   const base = permissionSocketPath(threadId, botId);
   if (process.platform !== "win32") {
-    const scope = createHash("sha256")
-      .update(`${DATA_DIR}\0${process.pid}\0${botId ?? ""}\0${threadId}`)
-      .digest("hex")
-      .slice(0, 16);
-    return [base, join(tmpdir(), `dusk-perm-${scope}.sock`), join(tmpdir(), `dp-${randomBytes(4).toString("hex")}.sock`)];
+    const scope = createHash("sha256").update(`${DATA_DIR}\0${process.pid}\0${botId ?? ""}\0${threadId}`).digest("hex").slice(0, 16);
+    const fresh = (dir: string) => join(dir, `dp-${randomBytes(4).toString("hex")}.sock`);
+    return [base, join(tmpdir(), `dusk-perm-${scope}.sock`), fresh(tmpdir()), ...(tmpdir() === "/tmp" ? [] : [fresh("/tmp")])];
   }
   return [
     base,
@@ -509,12 +509,22 @@ export async function createPermissionBroker(opts: {
               JSON.stringify({ t: "answer", id: askId, behavior, message, source, ...(always ? { always: true } : {}) }) + "\n",
             );
           } catch {}
-          opts.onResolve({ ...ask, behavior, source });
+          try {
+            opts.onResolve({ ...ask, behavior, source });
+          } catch (error) {
+            console.error(`permission broker on ${boundPath}: resolve listener failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
         };
         const timer = kind === "question" ? undefined : setTimeout(() => finish("deny", DENY_TIMEOUT_NOTE, "timeout"), timeoutMs);
         timer?.unref?.();
         pending.set(askId, { ask, finish });
-        opts.onAsk(ask);
+        try {
+          opts.onAsk(ask);
+        } catch (error) {
+          // A throwing listener must not take the harness down with it: deny the call and let the turn carry on.
+          console.error(`permission broker on ${boundPath}: ask listener failed: ${error instanceof Error ? error.message : String(error)}`);
+          finish("deny", ASK_UNAVAILABLE_NOTE, "system");
+        }
       }
     });
   };
@@ -2032,6 +2042,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       get models() {
         return models;
       },
+      ...(config.managed || config.managedModels ? {} : { modelCatalogKey: "claude" }),
       refreshModels,
       ...(startupModelRefresh ? { startupModelRefresh } : {}),
       snapshot,

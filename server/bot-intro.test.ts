@@ -62,4 +62,10 @@ describe("a new bot's intro words", () => {
     expect(prompt).toContain("Sentence case with no emoji");
     expect(prompt).toContain("Write it in German.");
   });
+
+  it("keeps the nod to their day to one short clause", () => {
+    const prompt = introPrompt(base());
+    expect(prompt).toContain("let it color one short clause of your first line the way a friend's would");
+    expect(prompt).toContain("never a whole sentence about their day");
+  });
 });

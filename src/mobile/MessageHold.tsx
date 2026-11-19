@@ -192,7 +192,7 @@ function Preview({ bubble, width }: { bubble: HTMLElement; width: number }) {
     copy.style.visibility = "visible";
     host.replaceChildren(copy);
   }, [bubble, width]);
-  return <div ref={ref} className="pointer-events-none" />;
+  return <div ref={ref} data-mobile-chat="" className="pointer-events-none" style={{ padding: 0 }} />;
 }
 
 /** Press and hold a message: it sinks under the finger, then lifts out of the blurred chat with its reactions over it

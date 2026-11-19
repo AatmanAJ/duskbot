@@ -29,11 +29,17 @@ const best = (instances: readonly SelectableInstance[], context: DefaultSelectio
   return usable(ranked.filter((instance) => !freeFallback(instance))) ?? usable(ranked) ?? ranked[0];
 };
 
+/** Drops what the person disconnected in Settings, for every automatic pick that reads the registry directly (a limit
+ * switch, the free backup, voice fallbacks), so none of them brings it back before Reconnect. */
+export function connectedOnly<T extends { instanceId: string }>(instances: readonly T[], configs: InstanceConfigMap): T[] {
+  return instances.filter((instance) => configs[instance.instanceId]?.hidden !== true);
+}
+
 /** The saved config's enabled switch and picker group win over what the driver reports. */
 /** Every list a person or the server chooses a model from passes here, so a hidden provider drops out of all of them. */
 export function withInstanceConfig<T extends SelectableInstance>(instances: readonly T[], configs: InstanceConfigMap,
   inUse?: (instanceId: string) => boolean): T[] {
-  return instances.filter((instance) => configs[instance.instanceId]?.hidden !== true).map((instance) => {
+  return connectedOnly(instances, configs).map((instance) => {
     const config = configs[instance.instanceId];
     const { found: _found, ...rest } = instance;
     const described = { ...rest, enabled: config?.enabled ?? instance.enabled, ...(config?.access ? { access: config.access } : {}) } as T;
@@ -125,6 +131,15 @@ export function freeBackupOverConnected(
 ): boolean {
   const on = selection ? instances.find((instance) => instance.instanceId === selection.instanceId) : undefined;
   return Boolean(on && freeFallback(on)) && connectedAiReady(instances, context);
+}
+
+/** A bot or conversation the app itself put on the free backup moves to a connected AI; one the person put there stays. */
+export function leavesFreeBackup(
+  instances: readonly SelectableInstance[],
+  owner: { modelSelection?: ModelSelection; modelChosen?: true },
+  context: DefaultSelectionContext = {},
+): boolean {
+  return owner.modelChosen !== true && freeBackupOverConnected(instances, owner.modelSelection, context);
 }
 
 /** An explicit effort or variant wins; an engine without the level sends none rather than failing turn 1. */

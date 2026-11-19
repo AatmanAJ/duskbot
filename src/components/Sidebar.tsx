@@ -133,7 +133,7 @@ export function GroupListItem({
     .filter((b): b is Bot => Boolean(b));
   const you = useGroupYou();
   return (
-    <div className={cn("group relative", railTile && "mx-auto w-[54px]")}>
+    <div className={cn("group relative", railTile && "mx-auto w-12")}>
     <button
       data-sidebar-group-row={group.id}
       aria-current={selected ? "page" : undefined}
@@ -151,14 +151,14 @@ export function GroupListItem({
       }}
       className={cn(
         "relative flex w-full items-center rounded-md text-left", SIMPLE_ROW_FOCUS,
-        railTile ? "h-[54px] justify-center" : simpleRow
+        railTile ? "h-12 justify-center" : simpleRow
           ? cn("gap-2.5 rounded-[12px] p-2 md:h-[54px] md:py-0", ROW_PRESS) : "gap-2 py-1.5 pl-2.5 pr-3",
         simpleRow ? rowSurface(selected) : selected ? "bg-raised" : "hover:bg-raised/50",
       )}
       title={density === "icons" ? group.name : undefined}
       aria-label={density === "icons" ? group.name : undefined}
     >
-      <GroupAvatar members={members} you={you} size={36} />
+      <GroupAvatar members={members} you={you} size={railTile ? 32 : 36} />
       <div data-row-words className={cn("min-w-0 flex-1", density === "icons" && "hidden")}>
         <div className={cn("flex items-baseline justify-between gap-2", simpleRow && "pr-7")}>
           <span className={cn("truncate text-[14px] text-ink", simpleRow ? "font-medium leading-5" : "font-semibold")}>{group.name}</span>
@@ -517,13 +517,13 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
   const iconOnly = density === "icons";
   useEffect(() => { if (iconOnly) setRenaming(false); }, [iconOnly]);
   const simpleRow = !iconOnly;
-  const avatarSize = 36;
+  const avatarSize = iconOnly ? 32 : 36;
   const visible = useVisibleMessages(bot);
   const last = lastNonReceipt(visible);
   const title = bot.title.trim();
   const rowClass = cn(
     "flex w-full items-center rounded-xl text-left", SIMPLE_ROW_FOCUS,
-    iconOnly ? "h-[54px] justify-center" : cn("gap-2.5 rounded-[12px] p-2 leading-[normal] tracking-[0.24px] md:h-[54px]", ROW_PRESS),
+    iconOnly ? "h-12 justify-center" : cn("gap-2.5 rounded-[12px] p-2 leading-[normal] tracking-[0.24px] md:h-[54px]", ROW_PRESS),
     !iconOnly && "max-md:rounded-2xl max-md:py-2.5",
     simpleRow ? rowSurface(selected) : selected ? "bg-raised" : "hover:bg-raised/50",
   );
@@ -675,7 +675,7 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
 
   return (
     <>
-    <div className={cn("group relative", iconOnly && "mx-auto w-[54px]", drag && !renaming && "select-none", botRowDropClass(dragging))} data-bot-reorder-row={drag ? bot.id : undefined} data-bot-lifted={dragging || undefined}
+    <div className={cn("group relative", iconOnly && "mx-auto w-12", drag && !renaming && "select-none", botRowDropClass(dragging))} data-bot-reorder-row={drag ? bot.id : undefined} data-bot-lifted={dragging || undefined}
       {...(drag && !renaming ? drag.row(bot.id) : {})} title={iconOnly ? botTooltip(bot, instances) : undefined}>
       {/* Keep this wrapper mounted: replacing it remounts RenameTitle and leaves the row stuck in rename mode. */}
       <div
@@ -886,6 +886,8 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
   // frame off on macOS, the traffic lights sit in the top row's corner.
   const framed = windowFramed(capabilities), corner = framed && simpleDesk;
   const lights = capabilities.windowChrome === "mac-inset" && !framed;
+  // macOS draws the traffic lights from 16 to 76px: a rail holding them is wide enough to keep them inside it
+  const railWidth = lights ? 80 : 68;
   const draggableChrome = capabilities.windowChrome !== "native";
   // SAFETY: Electron's -webkit-app-region is not in React's CSSProperties type; the renderer accepts it as an inline
   // style.
@@ -984,11 +986,6 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
     event.preventDefault();
     rows[next]?.focus();
   };
-  const railSearch = () => {
-    if (collapseToIcons) return openCommandPalette();
-    setSearchOpen(true);
-    toggleCollapsed();
-  };
   const plusItem = cn(MENU_ITEM, "text-ink hover:bg-menu-hover");
   // grok's + is New Bot itself, no menu
   const grokPlus = simpleDesk && !corner && teamSettingsAllowed !== false;
@@ -1007,7 +1004,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
       ref={importReturnRef}
       onClick={() => setPlusOpen((o) => !o)}
       aria-label={remoteClient ? t("sidebar.new") : t("sidebar.newOrShare")}
-      className={phone ? PHONE_TOP_BUTTON : corner ? SIMPLE_CORNER_BUTTON : SIMPLE_TOP_BUTTON}
+      className={phone ? PHONE_TOP_BUTTON : corner ? SIMPLE_CORNER_BUTTON : rail ? cn(SIMPLE_TOP_BUTTON, "size-8") : SIMPLE_TOP_BUTTON}
       title={remoteClient ? t("sidebar.new") : t("sidebar.newOrShare")}
     >
       {!phone && !corner ? <Icon name="plus" size={16} /> : <Plus size={corner ? 18 : 20} strokeWidth={phone ? 2 : 1.5} />}
@@ -1016,7 +1013,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
       <>
         <div role="menu" aria-label={remoteClient ? t("sidebar.new") : t("sidebar.newOrShare")} onKeyDown={navigateThreadMenu} className={cn(
           "absolute z-40 w-max min-w-[200px] overflow-hidden", MENU_SHEET,
-          rail ? "left-full top-0 ml-4" : "right-0 top-full mt-1.5",
+          rail ? "left-full bottom-0 ml-3" : "right-0 top-full mt-1.5",
           plusMotion.className,
         )} {...plusMotion.exitProps}>
           {teamSettingsAllowed !== false && <button
@@ -1071,7 +1068,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
       className={cn(
         "relative flex h-full shrink-0 flex-col border-r-[0.5px] border-transparent bg-panel max-md:[--scroll-fade-surface:var(--color-app)]",
         sizing.resizing && !sizing.snapping ? "transition-none" : "transition-[width] duration-500 ease-(--dusk-spring-soft) motion-reduce:transition-none",
-        rail ? "w-[92px]" : "w-[280px] md:w-[var(--sidebar-width)]",
+        rail ? (lights ? "w-[80px]" : "w-[68px]") : "w-[280px] md:w-[var(--sidebar-width)]",
         "md:max-w-[calc(100vw-320px)]",
         // max-md: rather than an md: cancel: Tailwind v4 emits the native `translate`, and any value but `none` makes
         // this a containing block for its `fixed` descendants.
@@ -1087,7 +1084,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
         className={cn(
           "flex items-center",
           // The corner is no drag region and takes no clicks but its buttons': the tiles rise into the rest of it.
-          density === "icons" ? "flex-col gap-1 px-2 pt-3.5 pb-1" : corner ? "pointer-events-none relative h-[34px] items-start justify-end px-1.5 pt-1.5" : simpleDesk ? "relative h-[60px] items-start pl-4 pr-4 pt-3" : "relative pl-4 pr-2",
+          density === "icons" ? cn("flex-col px-2", lights ? "pt-3.5 pb-1" : "pt-1") : corner ? "pointer-events-none relative h-[34px] items-start justify-end px-1.5 pt-1.5" : simpleDesk ? "relative h-[60px] items-start pl-4 pr-4 pt-3" : "relative pl-4 pr-2",
           density !== "icons" && !simpleDesk && !lights && "h-12 max-md:h-16",
         )}
         style={corner ? undefined : density !== "icons" && lights && !simpleDesk ? { ...windowDragStyle, height: MAC_TRAFFIC_LIGHT_CENTER_Y * 2 } : windowDragStyle}
@@ -1099,12 +1096,6 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
           // beside the page or not.
           <div aria-hidden="true" data-traffic-light-space className={density === "icons" ? "h-5 w-full" : "w-[72px] shrink-0 md:w-[calc(72px_-_var(--rail-beside,0px))]"} />
         ) : null}
-        {rail && <div data-sidebar-rail-top className="flex flex-col items-center gap-2 pt-1" style={windowNoDragStyle}>
-          <button type="button" onClick={railSearch} aria-label={t("sidebar.searchAria")} title={t("sidebar.searchAria")} className={SIMPLE_TOP_BUTTON}>
-            <Icon name="search" size={16} />
-          </button>
-          <div className="relative flex">{plusControl}</div>
-        </div>}
         {density !== "icons" && (simpleDesk ? <div data-sidebar-top-slot className="min-w-0 flex-1" /> : (
           <div data-sidebar-top-slot className="min-w-0 flex-1" />
         ))}
@@ -1146,7 +1137,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
       {simpleDesk && !tiles && <SidebarNoBots />}
       </GlassBar>
 
-      {!collapseToIcons && !phone && <SidebarResizeHandle sizing={sizing} sidebarRef={sidebarRef} avatars={density === "icons"} avatarsWidth={rail ? 92 : 80}
+      {!collapseToIcons && !phone && <SidebarResizeHandle sizing={sizing} sidebarRef={sidebarRef} avatars={density === "icons"} avatarsWidth={railWidth}
         onAvatars={(avatars) => setSidebarDensity(avatars ? "icons" : "comfortable")} style={windowNoDragStyle} />}
 
       <GlassScroller className={rail ? "[scrollbar-gutter:stable_both-edges]" : simpleDesk ? "px-3" : "px-2"}>
@@ -1283,6 +1274,7 @@ export function Sidebar({ open, onClose, collapseToIcons = false }: {
       {rail ? <SimpleRailFooter
         owner={cloudOwner}
         archived={archivedEntry}
+        plus={<div className="relative flex" style={windowNoDragStyle}>{plusControl}</div>}
       /> : phone ? <SidebarPhoneBar query={query} onQuery={setQuery} /> : <SidebarFooter owner={cloudOwner} archived={archivedEntry} />}
       </GlassBar>
       </GlassScrollFrame>

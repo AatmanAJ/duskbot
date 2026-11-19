@@ -96,17 +96,17 @@ describe("the status line", () => {
     return shown?.textContent?.replace(/\s+/g, " ").trim();
   };
 
-  it("reads Working, the time, what is happening now and how much is written", () => {
+  it("reads Working, what is happening now and how much is written, and never counts seconds", () => {
     vi.setSystemTime(100_000);
     render({ label: "Working", since: 28_000, phrases: ["Writing index.html"], phase: "live:w", size: "14 KB" });
-    expect(line()).toBe("Working · 1m 12s · Writing index.html · 14 KB");
+    expect(line()).toBe("Working · Writing index.html · 14 KB");
     expect(visibleText(), "the live part shimmers, the lead does not").toEqual(["Writing index.html"]);
   });
 
-  it("is the lead and the timer alone when nothing is reported, and the lead shimmers", () => {
+  it("is the lead alone when nothing is reported, and the lead shimmers", () => {
     vi.setSystemTime(100_000);
     render({ label: "Working", since: 88_000 });
-    expect(line()).toBe("Working · 12s");
+    expect(line()).toBe("Working");
     expect(visibleText()).toEqual(["Working"]);
     expect(host.querySelector("[data-turn-size]")).toBeNull();
   });
@@ -125,7 +125,7 @@ describe("a long step's quiet part", () => {
   it("follows the step with how it is doing, and counts the time since its last output on its own", () => {
     vi.setSystemTime(1_000_000);
     render({ label: "Working", since: 1_000_000 - 72_000, phrases: ["Running scrape.py"], phase: "step", hover: "python3 scrape.py --pages 40", quiet: { kind: "busy" } });
-    expect(line()).toBe("Working · 1m 12s · Running scrape.py · Busy, no output yet");
+    expect(line()).toBe("Working · Running scrape.py · Busy, no output yet");
     expect(host.querySelector("[data-turn-now]")?.getAttribute("title")).toBe("python3 scrape.py --pages 40");
     render({ label: "Working", since: 1_000_000 - 72_000, phrases: ["Running scrape.py"], phase: "step", quiet: { kind: "output", at: 1_000_000 - 30_000 } });
     expect(host.querySelector("[data-turn-quiet]")?.textContent).toBe("Last output just now");
@@ -141,8 +141,15 @@ describe("a long step's quiet part", () => {
   });
 });
 
+/** What the line says now: a word still blurring out is the old one, not part of it. */
+const saying = () => {
+  const shown = host.querySelector("[data-turn-status]")?.cloneNode(true) as HTMLElement | undefined;
+  shown?.querySelectorAll("[data-word-out]").forEach((word) => word.remove());
+  return shown?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+};
+
 describe("Simple mode's rotating words", () => {
-  const line = () => host.querySelector("[data-turn-status]")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+  const line = saying;
   const pool = Array.from({ length: 12 }, (_, index) => `Word ${index}`);
 
   it("shows the mark alone first, then its first word, then a new word every 2.5 to 3.5 s, never the same one twice in a row", () => {
@@ -159,7 +166,7 @@ describe("Simple mode's rotating words", () => {
     expect(new Set(said).size, "a 30 s turn says nine or ten different words").toBeGreaterThanOrEqual(9);
     for (let i = 1; i < said.length; i++) expect(said[i], `word ${i}`).not.toBe(said[i - 1]);
     for (const word of said) expect(pool).toContain(word);
-    expect(host.querySelector("[data-turn-now]")?.classList, "each new word rises in").toContain("turn-label-in");
+    expect(host.querySelector("[data-turn-now]")?.classList, "a later word crossfades in place, it does not rise").not.toContain("turn-label-in");
   });
 
   it("holds a word its seeded time before the next", () => {
@@ -212,6 +219,71 @@ describe("Simple mode's rotating words", () => {
     expect(early.every((word) => normal.includes(word)), `first 15 s: ${early.join(", ")}`).toBe(true);
     expect(said.some((word) => fun.includes(word)), "a two minute turn says some fun words").toBe(true);
     expect(said.filter((word) => normal.includes(word)).length, "plain words still lead overall").toBeGreaterThan(said.filter((word) => fun.includes(word)).length);
+  });
+});
+
+describe("the working line swapping words", () => {
+  type Run = { el: HTMLElement; keyframes: Keyframe[]; options: KeyframeAnimationOptions; onfinish: (() => void) | null };
+  let runs: Run[] = [];
+  const reduce = (on: boolean) => vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
+    matches: on && query.includes("reduce"), media: query, addEventListener: () => {}, removeEventListener: () => {},
+  }) as unknown as MediaQueryList);
+  const words = () => [...host.querySelectorAll<HTMLElement>("[data-turn-status] .status-shimmer")];
+  /** The line says "Running a command", then a step later "Writing the reply". */
+  const swap = () => {
+    vi.setSystemTime(10_000);
+    render({ simple: true, since: 10_000, phrases: ["Running a command"], phase: "step" });
+    act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max));
+    render({ simple: true, since: 10_000, phrases: ["Writing the reply"], phase: "write" });
+    act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
+  };
+
+  beforeEach(() => {
+    runs = [];
+    vi.spyOn(HTMLElement.prototype, "animate").mockImplementation(function (this: HTMLElement, keyframes, options) {
+      const run: Run = { el: this, keyframes: keyframes as Keyframe[], options: options as KeyframeAnimationOptions, onfinish: null };
+      runs.push(run);
+      return Object.assign(run, { cancel: () => {} }) as unknown as Animation;
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("never counts seconds, on the line or in its tooltip", () => {
+    reduce(false);
+    vi.setSystemTime(100_000);
+    render({ simple: true, since: 100_000 - 8_000, phrases: ["Running a command"], phase: "step" });
+    act(() => void vi.advanceTimersByTime(STATUS_QUIET_MS.max + 61_000));
+    expect(saying()).toBe("Running a command");
+    const row = host.querySelector<HTMLElement>("[data-turn-status]")!.closest("[title]");
+    expect(row?.getAttribute("title") ?? "").not.toMatch(/\d+\s*s\b|\dm\b/);
+    expect(host.textContent).not.toMatch(/·\s*\d+\s*(s|m)\b/);
+  });
+
+  it("keeps the old and the new words mounted in one cell while they crossfade with a blur, then drops the old", () => {
+    reduce(false);
+    swap();
+    const [out, into] = words().map((word) => word.parentElement!);
+    expect(words().map((word) => word.textContent)).toEqual(["Running a command", "Writing the reply"]);
+    expect(out!.hasAttribute("data-word-out") && out!.getAttribute("aria-hidden")).toBe("true");
+    expect(into!.hasAttribute("data-word-in")).toBe(true);
+    expect(out!.parentElement, "both words share one grid cell").toBe(into!.parentElement);
+    for (const word of [out!, into!]) expect(word.className).toContain("[grid-area:1/1]");
+    const fadeOut = runs.find((run) => run.el === out)!;
+    const fadeIn = runs.find((run) => run.el === into)!;
+    expect(fadeOut.keyframes).toEqual([{ opacity: 1, filter: "blur(0px)" }, { opacity: 0, filter: "blur(4px)" }]);
+    expect(fadeIn.keyframes).toEqual([{ opacity: 0, filter: "blur(4px)" }, { opacity: 1, filter: "blur(0px)" }]);
+    for (const run of [fadeOut, fadeIn]) expect(run.options).toMatchObject({ duration: 880, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+    expect(into!.classList, "no rise on a swap").not.toContain("turn-label-in");
+    act(() => fadeOut.onfinish!());
+    expect(words().map((word) => word.textContent)).toEqual(["Writing the reply"]);
+    expect(host.querySelector("[data-word-out], [data-word-in]")).toBeNull();
+  });
+
+  it("swaps at once under reduced motion, with no blur and nothing left behind", () => {
+    reduce(true);
+    swap();
+    expect(words().map((word) => word.textContent)).toEqual(["Writing the reply"]);
+    expect(runs.some((run) => run.keyframes.some((frame) => "filter" in frame))).toBe(false);
   });
 });
 

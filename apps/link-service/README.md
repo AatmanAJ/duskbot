@@ -269,7 +269,7 @@ secret set. The node checks its own coturn with a STUN binding every 30 s (`turn
   signature checks out when release keys are pinned (`RELEASE_KEYS` in agent.mjs or `DUSK_LINK_RELEASE_KEYS`; sign with
   `node release.mjs sign <key>`), and `agent.mjs selftest` runs; `ready.json` is written last. It never takes an older
   version or a lower protocol. It applies only after 5 minutes without a request, a stream byte or an egress stream
-  from the app (or at once for the `update` op with `apply: "now"`), by ending the tunnel so systemd starts it again.
+  from the app or a phone (or at once for the `update` op with `apply: "now"`), by ending the tunnel so systemd starts it again.
   The installed `/opt/duskbot-link/agent.mjs` then launches the staged file, and stops launching one that did not
   stay up for 2 minutes three starts in a row, so a bad release leaves the installed agent running.
   One release key is pinned (`RELEASE_KEYS`); its private half is the repository secret `DUSK_LINK_RELEASE_KEY` (and
@@ -310,6 +310,13 @@ only serve pairing redemption, environment discovery and health; device channels
 phone's session. Phone channels refuse agent controls and strip cookies and `x-dusk-*` headers. Requests carry
 a per-channel remote address, so they never receive loopback trust. Removing a channel from the harness closes its
 forwarded requests and removes it from the relay.
+
+A desktop runs the same hub for its own phones (`electron/phone-relay.mjs`, which imports `createPhoneHub` from this
+file; the desktop package ships it). While remote access is on, the app makes a tunnel for itself through the ordinary
+setup session (`POST /v1/sessions` with the signed-in account's grant, then `claim` and `result` from the same app),
+keeps it per workspace with its phone keys in the OS keychain, and syncs channels with its harness as the desktop owner
+(`x-dusk-desktop-owner`, which the hub strips from every phone request). A dropped tunnel is made again with the same
+phone keys, so the phones' channels carry over. Nothing here changes for it: it is one more tunnel on the account.
 
 The agent keeps its X25519 phone keys in `phone-keys.json` beside `tunnel.json`, with mode 0600. Grant keys come from
 the harness; device keys derive from the phone and agent key pairs using the channel id. Set `DUSK_LINK_PHONES=off`
@@ -655,7 +662,8 @@ cd apps/link-service && npm start                       # PORT (default 8790)
 
 `.env.example` lists the same names. The proxy must set `X-Real-IP` to the connecting address (overwriting any the
 client sent), or every per-address rate limit can be dodged. A tunnel whose server has not polled for 7 days is
-dropped by the sweep; that server links again with a new command. Health: `GET /healthz` (or `/health`).
+dropped by the sweep (35 days when it carries a paired phone's channel, so a phone never hears "removed" from a
+computer that was off a week); that server links again with a new command. Health: `GET /healthz` (or `/health`).
 
 ## Limits
 

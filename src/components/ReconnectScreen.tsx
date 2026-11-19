@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { activeLocale, t } from "@/lib/i18n";
 import type { ReconnectBridge, ReconnectView } from "../../electron/workspace-reconnect.mjs";
+import { deviceHourCycle } from "@/lib/format-time";
 
 /** Whole seconds until the next look, never below zero; null while a look is under way or none is planned. */
 export function secondsLeft(view: ReconnectView | null, now = Date.now()): number | null {
@@ -39,7 +40,7 @@ export function ReconnectScreen({ bridge }: { bridge: ReconnectBridge }) {
   }, [view?.nextAt]);
   const text = reconnectText(view, now);
   const frame = view?.frame;
-  const seen = frame ? new Intl.DateTimeFormat(activeLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(frame.at)) : null;
+  const seen = frame ? new Intl.DateTimeFormat(activeLocale(), { dateStyle: "medium", timeStyle: "short", hourCycle: deviceHourCycle() }).format(new Date(frame.at)) : null;
   return (
     <main data-reconnect-screen className="flex min-h-screen justify-center overflow-y-auto bg-app px-6 py-16 text-ink" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
       <div className="flex w-full max-w-[460px] flex-col items-start gap-3" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>

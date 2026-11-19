@@ -6,11 +6,12 @@ import type { LateRoutineRun } from "@/lib/late-routine";
 import { routineDateTime } from "@/lib/routine-display";
 import { NoticeCard, NotNowButton, PRIMARY_BUTTON } from "./NoticeCard";
 import { deviceWord } from "./vps-link/parts";
+import { deviceHourCycle } from "@/lib/format-time";
 
 const sameDay = (a: number, b: number) => new Date(a).toDateString() === new Date(b).toDateString();
 /** A time alone when `day` already says the day (today, or the day it was due), else the date with it. */
 const clock = (at: number, day: number) => sameDay(at, day)
-  ? new Date(at).toLocaleTimeString(activeLocale(), { hour: "numeric", minute: "2-digit" }) : routineDateTime(at);
+  ? new Date(at).toLocaleTimeString(activeLocale(), { hour: "numeric", minute: "2-digit", hourCycle: deviceHourCycle() }) : routineDateTime(at);
 
 /** A routine on this computer ran late, or not at all, while the computer slept: the one moment dusk cloud answers on
  * its own. Shown once, in the corner, never over a chat. */

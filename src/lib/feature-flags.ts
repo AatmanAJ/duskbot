@@ -5,27 +5,20 @@ export interface FeatureFlagConfig {
   browserEngine?: { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; installing?: boolean; installError?: string };
 }
 
-/** The phone app, off while it is reworked: the first run's phone step, Settings → phone, "connect your phone" and every
- * pairing prompt follow this one switch. A build with `VITE_DUSK_PHONE_APP=1` brings them all back. */
+/** a build made with `VITE_DUSK_PHONE_APP=0`: no phone app anywhere */
+export function phoneAppHiddenByBuild(): boolean {
+  return import.meta.env?.VITE_DUSK_PHONE_APP === "0";
+}
+
+/** The phone app (iPhone on the App Store, Android as an APK on dusk.bot): the first run's phone step, Settings → phone,
+ * "connect your phone" and every pairing prompt follow this one switch. */
 export function phoneAppEnabled(): boolean {
-  return import.meta.env?.VITE_DUSK_PHONE_APP === "1" || phoneAppByHand();
+  return !phoneAppHiddenByBuild();
 }
 
-/** The first run's phone step and the intro's phone chip: only a build that ships the phone app asks for it at the
- * start; the Advanced switch shows the phone settings without ever prompting. */
+/** The first run's phone step and the intro's phone chip. */
 export function phoneAppPrompted(): boolean {
-  return import.meta.env?.VITE_DUSK_PHONE_APP === "1";
-}
-
-const PHONE_APP_KEY = "dusk.phoneApp.manual";
-
-/** Settings → Advanced's own switch for the phone app, for developers and testers; nobody else is asked or shown it. */
-export function phoneAppByHand(): boolean {
-  try { return globalThis.localStorage?.getItem(PHONE_APP_KEY) === "1"; } catch { return false; }
-}
-
-export function setPhoneAppByHand(on: boolean): void {
-  try { if (on) globalThis.localStorage?.setItem(PHONE_APP_KEY, "1"); else globalThis.localStorage?.removeItem(PHONE_APP_KEY); } catch { /* storage off: the switch stays as it was */ }
+  return !phoneAppHiddenByBuild();
 }
 
 /** Live calls, off: the call button, its mode menu, the live bar and pill, the "live key needed" prompt and the

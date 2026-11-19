@@ -118,4 +118,43 @@ draw();`,
   },
 };
 
-export const FLOW_TASKS: BenchTask[] = [loginWall, slowSpa, rerender];
+const loginError: BenchTask = {
+  id: "login-error",
+  group: "flows",
+  title: "Sign-in whose username step answers with a plain red inline error",
+  start: "x/login",
+  request: ({ base }) => `Sign in at ${base}x/login with the username alex_m_92 and the password ${PASSWORD} (a test account), then tell me how many unread notifications there are.`,
+  check(run, answer) {
+    const tries = run.events.filter((event) => event.type === "next").length;
+    const reported = /couldn.?t find|could not find|no (?:active )?(?:x )?account|doesn.?t exist|does not exist|not (?:be )?found/iu.test(answer);
+    if (tries !== 1) return verdict(false, `submitted the username ${tries} times`);
+    return verdict(reported, reported ? "reported the error after one try" : "did not report the error");
+  },
+  routes: {
+    "x/login": () => page("Log in to X / X", `<div class="box"><h1>Sign in to X</h1>
+<div class="field"><input id="u" autocomplete="username" placeholder=" "><span class="lab">Phone, email, or username</span></div>
+<div class="nx" role="button" tabindex="0">Next</div><span class="msg" id="m"></span><a href="#">Forgot password?</a><p class="fine">Don't have an account? Sign up</p></div>`, {
+      style: `.box{max-width:360px;margin:60px auto;display:flex;flex-direction:column;gap:14px}.field{position:relative;border:1px solid #cfd9de;border-radius:4px;padding:22px 8px 6px}.field input{border:0;outline:none;width:100%;font-size:16px}
+.lab{position:absolute;left:8px;top:6px;font-size:12px;color:#536471}.nx{background:#0f1419;color:#fff;border-radius:20px;text-align:center;padding:9px;font-weight:700;cursor:pointer}.css-1jxf684{color:#f4212e;font-size:13px}.fine{color:#536471}`,
+      script: `const msg = document.getElementById("m");
+document.querySelector(".nx").addEventListener("click", async () => {
+  const u = document.getElementById("u").value.trim();
+  report("next", { username: u });
+  msg.textContent = ""; msg.className = "msg";
+  const res = await (await fetch("../api/x-user?u=" + encodeURIComponent(u))).json();
+  if (!res.found) { msg.className = "msg css-1jxf684"; msg.textContent = "We couldn't find an active X account with that username."; return; }
+  document.querySelector(".box").innerHTML = "<h1>Enter your password</h1><input type=password>";
+});`,
+    }),
+    "api/x-user": ({ query }) => json({ found: query.get("u") === "alex_m" }, 400),
+  },
+  async solve(call, { base }) {
+    await call("agent_browser_open", { url: `${base}x/login` });
+    await call("agent_browser_fill", { selector: "#u", text: "alex_m_92" });
+    const clicked = await call("agent_browser_click", { selector: "text=Next" });
+    if (!/couldn't find an active X account/u.test(clicked)) throw new Error(`the error was not in the answer: ${clicked}`);
+    return "X says it couldn't find an active account with that username.";
+  },
+};
+
+export const FLOW_TASKS: BenchTask[] = [loginWall, slowSpa, rerender, loginError];

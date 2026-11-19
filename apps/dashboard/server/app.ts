@@ -16,6 +16,7 @@ import { isOpsMade, withoutOps } from "./admin/money-mode.ts";
 import type { Mailer, MailMessage, TestMailbox } from "./auth/mail.ts";
 import type { RoutedMailer } from "./auth/mail-router.ts";
 import { createStore } from "./store.ts";
+import { createConnectStates } from "./connect-states.ts";
 import { appComputer, COMPUTER_ID, COMPUTER_PAIR_LIMITS, COMPUTER_PAIR_WAIT_MS, pairAnswer } from "./app-computers.ts";
 import type { Account, StoredCommand, StoredWorkspace } from "./store.ts";
 import { createBilling } from "./billing/index.ts";
@@ -99,7 +100,7 @@ export interface DashboardAppOptions {
   /** product analytics: MongoDB in production (main.ts), memory otherwise; the waitlist is dusk.waitlist when connected */
   analytics?: { sink?: AnalyticsSink; waitlist?: WaitlistSource | null; trackOrigins?: string[]; usage?: UsageStore; infra?: InfraStore; ops?: OpsStore; db?: Db | null };
   /** the owner's panel at /admin: DUSK_ADMIN_EMAILS by default */
-  admin?: { emails?: string[]; backupDir?: string | null; environment?: string; env?: NodeJS.ProcessEnv; opsFixture?: boolean; live?: LiveData | null;
+  admin?: { emails?: string[]; growthEmails?: string[]; backupDir?: string | null; environment?: string; env?: NodeJS.ProcessEnv; opsFixture?: boolean; live?: LiveData | null;
     /** how long the admin keeps an analytics answer (main.ts: 30 s); none by default, so a fixture shows each event at once */
     readCacheMs?: number };
   /** the owner's alert emails (main.ts); without it incidents are kept in memory and nothing is mailed */
@@ -239,7 +240,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     // one incident a day, whichever limit it was: someone (or a bot) is asking for sign-in codes faster than we will send them
     onMailLimit: kind => incidents.report({ source: "server", name: "SignInMailLimit", key: `auth-mail-${new Date(now()).toISOString().slice(0, 10)}`,
       message: `sign-in emails reached ${mailLimitSay[kind]} limit, so more codes are refused until it resets. a spike of signups or someone spraying addresses; check admin > health for rate-limited ips` }), now, fetch: options.fetch, oauth: options.oauth,
-    dev, signupOpen: options.signupOpen ?? true, trustProxy: options.trustProxy ?? false, legacyAccounts: () => state.accounts,
+    dev, signupOpen: options.signupOpen ?? true, trustProxy: options.trustProxy ?? false, legacyAccounts: () => state.accounts, websiteFirstSteps: !options.waitlistOnly,
     review: options.review === undefined ? reviewAccountFromEnv(process.env) : options.review });
   state.sessions = [];
   store.changed();
@@ -385,7 +386,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
   const infraStore = options.analytics?.infra ?? memoryInfraStore();
   const infra = createInfraCollector({ store: infraStore, clouds: () => billing.clouds.all?.() ?? [], usage: managedUsage ? (c, from) => managedUsage(c, from) : null, now });
   infra.start();
-  const admin = createAdmin({ emails: adminEmails, auth, billing, workspaces: () => state.workspaces, analytics, usage, infra: { store: infraStore },
+  const admin = createAdmin({ emails: adminEmails, growthEmails: options.admin?.growthEmails ?? parseAdminEmails(process.env.DUSK_GROWTH_ADMIN_EMAILS), auth, billing, workspaces: () => state.workspaces, analytics, usage, infra: { store: infraStore },
     ops: { answer: () => ops.answer(), collect: () => ops.collect(), accounts: (relays, query) => ops.accounts(relays, query) }, wakeStats: () => slackEdge?.edge.wakeStats() ?? {},
     waitlist: options.analytics?.waitlist ?? null, live: options.admin?.live ?? null, now, fetch: options.fetch, env: options.admin?.env, errors: errorsSeen, readBody, bodyObject, json, relayFixture: options.admin?.opsFixture, readCacheMs: options.admin?.readCacheMs ?? 0,
     service: { version: options.version ?? null, startedAt, environment: options.admin?.environment ?? (dev ? "development" : "production"), dataDir: options.dataDir,
@@ -439,6 +440,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
   for (const command of state.commands) if (command.purgeAt > now() && state.workspaces.some(ws => ws.id === command.workspaceId))
     commands.set(command.workspaceId, [...(commands.get(command.workspaceId) ?? []), command]);
   const deliveredAt = new Map<string, number>();
+  const connectStates = createConnectStates(pagesUrl, now);
   // a workspace that reported shortly before a restart still counts as awake for app sign-ins
   const seen = new Map<string, number>(state.workspaces.filter(ws => ws.lastReportAt !== null).map(ws => [ws.id, ws.lastReportAt!]));
   const history = new Map<string, MachineSample[]>();
@@ -508,7 +510,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
   }
   function isAdminRequest(req: IncomingMessage) {
     const found = auth.webSession(req);
-    return !!found && admin.isAdmin(found.account.email);
+    return !!found && admin.roleOf(found.account) !== null;
   }
   /** one public origin: www sends to it, app (where the page used to live) to the page, dev home; the API still answers on
    *  app so an old build's calls keep working */
@@ -543,7 +545,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     const watched = isWatching(ws);
     lastWatching.set(ws.id, watched);
     const queued = (commands.get(ws.id) ?? []).filter(command => due(command) && command.expiresAt > now());
-    const delivery = queued.map(({ id, kind, target, issuedAt, expiresAt }) => ({ id, kind, target, issuedAt, expiresAt }));
+    const delivery = queued.map(({ id, kind, target, issuedAt, expiresAt, callback }) => ({ id, kind, target, issuedAt, expiresAt, ...(callback ? { callback } : {}) }));
     for (const command of queued) { command.status = "sent"; deliveredAt.set(command.id, now()); }
     if (queued.length) store.changed();
     return { v: 1, watching: watched, nextReportMs: watched ? FAST_REPORT_MS : SLOW_REPORT_MS, commands: delivery, ...(ws.ownerAccountId ? { usageOptOut: analytics.optedOut(ws.ownerAccountId) } : {}) };
@@ -632,10 +634,10 @@ export function createDashboardApp(options: DashboardAppOptions) {
     if (under(path, "/assets/admin") && !isAdminRequest(req)) fail(404, "not_found", "Page not found.");
     if (!path.startsWith("/") || path.includes("\\") || path.includes("\0") || path.split("/").some(part => part.startsWith("."))) fail(404, "not_found", "Page not found.");
     try {
-      const root = realpathSync(options.staticDir).replace(/\/$/, "");
+      const root = realpathSync(options.staticDir).replaceAll("\\", "/").replace(/\/$/, "");
       let file = `${root}${path}`;
       try { if (!statSync(file).isFile()) file = `${root}/index.html`; } catch { file = `${root}/index.html`; }
-      file = realpathSync(file);
+      file = realpathSync(file).replaceAll("\\", "/");
       if (!file.startsWith(`${root}/`) || file.slice(root.length + 1).split("/").some(part => part.startsWith("."))) fail(404, "not_found", "Page not found.");
       const ext = file.slice(file.lastIndexOf(".")).toLowerCase();
       let content = readFileSync(file);
@@ -935,7 +937,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
           if (command) {
             commandsChanged = true;
             command.status = result.ok ? "done" : "failed"; command.message = result.message; command.doneAt = result.at;
-            if (command.kind === "app.connect" && result.ok && result.url) command.url = result.url;
+            if (command.kind === "app.connect" && result.ok && result.url) { command.url = result.url; if (result.returnsHere && command.callback) command.returnsHere = true; }
             if (command.kind === "phone.pair") pairWaits.get(command.id)?.(result);
           }
         }
@@ -981,15 +983,25 @@ export function createDashboardApp(options: DashboardAppOptions) {
     if (method === "GET" && path === "/v1/connectors") {
       const owner = account(req);
       watch(owner);
-      const answer: ConnectorsAnswer = { byWorkspace: {}, pending: {}, available: {}, at: {} };
+      const inApp: Record<string, string[]> = {};
+      const answer: ConnectorsAnswer = { byWorkspace: {}, inApp, pending: {}, available: {}, at: {} };
       for (const ws of state.workspaces) if (ws.ownerAccountId === owner.id) {
         const apps = ws.report?.apps;
+        inApp[ws.id] = apps?.services.filter(service => service.via === "app" && (service.connected || service.pending)).map(service => service.slug) ?? [];
         answer.byWorkspace[ws.id] = apps?.services.filter(service => service.connected).map(service => service.slug) ?? [];
         answer.pending[ws.id] = apps?.services.filter(service => !service.connected && service.pending).map(service => service.slug) ?? [];
         answer.available[ws.id] = apps?.available ?? false;
         answer.at[ws.id] = ws.sectionAt.apps ?? null;
       }
       return json(res, 200, answer);
+    }
+    if (method === "POST" && path === "/v1/connect/finish") {
+      const owner = account(req);
+      watch(owner);
+      const data = bodyObject(await readBody(req));
+      const found = typeof data.state === "string" ? connectStates.take(data.state, owner.id) : null;
+      if (!found || !owned(found.workspaceId, owner)) fail(404, "connect_expired", "This sign-in link expired. Connect the app again.");
+      return json(res, 200, { workspaceId: found.workspaceId, slug: found.slug, outcome: data.status === "success" ? "signed-in" : "cancelled" });
     }
     if (method === "POST" && path === "/v1/claim") {
       const owner = account(req);
@@ -1042,6 +1054,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
         }
         const command: StoredCommand = { id: `cmd_${random(16)}`, workspaceId: ws.id, kind, target, issuedAt: now(), expiresAt: now() + COMMAND_TTL_MS,
           purgeAt: now() + 2 * COMMAND_TTL_MS, status: "queued", message: null, doneAt: null };
+        if (kind === "app.connect" && data.returnHere === true) command.callback = connectStates.open(owner.id, ws.id, target!);
         queue.push(command);
         commands.set(ws.id, queue.filter(item => item.status === "queued" || item.status === "sent" || queue.indexOf(item) >= queue.length - 100));
         saveCommands();

@@ -23,7 +23,7 @@ const SIGNATURE = `(() => {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Waits briefly until what an action set off has drawn: a debounced search's options, a panel, a list after its skeleton. */
-export async function settleAfterAction(tab: Tab, deadline: number): Promise<void> {
+export async function settleAfterAction(tab: Tab, deadline: number, { textBefore = null }: { textBefore?: number | null } = {}): Promise<void> {
   const started = Date.now();
   let last = "";
   let since = started;
@@ -38,8 +38,10 @@ export async function settleAfterAction(tab: Tab, deadline: number): Promise<voi
     const now = Date.now();
     const key = `${signature[0]}:${signature[1]}`;
     if (key !== last) { last = key; since = now; }
+    // a submit answered by the server (an inline error, the next step) shows only after its request comes back
+    const waiting = textBefore !== null && signature[1] === textBefore && now - started < QUIET_MAX_MS;
     const busy = signature[2];
-    if (!busy && now - since >= QUIET_MS) return;
+    if (!busy && !waiting && now - since >= QUIET_MS) return;
     if (now - started >= (busy ? BUSY_MAX_MS : QUIET_MAX_MS) || now + POLL_MS >= deadline) return;
     await sleep(POLL_MS);
   }
@@ -82,6 +84,29 @@ export function newElements(tree: string, mark: number, maxLines = MAX_NEW_LINES
   const lines = out.map((entry) => `${"  ".repeat(entry.depth - least)}${entry.line}`);
   if (count > maxLines) lines.push(`- … and ${count - maxLines} more; take a snapshot to see them all`);
   return { text: lines.join("\n"), count };
+}
+
+/** Blocks that hold one item of a list or feed: the text found is shown with the rest of its item and the item's refs. */
+const ITEM = /^- (?:article|listitem|row|gridcell|cell|group|region|dialog|form|generic \[ref=)/u;
+const depthOf = (line: string) => (line.length - line.trimStart().length) / 2;
+
+/** The item of the snapshot that shows `wanted` (any case): its block, up to `maxLines`, or the matching line alone. */
+export function around(tree: string, wanted: string, maxLines = 25): string | null {
+  const lines = tree.split("\n");
+  const needle = wanted.toLowerCase().replace(/\s+/gu, " ").trim();
+  const at = lines.findIndex((line) => line.toLowerCase().includes(needle));
+  if (at < 0) return null;
+  let start = at;
+  for (let i = at - 1, depth = depthOf(lines[at]!), levels = 0; i >= 0 && levels < 4; i--) {
+    if (depthOf(lines[i]!) >= depth) continue;
+    depth = depthOf(lines[i]!);
+    levels++;
+    if (ITEM.test(lines[i]!.trim())) { start = i; break; }
+  }
+  const base = depthOf(lines[start]!);
+  const block = [lines[start]!];
+  for (let i = start + 1; i < lines.length && depthOf(lines[i]!) > base && block.length < maxLines; i++) block.push(lines[i]!);
+  return block.map((line) => line.slice(base * 2)).join("\n");
 }
 
 export function newElementsNote(found: { text: string } | null): string | null {

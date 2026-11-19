@@ -14,7 +14,7 @@ import { ELEVATED_CARD, ELEVATED_FLOAT } from "./elevated";
 import { activeLocale, t } from "@/lib/i18n";
 import { imeComposing, sendKeyLabel, sendsMessage, useSendKey } from "@/lib/send-key";
 import { phoneApp } from "@/lib/store-app";
-import { alternateSend, useFollowUpDefault } from "@/lib/follow-up"; import { resolveFollowUp, type FollowUp } from "../../shared/follow-up";
+import { alternateSend, useFollowUpDefault } from "@/lib/follow-up"; import { resolveFollowUp, sentFollowUp, type FollowUp } from "../../shared/follow-up";
 import {
   draftRevision,
   appendDraftAttachments,
@@ -77,7 +77,9 @@ import { PhoneMicGhost, PhonePlus } from "./PhonePlus";
 import { useThreadApproval } from "./thread-approval";
 import { usePillHeight, useSlideOnChange, useStackedField } from "./composer-wrap";
 import "@/styles/composer.css";
-import { ComposerReplyStrip } from "./ReplyQuote";
+import { ComposerReplyStrip, ComposerSelectionQuote } from "./ReplyQuote";
+import { SelectionAskPill } from "./SelectionAskPill";
+import { setSelectionQuote, useSelectionQuote, withSelectionQuote } from "@/lib/selection-quote";
 import { ComposerVoiceStrip } from "./ComposerVoiceStrip";
 import { useSendHold } from "./use-send-hold";
 import { useSlotHandoff } from "./use-slot-handoff";
@@ -115,6 +117,7 @@ const supportsAgents = (instances: InstanceInfo[], candidate?: Bot) =>
 
 interface ComposerDraftSnapshot extends ComposerSendSnapshot {
   reply: Message | null;
+  quote: string | null;
 }
 
 type SlotGlyph = "waveform" | "mic" | "arrow-up" | "stop";
@@ -212,6 +215,7 @@ export function Composer({
     (sent: ComposerDraftSnapshot) => {
       if (recoverFailedComposerSend(sent) === "restored") {
         restoreMentionPicks(sent.draftId, sent.mentions); if (sent.reply) onRestoreReply?.(sent.reply, sent.threadId);
+        if (sent.quote) setSelectionQuote(sent.draftId, sent.quote);
       }
     },
     [onRestoreReply],
@@ -261,7 +265,21 @@ export function Composer({
   const takeNotes = useNotesIntake();
   const stacked = useStackedField(inputRef, !singleRow, text, simpleDock) || (simpleDock && (attachments.length > 0 || Boolean(attachmentNotice)));
   // grok's expanded composer: the text above the buttons, attachments or a reply strip; corners and height change together
-  const multiline = simpleDock && (stacked || Boolean(replyTo));
+  const quote = useSelectionQuote(draftId);
+  const clearQuote = () => { markDraftEdited(draftId); setSelectionQuote(draftId, null); refocusInput(); };
+  const askAboutSelection = (words: string) => {
+    const shell = shellRef.current;
+    if (!shell || shell.getClientRects().length === 0) return;
+    markDraftEdited(draftId);
+    setSelectionQuote(draftId, words);
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input || input.disabled) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  };
+  const multiline = simpleDock && (stacked || Boolean(replyTo) || Boolean(quote));
   const [composing, setComposing] = useState(false);
   const pillContentRef = useRef<HTMLDivElement>(null);
   const pillHeight = usePillHeight(shellRef, pillContentRef, simpleDock, multiline, composing);
@@ -591,8 +609,8 @@ export function Composer({
   const slotColor = bot?.color; const room = Boolean(group);
   const slot = useMemo(() => slotColors(slotColor, room), [slotColor, room]);
   // A one-to-one bot at work: Enter does the chosen follow-up and Ctrl/⌘ with it the other one. Rooms keep their own queue.
-  const followUpFor = (alternate: boolean) => resolveFollowUp({ running: busy && !group && Boolean(bot), alternate, preferred: followUpDefault, canSteer }) ?? undefined;
-  const steersNow = group ? canSteer : followUpFor(false) === "steer";
+  const followUpFor = (alternate: boolean) => sentFollowUp({ running: busy && !group && Boolean(bot), alternate, preferred: followUpDefault }) ?? undefined;
+  const steersNow = group ? canSteer : resolveFollowUp({ running: busy && !group && Boolean(bot), alternate: false, preferred: followUpDefault, canSteer }) === "steer";
   const sendNames = sendLabels({ busy, canSteer: steersNow, name: busyName, sendLabel });
   // grok's round button keeps one glyph stack and crossfades it; ours swaps the button, so the glyph it showed fades
   // out over the new one's
@@ -683,7 +701,7 @@ export function Composer({
     const composed = composeMessage(serializeThreadRefs(effectiveText, threads, currentBotId), attachments);
     if (!composed) return;
     stopDictation();
-    const body = restoredRequestText(draftId) ?? composed;
+    const body = restoredRequestText(draftId) ?? withSelectionQuote(quote, composed);
     const sentDraft: ComposerDraftSnapshot = {
       draftId,
       revision: draftRevision(draftId),
@@ -692,6 +710,7 @@ export function Composer({
       requestText: body,
       attachments: [...attachments],
       reply: replyTo ?? null,
+      quote,
       replyToId: replyTo?.id,
       threadId,
       channelMode: effectiveChannelMode, mentions: picks.ids(body),
@@ -712,17 +731,17 @@ export function Composer({
       roomMessageSent(effectiveChannelMode, busy);
     } else if (bot) {
       const points = effectiveChannelMode === "goal" ? null : takePointedChips(threadId);
-      noteSendLaunch(sendId, inputRef.current);
+      noteSendLaunch(sendId);
       dispatch({
         type: "send", botId: bot.id, text: body, sendId: sentDraft.sendId, replyToId: replyTo?.id, threadId, mode: effectiveChannelMode, mentions: sentDraft.mentions,
         ...(points ? { pointed: points.pointed } : {}), ...(followUp ? { followUp } : {}),
         onError: () => { points?.restore(); restoreDraft(sentDraft); }, onSettled,
       });
-      directMessageSent(state.instances, bot.modelSelection?.instanceId, busy && followUp !== "steer");
+      directMessageSent(state.instances, bot.modelSelection?.instanceId, busy && (followUp !== "steer" || !canSteer));
     }
     setText("");
     setAttachments([]); picks.clear();
-    onConsumeReply?.();
+    onConsumeReply?.(); setSelectionQuote(draftId, null);
     setChannelMode("chat");
     // a click on the round button takes focus, and the button unmounts once the field is empty; grok hands it back
     if (!window.matchMedia?.("(hover: none) and (pointer: coarse)").matches) refocusInput();
@@ -986,7 +1005,8 @@ export function Composer({
           </div>
         )}
         <div ref={pillContentRef} className={singleRow ? cn("flex min-h-[52px] min-w-0 flex-1 flex-col justify-center rounded-[26px] py-1 pl-3 pr-1", ELEVATED_FLOAT) : simpleDock ? "flex shrink-0 flex-col" : "contents"}>
-        {replyTo && <ComposerReplyStrip message={replyTo} fallbackName={bot?.name} onClear={onClearReply} />}<ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} notice={attachmentNotice} onNotice={setAttachmentNotice} />
+        {replyTo && <ComposerReplyStrip message={replyTo} fallbackName={bot?.name} onClear={onClearReply} />}
+        {quote && <ComposerSelectionQuote quote={quote} onClear={clearQuote} />}<SelectionAskPill enabled={!singleRow && !locked} onAsk={askAboutSelection} /><ComposerAttachmentStrip items={attachments} onRemove={removeAttachment} onRetry={retryUpload} onDisplayInChatBox={displayPasteInChatBox} notice={attachmentNotice} onNotice={setAttachmentNotice} />
         <div data-composer-row data-glyph-swap={glyphs.swapped ? "" : undefined} data-glyph-from-held={glyphs.swapped && glyphs.fromHeld ? "" : undefined} style={simpleDock ? slot.vars : undefined} className={cn("flex items-end", simpleDock ? cn("gap-2", stacked && "gap-y-2") : "gap-1", !singleRow && !simpleDock && "@max-[30rem]/composer:flex-wrap", stacked && "flex-wrap")}>
           {pickers.inputs}
           {!locked && !singleRow && (

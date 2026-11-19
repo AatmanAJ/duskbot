@@ -469,6 +469,15 @@ export function importThread(threadId: string, messages: Message[], activeLeafId
   });
 }
 
+/** Every row of a conversation, rewritten in the given order; its followups and state stay. */
+export function replaceThread(threadId: string, messages: Message[], activeLeafId: string | null): void {
+  transaction((database) => {
+    database.prepare("DELETE FROM messages WHERE thread_id = ?").run(threadId);
+    for (const message of messages) insertMessage(threadId, message);
+    setActiveLeaf(threadId, activeLeafId);
+  });
+}
+
 export function appendMessage(threadId: string, message: Message): void {
   transaction(() => {
     insertMessage(threadId, message);

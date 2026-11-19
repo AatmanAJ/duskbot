@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { hintSeen, type OnboardingStatus } from "@/lib/onboarding";
 
 /** Kept by an install whose cloud was made or opened from this computer's first run, or by the one late hand-off: the
@@ -19,28 +20,54 @@ interface OwnCloudAccount {
   clouds?: Array<{ primary: boolean; runsOn: string; role?: string; status: string }>;
 }
 
-/** The account pays for a cloud of its own that is being made or is ready: never a team's Cloud someone else pays for. */
-export function ownCloudPlan(account: OwnCloudAccount | null | undefined): boolean {
-  if (account?.status !== "connected") return false;
+export type OwnCloudStage = "making" | "made";
+
+const MADE = ["ready", "stopped", "offline", "payment_problem"];
+
+/** The account's own cloud, never a team's Cloud someone else pays for: "making" while its paid plan's cloud is being
+ * made or not made yet, "made" once it exists (ready, asleep, stopped, offline); null without one. */
+export function ownCloudStage(account: OwnCloudAccount | null | undefined): OwnCloudStage | null {
+  if (account?.status !== "connected") return null;
   if (account.clouds) {
-    return account.clouds.some((cloud) => cloud.primary && cloud.runsOn === "cloud" && cloud.role === "owner"
-      && (cloud.status === "setting_up" || cloud.status === "ready"));
+    const own = account.clouds.find((cloud) => cloud.primary && cloud.runsOn === "cloud" && cloud.role === "owner");
+    if (!own) return null;
+    if (own.status === "setting_up") return "making";
+    return MADE.includes(own.status) ? "made" : null;
   }
-  if (account.purchase) return true;
-  return Boolean(account.renewal) && (account.machine?.status === "provisioning" || account.machine?.status === "ready");
+  const machine = account.machine?.status;
+  const paid = Boolean(account.purchase || account.renewal);
+  if (paid && machine && machine !== "provisioning" && machine !== "failed") return "made";
+  if (account.purchase) return "making";
+  return paid && machine === "provisioning" ? "making" : null;
 }
 
 /** A plan that arrived after this computer's first run ended (a late payment, one bought on the website later), with no
- * cloud made or opened from here yet: the person is taken into the cloud being made, once. */
+ * cloud made or opened from here yet. "making": the person is taken into the cloud being made, once. "made": the cloud
+ * already exists, so the hint is only recorded. A page a switch of place opened shows that place, never the making. */
 export function lateCloudDue(facts: {
   local: boolean;
   canSave: boolean;
   config: { onboarding?: OnboardingStatus; team?: unknown; cloudHome?: boolean } | null | undefined;
   account: OwnCloudAccount | null | undefined;
   welcomeShown: boolean;
-}): boolean {
+  switched?: boolean;
+}): OwnCloudStage | null {
   const { config } = facts;
-  if (!facts.local || !facts.canSave || facts.welcomeShown || !config || config.team || config.cloudHome) return false;
-  if (!config.onboarding?.completedAt || hintSeen(config.onboarding, CLOUD_OPENED_HERE)) return false;
-  return ownCloudPlan(facts.account);
+  if (!facts.local || !facts.canSave || facts.welcomeShown || !config || config.team || config.cloudHome) return null;
+  if (!config.onboarding?.completedAt || hintSeen(config.onboarding, CLOUD_OPENED_HERE)) return null;
+  const stage = ownCloudStage(facts.account);
+  return stage === "making" && facts.switched ? null : stage;
+}
+
+let lateCloudShown = false;
+const lateCloudListeners = new Set<() => void>();
+/** The late plan's making screen covers the window: corner cards wait until it closes. */
+export function setLateCloudOnScreen(on: boolean): void {
+  if (lateCloudShown === on) return;
+  lateCloudShown = on;
+  lateCloudListeners.forEach((listener) => listener());
+}
+export function useLateCloudOnScreen(): boolean {
+  return useSyncExternalStore((listener) => { lateCloudListeners.add(listener); return () => { lateCloudListeners.delete(listener); }; },
+    () => lateCloudShown, () => false);
 }

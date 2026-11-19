@@ -20,7 +20,7 @@ import { useUpdateDigest } from "@/lib/update-digest";
 import { useServerBehindHint } from "@/lib/server-behind";
 import { useBringNotice } from "@/lib/bring-notice";
 import { focusBringFind, knowsLine } from "@/lib/first-run-import";
-import { cloudSignInDue, onboardingCloudOffered, type WelcomeViewer } from "@/lib/onboarding";
+import { cloudSignInDue, onboardingCloudOffered, useWelcomeOnScreen, type WelcomeViewer } from "@/lib/onboarding";
 import { t } from "@/lib/i18n";
 import { engineReady } from "./EngineLibrary";
 import { CLOUD_NOTICE_CARD, cloudNoticeStep, CloudNoticeCard } from "./CloudNotice";
@@ -31,6 +31,7 @@ import { CloudTrialNoticeCard, useCloudPlanSnapshot } from "./CloudTrialNotice";
 import { NoticeCard, NoticeToast, NotNowButton, PRIMARY_BUTTON } from "./NoticeCard";
 import { Download } from "../icons";
 import { useDesktopNotices } from "./notice-dialogs";
+import { useLateCloudOnScreen } from "./onboarding/late-cloud";
 import { localDesktopPage } from "./onboarding/WelcomeGate";
 import { TwoPlacesCard } from "./TwoPlacesCard";
 import { FeedbackCard } from "./FeedbackCard";
@@ -72,6 +73,7 @@ export function AppNotices({ quiet = false, viewer = null, now = Date.now }: { q
   const twoFact = !local || two.suggest === null ? false : two.suggest === undefined ? null : true;
   // other AI tools here with memory or skills never brought in: the import, offered once
   const bring = useBringNotice();
+  const welcomeCovers = useWelcomeOnScreen(), makingCovers = useLateCloudOnScreen();
   useEffect(() => {
     if (!bridge) return;
     let active = true, updated = false;
@@ -109,7 +111,7 @@ export function AppNotices({ quiet = false, viewer = null, now = Date.now }: { q
   const setupHere = cloudSignInDue(viewer, state, engineReady)
     || ["waiting", "shown"].includes(cloudSetupStage({ viewer, connected: state.connected, enginesKnown: state.instances.length > 0,
       engineReady: state.instances.some(engineReady), onboarding: setupRecord, planned: Boolean(jobRoutine(state.routines, intent.sent)) }));
-  const waits = cornerPopupWaits(state, { quiet, idle: true, viewer, duringFirstChat: true }) || Boolean(state.cloudAdd) || state.cloudHowTo || setupHere;
+  const waits = cornerPopupWaits(state, { quiet, idle: true, viewer, duringFirstChat: true }) || Boolean(state.cloudAdd) || state.cloudHowTo || setupHere || welcomeCovers || makingCovers;
   const kind = view ? cloudNoticeKind(view, account) : null;
   const introDue = (): boolean | null => {
     if (!introAllowed || !view) return false;

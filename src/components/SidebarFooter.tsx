@@ -43,7 +43,7 @@ export function SidebarFooter({ owner = null, archived }: { owner?: string | nul
       <SidebarPlaceStatus place={place} className="mb-2 px-1" />
       <AccountMoveStatus kind={move.kind} place={move.place} retry={move.retry} onOpen={openAccount} className="ps-1" />
       <div ref={setSidebarFooterSlot} data-sidebar-footer-slot="" className="empty:hidden" />
-      <SpotView className="mb-2.5" state={spot} cta={cta} />
+      <SpotView className="mb-1.5" state={spot} cta={cta} />
       <div className="flex items-center gap-1.5" onPointerLeave={() => setAppsEngaged(false)}>
         {apps.connected ? <>
           <div className="me-auto min-w-0"><SidebarProfileMenu simple={account} named nameHidden={appsEngaged} /></div>

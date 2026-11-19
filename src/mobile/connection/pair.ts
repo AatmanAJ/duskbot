@@ -5,6 +5,7 @@ import { cleanPhoneSignInCode } from "../../../shared/account-api";
 import type { MobilePlatform } from "../platform";
 import { createRelaySecrets, hex, hkdf, sha256hex, subtle, unbase64, unseal, UnsupportedCryptoError, utf8, type RelaySecrets } from "../transport/link-crypto";
 import { open as openRelay } from "../transport/relay";
+import { directStillWorthIt, routeOrder, routeTimeout } from "./route-order";
 
 export type TypedPairing = MobilePairingPayload;
 export type TypedCode = { kind: "code"; code: string };
@@ -217,9 +218,11 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
       ...(keys ? { relay: { pub: keys.pub, verifier: await sha256hex(keys.token) } } : {}),
     };
     let lastError = new PairError("unreachable");
-    for (const route of payload.via) {
+    const startedAt = Date.now();
+    for (const route of routeOrder(payload.via, platform.kind)) {
       if (route.kind === "relay" && !keys) { lastError = new PairError("unsupported"); continue; }
       if (route.kind === "companion" && !platform.native) { lastError = new PairError("unsupported"); continue; }
+      if (!directStillWorthIt(route, payload.via, startedAt, Date.now(), platform.kind)) continue;
       let channel: ReturnType<typeof openRelay> | undefined;
       let response: Response;
       let answer: unknown;
@@ -227,12 +230,23 @@ async function redeemPairingResult(payload: MobilePairingPayload, platform: Mobi
         const headers = { "Content-Type": "application/json" };
         const body = JSON.stringify(request);
         if (route.kind === "relay") {
-          channel = openRelay(route.base, route.channel, route.token, unbase64(route.key));
-          response = await channel.request("POST", "/api/mobile/redeem", headers, utf8(body), AbortSignal.timeout(20_000));
+          const grant = openRelay(route.base, route.channel, route.token, unbase64(route.key));
+          channel = grant;
+          const ask = async () => {
+            const reply = await grant.request("POST", "/api/mobile/redeem", headers, utf8(body), AbortSignal.timeout(20_000));
+            return { reply, answer: await reply.json().catch(() => null) as unknown };
+          };
+          ({ reply: response, answer } = await ask());
+          // without its device channel the phone could never use the relay again; the same attempt asked again gets the device
+          // it already opened, now with the channel once the desktop's link agent has opened it
+          if (response.ok && !(answer as MobileRedeemResponse | null)?.relay) {
+            const again = await ask().catch(() => null);
+            if (again?.reply.ok && (again.answer as MobileRedeemResponse | null)?.relay) ({ reply: response, answer } = again);
+          }
         } else {
-          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(15_000) });
+          response = await fetch(`${route.url}/api/mobile/redeem`, { method: "POST", headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(routeTimeout(route, payload.via, 15_000, platform.kind)) });
+          answer = await response.json().catch(() => null);
         }
-        answer = await response.json().catch(() => null);
       } catch (error) { lastError = pairError(error); continue; }
       finally { channel?.close(); }
       if (!response.ok) throw responseError(response.status, answer && typeof answer === "object" ? answer as PairAnswer : {});

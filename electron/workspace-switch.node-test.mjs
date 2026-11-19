@@ -106,3 +106,19 @@ test("only the window's own page hands on or takes a mascot", () => {
   handlers.get("workspaces:switch-look-take")(own);
   assert.equal(own.returnValue.crew, "kit");
 });
+
+test("the page a switch opened knows it, for a while; a switch that stays on its page opens none", async () => {
+  const win = fakeWindow();
+  let clock = 1_000;
+  const handlers = new Map();
+  const sw = createWorkspaceSwitch({ window: () => win, now: () => clock });
+  installWorkspaceSwitchIpc({ ipcMain: { on: (channel, fn) => handlers.set(channel, fn) }, workspaceSwitch: sw, window: () => win });
+  const ask = (sender = win.webContents) => { const event = { sender }; handlers.get("workspaces:switch-arrived")(event); return event.returnValue; };
+  await sw.around(async () => {});
+  assert.equal(ask(), false);
+  await sw.around(async () => { win.webContents.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false }); });
+  assert.equal(ask(), true);
+  assert.equal(ask(fakeWindow().webContents), false, "only the window's own page");
+  clock += HANDED_LOOK_MS + 1;
+  assert.equal(ask(), false);
+});

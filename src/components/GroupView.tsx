@@ -57,8 +57,8 @@ import { ChatErrorBanner, ChatNotice } from "./ChatErrorBanner"; import { Compos
 import { FailedReplyCard, FoldedNoticesContext, foldedNoticeIds, useTrailingRows } from "./FailedReplyCard";
 import { RoomContextWarnings } from "./ContextWarning";
 import { ChatFindBar } from "./ChatFindBar";
-import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "../../shared/system-message-guard.ts";
-import { ReplyQuote } from "./ReplyQuote";
+import { botTextForDisplay, isPureLeakedBotText } from "../../shared/system-message-guard.ts";
+import { QuotedText, ReplyQuote } from "./ReplyQuote";
 import { ConnectorCard } from "./ConnectorCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { SignInRequestCard } from "./SignInRequestCard";
@@ -94,7 +94,7 @@ import { useReplyDraft } from "@/lib/drafts";
 import { withoutCitationMarkers } from "@/lib/citations";
 import { latestFailure, latestReply, type TranscriptSnapshot } from "@/lib/transcript-announcer";
 import { pendingApprovals } from "./PendingApproval";
-import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard";
+import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard"; import { DocumentCard } from "./documents/DocumentCard";
 import { TranscriptAnnouncer } from "./TranscriptAnnouncer";
 import { localDay } from "@/lib/transcript-derivations";
 import { roomThreadWorking } from "@/lib/room-threads";
@@ -173,7 +173,7 @@ function RoomTextMessage({
   const user = m.role === "user";
   const reactor = useReactor();
   const speaker = otherSpeaker(m, state.config?.team && reactor !== "user" ? reactor : null);
-  const rawText = user ? (m.text ?? "") : stripLeakedSystemHarnessMessages(m.text ?? "");
+  const rawText = user ? (m.text ?? "") : botTextForDisplay(m.text ?? "");
   const attachments = user && m.text ? splitTranscriptAttachments(withoutCitationMarkers(m.text)) : null;
   const display = attachments?.display ?? rawText;
   const [expanded, setExpanded] = useState(false);
@@ -211,7 +211,7 @@ function RoomTextMessage({
     </MessageActions>
   );
   return (
-    <div {...{ [MESSAGE_ROW]: "" }} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", user ? "items-end" : "items-start", join.above && SIMPLE_STACKED)}>
+    <div {...{ [MESSAGE_ROW]: "" }} data-sent-at={m.at || undefined} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", user ? "items-end" : "items-start", join.above && SIMPLE_STACKED)}>
       {speaker && <div className="mb-0.5 px-1 text-[12px] font-medium text-ink-secondary">{speaker}</div>}
       {mediaRow && attachments && <AttachmentGallery media={m.media} images={attachments.images} files={attachments.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} align="end" className={display.trim() ? "mb-1" : undefined} />}
       <div data-own-row={user ? "" : undefined} className={cn("flex w-full items-center gap-1.5", user ? "justify-end" : "justify-start")}>
@@ -236,6 +236,7 @@ function RoomTextMessage({
                 ? cn("chat-text whitespace-pre-wrap [overflow-wrap:anywhere] text-ink", SIMPLE_USER_BUBBLE)
                 : SIMPLE_BOT_BUBBLE,
           )}
+          data-quotable={user ? undefined : ""}
           data-sending={user && m.id.startsWith("optimistic-") ? t("chat.sending") : undefined}
         >
           {m.replyToId && (() => {
@@ -257,7 +258,7 @@ function RoomTextMessage({
             <>
               {attachments && !mediaRow && <AttachmentGallery media={m.media} images={attachments.images} files={attachments.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} className={!attachments.display ? "mb-0" : undefined} />}
               <div className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}>
-                <ThreadRefText text={display} peers={peers} everyone={!group.dm} />
+                <QuotedText text={display} render={(rest) => <ThreadRefText text={rest} peers={peers} everyone={!group.dm} />} />
               </div>{m.bugReport && <BugReportNote report={m.bugReport} />}
               {m.via === "api" && (
                 <div className="mt-1 text-[11px] text-ink-tertiary">{t("chat.viaBotApi")}</div>
@@ -415,8 +416,8 @@ export const Transcript = memo(function Transcript({
       null
     ) : m.kind === "digest" ? (
       showToolCalls ? <DigestChip message={m} /> : null
-    ) : m.publishedPage ? <PublishedPageCard message={m} /> : m.kind === "text" && (m.text || m.attachments?.length) ? (
-      !user && isPureLeakedSystemHarnessMessage(m.text) && !m.attachments?.length ? null : (
+    ) : m.publishedPage ? <PublishedPageCard message={m} /> : m.document ? <DocumentCard message={m} /> : m.kind === "text" && (m.text || m.attachments?.length) ? (
+      !user && isPureLeakedBotText(m.text) && !m.attachments?.length ? null : (
         <RoomTextMessage
           group={group}
           message={m}
@@ -442,7 +443,7 @@ export const Transcript = memo(function Transcript({
     const divider = dividerAbove(item.kind === "run" ? item.messages : [item.message]);
     const drawn = item.kind === "run" ? showToolCalls : messageRow(item.message, NO_JOIN) !== null;
     const m = item.kind === "message" ? item.message : null;
-    const bubble = m && m.kind === "text" && !m.publishedPage;
+    const bubble = m && m.kind === "text" && !m.publishedPage && !m.document;
     const slot: RoomSlot | null = drawn ? {
       group: bubble ? (m.role === "user" ? `user:${m.from?.name ?? ""}` : `bot:${m.from?.botId ?? ""}`) : null,
       // a hand-off row names both bots itself, so it carries no speaker line

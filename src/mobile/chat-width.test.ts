@@ -98,12 +98,12 @@ describe("message width on the phone, on the rendered chat", () => {
     for (const row of rows()) expect(bubbleOf(row)).toBeTruthy();
   });
 
-  it("stops a bot reply at 85% of the column, like a chat bubble", () => {
-    for (const row of rows().filter((el) => el.classList.contains("items-start"))) expect(phone(bubbleOf(row), "max-width")).toBe("85%");
+  it("stops a bot reply 44px short of the column, like a chat bubble", () => {
+    for (const row of rows().filter((el) => el.classList.contains("items-start"))) expect(phone(bubbleOf(row), "max-width")).toBe("calc(100% - 44px)");
   });
 
-  it("stops your own bubble at 85%", () => {
-    for (const row of rows().filter((el) => el.classList.contains("items-end"))) expect(phone(bubbleOf(row), "max-width")).toBe("85%");
+  it("stops your own bubble 44px short of the column", () => {
+    for (const row of rows().filter((el) => el.classList.contains("items-end"))) expect(phone(bubbleOf(row), "max-width")).toBe("calc(100% - 44px)");
   });
 
   it("keeps everything beside a bubble out of the row's flow, so nothing narrows it", () => {

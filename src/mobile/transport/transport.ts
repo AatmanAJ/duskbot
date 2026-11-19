@@ -2,6 +2,7 @@ import { RelayGoneError, type RelayChannel } from "./relay";
 import { noteRefusedRequest } from "@/lib/session-ended";
 import { asleepAnswer, BACKGROUND_HEADERS, markCloudAsleep } from "@/lib/cloud-power";
 import { setUploadRoute } from "@/lib/upload-request";
+import { limitSendAttempts } from "@/state/optimistic-send";
 import { forgetWorkspaceAnswers, noteWorkspaceAnswer, placeAnswered } from "../connection/reachability";
 
 export type PhoneTransport =
@@ -188,6 +189,12 @@ function srcsetPaths(value: string): Array<{ start: number; end: number; path: s
   return paths;
 }
 
+const FAILED = "data-dusk-media-failed";
+
+function awaitingBlob(element: Element): boolean {
+  return (element.getAttribute("src") ?? "").startsWith("/api/") || srcsetPaths(element.getAttribute("srcset") ?? "").length > 0;
+}
+
 function installMedia(): () => void {
   const selector = "img,audio,video,source,image,link[rel~='icon']";
   const attributes = ["src", "srcset", "poster", "href"];
@@ -220,6 +227,7 @@ function installMedia(): () => void {
   const replace = async (element: Element, attribute: string) => {
     const value = element.getAttribute(attribute);
     if (!value || processed.get(element)?.get(attribute) === value) return;
+    if (attribute === "src" && value.startsWith("/api/")) element.removeAttribute(FAILED);
     let next = value;
     if (attribute === "srcset") {
       const replacements = await Promise.all(srcsetPaths(value).map(async (candidate) => ({ ...candidate, url: await blobUrl(candidate.path) })));
@@ -228,7 +236,15 @@ function installMedia(): () => void {
         next = next.slice(0, start) + url + next.slice(end);
       }
     } else if (value.startsWith("/api/")) {
-      next = await blobUrl(value) ?? value;
+      const url = await blobUrl(value);
+      if (!url) {
+        if (!stopped && attribute === "src" && element.getAttribute(attribute) === value) {
+          element.setAttribute(FAILED, "");
+          element.dispatchEvent(new Event("error"));
+        }
+        return;
+      }
+      next = url;
     }
     if (stopped || next === value || element.getAttribute(attribute) !== value) return;
     let marks = processed.get(element);
@@ -251,10 +267,18 @@ function installMedia(): () => void {
       for (const node of mutation.addedNodes) scan(node);
     }
   });
+  // the app's own origin serves no /api, so a workspace path's first load fails before its blob is swapped in; that
+  // error is held back (it would show a broken image), and the real one is sent if the blob cannot be had
+  const early = (event: Event) => {
+    const element = event.target;
+    if (element instanceof Element && element.matches(selector) && !element.hasAttribute(FAILED) && awaitingBlob(element)) event.stopImmediatePropagation();
+  };
+  document.addEventListener("error", early, true);
   observer.observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: attributes });
   scan(document);
   return () => {
     stopped = true;
+    document.removeEventListener("error", early, true);
     observer.disconnect();
     controller.abort();
     for (const url of cache.values()) URL.revokeObjectURL(url);
@@ -263,6 +287,8 @@ function installMedia(): () => void {
 }
 
 export const ASLEEP_PROBE_GAP_MS = 10_000;
+/** how long one send to a place over the network waits for its answer before asking again on a new request */
+export const PHONE_SEND_ATTEMPT_MS = 20_000;
 
 /** The live stream goes through the WebView's own fetch, and a sleeping Cloud's edge answer carries no CORS headers, so
  * a failed stream cannot tell asleep from unreachable; one background read through native http can. */
@@ -363,12 +389,14 @@ export function installTransport(transport: PhoneTransport, onGone?: () => void)
     return overRelay(relayFetch(transport.channel, transport.token, onProgress))(url, { method: init.method, headers: init.headers, body: init.body as BodyInit, signal: init.signal, credentials: "omit", redirect: "error" });
   }) : () => {};
   const stopMedia = installMedia();
+  const stopSendLimit = limitSendAttempts(PHONE_SEND_ATTEMPT_MS);
   let stopped = false;
   return () => {
     if (stopped) return;
     stopped = true;
     stopUploads();
     stopMedia();
+    stopSendLimit();
     if (transport.kind === "relay") transport.channel.close();
     for (const source of sources) source.close();
     for (const socket of sockets) socket.close();

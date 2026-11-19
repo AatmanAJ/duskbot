@@ -192,7 +192,7 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-
   inset-inline: auto 0;
   transform-origin: right bottom;
 }
-.dusk-mobile [data-mobile-chat] [data-chat-bubble][class*="100%-82px"] { max-width: 85%; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble][class*="100%-82px"] { max-width: calc(100% - 44px); }
 
 /* the room's setup form is drawn at desktop density; on a phone its labels and hints read at the shell's sizes */
 .dusk-mobile [data-testid="room-setup"] .text-\[13px\] { font-size: 15px; line-height: 20px; }
@@ -238,6 +238,15 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-
 @media (prefers-reduced-transparency: reduce) {
   .dusk-mobile [data-mobile-chat] :is(.m-glass, [data-tour="composer"]) { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+/* android webviews drop frames compositing backdrop-filter on many phones: there every glass surface is its solid twin */
+html[data-mobile-app="android"] :is(*, ::before, ::after) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] :is(.m-glass, [data-tour="composer"]) { background-color: var(--g-solid); }
+html[data-mobile-app="android"] .glass-surface { background: var(--color-menu); }
+html[data-mobile-app="android"] :is(.glass-card, .glass-surface .bg-card) { background: var(--color-card); }
+html[data-mobile-app="android"] .glass-rail { background: var(--color-app); }
+html[data-mobile-app="android"] .glass-scrim { background: color-mix(in srgb, black 50%, transparent); }
+html[data-mobile-app="android"] .glass-bar:not([data-glass-fade])::before { background: var(--glass-tint, var(--color-panel)); }
+html[data-mobile-app="android"] button.mobile-press.backdrop-blur-md { background-color: rgb(0 0 0 / .45); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .dusk-mobile [data-mobile-chat] :is(.m-glass, [data-tour="composer"]) { background-color: var(--g-solid); }
 }
@@ -363,14 +372,48 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] textarea { visibility: visible; opacity: 0; caret-color: transparent; }
 html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="composer"] :is([role="menu"], [role="listbox"], [data-sidebar-popover-menu], [data-composer-menu]) { visibility: visible; }
 
-/* message text at the phone's body size: iOS Body is 17/22 at the default text size (HIG Typography), a step heavier
-   than the desktop's Geist so it reads like Messages on a small screen */
+/* message text at the phone's body size, 17 on a 24 line, regular weight; the bot's bubble is a little roomier at the
+   sides than the person's, and every bubble keeps one 20px radius, no tail */
 .dusk-mobile [data-mobile-chat] [data-chat-bubble] {
   font-size: 17px;
-  line-height: 22px;
-  font-weight: 450;
+  line-height: 24px;
+  font-weight: 400;
   padding: 8px 14px;
+  border-radius: 20px;
 }
-.dusk-mobile [data-mobile-chat] [data-chat-bubble]:not([class*="rounded-es-"]):not([class*="rounded-ee-"]) { border-radius: 19px; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble].chat-bubble-bot { padding-inline: 16px; }
 .dusk-mobile [data-mobile-chat] [data-chat-bubble] :is(.chat-text, .chat-md, p, li, blockquote, td, th) { font-size: inherit; line-height: inherit; }
 .dusk-mobile [data-mobile-chat] .turn-label-slot { font-size: 17px; }
+
+/* a touch screen always shows a code block's copy key (top right), so the code starts below it instead of under it;
+   inline code that wraps keeps its padding and corners on every line */
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] .chat-code-block[data-lang] pre { padding-top: 36px; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] .chat-code-block:not([data-lang]) pre { padding-top: 44px; }
+.dusk-mobile [data-mobile-chat] [data-chat-bubble] .chat-md code.ui-code-chip { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+
+/* the shared desktop switch (a bot's own colour, 32 by 20) takes the phone's one switch: 51 by 31, ink when on */
+.dusk-mobile [data-ui-toggle] { width: 51px; height: 31px; }
+.dusk-mobile [data-ui-toggle][aria-checked="true"] { background-color: var(--color-ink); }
+.dusk-mobile [data-ui-toggle][aria-checked="false"] { background-color: color-mix(in srgb, var(--color-ink) 14%, transparent); }
+.dusk-mobile [data-ui-toggle] > span { width: 27px; height: 27px; background-color: var(--color-app); }
+.dusk-mobile [data-ui-toggle][aria-checked="true"] > span { translate: 20px 0; }
+
+/* a reply's words arrive as the system's do: a short fade, no blur, so a long reply never repaints every word it adds */
+.dusk-mobile [data-mobile-chat] .md-rv { animation: md-rv-fade 140ms cubic-bezier(.2,0,0,1) both; animation-delay: calc(var(--rv, 0) * var(--rv-step, 0ms)); }
+@media (prefers-reduced-motion: reduce) { .dusk-mobile [data-mobile-chat] .md-rv { animation-delay: 0ms; } }
+
+/* each message's time, beside it in the gutter the transcript uncovers when it is dragged to the left */
+.dusk-mobile [data-mobile-chat] [data-message-row][data-time]::after {
+  content: attr(data-time);
+  position: absolute;
+  inset-inline-end: -72px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 66px;
+  text-align: end;
+  font-size: 13px;
+  line-height: 16px;
+  color: var(--color-ink-tertiary);
+  white-space: nowrap;
+  pointer-events: none;
+}

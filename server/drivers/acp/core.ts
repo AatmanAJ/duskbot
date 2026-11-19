@@ -70,7 +70,7 @@ import { recoveryPromptFor } from "../../resume-recovery.ts";
 import { armIdleClose, engineIdleMs, sessionIdlePolicy, stopIdleClose } from "../session-idle.ts";
 import { classifyError } from "../retry.ts";
 import { engineFailureKind, engineFailureMessage, stopCause } from "../engine-errors.ts";
-import { cliExitCode, failureCode } from "../../../shared/usage-signals.ts";
+import { cliExitCode, failureCode, rpcCode } from "../../../shared/usage-signals.ts";
 import { narrowsNativeTools, parseToolScope } from "../../../shared/tool-scope.ts";
 import { acpMcpServers, type AcpMcpServer } from "../turn-mcp.ts"; import { acpToolOutput, acpToolProgress } from "../tool-progress.ts";
 import { learnedMcpToolBudget, retryUnderToolLimit } from "../../tool-count-limit.ts"; import { instanceEnvNames } from "../../bot-box/env.ts"; import { botBox } from "../../bot-box/box.ts";
@@ -1699,7 +1699,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
               if (!state.stopped) emit({
                 ...base(threadId, turnId), type: "runtime.error",
                 message: (accountError ? support.describeAccountError?.(code, cliTurn.model) : undefined) ?? engineFailureMessage(support.displayName, message) ?? message,
-                ...(failureCode(code ?? (e as any)?.data?.errorName) ? { errorCode: failureCode(code ?? (e as any)?.data?.errorName) } : {}),
+                ...((failureCode(code ?? (e as any)?.data?.errorName) ?? rpcCode((e as any)?.code)) ? { errorCode: failureCode(code ?? (e as any)?.data?.errorName) ?? rpcCode((e as any)?.code) } : {}),
                 ...(needsAuth ? { setup: true } : {}), ...((e as any)?.acpPromptStall === true ? { stalled: true } : {}),
                 ...((e as any)?.acpUsageLimit === true || (code === "quota_or_region_restriction" && LIMIT_WORDS.test(message)) ? { limit: "engine" as const } : {}), // waited out, or the engine gave up: another AI can carry on
               });

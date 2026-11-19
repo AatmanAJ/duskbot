@@ -10,6 +10,7 @@ import { appProblem, appStatusParts, appWhen, skippedToday } from "@/lib/app-aut
 import { limitResetWhen } from "@/lib/limit-resets";
 import { isLimitSkip, partlyDone } from "@/lib/routine-display";
 import type { OptionCardData } from "@/state/store";
+import { deviceHourCycle } from "@/lib/format-time";
 
 export type AutomationKind = "schedule" | "webhook" | "app";
 
@@ -96,7 +97,9 @@ const locale = () => activeLocale();
 /** 9 AM on the hour, 9:30 AM otherwise, in the person's language. */
 export function clock(at: number, dropZeroMinutes = false): string {
   const date = new Date(at);
-  return date.toLocaleTimeString(locale(), dropZeroMinutes && date.getMinutes() === 0 ? { hour: "numeric" } : { hour: "numeric", minute: "2-digit" });
+  const hourCycle = deviceHourCycle();
+  const hourAlone = dropZeroMinutes && date.getMinutes() === 0 && (hourCycle === "h12" || hourCycle === "h11");
+  return date.toLocaleTimeString(locale(), hourAlone ? { hour: "numeric", hourCycle } : { hour: "numeric", minute: "2-digit", hourCycle });
 }
 
 /** When something last happened: "today 9:02 AM", "yesterday", "Mon 9:00 AM", or "Oct 3". */

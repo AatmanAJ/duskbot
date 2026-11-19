@@ -52,7 +52,7 @@ import { commandSummary, toolDetailPreview } from "../tool-summary.ts";
 import { codexDeveloperInstructions, syncCodexInstructions } from "./codex-instructions.ts";
 import { volatileContextNote, withContextNote } from "./prompt-split.ts";
 import type { ApprovalMode } from "../../shared/approval-mode.ts";
-import { cliExitCode } from "../../shared/usage-signals.ts";
+import { cliExitCode, rpcCode } from "../../shared/usage-signals.ts";
 import { CodexDeviceAuthController } from "./codex-device-auth.ts";
 import { codexAccountEmail, codexHome } from "./codex-identity.ts";
 import { boundedLabel, containsControlCharacter, mcpAppApprovalForm, plainRecord } from "./codex-app-approval.ts";
@@ -1591,7 +1591,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             ...base(threadId, turnId), type: "runtime.error",
             message: earlyNotifications.some((event) => ["commandExecution", "fileChange", "mcpToolCall", "webSearch"].includes(event.params?.item?.type))
               ? `${message} A tool action may have run. Check its effects before trying again.` : message,
-            ...(needsAuth ? { setup: true } : codexLimitFacts(raw, route)),
+            ...(needsAuth ? { setup: true } : codexLimitFacts(raw, route)), ...(e instanceof CodexRpcError && rpcCode(e.code) ? { errorCode: rpcCode(e.code) } : {}),
           });
           await settle(false, needsAuth ? "auth_required" : verdict.reason === "provider_safety" ? "provider_safety" : "rpc_error");
         }
@@ -1680,6 +1680,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     get models() {
       return models;
     },
+    ...(plan || config.managed ? {} : { modelCatalogKey: DRIVER_KIND }),
     quickModelsUsable: smallModelsUsable,
     refreshModels,
     ...(startupModelRefresh ? { startupModelRefresh } : {}),

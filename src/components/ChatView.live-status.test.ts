@@ -7,7 +7,7 @@ import type { Bot, InstanceInfo, Message } from "@/state/store";
 import type { RuntimeEvent } from "../../shared/runtime-events";
 import type { ApprovalModeSelector } from "./ApprovalModeSelector";
 import type { ModelPicker } from "./ModelPicker";
-import { STATUS_HOLD_MS, STATUS_QUIET_MS } from "./TurnPresence";
+import { STATUS_DONE_EXIT_MS, STATUS_EXIT_MS, STATUS_HOLD_MS, STATUS_QUIET_MS } from "./TurnPresence";
 import { STATUS_MOUNT_MS } from "@/hooks/use-reached";
 import { TYPING_MIN_MS } from "@/hooks/use-typing-hold";
 
@@ -63,7 +63,7 @@ const mascot = () => host.querySelector(".turn-presence");
 /** The line as it reads: the phrase fading out is not part of it. */
 const statusLine = () => {
   const line = host.querySelector("[data-turn-status]")?.cloneNode(true) as HTMLElement | undefined;
-  line?.querySelectorAll(".turn-phrase-out").forEach((node) => node.remove());
+  line?.querySelectorAll("[data-word-out]").forEach((node) => node.remove());
   return line?.textContent?.replace(/\s+/g, " ").trim() ?? null;
 };
 
@@ -85,13 +85,13 @@ afterEach(() => {
 });
 
 describe("the working line", () => {
-  it("is the bot's tiny working mascot and one word, Thinking first, with the timer and size kept in its tooltip", () => {
+  it("is the bot's tiny working mascot and one word, Thinking first, with no seconds anywhere on it", () => {
     engine({ type: "turn.started" });
     render(busyBot([ask]));
     expect(mascot()).not.toBeNull();
     expect(statusLine()).toBe("Thinking");
     const working = mascot()!.querySelector("[data-working-mascot]") as HTMLElement;
-    expect(working.style.width).toBe("24px");
+    expect(working.style.width).toBe("22px");
     expect(working.querySelector(".working-mascot-bob .working-mascot-glance .working-mascot-blink"), "it bobs, glances and blinks").not.toBeNull();
     expect(mascot()!.querySelector("[data-dusk-mark]"), "no engine-drawn mark, so no dots").toBeNull();
     const row = mascot()!.firstElementChild as HTMLElement;
@@ -110,7 +110,7 @@ describe("the working line", () => {
     expect(statusLine()).toBe("Writing code");
   });
 
-  it("stays through the turn's bubbles and leaves only when the turn ends, in 140ms", () => {
+  it("stays through the turn's bubbles and leaves only when the turn ends, its words in 140ms, the mascot after a happy hop", () => {
     const reply: Message = { id: "reply", role: "bot", kind: "text", at: started + 9_000, text: "Fair, quiet day", turnId: "t1" };
     engine({ type: "turn.started" });
     render(busyBot([ask]));
@@ -118,8 +118,11 @@ describe("the working line", () => {
     expect(mascot()).not.toBeNull();
     engine({ type: "turn.completed", ok: true } as Partial<RuntimeEvent>);
     render(busyBot([ask, reply], false));
-    expect(host.querySelector(".turn-status-out"), "it leaves with a scale and fade").not.toBeNull();
-    act(() => void vi.advanceTimersByTime(140));
+    expect(host.querySelector(".turn-status-out.turn-status-done"), "a finished turn leaves happy").not.toBeNull();
+    expect(host.querySelector('[data-working-mascot][data-mood="done"]')).not.toBeNull();
+    act(() => void vi.advanceTimersByTime(STATUS_EXIT_MS));
+    expect(mascot(), "the words are gone; the mascot is still hopping").not.toBeNull();
+    act(() => void vi.advanceTimersByTime(STATUS_DONE_EXIT_MS - STATUS_EXIT_MS));
     expect(mascot()).toBeNull();
   });
 
@@ -198,7 +201,7 @@ describe("the working line", () => {
     act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
     engine({ type: "turn.progress", activity: "tool", tool: "set_status", label: "Drafting the summary" } as Partial<RuntimeEvent>);
     expect(statusLine()).toBe("Drafting the summary");
-    expect(host.querySelector("[data-turn-now]")?.classList, "each new label rises in").toContain("turn-label-in");
+    expect(host.querySelector("[data-turn-now]")?.classList, "a new label crossfades in place, it does not rise").not.toContain("turn-label-in");
     act(() => void vi.advanceTimersByTime(STATUS_HOLD_MS));
     engine({ type: "turn.completed", ok: true } as Partial<RuntimeEvent>);
     render(busyBot([ask], false));
@@ -248,7 +251,7 @@ describe("each bubble's typing beat", () => {
     act(() => void vi.advanceTimersByTime(TYPING_MIN_MS));
     expect(host.querySelector(".turn-status-out"), "the line starts leaving").not.toBeNull();
     expect(rows()).toEqual(["ask", "last"]);
-    act(() => void vi.advanceTimersByTime(140));
+    act(() => void vi.advanceTimersByTime(STATUS_DONE_EXIT_MS));
     expect(mascot()).toBeNull();
   });
 

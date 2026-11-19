@@ -161,7 +161,7 @@ export function CardSettledRow({ icon, label, summary, tone = "done", title, det
     <>
       <CardSourceIcon>{icon}</CardSourceIcon>
       <span className="shrink-0 font-medium text-ink">{label}</span>
-      <span dir="auto" aria-live="polite" className={cn("min-w-0 truncate", tone === "failed" ? "text-danger" : "text-ink-tertiary")}>{summary}</span>
+      <span dir="auto" aria-live="polite" data-settled-summary="" className={cn("min-w-0 truncate", tone === "failed" ? "text-danger" : "text-ink-tertiary")}>{summary}</span>
     </>
   );
   const rowClass = "flex min-h-[52px] min-w-0 flex-1 items-center gap-2 px-4 py-3.5 text-start text-[13px] leading-[18px]";

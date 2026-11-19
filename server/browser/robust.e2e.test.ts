@@ -122,7 +122,8 @@ suite("robust browser actions on real Chrome", () => {
       list.addEventListener("scroll", draw); draw();</script>`) });
     const found = real.text(await real.call(target, "agent_browser_scroll", { toText: "Priya Raman", dy: 1500 }));
     expect(found).toMatch(/"Priya Raman" shows on the page now/u);
-    expect(found).toMatch(/- generic \[ref=e\d+\] \[cursor=pointer\]: Priya Raman\n/u);
+    expect(found).toMatch(/here with refs to act on:\n- generic \[ref=e\d+\] \[cursor=pointer\]:/u);
+    await real.call(target, "agent_browser_click", { selector: 'role=generic[name^="Priya"]' }).then((result) => expect(result.isError).toBe(true));
     await real.call(target, "agent_browser_click", { text: "Priya Raman" });
     expect(await real.read<string>(target, "document.title")).toBe("Priya Raman");
   });
@@ -148,6 +149,30 @@ suite("robust browser actions on real Chrome", () => {
     expect(real.text(value)).toMatch(/dialog "Your privacy" \[modal\]/u);
     expect(real.text(value)).not.toMatch(/still loading/u);
     expect(ms).toBeLessThan(1_800);
+  });
+
+  it("leads a submit's answer with the error the page shows after its request comes back", async () => {
+    const target = bot();
+    await real.call(target, "agent_browser_open", { url: page("/signin", `<input id="u" aria-label="Username" aria-describedby="hint"><small id="hint"></small><button id="next">Continue</button>
+      <script>document.getElementById("next").onclick = () => setTimeout(() => { const u = document.getElementById("u"); u.setAttribute("aria-invalid", "true"); document.getElementById("hint").textContent = "We couldn't find an account with that username."; }, 450);</script>`) });
+    await real.call(target, "agent_browser_fill", { selector: "#u", text: "nobody" });
+    const answer = real.text(await real.call(target, "agent_browser_click", { selector: "#next" }));
+    expect(answer).toMatch(/^Clicked "#next"\.\nThe page now shows an error: "We couldn't find an account with that username\."\. Read it before anything else/u);
+    const again = real.text(await real.call(target, "agent_browser_click", { selector: "#next" }));
+    expect(again).toMatch(/The page still shows an error: "We couldn't find an account with that username\."/u);
+  });
+
+  it("says plainly when a submit changed nothing, with one look at the page per document", async () => {
+    const target = bot();
+    await real.call(target, "agent_browser_open", { url: page("/stuck", `<form onsubmit="return false"><input name="q"><button>Sign in</button></form>`) });
+    const first = await real.call(target, "agent_browser_click", { selector: "role=button[name=\"Sign in\"]" });
+    expect(real.text(first)).toMatch(/Nothing changed on the page: the same address and the same text\. Do not repeat the action as it was/u);
+    expect(first.content.filter((part) => part.type === "image")).toHaveLength(1);
+    const second = await real.call(target, "agent_browser_click", { selector: "role=button[name=\"Sign in\"]" });
+    expect(real.text(second)).toMatch(/Nothing changed on the page/u);
+    expect(second.content.filter((part) => part.type === "image")).toHaveLength(0);
+    // typing changes no text on the page, and is not called a change that failed
+    expect(real.text(await real.call(target, "agent_browser_fill", { selector: "[name=q]", text: "hi" }))).not.toMatch(/Nothing changed/u);
   });
 
   it("answers a click that moves to another page with that page's snapshot", async () => {

@@ -16,9 +16,15 @@ describe("the funnel's steps", () => {
     expect(funnelSteps({ account: false, desktop: false, hello: false })).toEqual(["ai"]);
   });
 
-  it("on a cloud the desktop app set up: the hello, an AI, and that computer's bots when it has some", () => {
-    expect(funnelSteps({ account: false, desktop: false })).toEqual(["welcome", "ai"]);
-    expect(funnelSteps({ account: false, desktop: false, cloudBring: true, phone: true, permissions: true })).toEqual(["welcome", "ai", "bring"]);
+  it("on a cloud the desktop app set up: the hello and that computer's bots when it has some, never a second AI step", () => {
+    expect(funnelSteps({ account: false, desktop: false, aiAsked: true })).toEqual(["welcome"]);
+    expect(funnelSteps({ account: false, desktop: false, cloudBring: true, phone: true, permissions: true, aiAsked: true })).toEqual(["welcome", "bring"]);
+  });
+
+  it("asks for an AI once in a whole journey: the desktop's dusk cloud path has the only one", () => {
+    const desktop = funnelSteps({ account: true, desktop: true, bring: true, path: "cloud" });
+    const onCloud = funnelSteps({ account: false, desktop: false, cloudBring: true, aiAsked: true });
+    expect([...desktop, ...onCloud].filter((step) => step === "ai")).toHaveLength(1);
   });
 
   it("offers bringing things in on this computer's own window, after the place", () => {

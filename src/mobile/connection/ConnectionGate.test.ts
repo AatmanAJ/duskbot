@@ -7,7 +7,8 @@ import { sessionCheck, sessionEnded } from "@/lib/session-ended";
 import { api } from "@/state/api";
 import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { PlatformContext, webPlatform, type MobilePlatform } from "../platform";
-import { ConnectionGate } from "./ConnectionGate";
+import { ConnectionGate, pairedButUnreachable } from "./ConnectionGate";
+import { PairError } from "./pair";
 
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => createElement("span") }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -103,4 +104,10 @@ it("a dusk cloud asleep at launch opens on its chats and is woken, never the can
   expect(host.textContent).toBe("home");
   const posts = fetcher.mock.calls.filter(([input, init]) => ((input instanceof Request ? input.method : init?.method) ?? "GET") === "POST");
   expect(posts.map(([input]) => String(input instanceof Request ? input.url : input))).toContain("https://mac.example.test/api/cloud/wake");
+});
+
+it("keeps a pairing the computer accepted when the first connect fails, and drops only a refused one", () => {
+  expect(pairedButUnreachable(new PairError("unreachable"))).toBe(true);
+  expect(pairedButUnreachable(new TypeError("Load failed"))).toBe(true);
+  expect(pairedButUnreachable(new PairError("refused"))).toBe(false);
 });

@@ -40,7 +40,9 @@ const B64URL_KEY = /^[A-Za-z0-9_-]{43}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 /** an agent that has not asked for news this long is gone, and the relay leaves the pairing payload */
 const AGENT_LIVE_MS = 40_000;
-const APPLY_WAIT_MS = 5000;
+/** under the 15 s the phone apps wait for a relay answer: a redeem answered without its channel leaves the phone on
+ * Wi-Fi alone for good */
+const APPLY_WAIT_MS = 10_000;
 const SYNC_WAIT_MAX_S = 25;
 const MAX_DEVICES = 24;
 /** a push the service could not take is tried again after these */
@@ -258,7 +260,8 @@ export function createMobileLink(deps: MobileLinkDeps) {
 
   function workspace(): MobileLinkPayload["workspace"] {
     const own = deps.workspace();
-    return { name: own.name.slice(0, 80), environmentId: own.environmentId, kind: agentLive() ? "vps" : own.kind };
+    // a desktop serves its phones through its own relay hub too, and stays a computer to them
+    return { name: own.name.slice(0, 80), environmentId: own.environmentId, kind: own.kind === "server" && agentLive() ? "vps" : own.kind };
   }
 
   async function pairing(auth: RequestAuth, body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {

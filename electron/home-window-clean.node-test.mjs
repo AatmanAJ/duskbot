@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { homeOf, noWayHome } from "./home-window.mjs";
+import { CONNECT_GRACE_MS, homeOf, noWayHome } from "./home-window.mjs";
 import { ACCOUNT, ACME, CLIENT, CLIENT_A, CLOUD, connected, done, LOCAL, world } from "./fixtures/home-window-world.mjs";
 
 // The window of a computer whose bots moved, when nobody here can reach them (clean-workspace.mjs): the clean workspace opens
@@ -82,6 +82,7 @@ test("signed in and the Cloud doesn't answer: the normal can't-be-reached screen
   w.cloud.down = true;
   await w.home.changed();
   assert.equal(clean.on, false);
+  await w.later(CONNECT_GRACE_MS);
   assert.equal(w.home.view().screen, "offline");
   assert.equal(clean.enters, 1, "it isn't opened again");
   w.state = { status: "unavailable", account: ACCOUNT };

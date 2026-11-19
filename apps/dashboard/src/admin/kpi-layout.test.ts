@@ -1,15 +1,16 @@
 import { expect, test } from "vitest";
-import { KPI_IDS, KPI_KEY, loadLayout, moveTo, normalOrder, saveLayout, slotAt, tintOf, type KpiLayout } from "./kpi-layout";
+import { KPI_IDS, KPI_KEY, loadLayout, mainOf, moveTo, normalOrder, saveLayout, slotAt, tintOf, type KpiLayout } from "./kpi-layout";
 
 function memory() {
   const data = new Map<string, string>();
   return { data, getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v), removeItem: (k: string) => void data.delete(k) };
 }
 
-test("nothing stored gives today's strip: default order, revenue green, the rest plain", () => {
+test("nothing stored gives today's strip: default order, mrr green, the rest plain", () => {
   const layout = loadLayout(memory());
   expect(layout.order).toEqual([...KPI_IDS]);
-  expect(tintOf(layout, "revenue")).toBe("green");
+  expect(tintOf(layout, "mrr")).toBe("green");
+  expect(tintOf(layout, "revenue")).toBe("none");
   expect(tintOf(layout, "visitors")).toBe("none");
 });
 
@@ -27,7 +28,7 @@ test("saving the default layout clears the stored key", () => {
   const store = memory();
   saveLayout({ order: ["signups", ...KPI_IDS.filter((id) => id !== "signups")], tints: {} }, store);
   expect(store.data.has(KPI_KEY)).toBe(true);
-  saveLayout({ order: [...KPI_IDS], tints: { revenue: "green" } }, store);
+  saveLayout({ order: [...KPI_IDS], tints: { mrr: "green" } }, store);
   expect(store.data.has(KPI_KEY)).toBe(false);
 });
 
@@ -54,4 +55,14 @@ test("slotAt finds the box under a point", () => {
   const boxes = [{ left: 0, top: 0, width: 100, height: 50 }, { left: 106, top: 0, width: 100, height: 50 }];
   expect(slotAt(boxes, 150, 20)).toBe(1);
   expect(slotAt(boxes, 103, 20)).toBeNull();
+});
+
+test("the chart follows the green card, kept with the colours", () => {
+  const store = memory();
+  expect(mainOf(loadLayout(store))).toBe("mrr");
+  saveLayout({ order: [...KPI_IDS], tints: { revenue: "green", mrr: "none" } }, store);
+  expect(mainOf(loadLayout(store))).toBe("revenue");
+  saveLayout({ order: moveTo([...KPI_IDS], "conversion", 0), tints: { conversion: "green", revenue: "green" } }, store);
+  expect(mainOf(loadLayout(store))).toBe("conversion");
+  expect(mainOf({ order: [...KPI_IDS], tints: { mrr: "blue", "bounce rate": "green", visitors: "green" } })).toBeNull();
 });

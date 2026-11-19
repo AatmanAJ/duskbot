@@ -13,6 +13,9 @@ export const RETRY_MS = Object.freeze([2_000, 4_000, 8_000, 15_000, 30_000]);
 export const FRAME_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 /** A frame is fetched again at most this often while the server's page is open. */
 export const FRAME_EVERY_MS = 5 * 60 * 1000;
+/** A status a proxy in front of the server answers with its own page when the server is gone: a 502 to 504 from any
+ * proxy, and Cloudflare's 520 to 530 (a tunnel with no connector, as after uninstall.sh, is 530 "Error 1033"). */
+export const proxyAnswersForDownServer = (code) => (code >= 502 && code <= 504) || (code >= 520 && code <= 530);
 const FRAME_FETCH_MS = 5_000;
 const LIMITS = Object.freeze({ bots: 60, groups: 30, chats: 25, text: 120 });
 

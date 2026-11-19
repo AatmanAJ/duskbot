@@ -80,7 +80,7 @@ describe("bot-first sidebar", () => {
 
   it.each([
     { advanced: false, enabled: false, density: "comfortable", size: 36, spacing: ["gap-2.5", "rounded-[12px]", "p-2", "md:h-[54px]"] },
-    { advanced: false, enabled: false, density: "icons", size: 36, spacing: ["h-[54px]", "justify-center"] },
+    { advanced: false, enabled: false, density: "icons", size: 32, spacing: ["h-12", "justify-center"] },
   ] as const)("sizes bot portraits and row spacing in $density density with threads $enabled (advanced $advanced)", ({ advanced, density, size, spacing }) => {
     fixture.advanced = advanced;
     for (const avatar of [{}, { avatarUrl: "/api/attachments/portrait.png", avatarCrop: "circle" as const }]) {
@@ -252,7 +252,7 @@ describe("bot-first sidebar", () => {
 
   it.each([
     { advanced: false, density: "comfortable", face: 36, spacing: ["gap-2.5", "rounded-[12px]", "p-2", "md:h-[54px]"], name: "font-medium", preview: "text-[13px]" },
-    { advanced: false, density: "icons", face: 36, spacing: ["h-[54px]", "justify-center"], name: "font-semibold", preview: "text-[11px]" },
+    { advanced: false, density: "icons", face: 32, spacing: ["h-12", "justify-center"], name: "font-semibold", preview: "text-[11px]" },
   ] as const)("sizes group chat rows in $density density (advanced $advanced)", ({ advanced, density, face, spacing, name, preview }) => {
     fixture.advanced = advanced;
     const group: Group = { id: "room", threadId: "room-thread", name: "Launch", memberIds: [bot.id], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1 };

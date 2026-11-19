@@ -1,5 +1,6 @@
 import type { DeletionBlocker, DeleteAccountOptions } from "../../../../shared/billing-api";
-import type { CommandKind, CommandView, ConnectorsAnswer, WorkspaceDetail, WorkspaceSummary } from "../../../../shared/dashboard-protocol";
+import type { WebsiteHome } from "../../../../shared/account-api";
+import type { CommandKind, CommandView, ConnectFinishAnswer as FinishAnswer, ConnectorsAnswer, WorkspaceDetail, WorkspaceSummary } from "../../../../shared/dashboard-protocol";
 import type { PulseAnswer } from "../../../../shared/machine-pulse";
 import type { AccountDevice, AccountProfile, AuthProviders, BillingOverview, ChangeOffer, CheckoutAnswer, CheckoutRequest, CloudDesktop, DesktopId, EmailCodeStart, Identity, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection, SlackWake } from "../data/contracts";
 import { trackOnboardingDone } from "./analytics";
@@ -170,11 +171,13 @@ export const api = {
     if (FIXTURE) return send<AccountData>("/v1/account", "PATCH", profile);
     return accountFromWire(await send<AccountAnswer>("/v1/account", "PATCH", profile));
   },
-  finishOnboarding: async () => {
-    if (FIXTURE) return send("/v1/account/onboarded", "POST");
+  /** `home`: where the first steps put the bots, which the desktop app that sent the person here carries on from */
+  finishOnboarding: async (home?: WebsiteHome) => {
+    const body = home ? { home } : {};
+    if (FIXTURE) return send("/v1/account/onboarded", "POST", body);
     if (!accountId) await api.me();
     try { localStorage.setItem(`dusk-dash-onboarded:${accountId}`, "1"); } catch {}
-    await send("/v1/account/onboarded", "POST").catch(() => {});
+    await send("/v1/account/onboarded", "POST", body).catch(() => {});
     trackOnboardingDone();
   },
   setNotifications: (prefs: NotificationPrefs) => send<NotificationPrefs>("/v1/account/notifications", "PUT", prefs),
@@ -247,7 +250,9 @@ export const api = {
   workspaces: (signal?: AbortSignal) => call<{ workspaces: WorkspaceSummary[] }>("/v1/workspaces", { signal }),
   workspace: (id: string, signal?: AbortSignal) => call<WorkspaceDetail>(workspacePath(id), { signal }),
   pulse: (id: string, after: number, signal?: AbortSignal) => call<PulseAnswer>(`${workspacePath(id)}/pulse?after=${Math.max(0, Math.floor(after))}`, { signal }),
-  command: (id: string, kind: CommandKind, target: string) => send<{ command: CommandView }>(`${workspacePath(id)}/commands`, "POST", { kind, target }),
+  command: (id: string, kind: CommandKind, target: string, options?: { returnHere?: boolean }) => send<{ command: CommandView }>(`${workspacePath(id)}/commands`, "POST", { kind, target, ...(options?.returnHere ? { returnHere: true } : {}) }),
+  /** back on the apps page from a sign-in it started: the one-time state, and the app's word on how it ended */
+  finishConnect: (state: string, status: string | null) => send<FinishAnswer>("/v1/connect/finish", "POST", { state, ...(status ? { status } : {}) }),
   rename: (id: string, name: string) => send(workspacePath(id), "PATCH", { name }),
   forget: (id: string) => send(workspacePath(id), "DELETE"),
   claim: (token: string) => send<{ workspace: WorkspaceSummary }>("/v1/claim", "POST", { token }),

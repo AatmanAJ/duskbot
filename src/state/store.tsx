@@ -5,7 +5,7 @@ import { aiSendAllowed } from "@/lib/ai-consent-gate";
 import { trailAction } from "@/lib/trail-actions";
 import { cloudAsleep, onCloudPower } from "../lib/cloud-power";
 import { cloudWakingLoad, WAKING_LOAD_MS } from "./waking-load";
-import { chatInFront } from "@/lib/chat-in-front";
+import { awayFromChat, chatInFront, noteChatInFront } from "@/lib/chat-in-front";
 import { answerOf, api, ApiError, snapshotArrays } from "./api";
 import { sendOutbox } from "./send-outbox";
 import { chatSnapshotPath, MESSAGE_PAGE_SIZE, takeBootRead } from "./boot-reads";
@@ -21,7 +21,6 @@ import { isNotificationFeedAction, reduceNotificationFeed, type NotificationFeed
 import { bumpThreadUpdatedAt, mergeTaskStamps, rewindThreadUpdatedAt } from "./thread-stamps";
 import { botOpensTo, openBot, openThread, visibleNotificationThread } from "./thread-navigation";
 import { patchGroupTask } from "./thread-edits";
-import type { EngineInstall } from "./engine-install";
 import { optimisticMessageId, optimisticUserMessage, sendAnswerLost, sendArrived, sendReconciled } from "./optimistic-send";
 import { dropSentTurn, followSendReceipt, noteSentTurn } from "./sent-turn";
 import { applySendReceipt } from "./send-receipt";
@@ -124,7 +123,7 @@ export type SecretRequestCardData = Omit<import("../../shared/wire").SecretReque
 
 export type ComputerControlState = { held: boolean; helpReason: string | null; help?: import("../../shared/wire").ComputerHelpRef | null };
 
-export interface Message extends Pick<import("../../shared/wire").WireMessage, "widget" | "app" | "fromApp" | "pointed" | "routedBy" | "quickModel" | "automation" | "routineStart" | "publishedPage" | "sender" | "setupSuggestion" | "helperIntro" | "helperFollowup" | "setupOffer" | "setupChoices" | "setupChoicesPending" | "setupChoicesUpdating" | "setupRequest" | "relay" | "inbox" | "sentDirectly" | "doneWhen" | "bugReport" | "media" | "unconfirmed" | "peerResume"> {
+export interface Message extends Pick<import("../../shared/wire").WireMessage, "widget" | "app" | "fromApp" | "pointed" | "routedBy" | "quickModel" | "automation" | "routineStart" | "publishedPage" | "document" | "sender" | "setupSuggestion" | "helperIntro" | "helperFollowup" | "setupOffer" | "setupChoices" | "setupChoicesPending" | "setupChoicesUpdating" | "setupRequest" | "relay" | "inbox" | "sentDirectly" | "doneWhen" | "bugReport" | "media" | "unconfirmed" | "peerResume"> {
   id: string;
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "screen" | "connector" | "secret" | "signin" | "routine.run" | "goal.run" | "digest" | "compaction" | "call" | "widget" | "app";
@@ -264,6 +263,7 @@ export interface ThreadOpener {
   botId: string;
   name: string;
   delegationId?: string;
+  kind?: "pair" | "work";
   at: number;
 }
 
@@ -418,7 +418,7 @@ function taskPatchFields(patch: TaskUpdatePatch): Partial<Task> {
 }
 
 function openedUnreadDivider(state: AppState, threadId: string, unread: boolean, messages: readonly Message[], lastReadMessageId?: string): AppState["unreadDivider"] {
-  if (!unread) return state.unreadDivider?.threadId === threadId ? state.unreadDivider : null;
+  if (!unread || !awayFromChat(threadId)) return state.unreadDivider?.threadId === threadId ? state.unreadDivider : null;
   const messageId = firstUnreadMessageId(messages, lastReadMessageId);
   return messageId ? { threadId, messageId } : null;
 }
@@ -471,59 +471,8 @@ export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
 
 export type { EngineInstall } from "./engine-install";
 
-export interface InstanceInfo {
-  instanceId: string;
-  driverKind: string;
-  displayName: string;
-  icon?: import("../../shared/provider-icon").ProviderIcon;
-  readOnly?: boolean;
-  managed?: { organizationId: string; organizationName: string };
-  policy?: { organizationName: string; reason: string; team?: boolean };
-  snapshot: {
-    state: "available" | "unavailable";
-    reason?: string;
-    authenticated?: boolean;
-    chatgptPlan?: boolean;
-    /** Ready only through OpenCode's free no-login models: a backup, never "an AI already works". */
-    freeFallback?: boolean;
-    authenticationUnavailableReason?: string;
-    account?: { email?: string; organization?: string; method?: "login" | "api-key" };
-    version?: string | null;
-    update?: { title: string; message: string; command: string };
-    billing?: "metered" | "subscription";
-    warning?: { title: string; message: string };
-  };
-  /** What one tiny test message through this AI showed, for its current sign-in; absent until one is sent. */
-  aiTest?: import("../../shared/ai-ranking").AiTestState;
-  /** Why it didn't answer, in plain words, when it said (signed out, a used-up limit…). */
-  aiTestError?: string;
-  models: { default: string; options: Array<{ id: string; label: string; custom?: boolean; loaded?: boolean; provider?: string; variants?: ModelVariantOption[]; orgBlocked?: true }> };
-  capabilities?: {
-    computerMcp?: boolean;
-    agentsMcp?: boolean;
-    composioMcp?: boolean;
-    /** the engine can mount the native Email tools (a connected app without Composio), the paired phone's app tools and the Data tools */
-    emailMcp?: boolean; deviceMcp?: boolean; dataMcp?: boolean;
-    browserMcp?: boolean;
-    images?: boolean;
-    effortLevels?: readonly EffortLevel[];
-    modelVariants?: boolean;
-    queueing?: boolean;
-    localComputerMcp?: boolean;
-    approvalReview?: boolean;
-    backgroundText?: boolean;
-  };
-  access?: "subscription" | "custom" | "api";
-  authentication?: { method: "device-code" | "paste-code" | "browser" | "browser-pkce"; signOut?: boolean };
-  install?: EngineInstall;
-  cli?: string;
-  cliDefault?: string;
-  cliCandidates?: string[];
-  claudeAccount?: { configDir: string; signInCommand: string; signInShell: "powershell" | "sh"; isDefault: boolean };
-  freeUpSpace?: boolean; replyWaitMinutes?: number; modelsUnconfirmed?: true;
-  /** Found on this computer, never chosen: listed, never used on its own until the person says so. */
-  found?: true;
-}
+export type { InstanceInfo } from "./instance-info";
+import type { InstanceInfo } from "./instance-info";
 
 export type AppSettingsSection =
   | "general"
@@ -819,6 +768,7 @@ export type Action =
   | { type: "focusMessage"; threadId: string; messageId: string; matchText?: string }
   | { type: "focusMessageConsumed"; nonce: number }
   | { type: "unreadDividerDone"; threadId: string }
+  | { type: "chatBackInFront"; threadId: string; away: boolean }
   | { type: "toggleAppSettings"; open?: boolean; section?: AppSettingsSection; cloudLink?: boolean; phonePairing?: boolean }
   | { type: "toggleShortcuts"; open?: boolean }
   | { type: "openCloudAdd"; source: import("@/lib/cloud-plan").CloudSource; signIn?: true }
@@ -1139,7 +1089,7 @@ export function reducer(state: AppState, action: Action): AppState {
         return {
           ...state,
           unreadDivider: openedUnreadDivider(state, room.threadId, room.unread, room.messages, room.lastReadMessageId),
-          unreadDividerPending: (room.transcriptLoaded === false || room.transcriptStale) && room.unread ? room.threadId : undefined,
+          unreadDividerPending: (room.transcriptLoaded === false || room.transcriptStale) && room.unread && awayFromChat(room.threadId) ? room.threadId : undefined,
           activeView: "chat",
           selectedId: action.id,
           groups: state.groups.map((g) => (g.id === action.id ? { ...g, unread: false } : g)),
@@ -1153,7 +1103,7 @@ export function reducer(state: AppState, action: Action): AppState {
             unreadDivider: opened
               ? openedUnreadDivider(state, opened.threadId, threadOpensUnread(opened), visibleMessages(opened), threadReadCursor(opened))
               : state.unreadDivider,
-            unreadDividerPending: (opened?.transcriptLoaded === false || opened?.transcriptStale) && threadOpensUnread(opened) ? opened.threadId : undefined,
+            unreadDividerPending: (opened?.transcriptLoaded === false || opened?.transcriptStale) && threadOpensUnread(opened) && awayFromChat(opened.threadId) ? opened.threadId : undefined,
             activeView: "chat",
             selectedId: action.id,
           },
@@ -1531,6 +1481,21 @@ export function reducer(state: AppState, action: Action): AppState {
     case "focusMessageConsumed":
       if (!state.focusMessage || state.focusMessage.nonce !== action.nonce) return state;
       return { ...state, focusMessage: { ...state.focusMessage, consumed: true } };
+    case "chatBackInFront": {
+      const bot = state.activeView === "chat" ? state.bots.find((candidate) => candidate.id === state.selectedId && candidate.threadId === action.threadId) : undefined;
+      const room = state.activeView === "chat" ? state.groups.find((candidate) => candidate.id === state.selectedId && candidate.threadId === action.threadId) : undefined;
+      if (bot && threadOpensUnread(bot)) {
+        const divider = action.away ? firstUnreadMessageId(visibleMessages(bot), threadReadCursor(bot)) : null;
+        return updateBot({ ...state, ...(divider ? { unreadDivider: { threadId: action.threadId, messageId: divider } } : {}) }, bot.id,
+          (b) => ({ ...b, unread: Boolean(b.tasks?.some((task) => task.threadId !== b.threadId && task.unread)), tasks: b.tasks?.map((task) => task.threadId === b.threadId ? { ...task, unread: false } : task) }));
+      }
+      if (room?.unread) {
+        const divider = action.away ? firstUnreadMessageId(room.messages, room.lastReadMessageId) : null;
+        return { ...state, ...(divider ? { unreadDivider: { threadId: action.threadId, messageId: divider } } : {}),
+          groups: state.groups.map((group) => (group.id === room.id ? { ...group, unread: false } : group)) };
+      }
+      return state;
+    }
     case "unreadDividerDone":
       return state.unreadDivider?.threadId === action.threadId ? { ...state, unreadDivider: null } : state;
     case "openSignIn": {
@@ -2142,6 +2107,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (state.selectedId) rememberConversation(state.selectedId);
   }, [state.selectedId]);
+  const shownChatThread = state.activeView === "chat"
+    ? (state.bots.find((bot) => bot.id === state.selectedId) ?? state.groups.find((group) => group.id === state.selectedId))?.threadId ?? null
+    : null;
+  useEffect(() => { noteChatInFront(shownChatThread); }, [shownChatThread]);
+  useEffect(() => {
+    const note = () => {
+      const back = noteChatInFront();
+      if (!back) return;
+      const now = stateRef.current;
+      if (now.activeView !== "chat") return;
+      const bot = now.bots.find((candidate) => candidate.id === now.selectedId && candidate.threadId === back.threadId);
+      const room = now.groups.find((candidate) => candidate.id === now.selectedId && candidate.threadId === back.threadId);
+      if (bot && threadOpensUnread(bot)) api(`/api/bots/${bot.id}/read`, { method: "POST", body: JSON.stringify({ threadId: bot.threadId }) }).catch(() => {});
+      else if (room?.unread) api(`/api/groups/${room.id}/read`, { method: "POST" }).catch(() => {});
+      else return;
+      rawDispatch({ type: "chatBackInFront", ...back });
+    };
+    window.addEventListener("focus", note);
+    window.addEventListener("blur", note);
+    document.addEventListener("visibilitychange", note);
+    return () => {
+      window.removeEventListener("focus", note);
+      window.removeEventListener("blur", note);
+      document.removeEventListener("visibilitychange", note);
+    };
+  }, []);
   useEffect(() => {
     try { globalThis.localStorage?.setItem(BOT_PANEL_OPEN_KEY, state.settingsOpen ? "1" : "0"); } catch {}
   }, [state.settingsOpen]);

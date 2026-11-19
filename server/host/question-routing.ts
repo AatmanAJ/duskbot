@@ -97,8 +97,10 @@ export function createQuestionRouting(deps: QuestionRoutingDeps) {
     threadId?: string; sentThisTurn?: ReadonlySet<string> }): Promise<PeerDeliveryReceipt | undefined> {
     const { sender, target, message } = input;
     const waiting = waitingOn(target).filter((one) => deps.mayReach(input.senderThreadId, one.threadId));
+    // only work this very conversation handed on: a bot's one chat also runs what the sender's other conversations sent
     const ownWork = (node: HandoffView | undefined): node is HandoffView => node !== undefined && node.threadId === input.threadId
-      && !input.sentThisTurn?.has(node.id) && handedOnBy(node, sender.id) && deps.mayReach(input.senderThreadId, node.threadId);
+      && !input.sentThisTurn?.has(node.id) && handedOnBy(node, sender.id) && deps.node(node.parentId!)?.threadId === input.senderThreadId
+      && deps.mayReach(input.senderThreadId, node.threadId);
     const pick = input.answers !== undefined ? waiting.find((one) => one.node?.id === input.answers)
       : waiting.find((one) => one.node !== undefined && input.senderNode?.carrying?.includes(one.node.id) === true)
         ?? waiting.find((one) => ownWork(one.node) && (one.card !== undefined || !one.node.cards?.length));

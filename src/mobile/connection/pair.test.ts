@@ -230,6 +230,24 @@ describe("v2 pairing", () => {
     expect(channel.close).toHaveBeenCalledOnce();
   });
 
+  it("asks the relay once more when the desktop answered before its device channel was open, so the phone can reach it off wi-fi", async () => {
+    const late = { ...v2Answer(), relay: undefined };
+    const channel = { request: vi.fn().mockResolvedValueOnce(response(late)).mockResolvedValueOnce(response(v2Answer())), close: vi.fn() };
+    vi.spyOn(relay, "open").mockReturnValue(channel);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const { record, token } = await redeemPairing(pairingFromPayload(v2Payload()), fakePlatform().platform);
+    expect(record.relay).toEqual(v2Answer().relay);
+    expect(token).toBe("dusk_sess_test");
+    expect(channel.request).toHaveBeenCalledTimes(2);
+    expect(channel.request.mock.calls[1][3]).toEqual(channel.request.mock.calls[0][3]);
+
+    const stillLate = { request: vi.fn().mockResolvedValueOnce(response(late)).mockRejectedValueOnce(new TypeError("dropped")), close: vi.fn() };
+    vi.spyOn(relay, "open").mockReturnValue(stillLate);
+    const kept = await redeemPairing(pairingFromPayload(v2Payload()), fakePlatform().platform);
+    expect(kept.record).toMatchObject({ transport: "relay", deviceId: "device-1", relay: { base: grantRoute.base, channel: grantRoute.channel } });
+    expect(stillLate.close).toHaveBeenCalledOnce();
+  });
+
   it("stops on the first HTTP answer, including a refusal", async () => {
     const opened = vi.spyOn(relay, "open");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 401)));
@@ -285,6 +303,35 @@ describe("workspace reconnect", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 401)));
     await expect(connectToWorkspace(record, token, platform, new AbortController().signal)).rejects.toMatchObject({ code: "refused" });
     expect(opened).not.toHaveBeenCalled();
+  });
+
+  it("tries a computer's wi-fi first, and a phone paired over the relay goes on to it when the companion never saw it", async () => {
+    const { record, token, platform } = await saved();
+    const agent = await createRelaySecrets();
+    record.relay!.agentPub = agent.pub;
+    record.via = [record.via!.find((route) => route.kind === "relay")!, { kind: "companion", url: "http://mac.test:8810", net: "lan", priority: 1 }];
+    const channel = { request: vi.fn().mockResolvedValue(response({})), close: vi.fn() };
+    vi.spyOn(relay, "open").mockReturnValue(channel);
+    const fetched = vi.fn().mockResolvedValue(response({}, 401));
+    vi.stubGlobal("fetch", fetched);
+    expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({ kind: "relay", channel, token });
+    expect(fetched.mock.calls[0][0]).toBe("http://mac.test:8810/api/auth/session");
+  });
+
+  it.each([403, 404])("accepts HTTP %s from a companion after pairing has validated the token", async (status) => {
+    const { record, token, platform } = await saved();
+    record.via = [{ kind: "companion", url: "http://mac.test:8810", net: "lan", priority: 1 }];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, status)));
+    expect(await connectToWorkspace(record, token, platform, new AbortController().signal)).toEqual({
+      kind: "bearer", origin: "http://mac.test:8810", token,
+    });
+  });
+
+  it.each([403, 404])("does not accept HTTP %s from a regular workspace route", async (status) => {
+    const { record, token, platform } = await saved();
+    record.via = [{ kind: "https", url: "https://workspace.test" }];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, status)));
+    await expect(connectToWorkspace(record, token, platform, new AbortController().signal)).rejects.toMatchObject({ code: "unreachable" });
   });
 
   it("keeps a 401 authoritative even if closing its body fails", async () => {

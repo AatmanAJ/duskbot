@@ -2,7 +2,7 @@ import { createContext, memo, startTransition, use, useCallback, useContext, use
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { phoneApp } from "@/lib/store-app";
 import { ThreadLinkContext } from "@/components/ThreadLinkMenu";
-import { ChevronLeft, ChevronRight, Copy, Monitor, RefreshCw, Square, Webhook } from "../icons";
+import { ChevronRight, Copy, Monitor, RefreshCw, Square, Webhook } from "../icons";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { ACTION_ICON, ChatBusyContext, MESSAGE_ROW, MessageActions, messageActionClass, ReplyAction, type MessageMenuItem } from "@/components/MessageActions";
 import { copyMessage } from "@/lib/message-copy";
@@ -43,7 +43,7 @@ import { lowerFirst } from "@/lib/lower-first";
 import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
 import type { PlaceRow } from "../../shared/place-view";
 import { PartlyDoneRow } from "./PartlyDoneRow";
-import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "../../shared/system-message-guard.ts";
+import { botTextForDisplay, isPureLeakedBotText } from "../../shared/system-message-guard.ts";
 import { ConversationalReply, QuickModelNote, isConversational, useReplySegments, useThreadOpenedAt } from "./ConversationalReply";
 import { isProviderSafetyBlock, PROVIDER_SAFETY_GUIDANCE, PROVIDER_SAFETY_HELP_URL } from "../../shared/provider-safety";
 import { isCancelledTranscriptRow, isStoppedTurnName, PERSON_STOPPED_TURN_NAME } from "../../shared/client-cancel";
@@ -52,7 +52,8 @@ import { BotAvatar } from "./Avatar";
 import type { MarkState } from "./mascot-engine";
 import { poolWords } from "@/lib/friendly-activity";
 import type { LiveStatus } from "@/state/turn-status";
-import { TurnPresence, TYPING_PHASE } from "./TurnPresence";
+import { STATUS_DONE_EXIT_MS, STATUS_EXIT_MS, TurnPresence, TYPING_PHASE } from "./TurnPresence";
+import { workingMood } from "@/lib/working-mood";
 import { BrowserPartLine } from "./BrowserPartLine";
 import { browserPartFor } from "@/lib/browser-part";
 import { WorkingMascot } from "./WorkingMascot";
@@ -64,7 +65,7 @@ import { useNotesWork } from "@/lib/notes-arrival";
 import { useTypingHold } from "@/hooks/use-typing-hold";
 import { OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
-import { growFromMascot, hasSendLaunch, morphFromComposer } from "./bubble-entrance";
+import { enterFromComposer, growFromMascot, hasSendLaunch } from "./bubble-entrance";
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
 import { lifeDraw, lifeSpan } from "@/lib/reply-life";
 import { presenceKind, turnWorked, useHeldPresence } from "@/lib/presence-mark";
@@ -83,7 +84,7 @@ import { NewConversationInstead } from "./NewConversationInstead";
 import { useColorUserBubbles } from "@/lib/user-bubble-preference";
 import { grokAccentText, userBubbleStyle } from "@/lib/user-bubble-tone";
 import { ToolActivity } from "./ToolActivity";
-import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard";
+import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard"; import { DocumentCard } from "./documents/DocumentCard";
 import { ThreadRefText } from "./ThreadRefs";
 import { optionsCardRow, settledCardGoes } from "./OptionsCardRow";
 import { MessageBoundary } from "./MessageBoundary";
@@ -93,7 +94,7 @@ import { CARD_ACTION, ChatErrorBanner, ChatErrorCard, ChatNotice } from "./ChatE
 import { ThreadContextWarning } from "./ContextWarning";
 import { UsageAlert, useLimitResetContinue } from "./EngineUsage";
 import { ChatFindBar } from "./ChatFindBar";
-import { ReplyQuote } from "./ReplyQuote";
+import { QuotedText, ReplyQuote } from "./ReplyQuote";
 import { ConnectorCard } from "./ConnectorCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { SignInRequestCard } from "./SignInRequestCard";
@@ -129,6 +130,7 @@ import { splitTranscriptAttachments } from "@/lib/composer-attachments";
 import { useComposerDockPad } from "@/lib/composer-dock";
 import { GlassBar, GlassScrollFrame } from "./GlassScrollFrame";
 import { useTranscriptViewport } from "@/hooks/use-transcript-viewport";
+import { tailWindowStart } from "@/lib/transcript-window";
 import { useUnreadDivider } from "@/hooks/use-unread-divider";
 import { NewMessagesDivider } from "./NewMessagesDivider";
 import { PeerExchangeLine } from "./PeerExchangeLine";
@@ -349,7 +351,7 @@ const Bubble = memo(function Bubble({
   const speech = useSpeech();
   const speaking = speech.messageId === message.id && speech.status !== "idle";
   const rawText = peer ? peer.body : (message.text ?? "");
-  const text = user ? rawText : stripLeakedSystemHarnessMessages(rawText);
+  const text = user ? rawText : botTextForDisplay(rawText);
   const botMenu = useBotMessageMenu({
     text,
     botId,
@@ -401,22 +403,22 @@ const Bubble = memo(function Bubble({
     if (focusedSearch && collapsible) setExpanded(true);
   }, [focusedSearch, collapsible, focus?.nonce]);
   const reduced = usePrefersReducedMotion();
-  const own = useRef<{ bubble: HTMLDivElement | null; fill: HTMLSpanElement | null; entered: boolean }>({ bubble: null, fill: null, entered: false });
-  // a send carries its words out of the composer; a reply grows out of the mascot; anything else rises with its row
-  const [entrance] = useState<"morph" | "grow" | null>(() => {
+  const own = useRef<{ bubble: HTMLDivElement | null; entered: boolean }>({ bubble: null, entered: false });
+  // a send scales up out of the composer as the column follows; a reply grows out of the mascot; anything else rises
+  // with its row
+  const [entrance] = useState<"send" | "grow" | null>(() => {
     if (!fresh) return null;
     if (!user) return message.kind === "text" ? "grow" : null;
     const plain = !webhookView && !hasAttachments && Boolean(visibleText.trim()) && !emojiOnly(visibleText);
-    return plain && !reduced && hasSendLaunch(message.sendId) ? "morph" : null;
+    return plain && hasSendLaunch(message.sendId) ? "send" : null;
   });
-  const [filling, setFilling] = useState(entrance === "morph");
   useLayoutEffect(() => {
     const parts = own.current;
     if (parts.entered || !entrance || !parts.bubble) return;
     parts.entered = true;
     // on the phone the words come with the bubble, so no frame shows an empty one where the typing line just was
     if (entrance === "grow") growFromMascot(parts.bubble, reduced, phoneApp());
-    else void morphFromComposer(parts.bubble, parts.fill, message.sendId).then(() => setFilling(false));
+    else enterFromComposer(parts.bubble, message.sendId, reduced);
   }, [entrance, reduced, message.sendId]);
 
   if (user && editing && !webhookView && !hasAttachments) {
@@ -436,11 +438,6 @@ const Bubble = memo(function Bubble({
   const mediaReactions = floatReactions && mediaSplit;
   const reactionsOnBubble = floatReactions && !mediaSplit && !tabled;
   const mediaChips = mediaReactions && <ReactionChips float threadId={threadId} message={message} bots={bots} align="start" canReact={canReact} />;
-  const forks = user && versions ? versions : [message];
-  const versionIndex = forks.findIndex((v) => v.id === message.id);
-  const switchTo = (v: Message | undefined) => {
-    if (v && !busy && !v.id.startsWith("optimistic-")) dispatch({ type: "switchBranch", botId, threadId, messageId: v.id });
-  };
   const togglePin = () =>
     dispatch({ type: "updateTask", botId, threadId, patch: { pinnedMessageId: pinned ? "" : message.id } });
   const botActions = !user && (
@@ -452,7 +449,7 @@ const Bubble = memo(function Bubble({
   );
 
   return (
-    <div {...{ [MESSAGE_ROW]: "", ...(entrance ? { [OWN_ENTRANCE]: "" } : {}) }} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", (reactionsOnBubble || (mediaReactions && !group)) && "pt-[26px]", user ? "items-end" : "items-start", join?.above && SIMPLE_STACKED)}>
+    <div {...{ [MESSAGE_ROW]: "", ...(entrance ? { [OWN_ENTRANCE]: "" } : {}) }} data-sent-at={message.at || undefined} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", (reactionsOnBubble || (mediaReactions && !group)) && "pt-[26px]", user ? "items-end" : "items-start", join?.above && SIMPLE_STACKED)}>
       {message.relay ? <RelayLabel message={message} /> : peer && !underExchangeLine && <PeerLabel peer={peer} />}
       {speaker && <div className="mb-0.5 px-1 text-[12px] font-medium text-ink-secondary">{speaker}</div>}
       {imagesAbove && <AttachmentGallery media={message.media} images={imagesAbove.images} files={imagesAbove.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} align="end" className="mb-1" />}
@@ -476,7 +473,6 @@ const Bubble = memo(function Bubble({
           ref={(el) => { own.current.bubble = el; }}
           data-chat-bubble="simple"
           className={cn(
-            filling && "bubble-morph",
             tabled ? "w-full" : "w-fit",
             !tabled && SIMPLE_BUBBLE_MAX,
             emerging && "turn-answer",
@@ -492,14 +488,11 @@ const Bubble = memo(function Bubble({
             join && !split && !attachmentsOnly && !tabled && !mediaSplit && joinedCorners(user ? "end" : "start", join),
           )}
           data-emoji-only={bigEmoji ? "" : undefined}
+          data-quotable={user ? undefined : ""}
           data-sending={user && message.id.startsWith("optimistic-") ? t("chat.sending") : undefined}
           style={user && !webhookView && !attachmentsOnly && !bigEmoji ? ownBubbleStyle : undefined}
           data-reacted={reactionsOnBubble ? "" : undefined}
         >
-          {filling && (
-            <span ref={(el) => { own.current.fill = el; }} aria-hidden="true" data-chat-bubble="simple" style={{ ...ownBubbleStyle, borderRadius: "inherit" }}
-              className={cn(SIMPLE_USER_BUBBLE, ownBubbleStyle && "user-bubble-colored", "bubble-morph-fill")} />
-          )}
           {replyTarget && (
             <div className="mb-2">
               <ReplyQuote
@@ -531,7 +524,7 @@ const Bubble = memo(function Bubble({
               {attachments && !imagesAbove && <AttachmentGallery media={message.media} images={attachments.images} files={attachments.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} align="end" className={!visibleText ? "mb-0" : undefined} />}
               {visibleText && (
                 <div className={cn("chat-text", collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}>
-                  <ThreadRefText text={visibleText} peers={mentionPeers} />
+                  <QuotedText text={visibleText} render={(rest) => <ThreadRefText text={rest} peers={mentionPeers} />} />
                 </div>
               )}
               {message.quickModel && <QuickModelNote model={message.quickModel} />}
@@ -582,33 +575,6 @@ const Bubble = memo(function Bubble({
       </div>
       <time dateTime={new Date(message.at).toISOString()} className="chat-row-ts" aria-label={new Date(message.at).toLocaleTimeString()}>{formatTime(message.at)}</time>
       {!floatReactions && <ReactionChips threadId={threadId} message={message} bots={bots} align={user ? "end" : "start"} canReact={canReact} />}
-      {forks.length > 1 && (
-        <div className="mt-1 flex items-center gap-0.5 pr-1 text-[12px] text-ink-secondary">
-          <button
-            onClick={() => switchTo(forks[versionIndex - 1])}
-            disabled={versionIndex <= 0 || busy}
-            type="button"
-            className="rounded p-0.5 hover:bg-raised hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent pointer-coarse:p-2.5"
-            title={t("chat.previousVersion")}
-            aria-label={t("chat.previousVersion")}
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="tabular-nums">
-            {versionIndex + 1}/{forks.length}
-          </span>
-          <button
-            onClick={() => switchTo(forks[versionIndex + 1])}
-            disabled={versionIndex >= forks.length - 1 || busy}
-            type="button"
-            className="rounded p-0.5 hover:bg-raised hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent pointer-coarse:p-2.5"
-            title={t("chat.nextVersion")}
-            aria-label={t("chat.nextVersion")}
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      )}
     </div>
   );
 });
@@ -772,6 +738,37 @@ const transcriptRows = (item: TranscriptItem): readonly Message[] => item.kind =
 const noneTransparent = () => false;
 const hiddenSteps = (item: TranscriptItem) => item.kind !== "message";
 
+function hiddenChatRow(message: Message, botId: string, showToolCalls: boolean): boolean {
+  if (message.reaction || isCancelledTranscriptRow(message)) return true;
+  switch (richRowKind(message)) {
+    case "activity":
+      return Boolean(message.peerResume) || (!message.dataResult && !isStatusActivity(message) && quietRow(message, showToolCalls));
+    case "compaction":
+      return true;
+    case "digest":
+    case "screen":
+      return !showToolCalls;
+    case "secret":
+      return !message.secret;
+    case "signin":
+      return !message.signIn;
+    case "connector":
+      return !message.connector;
+    case "call":
+      return !message.call;
+    case "options":
+      return Boolean(message.helperFollowup || (settledCardGoes(message) && !showsSettledChange(message.card)));
+    case "widget":
+    case "app":
+    case "routine.run":
+      return false;
+    default:
+      if (message.publishedPage || message.document) return false;
+      if (message.role === "user" && !peerLine(message) && !peerRequest(message, botId)) return routineStartName(message) !== null;
+      return !message.attachments?.length && isPureLeakedBotText(message.text);
+  }
+}
+
 const MessagesList = memo(function MessagesList({
   messages,
   transcript,
@@ -881,7 +878,7 @@ const MessagesList = memo(function MessagesList({
         const m = item.message;
         const row = (() => {
           // the chat talks in bubbles: stops, finished steps and settled cards leave no technical rows behind
-          if (isCancelledTranscriptRow(m)) return null;
+          if (hiddenChatRow(m, botId, showToolCalls)) return null;
           switch (richRowKind(m)) {
             case "secret":
               return m.secret ? <SecretRequestCard botId={botId} color={botColor} threadId={threadId} message={m} /> : null;
@@ -901,12 +898,10 @@ const MessagesList = memo(function MessagesList({
             case "call":
               return m.call ? <CallRecordRow message={m} transcript={transcript} botName={botName} threadId={threadId} busy={busy} hasMore={hasMore} /> : null;
             case "activity": {
-              if (m.peerResume) return null;
               if (m.dataResult) return <DataResultChip message={m} />;
               if (isStatusActivity(m)) return <StatusActivityRow message={m} />;
               if (m.tool && failedTurnCause(m.tool.name) !== null) {
                 // a reply that never came is said once, in the card above the composer
-                if (!m.tool.partial) return null;
                 return (
                   <FailedTurnRow
                     tool={m.tool}
@@ -917,21 +912,17 @@ const MessagesList = memo(function MessagesList({
                   />
                 );
               }
-              if (!showToolCalls && !m.comm && !m.threadRef && !m.relay && !m.dataResult) return null;
               return <ActivityChip message={m} place={place} />;
             }
             case "digest":
-              return showToolCalls ? <DigestChip message={m} /> : null;
+              return <DigestChip message={m} />;
             case "compaction":
               return null;
             case "screen":
-              return showToolCalls ? <ScreenFrame threadId={threadId} message={m} /> : null;
+              return <ScreenFrame threadId={threadId} message={m} />;
             default: {
               if (m.publishedPage) return <PublishedPageCard message={m} />;
-              const peer = peerLine(m) ?? peerRequest(m, botId);
-              const user = m.role === "user" && !peer;
-              if (user && routineStartName(m) !== null) return null;
-              if (!user && isPureLeakedSystemHarnessMessage(m.text) && !m.attachments?.length) return null;
+              if (m.document) return <DocumentCard message={m} />;
               return (
                 <Bubble
                   message={m}
@@ -1020,6 +1011,9 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   const messages = stopCut ? shownMessages : hold.rows;
   const lookups = useMemo(() => transcriptLookups(allMessages, messages), [allMessages, messages]);
   const liveTools = useLiveToolIds(messages, bot);
+  const showToolCalls = showToolCallsEnabled(state.config);
+  const latestVisibleIndex = useMemo(() => messages.findLastIndex((message) => !hiddenChatRow(message, bot.id, showToolCalls)), [messages, bot.id, showToolCalls]);
+  const focus = state.focusMessage?.threadId === bot.threadId ? state.focusMessage : null;
 
   const {
     scrollRef,
@@ -1041,8 +1035,19 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
     messages,
     pinOn: [bot.busy, composerDock.pad],
     hasMore: bot.hasMore,
+    latestVisibleIndex: latestVisibleIndex >= 0 ? latestVisibleIndex : undefined,
   });
   useTimestampPeek(scrollRef);
+
+  const oldestId = allMessages[0]?.id;
+  const historyKey = `${transcriptKey}:${state.transcriptGeneration[bot.threadId] ?? 0}:${oldestId}`;
+  const attemptedEarlier = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!following || (focus && !focus.consumed) || transcriptPending || bot.transcriptStale || olderPending ||
+        latestVisibleIndex >= 0 || !bot.hasMore || !oldestId || attemptedEarlier.current === historyKey) return;
+    attemptedEarlier.current = historyKey;
+    dispatch({ type: "loadOlderMessages", threadId: bot.threadId });
+  }, [following, focus, transcriptPending, bot.transcriptStale, olderPending, latestVisibleIndex, bot.hasMore, oldestId, historyKey, bot.threadId, dispatch]);
 
   const lastBotTextId = useMemo(
     () => [...messages].reverse().find((m) => m.role === "bot" && m.kind === "text")?.id,
@@ -1052,8 +1057,6 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
 
   const bots = useDrawnBots(state.bots);
   const teammates = useTeammates(); const mentionPeers = useMemo(() => [...bots.filter((peer) => peer.id !== bot.id), ...teammates.peers], [bots, bot.id, teammates]);
-  const focus = state.focusMessage?.threadId === bot.threadId ? state.focusMessage : null;
-  const showToolCalls = showToolCallsEnabled(state.config);
   const tts = state.config?.tts;
   const localVoice = localSystemVoiceActive();
   const locale = activeLocale();
@@ -1128,9 +1131,15 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // notes from another AI being brought in: the import's own steps are this bot's working row until its summary lands
   const importing = useNotesWork(bot.id);
   const presenceVisible = !stopCut && (hold.typing || (waiting && mountDue) || teammatesWorking || Boolean(importing));
+  // while the turn runs its notices are the working row's to say, not the chat's too; once it ends, what it left is one
+  // card above the composer
+  const trailing = useTrailingRows(messages, !bot.busy);
+  // a turn that ended on its own, with nothing failed, sends the mascot off with a happy hop
+  const turnDone = !presenceVisible && !turnBusy && !stopCut && !teammatesWorking && !importing && !trailing?.failures.length;
   // the bubble the line hangs under keeps its pinched corner until the line has finished leaving, as grok's does
-  const presenceLingers = useLingering(presenceVisible, 140);
-  const paintedMessages = useFirstPaintRows(transcriptKey, windowedMessages, Boolean(focus && !focus.consumed) || laterCount > 0, scrollRef, following);
+  const presenceLingers = useLingering(presenceVisible, turnDone ? STATUS_DONE_EXIT_MS : STATUS_EXIT_MS);
+  const expandedTail = following && latestVisibleIndex >= 0 && latestVisibleIndex < tailWindowStart(messages.length);
+  const paintedMessages = useFirstPaintRows(transcriptKey, windowedMessages, expandedTail || Boolean(focus && !focus.consumed) || laterCount > 0, scrollRef, following);
   const lastShownRow = windowedMessages.findLast((message) => !quietRow(message, showToolCalls));
   const lastRowIsBubble = Boolean(lastShownRow && isBotTextRow(lastShownRow, bot.id));
   const presenceUnderBubble = lastRowIsBubble;
@@ -1166,10 +1175,12 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
     ? turnStartedAt + mountDelay + lifeSpan(presenceSeed, 0) + lifeSpan(presenceSeed, 1)
     : null;
   const opening = !useReached(openingEnd) && openingEnd !== null && presence === "working";
-
-  // while the turn runs its notices are the working row's to say, not the chat's too; once it ends, what it left is one
-  // card above the composer
-  const trailing = useTrailingRows(messages, !bot.busy);
+  const mood = workingMood({
+    phase: writing ? TYPING_PHASE : now.phase,
+    waiting: teammatesWorking || pendingApprovals(messages).length > 0,
+    failed: lastForLine?.kind === "activity" && lastForLine.tool?.ok === false,
+    done: turnDone,
+  });
   const rescuing = useRescueGrace(Boolean(bot.busy), mayTakeOver(bot, state.instances), `${bot.id}:${bot.threadId}`);
   const answering = answeringModel(profile, bot.threadId, bot.modelSelection);
   const folded = useMemo(() => {
@@ -1402,9 +1413,10 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
           <div className={statusSlot ? cn("turn-status-slot h-9 shrink-0", presenceUnderBubble && SIMPLE_STACKED) : "contents"}>
           {(presenceVisible || presenceShown) && <TurnPresence
             avatar={
-              <WorkingMascot bot={bot} size={phoneApp() ? 30 : 24} seed={presenceSeed} />
+              <WorkingMascot bot={bot} size={phoneApp() ? 30 : 22} seed={presenceSeed} mood={mood} />
             }
             simple
+            done={turnDone}
             className={cn(!statusSlot && presenceUnderBubble && SIMPLE_STACKED)}
             label={teammatesWorking ? t("chat.teammatesWorking") : importing && !turnBusy ? importing : undefined}
             visible={presenceVisible}

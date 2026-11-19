@@ -18,6 +18,7 @@ import { callReadPages, READ_PAGES_TOOL } from "./agents-read-pages.ts";
 import { callHelperTool, HELPER_TOOL_NAMES } from "./agents-helper-tools.ts";
 import { callUsageLimitsTool, USAGE_LIMITS_TOOL } from "./agents-usage-tool.ts";
 import { callChecklistTool, CHECKLIST_TOOL } from "./agents-checklist-tool.ts";
+import { callDocumentTool, DOCUMENT_TOOL_NAMES } from "./agents-document-tools.ts";
 import { callWaitTool, WAIT_TOOL_NAMES } from "./agents-wait-tools.ts";
 import { callDuskTool, DUSK_TOOL_NAMES } from "./agents-dusk-tools.ts";
 import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
@@ -256,6 +257,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (WAIT_TOOL_NAMES.has(name)) return callWaitTool(name, args, context);
   if (name === USAGE_LIMITS_TOOL) return callUsageLimitsTool(context);
   if (name === CHECKLIST_TOOL) return callChecklistTool(args, context);
+  if (DOCUMENT_TOOL_NAMES.has(name)) return callDocumentTool(name, args, context);
   if (name === STATUS_TOOL) return callStatusTool();
   if (name === SEND_MESSAGE_TOOL) return callSendMessageTool();
   if (name === "tool_result_read") {
@@ -950,7 +952,7 @@ async function requestLoginCard(args: Json, context: ToolCallContext): Promise<T
 async function requestCustomSecret(args: Json, context: ToolCallContext): Promise<ToolCallResult> {
   const r = await context.client.apiResponse("/api/internal/request-credential", {
     method: "POST",
-    body: JSON.stringify({ fromBotId: context.botId, fromThreadId: context.threadId, label: args.label, reason: args.reason, placeholder: args.placeholder, delivery: args.delivery, failed: args.failed }),
+    body: JSON.stringify({ fromBotId: context.botId, fromThreadId: context.threadId, label: args.label, reason: args.reason, placeholder: args.placeholder, delivery: args.delivery, failed: args.failed, pastedAs: args.pasted_as }),
   });
   const label = typeof r.body.label === "string" ? r.body.label : "the secret";
   if (!r.ok) return { text: String(r.body.error ?? `request_credential failed (HTTP ${r.status}).`), isError: true };
@@ -961,6 +963,6 @@ async function requestCustomSecret(args: Json, context: ToolCallContext): Promis
   const vault = r.body.vault === "removed" ? ` The service said the saved ${label} is wrong, so dusk bot removed it from the Vault; the card tells the person and asks for a new one, so do not repeat that.`
     : r.body.vault === "flagged" ? ` The saved ${label} may be wrong, so dusk bot marked it for the person to check; the card asks them for a new one, so do not repeat that.` : "";
   return {
-    text: `A secure card for ${label} is now in this conversation, in the app and on a QR-paired phone, and the person was notified. If they can't find it, tell them it is in this conversation, and the notification opens it.${asked}${vault} End this turn now and say in one line that you are waiting for it; dusk bot resumes you when the person saves or declines, and tells you how to use it. Never ask for it in chat.`,
+    text: `A secure card for ${label} is now in this conversation, in the app and on a QR-paired phone, and the person was notified. If they can't find it, tell them it is in this conversation, and the notification opens it.${asked}${vault} End this turn now with one short line in Sentence case, such as "Add your ${label} in the card above.", and nothing more; dusk bot resumes you when the person saves or declines, and tells you how to use it. Never ask for it in chat.`,
   };
 }

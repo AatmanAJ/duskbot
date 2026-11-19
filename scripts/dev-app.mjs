@@ -47,7 +47,8 @@ const run = (command, args, { relaunches = false } = {}) => {
 process.once("SIGINT", () => end(0));
 process.once("SIGTERM", () => end(0));
 
-run(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url))]);
+// a taken UI port must fail loudly: Vite would move to the next port while the window still loads this one
+run(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--strictPort"]);
 for (let attempt = 0; attempt < 120 && !ending; attempt += 1) {
   if (await fetch(env.ELECTRON_START_URL).then(() => true, () => false)) break;
   await new Promise((resolve) => setTimeout(resolve, 250));

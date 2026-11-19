@@ -91,9 +91,9 @@ function railKeepsItsSize() {
 if (typeof window !== "undefined") {
   for (const type of ["resize", "DOMContentLoaded"]) window.addEventListener(type, () => { leaveRailRoom(); railKeepsItsSize(); });
 }
-const REMOTE_SAFE = new Set(["platform", "app", "getCapabilities", "onCapabilitiesChanged", "applySkin", "setUnreadCount", "permStatus", "workspaces", "rail", "cloudAdd", "cloudPlan", "cloudSendPage", "accountSheet", "desktopNotices", "desktopNotifications", "desktopAnalytics", "desktopLanguage", "windowControls", "onOpenAppSettings", "windowFrame", "sealTrust", "linkDirect", "onSlackOAuth", "ambient", "desktopBots", "requireUserPresence", "vpsCloudMove", "trail"]);
+const REMOTE_SAFE = new Set(["platform", "cloudMac", "app", "getCapabilities", "onCapabilitiesChanged", "applySkin", "setUnreadCount", "permStatus", "workspaces", "rail", "cloudAdd", "cloudPlan", "cloudSendPage", "accountSheet", "desktopNotices", "desktopNotifications", "desktopAnalytics", "desktopLanguage", "windowControls", "onOpenAppSettings", "windowFrame", "sealTrust", "linkDirect", "onSlackOAuth", "ambient", "desktopBots", "requireUserPresence", "vpsCloudMove", "trail"]);
 /** My Cloud's own page once it is the person's home (main checks the sender again): it is this app's page then. */
-const HOME_PAGE = ["home", "onChatLink", "onPackageInstall", "exportDiagnostics", "openLogsFolder", "openAtLogin", "callActive", "productEvents",
+const HOME_PAGE = ["home", "appUpdate", "onChatLink", "onPackageInstall", "exportDiagnostics", "openLogsFolder", "openAtLogin", "callActive", "productEvents",
   "speechStart", "speechStop", "speechFinish", "onSpeechTranscript", "onSpeechEnd", "onSpeechLevel"];
 function homePage() {
   try { return ipcRenderer.sendSync("home:page") === true; } catch { return false; }
@@ -200,6 +200,7 @@ const bridge = {
     },
     handLook: (look) => ipcRenderer.send("workspaces:switch-look", look),
     takeLook: () => { try { return ipcRenderer.sendSync("workspaces:switch-look-take") ?? null; } catch { return null; } },
+    arrived: () => { try { return ipcRenderer.sendSync("workspaces:switch-arrived") === true; } catch { return false; } },
   },
   // The window's own rail (this app's page at /rail, beside every place's page): while a sheet of its own is open it
   // covers the window; the skin of the page beside it comes from main, and whether that page draws the window's frame.
@@ -336,6 +337,11 @@ const bridge = {
     retry: () => ipcRenderer.invoke("companion-account:retry"),
     prepare: () => ipcRenderer.invoke("companion-account:prepare"),
     signOut: () => ipcRenderer.invoke("companion-account:sign-out"),
+  },
+  /** This computer's relay to its phones: status only; the tunnel token and keys never leave the main process. */
+  phoneRelay: {
+    state: () => ipcRenderer.invoke("phone-relay:state"),
+    ready: () => ipcRenderer.invoke("phone-relay:ready"),
   },
   /** Full/Custom never go through the loopback API, only the embedded server's private utilityProcess port. */
   approvals: {
@@ -609,6 +615,7 @@ const bridge = {
     cancelPlan: survey => ipcRenderer.invoke("cloud-account:cancelPlan", survey ?? null),
     keepPlan: () => ipcRenderer.invoke("cloud-account:keepPlan"),
     holdSignIns: () => ipcRenderer.invoke("cloud-account:holdSignIns"),
+    carriedAis: () => ipcRenderer.invoke("cloud-account:carriedAis"),
     onState: cb => {
       const handler = (_event, state) => cb(state);
       ipcRenderer.on("cloud-account:state-changed", handler);
@@ -694,7 +701,7 @@ const bridge = {
       return () => ipcRenderer.removeListener("vps-cloud-move:changed", handler);
     },
   },
-  // This computer's page only: a downloaded update of this app waiting for a restart (electron/app-update.mjs).
+  // This computer's page and My Cloud's once it is home: this app's own update (electron/app-update.mjs).
   appUpdate: {
     state: () => ipcRenderer.invoke("app-update:state"),
     restart: () => ipcRenderer.invoke("app-update:restart"),
@@ -743,6 +750,20 @@ const bridge = {
       return () => ipcRenderer.removeListener("start-fresh:changed", handler);
     },
   },
+  cloudMac: {
+    state: () => ipcRenderer.invoke("cloud-mac:state"),
+    setEnabled: on => ipcRenderer.invoke("cloud-mac:setEnabled", on === true),
+    setMode: mode => ipcRenderer.invoke("cloud-mac:setMode", String(mode)),
+    setLimitFolders: on => ipcRenderer.invoke("cloud-mac:setLimitFolders", on === true),
+    addFolder: () => ipcRenderer.invoke("cloud-mac:addFolder"),
+    removeFolder: folder => ipcRenderer.invoke("cloud-mac:removeFolder", String(folder)),
+    openLog: () => ipcRenderer.invoke("cloud-mac:openLog"),
+    onChange: listener => {
+      const handler = (_event, view) => listener(view);
+      ipcRenderer.on("cloud-mac:changed", handler);
+      return () => ipcRenderer.removeListener("cloud-mac:changed", handler);
+    },
+  },
   vpsLink: {
     state: () => ipcRenderer.invoke("vps-link:state"),
     start: () => ipcRenderer.invoke("vps-link:start"),
@@ -762,7 +783,7 @@ const bridge = {
     backups: () => ipcRenderer.invoke("vps-link:backups"),
     backupNow: () => ipcRenderer.invoke("vps-link:backupNow"),
     restore: id => ipcRenderer.invoke("vps-link:restore", String(id)),
-    moveBack: () => ipcRenderer.invoke("vps-link:moveBack"),
+    moveBack: (placeId) => ipcRenderer.invoke("vps-link:moveBack", typeof placeId === "string" ? placeId : undefined),
     forget: () => ipcRenderer.invoke("vps-link:forget"),
     onChange: cb => {
       const handler = (_event, view) => cb(view);

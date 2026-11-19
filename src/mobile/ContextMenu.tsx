@@ -14,8 +14,9 @@ export interface ContextAction {
   onSelect: () => void;
 }
 
-/** A touch handed to the system's context menu instead of the page's own hold. */
-export interface NativePress { press(el: HTMLElement): void; cancel(): void }
+/** A touch handed to the system's context menu instead of the page's own hold. `opened` runs when the system menu
+ * shows, so the tap that ends the hold does not also open the item under it. */
+export interface NativePress { press(el: HTMLElement, opened: () => void): void; cancel(): void }
 
 const HOLD_MS = 430;
 const MOVE_CANCEL = 8;
@@ -77,7 +78,7 @@ export function useLongPress(ref: RefObject<HTMLElement | null>, onOpen: (rect: 
       if (event.touches.length !== 1) { cancel(); press?.cancel(); return; }
       fired = false;
       start = { x: event.touches[0].clientX, y: event.touches[0].clientY };
-      if (press) { press.press(el); return; }
+      if (press) { press.press(el, () => { fired = true; window.clearTimeout(timer); timer = 0; }); return; }
       sink(true);
       timer = window.setTimeout(fire, HOLD_MS);
     };

@@ -568,6 +568,14 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   const nativeSetters = useMemo(() => Object.fromEntries(NATIVE_IDS.map((id) => [id, setNative(id)])) as Record<NativeId, (value: boolean | null) => void>, [setNative]);
 
   const detailEntry = detailId ? byId.get(detailId) : undefined;
+  // a page asked for by an id this catalog does not have (a link from the website) searches for it instead
+  const missingId = page.kind === "detail" && ready && !detailEntry && page.id !== MCP_PAGE && page.id !== CUSTOM_MCP ? page.id : null;
+  useEffect(() => {
+    if (!missingId) return;
+    setQuery(missingId);
+    go({ kind: "home" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingId]);
   // our own card leads only when it is one click; otherwise Composio's sign-in does, and ours waits under the other ways
   // gmail's app password card stays on its page even when Composio's listing is the row
   const hasOwnCard = (entry: AppEntry) => OWN_KINDS.has(entry.kind) || entry.id === GMAIL;

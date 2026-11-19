@@ -21,9 +21,12 @@ export function createHomeClient(options: { fetch?: typeof fetch; now?: () => nu
         headers: withLegacyHeaders({ "content-type": "application/json", "x-dusk-cloud-timestamp": timestamp, "x-dusk-cloud-nonce": nonce, "x-dusk-cloud-signature": `v1=${signCloudRequest(secret, timestamp, nonce, method, target, body)}` }),
         ...(method === "POST" ? { body } : {}),
       });
-      if (!response.ok) { await response.body?.cancel(); throw new Error(); }
+      if (!response.ok) { await response.body?.cancel(); throw Object.assign(new Error(), { status: response.status }); }
       return await boundedJson(response, method === "POST" ? 4096 : 65_536);
-    } catch { throw new Error("Cloud home request failed."); }
+    } catch (error) {
+      const status = (error as { status?: unknown }).status;
+      throw Object.assign(new Error("Cloud home request failed."), typeof status === "number" ? { status } : {});
+    }
   }
   return {
     async power(origin, secret, idleMinutes) {

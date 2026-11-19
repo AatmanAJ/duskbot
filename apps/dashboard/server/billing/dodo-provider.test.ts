@@ -105,6 +105,22 @@ describe("dodo HTTP provider fixture", () => {
       reply = { payment_link }; await expect(provider().updatePaymentMethod("sub", input.returnUrl)).rejects.toMatchObject({ code: "refused" });
     }
   });
+  it("a create-checkout that dodo drops once (5xx) is asked again quietly; a refusal or a second drop is not", async () => {
+    let calls = 0, failFirst = 1;
+    server.removeAllListeners("request");
+    server.on("request", async (req, res) => {
+      for await (const _ of req) { /* drain */ }
+      calls++;
+      const down = calls <= failFirst;
+      res.writeHead(down ? 502 : 200, { "content-type": "application/json" });
+      res.end(JSON.stringify(down ? {} : { session_id: "s3", checkout_url: "https://test.checkout.dodopayments.com/session/s3" }));
+    });
+    expect(await provider().createCheckout(input)).toEqual({ sessionId: "s3", url: "https://test.checkout.dodopayments.com/session/s3" });
+    expect(calls).toBe(2);
+    calls = 0; failFirst = 2;
+    await expect(provider().createCheckout(input)).rejects.toMatchObject({ code: "unavailable" });
+    expect(calls, "only one retry").toBe(2);
+  });
   it("refuses cross-mode, credential-bearing and unsafe checkout urls", async () => {
     for (const checkout_url of ["http://test.checkout.dodopayments.com/a", "https://checkout.dodopayments.com/a", "https://test.checkout.dodopayments.com.evil.test/a", "https://user@test.checkout.dodopayments.com/a", "https://test.checkout.dodopayments.com:444/a"]) {
       reply = { session_id: "s", checkout_url }; await expect(provider().createCheckout(input)).rejects.toMatchObject({ code: "refused" });

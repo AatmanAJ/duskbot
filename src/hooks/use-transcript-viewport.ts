@@ -13,6 +13,7 @@ import {
 import { BOTTOM_FOLLOW_THRESHOLD, shouldResumeBottomFollow, useBottomFollowResize } from "@/lib/bottom-follow";
 import { useFocusMessage } from "@/lib/focus-message";
 import {
+  PHONE_TRANSCRIPT_WINDOW_SIZE,
   TRANSCRIPT_WINDOW_SIZE,
   expandWindowStart,
   focusWindowRange,
@@ -23,6 +24,7 @@ import {
 import { reducedMotion } from "@/lib/onboarding";
 import { useArrivalFlow } from "@/hooks/use-arrival-flow";
 import { useStore } from "@/state/store";
+import { phoneApp } from "@/lib/store-app";
 
 export const AUTO_EXPAND_TOP_THRESHOLD = 250;
 
@@ -35,6 +37,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   pinOn,
   transcriptShown = true,
   hasMore = false,
+  latestVisibleIndex,
 }: {
   ownerId: string;
   threadId: string;
@@ -42,6 +45,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   pinOn: DependencyList;
   transcriptShown?: boolean;
   hasMore?: boolean;
+  latestVisibleIndex?: number;
 }) {
   const { state, dispatch } = useStore();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -57,7 +61,8 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   const touchY = useRef(0);
 
   const transcriptKey = `${ownerId}:${threadId}`;
-  const tailStart = tailWindowStart(messages.length);
+  const windowSize = phoneApp() ? PHONE_TRANSCRIPT_WINDOW_SIZE : TRANSCRIPT_WINDOW_SIZE;
+  const tailStart = Math.min(tailWindowStart(messages.length, windowSize), latestVisibleIndex ?? Infinity);
   const [transcriptWindow, setTranscriptWindow] = useState<{
     key: string;
     start: number;
@@ -71,7 +76,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   const nextStart = switched
     ? tailStart
     : follow && transcriptWindow.end === null
-      ? followWindowStart(messages, transcriptWindow.start)
+      ? Math.min(tailStart, followWindowStart(messages, transcriptWindow.start, windowSize))
       : transcriptWindow.start;
   if (switched || nextStart !== transcriptWindow.start) {
     setTranscriptWindow({ key: transcriptKey, start: nextStart, end: null });
@@ -83,8 +88,8 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     startIndex,
     endIndex,
   } = useMemo(
-    () => resolveTranscriptWindow(messages, transcriptWindow.start, TRANSCRIPT_WINDOW_SIZE, transcriptWindow.end),
-    [messages, transcriptWindow.start, transcriptWindow.end],
+    () => resolveTranscriptWindow(messages, transcriptWindow.start, windowSize, transcriptWindow.end),
+    [messages, transcriptWindow.start, transcriptWindow.end, windowSize],
   );
 
   const setBottomFollow = useCallback((next: boolean) => {
@@ -102,7 +107,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     const targetIndex = messages.findIndex((message) => message.id === focus.messageId);
     if (targetIndex < 0) return;
     appliedFocus.current = focus.nonce;
-    const range = focusWindowRange(messages.length, targetIndex);
+    const range = focusWindowRange(messages.length, targetIndex, windowSize);
     setBottomFollow(false);
     setTranscriptWindow({ key: transcriptKey, start: range.start, end: range.end });
   }, [threadId, messages, setBottomFollow, state.focusMessage, transcriptKey]);
@@ -150,12 +155,12 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
 
   const showEarlier = () => {
     holdRowForPrepend();
-    const start = expandWindowStart(startIndex);
+    const start = expandWindowStart(startIndex, windowSize);
     setTranscriptWindow((w) => ({ ...w, start }));
   };
   const showLater = () => {
     setBottomFollow(false);
-    const nextEnd = Math.min(messages.length, endIndex + TRANSCRIPT_WINDOW_SIZE);
+    const nextEnd = Math.min(messages.length, endIndex + windowSize);
     setTranscriptWindow((w) => ({ ...w, end: nextEnd >= messages.length ? null : nextEnd }));
   };
   const olderPending = Boolean(state.loadingOlder[threadId]);
@@ -173,7 +178,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
     if (hiddenCount > 0) {
       expandingRef.current = true;
       holdRowForPrepend();
-      const start = expandWindowStart(startIndex);
+      const start = expandWindowStart(startIndex, windowSize);
       setTranscriptWindow((w) => ({ ...w, start }));
     } else if (hasMore && !olderPending) {
       expandingRef.current = true;

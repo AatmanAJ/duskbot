@@ -120,10 +120,19 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
       const held = await stash.open(id);
       if (!held) continue;
       if (held.accountId !== c.accountId) { await stash.drop(id); continue; }
+      const secret = sealer.unseal(c.bootstrapSecret);
       try {
-        await client.signIns(c.origin, sealer.unseal(c.bootstrapSecret), held.items);
+        await client.signIns(c.origin, secret, held.items);
         await stash.drop(id);
-      } catch { console.warn(`clouds: handing held AI sign-ins to cloud ${c.id} failed; it is tried again on the next pass`); }
+      } catch (error) {
+        // a home on an older image refuses kinds it doesn't know: it still takes the ChatGPT login, the one kind every home takes
+        const older = (error as { status?: unknown }).status === 400 && held.items.some(item => item.kind !== "codex-auth");
+        const known = held.items.filter(item => item.kind === "codex-auth");
+        if (older && known.length) {
+          try { await client.signIns(c.origin, secret, known); await stash.drop(id); continue; } catch {}
+        } else if (older) { await stash.drop(id); continue; }
+        console.warn(`clouds: handing held AI sign-ins to cloud ${c.id} failed; it is tried again on the next pass`);
+      }
     }
   }
   function get(id: string) { return store.state.clouds.find(c => c.id === id) ?? null; }
@@ -132,7 +141,8 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
     if (c.status !== "running" || !c.origin || c.suspended !== null || c.ended || c.destroyAt !== null && c.destroyAt <= now()) throw new CloudError(409, "unavailable");
     const claims = c.team && member ? { label: "dusk bot app (Team Cloud)", team: c.team, member } : { label: "dusk bot app (Cloud)" };
     const result = await (c.backend ? options.managedHome ?? home : home).pair(c.origin, sealer.unseal(c.bootstrapSecret), { ...claims, ttlSeconds: 300 });
-    return { origin: c.origin, code: result.code, expiresAt: result.expiresAt };
+    // the cloud's link public key: the app checks its cloud's sealed Mac jobs against it (docs/cloud-uses-mac.md)
+    return { origin: c.origin, code: result.code, expiresAt: result.expiresAt, ...(c.linkPublicKey ? { linkKey: c.linkPublicKey } : {}) };
   }
   function requireOwned(accountId: string, id: string) { const cloud = get(id); if (!cloud || cloud.accountId !== accountId) throw new CloudError(404, "not_found"); return cloud; }
   /** a managed cloud is one backend machine of any kind, so it can move between placements; the others cannot */

@@ -62,6 +62,7 @@ export declare const HOME_SCREEN_PATH: string;
 export declare const LOOK_MS: number;
 export declare const OPEN_MS: number;
 export declare const RETRY_MS: readonly number[];
+export declare const CONNECT_GRACE_MS: number;
 export declare const QUIET_MS: number;
 export declare const VERSION_EVERY_MS: number;
 export declare const SPLASH_HANDOFF_MS: number;

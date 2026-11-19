@@ -8,6 +8,8 @@ import path from "node:path";
 export const ENTRY_NAME = "bot.dusk.app.desktop";
 export const DEB_ENTRY = "/usr/share/applications/bot.dusk.app.desktop";
 const MARK = "X-Dusk-AppImage=true";
+// oxlint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f]/;
 
 export function menuEntryPaths({ home, env = {} }) {
   const data = env.XDG_DATA_HOME && path.isAbsolute(env.XDG_DATA_HOME) ? env.XDG_DATA_HOME : path.join(home, ".local", "share");
@@ -19,14 +21,14 @@ export function menuEntryPaths({ home, env = {} }) {
  * applied to that (\ doubles again), and % doubled (field codes). null for a path an entry can't hold (a control character).
  */
 export function execArg(value) {
-  if (typeof value !== "string" || value === "" || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  if (typeof value !== "string" || value === "" || CONTROL.test(value)) return null;
   return `"${value.replace(/["`$\\]/g, (match) => `\\${match}`)}"`.replace(/\\/g, "\\\\").replace(/%/g, "%%");
 }
 
 /** the entry's text, or null when `appImage` can't be written into one */
 export function menuEntryText({ appImage, icon }) {
   const exec = execArg(appImage);
-  if (!exec || /[\u0000-\u001f\u007f]/.test(icon)) return null;
+  if (!exec || CONTROL.test(icon)) return null;
   return ["[Desktop Entry]", "Type=Application", "Name=dusk bot", "Comment=Your own team of AI bots, in a chat app", `Exec=${exec} %U`,
     `Icon=${icon}`, "Terminal=false", "Categories=Utility;", "Keywords=AI;Agents;Chat;Productivity;", "StartupWMClass=bot.dusk.app",
     "MimeType=x-scheme-handler/duskbot;x-scheme-handler/openmausbot;", MARK, ""].join("\n");

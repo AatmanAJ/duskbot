@@ -17,6 +17,7 @@ import { PlatformContext, type MobilePlatform } from "./platform";
 import { AccountGate } from "./account/AccountGate";
 import { ConnectionGate } from "./connection/ConnectionGate";
 import { MobileApp } from "./MobileApp";
+import { installNativeAbort } from "./transport/native-abort";
 
 const PHONE_SKINS: readonly SkinChoice[] = ["system", THEME_SKINS.light, THEME_SKINS.dark];
 
@@ -35,6 +36,7 @@ export function mountMobile(platform: MobilePlatform): void {
   if (params.has("frame")) document.documentElement.dataset.phoneFrame = "";
   // the phone page in a browser loads parts of itself later; after a deploy one quiet reload fetches the new ones
   if (!platform.native) watchStaleChunks();
+  else installNativeAbort();
   followSystemTextSize(platform);
   setColorUserBubblesDefault(false);
   document.documentElement.dataset.mobileApp = platform.kind;

@@ -238,12 +238,14 @@ export function LibraryPage({ bot }: { bot: Bot }) {
 const PREVIEW = 3;
 
 /** The Advanced tab's Library section: the newest few things the bot made, and View all for the whole Library. */
-export function LibrarySection({ bot, onOpen }: { bot: Bot; onOpen: (page: SimplePageId) => void }) {
+/** `quietWhenEmpty`: an empty Library says nothing, under the bot's Files or on the phone's Advanced tab. */
+export function LibrarySection({ bot, onOpen, quietWhenEmpty = false }: { bot: Bot; onOpen: (page: SimplePageId) => void; quietWhenEmpty?: boolean }) {
   const entries = useLibraryEntries(bot);
   const now = Date.now();
   const more = entries.length > PREVIEW;
   // nothing made yet reads as grok's empty Library tab, the centred line with no card, as Details does for routines
   if (entries.length === 0) {
+    if (quietWhenEmpty) return null;
     return (
       <section data-panel-card="library">
         <PanelEmpty data-panel-empty="library">{t("botPanel.library.empty")}</PanelEmpty>

@@ -47,6 +47,16 @@ export interface VpsLinkView {
   fallback?: string | null;
   /** What the installer needs the person to do now (sign in to Tailscale), while a line runs. */
   ask?: VpsLinkAsk | null;
+  /** Bots coming back to this computer from a server (moveBack), while it runs and after it failed; older builds omit it. */
+  back?: VpsMoveBack;
+}
+export type VpsMoveBackStep = "check" | "backup-here" | "pause" | "copy" | "restore";
+export interface VpsMoveBack {
+  step: VpsMoveBackStep;
+  status: "running" | "failed" | "done";
+  name?: string;
+  bytes?: { done: number; total?: number };
+  error?: string;
 }
 export type VpsLinkVia = "relay" | "ssh" | "direct" | "tailscale" | "cloudflare";
 export type VpsLinkAsk =
@@ -78,8 +88,15 @@ export interface VpsBackup {
   summary: { bots: number; chats: number; skills: number; routines: number } | null;
   reason: "before-move" | "before-restore" | "manual" | "from-server";
 }
-/** `uninstall`: the line to paste on the server to take dusk bot off it (older apps leave it out). */
-export interface VpsWhere { place: "mac" | "vps"; server: VpsServer | null; uninstall?: string }
+/** `uninstall`: the line to paste on the server to take dusk bot off it (older apps leave it out). `bring`: on this
+ * computer, the servers saved by hand whose bots may come here (moveBack with the id); `blocked` says why none may now. */
+export interface VpsWhere {
+  place: "mac" | "vps";
+  server: VpsServer | null;
+  uninstall?: string;
+  bring?: Array<{ id: string; name: string }>;
+  blocked?: "own-bots" | "moved" | "moving" | "unknown";
+}
 
 export interface VpsLinkBridge {
   state(): Promise<VpsLinkView>;
@@ -101,7 +118,8 @@ export interface VpsLinkBridge {
   backups(): Promise<VpsBackup[]>;
   backupNow(): Promise<{ id: string }>;
   restore(id: string): Promise<{ ok: true; restart: true }>;
-  moveBack(): Promise<{ ok: true }>;
+  /** `placeId`: a saved server in `where().bring`; the server this computer moved to when left out. */
+  moveBack(placeId?: string): Promise<{ ok: true }>;
   forget(): Promise<VpsLinkView>;
   onChange(callback: (view: VpsLinkView) => void): () => void;
 }

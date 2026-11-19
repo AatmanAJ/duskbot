@@ -258,6 +258,8 @@ export interface ProviderAdapter {
     nativeImageInput?: boolean;
     /** Effort levels the driver can pass to its CLI, ascending; absent hides the control. */
     effortLevels?: readonly EffortLevel[];
+    /** Only a model whose catalog entry lists `effortLevels` takes one, and only those levels. */
+    effortByModel?: boolean;
     /** The driver validates and applies model-specific variant IDs per session. */
     modelVariants?: boolean;
     /** The driver keeps a live session and can take a user message mid-turn (steer). */
@@ -475,6 +477,8 @@ export interface ModelCatalog {
     contextWindow?: number;
     /** Discovery hints; the native session revalidates these before each turn. */
     variants?: ModelVariantOption[];
+    /** The levels this model takes, on an engine whose `effortByModel` capability is set. */
+    effortLevels?: readonly EffortLevel[];
     /** The organization of the signed-in account turned this model off: the engine would answer with another. */
     orgBlocked?: true;
   }>;
@@ -547,6 +551,9 @@ export interface ProviderInstance {
   readonly models: ModelCatalog;
   /** True while the catalog is the driver's fixed list or a failed read's leftover, not a list the engine gave. */
   readonly modelsUnconfirmed?: boolean;
+  /** The engine in dusk.bot's model catalog (server/model-catalog/dusk-models.json) whose names and additions apply to
+   * `models`; unset where the list is fixed by someone else (a company's models, a ChatGPT plan's own list). */
+  readonly modelCatalogKey?: string;
   /** False while the sign-in can refuse a model its catalog lists (Codex on a ChatGPT account): a short message and background text then stay on the bot's own model. */
   readonly quickModelsUsable?: () => boolean;
   /** Refresh a live catalog without recreating the provider instance. */

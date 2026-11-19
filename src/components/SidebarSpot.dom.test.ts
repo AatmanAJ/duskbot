@@ -146,9 +146,9 @@ describe("the sidebar's feedback and update spot", () => {
     expect(spot()?.dataset.sidebarSpot).toBe("feedback");
   });
 
-  it("the collapsed sidebar has the same spot as one named round button", async () => {
+  it("the collapsed sidebar keeps no Give feedback, only an update as one named round button", async () => {
     await mount(RailSpot);
-    expect(spot()?.getAttribute("aria-label")).toBe("Give feedback");
+    expect(spot()).toBeNull();
     await hear({ ready: "0.2.7", available: "0.2.7", progress: null, mode: "self" });
     expect(spot()?.getAttribute("aria-label")).toBe("Restart to update, 0.2.7");
     await act(async () => { spot()!.click(); });

@@ -4,6 +4,7 @@ import { AnimatePresence } from "motion/react";
 import { ClipboardPaste, Keyboard, QrCode, UserRound } from "../../icons";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
+import { upperFirst } from "@/lib/lower-first";
 import { THEME_SKINS } from "@/lib/skins";
 import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { haptic } from "../haptics";
@@ -36,9 +37,9 @@ export function phoneCodeFailure(outcome: Exclude<PhoneCodeOutcome, "signed-in">
 
 export const DOWNLOAD_URL = "https://dusk.bot/download";
 
-function installationName(payload: TypedPairing | null): string {
+function installationName(payload: TypedPairing | null, fallback = t("mobile.pair.workspace")): string {
   if (payload?.name) return payload.name;
-  try { return new URL(payload?.origin ?? "").host; } catch { return t("mobile.pair.workspace"); }
+  try { return new URL(payload?.origin ?? "").host; } catch { return fallback; }
 }
 
 /** Where a fresh start lands: a link that arrived goes to its confirmation, a signed-in phone to its clouds, a sign-in
@@ -61,7 +62,7 @@ function Failed({ failure, onSignIn }: { failure: Failure; onSignIn?: () => void
       </button>
     ) : null}>
       <span className="block font-semibold">{t(`mobile.onboarding.err.${key}.title` as Parameters<typeof t>[0])}</span>
-      <span className="block text-ink-secondary">{t(`mobile.onboarding.err.${key}.body` as Parameters<typeof t>[0], { name: failure.name })}</span>
+      <span className="block text-ink-secondary">{upperFirst(t(`mobile.onboarding.err.${key}.body` as Parameters<typeof t>[0], { name: failure.name }))}</span>
     </ErrorLine>
   );
 }
@@ -123,7 +124,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
           const result = await account.signIn.phoneCode(accountCode);
           if (result.outcome !== "signed-in") {
             haptic("error");
-            setFailure({ code: phoneCodeFailure(result.outcome), name: t("mobile.pair.workspace"), companion: false });
+            setFailure({ code: phoneCodeFailure(result.outcome), name: t("mobile.connection.yourComputer"), companion: false });
             if (from !== "code") { setStep("code"); setValue(formatCode(accountCode)); }
             return;
           }
@@ -139,7 +140,7 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
       await onLinked(result.record, result.token, result.record.label || installationName(payload));
     } catch (error) {
       haptic("error");
-      setFailure({ code: error instanceof PairError ? error.code : "unreachable", name: installationName(payload), companion: payload?.transport === "companion" });
+      setFailure({ code: error instanceof PairError ? error.code : "unreachable", name: installationName(payload, t("mobile.connection.yourComputer")), companion: payload?.transport === "companion" });
       if (from === "scan") { setStep("code"); setScanFailed(true); }
     } finally {
       locked.current = false;
@@ -167,10 +168,34 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
     if (state === "granted") await new Promise((resolve) => setTimeout(resolve, 450));
     go(state === "granted" ? "scan" : "denied");
   };
+  // the phone holds one account: another one is reached by leaving this one, with the email field empty
+  const otherAccount = async () => {
+    await account?.signOut();
+    setSignInEmail("");
+    setNoClouds(false);
+    go("signin");
+  };
   const paste = async () => {
     const text = await platform.readClipboard?.();
     if (text) setValue(text.trim());
   };
+
+  // android's back walks the same way the on-screen buttons do, and leaves the app from the first screen. without a
+  // listener capacitor swallows the press, so back did nothing at all before pairing
+  const onBack = useRef<() => boolean>(() => false);
+  onBack.current = () => {
+    if (busy) return true;
+    const canClose = Boolean(startAtLink && onCancel);
+    switch (step) {
+      case "welcome": if (canClose) onCancel!(); return canClose;
+      case "clouds": if (canClose) onCancel!(); else go("welcome"); return true;
+      case "signin": go("welcome"); return true;
+      case "paste": go("code"); return true;
+      case "confirm": setConfirm(null); setFailure(null); if (canClose) onCancel!(); else go(home); return true;
+      default: go(home); return true;
+    }
+  };
+  useEffect(() => platform.onBack?.(() => onBack.current()), [platform]);
 
   const back = (to: Step = home) => <BackButton onClick={() => go(to)} />;
   const close = startAtLink && onCancel ? <BackButton close onClick={onCancel} /> : null;
@@ -213,10 +238,11 @@ export function Onboarding({ initial = null, reason = null, startAtLink = false,
               {noClouds && <button type="button" className={TONAL} onClick={() => void openScanner()}><QrCode size={20} />{t("mobile.entry.scan")}</button>}
               {noClouds && <button type="button" className={TONAL} onClick={() => go("code")}><Keyboard size={20} />{t("mobile.entry.code")}</button>}
               {!noClouds && <button type="button" disabled={busy} className={QUIET} onClick={() => go("welcome")}>{t("mobile.entry.otherWays")}</button>}
+              {signedIn && <button type="button" data-entry="other-account" disabled={busy} className={QUIET} onClick={() => void otherAccount()}>{t("mobile.clouds.otherAccount")}</button>}
             </>}>
               <h1 className={HEADLINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneTitleStore" : "mobile.clouds.noneTitle" : "mobile.clouds.pickTitle")}</h1>
               <p className={LINE}>{t(noClouds ? storeApp() ? "mobile.clouds.noneStore" : "mobile.clouds.none" : "mobile.clouds.pickBody", { email: account?.account?.email ?? "" })}</p>
-              <CloudPicker busy={busy} autoPick onNone={() => setNoClouds(true)} onPairing={(payload) => redeem(payload, "clouds")} />
+              <CloudPicker busy={busy} autoPick={!startAtLink} onNone={() => setNoClouds(true)} onPairing={(payload) => redeem(payload, "clouds")} />
               {failure && <Failed failure={failure} />}
             </Screen>
           </StepPane>

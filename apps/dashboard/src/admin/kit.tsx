@@ -97,7 +97,7 @@ export const CHANNEL: Record<string, string> = { direct: "direct", search: "sear
 /** revenue credited to no visit at all: paid before tracking began, or on a device the tracker never saw */
 export const NO_VISIT = "no_visit";
 export interface Note { id: string; at: number; text: string; by: string; createdAt: number }
-export interface SeriesData { size: number; starts: number[]; visitors: number[]; signups: number[]; paid: number[]; waitlist: number[]; /** cents per bucket */ revenue?: { new: number[]; renewal: number[]; refund: number[] } }
+export interface SeriesData { size: number; starts: number[]; visitors: number[]; signups: number[]; paid: number[]; waitlist: number[]; /** cents per bucket */ revenue?: { new: number[]; renewal: number[]; refund: number[]; /** expected mrr at each bucket's end; null with filters */ mrr?: number[] | null } }
 
 /** dollars from cents: whole dollars when even, one decimal in thousands past $10k */
 export function usd(cents: number, compact = false) {

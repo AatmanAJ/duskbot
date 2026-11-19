@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, Palette, Plug, ShieldCheck, UserRound, Hand, Server } from "../../icons";
+import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, Palette, Plug, Plus, ShieldCheck, UserRound, Hand, Server, ZoomIn } from "../../icons";
 import { accountDashboardUrl } from "@/lib/account-dashboard";
 import { useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
@@ -13,6 +13,7 @@ import { useStore } from "@/state/store";
 import { useConnections } from "../connection/connections";
 import { usePlaces, type Place, type PlaceStatus } from "../connection/places";
 import { haptic, setHapticsEnabled, useHapticsEnabled } from "../haptics";
+import { readTextSize, setTextSize, subscribeTextSize, TEXT_SIZES } from "../text-scale";
 import { dur, ease, spring } from "../motion";
 import { useMobileAccount } from "../account/AccountGate";
 import { chooseAccountOrigin, environmentName, PREVIEW_ORIGIN, PRODUCTION_ORIGIN } from "../account/environment";
@@ -72,8 +73,8 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-type SettingsPage = "language" | "voice" | "notifications" | "routines" | "connectors" | "vault" | "delete";
-const SETTINGS_PAGES: readonly string[] = ["language", "voice", "notifications", "routines", "connectors", "vault"];
+type SettingsPage = "language" | "textSize" | "voice" | "notifications" | "routines" | "connectors" | "vault" | "delete";
+const SETTINGS_PAGES: readonly string[] = ["language", "textSize", "voice", "notifications", "routines", "connectors", "vault"];
 
 /** Settings is a stack inside one sheet, as iOS Settings: the grouped list, and each page pushed over it with the
  * system's slide and edge swipe back. Notifications, routines, apps and the vault are the same pages the rest of the
@@ -89,6 +90,7 @@ export const SettingsSheet: ComponentType<SheetPageProps<"settings">> = ({ sheet
     : page === "connectors" ? <ConnectorsSheet sheet={{ kind: "connectors" }} {...pageProps} />
     : page === "vault" ? <VaultSheet sheet={{ kind: "vault" }} {...pageProps} />
     : page === "language" ? <LanguagePage />
+    : page === "textSize" ? <TextSizePage />
     : page === "delete" && account?.account ? <DeleteAccountPage email={account.account.email} onDelete={account.deleteAccount} onCancel={pop} onDone={onClose} />
     : page === "voice" ? <Sheet open onClose={pop} title={t("settings.voice.title")}><div data-settings-look="simple" className={`flex flex-col gap-6 px-4 pt-2 ${SIMPLE_BUTTONS}`}><VoiceInputSettings /></div></Sheet>
     : null;
@@ -111,6 +113,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
   const platform = usePlatform();
   const account = useMobileAccount();
   const hapticsEnabled = useHapticsEnabled();
+  const textSize = useSyncExternalStore(subscribeTextSize, readTextSize, () => "system" as const);
   const skin = useSyncExternalStore(subscribeSkin, readSkinChoice, () => "system");
   const language = effectiveLanguage(useLanguageChoice(), state.config?.language);
   usePageLanguage(language);
@@ -175,7 +178,8 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
       </SettingsSection>
 
       <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>
-        <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />
+        {(places === null || places.length > 0) && <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />}
+        <SettingsRow icon={<Plus />} label={t("mobile.settings.addPlace")} onClick={() => { haptic("selection"); onClose(); window.dispatchEvent(new Event("dusk:add-place")); }} />
       </SettingsSection>
 
       <SettingsSection card>
@@ -196,6 +200,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
         </div>
         <SettingsSwitch icon={<Hand />} label={t("mobile.settings.haptics")} checked={hapticsEnabled} onChange={(enabled) => { setHapticsEnabled(enabled); haptic("selection"); }} />
         <SettingsRow icon={<Mic />} label={t("settings.voice.title")} onClick={() => push("voice")} />
+        <SettingsRow icon={<ZoomIn />} label={t("mobile.settings.textSize")} value={t(`mobile.settings.textSize.${textSize}`)} onClick={() => push("textSize")} />
         <SettingsRow icon={<Globe />} label={t("mobile.settings.language")} value={localeChoices.find((choice) => choice.code === language)?.label ?? t("mobile.settings.system")} onClick={() => push("language")} />
       </SettingsSection>
 
@@ -238,6 +243,23 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
         </button>
       )}
     </div>
+  );
+}
+
+function TextSizePage() {
+  const size = useSyncExternalStore(subscribeTextSize, readTextSize, () => "system" as const);
+  return (
+    <Sheet open onClose={() => {}} title={t("mobile.settings.textSize")}>
+      <p data-text-size-sample="" className="mx-4 mb-4 rounded-[19px] bg-ink/[0.05] px-[14px] py-2 text-[17px] font-[450] leading-[22px] text-ink">{t("mobile.settings.textSize.sample")}</p>
+      <SettingsSection card>
+        {TEXT_SIZES.map((choice) => (
+          <button key={choice} type="button" aria-pressed={size === choice} onClick={() => { haptic("selection"); setTextSize(choice); }} className="mobile-row flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left text-[16px] font-medium text-ink">
+            <span className="min-w-0 flex-1">{t(`mobile.settings.textSize.${choice}`)}</span>
+            {size === choice && <Check aria-hidden size={20} />}
+          </button>
+        ))}
+      </SettingsSection>
+    </Sheet>
   );
 }
 

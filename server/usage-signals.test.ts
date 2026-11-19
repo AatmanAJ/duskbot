@@ -117,6 +117,12 @@ describe("scrubSummary", () => {
     expect(scrubSummary("Jane Doe jane@acme.com +1 415 555 0100 Acme Corp")).toBeNull();
     expect(scrubSummary('he said "send the contract to Bob at Acme now please" twice')).toBeNull();
   });
+  it("drops the writer saying it could not write a note", () => {
+    expect(scrubSummary("i can't summarize this chat because the conversation itself isn't in what been given, only your instruction. if you paste the exchange here, write the two lowercase sentences.")).toBeNull();
+    expect(scrubSummary("the bot was given only setup rules and no record of the work this person asked for, so the summary cannot say what went wrong.")).toBeNull();
+    expect(scrubSummary("I'm unable to see the chat, please share the transcript.")).toBeNull();
+    expect(scrubSummary("the bot can't open the sheet and the user retried 3 times.")).toBe("the bot can't open the sheet and the user retried 3 times.");
+  });
   it("is stable: a scrubbed line passes the server's check unchanged", () => {
     const once = scrubSummary("The bot kept timing out while reading a long document, and the person stopped it twice.")!;
     expect(scrubSummary(once)).toBe(once);

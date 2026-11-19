@@ -28,7 +28,7 @@ import { starKey, useStarredModels } from "@/lib/starred-models";
 import { noteRecentModels, useRecentModels } from "@/lib/recent-models";
 import { friendlyError } from "@/lib/plain-error";
 import { modelMenuKey, modelMenuPointerMove } from "./model-menu-keys";
-import { offersReasoning, useRefocusAfterPick, variantChoices } from "./model-picker-reasoning";
+import { effortLevelsFor, offersReasoning, useRefocusAfterPick, variantChoices } from "./model-picker-reasoning";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
 
 import { t } from "@/lib/i18n";
@@ -76,7 +76,7 @@ export function EffortRow({
   if (instance?.capabilities?.modelVariants) {
     return <ModelVariantRow bot={bot} threadId={threadId} updateBotDefault={updateBotDefault} className={className} label={label} compact={compact} quiet={compact} />;
   }
-  const levels = instance?.capabilities?.effortLevels;
+  const levels = effortLevelsFor(instance, selection.model);
   if (!levels?.length) return null;
 
   if (compact) return (
@@ -522,7 +522,7 @@ export function ModelPicker({
     close(true);
   } : undefined;
 
-  const levels = active?.capabilities?.effortLevels ?? [];
+  const levels = effortLevelsFor(active, selection.model) ?? [];
   const writeEffort = (effort: EffortLevel | undefined) => {
     const { effort: _effort, ...model } = selection;
     dispatch({ type: "setModel", botId: bot.id, threadId, ...(threadId && updatesBotDefault ? { updateBotDefault: true } : {}),
@@ -559,7 +559,7 @@ export function ModelPicker({
     ? `${isAutoFreeModel(active, selection.model) ? modelName(active, selection.model)
       : `${active.displayName} · ${isFreeModel(active) ? modelName(active, selection.model) : modelLabel(active, selection.model)}`}${
         modelProvider(active, selection.model) ? ` · ${modelProvider(active, selection.model)}` : ""
-      }${selectedVariantLabel ? ` · ${selectedVariantLabel}` : selection.effort
+      }${selectedVariantLabel ? ` · ${selectedVariantLabel}` : selection.effort && levels.includes(selection.effort)
         ? ` · ${t("model.simple.thinkingSummary", { level: effortLabel(selection.effort) })}` : ""}`
     : selection.model;
   const followLine = follows === true ? `\n${t("model.followsBot", { name: profile.name })}` : follows === false ? `\n${t("model.ownModel")}` : "";

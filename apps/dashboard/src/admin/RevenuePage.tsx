@@ -7,7 +7,7 @@ import { Figure } from "../ui/Figure";
 import { ago } from "../lib/format";
 import { useNow } from "../lib/now";
 import { toast } from "../lib/toast";
-import { AdminApiError, adminCall, adminMoney, MONEY_KEY, useAdmin } from "./api";
+import { AdminApiError, adminCall, adminMoney, MONEY_KEY, useAdmin, useAdminRole } from "./api";
 import { countryName } from "./geo";
 import { flagOf } from "./person";
 import { Avatar, CHANNEL, duration, percent, personName, usd } from "./kit";
@@ -592,9 +592,10 @@ export function RevenuePage() {
   const [money] = useMoneyView();
   const { data, error, loading, reload } = useAdmin<SubscriptionReport>(`/revenue?days=${days}&mode=${money}`, 60_000);
   const empty = data !== null && data.customers.length === 0 && data.cash.payments === 0;
+  const owner = useAdminRole() === "owner";
   return (
     <>
-      <AdminHeader title="revenue" sub="mrr, churn and every customer, straight from the billing records." action={<div className="flex flex-wrap items-center gap-3"><MoneySwitch />{data && <SyncButton sync={data.sync} onDone={reload} />}</div>} />
+      <AdminHeader title="revenue" sub="mrr, churn and every customer, straight from the billing records." action={<div className="flex flex-wrap items-center gap-3"><MoneySwitch />{owner && data && <SyncButton sync={data.sync} onDone={reload} />}</div>} />
       {error && <Failed error={error} retry={reload} />}
       {!data && loading && <Loading rows={8} />}
       {data && (
@@ -607,11 +608,11 @@ export function RevenuePage() {
               <Headline report={data} />
               <Growth report={data} />
               <Saves report={data} />
-              <Customers customers={data.customers} />
+              {owner && <Customers customers={data.customers} />}
               <Fold title="cohorts" meta="who keeps paying, month by month"><div className="rounded-[18px] bg-pop p-3"><CohortHeat cohorts={data.cohorts} /></div></Fold>
             </>
           )}
-          <Fold plain title="more" meta="churn, cash, funnel, margin, renewals and the feed">
+          <Fold plain title="more" meta={owner ? "churn, cash, funnel, margin, renewals and the feed" : "churn, cash, funnel and the feed"}>
             <div className="flex flex-col gap-4">
               {!empty && <OtherNumbers report={data} />}
               {!empty && <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1"><Churn report={data} /><Dunning report={data} /><Breakdown breakdown={data.breakdown} /><Cash report={data} /></div>}
@@ -622,10 +623,10 @@ export function RevenuePage() {
                 </Card>
                 <Checkout checkout={data.checkout} />
               </div>
-              <InfraMargin />
+              {owner && <InfraMargin />}
               {!empty && (
                 <div className="grid grid-cols-2 items-start gap-4 max-lg:grid-cols-1">
-                  <div className="flex min-w-0 flex-col gap-4"><Renewals report={data} /><TimeToPay data={data.timeToPay} /></div>
+                  <div className="flex min-w-0 flex-col gap-4">{owner && <Renewals report={data} />}<TimeToPay data={data.timeToPay} /></div>
                   <Feed feed={data.feed} />
                 </div>
               )}

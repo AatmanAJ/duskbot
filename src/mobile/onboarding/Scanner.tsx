@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Flashlight, FlashlightOff, KeyRound, Link2, X } from "../../icons";
+import { Flashlight, FlashlightOff, Keyboard, Link2, X } from "../../icons";
 import { MausAvatar } from "@/components/Avatar";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { t } from "@/lib/i18n";
@@ -154,7 +154,7 @@ export function Scanner({ platform, busy, onCode, onClose, onEnterCode, onPaste 
           <p className="mt-1.5 text-[15px] leading-6 text-white/65">{t("mobile.onboarding.scanHint")}</p>
         </div>
         <div className="flex gap-2.5">
-          <button type="button" onClick={onEnterCode} className="mobile-press flex h-11 items-center gap-2 rounded-full bg-white/[0.14] px-4 text-[15px] font-medium text-white backdrop-blur-md"><KeyRound size={17} />{t("mobile.onboarding.enterCode")}</button>
+          <button type="button" onClick={onEnterCode} className="mobile-press flex h-11 items-center gap-2 rounded-full bg-white/[0.14] px-4 text-[15px] font-medium text-white backdrop-blur-md"><Keyboard size={17} />{t("mobile.onboarding.enterCode")}</button>
           <button type="button" onClick={onPaste} className="mobile-press flex h-11 items-center gap-2 rounded-full bg-white/[0.14] px-4 text-[15px] font-medium text-white backdrop-blur-md"><Link2 size={17} />{t("mobile.onboarding.pasteLink")}</button>
         </div>
       </motion.div>
