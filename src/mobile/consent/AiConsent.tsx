@@ -93,7 +93,7 @@ function ConsentBody({ providers, covered, onAllow, onDecline, onDone }: { provi
   ];
   return (
     <div className="px-5 pb-4" data-ai-consent>
-      <PixelArt name="key" size={52} className="mb-3" />
+      <PixelArt name="key" size={52} className="mb-3 [@media(max-height:700px)]:hidden" />
       <p className="text-[16px] leading-6 text-ink">{t("mobile.consent.lead")}</p>
       <ul className="mt-3 flex flex-col gap-2.5">
         {items.map((item) => (
