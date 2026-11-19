@@ -92,6 +92,24 @@ describe("mobile link", () => {
     expect((await call(mobile, owner, "GET", "/api/mobile/devices")).body.devices).toHaveLength(0);
   });
 
+  it("tells a paired phone the ways to this workspace now, and nobody else", async () => {
+    let origin = "https://box.example.com", endpoints: Array<{ url: string; kind: "lan" | "bonjour"; priority: number }> | null = [{ url: "http://192.168.1.4:8810", kind: "lan", priority: 30 }];
+    const mobile = link({ publicOrigin: () => origin, companion: async () => endpoints });
+    const payload = parseMobileLink((await call(mobile, owner, "POST", "/api/mobile/pairing")).body.link)!;
+    const phone = (await redeem(mobile, { secret: payload.grant.secret, attemptId: "attempt-routes", device: { name: "p", platform: "ios" } })).body as MobileRedeemResponse;
+    const auth: RequestAuth = { kind: "session", session: sessions.authenticate(phone.token)!, via: "bearer", scopes: phone.scopes };
+    expect((await call(mobile, auth, "GET", "/api/mobile/routes")).body).toEqual({ https: [{ kind: "https", url: "https://box.example.com" }], companion: [{ kind: "companion", url: "http://192.168.1.4:8810", net: "lan", priority: 30 }] });
+    origin = "https://new.example.com";
+    endpoints = [{ url: "http://192.168.1.9:8810", kind: "lan", priority: 30 }, { url: "http://mac.local:8810", kind: "bonjour", priority: 300 }];
+    const now = (await call(mobile, auth, "GET", "/api/mobile/routes")).body;
+    expect(now.https).toEqual([{ kind: "https", url: "https://new.example.com" }]);
+    expect(now.companion.map((one: { url: string }) => one.url)).toEqual(["http://192.168.1.9:8810", "http://mac.local:8810"]);
+    endpoints = null;
+    expect((await call(mobile, auth, "GET", "/api/mobile/routes")).body.companion).toBeNull();
+    const client = sessions.issue({ label: "c", scopes: ["client"] });
+    expect((await call(mobile, { kind: "session", session: sessions.authenticate(client.token)!, via: "bearer", scopes: ["client"] }, "GET", "/api/mobile/routes")).status).toBe(404);
+  });
+
   it("only the owner or an admin pairs, and a service caller or client session cannot", async () => {
     const mobile = link();
     expect((await call(mobile, service, "POST", "/api/mobile/pairing")).status).toBe(403);
