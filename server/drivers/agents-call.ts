@@ -1,5 +1,6 @@
 // Runs one agents tool: check arguments, call the harness, render the model's text. Stateless;
 // per-turn limits are the harness's, since one proxy can serve many turns of a warm engine.
+import { RUNS_NOTHING_NOTE } from "../bot-reach.ts";
 import { agentsCallMember, resolveAgentsCall } from "../../shared/agents-tool-names.ts";
 import { CREDENTIAL_TARGETS, isCredentialTargetId, LOGIN_CREDENTIAL } from "../../shared/credential-request.ts";
 import { EMAIL_CREDENTIAL } from "../../shared/email.ts";
@@ -344,7 +345,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       const state = typeof b.statusText === "string"
         ? (b.status === "available" ? "" : b.statusText)
         : (b.busy ? "busy" : "");
-      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${b.chiefOfStaff === true ? ", Chief of Staff" : ""}${state ? `, ${state}` : ""}]`;
+      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${b.chiefOfStaff === true ? ", Chief of Staff" : ""}${b.runsCommands === false ? ", cannot run code or commands (no computer)" : ""}${state ? `, ${state}` : ""}]`;
     });
     return {
       text: `Bots you can reach (you can contact any of them):\n${lines.join("\n")}\n\nUse coordinate_bots for concrete work or, with consult: true, for advice, then end your turn. Busy teammates queue and results resume you automatically.`,
@@ -517,6 +518,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       text: [
         `Created @${r.name ?? shown} in ${r.section ?? "General"} [id: ${r.id}]${r.color ? `, colour ${String(r.color)}` : ""}.${r.modelSelection ? ` Model: ${JSON.stringify(r.modelSelection)}.` : ""}`,
         r.greeted === true ? `It is saying hello in its own chat now; do not introduce it for it.` : "",
+        r.runsCommands === false ? RUNS_NOTHING_NOTE : "",
         routines.length ? `Its template suggests these automations, not set up: ${routines.join("; ")}. Offer them, and create the ones the person wants with trigger for_bot_id ${String(r.id)}.` : "",
         apps.length ? `It works best with these apps: ${apps.join(", ")}. If one is not connected, offer to connect it.` : "",
         "Tell the person in one line what you made. Hand it work with coordinate_bots.",

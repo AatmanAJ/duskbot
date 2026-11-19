@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEvent } from "./contracts.ts";
 import { toolStep } from "./step-summary.ts";
 import {
-  ACK_IDLE_MS, beatsNote, cleanBeat, createTurnBeats, looksLikeWork, MILESTONE_QUIET_MS, PLAN_MIN_MS, PLAN_WRITE_MS, type BeatKind,
+  ACK_IDLE_MS, beatPrompt, beatsNote, cleanBeat, createTurnBeats, looksLikeWork, MILESTONE_QUIET_MS, PLAN_MIN_MS, PLAN_WRITE_MS, type BeatKind,
 } from "./turn-beats.ts";
 
 const THREAD = "th1";
@@ -243,6 +243,18 @@ describe("beat text", () => {
 
   it("is nothing for the engine when nothing was sent", () => {
     expect(beatsNote([])).toBe("");
+  });
+});
+
+describe("what a beat may promise", () => {
+  const input = { name: "Forge", ask: "make a node cli todo app with tests, run them", steps: ["Writing index.js"], said: ["On it, writing the todo app."] };
+  it("never asks the writer for a check before sending, and forbids promising one the steps do not show", () => {
+    const plan = beatPrompt("plan", input);
+    expect(plan).not.toContain("the one check that will happen before sending");
+    expect(plan).toContain("Never promise a check, a test, a price lookup or anything else that is not already among the steps");
+  });
+  it("keeps product names as the person wrote them in the ack", () => {
+    expect(beatPrompt("ack", input)).toContain("Write names and products exactly as the person did");
   });
 });
 

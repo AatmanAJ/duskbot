@@ -133,7 +133,7 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
   if (kind === "ack") {
     return [...head, "",
       "Write the acknowledgement they see first.",
-      "- One sentence, 6 to 20 words, present tense, naming the concrete action and object, like \"On it, pulling this week's Delhi to Goa fares.\" or \"Got it, comparing the three plans now.\"",
+      "- One sentence, 6 to 20 words, present tense, naming the concrete action and object, like \"On it, pulling this week's Delhi to Goa fares.\" or \"Got it, comparing the three plans now.\" Write names and products exactly as the person did (EndNote, not \"the endnote\").",
       `- Reply exactly SKIP if the message is only a greeting, thanks or small talk, if it is outside what ${input.name} does, if ${input.name}'s setup says it asks before using tools or fetching data, or if ${input.name} would need to ask the person something before starting.`,
       SHARED_RULES(input.name),
     ].join("\n");
@@ -142,7 +142,8 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
     return [...head, "",
       `${input.name} already told them:`, said || "- (nothing yet)", "",
       `What ${input.name} has done so far:`, steps, "",
-      "Write the second message: what they will get and its shape (a short list, a table, a file, a link, a summary), any default you can see being assumed, and the one check that will happen before sending, only a check the request and the steps make natural (comparing sources, checking prices are current, checking a page loads).",
+      "Write the second message: what they will get and its shape (a short list, a table, a file, a link, a summary), and any default you can see being assumed.",
+      `- Never promise a check, a test, a price lookup or anything else that is not already among the steps: you cannot know ${input.name} can do it. No \"before sending, I'll check\" lines.`,
       "- 15 to 40 words, 1 or 2 sentences. Do not repeat what was already said.",
       "- If what was already said tells them what they will get, reply exactly SKIP.",
       "- Never promise a format, file or page the request does not call for.",

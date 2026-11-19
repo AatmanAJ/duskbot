@@ -81,6 +81,10 @@ it("acts instead of ending on a plan, sends the ack with the first step, and sto
   expect(replyHabitsPrompt(false)).toContain("Send it in the same step as your first tool call, never as a reply on its own");
 });
 
+it("never promises to run or test anything without a tool that runs code", () => {
+  expect(TOOL_HABITS_PROMPT).toContain("with no tool that runs code or commands (a shell, a terminal, a computer), never promise to run, test or build anything");
+});
+
 it("names each change a tool confirmed in the result, and none it did not", () => {
   for (const quick of [false, true]) expect(replyHabitsPrompt(quick)).toContain("When you made several changes, name each one its tool confirmed");
 });
