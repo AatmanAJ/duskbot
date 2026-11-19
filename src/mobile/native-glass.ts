@@ -65,6 +65,8 @@ export type GlassEvent =
   | { type: "submit" }
   | { type: "focus"; focused: boolean }
   | { type: "height"; height: number }
+  /** the native field was emptied for the send `clearText` named */
+  | { type: "cleared"; id: number }
   /** answers every update that asked for a composer: whether it is on screen now, or why not */
   | { type: "composer"; shown: boolean; reason?: string; frame?: GlassFrame }
   /** the keyboard starts to move: how far it will cover, its duration in seconds and when it started, in epoch ms. With
@@ -79,6 +81,9 @@ export interface GlassBridge {
   acks?: boolean;
   update(state: GlassState): void;
   setText(text: string, seq: number): void;
+  /** Empties the native field for a send the page took, whatever it holds or the sequence it last took, and answers with
+   * a `cleared` event (apps before 1.4 have none: their field follows `setText` alone). */
+  clearText?(id: number): void;
   setAvatar(data: string | null): void;
   focus(): void;
   blur(): void;
@@ -391,6 +396,47 @@ export function nextTextSeq(): number {
   return textSeq;
 }
 
+/** A send the page took out of the native field: text the native side reports within this long that still begins with
+ * what was sent is the field's own text from before the clear (a late keystroke, a committed autocorrection or dictation
+ * guess), never new typing, and is not typed back into the emptied composer. */
+export const SENT_ECHO_MS = 1500;
+/** a tap on Send the page did not take (an upload still running, nothing to send) stops waiting for the field to empty */
+const SEND_TAKE_MS = 1000;
+
+/** Watches each native Send for the page taking it: once the page's field empties, the native one is cleared outright
+ * (keyed to that send, not left to a text diff), and the old text the native side may still send is refused. */
+export function sendClearing() {
+  let tapped: { text: string; at: number } | null = null;
+  let sent: { id: number; text: string; until: number } | null = null;
+  return {
+    tapped(text: string, now: number) { tapped = text.trim() ? { text, at: now } : null; },
+    /** the send the page just took, once its field shows it emptied */
+    taken(value: string, now: number): { id: number; text: string } | null {
+      if (!tapped) return null;
+      if (value.trim() !== "") {
+        if (now - tapped.at > SEND_TAKE_MS) tapped = null;
+        return null;
+      }
+      sent = { id: nextTextSeq(), text: tapped.text, until: now + SENT_ECHO_MS };
+      tapped = null;
+      return sent;
+    },
+    /** the native field's text from before a send's clear, arriving after the tap: `taken` once the native field has
+     * been told to empty, else the page is still taking it and empties it then */
+    echo(text: string, now: number): { taken: boolean } | null {
+      const old = (from: string) => {
+        const before = from.trimEnd();
+        let same = 0;
+        while (same < before.length && same < text.length && text[same] === before[same]) same += 1;
+        // an autocorrection or a dictation guess settling rewrites the end of what was sent; new typing shares little of it
+        return text.trim() !== "" && same >= Math.ceil(before.length * 0.6) && same >= before.length - 32;
+      };
+      if (tapped && now - tapped.at <= SEND_TAKE_MS && old(tapped.text)) return { taken: false };
+      return sent && now <= sent.until && old(sent.text) ? { taken: true } : null;
+    },
+  };
+}
+
 const FRESH_FRAMES = 30;
 const IDLE_EVERY = 15;
 const AVATAR_MS = 1000;
@@ -456,6 +502,8 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
     let sentAt = 0;
     let composerShown = false;
     const handoff = composerHandoff();
+    const sends = sendClearing();
+    const liveField = () => (field?.isConnected ? field : shell()?.querySelector("textarea") ?? null);
     let safeBottom = cssPx(root, "var(--m-safe-bottom)");
 
     const chat = () => root.querySelector<HTMLElement>("[data-mobile-chat]");
@@ -487,6 +535,15 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       frame = requestAnimationFrame(tick);
       if (document.hidden) return;
       count += 1;
+      const took = sends.taken(liveField()?.value ?? "", performance.now());
+      if (took) {
+        kbTrace("send taken", { id: took.id, length: took.text.length });
+        // a draft put back after a failed send differs from both, so it goes to the native field again
+        fromNative = null;
+        toNative = "";
+        glass.setText("", took.id);
+        glass.clearText?.(took.id);
+      }
       // what the page itself put in its field (a draft, a cleared send, a picked mention) goes to the native field
       if (field && field.value !== fromNative && field.value !== toNative) {
         toNative = field.value;
@@ -567,19 +624,33 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
         }
         // the control the native one stood in for, by kind: the page's set may have moved on since that frame
         case "button": {
-          if (event.kind === "send" || event.kind === "micSend") kbTrace("send tap", { kind: event.kind, keyboard: root.dataset.keyboard ?? "down" });
+          if (event.kind === "send" || event.kind === "micSend") {
+            kbTrace("send tap", { kind: event.kind, keyboard: root.dataset.keyboard ?? "down" });
+            sends.tapped(liveField()?.value ?? "", performance.now());
+          }
           click((event.kind && elements.find((el) => buttonKind(el) === event.kind)) || elements[event.index]);
           break;
         }
         case "text": {
+          const echo = sends.echo(event.text, performance.now());
+          if (echo) {
+            kbTrace("stale text dropped", { taken: echo.taken ? 1 : 0, length: event.text.length });
+            if (echo.taken) {
+              glass.setText("", nextTextSeq());
+              glass.clearText?.(nextTextSeq());
+            }
+            break;
+          }
           fromNative = event.text;
           toNative = null;
-          const target = field ?? shell()?.querySelector("textarea");
+          const target = liveField();
           if (target) typeInto(target, event.text);
           break;
         }
+        case "cleared": kbTrace("native cleared", { id: event.id }); break;
         case "submit": {
-          const target = field ?? shell()?.querySelector("textarea");
+          const target = liveField();
+          sends.tapped(target?.value ?? "", performance.now());
           target?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
           break;
         }

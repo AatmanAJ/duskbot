@@ -14,6 +14,7 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "supported", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "update", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "setText", returnType: CAPPluginReturnNone),
+        CAPPluginMethod(name: "clearText", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "setAvatar", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "focus", returnType: CAPPluginReturnNone),
         CAPPluginMethod(name: "blur", returnType: CAPPluginReturnNone),
@@ -73,6 +74,12 @@ public class GlassChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let text = call.getString("text") ?? ""
         let seq = call.getInt("seq") ?? 0
         withChrome { $0.setText(text, seq: seq) }
+    }
+
+    @objc func clearText(_ call: CAPPluginCall) {
+        guard #available(iOS 26.0, *) else { return }
+        let id = call.getInt("id") ?? 0
+        withChrome { $0.clearText(id: id) }
     }
 
     @objc func setAvatar(_ call: CAPPluginCall) {
@@ -1002,6 +1009,26 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             updatePlaceholder()
             layoutComposer(animated: false)
         }
+    }
+
+    /// The page took a send out of the field: it empties whatever it holds and whatever sequence it last took, and a
+    /// guess dictation or the keyboard still had open is settled first, so it cannot land in the emptied field after.
+    func clearText(id: Int) {
+        let had = (text.text ?? "").count
+        if text.markedTextRange != nil { text.unmarkText() }
+        textSeq = max(textSeq, id)
+        if !(text.text ?? "").isEmpty {
+            text.text = ""
+            if let font = placeholder.font {
+                text.font = font
+                applyFieldAttributes(font)
+            }
+            text.isScrollEnabled = false
+            updatePlaceholder()
+            layoutComposer(animated: false)
+        }
+        KeyboardTrace.log("clearText", ["id": CGFloat(id), "had": CGFloat(had)])
+        emit(["type": "cleared", "id": id])
     }
 
     func setText(_ value: String, seq: Int) {

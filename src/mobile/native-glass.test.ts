@@ -173,6 +173,7 @@ function fakeGlass() {
   const glass = {
     update: vi.fn<(state: GlassState) => void>(),
     setText: vi.fn<(text: string, seq: number) => void>(),
+    clearText: vi.fn<(id: number) => void>(),
     setAvatar: vi.fn(),
     focus: vi.fn(),
     blur: vi.fn(),
@@ -372,6 +373,67 @@ describe("useNativeGlass", () => {
     send({ type: "button", index: 0, kind: "stop" });
     expect(pressed.stop).toHaveBeenCalledTimes(1);
     expect(pressed.mic).not.toHaveBeenCalled();
+  });
+
+  const LONG = Array.from({ length: 80 }, (_, i) => `line ${i}: check the build again 🚀 “quoted”`).join("\n");
+
+  /** the page's Send: what a tap on the native one presses, and what the page then does with its field */
+  function pageSends($: (id: string) => HTMLElement, takes = true) {
+    $("mic").addEventListener("click", () => { if (takes) typeInto($("field") as HTMLTextAreaElement, ""); });
+  }
+
+  it("clears the native field outright once the page takes a long send, and never types its old text back", () => {
+    const { glass, send, $ } = mount();
+    pageSends($);
+    runFrame();
+    send({ type: "text", text: LONG });
+    runFrame();
+    send({ type: "button", index: 0, kind: "send" });
+    // the field's own text from before the clear, late (a dictation or autocorrection settling)
+    send({ type: "text", text: LONG.replace(/again 🚀 “quoted”$/, "again! 🚀 “quoted”") });
+    expect(($("field") as HTMLTextAreaElement).value).toBe("");
+    runFrame();
+    const id = glass.clearText.mock.calls[0]![0];
+    expect(glass.setText).toHaveBeenLastCalledWith("", id);
+    send({ type: "text", text: LONG });
+    expect(($("field") as HTMLTextAreaElement).value).toBe("");
+    expect(glass.clearText.mock.calls.length).toBeGreaterThan(1);
+    send({ type: "text", text: "next one" });
+    expect(($("field") as HTMLTextAreaElement).value).toBe("next one");
+  });
+
+  it("leaves the native field alone when the page does not take the send", () => {
+    const { glass, send, $ } = mount();
+    pageSends($, false);
+    runFrame();
+    send({ type: "text", text: LONG });
+    send({ type: "button", index: 0, kind: "send" });
+    for (let i = 0; i < 3; i += 1) runFrame();
+    expect(glass.clearText).not.toHaveBeenCalled();
+    expect(($("field") as HTMLTextAreaElement).value).toBe(LONG);
+  });
+
+  it("puts a failed send's text back in the native field after clearing it", () => {
+    const { glass, send, $ } = mount();
+    pageSends($);
+    runFrame();
+    send({ type: "text", text: LONG });
+    send({ type: "button", index: 0, kind: "send" });
+    runFrame();
+    expect(glass.clearText).toHaveBeenCalledTimes(1);
+    typeInto($("field") as HTMLTextAreaElement, LONG);
+    runFrame();
+    expect(glass.setText).toHaveBeenLastCalledWith(LONG, expect.any(Number));
+  });
+
+  it("types native text into the composer's current field after the page made it anew", () => {
+    const { send, $ } = mount();
+    runFrame();
+    const old = $("field") as HTMLTextAreaElement;
+    const fresh = document.createElement("textarea");
+    old.replaceWith(fresh);
+    send({ type: "text", text: "hello" });
+    expect(fresh.value).toBe("hello");
   });
 
   it("sends the page's own edits to the native field, never echoing what was typed there", () => {
