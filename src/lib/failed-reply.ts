@@ -174,6 +174,8 @@ function detailWords(kind: FailedReplyKind, engineName: string, onServer: boolea
   if (kind === "credits") return t("failedReply.credits", { engine: engineName });
   if (kind === "claude_update") return t("chat.claudeUpdate.offer");
   if (kind === "place" || kind === "blocker") return t("error.plain.generic");
+  // an engine's own words for a full context are token counts, never what to do next
+  if (kind === "context") return t(ENGINE_DETAIL.context, { engine: engineName });
   if (hasEngineDetail(kind)) {
     const text = cause.trim();
     if (text && !isTechnicalError(text)) return currentFailureWords(text);
