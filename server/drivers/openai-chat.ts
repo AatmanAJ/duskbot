@@ -754,11 +754,11 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
             if (options.nudgeAnnouncedAction !== false && tools.definitions.length && announcesAction(completion.text, effectful > 0)) {
               if (nudges >= MAX_ANNOUNCEMENT_NUDGES || turnEntry.ending) {
                 stopReason = "incomplete_action";
-                throw new ChatProtocolError(`Stopped after ${turnEntry.ending ? `${MAX_CHAT_ROUNDS} steps` : `${MAX_ANNOUNCEMENT_NUDGES} announcement nudges`} without a verified final answer. Earlier operations may have taken effect; inspect their state and continue only the remaining work.`, "announced_no_action");
+                throw new ChatProtocolError(`Stopped after ${turnEntry.ending ? `${MAX_CHAT_ROUNDS} steps` : `${MAX_ANNOUNCEMENT_NUDGES} announcement nudges`} without a final answer. Anything it already did stays done; ask again for what's left, or switch this bot to another model.`, "announced_no_action");
               }
               if (callsAtNudge === seenCalls.size) {
                 stopReason = "incomplete_action";
-                throw new ChatProtocolError("The model announced another action without tool progress after a nudge. The task is incomplete; earlier operations may have taken effect. Inspect their state before continuing.", "announced_no_action");
+                throw new ChatProtocolError("The model kept saying what it would do next without doing it, so this stopped. Anything it already did stays done; ask again for what's left, or switch this bot to another model.", "announced_no_action");
               }
               nudges += 1;
               callsAtNudge = seenCalls.size;
