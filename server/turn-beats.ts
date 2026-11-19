@@ -143,7 +143,7 @@ export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string;
       `${input.name} already told them:`, said || "- (nothing yet)", "",
       `What ${input.name} has done so far:`, steps, "",
       "Write the second message: what they will get and its shape (a short list, a table, a file, a link, a summary), and any default you can see being assumed.",
-      `- Never promise a check, a test, a price lookup or anything else that is not already among the steps: you cannot know ${input.name} can do it. No \"before sending, I'll check\" lines.`,
+      `- Never promise a check, a test, a price lookup or anything else that is not already among the steps: you cannot know ${input.name} can do it. No "before sending, I'll check" lines.`,
       "- 15 to 40 words, 1 or 2 sentences. Do not repeat what was already said.",
       "- If what was already said tells them what they will get, reply exactly SKIP.",
       "- Never promise a format, file or page the request does not call for.",
