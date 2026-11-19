@@ -220,10 +220,13 @@ export function TurnPresence({
   quiet,
   card,
   cardLabel,
+  wordsAtOnce,
   className,
 }: {
   /** a mark before the words; without one the line is the words alone, from its first frame */
   avatar?: ReactNode;
+  /** with a mark, the words still come from the first frame (Thinking) instead of after the mark's quiet beat */
+  wordsAtOnce?: boolean;
   visible: boolean;
   label?: string;
   phrases?: readonly string[];
@@ -297,7 +300,8 @@ export function TurnPresence({
   const { current, previous } = useRotatingPhrase(now ?? NOTHING, phase ?? now?.[0] ?? "", seed, !simple && mounted && showWorking && now !== null);
   const marked = avatar !== undefined;
   const wordless = !label && !now;
-  const step = useStatusLabel(label ? [label] : now ?? (marked ? null : [plainWord("thinking")]), label ? `label:${label}` : wordless && !marked ? "label:thinking" : phase ?? now?.[0] ?? "", seed, since, mounted && simpleStatus, label ? NOTHING : fun, !marked);
+  const atOnce = wordsAtOnce ?? !marked;
+  const step = useStatusLabel(label ? [label] : now ?? (atOnce ? [plainWord("thinking")] : null), label ? `label:${label}` : wordless && atOnce ? "label:thinking" : phase ?? now?.[0] ?? "", seed, since, mounted && simpleStatus, label ? NOTHING : fun, atOnce);
   if (!mounted) return null;
   const status = simpleStatus ? (
     <span id={statusId} className="turn-label-slot flex h-[22px] min-w-0 items-center gap-x-1.5 text-[13.5px] leading-[21px]" data-turn-status>

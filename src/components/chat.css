@@ -411,28 +411,28 @@
   transform: none;
 }
 
-/* grok's activity line: the row grows from its leading edge, the mark pops, the label rises in; it leaves in 140ms */
+/* the working line: the row grows from its leading edge, the mark grows in, the label rises after it; it leaves in 140ms */
 @keyframes turn-status-in {
-  from { opacity: 0; transform: scale(0.92); }
+  from { opacity: 0; transform: scale(0.96); }
 }
 @keyframes turn-status-out {
   to { opacity: 0; transform: scale(0.92); }
 }
 @keyframes turn-mark-pop {
-  from { opacity: 0; transform: scale(0.6); }
+  from { opacity: 0; transform: scale(0.8); }
 }
 @keyframes turn-label-rise {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(3px); }
 }
 .turn-status-in {
   transform-origin: 0 18px;
-  animation: turn-status-in 180ms var(--dusk-ease-out) backwards;
+  animation: turn-status-in 260ms var(--dusk-ease-out) backwards;
 }
 .turn-status-in .turn-status-mark {
-  animation: turn-mark-pop 340ms var(--dusk-ease-back) backwards;
+  animation: turn-mark-pop 360ms var(--dusk-ease-out) backwards;
 }
 .turn-status-in .turn-label-slot {
-  animation: turn-label-rise 180ms var(--dusk-ease-out) backwards;
+  animation: turn-label-rise 260ms var(--dusk-ease-out) 40ms backwards;
 }
 .turn-status-out {
   transform-origin: 0 18px;
@@ -457,7 +457,7 @@
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: status-shimmer 2.2s steps(60, end) infinite;
+  animation: status-shimmer 3.4s var(--dusk-ease-heavy) infinite;
 }
 @keyframes status-shimmer {
   from { background-position: 200% 0; }
