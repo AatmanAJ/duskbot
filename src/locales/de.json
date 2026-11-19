@@ -2875,6 +2875,8 @@
   "failedReply.titleTwo": "{first} und {second} konnten nicht antworten",
   "failedReply.titleMore": "{first}, {second} und {count} weitere konnten nicht antworten",
   "failedReply.yourAi": "Deine KI",
+  "failedReply.signedOutHere": "{engine} ist auf diesem Computer nicht angemeldet. Melde dich an, um weiterzumachen.",
+  "failedReply.signedOutServer": "{engine} ist auf dem Server nicht angemeldet. Melde dich an, um weiterzumachen.",
   "failedReply.tryAgain": "Erneut versuchen",
   "room.hint.leader": "{name} leitet diese Gruppe und verteilt die Arbeit. Erwähne jemanden mit @, um direkt zu fragen.",
   "secretCard.title": "Secrets",
