@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialState, StoreProvider, useStore, type Action } from "@/state/store";
 import { installSendOutbox, type OutboxSend } from "@/state/send-outbox";
-import { createOutbox, OUTBOX_MAX_AGE_MS, OUTBOX_MAX_TRIES, replayAction } from "./outbox";
+import { createOutbox, onBackOnline, OUTBOX_MAX_AGE_MS, OUTBOX_MAX_TRIES, replayAction } from "./outbox";
 
 function memoryPrefs() {
   const values = new Map<string, string>();
@@ -76,6 +76,20 @@ describe("outbox", () => {
     const other = createOutbox(prefs, "k");
     await other.ready;
     expect(other.pending()).toEqual([]);
+  });
+
+  it("tries again when the network returns, not only on resume, until stopped", () => {
+    const network = new EventTarget();
+    let resume: (() => void) | null = null;
+    const run = vi.fn();
+    const stop = onBackOnline({ onResume: (listener) => { resume = listener; return () => { resume = null; }; } }, run, network);
+    network.dispatchEvent(new Event("online"));
+    resume!();
+    expect(run).toHaveBeenCalledTimes(2);
+    stop();
+    network.dispatchEvent(new Event("online"));
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(resume).toBeNull();
   });
 });
 
