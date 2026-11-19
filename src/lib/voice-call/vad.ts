@@ -12,6 +12,10 @@ export interface VadTuning {
   minLevelDb: number;
   /** The first moments only learn the room. */
   calibrateMs: number;
+  /** A frame whose peak stands this far over its average is a click or a tap, not a voice. */
+  maxCrest: number;
+  /** What the waveform and the caption leave out: anything within this of the room's floor. */
+  gateDb: number;
 }
 
 export const DEFAULT_TUNING: VadTuning = {
@@ -21,8 +25,14 @@ export const DEFAULT_TUNING: VadTuning = {
   bargeStartMs: 200,
   endMs: 560,
   minLevelDb: -52,
-  calibrateMs: 320,
+  calibrateMs: 400,
+  maxCrest: 9,
+  gateDb: 7,
 };
+
+/** The room's floor follows this low share of the quiet frames heard over the last few seconds. */
+const FLOOR_PERCENTILE = 0.2;
+const FLOOR_FRAMES = 96;
 
 export type VadEvent = "start" | "end" | null;
 
@@ -33,6 +43,19 @@ export function levelDb(frame: Float32Array): number {
   return rms > 0 ? 20 * Math.log10(rms) : -100;
 }
 
+/** Peak over RMS: about 1.4 for a steady tone, 3 to 6 for a voice, far higher for a click. */
+export function crestOf(frame: Float32Array): number {
+  let sum = 0;
+  let peak = 0;
+  for (let i = 0; i < frame.length; i += 1) {
+    const s = frame[i]!;
+    sum += s * s;
+    if (Math.abs(s) > peak) peak = Math.abs(s);
+  }
+  const rms = Math.sqrt(sum / Math.max(1, frame.length));
+  return rms > 0 ? peak / rms : 0;
+}
+
 export class Vad {
   floorDb = -60;
   speaking = false;
@@ -41,6 +64,10 @@ export class Vad {
   /** When the last voiced frame ended, in the caller's clock. */
   lastVoiceAt = 0;
   private readonly tuning: VadTuning;
+  private heardMs = 0;
+  private readonly quiet = new Float32Array(FLOOR_FRAMES);
+  private quietCount = 0;
+  private quietAt = 0;
 
   constructor(tuning: Partial<VadTuning> = {}) {
     this.tuning = { ...DEFAULT_TUNING, ...tuning };
@@ -56,20 +83,35 @@ export class Vad {
     this.quietMs = 0;
   }
 
-  private heardMs = 0;
+  /** 0 to 1: how far a sound stands over the room, nothing for the room itself. */
+  gated(level: number): number {
+    return Math.max(0, Math.min(1, (level - this.floorDb - this.tuning.gateDb) / 30));
+  }
 
-  feed(level: number, frameMs: number, now: number, botSpeaking = false): VadEvent {
+  private learn(level: number): void {
+    this.quiet[this.quietAt] = level;
+    this.quietAt = (this.quietAt + 1) % FLOOR_FRAMES;
+    this.quietCount = Math.min(FLOOR_FRAMES, this.quietCount + 1);
+    if (this.quietCount < 8 || this.quietAt % 8 !== 0) return;
+    const sorted = Array.from(this.quiet.subarray(0, this.quietCount)).sort((a, b) => a - b);
+    const target = sorted[Math.floor((sorted.length - 1) * FLOOR_PERCENTILE)]!;
+    this.floorDb = Math.min(-30, Math.max(-80, this.floorDb + (target - this.floorDb) * 0.35));
+  }
+
+  feed(level: number, frameMs: number, now: number, botSpeaking = false, crest = 0): VadEvent {
     if (this.heardMs < this.tuning.calibrateMs) {
       const weight = frameMs / (this.heardMs + frameMs);
       this.floorDb = this.heardMs === 0 ? Math.max(-80, Math.min(-30, level)) : Math.max(-80, Math.min(-30, this.floorDb + (level - this.floorDb) * weight));
       this.heardMs += frameMs;
+      this.learn(level);
       return null;
     }
     const margin = botSpeaking ? this.tuning.bargeMarginDb : this.tuning.marginDb;
-    const voiced = level >= Math.max(this.floorDb + margin, this.tuning.minLevelDb);
-    if (!voiced && !this.speaking) {
-      const rate = level < this.floorDb ? 0.25 : 0.02;
-      this.floorDb = Math.min(-30, Math.max(-80, this.floorDb + (level - this.floorDb) * rate));
+    const loud = level >= Math.max(this.floorDb + margin, this.tuning.minLevelDb);
+    const voiced = loud && crest <= this.tuning.maxCrest;
+    if (!loud && !this.speaking) {
+      if (level < this.floorDb) this.floorDb = Math.max(-80, this.floorDb + (level - this.floorDb) * 0.25);
+      this.learn(level);
     }
     if (voiced) {
       this.voicedMs += frameMs;

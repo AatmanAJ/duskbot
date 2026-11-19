@@ -7,7 +7,7 @@ import { CAPTURE_RATE, FRAME_MS, FrameRing, joinFrames, openCallMic, wavBytes, t
 import { playChime, type ChimeKind } from "./chime";
 import { SystemListener, systemListenerAvailable, systemSpeak, systemVoiceAvailable } from "./fallback";
 import { CallPlayer, type PlayerEvents, type Prepare, type Render, type SystemVoice } from "./player";
-import { levelDb, soundsUnfinished, Vad } from "./vad";
+import { crestOf, levelDb, soundsUnfinished, Vad } from "./vad";
 
 export type CallPhase = "connecting" | "listening" | "hearing" | "thinking" | "speaking" | "error";
 export type CallErrorKind = "microphone-blocked" | "microphone-missing" | "microphone-failed" | "voice-failed" | "unsupported";
@@ -344,11 +344,12 @@ export class VoiceCallSession {
   private onFrame(frame: Float32Array): void {
     if (this.closed) return;
     const level = levelDb(frame);
-    this.micLevel = this.snapshot.muted ? 0 : Math.max(0, Math.min(1, (level + 60) / 45));
+    this.micLevel = 0;
     if (this.snapshot.muted) return;
     const now = this.io.now();
     const botTalking = this.player.speaking;
-    const event = this.vad.feed(level, FRAME_MS, now, botTalking);
+    const event = this.vad.feed(level, FRAME_MS, now, botTalking, crestOf(frame));
+    this.micLevel = this.vad.speaking ? this.vad.gated(level) : 0;
     // The computer's own voice plays outside the echo canceller: while it talks the call takes turns.
     if (!this.ready || (this.player.systemSpeaking && event === "start")) {
       if (event === "start") this.vad.reset();

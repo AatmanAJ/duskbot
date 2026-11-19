@@ -150,8 +150,7 @@ function CallSurface({ bot, session, transcript, voice, speed, account, onRetry 
     const botLevel = session.botLevel();
     if (botLevel > 0.01) return { level: botLevel, who: "bot" };
     const mic = snap.muted ? 0 : session.micLevel;
-    const hearing = session.state.phase === "hearing";
-    return { level: hearing ? mic : mic * 0.25, who: hearing || mic > 0.35 ? "person" : "none" };
+    return { level: mic, who: mic > 0 ? "person" : "none" };
   }, [session, snap.muted]);
 
   return (

@@ -157,16 +157,20 @@ describe("the phone composer", () => {
       expect(fixture.call).toBeNull();
       const mic = container.querySelector<HTMLButtonElement>('button[data-voice-mic="start"]')!;
       expect(mic.getAttribute("aria-label")).toBe("Start dictation");
-      expect(mic.className.split(" ")).toEqual(expect.arrayContaining(["bg-ink", "text-app", "size-8", "max-md:size-10"]));
+      expect(mic.className.split(" ")).toEqual(expect.arrayContaining(["bg-ink", "text-app", "size-9"]));
     } finally {
       vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
       vi.stubEnv("VITE_DUSK_VOICE_CALL", "");
     }
   });
 
-  it("shows only the + and the pill, with an inverse voice button", () => {
+  it("is one compact pill: the + at its left edge and every control 36 px inside it", () => {
     render({ bot });
-    expect(plus()).not.toBeNull();
+    const pill = container.querySelector("[data-composer-row]")!;
+    expect(pill.contains(plus())).toBe(true);
+    expect(container.querySelector("[data-composer-plus]")!.className.split(" ")).toEqual(expect.arrayContaining(["size-9", "rounded-full"]));
+    expect(pill.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["min-h-[44px]", "rounded-[22px]"]));
+    expect(container.querySelector<HTMLButtonElement>('button[data-voice-mic="start"]')!.className.split(" ")).toContain("size-9");
     expect(fixture.call).toMatchObject({ placement: "composer", inverse: true });
     expect(fixture.call?.fill).toBeUndefined();
   });
