@@ -224,12 +224,12 @@ export function ComposerPlusMenu({ onAttach, attachChoices, goal, teach, approva
     <span
       data-composer-plus
       className={cn(
-        // inside the message pill, at its left edge: one of the pill's own controls, a step of tone over it
-        "flex size-9 items-center justify-center rounded-full text-ink transition-colors duration-[120ms]",
-        open ? "bg-ink/[0.12]" : "bg-ink/[0.06] hover:bg-ink/[0.1]",
+        // inside the message pill, at its left edge: a plain glyph, the pill's first 32 px control
+        "flex size-8 items-center justify-center rounded-full text-ink-secondary transition-colors duration-[120ms]",
+        open ? "text-ink" : "hover:text-ink",
       )}
     >
-      <Plus size={20} aria-hidden="true" />
+      <Plus size={22} aria-hidden="true" />
     </span>
   ) : (
     <Icon name="plus" variant="filled" size={16} />
