@@ -79,8 +79,9 @@ describe("a cancelled turn", () => {
   it("keeps a real error, including one that only mentions cancellation", () => {
     const cause = `${CANCELLED} See the logs.`;
     render({ ...bot, messages: [ask, { id: "error", role: "bot", kind: "activity", at: T0 + 2, tool: { name: `error: ${cause}`, ok: false } }] });
+    expect(host.textContent).toContain("Bot failed to respond");
     expect(host.textContent).toContain(cause);
-    expect(host.querySelector("[data-failed-reply] [data-chat-error][role=status]"), "a real error keeps its card above the composer, calm, with its way on").not.toBeNull();
+    expect(host.querySelector("[data-failed-reply] [data-chat-error][role=alert]"), "a real error keeps the danger card, above the composer").not.toBeNull();
     expect(host.textContent).not.toContain("stopped");
     expect(retry()).toBeTruthy();
   });

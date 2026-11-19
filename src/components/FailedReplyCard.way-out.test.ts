@@ -106,8 +106,7 @@ describe("the card says what really stopped the reply", () => {
 
   it("names what a cut turn had already done outside", async () => {
     await show(failed("Interrupted by a dusk bot restart after it already sent an email (gmail_send); not resumed, so nothing is done twice."), vi.fn());
-    expect(text()).toContain("Already done: sent an email");
-    expect(text()).not.toContain("gmail_send");
+    expect(text()).toContain("Already done: sent an email (gmail_send)");
   });
 });
 

@@ -16,6 +16,13 @@ export function rawDetailIn(text: string): RawDetailKind | null {
   return RAW_DETAIL.find(([, pattern]) => pattern.test(text))?.[0] ?? null;
 }
 
+const HOME = /(?:\/Users\/|\/home\/)[^/\s"'`]+(?=\/)|[A-Za-z]:\\Users\\[^\\\s"'`]+(?=\\)/g;
+
+/** `text` with each home folder written as `~`: the path still says where, without the account name. */
+export function shortenHomePaths(text: string): string {
+  return text.replace(HOME, "~");
+}
+
 export function hasRawDetail(text: string): boolean {
   return rawDetailIn(text) !== null;
 }

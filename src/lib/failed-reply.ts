@@ -76,10 +76,9 @@ export function currentFailureWords(text: string): string {
 
 /** What a turn a restart cut had already done outside, in the server's words: "sent an email (gmail_send)". */
 export function restartAlreadyDid(cause: string): string | null {
-  return RESTART_DID.exec(cause)?.[1]?.replace(TOOL_NAME_AFTER, "").trim() || null;
+  return RESTART_DID.exec(cause)?.[1]?.trim() || null;
 }
 
-const TOOL_NAME_AFTER = /\s*\([\w.-]+\)/g;
 
 const SIGNED_OUT_WORDS = /not logged in|logged out|\/login|not signed in|sign in again|authentication required|unauthori[sz]ed|invalid api key|\b401\b/i;
 const USAGE_WORDS = /usage limit|limit reached|hit your [\w' -]{0,30}limit/i;
