@@ -4,7 +4,8 @@
 // glass bridge (a recording stand-in), and style and layout work. `--video <dir>` also keeps the screencast of each chat
 // switch for frame strips.
 //
-//   node --experimental-strip-types apps/mobile/store/perf.ts --out perf.json [--rate 4] [--runs 3] [--video dir] [--only sheet] [--long 320]
+//   node --experimental-strip-types apps/mobile/store/perf.ts --out perf.json [--rate 4] [--runs 3] [--video dir] [--only sheet|switch] [--long 320]
+//     [--bots 50] [--trace trace.json]
 //   DUSK_STAGE_PLATFORM=android runs it as the Android app: a Pixel 7's screen, no native glass, typed into the page's composer
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -13,29 +14,33 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
-import { startStage, js, type Stage } from "./stage.ts";
+import { startStage, js, stagePictureUrl, type Stage } from "./stage.ts";
 import { TEAM } from "./team.mjs";
 
-const { values: args } = parseArgs({ options: { out: { type: "string" }, rate: { type: "string", default: "4" }, runs: { type: "string", default: "3" }, video: { type: "string" }, profile: { type: "string" }, only: { type: "string" }, long: { type: "string", default: "320" } } });
+const { values: args } = parseArgs({ options: { out: { type: "string" }, rate: { type: "string", default: "4" }, runs: { type: "string", default: "3" }, video: { type: "string" }, profile: { type: "string" }, only: { type: "string" }, long: { type: "string", default: "320" },
+  bots: { type: "string", default: "50" }, trace: { type: "string" } } });
 const ANDROID = process.env.DUSK_STAGE_PLATFORM === "android";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const RATE = Number(args.rate);
 const RUNS = Number(args.runs);
 const LONG = "Quill";
 
-// a long chat to scroll and switch into: 320 messages by default of lists, code and links, as a working chat reads after a few weeks
+// a long chat to scroll and switch into: 320 messages by default of lists, code, links, tables and pictures, as a working
+// chat reads after a few weeks
 const quill = TEAM.find((one) => one.name === LONG)!;
 const long: Array<[string, string, number]> = [];
+const table = (i: number) => `\n\n| channel | sent | opened |\n| --- | --- | --- |\n| email | ${1200 + i} | 41% |\n| push | ${800 + i} | 63% |\n| sms | ${300 + i} | 72% |`;
 for (let i = 0; i < Number(args.long); i += 1) {
-  const ago = 60 * 24 * 6 - i * 40;
+  const ago = 60 * 24 * 6 - i * ((6 * 24 * 60) / Number(args.long));
+  const take = (i + 1) / 2;
   long.push(i % 2 === 0
     ? ["me", `draft ${i / 2 + 1}: can you tighten the intro and give me three options for the closing line?`, ago]
-    : [LONG, `here's take ${(i + 1) / 2}:\n\n1. **lead with the result**, then the why\n2. cut the second paragraph to two lines\n3. end on the ask\n\n\`\`\`\nsubject: quick update on the launch\n\`\`\`\n\nthe closing options are in [the doc](https://example.com/doc/${i}). want me to send the shortest one?`, ago - 1]);
+    : [LONG, `here's take ${take}:\n\n1. **lead with the result**, then the why\n2. cut the second paragraph to two lines\n3. end on the ask\n\n\`\`\`\nsubject: quick update on the launch\n\`\`\`\n\nthe closing options are in [the doc](https://example.com/doc/${i}). want me to send the shortest one?${take % 5 === 0 ? table(i) : ""}${take % 7 === 0 ? `\n\n![launch photo ${take}](${stagePictureUrl(take)})` : ""}`, ago - 1]);
 }
 (quill as { chat: unknown[] }).chat = [...long, ...quill.chat];
-// a home of 50 bots, as a busy team's phone lists them
+// a home of many bots (a workspace holds at most 100), as a busy team's phone lists them
 const COLORS = ["purple", "blue", "pink", "orange", "teal", "yellow", "coral", "green"];
-for (let i = TEAM.length; i < 50; i += 1) {
+for (let i = TEAM.length; i < Number(args.bots); i += 1) {
   (TEAM as unknown as Array<Record<string, unknown>>).push({ name: `Helper ${i + 1}`, color: COLORS[i % COLORS.length], body: "pip", chat: [["me", `task ${i + 1}: check the numbers`, 600 + i * 30], [`Helper ${i + 1}`, `done, the numbers for task ${i + 1} add up.`, 599 + i * 30]] });
 }
 
@@ -221,13 +226,29 @@ async function recordSwitch(stage: Stage, name: string, dir: string) {
   writeFileSync(join(dir, "frames.json"), JSON.stringify(list, null, 2));
 }
 
+const STREAMED = Array.from({ length: 12 }, (_, i) => `${i + 1}. **${["mon", "tue", "wed", "thu", "fri", "sat"][i % 6]}**: the review at ${9 + (i % 8)}:00, then a block for the deck, and the gym after six if the call ends on time.`).join("\n") + "\n\nthat leaves thursday afternoon open for the launch prep. want me to hold it?";
+
+/** a finger drags a bot message 120 px to the right over about 300 ms, past the reply threshold, and lets go */
+async function swipeReply(stage: Stage) {
+  const at = await stage.page.evaluate(`(() => { const b = [...document.querySelectorAll("[data-mobile-chat] [data-message-row]:not(.items-end) [data-chat-bubble]")].at(-1).getBoundingClientRect(); return { x: b.left + 60, y: b.top + Math.min(24, b.height / 2) }; })()`);
+  await stage.page.evaluate(`window.__perf.tapAt = performance.now()`);
+  await stage.page.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: at.x, y: at.y }] });
+  for (let step = 1; step <= 18; step += 1) {
+    await stage.page.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: at.x + step * (120 / 18), y: at.y + step * 0.2 }] });
+    await delay(16);
+  }
+  await stage.page.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+
 console.log("building the phone app");
 const out = join(tmpdir(), `dusk-perf-build-${process.pid}`);
 const build = spawnSync(join(repoRoot, "node_modules/.bin/vite"), ["build", "--config", "apps/mobile/store/perf.vite.config.ts", "--logLevel", "warn"], { cwd: repoRoot, env: { ...process.env, DUSK_PERF_OUT: out }, stdio: "inherit" });
 if (build.status !== 0) process.exit(1);
 process.env.DUSK_PERF_OUT = out;
 
-const stage = await startStage({ args: ["preview", "--config", "apps/mobile/store/perf.vite.config.ts"], ready: "Local" });
+// about 30 tokens a second, four characters to a token
+process.env.FAKE_CLAUDE_STREAM_CADENCE ??= "4:33";
+const stage = await startStage({ args: ["preview", "--config", "apps/mobile/store/perf.vite.config.ts"], ready: "Local" }, { "stream probe": STREAMED });
 const results: Result[] = [];
 try {
   await stage.page.send("Performance.enable");
@@ -253,8 +274,27 @@ try {
     results.push(await back(stage, walk));
   }
 
+  if (args.trace) {
+    // a timeline of one long chat opening: every style and layout pass with the script that forced it
+    await stage.page.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.stack,v8.execute", transferMode: "ReturnAsStream" });
+    await openChat(stage, LONG);
+    const done = new Promise<{ stream: string }>((resolve) => { const off = stage.page.on("Tracing.tracingComplete", (event) => { off(); resolve(event); }); });
+    await stage.page.send("Tracing.end");
+    const { stream } = await done;
+    let trace = "";
+    for (;;) {
+      const chunk = await stage.page.send("IO.read", { handle: stream, size: 1 << 20 });
+      trace += chunk.base64Encoded ? Buffer.from(chunk.data, "base64").toString("utf8") : chunk.data;
+      if (chunk.eof) break;
+    }
+    await stage.page.send("IO.close", { handle: stream });
+    writeFileSync(args.trace, trace);
+    await back(stage);
+  }
+
+  if (args.only !== "switch") {
   if (args.only !== "sheet") {
-  results.push(await measure(stage, "scroll home (50 bots)", async () => {
+  results.push(await measure(stage, `scroll home (${args.bots} bots)`, async () => {
     await stage.page.send("Input.synthesizeScrollGesture", { x: 220, y: 600, yDistance: -3000, speed: 2400, gestureSourceType: "touch", repeatCount: 1 });
     await stage.page.send("Input.synthesizeScrollGesture", { x: 220, y: 300, yDistance: 3000, speed: 2400, gestureSourceType: "touch", repeatCount: 1 });
   }, 500, true));
@@ -286,6 +326,17 @@ try {
     }
     await stage.page.until(`[...document.querySelectorAll("[data-mobile-chat] [data-message-row]")].some((row) => row.textContent.includes("on for tomorrow"))`, 5000);
   }, 5000, true));
+  if (args.only !== "sheet" && !ANDROID) {
+    // a long answer streamed at about 30 tokens a second: what each token costs the page while it reads
+    await stage.page.evaluate(`window.__perf.emit({ type: "text", text: "stream probe: plan my week" })`);
+    await delay(300);
+    results.push(await measure(stage, "stream a reply (30 tok/s)", async () => {
+      await stage.page.evaluate(`window.__perf.emit({ type: "button", index: 1, kind: "send" })`);
+      await stage.page.until(`[...document.querySelectorAll("[data-mobile-chat] [data-message-row]")].some((row) => row.textContent.includes(${js(STREAMED.slice(-30))}))`, 60_000);
+    }, 800, true));
+    results.push(await measure(stage, "swipe a message to reply", () => swipeReply(stage), 600, true));
+    await delay(400);
+  }
   results.push(await measure(stage, "open the bot sheet", async () => {
     await tap(stage, TITLE);
     await stage.page.until(`[...document.querySelectorAll("[role=dialog]")].some((el) => el.getBoundingClientRect().width > 0)`, 10_000);
@@ -304,6 +355,8 @@ try {
     await stage.page.evaluate(`document.querySelector(".mobile-sheet").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
     await sheetGone();
     await delay(400);
+  }
+
   }
 
   if (args.profile) {
