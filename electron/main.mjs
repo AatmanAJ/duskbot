@@ -462,7 +462,7 @@ const serverSupervisor = createServerSupervisor({
     if (earlyVpsOpened && activeRemote(environmentsState)?.id === earlyVpsOpened && mainWindow && !mainWindow.isDestroyed()) return;
     serverFailure = "crashed";
     if (app.isPackaged && !desktopRemoteAccess && showsLocalPage(mainWindow)) return void serverFailurePage(mainWindow);
-    void offerRestart({ dialog, app });
+    void offerRestart({ dialog, app, logFile: path.join(LOG_DIR, "server.log"), home: app.getPath("home") });
   },
   log: slog,
 });
