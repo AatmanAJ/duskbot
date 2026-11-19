@@ -9301,7 +9301,7 @@ async function beginTurn(
           computerKind = "vps";
         }
         if (wants === "cloud" && computerKind !== "vps" && !ownVpsAsleep && !deferredSharedComputer) {
-          throw new Error("The VPS computer is unavailable; connect a VPS in Settings and retry");
+          throw Object.assign(new Error("The VPS computer is unavailable; connect a VPS in Settings and retry"), vpsSshAliasForBot(cfg, bot) ? {} : { code: "computer-gone" });
         }
       } catch (error) {
         const failedPlace = namedPlace ?? (teamComputer ? "cloud" as const : undefined), from = placeSource ?? (plan.pinned ? pinSource(plan.pinned, dispatchTask, bot.computer) : "works-on");
