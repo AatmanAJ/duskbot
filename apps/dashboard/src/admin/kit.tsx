@@ -4,7 +4,6 @@ import { Link } from "../lib/router";
 import { Button, cx } from "../ui/kit";
 import { Modal } from "../ui/controls";
 import { AnimatePresence, m, Pill, SwapText, usePill, useSlots } from "../ui/motion";
-import { Figure } from "../ui/Figure";
 import { Mascot } from "../ui/Mascot";
 import { avatarOf, friendlyName } from "./names";
 import { countryName } from "./geo";
@@ -229,10 +228,10 @@ export function RankCard({ title, tabs, data, label, onPick, active, metric, det
                       transition={{ type: "spring", visualDuration: 0.4, bounce: 0 }} aria-hidden />
                     <span className={cx("relative min-w-0 truncate px-2", quiet ? "text-ink-4" : "text-ink")}>{typeof text === "string" ? <SwapText text={text} /> : text}</span>
                   </span>
-                  <span className={cx(cols, "shrink-0 text-end font-mono num", quiet ? "text-ink-4" : "text-ink")}>{ghost ? "-" : <Figure value={compact(row.visitors)} className="!font-mono !text-13 !leading-5 !tracking-normal" />}</span>
+                  <span className={cx(cols, "shrink-0 text-end font-mono num", quiet ? "text-ink-4" : "text-ink")}>{ghost ? "-" : compact(row.visitors)}</span>
                   {!metric && <span className={cx(cols, "shrink-0 text-end font-mono num", row.signups && !quiet ? "text-coral-deep" : "text-ink-4")}>{ghost ? "-" : compact(row.signups)}</span>}
                   {toggle && <span className={cx(cols, "shrink-0 text-end font-mono num", trialCount && !quiet ? "font-medium text-money" : "text-ink-4")}>{trialCount ? compact(trialCount) : "-"}</span>}
-                  {toggle && paidCol && <span className="w-9 shrink-0 text-end font-mono text-12 text-ink-3 num">{row.paid ? compact(row.paid) : ""}</span>}
+                  {toggle && paidCol && <span className={cx("w-9 shrink-0 text-end font-mono text-12 num", quiet ? "text-ink-4" : "text-ink-3")}>{row.paid ? compact(row.paid) : ""}</span>}
                 </button>
               </m.li>
             );
