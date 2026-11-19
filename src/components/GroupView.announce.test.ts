@@ -27,4 +27,5 @@ describe("room screen reader announcements", () => {
     const markup = renderToStaticMarkup(createElement(StoreProvider, null, createElement(GroupView, { group })));
     expect(markup).toMatch(/role="log" aria-live="off" aria-label="[^"]*Standup[^"]*"/);
     expect(markup.match(/data-testid="transcript-announcer"/g)).toHaveLength(1);
-  });});
+  });
+});
