@@ -310,11 +310,23 @@ describe("ClaudeDriver.decodeConfig", () => {
       expect(candidates.length).toBeGreaterThan(1);
       expect(new Set(candidates).size).toBe(candidates.length);
     } else {
-      expect(candidates).toHaveLength(3);
+      expect(candidates).toHaveLength(tmpdir() === "/tmp" ? 3 : 4);
       expect(candidates[1]).toMatch(/dusk-perm-[0-9a-f]{16}\.sock$/);
       expect(candidates[2]).toMatch(/dp-[0-9a-f]{8}\.sock$/);
-      expect(new Set(candidates).size).toBe(3);
+      expect(new Set(candidates).size).toBe(candidates.length);
       expect(brokerSocketCandidates("t-candidates")[2]).not.toBe(candidates[2]);
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("offers a /tmp broker path when TMPDIR is too deep for a socket", () => {
+    const saved = process.env.TMPDIR;
+    process.env.TMPDIR = `/private/tmp/${"deep-folder/".repeat(10)}`;
+    try {
+      const candidates = brokerSocketCandidates("t-deep-tmp");
+      expect(candidates.at(-1)).toMatch(/^\/tmp\/dp-[0-9a-f]{8}\.sock$/);
+      expect(Buffer.byteLength(candidates.at(-1)!)).toBeLessThan(104);
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
     }
   });
 

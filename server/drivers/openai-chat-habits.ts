@@ -92,3 +92,58 @@ const HARMONY_CALL = /<\|(?:start|channel|constrain|message|call)\|>[\s\S]*\bto=
 export function leakedToolSyntax(text: string): boolean {
   return HARMONY_CALL.test(text);
 }
+
+export const REASONING_AGAIN = "[dusk bot: your last reply was your own working notes about the request, not an answer, so the person did not see it. Do the work with your tools if it needs them, then answer the person directly in plain words.]";
+
+// gpt-oss's analysis channel passed on as the reply: it talks about "the user" and its instructions in the third person
+const REASONING_OPENER = /^(?:we need to|we should|we must|we have to|we can(?:not|'t)?|let's (?:respond|answer|reply|craft|produce|check|see)|the user (?:wants|asks|is asking|said|says|requests|asked)|user (?:wants|asks|says)|according to (?:the )?(?:guidelines|instructions|system|developer|policy)|the (?:system|developer) (?:prompt|message|instructions))\b/i;
+const REASONING_MARKS = /\b(?:the user|guidelines|system prompt|developer message|instructions say|we should|we need to|we must|according to)\b/gi;
+
+/** a reply that is the model's private reasoning about the request rather than words for the person */
+export function leakedReasoning(text: string): boolean {
+  const reply = text.trim();
+  return REASONING_OPENER.test(reply) && (reply.match(REASONING_MARKS)?.length ?? 0) >= 3;
+}
+
+const DECIDE_AT = 24;
+const NOTES_START = /^\s*(?:we |the user|user |according to|let's |the system|the developer)/i;
+
+/** The live stream of one reply, held where it may be a leak: its first few words until they show it is not working
+ * notes (a reply that opens like notes is held to its end), and everything from a chat-format token on. What is held
+ * reaches the person through `flush` once the whole reply is known not to be a leak. */
+export class LeakHoldback {
+  private seen = "";
+  private held = "";
+  private holding: "start" | "all" | null = "start";
+
+  feed(text: string): string {
+    if (this.holding === "all") { this.held += text; return ""; }
+    const at = text.indexOf("<|");
+    const before = at < 0 ? text : text.slice(0, at);
+    let out = "";
+    if (this.holding === "start") {
+      this.held += before;
+      this.seen += before;
+      if (this.seen.trimStart().length >= DECIDE_AT) {
+        if (NOTES_START.test(this.seen)) this.holding = "all";
+        else { out = this.held; this.held = ""; this.holding = null; }
+      }
+    } else out = before;
+    if (at >= 0) { this.held += text.slice(at); this.holding = "all"; }
+    return out;
+  }
+
+  /** what was held for a reply cut short by an error, unless it already looked like a leak */
+  kept(): string {
+    return this.holding === "all" ? "" : this.flush();
+  }
+
+  /** what was held, with `rest` after it, for a reply that turned out not to be a leak */
+  flush(rest = ""): string {
+    const out = this.held + rest;
+    this.held = "";
+    this.holding = null;
+    return out;
+  }
+}
+

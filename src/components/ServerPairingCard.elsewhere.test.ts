@@ -27,10 +27,13 @@ it("says when a server's code has no public address behind it, and where a phone
   const html = withOffer({ id: "p", code: "ABCD-EFGH-JKLM", expiresAt: Date.now() + 60_000, url: null, hint: "no public address" });
   expect(html).toContain("data-pairing-no-address");
   expect(html).toContain(t("settings.elsewhere.noAddress").replace(/'/g, "&#x27;"));
+  // nothing above it tells the person to type the code on the other device
+  expect(html).not.toContain(t("settings.elsewhere.codeLive", { minutes: 1 }).split(".")[0]);
 });
 
 it("says nothing more when the code comes with a link", () => {
   const html = withOffer({ id: "p", code: "ABCD-EFGH-JKLM", expiresAt: Date.now() + 60_000, url: "https://bots.example.com/pair#code=ABCD-EFGH-JKLM", hint: null });
   expect(html).toContain("ABCD-EFGH-JKLM");
+  expect(html).toContain(t("settings.elsewhere.codeLive", { minutes: 1 }).split(".")[0]);
   expect(html).not.toContain("data-pairing-no-address");
 });

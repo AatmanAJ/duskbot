@@ -1622,6 +1622,7 @@ ts_field() { # BackendState | DNSName
 ts_https_443() { # dnsname
   ts serve status --json 2>/dev/null | /usr/bin/node -e 'let t="";process.stdin.on("data",(c)=>t+=c).on("end",()=>{try{const s=JSON.parse(t);if(!s.TCP?.["443"]){console.log("free");return}const h=s.Web?.[process.argv[1]+":443"]?.Handlers??{};console.log(Object.keys(h).join()==="/"&&h["/"].Proxy===process.argv[2]?"ours":"taken")}catch{console.log("free")}})' "$1" "http://127.0.0.1:$PORT" 2>/dev/null || echo free
 }
+TS_INSTALL_SECS=600 TS_WAIT_SECS=900
 tailscale_install() {
   command -v tailscale >/dev/null 2>&1 && return 0
   echo "installing Tailscale (its own installer, from tailscale.com)"
@@ -1629,7 +1630,10 @@ tailscale_install() {
   new_file /etc/apt/sources.list.d/tailscale.list
   new_file /usr/share/keyrings/tailscale-archive-keyring.gpg
   installed_pkgs > "$TMP/pkgs-before"
-  x sh "$TMP/tailscale.sh"
+  set -- sh "$TMP/tailscale.sh"
+  if command -v timeout >/dev/null 2>&1; then set -- timeout -k 15 "$TS_INSTALL_SECS" "$@"; fi
+  if command -v setsid >/dev/null 2>&1; then set -- setsid -w "$@"; fi
+  x "$@" || echo "Tailscale's installer did not finish in $((TS_INSTALL_SECS / 60)) minutes or failed"
   installed_pkgs | comm -13 "$TMP/pkgs-before" - | while read -r _p; do manifest_add "pkg $_p"; done
   command -v tailscale >/dev/null 2>&1
 }
@@ -1661,7 +1665,7 @@ ts_with_link() { # kind seconds pattern words... -- command...
     _url=$(grep -o "$_pat" "$TMP/ts.out" 2>/dev/null | head -n 1)
     if [ -n "$_url" ] && [ "$_url" != "$_asked" ]; then
       _asked=$_url
-      printf '%s\n  %s\n\nWaiting for you...\n' "$_words" "$_url" | ask "{\"kind\":\"$_kind\",\"url\":\"$_url\",\"state\":\"waiting\"}"
+      printf '%s\n  %s\n\nWaiting for you, up to %s minutes. After that this server uses the private relay instead.\n' "$_words" "$_url" "$(((_secs + 59) / 60))" | ask "{\"kind\":\"$_kind\",\"url\":\"$_url\",\"state\":\"waiting\"}"
     fi
     sleep 1; _t=$((_t + 1))
     if [ "$_t" -ge "$_secs" ]; then kill "$_pid" 2>/dev/null || true; wait "$_pid" 2>/dev/null || true; redact < "$TMP/ts.out"; return 1; fi
@@ -1678,19 +1682,19 @@ address_tailscale() {
       show tailscale up --auth-key=[redacted]
       ts up --auth-key="$TS_KEY" --timeout=2m 2>&1 | redact || true
     else
-      ts_with_link tailscale-login 1800 'https://login\.tailscale\.com/[A-Za-z0-9/._?=&-]*' \
-        "Sign in to Tailscale to put this server on your tailnet. Open this link on any device:" -- ts up --timeout=30m || true
+      ts_with_link tailscale-login "$TS_WAIT_SECS" 'https://login\.tailscale\.com/[A-Za-z0-9/._?=&-]*' \
+        "Sign in to Tailscale to put this server on your tailnet. Open this link on any device:" -- ts up --timeout="${TS_WAIT_SECS}s" || true
     fi
   fi
-  [ "$(ts_field BackendState)" = Running ] || { relay_address "Tailscale is not signed in; using the private relay"; return 11; }
+  [ "$(ts_field BackendState)" = Running ] || { relay_address "Tailscale is not signed in; using the private relay. To use Tailscale later, sign in with: tailscale up, then paste the line again"; return 11; }
   dns=$(ts_field DNSName)
   [ -n "$dns" ] || { relay_address "this server has no MagicDNS name; turn MagicDNS on for your tailnet. Using the private relay"; return 11; }
   echo "on the tailnet as $dns"
   [ "$(ts_https_443 "$dns")" != taken ] || { relay_address "tailnet https port 443 already serves something else here; leaving it alone and using the private relay"; return 11; }
   # https for the tailnet: `tailscale serve` prints the one admin link that turns it on and waits for it
-  if ! ts_with_link tailscale-https 1800 'https://login\.tailscale\.com/[A-Za-z0-9/._?=&-]*' \
+  if ! ts_with_link tailscale-https "$TS_WAIT_SECS" 'https://login\.tailscale\.com/[A-Za-z0-9/._?=&-]*' \
     "Turn on HTTPS for your tailnet (one click), so this server gets an https address:" -- ts serve --bg --https=443 "http://127.0.0.1:$PORT"; then
-    relay_address "Tailscale HTTPS is not on; using the private relay"; return 11
+    relay_address "Tailscale HTTPS is not on; using the private relay. To use Tailscale later, turn HTTPS on in its admin console, then paste the line again"; return 11
   fi
   manifest_add "tailscale-serve 443"
   ask_clear

@@ -157,11 +157,16 @@ export async function cloudJobRefusal(job, { folders = null, mode = "auto", home
  *   wait?(ms: number, signal: AbortSignal): Promise<void>,
  * }} deps
  */
+// the prefs file is missing until the first save: a fresh install starts from defaults
+function readPrefs(prefs) {
+  try { return prefs.read() ?? {}; } catch { return {}; }
+}
+
 export function createCloudMac(deps) {
   const home = deps.home ?? homedir();
   const now = deps.now ?? Date.now;
   const log = deps.log ?? (() => {});
-  const saved = deps.prefs.read() ?? {};
+  const saved = readPrefs(deps.prefs);
   let enabled = saved.enabled === true;
   let mode = isCloudMacMode(saved.mode) ? saved.mode : "auto";
   let limitFolders = saved.limitFolders === true;

@@ -177,7 +177,7 @@ describe("intakeFiles", () => {
     });
     expect(out.attachments).toEqual([]);
     expect(out.notice).toBe(
-      "unable to attach run.exe. choose a supported image, document, or audio file. archives can't be attached: unzip 아카이브.zip and attach the files inside.",
+      "Unable to attach run.exe. Choose a supported image, document, or audio file. Archives can't be attached: unzip 아카이브.zip and attach the files inside.",
     );
   });
 

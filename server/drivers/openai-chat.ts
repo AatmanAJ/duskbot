@@ -27,7 +27,8 @@ import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
-import { announcesAction, claimsUnmadeChange, effectfulCall, leakedToolSyntax, NUDGE_ANNOUNCED_ACTION, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { carriedSteps, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
+import { announcesAction, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
 import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
@@ -226,7 +227,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     if (completion.responseOutput) responseOutputs.set(reply, completion.responseOutput);
     return reply;
   };
-  const delivered = new Map<string, DeliveredUserMessage[]>();
+  const delivered = new Map<string, DeliveredUserMessage[]>(), carried = createCarriedWork();
   /** Not cleared on `sessionReset`: with no cursor the harness sends it on nearly every turn. */
   const sessionGrants = new Map<string, Set<string>>();
 
@@ -520,6 +521,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     const turnId = newId();
     const abort = new AbortController();
     const messages = messagesFor(turn);
+    messages.splice(-1, 0, ...carried.take(turn.threadId));
     const request = messages.at(-1)!;
     const retainImages = chatImageBudget();
     for (const message of messages) retainImages(message.content);
@@ -587,7 +589,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let hasUsage = false;
       let ok = false;
       let stopReason: string | null = null;
-      let failure: string | undefined, failureCode: string | undefined;
+      let failure: string | undefined, failureCode: string | undefined, limitFacts: ReturnType<typeof chatLimitFacts> = null;
       let toolFailed = false;
       let correctiveRounds = 0;
       const denials: string[] = [], failedCalls: string[] = [];
@@ -596,7 +598,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let unread: string[] = [];
       let callsAtNudge = -1;
       const repeats = options.localModel ? new ChatRepeatGuard() : undefined;
-      let unreadable = false, askedAgain = false, nudged = false;
+      let unreadable: false | "call" | "reasoning" = false, askedAgain = false, nudged = false;
       try {
         const parsed = parseToolScope(turn.toolScope);
         if (!parsed.ok) throw new Error(parsed.error);
@@ -623,7 +625,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           let completion: Completion;
           for (;;) {
             let streamed = false, answerStreamed = false;
-            const holdback = options.localModel && tools.definitions.length ? new TextCallHoldback() : undefined;
+            const holdback = options.localModel && tools.definitions.length ? new TextCallHoldback() : undefined, leakHold = new LeakHoldback();
             const pending = { assistant_text: "", reasoning_text: "" };
             const delta = (text: string, streamKind: keyof typeof pending, flush = false) => {
               let combined = pending[streamKind] + text;
@@ -644,14 +646,14 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               completion = await complete(messages, model, true, abort.signal, (text, streamKind) => {
                 streamed = true;
                 if (streamKind === "assistant_text" && text.trim()) answerStreamed = true;
-                const shown = holdback && streamKind === "assistant_text" ? holdback.feed(text) : text;
+                const shown = streamKind !== "assistant_text" ? text : leakHold.feed(holdback ? holdback.feed(text) : text);
                 if (shown) delta(shown, streamKind);
               }, tools.definitions, undefined, turn.effort);
               // A reply cut off at the token limit may be a call cut short; running half of one is worse than saying so.
               const written = holdback && !completion.toolCalls.length && completion.finishReason !== "length" ? textToolCalls(completion.text, tools.definitions) : null;
-              const leaked = !written && !completion.toolCalls.length && tools.definitions.length > 0 && leakedToolSyntax(completion.text);
-              if (leaked && askedAgain) throw noReplyError("tool_call_malformed");
-              unreadable = (written?.kind === "unreadable" || leaked) && !askedAgain;
+              const leaked = written || completion.toolCalls.length ? false : tools.definitions.length > 0 && leakedToolSyntax(completion.text) ? "call" : leakedReasoning(completion.text) ? "reasoning" : false;
+              if (leaked && askedAgain) throw noReplyError(leaked === "call" ? "tool_call_malformed" : "reasoning_leak");
+              unreadable = askedAgain ? false : leaked || (written?.kind === "unreadable" ? "call" : false);
               if (written?.kind === "calls") {
                 completion = { ...completion, text: written.text, toolCalls: written.calls, finishReason: "tool_calls" };
                 native("in", { recovered: "text_tool_calls", calls: written.calls.map((call) => call.function.name) });
@@ -659,7 +661,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
                 completion = { ...completion, text: written?.text ?? "" };
                 native("in", { recovered: "unreadable_tool_call" });
               } else {
-                const rest = holdback?.rest();
+                const rest = leakHold.flush(holdback?.rest() ?? "");
                 if (rest) delta(rest, "assistant_text");
               }
               delta("", "assistant_text", true);
@@ -668,6 +670,8 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               if (completion.toolCalls.length && !tools.definitions.length) throw noReplyError("tools_unavailable");
               break;
             } catch (value) {
+              const kept = leakHold.kept();
+              if (kept) delta(kept, "assistant_text");
               const error = asError(value);
               const verdict = classifyError(error);
               const nudge = answerStreamed || abort.signal.aborted ? null : nudgeOnce(error, nudged);
@@ -731,7 +735,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           abort.signal.throwIfAborted();
           if (unreadable) {
             askedAgain = true;
-            messages.push(assistantReply(model, completion, completion.text), { role: "user", content: UNREADABLE_CALL });
+            messages.push(assistantReply(model, completion, completion.text), { role: "user", content: unreadable === "reasoning" ? REASONING_AGAIN : UNREADABLE_CALL });
             continue;
           }
           if (!completion.toolCalls.length) {
@@ -878,6 +882,8 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       } catch (value) {
         stopReason = abort.signal.aborted ? "interrupted" : stopReason ?? "error";
         failure = safeText(asError(inPlainWords(value)).message).slice(0, 2_000); failureCode = failureCodeOf(value);
+        limitFacts = abort.signal.aborted ? null : chatLimitFacts(value);
+        if (limitFacts && seenCalls.size) carried.keep(turn.threadId, carriedSteps(messages, messages.indexOf(request)));
       } finally {
         turnEntry.ending = true;
         approval.close();
@@ -895,7 +901,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           // "upstream" (an OpenAI-compatible URL) names no provider, so its raw line is kept.
           const message = options.httpErrorLabel === "upstream" ? failure : plainFailureMessage(options.httpErrorLabel, failure);
           const replyShownFirst = stopReason === "tool_error";
-          emit({ ...base(turn.threadId, turnId), type: "runtime.error", message, terminal: !abort.signal.aborted, ...(replyShownFirst ? { partial: true } : {}), ...(failureCode ? { errorCode: failureCode } : {}) });
+          emit({ ...base(turn.threadId, turnId), type: "runtime.error", message, terminal: !abort.signal.aborted, ...(replyShownFirst ? { partial: true } : {}), ...(failureCode ? { errorCode: failureCode } : {}), ...limitFacts });
         }
         if (!ok && !abort.signal.aborted) {
           const continuable = classifyContinuable(stopReason, failure);

@@ -118,7 +118,7 @@ import { createOpenAtLogin, installOpenAtLogin } from "./open-at-login.mjs";
 import { createCleanWorkspace } from "./clean-workspace.mjs"; import { installOneHome } from "./one-home-main.mjs"; import { handSaved, installOwnHome } from "./own-home-main.mjs"; import { installVpsCloudMoveMain } from "./vps-cloud-move-main.mjs"; import { oneHomeCloud } from "./one-home-main.mjs"; import { newServerReach, serverOpens } from "./saved-server.mjs"; import { installTwoPlacesMain } from "./two-places-main.mjs"; import { installConnectorSyncMain } from "./connector-sync-main.mjs"; import { installSettingsSyncMain } from "./settings-sync-main.mjs"; import { installVpsLink, unlimitTunnelConnections } from "./vps-link-main.mjs"; import { installSealTrust } from "./seal-trust.mjs";
 import { askForMicrophone, openPrivacySettings } from "./privacy-settings.mjs"; import { installUserPresence } from "./user-presence.mjs";
 import { createHomeWindow, HOME_SCREEN_PATH, installHomeWindowIpc, WELCOMED_ROUTE } from "./home-window.mjs";
-import { settledActive } from "./workspace-choice.mjs"; import { createWorkspaceReconnect, installWorkspaceReconnectIpc, proxyAnswersForDownServer, RECONNECT_PATH } from "./workspace-reconnect.mjs";
+import { localPageStep, settledActive } from "./workspace-choice.mjs"; import { createWorkspaceReconnect, installWorkspaceReconnectIpc, proxyAnswersForDownServer, RECONNECT_PATH } from "./workspace-reconnect.mjs";
 import { createTeamProfileSeeds } from "./team-profile-seed.mjs";
 import { createWorkspaceSwitch, installWorkspaceSwitchIpc } from "./workspace-switch.mjs";
 import { createHomePlaces } from "./home-places.mjs"; import { createDesktopRing, installAccounts } from "./accounts-main.mjs"; import { createAddedCloudNotice, installCloudRail, railPlaces } from "./cloud-rail.mjs"; import { createPlaceInboxWatch } from "./place-inbox-watch.mjs"; import { homeLook, otherOwnClouds, withoutOldCloudHome } from "./cloud-list.mjs"; import { installPlaceLook } from "./place-look.mjs"; import { CHROME_RAIL_PATH, createChromeRail } from "./chrome-rail.mjs";
@@ -2281,6 +2281,7 @@ function showContextMenu(win, params) {
   Menu.buildFromTemplate(menuItems).popup({ window: win, frame: params.frame });
 }
 
+const windowsWithoutPage = new WeakSet();
 function createWindow({ deferNavigation = false } = {}) {
   const waitsForSkinSync = process.platform === "win32";
   const primary = screen.getPrimaryDisplay();
@@ -2534,7 +2535,7 @@ function createWindow({ deferNavigation = false } = {}) {
 
   const remote = activeRemote(environmentsState);
   if (!serverReady && (desktopRemoteAccess || (app.isPackaged && !remote))) serverUnavailableWindows.add(win);
-  if (deferNavigation) return win;
+  if (deferNavigation) { windowsWithoutPage.add(win); return win; }
   if (desktopRemoteAccess) {
     win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}` : buildErrorPage({ reason: serverFailure, logDir: LOG_DIR }));
   } else if (remote) {
@@ -3066,7 +3067,9 @@ const homeWindow = createHomeWindow({ cloudRoute: WELCOMED_ROUTE, beforeOpen: we
   go: (url, origin, place) => { if (!origin && !place && localPageNeedsServer(url)) return openLocalPageWhenServed(url); if (place?.kind === "team" || place?.kind === "own") { activatePlace(place); if (place.kind === "team") teamProfileSeeds.opened(place.origin); } else if (origin) activateCloud(origin); return navigateMainWindow(url); },
   showLocal: leaving => {
     if (!mainWindow || mainWindow.isDestroyed()) return createWindow();
-    if (!leaving) return;
+    const step = localPageStep({ leaving, url: mainWindow.webContents.getURL(), serverChosen: Boolean(activeRemote(environmentsState)) });
+    if (step === "stay") return;
+    if (step === "open") return windowsWithoutPage.has(mainWindow) ? navigateMainWindow(activeOrigin()) : undefined;
     persistEnvironments(withActive(environmentsState, LOCAL_ID), "gone");
     return navigateMainWindow(rendererOrigin());
   } });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { announcesAction, claimsUnmadeChange, effectfulCall, leakedToolSyntax, MAX_RETRY_WAIT_MS, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { announcesAction, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, MAX_RETRY_WAIT_MS, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 
 describe("announcesAction before anything ran", () => {
   it.each([
@@ -106,3 +106,37 @@ describe("leakedToolSyntax", () => {
     expect(leakedToolSyntax("Harmony uses a <|channel|> token to split reasoning from the answer.")).toBe(false);
   });
 });
+
+describe("leakedReasoning", () => {
+  it("reads gpt-oss working notes passed on as the reply", () => {
+    expect(leakedReasoning("We need to respond to the user. The request: \"Post this on my X account\". We have no browser, but we can coordinate with a teammate. According to guidelines, after sending coordinate_bots, we should end turn.")).toBe(true);
+    expect(leakedReasoning("The user wants three posts. We should keep each under 200 characters. According to the instructions we must not post.")).toBe(true);
+  });
+  it("leaves replies that speak to the person alone, even ones that start with we", () => {
+    expect(leakedReasoning("We need to move your standup: the 10:30 slot clashes with your dentist. I've kept 11:00 free.")).toBe(false);
+    expect(leakedReasoning("Here are three posts for X announcing dark mode.")).toBe(false);
+  });
+});
+
+describe("LeakHoldback", () => {
+  const stream = (chunks: string[]) => { const hold = new LeakHoldback(); const live = chunks.map((chunk) => hold.feed(chunk)).join(""); return { hold, live }; };
+  it("passes an ordinary reply through after its first few words", () => {
+    const { hold, live } = stream(["Here are three ", "posts for X about ", "dark mode."]);
+    expect(live).toBe("Here are three posts for X about dark mode.");
+    expect(hold.flush()).toBe("");
+  });
+  it("holds a reply that opens like working notes to its end, and everything from a chat-format token on", () => {
+    expect(stream(["We need to respond ", "to the user. The user wants"]).live).toBe("");
+    const tokens = stream(["Writing the posts now. ", "Then <|channel|>commentary to=functions.x", "<|call|>"]);
+    expect(tokens.live).toBe("Writing the posts now. Then ");
+    expect(tokens.hold.kept()).toBe("");
+  });
+  it("gives back held words when the reply was no leak, or was cut short before it could tell", () => {
+    const short = stream(["Already started."]);
+    expect(short.live).toBe("");
+    expect(short.hold.kept()).toBe("Already started.");
+    const notes = stream(["We need to move your standup to 11."]);
+    expect(notes.hold.flush()).toBe("We need to move your standup to 11.");
+  });
+});
+

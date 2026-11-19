@@ -424,16 +424,15 @@ export function permissionSocketPath(threadId: string, botId?: string) {
 }
 
 /** Broker bind paths, in order. Windows pipe names are never unlinkable (a hung child can hold one
- * for minutes), and macOS rejects socket paths past `sun_path`, hence the short temp fallbacks; the last is fresh each
- * launch, so a path another process still holds never fails a turn on its own. */
+ * for minutes), and macOS rejects socket paths past `sun_path` (104 bytes), hence the short temp fallbacks, then /tmp
+ * for a TMPDIR too deep for even those (every socket is chmod 0600); a `dp-` path is fresh each launch, so a path another
+ * process still holds never fails a turn on its own. */
 export function brokerSocketCandidates(threadId: string, botId?: string): string[] {
   const base = permissionSocketPath(threadId, botId);
   if (process.platform !== "win32") {
-    const scope = createHash("sha256")
-      .update(`${DATA_DIR}\0${process.pid}\0${botId ?? ""}\0${threadId}`)
-      .digest("hex")
-      .slice(0, 16);
-    return [base, join(tmpdir(), `dusk-perm-${scope}.sock`), join(tmpdir(), `dp-${randomBytes(4).toString("hex")}.sock`)];
+    const scope = createHash("sha256").update(`${DATA_DIR}\0${process.pid}\0${botId ?? ""}\0${threadId}`).digest("hex").slice(0, 16);
+    const fresh = (dir: string) => join(dir, `dp-${randomBytes(4).toString("hex")}.sock`);
+    return [base, join(tmpdir(), `dusk-perm-${scope}.sock`), fresh(tmpdir()), ...(tmpdir() === "/tmp" ? [] : [fresh("/tmp")])];
   }
   return [
     base,

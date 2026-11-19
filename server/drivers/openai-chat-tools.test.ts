@@ -1282,6 +1282,23 @@ describe("structured tool execution boundaries", () => {
     expect(f.requests).toHaveLength(2);
     const shown = f.recorder.events.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
     expect(shown).toEqual(["Nothing needed writing."]);
+    const streamed = f.recorder.events.flatMap((event) => event.type === "content.delta" ? [event.delta] : []).join("");
+    expect(streamed).toBe("Nothing needed writing.");
+  });
+
+  it("asks again for an answer when the model sent its working notes as the reply, and never shows them", async () => {
+    const notes = "We need to respond to the user. The user wants the receipt stored. According to guidelines we should call the tool.";
+    const f = await fixture((body, response, round) => {
+      if (round === 2) expect(String(body.messages.at(-1)?.content)).toContain("your own working notes");
+      sse(response, [chunk({ content: round === 1 ? notes : "Nothing needed storing." }, "stop")]);
+    }, "grok");
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.requests).toHaveLength(2);
+    const shown = f.recorder.events.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
+    expect(shown).toEqual(["Nothing needed storing."]);
+    const streamed = f.recorder.events.flatMap((event) => event.type === "content.delta" ? [event.delta] : []).join("");
+    expect(streamed).toBe("Nothing needed storing.");
   });
 
   it("ends a turn whose model leaks raw tool tokens twice as a broken tool call, never as its reply", async () => {
@@ -1291,6 +1308,30 @@ describe("structured tool execution boundaries", () => {
     expect(await f.completed()).toMatchObject({ ok: false });
     expect(f.requests).toHaveLength(2);
     expect(f.recorder.events.some((event) => event.type === "item.completed" && event.itemType === "assistant_text")).toBe(false);
+  });
+
+  it("reports a long rate limit after a step ran as the engine's limit, and the next turn here carries the step instead of repeating it", async () => {
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
+      else if (round === 2) { response.writeHead(429, { "content-type": "application/json", "retry-after": "120" }); response.end('{"error":{"message":"Rate limit reached"}}'); }
+      else sse(response, [chunk({ content: "The receipt is stored." }, "stop")]);
+    });
+    const before = Date.now();
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: false });
+    expect(f.requests).toHaveLength(2);
+    const limited = f.recorder.events.find((event) => event.type === "runtime.error");
+    expect(limited).toMatchObject({ limit: "engine" });
+    expect((limited as { limitResetsAt?: number }).limitResetsAt).toBeGreaterThanOrEqual(before + 120_000);
+    expect(f.effects()).toHaveLength(1);
+    f.recorder.events.length = 0;
+    await f.start({ approvalMode: "full", text: "[dusk bot: the limit has reset. Carry on.]" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toHaveLength(1);
+    const resumed = f.requests[2]!.messages;
+    expect(resumed.at(-1)).toMatchObject({ role: "user" });
+    expect(resumed.at(-3)).toMatchObject({ role: "assistant", tool_calls: [expect.objectContaining({ id: "call_write" })] });
+    expect(resumed.at(-2)).toMatchObject({ role: "tool", tool_call_id: "call_write" });
   });
 
   it("gives up on a provider that keeps refusing after a step ran, without repeating the step", async () => {
