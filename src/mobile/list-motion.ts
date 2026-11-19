@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
-import { feel, prefersReducedMotion, springEasing } from "./motion";
+import { contentMove, feel, prefersReducedMotion } from "./motion";
 
 const KEY = "data-flip-key";
 
@@ -18,20 +18,19 @@ export function useListFlip(listRef: RefObject<HTMLElement | null>, signature: s
     last.current = { signature, at: now };
     if (!prev || prev.signature === signature || prefersReducedMotion()) return;
     const before = prev.at;
-    const glide = springEasing(feel.surface.stiffness, feel.surface.damping);
     let entered = 0;
     for (const row of rows) {
       const key = row.getAttribute(KEY)!;
       const was = before.get(key);
       if (was === undefined) {
         row.animate(
-          [{ opacity: 0, translate: `0 ${feel.enter.y}px`, filter: `blur(${feel.enter.blur}px)` }, { opacity: 1, translate: "0 0", filter: "blur(0px)" }],
+          [{ opacity: 0, translate: `0 ${feel.enter.y}px` }, { opacity: 1, translate: "0 0" }],
           { duration: feel.enter.fade * 1000 + 60, delay: entered++ * feel.stagger * 1000, easing: "cubic-bezier(.22,1,.36,1)", fill: "backwards" },
         );
       } else if (Math.abs(was - now.get(key)!) > 0.5) {
         const delta = was - now.get(key)!;
         // added to any glide still running, so a second move mid-flight carries on from where the row is drawn
-        const anim = row.animate([{ translate: `0 ${delta}px` }, { translate: "0 0" }], { duration: glide.duration, easing: glide.easing, composite: "add" });
+        const anim = row.animate([{ translate: `0 ${delta}px` }, { translate: "0 0" }], { duration: contentMove.ms, easing: contentMove.css, composite: "add" });
         // a row travelling past others rides over them on the page's own ground, so their text never crosses
         if (Math.abs(delta) > row.offsetHeight) {
           row.style.position = "relative";

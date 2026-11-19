@@ -18,15 +18,14 @@ export const spring = {
 export const withFade = <T extends object>(s: T) => ({ ...s, opacity: { duration: dur.fast } });
 
 /** The phone's feel, measured off designbookmark.com/motion (omb-ref/designbookmark-motion/NOTES.md): soft springs that
- * land with a few percent of give, fades on a shorter clock than the travel, and content that swaps through a small
- * blur instead of cutting. Every interaction on the phone takes its numbers from here. */
+ * land with a few percent of give, and fades on a shorter clock than the travel. Every interaction on the phone takes its numbers from here. */
 export const feel = {
   /** a finger down: in on a quick ease, out on a spring that gives a hair past rest (press .952, release 1.008 there) */
   press: { scale: 0.96, wide: 0.985, inMs: 110, release: { stiffness: 620, damping: 30 } },
-  /** something arriving: from 8px low, 4px soft and transparent; opacity done in 200ms, the travel on `soft` */
-  enter: { y: 8, blur: 4, fade: 0.2 },
+  /** something arriving: from 8px low and transparent, never blurred; opacity done in 200ms, the travel on `soft` */
+  enter: { y: 8, fade: 0.2 },
   /** something leaving: faster and smaller than its entrance (130ms, scale .96) */
-  exit: { scale: 0.96, blur: 4, fade: 0.13 },
+  exit: { scale: 0.96, fade: 0.13 },
   /** a held thing lifting out of the page (a message, a chat row) */
   lift: { scale: 1.035, spring: { type: "spring", stiffness: 460, damping: 26 } as const },
   /** morphs and slides between places (a pill, a highlight, a menu's height): t90 ~140ms, ~5% overshoot, ~420ms */
@@ -43,6 +42,11 @@ export const feel = {
  * with no overshoot. `speed` is the start velocity in distances per second: 10 for a push or a rising sheet, 14 for a
  * tapped back. */
 export const system = { stiffness: 600, damping: 54, push: 10, back: 14 } as const;
+/** Content moving to a new place (rows reordering, a list making room): the vertical curve iOS, Telegram iOS and both
+ * Telegram web clients use for a sent message's flight. */
+export const contentMove = { ms: 250, css: "cubic-bezier(0.1992, 0.0106, 0.2792, 0.9103)" } as const;
+/** A long press as Telegram iOS answers it: still for 120ms, then the held thing shrinks by 15pt of its width over 200ms. */
+export const holdPress = { stillMs: 120, shrinkMs: 200, inset: 15 } as const;
 /** a surface dismissed by a tap or Escape accelerates away: 200ms for the full travel */
 export const dismiss = { ms: 200, minMs: 90, ease: [0.4, 0, 1, 1] as const };
 
