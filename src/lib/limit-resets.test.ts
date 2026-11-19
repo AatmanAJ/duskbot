@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { EngineLimit } from "../../shared/limit-reset";
 
 const api = vi.fn((_path: string) => Promise.resolve({ checkedAt: 2, engines: [] }));
 vi.mock("@/state/store", () => ({ api: (path: string) => api(path) }));
 const { noteTurnForLimits, rememberLimits } = await import("./limit-resets");
 
-const blocked = { engine: "claude", name: "Claude", driver: "claude", window: null, usedPercent: 100, resetsAt: Date.now() + 3_600_000, blocked: true };
+const blocked: EngineLimit = { engine: "claude", name: "Claude", driver: "claude", window: null, usedPercent: 100, resetsAt: Date.now() + 3_600_000, blocked: true };
 
 describe("noteTurnForLimits", () => {
   beforeEach(() => api.mockClear());
