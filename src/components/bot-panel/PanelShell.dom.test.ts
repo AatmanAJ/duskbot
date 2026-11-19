@@ -259,6 +259,8 @@ describe("the panel's top", () => {
     await settle();
     const row = host.querySelector("[data-panel-name-row]")!;
     expect(row.querySelector("[data-panel-rename]")!.textContent).toBe("Scout");
+    expect(row.querySelector("[data-panel-rename]")!.hasAttribute("aria-label")).toBe(false);
+    expect(row.querySelector("[data-panel-rename]")!.getAttribute("title")).toBe("Rename Scout");
     expect(host.querySelector("[data-panel-avatar]")!.nextElementSibling).toBe(row);
     expect(host.querySelector("[data-call-button]")).toBeNull();
   });
