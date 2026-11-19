@@ -182,6 +182,10 @@ async function measure(stage: Stage, label: string, act: () => Promise<void>, se
       // the native header taken down and put back: each one swaps the glass pill for the page's own
       glassHeaderSwaps: p.glass.filter(([, , , swap]) => swap).length,
       glassBytes: p.glass.reduce((n, [, , b]) => n + b, 0),
+      // what the page holds once the interaction settles: every element, the open chat's own and its message rows
+      domNodes: document.getElementsByTagName("*").length,
+      chatNodes: document.querySelector("[data-mobile-chat]")?.getElementsByTagName("*").length ?? 0,
+      messageRows: document.querySelectorAll("[data-mobile-chat] [data-message-row]").length,
     };
   })()`);
   const d = (k: string) => Math.round(((after[k] ?? 0) - (before[k] ?? 0)) * (k.endsWith("Duration") ? 1000 : 1));
