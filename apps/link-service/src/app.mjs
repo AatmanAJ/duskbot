@@ -42,6 +42,9 @@ const KEEP_LINE_EVENTS = 150;
 // a waiting server's standby read: 55 s each (the app's own reads ask 25), one request a minute and a beat every 10 s,
 // so an idle server costs the node as little as it can
 const MAX_WAIT_S = 55;
+/** phone apps 1.2 and 1.2.1 wait 15 s on a relay route before their next one: a server not reading its channels this
+ * long is answered at once instead */
+const SERVER_AWAY_MS = 20_000;
 const FRAME_MAX = 1024 * 1024 + 64;
 const QUEUE_FRAMES = 1024;
 const QUEUE_BYTES = 16 * 1024 * 1024;
@@ -406,6 +409,8 @@ export function createLinkService({ base, dataDir = null, scriptPath, uninstallP
   const created = new Map();
   const cache = new Map();
   const channelReaders = new Map();
+  const serverReading = new Map();
+  const bootedAt = now();
   const channelRates = new Map();
   const channelSeen = new Map();
   const lookups = new Map();
@@ -518,9 +523,15 @@ export function createLinkService({ base, dataDir = null, scriptPath, uninstallP
       if (q) { q.wakeAll(); q.close(); queues.delete(key); }
     }
   }
+  function serverAway(tunnelId) {
+    const reading = serverReading.get(tunnelId);
+    if (reading?.open) return false;
+    return now() - Math.max(reading?.endedAt ?? 0, store.tunnels.get(tunnelId)?.seenAt ?? 0, bootedAt) > SERVER_AWAY_MS;
+  }
   function dropTunnelState(id) {
     channelReaders.get(id)?.close();
     channelReaders.delete(id);
+    serverReading.delete(id);
     tunnelRates.delete(id);
     serverReads.delete(id);
     serverDownloads.delete(id);
@@ -1365,7 +1376,10 @@ export function createLinkService({ base, dataDir = null, scriptPath, uninstallP
       if (aggregate && method === "GET") {
         const wait = Math.min(MAX_WAIT_S, Math.max(0, Number.parseInt(url.searchParams.get("wait") ?? "0", 10) || 0));
         const abort = new AbortController();
-        res.on("close", () => abort.abort());
+        const reading = serverReading.get(id) ?? { open: 0, endedAt: now() };
+        serverReading.set(id, reading);
+        reading.open += 1;
+        res.on("close", () => { abort.abort(); reading.open -= 1; reading.endedAt = now(); });
         const reader = channelReader(id), turn = reader.claim();
         if (wait && url.searchParams.get("stream") === "1") return streamChannels(res, id, reader, turn, wait * 1000, abort.signal);
         const until = Date.now() + wait * 1000;
@@ -1399,6 +1413,7 @@ export function createLinkService({ base, dataDir = null, scriptPath, uninstallP
       if (!action && method === "DELETE") { deleteChannel(channel); return send(res, 200, { ok: true }); }
       if (action && elsewhere(res, store.tunnels.get(channel.tunnel))) return;
       if (action === "to-vps" && method === "POST") {
+        if (serverAway(channel.tunnel)) return fail(res, 503, "The computer or server is not reading its relay right now.", "server_away");
         if (!phoneRate(res, channel, "POST")) return;
         return postFrames(req, res, id, action, () => channelFor(req, res, id), true);
       }
