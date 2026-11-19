@@ -2,6 +2,7 @@
 // so a bot's own shell with decline-only service trust can never switch the engine or resend the person's message.
 // A request the job runtime still holds is never sent again: the runtime reruns its root itself.
 import { approvalModeFor, modelSwitchNeedsAsk } from "../shared/approval-mode.ts";
+import { failedTurnCause } from "../shared/failed-turn.ts";
 import { randomUUID } from "node:crypto";
 
 import type { LimitMode, QuotaSwitchCardData } from "../shared/wire.ts";
@@ -80,12 +81,24 @@ export type QuotaAnswer = "answered" | "rejected" | "unavailable";
 export const NOT_NOW = "Not now";
 
 /** A limit that resets on a clock: an engine's window or one model's. Credits and sign-ins wait for the person. */
+const FAILURE_SCAN = 40;
 const RESETS: ReadonlySet<TakeoverScope> = new Set<TakeoverScope>(["engine", "model"]);
 
 const ENDED: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
 
 /** On unless DUSK_QUOTA_SWITCH=0: a limited AI's work carries on with another AI by itself. Off, only the backups
  * Automatic recovery names take over, as before. */
+/** The failed-reply row a turn left after the person's message `afterId`, while nothing newer has answered it. */
+export function turnFailureRow(messages: readonly Message[], afterId: string | undefined): Message | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]!;
+    if (message.id === afterId || message.role === "user" || message.kind === "text") return undefined;
+    const tool = message.kind === "activity" ? message.tool : undefined;
+    if (tool && !tool.ok && !tool.partial && failedTurnCause(tool.name) !== null) return tool.resolvedAt ? undefined : message;
+  }
+  return undefined;
+}
+
 export function quotaSwitchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.DUSK_QUOTA_SWITCH?.trim() !== "0";
 }
@@ -249,6 +262,10 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       if (enabled()) {
         const build = { threadId, stale: false };
         building.add(build);
+        // the failure card stays down while a backup takes the turn, and comes back only if none could
+        const failure = backups.length ? turnFailureRow(store.messagesTail(threadId, FAILURE_SCAN).messages, request.messageId) : undefined;
+        if (failure) store.patchMessage(threadId, failure.id, { tool: { ...failure.tool!, resolvedAt: Date.now() } });
+        let carried = false;
         try {
           if (scope === "provider" && request.messageId) {
             rerun.add(request.messageId);
@@ -256,12 +273,14 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
           }
           for (const selection of backups) {
             if (await continueOn(bot.id, threadId, selection, request, build, resetsAt, scope)) {
+              carried = true;
               tell(selection);
               return null;
             }
           }
         } finally {
           building.delete(build);
+          if (failure && !carried) store.patchMessage(threadId, failure.id, { tool: failure.tool! });
         }
       }
       if (RESETS.has(scope) && store.taskByThread(bot.id, threadId)) {
