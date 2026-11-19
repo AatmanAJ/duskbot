@@ -106,6 +106,9 @@ export interface MobilePlatform {
   /** Android's back; return true when handled. The newest listener is asked first and an older one only when it
    * declines (`handleBack`); when none takes it the app goes to the background. */
   onBack?(listener: () => boolean): () => void;
+  /** A back listener is on its first screen and would decline (default: it is not). While every listener is, back goes
+   * to the system, which plays its predictive back-to-home. */
+  backAtRoot?(listener: () => boolean, atRoot: boolean): void;
   /** Links the OS hands the app: duskbot://pair, duskbot://open, the desktop's thread links. A listener returns
    * true when the link was its kind; the link that launched the app waits for the first listener that takes it. */
   onAppUrl?(listener: (url: string) => boolean): () => void;

@@ -505,6 +505,14 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   const insetsOn = kind === "android" && Capacitor.isPluginAvailable("DuskInsets");
   const backs: Array<() => boolean> = [];
   let backButton: Promise<PluginListenerHandle> | undefined;
+  const atRoot = new WeakSet<() => boolean>();
+  let backOn = true;
+  const backRoute = () => {
+    const on = backs.some((one) => !atRoot.has(one));
+    if (kind !== "android" || on === backOn) return;
+    backOn = on;
+    void App.toggleBackButtonHandler({ enabled: on }).catch(() => {});
+  };
   registerPhoneVoice({
     os: kind,
     speech: speech ? phoneSpeech(DuskSpeech) : undefined,
@@ -576,7 +584,13 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       backButton ??= App.addListener("backButton", () => {
         if (!handleBack(backs) && kind === "android") void App.minimizeApp().catch(() => {});
       });
-      return () => { const at = backs.indexOf(listener); if (at >= 0) backs.splice(at, 1); };
+      backRoute();
+      return () => { const at = backs.indexOf(listener); if (at >= 0) backs.splice(at, 1); backRoute(); };
+    },
+    backAtRoot(listener, root) {
+      if (root) atRoot.add(listener);
+      else atRoot.delete(listener);
+      backRoute();
     },
     onAppUrl(listener) {
       // a universal link (https://dusk.bot/m/...) arrives as the app link it stands for
