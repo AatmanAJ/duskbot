@@ -21,6 +21,12 @@ function toLatest(root: HTMLElement): void {
   if (list) list.scrollTop = list.scrollHeight;
 }
 
+const TEXT_FIELD = "textarea, [contenteditable=true], input:not([type=checkbox], [type=radio], [type=button], [type=submit], [type=reset], [type=range], [type=file], [type=color], [type=hidden])";
+
+function isComposerField(field: HTMLElement): boolean {
+  return Boolean(field.closest("[data-mobile-chat] [data-tour=composer]"));
+}
+
 /** The composer's field, when it holds focus (the keyboard is up for it). */
 function composerField(root: HTMLElement): HTMLElement | null {
   const active = document.activeElement;
@@ -140,9 +146,11 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       committed = height;
     };
 
-    // android resizes the whole webview with the window (adjustResize; the keyboard plugin's resize mode is ios only), so
-    // there the layout already ends at the keyboard and only ios gets the ride-along choreography
-    if (platform.kind === "android") return;
+    const mode = platform.keyboardMode;
+    const focused = (event: FocusEvent) => {
+      if (event.target instanceof HTMLElement && event.target.matches(TEXT_FIELD)) mode?.(isComposerField(event.target));
+    };
+    if (mode) root.addEventListener("focusin", focused);
     let lifted = 0;
     let nativeRide = false;
     const settleLifted = (height: number, lift: number) => {
@@ -156,6 +164,18 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
       if (list) list.scrollTop = top + lift - lifted;
       lifted = lift;
       committed = Math.max(0, height - lift);
+    };
+
+    /** At once, with the scroll offset so the transcript stays still: the keyboard went without a move to ride. */
+    const giveBack = () => {
+      window.clearTimeout(settleTimer);
+      const list = scroller(root);
+      const top = list?.scrollTop ?? 0;
+      const shift = Math.max(0, committed - safeBottom(root));
+      set(0, 0);
+      delete root.dataset.keyboard;
+      if (list) list.scrollTop = Math.max(0, top - shift);
+      committed = 0;
     };
 
     if (platform.onKeyboard) {
@@ -181,7 +201,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
           settleTimer = window.setTimeout(() => commitShown(height), timing.duration * 1000 - timing.delayMs + 40);
           return;
         }
-        if (phase === "did") { delete root.dataset.kbMoving; return; }
+        if (phase === "did") { delete root.dataset.kbMoving; if (committed) giveBack(); return; }
         window.clearTimeout(settleTimer);
         const shift = Math.max(0, committed - safeBottom(root));
         delete root.dataset.kbMoving;
@@ -198,7 +218,7 @@ export function useKeyboardSync(platform: MobilePlatform, rootRef: RefObject<HTM
           root.style.setProperty("--m-kb-shift", "0px");
         }));
       });
-      return () => { stop(); window.clearTimeout(settleTimer); };
+      return () => { stop(); window.clearTimeout(settleTimer); root.removeEventListener("focusin", focused); };
     }
 
     const vv = window.visualViewport;

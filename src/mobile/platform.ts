@@ -99,6 +99,9 @@ export interface MobilePlatform {
   /** Native keyboard events; absent where the visual viewport is the only signal. */
   onKeyboard?(listener: (frame: KeyboardFrame) => void): () => void;
   hideKeyboard?(): void;
+  /** Android: the field that now has focus is the chat composer's (`true`), whose keyboard the page rides in a window
+   * of full height, or another, for which the window ends at the keyboard. */
+  keyboardMode?(ride: boolean): void;
   setStatusBar?(style: "dark" | "light"): void;
   /** Android's hardware back; return true when handled. */
   onBack?(listener: () => boolean): () => void;
