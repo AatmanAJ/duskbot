@@ -11,6 +11,7 @@ import { ConnectionPill, useLiveConnection } from "./connection/ConnectionProble
 import { PhoneChatMenu } from "./PhoneChatMenu";
 import { usePlatform } from "./platform";
 import { installMessageTimes } from "./message-times";
+import { installSwipeReply } from "./swipe-reply";
 
 const PRESS_CLICK_MS = 1000;
 
@@ -33,7 +34,13 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
   const glass = usePlatform().glass;
   const more = Boolean(bot && !group && !glass);
   const chatRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { const chat = chatRef.current; return chat ? installMessageTimes(chat) : undefined; }, []);
+  useEffect(() => {
+    const chat = chatRef.current;
+    if (!chat) return;
+    const stopTimes = installMessageTimes(chat);
+    const stopReply = installSwipeReply(chat);
+    return () => { stopTimes(); stopReply(); };
+  }, []);
   return (
     <div ref={chatRef} data-mobile-chat className="relative flex h-full flex-col">
       {group ? <GroupView key={group.id} group={group} /> : bot ? <ChatView bot={bot} /> : null}

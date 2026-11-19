@@ -18,6 +18,7 @@ import { readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
 import { AiConsentProvider, AiConsentSheet } from "./consent/AiConsent";
 import { installAiReport } from "@/lib/ai-report";
 import { registerPushForConnection } from "./connection/push";
+import { useExternalPages } from "./external-pages";
 import { setPresenceThread } from "./connection/presence";
 import { useSeenNotifications } from "./connection/seen-notifications";
 import { visibleNotificationThread } from "@/state/thread-navigation";
@@ -62,6 +63,7 @@ function Shell() {
   useWarmChatImages(state.bots);
   usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language));
   useKeyboardSync(platform, rootRef);
+  useExternalPages(platform);
   useKeyboardDismiss(platform, rootRef);
   const startTurnActivity = useTurnActivities(platform, state);
   const shownChat = useRef(chatId);
