@@ -58,7 +58,7 @@ export async function archiveBotWithNotice(bot: Bot, context: {
     }
     notify({
       error: false,
-      text: t("sidebar.bot.hidden", { name: bot.name }),
+      text: t("sidebar.bot.archived", { name: bot.name }),
       restoreBot: { id: bot.id, name: bot.name },
     });
   } catch (cause) {
