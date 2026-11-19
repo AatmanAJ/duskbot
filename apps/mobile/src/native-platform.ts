@@ -645,6 +645,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       get: async (key) => (await Preferences.get({ key })).value,
       set: (key, value) => Preferences.set({ key, value }),
       remove: (key) => Preferences.remove({ key }),
+      keys: async () => (await Preferences.keys()).keys,
     },
     secrets,
     scanQr: kind === "android" ? async () => {

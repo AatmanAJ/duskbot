@@ -15,6 +15,7 @@ import { installLiveActivitySetting } from "./live-activity-setting";
 import { followSystemTextSize } from "./text-scale";
 import { PlatformContext, type MobilePlatform } from "./platform";
 import { AccountGate } from "./account/AccountGate";
+import { claimFreshInstall } from "./account/install";
 import { ConnectionGate } from "./connection/ConnectionGate";
 import { MobileApp } from "./MobileApp";
 import { installNativeAbort } from "./transport/native-abort";
@@ -46,6 +47,8 @@ export function mountMobile(platform: MobilePlatform): void {
   const dark = document.documentElement.dataset.skin === THEME_SKINS.dark;
   platform.setStatusBar?.(dark ? "light" : "dark");
   document.title = productName();
+  // before anything this launch writes a preference, which would make a new install look like an update
+  if (platform.native) void claimFreshInstall(platform);
   void Promise.all([loadPageLanguage(), installHaptics(platform), installLiveActivitySetting(platform)]).then(() => {
     createRoot(document.getElementById("root")!).render(
       <StrictMode>

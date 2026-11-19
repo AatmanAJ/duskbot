@@ -122,6 +122,8 @@ export interface MobilePlatform {
     get(key: string): Promise<string | null>;
     set(key: string, value: string): Promise<void>;
     remove(key: string): Promise<void>;
+    /** every key kept, where the storage can list them */
+    keys?(): Promise<string[]>;
   };
   /** Keychain/Keystore. The web fallback keeps secrets in session memory only. */
   secrets: {

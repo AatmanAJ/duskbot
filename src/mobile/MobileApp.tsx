@@ -1,5 +1,5 @@
 import { useProductScreen } from "@/lib/product-analytics-app";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { MotionConfig } from "motion/react";
 import { openBot, openBotThread, openRoomThread, rereadWithoutStream, StoreProvider, useStore } from "@/state/store";
 import { useTeamChats } from "@/state/team-chats";
@@ -18,6 +18,7 @@ import { readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
 import { AiConsentProvider, AiConsentSheet } from "./consent/AiConsent";
 import { installAiReport } from "@/lib/ai-report";
 import { registerPushForConnection } from "./connection/push";
+import { ActiveConnection } from "./connection/active";
 import { useExternalPages } from "./external-pages";
 import { setPresenceThread } from "./connection/presence";
 import { useSeenNotifications } from "./connection/seen-notifications";
@@ -54,8 +55,9 @@ function Shell() {
   const { state, dispatch } = useStore();
   const rootRef = useRef<HTMLDivElement>(null);
   const [chatId, setChatId] = useState<string | null>(null);
-  const restoring = useRef(readOpenChat());
-  useEffect(() => { if (!restoring.current) rememberOpenChat(chatId); }, [chatId]);
+  const place = useContext(ActiveConnection);
+  const restoring = useRef(readOpenChat(place));
+  useEffect(() => { if (!restoring.current) rememberOpenChat(chatId, place); }, [chatId, place]);
   const [sheet, setSheet] = useState<MobileSheet | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   useProductScreen(sheetOpen && sheet ? `/${sheet.kind}` : chatId ? "/chats/:id" : "/", chatId);
@@ -119,8 +121,8 @@ function Shell() {
     if (restored === "wait") return;
     restoring.current = null;
     if (restored && shownChat.current === null) openChat(restored);
-    else rememberOpenChat(shownChat.current);
-  }, [state.hydrated, state.bots, state.groups, openChat]);
+    else rememberOpenChat(shownChat.current, place);
+  }, [state.hydrated, state.bots, state.groups, openChat, place]);
 
   const openSheet = useCallback((next: MobileSheet) => {
     const panel = panelOpenAction(next);
