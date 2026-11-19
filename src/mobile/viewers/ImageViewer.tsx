@@ -21,16 +21,17 @@ type Gesture =
   | { kind: "pan"; start: Point; from: Point }
   | { kind: "pinch"; scale: number; pan: Point; focus: Point; distance: number };
 
-function Slide({ image, index, width, scale, panX, panY, current, onNatural }: {
+function Slide({ image, index, width, scale, panX, panY, current, neighbours, onNatural }: {
   image: PhoneImage; index: number; width: number; current: boolean;
   scale: MotionValue<number>; panX: MotionValue<number>; panY: MotionValue<number>;
+  neighbours: MotionValue<number>;
   onNatural: (size: Size) => void;
 }) {
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
   const transform = useTransform(() => `translate3d(${panX.get()}px, ${panY.get()}px, 0) scale(${scale.get()})`);
   return (
-    <div className="absolute inset-y-0 flex items-center justify-center" style={{ left: index * width, width }} aria-hidden={!current}>
+    <motion.div className="absolute inset-y-0 flex items-center justify-center" style={{ left: index * width, width, opacity: current ? 1 : neighbours }} aria-hidden={!current}>
       {state === "loading" && <span role="status" aria-label={t("attach.loadingImage")} className="absolute inset-0 flex items-center justify-center text-[rgb(245_245_245/0.6)]">
         <LoaderCircle size={24} className="animate-spin" aria-hidden="true" />
       </span>}
@@ -50,7 +51,7 @@ function Slide({ image, index, width, scale, panX, panY, current, onNatural }: {
           style={current ? { transform } : undefined}
           className={cn("block max-h-full max-w-full select-none object-contain [-webkit-touch-callout:none] transition-opacity duration-150", state === "ready" ? "opacity-100" : "opacity-0")} />
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -82,6 +83,7 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
     return `translate3d(${dragX.get()}px, ${dragY.get()}px, 0) scale(${enter * (1 - pulled * 0.3)})`;
   });
   const trackTransform = useTransform(() => `translate3d(${track.get()}px, 0, 0)`);
+  const neighbours = useTransform(dragY, (y) => Math.max(0, 1 - Math.abs(y) / 24));
   const runs = useRef<AnimationPlaybackControls[]>([]);
   const stopAll = () => { for (const run of runs.current) run.stop(); runs.current = []; };
   const to = (value: MotionValue<number>, target: number, options: Parameters<typeof animate>[2] = SPRING) => {
@@ -283,7 +285,7 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
         <motion.div className="absolute inset-0" style={{ transform: lift, opacity: reduced ? shown : undefined }}>
           <motion.div className="absolute inset-y-0 start-0" style={{ transform: trackTransform, width: stage.w * images.length }}>
             {images.map((image, i) => Math.abs(i - index) <= 1 && (
-              <Slide key={`${i}:${image.src}`} image={image} index={i} width={stage.w} current={i === index} scale={scale} panX={panX} panY={panY}
+              <Slide key={`${i}:${image.src}`} image={image} index={i} width={stage.w} current={i === index} scale={scale} panX={panX} panY={panY} neighbours={neighbours}
                 onNatural={(size) => { naturals.current.set(i, size); }} />
             ))}
           </motion.div>
