@@ -5,10 +5,9 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { canScroll, ownsDrag, useDrag } from "./gesture";
 import { haptic } from "./haptics";
-import { dismiss, projectRelease, rubberband, settleTo, springPath, system } from "./motion";
+import { dur, ease, projectRelease, rubberband, settleTo, springPath, system } from "./motion";
 import { RoundButton } from "./RoundButton";
 
-const EXIT = { stiffness: 520, damping: 46 };
 const SYSTEM = { stiffness: system.stiffness, damping: system.damping };
 
 /** The page under an open sheet steps back as the sheet rises (iOS's page sheet): it shrinks a little toward the top and
@@ -22,11 +21,13 @@ const OPEN_SHEETS: Array<() => void> = [];
 
 type Run = { stop: () => void };
 
-/** The rise as keyframes the compositor plays, the sheet, its scrim and the page stepping back together: a sheet whose
- * content is still mounting (a bot's panel) never stalls its first frames. `y` takes over where it is on landing or
- * on `stop` (a finger taking the sheet). */
-export function riseOnCompositor(layers: { sheet: HTMLElement; scrim: HTMLElement | null; page: HTMLElement | null }, y: MotionValue<number>, height: number, onDone: () => void): Run {
-  const path = springPath(height, 0, -system.push * height, SYSTEM);
+type SheetLayers = { sheet: HTMLElement; scrim: HTMLElement | null; page: HTMLElement | null };
+
+/** The sheet, its scrim and the page stepping back moved together as keyframes the compositor plays, on the system's
+ * spring leaving at `velocity` (px/s): a sheet whose content is mounting (a bot's panel) or unmounting never stalls a
+ * frame. `y` takes over where it is on landing, or on `stop` (a finger taking the sheet, a close turned around). */
+export function slideOnCompositor(layers: SheetLayers, y: MotionValue<number>, to: number, velocity: number, height: number, onDone: () => void): Run {
+  const path = springPath(y.get(), to, velocity, SYSTEM);
   const options: KeyframeAnimationOptions = { duration: path.duration, easing: "linear", fill: "forwards" };
   const progress = (p: number) => Math.max(0, Math.min(1, 1 - p / Math.max(1, height)));
   if (layers.page) Object.assign(layers.page.style, { transformOrigin: "50% 0", borderRadius: recedeStyle(1)!.borderRadius });
@@ -39,17 +40,20 @@ export function riseOnCompositor(layers: { sheet: HTMLElement; scrim: HTMLElemen
   const hand = (at: number) => {
     if (over) return;
     over = true;
+    for (const run of runs) {
+      try { run.commitStyles(); } catch { /* an element already gone */ }
+      run.cancel();
+    }
     y.set(at);
-    for (const run of runs) run.cancel();
   };
-  runs[0]!.onfinish = () => { if (!over) { hand(0); onDone(); } };
-  return {
-    stop: () => {
-      if (over) return;
-      hand(new DOMMatrixReadOnly(getComputedStyle(layers.sheet).transform).m42);
-      onDone();
-    },
-  };
+  runs[0]!.onfinish = () => { if (!over) { hand(to); onDone(); } };
+  return { stop: () => { if (!over) hand(new DOMMatrixReadOnly(getComputedStyle(layers.sheet).transform).m42); } };
+}
+
+/** A sheet rising from below the screen at the system's speed. */
+export function riseOnCompositor(layers: SheetLayers, y: MotionValue<number>, height: number, onDone: () => void): Run {
+  y.set(height);
+  return slideOnCompositor(layers, y, 0, -system.push * height, height, onDone);
 }
 
 /** An open sheet, or a full screen layer that is not one (the picture viewer), closes on Android's back. */
@@ -131,6 +135,8 @@ export function StackPage({ title, label, children, back, onClose, trailing, bod
 
 function ModalSheet({ open, onClose, title, label, children, full = false, back, trailing, bodyClassName, flush = false, recede = full }: SheetProps) {
   const [mounted, setMounted] = useState(open);
+  const closing = useRef(false);
+  const fade = useMotionValue(1);
   const sheetRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const height = useRef(800);
@@ -169,20 +175,32 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
 
   if (open && !mounted) setMounted(true);
 
-  const go = useCallback((target: number, velocity: number, done?: () => void, exit = false) => {
+  const go = useCallback((target: number, velocity: number, done?: () => void) => {
     run.current?.stop();
     setMoving(true);
-    run.current = settleTo(y, target, velocity, () => { setMoving(false); done?.(); }, exit ? EXIT : SYSTEM);
+    run.current = settleTo(y, target, velocity, () => { setMoving(false); done?.(); }, SYSTEM);
   }, [y]);
-  /** a tap or Escape: the sheet accelerates away from wherever it is, quicker the less of it is left to go */
-  const dismissFrom = useCallback((target: number, done: () => void) => {
+  /** opening and closing, by a tap, Escape, back or a flick: one spring both ways, played on the compositor and turned
+   * around from wherever it is; reduced motion fades the sheet in place instead */
+  const slide = useCallback((to: number, velocity: number, done: () => void) => {
     run.current?.stop();
     setMoving(true);
-    const left = Math.max(0, target - y.get());
-    if (reduced || left <= 0) { y.set(target); setMoving(false); done(); return; }
-    const ms = Math.max(dismiss.minMs, (dismiss.ms * left) / Math.max(1, height.current));
-    run.current = animate(y, target, { duration: ms / 1000, ease: dismiss.ease, onComplete: () => { setMoving(false); done(); } });
-  }, [y, reduced]);
+    const finish = () => { setMoving(false); done(); };
+    const el = sheetRef.current;
+    if (Math.abs(y.get() - to) < 0.5 && (!reduced || fade.get() === (to <= 0 ? 1 : 0))) { finish(); return; }
+    if (reduced) {
+      if (to <= 0) y.set(0);
+      const fading = animate(fade, to <= 0 ? 1 : 0, { duration: dur.fast, ease: ease.out, onComplete: () => { y.set(to); finish(); } });
+      run.current = { stop: () => fading.stop() };
+      return;
+    }
+    if (!el || typeof el.animate !== "function") {
+      const controls = settleTo(y, to, velocity, finish, SYSTEM);
+      run.current = { stop: () => controls.stop() };
+      return;
+    }
+    run.current = slideOnCompositor({ sheet: el, scrim: scrimRef.current, page: recede ? page.current : null }, y, to, velocity, height.current, finish);
+  }, [y, fade, reduced, recede]);
 
   useLayoutEffect(() => {
     if (!mounted) return;
@@ -190,25 +208,27 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
     if (!sheet) return;
     height.current = sheet.getBoundingClientRect().height;
     if (open) {
-      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      y.set(height.current);
+      sheet.focus({ preventScroll: true });
       haptic("sheet");
       flungAway.current = false;
-      sheet.focus({ preventScroll: true });
+      if (closing.current) {
+        closing.current = false;
+        slide(0, -system.push * height.current, () => {});
+        return;
+      }
+      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      y.set(height.current);
+      fade.set(reduced ? 0 : 1);
       // the rise starts on the first frame drawn with the sheet in place below the screen: started here, the spring's
       // clock would run through the frame that mounts its content and its first steps would lurch, then stall
-      const start = requestAnimationFrame(() => {
-        const el = sheetRef.current;
-        if (reduced || !el || typeof el.animate !== "function") { go(0, -system.push * height.current); return; }
-        run.current?.stop();
-        setMoving(true);
-        run.current = riseOnCompositor({ sheet: el, scrim: scrimRef.current, page: recede ? page.current : null }, y, height.current, () => setMoving(false));
-      });
+      const start = requestAnimationFrame(() => slide(0, -system.push * height.current, () => {}));
       return () => cancelAnimationFrame(start);
     } else {
       if (!flungAway.current) haptic("sheet");
       flungAway.current = false;
-      dismissFrom(height.current + 24, () => {
+      closing.current = true;
+      slide(height.current + 24, system.push * height.current, () => {
+        closing.current = false;
         setMounted(false);
         opener.current?.focus({ preventScroll: true });
       });
@@ -239,7 +259,7 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
       if (y.get() > 0 && (landing > height.current * 0.5 || s.vy > 700)) {
         haptic("sheet");
         flungAway.current = true;
-        go(height.current + 24, Math.max(s.vy, 0), () => closeRef.current(), true);
+        slide(height.current + 24, Math.max(s.vy, 0), () => closeRef.current());
       } else {
         go(0, s.vy);
       }
@@ -249,7 +269,7 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
 
   if (!mounted) return null;
   return (
-    <div className="mobile-sheet-layer fixed inset-0 z-40" data-sheet-open="" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
+    <motion.div className="mobile-sheet-layer fixed inset-0 z-40" data-sheet-open="" style={{ opacity: fade }} onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
       {/* only a press that began on the scrim closes the sheet: the finger that opened it on press lifts over it */}
       <motion.div ref={scrimRef} aria-hidden className={cn("absolute inset-0", full ? "bg-[rgb(12_12_14/0.42)]" : "bg-[rgb(12_12_14/0.30)]")} style={{ opacity: scrim }}
         onPointerDown={() => { scrimPressed.current = true; }}
@@ -280,6 +300,6 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
           {children}
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }
