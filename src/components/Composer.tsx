@@ -1114,7 +1114,7 @@ export function Composer({
             locked: setupLocked, approval: blocking, attaching: attachmentPending, attached: attachments.length > 0, listening: recording,
             replying: Boolean(replyTo), busy, group, members: members ?? [], goal: channelMode === "goal", botName: bot?.name ?? "",
             setupHint: group ? null : setupRequestPlaceholder(bot, threadId),
-            question: !group && pendingQuestion(bot?.messages),
+            question: !group && pendingQuestion(bot?.messages), narrow: phoneApp(),
           })}
           aria-label={t("composer.placeholder.bot", { name: group ? group.name : (bot?.name ?? "") })}
             className={cn(
