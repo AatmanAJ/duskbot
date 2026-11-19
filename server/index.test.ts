@@ -3355,12 +3355,15 @@ describe("harness HTTP API", () => {
       rmSync(fakeClaudeDump, { force: true });
       const missingPromptBaseline = claudePrompts().length;
       expect((await api("POST", `/api/bots/${botIds[0]}/messages`, { text: "do not create a replacement" })).status).toBe(202);
-      await expect.poll(async () => JSON.stringify((await api("GET", "/api/bots?messages=30")).body.bots.find(
-        (bot: { id: string }) => bot.id === botIds[0],
-      )), { timeout: 5_000 }).toMatch(/No dusk bot container exists for this bot on the VPS/);
+      await expect.poll(() => claudePrompts().length, { timeout: 5_000 }).toBe(missingPromptBaseline + 1);
+      const withoutComputer = await readJsonFileWhenReady<ComputerDump>(fakeClaudeDump);
+      expect(withoutComputer.mcpConfig.mcpServers.computer).toBeUndefined();
+      expect(JSON.stringify(withoutComputer)).toMatch(/no computer is mounted this turn/);
+      expect((await api("POST", `/api/bots/${botIds[0]}/interrupt`, {})).status).toBe(200);
       await idle(botIds[0]);
-      expect(claudePrompts()).toHaveLength(missingPromptBaseline);
-      expect(existsSync(fakeClaudeDump)).toBe(false);
+      const missingThread = JSON.stringify((await api("GET", "/api/bots?messages=30")).body.bots.find((bot: { id: string }) => bot.id === botIds[0]).messages);
+      expect(missingThread).not.toMatch(/No dusk bot container|docker|VPS/);
+      expect(claudePrompts()).toHaveLength(missingPromptBaseline + 1);
       expect(readFileSync(fakeDockerLog, "utf8").slice(missingOffset)).not.toMatch(/ (?:run|start|create|build|pull)(?: |$)/m);
     } finally {
       rmSync(fakeSharedVpsFixture, { force: true });
