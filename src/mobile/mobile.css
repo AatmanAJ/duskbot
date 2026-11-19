@@ -434,10 +434,12 @@ html[data-native-glass-composer] .dusk-mobile [data-mobile-chat] [data-tour="com
 
 /* message text at the phone's body size, 17 on a 24 line, regular weight; the bot's bubble is a little roomier at the
    sides than the person's, and every bubble keeps one 20px radius, no tail */
-.dusk-mobile [data-mobile-chat] [data-chat-bubble] {
+.dusk-mobile [data-mobile-chat] [data-chat-bubble]:not([data-emoji-only]) {
   font-size: 17px;
   line-height: 24px;
   font-weight: 400;
+}
+.dusk-mobile [data-mobile-chat] [data-chat-bubble]:not([data-emoji-only], [data-bubble-group]) {
   padding: 8px 14px;
   border-radius: 20px;
 }

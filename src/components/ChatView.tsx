@@ -488,6 +488,7 @@ const Bubble = memo(function Bubble({
             join && !split && !attachmentsOnly && !tabled && !mediaSplit && joinedCorners(user ? "end" : "start", join),
           )}
           data-emoji-only={bigEmoji ? "" : undefined}
+          data-bubble-group={attachmentsOnly || split || tabled || mediaSplit ? "" : undefined}
           data-quotable={user ? undefined : ""}
           data-sending={user && message.id.startsWith("optimistic-") ? t("chat.sending") : undefined}
           style={user && !webhookView && !attachmentsOnly && !bigEmoji ? ownBubbleStyle : undefined}

@@ -203,6 +203,7 @@ function RoomTextMessage({
   const replyGroup = useMemo(() => !user && botText.trim() ? replyAttachmentGroup(botText, m.attachments) : null, [user, botText, m.attachments]);
   const blocks = useMemo(() => !user && botText.trim() ? splitReplyBlocks(botText) : null, [user, botText]);
   const tabled = Boolean(blocks?.some((block) => block.kind === "table"));
+  const bubbleGroup = Boolean(tabled || (!user && !m.text?.trim() && !m.replyToId && m.attachments?.length) || (mediaRow && !display.trim() && !m.replyToId));
   const botActions = !user && (
     <MessageActions side="bot" forceOpen={speaking} menu={botMenu}>
       <ReplyAction onReply={() => onReply(m)} />
@@ -231,12 +232,14 @@ function RoomTextMessage({
             !tabled && joinedCorners(user ? "end" : "start", join),
             bigEmoji && !tabled
               ? EMOJI_ONLY_TEXT
-              : tabled || (!user && !m.text?.trim() && !m.replyToId && m.attachments?.length) || (mediaRow && !display.trim() && !m.replyToId)
+              : bubbleGroup
               ? "text-ink"
               : user
                 ? cn("chat-text whitespace-pre-wrap [overflow-wrap:anywhere] text-ink", SIMPLE_USER_BUBBLE)
                 : SIMPLE_BOT_BUBBLE,
           )}
+          data-emoji-only={bigEmoji && !tabled ? "" : undefined}
+          data-bubble-group={bubbleGroup ? "" : undefined}
           data-quotable={user ? undefined : ""}
           data-sending={user && m.id.startsWith("optimistic-") ? t("chat.sending") : undefined}
         >
