@@ -498,7 +498,7 @@ import { flushAllProfileHistory, flushProfileHistory, readHistory, recordProfile
 import { describeTool } from "./activity.ts";
 import { OutboundCounts } from "./outbound-counts.ts";
 import { OutboundRequestService } from "./outbound-requests.ts";
-import { createOutboundHold, OUTBOUND_HOLD_MS, type OutboundHoldAnswer } from "./outbound-hold.ts"; import { readGmailDraft } from "./gmail-draft-read.ts";
+import { createOutboundHold, OUTBOUND_HOLD_MS, type OutboundHoldAnswer } from "./outbound-hold.ts"; import { computerPurchasePasses } from "./computer-purchase.ts"; import { readGmailDraft } from "./gmail-draft-read.ts";
 import { connectorCallsIn, outboundCallsIn } from "../shared/outbound.ts";
 import { connectorAccessDecision, describeConnectorScopes } from "../shared/connector-scopes.ts";
 import { bindThreadLogCapProvider } from "./thread-log-rotation.ts";
@@ -15898,7 +15898,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         if (method === "GET") {
           const abort = new AbortController();
           res.once("close", () => { if (!res.writableEnded) abort.abort(); });
-          return json(res, 200, await computerCallGate(internalCapability, abort.signal, yourComputerCallFrom(url.searchParams)));
+          return json(res, 200, computerPurchasePasses.hold(internalCapability.threadId, url.searchParams) ?? await computerCallGate(internalCapability, abort.signal, yourComputerCallFrom(url.searchParams)));
         }
         return method === "POST" ? json(res, ...answerBotPointer(await readInternalBody(), (pointer) => broadcast({ kind: "computer-pointer", botId, threadId: internalCapability.threadId, ...pointer }))) : json(res, 405, { error: "method not allowed" });
       }

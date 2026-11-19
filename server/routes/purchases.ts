@@ -4,6 +4,7 @@ import type { ServerResponse } from "node:http";
 
 import { parsePurchaseSummary } from "../../shared/purchase.ts";
 import type { OutboundHold, OutboundHoldBot } from "../outbound-hold.ts";
+import { computerPurchasePasses } from "../computer-purchase.ts";
 import { purchaseGate } from "../purchase-gate.ts";
 import type { Message } from "../store.ts";
 import type { json as sendJson } from "../harness/http.ts";
@@ -57,6 +58,7 @@ export function createPurchaseRoutes(deps: PurchaseRouteDeps) {
     const answer = await deps.hold.confirmPurchase({ bot, threadId: ctx.threadId, summary: parsed.value, recorded, active: ctx.active ?? (() => true) });
     if (!answer.ok) return void ctx.json(ctx.res, 409, { error: answer.text });
     if (ctx.browserSession) purchaseGate.grant(ctx.browserSession);
+    computerPurchasePasses.grant(ctx.threadId);
     return void ctx.json(ctx.res, 200, {
       text: recorded
         ? "Recorded: the summary card is in the chat as the person's receipt. Take the final step now, once."
