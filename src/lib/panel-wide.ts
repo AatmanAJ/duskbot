@@ -68,6 +68,8 @@ export function wideWidth(shared: number): number {
 
 /** The room the chat and a docked panel share; a panel over the chat (a narrow window) has the window's. */
 function sharedRoom(): number {
+  // a server render (and its tests) has no page to measure: the panel may take its widest
+  if (typeof document === "undefined" || typeof document.querySelector !== "function") return WIDE_MAX + CHAT_KEEPS;
   const slot = document.querySelector<HTMLElement>("[data-panel-slot]");
   const chat = slot?.parentElement?.querySelector<HTMLElement>(":scope > main");
   if (slot && chat) return slot.getBoundingClientRect().right - chat.getBoundingClientRect().left;
