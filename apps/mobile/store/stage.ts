@@ -267,7 +267,7 @@ export async function startStage(serve: Serve = DEV_SERVER) {
   const open = async (scheme: Scheme, query = "", storage: Record<string, string> = { "dusk.mobile.introSeen": "1" }) => {
     await page.send("Page.navigate", { url: `${base}/?frame=1&scheme=${scheme}${query}` });
     await delay(1200);
-    await page.evaluate(`localStorage.clear(); for (const [k, v] of Object.entries(${js(storage)})) localStorage.setItem(k, v); location.reload()`);
+    await page.evaluate(`localStorage.clear(); sessionStorage.clear(); for (const [k, v] of Object.entries(${js(storage)})) localStorage.setItem(k, v); location.reload()`);
     await delay(2500);
   };
   const home = async (scheme: Scheme) => {
