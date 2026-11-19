@@ -241,7 +241,7 @@ export function BotPanel({ bot, derived, linkedSection, computerRequest = 0, onC
     <div className="relative flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
       <span id="bot-settings-title" className="sr-only">{bot.name}</span>
       <PanelResizeEdge />
-      <div {...dragProps} className="relative ms-2 flex h-[60px] shrink-0 items-center gap-2 p-3 ps-1">
+      <div {...dragProps} data-panel-bar className="relative ms-2 flex h-[60px] shrink-0 items-center gap-2 p-3 ps-1">
         {page === null && (
           <span className="ms-auto flex items-center gap-2">
             <PanelShareMenu bot={bot} />
