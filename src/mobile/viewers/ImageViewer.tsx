@@ -289,7 +289,7 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
           </motion.div>
         </motion.div>
       </div>
-      <div className={cn("viewer-chrome pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 px-4 pt-[calc(var(--m-safe-top)+8px)]", chrome ? "opacity-100" : "opacity-0")}>
+      <div data-viewer-controls="" className={cn("viewer-chrome pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 ps-[calc(var(--m-safe-left)+16px)] pe-[calc(var(--m-safe-right)+16px)] pt-[calc(var(--m-safe-top)+8px)]", chrome ? "opacity-100" : "opacity-0")}>
         <button type="button" onClick={() => close()} aria-label={t("attach.close")} className="viewer-key pointer-events-auto"><X size={20} /></button>
         <span className="min-w-0 flex-1 truncate text-center text-[15px] font-semibold text-[rgb(245_245_245)] tabular-nums">
           {images.length > 1 ? t("mobile.image.count", { index: index + 1, count: images.length }) : ""}
@@ -298,7 +298,7 @@ export function ImageViewer({ images, initialIndex, bridge, onClose }: { images:
           {sharing ? <LoaderCircle size={18} className="animate-spin" /> : <Share size={18} />}
         </button> : <span className="size-11" />}
       </div>
-      <div className={cn("viewer-chrome pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 px-6 pb-[calc(var(--m-safe-bottom)+16px)]", chrome ? "opacity-100" : "opacity-0")}>
+      <div className={cn("viewer-chrome pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 ps-[calc(var(--m-safe-left)+24px)] pe-[calc(var(--m-safe-right)+24px)] pb-[calc(var(--m-safe-bottom)+16px)]", chrome ? "opacity-100" : "opacity-0")}>
         {images.length > 1 && <div className="flex gap-1.5" aria-hidden="true">
           {images.map((_, i) => <span key={i} className={cn("size-1.5 rounded-full transition-colors duration-150", i === index ? "bg-[rgb(245_245_245)]" : "bg-[rgb(245_245_245/0.35)]")} />)}
         </div>}
