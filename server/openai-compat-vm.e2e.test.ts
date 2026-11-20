@@ -148,7 +148,7 @@ beforeAll(async () => {
   ], {
     cwd: ROOT,
     env: {
-      PATH: [fakebin, dirname(process.execPath), "/usr/bin", "/bin"].join(delimiter),
+      PATH: [fakebin, dirname(process.execPath), "/usr/bin", "/bin"].join(delimiter), DUSK_TEST_SEALED_PATH: "1",
       HOME: fixtureHome, USERPROFILE: fixtureHome, DUSK_DATA_DIR: data,
       DUSK_AGENTS_TOOL_BRIDGE: "0",
       APPDATA: join(fixtureHome, "appdata"), LOCALAPPDATA: join(fixtureHome, "localappdata"),
