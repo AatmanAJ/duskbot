@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEvent } from "./contracts.ts";
 import { toolStep } from "./step-summary.ts";
 import {
-  ACK_IDLE_MS, beatPrompt, beatsNote, cleanBeat, createTurnBeats, looksLikeWork, MILESTONE_QUIET_MS, PLAN_MIN_MS, PLAN_WRITE_MS, type BeatKind,
+  ACK_IDLE_MS, RETRY_429_MS, beatPrompt, beatsNote, cleanBeat, createTurnBeats, looksLikeWork, MILESTONE_QUIET_MS, PLAN_MIN_MS, PLAN_WRITE_MS, type BeatKind,
 } from "./turn-beats.ts";
 
 const THREAD = "th1";
@@ -17,7 +17,7 @@ const toolStart = (title: string, input: unknown, id = title) =>
 const toolDone = (id: string) => event({ type: "item.completed", itemType: "tool", itemId: id, ok: true });
 const said = (text: string) => event({ type: "item.completed", itemType: "assistant_text", text });
 
-function setup(options: { replies?: Partial<Record<BeatKind, string>>; enabled?: boolean; writerMs?: number; soul?: string } = {}) {
+function setup(options: { replies?: Partial<Record<BeatKind, string>>; enabled?: boolean; writerMs?: number; soul?: string; showsThinking?: boolean; fails?: string[] } = {}) {
   vi.useFakeTimers();
   const prompts: Array<{ kind: BeatKind; prompt: string }> = [];
   const posts: Array<{ kind: BeatKind; text: string; turnId: string }> = [];
@@ -28,9 +28,12 @@ function setup(options: { replies?: Partial<Record<BeatKind, string>>; enabled?:
     writer: () => (prompt) => {
       const kind: BeatKind = prompt.includes("Write the acknowledgement") ? "ack" : prompt.includes("Write the second message") ? "plan" : "milestone";
       prompts.push({ kind, prompt });
+      const failure = options.fails?.shift();
+      if (failure) return Promise.reject(new Error(failure));
       return new Promise((resolve) => setTimeout(() => resolve(replies[kind]), options.writerMs ?? 2_000));
     },
     bot: () => ({ name: "Nova", soul: options.soul ?? "You are Nova, a market researcher." }),
+    ...(options.showsThinking === undefined ? {} : { showsThinking: () => options.showsThinking! }),
     live: (_threadId, turnId) => live && turnId === TURN,
     post: ({ kind, text, turnId }) => posts.push({ kind, text, turnId }),
   });
@@ -68,6 +71,35 @@ describe("turn beats", () => {
     expect(note).toContain("\"On it, comparing budget keyboards now.\"");
     expect(note).toContain("I'll check the prices are current");
     expect(beats.note(THREAD)).toBe("");
+  });
+
+  it("acks work at ACK_IDLE_MS on an engine that shows no thinking, and never sooner", async () => {
+    const { beats, posts, send } = setup({ showsThinking: false });
+    beats.start({ botId: "b", threadId: THREAD, text: "Write a launch plan for the spring candle line", attachments: 0, unattended: false });
+    send(event({ type: "turn.started" }));
+    await vi.advanceTimersByTimeAsync(ACK_IDLE_MS - 200);
+    expect(posts).toEqual([]);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(posts.map((p) => p.kind)).toEqual(["ack"]);
+  });
+
+  it("asks the writer once more after a rate limit, and gives up after a second one", async () => {
+    const limited = setup({ fails: ["429 Too Many Requests"] });
+    limited.beats.start({ botId: "b", threadId: THREAD, text: "Research the best budget mechanical keyboards in India", attachments: 0, unattended: false });
+    limited.send(event({ type: "turn.started" }));
+    limited.send(toolStart("WebSearch", { query: "keyboards" }, "s1"));
+    await vi.advanceTimersByTimeAsync(RETRY_429_MS + 2_100);
+    expect(limited.prompts.map((p) => p.kind)).toEqual(["ack", "ack"]);
+    expect(limited.posts.map((p) => p.kind)).toEqual(["ack"]);
+    vi.useRealTimers();
+
+    const twice = setup({ fails: ["429 Too Many Requests", "rate limit reached"] });
+    twice.beats.start({ botId: "b", threadId: THREAD, text: "Research the best budget mechanical keyboards in India", attachments: 0, unattended: false });
+    twice.send(event({ type: "turn.started" }));
+    twice.send(toolStart("WebSearch", { query: "keyboards" }, "s1"));
+    await vi.advanceTimersByTimeAsync(RETRY_429_MS + 3_000);
+    expect(twice.prompts.map((p) => p.kind)).toEqual(["ack", "ack"]);
+    expect(twice.posts).toEqual([]);
   });
 
   it("drops its ack when the engine speaks first", async () => {

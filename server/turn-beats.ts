@@ -14,8 +14,12 @@ export type BeatKind = "ack" | "plan" | "milestone";
 /** The earliest an ack goes out, so a fast reply never follows one. */
 export const ACK_MIN_MS = 1_500;
 /** An ack for work that has run no tool yet waits this long for the engine to answer by itself first, and goes out only
- * once the engine shows it is thinking: an ack nothing follows is a promise the turn did not keep. */
+ * once the engine shows it is thinking (or at once, for an engine that shows none): an ack nothing follows is a promise
+ * the turn did not keep. */
 export const ACK_IDLE_MS = 4_000;
+/** The pause before a beat's writer is asked once more after a rate limit. */
+export const RETRY_429_MS = 700;
+const RATE_LIMITED = /\b429\b|rate.?limit|too many requests/i;
 /** The second message is written from here, once a tool has run, and goes out from PLAN_MIN_MS: only a job that runs
  * past half a minute gets one, so a quick task reads as an ack and its result. */
 export const PLAN_WRITE_MS = 26_000;
@@ -43,6 +47,8 @@ export interface TurnBeatsDeps {
   writer(botId: string, threadId: string): BeatWriter | null;
   /** `apps`: the connected apps this bot may use, by name; absent when unknown. */
   bot(botId: string): { name: string; soul?: string; apps?: readonly string[] } | null | undefined;
+  /** False for an engine that may show no thinking before its first tool: its ack goes out at ACK_IDLE_MS anyway. */
+  showsThinking?(threadId: string): boolean;
   /** Whether this turn is still the one the thread runs. */
   live(threadId: string, turnId: string): boolean;
   post(beat: { botId: string; threadId: string; turnId: string; text: string; kind: BeatKind }): void;
@@ -206,7 +212,16 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
     beat.abort = new AbortController();
     const steps = kind === "milestone" ? watch.steps.slice(watch.stepsAtLastWord) : watch.steps;
     const prompt = beatPrompt(kind, { name: bot.name, soul: bot.soul, apps: bot.apps, ask: watch.ask, steps, said: watch.said.slice(-4), minutes: Math.round((now() - watch.startedAt) / 60_000) });
-    void writer(prompt, { signal: beat.abort.signal, timeoutMs: WRITE_TIMEOUT_MS }).then((reply) => {
+    const signal = beat.abort.signal;
+    const once = () => writer(prompt, { signal, timeoutMs: WRITE_TIMEOUT_MS });
+    // a busy small model answers 429 at the busiest moment, the turn's start: one more try after a short pause
+    const written = once().catch(async (error: unknown) => {
+      if (!RATE_LIMITED.test(error instanceof Error ? error.message : String(error)) || signal.aborted) throw error;
+      await new Promise((done) => setTimeout(done, RETRY_429_MS));
+      if (signal.aborted || beat.phase !== "writing") throw error;
+      return once();
+    });
+    void written.then((reply) => {
       if (beat.phase !== "writing") return;
       const text = cleanBeat(kind, reply);
       if (!text) {
@@ -258,7 +273,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
     if (!deps.live(watch.threadId, watch.turnId)) return end(watch);
     if (ack.phase === "ready") {
       if (engineSpoke) ack.phase = "dropped";
-      else if (elapsed >= ACK_MIN_MS && (watch.tools > 0 || (elapsed >= ACK_IDLE_MS && !watch.asksFirst && watch.thinking))) post(watch, "ack", ack);
+      else if (elapsed >= ACK_MIN_MS && (watch.tools > 0 || (elapsed >= ACK_IDLE_MS && !watch.asksFirst && (watch.thinking || deps.showsThinking?.(watch.threadId) === false)))) post(watch, "ack", ack);
     }
     if (ack.phase === "writing" || (ack.phase === "idle" && !engineSpoke && !watch.tools)) return;
 

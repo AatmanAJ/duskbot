@@ -957,7 +957,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         deviceMcp: options.tools !== false,
         queueing: true, ...(options.effort ? { effortLevels: options.effort.levels, effortByModel: true } : {}),
         ...(options.tools !== false ? { askTool: { kind: "native" as const, name: ASK_USER_TOOL } } : {}),
-        guestTurns: "confined" },
+        guestTurns: "confined", thinkingSignal: false },
       sendTurn,
       interruptTurn: async (threadId, turnId) => {
         const turn = active.get(threadId);

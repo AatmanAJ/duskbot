@@ -280,6 +280,8 @@ export interface ProviderAdapter {
     hooks?: boolean;
     /** "confined": sendTurn honours `guestConfined`; absent, a guest turn is refused. */
     guestTurns?: "confined";
+    /** false: the engine may stream no reasoning before its first tool call, so a turn's silence is not a sign it is idle. */
+    thinkingSignal?: false;
     /** "meter": `contextTokens` / `contextWindow` are the engine's own report, shown on the context meter but never used to time compaction. */
     contextReading?: "meter";
     /** sendTurn calls `engineAdmission` itself before it starts an engine process or joins one. */
