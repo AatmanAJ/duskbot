@@ -106,7 +106,7 @@ export const CASES: WorkflowCase[] = [
   {
     id: "outbound-leads", dept: "sales", apps: ["gmail", "google_sheets", "apollo"], seed: {},
     ask: "find 50 B2B leads matching heads of operations at US logistics companies with 11-50 people, enrich them, write personal first emails, put them in a sheet, send 10 a day after I approve the first batch, follow up after 3 days if no reply",
-    brief: "You sell Loomware Fleet, a $49/month route-planning add-on. Sender is maya@loomware.co, sign '- Maya, founder of Loomware'. Send at 10am New York time on weekdays. When the bot shows the first batch you approve it ('looks good, send them'). One follow-up only.",
+    brief: "You sell Loomware Fleet, a $49/month route-planning add-on. Sender is maya@loomware.co, sign '- Maya, founder of Loomware'. Send at 10am New York time on weekdays. When the bot shows the first batch you approve it ('looks good, send them'). One follow-up only. You pay for Apollo and trust its verified emails; skip the unverified ones. Your business address for the email footer: Loomware Inc, 548 Market St, San Francisco, CA 94104.",
     expect: "50 leads found and enriched into a new sheet (name, company, email, personalised first email, status, sent date), a first batch shown for approval before anything sends, then a weekday automation that sends 10 a day only after approval and updates the sheet, and a follow-up step 3 days after a send with no reply, checking replies first. Unverified emails skipped or flagged. No sending before approval.",
     change: "pause the sending for a week, I'm travelling; keep the follow-ups going",
   },
