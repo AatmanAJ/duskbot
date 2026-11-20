@@ -72,6 +72,20 @@ export function paysOf(input: Pick<SubscriptionsInput, "invoices" | "ledger"> & 
   return out.sort((a, b) => a.at - b.at);
 }
 
+/** money taken in [from, to): payments before tax less refunds, before the processor's fees (no billing record holds them);
+ *  `series` is per `size` bucket from `from` */
+export interface Received { cents: number; refundsCents: number; payments: number; starts: number[]; series: number[] }
+export function receivedIn(pays: readonly Pay[], refunds: readonly Refund[], from: number, to: number, size = DAY): Received {
+  const starts: number[] = [];
+  for (let at = from; at < to; at += size) starts.push(at);
+  const series = starts.map(() => 0);
+  const add = (at: number, cents: number) => { if (at >= from && at < to) series[Math.floor((at - from) / size)]! += cents; };
+  let payments = 0, refundsCents = 0;
+  for (const pay of pays) if (pay.at >= from && pay.at < to) { payments++; add(pay.at, pay.amountCents); }
+  for (const refund of refunds) if (refund.at >= from && refund.at < to) { refundsCents += refund.amountCents; add(refund.at, -refund.amountCents); }
+  return { cents: series.reduce((sum, value) => sum + value, 0), refundsCents, payments, starts, series };
+}
+
 export function refundsOf(input: Pick<SubscriptionsInput, "refunds" | "ledger">, pays: readonly Pay[]): Refund[] {
   const byPayment = new Map(pays.map(pay => [pay.paymentId, pay]));
   const times = new Map(input.ledger.filter(row => row.type === "refund.succeeded" && row.providerRef).map(row => [row.providerRef!, row]));

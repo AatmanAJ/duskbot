@@ -35,8 +35,13 @@ export interface Headline {
   previous: { mrr: number; netNewMrr: number; customers: number; arpu: number | null; customerChurn: number | null; ltv: number | null };
 }
 
+/** money taken in the page's range: payments before tax less refunds, before processor fees; a value per day */
+export interface Received { cents: number; refundsCents: number; payments: number; starts: number[]; series: number[] }
+
 export interface SubscriptionReport {
   now: number; currency: string; headline: Headline; months: MonthRow[];
+  /** absent from an older service */
+  received?: Received;
   status: { active: number; trialing: number; pastDue: number; onHold: number; cancelScheduled: number; comped: number; churned: number };
   cohorts: { payment: CohortRow[]; signup: CohortRow[] };
   dunning: { failed: number; recovered: number; lost: number; open: number; rate: number | null; recoveredMrr: number; months: Array<{ start: number; failed: number; recovered: number }> };

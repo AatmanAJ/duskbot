@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoredCheckout, StoredInvoice, StoredSubscription } from "../billing/store.ts";
 import { draft, ledgerId, type LedgerEntry } from "../billing/ledger.ts";
-import { monthlyCents, movementOf, paysOf, subscriptionReport, type SubscriptionsInput } from "./subscriptions.ts";
+import { monthlyCents, movementOf, paysOf, receivedIn, subscriptionReport, type SubscriptionsInput } from "./subscriptions.ts";
 
 const at = (month: number, day: number) => Date.UTC(2026, month - 1, day, 12);
 const now = at(6, 15);
@@ -143,5 +143,18 @@ describe("App Review's demo plan", () => {
     const before = subscriptionReport(base), after = subscriptionReport(withReview);
     expect(after.headline).toEqual(before.headline);
     expect(after.months).toEqual(before.months);
+  });
+});
+
+describe("received", () => {
+  it("is payments before tax less refunds inside the range, a value per day", () => {
+    const from = at(6, 1), day = 86_400_000;
+    const pays = [
+      { paymentId: "a", accountId: "A", subscriptionId: null, at: from - 1, amountCents: 9999, chargedCents: 9999, netCents: 9999, taxCents: 0, country: null },
+      { paymentId: "b", accountId: "B", subscriptionId: null, at: from + 1, amountCents: 2000, chargedCents: 2400, netCents: 2000, taxCents: 400, country: null },
+      { paymentId: "c", accountId: "C", subscriptionId: null, at: from + 2 * day, amountCents: 3000, chargedCents: 3000, netCents: 3000, taxCents: 0, country: null },
+    ];
+    const refunds = [{ id: "r", paymentId: "c", accountId: "C", at: from + 2 * day + 5, amountCents: 1000 }];
+    expect(receivedIn(pays, refunds, from, from + 3 * day)).toEqual({ cents: 4000, refundsCents: 1000, payments: 2, starts: [from, from + day, from + 2 * day], series: [2000, 0, 2000] });
   });
 });

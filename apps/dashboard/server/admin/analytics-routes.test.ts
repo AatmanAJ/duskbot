@@ -152,6 +152,11 @@ describe("admin analytics routes", () => {
     expect(revenue.customers[0]).toMatchObject({ accountId, email: OTHER, mode: "test", status: "active", channel: "ai", source: "ChatGPT", country: "DE" });
     expect((await read<Revenue>("/v1/admin/revenue?mode=all", admin)).headline.mrr).toBe(total);
     expect(revenue.feed[0]).toMatchObject({ kind: "new", accountId, amountCents: total });
+    expect(revenue.received).toMatchObject({ cents: revenue.cash.gross, payments: 1, refundsCents: 0 });
+    expect(revenue.received.cents).toBeGreaterThan(0);
+    expect(revenue.received.series).toHaveLength(90);
+    expect((await read<Revenue>("/v1/admin/revenue?days=30&mode=test", admin)).received.series).toHaveLength(30);
+    expect(live.received.cents, "test money is never received in the live view").toBe(0);
     // a paid checkout with no free trial: visited and signed up, never a trial
     expect(revenue.funnel.steps.map(step => [step.id, step.count])).toEqual([["visit", 1], ["signup", 1], ["trial", 0], ["converted", 0]]);
     expect(revenue.sync).toEqual({ available: false, last: null });

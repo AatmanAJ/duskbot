@@ -14,7 +14,7 @@ import { paymentsOf, revenueReport } from "../analytics/revenue.ts";
 import { aligned, firstSeenOf, newVsReturningTally, peakHoursTally } from "../analytics/insights.ts";
 import { billingSteps, firstSourceOf, sessionsOf, spendOf, timeToPayOf, whereOf } from "../analytics/profile.ts";
 import type { StoredSubscription } from "../billing/store.ts";
-import { billingCardOf, paysOf, subscriptionReport, type SubscriptionsInput } from "../analytics/subscriptions.ts";
+import { billingCardOf, paysOf, receivedIn, refundsOf, subscriptionReport, type SubscriptionsInput } from "../analytics/subscriptions.ts";
 import { LEDGER_LABELS } from "../billing/ledger.ts";
 import { BILLING_CONFIG } from "../billing/plans.ts";
 import { quote } from "../billing/pricing.ts";
@@ -455,7 +455,8 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     if (asked !== "live" && asked !== "test" && asked !== "all") throw bad();
     const { input: every, seen, identity } = await revenueData();
     const input = scoped(every, asked), state = billing.store.state;
-    return { ...subscriptionReport(input), funnel: revenueFunnel(input, seen, identity, days), mode: asked, serverMode: serverMode(),
+    const pays = paysOf(input), time = now();
+    return { ...subscriptionReport(input), funnel: revenueFunnel(input, seen, identity, days), received: receivedIn(pays, refundsOf(input, pays), time + 1 - days * DAY, time + 1), mode: asked, serverMode: serverMode(),
       modes: { live: moneyTotals(scoped(every, "live")), test: moneyTotals(scoped(every, "test")) }, sync: { available: billing.operator.provider === "dodo", last: state.lastSync ?? null },
       cancelFlow: cancelFlowSummary(state.retention ?? [], now() - 90 * DAY, now() + 1) };
   }

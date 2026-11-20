@@ -6,6 +6,7 @@ import type { PersonDay, SnapshotRow } from "../analytics/usage.ts";
 import type { BillingState, StoredSubscription } from "../billing/store.ts";
 import type { StoredWorkspace } from "../store.ts";
 import { isOpsMade } from "./money-mode.ts";
+import { paysOf, receivedIn, refundsOf } from "../analytics/subscriptions.ts";
 
 const DAY = 86_400_000;
 /** the public launch: accounts made at or after this moment are the launch cohort */
@@ -50,10 +51,10 @@ export function statusLine(sub: Sub, now: number): string {
   return trial ?? "paid";
 }
 
-export interface LaunchStrip { since: number; label: string; accounts: number; mrrCents: number; atRiskCents: number; trial: number; paying: number; paymentProblem: number; cancelling: number; cancelled: number; collectedCents: number }
+export interface LaunchStrip { since: number; label: string; accounts: number; mrrCents: number; atRiskCents: number; trial: number; paying: number; paymentProblem: number; cancelling: number; cancelled: number; receivedCents: number }
 /** the launch cohort's money: accounts made at or after `since`; mrr is what will bill (running plans not set to end, without
- *  failed charges), at risk is the monthly value of failed charges, collected is
- *  payments taken net of refunds, in the money mode of the view it is given */
+ *  failed charges), at risk is the monthly value of failed charges, received is
+ *  payments before tax less refunds (before processor fees), in the money mode of the view it is given */
 export function launchStrip(state: Pick<BillingState, "subscriptions" | "invoices" | "refunds">, accounts: ReadonlyArray<{ id: string; createdAt: number }>, now: number, since = LAUNCH_AT): LaunchStrip {
   const cohort = new Set(accounts.filter(account => account.createdAt >= since).map(account => account.id));
   const subs = state.subscriptions.filter(sub => cohort.has(sub.accountId) && countsAsBought(sub));
@@ -66,10 +67,9 @@ export function launchStrip(state: Pick<BillingState, "subscriptions" | "invoice
   const atRiskCents = subs.filter(sub => bucketOf(sub, now) === "payment_problem").reduce((sum, sub) => sum + monthlyOf(sub), 0);
   const bought = new Set(subs.map(sub => sub.id));
   const payments = state.invoices.filter(invoice => cohort.has(invoice.accountId) && (invoice.subscriptionId === null || bought.has(invoice.subscriptionId)) && invoice.status !== "failed");
-  const refunded = new Map<string, number>();
-  for (const refund of state.refunds ?? []) refunded.set(refund.paymentId, (refunded.get(refund.paymentId) ?? 0) + refund.amountCents);
-  const collectedCents = payments.reduce((sum, invoice) => sum + Math.max(0, invoice.amountCents - (refunded.get(invoice.providerPaymentId) ?? (invoice.status === "refunded" ? invoice.amountCents : 0))), 0);
-  return { since, label: LAUNCH_LABEL, accounts: cohort.size, mrrCents, atRiskCents, ...counts, collectedCents };
+  const pays = paysOf({ invoices: payments, ledger: [] }), until = Math.max(since, now) + 1;
+  const receivedCents = receivedIn(pays, refundsOf({ refunds: state.refunds ?? [], ledger: [] }, pays), since, until, until - since).cents;
+  return { since, label: LAUNCH_LABEL, accounts: cohort.size, mrrCents, atRiskCents, ...counts, receivedCents };
 }
 
 export interface TrialTotals { active: number; cancelling: number; mrrAtStake: number; ended: number; converted: number; conversion: number | null }

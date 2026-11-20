@@ -19,7 +19,7 @@ import { InfraMargin } from "./InfraMargin";
 import { Fold } from "./Fold";
 import { TrialsSummary } from "./Subscribers";
 import { CustomerLink, ModeChip } from "./CustomerSheet";
-import type { BreakdownRow, CustomerRow, FeedItem, FeedKind, Health, MoneyMode, RevenueFunnelStep, RiskRow, SubscriptionReport } from "./revenue-types";
+import type { BreakdownRow, CustomerRow, FeedItem, FeedKind, Health, MoneyMode, Received, RevenueFunnelStep, RiskRow, SubscriptionReport } from "./revenue-types";
 
 const DAY = 86_400_000;
 const words = (value: string) => value.replace(/_/g, " ");
@@ -100,16 +100,29 @@ function Small({ label, value, note, money }: { label: string; value: string; no
   );
 }
 
+function ReceivedChart({ received, days, onDays }: { received: Received; days: string; onDays: (days: string) => void }) {
+  return (
+    <ChartCard title="received per day" action={<Segmented label="range" value={days} onChange={onDays} options={DAYS.map(([value, label]) => ({ value, label }))} />}>
+      <StackedBars starts={received.starts} size={DAY} height={160} format={(v) => usd(v, true)} stacks={[{ key: "received", label: "received", color: "var(--viz-new)", values: received.series }]} />
+      <p className="mt-2 text-12 text-ink-4">{n(received.payments)} payment{received.payments === 1 ? "" : "s"} in {rangeLabel(days)}{received.refundsCents ? `, ${usd(received.refundsCents, true)} refunded` : ""}. gross: before tax and processor fees.</p>
+    </ChartCard>
+  );
+}
+
 /** failed charges, kept out of mrr and shown beside it */
 function AtRisk({ cents, count }: { cents: number; count: number }) {
   return <span className="ms-2 text-12 text-ink-3" title="failed charges, retried by billing, not counted in mrr">at risk {usd(cents, true)}/mo ({n(count)})</span>;
 }
 
-function Headline({ report }: { report: SubscriptionReport }) {
-  const h = report.headline, p = h.previous;
+const rangeLabel = (days: string) => days === "365" ? "the last year" : `the last ${days} days`;
+
+function Headline({ report, days }: { report: SubscriptionReport; days: string }) {
+  const h = report.headline, p = h.previous, r = report.received;
   return (
-    <section className="grid grid-cols-4 gap-1.5 rounded-[24px] bg-card p-2 max-lg:grid-cols-2" aria-label="headline numbers">
+    <section className={cx("grid gap-1.5 rounded-[24px] bg-card p-2 max-lg:grid-cols-2", r ? "grid-cols-5" : "grid-cols-4")} aria-label="headline numbers">
       <Metric label="mrr" value={usd(h.mrr, true)} money delta={<><MoneyDelta now={h.mrr} before={p.mrr} />{h.atRisk && h.atRisk.customers > 0 && <AtRisk cents={h.atRisk.mrr} count={h.atRisk.customers} />}</>} />
+      {r && <Metric label="received" value={usd(r.cents, true)} money delta={<span className="text-12 text-ink-3">{rangeLabel(days)}, gross</span>}
+        hint="payments taken less refunds, before tax and before the processor's fees, which the billing records don't hold" />}
       <Metric label="net new this month" value={signed(h.netNewMrr)} delta={<MoneyDelta now={h.netNewMrr} before={p.netNewMrr} mode="usd" />} hint="new, expansion and comebacks, less contraction and churn, this month" />
       <Metric label="active customers" value={n(h.customers)} delta={<MoneyDelta now={h.customers} before={p.customers} />} />
       <Metric label="churn" value={rate(h.customerChurn)} delta={<MoneyDelta now={h.customerChurn} before={p.customerChurn} mode="points" invert />} hint="customers lost per month, over the last three full months" />
@@ -612,7 +625,8 @@ export function RevenuePage() {
             <section className="rounded-[24px] bg-card"><SkyEmpty art="notebook" title={money === "live" ? "no live subscriptions yet." : money === "test" ? "no test subscriptions." : "no subscriptions yet."}>{money === "live" ? "test-mode payments never count here. switch to test to see them." : "the first paid plan lands here with mrr, churn, cohorts and every customer."}</SkyEmpty></section>
           ) : (
             <>
-              <Headline report={data} />
+              <Headline report={data} days={days} />
+              {data.received && <ReceivedChart received={data.received} days={days} onDays={setDays} />}
               <Growth report={data} />
               <Saves report={data} />
               {owner && <Customers customers={data.customers} />}
