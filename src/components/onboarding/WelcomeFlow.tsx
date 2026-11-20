@@ -7,7 +7,8 @@ import { clearWelcomeDraft, readWelcomeDraft, saveWelcomeDraft } from "@/lib/wel
 import { looksLikeNotes } from "@/lib/assistant-notes";
 import { greetingName } from "../../../shared/greeting-name";
 import { usePlaceSetupOpen } from "@/lib/place-setup";
-import { api, useStore } from "@/state/store";
+import { api, useStore, type ModelSelection } from "@/state/store";
+import { engineReady } from "@/components/EngineLibrary";
 import { useNotesIntake } from "../NotesWaiting";
 import { WindowDragStrip } from "../DesktopCapabilities";
 import { AccountStep } from "./AccountStep";
@@ -15,7 +16,7 @@ import { AiStep } from "./AiStep";
 import { BringStatus } from "./BringStep";
 import { CheckoutStep } from "./CheckoutStep";
 import { CloudBringStep, useCloudBringOffered } from "./CloudBringStep";
-import { cloudOwned, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
+import { cloudOwned, freeModel, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
 import { useFreeWarmup } from "./free-warmup";
 import { funnelAccount, type FunnelAccountState } from "./funnel-account";
 import { FunnelBar, WelcomeStep } from "./FunnelSteps";
@@ -86,6 +87,8 @@ export function WelcomeFlow({
   const keepsDraft = !replay && !embedded;
   const root = useRef<HTMLDivElement>(null);
   const finishing = useRef(false);
+  // "Use free models" is the person's own pick: Dusk and new bots stay on it even once another AI is ready
+  const freePick = useRef<ModelSelection | null>(null);
   const record = useRef(state.config?.onboarding);
   record.current = state.config?.onboarding;
 
@@ -172,7 +175,8 @@ export function WelcomeFlow({
       if (keepsDraft) clearWelcomeDraft();
       onDone(botId);
       try {
-        const patch = replay ? completionPatch() : cloudOpenedHere(firstRunPatch(record.current, new Date(), { cloudHome }), path === "cloud", record.current?.hintsSeen ?? []);
+        const run = replay ? completionPatch() : cloudOpenedHere(firstRunPatch(record.current, new Date(), { cloudHome }), path === "cloud", record.current?.hintsSeen ?? []);
+        const patch = freePick.current ? { ...run, defaultModelSelection: freePick.current } : run;
         const config = await api("/api/config", { method: "PUT", body: JSON.stringify(patch), signal: AbortSignal.timeout(10_000) });
         dispatch({ type: "configStatus", config });
       } catch {
@@ -186,6 +190,7 @@ export function WelcomeFlow({
     if (finishing.current) return;
     const chief = Boolean(maus && chiefStepFits(state.bots, maus));
     if (chief && maus) dispatch({ type: "updateBot", botId: maus.id, patch: createChiefPatch(maus, chiefFor(state.bots, maus)) });
+    if (maus && freePick.current) dispatch({ type: "updateBot", botId: maus.id, patch: { modelSelection: freePick.current } });
     const botId = chief ? maus!.id : null;
     if (botId && !replay) stageIntro(botId);
     void finish(botId ? "completed" : "skipped", botId);
@@ -298,7 +303,12 @@ export function WelcomeFlow({
       body = <CheckoutStep start={checkoutStart} onPaid={cloudPaid} onMac={toMac} />;
       break;
     case "ai":
-      body = <AiStep tested={tested} cloud={cloud} computerAis={cloudHome ? computerAiIds(state.config?.onboarding) : []} onNext={(how) => { track("onboarding_ai", { action: how }); next(); }} />;
+      body = <AiStep tested={tested} cloud={cloud} computerAis={cloudHome ? computerAiIds(state.config?.onboarding) : []} onNext={(how) => {
+        track("onboarding_ai", { action: how });
+        const free = how === "free" && !cloud ? freeModel(state.instances, engineReady) : undefined;
+        freePick.current = free ? { instanceId: free.instanceId, model: free.models.default } : null;
+        next();
+      }} />;
       break;
     case "bring":
       body = <CloudBringStep onNext={next} />;

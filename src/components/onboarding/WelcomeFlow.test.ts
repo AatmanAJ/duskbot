@@ -221,6 +221,29 @@ describe("connecting an AI", () => {
     expect(document.body.querySelector("[role=alert]")?.textContent).toContain("Claude");
   });
 
+  it("free models stick when picked over a working AI: Dusk and new bots stay on them", async () => {
+    f.state = { ...f.state, instances: [freeOpenCode, claude(true, "passed")] };
+    await show();
+    await press("Get started");
+    expect(document.body.querySelector("[data-funnel-own]"), "Claude is there to pick").not.toBeNull();
+    await choose("[data-funnel-free]");
+    expect(f.onDone).toHaveBeenCalledOnce();
+    const free = { instanceId: "opencodeGo", model: "opencode/big-pickle" };
+    expect(f.dispatch).toHaveBeenCalledWith({ type: "updateBot", botId: "maus", patch: { modelSelection: free } });
+    await act(async () => {});
+    expect(saved()[0]).toMatchObject({ defaultModelSelection: free });
+  });
+
+  it("taking the AI already signed in here pins nothing", async () => {
+    f.state = { ...f.state, instances: [freeOpenCode, claude(true, "passed")] };
+    await show();
+    await press("Get started");
+    await choose("[data-funnel-own]");
+    await act(async () => {});
+    expect(saved()[0]).not.toHaveProperty("defaultModelSelection");
+    expect(f.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ modelSelection: expect.anything() }) }));
+  });
+
   it("an AI still being checked shows as such and can't be tapped until it answers", async () => {
     f.api.mockImplementation(async (path: string) => (path.endsWith("/check") ? new Promise(() => {}) : {}));
     f.state = { ...f.state, instances: [claude(true, "testing")] };

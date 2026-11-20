@@ -46,7 +46,7 @@ describe("Dusk, every person's helper", () => {
     const after = store.messagesFor(dusk.threadId);
     const rewritten = after.find((message) => message.id === intro.id)!;
     expect(rewritten.text).toBe(helperIntroMessage({ name: "dusk bot", chiefOfStaff: true }).text);
-    expect(rewritten.card?.title).toBe("Hey! I'm dusk bot. I'm new here.");
+    expect(rewritten.card?.title).toBe("Hi! I'm dusk bot. Hand me one real job and I'll get it done.");
     expect(after.find((message) => message.id === typed.id)?.text).toBe("is MausBot your old name?");
     expect(renameLegacyDefaultBots(store)).toBe(0);
   });
@@ -65,7 +65,7 @@ describe("Dusk, every person's helper", () => {
     expect(store.bot(later.id)?.name).toBe("Dusk");
     const rewritten = store.messagesFor(dusk.threadId).find((message) => message.id === intro.id)!;
     expect(rewritten.text).toBe(helperIntroMessage({ name: "dusk bot", chiefOfStaff: true }).text);
-    expect(rewritten.card?.title).toBe("Hey! I'm dusk bot. I'm new here.");
+    expect(rewritten.card?.title).toBe("Hi! I'm dusk bot. Hand me one real job and I'll get it done.");
   });
 
   it("renames an unmarked first bot still called MausBot, so the next start adopts it, but not a later bot someone named so", () => {
@@ -154,7 +154,7 @@ describe("Dusk, every person's helper", () => {
     const maus = boot(store)!;
     expect(store.bot(maus.id)?.chiefOfStaff).toBe(true);
     expect(briefChief(store)?.id).toBe(maus.id);
-    expect(intros(store, maus)[0]?.text).toContain("Hey! I'm dusk bot. I'm new here. I'm here to be your Chief of Staff. I can manage your other bots.");
+    expect(intros(store, maus)[0]?.text).toBe("Hi! I'm dusk bot. Hand me one real job and I'll get it done. What should we start with?");
   });
 
   it("makes an adopted Dusk the Chief when its place has none left", () => {

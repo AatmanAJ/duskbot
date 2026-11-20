@@ -36,6 +36,12 @@ export function ownsDefaultBot(bot: BotRecord | null | undefined, email: string 
 /** The English intro: who Dusk is, what it does here, and what to start with, its options the first jobs. Clients that
  * know `helperIntro` say it in the viewer's own language. */
 export function helperIntroMessage(bot: Pick<BotRecord, "name" | "chiefOfStaff">, team?: string | null): Omit<Message, "id" | "at"> {
+  // the Chief's own chat opens on one line and the first jobs, as the app shows it
+  if (bot.chiefOfStaff && !team) {
+    const title = `Hi! I'm ${bot.name}. Hand me one real job and I'll get it done.`;
+    const subtitle = "What should we start with?";
+    return { role: "bot", kind: "options", text: `${title} ${subtitle}`, helperIntro: true, card: { title, subtitle, options: [...HELPER_ASKS], fixedOptions: true } };
+  }
   const title = bot.chiefOfStaff ? `Hey! I'm ${bot.name}. I'm new here.` : `Hi! I'm ${bot.name}, your helper for everything here.`;
   const subtitle = [
     bot.chiefOfStaff
