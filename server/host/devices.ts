@@ -50,7 +50,7 @@ const FROM_MAC = "from-mac";
 
 /** Writes the file under a name of its own in `folder`, never over another; the path it got. */
 export async function keepFromMac(folder: string, name: string, bytes: Buffer): Promise<string> {
-  const clean = basename(name).replace(/[\u0000-\u001f/\\:]/g, "_").replace(/^\.+/, "").slice(0, 200) || "file";
+  const clean = [...basename(name)].map((char) => (char < " " || "/\\:".includes(char) ? "_" : char)).join("").replace(/^\.+/, "").slice(0, 200) || "file";
   const ext = extname(clean), stem = clean.slice(0, clean.length - ext.length) || "file";
   await mkdir(folder, { recursive: true, mode: 0o700 });
   for (let n = 1; n < 1000; n++) {

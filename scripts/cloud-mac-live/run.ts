@@ -115,7 +115,7 @@ try {
   const granted = await (await fetch(`${base}/api/cloud/pairing`, { method: "POST", headers: { ...EDGE, "content-type": "application/json",
     "x-dusk-cloud-timestamp": timestamp, "x-dusk-cloud-nonce": nonce, "x-dusk-cloud-signature": `v1=${cloudPairingSignature(secret, timestamp, nonce, body)}` }, body })).json() as { code: string };
   token = (await (await fetch(`${base}/api/auth/pair`, { method: "POST", headers: { ...EDGE, "content-type": "application/json" }, body: JSON.stringify({ code: granted.code }) })).json() as { token: string }).token;
-  if (!/^dusk_sess_/.test(token)) throw new Error("pairing gave no session");
+  if (!token?.startsWith("dusk_sess_")) throw new Error("pairing gave no session");
 
   const cua = process.env.CUA_DRIVER;
   let prefs: Record<string, unknown> = {};
