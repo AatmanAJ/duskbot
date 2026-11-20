@@ -112,3 +112,11 @@ it("without a tool that runs code, never claims a run and does the job another w
 it("names each change a tool confirmed in the result, and none it did not", () => {
   for (const quick of [false, true]) expect(replyHabitsPrompt(quick)).toContain("When you made several changes, name each one its tool confirmed");
 });
+
+it("runs independent parts at once and keeps a first ask going when a second one arrives", () => {
+  for (const quick of [false, true]) {
+    const prompt = replyHabitsPrompt(quick);
+    expect(prompt).toContain("runs its parts at once, each in its own subagent where you can start them, then merge; clicks and typing in a browser go one at a time");
+    expect(prompt).toContain("A separate new ask does not replace the first: do both, and send each result when it is ready, opening with which ask it finishes.");
+  }
+});
