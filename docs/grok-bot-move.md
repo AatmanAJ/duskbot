@@ -46,7 +46,7 @@ and, for a bot it updated, only the conversation it added.
 For each moved bot, dusk bot builds a one-line request and opens it in Grok Bot with
 `grokbot://app/v1/prompt?id=<roster id>&text=<request>`. Grok Bot opens that bot with the request typed in an empty
 message box; it never sends, so the person presses Enter. The request asks the bot to save
-`grok-bot-export-<short roster id>.md` in Downloads, holding one JSON block in the shape `parseGrokExport` reads, with no
+`grok-bot-export-<tag>.md` in Downloads (the tag is eight hex digits hashed from the whole roster id, so no two bots share a file), holding one JSON block in the shape `parseGrokExport` reads, with no
 passwords, tokens or keys and header names only. If the link does not work, the same request can be copied.
 
 While a bot is awaited, the server looks in Downloads every 4 seconds for that file name only (a browser's numbered copy

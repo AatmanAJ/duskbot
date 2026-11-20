@@ -117,8 +117,8 @@ export function GrokMovePreview({ detection, choices, onChoices }: { detection: 
       ))}
       {live.length > 0 && (
         <section aria-labelledby={`${removedId}-live`}>
-          <div className="flex items-center justify-between gap-2">
-            <h3 id={`${removedId}-live`} className={sectionLabelCls}>{t("grokBotMove.preview.yourBots")}</h3>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <h3 id={`${removedId}-live`} className={cn(sectionLabelCls, "mb-0")}>{t("grokBotMove.preview.yourBots")}</h3>
             <button type="button" data-grok-all={allOn ? "none" : "all"} onClick={() => setAll(!allOn)} className={quietLinkCls}>
               {allOn ? t("grokBotMove.preview.selectNone") : t("grokBotMove.preview.selectAll")}
             </button>

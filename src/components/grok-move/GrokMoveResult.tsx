@@ -63,12 +63,18 @@ function AskRow({ bot, found, waiting, ask, actions }: { bot: GrokMoveBotProgres
     buttons = <><button type="button" data-grok-ask={bot.rosterId} onClick={() => actions.ask(bot.rosterId)} className={rowButtonCls}>{t("grokBotMove.ask.again")}</button>{copyButton}</>;
   } else if (state === "waiting") {
     line = (
-      <span className="flex items-start gap-2 text-ink-secondary"><span className="mt-[6px]"><Breath /></span>
+      <span className="flex items-start gap-2 text-ink-secondary"><span className="flex h-4 shrink-0 items-center"><Breath /></span>
         <span className="text-pretty">{ask && !ask.opened ? t("grokBotMove.ask.notOpened", { name }) : t("grokBotMove.ask.waiting", { name })}</span></span>
     );
     buttons = <><button type="button" data-grok-open={bot.rosterId} onClick={() => actions.ask(bot.rosterId)} className={quietLinkCls}>{t("grokBotMove.ask.openAgain")}</button>{copyButton}</>;
   } else {
-    buttons = <button type="button" data-grok-ask={bot.rosterId} onClick={() => actions.ask(bot.rosterId)} className={rowButtonCls}>{t("grokBotMove.ask.button", { name })}</button>;
+    return (
+      <li data-grok-ask-row={bot.rosterId} data-grok-ask-state="none" className="flex min-w-0 items-center gap-3 px-2 py-2">
+        {found ? <BotFace look={found.look} size={28} /> : <span aria-hidden="true" className="size-7 shrink-0 rounded-full bg-ink/[0.06]" />}
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[18px] text-ink">{name}</span>
+        <button type="button" data-grok-ask={bot.rosterId} onClick={() => actions.ask(bot.rosterId)} className={cn(rowButtonCls, "max-w-[60%] truncate")}>{t("grokBotMove.ask.button", { name })}</button>
+      </li>
+    );
   }
   return (
     <li data-grok-ask-row={bot.rosterId} data-grok-ask-state={state} className="flex min-w-0 items-start gap-3 px-2 py-2.5">
@@ -184,9 +190,8 @@ export function GrokUndoView({ preview, result }: { preview: GrokUndoPreview | n
   return (
     <div data-grok-screen="undo" className="flex flex-col gap-4">
       {busy.length > 0 && (
-        <p role="alert" data-grok-undo-warn="" className="m-0 flex items-start gap-2 rounded-[12px] bg-danger/10 px-3 py-2.5 text-[12px] leading-4 text-danger">
-          <CircleAlert size={14} aria-hidden="true" className="mt-px shrink-0" />
-          <span className="text-pretty">{busy.length === 1
+        <p role="alert" data-grok-undo-warn="" className="m-0 rounded-[12px] bg-danger/10 px-3 py-2.5 text-pretty text-[12px] leading-4 text-danger">
+          <span>{busy.length === 1
             ? t("grokBotMove.undo.newMessagesOne", { name: busy[0]!.name, count: busy[0]!.newMessages })
             : t("grokBotMove.undo.newMessages", { names: listOf(busy.map((bot) => bot.name)) })}</span>
         </p>

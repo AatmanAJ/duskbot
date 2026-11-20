@@ -268,9 +268,12 @@ const NAME_MAX = 60;
 
 export const isRosterId = (value: string): boolean => ROSTER_ID.test(value);
 
-/** The part of a roster id a file name carries. */
+/** The tag a bot's file name carries: eight hex digits of the whole roster id (FNV-1a), so two ids that share a start
+ * are never asked for the same file. */
 export function grokShortId(rosterId: string): string {
-  return rosterId.replace(/[^A-Za-z0-9]/g, "").toLowerCase().slice(0, 8);
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < rosterId.length; i += 1) hash = Math.imul(hash ^ rosterId.charCodeAt(i), 0x01000193) >>> 0;
+  return hash.toString(16).padStart(8, "0");
 }
 
 export function grokExportFileName(rosterId: string): string {

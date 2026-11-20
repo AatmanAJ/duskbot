@@ -50,6 +50,7 @@ export function GrokMoveDialog({ client, open, onClose }: { client: GrokMoveClie
 
   const fail = (error: unknown) => setSaid({ line: friendlyError(error), failed: true });
   const refreshWaiting = useCallback(() => client.waiting().then(setWaiting, () => {}), [client]);
+  const refreshDetection = useCallback(() => client.detect().then(setDetection, () => {}), [client]);
 
   useEffect(() => {
     let alive = true;
@@ -84,13 +85,13 @@ export function GrokMoveDialog({ client, open, onClose }: { client: GrokMoveClie
         if (!live(next.state)) {
           setView("result");
           grokMoveChanged();
-          void client.detect().then((found) => alive && setDetection(found), () => {});
+          void refreshDetection();
           void refreshWaiting();
         }
       }, () => {});
     }, POLL_MS);
     return () => { alive = false; clearInterval(timer); };
-  }, [client, view, refreshWaiting]);
+  }, [client, view, refreshWaiting, refreshDetection]);
 
   const awaited = waiting.waiting;
   useEffect(() => {
@@ -169,6 +170,7 @@ export function GrokMoveDialog({ client, open, onClose }: { client: GrokMoveClie
       const result = await client.undo(progress.moveId);
       setUndo({ preview: undo.preview, result });
       grokMoveChanged();
+      void refreshDetection();
     } catch (error) {
       fail(error);
     } finally {

@@ -47,5 +47,40 @@ What a Grok Bot move would do on a real home, in counts only, without writing an
 node --experimental-strip-types scripts/import-dry-run.ts
 ```
 
-Not covered here: the screens, the packaged Electron window and macOS's Downloads prompt, and Grok Bot itself opening
+## The screens, in the real renderer
+
+The whole app as the desktop app's own window (`scripts/testing/grok-move-preview.tsx`: its `openExternal` only records
+the link it is handed), proxied to the same kind of fixture with the synthetic profile, driven by its buttons in headless
+Chrome. Playwright is not a dependency: point `DUSK_VERIFY_PLAYWRIGHT` at a `playwright` or `playwright-core` module and
+`DUSK_VERIFY_BROWSER_CHROME` at a Chrome.
+
+```sh
+node --experimental-strip-types scripts/verify-grok-move-ui.ts
+SHOTS=.dusk-scratch/grok-shots SKIN=dark WIDTH=390 node --experimental-strip-types scripts/verify-grok-move-ui.ts
+```
+
+It opens Move from Grok Bot from the palette, checks the preview (one row per bot, the two pictures, the chat in a newer
+format named on its row, focus on the title), moves every live bot (the first progress look is held 1.5 s so the screen
+on its way is seen; the data is the server's), then on the result asks two bots for the rest. The page records one
+`grokbot://app/v1/prompt?id=<that bot>&text=…` link per ask, at most 2048 characters, and nothing is opened. It writes the
+first bot's export and a second bot's export holding a key into the fixture's Downloads under the requested names: the
+first row turns to Got it, the second says the file had keys and nothing was used. Settings' Grok Bot row says
+"Waiting for 1 bot to send the rest." and reopens the result; after a message to a moved bot, Undo shows the warning and
+the six bots, and confirming removes them. Expected: 6 rows moved, 236 messages, 2 pictures, 6 in the "Grok Bot" section,
+0 unread, the export within two Downloads looks, 0 page errors.
+
+```sh
+pnpm exec vitest run src/components/grok-move src/components/ImportSettings.test.ts src/components/onboarding/WelcomeFlow.test.ts
+node --test electron/app-permissions.node-test.mjs
+```
+
+The screen tests play the server with a fake client: every screen and state (nothing found, a chat too new to read, all
+already here with Update, a move running when opened, an interrupted move, a failed bot with Try again, waiting, got it,
+a refused file, a dropped export, Undo with new messages). The Electron test holds the desktop bridge to Grok Bot's exact
+prompt link, never through `window.open`.
+
+`GROK_HOME_FROM=<home>` does the same as the route recipe: copies only Grok Bot's cache and photos, moves every live bot
+through the screens and prints counts and timings, with no screenshot, no ask and no undo.
+
+Not covered here: the packaged Electron window and macOS's Downloads prompt, and Grok Bot itself opening
 the link (the link is checked by unit test against the parser's rules, never opened).
