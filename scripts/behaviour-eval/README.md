@@ -108,3 +108,10 @@ the price and repeat-offer rules). Passes over 4 models x 3 runs:
 By case, before to final: hello 2 to 8, thanks 4 to 5, correction 0 to 3, vent 0 to 3, gift picks 3 to 3, honest
 limits 5 to 12, a repeat offer on the standup reminder 0 to 1 (of 12 each). The vent case is judged strictly (no
 echo of their words); small models still skip per-pick prices and the repeat offer.
+
+### Round 6 (repeat offer in the reminder tool's result, venting hint), full run, three runs per case
+
+`round6-final-x3.json` against `round5-before-x3.json`, all 23 cases over 4 models x 3 runs: 180/276 to 212/276.
+act+deliver 65 to 68/84, no false done 41 to 38/48, stop 60/60, voice 6 to 26/48, helpfulness 8 to 20/36. By case:
+hello 2 to 11, thanks 4 to 6, vent 0 to 8, correction 0 to 1, gift picks 3 to 3, honest limits 5 to 9, standup
+repeat offer 0 to 8 (of 12 each).
