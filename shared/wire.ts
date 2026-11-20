@@ -259,6 +259,9 @@ export interface InstalledPackageMetadata {
   ref?: string;
   /** org only: the release bytes that were applied */
   sha256?: string;
+  /** The bot this one is in the app it was moved from (Grok Bot: its roster id): the same bot moved again, by any
+   * path, updates this one rather than making another. */
+  origin?: { app: "grok-bot"; id: string };
 }
 
 /** One service's connector tool grant: `"*"` widens to every tool on the

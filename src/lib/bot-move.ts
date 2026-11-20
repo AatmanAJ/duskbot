@@ -11,7 +11,7 @@ export interface BotMoveLook {
   grok: GrokLook;
 }
 
-export const NOTHING: BotMoveLook = { bots: EMPTY_LOOK, grok: { files: [], bots: [] } };
+export const NOTHING: BotMoveLook = { bots: EMPTY_LOOK, grok: { exports: [], bots: [] } };
 
 /** Settles within `ms`: a slow or failed look reads as nothing found, never as an error in the way. */
 export async function lookForOtherBots(ms = BOTS_LOOK_TIME_BOX_MS, options: { downloads?: boolean } = {}): Promise<BotMoveLook> {
@@ -19,8 +19,8 @@ export async function lookForOtherBots(ms = BOTS_LOOK_TIME_BOX_MS, options: { do
   const [bots, grok] = await Promise.all([
     api<unknown>("/api/setup-import/bots", { signal, timeoutMs: ms }).then(readBotLook, () => EMPTY_LOOK),
     api<Partial<GrokLook> | null>(`/api/setup-import/grok${options.downloads === false ? "?downloads=0" : ""}`, { signal, timeoutMs: ms }).then(
-      (look) => ({ files: Array.isArray(look?.files) ? look.files : [], bots: Array.isArray(look?.bots) ? look.bots : [] }),
-      () => ({ files: [], bots: [] }),
+      (look) => ({ exports: Array.isArray(look?.exports) ? look.exports : [], bots: Array.isArray(look?.bots) ? look.bots : [] }),
+      () => ({ exports: [], bots: [] }),
     ),
   ]);
   return { bots, grok };
@@ -68,14 +68,15 @@ export function planBotMove(look: BotMoveLook, facts: { bots: readonly Pick<Bot,
     return { app: found.app, where: found.where, from, channels: found.channels, unreadable: found.unreadable,
       preview: previewGrokMove(found.bots.filter((bot) => kept.has(bot)), { ...facts, from }, names, servers, planned) };
   });
-  const exports = foundExports(look.grok.files);
+  const exports = foundExports(look.grok.exports);
   if (exports.bots.length) {
     apps.push({ app: GROK_FROM.name, where: "~/Downloads", from: GROK_FROM, channels: [], unreadable: exports.refused.map((one) => one.file),
       preview: previewGrokMove(exports.bots, facts, names, servers, planned) });
   }
-  const exported = new Set(exports.bots.map((bot) => bot.name.toLowerCase()));
+  const exported = new Set([...exports.bots.map((bot) => bot.name), ...facts.bots.filter((bot) => bot.installedPackage?.origin?.app === "grok-bot").map((bot) => bot.name)]
+    .map((name) => name.trim().toLowerCase()));
   return { apps: apps.filter((app) => app.preview.plans.length || app.preview.moved.length || app.preview.unreadable.length),
-    grokWaiting: look.grok.bots.filter((name) => !exported.has(name.toLowerCase())) };
+    grokWaiting: look.grok.bots.filter((name) => !exported.has(name.trim().toLowerCase())) };
 }
 
 export const movable = (plan: BotMovePlan) => plan.apps.reduce((total, app) => total + app.preview.plans.length, 0);
