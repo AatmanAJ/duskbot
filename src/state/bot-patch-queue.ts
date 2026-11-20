@@ -27,6 +27,7 @@ export type BotUpdatePatch = Partial<
     | "voiceNotes"
     | "xResearch"
     | "macControl"
+    | "suggestions"
     | "pinned"
     | "hidden"
     | "sidebarHidden"

@@ -284,6 +284,10 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
         if (typeof body.macControl !== "boolean") return json(res, 400, { error: "macControl must be true or false" });
         patch.macControl = body.macControl;
       }
+      if (body.suggestions !== undefined) {
+        if (typeof body.suggestions !== "boolean") return json(res, 400, { error: "suggestions must be true or false" });
+        patch.suggestions = body.suggestions;
+      }
       if (body.memoryEnabled !== undefined) {
         if (typeof body.memoryEnabled !== "boolean") return json(res, 400, { error: "memoryEnabled must be true or false" });
         if (existingBot && (existingBot.busy || activeGroupTurnForBot(existingBot.id)) &&

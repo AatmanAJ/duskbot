@@ -36,6 +36,7 @@ export type BotPatch = Partial<
     | "memoryEnabled"
     | "xResearch"
     | "macControl"
+    | "suggestions"
     | "voice"
     | "chiefOfStaff"
     | "approvePeerComms"

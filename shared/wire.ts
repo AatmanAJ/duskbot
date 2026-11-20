@@ -13,7 +13,7 @@ import type { CredentialTargetId, CUSTOM_SECRET_TARGET, SecretDelivery } from ".
 import type { TeamSetupRequest } from "./team-setup.ts"; import type { DefaultBotFields, HelperIntroField } from "./default-bot.ts";
 import type { SetupCardFields } from "./setup-card.ts"; import type { BugReportField } from "./devs-report-status.ts"; import type { AccessRequestCardField, BotAccessFields } from "./bot-access.ts";
 import type { RoutineRequestCardData } from "./routine-request.ts";
-import type { WebhookRequestCardData } from "./webhook-request.ts"; import type { WaitCardField, WaitLineField } from "./wait-request.ts"; import type { PurchaseCardField } from "./purchase.ts"; import type { EmailCardField } from "./email-review.ts"; import type { ProductsField } from "./products.ts";
+import type { WebhookRequestCardData } from "./webhook-request.ts"; import type { WaitCardField, WaitLineField } from "./wait-request.ts"; import type { PurchaseCardField } from "./purchase.ts"; import type { EmailCardField } from "./email-review.ts"; import type { ProductsField } from "./products.ts"; import type { OfferField } from "./offer.ts";
 import type { AppEventAttempt, AppTrigger, AppTriggerRequestCardData, AppTriggerService } from "./app-triggers.ts";
 import type { ProfileRequestCardData } from "./profile-request.ts";
 import type { PlaceRow } from "./place-view.ts";
@@ -350,7 +350,7 @@ export interface WireBot extends DefaultBotFields, BotAccessFields {
    * Absent/false = off: the person turns it on per bot. */
   xResearch?: boolean;
   /** On a linked VPS: whether this bot may use the owner's Mac (the mac_ tools). Absent/true = allowed. */
-  macControl?: boolean;
+  macControl?: boolean; /** Whether this bot suggests things on its own and is handed suggested work. Absent/true = yes. */ suggestions?: boolean;
   /** Whether this bot uses native memory. Absent/true = enabled. */
   memoryEnabled?: boolean;
   /** Queue direct-chat messages behind outstanding delegated work. */
@@ -462,7 +462,7 @@ export interface MediaSize { w: number; h: number }
 /** One transcript line, serialized as stored. */
 /** An outbound action a reply can claim: a send, a booking, a purchase, a saved file or a download. */
 export type ActionKind = "send" | "book" | "buy" | "file" | "download";
-export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLineField, BugReportField, ProductsField {
+export interface WireMessage extends HelperIntroField, SetupCardFields, WaitLineField, BugReportField, ProductsField, OfferField {
   roomRequest?: { id: string; phase: "request" | "result" }; handoff?: import("./handoff-line.ts").HandoffLine;
   /** The coordinator's "resumed with X's results" row: the chat folds it into the reply line it follows. */
   peerResume?: true;

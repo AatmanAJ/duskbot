@@ -69,7 +69,7 @@ import { ModelDirectory } from "./models/ModelDirectory";
 import { AiCards } from "./onboarding/AiCards";
 import { reportsUsage, useEngineLimits } from "@/lib/limit-resets";
 import {
-  BotOrderRow, ExperimentalFeaturesRow, FollowUpRow, LanguageRow, QuickUpdatesRow, SendKeyRow, TalkingStyleRow,
+  BotOrderRow, ExperimentalFeaturesRow, FollowUpRow, LanguageRow, QuickUpdatesRow, SendKeyRow, SuggestionsRow, TalkingStyleRow,
 } from "./AppSettingsRows";
 
 export type Has = (id: AppSettingsSection) => boolean;
@@ -230,7 +230,7 @@ export function GeneralPane({ has, remoteActive }: { has: Has; remoteActive: boo
         </SettingsGroup>
       )}
       <SettingsGroup label={tPreferred("settings.docs.notifications", "notifications.title")} block="notifications">
-        <SettingsRows><NotificationRows /></SettingsRows>
+        <SettingsRows><NotificationRows /><SuggestionsRow /></SettingsRows>
       </SettingsGroup>
       {!remoteActive && (
         <SettingsGroup label={t("settings.dataSharing.title")} block="data-sharing">

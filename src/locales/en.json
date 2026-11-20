@@ -850,6 +850,8 @@
   "voice.notifications.title": "Notifications",
   "voice.notifications.help": "Get notified when this agent finishes or needs input",
   "voice.notifications.label": "Agent notifications",
+  "botSettings.suggestions.title": "Suggestions",
+  "botSettings.suggestions.help": "Suggests useful things on its own and takes on suggested work",
   "voice.fish.keyPlaceholder": "Paste your Fish Audio API key",
   "voice.elevenlabs.keyPlaceholder": "Paste your ElevenLabs API key",
   "voice.elevenlabs.label": "ElevenLabs",
@@ -6991,6 +6993,13 @@
   "chat.watchSuggestion.notNow": "Not now",
   "chat.watchSuggestion.on": "Done. I'll check in every morning at 8. You can change the time in routines.",
   "chat.watchSuggestion.declined": "Okay, I won't ask again.",
+  "chat.offer.doIt": "Do it",
+  "chat.offer.notNow": "Not now",
+  "chat.offer.never": "Don't suggest this",
+  "chat.offer.started": "{name} is on it.",
+  "chat.offer.open": "Open",
+  "chat.offer.notNowDone": "Okay, not now.",
+  "chat.offer.neverDone": "Okay, I won't suggest this again.",
   "chat.activity.publishPage": "Publishing a page",
   "sidebar.room.descriptionPlaceholder": "Short description (optional)",
   "sidebar.room.descriptionAria": "Set description for {name}",
@@ -9764,5 +9773,8 @@
   "mobile.settings.addAccount": "Add another account",
   "mobile.settings.otherAccount": "Also signed in here. Tap to switch.",
   "mobile.settings.signOutAccountTitle": "Sign out of {email}?",
-  "mobile.settings.signOutAccountBody": "Its dusk clouds leave this phone, with their notifications and the chats saved here. Your other accounts stay signed in."
+  "mobile.settings.signOutAccountBody": "Its dusk clouds leave this phone, with their notifications and the chats saved here. Your other accounts stay signed in.",
+  "settings.suggestions.title": "Suggestions",
+  "settings.suggestions.subtitle": "Your bots look out for things that help with what you're working toward and offer to do them. At most 2 a day, never at night.",
+  "settings.suggestions.error": "Couldn't change suggestions. Try again."
 }
