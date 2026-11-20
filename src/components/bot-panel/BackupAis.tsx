@@ -340,6 +340,9 @@ export function BackupAis({ bot, onChange }: { bot: Bot; onChange: (fallback: Ba
   );
 }
 
+/** The Model row's pill (ModelPicker's trigger under MODEL_PILL), so Backup model reads as its twin. */
+const MODEL_PILL_TRIGGER = "group -my-[3px] -me-[5px] flex h-6 min-w-0 max-w-[180px] items-center gap-1 rounded-lg border border-transparent py-0.5 ps-1.5 pe-1 text-[13px] leading-[18px] tracking-[-0.08px] text-ink inset-ring inset-ring-ink/[0.07] duration-100 focus-visible:outline-none";
+
 /** The bot's backup, picked beside its model: Automatic (absent: another AI the person has working takes over), No backup
  * (empty), or one model first in its list. The rest of the list stays on the Backup AIs page. */
 export function BackupModelRow({ bot, onChange }: { bot: Bot; onChange: (fallback: Backup[] | null) => void }) {
@@ -359,11 +362,12 @@ export function BackupModelRow({ bot, onChange }: { bot: Bot; onChange: (fallbac
         modes={{ current: first ? null : chain ? "none" : "automatic", onPick: (mode) => onChange(mode === "none" ? [] : null) }}
         label={t("botPanel.backupModel")}
         data-panel-action="backup-model"
-        className="group flex h-6 max-w-[180px] min-w-0 items-center gap-1 rounded-lg px-1.5 text-[13px] text-ink hover:bg-ink/[0.06] aria-expanded:bg-ink/[0.06]"
+        data-model-pill=""
+        className={MODEL_PILL_TRIGGER}
       >
-        {instance && <InstanceProviderMark instance={instance} size={14} subtle />}
-        <span className={cn("min-w-0 truncate", !first && "text-ink-secondary")}>{name}</span>
-        <ChevronDown size={10} strokeWidth={2} aria-hidden="true" className="shrink-0 text-ink/[0.66]" />
+        {instance && <span className="relative mr-1.5 flex shrink-0"><InstanceProviderMark instance={instance} size={14} /></span>}
+        <span className="min-w-0 max-w-[160px] truncate">{name}</span>
+        <ChevronDown size={12} strokeWidth={2} aria-hidden="true" className="ms-0 size-2.5 shrink-0 text-ink/[0.66]" />
       </BackupChooser>
     </div>
   );

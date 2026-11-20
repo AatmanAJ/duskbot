@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { launchVerificationServer, runControlDusk } from "./control-dusk.ts";
-import { mountPreview, type MountedPreview } from "./testing/preview-fixture.ts";
+import { fixtureApi, mountPreview, type MountedPreview } from "./testing/preview-fixture.ts";
 
 const shots = resolve(process.argv[2] ?? "backup-row-shots");
 const CHROME = process.env.DUSK_CDP_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -15,6 +15,7 @@ const VIEWS: Array<{ name: string; view: string; act?: string; ready?: string }>
   { name: "backup-row", view: "row", ready: "[data-panel-row='backup-model']" },
   { name: "backup-row-menu", view: "row", act: "document.querySelector('[data-panel-action=\"backup-model\"]').click()", ready: "[data-backup-modes]" },
   { name: "connect-ai-note", view: "note", ready: "[data-connect-ai-note]" },
+  { name: "backup-row-picked", view: "row", ready: "[data-panel-row='backup-model']" },
 ];
 
 async function openChrome(profile: string) {
@@ -82,6 +83,14 @@ try {
   const chrome = await openChrome(profile);
   try {
     for (const view of VIEWS) for (const skin of ["daylight", "midnight"]) {
+      if (view.name === "backup-row-picked" && skin === "daylight") {
+        const api = fixtureApi(fixture.info.url, { headers: { origin: fixture.info.url } });
+        const { bots } = await api("GET", "/api/bots?messages=0") as { bots: Array<{ id: string; modelSelection: { instanceId: string; model: string } }> };
+        const { instances } = await api("GET", "/api/instances") as { instances: Array<{ instanceId: string; models: { options: Array<{ id: string }> } }> };
+        const bot = bots[0]!;
+        const model = instances.find((entry) => entry.instanceId === bot.modelSelection.instanceId)!.models.options.find((option) => option.id !== bot.modelSelection.model)!.id;
+        await api("PATCH", `/api/bots/${bot.id}`, { fallback: [{ instanceId: bot.modelSelection.instanceId, model }] });
+      }
       const file = join(shots, `${view.name}-${skin === "daylight" ? "light" : "dark"}.png`);
       await chrome.shoot(`${ui.previewUrl}?view=${view.view}&skin=${skin}`, file, view.act, view.ready, {});
       console.log(file);

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { ChatNotice } from "../../src/components/ChatErrorBanner";
 import { ModelCard } from "../../src/components/bot-panel/DetailsTab";
@@ -9,13 +10,14 @@ import "../../src/styles.css";
 import "../../src/styles/overlays.css";
 
 // Served only by scripts/verify-backup-row.ts: the bot's Model card with its Backup model row, and the note a send with
-// no AI connected gets. ?view=row|menu|note, ?skin=.
+// no AI connected gets. ?view=row|note, ?skin=.
 const params = new URLSearchParams(location.search);
 setEmailGateDone("skipped");
 applySkin((params.get("skin") ?? "daylight") as SkinId);
 
 function Preview() {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, refreshInstances } = useStore();
+  useEffect(() => { void refreshInstances().catch(() => {}); }, [refreshInstances]);
   const bot = state.bots[0];
   if (!bot) return null;
   return (
