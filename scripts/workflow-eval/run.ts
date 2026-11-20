@@ -56,6 +56,8 @@ async function waitIdle(api: ReturnType<typeof client>, threadId: string, timeou
 
 function render(messages: Message[]): string {
   return messages.filter((m) => m.kind === "text" || (m.role === "bot" && m.kind !== "activity" && m.kind !== "digest")).map((m) => {
+    const run = m.role === "user" ? /^\[(?:Scheduled routine|Routine) ("(?:[^"\\]|\\.)*"), do this now:\]/u.exec(m.text ?? "") : null;
+    if (run) return `[the app shows: automation ${run[1]} started a run here${(m.text ?? "").includes("this is a test run") ? " (test run)" : ""}]`;
     const who = m.role === "user" ? "PERSON" : m.role === "bot" ? "BOT" : m.role.toUpperCase();
     const kind = m.kind && m.kind !== "text" ? `[${m.kind} card${m.card?.title ? `: ${m.card.title}` : ""}] ` : "";
     const cardText = m.kind !== "text" && m.card ? ` ${JSON.stringify(m.card).slice(0, 400)}` : "";
@@ -91,7 +93,7 @@ async function groundTruth(srv: StressServer, api: ReturnType<typeof client>, bo
     ...(appTriggers as any[]).map((t: any) => ({ ...t, kind: "app_event", schedule: `when ${t.app} ${t.event}` })),
   ].filter((r) => botIds.includes(r.botId));
   const ids = new Set(mine.map((r) => r.id));
-  const theirRuns = (runs as any[]).filter((r) => ids.has(r.routineId)).map((r) => ({ routine: mine.find((m) => m.id === r.routineId)?.name, status: r.status, trigger: r.trigger ?? r.kind, at: r.startedAt ?? r.scheduledFor, result: String(r.summary ?? r.result ?? r.error ?? "").slice(0, 300) }));
+  const theirRuns = (runs as any[]).filter((r) => ids.has(r.routineId)).map((r) => ({ routine: mine.find((m) => m.id === r.routineId)?.name, status: r.status, trigger: r.trigger ?? r.kind, at: r.startedAt ?? r.scheduledFor, dryRun: r.dryRun === true, result: String(r.output ?? r.error ?? r.attention ?? "").slice(0, 600) }));
   const jobs = (readJson(join(srv.dataDir, "jobs.json"))?.jobs ?? readJson(join(srv.dataDir, "jobs.json")) ?? []);
   const jobList = (Array.isArray(jobs) ? jobs : Object.values(jobs)).filter((j: any) => botIds.includes(j.botId)).map((j: any) => ({ label: j.label, state: j.state ?? j.status, template: j.template, command: String(j.command ?? "").slice(0, 200), onNotify: String(j.onNotify ?? "").slice(0, 300) }));
   const waitsRaw = readJson(join(srv.dataDir, "waits.json"));
@@ -165,7 +167,7 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
     const botIds = [bot.id, ...((await api.bots()).filter((b) => b.id !== bot.id && b.name !== "Sage").map((b) => b.id))];
     const setupMessages = await messages(setupThread);
     const laterMessages = await messages(laterThread);
-    for (const m of [...setupMessages, ...laterMessages]) if (m.kind === "activity" && m.tool?.name) tools.push(String(m.tool.name).slice(0, 60));
+    for (const m of [...setupMessages, ...laterMessages]) if (m.kind === "activity" && m.tool?.name) tools.push(String(m.tool.name).slice(0, m.tool.name.startsWith("error") ? 400 : 60));
     const truth = await groundTruth(srv, api, botIds, statePath, tools);
     const setupChat = render(setupMessages);
     const laterChat = render(laterMessages);

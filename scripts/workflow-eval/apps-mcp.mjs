@@ -63,6 +63,8 @@ const APPS = {
       run: (s, x) => { const sh = s.sheets?.[x.spreadsheet_id]; if (!sh) throw new Error("no such spreadsheet"); return { title: sh.title, headers: sh.headers, rows: sh.rows.map((r, i) => ({ row: i + 1, values: r })) }; } },
     sheets_append_rows: { d: "Append rows (each an array of cell values in header order).", a: write, s: { spreadsheet_id: str, rows: { type: "array", items: { type: "array", items: {} } } }, req: ["spreadsheet_id", "rows"],
       run: (s, x) => { const sh = s.sheets?.[x.spreadsheet_id]; if (!sh) throw new Error("no such spreadsheet"); sh.rows.push(...x.rows.map((r) => r.map(String))); log(s, "sheet_append", { title: sh.title, n: x.rows.length }); return { appended: x.rows.length, row_count: sh.rows.length }; } },
+    sheets_set_headers: { d: "Replace the header row (add, rename or reorder columns); existing rows keep their cells in place.", a: write, s: { spreadsheet_id: str, headers: { type: "array", items: str } }, req: ["spreadsheet_id", "headers"],
+      run: (s, x) => { const sh = s.sheets?.[x.spreadsheet_id]; if (!sh) throw new Error("no such spreadsheet"); sh.headers = x.headers.map(String); log(s, "sheet_headers", { title: sh.title }); return { ok: true, headers: sh.headers }; } },
     sheets_update_row: { d: "Replace one row's values (row number from sheets_read).", a: write, s: { spreadsheet_id: str, row: { type: "integer" }, values: { type: "array", items: {} } }, req: ["spreadsheet_id", "row", "values"],
       run: (s, x) => { const sh = s.sheets?.[x.spreadsheet_id]; if (!sh?.rows[x.row - 1]) throw new Error("no such row"); sh.rows[x.row - 1] = x.values.map(String); log(s, "sheet_update", { title: sh.title, row: x.row }); return { ok: true }; } },
   },

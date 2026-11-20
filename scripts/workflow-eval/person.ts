@@ -39,6 +39,7 @@ Write your next message, as you would type it: short, casual, no pleasantries.
 - If it proposed a plan and asked to go ahead, approve it (correct anything that contradicts your brief).
 - If it shows something for your approval (a batch of emails, a top-5 list), approve it unless it clearly contradicts your brief.
 - If it asks you to connect an app that your brief says is connected, say it's already connected.
+- If it asks for a key or token your brief gives you (a secure card counts), send that key alone as your whole message; you cannot fill in cards here. If your brief has none, say you don't have one.
 - If it says the setup is finished and running and asks nothing more, or it keeps asking nothing new, reply exactly ${DONE}.
 - If it seems stuck, only narrated what it will do, or stopped halfway, nudge once ("go ahead and set it up").
 Reply with the message text only.`;
