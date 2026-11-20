@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { refusedSignInNote, refusesAutomatedSignIn } from "./browser/agent-browser-args.ts";
 import { withDialogTool } from "./browser-relayed-tools.ts";
 import { BrowserRuntime, type BrowserSpawnSpec } from "./browser-runtime.ts";
 
@@ -89,3 +90,20 @@ describe("a dialog the page opened", () => {
       .toBe('A JavaScript prompt dialog is blocking the page: "Name?" — answer it with agent_browser_dialog (accept true or false)');
   });
 });
+
+describe("a site that refuses sign-in in an automated browser", () => {
+  it("tells the bot once, after the page it landed on, to take the sign-in to the person's own Chrome", async () => {
+    const runtime = new BrowserRuntime({ requestTimeoutMs: 5_000 });
+    runtimes.push(runtime);
+    runtime.refusedSignIn = () => refusedSignInNote(true);
+    const engine = spec();
+    const fine = await runtime.agentRpc("google", engine, "tools/call", { name: "agent_browser_open", arguments: { url: "https://accounts.google.com/signin" } });
+    expect(said(fine)).not.toMatch(/Google refuses/);
+    const refused = await runtime.agentRpc("google", engine, "tools/call", { name: "agent_browser_open", arguments: { url: "https://accounts.google.com/v3/signin/rejected?continue=x" } });
+    expect(said(refused)).toMatch(/Google refuses every sign-in inside this automated browser.*My Chrome/s);
+    expect(refusedSignInNote(false)).toMatch(/connected Google app/);
+    expect(refusesAutomatedSignIn("https://accounts.google.com/signin/rejected")).toBe(true);
+    expect(refusesAutomatedSignIn("https://accounts.google.com/v3/signin/identifier")).toBe(false);
+  });
+});
+

@@ -19,7 +19,7 @@ import { agentBrowserTypeInLines, runAgentBrowserTypeInLines } from "./line-brea
 import { asToolResult, firstText, lostCallToolError, recoveredResult, stillBusyToolError, stuckBrowserToolError, toolNameOf, type ToolResult } from "./browser-runtime-results.ts";
 import { BATCH_TOOL } from "./browser/tools.ts";
 import { BROWSER_HOVER_TOOL, BROWSER_UPLOAD_TOOL, RELAYED_TOOL_SPECS, RELAYED_TOOLS, type RelayedToolSpec } from "./browser-relayed-tools.ts";
-import { newTabNavigated, openStillShowing, snapshotMissedSelector, WHOLE_PAGE_NOTE, pickPageSelector, readAfterOpen, withAgentBrowserArguments, withPickNote } from "./browser/agent-browser-args.ts";
+import { NAVIGATING, newTabNavigated, openStillShowing, refusesAutomatedSignIn, withNote, snapshotMissedSelector, WHOLE_PAGE_NOTE, pickPageSelector, readAfterOpen, withAgentBrowserArguments, withPickNote } from "./browser/agent-browser-args.ts";
 
 /** The hosts whose bot check cleared in each browser. */
 const clearedChecks = new WeakMap<object, Set<string>>();
@@ -345,6 +345,8 @@ export class BrowserRuntime {
   private onTiming?: (timing: BrowserTiming) => void;
   /** A bot of this session asked the person to sign in or pass a check: while they hold its browser, its calls are refused. */
   private signingIn: (session: string) => boolean;
+  /** What the bot is told when a site refuses sign-in in this automated browser, set by the host that knows about My Chrome. */
+  refusedSignIn: ((session: string) => string) | null = null;
 
   constructor({ closeBrowser, applyViewport, launch, relayCommand, steps, scrub, onTiming, signingIn, ...options }: Partial<BrowserRuntime["options"]> & { closeBrowser?: CloseBrowser; applyViewport?: ApplyViewport; launch?: BrowserLaunch; relayCommand?: RelayCommand; steps?: BrowserRuntime["steps"]; scrub?: (text: string) => string; onTiming?: (timing: BrowserTiming) => void; signingIn?: (session: string) => boolean } = {}) {
     this.signingIn = signingIn ?? (() => false);
@@ -711,6 +713,7 @@ export class BrowserRuntime {
             ...(!observed ? { isError: true } : {}),
           };
         }
+        if (this.refusedSignIn && toolName && NAVIGATING.has(toolName) && refusesAutomatedSignIn(await pageUrl())) result = withNote(result, this.refusedSignIn(session));
         if (ctx && toolName !== undefined) this.threadTabs.refs.saw(session, ctx.threadId, toolName, args, result);
         const afterStarted = performance.now();
         const extra = call && stepState ? await this.steps!.after(call, result, stepState, phases.engineMs) : null;

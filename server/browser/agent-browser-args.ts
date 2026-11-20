@@ -290,9 +290,17 @@ export function withAgentBrowserArguments(params: unknown): unknown {
   return { ...record, arguments: agentBrowserArguments(record.name, args) };
 }
 
-export function withPickNote(result: unknown, picked: PickedCall): unknown {
-  if (!("note" in picked) || !picked.note || !result || typeof result !== "object" || !Array.isArray((result as { content?: unknown }).content)) return result;
-  return { ...result, content: [...(result as { content: unknown[] }).content, { type: "text", text: picked.note }] };
+export function withNote(result: unknown, note: string | undefined): unknown {
+  if (!note || !result || typeof result !== "object" || !Array.isArray((result as { content?: unknown }).content)) return result;
+  return { ...result, content: [...(result as { content: unknown[] }).content, { type: "text", text: note }] };
+}
+export const withPickNote = (result: unknown, picked: PickedCall): unknown => withNote(result, "note" in picked ? picked.note : undefined);
+
+/** Calls after which the page may be another one. */
+export const NAVIGATING: ReadonlySet<string> = new Set(["open", "click", "press", "fill", "back", "forward", "reload", "tab_new", "batch"].map((name) => `agent_browser_${name}`));
+/** Google's "This browser or app may not be secure" page: it refuses every sign-in in a browser driven by automation. */
+export function refusesAutomatedSignIn(url: string): boolean {
+  return /^https:\/\/accounts\.google\.com\/(?:v3\/)?signin\/rejected/u.test(url);
 }
 
 /** agent_browser_read with a url, as an open in the browser (through its egress gate) and a read of the page it opened. */
@@ -332,4 +340,12 @@ const NEW_TAB_NAVIGATION_MS = 10_000;
 export async function newTabNavigated(url: () => Promise<string>, withinMs: number): Promise<void> {
   const until = Date.now() + Math.min(NEW_TAB_NAVIGATION_MS, Math.max(0, withinMs));
   while (Date.now() < until && /^(?:about:blank)?$/u.test(await url())) await new Promise((resolve) => setTimeout(resolve, 100));
+}
+
+/** What the bot does when Google refuses sign-in in its browser: the person's own Chrome, never a workaround. */
+export function refusedSignInNote(myChrome: boolean): string {
+  const lead = "Google refuses every sign-in inside this automated browser, so do not retry it here.";
+  return myChrome
+    ? `${lead} Do this sign-in in the person's own Chrome: ask them in one plain line to switch this bot's browser to My Chrome, where they are already signed in, then carry on there. Use a connected Google app meanwhile if one does the job.`
+    : `${lead} Use a connected Google app (Gmail, Calendar, Drive) if one does the job; otherwise say in one plain line that Google blocks sign-in in the bot's browser and that their own Chrome (My Chrome, on their computer) can do it.`;
 }
