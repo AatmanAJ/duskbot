@@ -1,6 +1,7 @@
 // Wires background jobs into the server: the supervisor and its launcher, the bot's tool route, the route a job's
 // dusk-notify calls, and what a notify becomes (a run of the bot through the routines' event path, or a line in the
 // chat). index.ts builds it once.
+import { serverLine } from "../server-lines.ts";
 import { randomUUID } from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -194,7 +195,7 @@ export function createJobsHost(deps: JobsHostDeps) {
     launch,
     deliver,
     crashing: (job) => {
-      const text = `${job.label} keeps stopping (${job.lastExit ?? "an error"}). I'll keep restarting it; ask me to look at it and I'll read its log and fix it.`;
+      const text = serverLine(undefined, "server.jobs.crashing", { label: job.label, reason: job.lastExit ?? serverLine(undefined, "server.jobs.crashReason").toLowerCase() });
       tell(job, text);
     },
     usage: psUsage,
@@ -210,11 +211,11 @@ export function createJobsHost(deps: JobsHostDeps) {
     const requestId = newId();
     const message = deps.store.appendMessage(spec.threadId, {
       role: "bot", kind: "options",
-      card: { title: `Keep running ${spec.label} in the background`, subtitle: what.slice(0, 300), options: ["Allow", "Deny"], requestId, requestType: "permission", tool: JOB_TOOL, fixedOptions: true },
+      card: { title: serverLine(undefined, "server.jobs.askTitle", { label: spec.label }), subtitle: what.slice(0, 300), options: ["Allow", "Deny"], requestId, requestType: "permission", tool: JOB_TOOL, fixedOptions: true },
     });
     asking.set(requestId, { spec, messageId: message.id });
     const bot = deps.store.bot(spec.botId);
-    if (bot) deps.notify(buildNotification("approval", bot, spec.threadId, `Keep running ${spec.label} in the background`, { avatarUrl: bot.avatarUrl }));
+    if (bot) deps.notify(buildNotification("approval", bot, spec.threadId, serverLine(undefined, "server.jobs.askTitle", { label: spec.label }), { avatarUrl: bot.avatarUrl }));
     return requestId;
   }
 
@@ -235,9 +236,9 @@ export function createJobsHost(deps: JobsHostDeps) {
     const job = { ...spec, id: "pending" } as JobRecord;
     try {
       supervisor.start(spec);
-      tell(job, `Started ${spec.label}. It keeps running in the background, and I'll tell you when something comes up.`);
+      tell(job, serverLine(undefined, "server.jobs.started", { label: spec.label }));
     } catch (error) {
-      tell(job, `${spec.label} couldn't start. ${error instanceof JobRefusal ? error.message : "Ask me to try again."}`);
+      tell(job, serverLine(undefined, "server.jobs.couldNotStart", { label: spec.label, why: error instanceof JobRefusal ? error.message : serverLine(undefined, "server.jobs.tryAgain") }));
       if (!(error instanceof JobRefusal)) log(`jobs: an allowed start failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     return true;
@@ -282,7 +283,7 @@ export function createJobsHost(deps: JobsHostDeps) {
     const spec: JobSpec = { botId: ctx.botId, threadId: ctx.threadId, label: body.label, command, cwd, env, secrets, onNotify: body.on_notify || DEFAULT_ON_NOTIFY };
     const telegram = body.template === "telegram_watch" || /telegram/i.test(`${command} ${Object.keys(secrets).join(" ")} ${Object.keys(env).join(" ")}`);
     if (!startsNow) {
-      const asked = askToRun(spec, body.template ? `Telegram watcher${body.chats?.length ? ` for ${body.chats.join(", ")}` : ""}` : command);
+      const asked = askToRun(spec, body.template ? (body.chats?.length ? serverLine(undefined, "server.jobs.telegramWatcherFor", { chats: body.chats.join(", ") }) : serverLine(undefined, "server.jobs.telegramWatcher")) : command);
       return { status: 202, body: { text: [JOB_MESSAGES.asked, ...(telegram ? [TELEGRAM_NOTE] : [])].join(" "), requestId: asked } };
     }
     try {
