@@ -7,7 +7,7 @@ import { CHECK_BOOT_HOLD_MS } from "./routine-check-pacing.ts";
 import { continuityCarry } from "./routine-execution.ts";
 import { createRoutineProbes, NO_SCRIPTS, sectionOf, withProbes } from "./routine-probe.ts";
 import { cleanProbe } from "./routine-quiet.ts";
-import { runCheckScript, sandboxProfile, scriptCheckGate, setsScript, wakeAsked } from "./routine-script.ts";
+import { bwrapArgs, runCheckScript, sandboxProfile, scriptCheckGate, setsScript, wakeAsked } from "./routine-script.ts";
 import { RoutineManager, type RoutineRun } from "./routines.ts";
 import type { PublicPage } from "./wait-probes.ts";
 
@@ -157,6 +157,20 @@ describe("the script sandbox on macOS", () => {
     expect(await runCheckScript("echo ok > \"$TMPDIR/x\" && cat \"$TMPDIR/x\"", { env })).toEqual({ ok: true, output: "ok\n" });
     expect(await runCheckScript("echo no > \"$HOME/written\"", { env })).toMatchObject({ ok: false, error: expect.stringMatching(/not permitted/) });
     expect(await runCheckScript("mkdir -p \"$HOME/.ssh\"", { env })).toMatchObject({ ok: false });
+  });
+});
+
+describe("the script fence on Linux", () => {
+  it("binds the filesystem read-only, scratch writable, hides key folders and files, and keeps the network", () => {
+    const kinds: Record<string, "dir" | "file"> = { "/home/a/.ssh": "dir", "/home/a/.netrc": "file" };
+    const args = bwrapArgs("/tmp/dusk-script-checks", "/home/a", "echo hi", (path) => kinds[path] ?? null);
+    expect(args.slice(0, 3)).toEqual(["--ro-bind", "/", "/"]);
+    expect(args.join(" ")).toContain("--bind /tmp/dusk-script-checks /tmp/dusk-script-checks");
+    expect(args.join(" ")).toContain("--tmpfs /home/a/.ssh");
+    expect(args.join(" ")).toContain("--ro-bind /dev/null /home/a/.netrc");
+    expect(args).toContain("--share-net");
+    expect(args).not.toContain("--unshare-net");
+    expect(args.slice(-3)).toEqual(["/bin/sh", "-c", "echo hi"]);
   });
 });
 

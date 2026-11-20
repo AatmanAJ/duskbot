@@ -113,8 +113,8 @@ it("a script check asked for after the turn read a web page waits on the person'
       schedule: { type: "interval", every_minutes: 60 }, check: { kind: "script", command } } },
   ];
   const f = await fixture("script-card", {
-    FAKE_CLAUDE_REPLIES: JSON.stringify(["Asked you to allow it."]),
-    FAKE_CLAUDE_TOOL_CALLS_BY_TURN: JSON.stringify([calls]),
+    FAKE_CLAUDE_REPLIES: JSON.stringify(["Asked you to allow it.", "Your status watch is on."]),
+    FAKE_CLAUDE_TOOL_CALLS_BY_TURN: JSON.stringify([calls, []]),
   });
   try {
     await f.api("PATCH", `/api/bots/${f.bot.id}`, { approvalMode: "auto" });
@@ -129,6 +129,8 @@ it("a script check asked for after the turn read a web page waits on the person'
     expect(card.card.dismissed).toBeUndefined();
     await f.api("POST", `/api/bots/${f.bot.id}/respond`, { threadId: f.bot.threadId, requestId: card.card.requestId, behavior: "allow" });
     expect((await f.api("GET", "/api/routines")).routines.find((one: any) => one.name === "Status watch")).toMatchObject({ probe: { kind: "script", command } });
+    await expect.poll(async () => (await f.transcript()).findLast((m) => m.role === "bot" && m.kind === "text")?.text, { timeout: 30_000 }).toBe("Your status watch is on.");
+    expect(JSON.stringify(f.dump().prompt)).toContain("the person allowed the script check");
   } finally {
     await f.close();
   }

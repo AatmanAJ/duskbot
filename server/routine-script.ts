@@ -1,10 +1,12 @@
 // A routine's script check (RoutineProbe kind "script"): one command line run without any AI, its output compared
-// with the last run's. Only dusk bot's base environment reaches it, never its keys; on macOS it runs under sandbox-exec,
-// writing only to a scratch folder and reading none of the person's keys.
+// with the last run's. Only dusk bot's base environment reaches it, never its keys; under sandbox-exec on macOS and
+// bubblewrap on Linux it writes only to a scratch folder and reads none of the person's keys. Without either it runs bare.
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { probeBwrap, whichOnPath } from "./bot-box/detect.ts";
 
 export const SCRIPT_TIMEOUT_MS = 60_000;
 export const SCRIPT_OUTPUT_MAX = 64 * 1024;
@@ -41,6 +43,28 @@ export function sandboxProfile(scratch: string, home: string): string {
   ].join("\n");
 }
 
+/** bubblewrap arguments for the same fence on Linux: the whole filesystem read-only, `scratch` writable, the person's
+ * key folders hidden behind empty ones (key files behind /dev/null), its own pid namespace, the network shared. */
+export function bwrapArgs(scratch: string, home: string, command: string, exists: (path: string) => "dir" | "file" | null = kindOf): string[] {
+  const hidden = PRIVATE_READS.flatMap((part) => {
+    const path = join(home, part), kind = exists(path);
+    return kind === "dir" ? ["--tmpfs", path] : kind === "file" ? ["--ro-bind", "/dev/null", path] : [];
+  });
+  return ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--bind", scratch, scratch, ...hidden,
+    "--unshare-pid", "--share-net", "--die-with-parent", "--chdir", scratch, "/bin/sh", "-c", command];
+}
+
+function kindOf(path: string): "dir" | "file" | null {
+  try { return statSync(path).isDirectory() ? "dir" : "file"; } catch { return null; }
+}
+
+let linuxBox: string | null | undefined;
+/** bwrap when it is installed and this kernel lets it make namespaces; checked once. */
+const usableBwrap = (): string | null => {
+  if (linuxBox === undefined) { const found = whichOnPath("bwrap"); linuxBox = found && probeBwrap(found) ? found : null; }
+  return linuxBox;
+};
+
 export function runCheckScript(command: string, options: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number; sandbox?: boolean } = {}): Promise<ScriptResult> {
   const source = options.env ?? process.env;
   const env: Record<string, string> = { HOME: source.HOME ?? homedir() };
@@ -48,7 +72,10 @@ export function runCheckScript(command: string, options: { env?: NodeJS.ProcessE
   const windows = process.platform === "win32";
   // an app opened from the Dock or Finder gets launchd's short PATH, without Homebrew's tools
   if (!windows) env.PATH = [...new Set([...(env.PATH ?? "").split(":").filter(Boolean), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"])].join(":");
-  const boxed = (options.sandbox ?? true) && process.platform === "darwin" && existsSync(SANDBOX_EXEC);
+  const sandbox = options.sandbox ?? true;
+  const seatbelt = sandbox && process.platform === "darwin" && existsSync(SANDBOX_EXEC);
+  const bwrap = sandbox && process.platform === "linux" ? usableBwrap() : null;
+  const boxed = seatbelt || bwrap !== null;
   let scratch: string | undefined;
   if (boxed) {
     scratch = join(tmpdir(), "dusk-script-checks");
@@ -56,9 +83,11 @@ export function runCheckScript(command: string, options: { env?: NodeJS.ProcessE
     scratch = realpathSync(scratch);
     env.TMPDIR = scratch;
   }
+  const home = existsSync(env.HOME!) ? realpathSync(env.HOME!) : env.HOME!;
   const [file, args] = windows ? ["cmd.exe", ["/d", "/s", "/c", command]]
-    : boxed ? [SANDBOX_EXEC, ["-p", sandboxProfile(scratch!, existsSync(env.HOME!) ? realpathSync(env.HOME!) : env.HOME!), "/bin/sh", "-c", command]]
-      : ["/bin/sh", ["-c", command]];
+    : seatbelt ? [SANDBOX_EXEC, ["-p", sandboxProfile(scratch!, home), "/bin/sh", "-c", command]]
+      : bwrap ? [bwrap, bwrapArgs(scratch!, home, command)]
+        : ["/bin/sh", ["-c", command]];
   return new Promise((resolve) => {
     let out = "", err = "", settled = false;
     const done = (result: ScriptResult) => { if (!settled) { settled = true; clearTimeout(timer); resolve(result); } };
@@ -111,3 +140,6 @@ export function scriptRoutineRefusal(body: unknown, cloudHome: boolean, owner: b
   if (!setsScript(body)) return null;
   return cloudHome ? SCRIPT_REFUSALS.cloud : owner ? null : SCRIPT_REFUSALS.owner;
 }
+
+/** The turn a confirmed script-check card starts, so the bot tells the person the watch is on. */
+export const SCRIPT_CHECK_ON_NOTE = "[dusk bot: the person allowed the script check you asked for, and the automation is on now. Tell them so in one short line, nothing more.]";
