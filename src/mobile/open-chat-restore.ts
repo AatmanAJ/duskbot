@@ -1,5 +1,6 @@
 import type { AppState } from "@/state/store";
 import { threadsNeedingPages } from "@/state/use-selected-transcript";
+import type { MobileConnectionRecord } from "../../shared/mobile-link";
 
 const OPEN_CHAT_KEY = "dusk.mobile.openChat";
 
@@ -19,6 +20,14 @@ export function rememberOpenChat(id: string | null, place: string | null = null)
     if (id) sessionStorage.setItem(OPEN_CHAT_KEY, JSON.stringify({ place, chat: id }));
     else sessionStorage.removeItem(OPEN_CHAT_KEY);
   } catch { /* storage off */ }
+}
+
+/** The saved place a link or notification belongs to when it is not the one on screen: its chat lives there. */
+export function placeForTarget(environmentId: string | undefined, records: readonly Pick<MobileConnectionRecord, "id" | "environmentId">[], activeId: string | null): string | null {
+  if (!environmentId) return null;
+  const active = records.find((record) => record.id === activeId);
+  if (active?.environmentId === environmentId) return null;
+  return records.find((record) => record.environmentId === environmentId)?.id ?? null;
 }
 
 /** "wait" until the snapshot has landed; then the chat to open again, or null when it is gone from this workspace. */

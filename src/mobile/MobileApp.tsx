@@ -18,7 +18,7 @@ import { readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
 import { AiConsentProvider, AiConsentSheet } from "./consent/AiConsent";
 import { installAiReport } from "@/lib/ai-report";
 import { registerPushForConnection } from "./connection/push";
-import { ActiveConnection } from "./connection/active";
+import { ActiveConnection } from "./connection/active"; import { useConnections } from "./connection/connections";
 import { useExternalPages } from "./external-pages";
 import { setPresenceThread } from "./connection/presence";
 import { useSeenNotifications } from "./connection/seen-notifications";
@@ -26,7 +26,7 @@ import { visibleNotificationThread } from "@/state/thread-navigation";
 import { supportMail } from "./legal";
 import { NavStack } from "./NavStack";
 import { ChatScreen } from "./ChatScreen";
-import { readOpenChat, rememberOpenChat, rereadDue, restoredChat } from "./open-chat-restore";
+import { placeForTarget, readOpenChat, rememberOpenChat, rereadDue, restoredChat } from "./open-chat-restore";
 import { HomeScreen, releasePressed } from "./HomeScreen";
 import { panelOpenAction, SheetHost } from "./SheetHost";
 import { backLayerCount, closeTopSheet, Sheet, subscribeBackLayers } from "./Sheet";
@@ -57,6 +57,9 @@ function Shell() {
   const rootRef = useRef<HTMLDivElement>(null);
   const [chatId, setChatId] = useState<string | null>(null);
   const place = useContext(ActiveConnection);
+  const places = useConnections();
+  const saved = useRef(places);
+  saved.current = places;
   const restoring = useRef(readOpenChat(place));
   useEffect(() => { if (!restoring.current) rememberOpenChat(chatId, place); }, [chatId, place]);
   const [sheet, setSheet] = useState<MobileSheet | null>(null);
@@ -148,6 +151,8 @@ function Shell() {
 
   const openTarget = useCallback((target: MobileOpenTarget) => {
     const id = target.botId ?? target.groupId;
+    const elsewhere = id ? placeForTarget(target.environmentId, saved.current.connections, place) : null;
+    if (id && elsewhere) { rememberOpenChat(id, elsewhere); void saved.current.switchTo(elsewhere); return; }
     if (id) {
       const bot = latest.current.bots.find((b) => b.id === id);
       if (bot && target.threadId) { openBotThread(dispatch, bot, target.threadId, true); setChatId(bot.id); }
@@ -160,7 +165,7 @@ function Shell() {
     else if (target.view === "settings") openSheet({ kind: "settings" });
     else if (target.view === "notifications") openSheet({ kind: "notifications" });
     else if (target.view === "routines") openSheet({ kind: "routines", botId: target.botId });
-  }, [dispatch, openChat, openSheet]);
+  }, [dispatch, openChat, openSheet, place]);
 
   useEffect(() => platform.onAppUrl?.((url) => {
     if (parseSlackOAuthLink(url)) { void completeSlackOAuth(url); return true; }
