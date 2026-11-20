@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform, type MotionValue } from "motion/react";
-import { ChevronLeft, X } from "../icons";
+import { X } from "../icons";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { canScroll, ownsDrag, useDrag } from "./gesture";
 import { haptic } from "./haptics";
 import { dur, ease, projectRelease, rubberband, settleTo, springPath, system } from "./motion";
-import { RoundButton } from "./RoundButton";
+import { BackGlyph, RoundButton } from "./RoundButton";
 
 const SYSTEM = { stiffness: system.stiffness, damping: system.damping };
 
@@ -120,7 +120,7 @@ export function StackPage({ title, label, children, back, onClose, trailing, bod
       {!flush && (
         <div className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-[22px]">
           {back
-            ? <RoundButton label={t("mobile.sheet.back")} onClick={back} size={44}><ChevronLeft size={20} /></RoundButton>
+            ? <RoundButton label={t("mobile.sheet.back")} onClick={back} size={44}><BackGlyph /></RoundButton>
             : <RoundButton label={t("mobile.sheet.close")} onClick={onClose} size={44}><X size={18} /></RoundButton>}
           <div className="min-w-0 flex-1 truncate text-[17px] font-semibold text-ink">{title}</div>
           {trailing}
@@ -290,7 +290,7 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
         {!flush && (
           <div className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-1.5">
             {back
-              ? <RoundButton label={t("mobile.sheet.back")} onClick={back} size={44}><ChevronLeft size={20} /></RoundButton>
+              ? <RoundButton label={t("mobile.sheet.back")} onClick={back} size={44}><BackGlyph /></RoundButton>
               : <RoundButton label={t("mobile.sheet.close")} onClick={onClose} size={44}><X size={18} /></RoundButton>}
             <div className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">{title}</div>
             {trailing}

@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
-import { ArrowLeft, ChevronLeft, Monitor } from "../icons";
+import { Monitor } from "../icons";
 import { useStore, type Bot, type Group } from "@/state/store";
 import { ChatView } from "@/components/ChatView";
 import { GroupView } from "@/components/GroupView";
 import { BotAvatar } from "@/components/Avatar";
 import { GroupAvatar } from "@/components/GroupAvatar";
 import { t } from "@/lib/i18n";
-import { RoundButton } from "./RoundButton";
+import { BackGlyph, RoundButton } from "./RoundButton";
 import { ConnectionPill, useLiveConnection } from "./connection/ConnectionProblem";
 import { PhoneChatMenu } from "./PhoneChatMenu";
 import { usePlatform } from "./platform";
@@ -51,7 +51,7 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
         className={`pointer-events-none absolute inset-x-0 top-0 z-30 grid items-center gap-2 px-4 pt-[var(--m-safe-top)] ${more ? "grid-cols-[minmax(44px,1fr)_minmax(0,auto)_minmax(96px,1fr)]" : "grid-cols-[1fr_auto_1fr]"}`}
       >
         <RoundButton floating glass data-glass="back" label={t("mobile.chat.back")} onClick={onBack} className="pointer-events-auto">
-          {document.documentElement.dataset.mobileApp === "android" ? <ArrowLeft size={22} strokeWidth={2} /> : <ChevronLeft size={22} strokeWidth={2} />}
+          <BackGlyph size={22} strokeWidth={2} />
         </RoundButton>
         <div className="relative flex min-w-0 justify-center">
           <button
