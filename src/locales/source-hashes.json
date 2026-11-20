@@ -5382,7 +5382,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "routines.inline.what": "f47f1edc44ed92664871471b0cf8f463813788468c23680c12f52a36c2827e26",
@@ -9666,7 +9665,10 @@
       "mobile.composer.approval": "5716094a512a3193c464d8b5aa2279211ba59a61fd5aaacab64e840df93f846e",
       "mobile.chat.waitingForConnection": "f12044f6625575358fcdd91549dd719ebddacff7c682271c7b6a42faeb3f0bf3",
       "chat.error.replyGone": "db61000e335eda4b97ee5a00bdad1c53ffce303afec255d317c63e134000ee17",
-      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095"
+      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "es": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -15264,7 +15266,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -19344,7 +19345,10 @@
       "mobile.clouds.switchBody": "9350eebb466eb0a23305d603208219c50aede4b8c8a3746216106323d87083c7",
       "mobile.clouds.switchAccount": "fedce010cffcb86ed1d6e0e23fb16aab90072e07fd72561e54ad67ed0ea87f89",
       "composer.dictation.language": "fe82a337098a12a3e2f3b17ffef1a23d10afa2adf3502cd81ce233e6396c76d6",
-      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095"
+      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -22632,7 +22636,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -22823,7 +22826,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "hi": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -26108,7 +26114,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -26299,7 +26304,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "it": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -32290,7 +32298,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -32475,7 +32482,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "ja": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -38652,7 +38662,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -38837,7 +38846,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "ko": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -45396,7 +45408,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -45581,7 +45592,10 @@
       "composer.dictation.permission": "1be9cbb919211c6d42d40471f2b53fbb47c25cb7d10d36745ab74e973a808f94",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "pl": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -51732,7 +51746,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -51917,7 +51930,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "pt-br": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -57942,7 +57958,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -58127,7 +58142,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "ru": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -64285,7 +64303,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -64470,7 +64487,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "tr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -69603,7 +69623,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -69789,7 +69808,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "uk": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -73377,7 +73399,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -73569,7 +73590,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "vi": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -78702,7 +78726,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -78888,7 +78911,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "zh": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -85612,7 +85638,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -85798,7 +85823,10 @@
       "keys.row.engineMissing": "5c0ac920b4fd7b754d696536bd006bc700846b41ade0975a99a6c761b0b997b0",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     },
     "zh-tw": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -90504,7 +90532,6 @@
       "routines.cost.share": "6b353ec9215441f033caee79ccb31dc3f9c465523d5e7eeed60ed1ff85867bd3",
       "routines.cost.noPrice": "c7ad9bde1013c03a39629c63c475487da0e93d2e1cc26881f8ef992010698c3d",
       "routines.cost.frequent": "63b7577515cb7c7c10a7a474a3c7dfd887eb813f77250df135d6ebfdfe75b751",
-      "routines.cost.costly": "8cdcd9afea24b8b6608ef8343e5d2adbcc59200a5201895060804da2444273b4",
       "routines.paused.cap": "c8edd39052060102706ca12ff8d84a357026290a667be94d1d044f0b6e366873",
       "routines.paused.failures": "447766890a081503dc1fbebea86503e2ef8ffdb89fbece29a90544fd96358d0f",
       "server.finish.plan": "3d38845b8cd7c7ad595edb5aaa79aba575688646fe2bdebf00ea432a6d34e3b4",
@@ -90690,7 +90717,10 @@
       "settings.simple.language.partial": "ad945e2a103441a940bc5cae255186becedde7e10602ff16e51008c22db1503d",
       "routines.cost.runs.one": "0406e2bde075a493b7a35318a0d5bdaa8ea2607d8e2dbe768c64264be8220dc9",
       "botPanel.closePanel": "a600b900f83db6cbe8f46f6f0181e8462308d98196a92991dfc741137759db72",
-      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298"
+      "chat.setupCard.close": "9f649bfe9a2f012a7269ca4f503c7f1e77665dd2ec2086a20dfc3cd792bdc298",
+      "routines.cost.once": "b10b9261524676afcaf00581feda145d84c757f15a62a30a33f695a798382bf0",
+      "routines.cost.each": "7c6608719f5e5b7e0a1b84ff0ed3d9b5c79c5a61b3a843d44c3e2b941d42c68a",
+      "routines.cost.costlyShare": "f82b9dbe6badf002194308e25fe41e019b62988a315c05e9a0ec8c0c09315df0"
     }
   }
 }

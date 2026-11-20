@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
+  COSTLY_MIN_WEEK_USD,
   COSTLY_SHARE,
   FREQUENT_RUNS_PER_DAY,
   MAX_CAP_USD,
@@ -265,6 +266,7 @@ export function createSpend(deps: SpendDeps) {
       const spentUsd = mine.reduce((sum, entry) => sum + entry.usd, 0);
       const projectedWeekUsd = rows.reduce((sum, entry) => sum + entry.usd, 0) - spentUsd + (weekUsd ?? 0);
       const shareOfWeek = weekUsd !== null && projectedWeekUsd > 0 ? weekUsd / projectedWeekUsd : null;
+      const costly = routine.schedule.type !== "once" && weekUsd !== null && weekUsd >= COSTLY_MIN_WEEK_USD && shareOfWeek !== null && shareOfWeek > COSTLY_SHARE;
       const capUsd = capOf("routine", routine.id);
       return {
         runsPerWeek: perWeek,
@@ -273,7 +275,7 @@ export function createSpend(deps: SpendDeps) {
         shareOfWeek,
         warnings: [
           ...(perWeek !== null && perWeek > FREQUENT_RUNS_PER_DAY * 7 ? ["frequent" as const] : []),
-          ...(shareOfWeek !== null && shareOfWeek > COSTLY_SHARE ? ["costly" as const] : []),
+          ...(costly ? ["costly" as const] : []),
         ],
         runCosts: Object.fromEntries(recent.slice(0, RUN_COSTS_SHOWN).map(([id, run]) => [id, run.usd])),
         ...(capUsd !== undefined ? { capUsd } : {}),

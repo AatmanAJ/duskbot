@@ -140,6 +140,17 @@ describe("a bot's routines in its panel", () => {
     expect(row("routine-1").textContent).toContain("Monthly summary");
   });
 
+  it("reads a one-time routine that ran as Done, calmly, with its cost as one run", async () => {
+    fixture.state.routines = [{ ...routine, enabled: false, schedule: { type: "once", at: now - 3_600_000 } } satisfies Routine];
+    fixture.api.mockResolvedValue({ runsPerWeek: 0, perRunUsd: 0.01, weekUsd: 0, shareOfWeek: 0, warnings: [], runCosts: {}, spentUsd: 0.01 });
+    mount();
+    expect(row("routine-1").textContent).toBe("Morning summaryDone");
+    open("routine-1");
+    await vi.waitFor(() => expect(sheet().querySelector("[data-routine-forecast]")!.textContent).toBe("Runs once · About $0.01"));
+    expect(sheet().querySelector("[data-routine-done]")!.className).toContain("text-ink-secondary");
+    expect(sheet().querySelector(".text-warning")).toBeNull();
+  });
+
   it("says what is missing instead of saving a one-time routine in the past", () => {
     mount();
     open("routine-1");

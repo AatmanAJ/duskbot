@@ -95,6 +95,17 @@ describe("spend", () => {
     expect(forecast.runCosts).toEqual({ a: 0.1, b: 0.3 });
   });
 
+  it("warns of a costly routine only past a dollar a week, and never of a one-time one", () => {
+    const spend = createSpend({ dataDir: dir(), now: () => NOW });
+    spend.booked(row({ botId: "inbox", costUsd: 0.01, trigger: { kind: "routine", routineId: "r1", runId: "a" } }));
+    spend.booked(row({ botId: "inbox", costUsd: 0.5, trigger: { kind: "routine", routineId: "r2", runId: "b" } }));
+    const cheap = spend.forecast({ id: "r1", botId: "inbox", schedule: { type: "daily", time: "09:00", weekdays: [0, 1, 2, 3, 4, 5, 6] } });
+    expect(cheap.shareOfWeek).toBeGreaterThan(0.1);
+    expect(cheap.warnings).toEqual([]);
+    expect(spend.forecast({ id: "r2", botId: "inbox", schedule: { type: "daily", time: "09:00", weekdays: [0, 1, 2, 3, 4, 5, 6] } }).warnings).toEqual(["costly"]);
+    expect(spend.forecast({ id: "r2", botId: "inbox", schedule: { type: "once", at: NOW + 3_600_000 } }).warnings).toEqual([]);
+  });
+
   it("counts a daily schedule's runs and has no forecast price before a run has one", () => {
     expect(runsPerWeek({ type: "daily", time: "09:00", weekdays: [1, 2, 3, 4, 5] }, NOW)).toBe(5);
     expect(runsPerWeek({ type: "limit_reset", at: null } as never, NOW)).toBeNull();

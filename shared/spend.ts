@@ -51,8 +51,9 @@ export interface SpendCapInput {
 
 /** More often than this a day, a schedule is worth a second look. */
 export const FREQUENT_RUNS_PER_DAY = 12;
-/** A routine forecast to take more than this share of the week. */
+/** A routine forecast to take more than this share of the week, and at least COSTLY_MIN_WEEK_USD, is worth a warning. */
 export const COSTLY_SHARE = 0.1;
+export const COSTLY_MIN_WEEK_USD = 1;
 export const MAX_CAP_USD = 100_000;
 
 /** One of the week's top spenders: a bot's own work, or one routine's. */
