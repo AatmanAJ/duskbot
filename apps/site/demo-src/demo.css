@@ -42,13 +42,12 @@
 /* what does something here shows the hand; the app's other buttons do nothing in the demo and keep the arrow */
 [data-sidebar-bot-row], [data-chathead-pill], #bot-panel [data-panel-tab], #bot-panel [role="switch"], #bot-panel [data-tour="model"],
 #bot-panel button[aria-label="Close"], button[aria-label="Open bot list"], [data-ask-card] button,
-[data-model-picker-content] [data-model], [data-model-picker-content] [data-simple-show-all], [data-model-picker-content] [data-scope-pill], a[data-dw-get] { cursor: pointer; }
+[data-model-picker-content] [data-model], [data-model-picker-content] [data-simple-show-all], [data-model-picker-content] [data-scope-pill] { cursor: pointer; }
 /* and the ones that do nothing take no hover, press or focus either, so they stop looking like they would (people kept
    clicking them); a click on one falls through to what it sits in, so a row's own buttons still open the row */
 :is(button, a, [role="button"], textarea):not([data-sidebar-bot-row], [data-chathead-pill], #bot-panel [data-panel-tab], #bot-panel [role="switch"],
   #bot-panel [data-tour="model"], #bot-panel button[aria-label="Close"], button[aria-label="Open bot list"], [data-ask-card] button,
-  [data-model-picker-content] [data-model], [data-model-picker-content] [data-simple-show-all], [data-model-picker-content] [data-scope-pill],
-  textarea[data-dw-ask], [data-ask-card] textarea, a[data-dw-get]) { pointer-events: none; }
+  [data-model-picker-content] [data-model], [data-model-picker-content] [data-simple-show-all], [data-model-picker-content] [data-scope-pill]) { pointer-events: none; }
 
 /* the model chip keeps one look: its hairline at rest, focused or not, and a quiet fill in place of it on hover or open */
 #bot-panel [data-tour="model"] { --tw-inset-ring-color: color-mix(in oklab, var(--color-ink) 7%, transparent) !important; }
