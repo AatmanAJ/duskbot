@@ -10,7 +10,7 @@ import { usd } from "./kit";
 import { SidePanel } from "./sheet";
 import { AdminHeader, DayBars, Failed, Loading, n, PartialNote, Section, stamp } from "./ui";
 
-type Bucket = "trial" | "cancelling" | "paid" | "cancelled";
+type Bucket = "trial" | "cancelling" | "paid" | "payment_problem" | "cancelled";
 type Filter = Bucket | "all";
 export interface SubscriberRow {
   accountId: string; handle: string; email: string | null; name: string | null; country: string | null;
@@ -19,7 +19,7 @@ export interface SubscriberRow {
   messages7d: number; messages: number; turns: number; turns7d: number; failed: number; engines: string[]; apps: number; routines: number; bots: number;
   lastActive: number | null; platforms: string[]; places: string[]; cloud: string | null;
 }
-interface Launch { since: number; label: string; accounts: number; mrrCents: number; trial: number; paying: number; cancelling: number; cancelled: number; collectedCents: number }
+interface Launch { since: number; label: string; accounts: number; mrrCents: number; trial: number; paying: number; paymentProblem?: number; cancelling: number; cancelled: number; collectedCents: number }
 interface Answer { now: number; filter: Filter; counts: Record<Filter, number>; rows: SubscriberRow[]; launch: Launch; partialBefore: number | null }
 interface Count { key: string; count: number }
 interface Detail {
@@ -33,9 +33,9 @@ interface Detail {
 }
 
 const FILTERS: Array<{ value: Filter; label: string }> = [
-  { value: "trial", label: "trial" }, { value: "cancelling", label: "cancelling" }, { value: "paid", label: "paid" }, { value: "cancelled", label: "cancelled" }, { value: "all", label: "everyone" },
+  { value: "trial", label: "trial" }, { value: "cancelling", label: "cancelling" }, { value: "paid", label: "paid" }, { value: "payment_problem", label: "payment problem" }, { value: "cancelled", label: "cancelled" }, { value: "all", label: "everyone" },
 ];
-const WASH: Record<Bucket, string> = { trial: "bg-wash-sky", cancelling: "bg-wash-lemon", paid: "bg-wash-lime", cancelled: "bg-wash-pink" };
+const WASH: Record<Bucket, string> = { trial: "bg-wash-sky", cancelling: "bg-wash-lemon", paid: "bg-wash-lime", payment_problem: "bg-wash-lilac", cancelled: "bg-wash-pink" };
 const who = (row: { email: string | null; handle: string }) => row.email ?? row.handle;
 const day = (t: number | null) => t ? stamp(t).slice(0, 10) : null;
 
@@ -74,7 +74,7 @@ export function TrialsSummary() {
 
 /** the launch cohort in one line: what will bill, who is where in the trial, and what was taken */
 function LaunchStrip({ launch }: { launch: Launch }) {
-  const items: Array<[string, string]> = [["mrr", usd(launch.mrrCents, true)], ["trial", n(launch.trial)], ["paying", n(launch.paying)], ["cancelling", n(launch.cancelling)],
+  const items: Array<[string, string]> = [["mrr", usd(launch.mrrCents, true)], ["trial", n(launch.trial)], ["paying", n(launch.paying)], ...(launch.paymentProblem ? [["payment problem", n(launch.paymentProblem)] as [string, string]] : []), ["cancelling", n(launch.cancelling)],
     ["cancelled", n(launch.cancelled)], ["collected", usd(launch.collectedCents, true)]];
   return (
     <section aria-label="launch cohort" className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-[18px] bg-card px-4 py-2.5">
@@ -207,7 +207,7 @@ export function SubscribersPage() {
             ))}
           </tbody>
         </Table>
-      ) : <p className="rounded-[18px] bg-card px-4 py-6 text-center text-13 text-ink-2">no {filter === "all" ? "subscribers" : `${filter} subscribers`} right now.</p>)}
+      ) : <p className="rounded-[18px] bg-card px-4 py-6 text-center text-13 text-ink-2">no {filter === "all" ? "subscribers" : `${FILTERS.find((f) => f.value === filter)?.label ?? filter} subscribers`} right now.</p>)}
       <AnimatePresence>{open && <SubscriberSheet key={open} id={open} onClose={() => setOpen(null)} />}</AnimatePresence>
     </>
   );
