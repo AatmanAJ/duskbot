@@ -1346,8 +1346,15 @@ export function createLinkService({ base, dataDir = null, scriptPath, uninstallP
           }
           ids.add(channel.id);
         }
+        // a phone's channel moves to another tunnel of the same account with the same phone credential: a cloud moved to a
+        // new machine makes a tunnel of its own, and the old one's machine is gone
+        const movable = (held, channel) => {
+          const from = store.tunnels.get(held.tunnel)?.acct, to = store.tunnels.get(id)?.acct;
+          return Boolean(from) && from === to && held.kind === "device" && channel.kind === "device" && held.verifier === channel.verifier;
+        };
         for (const channel of list) {
-          if (store.sessions.has(channel.id) || store.tunnels.has(channel.id) || (store.channels.has(channel.id) && store.channels.get(channel.id).tunnel !== id)) {
+          const held = store.channels.get(channel.id);
+          if (store.sessions.has(channel.id) || store.tunnels.has(channel.id) || (held && held.tunnel !== id && !movable(held, channel))) {
             return fail(res, 409, "channel id is taken", "taken", { id: channel.id });
           }
         }
@@ -1355,6 +1362,7 @@ export function createLinkService({ base, dataDir = null, scriptPath, uninstallP
         for (const channel of list) {
           const kept = store.channels.get(channel.id);
           if (kept) {
+            if (kept.tunnel !== id) { clearQueues(channel.id); kept.tunnel = id; cluster?.changed(kept); }
             const same = kept.verifier === channel.verifier && kept.kind === channel.kind && (kept.expiresAt ?? null) === (channel.expiresAt ?? null);
             if (kept.verifier !== channel.verifier) clearQueues(channel.id);
             Object.assign(kept, { verifier: channel.verifier, kind: channel.kind, expiresAt: channel.expiresAt ?? null });
