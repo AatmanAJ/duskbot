@@ -230,7 +230,7 @@ export function resolveSelectorScript(selector: string): string {
   return `(${RESOLVE})(${JSON.stringify(selector)}, ${JSON.stringify(PICK_ATTRIBUTE)})`;
 }
 
-export type PageSelector = { found: 0; invalid?: boolean } | { found: number; pick: string };
+export type PageSelector = { found: 0; invalid?: boolean } | { found: number; pick: string; invalid?: never };
 
 /** agent-browser's eval answer to resolveSelectorScript; null when it did not run. */
 export function pageSelectorOf(result: unknown): PageSelector | null {
@@ -302,13 +302,30 @@ export function readAfterOpen(params: unknown): { open: { name: string; argument
   return { open: { name: "agent_browser_open", arguments: { url } }, read: { ...params as object, arguments: rest } };
 }
 
-// Chrome 158 fails a navigation with net::ERR_HTTP_RESPONSE_CODE_FAILURE when the site answers 4xx/5xx yet still shows the page it sent.
-export const ERROR_STATUS_NOTE = "The site answered with an error status, so this may be a sign-in wall, a bot block or a missing page; read what it shows below.";
-export function answeredWithErrorStatus(result: unknown): boolean {
-  const record = result as { isError?: unknown; content?: unknown } | null;
-  const text = Array.isArray(record?.content) ? (record.content as Array<{ text?: unknown }>).map((part) => typeof part?.text === "string" ? part.text : "").join("\n") : "";
-  return record?.isError === true && /net::ERR_HTTP_RESPONSE_CODE_FAILURE/u.test(text);
+const resultText = (result: unknown): string => {
+  const content = (result as { content?: unknown } | null)?.content;
+  return Array.isArray(content) ? (content as Array<{ text?: unknown }>).map((part) => typeof part?.text === "string" ? part.text : "").join("\n") : "";
+};
+
+/**
+ * What a failed agent_browser_open still left on screen, said for the bot, or null for a navigation that went nowhere:
+ * Chrome 158 fails one with net::ERR_HTTP_RESPONSE_CODE_FAILURE when the site answers 4xx/5xx yet shows the page it sent,
+ * and agent-browser 0.37.0 times one out when the page never fires load (ad-heavy sites), though the page is there.
+ */
+export function openStillShowing(result: unknown): string | null {
+  if ((result as { isError?: unknown } | null)?.isError !== true) return null;
+  const text = resultText(result);
+  if (/net::ERR_HTTP_RESPONSE_CODE_FAILURE/u.test(text)) return "The site answered with an error status, so this may be a sign-in wall, a bot block or a missing page; read what it shows below.";
+  if (text.startsWith("Operation timed out")) return "The page was still loading when the wait ran out; below is what it shows so far. Act on it, or read it again if what you need is missing.";
+  return null;
 }
+
+/** A snapshot narrowed to an element that is not on the page: agent-browser's two ways of saying so. */
+export function snapshotMissedSelector(name: string, args: Args | undefined, result: unknown): boolean {
+  return name === "agent_browser_snapshot" && typeof args?.selector === "string" && (result as { isError?: unknown } | null)?.isError === true
+    && /No accessibility node found for selector|did not match any element/u.test(resultText(result));
+}
+export const WHOLE_PAGE_NOTE = (selector: string) => `Nothing on the page matches ${selector}, so this is the whole page's snapshot.`;
 
 // agent-browser 0.37.0 answers tab_new before the tab has left about:blank.
 const NEW_TAB_NAVIGATION_MS = 10_000;

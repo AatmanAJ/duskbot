@@ -584,7 +584,7 @@ describe("server-owned browser MCP runtime", () => {
     expect(other.pid).not.toBe(list.pid);
     await value.take("one", "owner");
     const waiting = value.agentRpc("one", spec(), "tools/call", { name: "echo" });
-    await expect(value.agentRpc("one", spec(), "tools/list", {})).resolves.toMatchObject({ tools: [{ name: "echo" }, { name: BROWSER_UPLOAD_TOOL }, { name: BROWSER_HOVER_TOOL }, { name: "agent_browser_batch" }, { name: "restart_browser" }] });
+    await expect(value.agentRpc("one", spec(), "tools/list", {})).resolves.toMatchObject({ tools: [{ name: "echo" }, { name: BROWSER_UPLOAD_TOOL }, { name: BROWSER_HOVER_TOOL }, { name: "agent_browser_dialog" }, { name: "agent_browser_batch" }, { name: "restart_browser" }] });
     value.release("one", "owner");
     await expect(waiting).resolves.toMatchObject(refusedWith(/The person used the browser/));
   });
@@ -645,7 +645,7 @@ describe("server-owned browser MCP runtime", () => {
         content: [{ text: expect.stringMatching(/restart_browser/) }],
       });
       const listed = await value.agentRpc("s", spec(), "tools/list", {}) as { tools: Array<{ name: string }> };
-      expect(listed.tools.map((tool) => tool.name)).toEqual(["echo", BROWSER_UPLOAD_TOOL, BROWSER_HOVER_TOOL, "agent_browser_batch", "restart_browser"]);
+      expect(listed.tools.map((tool) => tool.name)).toEqual(["echo", BROWSER_UPLOAD_TOOL, BROWSER_HOVER_TOOL, "agent_browser_dialog", "agent_browser_batch", "restart_browser"]);
       const check = vi.fn();
       await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser", arguments: {} }, check))
         .resolves.toMatchObject({ content: [{ text: expect.stringContaining("Browser restarted") }] });

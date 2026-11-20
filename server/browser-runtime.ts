@@ -19,7 +19,7 @@ import { agentBrowserTypeInLines, runAgentBrowserTypeInLines } from "./line-brea
 import { asToolResult, firstText, lostCallToolError, recoveredResult, stillBusyToolError, stuckBrowserToolError, toolNameOf, type ToolResult } from "./browser-runtime-results.ts";
 import { BATCH_TOOL } from "./browser/tools.ts";
 import { BROWSER_HOVER_TOOL, BROWSER_UPLOAD_TOOL, RELAYED_TOOL_SPECS, RELAYED_TOOLS, type RelayedToolSpec } from "./browser-relayed-tools.ts";
-import { answeredWithErrorStatus, ERROR_STATUS_NOTE, newTabNavigated, pickPageSelector, readAfterOpen, withAgentBrowserArguments, withPickNote } from "./browser/agent-browser-args.ts";
+import { newTabNavigated, openStillShowing, snapshotMissedSelector, WHOLE_PAGE_NOTE, pickPageSelector, readAfterOpen, withAgentBrowserArguments, withPickNote } from "./browser/agent-browser-args.ts";
 
 /** The hosts whose bot check cleared in each browser. */
 const clearedChecks = new WeakMap<object, Set<string>>();
@@ -650,6 +650,11 @@ export class BrowserRuntime {
             : await entry.client.rpc(method, request, engineTimeoutMs);
         phases.engineMs = performance.now() - engineStarted;
         result = withPickNote(result, picked);
+        if (toolName && snapshotMissedSelector(toolName, args as Record<string, unknown> | undefined, result)) {
+          const { selector, ...whole } = args as Record<string, unknown>;
+          const page = await entry.client.rpc("tools/call", { name: toolName, arguments: whole }, engineTimeoutMs) as { content?: unknown[] };
+          result = { ...page, content: [{ type: "text", text: WHOLE_PAGE_NOTE(String(selector)) }, ...(Array.isArray(page?.content) ? page.content : [])] };
+        }
         beforeDispatch?.();
         if (method === "tools/list") {
           const tools = withDuskTools(slimBrowserToolList(result));
@@ -666,10 +671,10 @@ export class BrowserRuntime {
             result = { ...action, content: [...(Array.isArray(action.content) ? action.content : []), change] };
           }
         }
-        const errorStatus = toolName === "agent_browser_open" && answeredWithErrorStatus(result);
+        const showing = toolName === "agent_browser_open" ? openStillShowing(result) : null;
         const navigated = (toolName === "agent_browser_open" || (toolName === "agent_browser_tab_new" && typeof (args as { url?: unknown } | undefined)?.url === "string"));
-        if (navigated && result && typeof result === "object" && ((result as { isError?: boolean }).isError !== true || errorStatus)) {
-          if (errorStatus) result = { content: [{ type: "text", text: ERROR_STATUS_NOTE }] };
+        if (navigated && result && typeof result === "object" && ((result as { isError?: boolean }).isError !== true || showing)) {
+          if (showing) result = { content: [{ type: "text", text: showing }] };
           if (toolName === "agent_browser_tab_new") await newTabNavigated(pageUrl, followUpMs() - 1_000);
           beforeDispatch?.();
           if (this.gate(session).owner !== null) throw this.taken(session);

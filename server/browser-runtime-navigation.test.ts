@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { withDialogTool } from "./browser-relayed-tools.ts";
 import { BrowserRuntime, type BrowserSpawnSpec } from "./browser-runtime.ts";
 
-// agent-browser 0.37.0 as seen against real sites: tab_new answers before the tab has left about:blank, and an open the
-// site answers 4xx/5xx fails with net::ERR_HTTP_RESPONSE_CODE_FAILURE although the page it sent is showing.
+// agent-browser 0.37.0 as seen against real sites: tab_new answers before the tab has left about:blank, an open the site
+// answers 4xx/5xx fails with net::ERR_HTTP_RESPONSE_CODE_FAILURE and one whose page never fires load times out, although
+// the page is showing in both, and a snapshot narrowed to a missing element is an error.
 const FAKE = `
 const lines = require('node:readline').createInterface({ input: process.stdin });
 let url = 'about:blank';
@@ -18,7 +20,9 @@ lines.on('line', (line) => {
   if (name === 'agent_browser_tab_new') { setTimeout(() => { url = args.url; }, 400); return send(m.id, text(args.url)); }
   if (name === 'agent_browser_get_url') return send(m.id, text(url));
   if (name === 'agent_browser_open' && args.url === 'https://walled.test/') { url = args.url; return send(m.id, text('Navigation failed: net::ERR_HTTP_RESPONSE_CODE_FAILURE', true)); }
+  if (name === 'agent_browser_open' && args.url === 'https://heavy.test/') { url = args.url; return send(m.id, text('Operation timed out. The page may still be loading or the element may not exist.', true)); }
   if (name === 'agent_browser_open') { url = args.url; return send(m.id, text('Opened')); }
+  if (name === 'agent_browser_snapshot' && args.selector) return send(m.id, text("Selector '" + args.selector + "' did not match any element", true));
   if (name === 'agent_browser_snapshot') return send(m.id, text(url === 'about:blank' ? '' : '- heading "' + url + '" [ref=e1]'));
   if (name === 'agent_browser_eval') return send(m.id, text('eval unavailable', true));
   send(m.id, text(JSON.stringify(m.params)));
@@ -48,5 +52,38 @@ describe("a page a bot opens", () => {
     expect(said(opened)).toMatch(/answered with an error status/);
     expect(said(opened)).toContain('heading "https://walled.test/"');
     expect(said(opened)).not.toMatch(/ERR_HTTP_RESPONSE_CODE_FAILURE/);
+  });
+
+  it("whose load never ends shows what is there instead of a timeout", async () => {
+    const runtime = new BrowserRuntime({ requestTimeoutMs: 5_000 });
+    runtimes.push(runtime);
+    const opened = await runtime.agentRpc("heavy", spec(), "tools/call", { name: "agent_browser_open", arguments: { url: "https://heavy.test/" } });
+    expect((opened as { isError?: boolean }).isError).not.toBe(true);
+    expect(said(opened)).toMatch(/still loading when the wait ran out/);
+    expect(said(opened)).toContain('heading "https://heavy.test/"');
+  });
+});
+
+describe("a snapshot narrowed to an element the page does not have", () => {
+  it("answers with the whole page and says so", async () => {
+    const runtime = new BrowserRuntime({ requestTimeoutMs: 5_000 });
+    runtimes.push(runtime);
+    const engine = spec();
+    await runtime.agentRpc("narrow", engine, "tools/call", { name: "agent_browser_open", arguments: { url: "https://shop.test/" } });
+    const page = await runtime.agentRpc("narrow", engine, "tools/call", { name: "agent_browser_snapshot", arguments: { selector: "main", depth: 3 } });
+    expect((page as { isError?: boolean }).isError).not.toBe(true);
+    expect(said(page)).toMatch(/^Nothing on the page matches main, so this is the whole page's snapshot\./);
+    expect(said(page)).toContain('heading "https://shop.test/"');
+  });
+});
+
+describe("a dialog the page opened", () => {
+  it("is answered with agent_browser_dialog, which the bot is offered and agent-browser's own advice names", async () => {
+    const runtime = new BrowserRuntime({ requestTimeoutMs: 5_000 });
+    runtimes.push(runtime);
+    const listed = await runtime.agentRpc("dialog", spec(), "tools/list", {}) as { tools: Array<{ name: string }> };
+    expect(listed.tools.map((tool) => tool.name)).toContain("agent_browser_dialog");
+    expect(withDialogTool('A JavaScript confirm dialog is blocking the page: "Sure?". Resolve it with `dialog accept` or `dialog dismiss`, then retry `press`.'))
+      .toBe('A JavaScript confirm dialog is blocking the page: "Sure?". Answer it with agent_browser_dialog (accept true or false), then call agent_browser_press again.');
   });
 });

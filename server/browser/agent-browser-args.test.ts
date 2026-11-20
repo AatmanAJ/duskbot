@@ -52,6 +52,8 @@ describe("selectors agent-browser cannot read", () => {
   });
 });
 
+// the server's tsconfig has no DOM types; happy-dom provides the document at run time
+const document = (globalThis as unknown as { document: { body: { innerHTML: string }; querySelector(selector: string): { id: string } | null; querySelectorAll(selector: string): ArrayLike<unknown> } }).document;
 const run = (selector: string) => pageSelectorOf({ content: [{ type: "text", text: JSON.stringify(new Function(`return ${resolveSelectorScript(selector)}`)()) }] });
 const picked = (selector: string) => {
   const answer = run(selector);
