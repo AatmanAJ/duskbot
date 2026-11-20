@@ -208,16 +208,16 @@ describe("buildSystemPrompt", () => {
 });
 
 describe("computerPrompt", () => {
-  it("distinguishes background window control from foreground desktop input", () => {
+  it("acts on the person's computer when asked: background first, the screen for a step that needs it, no workaround", () => {
     const prompt = computerPrompt("local");
-    expect(prompt).toContain("background delivery");
-    expect(prompt).toContain("do not bring dusk bot");
+    expect(prompt).toContain("When the person asks you to use their computer, that is permission to act on it.");
+    expect(prompt).toContain("use foreground input for that step without asking again, and say in one short line that you used the screen briefly");
+    expect(prompt).toContain("Do not bring dusk bot to the front just to inspect it");
     expect(prompt).toContain("dedicated browser tools");
     expect(prompt).toContain("keeping the user's intended browser profile/account");
-    expect(prompt).toContain("Do not silently retry a background refusal");
-    expect(prompt).toContain("including through shell scripts, AppleScript/System Events");
-    expect(prompt).toContain("If a background action unexpectedly changes focus");
-    expect(computerPrompt("vm-private")).not.toContain("user asked for foreground control");
+    expect(prompt).toContain("never route around a refusal through shell scripts, AppleScript/System Events");
+    expect(prompt).toContain("If an action changes focus unexpectedly, say so.");
+    expect(computerPrompt("vm-private")).not.toContain("permission to act on it");
   });
   it("tells sandbox desktops, and never the user's own computer, to send keys in the foreground", () => {
     for (const kind of ["vm-private", "vm-shared", "vps"] as const) {

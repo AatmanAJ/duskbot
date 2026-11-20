@@ -50,7 +50,8 @@ export function screenAccessMissingNote(browser: boolean, missing: readonly stri
   const withheld = missing.length ? ` (macOS has not given dusk bot ${missing.join(" or ")} on this Mac yet)` : "";
   const desktop = ` Only a task that truly needs this computer's own desktop apps, or files outside the browser, needs screen control${withheld}.`
     + (ask ? " For such a task, call request_screen_access with a one-line reason: the person sees one way to allow it. Never call it for web work." : "")
-    + (browser ? " Do every part the browser can, and say in one line what the person can allow for the rest." : " Do every part you can without it, and say in one line what the person can allow for the rest.");
+    + (ask ? " After calling it, say in one short line that you will carry on as soon as it is allowed, and meanwhile do what you can" : " Meanwhile do what you can")
+    + (browser ? ", in your built-in browser when that could work." : ".");
   return browser
     ? " Your built-in browser is available this turn and is the default for everything on the web: opening a site, searching, reading pages, filling in forms, signing in. When the person asks you to open a site or do anything a browser can do, go straight to your built-in browser and do it; never say you cannot open a website. Control of this computer's desktop apps is not available." + desktop + NO_PERMISSION_TALK
     : " Control of this computer's desktop apps is not available this turn. Answer and chat normally, with web search and page fetches for lookups." + desktop + NO_PERMISSION_TALK;
