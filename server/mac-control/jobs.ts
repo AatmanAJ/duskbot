@@ -31,7 +31,7 @@ type Job = {
 
 export type MacRequest = {
   tool: MacToolName; args: Record<string, unknown>; bot: { id: string; name: string };
-  timeoutMs: number; active(): boolean; offlineText: string; file?: MacDownload;
+  timeoutMs: number; active(): boolean; offlineText: string; file?: MacDownload; approved?: true;
 };
 
 /** In-memory rendezvous between bot turns and the owner's Mac app: jobs wait in arrival order, every open long poll
@@ -63,7 +63,7 @@ export class MacJobs {
       const id = randomUUID();
       const job: Job = {
         delivery: {
-          id, tool: input.tool, arguments: input.args, bot: input.bot, expiresAt: this.now() + input.timeoutMs,
+          id, tool: input.tool, arguments: input.args, bot: input.bot, expiresAt: this.now() + input.timeoutMs, ...(input.approved ? { approved: true as const } : {}),
           ...(input.file ? { download: { path: `/api/mac/self/jobs/${id}/file`, name: input.file.name, bytes: input.file.bytes } } : {}),
         },
         active: input.active, sent: false, file: input.file, resolve,

@@ -342,3 +342,38 @@ export function saveSimpleSectionOrder(
 ): void {
   saveStringList(SIMPLE_SIDEBAR_SECTION_ORDER_KEY, ids, storage);
 }
+
+/** How the sidebar lists bots: newest activity first, or the order the person dragged them into. */
+export type SidebarBotOrder = "recent" | "custom";
+export const SIDEBAR_BOT_ORDER_KEY = "duskbot.sidebarBotOrder";
+const BOT_ORDER_CHANGED = "dusk-sidebar-bot-order";
+
+export function parseSidebarBotOrder(value: string | null): SidebarBotOrder {
+  return value === "custom" ? "custom" : "recent";
+}
+
+function currentSidebarBotOrder(): SidebarBotOrder {
+  try { return parseSidebarBotOrder(globalThis.localStorage?.getItem(SIDEBAR_BOT_ORDER_KEY) ?? null); } catch { return "recent"; }
+}
+
+function subscribeSidebarBotOrder(listener: () => void): () => void {
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") return () => {};
+  const onStorage = (event: StorageEvent) => { if (event.key === SIDEBAR_BOT_ORDER_KEY || event.key === null) listener(); };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(BOT_ORDER_CHANGED, listener);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(BOT_ORDER_CHANGED, listener);
+  };
+}
+
+export function setSidebarBotOrder(order: SidebarBotOrder): void {
+  try {
+    globalThis.localStorage?.setItem(SIDEBAR_BOT_ORDER_KEY, order);
+    window.dispatchEvent(new Event(BOT_ORDER_CHANGED));
+  } catch { /* storage blocked */ }
+}
+
+export function useSidebarBotOrder(): SidebarBotOrder {
+  return useSyncExternalStore(subscribeSidebarBotOrder, currentSidebarBotOrder, () => "recent");
+}

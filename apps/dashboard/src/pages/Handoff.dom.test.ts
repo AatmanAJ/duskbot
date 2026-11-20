@@ -94,6 +94,12 @@ test("a used or unknown link says so plainly; a malformed fragment is stripped a
   expect(handoff).not.toHaveBeenCalled();
 });
 
+test("while the link is redeemed the page already has the plans' shape, never a blank page", async () => {
+  vi.spyOn(state.api, "handoff").mockReturnValue(new Promise<never>(() => {}));
+  const host = await land(`#t=${token}`);
+  expect(host.querySelector("[data-plans-skeleton]")).not.toBeNull();
+});
+
 test("a next that is not one of the handoff pages is never followed", async () => {
   const { handoffNext } = await import("../data/handoff");
   for (const good of ["/billing?plan=plus&src=app_card", "/cloud", "/account", "/usage", "/?workspace=ws_abc-1", "/"]) expect(handoffNext(good)).toBe(good);

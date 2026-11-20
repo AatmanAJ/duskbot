@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { cloudAsleep, cloudPaused, onCloudPower } from "@/lib/cloud-power";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { railShown, usePlaces } from "@/lib/places";
 import { useStore } from "@/state/store";
 
 import { endCloudHowTo, openServerMenu, useWorkspacePlace } from "./DesktopWorkspaceSwitcher";
@@ -66,12 +65,11 @@ export function switchPlaceCommand(): (() => void) | null {
  * learns only the place it is on (cloud-rail.mjs). */
 export function SidebarPlaceButton() {
   const { state, dispatch } = useStore();
-  const places = usePlaces();
   const cloudHome = state.config?.cloudHome === true;
   const place = useWorkspacePlace({ cloudHome, howTo: state.cloudHowTo, onMenuClosed: () => endCloudHowTo(dispatch) });
   const status = usePlaceStatus(place.waking !== "");
   const [seen, setSeen] = useState(placeDotSeen);
-  if (!place.switchable) return null;
+  if (!place.bridge) return null;
   const openMenu = () => { if (!seen) { markPlaceDotSeen(); setSeen(true); } place.openMenu(); };
   const dot = status !== "online" || !seen;
   const kind = placeKind(place.current, { cloudHome, team: Boolean(state.config?.team) });
@@ -86,5 +84,5 @@ export function SidebarPlaceButton() {
     </button>
     {place.error && <p role="alert" className="absolute right-0 top-full z-40 mt-1.5 w-56 rounded-md bg-menu px-2 py-1 text-[11px] text-danger shadow-lg">{place.error}</p>}
   </div>;
-  return railShown(places) ? <div data-switcher-beside-rail className={places.beside ? "hidden" : "contents md:hidden"}>{button}</div> : button;
+  return button;
 }
