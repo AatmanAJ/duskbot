@@ -32,6 +32,10 @@ export function wakeHoldOf(routines: readonly Due[], runs: readonly Run[], now: 
   return due === undefined ? { hold: false } : { hold: true, reason: "due", at: due };
 }
 
+/** Enabled routines that run on this machine and are not held: what the desktop's keep-awake while plugged in waits on. */
+export const enabledHereOf = (routines: readonly Pick<Routine, "enabled" | "runOn" | "heldFor">[]) =>
+  routines.filter((routine) => routine.enabled && !routine.heldFor && (routine.runOn ?? "maus") === "maus").length;
+
 /** A Cloud home's sleep check: a run queued to start now, or running, keeps it awake. One waiting for a person does
  * not: their answer wakes the home. */
 export const activeRunsOf = (runs: readonly Run[], now: number) => runs.some((run) => run.status === "running" || (run.status === "queued" && !startsLater(run, now)));

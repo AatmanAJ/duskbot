@@ -16020,7 +16020,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
       return json(res, 201, { routine });
     }
     if (path === "/api/routines/wake" && method === "POST") { if (!ownerOrAdmin(auth)) return json(res, 403, { error: "forbidden" }); const answer = wakeGate.answer(await readBody(req)); return json(res, answer.status, answer.body); } if (path === "/api/routines/wake" && method === "GET") {
-      return json(res, 200, moveFreeze.frozen() ? { hold: false } : routines!.wakeHold());
+      return json(res, 200, moveFreeze.frozen() ? { hold: false } : { ...routines!.wakeHold(), routines: routines!.enabledHere() });
     }
     let routineMatch = path.match(/^\/api\/routines\/([\w-]+)\/run$/);
     if (routineMatch && method === "POST") {

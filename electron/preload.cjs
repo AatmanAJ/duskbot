@@ -327,7 +327,8 @@ const bridge = {
   },
   routines: {
     wakeState: () => ipcRenderer.invoke("routines:wake-state"),
-    keepAwake: (enabled) => ipcRenderer.invoke("routines:keep-awake", enabled),
+    keepAwake: (enabled) => ipcRenderer.invoke("routines:keep-awake", { keepAwake: Boolean(enabled) }),
+    keepAwakePluggedIn: (enabled) => ipcRenderer.invoke("routines:keep-awake", { pluggedIn: Boolean(enabled) }),
   },
   /** Secrets stay in the main process; the renderer sees only status and narrow actions. */
   companionAccount: {
