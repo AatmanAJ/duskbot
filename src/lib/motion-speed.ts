@@ -18,7 +18,7 @@ export const MOTION_SPEEDS: Record<MotionPick, MotionSpeed> = {
   c: { pick: "c", scale: 1.8, damping: 1.15, easeOut: [0.3, 0.8, 0.25, 1], easeInOut: [0.4, 0.05, 0.2, 1] },
 };
 
-export const MOTION: MotionSpeed = MOTION_SPEEDS.a;
+export const MOTION: MotionSpeed = MOTION_SPEEDS.b;
 
 type Bezier = readonly [number, number, number, number];
 type Spring = { stiffness: number; damping: number; mass?: number };

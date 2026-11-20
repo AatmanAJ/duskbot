@@ -12,15 +12,20 @@ const peak = ({ stiffness, damping }: { stiffness: number; damping: number }) =>
 };
 
 describe("motion speed", () => {
-  it("ships at A, where every value is its own", () => {
-    expect(MOTION.pick).toBe("a");
+  it("ships the owner's pick, B", () => {
+    expect(MOTION.pick).toBe("b");
+    expect(motionCssVars()).toEqual({ "--motion-scale": "1.4", "--motion-ease-out": "cubic-bezier(0.25, 0.85, 0.3, 1)", "--motion-ease-in-out": "cubic-bezier(0.45, 0.05, 0.25, 1)" });
+  });
+
+  it("leaves every value its own at A", () => {
+    const a = MOTION_SPEEDS.a;
     const spring = { stiffness: 600, damping: 54 };
-    expect(pacedSpring(spring)).toBe(spring);
-    expect(pacedMs(140)).toBe(140);
-    expect(pacedSeconds(0.12)).toBe(0.12);
-    expect(pacedOut([0.22, 1, 0.36, 1])).toEqual([0.22, 1, 0.36, 1]);
-    expect(pacedInOut([0.645, 0.045, 0.355, 1])).toEqual([0.645, 0.045, 0.355, 1]);
-    expect(motionCssVars()).toEqual({ "--motion-scale": "1" });
+    expect(pacedSpring(spring, a)).toBe(spring);
+    expect(pacedMs(140, a)).toBe(140);
+    expect(pacedSeconds(0.12, a)).toBe(0.12);
+    expect(pacedOut([0.22, 1, 0.36, 1], a)).toEqual([0.22, 1, 0.36, 1]);
+    expect(pacedInOut([0.645, 0.045, 0.355, 1], a)).toEqual([0.645, 0.045, 0.355, 1]);
+    expect(motionCssVars(a)).toEqual({ "--motion-scale": "1" });
   });
 
   it("plays B and C slower, with no spring going past its rest", () => {

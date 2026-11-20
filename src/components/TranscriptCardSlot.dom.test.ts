@@ -2,35 +2,35 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NOTICE_MOTION } from "./ComposerNoticeSlot";
 import { cardSlotPlan, TranscriptCardSlot } from "./TranscriptCardSlot";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const IN_OUT = "cubic-bezier(0.645, 0.045, 0.355, 1)";
-const OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
+const { collapseMs: COLLAPSE, fadeOutMs: FADE, collapseEase: IN_OUT, ease: OUT } = NOTICE_MOTION;
 
 describe("the card slot's plan", () => {
-  it("opens the slot 200ms, then fades the card in 140ms", () => {
+  it("opens the slot on the collapse clock, then fades the card in", () => {
     expect(cardSlotPlan("appear", 0, 96, false)).toEqual({
-      height: { from: 0, to: 96, ms: 200, easing: IN_OUT },
-      fade: { from: 0, to: 1, ms: 140, delay: 200, easing: OUT },
+      height: { from: 0, to: 96, ms: COLLAPSE, easing: IN_OUT },
+      fade: { from: 0, to: 1, ms: FADE, delay: COLLAPSE, easing: OUT },
     });
   });
 
-  it("leaves as the owner's pick: a 140ms fade while the slot collapses 200ms", () => {
+  it("leaves as the owner's pick: a fade where it is while the slot collapses", () => {
     expect(cardSlotPlan("leave", 96, 0, false)).toEqual({
-      height: { from: 96, to: 0, ms: 200, easing: IN_OUT },
-      fade: { from: 1, to: 0, ms: 140, delay: 0, easing: OUT },
+      height: { from: 96, to: 0, ms: COLLAPSE, easing: IN_OUT },
+      fade: { from: 1, to: 0, ms: FADE, delay: 0, easing: OUT },
     });
   });
 
   it("a card back mid-collapse opens only the rest of the way, and fades in after it", () => {
-    expect(cardSlotPlan("appear", 48, 96, false)).toMatchObject({ height: { from: 48, to: 96, ms: 100 }, fade: { delay: 100 } });
+    expect(cardSlotPlan("appear", 48, 96, false)).toMatchObject({ height: { from: 48, to: 96, ms: Math.round(COLLAPSE / 2) }, fade: { delay: Math.round(COLLAPSE / 2) } });
   });
 
   it("moves nothing under reduced motion: the space opens at once, and holds while the card fades out", () => {
     expect(cardSlotPlan("appear", 0, 96, true)).toMatchObject({ height: null, fade: { from: 0, to: 1, delay: 0 } });
-    expect(cardSlotPlan("leave", 96, 0, true)).toMatchObject({ height: { from: 96, to: 96, ms: 140 }, fade: { from: 1, to: 0, ms: 140 } });
+    expect(cardSlotPlan("leave", 96, 0, true)).toMatchObject({ height: { from: 96, to: 96, ms: FADE }, fade: { from: 1, to: 0, ms: FADE } });
   });
 });
 
@@ -76,7 +76,7 @@ describe("the failed reply's card in the transcript", () => {
     await render(true);
     await flush();
     expect(heightRuns().map((run) => run.keyframes)).toEqual([[{ height: "0px" }, { height: "96px" }]]);
-    expect(cardRuns()[0]!.options).toMatchObject({ duration: 140, delay: 200, fill: "both" });
+    expect(cardRuns()[0]!.options).toMatchObject({ duration: FADE, delay: COLLAPSE, fill: "both" });
     expect(cardRuns()[0]!.keyframes).toEqual([{ opacity: 0 }, { opacity: 1 }]);
   });
 
@@ -88,10 +88,10 @@ describe("the failed reply's card in the transcript", () => {
     expect(leaving, "still there while it leaves").not.toBeNull();
     expect(leaving!.getAttribute("aria-hidden")).toBe("true");
     expect(leaving!.style.pointerEvents).toBe("none");
-    expect(heightRuns().map((run) => [run.keyframes, run.options.duration])).toEqual([[[{ height: "96px" }, { height: "0px" }], 200]]);
+    expect(heightRuns().map((run) => [run.keyframes, run.options.duration])).toEqual([[[{ height: "96px" }, { height: "0px" }], COLLAPSE]]);
     const fade = cardRuns().at(-1)!;
     expect(fade.keyframes).toEqual([{ opacity: 1 }, { opacity: 0 }]);
-    expect(fade.options).toMatchObject({ duration: 140, delay: 0 });
+    expect(fade.options).toMatchObject({ duration: FADE, delay: 0 });
     finish(fade);
     expect(document.querySelector("[data-card]")).toBeNull();
   });
@@ -115,7 +115,7 @@ describe("the failed reply's card in the transcript", () => {
     await render(true);
     await flush();
     expect(heightRuns()).toEqual([]);
-    expect(cardRuns()[0]!.options).toMatchObject({ delay: 0, duration: 140 });
+    expect(cardRuns()[0]!.options).toMatchObject({ delay: 0, duration: FADE });
     await render(false);
     await flush();
     expect(heightRuns().map((run) => run.keyframes)).toEqual([[{ height: "96px" }, { height: "96px" }]]);

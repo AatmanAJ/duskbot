@@ -2,6 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pacedMs } from "@/lib/motion-speed";
 
 
 import { FOLLOW, OWN_ENTRANCE, ROW_ENTER_EASE, ROW_ENTER_MS, ROW_RISE_PX, rowEnter, springTiming, useArrivalFlow } from "./use-arrival-flow";
@@ -251,7 +252,7 @@ describe("the follow", () => {
   const curve = (timing: { easing: string }) => /linear\(([^)]+)\)/.exec(timing.easing)![1]!.split(",").map(Number);
 
   it("is one short ease that stops cleanly, with no spring tail to creep after the row looks landed", () => {
-    expect(FOLLOW.duration).toBeLessThanOrEqual(260);
+    expect(FOLLOW.duration).toBe(pacedMs(240));
     expect(FOLLOW.easing).toMatch(/^cubic-bezier\(/);
   });
 

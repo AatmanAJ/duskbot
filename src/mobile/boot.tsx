@@ -4,6 +4,7 @@ import { productName } from "@/lib/brand";
 import { loadPageLanguage } from "@/lib/language-preference";
 import { applySkinChoice, readSkinChoice, THEME_SKINS, type SkinChoice } from "@/lib/skins";
 import { applyFont, readFont } from "@/lib/fonts";
+import { applyMotionSpeed } from "@/lib/motion-speed";
 import { PageBoundary } from "@/components/PageBoundary";
 import { watchStaleChunks } from "@/lib/stale-chunks";
 import "./styles.css";
@@ -44,6 +45,7 @@ export function mountMobile(platform: MobilePlatform): void {
   for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
   applySkinChoice(phoneSkin(params));
   applyFont(readFont());
+  applyMotionSpeed(document.documentElement);
   const dark = document.documentElement.dataset.skin === THEME_SKINS.dark;
   platform.setStatusBar?.(dark ? "light" : "dark");
   document.title = productName();
