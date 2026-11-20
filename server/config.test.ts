@@ -736,6 +736,21 @@ describe("a config.json saved with a byte order mark", () => {
     }
   });
 
+  it("keeps the account name the profile copied beside the rest of the profile, so a later rename on the account follows", () => {
+    const path = join(DATA_DIR, "config.json");
+    mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(path, JSON.stringify({ profile: { name: "siddharth", email: "sidd@example.com", aboutMe: "short answers" } }));
+    try {
+      saveConfig(parseConfigPatch({ profile: { name: "Siddharth", accountName: "Siddharth" } }));
+      expect(JSON.parse(readFileSync(path, "utf8")).profile).toEqual({ name: "Siddharth", email: "sidd@example.com", aboutMe: "short answers", accountName: "Siddharth" });
+      expect(loadConfig().profile?.accountName).toBe("Siddharth");
+      saveConfig(parseConfigPatch({ profile: { name: "Sidd", email: "sidd@example.com" } }));
+      expect(loadConfig().profile).toMatchObject({ name: "Sidd", accountName: "Siddharth" });
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
   it("keeps the browser's allow-list when the owner flips its local-sites switch", () => {
     const path = join(DATA_DIR, "config.json");
     mkdirSync(DATA_DIR, { recursive: true });

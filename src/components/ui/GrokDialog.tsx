@@ -112,7 +112,7 @@ interface DialogProps {
   footer?: ReactNode;
   children: ReactNode;
   "data-panel-modal"?: string;
-  /** Eases in and out (the parent keeps it in an AnimatePresence) instead of opening and closing raw, sheet only. */
+  /** Eases in, and out when the parent keeps it in an AnimatePresence; false opens and closes it raw. Sheet only. */
   animated?: boolean;
   /** A short notice, a line or two under the title: the title sits centred on its close and the words follow close
    * under it, as a confirm's do, sheet only. */
@@ -139,7 +139,7 @@ function PaneView({ title, description: _description, art: _art, footer, childre
   );
 }
 
-function SheetView({ title, description, art, width = 440, onClose, footer, children, animated = false, notice = false, ...rest }: DialogProps) {
+function SheetView({ title, description, art, width = 440, onClose, footer, children, animated = true, notice = false, ...rest }: DialogProps) {
   const sheet = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();

@@ -69,6 +69,7 @@ describe("saveBotAttachment", () => {
     expect(saved.attachment.path.startsWith(ATTACHMENTS_DIR)).toBe(true);
     expect(readFileSync(saved.attachment.path)).toEqual(bytes);
     if (saved.attachment.kind === "file") expect(saved.attachment.name.toLowerCase()).toBe(name.toLowerCase());
+    if (saved.attachment.kind === "file") expect(saved.attachment.bytes).toBe(bytes.byteLength);
   });
 
   it("reads a file from the VM guest workspace through its host mount", async () => {

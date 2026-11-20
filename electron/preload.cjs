@@ -91,9 +91,9 @@ function railKeepsItsSize() {
 if (typeof window !== "undefined") {
   for (const type of ["resize", "DOMContentLoaded"]) window.addEventListener(type, () => { leaveRailRoom(); railKeepsItsSize(); });
 }
-const REMOTE_SAFE = new Set(["platform", "app", "getCapabilities", "onCapabilitiesChanged", "applySkin", "setUnreadCount", "permStatus", "workspaces", "rail", "cloudAdd", "cloudPlan", "cloudSendPage", "accountSheet", "desktopNotices", "desktopNotifications", "desktopAnalytics", "desktopLanguage", "windowControls", "onOpenAppSettings", "windowFrame", "sealTrust", "linkDirect", "onSlackOAuth", "ambient", "desktopBots", "requireUserPresence", "vpsCloudMove", "trail"]);
+const REMOTE_SAFE = new Set(["platform", "cloudMac", "app", "getCapabilities", "onCapabilitiesChanged", "applySkin", "setUnreadCount", "permStatus", "workspaces", "rail", "cloudAdd", "cloudPlan", "cloudSendPage", "accountSheet", "desktopNotices", "desktopNotifications", "desktopAnalytics", "desktopLanguage", "windowControls", "onOpenAppSettings", "windowFrame", "sealTrust", "linkDirect", "onSlackOAuth", "ambient", "desktopBots", "requireUserPresence", "vpsCloudMove", "trail"]);
 /** My Cloud's own page once it is the person's home (main checks the sender again): it is this app's page then. */
-const HOME_PAGE = ["home", "onChatLink", "onPackageInstall", "exportDiagnostics", "openLogsFolder", "openAtLogin", "callActive", "productEvents",
+const HOME_PAGE = ["home", "appUpdate", "onChatLink", "onPackageInstall", "exportDiagnostics", "openLogsFolder", "openAtLogin", "callActive", "productEvents",
   "speechStart", "speechStop", "speechFinish", "onSpeechTranscript", "onSpeechEnd", "onSpeechLevel"];
 function homePage() {
   try { return ipcRenderer.sendSync("home:page") === true; } catch { return false; }
@@ -193,6 +193,14 @@ const bridge = {
       ipcRenderer.on("workspaces:changed", handler);
       return () => ipcRenderer.removeListener("workspaces:changed", handler);
     },
+    onSwitching: (cb) => {
+      const handler = (_event, on) => cb(on === true);
+      ipcRenderer.on("workspaces:switching", handler);
+      return () => ipcRenderer.removeListener("workspaces:switching", handler);
+    },
+    handLook: (look) => ipcRenderer.send("workspaces:switch-look", look),
+    takeLook: () => { try { return ipcRenderer.sendSync("workspaces:switch-look-take") ?? null; } catch { return null; } },
+    arrived: () => { try { return ipcRenderer.sendSync("workspaces:switch-arrived") === true; } catch { return false; } },
   },
   // The window's own rail (this app's page at /rail, beside every place's page): while a sheet of its own is open it
   // covers the window; the skin of the page beside it comes from main, and whether that page draws the window's frame.
@@ -330,6 +338,11 @@ const bridge = {
     prepare: () => ipcRenderer.invoke("companion-account:prepare"),
     signOut: () => ipcRenderer.invoke("companion-account:sign-out"),
   },
+  /** This computer's relay to its phones: status only; the tunnel token and keys never leave the main process. */
+  phoneRelay: {
+    state: () => ipcRenderer.invoke("phone-relay:state"),
+    ready: () => ipcRenderer.invoke("phone-relay:ready"),
+  },
   /** Full/Custom never go through the loopback API, only the embedded server's private utilityProcess port. */
   approvals: {
     setMode: (botId, mode, options) => ipcRenderer.invoke("approvals:set-trusted-mode", botId, mode, options),
@@ -435,10 +448,10 @@ const bridge = {
   permStatus: () => ipcRenderer.invoke("perm:status"),
   permRequestMic: () => ipcRenderer.invoke("perm:request-mic"),
   permOpenSettings: (pane) => ipcRenderer.invoke("perm:open-settings", pane),
-  /** Accessibility, Screen Recording and Notifications on macOS: `status` never prompts, `request` asks for one. */
+  /** Accessibility and Screen Recording on macOS: `status` never prompts, `request` asks for one. */
   macPermissions: {
     status: () => ipcRenderer.invoke("mac-permissions:status"),
-    request: (kind, note) => ipcRenderer.invoke("mac-permissions:request", String(kind), note && typeof note === "object" ? { title: String(note.title ?? ""), body: String(note.body ?? "") } : undefined),
+    request: (kind) => ipcRenderer.invoke("mac-permissions:request", String(kind)),
   },
   relaunch: () => ipcRenderer.invoke("desktop:relaunch"),
 
@@ -532,6 +545,11 @@ const bridge = {
     set: on => on !== true || isLocalPage || navigator.userActivation?.isActive === true
       ? ipcRenderer.invoke("open-at-login:set", on === true) : Promise.reject(new Error("Turn on the switch to open dusk bot at login.")),
   },
+  // An AppImage's own entry in the app menu (electron/appimage-menu-entry.mjs); this computer's page only.
+  appMenuEntry: {
+    state: () => ipcRenderer.invoke("app-menu-entry:state"),
+    set: on => ipcRenderer.invoke("app-menu-entry:set", on === true),
+  },
   setCredential: (name, value) => ipcRenderer.invoke("credential:set", name, value),
 
   /** A remote page may read the list but never change where this window goes. */
@@ -597,6 +615,7 @@ const bridge = {
     cancelPlan: survey => ipcRenderer.invoke("cloud-account:cancelPlan", survey ?? null),
     keepPlan: () => ipcRenderer.invoke("cloud-account:keepPlan"),
     holdSignIns: () => ipcRenderer.invoke("cloud-account:holdSignIns"),
+    carriedAis: () => ipcRenderer.invoke("cloud-account:carriedAis"),
     onState: cb => {
       const handler = (_event, state) => cb(state);
       ipcRenderer.on("cloud-account:state-changed", handler);
@@ -682,12 +701,14 @@ const bridge = {
       return () => ipcRenderer.removeListener("vps-cloud-move:changed", handler);
     },
   },
-  // This computer's page only: a downloaded update of this app waiting for a restart (electron/app-update.mjs).
+  // This computer's page and My Cloud's once it is home: this app's own update (electron/app-update.mjs).
   appUpdate: {
     state: () => ipcRenderer.invoke("app-update:state"),
     restart: () => ipcRenderer.invoke("app-update:restart"),
     download: () => ipcRenderer.invoke("app-update:download"),
     seen: () => ipcRenderer.invoke("app-update:seen"),
+    open: () => ipcRenderer.invoke("app-update:open"),
+    move: () => ipcRenderer.invoke("app-update:move"),
     onState: cb => {
       const handler = (_event, state) => cb(state);
       ipcRenderer.on("app-update:changed", handler);
@@ -729,6 +750,20 @@ const bridge = {
       return () => ipcRenderer.removeListener("start-fresh:changed", handler);
     },
   },
+  cloudMac: {
+    state: () => ipcRenderer.invoke("cloud-mac:state"),
+    setEnabled: on => ipcRenderer.invoke("cloud-mac:setEnabled", on === true),
+    setMode: mode => ipcRenderer.invoke("cloud-mac:setMode", String(mode)),
+    setLimitFolders: on => ipcRenderer.invoke("cloud-mac:setLimitFolders", on === true),
+    addFolder: () => ipcRenderer.invoke("cloud-mac:addFolder"),
+    removeFolder: folder => ipcRenderer.invoke("cloud-mac:removeFolder", String(folder)),
+    openLog: () => ipcRenderer.invoke("cloud-mac:openLog"),
+    onChange: listener => {
+      const handler = (_event, view) => listener(view);
+      ipcRenderer.on("cloud-mac:changed", handler);
+      return () => ipcRenderer.removeListener("cloud-mac:changed", handler);
+    },
+  },
   vpsLink: {
     state: () => ipcRenderer.invoke("vps-link:state"),
     start: () => ipcRenderer.invoke("vps-link:start"),
@@ -748,7 +783,7 @@ const bridge = {
     backups: () => ipcRenderer.invoke("vps-link:backups"),
     backupNow: () => ipcRenderer.invoke("vps-link:backupNow"),
     restore: id => ipcRenderer.invoke("vps-link:restore", String(id)),
-    moveBack: () => ipcRenderer.invoke("vps-link:moveBack"),
+    moveBack: (placeId) => ipcRenderer.invoke("vps-link:moveBack", typeof placeId === "string" ? placeId : undefined),
     forget: () => ipcRenderer.invoke("vps-link:forget"),
     onChange: cb => {
       const handler = (_event, view) => cb(view);
@@ -783,6 +818,7 @@ const bridge = {
   // Any place's page: opens the accounts sheet on the rail's page, from the person's click. The page learns nothing of them.
   accountSheet: process.argv.includes("--dusk-company-desktop=1") ? {
     offered: () => ipcRenderer.invoke("accounts:offered"),
+    face: () => ipcRenderer.invoke("accounts:face"),
     open: () => isLocalPage || navigator.userActivation?.isActive === true
       ? ipcRenderer.invoke("accounts:open") : Promise.reject(new Error("Choose your account to open it.")),
   } : undefined,
@@ -793,6 +829,9 @@ const bridge = {
     signIn: () => isLocalPage || navigator.userActivation?.isActive === true
       ? ipcRenderer.invoke("home:sign-in") : Promise.reject(new Error("Choose Sign in to sign in again.")),
     noticeSeen: () => ipcRenderer.invoke("cloud-plan:notice-seen"),
+    // a code that logs a phone in to the account; main checks the person is here first (renew: a silent swap of the code on screen)
+    phoneSignIn: renew => ipcRenderer.invoke("cloud-plan:phone-sign-in", renew === true),
+    signedIn: () => ipcRenderer.invoke("cloud-plan:signed-in"),
     openPage: (page, workspaceId) => isLocalPage || navigator.userActivation?.isActive === true
       ? ipcRenderer.invoke("cloud-plan:open-page", String(page), workspaceId === undefined ? undefined : String(workspaceId)) : Promise.reject(new Error("Choose the account dashboard to open it.")),
     // The usage meter's Upgrade: both only from the person's click (Upgrade, then the confirm's Upgrade), never by themselves.

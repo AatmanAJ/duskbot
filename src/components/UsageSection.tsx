@@ -15,6 +15,7 @@ import { Card as RowsCard, ItemRow, NavRow, NoteRow, RowText, rowCls } from "./L
 import { TraceView } from "./usage/TraceView";
 import { LiveBadge, modelName, totalsStats } from "./usage/TraceWaterfall";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 export type UsageGroupBy = "bot" | "model" | "user" | "day" | "engine" | "routine" | "department";
 const OTHER_GROUPINGS: readonly UsageGroupBy[] = ["model", "user", "department", "day", "engine", "routine"];
@@ -80,7 +81,7 @@ export function GroupBars({ groupBy, groups }: { groupBy: UsageGroupBy; groups: 
   const { state } = useStore();
   const top = [...groups].sort((a, b) => headlineTokens(b) - headlineTokens(a)).slice(0, 6);
   const max = Math.max(...top.map(headlineTokens), 0);
-  if (!top.length || max <= 0) return <NoteRow>{t("usage.page.whereEmpty")}</NoteRow>;
+  if (!top.length || max <= 0) return <ArtState data-art-state="where" art="coins" title={t("empty.where.title")} className="py-6">{t("empty.where.hint")}</ArtState>;
   return (
     <ul className="contents">
       {top.map((group) => {
@@ -230,7 +231,7 @@ export function UsageSection() {
           <WhereItWent range={range} version={version} />
           <section aria-label={t("usage.page.runs")} className="contents">
             <RowsCard label={t("usage.page.runs")} footnote={untimed ? t("usage.page.untimedNote") : undefined}>
-              {list && !list.roots.length && <NoteRow>{t("usage.page.runsEmpty")}</NoteRow>}
+              {list && !list.roots.length && <ArtState data-art-state="runs" art="receipt" title={t("empty.runs.title")} className="py-6">{t("empty.runs.hint")}</ArtState>}
               <ul className="contents">
                 {list?.roots.map((root) => <RunRow key={root.id} root={root} onOpen={() => setOpen({ id: root.id, at: root.startedAt })} />)}
               </ul>

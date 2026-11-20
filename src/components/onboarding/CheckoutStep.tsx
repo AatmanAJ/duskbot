@@ -30,7 +30,7 @@ export function useCloudTile(enabled: boolean): { tag: string | null; note: stri
   const price = usd(Math.min(...offer.plans.map((plan) => plan.amount)) / 100);
   const days = offerTrialDays(offer);
   return days
-    ? { tag: t("funnel.place.cloudTrialTag", { days }), note: t("funnel.place.cloudThen", { price }) }
+    ? { tag: t("funnel.place.cloudTrialTag", { days }), note: null }
     : { tag: t("funnel.place.cloudPriceTag", { price }), note: null };
 }
 

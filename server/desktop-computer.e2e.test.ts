@@ -190,6 +190,40 @@ describe("this computer belongs to the desktop app's own server", () => {
     expect((await rows(task.threadId)).filter(line => line === "Open Chrome on this computer.")).toHaveLength(1);
   });
 
+  itHost("a bot on this computer without screen permission still replies, with its browser and no screen tools", async () => {
+    writeFileAtomic(join(home, "user-data", "cua-connection.json"), JSON.stringify({
+      mode: "unavailable", reason: "Screen Recording required for CuaDriver; turn on CuaDriver in System Settings > Privacy & Security",
+    }));
+    const browser = join(home, "agent-browser");
+    writeFileSync(browser, "#!/bin/sh\necho '{\"success\":true,\"data\":{\"sessions\":[]}}'\n", { mode: 0o755 });
+    await start(true, { DUSK_AGENT_BROWSER_PATH: browser });
+    const { bot } = await apiOk("POST", "/api/bots", { name: "No Permission Bot" });
+    await apiOk("PATCH", `/api/bots/${bot.id}`, { computer: "local" });
+    const { task } = await apiOk("POST", `/api/bots/${bot.id}/tasks`, {});
+    resetTurn();
+    await apiOk("POST", `/api/bots/${bot.id}/messages`, { text: "hi", threadId: task.threadId });
+    const sent = await dump();
+    expect(sent.mcpConfig?.mcpServers?.computer).toBeUndefined();
+    expect(sent.mcpConfig?.mcpServers?.browser).toBeDefined();
+    const prompt = JSON.stringify(sent);
+    expect(prompt).toContain("go straight to your built-in browser and do it; never say you cannot open a website");
+    expect(prompt).toContain("controlling a computer's apps also comes with dusk cloud plans");
+    expect(prompt).not.toMatch(/notice above the message box, and the person|allow it from the notice/);
+    expect(prompt).toContain("macOS has not given dusk bot Screen Recording on this Mac yet");
+    expect(prompt).toContain("Never call it for web work");
+    const agents = sent.mcpConfig.mcpServers.agents;
+    expect(agents.env.DUSK_SCREEN_ACCESS).toBe("1");
+    const asked = await fetch(`${base}/api/internal/request-screen-access`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${agents.env.DUSK_COMMS_TOKEN}` },
+      body: JSON.stringify({ reason: "Open Keynote" }),
+    });
+    expect(await asked.json()).toEqual({ shown: true, missing: ["Screen Recording"] });
+    writeFileSync(finishFile, "finish");
+    await idle(bot.id, task.threadId);
+    const lines = (await rows(task.threadId)).join("\n");
+    expect(lines).not.toMatch(/can't use this computer yet|failed/i);
+  });
+
   itHost("Stop during helper startup prevents a late ready grant from starting the turn", async () => {
     const grantFile = join(home, "user-data", "cua-connection.json");
     writeFileAtomic(grantFile, "null");

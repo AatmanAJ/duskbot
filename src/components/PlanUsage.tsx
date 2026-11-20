@@ -8,6 +8,7 @@ import { Card as RowsCard, ItemRow, NoteRow, rowCls } from "./ListRows";
 import { UsageSummaryCard } from "./CloudUsageMeter";
 import { formatPlanSpend, type PlanSpend } from "@/lib/plan-spend";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 interface PlanWindow {
   available: boolean;
@@ -250,7 +251,7 @@ export function PlanUsage() {
       <RowsCard label={t("planUsage.title")} action={refresh}>
         {loading && !report && <NoteRow>{t("planUsage.loading")}</NoteRow>}
         {error && <NoteRow tone="danger">{error}</NoteRow>}
-        {report && report.providers.length === 0 && <NoteRow>{t("planUsage.empty")}</NoteRow>}
+        {report && report.providers.length === 0 && <ArtState data-art-state="plan-usage" art="coins" title={t("empty.planUsage.title")} className="py-6">{t("empty.planUsage.hint")}</ArtState>}
         {report?.providers.filter((provider) => !provider.ok).map((provider) => (
           <ItemRow key={provider.id} title={providerLabel(provider)} hint={<span className="text-danger">{providerError(provider)}</span>} />
         ))}
