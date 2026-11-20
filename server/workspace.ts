@@ -407,6 +407,13 @@ function sameFact(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").replace(/[.!?;,\s]+$/, "").trim();
 }
 
+/** A chat is titled by its first message, which after a correction may still state the old fact, so a correcting entry
+ * names the chat without its title. */
+export function correctionSource(source: string): string {
+  const plain = source.replace(/^chat "(?:[^"\\]|\\.)*"(?:…)?/, "chat").trim();
+  return plain ? `${plain}, corrected` : "";
+}
+
 export function memorySourceLabel(from: { room?: { name: string }; task?: { title: string }; threadId: string }): string {
   const short = (name: string) => JSON.stringify(name.length > SOURCE_NAME_MAX ? `${name.slice(0, SOURCE_NAME_MAX)}…` : name);
   if (from.room) return `room ${short(from.room.name)}`;
@@ -493,7 +500,7 @@ export function updateMemory(botId: string, update: MemoryUpdate, opts: MemoryUp
         return { ok: false, code: "conflict", error: "That entry is already struck through. Replace or remove it, or append the new fact on its own." };
       }
       const struck = `${parsed ? parsed.prefix : line === body ? "" : "- "}~~${body}~~${SEP}superseded ${today}`;
-      entry = memoryEntry(text!, entryOpts);
+      entry = memoryEntry(text!, { ...entryOpts, source: correctionSource(cleanSource(opts.source)) });
       next = appendEntry(replaceLine(struck), entry);
     } else if (!parsed) {
       next = current.slice(0, index) + text! + current.slice(index + oldText.length);
@@ -501,7 +508,8 @@ export function updateMemory(botId: string, update: MemoryUpdate, opts: MemoryUp
       const swapped = line.slice(0, index - span.start) + text!.replace(TYPED_PREFIX, "") + line.slice(index - span.start + oldText.length);
       const reparsed = parseEntry(swapped);
       const body = reparsed ? reparsed.body : normaliseEntryText(swapped);
-      entry = `${parsed.prefix}${body.replace(UPDATED_MARK, "")}${SEP}updated ${today}`;
+      const prefix = parsed.prefix.replace(/^(- \d{4}-\d{2}-\d{2} · from )([^·\n]*?)( · )$/, (_, head: string, from: string, tail: string) => `${head}${from.endsWith(", corrected") ? from : correctionSource(from)}${tail}`);
+      entry = `${prefix}${body.replace(UPDATED_MARK, "")}${SEP}updated ${today}`;
       next = replaceLine(entry);
     }
   }

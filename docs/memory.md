@@ -298,6 +298,12 @@ then. Passages newer than the note still come, and a question about the past
 gets them all. When the only notes that answer the message are already in the
 prompt, recall adds nothing rather than saying nothing matches.
 
+A chat is titled by its first message, so after a correction its title may
+still state the old fact. A note that supersedes or replaces another names its
+source without the title (`from chat, corrected`), and a chat whose title
+shares two words with a note struck from it is listed in Recent work without
+its title.
+
 The best facts (at most 14) come first, each numbered with its id, where it is
 kept and its dates; the top two carry the words they were learned from when
 that conversation may be read here. Then up to four passages from the bot's

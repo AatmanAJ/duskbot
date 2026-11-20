@@ -250,7 +250,7 @@ import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 import { openCodeProviderKeysAllowed, setOpenCodeProviderKeyPolicy } from "./drivers/acp/opencode-go.ts";
 import { openCardRows, readMessageText, recallMessages, recentMessages, closeMessageSearch, closeMessageDb, chatFollowups, cancelledChatFollowup, settleChatFollowups, threadsReferencing, logNotification, recentNotificationLog, lastRowAt, threadsWithCardsSince, optionCardsForTools } from "./message-db.ts";
 import { briefCrossingLabel, claimRecallCrossings, recallCrossingLabel } from "./recall-disclosure.ts";
-import { parseSince, parseUntil, recentWork, recentWorkPrompt, turnOutcomeLine } from "./recent-work.ts";
+import { correctedChatTitles, parseSince, parseUntil, recentWork, recentWorkPrompt, turnOutcomeLine } from "./recent-work.ts";
 import { createFailureNotices } from "./host/failure-notices.ts";
 import { createHandoffTicks } from "./handoff-ticks.ts"; import { IDLE_HTTP_SERVER } from "./due-timer.ts";
 
@@ -353,7 +353,7 @@ import {
   supportsWorkspaceFiles,
   appendMemoryLog,
   memoryLogPath,
-  loadMemory,
+  loadMemory, readMemoryFile,
   memorySystemPrompt,
   memoryTopicIndex,
   readMemoryRaw,
@@ -9514,7 +9514,7 @@ async function beginTurn(
         { id: "learn", label: "Skill authoring", text: learnPrompt },
         // Volatile, so a teammate starting or finishing never changes the stable half.
         teamAvailabilityPart(coordinationPrompt ? sectionPeers : []),
-        { id: "recent", label: "Recent work", text: recentWorkPrompt(recentWork(recentWorkSources(bot), bot, { userName: CLOUD_TEAM ? teamHost.personName(teamConversationPerson(threadId)) ?? "the team" : cfg.profile?.name?.trim() || "User", currentThreadId: threadId, ...recentWorkFilter(threadId) }), Date.now(), personTimeZone(proactive.brief.timeZone())) },
+        { id: "recent", label: "Recent work", text: recentWorkPrompt(recentWork(recentWorkSources(bot), bot, { staleTitle: correctedChatTitles(readMemoryFile(teamHost.layer(bot.id, threadId)).text), userName: CLOUD_TEAM ? teamHost.personName(teamConversationPerson(threadId)) ?? "the team" : cfg.profile?.name?.trim() || "User", currentThreadId: threadId, ...recentWorkFilter(threadId) }), Date.now(), personTimeZone(proactive.brief.timeZone())) },
         { id: "memory", label: "Memory", text: heldTurnMemory.core },
         // liveBot predates awaited setup work; an assignment PUT in that window must still reach this prompt.
         { id: "skills", label: "Skills index", text: privateWorkspace ? skillsHost.skillsIndex(store.bot(bot.id) ?? bot, threadId, instance) : "" },
@@ -11307,7 +11307,7 @@ async function runClaimedGroupMemberTurn(
   const roomMemoryShape = { managedWrites: Boolean(integrations.agents), fileTools: worksInWorkspace, enabled: bot.memoryEnabled !== false };
   const heldRoomMemory = heldMemoryParts(bot, threadId, roomMemoryShape);
   const roomMemory = heldRoomMemory.core;
-  const recentLines = recentWork(recentWorkSources(bot), bot, { userName: typeof userName === "string" ? userName : "the team", currentThreadId: threadId, ...recentWorkFilter(threadId) });
+  const recentLines = recentWork(recentWorkSources(bot), bot, { staleTitle: correctedChatTitles(readMemoryFile(teamHost.layer(bot.id, threadId)).text), userName: typeof userName === "string" ? userName : "the team", currentThreadId: threadId, ...recentWorkFilter(threadId) });
   const earlierInRoom = await roomEarlier.prompt(conversationOfRun(threadId), bot.id, roomWindow.earlier);
   if ((roomPlan.browser || roomScreenMissing) && !(roomPlan.computer === undefined && roomTeamComputer)) {
     const selectedProfile = readyBot.browserProfile;
