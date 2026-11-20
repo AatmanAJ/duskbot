@@ -186,7 +186,7 @@ function detailWords(kind: FailedReplyKind, engineName: string, onServer: boolea
   }
   // a turn's own network failure is its AI's server not answering, never the app: "fetch failed" from a model call
   if (kind === "other" && AI_UNREACHABLE.has(plainErrorKind(cause.trim()) ?? "")) return t("failedReply.unreachable", { engine: engineName });
-  if (kind === "other" && cause.trim()) return plainErrorLine(cause) ?? currentFailureWords(cause.trim());
+  if (kind === "other" && cause.trim()) return plainErrorLine(cause) ?? (isTechnicalError(cause) ? t(DETAIL.other) : currentFailureWords(cause.trim()));
   return t(DETAIL[kind]);
 }
 

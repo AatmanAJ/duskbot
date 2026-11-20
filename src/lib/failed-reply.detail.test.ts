@@ -15,6 +15,12 @@ describe("a failed reply's line", () => {
     expect(failedReplyDetail("other", "My server", true, "The model refused this request.")).toBe("The model refused this request.");
   });
 
+  it("never shows an engine's internal words on the card", () => {
+    for (const cause of ["provider stream frame exceeded the size limit", "Internal error: session/prompt failed (service: session)"]) {
+      expect(failedReplyDetail("other", "My server", true, cause)).toBe("Something went wrong. Try again.");
+    }
+  });
+
   it("says why in plain words when the engine's own words are technical", () => {
     expect(failedReplyDetail("cli_exit", "GitHub Copilot", false, "GitHub Copilot exited 1 before the prompt result"))
       .toBe("GitHub Copilot stopped before it could reply. Try again.");

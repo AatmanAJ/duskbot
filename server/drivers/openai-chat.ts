@@ -1,3 +1,4 @@
+import { MAX_GENERATED_IMAGE_CHARS } from "../generated-image.ts";
 import { createHash } from "node:crypto";
 import type {
   DriverCreateInput,
@@ -63,14 +64,29 @@ export interface Completion {
   protocolReasoningDetails: Record<string, unknown>[];
   /** Every output item of a Responses API reply, encrypted reasoning included, for the next round of this turn only. */
   responseOutput?: ResponseItem[];
+  /** Images the model drew in this reply, as data URLs or base64. */
+  images?: string[];
+}
+
+/** An image-model reply's pictures: OpenRouter's `images` beside the text, or `image_url` parts of the content. */
+export function completionImages(part: { content?: unknown; images?: unknown } | undefined): string[] {
+  const urls: string[] = [];
+  for (const list of [part?.images, Array.isArray(part?.content) ? part.content : undefined]) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const url = (item as { image_url?: { url?: unknown } } | null)?.image_url?.url;
+      if (typeof url === "string" && url.startsWith("data:image/")) urls.push(url);
+    }
+  }
+  return urls;
 }
 
 interface CompletionJson extends ProviderBody {
   model?: string;
   choices?: Array<{
     index?: number;
-    message?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown; reasoning_details?: unknown; tool_calls?: unknown; function_call?: unknown };
-    delta?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown; reasoning_details?: unknown; tool_calls?: unknown; function_call?: unknown };
+    message?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown; reasoning_details?: unknown; tool_calls?: unknown; function_call?: unknown; images?: unknown };
+    delta?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown; reasoning_details?: unknown; tool_calls?: unknown; function_call?: unknown; images?: unknown };
     finish_reason?: string | null;
   }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; cost?: number };
@@ -87,6 +103,8 @@ interface NativeLog {
 // Node's fetch (undici 7.29 in Electron 43, 8.9 in Node 26) fails a request after 300 s without response headers
 // or body bytes, whatever its signal allows. A local model sends nothing until its first token.
 const FETCH_LIMIT_MS = 300_000;
+/** One stream frame may carry a few generated images whole, as base64. */
+const MAX_STREAM_FRAME_CHARS = 4 * MAX_GENERATED_IMAGE_CHARS + 1_000_000;
 const LIVENESS_MISSES = 3;
 let unlimitedAgent: Agent | undefined;
 async function fetchPastLimit(url: string, init: RequestInit): Promise<Response> {
@@ -356,6 +374,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           finishReason,
           protocolReasoning: typeof reasoning === "string" ? reasoning : "",
           protocolReasoningDetails: details.blocks,
+          images: completionImages(message),
         };
       }
 
@@ -371,6 +390,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let sawChoice = false;
       const calls = new ChatToolCalls();
       const details = new ChatReasoningDetails();
+      const images: string[] = [];
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -393,6 +413,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         if (object(delta)) sawChoice = true;
         if (delta?.function_call) throw new ChatProtocolError("legacy function_call is unsupported; use structured tool_calls");
         calls.add(delta?.tool_calls, true);
+        images.push(...completionImages(delta));
         details.add(delta?.reasoning_details);
         if (choice?.finish_reason) finishReason = choice.finish_reason;
         const reasoningPart = delta?.reasoning_content ?? delta?.reasoning;
@@ -433,7 +454,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           }
           resetIdleTimer();
           buffer += decoder.decode(value, { stream: true });
-          if (buffer.length > 2_000_000) throw new ChatProtocolError("provider stream frame exceeded the size limit");
+          if (buffer.length > MAX_STREAM_FRAME_CHARS) throw new ChatProtocolError("provider stream frame exceeded the size limit");
           let newline: number;
           while ((newline = buffer.indexOf("\n")) !== -1) {
             const line = buffer.slice(0, newline).trim();
@@ -446,7 +467,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       }
       activeSignal.throwIfAborted();
       if (!sawChoice) throw new ChatProtocolError("provider returned no streaming completion choice");
-      return { text, reasoning, usage, toolCalls: calls.finish(finishReason, malformedFrame), finishReason, protocolReasoning, protocolReasoningDetails: details.blocks };
+      return { text, reasoning, usage, toolCalls: calls.finish(finishReason, malformedFrame), finishReason, protocolReasoning, protocolReasoningDetails: details.blocks, images };
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
       if (liveness) clearInterval(liveness);
@@ -669,7 +690,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               }
               delta("", "assistant_text", true);
               delta("", "reasoning_text", true);
-              if (!completion.toolCalls.length && !unreadable && !completion.text.trim() && !completion.reasoning.trim()) throw unfinishedReply("", completion.finishReason)!;
+              if (!completion.toolCalls.length && !unreadable && !completion.text.trim() && !completion.reasoning.trim() && !completion.images?.length) throw unfinishedReply("", completion.finishReason)!;
               if (completion.toolCalls.length && !tools.definitions.length) throw noReplyError("tools_unavailable");
               break;
             } catch (value) {
@@ -736,6 +757,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           const reply = completion.text.trim() ? completion.text : completion.toolCalls.length || unreadable ? "" : completion.reasoning;
           const fresh = correcting(completion) ? "" : withoutRepeats(reply, said);
           if (fresh.trim()) { said.push(fresh); emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_text", text: safeText(fresh) }); }
+          for (const data of completion.images ?? []) emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_image", data });
           abort.signal.throwIfAborted();
           if (unreadable) {
             askedAgain = true;
@@ -743,7 +765,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
             continue;
           }
           if (!completion.toolCalls.length) {
-            const unfinished = unfinishedReply(reply, completion.finishReason);
+            const unfinished = completion.images?.length ? null : unfinishedReply(reply, completion.finishReason);
             if (unfinished) throw unfinished;
             if (toolFailed) {
               // A person's "no" is never answered with another attempt; a failure may first get the configured corrective rounds.
