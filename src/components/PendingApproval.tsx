@@ -28,6 +28,7 @@ export interface Pending {
   tool: string;
   allowKey?: string;
   allowSession?: boolean;
+  allowTask?: boolean;
   commandAllowlist?: { command: string; cwd: string; providerInstanceId: string };
   detail: string;
   held?: string;
@@ -57,6 +58,7 @@ export function pendingApprovals(messages: Message[]): Pending[] {
       tool: m.card!.tool!,
       allowKey: m.card!.allowKey,
       allowSession: m.card!.allowSession,
+      allowTask: m.card!.allowTask,
       commandAllowlist: m.card!.commandAllowlist,
       detail: m.card!.subtitle,
       held: m.card!.held,
@@ -332,7 +334,7 @@ export function PendingApprovalActions({
       message: behavior === "deny" ? "Denied by the user." : undefined,
       reviewedSha256: behavior === "allow" ? reviewedSha256 : undefined,
       alwaysAllow: always && bot && pending.allowKey ? { botId: bot.id, key: pending.allowKey } : undefined,
-      always: always && !pending.allowKey && pending.allowSession ? true : undefined,
+      always: always && !pending.allowKey && (pending.allowSession || pending.allowTask) ? true : undefined,
       rememberCommand: rememberCommand || undefined,
       edits,
     });
@@ -342,11 +344,13 @@ export function PendingApprovalActions({
   const marked = (action: string) => (tag ? { [`data-${tag}-action`]: action } : {});
   const showPrimary = part !== "more";
   const showMore = part !== "primary";
-  const always = durableRequest || purchase || email ? null
+  const always = (durableRequest && !(titled && pending.allowTask)) || purchase || email ? null
     : bot && pending.allowKey
       ? { name: t("approval.action.alwaysAllow"), hint: t("approval.action.stopAsking", { name: bot.name, key: pending.allowKey }), run: () => decide("allow", true) }
       : canRememberCommand && pending.commandAllowlist
         ? { name: t("approval.action.alwaysAllowCommand"), hint: t("approval.action.alwaysAllowCommandHint", { cwd: pending.commandAllowlist.cwd }), run: () => decide("allow", false, true) }
+        : !pending.allowKey && pending.allowTask
+          ? { name: t("approval.action.allowTask"), hint: t("approval.action.allowTaskHint"), run: () => decide("allow", true) }
         : !pending.allowKey && pending.allowSession
           ? { name: t("approval.action.alwaysAllowSession"), hint: t("approval.action.alwaysAllowSessionHint"), run: () => decide("allow", true) }
           : null;
@@ -377,7 +381,7 @@ export function PendingApprovalActions({
         title={always.hint}
         className={cardSecondary(CARD_BUTTON_MD)}
       >
-        {t("approval.action.alwaysAllow")}
+        {pending.allowTask && !pending.allowKey ? t("approval.action.allowTask") : t("approval.action.alwaysAllow")}
       </button>
     ),
     <button

@@ -117,7 +117,7 @@ export interface BotMessageRouteDeps {
   cancelGroupTurnOperations(groupId: string, threadId: string): void;
   closeOpenApprovals(threadId: string): void;
   /** The outcome of a card the harness raised itself (a peer approval, a quota-switch offer); undefined for any other card. */
-  harnessCardOutcome(threadId: string, requestId: string, behavior: Behavior, message: unknown): Promise<string | undefined>;
+  harnessCardOutcome(threadId: string, requestId: string, behavior: Behavior, message: unknown, always?: boolean): Promise<string | undefined>;
   /** What a press on one of the bot's own server-built cards is about, from the server's records; null leaves the press the person's plain answer. */
   pressRecords(bot: BotRecord, action: WidgetAction): string | null;
   /** A press the server answers itself, with no turn: handled, refused (not the owner or an admin), or null for an ordinary press. */
@@ -618,7 +618,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
           reviewedSha256,
         }))) return;
         const requestId = String(body.requestId);
-        const own = await harnessCardOutcome(bot.threadId, requestId, behavior, body.message);
+        const own = await harnessCardOutcome(bot.threadId, requestId, behavior, body.message, body.always === true);
         if (own) return json(res, 200, { ok: true, outcome: own });
         const pending = store.messagesFor(bot.threadId).find((message) => message.card?.requestId === requestId);
         const dismissed = dismissQuestionCard(store, bot.threadId, pending, body);
@@ -730,7 +730,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
             behavior,
           })) return;
         }
-        const own = await harnessCardOutcome(threadId, requestId, behavior, body.message);
+        const own = await harnessCardOutcome(threadId, requestId, behavior, body.message, body.always === true);
         if (own) return json(res, 200, { ok: true, outcome: own });
         const group = store.groupByThread(threadId);
         const pending = store.messagesFor(threadId).find((message) => message.card?.requestId === requestId);

@@ -1135,6 +1135,8 @@
   "approval.action.stopAsking": "Stop asking {name} about {key}",
   "approval.action.alwaysAllow": "Always allow",
   "approval.action.alwaysAllowSession": "Always allow this session",
+  "approval.action.allowTask": "Allow for this task",
+  "approval.action.allowTaskHint": "Stops asking because of what it read for the rest of this task. Terminals, settings, password apps and saved passwords still ask.",
   "approval.action.alwaysAllowSessionHint": "The provider stops asking about this action until the session ends",
   "approval.action.alwaysAllowCommand": "Always allow this command",
   "approval.action.alwaysAllowCommandHint": "Remember this exact command for this bot and provider in {cwd}, including other threads using that folder",

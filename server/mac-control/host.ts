@@ -57,8 +57,8 @@ export interface MacControlDeps {
   computerFile(botId: string, source: string): Promise<MacDownload>;
   /** A dusk cloud (docs/cloud-uses-mac.md): its own catalog, sealed jobs, and the person's answer first when the Mac asks for that. */
   cloud?: {
-    /** null to go ahead, else what the bot is told instead. */
-    approve(bot: MacBot, turn: Turn, tool: CloudMacToolName | "mac_screen", args: Record<string, unknown>, reason: string): Promise<string | null>;
+    /** null to go ahead, "task" to go ahead and allow the rest of this task's outside-content asks, else what the bot is told. */
+    approve(bot: MacBot, turn: Turn, tool: CloudMacToolName | "mac_screen", args: Record<string, unknown>, reason: string): Promise<string | null | { task: true }>;
     /** The turn has read outside content (a page, an email, a message, another bot's words) since the person's last message. */
     tainted?(turn: Turn): boolean;
     /** The turn just read outside content on the Mac's screen; the rest of it counts as tainted. */
@@ -143,19 +143,28 @@ export function createMacControl(deps: MacControlDeps) {
     return { available: available(), enabled: deps.enabled(), online: jobs.online(), name: seen.name, lastSeenAt: seen.lastSeenAt, ...(cloud ? { cloud: { folders: policy.folders, mode: policy.mode, limited: policy.limited, screen: limits().screen } } : {}) };
   }
 
+  /** Turns (thread and generation) whose person chose Allow for this task on an outside-content card. */
+  const taskAllowed = new Set<string>();
+  const turnKey = (turn: Turn) => `${turn.threadId}\0${turn.generation}`;
+  const allowTask = (turn: Turn) => {
+    taskAllowed.add(turnKey(turn));
+    if (taskAllowed.size > 500) taskAllowed.delete(taskAllowed.values().next().value!);
+  };
+
   /** The rule that needs the person's Allow first, or null: the Mac's rules, and under Auto any action but a look once
    * this turn has read outside content. */
   function cardReason(turn: Turn, tool: string, args: Record<string, unknown>): string | null {
     const rule = macApprovalReason(policy.mode, tool, args, policy.home || "/Users/person");
     if (rule !== null || policy.mode !== "auto" || isMacRead(tool, args)) return rule;
-    return cloud?.tainted?.(turn) ? OUTSIDE_REASON : null;
+    return cloud?.tainted?.(turn) && !taskAllowed.has(turnKey(turn)) ? OUTSIDE_REASON : null;
   }
 
   /** null once the person allowed it on a card, else what the bot is told. */
   async function askFirst(bot: MacBot, turn: Turn, tool: CloudMacToolName | "mac_screen", args: Record<string, unknown>, reason: string, assertActive: () => void): Promise<string | null> {
     const answer = await cloud!.approve(bot, turn, tool, args, reason);
     assertActive();
-    return answer ?? allowed(deps.bot(turn.botId), turn);
+    if (answer !== null && typeof answer === "object") allowTask(turn);
+    return typeof answer === "string" ? answer : allowed(deps.bot(turn.botId), turn);
   }
 
   async function callScreen(name: string, args: Record<string, unknown>, turn: Turn, assertActive: () => void): Promise<MacToolResult> {
@@ -232,11 +241,8 @@ export function createMacControl(deps: MacControlDeps) {
     const reason = cloud ? cardReason(turn, name, args) : null;
     const asks = reason !== null;
     if (cloud && asks) {
-      const answer = await cloud.approve(bot, turn, name as CloudMacToolName, name === "mac_exec" && !args.cwd ? { ...args, cwd: policy.cwd } : args, reason);
-      assertActive();
-      if (answer !== null) return macErrorResult(answer);
-      const after = allowed(deps.bot(turn.botId), turn);
-      if (after) return macErrorResult(after);
+      const no = await askFirst(bot, turn, name as CloudMacToolName, name === "mac_exec" && !args.cwd ? { ...args, cwd: policy.cwd } : args, reason, assertActive);
+      if (no) return macErrorResult(no);
     }
     let download: MacDownload | undefined;
     if (name === "mac_save_from_cloud") {

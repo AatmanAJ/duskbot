@@ -27,7 +27,7 @@ afterEach(async () => {
   cleanups = [];
 });
 
-async function pair(mode: "auto" | "ask" | "never", answer: (reason: string) => string | null = () => null,
+async function pair(mode: "auto" | "ask" | "never", answer: (reason: string) => string | null | { task: true } = () => null,
   options: { prefs?: Record<string, unknown>; screen?: Parameters<typeof createCloudMac>[0]["screen"]; tainted?: () => boolean; readOutside?: () => void } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "dusk-cloud-mac-srv-"));
   const home = realpathSync(mkdtempSync(join(tmpdir(), "dusk-cloud-mac-home-")));
@@ -215,6 +215,20 @@ describe("Auto stays careful", () => {
     expect(await run("mac_click", { pid: 42, window_id: 1, element_index: 2 })).toEqual({ error: true, text: "The person said no." });
     expect(asked.map((ask) => ask.reason)).toEqual(["follows content from outside (a web page, an email or a message) read in this turn"]);
     expect(ran(calls).filter((name) => name !== "list_apps")).toEqual(["get_window_state", "click", "get_window_state"]);
+  }, 60_000);
+
+  it("Allow for this task stops the outside-content asks for the rest of the task, but a terminal still asks", async () => {
+    const calls = join(mkdtempSync(join(tmpdir(), "dusk-screen-calls-")), "calls.jsonl");
+    const { mac, asked, run } = await pair("auto", (reason) => (reason.startsWith("follows content") ? { task: true as const } : "The person said no."), {
+      prefs: { enabled: true, mode: "auto" }, screen: fakeScreen(calls), tainted: () => true });
+    await expect.poll(() => mac.tools(turn).map((tool) => tool.name), { timeout: 10_000 }).toContain("mac_click");
+    expect((await run("mac_exec", { command: "echo one" })).error).toBe(false);
+    expect((await run("mac_exec", { command: "echo two" })).error).toBe(false);
+    expect((await run("mac_click", { pid: 42, window_id: 1, element_index: 2 })).error).toBe(false);
+    expect(asked.map((ask) => ask.reason)).toEqual(["follows content from outside (a web page, an email or a message) read in this turn"]);
+    expect(await run("mac_type_text", { pid: 66, window_id: 3, text: "ls" })).toEqual({ error: true, text: "The person said no." });
+    expect(await run("mac_exec", { command: "security find-generic-password -s x" })).toEqual({ error: true, text: "The person said no." });
+    expect(asked).toHaveLength(3);
   }, 60_000);
 
   it("under Ask before every action, asking for the screen grants asks the person first too", async () => {

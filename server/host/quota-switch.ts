@@ -46,9 +46,9 @@ export function createQuotaSwitchHost(deps: QuotaSwitchHostDeps) {
   });
 
   /** Settles a card the harness raised itself (a peer approval, a use-your-computer ask or a quota-switch offer); undefined for any other card. */
-  async function harnessCardOutcome(threadId: string, requestId: string, behavior: "allow" | "deny" | "answer", message: unknown): Promise<string | undefined> {
+  async function harnessCardOutcome(threadId: string, requestId: string, behavior: "allow" | "deny" | "answer", message: unknown, always = false): Promise<string | undefined> {
     if (!store.messagesFor(threadId).some(candidate => candidate.card?.requestId === requestId)) return undefined;
-    if (resolvePeerComms(approvalBus, requestId, behavior) || resolveYourComputerAsk(requestId, behavior) || resolveMacAsk(requestId, behavior) || deps.ownCards?.(requestId, behavior)) return behavior === "allow" ? "allowed-once" : "rejected";
+    if (resolvePeerComms(approvalBus, requestId, behavior) || resolveYourComputerAsk(requestId, behavior) || resolveMacAsk(requestId, behavior, always) || deps.ownCards?.(requestId, behavior)) return behavior === "allow" ? "allowed-once" : "rejected";
     return await quotaSwitch.answer(threadId, requestId, behavior, message) ?? undefined;
   }
 

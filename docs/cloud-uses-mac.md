@@ -96,9 +96,12 @@ Consent, on top of everything in Settings and safety below:
 - **Outside content**: under Auto, once a turn has read outside content since the person's last message (a web page or
   fetched link, an email or connector result, a download, another bot's words, a webhook or watched chat's message;
   the same test that keeps such words out of memory, `server/memory-trust.ts`), every command, file change, download,
-  open and screen input in the rest of that turn asks, with "it follows content from outside". Looks stay free, but
+  open and screen input in the rest of that turn asks, with "it follows content from outside". That card offers
+  **Allow for this task** beside Allow and Deny (no Always allow): it lets the rest of that task's turn run without
+  outside-content asks (`allowTask` on the card, `always` on the answer, cleared when the next turn starts). Sensitive
+  apps, credential commands and every other rule still ask each time. Looks stay free, but
   reading a browser's window (`get_window_state`, `get_accessibility_tree`, `verify_state` on Safari, Chrome, Chromium,
-  Arc, Firefox, Edge, Brave and others, or dusk bot's own window), the whole desktop (`get_desktop_state`) or a window the
+  Arc, Firefox, Edge, Brave and others; dusk bot's own window is not one), the whole desktop (`get_desktop_state`) or a window the
   Mac cannot name counts as outside content itself: the Mac marks that result `outside` and the cloud counts the rest of
   the turn as tainted. Other apps' windows stay free.
 - **Naming the app**: the Mac names the app behind a pid from the driver's `list_apps`, its `structuredContent.apps`

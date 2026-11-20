@@ -17,8 +17,9 @@ export const SCREEN_INPUTS = Object.freeze(["click", "double_click", "right_clic
 /** Apps that run commands, change the system or hold passwords, by name or bundle id. */
 const SENSITIVE_APP = /\b(terminal|iterm2?|ghostty|warp|alacritty|kitty|wezterm|hyper|tabby|script ?editor\d?|scripteditor2?|automator|shortcuts|system ?(settings|preferences)|systempreferences|keychain ?access|keychainaccess|disk ?utility|diskutility|1password|bitwarden|lastpass|dashlane|keepassxc?|enpass|keeper|passwords|powershell|pwsh|cmd(\.exe)?|command prompt|windows ?terminal|windowsterminal|regedit)\b/i;
 export const sensitiveApp = (value) => typeof value === "string" && SENSITIVE_APP.test(value);
-/** Web browsers, dusk bot's own (its window and its Chromium) included, by name or bundle id: what they show is the web. */
-const BROWSER_APP = /\b(safari|google chrome|chrome|chromium|arc|firefox|microsoft edge|edge|brave( browser)?|opera|vivaldi|orion|zen|dusk bot|com\.apple\.safari|com\.google\.chrome|company\.thebrowser|org\.mozilla\.firefox|com\.microsoft\.edgemac|com\.brave\.browser|bot\.dusk\.app)\b/i;
+/** Web browsers, the Chromium dusk bot drives included, by name or bundle id: what they show is the web. dusk bot's own
+ * window is not one. */
+const BROWSER_APP = /\b(safari|google chrome|chrome|chromium|arc|firefox|microsoft edge|edge|brave( browser)?|opera|vivaldi|orion|zen|com\.apple\.safari|com\.google\.chrome|company\.thebrowser|org\.mozilla\.firefox|com\.microsoft\.edgemac|com\.brave\.browser)\b/i;
 export const browserApp = (value) => typeof value === "string" && BROWSER_APP.test(value);
 /** Screen reads that return what a window shows. */
 export const SCREEN_PAGE_READS = Object.freeze(["get_window_state", "get_accessibility_tree", "get_desktop_state", "verify_state"]);

@@ -9,7 +9,7 @@ import { buildNotification, type Notification } from "../notify.ts";
 import type { BotRecord, Store } from "../store.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import { turnWaitedOnPerson } from "../waiting-on-person.ts";
-import { EVERY_ACTION } from "../../electron/cloud-mac-risk.mjs";
+import { EVERY_ACTION, OUTSIDE_REASON } from "../../electron/cloud-mac-risk.mjs";
 import { CLOUD_MAC_SCREEN_JOB, CLOUD_MAC_TOOL_NAMES, type CloudMacToolName } from "../../shared/cloud-mac.ts";
 
 type AskTool = CloudMacToolName | typeof CLOUD_MAC_SCREEN_JOB;
@@ -21,7 +21,8 @@ export interface MacAskBus {
   language?(): string | undefined;
 }
 
-export type MacAskAnswer = "allow" | "deny" | "ended";
+/** allow-task: allowed, and the rest of this task's asks for outside content are too. */
+export type MacAskAnswer = "allow" | "allow-task" | "deny" | "ended";
 
 export const MAC_DENIED_TEXT = "The person said no to this on their Mac. It did not run. Do not ask again in chat; carry on without it or ask what they would like instead.";
 export const MAC_ASK_ENDED_TEXT = "The request ended before the person answered. It did not run.";
@@ -110,6 +111,8 @@ export function askToUseMac(
   const ask = macAsk(tool, args, bot.name, reason, bus.language?.());
   if (!ask) return Promise.resolve("allow");
   if (ask.allowKey && bot.alwaysAllow?.includes(ask.allowKey)) return Promise.resolve("allow");
+  const forTask = reason === OUTSIDE_REASON;
+  const allowKey = forTask ? undefined : ask.allowKey;
   const { store } = bus;
   const room = store.groupByThread(owner.threadId);
   const requestId = newId();
@@ -122,11 +125,12 @@ export function askToUseMac(
       card: {
         title,
         subtitle: ask.subtitle,
-        options: ask.allowKey ? ["Allow", "Deny", "Always allow"] : ["Allow", "Deny"],
+        options: allowKey ? ["Allow", "Deny", "Always allow"] : forTask ? ["Allow", "Deny", "Allow for this task"] : ["Allow", "Deny"],
         requestId,
         requestType: "permission",
         tool,
-        ...(ask.allowKey ? { allowKey: ask.allowKey } : {}),
+        ...(allowKey ? { allowKey } : {}),
+        ...(forTask ? { allowTask: true } : {}),
         fixedOptions: true,
       },
     });
@@ -149,13 +153,13 @@ export function askToUseMac(
 }
 
 /** True when it settled one of these asks; call before handing an answer to the engine. */
-export function resolveMacAsk(requestId: string, behavior: string | undefined): boolean {
+export function resolveMacAsk(requestId: string, behavior: string | undefined, forTask = false): boolean {
   const entry = pending.get(requestId);
   if (!entry) return false;
   pending.delete(requestId);
   const allowed = behavior === "allow";
   settle(entry, allowed ? "allow" : "deny", "user");
-  entry.resolve(allowed ? "allow" : "deny");
+  entry.resolve(allowed ? (forTask ? "allow-task" : "allow") : "deny");
   return true;
 }
 

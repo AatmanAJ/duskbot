@@ -728,8 +728,8 @@ export interface OptionCardData extends WaitCardField, AccessRequestCardField, O
   heldCode?: string;
   /** the narrow grant "always allow" remembers for a harness-native card. */
   allowKey?: string;
-  /** the provider can remember an allow for the rest of its session. */
-  allowSession?: boolean;
+  /** allowSession: the provider remembers an allow for its session; allowTask: the rest of the task's outside-content asks. */
+  allowSession?: boolean; allowTask?: boolean;
   /** Exact native command offered for an owner/admin to remember. */
   commandAllowlist?: CommandAllowlistCandidate;
   /** Local actions never share remembered grants with cloud/tool approvals. */

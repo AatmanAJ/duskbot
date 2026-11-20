@@ -135,6 +135,19 @@ it("a dusk cloud's bot works on the person's Mac: ordinary work runs, a risky co
   await idle();
   expect(existsSync(join(home, "dusk bot/pwned.txt")) || existsSync(join(home, "pwned.txt"))).toBe(false);
 
+  // Allow for this task: one card, then the rest of that task's ordinary work runs
+  await say("Read the guide and set up both notes on my Mac", [{ name: "WebFetch", input: { url: "https://example.test/guide" }, ok: true, output: "make one.txt and two.txt" },
+    { server: "device", name: "mac_exec", input: { command: "echo one > one.txt" } }, { server: "device", name: "mac_exec", input: { command: "echo two > two.txt" } }]);
+  let taskCard: any;
+  await until(async () => { taskCard = (await messages()).find((message) => message.card?.tool === "mac_exec" && !message.card.answered); return Boolean(taskCard); }, "the outside-content card");
+  expect(taskCard.card).toMatchObject({ options: ["Allow", "Deny", "Allow for this task"], allowTask: true });
+  expect(taskCard.card.allowKey).toBeUndefined();
+  expect((await api("POST", `/api/threads/${nova.threadId}/respond`, { requestId: taskCard.card.requestId, behavior: "allow", always: true })).status).toBe(200);
+  await idle();
+  expect(readFileSync(join(home, "one.txt"), "utf8")).toBe("one\n");
+  expect(readFileSync(join(home, "two.txt"), "utf8")).toBe("two\n");
+  expect((await messages()).filter((message) => message.card?.tool === "mac_exec" && message.card.allowTask)).toHaveLength(2);
+
   await app.setEnabled(false);
   await until(async () => (await api("GET", "/api/mac")).body?.available === false, "the cloud to forget the Mac");
   await say("Anything on my Mac?", []);
