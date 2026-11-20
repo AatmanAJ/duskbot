@@ -44,9 +44,34 @@ describe("preinstalling OpenCode's free backup", () => {
 
   it("reports a failed download instead of throwing, and tries again next time", async () => {
     const install = vi.fn(async (): Promise<StandaloneInstalled> => { throw new Error("OpenCode couldn't be installed. Try again."); });
-    await expect(preinstallFreeBackup({ present: () => false, install })).resolves.toEqual({ outcome: "failed", error: "OpenCode couldn't be installed. Try again." });
-    await preinstallFreeBackup({ present: () => false, install });
+    await expect(preinstallFreeBackup({ present: () => false, install, retryMs: [] })).resolves.toEqual({ outcome: "failed", error: "OpenCode couldn't be installed. Try again." });
+    await preinstallFreeBackup({ present: () => false, install, retryMs: [] });
     expect(install).toHaveBeenCalledTimes(2);
+  });
+
+  it("tries a download that stopped partway again, and installs once a try gets through", async () => {
+    let tries = 0;
+    const install = vi.fn(async (): Promise<StandaloneInstalled> => {
+      tries += 1;
+      if (tries < 3) throw new Error("The OpenCode download stopped partway. Check the internet connection and try again.");
+      return installed;
+    });
+    const sleep = vi.fn(async () => {});
+    await expect(preinstallFreeBackup({ present: () => false, install, retryMs: [1, 2], sleep })).resolves.toEqual({ outcome: "installed" });
+    expect(install).toHaveBeenCalledTimes(3);
+    expect(sleep.mock.calls).toEqual([[1], [2]]);
+  });
+
+  it("reports failed after its last try instead of waiting forever", async () => {
+    const install = vi.fn(async (): Promise<StandaloneInstalled> => { throw new Error("stopped partway"); });
+    await expect(preinstallFreeBackup({ present: () => false, install, retryMs: [1], sleep: async () => {} }))
+      .resolves.toEqual({ outcome: "failed", error: "stopped partway" });
+    expect(install).toHaveBeenCalledTimes(2);
+  });
+
+  it("never rejects, even when looking for an existing copy throws", async () => {
+    const present = () => { throw new Error("PATH unreadable"); };
+    await expect(preinstallFreeBackup({ present })).resolves.toEqual({ outcome: "failed", error: "PATH unreadable" });
   });
 
   it("skips a computer the release has no build for", async () => {
@@ -75,6 +100,20 @@ describe("the preinstall at server start", () => {
     await run;
     await Promise.resolve();
     expect(refreshed).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failing install or a throwing refresh never becomes an unhandled rejection that would end the server", async () => {
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const install = vi.fn(async (): Promise<StandaloneInstalled> => { throw new Error("cut"); });
+      await startFreeBackupPreinstall({ [PREINSTALL_FREE_BACKUP_ENV]: "1" }, () => {}, { present: () => false, install, retryMs: [] });
+      await startFreeBackupPreinstall({ [PREINSTALL_FREE_BACKUP_ENV]: "1" }, () => { throw new Error("refresh broke"); }, { present: () => false, install: async () => installed });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
   });
 
   it("reads the engines again only when a copy was added", async () => {

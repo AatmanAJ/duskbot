@@ -32,6 +32,8 @@ export interface AcpTurn {
   runningTools: Set<string>;
   unkeyedToolIds: string[];
   endedToolIds: Set<string>;
+  /** Calls that only look something up (`read`, `search`): they have no live output, so their result ends them. */
+  lookupTools: Set<string>;
   interruptTimer: ReturnType<typeof setTimeout> | null;
   stopQuietWatch: (() => void) | null;
   flushAssistantText: () => void;
@@ -70,6 +72,18 @@ export function trackRunningTool(current: AcpTurn, update: { toolCallId?: unknow
   const status = update.status ?? defaultStatus;
   if (status === "completed" || status === "failed") current.runningTools.delete(update.toolCallId);
   else if (status === "pending" || status === "in_progress") current.runningTools.add(update.toolCallId);
+}
+
+/**
+ * A lookup's update that carries its result, though no terminal status: the call is done. Antigravity sends
+ * `view_file`'s result at once but its status only when the step or the turn ends, so it would show running for minutes.
+ */
+export function lookupResultArrived(current: AcpTurn, update: { sessionUpdate?: unknown; toolCallId?: unknown; kind?: unknown; status?: unknown; rawOutput?: unknown; content?: unknown }): boolean {
+  if (update.sessionUpdate !== "tool_call" && update.sessionUpdate !== "tool_call_update") return false;
+  if (typeof update.toolCallId !== "string" || !update.toolCallId) return false;
+  if (update.kind === "read" || update.kind === "search") current.lookupTools.add(update.toolCallId);
+  if (update.status === "completed" || update.status === "failed" || !current.lookupTools.has(update.toolCallId)) return false;
+  return (update.rawOutput !== undefined && update.rawOutput !== null) || (Array.isArray(update.content) && update.content.length > 0);
 }
 
 export interface AcpTurnEnd {

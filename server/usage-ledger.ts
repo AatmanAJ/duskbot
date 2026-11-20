@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { TraceParent, TraceStatus, TraceUsageStatus } from "../shared/usage-trace.ts";
+import type { UsageFailure } from "../shared/usage-signals.ts";
 import type { ResolvedSender } from "../shared/wire.ts";
 import type { CostSource } from "./model-prices.ts";
 import { billableFor, type PriceList } from "./prices.ts";
@@ -40,7 +41,7 @@ export interface UsageRow {
   endedAt?: string;
   /** The turn that delegated, handed off or resumed into this one. */
   parent?: TraceParent;
-  outcome?: { status: TraceStatus; reason?: string };
+  outcome?: { status: TraceStatus; reason?: string; failure?: UsageFailure };
   steps?: number;
   tools?: number;
   toolErrors?: number;

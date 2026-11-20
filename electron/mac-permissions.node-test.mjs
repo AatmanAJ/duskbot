@@ -24,7 +24,7 @@ function fakeMac({ trusted = false, screen = "denied", saved = {} } = {}) {
 test("reading never prompts, and says what is missing", () => {
   const { deps, calls } = fakeMac();
   const permissions = createMacPermissions(deps);
-  assert.deepEqual(permissions.status(), { supported: true, accessibility: "missing", screen: "missing", notifications: "missing" });
+  assert.deepEqual(permissions.status(), { supported: true, accessibility: "missing", screen: "missing" });
   assert.equal(calls.prompt, 0);
   assert.equal(calls.capture, 0);
 });
@@ -66,14 +66,13 @@ test("a granted permission is never asked again", async () => {
   assert.equal(calls.prompt + calls.capture + calls.settings.length, 0);
 });
 
-test("notifications: the first one shows macOS's prompt, and having asked is kept", async () => {
+test("notifications are never asked for on a Mac: asking posts nothing and saves nothing", async () => {
   const { deps, calls } = fakeMac({ saved: { other: 1 } });
   const permissions = createMacPermissions(deps);
   const after = await permissions.request("notifications", { title: "dusk bot", body: "hello" });
-  assert.equal(after.notifications, "granted");
-  assert.deepEqual(calls.notes, [{ title: "dusk bot", body: "hello" }]);
-  assert.deepEqual(calls.writes, [{ other: 1, notificationsAsked: true }]);
-  assert.equal(createMacPermissions({ ...deps }).status().notifications, "granted");
+  assert.equal("notifications" in after, false);
+  assert.deepEqual(calls.notes, []);
+  assert.deepEqual(calls.writes, []);
 });
 
 test("once both are granted after being asked here, the computer helper restarts once to pick them up", async () => {
