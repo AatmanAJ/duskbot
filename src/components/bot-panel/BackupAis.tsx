@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, LifeBuoy, Plus } from "../../icons";
+import { Check, ChevronDown, LifeBuoy, Plus } from "../../icons";
 
 import { cn } from "@/lib/cn";
 import { configuredModelInstances } from "@/lib/engine-rail";
@@ -28,7 +28,7 @@ const NO_SELECTION = { instanceId: "", model: "" };
 export const modelKey = (instanceId: string, model: string) => `${instanceId}\u0000${model}`;
 const NOTHING_PROBED: ReadonlySet<string> = new Set();
 
-export function BackupChooser({ bot, current, exclude, onPick, label, title, buttonRef, className, children, ...rest }: {
+export function BackupChooser({ bot, current, exclude, onPick, label, title, buttonRef, className, children, modes, ...rest }: {
   bot: Bot;
   current: Backup | null;
   exclude: ReadonlySet<string>;
@@ -38,6 +38,8 @@ export function BackupChooser({ bot, current, exclude, onPick, label, title, but
   buttonRef?: RefObject<HTMLButtonElement | null>;
   className: string;
   children: ReactNode;
+  /** Automatic and No backup above the models, with the one in effect checked */
+  modes?: { current: "automatic" | "none" | null; onPick: (mode: "automatic" | "none") => void };
   "data-panel-action"?: string;
 }) {
   const { state, dispatch, refreshInstances, refreshModels } = useStore();
@@ -182,6 +184,21 @@ export function BackupChooser({ bot, current, exclude, onPick, label, title, but
           }}
           className={cn("menu-surface z-[80] flex flex-col overflow-hidden", motion.className)}
         >
+          {modes && (
+            <div className="flex flex-col p-1 pb-0" data-backup-modes="">
+              {(["automatic", "none"] as const).map((mode) => (
+                <button key={mode} type="button" data-menu-row="" data-backup-mode={mode} aria-pressed={modes.current === mode}
+                  onClick={() => { modes.onPick(mode); close(true); }}
+                  className="flex min-h-8 items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-ink hover:bg-ink/[0.06] focus-visible:bg-ink/[0.06] focus-visible:outline-none">
+                  <span className="min-w-0 flex-1">
+                    <span className="block">{t(mode === "automatic" ? "botPanel.backupModel.automatic" : "botPanel.backupModel.none")}</span>
+                    {mode === "automatic" && <span className="block text-[12px] text-ink-secondary">{t("botPanel.backupModel.automaticHint")}</span>}
+                  </span>
+                  {modes.current === mode && <Check size={14} aria-hidden="true" className="shrink-0" />}
+                </button>
+              ))}
+            </div>
+          )}
           <SimpleModelMenu
             menu={menuFor()}
             query={query}
@@ -292,14 +309,14 @@ export function BackupAis({ bot, onChange }: { bot: Bot; onChange: (fallback: Ba
   );
 }
 
-/** The bot's first backup, picked beside its model: the AI that takes a message over when the bot's own is at its limit,
- * signed out or failing. The rest of the list stays on the Backup AIs page. */
-export function BackupModelRow({ bot, onChange }: { bot: Bot; onChange: (fallback: Backup[]) => void }) {
+/** The bot's backup, picked beside its model: Automatic (absent: another AI the person has working takes over), No backup
+ * (empty), or one model first in its list. The rest of the list stays on the Backup AIs page. */
+export function BackupModelRow({ bot, onChange }: { bot: Bot; onChange: (fallback: Backup[] | null) => void }) {
   const { state } = useStore();
-  const chain = bot.fallback ?? [];
-  const first = chain[0] ?? null;
+  const chain = bot.fallback;
+  const first = chain?.[0] ?? null;
   const instance = first ? state.instances.find((candidate) => candidate.instanceId === first.instanceId) : undefined;
-  const name = first ? modelName(instance, first.model) : t("botPanel.none");
+  const name = first ? modelName(instance, first.model) : t(chain ? "botPanel.backupModel.none" : "botPanel.backupModel.automatic");
   return (
     <div data-panel-row="backup-model" className="flex min-h-[30px] items-center gap-2 rounded-lg px-2 py-1.5">
       <span className="min-w-0 flex-1 truncate text-[13px] leading-[18px] tracking-[0.015em] text-ink">{t("botPanel.backupModel")}</span>
@@ -307,7 +324,8 @@ export function BackupModelRow({ bot, onChange }: { bot: Bot; onChange: (fallbac
         bot={bot}
         current={first}
         exclude={new Set([modelKey(bot.modelSelection.instanceId, bot.modelSelection.model)])}
-        onPick={(picked) => onChange([picked, ...chain.slice(1).filter((entry) => modelKey(entry.instanceId, entry.model) !== modelKey(picked.instanceId, picked.model))])}
+        onPick={(picked) => onChange([picked, ...(chain ?? []).slice(1).filter((entry) => modelKey(entry.instanceId, entry.model) !== modelKey(picked.instanceId, picked.model))])}
+        modes={{ current: first ? null : chain ? "none" : "automatic", onPick: (mode) => onChange(mode === "none" ? [] : null) }}
         label={t("botPanel.backupModel")}
         data-panel-action="backup-model"
         className="group flex h-6 max-w-[180px] min-w-0 items-center gap-1 rounded-lg px-1.5 text-[13px] text-ink hover:bg-ink/[0.06] aria-expanded:bg-ink/[0.06]"

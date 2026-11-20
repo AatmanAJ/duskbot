@@ -143,7 +143,7 @@ export function LimitModeCard({ bot, derived }: { bot: Bot; derived: Derived }) 
 export function BackupsPage({ bot, derived }: { bot: Bot; derived: Derived }) {
   return (
     <>
-      <BackupAis bot={bot} onChange={(fallback) => derived.patch({ fallback })} />
+      <BackupAis bot={bot} onChange={(fallback) => derived.patch({ fallback: fallback.length ? fallback : null })} />
       <LimitModeCard bot={bot} derived={derived} />
     </>
   );

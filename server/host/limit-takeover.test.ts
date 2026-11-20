@@ -446,3 +446,15 @@ describe("the bot's choice at a limit", () => {
     expect(takeover({ engines: () => [CLAUDE, CODEX] }).instance.freeSelection(on("claude", "claude-opus-5-5"))).toBeNull();
   });
 });
+
+describe("a bot that chose no backup", () => {
+  it("is carried on by another AI the person has working, and never when they chose one or none", () => {
+    const automatic = vi.fn((_botId: string, _from: ModelSelection, _engines: readonly TakeoverEngine[]) => [on("codex", "gpt-6")]);
+    const { instance } = takeover({ automatic });
+    expect(instance.backups(KAI.id, on("claude", "claude-opus-5-5"), "engine")).toEqual([on("codex", "gpt-6")]);
+    expect(instance.backups(KAI.id, on("claude", "claude-opus-5-5"), "signed-out")).toEqual([on("codex", "gpt-6")]);
+    expect(instance.backups(KAI.id, on("claude", "claude-opus-5-5"), "provider")).toEqual([on("codex", "gpt-6")]);
+    const chosen = takeover({ automatic, chosen: () => [on("opencode", "go-default")] }).instance;
+    expect(chosen.backups(KAI.id, on("claude", "claude-opus-5-5"), "engine")).toEqual([on("opencode", "go-default")]);
+  });
+});

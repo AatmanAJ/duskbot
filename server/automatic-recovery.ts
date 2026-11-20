@@ -1,6 +1,8 @@
 import type { ProviderAdapter } from "./contracts.ts";
 import { supportsWorkspaceFiles } from "./workspace.ts";
 import type { ModelSelection } from "../shared/wire.ts";
+import { freeFallback, rankAis } from "../shared/ai-ranking.ts";
+import { readyToRun, type DefaultSelectionContext, type SelectableInstance } from "./default-model-selection.ts";
 
 type Engine = { driverKind: string; capabilities: ProviderAdapter["capabilities"] };
 type Backup = Pick<ModelSelection, "instanceId" | "model">;
@@ -24,4 +26,18 @@ export function recoveryCapabilityError(from: Engine, to: Engine): string | unde
   if (tools.some(key => from.capabilities[key] === true && to.capabilities[key] !== true)) {
     return "The backup does not support all of this AI's tools and attachments.";
   }
+}
+
+/** A bot that chose no backup (`fallback` absent) is carried on by the other AIs the person already has working, best
+ * first: the same kind of AI first, then the shared ranking, OpenCode's free backup last. A bot set to No backup
+ * (`fallback: []`) or with its own list gets none of these. */
+export function automaticBackups(bot: { fallback?: unknown[] }, engines: readonly SelectableInstance[], from: Pick<ModelSelection, "instanceId">, context: DefaultSelectionContext = {}): Backup[] {
+  if (bot.fallback !== undefined) return [];
+  const current = engines.find((engine) => engine.instanceId === from.instanceId);
+  const working = engines.filter((engine) => engine.instanceId !== from.instanceId && !engine.found && readyToRun(engine, context)
+    && engine.snapshot.authenticated !== false && engine.models.default.trim());
+  const ranked = rankAis(working);
+  const sameKind = ranked.filter((engine) => current && engine.driverKind === current.driverKind && !freeFallback(engine));
+  const ordered = [...sameKind, ...ranked.filter((engine) => !sameKind.includes(engine) && !freeFallback(engine)), ...ranked.filter(freeFallback)];
+  return ordered.map((engine) => ({ instanceId: engine.instanceId, model: engine.models.default }));
 }

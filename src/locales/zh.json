@@ -3412,6 +3412,9 @@
   "botPanel.appsRow": "可使用的应用",
   "botPanel.backups.title": "备用 AI",
   "botPanel.backupModel": "备用模型",
+  "botPanel.backupModel.automatic": "自动",
+  "botPanel.backupModel.automaticHint": "由你已连接的其他 AI 接手",
+  "botPanel.backupModel.none": "不使用备用",
   "botPanel.backups.hint": "仅在 {name} 的 AI 达到使用上限，或无法开始处理消息时使用。由这里第一个能接手的 AI 接手，且只限该对话。使用上限重置后，对话会切换回来。",
   "botPanel.backups.row": "备用 {position}：{model}",
   "botPanel.backups.remove": "从备用中移除 {model}",
@@ -6880,7 +6883,7 @@
   "failedReply.noAi.title": "连接你的 AI,继续对话",
   "failedReply.noAi": "免费备用模型当前繁忙。请连接你已在使用的 AI,例如 Claude 或 ChatGPT,你的机器人将通过它来回复。",
   "server.freeModel.tryingNext": "仍在处理中：由另一个免费模型接手，确保你能收到回复。",
-  "server.freeModel.emptyNext": "免费备用模型返回了空内容,现由另一个免费模型接替回复。",
+  "server.freeModel.emptyNext": "仍在处理：另一个免费模型正在接手，确保你能收到回复。",
   "server.freeModel.limit": "免费备用模型的免费回复次数暂时已用完,因此这条消息没有得到回复。请连接你自己的 AI(例如 Claude 或 ChatGPT)以继续使用,或稍后重新发送。",
   "server.freeModel.noReply": "刚才没有任何免费备用模型作出回复,因此这条消息没有得到回复。请一分钟后重新发送,或连接你自己的 AI(例如 Claude 或 ChatGPT),以获得稳定可靠的回复。",
   "botPanel.closePanel": "关闭面板"
