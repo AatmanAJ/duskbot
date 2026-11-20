@@ -11,7 +11,7 @@
 // runs the pairing, chat, hub-down fallback and removal through the production link node (https://link.dusk.bot) with a
 // test account on the preview account service (phone-e2e@qa.dusk.test: never mailed, its code read from the preview
 // test mailbox), and ends the tunnel it made.
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto";
 import { mkdirSync, mkdtempSync, openSync, closeSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest, type Server } from "node:http";
@@ -104,7 +104,7 @@ async function harness(desktop = true) {
   const url = fixture.info.url, port = Number(new URL(url).port), dataDir = fixture.info.dataDir;
   let child: ChildProcess = fixture.child;
   return {
-    url, port,
+    url, port, dataDir,
     async stop() { await waitForExit(child, { signal: "SIGTERM" }); },
     async start() {
       const env = verificationServerEnvironment(parentEnv, dataDir, port);
@@ -602,6 +602,19 @@ async function main() {
       if (ok && chatWith && typeof outcome !== "string") await chat(phone.name, outcome, vpsBot);
       closeRoute(outcome);
     };
+    // the server's own `duskbot pair`, as its owner runs it over ssh: the phone app's code over the relay, typed in the app
+    const printed = await new Promise<string>((resolve) => execFile(process.execPath, ["--experimental-strip-types", join(ROOT, "server", "duskbot.ts"), "pair", "--port", String(vps.port)],
+      { cwd: ROOT, env: { ...process.env, DUSK_DATA_DIR: vps.dataDir }, timeout: 60_000 }, (_error, stdout) => resolve(String(stdout))));
+    const cliCode = /type this code in the app:\s+([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/.exec(printed)?.[1] ?? null;
+    if (check("`duskbot pair` on the server prints the phone app's code over the relay", Boolean(cliCode), cliCode ? undefined : printed.slice(0, 300))) {
+      const shipped = builds["1.2.4"], platform = fakePlatform("android", "Android 1.2.4 (duskbot pair)", "1.2.4");
+      const payload = await shipped.resolveTypedCode(cliCode!, link.base()).catch(() => null);
+      const paired = payload ? await shipped.redeemPairing(payload, platform).catch(() => null) : null;
+      if (check("Android 1.2.4: pairs with the code `duskbot pair` printed", paired?.record.transport === "relay", paired?.record.transport ?? "failed")) {
+        await shipped.createConnectionStore(platform).save(paired!.record, paired!.token);
+        onServer.push({ name: "Android 1.2.4 (duskbot pair)", shipped, platform, record: paired!.record, token: paired!.token });
+      }
+    }
     for (const phone of onServer) await serverRoute(phone, "opens on the relay and chats", onRelay, true);
     // the link agent restarts (its self-update) on the same tunnel and keys
     agentHub.stop();
