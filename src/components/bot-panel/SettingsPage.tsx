@@ -11,7 +11,6 @@ import { useDeleteAllThreads } from "../BotMenuDelete";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { SoulField } from "../SoulField";
 import { LIMIT_MODES } from "../../../shared/wire";
-import { BackupAis } from "./BackupAis";
 import { radioArrows, RadioRow, SwitchRow } from "./rows";
 import { BotConversations } from "./Conversations";
 import { panelMemoryNotes } from "./memory-notes";
@@ -144,12 +143,7 @@ export function LimitModeCard({ bot, derived }: { bot: Bot; derived: Derived }) 
 }
 
 export function BackupsPage({ bot, derived }: { bot: Bot; derived: Derived }) {
-  return (
-    <>
-      <BackupAis bot={bot} onChange={(fallback) => derived.patch({ fallback: fallback.length ? fallback : null })} />
-      <LimitModeCard bot={bot} derived={derived} />
-    </>
-  );
+  return <LimitModeCard bot={bot} derived={derived} />;
 }
 
 export function ThreadsPage({ bot }: { bot: Bot }) {

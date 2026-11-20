@@ -12,7 +12,8 @@ const MARKER = "error:";
  * OpenCode's free backup could answer and it didn't, so connecting an AI is the way on. `cli_exit`: the engine's program
  * quit or crashed before it replied; `cli_missing`: it could not be started at all. */
 export type FailedReplyReason = "signed_out" | "credits" | "usage_limit" | "rate_limit" | "overloaded" | "timeout" | "no_ai"
-  | "model_not_found" | "bad_request" | "context" | "session_lost" | "provider_down" | "cli_missing" | "cli_exit";
+  | "model_not_found" | "bad_request" | "context" | "session_lost" | "provider_down" | "cli_missing" | "cli_exit"
+  | "key_rejected" | "plan_limit" | "folder_gone";
 
 /** Why dusk bot stopped a browser run itself: `loop`, the same step did nothing three times; the others, a page said
  * so in words a retry cannot change. */

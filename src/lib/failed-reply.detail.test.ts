@@ -34,4 +34,10 @@ describe("a failed reply's line", () => {
     expect(kind("Interrupted by another dusk bot restart after resuming once; not resumed again.")).toBe("interrupted");
     expect(kind("The model refused this request.")).toBe("other");
   });
+
+  it("reads a refused sign-in on an AI that runs on a pasted key as a key to update", () => {
+    const keyed = { ...claude, access: "api", snapshot: { state: "available", authenticated: false } } as InstanceInfo;
+    expect(failedReplyKind(failedTurnTool("upstream HTTP 401: unauthorized", { reason: "signed_out", setup: true }), keyed, true)).toBe("key_rejected");
+    expect(failedReplyDetail("key_rejected", "OpenRouter", false)).toBe("OpenRouter turned down its API key. Update the key to keep going.");
+  });
 });

@@ -56,8 +56,8 @@ describe("failed turn text", () => {
     expect(signedOutEngine({ ...loginRow, claudeUpdate: true }, engine({ readOnly: true }))).toBeUndefined();
   });
 
-  it("previews any other failure by its kind's one line, never its words, and leaves ordinary steps alone", () => {
-    expect(activityPreview({ name: "error: Your Pro plan includes 2 cloud computers at once. Delete one to start another.", ok: false }, engine())).toBe("Your bot couldn't finish this reply. Try again.");
+  it("previews a plan limit by its kind's one line, never its words, and leaves ordinary steps alone", () => {
+    expect(activityPreview({ name: "error: Your Pro plan includes 2 cloud computers at once. Delete one to start another.", ok: false }, engine())).toBe("Your plan has reached its limit for this. See your plan to keep going.");
     expect(activityPreview({ name: "Bash", ok: true }, engine())).toBe("Run a command");
     expect(activityPreview({ name: "stopped: stopped", ok: true }, engine())).toBe("Stopped");
     expect(activityPreview({ name: "error: The request was cancelled by the client.", ok: false }, engine())).toBe("Stopped");

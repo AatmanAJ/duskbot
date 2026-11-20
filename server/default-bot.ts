@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { writeFileAtomic } from "./atomic.ts";
+import { serverLine } from "./server-lines.ts";
 import { DEFAULT_BOT_COLOR, DEFAULT_BOT_NAME, defaultBotPerson } from "../shared/default-bot.ts";
 import { takeImportName } from "../shared/import-name.ts";
 import type { BotRecord, Message, Store } from "./store.ts";
@@ -38,8 +39,8 @@ export function ownsDefaultBot(bot: BotRecord | null | undefined, email: string 
 export function helperIntroMessage(bot: Pick<BotRecord, "name" | "chiefOfStaff">, team?: string | null): Omit<Message, "id" | "at"> {
   // the Chief's own chat opens on one line and the first jobs, as the app shows it
   if (bot.chiefOfStaff && !team) {
-    const title = `Hi! I'm ${bot.name}. Hand me one real job and I'll get it done.`;
-    const subtitle = "What should we start with?";
+    const title = serverLine(undefined, "server.helperIntro.chiefTitle", { name: bot.name });
+    const subtitle = serverLine(undefined, "server.helperIntro.start");
     return { role: "bot", kind: "options", text: `${title} ${subtitle}`, helperIntro: true, card: { title, subtitle, options: [...HELPER_ASKS], fixedOptions: true } };
   }
   const title = bot.chiefOfStaff ? `Hey! I'm ${bot.name}. I'm new here.` : `Hi! I'm ${bot.name}, your helper for everything here.`;
@@ -50,7 +51,7 @@ export function helperIntroMessage(bot: Pick<BotRecord, "name" | "chiefOfStaff">
         ? "Ask me how to do anything here. I can set up bots, apps and routines with you."
         : "Ask me how to do anything here. I can set up bots, apps and routines with you, and keep an eye on your day.",
     team ? `On ${team}, I'm here for you and look after your own bots.` : "",
-    "What should we start with?",
+    serverLine(undefined, "server.helperIntro.start"),
   ].filter(Boolean).join(" ");
   return { role: "bot", kind: "options", text: `${title} ${subtitle}`, helperIntro: true, card: { title, subtitle, options: [...HELPER_ASKS], fixedOptions: true } };
 }

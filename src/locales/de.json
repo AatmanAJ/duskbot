@@ -353,6 +353,8 @@
   "server.limitHold.askWait": "Auf das Zurücksetzen warten",
   "server.limitHold.carriedOn": "{engine} hat sein Limit bis {time} erreicht, {backup} antwortet.",
   "server.limitHold.carriedOnNoTime": "{engine} hat sein Limit erreicht, {backup} antwortet.",
+  "server.helperIntro.chiefTitle": "Hi! Ich bin {name}. Gib mir eine echte Aufgabe, und ich erledige sie.",
+  "server.helperIntro.start": "Womit sollen wir anfangen?",
   "server.status.searchingFor": "Suche nach {topic}",
   "server.status.searchingWeb": "Suche im Web",
   "server.status.checking": "Prüfe {site}",

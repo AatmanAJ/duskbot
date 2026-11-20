@@ -84,6 +84,8 @@ const FREE_BACKUP_DOWN: ReadonlySet<ErrorKind> = new Set(["out_of_credit", "usag
  * since is no longer the fix, and `ownAi` (an AI the person connected is ready) means connecting one isn't either. */
 export function failedReplyKind(tool: NonNullable<Message["tool"]>, engine: InstanceInfo | undefined, ownAi = false): FailedReplyKind {
   let kind = rowFailureKind(tool);
+  // an AI that runs on a key the person pasted is fixed by a new key, never by signing in
+  if (kind === "signed_out" && (engine?.access === "api" || engine?.access === "custom")) kind = "key_rejected";
   if (kind === "signed_out" && engine?.snapshot?.state === "available" && engine.snapshot.authenticated !== false) kind = "other";
   if (kind === "no_ai" && ownAi) kind = "other";
   return !ownAi && FREE_BACKUP_DOWN.has(errorKind(kind)) && (!engine || freeFallback(engine)) ? "no_ai" : kind;
@@ -96,7 +98,7 @@ export function plainFailureWords(cause: string): string | null {
 }
 
 /** Most actionable first: when bots fail for different reasons, the card says the one a person can fix. */
-const PRIORITY: ErrorKind[] = ["repeating", "no_ai", "signed_out", "ai_setup", "out_of_credit", "usage_limit", "model", "chat_full", "computer",
+const PRIORITY: ErrorKind[] = ["repeating", "no_ai", "signed_out", "key_rejected", "ai_setup", "folder", "out_of_credit", "plan", "usage_limit", "model", "chat_full", "computer",
   "interrupted", "busy", "no_reply", "other"];
 
 export function mostActionable<T extends { kind: FailedReplyKind }>(items: readonly T[]): T | undefined {
@@ -105,6 +107,9 @@ export function mostActionable<T extends { kind: FailedReplyKind }>(items: reado
 
 /** Each kind's one sentence; a place, a stopped browser run and a Claude update bring their own words. */
 const WORDS: Record<Exclude<ErrorKind, "signed_out" | "computer" | "repeating">, LocaleKey> = {
+  key_rejected: "failedReply.keyRejected",
+  plan: "failedReply.plan",
+  folder: "failedReply.folder",
   out_of_credit: "failedReply.credits",
   usage_limit: "failedReply.usageLimit",
   busy: "failedReply.busy",

@@ -9,12 +9,15 @@ export type FailureKind = FailedReplyReason | "claude_update" | "place" | "resta
 
 /** The named kinds a person tells failures apart by. Every FailureKind is one of these, and each has one plain
  * sentence and one button; a usage limit is a notice, never an error. */
-export type ErrorKind = "signed_out" | "out_of_credit" | "usage_limit" | "busy" | "no_reply" | "model" | "chat_full" | "ai_setup"
-  | "no_ai" | "computer" | "repeating" | "interrupted" | "other";
+export type ErrorKind = "signed_out" | "key_rejected" | "out_of_credit" | "usage_limit" | "plan" | "busy" | "no_reply" | "model" | "chat_full"
+  | "ai_setup" | "folder" | "no_ai" | "computer" | "repeating" | "interrupted" | "other";
 
 export const ERROR_KIND_OF: Readonly<Record<FailureKind, ErrorKind>> = {
   signed_out: "signed_out",
+  key_rejected: "key_rejected",
   credits: "out_of_credit",
+  plan_limit: "plan",
+  folder_gone: "folder",
   usage_limit: "usage_limit",
   rate_limit: "busy",
   overloaded: "busy",
@@ -50,6 +53,9 @@ export type FailureAction =
   | "connect_ai"
   | "switch_ai"
   | "update_engine"
+  | "update_key"
+  | "open_plan"
+  | "open_folder"
   | "set_up_engine"
   | "new_chat"
   | "continue_after_reset"
@@ -70,6 +76,9 @@ export interface FailurePlan {
 
 export const FAILURE_PLANS: Readonly<Record<ErrorKind, FailurePlan>> = {
   signed_out: { heal: ["backup"], action: "sign_in", after: "retry", line: "Your AI is signed out. Sign in again to keep going." },
+  key_rejected: { heal: ["backup"], action: "update_key", after: "retry", line: "Your AI's provider turned down its API key. Update the key to keep going." },
+  plan: { heal: [], action: "open_plan", line: "Your plan has reached its limit for this. See your plan to keep going." },
+  folder: { heal: [], action: "open_folder", after: "retry", line: "This bot's folder was moved or deleted. Pick a folder to keep going." },
   out_of_credit: { heal: ["backup"], action: "switch_ai", line: "Your AI account is out of credit. Add credit there, or switch this bot to another AI." },
   usage_limit: { heal: ["backup", "wait"], action: "continue_after_reset", instead: "switch_ai", line: "This carries on once your AI's limit resets, or switch this bot to another AI now." },
   busy: { heal: ["retry", "backup"], action: "retry", instead: "switch_ai", line: "Your AI is busy right now. Try again in a moment." },
@@ -98,6 +107,25 @@ const RATE_WORDS = /\b429\b|rate.?limit|too many requests/i;
 const BUSY_WORDS = /overloaded|\b529\b|\b503\b|capacity|service unavailable/i;
 const SLOW_WORDS = /timeout|timed out|ETIMEDOUT/i;
 
+// dusk bot's own refusals, each with the one thing that fixes it
+const KEY_WORDS = /\brejected this key\b|\binvalid_api_key\b|\b(?:invalid|incorrect|revoked|expired|disabled)[ _-]?api[ _-]?key\b|\bapi[ _-]?key (?:is |was |has been )?(?:invalid|incorrect|revoked|expired|not valid)\b/i;
+const LOGIN_WORDS = /\/login\b|sign in again|not logged in/i;
+const PLAN_WORDS = /\bplan includes \d+\b|\bhas no room for another\b|\bWeekly limit reached\b/i;
+const FOLDER_WORDS = /\b(?:bot|room)'s folder .+ was moved or deleted\b|working folder no longer exists\b/i;
+const MODEL_GONE_WORDS = /'s model is unavailable\b|\bis unavailable: pick another model\b|\ballows only company models\b|\bdoes not allow the .+ engine\b/i;
+const NO_AI_WORDS = /\bConnect an AI first\b|\bno AI is connected yet\b|\bneeds to connect an AI\b/i;
+
+/** What one of dusk bot's own refusals, or an engine's words for a bad key, says stopped a reply; undefined for any other
+ * words. The server's classifier reads these first, so each gets the button that fixes it. */
+export function plainCauseReason(cause: string): FailedReplyReason | undefined {
+  if (KEY_WORDS.test(cause) && !LOGIN_WORDS.test(cause)) return "key_rejected";
+  if (PLAN_WORDS.test(cause)) return "plan_limit";
+  if (FOLDER_WORDS.test(cause)) return "folder_gone";
+  if (MODEL_GONE_WORDS.test(cause)) return "model_not_found";
+  if (NO_AI_WORDS.test(cause)) return "no_ai";
+  return undefined;
+}
+
 /** The one reading of a failed row: its own flags and the reason the server stored, then, for a row stored before the
  * server kept a reason, its words. Clients and the server's log both read rows with this. */
 export function rowFailureKind(tool: Pick<FailedTurnTool, "name" | "reason" | "setup" | "place" | "blocker" | "claudeUpdate" | "limitResetsAt"> & { rescue?: unknown }): FailureKind {
@@ -108,14 +136,14 @@ export function rowFailureKind(tool: Pick<FailedTurnTool, "name" | "reason" | "s
   if (tool.claudeUpdate) return "claude_update";
   if (RESTART_CUT.test(cause)) return "restart_interrupted";
   if (tool.reason) return tool.reason;
-  return CREDIT_WORDS.test(cause) ? "credits"
+  return plainCauseReason(cause) ?? (CREDIT_WORDS.test(cause) ? "credits"
     : tool.limitResetsAt || USAGE_WORDS.test(cause) ? "usage_limit"
     : tool.setup && SIGNED_OUT_WORDS.test(cause) ? "signed_out"
     : SESSION_LOST_WORDS.test(cause) ? "session_lost"
     : RATE_WORDS.test(cause) ? "rate_limit"
     : BUSY_WORDS.test(cause) ? "overloaded"
     : SLOW_WORDS.test(cause) ? "timeout"
-    : "other";
+    : "other");
 }
 
 // Crockford base32 without 0/1, so a code read aloud or retyped can't be mistaken: no I, L, O, U, 0 or 1

@@ -41,6 +41,7 @@ import { macCuaPermissionMessage, missingMacCuaPermissions } from "@/lib/mac-cua
 import { claudeUpdateTarget, failedTurnCause, signedOutEngine } from "@/lib/failed-turn";
 import { blockerDetail, failedReplyDetail, failedReplyKind } from "@/lib/failed-reply";
 import { resetTime } from "@/lib/limit-resets";
+import { openBotSettings } from "./bot-panel/panel-link";
 import { providerName } from "@/lib/simple-model-menu";
 import { lowerFirst } from "@/lib/lower-first";
 import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
@@ -296,11 +297,17 @@ export function FailedTurnRow({ tool, engine, onRetry, botId, threadId }: {
   threadId?: string;
 }) {
   const resume = useLimitResetContinue(botId, threadId, tool.limitResetsAt);
+  const { dispatch } = useStore();
   if (tool.place && botId) return <PlaceFailedRow place={tool.place} botId={botId} threadId={threadId} onRetry={onRetry} />;
   const cause = failedTurnCause(tool.name) ?? tool.name;
   if (tool.partial) return tool.owned ? null : <PartlyDoneRow cause={cause} onRetry={onRetry} />;
-  const signedOut = signedOutEngine(tool, engine);
   const kind = failedReplyKind(tool, engine, true);
+  const signedOut = kind === "signed_out" ? signedOutEngine(tool, engine) : undefined;
+  // the kinds a setting fixes: the button opens that setting
+  const fix = kind === "key_rejected" ? { label: t("failedReply.updateKey"), onClick: () => dispatch({ type: "toggleAppSettings", open: true, section: "connections" }) }
+    : kind === "plan_limit" ? { label: t("failedReply.seePlan"), onClick: () => dispatch({ type: "toggleAppSettings", open: true, section: "cloudAccount" }) }
+    : kind === "folder_gone" && botId ? { label: t("botPanel.page.folder"), onClick: () => openBotSettings(dispatch, "access", { botId, page: "folder" }) }
+    : undefined;
   const limited = kind === "usage_limit";
   const ai = engine ? providerName(engine) : t("failedReply.limitHold.anAi");
   const headline = signedOut ? t("chat.error.signedOut", { name: signedOut.displayName })
@@ -313,8 +320,8 @@ export function FailedTurnRow({ tool, engine, onRetry, botId, threadId }: {
       headline={headline}
       plain={{ ...(limited ? { tone: "info" as const } : {}), ...(tool.errorRef && !limited ? { errorRef: tool.errorRef } : {}) }}
       onRetry={onRetry}
-      action={resume}
-      setupInstance={tool.setup ? engine : undefined}
+      action={fix ?? resume}
+      setupInstance={tool.setup && !fix ? engine : undefined}
       claudeUpdateInstance={tool.claudeUpdate ? claudeUpdateTarget(engine) : undefined}
     />
   );
