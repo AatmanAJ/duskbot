@@ -168,17 +168,23 @@ function palette(stage: HTMLElement, m: DesktopMotion): number {
     cut(letter, { opacity: 0 }, { opacity: 1 }, at + i * 70);
   }
   const query = at + 5 * 70;
-  for (const row of first) cut(row, { opacity: 1 }, { opacity: 0 }, query);
+  // the four settings rows stay (same keys) and move up at once; the four rows the query drops fade where they stood at c
+  first.forEach((row, i) => {
+    if (m.palette.rowsMs && i < 4) play(row, [{ opacity: 1 }, { opacity: 0 }], query, pacedMs(m.palette.rowsMs), OUT(), "forwards");
+    else cut(row, { opacity: 1 }, { opacity: 0 }, query);
+  });
   const home = [{ transform: `translateY(${3 * 51}px)` }, { transform: "translateY(0px)" }];
   if (glide) play(hi, home, query, pacedMs(m.palette.glideMs), OUT(), "forwards");
   else cut(hi, home[0], home[1], query);
-  second.forEach((row, i) => {
-    if (m.palette.rowsMs) play(row, [{ opacity: 0 }, { opacity: 1 }], query + pacedMs(m.palette.staggerMs) * [0, 1, 1.8, 2.4][i], pacedMs(m.palette.rowsMs), OUT());
-    else cut(row, { opacity: 0 }, { opacity: 1 }, query);
-  });
+  for (const row of second) cut(row, { opacity: 0 }, { opacity: 1 }, query);
   const close = query + 1100;
-  cut(dim, { opacity: 1 }, { opacity: 0 }, close);
-  return cut(box, { opacity: 1 }, { opacity: 0 }, close) + 500;
+  const out = m.palette.leave;
+  if (!out) {
+    cut(dim, { opacity: 1 }, { opacity: 0 }, close);
+    return cut(box, { opacity: 1 }, { opacity: 0 }, close) + 500;
+  }
+  play(dim, [{ opacity: 1 }, { opacity: 0 }], close, pacedMs(out.ms), OUT(), "forwards");
+  return leave(box, out.ms, out.scale, out.y, close) + 500;
 }
 
 /** Settings: open, two sections, close. */
@@ -348,8 +354,9 @@ function toasts(stage: HTMLElement, m: DesktopMotion): number {
       play(t, [{ translate: `0 ${spec.y}`, scale: String(spec.scale) }, { translate: "0 0", scale: "1" }], at, ms, cssCurve(spec.curve));
     }
     at += 1300;
-    cut(t, { opacity: 1 }, { opacity: 0 }, at);
-    at += 300;
+    if (!spec) cut(t, { opacity: 1 }, { opacity: 0 }, at);
+    else play(t, [{ opacity: 1, translate: "0 0", scale: "1" }, { opacity: 0, translate: `0 ${spec.leaveY}`, scale: String(spec.leaveScale) }], at, pacedMs(spec.leaveMs), OUT(), "forwards");
+    at += 400;
   }
   return at + 300;
 }
