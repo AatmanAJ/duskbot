@@ -1,13 +1,14 @@
 import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { grokExportFileName, GROK_PROMPT_URL_MAX, GROK_SECTION } from "../shared/grok-move.ts";
 import { GROK_SENTINEL, SYNTHETIC_BOTS, syntheticExport } from "./testing/grok-bot-profile.ts";
-import { grokMoveFixture } from "./testing/grok-move-fixture.ts";
+import { grokMoveFixture, removeGrokMoveFixtures } from "./testing/grok-move-fixture.ts";
 
 type Fixture = Awaited<ReturnType<typeof grokMoveFixture>>;
 let app: Fixture | null = null;
+afterAll(removeGrokMoveFixtures);
 afterEach(async () => {
   await app?.close();
   app = null;

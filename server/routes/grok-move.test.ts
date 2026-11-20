@@ -1,13 +1,13 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { GROK_EXPORT_MAX_CHARS } from "../../shared/grok-import.ts";
 import { GROK_MOVE_ROUTES as R } from "../../shared/grok-move.ts";
 import { json, readBody } from "../harness/http.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { SYNTHETIC_BOTS, syntheticExport } from "../testing/grok-bot-profile.ts";
-import { grokMoveFixture } from "../testing/grok-move-fixture.ts";
+import { grokMoveFixture, removeGrokMoveFixtures } from "../testing/grok-move-fixture.ts";
 import { createGrokMoveRoutes } from "./grok-move.ts";
 import { dispatchRoutes } from "./table.ts";
 
@@ -21,6 +21,7 @@ const TALLY = SYNTHETIC_BOTS[3]!.id;
 
 let fixture: Awaited<ReturnType<typeof grokMoveFixture>> | null = null;
 const servers: Server[] = [];
+afterAll(removeGrokMoveFixtures);
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise((done) => server.close(done))));
   await fixture?.close();

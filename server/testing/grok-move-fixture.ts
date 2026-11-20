@@ -9,8 +9,19 @@ import type { GrokMover } from "../grok-bot-move.ts";
 import type { SetupMachine } from "../setup-import.ts";
 import { plantGrokProfile } from "./grok-bot-profile.ts";
 
+let root: string | null = null;
+
+/** The store's last debounced writes can land in a test's home after it is removed, so every home sits under one
+ * folder that goes once the suite has settled. */
+export async function removeGrokMoveFixtures(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (root) rmSync(root, { recursive: true, force: true });
+  root = null;
+}
+
 export async function grokMoveFixture(options: { plant?: boolean } = {}) {
-  const home = mkdtempSync(join(tmpdir(), "dusk-grok-direct-"));
+  root ??= mkdtempSync(join(tmpdir(), "dusk-grok-direct-"));
+  const home = mkdtempSync(join(root, "home-"));
   vi.resetModules();
   vi.stubEnv("HOME", home);
   vi.stubEnv("USERPROFILE", home);
