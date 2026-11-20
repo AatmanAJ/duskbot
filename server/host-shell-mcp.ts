@@ -256,6 +256,7 @@ function main(): void {
   let hidden: string[] = [];
   try { hidden = JSON.parse(process.env[HOST_SHELL_HIDDEN_ENV] ?? "[]"); } catch { hidden = []; }
   const options: HostShellOptions = { cwd, hidden: Array.isArray(hidden) ? hidden.filter((path): path is string => typeof path === "string" && isAbsolute(path)) : [] };
+  let pending = 0, ended = false;
   createInterface({ input: process.stdin }).on("line", (line) => {
     if (!line.trim()) return;
     let message: unknown;
@@ -263,9 +264,11 @@ function main(): void {
       process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error." } })}\n`);
       return;
     }
-    void handleHostShellRpc(message, options).then((answer) => { if (answer) process.stdout.write(`${JSON.stringify(answer)}\n`); });
+    pending++;
+    void handleHostShellRpc(message, options).then((answer) => { if (answer) process.stdout.write(`${JSON.stringify(answer)}\n`); })
+      .finally(() => { if (--pending === 0 && ended) process.exit(0); });
   });
-  process.stdin.on("end", () => process.exit(0));
+  process.stdin.on("end", () => { ended = true; if (pending === 0) process.exit(0); });
 }
 
 if (process.argv[1] && /host-shell-mcp\.(?:ts|js)$/.test(process.argv[1])) main();
