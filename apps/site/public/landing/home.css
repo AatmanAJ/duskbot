@@ -143,6 +143,8 @@
 /* the models people already pay for, each in a near-neutral box; the logo carries the colour */
 .hero .m { display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 8px 0 6px; border-radius: 7px; margin: 0 1px; vertical-align: middle; line-height: 1; white-space: nowrap; font-size: 15px; font-weight: 550; color: var(--ink); background: color-mix(in oklab, var(--wash) 95%, var(--t)); }
 .hero .m .logo { width: 15px; height: 15px; }
+.hero a.m { text-decoration: none; transition: background-color 0.2s ease; }
+@media (hover: hover) and (pointer: fine) { .hero a.m:hover { background: color-mix(in oklab, var(--wash) 78%, var(--t)); } }
 .hero .m-chatgpt { --t: #c2ecfc; } .hero .m-claude { --t: #ffc4dd; } .hero .m-gemini { --t: #d0cefb; } .hero .m-grok { --t: #fff3a0; }
 @media (min-width: 761px) { .hero .ms { white-space: nowrap; } }
 /* the download button is split: the main half follows your system, the arrow opens every other platform */
@@ -478,6 +480,9 @@ button.toggle::before { content: ""; position: absolute; inset: -11px -3px; }
 .qs details { border-radius: var(--r-xl); background: var(--wash); }
 .qs summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; padding: 14px 16px 14px 28px; border-radius: var(--r-xl); font-size: 19px; line-height: 1.25; font-weight: 550; letter-spacing: -0.02em; cursor: pointer; list-style: none; }
 .qs summary::-webkit-details-marker { display: none; }
+/* a press tints the question inside its own rounded shape, instead of the browser's square grey flash */
+.qs summary { -webkit-tap-highlight-color: transparent; }
+.qs summary:active { background-image: linear-gradient(var(--focus), var(--focus)); }
 .qs summary .i { width: 36px; height: 36px; padding: 10px; border-radius: 50%; background: rgb(255 255 255 / 0.75); transition: rotate 0.16s var(--mk-ease-out); }
 .qs details[open]:not([data-mk-closing]) summary .i { rotate: 45deg; }
 .qs details p { margin: 0; padding: 0 72px 24px 28px; font-size: 16.5px; line-height: 1.5; color: var(--text); max-width: 60ch; }

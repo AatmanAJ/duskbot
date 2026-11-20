@@ -2,9 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { productName } from "@/lib/brand";
 import { loadPageLanguage } from "@/lib/language-preference";
-import { setColorUserBubblesDefault } from "@/lib/user-bubble-preference";
 import { applySkinChoice, readSkinChoice, THEME_SKINS, type SkinChoice } from "@/lib/skins";
 import { applyFont, readFont } from "@/lib/fonts";
+import { applyMotionSpeed } from "@/lib/motion-speed";
 import { PageBoundary } from "@/components/PageBoundary";
 import { watchStaleChunks } from "@/lib/stale-chunks";
 import "./styles.css";
@@ -12,11 +12,14 @@ import "@/styles/overlays.css";
 import "@/styles/motion.css";
 import "./mobile.css";
 import { installHaptics } from "./haptics";
+import { installLiveActivitySetting } from "./live-activity-setting";
 import { followSystemTextSize } from "./text-scale";
 import { PlatformContext, type MobilePlatform } from "./platform";
 import { AccountGate } from "./account/AccountGate";
+import { claimFreshInstall } from "./account/install";
 import { ConnectionGate } from "./connection/ConnectionGate";
 import { MobileApp } from "./MobileApp";
+import { installNativeAbort } from "./transport/native-abort";
 
 const PHONE_SKINS: readonly SkinChoice[] = ["system", THEME_SKINS.light, THEME_SKINS.dark];
 
@@ -35,15 +38,20 @@ export function mountMobile(platform: MobilePlatform): void {
   if (params.has("frame")) document.documentElement.dataset.phoneFrame = "";
   // the phone page in a browser loads parts of itself later; after a deploy one quiet reload fetches the new ones
   if (!platform.native) watchStaleChunks();
+  else installNativeAbort();
   followSystemTextSize(platform);
-  setColorUserBubblesDefault(false);
   document.documentElement.dataset.mobileApp = platform.kind;
+  // the app never zooms: webkit's pinch gestures are stopped, a double tap never scales
+  for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
   applySkinChoice(phoneSkin(params));
   applyFont(readFont());
+  applyMotionSpeed(document.documentElement);
   const dark = document.documentElement.dataset.skin === THEME_SKINS.dark;
   platform.setStatusBar?.(dark ? "light" : "dark");
   document.title = productName();
-  void Promise.all([loadPageLanguage(), installHaptics(platform)]).then(() => {
+  // before anything this launch writes a preference, which would make a new install look like an update
+  if (platform.native) void claimFreshInstall(platform);
+  void Promise.all([loadPageLanguage(), installHaptics(platform), installLiveActivitySetting(platform)]).then(() => {
     createRoot(document.getElementById("root")!).render(
       <StrictMode>
         <PageBoundary>

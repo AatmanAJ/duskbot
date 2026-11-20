@@ -300,7 +300,7 @@ ${css.map((file) => `<link rel="stylesheet" href="${stamped(file)}">`).join('\n'
 </head>
 <body${home ? ' class="is-home"' : ''}>
 <a class="skip" href="#main">skip to the page</a>
-<header class="bar">${brand}<nav aria-label="main">${links(NAV)}<a class="cta" href="${APP_URL}/">sign in</a></nav><details class="menu"><summary><span class="vh">menu</span>${icon('menu')}${icon('x')}</summary><nav aria-label="every page">${links(MENU)}<a class="cta" href="${APP_URL}/">sign in</a></nav></details></header>
+<header class="bar">${brand}<nav aria-label="main">${links(NAV)}<a class="cta" href="${APP_URL}/">sign in</a></nav><details class="menu"><summary><span class="vh">menu</span><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span></summary><nav aria-label="every page">${links(MENU)}<a class="cta" href="${APP_URL}/">sign in</a></nav></details></header>
 <main id="main" class="${home ? 'home' : `inner${kind ? ' ' + kind : ''}`}">
 ${macros(body).replace(/(src=")\/(art\/[\w./-]+)"/g, (_, lead, file) => `${lead}${stamped(file)}"`)}
 </main>
@@ -358,8 +358,10 @@ for (const page of pages) {
   const at = page.name === 'home' ? '/' : page.name === '404' ? '/404.html' : `/${page.name}`;
   const jsonld = page.name === 'home' ? [appLd, orgLd, ...faqLd(macros(body))] : page.name === 'about' ? [orgLd, ...faqLd(macros(body))] : faqLd(macros(body));
   // the waitlist never carries the site's bar or footer, wherever it is served
-  const html = layout({ ...page, page: page.name, at, kind: page.kind || `p-${page.name}`, body, jsonld, noindex: page.name === '404' });
-  write(at, page.name === 'waitlist' ? soloWaitlist(html) : html, { index: page.name !== '404' });
+  // the phone app's link pages (/m/...) are for one person's phone, never for search
+  const noindex = page.noindex === true || page.name === '404';
+  const html = layout({ ...page, page: page.name, at, kind: page.kind || `p-${page.name.replace(/\//g, '-')}`, body, jsonld, noindex });
+  write(at, page.name === 'waitlist' ? soloWaitlist(html) : html, { index: !noindex });
 }
 
 // the changelog is one markdown file: a "## version · date" heading per release, newest first, then a list
@@ -396,7 +398,7 @@ const licenseSummary = `<section class="lic-sum" aria-label="the license in shor
 <div><dt>you can't</dt><dd>use it, or a changed copy, for commercial purposes without our license: at or for a business, inside a product, or as a commercial service. this applies to every version, including older copies.</dd></div>
 <div><dt>commercial license</dt><dd><a href="mailto:hello@dusk.bot">hello@dusk.bot</a></dd></div>
 </dl>
-<p>the license is the <a href="https://polyformproject.org/licenses/noncommercial/1.0.0">polyform noncommercial license 1.0.0</a>; its full text is at the end of this page. parts originally from the open source openmausbot project stay under their original apache 2.0 license, listed in <a href="https://github.com/DuskBotAI/duskbot/tree/main/third_party/openmausbot">third_party/openmausbot</a>.</p>
+<p>the license is the <a href="https://polyformproject.org/licenses/noncommercial/1.0.0">polyform noncommercial license 1.0.0</a>; its full text is at the end of this page. dusk bot is a fork of <a href="https://github.com/milind-soni/OpenMausBot">openmausbot</a>; the parts originally from it stay under their original apache 2.0 license, listed in <a href="https://github.com/DuskBotAI/duskbot/tree/main/third_party/openmausbot">third_party/openmausbot</a>.</p>
 </section>
 `;
 // the LICENSE file under its own heading, its headings a level down so they sit under it

@@ -44,7 +44,7 @@ for (const file of pages) {
       : [...src.matchAll(/"src":\s*"([^"]+)"/g)].map((m) => m[1]);
   for (const raw of refs) {
     const ref = raw.replace(/&amp;/g, '&');
-    if (/^(https?:|mailto:|data:|tel:)/.test(ref)) continue;
+    if (/^(https?:|mailto:|data:|tel:|duskbot:)/.test(ref)) continue;
     checked++;
     const [beforeHash, hash] = ref.split('#');
     const urlPath = beforeHash.split('?')[0];

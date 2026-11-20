@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { phoneTooOld } from "../../../shared/server-api";
 import type { MobilePlatform } from "../platform";
 
-/** the App Store's numeric id for the iPhone app, once it is listed; until then the update button opens dusk.bot/download */
-export const IOS_APP_STORE_ID: string | null = null;
-const ANDROID_PACKAGE = "bot.dusk.mobile";
+/** the App Store's numeric id for the iPhone app (apps/site/releases.json "ios") */
+export const IOS_APP_STORE_ID: string | null = "6834725640";
+/** the Android app is a signed APK on dusk.bot's download page, not on Google Play */
+export const ANDROID_APP_URL = "https://dusk.bot/download#android";
 
 export function storeUrl(kind: MobilePlatform["kind"], iosId: string | null = IOS_APP_STORE_ID): string {
-  if (kind === "android") return `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
+  if (kind === "android") return ANDROID_APP_URL;
   if (kind === "ios" && iosId) return `https://apps.apple.com/app/id${iosId}`;
   return "https://dusk.bot/download";
 }

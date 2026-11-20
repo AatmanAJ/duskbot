@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createLinkService } from "../src/app.mjs";
-import { createPhoneHub, createServing, harnessSync, sealKeyOf, x25519Pair } from "../agent.mjs";
+import { createPhoneHub, createServing, harnessSync, noteRelayDate, sealKeyOf, x25519Pair } from "../agent.mjs";
 import { createTunnelProxy, frameGuard, openFrame, sealFrame, sha256hex } from "../../../electron/vps-link-protocol.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -91,6 +91,47 @@ describe("phone hub without sockets", () => {
   }
   const control = (channel = cid, channelKey = key, r = "controlaaaaa") => ({ channel, frames: [sealFrame(channelKey, channel, "to-vps", { t: "ctl", r, op: "ping" })] });
 
+  it("says once when the channel sync and read are back after failing", async () => {
+    const lines = [];
+    let syncs = 0, reads = 0;
+    hub = createPhoneHub({ base: "http://relay.test", id, token: vps, keys: agentKeys, log: (text) => lines.push(text),
+      sync: async (input) => {
+        syncs += 1;
+        if (syncs === 1) throw new Error("relay unreachable");
+        if (syncs === 2) return { rev: 1, channels: [spec()] };
+        return new Promise((_resolve, reject) => input.signal.addEventListener("abort", () => reject(new Error("stopped")), { once: true }));
+      },
+      fetchImpl: async (url, init) => {
+        if (init.method === "PUT") return new Response('{"ok":true}', { status: 200 });
+        reads += 1;
+        if (reads === 1) return new Response("", { status: 502 });
+        return new Response(new ReadableStream({ start(controller) {
+          controller.enqueue(line({ frames: [] }));
+          init.signal.addEventListener("abort", () => controller.error(new Error("stopped")), { once: true });
+        } }), { headers: { "content-type": "application/x-ndjson" } });
+      },
+    });
+    running = hub.run();
+    await until(() => lines.includes("link: phone channel sync is back after 1 retry") && lines.includes("link: phone channel read is back after 1 retry"));
+    expect(lines.filter((text) => text.startsWith("link: phone channel sync"))).toEqual([
+      "link: phone channel sync retrying (relay unreachable)", "link: phone channel sync is back after 1 retry",
+    ]);
+    expect(lines.filter((text) => text.startsWith("link: phone channel read"))).toEqual([
+      "link: phone channel read retrying", "link: phone channel read is back after 1 retry",
+    ]);
+  });
+
+  it("registers a pairing grant's end in the relay's time, so a computer whose clock is 30 minutes slow still opens its pairing channel", async () => {
+    noteRelayDate(new Date(Date.now() + 30 * 60_000).toUTCString());
+    try {
+      const grant = spec();
+      await start([grant]);
+      const sent = registrations[0].channels[0].expiresAt;
+      expect(sent - grant.expiresAt).toBeGreaterThan(29 * 60_000);
+      expect(sent - grant.expiresAt).toBeLessThan(31 * 60_000);
+    } finally { noteRelayDate(new Date().toUTCString()); }
+  });
+
   it("opens each channel separately, drops replays and unknown channels, and seals replies for their owner", async () => {
     await start([spec(), spec(second, anotherKey)]);
     const first = control();
@@ -140,6 +181,15 @@ describe("phone hub without sockets", () => {
     await start([spec(), zero]);
     expect(registrations[0].channels.map((channel) => channel.id)).toEqual([cid]);
     expect(calls[1]).toMatchObject({ applied: 1, failed: [second] });
+  });
+
+  it("leaves out every taken channel in turn, so one leftover tunnel never blocks the rest", async () => {
+    const third = "phoneaaaac";
+    registration = () => registrations.length === 1 ? new Response(JSON.stringify({ code: "taken", id: second }), { status: 409 })
+      : registrations.length === 2 ? new Response(JSON.stringify({ code: "taken", id: third }), { status: 409 }) : new Response("{}", { status: 200 });
+    await start([spec(), spec(second, anotherKey), spec(third, anotherKey)]);
+    expect(registrations.map((body) => body.channels.map((channel) => channel.id))).toEqual([[cid, second, third], [cid, third], [cid]]);
+    expect(calls[1]).toMatchObject({ applied: 1, failed: [second, third] });
   });
 
   it("retries a taken registration exactly once and reports the failed id at the applied revision", async () => {
@@ -259,9 +309,9 @@ describe("phone relay hub", () => {
     rev += 1;
     for (const reply of Array.from(waiters)) reply();
   }
-  async function start(list, { polling = false, aheadMs } = {}) {
+  async function start(list, { polling = false, aheadMs, where } = {}) {
     change(list);
-    hub = createPhoneHub({ base, id, token: vps, keys, server, sync: harnessSync(server), origin: "https://vps.example", spki: null, log: () => {}, ...(aheadMs ? { aheadMs } : {}), fetchImpl: (url, init) => {
+    hub = createPhoneHub({ base, id, token: vps, keys, server, sync: harnessSync(server), origin: "https://vps.example", spki: null, log: () => {}, ...(aheadMs ? { aheadMs } : {}), ...(where ? { where } : {}), fetchImpl: (url, init) => {
       if (init.method === "PUT") puts.push(JSON.parse(init.body));
       if (init.method === "POST") agentPosts.push({ url, ...JSON.parse(init.body) });
       return fetch(polling ? url.replace(/&stream=1$/, "") : url, init);
@@ -277,6 +327,23 @@ describe("phone relay hub", () => {
   }
   const post = (info, frames) => fetch(`${base}/v1/channels/${info.channel}/to-vps`, { method: "POST", headers: { authorization: `Bearer ${info.token}`, "content-type": "application/json" }, body: JSON.stringify({ frames }) });
 
+  it("tells the server where phones reach it now, each round, keeping the last one known when it cannot be read", async () => {
+    const spki = `${"A".repeat(43)}=`;
+    let address = { mode: "direct", via: "domain", origin: "https://box.example", spki };
+    await start([], { where: async () => address });
+    expect(syncSeen[0]).toMatchObject({ origin: "https://box.example", spki });
+    address = { mode: "direct", via: "quick", origin: "https://new-name.trycloudflare.com", spki: null };
+    change([]);
+    await until(() => syncSeen.some((input) => input.origin === "https://new-name.trycloudflare.com"));
+    address = null;
+    change([]);
+    await until(() => syncSeen.some((input) => input.applied === rev));
+    expect(syncSeen.at(-1)).toMatchObject({ origin: "https://new-name.trycloudflare.com", spki: null });
+    address = { mode: "relay", via: "relay", origin: null, spki: null };
+    change([]);
+    await until(() => syncSeen.at(-1).origin === null);
+  });
+
   it("registers through owner loopback sync and only forwards the grant's three allowed paths", async () => {
     const info = grant();
     await start([info.spec]);
@@ -284,8 +351,11 @@ describe("phone relay hub", () => {
     expect(syncSeen[1]).toMatchObject({ applied: rev, wait: 25 });
     expect(puts[0]).toEqual({ channels: [{ id: cid, verifier: info.spec.verifier, kind: "grant", expiresAt: info.spec.expiresAt }] });
     const client = await phone(info);
+    expect(hub.usedAt()).toBe(0);
     const redeemed = await client.get("/api/mobile/redeem?attempt=1", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     expect(await redeemed.json()).toEqual({ token: "omb_sess_test" });
+    // a phone in use keeps the agent's self-update waiting, like the app does
+    expect(hub.usedAt()).toBeGreaterThan(0);
     for (const path of ["/.well-known/duskbot/environment?x=1", "/api/health"]) expect((await client.get(path)).status).toBe(200);
     for (const [method, path] of [["GET", "/api/json"], ["POST", "/api/health"], ["GET", "/api/mobile/redeem"], ["GET", "/api/mobile/redeem/../relay/sync"]]) {
       const refused = await client.get(path, { method });
