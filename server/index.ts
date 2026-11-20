@@ -7077,12 +7077,12 @@ function maybeUsageDigest(botId: string): void {
 }
 const thumbsDownSeen = new Set<string>();
 /** a booked turn as a usage record and a frustration check; only words, counts and times are kept */
-function noteUsageTurn(row: Omit<UsageRow, "costSource"> & { costSource?: unknown }, toolNames: string[], detail: { failedNames: string[]; firstStepAt?: number }): void {
+function noteUsageTurn(row: Omit<UsageRow, "costSource"> & { costSource?: unknown }, toolNames: string[], detail: { failedNames: string[]; failedCalls?: Array<{ name: string; error?: string }>; firstStepAt?: number }): void {
   try {
     // side jobs and keep-warm pings are booked too, but they are not turns: they have no traced turn id
     if (!row.turnId || row.trigger.kind === "helper" || !usageSignals.enabled()) return;
     const record = turnRecord({ driverKind: row.driverKind, status: row.outcome?.status, reason: row.outcome?.reason, failure: row.outcome?.failure, startedAt: row.startedAt ? Date.parse(row.startedAt) : undefined,
-      endedAt: row.endedAt ? Date.parse(row.endedAt) : undefined, toolNames, trigger: row.trigger, room: Boolean(store.groupByThread(row.threadId)), failedNames: detail.failedNames,
+      endedAt: row.endedAt ? Date.parse(row.endedAt) : undefined, toolNames, trigger: row.trigger, room: Boolean(store.groupByThread(row.threadId)), failedNames: detail.failedNames, failedCalls: detail.failedCalls,
       firstStepAt: detail.firstStepAt, model: row.model, bot: hashId(usageSignals.salt(), row.botId), chat: hashId(usageSignals.salt(), row.threadId) }, usagePlace, Date.now());
     if (!record) return;
     usageOutbox.turn(record);

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 import { isToolFailureStop } from "./drivers/tool-failure.ts";
 import {
-  MAX_REPORT_FRUSTRATIONS, MAX_REPORT_RUNS, cleanUsageDigest, MAX_REPORT_SESSIONS, SESSION_NOTE_MAX, cleanUsageSession, MAX_REPORT_SIGNALS, MAX_REPORT_TURNS, categorize, cleanUsageFrustration, cleanUsageRun, cleanUsageSnapshot, cleanUsageTurn, engineFamily, failureOf, failureReason, opencodeProvider,
+  MAX_REPORT_FRUSTRATIONS, MAX_REPORT_RUNS, cleanUsageDigest, MAX_REPORT_SESSIONS, SESSION_NOTE_MAX, cleanUsageSession, MAX_REPORT_SIGNALS, MAX_REPORT_TURNS, categorize, cleanUsageFrustration, cleanUsageRun, cleanUsageSnapshot, cleanUsageTurn, engineFamily, failureOf, failureReason, opencodeProvider, toolErrorClass, toolFailures,
   appAction, modelFamily, runTrigger, scrubSummary, toolSignals, type RunEvery, type UsageSignal,
   type FrustrationSignal, type UsageFrom, type UsageFrustration, type UsageOutcome, type UsagePlace, type UsageReport, type UsageRun, type UsageSnapshot, type UsageTurn, type UsageDigest, type UsageSession,
 } from "../shared/usage-signals.ts";
@@ -28,6 +28,8 @@ export interface TurnFacts {
   trigger: { kind: string };
   room: boolean;
   failedNames?: readonly string[];
+  /** each failed call with its error line, read here only; when given it replaces `failedNames` */
+  failedCalls?: ReadonlyArray<{ name: string; error?: string }>;
   firstStepAt?: number;
   model?: string;
   /** salted hashes from `hashId`, never the ids */
@@ -50,7 +52,9 @@ export function turnRecord(facts: TurnFacts, place: UsagePlace, now: number): Us
   const from: UsageFrom = facts.trigger.kind === "routine" ? "routine" : facts.trigger.kind === "bot" ? "bot" : facts.trigger.kind === "helper" ? "helper"
     : facts.trigger.kind === "user" ? "remote" : "app";
   const end = facts.endedAt ?? now, start = facts.startedAt ?? end;
-  const failed = toolSignals(facts.failedNames ?? []);
+  // a call the model sent bad arguments for is the model's mistake, not the tool breaking
+  const failed = toolSignals(facts.failedCalls ? facts.failedCalls.filter((call) => toolErrorClass(call.error) !== "schema_invalid").map((call) => call.name) : facts.failedNames ?? []);
+  const failures = toolFailures(facts.failedCalls ?? []);
   const actions = [...new Set(facts.toolNames.map(appAction).filter((action): action is string => !!action))];
   const ms = Math.max(0, Math.min(7 * 86_400_000 - 1, Math.round(end - start)));
   const firstMs = facts.firstStepAt !== undefined ? Math.round(facts.firstStepAt - start) : undefined;
@@ -61,7 +65,7 @@ export function turnRecord(facts: TurnFacts, place: UsagePlace, now: number): Us
   const model = facts.model ? (engine === "opencode" && modelFamily(facts.model) === "other" ? opencodeProvider(facts.model) ?? facts.model : facts.model) : undefined;
   return cleanUsageTurn({ id: newId(), at: end, engine, outcome, ...(reason ? { reason } : {}), ...(failure?.detail ? { detail: failure.detail } : {}),
     ms, tools, apps, category: categorize({ tools, apps }), from, place, room: facts.room, ...(firstMs !== undefined && firstMs >= 0 && firstMs <= ms ? { firstMs } : {}),
-    ...(model ? { model: modelFamily(model) } : {}), failedTools: failed.tools, failedApps: failed.apps, actions, ...(facts.bot ? { bot: facts.bot } : {}), ...(facts.chat ? { chat: facts.chat } : {}) }, now);
+    ...(model ? { model: modelFamily(model) } : {}), failedTools: failed.tools, failedApps: failed.apps, toolFailures: failures, actions, ...(facts.bot ? { bot: facts.bot } : {}), ...(facts.chat ? { chat: facts.chat } : {}) }, now);
 }
 
 /** records waiting for the next dashboard report: memory only, oldest dropped past the cap */
