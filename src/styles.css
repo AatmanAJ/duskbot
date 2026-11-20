@@ -1936,10 +1936,9 @@ body {
   --card-lift: color-mix(in srgb, var(--color-ink) 3.5%, transparent);
 }
 
-/* The brand draws no lines, so keyboard focus is a tint, never a ring: the focused control darkens (or, on a dark
-   skin, lightens) by a tenth of the ink over its own fill. Unlayered and !important on the line colours, so no
-   outline-*, ring-* or inset-ring-* utility, nor a component's own focus outline, can draw one. Forced colours keep
-   the system ring, which is what those users rely on. */
+/* The brand draws no lines for the mouse: no outline-*, ring-* or inset-ring-* utility, nor a component's own focus
+   outline, draws one. Unlayered and !important on the line colours so nothing below can bring one back. Forced
+   colours keep the system ring, which is what those users rely on. */
 @media not (forced-colors: active) {
   :focus-visible,
   :focus-visible::before,
@@ -1965,19 +1964,28 @@ body {
     background-color: color-mix(in oklab, var(--color-ink) 6%, transparent);
   }
 }
-/* the tint shows only while someone moves with the keyboard (lib/focus-nav sets the flag on Tab or an arrow key):
-   focus a dialog puts on its first button when it opens, or that a click or Enter leaves behind, draws nothing.
-   Text fields keep the caret as their only cue. */
-:root[data-focus-nav] :focus-visible:not(:is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea, select, [contenteditable="true"], [role="textbox"])) {
-  background-image: linear-gradient(color-mix(in srgb, var(--color-ink) 10%, transparent), color-mix(in srgb, var(--color-ink) 10%, transparent));
+/* While someone moves with the keyboard (lib/focus-nav sets the flag on Tab or an arrow key), every focused control
+   draws a ring in --color-focus, which holds 3:1 on every surface (WCAG 1.4.11). Focus a dialog puts on its first
+   button when it opens, or that a click or Enter leaves behind, draws nothing. */
+@media not (forced-colors: active) {
+  :root[data-focus-nav] :focus-visible {
+    outline: 2px solid var(--color-focus) !important;
+    outline-offset: 2px !important;
+  }
+  :root[data-focus-nav] :is([role="menu"], [role="listbox"], [role="tree"], [role="grid"]) :focus-visible,
+  :root[data-focus-nav] :is(textarea, [contenteditable="true"], [role="textbox"]):focus-visible {
+    outline-offset: -2px !important;
+  }
+  :root[data-focus-nav] .composer-pill:has(textarea:focus-visible) {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  :root[data-focus-nav] .composer-pill textarea:focus-visible {
+    outline-color: transparent !important;
+  }
 }
-/* native checkboxes, radios, sliders, colour wells and file pickers paint no background, so their tint is a halo */
-:root[data-focus-nav] input:is([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]):focus-visible {
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ink) 22%, transparent);
-}
-/* A menu row shows keyboard focus as its hover fill. */
+/* A menu row shows keyboard focus as its hover fill under the ring. */
 [role="menu"] :is(button, [role^="menuitem"]):focus-visible {
-  outline: none;
   background-color: var(--color-menu-hover);
 }
 
@@ -3362,9 +3370,10 @@ button:disabled.bg-danger {
 .cloud-plan[data-plan-on] { box-shadow: inset 0 -6px 0 var(--cloud-plan-lip); }
 .cloud-plan-art { image-rendering: pixelated; }
 .cloud-plan-dim { background: var(--cloud-plan-dim); }
-/* the radio is hidden, so the card it fills takes the keyboard tint */
+/* the radio is hidden, so the card it fills takes the keyboard ring */
 :root[data-focus-nav] .cloud-plan:has(:focus-visible) {
-  background-image: linear-gradient(color-mix(in srgb, var(--color-ink) 10%, transparent), color-mix(in srgb, var(--color-ink) 10%, transparent));
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
   .cloud-plan { transition: none; }
