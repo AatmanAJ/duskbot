@@ -28,7 +28,7 @@ export const RoundButton = forwardRef<HTMLButtonElement, {
       onClick={onClick}
       className={cn(
         "mobile-press relative inline-flex shrink-0 items-center justify-center rounded-full text-ink disabled:opacity-40",
-        glass ? "m-glass" : floating ? "mobile-float bg-composer" : "bg-ink/[0.05]",
+        glass ? "m-glass" : floating ? "mobile-float bg-composer" : "bg-menu",
         className,
       )}
       style={{ width: size, height: size }}

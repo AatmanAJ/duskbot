@@ -80,7 +80,7 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
   useEffect(() => { if (!shown.current) { shown.current = true; trackUpsell("shown", "app_mobile"); } }, []);
   useEffect(() => watchUpsell("app_mobile"), []);
   return (
-    <button type="button" onClick={() => { trackUpsell("click", "app_mobile"); onOpen(); }} className="mobile-press mx-2 mt-9 flex w-[calc(100%-16px)] items-center gap-4 rounded-[20px] bg-ink/[0.045] px-4 py-4 text-left">
+    <button type="button" onClick={() => { trackUpsell("click", "app_mobile"); onOpen(); }} className="mobile-press mx-4 mt-9 flex w-[calc(100%-32px)] items-center gap-4 rounded-[16px] bg-menu px-4 py-4 text-left">
       <PixelArt name="server" size={44} />
       <span className="min-w-0 flex-1">
         <span className="block text-balance text-[16px] font-semibold text-ink">{t("cloudUpsell.mobile")}</span>
@@ -293,7 +293,7 @@ function TextSizePage() {
   const size = useSyncExternalStore(subscribeTextSize, readTextSize, () => "system" as const);
   return (
     <Sheet open onClose={() => {}} title={t("mobile.settings.textSize")}>
-      <p data-text-size-sample="" className="mx-2 mb-4 rounded-[19px] bg-ink/[0.05] px-[14px] py-2 text-[17px] font-[450] leading-[22px] text-ink">{t("mobile.settings.textSize.sample")}</p>
+      <p data-text-size-sample="" className="mx-4 mb-4 rounded-[19px] bg-ink/[0.05] px-[14px] py-2 text-[17px] font-[450] leading-[22px] text-ink">{t("mobile.settings.textSize.sample")}</p>
       <SettingsSection card>
         {TEXT_SIZES.map((choice) => (
           <button key={choice} type="button" aria-pressed={size === choice} onClick={() => { haptic("pick"); setTextSize(choice); }} className="mobile-row flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left text-[16px] font-medium text-ink">
@@ -323,7 +323,7 @@ function LanguagePage() {
   );
 }
 
-const DOT: Record<PlaceStatus, string> = { online: "bg-success", asleep: "bg-ink/[0.22]", offline: "bg-ink/[0.22]" };
+const DOT: Record<PlaceStatus, string> = { online: "bg-success", asleep: "bg-ink/[0.32]", offline: "border-[1.5px] border-ink/[0.4] bg-transparent" };
 const ROW = "flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left";
 
 /** Every place on the account, each a status dot and its name. Until the list is in, skeleton rows of the same height
@@ -354,8 +354,7 @@ function PlaceRow({ place, working, disabled, onChoose }: { place: Place; workin
   const content = <>
     <span aria-hidden data-place-status={place.status} className={`size-2.5 shrink-0 rounded-full transition-colors duration-200 ${DOT[place.status]}`} />
     <span className={`min-w-0 flex-1 truncate text-[16px] text-ink ${place.active ? "font-semibold" : "font-medium"}`}>{place.name}</span>
-    <span className="sr-only">{t(STATUS_LABEL[place.status])}</span>
-    {working && <WorkingDots size={3} />}
+    {working ? <WorkingDots size={3} /> : <span className="shrink-0 text-[15px] text-ink-secondary">{t(STATUS_LABEL[place.status])}</span>}
   </>;
   if (place.active) return <div data-testid="mobile-place" aria-current="true" className={ROW}>{content}</div>;
   return <button type="button" data-testid="mobile-place" disabled={disabled} aria-busy={working || undefined} onClick={onChoose} className={`mobile-row ${ROW} disabled:opacity-100`}>{content}</button>;

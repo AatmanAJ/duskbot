@@ -61,3 +61,10 @@
 .dusk-mobile[data-scheme="dark"] .mobile-panel-sheet [data-panel-tabpanel="computer"] [data-panel-screen] {
   background-color: color-mix(in srgb, #000 38%, var(--color-app));
 }
+
+/* every sheet is iOS Settings' grouped page: a grey page, and each group a stack of white rows 2px apart inside 16px
+   corners, as the bot's sheet draws its own */
+html[data-mobile-app] { --m-sheet-page: color-mix(in srgb, var(--color-ink) 5%, var(--color-app)); }
+.dusk-mobile [data-settings-card] > :not(ul, [role="status"]),
+.dusk-mobile [data-settings-card] > :is(ul, [role="status"]) > * { background-color: var(--color-menu); }
+.dusk-mobile [data-settings-card] > :is(ul, [role="status"]) { display: flex; flex-direction: column; gap: 2px; }

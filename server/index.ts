@@ -10715,7 +10715,7 @@ const ROOM_POST_MAX_CHARS = 4_000;
 const approvalBus: ApprovalBus = { store, broadcast, notify };
 
 const { quotaSwitch, harnessCardOutcome } = createQuotaSwitchHost({ store, coordinator, registry, turnStops, approvalBus, providerConfigs: () => instanceConfigs(cfg), policyModelRefusal, checkedTaskModelSwitch, threadBusy, directRequestOwners, startOrQueueDirectMessage, takeover: limitTakeover,
-  limitMode: (botId) => store.bot(botId)?.limitMode ?? "wait", language: threadLanguage,
+  limitMode: (botId) => store.bot(botId)?.limitMode ?? "wait", language: threadLanguage, carryOn: (botId, threadId, note, request) => startTurn(botId, note, { threadId, unattended: true, cardContinuation: true, ...(request ? { origin: { kind: "user" as const, request } } : {}) }),
   hold: ({ botId, threadId, from, resetsAt, request }) => Boolean(limitHold.hold({ botId, threadId, engine: from.instanceId, engineName: aiProductName(registry.get(from.instanceId) ?? undefined, from.instanceId), resetsAt: resetsAt ?? limitClock.resetAt(from.instanceId), ...(request ? { request } : {}) })) });
 
 // Peer approvals live only in memory: settle every peer card still open on disk, or it locks the composer forever.

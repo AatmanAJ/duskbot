@@ -1,5 +1,6 @@
 // What the chat-completions loop does about a model's reply habits: an announced step with no tool call, a claimed
 // change no tool made, and a provider hiccup in the middle of a turn that already ran tools.
+import { limitResetFromWords } from "./engine-errors.ts";
 import { computeBackoff, RETRY_MAX_ATTEMPTS, type ErrorClassification } from "./retry.ts";
 
 export const NUDGE_ANNOUNCED_ACTION = "You said what you would do next but called no tool. Use your tools for only the remaining work, or reply with verified results if nothing is left to do. Never repeat an operation that succeeded, was denied, or may already have taken effect; inspect its state instead. Do not retry a destructive operation.";
@@ -64,8 +65,11 @@ export function effectfulCall(name: string, rawArgs: string): boolean {
 /** longest wait a mid-turn retry may take; a provider asking for more than this is a limit, not a hiccup */
 export const MAX_RETRY_WAIT_MS = 60_000;
 
-/** an HTTP failure carrying the provider's Retry-After, in ms, for the turn loop's next attempt */
-export function withRetryAfter<T extends Error>(error: T, headers: Pick<Headers, "get">, now = Date.now()): T {
+/** an HTTP failure carrying the provider's Retry-After, in ms, for the turn loop's next attempt, and the reset a limit
+ * refusal's body names (OpenRouter puts X-RateLimit-Reset in error.metadata.headers) */
+export function withRetryAfter<T extends Error>(error: T, headers: Pick<Headers, "get">, now = Date.now(), body = ""): T {
+  const named = body ? limitResetFromWords(body, now) : undefined;
+  if (named !== undefined) Object.assign(error, { limitResetAt: named });
   const raw = headers.get("retry-after-ms") ?? headers.get("retry-after");
   if (!raw) return error;
   const value = raw.trim();
@@ -78,8 +82,9 @@ export function withRetryAfter<T extends Error>(error: T, headers: Pick<Headers,
  * that already ran in this turn stay in its messages and are not repeated. */
 export function retryDelay(error: unknown, verdict: ErrorClassification, attempt: number): number | null {
   if (!verdict.transient || attempt >= RETRY_MAX_ATTEMPTS - 1) return null;
-  const asked = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+  const { retryAfterMs: asked, limitResetAt: named } = (error ?? {}) as { retryAfterMs?: unknown; limitResetAt?: unknown };
   if (typeof asked === "number" && asked > MAX_RETRY_WAIT_MS) return null;
+  if (verdict.reason === "rate_limited" && typeof asked !== "number" && typeof named === "number" && named - Date.now() > MAX_RETRY_WAIT_MS) return null;
   return Math.max(computeBackoff(attempt), typeof asked === "number" ? asked : 0);
 }
 

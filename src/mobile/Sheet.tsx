@@ -113,19 +113,23 @@ export function Sheet(props: SheetProps) {
   return stack ? <StackPage {...props} back={props.back ?? stack.back} /> : <ModalSheet {...props} />;
 }
 
+/** iOS's sheet header: back on the left of a pushed page, the title, its actions, and close on the right. */
+function SheetHeader({ title, back, onClose, trailing, className }: Pick<SheetProps, "title" | "back" | "onClose" | "trailing"> & { className: string }) {
+  return (
+    <div className={cn("flex min-h-[52px] shrink-0 items-center gap-3 px-4 pb-2", className)}>
+      {back && <RoundButton label={t("mobile.sheet.back")} onClick={back} size={44}><BackGlyph /></RoundButton>}
+      <div className={cn("min-w-0 flex-1 truncate text-[17px] font-semibold text-ink", !back && "ps-1")}>{title}</div>
+      {trailing}
+      {!back && <RoundButton label={t("mobile.sheet.close")} onClick={onClose} size={44}><X size={18} /></RoundButton>}
+    </div>
+  );
+}
+
 /** One page of a stack inside a sheet: its own header (back, title, an action) over its own scroller. */
 export function StackPage({ title, label, children, back, onClose, trailing, bodyClassName, flush = false }: SheetProps) {
   return (
-    <section aria-label={label ?? (typeof title === "string" ? title : undefined)} className="flex h-full flex-col bg-app">
-      {!flush && (
-        <div className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-[22px]">
-          {back
-            ? <RoundButton label={t("mobile.sheet.back")} onClick={back} size={44}><BackGlyph /></RoundButton>
-            : <RoundButton label={t("mobile.sheet.close")} onClick={onClose} size={44}><X size={18} /></RoundButton>}
-          <div className="min-w-0 flex-1 truncate text-[17px] font-semibold text-ink">{title}</div>
-          {trailing}
-        </div>
-      )}
+    <section aria-label={label ?? (typeof title === "string" ? title : undefined)} className="flex h-full flex-col bg-(--m-sheet-page)">
+      {!flush && <SheetHeader title={title} back={back} onClose={onClose} trailing={trailing} className="pt-[22px]" />}
       <div className={cn("mobile-sheet-body relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[max(var(--m-safe-bottom),16px)]", bodyClassName)}>
         {children}
       </div>
@@ -281,21 +285,13 @@ function ModalSheet({ open, onClose, title, label, children, full = false, back,
         aria-label={label ?? (typeof title === "string" ? title : undefined)}
         tabIndex={-1}
         className={cn(
-          "mobile-sheet absolute inset-x-0 bottom-0 flex flex-col overflow-hidden rounded-t-[28px] bg-app outline-none",
+          "mobile-sheet absolute inset-x-0 bottom-0 flex flex-col overflow-hidden rounded-t-[28px] bg-(--m-sheet-page) outline-none",
           full ? "top-[calc(var(--m-safe-top)+10px)]" : "max-h-[calc(100%-var(--m-safe-top)-10px)]",
         )}
         style={{ y, willChange: moving ? "transform" : undefined }}
       >
         <div aria-hidden className={cn("mx-auto h-[5px] w-9 shrink-0 rounded-full bg-ink/[0.14]", flush ? "pointer-events-none absolute inset-x-0 top-2 z-50" : "mt-2")} />
-        {!flush && (
-          <div className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-1.5">
-            {back
-              ? <RoundButton label={t("mobile.sheet.back")} onClick={back} size={44}><BackGlyph /></RoundButton>
-              : <RoundButton label={t("mobile.sheet.close")} onClick={onClose} size={44}><X size={18} /></RoundButton>}
-            <div className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">{title}</div>
-            {trailing}
-          </div>
-        )}
+        {!flush && <SheetHeader title={title} back={back} onClose={onClose} trailing={trailing} className="pt-1.5" />}
         <div ref={bodyRef} className={cn("mobile-sheet-body relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[max(var(--m-safe-bottom),16px)]", bodyClassName)}>
           {children}
         </div>

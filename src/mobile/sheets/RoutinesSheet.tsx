@@ -84,7 +84,7 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
   const title = selected?.name ?? (bot ? t("mobile.routines.botTitle", { name: bot.name }) : t("mobile.routines.title"));
   return (
     <Sheet open={open} onClose={onClose} full title={title} back={selected ? back : undefined}>
-      <div className="px-3 pt-2">
+      <div className="px-4 pt-2">
         {error && (selected || !loadFailed || routines.length > 0) && <p role="alert" className="px-3 py-3 text-[15px] text-danger">{error}</p>}
         {!selected && loadFailed && routines.length === 0 && !loading && <EmptyState tone="error" art="clock" title={t("mobile.routines.loadErrorTitle")} body={t("mobile.routines.loadErrorBody")} action={{ label: t("mobile.routines.retry"), onClick: () => void load() }} className="pt-16" />}
         {selected ? (
@@ -99,7 +99,7 @@ export function RoutinesSheet({ sheet, open, onClose, onOpenChat }: SheetPagePro
             </section>
           </div>
         ) : (loading || state.routinesLoadState === "loading" && !error) && !routines.length ? <div role="status" aria-label={t("mobile.routines.loading")}>{[0, 1, 2].map((key) => <div key={key} aria-hidden className="flex min-h-[84px] items-center gap-3 px-3 py-3"><span className="size-9 shrink-0 rounded-full bg-ink/[0.06]" /><span className="flex-1 space-y-2"><span className="block h-4 w-2/5 rounded-full bg-ink/[0.06]" /><span className="block h-3 w-3/5 rounded-full bg-ink/[0.05]" /></span></div>)}</div> : routines.length ? (
-          <ul>{routines.map((routine) => {
+          <ul className="flex flex-col gap-[2px] overflow-hidden rounded-[16px] [&>*]:bg-menu [&_.mobile-row]:rounded-none">{routines.map((routine) => {
             const owner = state.bots.find((entry) => entry.id === routine.botId);
             return <li key={routine.id} aria-busy={busy.includes(routine.id)}>
               <SwipeRow actions={[{ label: armed === routine.id ? t("mobile.routines.confirmDelete") : t("mobile.routines.delete"), danger: true, onPress: () => void work(routine, "delete") }]}>

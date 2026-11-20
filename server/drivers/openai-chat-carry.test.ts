@@ -2,14 +2,16 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { RESUME_CAUSE, RESUME_OPENS } from "../limit-resume.ts";
-import { carriedSteps, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
+import { RESUME_CAUSE, RESUME_OPENS, TAKEOVER_CAUSE } from "../limit-resume.ts";
+import { carriedSteps, chatLimitFacts, createCarriedWork, sharedCarriedWork } from "./openai-chat-carry.ts";
 
 describe("chatLimitFacts", () => {
   it("reports a rate limit or a quota as the engine's limit, with the reset the provider named", () => {
     expect(chatLimitFacts(Object.assign(new Error("upstream HTTP 429: Rate limit reached"), { retryAfterMs: 90_000 }), 1_000)).toEqual({ limit: "engine", limitResetsAt: 91_000 });
     expect(chatLimitFacts(new Error("upstream HTTP 402: Insufficient Balance"))).toEqual({ limit: "engine" });
     expect(chatLimitFacts(new Error("upstream HTTP 429: Too Many Requests"), 1_000)).toEqual({ limit: "engine", limitResetsAt: 61_000 });
+    expect(chatLimitFacts(Object.assign(new Error("upstream HTTP 429: Rate limit exceeded: free-models-per-day."), { limitResetAt: 7_200_000 }), 1_000))
+      .toEqual({ limit: "engine", limitResetsAt: 7_200_000 });
   });
   it("leaves every other failure to the turn's own error", () => {
     expect(chatLimitFacts(new Error("upstream HTTP 500: Internal Server Error"))).toBeNull();
@@ -32,6 +34,28 @@ describe("carriedSteps", () => {
     expect(steps).toHaveLength(2);
     expect(steps[0]).toMatchObject({ role: "assistant", tool_calls: [{ id: "a" }] });
     expect(steps[1]!.content).toHaveLength(2_000);
+  });
+  it("past its bound keeps the newest steps, so the latest work is never what is dropped", () => {
+    const messages = [{ role: "user", content: "do it" }, ...Array.from({ length: 40 }, (_, index) => [
+      { role: "assistant", content: null, tool_calls: [call(`c${index}`)] },
+      { role: "tool", tool_call_id: `c${index}`, content: "x".repeat(1_900) },
+    ]).flat()];
+    const steps = carriedSteps(messages, 0);
+    expect(steps.length).toBeLessThan(80);
+    expect(steps.at(-1)).toMatchObject({ role: "tool", tool_call_id: "c39" });
+  });
+});
+
+describe("sharedCarriedWork", () => {
+  it("is one store per file, so a backup engine takes the steps another engine kept", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dusk-carry-"));
+    try {
+      const file = join(dir, "limit-carried-steps.json");
+      sharedCarriedWork(file).keep("t", [{ role: "assistant", content: null }]);
+      expect(sharedCarriedWork(file).take("t", `${RESUME_OPENS}Claude Code${TAKEOVER_CAUSE} Carry on.]`)).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

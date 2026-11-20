@@ -94,6 +94,14 @@ describe("withRetryAfter", () => {
     expect((withRetryAfter(new Error("x"), new Headers({ "retry-after": "Thu, 19 Nov 2026 10:00:30 GMT" }), now) as any).retryAfterMs).toBe(30_000);
     expect((withRetryAfter(new Error("x"), new Headers(), now) as any).retryAfterMs).toBeUndefined();
   });
+  it("reads the reset a rate limit's body names, and a far one is waited for, never retried into", () => {
+    const now = Date.now();
+    const body = JSON.stringify({ error: { message: "Rate limit exceeded: free-models-per-day.", code: 429, metadata: { headers: { "X-RateLimit-Reset": String(now + 3_600_000) } } } });
+    const error = withRetryAfter(new Error("429"), new Headers(), now, body);
+    expect((error as any).limitResetAt).toBe(now + 3_600_000);
+    expect(retryDelay(error, { transient: true, reason: "rate_limited" }, 0)).toBeNull();
+    expect((withRetryAfter(new Error("429"), new Headers(), now, "Too Many Requests") as any).limitResetAt).toBeUndefined();
+  });
 });
 
 describe("leakedToolSyntax", () => {

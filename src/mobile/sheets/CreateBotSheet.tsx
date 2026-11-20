@@ -57,24 +57,24 @@ export function CreateBotSheet({ open, onClose, onOpenChat }: SheetPageProps<"cr
         </motion.div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor={nameId} className="px-1 text-[14px] font-semibold text-ink-secondary">{t("mobile.create.name")}</label>
-          <input id={nameId} name="botName" value={name} maxLength={80} autoComplete="off" enterKeyHint="done" onChange={(event) => setName(event.target.value)} placeholder={t("mobile.create.placeholder")} className="h-12 w-full rounded-[14px] border-0 bg-ink/[0.06] px-4 text-[17px] font-medium text-ink outline-none placeholder:text-ink-tertiary focus-visible:ring-2 focus-visible:ring-ink/30" />
+          <input id={nameId} name="botName" value={name} maxLength={80} autoComplete="off" enterKeyHint="done" onChange={(event) => setName(event.target.value)} placeholder={t("mobile.create.placeholder")} className="h-12 w-full rounded-[14px] border-0 bg-menu px-4 text-[17px] font-medium text-ink outline-none placeholder:text-ink-tertiary focus-visible:ring-2 focus-visible:ring-ink/30" />
         </div>
         <p id={`${nameId}-look`} className="-mb-2 px-1 text-[14px] font-semibold text-ink-secondary">{t("mobile.create.look")}</p>
         <div role="radiogroup" aria-label={t("mobile.create.body")} onKeyDown={moveRadio} className="grid grid-cols-5 justify-items-center gap-y-3">
           {BODIES.map((id) => (
             <button key={id} type="button" role="radio" aria-checked={id === body} aria-label={DUSK_BODY_NAMES[id]} tabIndex={id === body ? 0 : -1} onClick={() => { if (id !== body) { setBody(id); setRevision((value) => value + 1); haptic("pick"); } }} className="mobile-press flex size-12 items-center justify-center rounded-full">
-              <span className={cn("flex size-10 items-center justify-center rounded-full", id === body && "ring-2 ring-ink ring-offset-[3px] ring-offset-app")}><MausAvatar bodyId={id} color={color} size={40} animated={false} label="" /></span>
+              <span className={cn("flex size-10 items-center justify-center rounded-full", id === body && "ring-2 ring-ink ring-offset-[3px] ring-offset-(--m-sheet-page)")}><MausAvatar bodyId={id} color={color} size={40} animated={false} label="" /></span>
             </button>
           ))}
         </div>
         <div role="radiogroup" aria-label={t("mobile.create.colour")} onKeyDown={moveRadio} className="grid grid-cols-5 justify-items-center">
           {COLORS.map((value) => (
             <button key={value} type="button" role="radio" aria-label={t(`mobile.create.colour.${value}`)} aria-checked={value === color} tabIndex={value === color ? 0 : -1} onClick={() => { if (value !== color) { setColor(value); setRevision((count) => count + 1); haptic("pick"); } }} className="mobile-press flex size-11 items-center justify-center rounded-full">
-              <span className={cn("size-[30px] rounded-full", value === color && "ring-2 ring-ink ring-offset-[3px] ring-offset-app")} style={{ background: colorSwatch(value) }} />
+              <span className={cn("size-[30px] rounded-full", value === color && "ring-2 ring-ink ring-offset-[3px] ring-offset-(--m-sheet-page)")} style={{ background: colorSwatch(value) }} />
             </button>
           ))}
         </div>
-        <div className="sticky bottom-[calc(-1*max(var(--m-safe-bottom),16px))] -mb-[max(var(--m-safe-bottom),16px)] bg-app pb-[calc(max(var(--m-safe-bottom),16px)+4px)] pt-2">
+        <div className="sticky bottom-[calc(-1*max(var(--m-safe-bottom),16px))] -mb-[max(var(--m-safe-bottom),16px)] bg-(--m-sheet-page) pb-[calc(max(var(--m-safe-bottom),16px)+4px)] pt-2">
           <button type="submit" disabled={!name.trim() || pending} aria-busy={pending} aria-describedby={!name.trim() ? `${nameId}-hint` : undefined} className="mobile-press flex h-12 w-full items-center justify-center rounded-full bg-ink text-[16px] font-semibold text-app disabled:opacity-40">
             {pending ? <><WorkingDots size={4} /><span className="sr-only">{t("mobile.create.creating")}</span></> : t("mobile.create.submit")}
           </button>
