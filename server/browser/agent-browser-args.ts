@@ -106,7 +106,7 @@ export function needsPageSelector(selector: string): boolean {
   if (/^(?:text|role|label|placeholder|alt|title|testid|data-testid)=/iu.test(value)) return true;
   if (/:(?:has-text|text-is|text|text-matches)\(|:visible\b|\s>>\s?|^getBy/iu.test(value)) return true;
   if (/^\(?\/\//u.test(value)) return true;
-  return !/[#.\[\]:>~+*=()'"]/u.test(value) && /\s|[A-Z]/u.test(value);
+  return !/[#.[\]:>~+*=()'"]/u.test(value) && /\s|[A-Z]/u.test(value);
 }
 
 /** An xpath written without its prefix. */
