@@ -8556,6 +8556,7 @@
   "mobile.clouds.placesTitle": "Your clouds and computers",
   "mobile.clouds.pickAnyTitle": "Pick where to work",
   "mobile.clouds.pickAnyBody": "Signed in as {email}. Tap one to open it here.",
+  "mobile.place.pickBody": "Your phone has {name} and every place on your account. Pick the one to open now. You can switch places any time.",
   "mobile.onboarding.linkTitle": "Link your installation",
   "mobile.onboarding.scan": "Scan QR code",
   "mobile.onboarding.enterCode": "Enter a code",

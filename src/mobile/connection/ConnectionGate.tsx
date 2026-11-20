@@ -269,6 +269,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
     setCelebrate({ name, sequence: ++sequence.current });
     setState({ kind: "ready", id: record.id });
   }, [store, platform, retry]);
+  const keep = useCallback((record: MobileConnectionRecord, token: string) => store.save(record, token, { open: false }), [store]);
   const cancel = () => { ++sequence.current; setIncoming(null); };
   const switchTo = useCallback((id: string) => { void store.setActive(id).then(retry, retry); }, [store, retry]);
   const openKept = useCallback((id: string) => { ++sequence.current; setIncoming(null); setAdding(0); switchTo(id); }, [switchTo]);
@@ -285,11 +286,11 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
   if (state.kind === "loading" && !incoming && !forcePair) return <div className="dusk-mobile flex size-full items-center justify-center bg-app"><MascotLoader naps={false} /></div>;
   if (state.kind === "offline" && !forcePair) {
     if (!incoming && adding === 0) return <>{success}<Unreachable record={state.record} others={state.others} attempts={state.attempts} trying={state.trying} gone={state.gone === true} onRetry={retry} onSwitch={switchTo} onRemove={() => removeGone(state.record.id, state.others[0]?.id)} /></>;
-    return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} initialSignIn={incoming?.signIn} startAtLink startAt={incoming ? undefined : addingStep} email={addingStep === "addAccount" ? undefined : signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept} onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} /></>;
+    return <>{success}<Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} initialSignIn={incoming?.signIn} startAtLink startAt={incoming ? undefined : addingStep} email={addingStep === "addAccount" ? undefined : signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept} onLinked={linked} onKept={keep} onCancel={() => { cancel(); setAdding(0); }} /></>;
   }
   if (onboarding) {
     return <>{success}<Onboarding key={incoming?.sequence ?? signInEmail?.sequence ?? 0} initial={incoming?.payload} initialSignIn={incoming?.signIn} reason={state.kind === "pair" ? state.reason : null}
-      startAt={!incoming && signInEmail ? "signin" : undefined} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept} onLinked={linked} onCancel={cancel} /></>;
+      startAt={!incoming && signInEmail ? "signin" : undefined} email={signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept} onLinked={linked} onKept={keep} onCancel={cancel} /></>;
   }
   return (
     <>
@@ -298,7 +299,7 @@ export function ConnectionGate({ children, forcePair }: { children: ReactNode; f
       {(incoming || adding > 0) && (
         <div className="fixed inset-0 z-50">
           <Onboarding key={incoming ? `in-${incoming.sequence}` : `add-${adding}`} initial={incoming?.payload} initialSignIn={incoming?.signIn} startAtLink startAt={incoming ? undefined : addingStep} email={addingStep === "addAccount" ? undefined : signInEmail?.email} signInCode={incoming ? undefined : signInEmail?.code} signInCloud={incoming ? undefined : signInEmail?.cloud} onOpen={openKept}
-            onLinked={linked} onCancel={() => { cancel(); setAdding(0); }} />
+            onLinked={linked} onKept={keep} onCancel={() => { cancel(); setAdding(0); }} />
         </div>
       )}
       <SignInOffer paused={Boolean(celebrate || incoming || adding > 0)} />
