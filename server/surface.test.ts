@@ -128,6 +128,8 @@ describe("resolveSurface", () => {
     expect(plan).toMatchObject({ computer: "off", browser: false, pinned: null });
     expect(plan.note).toMatch(/"Works on" setting is Off/);
     expect(plan.note).toMatch(/no computer and no built-in browser/);
+    expect(plan.note).toContain("Everything else still works (reminders, automations, memory, connected apps, teammates)");
+    expect(plan.note).not.toContain("tell them Works on is Off");
     expect(resolveSurface({ destination: "off", browserOn: false })).toEqual(plan);
     expect(surfacePrompt({ computer: null, browser: false }, { note: plan.note })).toBe(plan.note);
   });
@@ -210,6 +212,14 @@ describe("surfacePrompt", () => {
     expect(alone).not.toMatch(/web pages included/);
     expect(alone).toContain("use, in this order: a connected app that does it, web search and fetching pages, a cloud computer if select_computer offers one.");
     expect(alone).toContain("Use their own browser or screen only when the task needs their own signed-in session");
+    for (const text of [beside, alone]) {
+      expect(text).toContain("Your own shell and file tools, when you have them, already run on this computer");
+      expect(text).toContain("Never open Terminal, Command Prompt or PowerShell on the person's screen to type a command your own shell tool can run.");
+      expect(text).toContain("Only without a shell tool of your own do commands and files go through this computer tools.");
+    }
+    expect(beside).toContain("Desktop apps → this computer tools.");
+    expect(beside).not.toContain("files and shell → this computer tools");
+    expect(surfacePrompt({ computer: "vm", browser: true })).not.toContain("Your own shell and file tools, when you have them");
     // Other computers are the bot's own: their wording is unchanged.
     expect(surfacePrompt({ computer: "vm", browser: false })).not.toContain("the person's own");
     expect(surfacePrompt({ computer: "cloud", browser: true })).not.toContain("the person's own");
@@ -330,6 +340,19 @@ describe("surface parsing", () => {
     expect(surfaceOfComputerKind("local")).toBe("local");
     expect(surfaceOfComputerKind(null)).toBeNull();
   });
+});
+
+it("says the browser is in the Computer tab only where that tab shows it, and never on a server or a cloud", () => {
+  const desktop = surfacePrompt({ computer: null, browser: true }, { browserInComputerTab: true });
+  expect(desktop).toContain("the Computer tab of your panel");
+  expect(desktop).toContain("The iPhone app has no view of your browser");
+  for (const opts of [{ browserInComputerTab: false }, { cloudHome: true }] as const) {
+    const text = surfacePrompt({ computer: null, browser: true }, opts);
+    expect(text).not.toContain("Computer tab");
+    expect(text).toContain("cannot watch this browser live");
+    expect(text).toContain("call request_sign_in");
+  }
+  expect(surfacePrompt({ computer: "cloud", browser: false }, { browserInComputerTab: true })).not.toContain("Computer tab");
 });
 
 it("does not instruct use of a selected browser when no surface is mounted", () => {

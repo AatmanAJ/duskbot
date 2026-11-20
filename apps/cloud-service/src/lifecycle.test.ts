@@ -228,6 +228,46 @@ it("an ended plan's home that paused itself with no final backup is woken once t
   expect(f.api.deletes()).toHaveLength(1);
 });
 
+it("an ended plan's paused home is woken once for its final backup while its resume still reads as paused, then archived", async () => {
+  const f = await homeFixture();
+  const { c, sub } = await f.paid();
+  f.advance(60_000); f.api.autoPause(c.serverId!);
+  f.api.queueStarts();
+  sub.status = "ended"; sub.currentPeriodEnd = f.now(); sub.lastEventAt = f.now();
+  for (let n = 0; n < 16; n++) { f.advance(15_000); c.nextAttemptAt = 0; await f.service.reconcile(); }
+  expect(f.audit.entries(c.id).filter(e => e.action === "wake" && e.reason === "final_backup")).toHaveLength(1);
+  f.api.queueStarts(false); f.api.finishStarts();
+  await f.settle(c, x => x.managed!.archive?.serverId === null, 20, 15_000);
+  expect(c.serverId).toBeNull();
+  expect(f.api.machines.size).toBe(0);
+});
+
+it("an ended plan's home whose pause is refused for a while is asked again without outdating its final backup, then archived", async () => {
+  const f = await homeFixture();
+  const { c, sub } = await f.paid();
+  sub.status = "ended"; sub.currentPeriodEnd = f.now(); sub.lastEventAt = f.now();
+  f.api.busyNext(6);
+  for (let n = 0; n < 12 && !c.managed!.archive; n++) { f.advance(15_000); c.nextAttemptAt = 0; await f.service.reconcile(); }
+  const entries = f.audit.entries(c.id);
+  expect(entries.filter(e => e.action === "sleep" && e.reason === "plan")).toHaveLength(1);
+  expect(entries.filter(e => e.action === "backup").map(e => e.reason)).toEqual(["plan_ended"]);
+  expect(entries.filter(e => e.action === "wake")).toHaveLength(0);
+  expect(c.managed!.backups.at(-1)!.snapshotAt).toBeGreaterThanOrEqual(c.managed!.lastStopAt!);
+  expect(c.managed!.archive).toMatchObject({ serverId: null });
+  expect(c.serverId).toBeNull();
+});
+
+it("a failed lifecycle step is logged with its cause, not only counted", async () => {
+  const f = await homeFixture();
+  const { c } = await f.paid();
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  f.api.failNext(50);
+  c.nextAttemptAt = 0; await f.service.reconcile();
+  expect(c.attempts).toBe(1);
+  expect(warn).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^clouds: cloud ${c.id} step failed \\(attempt 1\\): \\w*Error: .+`)));
+  warn.mockRestore();
+});
+
 it("renewing before the end of retention brings the home back without losing anything", async () => {
   const f = await homeFixture();
   const { c, sub } = await f.paid();

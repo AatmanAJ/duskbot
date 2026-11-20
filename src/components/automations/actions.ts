@@ -1,7 +1,8 @@
 // What a person can do to an automation, the same from the page, its panel and the chat card.
 import { useState } from "react";
 
-import type { Automation } from "@/lib/automations";
+import { runWaitingOnYou, type Automation } from "@/lib/automations";
+import { t } from "@/lib/i18n";
 import { copyText } from "@/lib/copy-text";
 import type { RoutineRun } from "@/lib/routines";
 import { keptWebhookAddress, loadWebhookCredentials, removeWebhookCredential, saveWebhookCredential, webhookCredentialStore } from "@/lib/webhook-credentials";
@@ -86,5 +87,14 @@ export function useAutomationActions() {
     if (bot && run?.threadId) openBotThread(dispatch, bot, run.threadId);
   };
 
-  return { busy, error, errorFor, setError, copied, toggle, runNow, test, remove, copyAddress, openRun };
+  /** Answer: the chat its waiting run asks in, or a plain word that nothing there waits on the person any more. */
+  const answerRun = (automation: Automation) => {
+    const run = runWaitingOnYou(automation);
+    const bot = state.bots.find((candidate) => candidate.id === automation.botId);
+    const thread = run?.threadId ? bot?.tasks?.find((task) => task.threadId === run.threadId) : undefined;
+    if (bot && thread) openBotThread(dispatch, bot, thread.threadId);
+    if (!thread || thread.activity !== "waiting-on-you") dispatch({ type: "notice", notice: { kind: "note", botName: bot?.name ?? null, text: t("automations.answer.nothingWaiting") } });
+  };
+
+  return { busy, error, errorFor, setError, copied, toggle, runNow, test, remove, copyAddress, openRun, answerRun };
 }

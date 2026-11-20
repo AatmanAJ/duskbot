@@ -18,11 +18,11 @@ export type PageId =
   | "browser" | "folder" | "android"
   | "voice" | "blurb" | "team" | "mcp" | "tools" | "webhooks" | "visibility" | "slack"
   | "overview" | "prompt" | "history"
-  | "backups" | "threads" | "api" | "library";
+  | "backups" | "threads" | "api" | "library" | "files" | "document";
 
 /** The pages Simple mode draws; a link to any other page lands where its section does. Bot settings is an alias: it
  * lands on the Advanced tab, which holds its rows. Library is everything the bot made, opened from Advanced. */
-export const SIMPLE_PAGES = ["settings", "apps", "routines", "memory", "skills", "folder", "browser", "where", "instructions", "backups", "threads", "api", "library"] as const satisfies readonly PageId[];
+export const SIMPLE_PAGES = ["settings", "apps", "routines", "memory", "skills", "folder", "browser", "where", "instructions", "backups", "threads", "api", "library", "files", "document"] as const satisfies readonly PageId[];
 export type SimplePageId = (typeof SIMPLE_PAGES)[number];
 
 export function isSimplePage(page: PageId): page is SimplePageId {
@@ -65,6 +65,8 @@ export const PAGES: Record<PageId, PageMeta> = {
   threads: { title: "botPanel.conversations.title", home: "details" },
   api: { title: "botPanel.page.api", home: "details" },
   library: { title: "botPanel.tab.library", home: "advanced" },
+  files: { title: "documents.files", home: "advanced" },
+  document: { title: "documents.page", home: "advanced" },
 };
 
 export const PAGE_IDS = Object.keys(PAGES) as PageId[];

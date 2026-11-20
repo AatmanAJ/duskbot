@@ -110,7 +110,7 @@ describe("the browser panel's connection", () => {
     expect(FakeSocket.instances).toHaveLength(1);
     const url = new URL(FakeSocket.instances[0]!.url);
     expect(url.pathname).toBe("/api/bots/pepper/browser/stream");
-    expect(Object.fromEntries(url.searchParams)).toEqual({ maxWidth: "3200", maxHeight: "2000", width: "1600", height: "1000" });
+    expect(Object.fromEntries(url.searchParams)).toEqual({ maxWidth: "3200", maxHeight: "2000", width: "1600", height: "1000", quality: "90" });
     expect(FixtureEventSource.instances).toHaveLength(0);
     expect(host.querySelector("[data-browser-transport]")!.getAttribute("data-browser-transport")).toBe("stream");
   });
