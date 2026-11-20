@@ -596,7 +596,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       const correcting = (done: Completion) => toolFailed && !done.toolCalls.length && !denials.length && !turnEntry.ending && correctiveRounds < correctiveMax;
       const denials: string[] = [], failedCalls: string[] = [];
       const seenCalls = new Set<string>();
-      let nudges = 0, effectful = 0, claimNudged = false, lastReply = "";
+      let nudges = 0, effectful = 0, toolsRan = 0, toolFailedEver = false, claimNudged = false, lastReply = "";
       const said: string[] = [];
       let unread: string[] = [];
       let callsAtNudge = -1;
@@ -677,7 +677,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               if (kept) delta(kept, "assistant_text");
               const error = asError(value);
               const verdict = classifyError(error);
-              const nudge = answerStreamed || abort.signal.aborted ? null : nudgeOnce(error, nudged);
+              const nudge = answerStreamed || abort.signal.aborted ? null : nudgeOnce(error, nudged, { toolsRan, failed: toolFailedEver });
               if (nudge) { nudged = true; messages.push({ role: "user", content: nudge }); emit({ ...base(turn.threadId, turnId), type: "turn.retrying", attempt: 1, delayMs: 0, reason: "empty_reply" }); continue; }
               // A rejected reasoning echo executed nothing upstream, so the stripped resend repeats nothing.
               if (error instanceof UnsupportedReasoningReplayError && !streamed && !abort.signal.aborted) {
@@ -871,7 +871,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
             full: () => (turn.approvalModeNow?.() ?? turn.approvalMode) === "full", covered: approval.covered, execute: executeCall })) {
             for (const { call, result, text, title, skipRepeatCount } of results) {
               const repeatNote = skipRepeatCount ? undefined : repeats?.noteAfter(call.function.name, call.function.arguments, result);
-              if (!result.ok) { toolFailed = true; failedCalls.push(title); } else if (effectfulCall(call.function.name, call.function.arguments)) effectful += 1;
+              toolsRan += 1; if (!result.ok) { toolFailed = true; toolFailedEver = true; failedCalls.push(title); } else if (effectfulCall(call.function.name, call.function.arguments)) effectful += 1;
               messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: result.ok, result: repeatNote ? `${text}\n\n${repeatNote}` : text }) });
               screenshotParts.push(...chatToolImages(call.id, result.images));
             }

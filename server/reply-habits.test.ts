@@ -120,3 +120,11 @@ it("runs independent parts at once and keeps a first ask going when a second one
     expect(prompt).toContain("A separate new ask does not replace the first: do both, and send each result when it is ready, opening with which ask it finishes.");
   }
 });
+
+it("ends every turn on a result, a blocker or a real watch, and retries a thin lookup", () => {
+  for (const quick of [false, true]) {
+    const prompt = replyHabitsPrompt(quick);
+    expect(prompt).toContain("End every turn on the result, a named blocker, or a watch you really set up (an automation, a wait, a job)");
+    expect(prompt).toContain("A lookup that comes back thin gets another query or source before you conclude.");
+  }
+});
