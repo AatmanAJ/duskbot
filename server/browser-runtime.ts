@@ -18,7 +18,8 @@ import { ThreadTabs, type ClosedThreadTab } from "./browser-thread-tabs.ts";
 import { agentBrowserTypeInLines, runAgentBrowserTypeInLines } from "./line-break-typing.ts";
 import { asToolResult, firstText, lostCallToolError, recoveredResult, stillBusyToolError, stuckBrowserToolError, toolNameOf, type ToolResult } from "./browser-runtime-results.ts";
 import { BATCH_TOOL } from "./browser/tools.ts";
-import { agentBrowserArguments, pickPageSelector } from "./browser/agent-browser-args.ts";
+import { BROWSER_HOVER_TOOL, BROWSER_UPLOAD_TOOL, RELAYED_TOOL_SPECS, RELAYED_TOOLS, type RelayedToolSpec } from "./browser-relayed-tools.ts";
+import { answeredWithErrorStatus, ERROR_STATUS_NOTE, newTabNavigated, pickPageSelector, readAfterOpen, withAgentBrowserArguments, withPickNote } from "./browser/agent-browser-args.ts";
 
 /** The hosts whose bot check cleared in each browser. */
 const clearedChecks = new WeakMap<object, Set<string>>();
@@ -38,32 +39,7 @@ const BROWSER_RESTART_TOOL_SPEC = {
   description: "Close and restart your browser. Use this only when a browser tool says the browser must be restarted, or it stays busy after a call that did not answer. Every open tab is closed and unsaved page state such as form input is lost; sign-ins stay unless it is a temporary browser. Afterwards open the page you need again and check whether the interrupted action already happened before repeating it.",
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
 };
-export const BROWSER_UPLOAD_TOOL = "agent_browser_upload";
-export const BROWSER_HOVER_TOOL = "agent_browser_hover";
-/** agent-browser 0.37.0 offers upload and hover only in its 156-tool "all" profile, so dusk bot runs these two through the daemon's relay. */
-const RELAYED_TOOL_SPECS = [
-  {
-    name: BROWSER_UPLOAD_TOOL,
-    description: "Put files into a file input (<input type=\"file\">), then submit its form as usual. files are absolute paths of files the person attached to this conversation or files in your own working folder; any other path is refused.",
-    inputSchema: {
-      type: "object", additionalProperties: false, required: ["selector", "files"],
-      properties: {
-        selector: { type: "string", minLength: 1, description: "The file input: an @eN ref from a snapshot, or a CSS selector." },
-        files: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", minLength: 1 }, description: "Absolute paths of the files to put in the input." },
-      },
-    },
-  },
-  {
-    name: BROWSER_HOVER_TOOL,
-    description: "Move the mouse over an element, for menus and tooltips that open on hover.",
-    inputSchema: {
-      type: "object", additionalProperties: false, required: ["selector"],
-      properties: { selector: { type: "string", minLength: 1, description: "An @eN ref from a snapshot, or a CSS selector." } },
-    },
-  },
-];
-type RelayedToolSpec = (typeof RELAYED_TOOL_SPECS)[number];
-const RELAYED_TOOLS: ReadonlyMap<string, RelayedToolSpec> = new Map(RELAYED_TOOL_SPECS.map((spec) => [spec.name, spec]));
+export { BROWSER_HOVER_TOOL, BROWSER_UPLOAD_TOOL };
 const idleClosedNote = (saves: boolean) => `Your browser sat unused and was closed to free memory; this call opened it again. Pages you had open are gone (${saves ? "saved sign-ins are kept" : "it is a temporary browser, so its sign-ins are gone too"}), so open the page you need again before using earlier @eN refs.`;
 const PERSON_RESTARTED = "The person restarted your browser from the Browser panel; this call ran in the fresh browser. Pages you had open are gone, so open the page you need again before using earlier @eN refs, and check whether an interrupted action already happened before repeating it.";
 /** One bot call, lane wait included, answers within `callBudgetMs`; the engine's action keeps `followUpReserveMs` of it for the reads after. */
@@ -506,11 +482,10 @@ export class BrowserRuntime {
   /** Every tool result, recovery notes included, is scrubbed of held secrets. */
   async agentRpc(session: string, spec: BrowserSpawnSpec, method: "tools/list" | "tools/call", params: unknown, beforeDispatch?: () => void, ctx?: StepContext): Promise<unknown> {
     if (method === "tools/call" && readsAroundBrowser(params)) {
-      const { url, ...rest } = (params as { arguments: Record<string, unknown> }).arguments;
-      if (typeof url !== "string" || !url.trim()) return { isError: true, content: [{ type: "text", text: READ_OPEN_PAGE_ONLY }] };
-      const opened = await this.agentRpc(session, spec, "tools/call", { name: "agent_browser_open", arguments: { url } }, beforeDispatch, ctx) as { isError?: unknown } | null;
-      if (opened?.isError === true) return opened;
-      return this.agentRpc(session, spec, "tools/call", { ...params as object, arguments: rest }, beforeDispatch, ctx);
+      const split = readAfterOpen(params);
+      if (!split) return { isError: true, content: [{ type: "text", text: READ_OPEN_PAGE_ONLY }] };
+      const opened = await this.agentRpc(session, spec, "tools/call", split.open, beforeDispatch, ctx) as { isError?: unknown } | null;
+      return opened?.isError === true ? opened : this.agentRpc(session, spec, "tools/call", split.read, beforeDispatch, ctx);
     }
     // Counted in the same event-loop turn, so no idle close can start under a call.
     for (let closing = this.gates.get(session)?.idleClose; closing; closing = this.gates.get(session)?.idleClose) await closing;
@@ -617,9 +592,7 @@ export class BrowserRuntime {
         const labelled = toolName === "agent_browser_tab_new" && ctx
           ? { ...stripped as object, arguments: this.threadTabs.labelNewTab(ctx.threadId, ((stripped as { arguments?: Record<string, unknown> }).arguments) ?? {}) } : stripped;
         const prepared = method === "tools/call" ? this.pageSizes.callArguments(session, ctx ? this.threadTabs.refs.carry(session, ctx.threadId, labelled) : labelled) : params;
-        const picked = method === "tools/call"
-          ? await pickPageSelector(prepared, (name, pickArgs, ms) => entry.client.rpc("tools/call", { name, arguments: pickArgs }, ms), followUpMs)
-          : { params: prepared };
+        const picked = method === "tools/call" ? await pickPageSelector(prepared, (name, pickArgs, ms) => entry.client.rpc("tools/call", { name, arguments: pickArgs }, ms), followUpMs) : { params: prepared };
         if ("refusal" in picked) return { isError: true, content: [{ type: "text", text: picked.refusal }] };
         beforeDispatch?.();
         const request = picked.params;
@@ -676,9 +649,7 @@ export class BrowserRuntime {
             })
             : await entry.client.rpc(method, request, engineTimeoutMs);
         phases.engineMs = performance.now() - engineStarted;
-        if ("note" in picked && picked.note && result && typeof result === "object" && Array.isArray((result as { content?: unknown }).content)) {
-          result = { ...result as object, content: [...(result as { content: unknown[] }).content, { type: "text", text: picked.note }] };
-        }
+        result = withPickNote(result, picked);
         beforeDispatch?.();
         if (method === "tools/list") {
           const tools = withDuskTools(slimBrowserToolList(result));
@@ -699,10 +670,7 @@ export class BrowserRuntime {
         const navigated = (toolName === "agent_browser_open" || (toolName === "agent_browser_tab_new" && typeof (args as { url?: unknown } | undefined)?.url === "string"));
         if (navigated && result && typeof result === "object" && ((result as { isError?: boolean }).isError !== true || errorStatus)) {
           if (errorStatus) result = { content: [{ type: "text", text: ERROR_STATUS_NOTE }] };
-          if (toolName === "agent_browser_tab_new") {
-            const until = Date.now() + Math.min(NEW_TAB_NAVIGATION_MS, Math.max(0, followUpMs() - 1_000));
-            while (Date.now() < until && /^(?:about:blank)?$/u.test(await pageUrl())) await new Promise((resolve) => setTimeout(resolve, 100));
-          }
+          if (toolName === "agent_browser_tab_new") await newTabNavigated(pageUrl, followUpMs() - 1_000);
           beforeDispatch?.();
           if (this.gate(session).owner !== null) throw this.taken(session);
           settled = await this.settle(entry.client, gate, deadline, true);
@@ -1162,20 +1130,6 @@ export class BrowserRuntime {
   async closeAll(): Promise<void> {
     await Promise.all([...new Set([...this.clients.keys(), ...this.gates.keys(), ...this.holds.sessions()])].map((session) => this.close(session)));
   }
-}
-
-// Chrome 158 fails a navigation with net::ERR_HTTP_RESPONSE_CODE_FAILURE when the site answers 4xx/5xx yet still shows the page it sent.
-const NEW_TAB_NAVIGATION_MS = 10_000;
-const ERROR_STATUS_NOTE = "The site answered with an error status, so this may be a sign-in wall, a bot block or a missing page; read what it shows below.";
-function answeredWithErrorStatus(result: unknown): boolean {
-  return (result as { isError?: unknown } | null)?.isError === true && /net::ERR_HTTP_RESPONSE_CODE_FAILURE/u.test(firstText(result));
-}
-
-function withAgentBrowserArguments(params: unknown): unknown {
-  const record = params as { name?: unknown; arguments?: unknown } | null;
-  if (typeof record?.name !== "string") return params;
-  const args = record.arguments && typeof record.arguments === "object" && !Array.isArray(record.arguments) ? record.arguments as Record<string, unknown> : {};
-  return { ...record, arguments: agentBrowserArguments(record.name, args) };
 }
 
 function withDuskTools(result: unknown): unknown {

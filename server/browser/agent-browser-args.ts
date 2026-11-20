@@ -281,3 +281,38 @@ export async function pickPageSelector(params: unknown, rpc: Rpc, remainingMs: (
     await sleep(PICK_POLL_MS);
   }
 }
+
+/** A call's params with its arguments as agent-browser takes them. */
+export function withAgentBrowserArguments(params: unknown): unknown {
+  const record = params as { name?: unknown; arguments?: unknown } | null;
+  if (typeof record?.name !== "string") return params;
+  const args = record.arguments && typeof record.arguments === "object" && !Array.isArray(record.arguments) ? record.arguments as Args : {};
+  return { ...record, arguments: agentBrowserArguments(record.name, args) };
+}
+
+export function withPickNote(result: unknown, picked: PickedCall): unknown {
+  if (!("note" in picked) || !picked.note || !result || typeof result !== "object" || !Array.isArray((result as { content?: unknown }).content)) return result;
+  return { ...result, content: [...(result as { content: unknown[] }).content, { type: "text", text: picked.note }] };
+}
+
+/** agent_browser_read with a url, as an open in the browser (through its egress gate) and a read of the page it opened. */
+export function readAfterOpen(params: unknown): { open: { name: string; arguments: Args }; read: unknown } | null {
+  const { url, ...rest } = ((params as { arguments?: Args } | null)?.arguments ?? {});
+  if (typeof url !== "string" || !url.trim()) return null;
+  return { open: { name: "agent_browser_open", arguments: { url } }, read: { ...params as object, arguments: rest } };
+}
+
+// Chrome 158 fails a navigation with net::ERR_HTTP_RESPONSE_CODE_FAILURE when the site answers 4xx/5xx yet still shows the page it sent.
+export const ERROR_STATUS_NOTE = "The site answered with an error status, so this may be a sign-in wall, a bot block or a missing page; read what it shows below.";
+export function answeredWithErrorStatus(result: unknown): boolean {
+  const record = result as { isError?: unknown; content?: unknown } | null;
+  const text = Array.isArray(record?.content) ? (record.content as Array<{ text?: unknown }>).map((part) => typeof part?.text === "string" ? part.text : "").join("\n") : "";
+  return record?.isError === true && /net::ERR_HTTP_RESPONSE_CODE_FAILURE/u.test(text);
+}
+
+// agent-browser 0.37.0 answers tab_new before the tab has left about:blank.
+const NEW_TAB_NAVIGATION_MS = 10_000;
+export async function newTabNavigated(url: () => Promise<string>, withinMs: number): Promise<void> {
+  const until = Date.now() + Math.min(NEW_TAB_NAVIGATION_MS, Math.max(0, withinMs));
+  while (Date.now() < until && /^(?:about:blank)?$/u.test(await url())) await new Promise((resolve) => setTimeout(resolve, 100));
+}
