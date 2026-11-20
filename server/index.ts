@@ -12957,7 +12957,7 @@ function configStatus() {
     mcp: { callTimeoutMinutes: mcpCallTimeoutMinutes(cfg) },
     automaticRecovery: cfg.automaticRecovery ?? { enabled: false },
     cacheKeepWarm: cacheKeepWarmSettings(cfg),
-    newBots: cfg.newBots?.effort ? { effort: cfg.newBots.effort } : {},
+    newBots: cfg.newBots?.effort ? { effort: cfg.newBots.effort } : {}, ...(cfg.defaultModelSelection ? { defaultModelSelection: cfg.defaultModelSelection } : {}),
     threads: {
       maxConcurrentPerBot: maxConcurrentBotThreads(cfg, botThreadsHost(cloudPlanTier.starter())),
       ...(eventLogMaxBytes !== null ? { eventLogMaxBytes } : {}),
