@@ -140,6 +140,20 @@ describe("a bot's routines in its panel", () => {
     expect(row("routine-1").textContent).toContain("Monthly summary");
   });
 
+  it("gives focus back to the sheet's Edit after saving or cancelling, so one Escape closes only the sheet", async () => {
+    fixture.api.mockImplementation(async (_path: unknown, init: unknown) => ({ routine: { ...routine, ...JSON.parse((init as { body: string }).body), updatedAt: now + 1 } }));
+    mount();
+    open("routine-1");
+    flushSync(() => action("routine-1", "edit").click());
+    flushSync(() => sheet().querySelector<HTMLButtonElement>("button[type=submit]")!.click());
+    await vi.waitFor(() => expect(sheet().querySelector("form")).toBeNull());
+    expect(document.activeElement).toBe(action("routine-1", "edit"));
+    flushSync(() => action("routine-1", "edit").click());
+    const cancel = [...sheet().querySelectorAll<HTMLButtonElement>("form button[type=button]")].find((button) => button.textContent === "Cancel")!;
+    flushSync(() => cancel.click());
+    expect(document.activeElement).toBe(action("routine-1", "edit"));
+  });
+
   it("says what is missing instead of saving a one-time routine in the past", () => {
     mount();
     open("routine-1");
