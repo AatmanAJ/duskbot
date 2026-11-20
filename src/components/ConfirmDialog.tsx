@@ -36,20 +36,23 @@ export interface ConfirmDialogProps {
 }
 
 /**
- * Grok's confirmation modal: the confirm button takes focus, so Enter confirms and Escape cancels, and Tab moves to
- * Cancel. While pending, focus parks on the dialog. Portalled to <body>: the sidebar's translate below md would become
- * the containing block.
+ * Grok's confirmation modal: Escape cancels and Tab stays inside it. A danger confirm opens on Cancel, so a stray Enter
+ * cannot destroy anything; a neutral one opens on its confirm button. While pending, focus parks on the dialog.
+ * Portalled to <body>: the sidebar's translate below md would become the containing block.
  */
 export function ConfirmDialog(props: ConfirmDialogProps) {
   const { open, onCancel, returnFocusRef } = props;
   const dialogRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const initialFocus = useRef(confirmRef);
+  initialFocus.current = (props.tone ?? "danger") === "danger" ? cancelRef : confirmRef;
   const cancelAction = useRef(onCancel);
   cancelAction.current = onCancel;
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    confirmRef.current?.focus();
+    initialFocus.current.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -82,7 +85,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   useEffect(() => {
     if (!open) return;
     if (props.pending) dialogRef.current?.focus();
-    else confirmRef.current?.focus();
+    else initialFocus.current.current?.focus();
   }, [open, props.pending]);
 
   const reduced = useMotionReduced();
@@ -97,7 +100,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     <AnimatePresence onExitComplete={() => { setOpened(false); if (phone) void flushSystemControls(); else wakeSystemControls(); props.onClosed?.(); }}>
       {open && (
         <ConfirmLayer key="confirm" phone={phone} layer={props.layer} onCancel={onCancel} scrim={motion.scrim}>
-          <ConfirmDialogCard ref={dialogRef} confirmRef={confirmRef} animated enter={motion.sheet} {...props} />
+          <ConfirmDialogCard ref={dialogRef} confirmRef={confirmRef} cancelRef={cancelRef} animated enter={motion.sheet} {...props} />
         </ConfirmLayer>
       )}
     </AnimatePresence>,
@@ -134,6 +137,7 @@ function ConfirmLayer({ phone, layer, onCancel, scrim, children }: { phone: bool
 export function ConfirmDialogCard({
   ref,
   confirmRef,
+  cancelRef,
   title,
   body,
   confirmLabel,
@@ -149,6 +153,7 @@ export function ConfirmDialogCard({
 }: ConfirmDialogProps & {
   ref?: React.Ref<HTMLDivElement>;
   confirmRef?: React.Ref<HTMLButtonElement>;
+  cancelRef?: React.Ref<HTMLButtonElement>;
   /** eases in as bencho's modal does; a card drawn inside another surface stays put */
   animated?: boolean;
   /** the way in and out it plays, in place of the stylesheet's way in */
@@ -180,7 +185,7 @@ export function ConfirmDialogCard({
         </div>
       </div>
       <div className="flex flex-wrap gap-2 py-3 pl-4 pr-3">
-        <button type="button" onClick={onCancel} disabled={pending} className={`${confirmCancelCls} flex-1`}>
+        <button ref={cancelRef} type="button" onClick={onCancel} disabled={pending} className={`${confirmCancelCls} flex-1`}>
           {cancelLabel}
         </button>
         {alternative && <button type="button" data-confirm-alternative onClick={alternative.onClick} disabled={pending}
