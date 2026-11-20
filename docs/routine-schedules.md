@@ -89,6 +89,14 @@ minutes field does not mean every 90 elapsed minutes. Holidays, external events,
 and conditions such as "after a payment arrives" are not calendar expressions;
 use an appropriate event/webhook workflow instead of a fake weekly schedule.
 
+## Test runs and what is running
+
+A bot that sets up a workflow tries it once with `trigger` `action: "run_now"`, `test: true`: a test run, told to send,
+post, book and pay nothing and to put what it would have done in its report (a connected app's send is refused
+outright). Its report lands in the chat like any run's. Asked what is running, a bot calls `trigger_info` `list`, which
+names its schedules, app events and webhooks with each one's last result, then its background jobs and its waits in
+every chat.
+
 ## Dates, clock changes and downtime
 
 - Dates that do not exist are skipped: the 31st skips shorter months and
