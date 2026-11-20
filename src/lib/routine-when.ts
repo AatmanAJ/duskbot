@@ -51,6 +51,22 @@ export function whenDraftFor(schedule: RoutineSchedule | undefined, now = Date.n
   return { ...draft, preset: "keep" };
 }
 
+function sameWhen(a: WhenDraft, b: WhenDraft): boolean {
+  if (a.preset !== b.preset) return false;
+  switch (a.preset) {
+    case "keep": return true;
+    case "hourly": return JSON.stringify(a.window) === JSON.stringify(b.window);
+    case "once": return a.date === b.date && a.time === b.time;
+    case "weekly": return a.day === b.day && a.time === b.time;
+    default: return a.time === b.time;
+  }
+}
+
+/** The schedule an edit saves: none while the draft still says the saved one, so its anchor and next run stay. */
+export function editedSchedule(saved: WhenDraft, draft: WhenDraft, now = Date.now()): ReturnType<typeof scheduleFromDraft> {
+  return sameWhen(saved, draft) ? {} : scheduleFromDraft(draft, now);
+}
+
 /** The next local hour's start: an hourly routine runs on the hour. */
 export function nextLocalHour(now = Date.now()): number {
   const date = new Date(now);
