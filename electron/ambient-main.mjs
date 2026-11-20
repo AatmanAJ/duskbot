@@ -76,7 +76,7 @@ export function installAmbient({ ipcMain, BrowserWindow, page, origin, file, ope
   const trace = given !== undefined ? given : traceWanted(process.env, rawPrefs) ? createTrace({ folder: traceFolder(platform) }) : null;
   const note = (event, detail) => trace?.("main", event, detail);
   const island = createIslandWindow({ BrowserWindow, url: () => address("island"), platform, onMessage: onMessage("island"), log, trace });
-  const dock = createDockWindow({ BrowserWindow, url: () => address("dock"), platform, onMessage: onMessage("dock"), log, trace });
+  const dock = createDockWindow({ BrowserWindow, url: () => address("dock"), platform, onMessage: onMessage("dock"), log, trace, cursor: () => screen?.getCursorScreenPoint() ?? null });
 
   const display = () => {
     if (!screen) return null;

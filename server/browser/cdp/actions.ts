@@ -11,7 +11,11 @@ import type { FrameTree } from "./frames.ts";
 import type { MouseButton, Mouse, Point } from "./input.ts";
 import type { Keyboard } from "./keyboard.ts";
 import type { NodeHandle, RefTable } from "./refs.ts";
+import { liveRef } from "./relocate.ts";
+import { coverAdvice, RECEIVES, samplePoints, SCROLL_CLEAR, VISIBLE_POINT, type Receives } from "./cover.ts";
+import { innerField, notEditableMessage, WHY_NOT_EDITABLE } from "./fields.ts";
 import { resolveElement } from "./selectors.ts";
+import { setSlider, sliderState } from "./slider.ts";
 
 export const DEFAULT_ACTION_TIMEOUT_MS = 15_000;
 const POLL_MS = 100;
@@ -77,20 +81,7 @@ const sameQuads = (a: number[][], b: number[][]) => a.length === b.length && a.e
 
 const NEXT_FRAME = "new Promise((resolve) => { requestAnimationFrame(() => resolve(1)); setTimeout(() => resolve(0), 50); })";
 
-const RECEIVES = `function (hit, wantEnabled) {
-  const disabled = wantEnabled && (this.disabled === true || this.closest?.("fieldset[disabled]") != null || this.getAttribute?.("aria-disabled") === "true");
-  if (disabled) return { disabled: true, covering: null };
-  if (!hit) return { disabled: false, covering: null };
-  for (let node = hit; node; node = node.parentNode || node.host) if (node === this) return { disabled: false, covering: null };
-  const element = hit.nodeType === 1 ? hit : hit.parentElement;
-  if (!element) return { disabled: false, covering: "another element" };
-  const id = element.id ? "#" + element.id : "";
-  const classes = typeof element.className === "string" && element.className.trim() ? "." + element.className.trim().split(/\\s+/).slice(0, 2).join(".") : "";
-  const text = (element.innerText || element.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 40);
-  return { disabled: false, covering: "<" + element.tagName.toLowerCase() + id + classes + ">" + (text ? " \\"" + text + "\\"" : "") };
-}`;
-
-async function receivesClick(context: ActionContext, handle: NodeHandle, local: Point, wantEnabled: boolean): Promise<{ disabled: boolean; covering: string | null }> {
+async function receivesClick(context: ActionContext, handle: NodeHandle, local: Point, wantEnabled: boolean): Promise<Receives> {
   let hit: { backendNodeId: number; frameId: string } | null = null;
   try {
     // DOM.getNodeForLocation takes document coordinates; the quads were in the viewport.
@@ -111,7 +102,7 @@ async function receivesClick(context: ActionContext, handle: NodeHandle, local: 
     const objectId = await resolveInWorld(session, handle.backendNodeId, contextId);
     const hitId = sameFrame && hit.backendNodeId !== handle.backendNodeId ? await resolveInWorld(session, hit.backendNodeId, contextId).catch(() => null) : null;
     try {
-      const { result, exceptionDetails } = await session.send<{ result: { value?: { disabled: boolean; covering: string | null } }; exceptionDetails?: unknown }>("Runtime.callFunctionOn", {
+      const { result, exceptionDetails } = await session.send<{ result: { value?: Receives }; exceptionDetails?: unknown }>("Runtime.callFunctionOn", {
         objectId,
         functionDeclaration: RECEIVES,
         arguments: [hitId ? { objectId: hitId } : { value: null }, { value: wantEnabled }],
@@ -131,9 +122,27 @@ async function receivesClick(context: ActionContext, handle: NodeHandle, local: 
   });
 }
 
-/** Scrolled into view, visible, still for a frame, enabled and the top element at its centre; waits until then. */
+/** A disabled target, or one under a cover that stays put, is reported this soon rather than at the action's timeout. */
+export const STUCK_TARGET_MS = 2_500;
+const CLEAR_TRIES = 2;
+
+/** Another point of the element that shows when its centre is covered, as a person would click; null when none does. */
+async function visiblePart(context: ActionContext, handle: NodeHandle, quad: number[]): Promise<Point | null> {
+  // elementFromPoint takes the frame's own viewport, which matches the quad's only in a frame that is its own local root
+  if (context.frames.rootOf(handle.session) !== handle.frameId) return null;
+  const found = await callOnNode<[number, number] | null>(context.frames, handle, VISIBLE_POINT, [samplePoints(quad)]).catch(() => null);
+  return found ? { x: found[0], y: found[1] } : null;
+}
+
+/** Scrolled into view, visible, still for a frame, enabled and the top element where it is clicked; waits until then. */
 async function actionablePoint(context: ActionContext, handle: NodeHandle & { ref?: string }, deadline: number, { hitTest = true, wantEnabled = true } = {}): Promise<Point> {
   let problem: DriverError = new DriverError("not-visible", "The element is not visible.");
+  let stuck: { what: string; since: number } | null = null;
+  let clears = 0;
+  const lasting = (what: string) => {
+    if (stuck?.what !== what) stuck = { what, since: Date.now() };
+    return Date.now() - stuck.since >= STUCK_TARGET_MS;
+  };
   for (;;) {
     try {
       await handle.session.send("DOM.scrollIntoViewIfNeeded", { backendNodeId: handle.backendNodeId }).catch((error: unknown) => {
@@ -150,9 +159,22 @@ async function actionablePoint(context: ActionContext, handle: NodeHandle & { re
           const point = { x: local.x + offset.x, y: local.y + offset.y };
           if (!hitTest) return point;
           const receives = await receivesClick(context, handle, local, wantEnabled);
-          if (receives.disabled) problem = new DriverError("not-editable", "The element is disabled.");
-          else if (receives.covering) problem = new DriverError("covered", `The element is covered by ${receives.covering}, which would get the click.`, { covering: receives.covering });
-          else return point;
+          if (receives.disabled) {
+            problem = new DriverError("not-editable", "The element is disabled. Something on the page has to happen first, such as a required field filled or a box ticked; check the page, then try again.");
+            if (lasting("disabled")) throw problem;
+          } else if (receives.covering) {
+            const part = await visiblePart(context, handle, quad);
+            if (part) return { x: part.x + offset.x, y: part.y + offset.y };
+            if (receives.fixed && !receives.fixed.busy && clears < CLEAR_TRIES) {
+              clears++;
+              const moved = await callOnNode<boolean>(context.frames, handle, SCROLL_CLEAR, [receives.fixed.top, receives.fixed.bottom]).catch(() => false);
+              if (moved) continue;
+            }
+            problem = new DriverError("covered", coverAdvice(receives), { covering: receives.covering });
+            if (!receives.fixed?.busy && lasting(receives.covering)) throw problem;
+          } else {
+            return point;
+          }
         } else {
           problem = new DriverError("not-visible", second.length ? "The element is still moving." : "The element is not visible.");
         }
@@ -257,26 +279,59 @@ const SET_VALUE = `function (value) {
 
 const notEditable = () => new DriverError("not-editable", "The target is not an enabled text field, so no text was typed.");
 
-async function focusEditable(context: ActionContext, handle: NodeHandle & { ref?: string }): Promise<"text" | "value" | "contenteditable"> {
-  let editable: { kind: "text" | "value" | "contenteditable" } | null;
+type EditableKind = "text" | "value" | "contenteditable";
+
+const FOCUS_SWAP_FRAMES = 5;
+
+async function focusNode(handle: NodeHandle): Promise<void> {
   try {
-    editable = await callOnNode<{ kind: "text" | "value" | "contenteditable" } | null>(context.frames, handle, EDITABLE);
+    await handle.session.send("DOM.focus", { backendNodeId: handle.backendNodeId });
+  } catch (error) {
+    if (!isGone(error) && !/not focusable/i.test(messageOf(error))) throw error;
+  }
+}
+
+/** Focuses the field and answers the element that has the focus then: a page may swap the field for a new copy as it
+ * takes focus (a React composer), and the ref follows that copy. */
+async function focusEditable(context: ActionContext, handle: NodeHandle & { ref?: string }): Promise<{ kind: EditableKind; handle: NodeHandle & { ref?: string } }> {
+  let editable: { kind: EditableKind } | null;
+  try {
+    editable = await callOnNode<{ kind: EditableKind } | null>(context.frames, handle, EDITABLE);
   } catch (error) {
     if (isGone(error) || (error instanceof DriverError && error.code === "not-found")) throw gone(handle);
     throw error;
   }
-  if (!editable) throw notEditable();
-  await handle.session.send("DOM.focus", { backendNodeId: handle.backendNodeId });
-  if (!(await callOnNode<boolean>(context.frames, handle, FOCUSED))) throw notEditable();
-  return editable.kind;
+  if (!editable) {
+    const inner = await innerField(context.frames, handle, "text");
+    if (inner) return focusEditable(context, inner);
+    const why = await callOnNode<string>(context.frames, handle, WHY_NOT_EDITABLE).catch(() => "");
+    throw why ? new DriverError("not-editable", notEditableMessage(why)) : notEditable();
+  }
+  await focusNode(handle);
+  let current = handle;
+  for (let frame = 0; ; frame++) {
+    if (await callOnNode<boolean>(context.frames, current, FOCUSED).catch(() => false)) return { kind: editable.kind, handle: current };
+    if (!handle.ref || frame >= FOCUS_SWAP_FRAMES) throw notEditable();
+    await valueInWorld(context.frames, handle.frameId, NEXT_FRAME, { awaitPromise: true }).catch(() => {});
+    const now = await liveRef(context.frames, context.refs, handle.ref);
+    if (now.backendNodeId !== current.backendNodeId) {
+      current = now;
+      if (!(await callOnNode<boolean>(context.frames, current, FOCUSED).catch(() => false))) await focusNode(current);
+    }
+  }
 }
 
 /** Clears the field and inserts the text in one input event, as a paste would. */
 export async function fill(context: ActionContext, target: Exclude<Target, Point>, text: string): Promise<void> {
   await context.bringToFront();
   refuseErrorPage(context);
-  const handle = await element(context, target);
-  const kind = await focusEditable(context, handle);
+  const named = await element(context, target);
+  const slider = await sliderState(context.frames, named);
+  if (slider) {
+    await setSlider(context.frames, context.keyboard, named, slider, text);
+    return;
+  }
+  const { kind, handle } = await focusEditable(context, named);
   // Date and time fields take no typed text: set them like a picker would (the events are untrusted).
   if (kind === "value") {
     await callOnNode(context.frames, handle, SET_VALUE, [text]);
@@ -443,13 +498,29 @@ export async function drag(context: ActionContext, from: Target, to: Target, { t
   }
 }
 
-const VIEWPORT_CENTER = "({ x: innerWidth / 2, y: innerHeight / 2 })";
+/** The middle of the viewport, or of the largest scrolling box on screen when the page itself cannot scroll (an app whose list scrolls inside it). */
+const WHEEL_AT = `(() => {
+  const root = document.scrollingElement || document.documentElement;
+  const middle = { x: innerWidth / 2, y: innerHeight / 2 };
+  // a page that scrolls only a little (a margin past 100vh) is an app whose real list scrolls inside it
+  if (root.scrollHeight - innerHeight > 200) return middle;
+  let best = null, size = 0;
+  for (const el of document.querySelectorAll("*")) {
+    if (el.scrollHeight <= el.clientHeight + 2) continue;
+    const overflow = getComputedStyle(el).overflowY;
+    if (overflow !== "auto" && overflow !== "scroll") continue;
+    const r = el.getBoundingClientRect();
+    const w = Math.min(r.right, innerWidth) - Math.max(r.left, 0), h = Math.min(r.bottom, innerHeight) - Math.max(r.top, 0);
+    if (w > 0 && h > 0 && w * h > size) { size = w * h; best = { x: Math.max(r.left, 0) + w / 2, y: Math.max(r.top, 0) + h / 2 }; }
+  }
+  return best || middle;
+})()`;
 
-/** A mouse wheel over the target, or over the middle of the viewport. */
+/** A mouse wheel over the target, or where a person would wheel to scroll the page. */
 export async function scroll(context: ActionContext, target: Target | null, deltaX: number, deltaY: number, { timeoutMs = DEFAULT_ACTION_TIMEOUT_MS }: { timeoutMs?: number } = {}): Promise<Point> {
   await context.bringToFront();
   const point = target === null
-    ? await valueInWorld<Point>(context.frames, context.frames.mainFrameId, VIEWPORT_CENTER)
+    ? await valueInWorld<Point>(context.frames, context.frames.mainFrameId, WHEEL_AT)
     : isPoint(target) ? await inViewport(context, target) : await actionablePoint(context, await element(context, target), Date.now() + timeoutMs, { hitTest: false });
   await context.mouse.move(point.x, point.y);
   await context.mouse.wheel(deltaX, deltaY);

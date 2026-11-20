@@ -4,7 +4,7 @@
 // owner can fix fails at once and is told to them once per bot and cause, until one of that bot's runs completes.
 import type { RuntimeEvent } from "../shared/runtime-events.ts";
 import type { RoutineRetryCause } from "../shared/routines.ts";
-import { engineFailureKind } from "./drivers/engine-errors.ts";
+import { engineFailureKind, limitResetFromWords } from "./drivers/engine-errors.ts";
 import { classifyError } from "./drivers/retry.ts";
 import type { RoutineRun } from "./routines.ts";
 import { hostTimeZone } from "./turn-clock.ts";
@@ -49,6 +49,10 @@ export const ROUTINE_BUSY_WAIT_MS = 60 * 60_000;
 /** Past this, a usage limit fails the run instead: the routine's next scheduled runs come sooner. */
 const LIMIT_WAIT_MS = 12 * 60 * 60_000;
 const AFTER_RESET_MS = 60_000;
+/** A usage limit that named no reset is tried again this often, so plan usage decides, not a guess. */
+export const LIMIT_RECHECK_MS = 15 * 60_000;
+/** Starts a run may wait on usage limits beyond its one retry, backing off from 15 minutes to an hour: about 7 hours. */
+export const MAX_LIMIT_WAITS = 8;
 const WEEK_MS = 7 * 24 * 60 * 60_000;
 /** startTurn's codes for a bot or thread that is busy for now. */
 const BUSY_CODES = new Set(["thread_busy", "thread_limit", "workspace_busy", "settling"]);
@@ -57,7 +61,7 @@ const BUSY_CODES = new Set(["thread_busy", "thread_limit", "workspace_busy", "se
  * repeat it. */
 const NOT_RETRIED_STOPS = new Set(["cancelled", "interrupted", "refusal", "tool_error"]);
 /** What the provider answered for a reason a second start would meet again. */
-const REFUSED_KINDS = new Set(["refused", "tool_schema", "tool_count"]);
+const REFUSED_KINDS = new Set(["refused", "tool_schema", "tool_count", "session_id"]);
 const OWNER_CAUSES = new Set<RoutineOwnerCause>(["signed_out", "credits", "usage_limit", "setup"]);
 
 const OWNER_ACTION: Record<Exclude<RoutineOwnerCause, "setup">, string> = {
@@ -133,6 +137,26 @@ export function requeueOnce(run: RoutineRun, cause: RoutineRetryCause, failure: 
   return true;
 }
 
+/** Queues the run again for its AI's usage limit: at the reset when known, else at the next recheck. Bounded by
+ * MAX_LIMIT_WAITS on top of its one retry; a reset that already passed and refused again backs off. */
+export function requeueForLimit(run: RoutineRun, failure: string, now: number, resetsAt: number | undefined): boolean {
+  if (run.target !== "bot") return false;
+  if (run.retried === undefined) {
+    const at = resetsAt ? resetsAt + AFTER_RESET_MS : now + LIMIT_RECHECK_MS;
+    if (!requeueOnce(run, "usage_limit", failure, now, at)) return false;
+    if (!resetsAt) run.attention = `Waiting for the AI's usage limit to reset; checking again at ${when(at)}`;
+    return true;
+  }
+  const waits = run.limitWaits ?? 0;
+  if (waits >= MAX_LIMIT_WAITS) return false;
+  const backoff = now + LIMIT_RECHECK_MS * Math.min(2 ** waits, 4);
+  const at = Math.max(backoff, resetsAt ? resetsAt + AFTER_RESET_MS : 0);
+  Object.assign(run, { status: "queued", retryAt: at, limitWaits: waits + 1,
+    attention: `Still waiting for the AI's usage limit to reset; this run starts again at ${when(at)}` } satisfies Partial<RoutineRun>);
+  delete run.error;
+  return true;
+}
+
 /** The second start's own line, so a run that already did part of its work does not do it twice. */
 export function retryNote(cause: RoutineRetryCause): string {
   return `[dusk bot: this run's first start ${FIRST_START[cause]} before it finished. If it already did part of the work, ` +
@@ -172,9 +196,14 @@ export function recoverRun(run: RoutineRun, failure: string, facts: RoutineFailu
     return { queued: true };
   }
   const first = firstNotice(notices, run.botId, verdict.cause, now);
-  const reset = verdict.resetsAt;
-  if (reset && reset > now && reset - now <= LIMIT_WAIT_MS && requeueOnce(run, "usage_limit", failure, now, reset + AFTER_RESET_MS)) {
-    return { queued: true, ...(first ? { alert: { detail: `This bot's AI reached its usage limit. This run starts again at ${when(reset + AFTER_RESET_MS)}.` } } : {}) };
+  const named = verdict.resetsAt ?? (verdict.cause === "usage_limit" ? limitResetFromWords(failure, now) : undefined);
+  const reset = named && named > now ? named : undefined;
+  const pastReset = run.retried === "usage_limit" && run.limitWaits === undefined;
+  if (verdict.cause === "usage_limit" && (!reset || reset - now <= LIMIT_WAIT_MS) && requeueForLimit(run, failure, now, reset)) {
+    // a refusal after its wait is told even when the limit was told already: the wait did not end it
+    const detail = pastReset ? `This bot's AI is still at its usage limit. This run starts again at ${when(run.retryAt!)}.`
+      : first ? `This bot's AI reached its usage limit. This run starts again at ${when(run.retryAt!)}.` : undefined;
+    return { queued: true, ...(detail ? { alert: { detail } } : {}) };
   }
   const action = verdict.cause === "setup" ? failure : OWNER_ACTION[verdict.cause];
   return { queued: false, error: verdict.cause === "signed_out" ? `${action} The AI said: “${failure}”` : failure, alert: first ? { detail: action } : null };

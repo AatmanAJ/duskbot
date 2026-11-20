@@ -164,12 +164,20 @@ describe("navigation while a reconnect snapshot is in flight", () => {
     expect(sends[0]).toMatchObject({ threadId: "room-b", text: "Next" });
   });
 
-  it("accepts the server's thread when navigation did not change", async () => {
+  it("keeps the bot's conversation on screen when the server's open thread moved elsewhere", async () => {
     await resync();
+    const before = shown().messages;
     await applySnapshot("b");
+    expect(shown().threadId).toBe("a");
+    expect(shown().messages).toBe(before);
+    expect(state.groups[0]?.threadId).toBe("room-b");
+  });
+
+  it("accepts the server's thread once the one on screen is gone", async () => {
+    await resync();
+    await applySnapshot("b", ["b"]);
     expect(shown().threadId).toBe("b");
     expect(shown().messages.map(message => message.id)).toEqual(["snapshot"]);
-    expect(state.groups[0]?.threadId).toBe("room-b");
   });
 
   it("refreshes an unchanged conversation while another owner switches threads", async () => {

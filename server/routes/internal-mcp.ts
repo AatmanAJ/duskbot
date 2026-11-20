@@ -176,6 +176,8 @@ async function act(deps: Ctx, body: unknown, signal: AbortSignal): Promise<Outco
   return remove(deps, name, server);
 }
 
+const SHARED_NOTE = "owner \"shared\": every bot's already, and each server connected later joins every bot that has servers. There is no setting or preference that shares connections with other bots, so never save one. forThisBot false on a server that is on: your own server selection leaves it out; call mcp_server with action enable and its name, which asks the person to add it for you.";
+
 function list(deps: Deps): Outcome {
   const personal = deps.personal();
   const rows = Object.entries(deps.cfg().mcpServers ?? {}).flatMap(([name, raw]) => {
@@ -192,7 +194,8 @@ function list(deps: Deps): Outcome {
     })];
   });
   say(deps, { action: "list" }, ["server.mcp.listed"]);
-  return { status: 200, text: `MCP servers you can see (${rows.length}):\n${JSON.stringify(rows)}` };
+  const note = rows.some((row) => row.owner === "shared") ? ` ${SHARED_NOTE}` : "";
+  return { status: 200, text: `MCP servers you can see (${rows.length}):${note}\n${JSON.stringify(rows)}` };
 }
 
 async function add(deps: Deps, name: string, fields: Record<string, unknown>, signal: AbortSignal): Promise<Outcome> {

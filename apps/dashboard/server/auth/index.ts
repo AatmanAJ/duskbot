@@ -1,12 +1,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { accountIntentPath, cleanAccountIntent, type AccountIntent } from "../../../../shared/account-api.ts";
-import { ACCOUNT_ROUTES as R, APP_AUTH_REDIRECT, APP_LANDING_PATH, CSRF_COOKIE, CSRF_HEADER, EMAIL_CODE_DIGITS, EMAIL_CODE_TRIES, EMAIL_CODE_TTL_SECONDS, EMAIL_RESEND_SECONDS, HANDOFF_PAGES, HANDOFF_PLANS, NOTIFICATION_DEFAULTS, OAUTH_PROVIDERS, SESSION_COOKIE } from "../../../../shared/account-api.ts";
-import type { AccountAnswer, AccountErrorCode, AccountView, AppGrant, NotificationPrefs, AppSessionIdentity, HandoffAnswer, OAuthErrorCode, OAuthProvider, WebHandoffAnswer } from "../../../../shared/account-api.ts";
+import { ACCOUNT_ROUTES as R, cleanPhoneSignInCode, PHONE_SIGN_IN_CODE_LENGTH, PHONE_SIGN_IN_TTL_MS, APP_AUTH_REDIRECT, APP_LANDING_PATH, CSRF_COOKIE, WEBSITE_HOMES, CSRF_HEADER, EMAIL_CODE_DIGITS, EMAIL_CODE_TRIES, EMAIL_CODE_TTL_SECONDS, EMAIL_RESEND_SECONDS, HANDOFF_PAGES, HANDOFF_PLANS, NOTIFICATION_DEFAULTS, OAUTH_PROVIDERS, SESSION_COOKIE } from "../../../../shared/account-api.ts";
+import type { AccountAnswer, AccountErrorCode, AccountView, AppGrant, NotificationPrefs, AppSessionIdentity, HandoffAnswer, OAuthErrorCode, OAuthProvider, PhoneSignInGrant, WebHandoffAnswer, WebsiteHome, WebsiteSetup } from "../../../../shared/account-api.ts";
+import { generatePairingCode, PAIRING_CODE_ALPHABET } from "../../../../server/sessions.ts";
 import { CHECKOUT_SOURCES } from "../../../../shared/billing-api.ts";
 import { parseUserAvatarChoice } from "../../../../shared/user-avatar.ts";
 import { createAuthStore } from "./store.ts";
-import type { Account, Identity, Session } from "./store.ts";
+import type { Account, AdminRole, Identity, Session, StoredPhoneCode } from "./store.ts";
 import { codeMessage, isTestAddress, magicLinkMessage, recoveryMessage } from "./mail.ts";
 import type { Mailer } from "./mail.ts";
 import { emailConfig } from "../email/templates.ts";
@@ -20,11 +21,14 @@ import { clientIp, rateIp } from "../client-ip.ts";
  *  nobody can use us to flood a stranger's inbox. mailPerDay sits under brevo's free 300 a day, and addresses with no
  *  account (signups) only get newAddressShare of it, so a spray of made-up addresses never locks existing people out */
 export const AUTH_LIMITS = { nativeApplePerIp: 300, startsPerIp: 60, startsPerEmail: 6, emailsPerAddressPerDay: 12, verifiesPerIp: 600, oauthPerIp: 600, deviceAuthorizePerIp: 300,
-  mailPerHour: 120, mailPerDay: 250, newAddressShare: 0.8, handoffsPerSession: 60, handoffsPerIp: 600 };
+  mailPerHour: 120, mailPerDay: 250, newAddressShare: 0.8, handoffsPerSession: 60, handoffsPerIp: 600,
+  phoneCodesPerSession: 20, phoneCodesPerAccount: 40, phoneRedeemsPerIp: 30, phoneWrongPerHour: 1000 };
 /** App Review's fixed-code address (DUSK_REVIEW_EMAIL): starts an hour and a day */
 export const REVIEW_LIMITS = { startsPerHour: 30, startsPerDay: 120 };
 /** a web handoff link: how long it lives, and how many one account holds unredeemed at once (older ones are dropped) */
 export const HANDOFF_TTL_MS = 120_000, HANDOFF_OUTSTANDING = 5;
+/** live phone sign-in codes one account holds at once (older ones end), and how long a spent or ended one is remembered */
+export const PHONE_CODES_OUTSTANDING = 3, PHONE_CODE_REMEMBERED_MS = 60 * 60_000;
 
 export interface AuthOptions {
   dataDir: string; publicUrl: string; mailer: Mailer; email?: EmailConfig; now?: () => number; fetch?: typeof fetch;
@@ -42,6 +46,9 @@ export interface AuthOptions {
    *  limits and tries as an emailed code, and nothing else about the account changes */
   review?: ReviewAccount | null;
   dev: boolean; signupOpen: boolean; trustProxy: boolean; legacyAccounts?: () => Array<{ id: string; email: string }>;
+  /** false before launch (waitlist-only): the website has no first steps then, so an account made by an app's sign-in counts
+   *  as onboarded there at once */
+  websiteFirstSteps?: boolean;
 }
 export interface ReviewAccount { email: string; code: string }
 /** DUSK_REVIEW_EMAIL and DUSK_REVIEW_CODE (EMAIL_CODE_DIGITS digits, what the apps' code field takes), both or none */
@@ -61,6 +68,7 @@ export class AuthError extends Error {
 }
 const messages: Partial<Record<AccountErrorCode, string>> = {
   billing_active: "Cancel your plan and dusk cloud before deleting your account.",
+  delete_on_account_page: "Delete your account on your account page.",
   invalid_request: "Invalid request.", invalid_email: "Enter a valid email address.", wrong_code: "Code is incorrect.", invalid_code: "Code is incorrect.",
   expired: "Sign-in has expired.", rate_limited: "Try again later.", signup_closed: "New accounts are not available.", signed_out: "Sign in to continue.",
   csrf: "Refresh the page and try again.", confirm: "Confirm the account to continue.", other_account: "This browser is signed in to another account.", forbidden: "Request is not allowed.", not_found: "Not found.", invalid_token: "Session is invalid.", invalid_grant: "Grant is invalid.",
@@ -109,6 +117,9 @@ export function createAuth(options: AuthOptions) {
   devices.set = function (key, value) { Map.prototype.set.call(this, key, value); saveDevices(); return this; };
   devices.delete = function (key) { const had = Map.prototype.delete.call(this, key); if (had) saveDevices(); return had; };
   const expiredDevices = new Map<string, number>();
+  // phone sign-in codes are saved (only their hmac) so a deploy does not end the code on a desktop's screen
+  const phoneCodes = new Map<string, StoredPhoneCode>((state.phoneCodes ?? []).map(item => [item.codeHash, item]));
+  const savePhoneCodes = () => { state.phoneCodes = [...phoneCodes.values()]; store.changed(); };
   const grants = new Map<string, { accountId: string; sessionId: string; expiresAt: number }>();
   // kept apart from `grants`: an enroll token never signs a browser in, and a handoff token never enrolls a workspace
   const handoffs = new Map<string, Handoff>();
@@ -165,6 +176,9 @@ export function createAuth(options: AuthOptions) {
     for (const [key, item] of attempts) if (item.expiresAt <= time) attempts.delete(key);
     for (const [key, item] of grants) if (item.expiresAt <= time) grants.delete(key);
     for (const [key, item] of handoffs) if (item.expiresAt <= time) handoffs.delete(key);
+    let phoneGone = false;
+    for (const [key, item] of phoneCodes) if (item.expiresAt + PHONE_CODE_REMEMBERED_MS <= time) { phoneCodes.delete(key); phoneGone = true; }
+    if (phoneGone) savePhoneCodes();
     for (const [key, item] of devices) if (item.expiresAt <= time) { expiredDevices.set(key, item.expiresAt + hour); devices.delete(key); }
     for (const [key, until] of expiredDevices) if (until <= time) expiredDevices.delete(key);
     for (const [key, item] of limits) if (item.until <= time) limits.delete(key);
@@ -189,7 +203,8 @@ export function createAuth(options: AuthOptions) {
   }
   function lookup(token: string, web: boolean) {
     sweep();
-    const session = state.sessions.find(item => item.tokenHash === hash(token) && (item.kind === "web") === web);
+    const tokenHash = hash(token);
+    const session = state.sessions.find(item => item.tokenHash === tokenHash && (item.kind === "web") === web);
     const owner = session && account(session.accountId);
     return session && owner ? { account: owner, session } : null;
   }
@@ -250,6 +265,9 @@ export function createAuth(options: AuthOptions) {
   }
   /** an account signed in to an app had its first run there: the website never walks it through a second one */
   function onboardedInApp(owner: Account) { if (owner.onboardedAt === undefined) { owner.onboardedAt = now(); store.changed(); } }
+  /** made by an app's browser sign-in, its website first steps not done yet: the app waits on them, so its links to the
+   *  website (a handoff) open them rather than end them */
+  const websiteStepsOpen = (owner: Account) => owner.onboardedAt === undefined && owner.signedUpFrom !== undefined && options.websiteFirstSteps !== false;
   /** `onboard` false: the account was just made through this app's sign-in, and the website is taking it through its first
    *  steps (name, plan) right now; that finishes them there, not this */
   function appGrant(owner: Account, device: DeviceInfo, { onboard = true }: { onboard?: boolean } = {}): AppGrant {
@@ -542,7 +560,7 @@ export function createAuth(options: AuthOptions) {
     if (current && current.account.id !== owner.id && data.replace !== true) return fail(409, "other_account", { email: owner.email });
     if (!current && data.confirm !== true) return fail(409, "confirm", { email: owner.email });
     handoffs.delete(key);
-    onboardedInApp(owner);
+    if (!websiteStepsOpen(owner)) onboardedInApp(owner);
     if (current && current.account.id === owner.id) return { account: view(owner), csrfToken: csrfFor(current.session), next: grant.next };
     if (current) dropSessions(item => item === current.session);
     // security: the web session is only as fresh as the app sign-in behind it, so it never passes a "signed in recently"
@@ -550,6 +568,45 @@ export function createAuth(options: AuthOptions) {
     const { token, session } = makeSession(owner, null, { signedInAt: Math.min(now(), appSessionFound.createdAt), parentId: appSessionFound.id }), csrfToken = csrfFor(session);
     cookies(res, token, csrfToken);
     return { account: view(owner), csrfToken, next: grant.next };
+  }
+  /** a phone sign-in code from a signed-in desktop: single use, bound to the account and to the desktop session (it ends
+   *  with that session), PHONE_SIGN_IN_TTL_MS long. security: only a desktop app session mints one, so a phone or a
+   *  browser never hands its sign-in on, and an account holds at most PHONE_CODES_OUTSTANDING live */
+  function mintPhoneCode(found: { account: Account; session: Session }): PhoneSignInGrant {
+    if (found.session.kind !== "desktop") return fail(403, "forbidden");
+    rate(`phone-code:${found.session.id}`, AUTH_LIMITS.phoneCodesPerSession);
+    rate(`phone-code-account:${found.account.id}`, AUTH_LIMITS.phoneCodesPerAccount);
+    const live = [...phoneCodes.values()].filter(item => item.accountId === found.account.id && !item.usedAt && item.expiresAt > now()).sort((a, b) => a.expiresAt - b.expiresAt);
+    for (const item of live.slice(0, Math.max(0, live.length - PHONE_CODES_OUTSTANDING + 1))) item.expiresAt = now();
+    let code: string;
+    do code = generatePairingCode(PHONE_SIGN_IN_CODE_LENGTH); while (phoneCodes.has(hmac(`phone:${code}`)));
+    const expiresAt = now() + PHONE_SIGN_IN_TTL_MS;
+    phoneCodes.set(hmac(`phone:${code}`), { codeHash: hmac(`phone:${code}`), accountId: found.account.id, sessionId: found.session.id, expiresAt, purgeAt: expiresAt + PHONE_CODE_REMEMBERED_MS });
+    savePhoneCodes();
+    return { v: 1, code: `${code.slice(0, 4)}-${code.slice(4)}`, expiresAt, email: found.account.email };
+  }
+  /** a phone's typed or scanned code -> its own app session. security: per-ip and service-wide wrong-code limits keep a
+   *  guess at an 8-letter code (24^8) hopeless; a spent, ended or orphaned code never signs in */
+  function redeemPhoneCode(req: IncomingMessage, data: Record<string, unknown>): AppGrant {
+    rate(`phone-redeem:${ip(req)}`, AUTH_LIMITS.phoneRedeemsPerIp);
+    const wrong = limits.get("phone-wrong");
+    if (wrong && wrong.until > now() && wrong.count >= AUTH_LIMITS.phoneWrongPerHour) return fail(429, "rate_limited");
+    const code = cleanPhoneSignInCode(data.code);
+    const device = deviceInfo(data, false);
+    if (!code || [...code].some(char => !PAIRING_CODE_ALPHABET.includes(char))) return fail(400, "invalid_code");
+    const item = phoneCodes.get(hmac(`phone:${code}`));
+    if (!item) {
+      const counter = wrong && wrong.until > now() ? wrong : { count: 0, until: now() + hour };
+      counter.count += 1; limits.set("phone-wrong", counter);
+      return fail(400, "invalid_code");
+    }
+    if (item.usedAt) return fail(409, "used");
+    const owner = account(item.accountId);
+    if (item.expiresAt <= now() || !owner || !liveAppSession(item)) return fail(410, "expired");
+    item.usedAt = now();
+    savePhoneCodes();
+    for (const hook of signedInHooks) hook(owner);
+    return appGrant(owner, device);
   }
   /** the account, its ways in and every session, at once; `email` must be the account's own, as the person typed or confirmed it */
   async function deleteAccount(owner: Account, data: Record<string, unknown>) {
@@ -577,7 +634,7 @@ export function createAuth(options: AuthOptions) {
   async function handle(req: IncomingMessage, res: ServerResponse, url: URL, helpers: BodyHelpers): Promise<boolean> {
     const path = url.pathname, method = req.method ?? "GET", cors = isAppCorsRoute(path);
     const routes: string[] = [R.providers, R.emailStart, R.emailVerify, R.signOut, R.me, R.account, R.notifications, R.onboarded, R.signOutEverywhere, R.deleteAccount, R.deviceLookup, R.deviceApprove, R.deviceDeny,
-      R.appEmailStart, R.appEmailVerify, R.appAppleSignIn, R.desktopAuthorize, R.desktopToken, R.appSession, R.appAvatar, R.enrollGrant, R.webHandoff, R.handoffRedeem, R.appToken, R.appStart, R.appDeleteAccount];
+      R.appEmailStart, R.appEmailVerify, R.appAppleSignIn, R.desktopAuthorize, R.desktopToken, R.appSession, R.appAvatar, R.enrollGrant, R.webHandoff, R.handoffRedeem, R.appToken, R.appStart, R.appDeleteAccount, R.phoneSignIn, R.appPhoneSignIn];
     if (!routes.includes(path) && !path.startsWith("/v1/auth/oauth/") && !path.startsWith("/v1/account/identities/") && !path.startsWith("/v1/account/sessions/") && !cors) return false;
     res.setHeader("cache-control", "no-store");
     if (cors) {
@@ -617,6 +674,7 @@ export function createAuth(options: AuthOptions) {
         json(appGrant(owner, device));
       }
       else if (method === "POST" && path === R.appAppleSignIn) json(await nativeApple(req, data));
+      else if (method === "POST" && path === R.appPhoneSignIn) json(redeemPhoneCode(req, data));
       else if (method === "POST" && (path === R.emailStart || path === R.appEmailStart)) json(await start(req, data, path === R.appEmailStart));
       else if (method === "POST" && (path === R.emailVerify || path === R.appEmailVerify)) json(verifyEmail(req, res, data, path === R.appEmailVerify));
       else if (method === "POST" && path === R.signOut) {
@@ -645,7 +703,12 @@ export function createAuth(options: AuthOptions) {
         json(notificationsOf(owner));
       } else if (method === "POST" && path === R.onboarded) {
         const owner = requireWeb(req, { mutation: true });
-        if (owner.onboardedAt === undefined) { owner.onboardedAt = now(); store.changed(); }
+        if (data.home !== undefined && !WEBSITE_HOMES.includes(data.home as WebsiteHome)) return fail(400, "invalid_request");
+        if (owner.onboardedAt === undefined) {
+          owner.onboardedAt = now();
+          if (data.home !== undefined) owner.onboardedHome = data.home as WebsiteHome;
+          store.changed();
+        }
         json({ onboarded: true });
       } else if (method === "DELETE" && path.startsWith("/v1/account/identities/")) {
         const owner = requireWeb(req, { mutation: true }), provider = path.slice("/v1/account/identities/".length);
@@ -668,8 +731,10 @@ export function createAuth(options: AuthOptions) {
       } else if (method === "POST" && path === R.appDeleteAccount) {
         const found = appSession(req);
         if (!found) return fail(401, "invalid_token");
-        // the app's "Start fresh" ends the clouds now too, not at the paid period's end
-        await deleteAccount(found.account, { email: data.email, cancelBilling: true, destroyDesktopsNow: data.destroyDesktopsNow === true });
+        // the phone app's own Delete account. Older desktop apps sent this from "Start fresh" (with destroyDesktopsNow), which
+        // cancelled a plan or trial as part of a local reset: that is refused, account deletion is done on the account page
+        if (data.destroyDesktopsNow !== undefined) return fail(409, "delete_on_account_page");
+        await deleteAccount(found.account, { email: data.email, cancelBilling: true });
         json({ ok: true });
       } else if (path === R.deviceLookup && method === "GET") {
         const viewer = requireWeb(req, { mutation: false });
@@ -728,7 +793,7 @@ export function createAuth(options: AuthOptions) {
         if (!owner) return fail(400, "invalid_grant");
         for (const hook of signedInHooks) hook(owner);
         const madeHere = Boolean(owner.signedUpFrom && device.createdAt !== undefined && owner.signedUpFrom.at >= device.createdAt);
-        json(appGrant(owner, device.device, { onboard: !madeHere }));
+        json(appGrant(owner, device.device, { onboard: !madeHere || options.websiteFirstSteps === false }));
       } else if ((method === "GET" || method === "DELETE") && path === R.appSession) {
         const found = appSession(req);
         if (!found) return fail(401, "invalid_token");
@@ -737,7 +802,8 @@ export function createAuth(options: AuthOptions) {
           let extra: Record<string, unknown> = { entitlement: { plan: "free", status: "inactive", expiresAt: null, version: 0 } };
           for (const extension of extensions) extra = { ...extra, ...await extension(found.account.id) };
           if (!state.sessions.includes(found.session)) return fail(401, "invalid_token");
-          json({ ...extra, ...identity(found.account, found.session), handoffUrl: `${pages}/handoff` });
+          const websiteSetup: WebsiteSetup | undefined = found.account.onboardedAt === undefined ? "open" : found.account.onboardedHome;
+          json({ ...extra, ...identity(found.account, found.session), handoffUrl: `${pages}/handoff`, ...(websiteSetup ? { websiteSetup } : {}) });
         }
       } else if (method === "POST" && path === R.appAvatar) {
         const found = appSession(req);
@@ -754,6 +820,10 @@ export function createAuth(options: AuthOptions) {
         const enrollToken = random(), expiresAt = now() + 600_000;
         grants.set(hash(enrollToken), { accountId: found.account.id, sessionId: found.session.id, expiresAt });
         json({ v: 1, enrollToken, expiresAt, dashboardUrl: publicUrl });
+      } else if (method === "POST" && path === R.phoneSignIn) {
+        const found = appSession(req);
+        if (!found) return fail(401, "invalid_token");
+        json(mintPhoneCode(found));
       } else if (method === "POST" && path === R.webHandoff) {
         const found = appSession(req);
         if (!found) return fail(401, "invalid_token");
@@ -778,6 +848,13 @@ export function createAuth(options: AuthOptions) {
     /** whether an optional email may go to this account; required mail (billing, security, deletion) never asks */
     wantsEmail: (accountId: string, kind: keyof NotificationPrefs) => { const owner = account(accountId); return owner !== null && notificationsOf(owner)[kind]; },
     accountByEmail: (email: string) => state.accounts.find(item => item.email === email) ?? null,
+    setAdminRole(accountId: string, role: AdminRole | null) {
+      const owner = account(accountId);
+      if (!owner) return null;
+      if (role) owner.adminRole = role; else delete owner.adminRole;
+      store.changed();
+      return owner;
+    },
     /** what the account holds, for its owner's export: no token, hash or code */
     exportAccount(owner: Account) {
       const { account: profile, identities, sessions, notifications, onboarded } = accountAnswer(owner, undefined);

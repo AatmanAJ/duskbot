@@ -122,6 +122,21 @@ describe("APNs push", () => {
     });
   });
 
+  it("gives an approval its buttons and its ask id", async () => {
+    expect(await sender().send(target, { ...message, kind: "approval", requestId: "req-1", groupId: undefined })).toBe("sent");
+    const body = JSON.parse(received[0].body);
+    expect(body.aps.category).toBe("dusk.approval");
+    expect(body.dusk.requestId).toBe("req-1");
+  });
+
+  it("sends a Live Activity push on the liveactivity topic", async () => {
+    const state = { phase: "working" as const, steps: 1, startedAt: 1_799_999_000, step: "web" as const };
+    expect(await sender().sendActivity!(target, { event: "update", state, timestamp: 1_800_000_000, priority: 5 })).toBe("sent");
+    expect(received[0].headers).toMatchObject({ "apns-topic": "com.example.dusk.push-type.liveactivity", "apns-push-type": "liveactivity", "apns-priority": "5" });
+    expect(received[0].headers["apns-collapse-id"]).toBeUndefined();
+    expect(JSON.parse(received[0].body)).toEqual({ aps: { timestamp: 1_800_000_000, event: "update", "content-state": state } });
+  });
+
   it.each([
     [410, {}, "gone"], [500, {}, "failed"], [400, { reason: "BadDeviceToken" }, "gone"],
     [400, { reason: "DeviceTokenNotForTopic" }, "gone"], [400, { reason: "BadTopic" }, "failed"],
@@ -371,6 +386,15 @@ describe("push relay", () => {
     const sent = JSON.parse(String(init?.body));
     expect(sent).toEqual({ service: "apns", token: "fixture-token", environment: "sandbox", message: { ...data, botName: "Maus" } });
     expect(JSON.stringify(sent)).not.toContain("body text");
+  });
+
+  it("sends a Live Activity push through the relay, and none for FCM", async () => {
+    const fetch = relayFetch(200, { outcome: "sent" });
+    const push = createPushSender({}, { fetch, relay: () => "https://relay.example", log: vi.fn() });
+    const activity = { event: "end" as const, state: { phase: "done" as const, steps: 2, startedAt: 1_799_999_000 }, timestamp: 1_800_000_000, dismissAt: 1_800_000_240, priority: 10 as const };
+    expect(await push.sendActivity!({ service: "apns", token: "abcdef0123456789" }, activity)).toBe("sent");
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual({ service: "apns", token: "abcdef0123456789", activity });
+    expect(await push.sendActivity!({ service: "fcm", token: "abcdef0123456789" }, activity)).toBe("skipped");
   });
 
   it("keeps its own keys ahead of the relay", async () => {
