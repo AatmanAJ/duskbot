@@ -24,6 +24,7 @@ LOGS_DIR=/var/log/duskbot-link
 OPT=/opt/duskbot-link
 MANIFEST=/var/lib/duskbot/install-manifest
 FENCE=/usr/local/sbin/omb-host-fence
+CLI=/usr/local/bin/duskbot
 UNITS=/etc/systemd/system
 OUR_UNITS="duskbot-server-update.timer duskbot-server-update.service duskbot-link.service duskbot-cloudflared.service duskbot.service duskbot-engines.path duskbot-restart.service duskbot-handoff.service omb-docker-gate.service omb-box-fence.service"
 # the accounts install.sh splits the server into (link agent, docker gate) and their files
@@ -313,8 +314,10 @@ our_paths() {
     [ -e "$_p" ] && printf '%s\n' "$_p"
   done
   for _u in $OUR_UNITS; do [ -e "$UNITS/$_u" ] && printf '%s\n' "$UNITS/$_u"; done
+  cli_ours && printf '%s\n' "$CLI"
   return 0
 }
+cli_ours() { grep -qs "managed by duskbot-link" "$CLI"; }
 # packages install.sh added that are still installed (the ones --all takes away)
 our_pkgs() {
   _have=$(dpkg-query -W -f '${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 ~ /^ii/ { print $2 }')
@@ -737,6 +740,18 @@ do_caddy() {
   echo "Caddy no longer serves this server's address"
 }
 
+# 0 only when tailnet https port 443 still proxies to the dusk bot server alone; a status that cannot be read is not ours
+ts_443_ours() {
+  _status=$(tailscale serve status --json 2>/dev/null) || return 1
+  _js='const s=JSON.parse(process.argv[1]);const w=Object.entries(s.Web??{}).find(([k])=>k.endsWith(":443"));const h=w?.[1].Handlers??{};process.exit(Object.keys(h).join()==="/"&&h["/"].Proxy==="http://127.0.0.1:8799"?0:1)'
+  _py='import json,sys
+s=json.loads(sys.argv[1]);w=[v for k,v in (s.get("Web") or {}).items() if k.endswith(":443")];h=(w[0].get("Handlers") or {}) if w else {}
+sys.exit(0 if list(h)==["/"] and (h["/"] or {}).get("Proxy")=="http://127.0.0.1:8799" else 1)'
+  if [ -x /usr/bin/node ]; then /usr/bin/node -e "$_js" "$_status" 2>/dev/null
+  elif command -v python3 >/dev/null 2>&1; then python3 -c "$_py" "$_status" 2>/dev/null
+  else return 1; fi
+}
+
 do_files() {
   removed=""
   if [ -f "$BWRAP_PROFILE" ]; then
@@ -744,10 +759,14 @@ do_files() {
     x rm -f "$BWRAP_PROFILE"; removed="$removed $BWRAP_PROFILE"
   fi
   # the tailnet address this server served dusk bot at
-  if in_manifest "tailscale-serve 443" && command -v tailscale >/dev/null 2>&1; then x tailscale serve --https=443 off 2>&1 || true; fi
+  if in_manifest "tailscale-serve 443" && command -v tailscale >/dev/null 2>&1; then
+    if ts_443_ours; then x tailscale serve --https=443 off 2>&1 || true
+    else echo "tailnet https port 443 serves something else now; leaving it alone"; fi
+  fi
   for path in "$OPT" "$LOGS_DIR" "$STATE" "$FENCE" "$LIB" "$ETC" /etc/duskbot-address.json /etc/duskbot-cloudflared; do
     if [ -e "$path" ]; then x rm -rf "$path"; removed="$removed $path"; fi
   done
+  if cli_ours; then x rm -f "$CLI"; removed="$removed $CLI"; fi
   # the manifest keeps only what is still installed (packages, apt sources), so a later --all can take those too
   if [ -f "$MANIFEST" ] && [ "$ALL" = 0 ]; then
     grep -E '^(pkg|file) ' "$MANIFEST" > "$TMP/manifest" || true

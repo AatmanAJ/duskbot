@@ -96,7 +96,7 @@ describe("Settings → Logins", () => {
     await act(async () => { document.body.querySelector<HTMLInputElement>('fieldset input[type="checkbox"]')!.click(); });
     await submit();
     expect(fixture.api).toHaveBeenNthCalledWith(2, "/api/logins", { method: "POST", body: JSON.stringify({ site: "crm.example.org", username: "team", sealed: { keyId: "k", encapsulatedKey: "E", ciphertext: "login.create|crm.example.org|team|password" }, bots: ["pepper"] }) });
-    expect(document.body.querySelector("[data-login-form]")).toBeNull();
+    expect([...document.body.querySelectorAll("[data-login-form]")].filter((el) => !el.closest("[data-leaving]")), "the form has closed").toEqual([]);
     expect(document.body.innerHTML).not.toContain("fake-typed-pass");
   });
 
@@ -221,7 +221,7 @@ describe("Settings → Logins with My Cloud", () => {
   afterEach(() => { delete (window as { duskDesktop?: unknown }).duskDesktop; });
   const where = (site: string) => document.body.querySelector(`[data-login-row="${site}"] [data-login-where]`)?.textContent;
 
-  it("without My Cloud says nothing of sides; on My Cloud itself says its logins are its own and sends nothing", async () => {
+  it("without My Cloud says nothing of sides; on My Cloud itself shows no line about logins and sends nothing", async () => {
     (window as { duskDesktop?: unknown }).duskDesktop = { cloudLogins: { state: vi.fn().mockResolvedValue({ cloud: null }), send: vi.fn() } };
     fixture.api.mockResolvedValueOnce({ logins: [SHARED_LOGIN], onePassword: OFF });
     await render();
@@ -234,7 +234,7 @@ describe("Settings → Logins with My Cloud", () => {
     fixture.config = { cloudHome: true };
     fixture.api.mockResolvedValueOnce({ logins: [SHARED_LOGIN], onePassword: OFF });
     await render();
-    expect(document.body.querySelector("[data-logins-cloud-own]")!.textContent).toContain("come along when you move your bots here");
+    expect(document.body.textContent).not.toContain("come along when you move your bots here");
     expect(document.body.querySelector("[data-also-cloud]")).toBeNull();
   });
 });

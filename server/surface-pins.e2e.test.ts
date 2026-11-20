@@ -273,7 +273,8 @@ describe("surface pin provenance against the real server", () => {
     await stop();
     editSavedBot(bot.id, saved => {
       saved.browserProfile = "guest";
-      saved.tasks.find((task: any) => task.threadId === delegated.threadId).openedBy = { botId: "coordinator", name: "Coordinator", kind: "work", at: Date.now() };
+      // a thread a teammate opened in its own folder; a "work" thread would fold into the bot's own chat at start
+      saved.tasks.find((task: any) => task.threadId === delegated.threadId).openedBy = { botId: "coordinator", name: "Coordinator", at: Date.now() };
     });
     const turnIn = async (threadId: string) => {
       resetTurn();
@@ -418,6 +419,27 @@ describe("surface pin provenance against the real server", () => {
     await idle(bot.id, task.threadId);
     expect(await lastRow()).toBe("error: The fixture VPS does not answer. Clear this conversation's place in the composer to continue.");
     expect(savedTask(bot.id, task.threadId)).toMatchObject({ surface: "cloud", surfaceSource: "user" });
+    await apiOk("DELETE", `/api/bots/${bot.id}`);
+    await stop();
+  });
+
+  it("answers without its computer when the computer it works on is unreachable, with no error card", async () => {
+    await start();
+    const { bot } = await apiOk("POST", "/api/bots", { name: "Works on cloud bot" });
+    const { task } = await apiOk("POST", `/api/bots/${bot.id}/tasks`, {});
+    await apiOk("PUT", "/api/config", { vps: { sshAlias: "fixture-vps", mode: "per-bot" } });
+    await apiOk("PATCH", `/api/bots/${bot.id}`, { computer: "cloud" });
+    vpsState({ unreachable: 'error during connect: Get "http://%2Frun%2Fopenmausbot-docker%2Fdocker.sock/v1.56/images/x/json": EOF' });
+    resetTurn();
+    await apiOk("POST", `/api/bots/${bot.id}/messages`, { text: "Review this paragraph for me.", threadId: task.threadId });
+    const sent = await dump();
+    expect(mountedComputer(sent)).toBeUndefined();
+    expect(sent.systemPrompt).toContain("Your computer is not answering right now");
+    expect(sent.systemPrompt).not.toMatch(/%2F|docker\.sock/);
+    writeFileSync(finishFile, "finish");
+    await idle(bot.id, task.threadId);
+    const { messages } = await apiOk("GET", `/api/threads/${task.threadId}/messages?limit=30`);
+    expect(messages.filter((message: any) => String(message.tool?.name ?? "").startsWith("error:"))).toEqual([]);
     await apiOk("DELETE", `/api/bots/${bot.id}`);
     await stop();
   });

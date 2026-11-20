@@ -1,23 +1,16 @@
 // A human check card (request_sign_in with human_check) hands back by itself: the page behind it is read every few
 // seconds, and once the check is gone the card settles as done and the bot carries on, so nobody has to press Done.
 // Reading only: nothing here clicks, types or answers a check.
-import { classifyChallenge, PROBE_EXPRESSION, type PageProbe } from "../browser/cdp/settle.ts";
+import { classifyChallenge, PROBE_EXPRESSION, widgetShown, type PageProbe } from "../browser/cdp/settle.ts";
 import type { Surface } from "../../shared/wire.ts";
 import { openBoxLoginPage } from "../box-login-page.ts";
 
 export interface HumanCheckRef { botId: string; threadId: string; messageId: string; site: string; place: Surface }
 
-/** The settle probe plus whether a check widget on the page already holds its answer token. */
-export const HUMAN_CHECK_PAGE = `(() => {
-  const probe = ${PROBE_EXPRESSION};
-  const answered = [...document.querySelectorAll('input[name="cf-turnstile-response"], textarea[name="g-recaptcha-response"], textarea[name="h-captcha-response"]')]
-    .some((field) => typeof field.value === "string" && field.value.length > 0);
-  return JSON.stringify({ ...probe, answered });
-})()`;
+/** The settle probe, which says too whether a check widget on the page already holds its answer token. */
+export const HUMAN_CHECK_PAGE = `JSON.stringify(${PROBE_EXPRESSION})`;
 
-export type HumanCheckPage = PageProbe & { answered?: boolean };
-
-const WIDGET = /^https:\/\/(?:challenges\.cloudflare\.com\/|(?:www\.google\.com|www\.recaptcha\.net)\/recaptcha\/|(?:[\w-]+\.)?hcaptcha\.com\/)/u;
+export type HumanCheckPage = PageProbe;
 
 /** "check" while a check still waits on someone, "clear" once it is gone or answered; a block is not a check. */
 export function humanCheckState(page: HumanCheckPage, frameUrls: readonly string[] = []): "check" | "clear" | "blocked" {
@@ -25,8 +18,7 @@ export function humanCheckState(page: HumanCheckPage, frameUrls: readonly string
   if (challenge?.state === "blocked") return "blocked";
   if (challenge) return "check";
   // an invisible reCAPTCHA sits on many ordinary pages and never asks anyone anything
-  const widget = [...page.iframes, ...frameUrls].some((url) => WIDGET.test(url) && !/[?&]size=invisible\b/u.test(url));
-  return widget && !page.answered ? "check" : "clear";
+  return widgetShown([...page.iframes, ...frameUrls]) && !page.answered ? "check" : "clear";
 }
 
 /** The page an engine's eval answered with, or null when it gave nothing readable. */

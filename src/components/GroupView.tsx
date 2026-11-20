@@ -1,5 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
+import { AnimatePresence } from "motion/react";
+import { usePhoneLayout } from "@/lib/use-media-query";
+import { waitsForNetwork } from "@/state/network-wait";
+import { useOffline } from "@/mobile/network";
 import { splitReplyBlocks } from "@/lib/formatted-reply";
 import { activeLocale, t } from "@/lib/i18n";
 import { useReactor } from "@/lib/cloud-guest";
@@ -53,11 +56,13 @@ import { localSystemVoiceActive } from "@/lib/local-voice";
 import { isCancelledTranscriptRow } from "../../shared/client-cancel";
 import { botEngine, failedTurnCause } from "@/lib/failed-turn";
 import { RoomComposer } from "./bot-access/RoomComposer";
-import { ChatErrorBanner, ChatNotice } from "./ChatErrorBanner"; import { FailedReplyCard, FoldedNoticesContext, foldedNoticeIds, useTrailingRows } from "./FailedReplyCard";
+import { ChatErrorBanner, ChatNotice } from "./ChatErrorBanner"; import { ComposerNoticeSlot } from "./ComposerNoticeSlot";
+import { FailedReplyCard, FoldedNoticesContext, foldedNoticeIds, useTrailingRows } from "./FailedReplyCard";
+import { TranscriptCardSlot } from "./TranscriptCardSlot";
 import { RoomContextWarnings } from "./ContextWarning";
 import { ChatFindBar } from "./ChatFindBar";
-import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "../../shared/system-message-guard.ts";
-import { ReplyQuote } from "./ReplyQuote";
+import { botTextForDisplay, isPureLeakedBotText } from "../../shared/system-message-guard.ts";
+import { QuotedText, ThreadReplyQuote } from "./ReplyQuote";
 import { ConnectorCard } from "./ConnectorCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { SignInRequestCard } from "./SignInRequestCard";
@@ -93,7 +98,7 @@ import { useReplyDraft } from "@/lib/drafts";
 import { withoutCitationMarkers } from "@/lib/citations";
 import { latestFailure, latestReply, type TranscriptSnapshot } from "@/lib/transcript-announcer";
 import { pendingApprovals } from "./PendingApproval";
-import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard";
+import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard"; import { DocumentCard } from "./documents/DocumentCard";
 import { TranscriptAnnouncer } from "./TranscriptAnnouncer";
 import { localDay } from "@/lib/transcript-derivations";
 import { roomThreadWorking } from "@/lib/room-threads";
@@ -172,7 +177,7 @@ function RoomTextMessage({
   const user = m.role === "user";
   const reactor = useReactor();
   const speaker = otherSpeaker(m, state.config?.team && reactor !== "user" ? reactor : null);
-  const rawText = user ? (m.text ?? "") : stripLeakedSystemHarnessMessages(m.text ?? "");
+  const rawText = user ? (m.text ?? "") : botTextForDisplay(m.text ?? "");
   const attachments = user && m.text ? splitTranscriptAttachments(withoutCitationMarkers(m.text)) : null;
   const display = attachments?.display ?? rawText;
   const [expanded, setExpanded] = useState(false);
@@ -201,6 +206,7 @@ function RoomTextMessage({
   const replyGroup = useMemo(() => !user && botText.trim() ? replyAttachmentGroup(botText, m.attachments) : null, [user, botText, m.attachments]);
   const blocks = useMemo(() => !user && botText.trim() ? splitReplyBlocks(botText) : null, [user, botText]);
   const tabled = Boolean(blocks?.some((block) => block.kind === "table"));
+  const bubbleGroup = Boolean(tabled || (!user && !m.text?.trim() && !m.replyToId && m.attachments?.length) || (mediaRow && !display.trim() && !m.replyToId));
   const botActions = !user && (
     <MessageActions side="bot" forceOpen={speaking} menu={botMenu}>
       <ReplyAction onReply={() => onReply(m)} />
@@ -210,7 +216,7 @@ function RoomTextMessage({
     </MessageActions>
   );
   return (
-    <div {...{ [MESSAGE_ROW]: "" }} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", user ? "items-end" : "items-start", join.above && SIMPLE_STACKED)}>
+    <div {...{ [MESSAGE_ROW]: "" }} data-sent-at={m.at || undefined} data-arrival={fresh ? (user ? "end" : "start") : undefined} className={cn("group relative flex w-full flex-col", user ? "items-end" : "items-start", join.above && SIMPLE_STACKED)}>
       {speaker && <div className="mb-0.5 px-1 text-[12px] font-medium text-ink-secondary">{speaker}</div>}
       {mediaRow && attachments && <AttachmentGallery media={m.media} images={attachments.images} files={attachments.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} align="end" className={display.trim() ? "mb-1" : undefined} />}
       <div data-own-row={user ? "" : undefined} className={cn("flex w-full items-center gap-1.5", user ? "justify-end" : "justify-start")}>
@@ -229,34 +235,31 @@ function RoomTextMessage({
             !tabled && joinedCorners(user ? "end" : "start", join),
             bigEmoji && !tabled
               ? EMOJI_ONLY_TEXT
-              : tabled || (!user && !m.text?.trim() && !m.replyToId && m.attachments?.length) || (mediaRow && !display.trim() && !m.replyToId)
+              : bubbleGroup
               ? "text-ink"
               : user
                 ? cn("chat-text whitespace-pre-wrap [overflow-wrap:anywhere] text-ink", SIMPLE_USER_BUBBLE)
                 : SIMPLE_BOT_BUBBLE,
           )}
+          data-emoji-only={bigEmoji && !tabled ? "" : undefined}
+          data-bubble-group={bubbleGroup ? "" : undefined}
+          data-quotable={user ? undefined : ""}
           data-sending={user && m.id.startsWith("optimistic-") ? t("chat.sending") : undefined}
         >
-          {m.replyToId && (() => {
-            const target = transcript.find((candidate) => candidate.id === m.replyToId);
-            return target ? (
-              <div className="mb-2">
-                <ReplyQuote
-                  message={target}
-                  fallbackName={t("room.fallbackBot")}
-                  compact
-                  onJump={() =>
-                    dispatch({ type: "focusMessage", threadId: group.threadId, messageId: target.id })
-                  }
-                />
-              </div>
-            ) : null;
-          })()}
+          {m.replyToId && (
+            <ThreadReplyQuote
+              threadId={group.threadId}
+              replyToId={m.replyToId}
+              loaded={transcript.find((candidate) => candidate.id === m.replyToId)}
+              fallbackName={t("room.fallbackBot")}
+              onJump={(target) => dispatch({ type: "focusMessage", threadId: group.threadId, messageId: target.id })}
+            />
+          )}
           {user ? (
             <>
               {attachments && !mediaRow && <AttachmentGallery media={m.media} images={attachments.images} files={attachments.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} className={!attachments.display ? "mb-0" : undefined} />}
               <div className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}>
-                <ThreadRefText text={display} peers={peers} everyone={!group.dm} />
+                <QuotedText text={display} render={(rest) => <ThreadRefText text={rest} peers={peers} everyone={!group.dm} />} />
               </div>{m.bugReport && <BugReportNote report={m.bugReport} />}
               {m.via === "api" && (
                 <div className="mt-1 text-[11px] text-ink-tertiary">{t("chat.viaBotApi")}</div>
@@ -288,7 +291,7 @@ function RoomTextMessage({
               ) : botText ? (
                 <ChatMarkdown text={botText} mentionPeers={peers} everyone={!group.dm} mentionPerson={{ profileName: state.config?.profile?.name }} message={{ threadId: group.threadId, messageId: m.id }} delivered={replyGroup?.delivered} />
               ) : null}
-              {replyGroup && <AttachmentGallery media={m.media} images={replyGroup.images} files={replyGroup.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} beneath />}
+              {replyGroup && <AttachmentGallery media={m.media} images={replyGroup.pictures} files={replyGroup.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} beneath />}
             </MessageBoundary>
           )}
         </div>
@@ -414,8 +417,8 @@ export const Transcript = memo(function Transcript({
       null
     ) : m.kind === "digest" ? (
       showToolCalls ? <DigestChip message={m} /> : null
-    ) : m.publishedPage ? <PublishedPageCard message={m} /> : m.kind === "text" && (m.text || m.attachments?.length) ? (
-      !user && isPureLeakedSystemHarnessMessage(m.text) && !m.attachments?.length ? null : (
+    ) : m.publishedPage ? <PublishedPageCard message={m} /> : m.document ? <DocumentCard message={m} /> : m.kind === "text" && (m.text || m.attachments?.length) ? (
+      !user && isPureLeakedBotText(m.text) && !m.attachments?.length ? null : (
         <RoomTextMessage
           group={group}
           message={m}
@@ -441,7 +444,7 @@ export const Transcript = memo(function Transcript({
     const divider = dividerAbove(item.kind === "run" ? item.messages : [item.message]);
     const drawn = item.kind === "run" ? showToolCalls : messageRow(item.message, NO_JOIN) !== null;
     const m = item.kind === "message" ? item.message : null;
-    const bubble = m && m.kind === "text" && !m.publishedPage;
+    const bubble = m && m.kind === "text" && !m.publishedPage && !m.document;
     const slot: RoomSlot | null = drawn ? {
       group: bubble ? (m.role === "user" ? `user:${m.from?.name ?? ""}` : `bot:${m.from?.botId ?? ""}`) : null,
       // a hand-off row names both bots itself, so it carries no speaker line
@@ -519,10 +522,49 @@ export const Transcript = memo(function Transcript({
   );
 });
 
-type RoomResponderMode = "lead" | "everyone" | "mentions" | "auto";
+export type RoomResponderMode = "lead" | "everyone" | "mentions" | "auto";
 
 function setupResponderMode(responder: GroupDefaultResponder): RoomResponderMode {
   return responder.kind === "member" ? "lead" : responder.kind;
+}
+
+/** One Default responder choice: a ring on every row, filled on the chosen one, its title over one plain line. */
+export function SetupResponderRow({ choice, checked, title, hint, disabled, onClick, className }: {
+  choice: RoomResponderMode;
+  checked: boolean;
+  title: string;
+  hint: string;
+  disabled?: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      data-setup-choice={choice}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left outline-none transition-[background-color] duration-[120ms] ease-[ease] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50",
+        checked ? "bg-ink/[0.045]" : "enabled:hover:bg-ink/[0.035]",
+        className,
+      )}
+    >
+      <span
+        aria-hidden="true"
+        data-radio={checked ? "on" : "off"}
+        className={cn("flex size-4 shrink-0 items-center justify-center rounded-full", checked ? "bg-ink" : "border-[1.5px] border-ink/24")}
+      >
+        {checked && <span className="size-1.5 rounded-full bg-app" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] leading-[18px] tracking-[0.015em] text-ink">{title}</span>
+        <span className="block text-[12px] leading-4 text-ink/56">{hint}</span>
+      </span>
+    </button>
+  );
 }
 
 function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
@@ -649,85 +691,59 @@ function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
         <fieldset className="block">
           <legend className="text-[13px] font-medium leading-[18px] text-ink">{t("room.responder.aria")}</legend>
           <p className="mt-0.5 text-[12px] leading-4 text-ink/56">{t("room.setup.responderDetail")}</p>
-          <div role="radiogroup" aria-label={t("room.responder.aria")} className="mt-2 grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={behavior === "auto"}
+          <div role="radiogroup" aria-label={t("room.responder.aria")} data-setup-responder="" className="mt-2 flex flex-col rounded-[12px] border-[0.5px] border-edge bg-composer p-1">
+            <SetupResponderRow
+              choice="auto"
+              checked={behavior === "auto"}
+              title={t("room.responder.autoOptionOff")}
+              hint={jevOn ? t("room.setup.autoDetail") : t("room.setup.autoDetailOff")}
+              disabled={saving}
               onClick={() => {
                 setBehavior("auto");
                 setLeadPickerOpen(false);
               }}
-              disabled={saving}
-              className={cn(
-                "flex min-h-[60px] w-full cursor-pointer flex-col items-start justify-between rounded-[10px] border px-3 py-2.5 text-left transition-[background-color,border-color] duration-[120ms] ease-[ease] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
-                behavior === "auto"
-                  ? "border-transparent bg-ink/4 text-ink"
-                  : "border-transparent text-ink hover:bg-ink/4",
-              )}
-            >
-              <span className="flex items-center gap-2 text-[13px] leading-[18px]">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                    behavior === "auto" ? "border-ink bg-ink" : "border-transparent",
-                  )}
-                >
-                  {behavior === "auto" && <span className="size-1.5 rounded-full bg-app" />}
-                </span>
-                {jevOn ? t("room.responder.autoOption") : t("room.responder.autoOptionOff")}
-              </span>
-              <span className="ml-6 mt-1 text-[12px] leading-4 text-ink/56">
-                {jevOn ? t("room.setup.autoDetail") : t("room.setup.autoDetailOff")}
-              </span>
-            </button>
+            />
 
-            <div ref={leadPickerRef} className="relative min-w-0">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={behavior === "lead"}
-                aria-haspopup="listbox"
-                aria-expanded={behavior === "lead" && leadPickerOpen}
+            <div ref={leadPickerRef} className={cn("relative flex min-w-0 items-center rounded-lg pe-2 transition-[background-color] duration-[120ms] ease-[ease]", behavior === "lead" ? "bg-ink/[0.045]" : "hover:bg-ink/[0.035]")}>
+              <SetupResponderRow
+                choice="lead"
+                checked={behavior === "lead"}
+                title={t("room.behavior.lead")}
+                hint={t("room.setup.leadDetail")}
+                disabled={saving}
                 onClick={() => {
                   setBehavior("lead");
                   setLeadPickerOpen((open) => !open);
                 }}
-                disabled={saving}
-                className={cn(
-                  "flex min-h-[60px] w-full flex-col items-start justify-between rounded-[10px] border px-3 py-2.5 text-left transition-[background-color,border-color] duration-[120ms] ease-[ease] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
-                  behavior === "lead"
-                    ? "border-transparent bg-ink/4 text-ink"
-                    : "border-transparent text-ink hover:bg-ink/4",
-                )}
+                className="min-w-0 flex-1 bg-transparent enabled:hover:bg-transparent"
+              />
+              <button
+                type="button"
+                data-setup-lead-picker=""
+                aria-haspopup="listbox"
+                aria-expanded={behavior === "lead" && leadPickerOpen}
+                disabled={saving || members.length === 0}
+                onClick={() => {
+                  setBehavior("lead");
+                  setLeadPickerOpen((open) => !open);
+                }}
+                className="inline-flex h-8 max-w-[160px] shrink-0 items-center gap-1.5 rounded-full bg-ink/[0.06] ps-1 pe-2 text-[13px] font-medium leading-[18px] text-ink outline-none transition-[background-color] duration-[120ms] ease-[ease] enabled:hover:bg-ink/[0.09] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="flex w-full items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 text-[13px] leading-[18px]">
-                    <span
-                      className={cn(
-                        "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                        behavior === "lead" ? "border-ink bg-ink" : "border-transparent",
-                      )}
-                    >
-                      {behavior === "lead" && <span className="size-1.5 rounded-full bg-app" />}
-                    </span>
-                    {t("room.behavior.lead")}
-                  </span>
-                  <ChevronDown
-                    size={14}
-                    aria-hidden="true"
-                    className={cn("shrink-0 text-ink-secondary transition-transform", leadPickerOpen && "rotate-180")}
-                  />
-                </span>
-                <span className="ml-6 mt-1 truncate text-[12px] leading-4 text-ink/56">
-                  {selectedLead?.name ?? t("room.behavior.chooseTeammate")}
-                </span>
+                {selectedLead && (
+                  <BotAvatar bot={selectedLead} state={normalizeState(selectedLead.mascotExpression) ?? "happy"} size={22} animated={false} />
+                )}
+                <span className={cn("min-w-0 truncate", !selectedLead && "ps-1.5")}>{selectedLead?.name ?? t("room.behavior.chooseTeammate")}</span>
+                <ChevronDown
+                  size={14}
+                  aria-hidden="true"
+                  className={cn("shrink-0 text-ink-secondary transition-transform duration-[120ms] ease-[ease] motion-reduce:transition-none", leadPickerOpen && "rotate-180")}
+                />
               </button>
               {leadMotion.shown && (
                 <div
                   role="listbox"
                   aria-label={t("room.behavior.chooseLead")}
-                  className={cn("absolute left-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-3rem)] overflow-hidden rounded-[12px] border border-transparent bg-menu shadow-[0_8px_24px_rgb(0_0_0/0.12)]", leadMotion.className)} {...leadMotion.exitProps}
+                  className={cn("absolute right-2 top-full z-30 mt-1 w-72 max-w-[calc(100vw-3rem)] origin-top-right overflow-hidden rounded-[12px] border border-transparent bg-menu shadow-[0_8px_24px_rgb(0_0_0/0.12)]", leadMotion.className)} {...leadMotion.exitProps}
                 >
                   <div className="border-b border-transparent px-3 py-2.5">
                     <div className="text-[13px] font-semibold text-ink">{t("room.behavior.chooseLead")}</div>
@@ -770,65 +786,29 @@ function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
               )}
             </div>
 
-            <button
-              type="button"
-              role="radio"
-              aria-checked={behavior === "everyone"}
+            <SetupResponderRow
+              choice="everyone"
+              checked={behavior === "everyone"}
+              title={t("room.responder.everyoneOption")}
+              hint={t("room.setup.allMembers")}
+              disabled={saving}
               onClick={() => {
                 setBehavior("everyone");
                 setLeadPickerOpen(false);
               }}
-              disabled={saving}
-              className={cn(
-                "flex min-h-[60px] w-full flex-col items-start justify-between rounded-[10px] border px-3 py-2.5 text-left transition-[background-color,border-color] duration-[120ms] ease-[ease] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
-                behavior === "everyone"
-                  ? "border-transparent bg-ink/4 text-ink"
-                  : "border-transparent text-ink hover:bg-ink/4",
-              )}
-            >
-              <span className="flex items-center gap-2 text-[13px] leading-[18px]">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                    behavior === "everyone" ? "border-ink bg-ink" : "border-transparent",
-                  )}
-                >
-                  {behavior === "everyone" && <span className="size-1.5 rounded-full bg-app" />}
-                </span>
-                {t("room.responder.everyoneOption")}
-              </span>
-              <span className="ml-6 mt-1 text-[12px] leading-4 text-ink/56">{t("room.setup.allMembers")}</span>
-            </button>
+            />
 
-            <button
-              type="button"
-              role="radio"
-              aria-checked={behavior === "mentions"}
+            <SetupResponderRow
+              choice="mentions"
+              checked={behavior === "mentions"}
+              title={t("room.responder.mentionsOption")}
+              hint={t("room.setup.onlyMentioned")}
+              disabled={saving}
               onClick={() => {
                 setBehavior("mentions");
                 setLeadPickerOpen(false);
               }}
-              disabled={saving}
-              className={cn(
-                "flex min-h-[60px] w-full flex-col items-start justify-between rounded-[10px] border px-3 py-2.5 text-left transition-[background-color,border-color] duration-[120ms] ease-[ease] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
-                behavior === "mentions"
-                  ? "border-transparent bg-ink/4 text-ink"
-                  : "border-transparent text-ink hover:bg-ink/4",
-              )}
-            >
-              <span className="flex items-center gap-2 text-[13px] leading-[18px]">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                    behavior === "mentions" ? "border-ink bg-ink" : "border-transparent",
-                  )}
-                >
-                  {behavior === "mentions" && <span className="size-1.5 rounded-full bg-app" />}
-                </span>
-                {t("room.responder.mentionsOption")}
-              </span>
-              <span className="ml-6 mt-1 text-[12px] leading-4 text-ink/56">{t("room.setup.onlyMentioned")}</span>
-            </button>
+            />
           </div>
         </fieldset>
 
@@ -909,7 +889,7 @@ export function GroupView({ group: room }: { group: Group }) {
   const threadWorking = roomThreadWorking(group, group.threadId);
   const setupPending = !remoteClient && roomNeedsSetup(group);
   // on a phone the setup form is the whole screen until it is saved or skipped: a locked field below it reads as part of it
-  const phone = useMediaQuery(PHONE_LAYOUT);
+  const phone = usePhoneLayout();
   const simpleHeader = simpleRoomHeader({ remoteClient, group, setupPending });
 
   const lastGroupMessage = group.messages.at(-1);
@@ -929,6 +909,7 @@ export function GroupView({ group: room }: { group: Group }) {
     };
   }, [group.messages, threadWorking, group.name, speaker?.name]);
   const presenceSpeaker = speaker ?? awaited ?? members[0];
+  const networkWait = waitsForNetwork(group.messages, useOffline());
   // a member's wait for its first reply is no phrase for the line: the line already says it is at work
   const lastForLine = useMemo(() => group.messages.findLast((m) => !m.tool?.rescue), [group.messages]);
   const now = useTurnNow(
@@ -994,9 +975,9 @@ export function GroupView({ group: room }: { group: Group }) {
 
   return (
     <main className="relative flex h-full min-w-0 flex-1 flex-col bg-app">
-      {membersOpen && !remoteClient && !group.dm && (
-        <ManageMembersPanel group={group} onClose={closeMembers} triggerRef={membersTriggerRef} />
-      )}
+      <AnimatePresence>{membersOpen && !remoteClient && !group.dm && (
+        <ManageMembersPanel key="manage-members-panel" group={group} onClose={closeMembers} triggerRef={membersTriggerRef} />
+      )}</AnimatePresence>
       <GlassScrollFrame className="flex-1 [--glass-tint:var(--color-app)]">
       {/* z-[25]: above the room set-up card (z-20). */}
       <GlassBar edge="top" fade={!remoteClient} className="z-[25]">
@@ -1075,6 +1056,7 @@ export function GroupView({ group: room }: { group: Group }) {
           ref={transcriptRef}
           data-simple-rows=""
           className="glass-scroller-content chat-column relative flex w-full flex-col gap-4 rounded-[18px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          data-dock-pad=""
           style={{ paddingBottom: `calc(${composerDock.pad} + ${SIMPLE_TRAILING_GAP + USAGE_ROW_GAP - (statusSlot ? SIMPLE_STATUS_SLOT : 0)}px)` }}
           tabIndex={0}
           role="log"
@@ -1131,6 +1113,7 @@ export function GroupView({ group: room }: { group: Group }) {
             </div>
           )}
           <RoomWorkingLines
+            key={`working:${group.threadId}`}
             group={group}
             members={members}
             workingIds={workingIds}
@@ -1138,7 +1121,9 @@ export function GroupView({ group: room }: { group: Group }) {
             speaker={{ bot: presenceSpeaker, visible: presenceVisible, markState: statusMarkState, phrases: now.phrases, phase: now.phase, since: speaker ? group.turnStartedAt ?? null : null }}
             slot={statusSlot}
             landed={Boolean(landed.reply)}
+            networkWait={networkWait}
           />
+          <TranscriptCardSlot key={`card:${group.threadId}`}>{Boolean(trailing?.failures.length || trailing?.notices.length || setupPending || group.dm) && <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />}</TranscriptCardSlot>
         </div>
         </div>
         )}
@@ -1152,16 +1137,15 @@ export function GroupView({ group: room }: { group: Group }) {
           <JumpToLatestButton onClick={jumpToLatest} className="pointer-events-auto bottom-2" />
         </div>
       )}
-      <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
-      {/* one card above the composer: what went wrong first, else who the person stopped */}
-      <div className="pointer-events-auto">{trailing?.failures.length || trailing?.notices.length || setupPending || group.dm
-        ? <FailedReplyCard rows={trailing} group threadId={group.threadId} onRetry={retry} />
-        : <RoomHoldsBanner group={group} members={members} />}</div>
+      <ComposerNoticeSlot>
+        <div className="pointer-events-auto"><ChatErrorBanner message={state.error} onDismiss={() => dispatch({ type: "error", message: null })} /></div>
+        {/* what went wrong sits in the transcript; above the composer only who the person stopped */}
+        <div className="pointer-events-auto">{!(trailing?.failures.length || trailing?.notices.length || setupPending || group.dm) && <RoomHoldsBanner group={group} members={members} />}</div>
+      </ComposerNoticeSlot>
       {!(phone && setupPending) && <RoomComposer
         key={group.threadId}
         group={group}
         members={members}
-        locked={setupPending}
         replyTo={replyTo}
         onClearReply={clearReply}
         onConsumeReply={consumeReply}
