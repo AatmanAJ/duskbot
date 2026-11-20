@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { cssCurve, desktopMotion } from "@/lib/desktop-motion";
+import { motionReduced, playGhostExit } from "@/lib/ghost-exit";
+import { pacedMs } from "@/lib/motion-speed";
 import { Icon } from "../Icon";
 import { smallButtonCls } from "./GrokDialog";
 
@@ -41,11 +44,13 @@ export function Toast({ text, tone = "done", action, onDone, timeoutMs, classNam
       left.current = Math.max(0, left.current - (Date.now() - started));
     };
   }, [ms, text, held]);
+  const node = useRef<HTMLDivElement>(null);
+  useToastLeave(node);
   const release = (event: FocusEvent<HTMLDivElement>) => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHeld(false);
   };
   const toast = (
-    <div {...rest} role={error ? "alert" : "status"} aria-live={error ? "assertive" : "polite"} data-kind={tone} className={cn("ui-toast", className)}
+    <div ref={node} {...rest} role={error ? "alert" : "status"} aria-live={error ? "assertive" : "polite"} data-kind={tone} className={cn("ui-toast", className)}
       onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={release}>
       <span aria-hidden="true" className={cn("inline-flex shrink-0", error ? "text-danger" : "text-ink-secondary")}>
         <Icon name={error ? "exclamation-circle" : "check"} size={13} />
@@ -58,4 +63,18 @@ export function Toast({ text, tone = "done", action, onDone, timeoutMs, classNam
     </div>
   );
   return typeof document === "undefined" || !document.body ? toast : createPortal(toast, document.body);
+}
+
+/** At a desktop pick with a toast motion, the toast leaves the way it came, from wherever it is, as it unmounts. */
+function useToastLeave(node: RefObject<HTMLDivElement | null>) {
+  const held = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => { held.current = node.current; });
+  useLayoutEffect(() => () => {
+    const spec = desktopMotion().toast;
+    if (!spec || motionReduced()) return;
+    playGhostExit(held.current, document.body, (ghost) => [ghost.animate(
+      [{ opacity: 1, translate: "0 0", scale: "1" }, { opacity: 0, translate: `0 ${spec.leaveY}`, scale: String(spec.leaveScale) }],
+      { duration: pacedMs(spec.leaveMs), easing: cssCurve(null), fill: "forwards" },
+    )]);
+  }, []);
 }

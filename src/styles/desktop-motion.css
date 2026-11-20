@@ -47,11 +47,11 @@
   }
 
   :root[data-desktop-motion-palette]:not([data-reduced-motion="true"]) {
-    & [data-command-palette][data-raw-dialog] { animation: dm-palette-in var(--dm-palette-ms) var(--dm-palette-ease) !important; }
-    & .palette-scrim { animation: dm-fade-in var(--dm-palette-ms) var(--motion-ease-out, ease-out); }
+    & [data-command-palette][data-raw-dialog]:not([data-leaving] *) { animation: dm-palette-in var(--dm-palette-ms) var(--dm-palette-ease) !important; }
+    & .palette-scrim:not([data-leaving] *) { animation: dm-fade-in var(--dm-palette-ms) var(--motion-ease-out, ease-out); }
   }
 
-  :root[data-desktop-motion-rows]:not([data-reduced-motion="true"]) [data-palette-row] {
+  :root[data-desktop-motion-rows]:not([data-reduced-motion="true"]) [data-palette-row]:not([data-leaving]) {
     transition: opacity var(--dm-rows-ms) var(--motion-ease-out, ease-out);
     @starting-style { opacity: 0; }
     &:nth-child(2) { transition-delay: var(--dm-stagger-ms); }
@@ -60,7 +60,7 @@
     &:nth-child(n + 5) { transition-delay: calc(var(--dm-stagger-ms) * 2.8); }
   }
 
-  :root[data-desktop-motion-toast]:not([data-reduced-motion="true"]) .ui-toast {
+  :root[data-desktop-motion-toast]:not([data-reduced-motion="true"]) .ui-toast:not([data-leaving]) {
     transition: opacity var(--dm-toast-ms) var(--motion-ease-out, ease-out), translate var(--dm-toast-ms) var(--dm-toast-ease), scale var(--dm-toast-ms) var(--dm-toast-ease);
     @starting-style { opacity: 0; translate: 0 var(--dm-toast-y); scale: var(--dm-toast-scale); }
   }

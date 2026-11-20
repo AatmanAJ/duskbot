@@ -77,4 +77,13 @@ describe("desktop motion", () => {
     }
     expect(MOTION.scale).toBeGreaterThan(0);
   });
+
+  it("takes away whatever came in with motion, faster than it came, and nothing at A", () => {
+    expect(DESKTOP_MOTIONS.a.palette.leave).toBeNull();
+    expect(DESKTOP_MOTIONS.a.toast).toBeNull();
+    for (const pick of [DESKTOP_MOTIONS.b, DESKTOP_MOTIONS.c]) {
+      expect(pick.palette.leave!.ms).toBeLessThan(pick.palette.enter!.ms);
+      expect(pick.toast!.leaveMs).toBeLessThan(pick.toast!.ms);
+    }
+  });
 });
