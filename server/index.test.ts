@@ -12036,7 +12036,7 @@ describe("bot memory API", () => {
       expect(created.status).toBe(201);
       routineId = created.body.routine.id as string;
       const soon = await api("GET", "/api/routines/wake");
-      expect(soon.body).toEqual({ hold: true, reason: "due", at });
+      expect(soon.body).toEqual({ hold: true, reason: "due", at, routines: 1 });
     } finally {
       if (routineId) await api("DELETE", `/api/routines/${routineId}`).catch(() => undefined);
       await api("DELETE", `/api/bots/${bot.id}`);
