@@ -7,7 +7,7 @@ import { cloudAsleep, onCloudPower } from "../lib/cloud-power";
 import { cloudWakingLoad, WAKING_LOAD_MS } from "./waking-load";
 import { awayFromChat, chatInFront, noteChatInFront } from "@/lib/chat-in-front";
 import { answerOf, api, ApiError, snapshotArrays } from "./api";
-import { sendOutbox } from "./send-outbox"; import { inThreadOrder } from "./send-order";
+import { QueuedBehindError, sendOutbox } from "./send-outbox"; import { inThreadOrder } from "./send-order";
 import { chatSnapshotPath, MESSAGE_PAGE_SIZE, takeBootRead } from "./boot-reads";
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
@@ -2492,7 +2492,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // the bot's working row shows with the bubble, not when the server answers the send
           if (threadId && botBeforeSend?.threadId === threadId && !botBeforeSend.busy) { forgetStopPress(threadId); noteSentTurn(threadId, sendId); }
           if (threadId) outbox?.hold({ kind: "bot", ownerId: action.botId, threadId, sendId, text: action.text, at: Date.now(), ...(action.replyToId ? { replyToId: action.replyToId } : {}), ...(action.mode ? { mode: action.mode } : {}), ...(action.mentions?.length ? { mentions: action.mentions } : {}) });
-          void inThreadOrder(threadId, () => waitForExecutionSettings(botBeforeSend ? [botBeforeSend] : [], threadId)
+          void inThreadOrder(threadId, () => outbox?.waitBehind(sendId) ? Promise.reject(new QueuedBehindError()) : waitForExecutionSettings(botBeforeSend ? [botBeforeSend] : [], threadId)
             .then(() => sendReconciled((signal) => api(`/api/bots/${action.botId}/messages`, {
                 method: "POST", signal,
                 body: JSON.stringify({ text: action.text, replyToId: action.replyToId, threadId, sendId, ...(action.dataContext ? { dataContext: action.dataContext } : {}), ...(action.pointed?.length ? { pointed: action.pointed } : {}), ...(action.mode === "goal" ? { mode: "goal" } : {}), ...(action.followUp ? { followUp: action.followUp } : {}), ...(action.mentions?.length ? { mentions: action.mentions } : {}), ...(action.voiceCall ? { voiceCall: action.voiceCall } : {}) }),
@@ -2506,7 +2506,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .catch((error) => {
               action.onSettled?.();
               if (threadId) dropSentTurn(threadId, sendId);
-              if (outbox && (!(error instanceof ApiError) || sendAnswerLost(error)) && outbox.keep(sendId)) return;
+              if (error instanceof QueuedBehindError || (outbox && (!(error instanceof ApiError) || sendAnswerLost(error)) && outbox.keep(sendId))) return;
               outbox?.release(sendId);
               if (threadId) {
                 rawDispatch({ type: "optimisticMessageRemoved", threadId, sendId });
@@ -2732,7 +2732,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const arrived = () => sendArrived(stateRef.current.groups.find((group) => group.id === action.groupId && group.threadId === threadId)?.messages, sendId);
           const outbox = threadId ? sendOutbox() : null;
           if (threadId) outbox?.hold({ kind: "group", ownerId: action.groupId, threadId, sendId, text: action.text, at: Date.now(), ...(action.replyToId ? { replyToId: action.replyToId } : {}), ...(action.mode ? { mode: action.mode } : {}), ...(action.mentions?.length ? { mentions: action.mentions } : {}) });
-          void inThreadOrder(threadId, () => waitForExecutionSettings(executionBotsBeforeAction)
+          void inThreadOrder(threadId, () => outbox?.waitBehind(sendId) ? Promise.reject(new QueuedBehindError()) : waitForExecutionSettings(executionBotsBeforeAction)
             .then(() => sendReconciled((signal) => api(`/api/groups/${action.groupId}/messages`, {
               method: "POST", signal,
               body: JSON.stringify({
@@ -2746,7 +2746,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .then((sent) => { outbox?.release(sendId); applySendReceipt(sent, sendId, action.text, rawDispatch); action.onSettled?.(); })
             .catch((error) => {
               action.onSettled?.();
-              if (outbox && (!(error instanceof ApiError) || sendAnswerLost(error)) && outbox.keep(sendId)) return;
+              if (error instanceof QueuedBehindError || (outbox && (!(error instanceof ApiError) || sendAnswerLost(error)) && outbox.keep(sendId))) return;
               outbox?.release(sendId);
               if (threadId) {
                 rawDispatch({ type: "optimisticMessageRemoved", threadId, sendId });
