@@ -157,6 +157,33 @@ describe("Telegram chat channel", () => {
     expect(await call(turn.threadId, { action: "disconnect", platform: "telegram" })).toMatchObject({ status: 403 });
   });
 
+  it("does everything from chat: shows the claim link, who is in and who tried, lets in, removes and disconnects", async () => {
+    const f = await fixture();
+    f.threads.set("app-thread", [{ id: "u1", role: "user", kind: "text", text: TOKEN } as unknown as Message]);
+    const call = async (body: unknown) => {
+      let answer: { status: number; body: Record<string, unknown> } | null = null;
+      await f.host.internal({ method: "POST", path: "/api/internal/messengers", res: {} as never, botId: "bot-nova", threadId: "app-thread",
+        json: ((_res: unknown, status: number, value: Record<string, unknown>) => { answer = { status, body: value }; }) as never, readBody: async () => body });
+      return answer!;
+    };
+    const connected = await call({ action: "connect", platform: "telegram" });
+    const code = /start=([A-Z2-9]+)/.exec(String(connected.body.text))![1]!;
+    expect(String((await call({ action: "status" })).body.text)).toContain(`https://t.me/nova_test_bot?start=${code}`);
+    f.fake.message({ from: OWNER, text: `/start ${code}` });
+    f.fake.message({ from: STRANGER, text: "hi" });
+    await until(() => f.host.status("bot-nova").platforms[0]!.knocked.length);
+    const status = String((await call({ action: "status" })).body.text);
+    expect(status).toContain("Owner: Sid");
+    expect(status).toContain("Turned away recently: Mallory (person, 777)");
+    expect((await call({ action: "allow", platform: "telegram", who: "Mallory" })).status).toBe(200);
+    expect(String((await call({ action: "status" })).body.text)).toContain("Also let in: Mallory (person, 777)");
+    expect((await call({ action: "remove_access", platform: "telegram", who: "mallory" })).status).toBe(200);
+    expect(f.host.status("bot-nova").platforms[0]!.allowed).toEqual([]);
+    expect((await call({ action: "disconnect", platform: "telegram" })).status).toBe(200);
+    expect(String((await call({ action: "status" })).body.text)).toContain("Telegram: not connected.");
+    expect(f.fake.webhook().url).toBe("");
+  });
+
   it("connects from the token the person pasted in chat and keeps the token out of the status", async () => {
     const f = await fixture();
     f.threads.set("app-thread", [{ id: "u1", role: "user", kind: "text", text: `here you go ${TOKEN} thanks` } as unknown as Message]);
