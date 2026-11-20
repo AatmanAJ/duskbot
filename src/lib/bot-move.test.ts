@@ -17,7 +17,7 @@ vi.mock("@/state/store", () => ({
 }));
 
 import type { GrokBot } from "../../shared/grok-import";
-import { GROK_EXPORT_FORMAT } from "../../shared/grok-import";
+import { GROK_EXPORT_FORMAT, parseGrokExport } from "../../shared/grok-import";
 import { planBotMove, runBotMove, type BotMoveLook } from "./bot-move";
 
 const bot = (name: string, over: Partial<GrokBot> = {}): GrokBot => ({
@@ -32,7 +32,7 @@ const look = (over: Partial<BotMoveLook> = {}): BotMoveLook => ({
     { source: "openclaw", app: "OpenClaw", where: "~/.openclaw", bots: [bot("Molty"), bot("Scout")], channels: ["telegram"], unreadable: [] },
     { source: "hermes", app: "Hermes Agent", where: "~/.hermes", bots: [bot("Hermes", { skills: [], routines: [] })], channels: [], unreadable: ["cron/jobs.json"] },
   ] },
-  grok: { files: [], bots: [] },
+  grok: { exports: [], bots: [] },
   ...over,
 });
 const facts: Parameters<typeof planBotMove>[1] = { bots: [], servers: new Set<string>(), timeZone: "UTC" };
@@ -47,7 +47,7 @@ describe("the same bot kept in two apps", () => {
     const plan = planBotMove({ bots: { apps: [
       { source: "openclaw", app: "OpenClaw", where: "~/.openclaw", bots: [bot("Nova", { skills: [], routines: [], memories: [] })], channels: [], unreadable: [] },
       { source: "hermes", app: "Hermes Agent", where: "~/.hermes", bots: [bot("nova", { instructions: "You are Nova, ".repeat(50) })], channels: [], unreadable: [] },
-    ] }, grok: { files: [], bots: [] } }, facts);
+    ] }, grok: { exports: [], bots: [] } }, facts);
     expect(plan.apps.map((app) => [app.app, app.preview.plans.map((one) => one.addedAs)])).toEqual([["Hermes Agent", ["nova"]]]);
   });
 });
@@ -73,7 +73,7 @@ describe("planning a move", () => {
   });
 
   it("brings Grok Bot exports in Downloads, and names Grok Bot bots still waiting for theirs", () => {
-    const grok = { files: [{ name: "grok-bot-export-drew.json", modifiedAt: 1, text: JSON.stringify({ format: GROK_EXPORT_FORMAT, bots: [{ name: "Drew", instructions: "Hi." }] }) }], bots: ["Drew", "Eggbot"] };
+    const grok = { exports: [{ name: "grok-bot-export-drew.json", modifiedAt: 1, bots: parseGrokExport(JSON.stringify({ format: GROK_EXPORT_FORMAT, bots: [{ name: "Drew", instructions: "Hi." }] })) }], bots: ["Drew", "Eggbot"] };
     const plan = planBotMove(look({ bots: { apps: [] }, grok }), facts);
     expect(plan.apps.map((app) => [app.app, app.preview.plans.map((one) => one.addedAs)])).toEqual([["Grok Bot", ["Drew"]]]);
     expect(plan.grokWaiting).toEqual(["Eggbot"]);

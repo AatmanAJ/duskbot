@@ -3,11 +3,11 @@ import { addTemplate } from "@/lib/template-add";
 import { api, type Action, type Bot } from "@/state/store";
 import type { LocaleKey } from "@/locales";
 import { takeImportName } from "../../shared/import-name";
-import { factsTopic, GrokImportError, grokMovePlan, mergeGrokBots, parseGrokExport, type GrokBot, type GrokMovePlan, type MoveFrom } from "../../shared/grok-import";
+import { factsTopic, GrokImportError, grokMovePlan, mergeGrokBots, type GrokBot, type GrokImportErrorCode, type GrokMovePlan, type MoveFrom } from "../../shared/grok-import";
 
-/** What the desktop app found on this computer. */
+/** What the desktop app found on this computer: exports already parsed and refused on the server, never their text. */
 export interface GrokLook {
-  files: Array<{ name: string; modifiedAt: number; text: string }>;
+  exports: Array<{ name: string; modifiedAt: number; bots?: GrokBot[]; refused?: { code: GrokImportErrorCode; keys: string[] } }>;
   bots: string[];
 }
 
@@ -24,15 +24,11 @@ export interface FoundExports {
 
 /** Every file found, joined by Bot: a split export comes together and a saved-twice one counts once. A refused file says
  * why and costs the others nothing. Oldest first, so the newest copy wins. */
-export function foundExports(files: GrokLook["files"]): FoundExports {
+export function foundExports(files: GrokLook["exports"]): FoundExports {
   const refused: FoundExports["refused"] = [];
   const bots = [...files].sort((a, b) => a.modifiedAt - b.modifiedAt).flatMap((file) => {
-    try {
-      return parseGrokExport(file.text);
-    } catch (cause) {
-      refused.push({ file: file.name, error: grokErrorText(cause) });
-      return [];
-    }
+    if (file.refused) refused.push({ file: file.name, error: grokErrorText(new GrokImportError(file.refused.code, file.refused.keys)) });
+    return file.refused ? [] : file.bots ?? [];
   });
   return { bots: mergeGrokBots(bots), refused };
 }
@@ -61,7 +57,7 @@ export function previewGrokMove(bots: readonly GrokBot[], facts: GrokPreviewFact
   for (const bot of bots) {
     try {
       const plan = grokMovePlan(bot, { timeZone: facts.timeZone, takenServers: servers, ...(facts.from ? { from: facts.from } : {}) });
-      if (installed.has(plan.packageId)) {
+      if ([plan.packageId, ...plan.legacyPackageIds].some((id) => installed.has(id))) {
         preview.moved.push(plan.name);
         continue;
       }

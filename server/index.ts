@@ -364,7 +364,7 @@ import {
   workspaceDir,
   botSettingsFile,
 } from "./workspace.ts";
-import { memoryDate, memoryLinesMentioning, writeMemoryFile, writeMemoryTopic } from "./workspace.ts";
+import { memoryDate, memoryLinesMentioning, readMemoryTopic, writeMemoryFile, writeMemoryTopic } from "./workspace.ts";
 import { landingSite, siteNotes, withSiteNotes } from "./browser-site-notes.ts";
 import {
   beginMemoryTurn,
@@ -650,6 +650,10 @@ import { createMcpConfig } from "./host/mcp-config.ts";
 import { createMcpServerRoutes } from "./routes/mcp-servers.ts";
 import { teamAdminSummary } from "./cloud-team-admin.ts";
 import { createSetupImportRoutes } from "./routes/setup-import.ts";
+import { createGrokMoveRoutes } from "./routes/grok-move.ts";
+import { GrokMover } from "./grok-bot-move.ts";
+import { importPackageDocument } from "./package-import.ts";
+import { thisMachine } from "./setup-import.ts";
 import { createComputerRoutes } from "./routes/computers.ts";
 import { browserNeedsAutoInstall, createStatusRoutes, startBrowserEngineInstall } from "./routes/status.ts"; import { createBrowserChat } from "./host/browser-chat.ts"; import { createBrowserPartHost } from "./host/browser-part.ts"; import { createMyChromeSwitch } from "./host/my-chrome-switch.ts"; import { sealedFixture, throwawayWorkspace } from "./env-path.ts"; import { browserEngineKind } from "./browser/config.ts"; import { createDashboardRoutes } from "./routes/dashboard.ts"; import { createDashboardCollector } from "./dashboard-report.ts"; import { createDashboardReporter } from "./dashboard-reporter.ts"; import { createPulseSampler } from "./dashboard-pulse.ts"; import { memoryFiles } from "./cloud-send-memory.ts"; import { createFrustrationWatch, createUsageOutbox, digestPrompt, hashId, sessionPrompt, summaryPrompt, turnRecord } from "./usage-signals.ts"; import { DIGEST_MAX, SESSION_NOTE_MAX, cleanUsageDigest, engineFamily, failureReason, runEvery, runTrigger, scrubSummary } from "../shared/usage-signals.ts"; import { attachmentKind, cleanSignal, sizeBucket } from "../shared/product-signals.ts"; import { createUsageSignalsSwitch } from "./usage-signals-switch.ts"; import { createConfusionWatch, createExperienceOutbox, downloadFailReason } from "./experience.ts"; import { createDashboardCommands } from "./dashboard-commands.ts"; import { createCompanionEndpointsBridge, type CompanionEndpointsRequest } from "./companion-endpoints.ts"; import { connectedInApp, dashboardApps } from "./dashboard-apps.ts"; import { connectCallback } from "../shared/dashboard-protocol.ts"; import { createAppSignIns } from "./app-sign-ins.ts";
 import { findAntigravityLeftovers, removeAntigravityLeftovers } from "./drivers/antigravity-temp.ts";
@@ -13627,6 +13631,30 @@ ROUTES.push(createMcpServerRoutes({
   mcpServerResponse, savedCustomDomain, appCatalog: chatAppsMcp, config: mcpConfig }));
 ROUTES.push(createSetupImportRoutes({ local: DESKTOP_MANAGED && !CLOUD_HOME, cfg, mcpPolicyRefusal, persistMcpServers: persistAnnouncedMcpServers,
   mcpConfigBusy: mcpConfig.busy, botExists: (id) => Boolean(store.bot(id)), connectChannel: (botId, platform, token, allowed) => messengerHost.connect(botId, platform, token, { allowed: allowed.map((id) => ({ id, kind: id.startsWith("-") ? "chat" as const : "person" as const })) }) }));
+let grokMover: GrokMover | null = null;
+ROUTES.push(createGrokMoveRoutes({
+  local: DESKTOP_MANAGED && !CLOUD_HOME,
+  mover: () => grokMover ??= new GrokMover({
+    machine: thisMachine,
+    store,
+    importPackage: async (document) => {
+      const result = importPackageDocument(document, { trust: "file", mode: "add" }, packageImportDeps(await defaultSelection()));
+      if (result.alreadyAdded) throw new Error("already added");
+      return result;
+    },
+    routines: { create: (input) => routines!.create(input), listRoutines: () => routines!.listRoutines() },
+    skills: { install: installSkill, setEnabled: setSkillEnabled },
+    memory: { writeTopic: writeMemoryTopic, readTopic: readMemoryTopic },
+    saveAvatar: (bytes, mime) => {
+      const avatarUrl = botAvatarUrlFromStoredPath(saveImage(bytes, mime).path);
+      if (!avatarUrl) throw new Error("the picture could not be stored");
+      return avatarUrl;
+    },
+    deleteBot: (botId) => deleteBotWithLifecycle(botId),
+    recordSoulChange: (botId, before, after) => recordProfileChange(botId, "import", "grok-bot", { soul: before }, { soul: after }),
+    timeZone: () => personTimeZone(proactive.brief.timeZone()),
+  }),
+}));
 ROUTES.push(createComputerRoutes({
   store, cfg, sessions, teamComputers, computerControl,
   routines: () => routines,

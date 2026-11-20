@@ -16,7 +16,7 @@ vi.mock("@/state/store", () => ({
   }),
 }));
 
-import { GROK_EXPORT_FORMAT, parseGrokExport } from "../../shared/grok-import";
+import { GROK_EXPORT_FORMAT, parseGrokExport, type GrokImportError } from "../../shared/grok-import";
 import { foundExports, previewGrokMove, runGrokMove, type GrokPreviewFacts } from "./grok-move";
 
 const bots = (...list: unknown[]) => parseGrokExport(JSON.stringify({ format: GROK_EXPORT_FORMAT, bots: list }));
@@ -99,7 +99,15 @@ describe("the import", () => {
 });
 
 describe("files found on this computer", () => {
-  const file = (name: string, list: unknown, modifiedAt = 1) => ({ name, modifiedAt, text: JSON.stringify({ format: GROK_EXPORT_FORMAT, bots: list }) });
+  // as the server answers: parsed there, a refused file named with its reason, never the text
+  const file = (name: string, list: unknown, modifiedAt = 1) => {
+    try {
+      return { name, modifiedAt, bots: parseGrokExport(JSON.stringify({ format: GROK_EXPORT_FORMAT, bots: list })) };
+    } catch (cause) {
+      const refused = cause as GrokImportError;
+      return { name, modifiedAt, refused: { code: refused.code, keys: refused.keys } };
+    }
+  };
 
   it("joins each Bot's files, keeps the newest copy, and a refused file spoils nothing else", () => {
     const found = foundExports([
