@@ -11,4 +11,10 @@ describe("desktop error reports", () => {
     expect(send.mock.calls[0]).toEqual([expect.objectContaining({ type: "TypeError", message: "same", path: "/chat" })]);
     expect(() => createErrorReports(undefined)(new Error("x"))).not.toThrow();
   });
+
+  it("never reports the browser's ResizeObserver loop notice, which breaks nothing", () => {
+    const send = vi.fn(async () => true);
+    createErrorReports({ send })(new Error("ResizeObserver loop completed with undelivered notifications."));
+    expect(send).not.toHaveBeenCalled();
+  });
 });

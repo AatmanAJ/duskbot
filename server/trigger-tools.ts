@@ -187,10 +187,29 @@ export type ParsedTriggerRequest =
   | { ok: true; kind: "app"; forBotId: unknown; operation: { action: string; trigger?: unknown; triggerId?: string; changes?: unknown } };
 
 /** A create names its kind; a change finds it from the trigger id (routine, webhook and app-event ids never collide). */
+const WEEKDAY = "monday|tuesday|wednesday|thursday|friday|saturday|sunday";
+// a day said relative to when the automation was made: true that day, wrong every day after
+const RELATIVE_DAY = new RegExp(`\\s*[,(-]?\\s*\\b(?:(?:due|on|for|by|until)\\s+)?(?:today|tonight|tomorrow(?:\\s+(?:morning|afternoon|evening|night))?|yesterday|this\\s+(?:morning|afternoon|evening|week|weekend|month)|next\\s+(?:week|month|weekend|${WEEKDAY})|in\\s+\\d+\\s+(?:days?|weeks?))\\b\\s*\\)?`, "gi");
+
+/** An automation's name without a day said relative to now ("Calculus midterm tomorrow" names it "Calculus midterm"),
+ * so it stays true after that day; a name that is nothing but such a day stays as it was. */
+export function timelessName(name: string): string {
+  const kept = name.replace(RELATIVE_DAY, " ").replace(/\s{2,}/g, " ").replace(/^[\s,:;-]+|[\s,:;-]+$/g, "");
+  return kept.length >= 2 ? kept : name;
+}
+
+function withTimelessName<T>(value: T): T {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  return typeof record.name === "string" ? { ...record, name: timelessName(record.name) } as T : value;
+}
+
 export function parseTriggerRequest(body: unknown, kindOf: (id: string) => "schedule" | "app" | "webhook"): ParsedTriggerRequest {
   const parsed = triggerRequestSchema.safeParse(body);
   if (!parsed.success) return { ok: false, error: "invalid trigger request" };
   const request = parsed.data;
+  if (request.action === "create") Object.assign(request, request.kind === "schedule" ? { routine: withTimelessName(request.routine) } : request.kind === "app" ? { trigger: withTimelessName(request.trigger) } : { webhook: withTimelessName(request.webhook) });
+  if (request.action === "update") request.changes = withTimelessName(request.changes);
   if (request.action === "create") {
     if (request.kind === "app") return { ok: true, kind: "app", forBotId: request.forBotId, operation: { action: "create", trigger: request.trigger } };
     return request.kind === "schedule"

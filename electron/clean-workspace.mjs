@@ -87,6 +87,9 @@ export function createCleanWorkspace({ dataDir, running, swap, allowed = () => t
     active,
     ownCopy,
     marker,
+    /** This computer's own view can be shown: its copy isn't frozen by a move, or the clean workspace is what runs. A frozen
+     * copy shown as a workspace reads like the bots but refuses every send ("lives on My Cloud now"). */
+    showable: () => active() || !marker().frozen,
     /** Opens the clean workspace; true once it runs. False when it can't, and the window says why as before. A named local
      * environment the person chose is no frozen copy, so it stays. */
     enter: () => inTurn(async () => {

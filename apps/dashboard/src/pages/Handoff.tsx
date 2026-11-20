@@ -4,6 +4,7 @@ import { forgetHandoff, handoffNext, handoffToken, leaveHandoff as go } from "..
 import { api } from "../lib/api";
 import { Button, ButtonLink } from "../ui/kit";
 import { SkyEmpty } from "../ui/Sky";
+import { PlansPageSkeleton } from "../ui/plans-skeleton";
 
 type Step = { kind: "working" } | { kind: "ask"; why: "confirm" | "other_account"; email: string } | { kind: "expired" } | { kind: "failed"; message: string };
 
@@ -48,7 +49,7 @@ export function HandoffPage() {
     void redeem();
   }, []);
 
-  let body = <div className="min-h-[100dvh] bg-bg" aria-busy="true" />;
+  let body = <PlansPageSkeleton />;
   if (step.kind === "ask") {
     const other = step.why === "other_account";
     body = (

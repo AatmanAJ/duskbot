@@ -46,6 +46,17 @@ it.each(origins)("allows only the requested preflight method and headers from %s
   expect(res.getHeader("access-control-allow-credentials")).toBeUndefined();
 });
 
+it.each(origins)("allows the live stream preflight older phone builds send from %s", origin => {
+  // builds up to 1.0.1 open /api/events with Accept and Cache-Control next to the bearer
+  const { req, res, url } = request({ origin, "access-control-request-method": "GET",
+    "access-control-request-headers": "accept,authorization,cache-control" }, "OPTIONS", "/api/events?since=1");
+  expect(answerMobilePreflight(req, res, url)).toBe(true);
+  expect(res.statusCode).toBe(204);
+  expect(res.getHeader("access-control-allow-origin")).toBe(origin);
+  expect(res.getHeader("access-control-allow-headers")).toBe("Accept, Authorization, Cache-Control");
+  expect(res.getHeader("access-control-max-age")).toBe("600");
+});
+
 it.each([
   ["TRACE", "authorization"], ["GET", "content-type"], ["GET", "authorization, cookie"],
   ["GET", "authorization, x-dusk-desktop-owner"], ["GET", "authorization, x-arbitrary"],

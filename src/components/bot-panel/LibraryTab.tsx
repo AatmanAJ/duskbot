@@ -3,12 +3,12 @@ import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { usePageOpener } from "@/lib/page-open";
-import { SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-media-query";
+import { usePhoneLayout } from "@/lib/use-media-query";
 import { useStore, visibleMessages, type Bot, type Message } from "@/state/store";
 import { useLocalFileSave } from "../AttachmentPreview";
 import { recentChangedFiles, sharedFileReferences } from "../ComputerFilesPane";
 import { Icon } from "../Icon";
-import { chipNameAction, useHtmlPreview } from "../HtmlFilePreview";
+import { chipNameAction, useFilePreview } from "../HtmlFilePreview";
 import { FileKindIcon } from "./FileKindIcon";
 import type { SimplePageId } from "./page-registry";
 import { Card, LabelAction, PanelEmpty } from "./rows";
@@ -118,7 +118,7 @@ function ActionRow({ name, lead, age, onClick, ...rest }: { name: string; lead: 
 function FileRow({ reference, age }: { reference: LibraryItems["shared"][number]; age: string | null }) {
   const { file, message } = reference;
   const save = useLocalFileSave(file.path, file.name, message);
-  const preview = useHtmlPreview(file.path, file.name, message);
+  const preview = useFilePreview(file.path, file.name, message);
   const usable = file.private || file.linked;
   if (!usable) {
     return (
@@ -171,7 +171,7 @@ function Group({ group, entries, now }: { group: GroupKey; entries: Entry[]; now
 function useLibraryEntries(bot: Bot): Entry[] {
   const { dispatch } = useStore();
   const openPage = usePageOpener();
-  const phone = !useMediaQuery(SIDEBAR_INLINE, true);
+  const phone = usePhoneLayout();
   const items = useMemo(() => libraryItems(bot), [bot]);
   const showInChat = (messageId: string) => {
     dispatch({ type: "focusMessage", threadId: bot.threadId, messageId });
@@ -238,12 +238,14 @@ export function LibraryPage({ bot }: { bot: Bot }) {
 const PREVIEW = 3;
 
 /** The Advanced tab's Library section: the newest few things the bot made, and View all for the whole Library. */
-export function LibrarySection({ bot, onOpen }: { bot: Bot; onOpen: (page: SimplePageId) => void }) {
+/** `quietWhenEmpty`: an empty Library says nothing, under the bot's Files or on the phone's Advanced tab. */
+export function LibrarySection({ bot, onOpen, quietWhenEmpty = false }: { bot: Bot; onOpen: (page: SimplePageId) => void; quietWhenEmpty?: boolean }) {
   const entries = useLibraryEntries(bot);
   const now = Date.now();
   const more = entries.length > PREVIEW;
   // nothing made yet reads as grok's empty Library tab, the centred line with no card, as Details does for routines
   if (entries.length === 0) {
+    if (quietWhenEmpty) return null;
     return (
       <section data-panel-card="library">
         <PanelEmpty data-panel-empty="library">{t("botPanel.library.empty")}</PanelEmpty>

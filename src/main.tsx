@@ -6,7 +6,8 @@ import { startDesktopAnalytics } from "./lib/product-analytics-app";
 import { screen as productScreen } from "./lib/product-analytics";
 import { AccountGate, reloadWhenSignedOut } from "./components/account-gate/AccountGate";
 import { WindowDragStrip } from "./components/DesktopCapabilities";
-import { StrictMode } from "react";
+import { StrictMode, useLayoutEffect } from "react";
+import { HOLD_ID } from "./lib/switch-hold-key";
 import { createRoot } from "react-dom/client";
 import {
   BROWSER_SIGN_IN_FAILED, previewBrowserSignIn, readSessionState, SERVICE_TRUST_REASON, takeBrowserSignInFromLocation, takePairingCodeFromLocation, takeInvitedEmailFromLocation,
@@ -15,6 +16,8 @@ import { productName } from "./lib/brand";
 import { loadPageLanguage } from "./lib/language-preference";
 import { applySkinChoice, readSkinChoice } from "./lib/skins";
 import { applyChatWidth, readChatWidth } from "./lib/chat-width";
+import { applyMotionSpeed } from "./lib/motion-speed";
+import { applyDesktopMotion } from "./lib/desktop-motion";
 import { applyFont, readFont } from "./lib/fonts";
 import { startSyncedPrefs } from "./lib/synced-prefs";
 import { watchFocusNav } from "./lib/focus-nav";
@@ -25,19 +28,25 @@ import { HomeScreen, SignedOutAtHome } from "./components/HomeScreen";
 import { ReconnectScreen } from "./components/ReconnectScreen";
 import { PageBoundary } from "./components/PageBoundary";
 import { startBootReads } from "./state/boot-reads";
+import { onCloudGone } from "./lib/cloud-power";
 import { endedBeforeReload, forgetEndedSession, SESSION_ENDED_REASON } from "./lib/session-ended";
 import "./font-faces.css";
 import "./styles.css";
 import "./styles/overlays.css";
 import "./styles/motion.css";
+import "./styles/desktop-motion.css";
 
 watchStaleChunks();
+// a deleted dusk cloud: loading the page again gets the edge's 410, which the desktop window answers with its own screen
+onCloudGone(() => location.reload());
 
 // Before first paint.
 startDesktopAnalytics();
 applySkinChoice(readSkinChoice());
 applyFont(readFont());
 applyChatWidth(readChatWidth());
+applyMotionSpeed(document.documentElement);
+applyDesktopMotion(document.documentElement);
 startSyncedPrefs();
 watchFocusNav();
 watchComposerFocus();
@@ -81,8 +90,14 @@ async function chooseRoot(): Promise<React.ReactNode> {
   return <App />;
 }
 
+/** The mascot src/switch-hold.ts painted goes in the commit that brings the page, before it paints. */
+function SwitchHoldGone() {
+  useLayoutEffect(() => { document.getElementById(HOLD_ID)?.remove(); }, []);
+  return null;
+}
+
 document.title = productName();
 void Promise.all([chooseRoot(), loadPageLanguage()]).then(([root]) => {
   installTrailCapture();
-  createRoot(document.getElementById("root")!, rootErrorOptions).render(<StrictMode><PageBoundary>{root}</PageBoundary></StrictMode>);
+  createRoot(document.getElementById("root")!, rootErrorOptions).render(<StrictMode><SwitchHoldGone /><PageBoundary>{root}</PageBoundary></StrictMode>);
 });
