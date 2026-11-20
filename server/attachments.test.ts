@@ -58,6 +58,7 @@ const {
   deleteAttachment,
   extensionForFileMime,
   extensionForMime,
+  imageMimeOf,
   parseAudioRange,
   readAttachment,
   sanitizeSharedFileName,
@@ -94,6 +95,18 @@ describe("extensionForMime", () => {
     expect(extensionForMime("image/svg+xml")).toBeNull();
     expect(extensionForMime("text/plain")).toBeNull();
     expect(extensionForMime(undefined)).toBeNull();
+  });
+});
+
+describe("imageMimeOf", () => {
+  it("names a picture by its own first bytes, and nothing else", () => {
+    expect(imageMimeOf(Buffer.from("89504e470d0a1a0a0000", "hex"))).toBe("image/png");
+    expect(imageMimeOf(Buffer.from("ffd8ffe000", "hex"))).toBe("image/jpeg");
+    expect(imageMimeOf(Buffer.from("GIF89a....", "latin1"))).toBe("image/gif");
+    expect(imageMimeOf(Buffer.from("RIFF0000WEBPVP8 ", "latin1"))).toBe("image/webp");
+    expect(imageMimeOf(Buffer.from("efbfbd504e470d0a1a0a", "hex"))).toBeNull();
+    expect(imageMimeOf(Buffer.from("<svg/>"))).toBeNull();
+    expect(imageMimeOf(Buffer.alloc(0))).toBeNull();
   });
 });
 
@@ -292,6 +305,20 @@ describe("aggregate attachment storage", () => {
     })(), "last-byte.txt", "text/plain");
     expect(saved.bytes).toBe(1);
     expect(() => saveImage(Buffer.from("b"), "image/png")).not.toThrow();
+  });
+
+  it("keeps an image too large for a picture as a file, and refuses bytes that are not the image they claim", async () => {
+    const png = Buffer.concat([Buffer.from("\x89PNG\r\n\x1a\n", "latin1"), Buffer.alloc(64)]);
+    const saved = await saveFile((async function* () {
+      yield png.subarray(0, 5);
+      yield png.subarray(5);
+    })(), "huge-photo.png", "image/png");
+    expect(saved).toMatchObject({ name: "huge-photo.png", mime: "image/png", bytes: png.byteLength });
+    expect(saved.path.endsWith(".png")).toBe(true);
+
+    await expect(saveFile((async function* () { yield Buffer.from("<html>not a picture</html>"); })(), "page.png", "image/png"))
+      .rejects.toMatchObject({ status: 400 });
+    expect(readdirSync(ATTACHMENTS_DIR).every((name) => !name.endsWith(".partial"))).toBe(true);
   });
 
   it("releases reservations and removes partials after failed uploads", async () => {

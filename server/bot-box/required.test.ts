@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { antigravityProfileDirectory } from "../drivers/antigravity-acp.ts";
 import { engineInstallRoots } from "../engine-roots.ts";
 import { BotBox, BoxRunner, BOX_EGRESS_PORT, engineHomeDir, extraCodeRoots, requiredFence } from "./box.ts";
 import { boxWanted, detectBox } from "./detect.ts";
@@ -67,6 +68,37 @@ linuxBox("the required box's fence", () => {
     expect(plan({ cwd: `${home}/projects/site` }).writable).toContain(`${home}/projects/site`);
   });
 
+  it("an engine's own home under providers/ is its run's working folder only when its environment names that home", () => {
+    const own = `${dataDir}/providers/antigravity/${"a".repeat(64)}`, other = `${dataDir}/providers/antigravity/${"b".repeat(64)}`;
+    const plan = (request: { cwd: string; env: Record<string, string> }) => planBox(setup, { command: "/opt/agy/agy", args: ["--uid="], ...request });
+    const ownRun = plan({ cwd: own, env: { GEMINI_HOME: own } });
+    expect(visibleInBox(ownRun, own)).toBe("rw");
+    expect(visibleInBox(ownRun, `${own}/antigravity-acp/acp_token.json`)).toBe("rw");
+    for (const hidden of [other, `${dataDir}/providers/claude-2/.credentials.json`, `${dataDir}/providers/engine-status.json`, `${dataDir}/config.json`,
+      `${dataDir}/messages.db`, `${dataDir}/logins-key`, `${dataDir}/workspaces/bot-a`, `${home}/.ssh/authorized_keys`]) {
+      expect(visibleInBox(ownRun, hidden), hidden).toBe("none");
+    }
+    expect(() => plan({ cwd: own, env: {} }), "no engine home named").toThrow(BoxFenceError);
+    expect(() => plan({ cwd: own, env: { GEMINI_HOME: other } }), "another account's home").toThrow(BoxFenceError);
+    expect(() => plan({ cwd: own, env: { CLAUDE_CONFIG_DIR: `${dataDir}/providers/claude-2` } }), "another engine's home").toThrow(BoxFenceError);
+    expect(() => plan({ cwd: `${dataDir}/providers/antigravity`, env: { GEMINI_HOME: own } }), "the engine's whole providers folder").toThrow(BoxFenceError);
+    expect(() => plan({ cwd: `${dataDir}/providers`, env: { GEMINI_HOME: `${dataDir}/providers` } })).toThrow(BoxFenceError);
+    expect(() => plan({ cwd: `${dataDir}/config`, env: { GEMINI_HOME: `${dataDir}/providers/x/../../config` } })).toThrow(BoxFenceError);
+    expect(() => plan({ cwd: dataDir, env: { GEMINI_HOME: dataDir } })).toThrow(BoxFenceError);
+    expect(plan({ cwd, env: { GEMINI_HOME: own } }).writable).toContain(cwd);
+  });
+
+  it("a refused path is never named in the message people see", () => {
+    try {
+      planBox(setup, { command: "/usr/bin/codex", args: [], cwd: `${dataDir}/bots`, env: {} });
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(BoxFenceError);
+      expect((error as BoxFenceError).path).toBe(`${dataDir}/bots`);
+      expect((error as Error).message).not.toContain(dataDir);
+    }
+  });
+
   it("a command-line path inside the fence is simply not put back", () => {
     const plan = planBox(setup, { command: "/usr/bin/claude", args: ["--settings", `${home}/.config/x.json`, "--add-dir", home], cwd, env: {} });
     expect(visibleInBox(plan, `${home}/.config/x.json`)).toBe("none");
@@ -107,5 +139,25 @@ linuxBox("a required box runs engines in their own home", () => {
     expect(mounts.some((mount) => "source" in mount && mount.source === serverHome), "the server's HOME is never bound").toBe(false);
     const auth = mounts.find((mount) => "target" in mount && mount.target === join(engineHome, ".codex", "auth.json"));
     expect(auth && "source" in auth ? auth.source : null).toBe(join(serverHome, ".codex", "auth.json"));
+  });
+
+  it("an Antigravity account's sign-in and model list run in its own profile, and nothing else of the data folder", () => {
+    const root = mkdtempSync(join(tmpdir(), "dusk-required-box-"));
+    dirs.push(root);
+    const serverHome = join(root, "home"), data = join(serverHome, ".duskbot");
+    const runner = new BoxRunner({
+      bwrap: "/usr/bin/bwrap", bridge, denyEnv: new Set(), engineHome: engineHomeDir(data),
+      setup: { dataDir: data, home: serverHome, codeRoots: ["/app"], engineRoots: engineInstallRoots(data), fence: requiredFence(serverHome, data), bridges: [] },
+    });
+    const profile = antigravityProfileDirectory("antigravity", data);
+    const executable = join(data, "tools", "antigravity-acp", "linux-x64", "versions", "abc", "agy");
+    const wrapped = runner.wrap({ command: executable, args: ["--uid="], cwd: profile, env: { HOME: serverHome, GEMINI_HOME: profile } });
+    expect(wrapped.env.GEMINI_HOME).toBe(profile);
+    expect(visibleInBox(wrapped.plan, join(profile, "antigravity-acp", "acp_token.json"))).toBe("rw");
+    expect(visibleInBox(wrapped.plan, executable)).toBe("ro");
+    for (const hidden of [antigravityProfileDirectory("antigravity-2", data), join(data, "providers", "claude-2"), join(data, "config.json"), join(data, "workspaces", "bot-a")]) {
+      expect(visibleInBox(wrapped.plan, hidden), hidden).toBe("none");
+    }
+    expect(() => runner.wrap({ command: executable, args: ["--uid="], cwd: profile, env: { HOME: serverHome } })).toThrow(BoxFenceError);
   });
 });

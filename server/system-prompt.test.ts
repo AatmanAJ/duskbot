@@ -8,7 +8,7 @@ import {
   buildSystemPrompt,
   CONVERSATIONAL_STYLE_PROMPT,
   CLOUD_HOME_PLACE,
-  cloudHomePrompt,
+  cloudHomePrompt, CLOUD_FILES_NOTE,
   userProfileSystemPrompt,
   computerPrompt,
   resolveComputerPromptKind,
@@ -404,6 +404,12 @@ describe("cloudHomePrompt", () => {
     expect(cloudHomePrompt()).toContain("You cannot see or use their own computer, its screen or its files from here.");
     expect(cloudHomePrompt()).not.toMatch(/shared_computer|list_shared_computers|ask_for_computer|this Mac/);
   });
+
+  it("tells the bot its earlier chats' files and its own bot folder are there, without naming a path", () => {
+    expect(cloudHomePrompt()).toContain(CLOUD_FILES_NOTE);
+    expect(CLOUD_FILES_NOTE).toContain("the folders of your earlier chats sit next to it");
+    expect(CLOUD_FILES_NOTE).not.toMatch(/\/|task-workspaces|\.duskbot|openmausbot/);
+  });
 });
 
 describe("longCommandsPrompt", () => {
@@ -483,7 +489,7 @@ describe("how every bot replies", () => {
       "first check what you can already reach",
       "ask for exactly one thing, in plain words, with the reason",
       "do the parts that do not depend on it in the same turn",
-      "Never name tools or functions, the files that hold your notes or settings, MCP",
+      "never name tools or functions, the files that hold your notes or settings, MCP",
       "state the money facts you found: price, fees, deposit, cancellation terms",
       "Their pick of an option is the go-ahead.",
       "Never ask for passwords, one-time codes or card numbers in chat.",

@@ -171,6 +171,20 @@ describe("scoped remote MCP subprocess", () => {
     expect(await answer()).toMatchObject({ id: "held-request", error: { code: -32800 } });
   });
 
+  it("stops waiting for a call the remote server never answers, with an error the model can act on", async () => {
+    fixture = await remoteFixture("http");
+    const gated = gateServer({ name: "notes", server: fixture.spec, budget: 0, threadId: "fixture", toolScope: { allow: ["mcp:notes:read"] } })!;
+    start({ ...gated, env: { ...gated.env, DUSK_REMOTE_MCP_CALL_MS: "1500" } });
+    await initialize();
+    const cancelled = once(fixture.events, "cancelled");
+    send({ id: 2, method: "tools/call", params: { name: "read", arguments: { hold: true } } });
+    const reply = await answer();
+    expect(reply.error.code).toBe(-32001);
+    expect(reply.error.message).toContain("did not answer within 2 seconds");
+    expect(reply.error.message).toContain("stopped waiting");
+    expect((await cancelled)[0].params.requestId).toBeDefined();
+  });
+
   it("does not expose credentials from a remote error", async () => {
     fixture = await remoteFixture("http");
     start(gateServer({ name: "notes", server: fixture.spec, budget: 0, threadId: "fixture", toolScope: { allow: ["mcp:notes:read"] } })!);
