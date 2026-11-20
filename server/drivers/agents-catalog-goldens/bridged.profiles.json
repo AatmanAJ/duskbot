@@ -293,8 +293,8 @@
     ]
   },
   "skills+voice+x+team": {
-    "bytes": 31448,
-    "sha256": "7308b34ed8f01640938f62704f4d10f5f01db44ccb963e8f8c1fa0d78e810c83",
+    "bytes": 31864,
+    "sha256": "6326ed95af0dfc3b26b527723dcdec01ea4c5453d1ef973c4fce477193eba686",
     "tools": [
       "set_status",
       "send_message",
@@ -315,6 +315,34 @@
       "message_person",
       "memory_update",
       "trigger",
+      "read_skill",
+      "find_tool",
+      "use_tool"
+    ]
+  },
+  "skills+skill-reader": {
+    "bytes": 31008,
+    "sha256": "34c2875abdb8eae76c3257e32a79b48edf3e6c61b03e7a34569645e1c14e47ff",
+    "tools": [
+      "set_status",
+      "send_message",
+      "tool_result_read",
+      "list_room_targets",
+      "coordinate_bots",
+      "list_bots",
+      "list_rooms",
+      "select_computer",
+      "attach_file",
+      "publish_page",
+      "confirm_purchase",
+      "post_to_room",
+      "request_credential",
+      "request_sign_in",
+      "fill_login",
+      "message_person",
+      "memory_update",
+      "trigger",
+      "read_skill",
       "find_tool",
       "use_tool"
     ]

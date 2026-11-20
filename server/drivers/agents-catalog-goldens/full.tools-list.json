@@ -2356,6 +2356,27 @@
       }
     },
     {
+      "name": "read_skill",
+      "description": "Load one of your skills by name: its SKILL.md and the names of its other files (pass file to read one). Read-only.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The skill's name from the Skills list."
+          },
+          "file": {
+            "type": "string",
+            "description": "One of its other files, e.g. references/x.md."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
       "name": "skills_list",
       "description": "List this bot's imported skills (enabled and disabled) and any staged skill writes still waiting for the user's decision. Use this before skill_manage to avoid duplicate names. Listing does not enable anything.",
       "inputSchema": {

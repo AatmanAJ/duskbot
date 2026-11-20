@@ -108,14 +108,16 @@ export function skillCalls(text: string, typed: string, ownStart = false): strin
 
 /** What the engine reads for a message that ran skills with `/name`: which SKILL.md to read and follow, then the
  * request. `files` maps each skill the bot has to its SKILL.md; any other `/word` stays plain text. */
-export function skillCommandTurnText(text: string, files: ReadonlyMap<string, string>, typed = "", ownStart = false): string {
+/** `viaTool`: the engine has no file tools, so the skill is loaded with read_skill by name. */
+export function skillCommandTurnText(text: string, files: ReadonlyMap<string, string>, typed = "", ownStart = false, viaTool = false): string {
   const names = skillCalls(text, typed, ownStart).filter((name) => files.has(name));
   if (!names.length) return text;
-  const read = (name: string) => JSON.stringify(files.get(name));
+  const read = (name: string) => (viaTool ? JSON.stringify(name) : JSON.stringify(files.get(name)));
+  const how = viaTool ? "with read_skill" : "with your file tools";
   const lead = names.length === 1
-    ? `The user ran your ${names[0]} skill with /${names[0]}. Read ${read(names[0]!)} with your file tools and follow it for this turn.`
-    : `The user ran ${names.length} of your skills with ${names.map((name) => `/${name}`).join(", ")}. Read ` +
-      `${names.map((name) => `${read(name)} for /${name}`).join(", ")} with your file tools and follow each for this turn.`;
+    ? `The user ran your ${names[0]} skill with /${names[0]}. ${viaTool ? "Load" : "Read"} ${read(names[0]!)} ${how} and follow it for this turn.`
+    : `The user ran ${names.length} of your skills with ${names.map((name) => `/${name}`).join(", ")}. ${viaTool ? "Load" : "Read"} ` +
+      `${names.map((name) => `${read(name)} for /${name}`).join(", ")} ${how} and follow each for this turn.`;
   const leading = names.length === 1 ? parseSkillCommand(text, names) : null;
   const request = leading ? leading.request : text.trim();
   return request

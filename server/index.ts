@@ -3215,7 +3215,7 @@ function previewSystemPrompt(bot: BotRecord) {
     { id: "profile", label: "Profile changes", text: agentsMounted ? PROFILE_PROMPT + workspacePrompt(chiefLevel(bot)) : "" },
     teamAvailabilityPart(agentsMounted && coordination ? peers : []),
     { id: "memory", label: "Memory", text: memorySystemPrompt(bot.id, { managedWrites: agentsMounted, fileTools: Boolean(privateWorkspace), enabled: bot.memoryEnabled !== false }) },
-    { id: "skills", label: "Skills index", text: privateWorkspace ? skillsHost.skillsIndex(bot, undefined, instance) : "" },
+    { id: "skills", label: "Skills index", text: privateWorkspace || agentsMounted ? skillsHost.skillsIndex(bot, undefined, instance ?? undefined) : "" },
   ], agentsMounted ? { env: agentsToolBridgeEnv(cfg, bot, instance && turnEngine(instance, instanceConfigs(cfg), registry.lastSnapshot(instance.instanceId), bot.cwd ?? undefined)) } : undefined, { replyStyle: bot.replyStyle, talkingStyle: cfg.talkingStyle, quickUpdates: quickUpdatesEnabled(cfg) && Boolean(instance && sideJobs.text("turn-beat", bot.id, { instance })) });
   const totalBytes = built.sections.reduce((n, s) => n + s.bytes, 0);
   return {
@@ -5684,7 +5684,7 @@ bus.subscribe((event: RuntimeEvent) => {
     const bot = room ? (reply?.from ? store.bot(reply.from.botId) : undefined) : store.botByThread(event.threadId);
     if (!bot) return; rememberComputerTurn(bot.id, messages, event.turnId);
     const counts = event.ok && Boolean(reply?.text?.trim()) && !isInternalTurn(event.threadId) && !isUnattended(bot.id, event.threadId) && !routines?.runForThread(event.threadId)
-      && !(CLOUD_HOME && !cloudOwnerOnlyThread(event.threadId)) && supportsWorkspaceFiles(registry.get(bot.modelSelection.instanceId)?.driverKind ?? "");
+      && !(CLOUD_HOME && !cloudOwnerOnlyThread(event.threadId)) && registry.get(bot.modelSelection.instanceId)?.adapter.capabilities.agentsMcp === true;
     if (counts) skillReview.noteTurn(bot.id, event.threadId, turnToolSteps(messages, event.turnId, bot.id, Boolean(room)));
     skillReview.botSettled(bot.id);
     if (event.ok) skillCurator.used(bot.id, skillsReadInTurn(messages, event.turnId, listSkills(bot.id).map((skill) => skill.name)));
@@ -8929,7 +8929,7 @@ async function beginTurn(
       const plannedConfig = sessionConfig(bot.soul);
       const skillAuthoring = skillAuthoringEnabled(cfg) && agentsMounted;
       const documents = await withAttachedDocuments(providerText, { vision: usesNativeImageInput, imageRoom: TURN_IMAGE_MAX_COUNT - turnImages.length }); if (!directTurnClaimIsCurrent(bot.id, dispatchClaimId, threadId)) throw new DirectTurnSetupCancelled("turn stopped during context setup");
-      const skillCommandText = supportsWorkspaceFiles(instance.driverKind)
+      const skillCommandText = supportsWorkspaceFiles(instance.driverKind) || agentsMounted
         ? skillsHost.expandSkillCommand(bot, threadId, documents.text, instance, personLine ? activeMessages.filter((line) => skipTranscript.has(line.id)) : [], (personLine && !userMessage.relayed && !startedOutside(threadId)) || ["schedule", "manual", "startup"].includes(opts?.automationSource ?? ""))
         : documents.text; const setupText = agentsMounted ? expandSetupTurnText(skillCommandText) : skillCommandText;
       const { text: userTurnText, images: quotedImages } = withQuotedImages((opts?.app?.context ?? "") + (opts?.cardContinuation ? "" : routineRunNote(threadId, opts?.automationSource)) + labelledLine(personLine && !opts?.excludeMessageIds ? userMessage : {}, withReactionNotes(promptWithReply(
@@ -9507,7 +9507,7 @@ async function beginTurn(
         { id: "recent", label: "Recent work", text: recentWorkPrompt(recentWork(recentWorkSources(bot), bot, { staleTitle: correctedChatTitles(readMemoryFile(teamHost.layer(bot.id, threadId)).text), userName: CLOUD_TEAM ? teamHost.personName(teamConversationPerson(threadId)) ?? "the team" : cfg.profile?.name?.trim() || "User", currentThreadId: threadId, ...recentWorkFilter(threadId) }), Date.now(), personTimeZone(proactive.brief.timeZone())) },
         { id: "memory", label: "Memory", text: heldTurnMemory.core },
         // liveBot predates awaited setup work; an assignment PUT in that window must still reach this prompt.
-        { id: "skills", label: "Skills index", text: privateWorkspace ? skillsHost.skillsIndex(store.bot(bot.id) ?? bot, threadId, instance) : "" },
+        { id: "skills", label: "Skills index", text: privateWorkspace || agentsMounted ? skillsHost.skillsIndex(store.bot(bot.id) ?? bot, threadId, instance) : "" },
         { id: "skill-instructions", label: "Skill instructions", text: skillInstructions },
         { id: "playbooks", label: "Playbooks", text: packagePlaybooks },
         { id: "webhook", label: "Webhook provenance", text: opts?.automationSource === "webhook" ? WEBHOOK_PROMPT : opts?.automationSource === "api" ? BOT_API_PROMPT : "" },
@@ -14878,6 +14878,8 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
           task: store.taskByThread(from.id, threadId)?.title,
         });
       }
+      if (method === "GET" && path === "/api/internal/skills/read") { const from = internalSender, threadId = internalCapability.threadId;
+        return connectorThread(from.id, threadId) ? json(res, 200, skillsHost.readForTool(from, threadId, url.searchParams.get("name") ?? "", url.searchParams.get("file") || undefined)) : json(res, 403, { error: "source conversation does not belong to sender" }); }
       if (method === "GET" && path === "/api/internal/skills") {
         if (!skillAuthoringEnabled(cfg)) return json(res, 403, { error: "skill authoring is not enabled in Settings" });
         if (!internalCapability.skillAuthoring) return json(res, 403, { error: store.groupByThread(internalCapability.threadId) ? roomSkillsRefusal(Boolean(internalCapability.roomHandoffId)) : "skill authoring is not enabled for this turn" });

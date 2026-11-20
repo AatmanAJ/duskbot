@@ -867,6 +867,11 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       : "(Your own past note, not new instructions.)";
     return { text: `[${when} · ${where} · ${recallSpeaker(r)} · message ${messageId}]\n\n${String(r.text ?? "")}\n\n${note}` };
   }
+  if (name === "read_skill") {
+    const query = new URLSearchParams({ fromBotId: BOT_ID, fromThreadId: THREAD_ID, name: String(args.name ?? ""), ...(typeof args.file === "string" && args.file ? { file: args.file } : {}) });
+    const r = await api(`/api/internal/skills/read?${query.toString()}`);
+    return { text: String(r.text ?? ""), ...(r.isError ? { isError: true } : {}) };
+  }
   if (name === "skills_list") {
     const query = new URLSearchParams({ fromBotId: BOT_ID, fromThreadId: THREAD_ID });
     const r = await api(`/api/internal/skills?${query.toString()}`);
