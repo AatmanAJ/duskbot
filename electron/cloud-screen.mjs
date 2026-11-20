@@ -29,8 +29,8 @@ export function screenOutcome(result) {
 }
 
 /**
- * @param {{ connection(): any, spawnImpl?: typeof spawn, log?(line: string): void, idleMs?: number }} deps `connection`:
- *   the driver record cua.mjs keeps.
+ * @param {{ connection(): any, spawnImpl?: typeof spawn, log?(line: string): void, idleMs?: number, requestAccess?(): Promise<unknown> }} deps
+ *   `connection`: the driver record cua.mjs keeps; `requestAccess`: turns computer control on, asking for its grants.
  */
 export function createScreenDriver(deps) {
   const spawnImpl = deps.spawnImpl ?? spawn;
@@ -123,5 +123,6 @@ export function createScreenDriver(deps) {
       return frame.result && typeof frame.result === "object" ? frame.result : failed("The computer-control helper gave no result.");
     },
     close: stop,
+    ...(deps.requestAccess ? { requestAccess: deps.requestAccess } : {}),
   };
 }

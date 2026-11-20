@@ -14,6 +14,13 @@ const OWN_NAMES: ReadonlySet<string> = new Set([...MAC_TOOL_NAMES, ...CLOUD_ONLY
 
 export interface ScreenTool { name: string; description: string; inputSchema: Record<string, unknown> }
 
+/** Offered instead of the screen tools while the Mac allows its screen but computer control lacks its grants there. */
+export const SCREEN_ACCESS_TOOL: ScreenTool = {
+  name: "mac_request_screen_access",
+  description: "Ask the person, on their Mac, to let dusk bot see and use its screen (Accessibility and Screen Recording). Call it once when a task needs the Mac's screen; the screen tools appear on a later turn once they allow it.",
+  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+};
+
 export interface ScreenCatalog {
   /** The driver's version as the Mac read it; "" when it did not say. */
   driver: string;
@@ -34,7 +41,7 @@ export function screenCatalog(text: string): ScreenCatalog | null {
   for (const entry of body.tools.slice(0, 200)) {
     if (!isObject(entry) || typeof entry.name !== "string" || !DRIVER_NAME.test(entry.name) || !listsComputerTool(entry.name, true)) continue;
     const name = `${SCREEN_PREFIX}${entry.name}`;
-    if (OWN_NAMES.has(name) || driverName.has(name)) continue;
+    if (OWN_NAMES.has(name) || driverName.has(name) || name === SCREEN_ACCESS_TOOL.name) continue;
     const schema = isObject(entry.inputSchema) && entry.inputSchema.type === "object" && JSON.stringify(entry.inputSchema).length <= SCHEMA_MAX
       ? entry.inputSchema : { type: "object" };
     const description = typeof entry.description === "string" ? entry.description.slice(0, DESCRIPTION_MAX) : "";

@@ -1,9 +1,9 @@
 # Cloud bots use this Mac
 
 A person's bots on their dusk cloud can work on that person's Mac while the Mac is on and the dusk bot app is open: run
-terminal commands, download files, read and write files, and open apps and links. When the person also allows it, they
-see and use the Mac's screen with the same computer tools a bot on the Mac has, through the app's own computer control
-(its Accessibility and Screen Recording grants); see [Screen](#screen).
+terminal commands, download files, read and write files, and open apps and links, and see and use the Mac's screen with
+the same computer tools a bot on the Mac has, through the app's own computer control (its Accessibility and Screen
+Recording grants); see [Screen](#screen). Both are on by default for the owner's own Mac; the person can turn either off.
 
 ## What it reuses
 
@@ -72,11 +72,14 @@ allows the screen:
 
 Consent, on top of everything in Settings and safety below:
 
-- **"Let them use this Mac's screen"** (Settings > Your computer, under the main switch): off by default, its own
-  native confirm on the Mac. Turning it on starts computer control and asks for Accessibility and Screen Recording if
-  dusk bot does not have them yet. While off the Mac does not say `screen=1`, the cloud offers no screen tools, the
-  prompt carries one line on where to allow it, a screen call is answered with that same line, and the Mac refuses any
-  screen job itself.
+- **"Let them use this Mac's screen"** (Settings > Your computer, under the main switch): on by default (an unset value
+  is on; a person who turned it off stays off). With Accessibility and Screen Recording already given to dusk bot the
+  Mac says `screen=1` and the screen tools are offered. Without them it says `screen=grant`: the bot gets one tool,
+  `mac_request_screen_access`, and calls it on first need; the Mac then runs the app's own grant flow
+  (`requestComputerUse`, macOS's own prompts), at most once per 10 minutes, and the tools appear on a later turn.
+  Turning the switch back on after an off goes through a native confirm on the Mac (and the same grant flow). While off
+  the Mac says nothing about the screen, the cloud offers no screen tools, the prompt carries one line on where to allow
+  it, a screen call is answered with that same line, and the Mac refuses any screen job itself.
 - **Indicator and Stop**: while a cloud bot acts on the screen, and for 15 s after its last action, a menu bar item
   says "Cloud bot on screen" with Stop, and the Settings card shows "<bot> is using this Mac's screen" with Stop. Stop
   ends what runs, closes the driver connection and turns the screen switch off. Turning the main switch off stops it
@@ -92,8 +95,9 @@ Consent, on top of everything in Settings and safety below:
 
 Settings > Your computer, on the cloud's own Settings page in the app:
 
-- **"Let my cloud bots use this Mac"**: off by default and decided on the Mac. Turning it on shows a native confirm on
-  the Mac, so a page cannot turn it on alone. While off the app does not poll at all. Turning it off is the kill
+- **"Let my cloud bots use this Mac"**: on by default for the owner's own Mac and decided on the Mac: an unset value is
+  on, with no confirm; a person who turned it off stays off. Turning it back on from off shows a native confirm on the
+  Mac, so a page cannot turn it on alone. While off the app does not poll at all. Turning it off is the kill
   switch: running commands are stopped and the cloud is told to forget the Mac.
 - **When to ask**:
   - **Auto (asks only for risky actions)**, the default. Ordinary work just runs; a card appears only for what

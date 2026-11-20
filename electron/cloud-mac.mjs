@@ -2,12 +2,12 @@
 // same poller and executor a linked VPS uses (mac-control.mjs), with every job sealed to this Mac and signed by the
 // cloud's link key, and checked here against the person's switch and allowed folders before it runs.
 //
-// Security invariants: off until the person turns it on on this Mac; only the app's own My Cloud is followed; a job
+// Security invariants: on unless the person turned it off on this Mac (turning it back on asks here); only the app's own My Cloud is followed; a job
 // that is not signed by that cloud's link key (from dusk.bot, never from the cloud's address), not sealed to this run's
 // key, expired, repeated or outside the cloud's tools never runs. Once on, cloud bots act as the person; the person's
 // limits (Auto asks for risky actions, or every action, or never; "Only these folders") are enforced here too.
-// The screen is a second opt-in: screen jobs run only while "Let them use this Mac's screen" is on, through this app's
-// own computer control, and the indicator (onScreen) and its Stop stay up while one runs.
+// The screen has its own switch, on unless turned off: screen jobs run only while it is on, through this app's own
+// computer control, and the indicator (onScreen) and its Stop stay up while one runs.
 import { createCipheriv, createDecipheriv, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync, randomBytes, verify } from "node:crypto";
 import { promises as fsp } from "node:fs";
 import { homedir } from "node:os";
@@ -28,6 +28,7 @@ export const ON_SCREEN_MS = 15_000;
 export const SCREEN_OFF = "The person has not let cloud bots use this computer's screen. It did not run.";
 export const SCREEN_NOT_READY = "Computer control is not on in dusk bot on this computer (it needs Accessibility and Screen Recording), so the screen is out of reach. It did not run.";
 const KEY_RETRY_MS = 10 * 60_000;
+const ACCESS_ASK_MS = 10 * 60_000;
 
 export const CLOUD_MAC_SEAL_INFO = "dusk cloud mac v1";
 export const cloudMacSignedBytes = (envelope) => `dusk-mac-job-v1\n${envelope.mac}\n${envelope.eph}\n${envelope.iv}\n${envelope.data}`;
@@ -161,7 +162,7 @@ export async function cloudJobRefusal(job, { folders = null, mode = "auto", home
  *   reauth?(origin: string): Promise<boolean>,
  *   onChange?(view: import("../shared/cloud-mac.ts").CloudMacState): void,
  *   execute?: ReturnType<typeof createMacExecutor>,
- *   screen?: { available(): boolean, version(): string, tools(): Promise<unknown>, call(name: string, args: unknown, signal: AbortSignal): Promise<unknown>, close(): void },
+ *   screen?: { available(): boolean, version(): string, tools(): Promise<unknown>, call(name: string, args: unknown, signal: AbortSignal): Promise<unknown>, close(): void, requestAccess?(): Promise<unknown> },
  *   wait?(ms: number, signal: AbortSignal): Promise<void>,
  * }} deps
  */
@@ -173,6 +174,7 @@ function readPrefs(prefs) {
 /** Why this Mac will not run a cloud screen job, or null. */
 export function screenJobRefusal(job, { screen, ready, mode, home }) {
   if (!screen) return SCREEN_OFF;
+  if (job.tool === "mac_screen_access") return null;
   if (!ready) return SCREEN_NOT_READY;
   if (job.tool === "mac_screen_tools") return null;
   const a = job.arguments ?? {};
@@ -181,21 +183,21 @@ export function screenJobRefusal(job, { screen, ready, mode, home }) {
   return reason && job.approved !== true ? `This ${reason}, so the person must allow it on a card first; it did not run.` : null;
 }
 
-const SCREEN_JOBS = new Set(["mac_screen", "mac_screen_tools"]);
+const SCREEN_JOBS = new Set(["mac_screen", "mac_screen_tools", "mac_screen_access"]);
 
 export function createCloudMac(deps) {
   const home = deps.home ?? homedir();
   const now = deps.now ?? Date.now;
   const log = deps.log ?? (() => {});
   const saved = readPrefs(deps.prefs);
-  let enabled = saved.enabled === true;
+  let enabled = saved.enabled !== false;
   let mode = isCloudMacMode(saved.mode) ? saved.mode : "auto";
   let limitFolders = saved.limitFolders === true;
-  let screenOn = saved.screen === true;
+  let screenOn = saved.screen !== false;
   let folders =Array.isArray(saved.folders) && saved.folders.every((folder) => typeof folder === "string") ? [...saved.folders] : [...DEFAULT_FOLDERS];
   const busy = new Map();
   let seal = createCloudMacSeal({ now });
-  let lastScreen = null;
+  let lastScreen = null, accessAskedAt = -Infinity;
   let origin = null, linkKey = null, keyCheckedAt = -Infinity, keyOrigin = null, lastOkAt = -Infinity, refused = null;
   const limit = () => (limitFolders ? folders : null);
   const execute = deps.execute ?? createMacExecutor({ home, log, source: "cloud", defaultCwd: () => defaultCwd(limit()) });
@@ -229,6 +231,14 @@ export function createCloudMac(deps) {
   async function runScreen(job) {
     const refusal = screenJobRefusal(job, { screen: screenOn, ready: deps.screen?.available() === true, mode, home });
     if (refusal) { if (job.tool === "mac_screen") await audit(job, refusal); return { ok: false, error: refusal }; }
+    if (job.tool === "mac_screen_access") {
+      if (deps.screen.available()) return { ok: true, result: { text: "Computer control is already on here; the screen tools are on their way." } };
+      if (now() - accessAskedAt < ACCESS_ASK_MS) return { ok: true, result: { text: "Already asked on the Mac a moment ago: the person needs to allow dusk bot under Accessibility and Screen Recording there. Carry on without the screen until they have." } };
+      accessAskedAt = now();
+      const asked = await deps.screen.requestAccess?.().then(() => deps.screen.available(), () => false);
+      return asked ? { ok: true, result: { text: "Computer control is on now. The screen tools appear on your next turn." } }
+        : { ok: true, result: { text: "Asked on the Mac: the person needs to allow dusk bot under Accessibility and Screen Recording in System Settings there. Tell them, then carry on without the screen until they have." } };
+    }
     if (job.tool === "mac_screen_tools") {
       try { return { ok: true, result: { text: JSON.stringify(await deps.screen.tools()) } }; }
       catch (error) { return { ok: false, error: String(error?.message ?? error).slice(0, 2000) }; }
@@ -266,7 +276,8 @@ export function createCloudMac(deps) {
   const host = createMacControlHost({
     fetch: deps.fetch, name: deps.name, log, execute: run, ...(deps.wait ? { wait: deps.wait } : {}),
     query: () => [["key", seal.key()], ["cwd", defaultCwd(limit())], ["mode", mode], ["home", home], ...(limit() ?? []).map((folder) => ["folder", folder]),
-      ["platform", process.platform], ...(screenOn && deps.screen?.available() ? [["screen", "1"], ["driver", deps.screen.version()]] : [])],
+      ["platform", process.platform], ...(!screenOn || !deps.screen ? [] : deps.screen.available() ? [["screen", "1"], ["driver", deps.screen.version()]]
+        : deps.screen.requestAccess ? [["screen", "grant"]] : [])],
     ready: () => enabled && deps.cloud().awake && linkKey !== null,
     ...(deps.reauth ? { reauth: () => (origin ? deps.reauth(origin) : Promise.resolve(false)) } : {}),
     open: (body) => seal.open(body?.sealed, linkKey),

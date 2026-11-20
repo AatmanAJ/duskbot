@@ -18,12 +18,12 @@ import { isMacToolName, type MacControlStatus, type MacToolName } from "../../sh
 import type { RequestAuth } from "../request-auth.ts";
 import { PASS, type RouteHandler } from "../routes/table.ts";
 import type { PromptPart } from "../system-prompt.ts";
-import { CLOUD_MAC_UNLINKED_PROMPT, cloudMacInstructions, cloudMacPrompt, MAC_INSTRUCTIONS, MAC_OFFLINE_TEXT, MAC_PROMPT, SCREEN_OFF_TEXT } from "./instructions.ts";
+import { CLOUD_MAC_UNLINKED_PROMPT, cloudMacInstructions, cloudMacPrompt, MAC_INSTRUCTIONS, MAC_OFFLINE_TEXT, MAC_PROMPT, SCREEN_NEEDS_ACCESS_TEXT, SCREEN_OFF_TEXT } from "./instructions.ts";
 import { macJobOutcome, MacJobs, MAC_RESULT_MAX_BYTES, type MacDownload } from "./jobs.ts";
 import { isMacSealKey, openMacOutcome, readLinkSigningKey, sealMacJob } from "./seal.ts";
 import { localComputerRelay } from "../local-computer-guidance.ts";
 import type { ChildCalls } from "../mcp-bridge.ts";
-import { maybeScreenTool, screenCatalog, screenResult, type ScreenCatalog } from "./screen.ts";
+import { maybeScreenTool, SCREEN_ACCESS_TOOL, screenCatalog, screenResult, type ScreenCatalog } from "./screen.ts";
 import { CLOUD_MAC_TOOLS, MAC_TOOLS, macErrorResult, macJobTimeoutMs, macToolCallProblem, type MacToolResult } from "./tools.ts";
 
 type Turn = { botId: string; threadId: string; generation: string };
@@ -103,14 +103,14 @@ export function createMacControl(deps: MacControlDeps) {
   const jobs = new MacJobs(now);
   const cloud = deps.cloud;
   const catalog = cloud ? CLOUD_MAC_TOOLS : MAC_TOOLS;
-  const limits = () => ({ ...policy, screen: screenTools().length > 0 });
+  const limits = () => ({ ...policy, screen: policy.screen && screen !== null && screen.tools.length > 0, screenAccess: policy.screenAccess });
   const prompt = () => (cloud ? cloudMacPrompt(limits()) : MAC_PROMPT);
   const linkKey = cloud?.linkKey ?? (() => readLinkSigningKey(deps.dataDir));
   /** The key each sealed job in the Mac's hands was sealed with, until its outcome comes back or it expires. */
   const jobKeys = new Map<string, { key: Buffer; expiresAt: number }>();
   /** What the Mac said in its last poll: when it asks first, its home folder, the folders it is limited to and where a
    * command runs by default. Only the card follows this: the Mac checks the same rules itself before it runs a job. */
-  const noPolicy = () => ({ mode: "auto" as CloudMacMode, home: "", limited: false, folders: [] as string[], cwd: "~", screen: false, platform: "darwin", driver: "" });
+  const noPolicy = () => ({ mode: "auto" as CloudMacMode, home: "", limited: false, folders: [] as string[], cwd: "~", screen: false, screenAccess: false, platform: "darwin", driver: "" });
   let policy = noPolicy();
   /** The Mac's driver tools, while the person lets cloud bots use its screen; asked for in a sealed job. */
   let screen: ScreenCatalog | null = null;
@@ -126,7 +126,7 @@ export function createMacControl(deps: MacControlDeps) {
       .finally(() => { listing = null; });
     return listing;
   };
-  const screenTools = () => (cloud && policy.screen && screen ? screen.tools : []);
+  const screenTools = () => (!cloud ? [] : policy.screen && screen ? screen.tools : policy.screenAccess ? [SCREEN_ACCESS_TOOL] : []);
   const available = () => deps.offered() && seen.lastSeenAt !== null && now() - seen.lastSeenAt < FORGET_MS;
   const allowed = (bot: MacBot | null | undefined, turn: Turn): string | null => {
     if (!bot) return "This bot no longer exists.";
@@ -136,7 +136,7 @@ export function createMacControl(deps: MacControlDeps) {
   };
 
   function status(): MacControlStatus {
-    return { available: available(), enabled: deps.enabled(), online: jobs.online(), name: seen.name, lastSeenAt: seen.lastSeenAt, ...(cloud ? { cloud: { folders: policy.folders, mode: policy.mode, limited: policy.limited, screen: screenTools().length > 0 } } : {}) };
+    return { available: available(), enabled: deps.enabled(), online: jobs.online(), name: seen.name, lastSeenAt: seen.lastSeenAt, ...(cloud ? { cloud: { folders: policy.folders, mode: policy.mode, limited: policy.limited, screen: limits().screen } } : {}) };
   }
 
   async function callScreen(name: string, args: Record<string, unknown>, turn: Turn, assertActive: () => void): Promise<MacToolResult> {
@@ -145,7 +145,15 @@ export function createMacControl(deps: MacControlDeps) {
     const bot = deps.bot(turn.botId);
     const refusal = allowed(bot, turn);
     if (refusal || !bot) return macErrorResult(refusal ?? "This bot no longer exists.");
-    if (!policy.screen) return macErrorResult(SCREEN_OFF_TEXT);
+    if (name === SCREEN_ACCESS_TOOL.name) {
+      if (!policy.screenAccess && !policy.screen) return macErrorResult(SCREEN_OFF_TEXT);
+      if (!jobs.online()) return macErrorResult(MAC_OFFLINE_TEXT);
+      const outcome = await jobs.request({ tool: "mac_screen_access", args: {}, bot: { id: bot.id, name: bot.name }, timeoutMs: 120_000,
+        active: () => deps.active(turn) && allowed(deps.bot(turn.botId), turn) === null, offlineText: MAC_OFFLINE_TEXT });
+      assertActive();
+      return outcome.ok ? { content: [{ type: "text", text: outcome.result.text }] } : macErrorResult(outcome.error);
+    }
+    if (!policy.screen) return macErrorResult(policy.screenAccess ? SCREEN_NEEDS_ACCESS_TEXT : SCREEN_OFF_TEXT);
     if (!jobs.online()) return macErrorResult(MAC_OFFLINE_TEXT);
     await listScreen();
     const driverName = screen?.driverName.get(name);
@@ -247,7 +255,7 @@ export function createMacControl(deps: MacControlDeps) {
         const home = (url.searchParams.get("home") ?? "").trim();
         const platform = url.searchParams.get("platform");
         policy = { mode: isCloudMacMode(mode) ? mode : "auto", home: /^\/[^\0]{1,1023}$/.test(home) ? home.replace(/\/+$/, "") : "", limited: folders.length > 0, folders,
-          cwd: (url.searchParams.get("cwd") ?? "").trim().slice(0, 1024) || "~", screen: url.searchParams.get("screen") === "1",
+          cwd: (url.searchParams.get("cwd") ?? "").trim().slice(0, 1024) || "~", screen: url.searchParams.get("screen") === "1", screenAccess: url.searchParams.get("screen") === "grant",
           platform: platform === "win32" ? "win32" : "darwin", driver: (url.searchParams.get("driver") ?? "").trim().slice(0, 40) };
         if (!policy.screen) screen = null;
         void listScreen();

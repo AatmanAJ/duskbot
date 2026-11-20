@@ -1,7 +1,7 @@
 // Main-process side of "Let my cloud bots use this Mac" (cloud-mac.mjs): the bridge's IPC for this app's own page and
 // its own My Cloud page, the native confirm before it turns on, the folder picker, and the indicator's updates.
-// Security invariant: turning it, or the screen, on always passes a native dialog on this Mac, so a page alone can never
-// turn either on. While a cloud bot uses the screen a menu bar (tray) item says so, with Stop.
+// Both are on unless the person turned them off. Security invariant: turning either back on from off always passes a
+// native dialog on this Mac, so a page alone can never turn one on. While a cloud bot uses the screen a menu bar (tray) item says so, with Stop.
 // DUSK_MAC_CONTROL=off leaves it out.
 import path from "node:path";
 
@@ -53,7 +53,7 @@ export function installCloudMac(deps) {
     prefs: deps.jsonFile(path.join(deps.userData, "cloud-mac.json")),
     cloud: () => ({ origin: deps.myCloud(), awake: deps.cloudAwake() }),
     linkKey: deps.linkKey, reauth: deps.reauth, onChange: send,
-    screen: createScreenDriver({ connection: deps.driver, log: deps.log }),
+    screen: createScreenDriver({ connection: deps.driver, log: deps.log, requestAccess: deps.computerUse }),
   });
   const parent = () => { const win = deps.window(); return win && !win.isDestroyed() ? win : undefined; };
 

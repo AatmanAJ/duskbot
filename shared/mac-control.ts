@@ -7,7 +7,7 @@ export const MAC_TOOL_NAMES = [
 export const CLOUD_ONLY_MAC_TOOL_NAMES = ["mac_download"] as const;
 export type MacToolName = (typeof MAC_TOOL_NAMES)[number] | (typeof CLOUD_ONLY_MAC_TOOL_NAMES)[number];
 /** What a job asks the Mac to do: a bot's Mac tool, or on a dusk cloud a call to the Mac's computer-control driver. */
-export type MacJobTool = MacToolName | "mac_screen" | "mac_screen_tools";
+export type MacJobTool = MacToolName | "mac_screen" | "mac_screen_tools" | "mac_screen_access";
 
 export function isMacToolName(value: unknown): value is MacToolName {
   return typeof value === "string" && ([...MAC_TOOL_NAMES, ...CLOUD_ONLY_MAC_TOOL_NAMES] as readonly string[]).includes(value);

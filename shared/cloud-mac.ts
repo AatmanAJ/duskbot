@@ -8,7 +8,9 @@ export type CloudMacToolName = (typeof CLOUD_MAC_TOOL_NAMES)[number];
  * Only sent while the person lets cloud bots use the Mac's screen; the bot sees the driver's tools as mac_<tool>. */
 export const CLOUD_MAC_SCREEN_JOB = "mac_screen";
 export const CLOUD_MAC_SCREEN_TOOLS_JOB = "mac_screen_tools";
-export type CloudMacJobTool = CloudMacToolName | typeof CLOUD_MAC_SCREEN_JOB | typeof CLOUD_MAC_SCREEN_TOOLS_JOB;
+/** Asks for the Mac's Accessibility and Screen Recording grants there, while the screen is allowed but they are missing. */
+export const CLOUD_MAC_SCREEN_ACCESS_JOB = "mac_screen_access";
+export type CloudMacJobTool = CloudMacToolName | typeof CLOUD_MAC_SCREEN_JOB | typeof CLOUD_MAC_SCREEN_TOOLS_JOB | typeof CLOUD_MAC_SCREEN_ACCESS_JOB;
 
 /** Ordinary reads: they never ask unless they reach keys or secrets. */
 export const CLOUD_MAC_READS: ReadonlyArray<CloudMacToolName> = ["mac_read_file", "mac_list"];
@@ -28,7 +30,7 @@ export interface CloudMacWork {
 
 /** The desktop bridge's view (window.duskDesktop.cloudMac.state()). */
 export interface CloudMacState {
-  /** Settings > Your computer > "Let my cloud bots use this Mac". Off until the person turns it on on this Mac. When on,
+  /** Settings > Your computer > "Let my cloud bots use this Mac". On unless the person turned it off on this Mac. When on,
    * cloud bots may do anything the person can, unless they opt into `ask` or `limitFolders`. */
   enabled: boolean;
   /** auto (default): only risky actions (electron/cloud-mac-risk.mjs) wait for Allow on a card; ask: every action but an
@@ -43,7 +45,8 @@ export interface CloudMacState {
   /** One sentence for the person when something is in the way, else null. */
   problem: string | null;
   busy: CloudMacWork[];
-  /** "Let them use this Mac's screen": off by default, asked on this Mac like the switch above. */
+  /** "Let them use this Mac's screen": on unless the person turned it off; its tools appear once computer control has
+   * its grants, and before that a bot can ask for them on this Mac. */
   screen: boolean;
   /** This Mac's own computer control (Accessibility and Screen Recording given to dusk bot) is running. */
   screenReady: boolean;
