@@ -88,9 +88,9 @@ it("describes VPS persistence without treating the retained home volume as dispo
   expect(prompt).toContain("files and Chromium profiles there survive container recreation while that volume is kept");
   expect(prompt).toContain("recreating it replaces system changes outside persistent volumes");
   expect(prompt).not.toMatch(/\x42oat|API key|everything on it is wiped|filesystem is disposable/);
-  expect(CREDENTIAL_PROMPT).toContain("the user's own VPS needs no computer-provider API key");
+  expect(CREDENTIAL_PROMPT).toContain("their own VPS needs no provider key");
   expect(CREDENTIAL_PROMPT).not.toContain("\x42oat");
-  expect(TRIGGER_PROMPT).toContain("cloud explicitly uses the bot's own connected VPS computer with the same model");
+  expect(JSON.stringify(availableTools({} as never).find((tool) => tool.name === "trigger"))).toContain("cloud uses the bot's own sandboxed VPS computer with the same model");
   expect(TRIGGER_PROMPT).not.toContain("box runs");
 });
 
@@ -319,27 +319,20 @@ describe("shared sentences", () => {
 
   it("configuration prompts follow actual applied or pending results without elevating another bot", () => {
     expect(PROFILE_PROMPT).toContain("propose_profile");
-    for (const prompt of [PROFILE_PROMPT, LEARN_PROMPT]) {
-      expect(prompt).toContain("continue the requested work without asking for another confirmation");
-      expect(prompt).toContain("Never claim success before an applied result");
-      expect(prompt).toContain("Full Access does not grant another bot broader permissions");
-      expect(prompt).not.toContain("nothing changes until the user confirms");
-    }
-    // Skills and profile apply at every level.
-    for (const prompt of [PROFILE_PROMPT, LEARN_PROMPT]) {
-      expect(prompt).toContain("applies immediately at every access level and the person sees it with an Undo");
-      expect(prompt).toContain("Only a pending result (a Cloud conversation its owner did not drive) waits for the owner");
-      expect(prompt).not.toContain("may wait for the person");
-    }
+    // said once, after the profile part, for skills and profile alike
+    expect(PROFILE_PROMPT).toContain("an applied change (your skills, profile or model, or as a Chief a teammate's) is done, with an Undo for the person, so carry on without asking again");
+    expect(PROFILE_PROMPT).toContain("a pending one waits for its owner, so end the turn. Never claim one before it applied");
+    expect(PROFILE_PROMPT).toContain("Full Access never widens another bot's permissions");
+    expect(LEARN_PROMPT).not.toContain("Follow the tool result");
+    for (const prompt of [PROFILE_PROMPT, LEARN_PROMPT]) expect(prompt).not.toMatch(/nothing changes until the user confirms|may wait for the person/);
     expect(LEARN_PROMPT).toContain("only when the user explicitly asks to revise that exact name");
     // Triggers have no pending state: the bot sets them up in the same turn and the person undoes from the card.
     expect(TRIGGER_PROMPT).toContain("set it up with trigger action=create in this turn");
-    expect(TRIGGER_PROMPT).toContain("Do not ask for confirmation");
+    expect(TRIGGER_PROMPT).toContain("Do not ask or announce first");
     expect(TRIGGER_PROMPT).toContain("Edit, Pause and Undo");
-    expect(TRIGGER_PROMPT).toContain("use wait_until instead of staying busy or making a short-interval routine");
-    expect(TRIGGER_PROMPT).toContain("give follow_up only when they asked for something to be done at that moment");
+    expect(TRIGGER_PROMPT).toContain("use wait_until rather than staying busy");
     expect(TRIGGER_PROMPT).not.toMatch(/pending|explicitly asks/);
-    expect(CREDENTIAL_PROMPT).toContain("secure credential request");
+    expect(CREDENTIAL_PROMPT).toContain("call request_credential");
     expect(CREDENTIAL_PROMPT).not.toContain("applied immediately");
   });
 });
@@ -485,8 +478,8 @@ describe("how every bot replies", () => {
       "the verdict, the number or \"X is ready\" in the first sentence",
       "where the facts came from and how fresh they are",
       "use the units, currency, time zone and numbers the person has told you about",
-      "no \"let me know if…\", no \"hope this helps\", and no \"Want me to…?\" after finished work",
-      "Offer a next step only when there is an obvious, valuable one",
+      "no \"let me know if…\", no \"hope this helps\"",
+      "offer only a truly optional step, in one short line",
       "first check what you can already reach",
       "ask for exactly one thing, in plain words, with the reason",
       "do the parts that do not depend on it in the same turn",
@@ -500,8 +493,8 @@ describe("how every bot replies", () => {
   });
 
   it("asks one thing with tap-to-answer choices, keeps forms for real edits, and confirms a routine in plain words", () => {
-    expect(WIDGET_PROMPT).toContain("Ask only what you cannot find or sensibly default yourself, and one thing at a time.");
-    expect(WIDGET_PROMPT).toContain("a Card with a Row of Buttons, one per option, whose onClickAction sends that option in one tap");
+    expect(WIDGET_PROMPT).toContain("A pick from a few options goes as tap-to-answer buttons (show_widget, at most six)");
+    expect(JSON.stringify(availableTools({} as never).find((tool) => tool.name === "show_widget"))).toContain("a Card with a Row of Buttons, one per option (onClickAction sends it in one tap)");
     expect(WIDGET_PROMPT).not.toContain("never end a turn with a question in text that a form could ask");
     expect(TRIGGER_PROMPT).toContain("weekdays at 9:00 AM India time\", never a zone id such as Asia/Kolkata");
     expect(TRIGGER_PROMPT).toContain("where its results will appear, what each run covers, and when the first run is");

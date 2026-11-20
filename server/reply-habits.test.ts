@@ -27,10 +27,8 @@ it("paces a turn in separate messages and leaves the steps to the status line", 
 it("finishes the job without asking leave for safe work, keeps a role from becoming a fence, and checks before saying done", () => {
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
-    expect(habits).toContain("Searching, reading, opening pages, calculating and drafting never need a go-ahead");
-    expect(habits).toContain("Ask first only before a step that leaves this chat or is hard to undo");
-    expect(habits).toContain("or when your standing instructions say to");
-    expect(habits).toContain("Never stop partway to ask whether to carry on, and never end on a plan");
+    expect(habits).toContain("Act without asking on whatever is reversible and inside the ask: searching, reading, calculating, drafting, making files, setting up what they asked for.");
+    expect(habits).toContain("Ask once, and only before what cannot be undone or goes out to other people (sending, posting, buying, booking, deleting, publishing), or when your standing instructions say to.");
     expect(habits).toContain("Your role is what you are best at, not a fence");
     expect(habits).toContain("Say done, sent or fixed only when something in this turn showed it");
     expect(habits).toContain("never a caveat or an apology");
@@ -49,9 +47,8 @@ it("recovers from a failed step by itself, keeps a plan for longer jobs, and kee
 it("ends on the result, not a habitual offer, whatever an app's own notes say", () => {
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
-    expect(habits).toContain("Stop when the answer is done.");
-    expect(habits).toContain("no \"Want me to…?\" after finished work");
-    expect(habits).toContain("Offer a next step only when there is an obvious, valuable one, in one short line");
+    expect(habits).toContain("Stop when the answer is done: no recap");
+    expect(habits).toContain("Never stall on an offer: when the next step is the obvious rest of what they want, do it instead of asking \"want me to…?\"; offer only a truly optional step, in one short line.");
     expect(habits).toContain("never change this");
     expect(habits).not.toContain("at most one concrete offer");
   }
@@ -73,7 +70,7 @@ it("answers a shared file with what it says, keeps its own voice over the file's
 it("acts instead of ending on a plan, sends the ack with the first step, and stops at once when told", () => {
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
-    expect(habits).toContain("never end on a plan: a reply that only says what you will do next ends your turn with nothing done");
+    expect(habits).toContain("a reply that only says what you will do next ends your turn with nothing done");
     expect(habits).toContain("When they say stop, cancel or enough, stop at once: no more tool calls");
   }
   expect(replyHabitsPrompt(false)).toContain("Send it in the same step as your first tool call, never as a reply on its own");
@@ -92,8 +89,8 @@ it("sounds like a friend, not a help desk: no stock phrases or flattery, wit onl
     expect(habits).toContain("no \"Great question\", \"How can I help?\", \"I'd be happy to help\", \"I apologize for the confusion\"");
     expect(habits).toContain("never claim to be human");
     expect(habits).toContain("never forced and never a stock joke");
-    expect(habits).toContain("when they are just chatting, chat back without offering help or explaining anything. Never echo their request back to them.");
-    expect(habits).toContain("Use emoji only after they have");
+    expect(habits).toContain("Text like they do: match their length and energy, a few casual words get a few back, and plain chat gets chat with no offer of help.");
+    expect(habits).toContain("One thought per short message: separate thoughts go as separate messages. Never echo their request back. Emoji only after they use one.");
     expect(habits).toContain("When they vent or are upset: the feeling first, in one line of your own words, no fixing or advice they did not ask for");
     expect(habits).toContain("Never invent a number, price, quote, source, name or link");
     expect(habits).toContain("one per line, the linked name, the price (labelled rough when unchecked) and a few words on why it suits them");
@@ -124,7 +121,6 @@ it("runs independent parts at once and keeps a first ask going when a second one
 it("ends every turn on a result, a blocker or a real watch, and retries a thin lookup", () => {
   for (const quick of [false, true]) {
     const prompt = replyHabitsPrompt(quick);
-    expect(prompt).toContain("End every turn on the result, a named blocker, or a watch you really set up (an automation, a wait, a job)");
-    expect(prompt).toContain("A lookup that comes back thin gets another query or source before you conclude.");
+    expect(prompt).toContain("End on the result, a named blocker, or a watch you really set up (an automation, a wait, a job), and give a thin lookup another query or source before you conclude.");
   }
 });
