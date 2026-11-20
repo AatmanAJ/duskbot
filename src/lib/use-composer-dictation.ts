@@ -9,7 +9,8 @@ import { withVoiceSettings } from "@/components/OpenVoiceSettings";
 import { useStore } from "@/state/store";
 import { VOICE_PROVIDER_INFO } from "../../electron/voice-catalog.mjs";
 import { appendDictatedText } from "./drafts";
-import { t } from "./i18n";
+import { activeLocale, t } from "./i18n";
+import { phoneApp } from "./store-app";
 import { serverListeningReady } from "./speech";
 import type { VoiceBridge, VoiceEnd, VoiceLine } from "./voice-input/bridge";
 import { cleanTranscript, cleanupWanted } from "./voice-input/cleanup";
@@ -17,6 +18,7 @@ import { currentVoiceDevice, onPhoneVoice, phoneVoice } from "./voice-input/devi
 import { systemEngineWhere, type ResolvedEngine } from "./voice-input/engines";
 import { useVoiceKeys } from "./voice-input/keys";
 import { setVoicePrefs, useVoicePrefs } from "./voice-input/prefs";
+import { dictationLocale } from "./voice-input/locale";
 import { joinDictation } from "./voice-input/preview";
 import { currentEngine, voiceBridgeFor } from "./voice-input/select";
 
@@ -73,6 +75,7 @@ export function dictationError(info: VoiceEnd, engine: ResolvedEngine, where: Re
   if (info.message) return info.message;
   const reason = info.reason ?? "";
   const service = serviceName(engine);
+  if (reason === "unsupported-locale") return t("composer.dictation.language");
   if (info.code === 2) return engine.kind === "none" ? noRecognizer() : t("composer.dictation.unavailable");
   if (reason === "mic-denied") return withOpenSettings(t("composer.voice.micDenied"), "mic");
   if (reason === "speech-not-authorized") return withOpenSettings(t("composer.dictation.permission"), "speech");
@@ -231,7 +234,7 @@ export function useComposerDictation({ draftId, text, onText }: {
     s.offs.push(bridge.onSpeechTranscript((line) => onLine(s, line)));
     s.offs.push(bridge.onSpeechEnd((info) => onEnd(s, info)));
     if (bridge.onSpeechLevel) s.offs.push(bridge.onSpeechLevel((level) => { if (session.current === s) levels.emit(level); }));
-    const locale = latest.current.prefs.language || undefined;
+    const locale = latest.current.prefs.language || (phoneVoice() ? dictationLocale(activeLocale(), navigator.languages ?? []) : undefined);
     void bridge.speechStart(locale ? { locale } : undefined).then(() => {
       if (session.current === s) feature("voice_used");
     }).catch(() => {
@@ -333,8 +336,9 @@ export function useComposerDictation({ draftId, text, onText }: {
       return;
     }
     if (session.current && phase !== "idle") return finish();
-    // the first tap on the device's own recognizer says which one listens and where to choose another
-    if (engine.kind === "system" && !prefs.firstRunSeen) {
+    // the first tap on the device's own recognizer says which one listens and where to choose another; the phone app
+    // just listens
+    if (engine.kind === "system" && !prefs.firstRunSeen && !phoneApp()) {
       setFirstRunOpen(true);
       return;
     }

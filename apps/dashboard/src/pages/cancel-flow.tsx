@@ -52,11 +52,11 @@ function LeadLine({ desk, work, keepsLicense }: { desk: boolean; work: boolean; 
   return <p>{desk ? `once it ends, ${lost[0]}. ` : ""}if it's the cost, there's a lighter way to keep it.</p>;
 }
 
-function Confirm({ desk, work, keepsLicense, until }: { desk: boolean; work: boolean; keepsLicense: boolean; until: string }) {
+function Confirm({ desk, work, keepsLicense, trial, until }: { desk: boolean; work: boolean; keepsLicense: boolean; trial: boolean; until: string }) {
   const lost = useLosses({ desk, work, keepsLicense });
   return (
     <>
-      <p>{keepsLicense ? `your dusk cloud keeps working until ${until} and isn't charged again. your work license stays and keeps renewing.` : `everything keeps working until ${until}, and you won't be charged again.`}{lost.length ? " after that:" : ""}</p>
+      <p>{keepsLicense ? `your dusk cloud keeps working until ${until} and isn't charged again. your work license stays and keeps renewing.` : `everything keeps working until ${until}, and you won't be charged${trial ? "" : " again"}.`}{lost.length ? " after that:" : ""}</p>
       {lost.length > 0 && (
         <ul className="mt-3 flex flex-col gap-2">
           {lost.map((l) => <li key={l} className="flex gap-2.5 text-14 text-ink-2"><Minus size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-ink-4" aria-hidden />{l}</li>)}
@@ -129,13 +129,15 @@ export function CancelFlow({ open, onClose, catalog }: { open: boolean; onClose(
   const sel = sub.selection;
   const desk = sel.desktop !== "none";
   const work = sel.license !== "personal";
-  const keepsLicense = work && desk;
+  // a plan change on a trial ends the trial and bills at once, so a trial cancel always ends the whole plan
+  const trial = sub.trialEndsAt !== undefined && sub.trialEndsAt > Date.now();
+  const keepsLicense = work && desk && !trial;
   const offer = billing?.retention?.offer ?? null;
   const onPro = sel.desktop === bundleOf(catalog, "pro")?.desktop;
   const plus = bundleOf(catalog, "starter");
   const smaller: Selection = planSelection(catalog, "starter", { interval: sel.interval, region: sel.region, work: false, keep: sel });
   const until = longDate(sub.currentPeriodEnd);
-  const cheaper = onPro && plus ? plus : null;
+  const cheaper = onPro && plus && !trial ? plus : null;
   const canSave = Boolean(offer || cheaper);
 
   const log = (s: RetentionInput["step"], outcome: RetentionInput["outcome"]) => { if (reason) retentionStep({ reason, step: s, outcome }); };
@@ -154,7 +156,7 @@ export function CancelFlow({ open, onClose, catalog }: { open: boolean; onClose(
   const downgrade = () => run("downgrade", async () => {
     await changePlan(smaller, 0);
     log("help", "downgrade");
-    toast(`you are on ${plus?.name ?? "plus"}`);
+    toast(`you switch to ${plus?.name ?? "plus"} on ${until}. until then nothing changes.`);
   });
   const stop = () => run("cancel", async () => {
     if (keepsLicense) { await changePlan({ ...sel, desktop: "none", size: null }); log("confirm", "cancelled"); }
@@ -218,7 +220,7 @@ export function CancelFlow({ open, onClose, catalog }: { open: boolean; onClose(
         </>
       )}
 
-      {step === "confirm" && <Confirm desk={desk} work={work} keepsLicense={keepsLicense} until={until} />}
+      {step === "confirm" && <Confirm desk={desk} work={work} keepsLicense={keepsLicense} trial={trial} until={until} />}
       {error && <p role="alert" className="mt-3 text-13 text-bad">{error}</p>}
     </Modal>
   );

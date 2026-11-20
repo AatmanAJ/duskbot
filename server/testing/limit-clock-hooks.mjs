@@ -1,6 +1,6 @@
-// Loaded with --import in isolated fixtures when DUSK_TEST_LIMIT_CLOCK=1: a limit-reset automation starts a second
-// after the reset instead of a minute, and a routine still due is retried every 250 ms instead of every 10 s, so a fixture can
-// watch one run without waiting. No authorization or dispatch decision changes.
+// Loaded with --import in isolated fixtures when DUSK_TEST_LIMIT_CLOCK=1: a limit-reset automation and a held turn start
+// a second after the reset instead of a minute or 30 s, and a routine still due is retried every 250 ms instead of every
+// 10 s, so a fixture can watch one run without waiting. No authorization or dispatch decision changes.
 import { registerHooks } from 'node:module';
 
 const dataDir = process.env.DUSK_DATA_DIR;
@@ -8,16 +8,23 @@ if (!dataDir || dataDir !== process.env.HOME || process.env.DUSK_TEST_LIMIT_CLOC
   throw new Error('The limit clock requires an explicitly isolated fixture');
 }
 const seams = new Map([
-  [new URL('../../shared/limit-reset.ts', import.meta.url).href, ['export const AFTER_RESET_MS = 60_000;', 'export const AFTER_RESET_MS = 1_000;']],
-  [new URL('../routines.ts', import.meta.url).href, ['startDueTimer({ run: () => this.tick(),', 'startDueTimer({ retryMs: 250, run: () => this.tick(),']],
+  [new URL('../../shared/limit-reset.ts', import.meta.url).href, [['export const AFTER_RESET_MS = 60_000;', 'export const AFTER_RESET_MS = 1_000;']]],
+  [new URL('../routines.ts', import.meta.url).href, [['startDueTimer({ run: () => this.tick(),', 'startDueTimer({ retryMs: 250, run: () => this.tick(),']]],
+  [new URL('../host/limit-hold.ts', import.meta.url).href, [
+    ['export const AFTER_RESET_MS = 30_000;', 'export const AFTER_RESET_MS = 1_000;'],
+    ['export const AFTER_START_MS = 30_000;', 'export const AFTER_START_MS = 1_000;'],
+  ]],
 ]);
 registerHooks({
   load(url, context, nextLoad) {
     const result = nextLoad(url, context);
     const seam = seams.get(url);
     if (!seam) return result;
-    const source = String(result.source);
-    if (source.split(seam[0]).length !== 2) throw new Error(`Limit clock seam changed in ${url}`);
-    return { ...result, source: source.replace(seam[0], seam[1]) };
+    let source = String(result.source);
+    for (const [from, to] of seam) {
+      if (source.split(from).length !== 2) throw new Error(`Limit clock seam changed in ${url}`);
+      source = source.replace(from, to);
+    }
+    return { ...result, source };
   },
 });

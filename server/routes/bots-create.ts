@@ -1,6 +1,7 @@
 import type { WireBot } from "../../shared/wire.ts";
 import type { BotLimit } from "../host/starter-bot-limit.ts";
 import { freshLook } from "../bot-look.ts";
+import { takeImportName } from "../../shared/import-name.ts";
 import { validateBotCwd } from "../bot-cwd.ts";
 import { parseBotProfilePatch } from "../bot-profile.ts";
 import { parseVisibility } from "../bot-visibility.ts";
@@ -175,7 +176,8 @@ export function createBotCreateRoutes(deps: BotCreateRouteDeps): RouteHandler {
       if (kept.id && "error" in keptBotIds(kept, store)) return json(res, 409, { error: "a bot with this id already exists here" });
       // A bot moved in from another computer keeps its own look; a new one named no look starts in a fresh one.
       const look = kept.id || settings.color || settings.mascotBody ? undefined : freshLook(store.bots);
-      const bot = store.createBot({ ...profile.patch, soul: settings.soul, section, modelSelection: selection,
+      const name = typeof profile.patch.name === "string" && !kept.id ? takeImportName(profile.patch.name, new Set(store.bots.map((other) => other.name.toLowerCase())), 80) : profile.patch.name;
+      const bot = store.createBot({ ...profile.patch, ...(name === undefined ? {} : { name }), soul: settings.soul, section, modelSelection: selection,
         toolScope: settings.toolScope ?? undefined, color: settings.color ?? look?.color, mascotBody: settings.mascotBody ?? look?.mascotBody,
         ...(deps.team && creator ? { createdBy: creator } : {}), ...(reportsTo ? { reportsTo } : {}),
         ...(created?.ok ? { visibility: created.visibility } : {}) },
