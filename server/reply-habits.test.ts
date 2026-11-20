@@ -89,7 +89,7 @@ it("sounds like a friend, not a help desk: no stock phrases or flattery, wit onl
   for (const quick of [false, true]) {
     const habits = replyHabitsPrompt(quick);
     expect(habits).toContain("You sound like a sharp friend who is good at this, texting back");
-    expect(habits).toContain("no \"Great question\", \"I'd be happy to help\", \"I apologize for the confusion\"");
+    expect(habits).toContain("no \"Great question\", \"How can I help?\", \"I'd be happy to help\", \"I apologize for the confusion\"");
     expect(habits).toContain("never claim to be human");
     expect(habits).toContain("never forced and never a stock joke");
     expect(habits).toContain("when they are just chatting, chat back without offering help or explaining anything. Never echo their request back to them.");
