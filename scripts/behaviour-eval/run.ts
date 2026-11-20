@@ -69,7 +69,7 @@ async function runModel(model: string): Promise<Result[]> {
           stopAt = Date.now();
           await api.call("POST", `/api/bots/${bot.id}/messages`, { text: item.stop.text, threadId });
         }
-        const state = await waitIdle(api, threadId, 240_000);
+        const state = await waitIdle(api, threadId, item.waitMs ?? 240_000);
         const ms = Date.now() - (stopAt || started);
         const messages = (await api.call("GET", `/api/threads/${threadId}/messages?limit=200`)).messages as Message[];
         const shown = (from: number) => messages.slice(from).filter((m) => m.role === "bot").map(rowText).filter(Boolean);

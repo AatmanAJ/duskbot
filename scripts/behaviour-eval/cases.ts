@@ -13,6 +13,8 @@ export interface Case {
   pass: string;
   /** stop: the line the person types while the bot works, after this many ms */
   stop?: { text: string; afterMs: number };
+  /** how long the turn may run before it is judged as it stands (default 240 s) */
+  waitMs?: number;
   /** where the bot works: off (Works on Off, the default) or auto (Works on Auto with the built-in browser asked for; no
    * computer is set up in the sandbox, so select_computer answers with what is missing) */
   place?: "off" | "auto";
@@ -89,7 +91,7 @@ export const CAPABLE_CASES: Case[] = [
   cap("cap-use-your-computer", "computer", "Use your own computer for this one: open news.ycombinator.com and tell me the top 3 stories right now with their points.",
     "It gets the top 3 Hacker News stories with points (by reading the page or using a computer) and delivers them. If it could not reach the page at all, it says so in one line after really trying and gives what it can. Fail if it refuses without trying."),
   cap("cap-research", "research", "Quick research: what are the 3 best budget mechanical keyboards under $80 right now, according to recent reviews? Short comparison and your pick.",
-    "It delivers three named keyboards with rough prices, a short comparison and a clear pick, having read real review pages if it can; anything it could not check is labelled as from memory. Fail if it only says it cannot browse."),
+    "It delivers three named keyboards with rough prices, a short comparison and a clear pick, having read real review pages if it can; anything it could not check is labelled as from memory. Fail if it only says it cannot browse.", { waitMs: 600_000 }),
   cap("cap-csv", "files", "Make me a realistic messy CSV of 40 e-commerce orders (mixed date formats, a few duplicate rows, some blank emails) that I can use to test my cleaning script.",
     "It delivers the CSV as a file the person can download (preferred) or the full 40 rows in the chat, with one line on what is messy in it. Fail if it gives only a few sample rows or a description."),
   cap("cap-xlsx", "files", "Make me a small spreadsheet budget for a 3-day Goa trip in INR: flights, stay, food, activities, with a total row.",
@@ -97,14 +99,14 @@ export const CAPABLE_CASES: Case[] = [
   cap("cap-webapp", "build", "Build me a tiny web app: a pomodoro timer with a 25/5 cycle, start/pause/reset and a soft chime. I want to open it and use it right away.",
     "It delivers a working app the person can open now (shown in the chat, published as a page or attached as an html file), with one or two lines on how it works. Fail if it only pastes code and tells them to save it, or asks first."),
   cap("cap-inbox", "business", "I run a small bakery. Take over my inbox: every morning sort new emails into orders, complaints and spam, draft replies to the orders, and send me a short summary.",
-    "No email is connected. It moves the job forward in this turn: it gets the email connection started (a connect card or one plain ask to connect) and sets up the morning automation now or says it will the moment email is connected, stating the time it picked. One question at most. Fail if it only lists what it would need, or refuses."),
+    "No email is connected, and this is ongoing work with several parts, so it is designed before it is built: a short plan (the morning time it picked, what it sorts and drafts itself, that replies wait for the person's OK, where the summary shows up), the email connection started (a connect card or one plain line), and only the questions the person alone can answer. Fail if it refuses, only lists what it would need, or asks a questionnaire."),
   cap("cap-leads", "business", "Build me a lead list of 15 independent coffee roasters in Bangalore: name, website, Instagram handle, as a spreadsheet.",
-    "It delivers a list or spreadsheet of real roasters, having read pages where it can, and labels anything it could not verify; or it delivers what it could verify and says plainly how it will finish the rest. Fail if it refuses, delivers nothing, or presents invented handles as checked."),
+    "It delivers a list or spreadsheet of real roasters, having read pages where it can, and labels anything it could not verify; or it delivers what it could verify and says plainly how it will finish the rest. Fail if it refuses, delivers nothing, or presents invented handles as checked.", { waitMs: 600_000 }),
   cap("cap-weekly-report", "business", "Every Friday at 5pm, put together a weekly report of what my bots got done that week and send it to me.",
     "It sets up a weekly automation for Friday 5 PM in the person's time zone with instructions that gather what the bots did (their chats, automations and results) and confirms it in plain words with when the first one runs.",
     { tool: /trigger/ }),
   cap("cap-department", "business", "You're my marketing department now. I sell handmade soy candles on Etsy, about 30 orders a month. Take it from here.",
-    "It starts real work this turn instead of only asking: a short concrete plan and at least one finished piece (post drafts, a content calendar or listing improvements), at most one question about something it truly cannot default, and one concrete offer to keep it going (such as a weekly automation). Fail if the reply is only questions or only a plan."),
+    "A whole department handed over is designed before it is built: one short message with the plan in three to six plain lines (what runs when, what it does itself, what waits for the person's OK, where results show up) and, in the same message, only the questions the person alone can answer, with the defaults it picked said. It must not refuse, ask a long questionnaire, or create things before the person says yes. One finished sample piece (a post draft, a listing rewrite) is a plus, not required.", { waitMs: 600_000 }),
   cap("cap-qa-site", "computer", "QA this site for me: https://the-internet.herokuapp.com. Try the login page with the test username and password it shows and tell me what's broken.",
     "It really tries: it reads the site (and the login page, which shows tomsmith / SuperSecretPassword!) or uses a computer, and reports what it found; what it could not test without a real browser it says in one line with the step that would let it. Fail if it refuses without trying."),
   cap("cap-script-file", "files", "Write and run a Python script that works out compound interest on 10,000 at 7% for 20 years, year by year, and give me the table as a CSV file.",
@@ -134,7 +136,7 @@ export const CAPABLE_CASES: Case[] = [
     "It leads with the fix, not an apology: it checks its automations, sets (or moves) a gym reminder to 7 AM and confirms the time in one or two short lines, owning the mistake in a few words at most. Fail if it opens with or dwells on an apology, asks questions it could default, or only promises to fix it.",
     { tool: /(?:_|:)trigger(?:_info)?$/ }),
   cap("fb-script", "feedback", "write me a python script that renames every .jpeg in a folder to .jpg. give it to me as a file",
-    "Chat attachments take no script files. Pass if it delivers the whole script either in one code block or as a downloadable text file with a line on saving it as .py, plus at most a line on how to run it. Fail if it comes as a document, a doc card or a page, or with a long tutorial."),
+    "It delivers the script as a downloadable .py file (code files download as plain text), with the code in one block too when it is short and at most a line on how to run it. Fail if it comes as a document, a doc card or a page, as a .txt the person must rename, or with a long tutorial."),
   cap("cap-always-on", "monitor", "keep this running all the time, not on a schedule, and tell me whenever it prints DOWN:\nwhile true; do curl -fsS https://api.github.com/zen >/dev/null || echo DOWN; sleep 60; done",
     "It starts it as a background job that keeps running after this turn and tells the person when DOWN appears (it may adapt the line to call the notify helper), and confirms in a line. Fail if it says it cannot run things continuously or sets up a routine instead.",
     { tool: /(?:_|:)background_job$/ }),
