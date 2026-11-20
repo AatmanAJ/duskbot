@@ -13,12 +13,12 @@
 // test mailbox), and ends the tunnel it made.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto";
-import { mkdirSync, mkdtempSync, openSync, closeSync, rmSync } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { mkdirSync, mkdtempSync, openSync, closeSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, request as httpRequest, type Server } from "node:http";
 import { connect, createServer as createTcpServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { createMobileSessions } from "../apps/companion/src/mobile.ts";
 import { createProxyHandler } from "../apps/companion/src/proxy.ts";
@@ -27,6 +27,8 @@ import { createPhoneRelay, createRelayTunnel, PHONE_RELAY_BASE } from "../electr
 import { createPhoneHub, x25519Pair } from "../apps/link-service/agent.mjs";
 import { universalPairLink, type MobilePairingResponse } from "../shared/mobile-link.ts";
 import { smokeAccount } from "./smoke/account.mjs";
+import { cloudPairingSignature, cloudRequestSignature } from "../server/cloud-home.ts";
+import { generateEntitlementSigner, signEntitlement } from "../shared/entitlement.ts";
 import { waitForExit } from "../server/testing/cleanup.ts";
 import { launchVerificationServer, verificationServerArgs, verificationServerEnvironment, type VerificationServer } from "./control-dusk.ts";
 import { fakePlatform, loadShippedPhone, SHIPPED_PHONES, type FakePlatform, type PhoneRecord, type PhoneTransport, type ShippedPhone } from "./testing/shipped-phone.ts";
@@ -36,6 +38,7 @@ const LINK = join(ROOT, "apps", "link-service");
 const OWNER = randomBytes(32).toString("base64url");
 const ACCT = "0123456789abcdef0123456789abcdef";
 const PROD = process.argv.includes("--prod");
+const CLOUD_HOST = "dusk-t-0123456789ab.fly.dev";
 
 const results: Array<{ step: string; ok: boolean; detail?: string }> = [];
 function check(step: string, ok: boolean, detail?: string) {
@@ -213,6 +216,91 @@ async function chat(label: string, transport: PhoneTransport, botId: string) {
   const reply = await until(() => stream.frames.find((frame) => frame.kind === "message" && frame.message?.role === "bot" && frame.threadId === mine?.threadId && String(frame.message?.text ?? "").length > 0), 60_000);
   check(`${label}: the bot's reply streams in`, Boolean(reply), reply ? String(reply.message.text).slice(0, 50) : `kinds ${[...new Set(stream.frames.map((frame) => frame.kind))].join(",")}`);
   stream.close();
+}
+
+/** a Cloud home as its launcher starts it (server/cloud-home-start.ts), on loopback with its edge's headers left out */
+async function cloudPlace(scratch: string, cleanups: Array<() => unknown>, linkBase: string, grant: () => string, phoneBuild: ShippedPhone) {
+  if (!phoneBuild.learnRoutes || !phoneBuild.relaySecrets) return;
+  const home = join(scratch, "cloud"), dataDir = join(home, ".duskbot"), machineId = `c${"3".repeat(24)}`;
+  mkdirSync(dataDir, { recursive: true });
+  // the fake engine only: never the person's own Claude sign-in, which the real CLI finds whatever HOME says
+  const cli = join(home, "fixture-claude.mjs");
+  writeFileSync(cli, `#!/usr/bin/env node\nif (process.argv[2] === "auth") { console.log(JSON.stringify({ loggedIn: true, email: "person@example.test" })); process.exit(0); }\nawait import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fake-claude-cli.ts")).href)});\n`, { mode: 0o755 });
+  writeFileSync(join(dataDir, "config.json"), JSON.stringify({ instances: {
+    ...Object.fromEntries(["codex", "cursor", "githubCopilot", "openaiCompat", "qwen", "hermes", "pi"].map((id) => [id, { driver: "not-a-real-driver" }])),
+    claude: { driver: "claudeAgent", displayName: "Claude", config: { cli } },
+  } }));
+  const secret = randomBytes(32).toString("base64url"), dev = generateEntitlementSigner("e2e-cloud");
+  const freePort = async () => { const probe = createServer(); const free = await listen(probe); await shut(probe); return free; };
+  const port = await freePort(), webhookPort = await freePort();
+  const url = `http://127.0.0.1:${port}`;
+  const child = spawn(process.execPath, [join(ROOT, "server", "index.ts")], {
+    cwd: ROOT, stdio: ["ignore", "pipe", "pipe"],
+    env: { PATH: process.env.PATH, HOME: home, DUSK_DATA_DIR: dataDir, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(webhookPort), DUSK_NO_TEST_BOTS: "1",
+      DUSK_CLOUD_ROLE: "home", DUSK_CLOUD_MACHINE_ID: machineId, DUSK_CLOUD_ADMIN_URL: "https://cloud.example.test", DUSK_CLOUD_BOOTSTRAP_SECRET: secret,
+      DUSK_PUBLIC_URL: `https://${CLOUD_HOST}`, DUSK_LINK_BASE: linkBase, DUSK_ENTITLEMENT_DEV_KEYS: `${dev.publicKey.kid}:${dev.publicKey.x}` },
+  });
+  let said = "";
+  for (const out of [child.stdout, child.stderr]) out?.on("data", (chunk) => { said = (said + String(chunk)).slice(-4000); });
+  cleanups.push(() => waitForExit(child, { signal: "SIGTERM" }));
+  const up = await until(() => fetch(`${url}/api/health`).then((res) => res.ok, () => false), 30_000);
+  if (!check("a dusk cloud home starts", Boolean(up), up ? undefined : said.slice(-1500))) return;
+  const signed = async (path: string, body: unknown, pairing = false) => {
+    const text = JSON.stringify(body), timestamp = String(Math.floor(Date.now() / 1000)), nonce = randomBytes(16).toString("base64url");
+    const signature = pairing ? cloudPairingSignature(secret, timestamp, nonce, text) : cloudRequestSignature(secret, timestamp, nonce, "POST", path, text);
+    const response = await fetch(`${url}${path}`, { method: "POST", body: text, headers: { "content-type": "application/json", "x-dusk-cloud-timestamp": timestamp, "x-dusk-cloud-nonce": nonce, "x-dusk-cloud-signature": `v1=${signature}` } });
+    return { status: response.status, body: await response.json().catch(() => null) as any };
+  };
+  const now = Date.now();
+  const entitlement = signEntitlement({ aud: ["home", "app"], cloud: machineId, acct: "a", tier: "pro", features: ["cloud"], iat: now, exp: now + 3_600_000 }, dev.signer);
+  const pushed = await signed("/api/cloud/entitlement", { v: 1, token: entitlement, linkGrant: grant() });
+  check("the account service's entitlement push carries the link grant", pushed.status === 200, `${pushed.status} ${JSON.stringify(pushed.body)}`);
+  // the cloud's edge: what reaches its https address arrives at the home as the edge sends it
+  const edge = createServer((req, res) => {
+    const upstream = httpRequest({ host: "127.0.0.1", port, method: req.method, path: req.url, headers: { ...req.headers, host: CLOUD_HOST, "x-forwarded-for": "203.0.113.9", "x-forwarded-proto": "https" } }, (answer) => {
+      res.writeHead(answer.statusCode ?? 502, answer.headers);
+      answer.pipe(res);
+    });
+    upstream.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); });
+    res.on("close", () => upstream.destroy());
+    req.pipe(upstream);
+  });
+  const edgeUrl = `http://127.0.0.1:${await listen(edge)}`;
+  cleanups.push(() => shut(edge));
+  const signIn = async (label: string) => {
+    const code = (await signed("/api/cloud/pairing", { label, ttlSeconds: 300 }, true)).body?.code as string;
+    return (await fetch(`${url}/api/auth/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) }).then((res) => res.json())).token as string;
+  };
+  const ownerToken = await signIn("dusk bot app (Cloud)");
+  const made = await fetch(`${url}/api/bots`, { method: "POST", headers: { authorization: `Bearer ${ownerToken}`, "content-type": "application/json" }, body: JSON.stringify({ name: "Probe", modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } }) }).then((res) => res.json()) as { bot?: { id: string } };
+  const botId = made.bot?.id ?? "";
+
+  const platform = fakePlatform("ios", "iPhone next (dusk cloud)");
+  const token = await signIn("iPhone next (dusk cloud)");
+  let record: PhoneRecord = { id: randomUUID(), environmentId: "cloud", label: "My Cloud", transport: "https", via: [{ kind: "https", url: edgeUrl }], sessionRef: "", ...({ origin: edgeUrl } as object) } as PhoneRecord;
+  const phone: Phone = { name: "iPhone next (dusk cloud)", shipped: phoneBuild, platform, record, token };
+  const first = await launch(phone);
+  check("iPhone next (dusk cloud): opens on the cloud's https address first", routeOf(first) === `bearer ${edgeUrl}`, routeOf(first));
+  if (typeof first === "string") return;
+  const ask = (async (path: string, init: RequestInit = {}) => fetch(`${edgeUrl}${path}`, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers)), authorization: `Bearer ${token}` } })) as typeof fetch;
+  const opened = await until(async () => {
+    let healed: PhoneRecord | null = null;
+    await phoneBuild.learnRoutes!(record, first, async (_id, via, relay) => { if (relay) healed = { ...record, via, relay, ...(via?.some((one) => one.kind === "relay") ? {} : { relayLate: true as const }) }; }, ask, () => phoneBuild.relaySecrets!(platform, record.id));
+    return healed as PhoneRecord | null;
+  }, 30_000);
+  if (!check("iPhone next (dusk cloud): opens its own relay channel on the cloud's relay", Boolean(opened?.relay?.agentPub), JSON.stringify(opened?.relay ?? null))) return;
+  record = opened!;
+  await expectCloud({ ...phone, record }, "with its https address answering, still opens on it first", (route) => route === `bearer ${edgeUrl}`);
+  const out = await silentAddress();
+  cleanups.push(() => out.close());
+  await expectCloud({ ...phone, record: { ...record, via: [{ kind: "https", url: out.url }] } }, "https address out: reaches the cloud through its relay and chats", (route) => route === "relay", botId);
+}
+
+async function expectCloud(phone: Phone, label: string, want: (route: string) => boolean, botId?: string) {
+  const outcome = await launch(phone);
+  const ok = check(`${phone.name}: ${label}`, want(routeOf(outcome)), `${routeOf(outcome)} in ${walked.get(phone.name)}ms`);
+  if (ok && botId && typeof outcome !== "string") await chat(phone.name, outcome, botId);
+  closeRoute(outcome);
 }
 
 async function main() {
@@ -511,6 +599,11 @@ async function main() {
       check(`the server removes ${phone.name}`, gone.status === 200, `${gone.status}`);
       await serverRoute(phone, "removed on the server: unpairs", (route) => route === "refused");
     }
+
+    // a dusk cloud: its home makes its own relay tunnel with the link grant the account service sends beside its
+    // entitlement; a phone signed in with the account keeps the cloud's https address first and opens a relay channel
+    // on its next connect, so with the https address out it still reaches the cloud through the relay
+    if (builds.next) await cloudPlace(scratch, cleanups, link.base(), () => signer.grant(), builds.next);
   } finally {
     for (const cleanup of cleanups.reverse()) { try { await cleanup(); } catch { /* best effort */ } }
   }
