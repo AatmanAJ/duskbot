@@ -8,6 +8,7 @@ import { useBotSettingsDerived } from "./bot-settings/useBotSettingsDerived";
 import { BotPanel } from "./bot-panel/PanelShell";
 import { BOT_PANEL_ID, sidePanelCls } from "./bot-panel/side-panel";
 import { escapeIsUnclaimed } from "@/lib/composer-focus";
+import { phoneApp } from "@/lib/store-app";
 
 /** What the panel that just unmounted would have handed focus back to, taken by the next bot's panel when it mounts. */
 let focusHandoff: HTMLElement | null = null;
@@ -86,8 +87,8 @@ export function BotSettingsDialog({ bot, overlay = false, slideIn = true }: {
       inert={leaving || undefined}
       ref={dialogRef}
       id={BOT_PANEL_ID}
-      role="dialog"
-      aria-labelledby="bot-settings-title"
+      role={phoneApp() ? undefined : "dialog"}
+      aria-labelledby={phoneApp() ? undefined : "bot-settings-title"}
       tabIndex={-1}
       className={sidePanelCls(overlay)}
     >

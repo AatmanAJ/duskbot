@@ -168,11 +168,11 @@ function CallSurface({ bot, session, transcript, voice, speed, account, onRetry 
   );
 }
 
-function statusText(snap: CallSnapshot, name: string): string | null {
+export function statusText(snap: CallSnapshot, name: string, narrow = false): string | null {
   if (snap.phase === "connecting") return t("call.live.connecting");
   if (snap.phase !== "error") return null;
   const kind = snap.error?.kind;
-  if (kind === "microphone-blocked") return t("call.voice.micBlocked");
+  if (kind === "microphone-blocked") return t(narrow ? "call.voice.micBlockedShort" : "call.voice.micBlocked");
   if (kind === "microphone-missing") return t("call.voice.micMissing");
   if (kind === "microphone-failed") return t("call.voice.micFailed");
   return t("call.voice.failed", { name });
@@ -245,7 +245,7 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, account,
   const face = useRef<HTMLDivElement>(null);
   const motion = useRef({ bob: 0, tilt: 0, last: 0 });
   const narrow = useNarrow();
-  const status = statusText(snap, bot.name);
+  const status = statusText(snap, bot.name, narrow);
   const failed = snap.phase === "error";
   const live = !status;
   const botColor = `var(--identity-${bot.color ?? "green"})`;

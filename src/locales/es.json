@@ -9724,5 +9724,6 @@
   "mobile.clouds.switchAccount": "Cambiar de cuenta",
   "mobile.composer.approval": "Responde arriba",
   "mobile.chat.waitingForConnection": "Esperando conexión",
-  "chat.error.replyGone": "El mensaje al que respondías ya no está. Quita la cita y vuelve a enviarlo."
+  "chat.error.replyGone": "El mensaje al que respondías ya no está. Quita la cita y vuelve a enviarlo.",
+  "call.voice.micBlockedShort": "Micrófono desactivado"
 }

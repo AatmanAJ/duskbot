@@ -61,7 +61,7 @@ export function ChatScreen({ bot, group, members, onBack, onProfile, onComputer 
             onPointerDown={(event) => { if (event.button === 0) { pressedAt.current = performance.now(); onProfile(); } }}
             onClick={() => { if (performance.now() - pressedAt.current > PRESS_CLICK_MS) onProfile(); }}
             data-glass="title"
-            aria-label={t("mobile.chat.openProfile", { name })}
+            aria-label={group ? t("room.panel.openAria", { name }) : t("mobile.chat.openProfile", { name })}
             className="mobile-press m-glass pointer-events-auto flex h-11 min-w-0 max-w-[calc(100vw-136px)] items-center gap-2 rounded-full pl-2.5 pr-4 text-ink"
           >
             <span data-glass-avatar="" className="flex shrink-0">

@@ -14,7 +14,7 @@ import { useCaptionChrome } from "../DesktopCapabilities";
 import { Icon } from "../Icon";
 import { ManageMembersPanel } from "../ManageMembersPanel";
 import { TAB_LABEL, type PanelTab } from "../bot-panel/page-registry";
-import { panelTabs, screenViewAllowed } from "@/lib/store-app";
+import { panelTabs, phoneApp, screenViewAllowed } from "@/lib/store-app";
 import { pageSurfaceCls } from "../bot-panel/pages";
 import { roundButtonCls } from "../bot-panel/rows";
 import { PanelResizeEdge } from "../bot-panel/PanelResizeEdge";
@@ -187,8 +187,8 @@ export function RoomPanel({ group, overlay = false, initialTab = "details" }: { 
     <>
       <aside
         ref={dialogRef}
-        role="dialog"
-        aria-labelledby="room-panel-title"
+        role={phoneApp() ? undefined : "dialog"}
+        aria-labelledby={phoneApp() ? undefined : "room-panel-title"}
         tabIndex={-1}
         data-room-panel
         onKeyDown={onKeyDown}

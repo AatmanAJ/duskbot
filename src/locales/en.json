@@ -9726,5 +9726,6 @@
   "mobile.clouds.switchAccount": "Switch account",
   "mobile.composer.approval": "Answer above",
   "mobile.chat.waitingForConnection": "Waiting for connection",
-  "chat.error.replyGone": "The message you replied to is gone. Remove the quote and send it again."
+  "chat.error.replyGone": "The message you replied to is gone. Remove the quote and send it again.",
+  "call.voice.micBlockedShort": "Microphone is off"
 }
