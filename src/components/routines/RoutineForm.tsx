@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
 import { upperFirst } from "@/lib/lower-first";
 import type { Routine, RoutineInput, RoutineProbe, RoutineRunOn } from "@/lib/routines";
-import { autoRoutineName, newWhenDraft, scheduleFromDraft, whenDraftFor, type WhenDraft, type WhenPreset } from "@/lib/routine-when";
+import { autoRoutineName, editedSchedule, newWhenDraft, scheduleFromDraft, whenDraftFor, type WhenDraft, type WhenPreset } from "@/lib/routine-when";
 import { imeComposing } from "@/lib/send-key";
 import { useStore, type Bot } from "@/state/store";
 import { useBotEditor } from "../bot-settings/BotEditorContext";
@@ -91,7 +91,8 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
   const id = useId();
   const [name, setName] = useState(routine?.name ?? "");
   const [prompt, setPrompt] = useState(routine?.prompt ?? "");
-  const [when, setWhen] = useState<WhenDraft>(() => (routine ? whenDraftFor(routine.schedule) : newWhenDraft()));
+  const [savedWhen] = useState<WhenDraft | null>(() => (routine ? whenDraftFor(routine.schedule) : null));
+  const [when, setWhen] = useState<WhenDraft>(() => savedWhen ?? newWhenDraft());
   // a new daily routine runs around its time unless the person pins it
   const [timing, setTiming] = useState<"exact" | "around">(routine ? (routine.timing === "around" ? "around" : "exact") : "around");
   const [probe, setProbe] = useState<RoutineProbe | null>(routine?.probe ?? null);
@@ -110,7 +111,7 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
     if (saving) return;
     const what = prompt.trim();
     if (!what) { setError(t("routines.inline.error.what")); return; }
-    const { schedule, error: whenError } = scheduleFromDraft(when);
+    const { schedule, error: whenError } = savedWhen ? editedSchedule(savedWhen, when) : scheduleFromDraft(when);
     if (whenError) { setError(t(whenError)); return; }
     const named = name.trim() || autoRoutineName(what);
     const timed = when.preset !== "hourly" && when.preset !== "keep" ? { timing: timing === "around" ? "around" as const : null } : {};
