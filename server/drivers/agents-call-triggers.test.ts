@@ -136,3 +136,45 @@ describe("schedule triggers", () => {
   });
 });
 
+
+describe("what runs on its own, in one list", () => {
+  function routed(replies: Record<string, { ok: boolean; status: number; body: Record<string, unknown> }>) {
+    const calls: string[] = [];
+    const client = {
+      api: async (path: string) => { calls.push(path); return { now: "2026-11-20T09:00:00Z", timeZone: "Asia/Kolkata", triggers: [{ id: "r-1", name: "Support inbox" }] }; },
+      apiResponse: async (path: string) => { calls.push(path); return replies[path] ?? { ok: false, status: 404, body: {} }; },
+    };
+    return { calls, ctx: { botId: "scout", threadId: "thread-1", depth: 0, externalRuntime: false, client } as unknown as ToolCallContext };
+  }
+
+  it("adds the bot's background jobs and its waits in every chat after its automations", async () => {
+    const { ctx } = routed({
+      "/api/internal/jobs": { ok: true, status: 200, body: { text: "- Deals group watch (id j-1): running" } },
+      "/api/internal/waits/all": { ok: true, status: 200, body: { text: "- w-1 · the pricing page · until it shows $12" } },
+    });
+    const text = (await callTool("trigger_info", { action: "list" }, ctx)).text;
+    expect(text).toContain("Support inbox");
+    expect(text).toContain("Background jobs (background_job):\n- Deals group watch (id j-1): running");
+    expect(text).toContain("Waits, in every chat (wait_until):\n- w-1 · the pricing page");
+  });
+
+  it("leaves out a part this turn may not read instead of calling it empty, and asks nothing more for one trigger", async () => {
+    const refused = routed({ "/api/internal/jobs": { ok: false, status: 403, body: { error: "not in a room" } } });
+    const text = (await callTool("trigger_info", { action: "list" }, refused.ctx)).text;
+    expect(text).not.toContain("Background jobs");
+    expect(text).not.toContain("Waits");
+    const one = routed({});
+    await callTool("trigger_info", { action: "list", trigger_id: "r-1" }, one.ctx);
+    expect(one.calls).toEqual(["/api/internal/triggers?fromBotId=scout&fromThreadId=thread-1&triggerId=r-1"]);
+  });
+});
+
+describe("a test run", () => {
+  it("asks for a run that sends nothing, and refuses test on any other action", async () => {
+    const { calls, context: ctx } = context();
+    const started = await callTool("trigger", { action: "run_now", trigger_id: "r-1", test: true }, ctx);
+    expect(calls[0]!.body).toEqual({ fromBotId: "scout", fromThreadId: "thread-1", action: "run_now", triggerId: "r-1", test: true });
+    expect(started.text).toContain("Started a test run of trigger r-1");
+    expect((await callTool("trigger", { action: "pause", trigger_id: "r-1", test: true }, ctx)).text).toBe("test applies only to action=run_now.");
+  });
+});

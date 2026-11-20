@@ -72,7 +72,7 @@ export const routineProposalSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("update"), routineId: z.string().max(128), changes: routineToolChangesSchema, forBot: targetBotSchema.optional() }).strict(),
   z.object({ action: z.literal("pause"), routineId: z.string().max(128), forBot: targetBotSchema.optional() }).strict(),
   z.object({ action: z.literal("resume"), routineId: z.string().max(128), forBot: targetBotSchema.optional() }).strict(),
-  z.object({ action: z.literal("run_now"), routineId: z.string().max(128), forBot: targetBotSchema.optional() }).strict(),
+  z.object({ action: z.literal("run_now"), routineId: z.string().max(128), forBot: targetBotSchema.optional(), test: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("delete"), routineId: z.string().max(128), forBot: targetBotSchema.optional() }).strict(),
 ]);
 
@@ -202,7 +202,7 @@ export const storedOperationSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("update"), ...storedManageBase, changes: storedChangesSchema }).strict(),
   z.object({ action: z.literal("pause"), ...storedManageBase }).strict(),
   z.object({ action: z.literal("resume"), ...storedManageBase }).strict(),
-  z.object({ action: z.literal("run_now"), ...storedManageBase }).strict(),
+  z.object({ action: z.literal("run_now"), ...storedManageBase, test: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("delete"), ...storedManageBase }).strict(),
 ]);
 export const storedSnapshotSchema = storedDefinitionSchema.extend({

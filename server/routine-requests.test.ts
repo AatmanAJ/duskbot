@@ -231,9 +231,13 @@ describe("RoutineRequestService", () => {
     const run = await submit({ action: "run_now", routineId });
     expect(run).toMatchObject({ state: "applied", result: { action: "run_now" } });
     expect(routines.listRuns()).toHaveLength(1);
+    expect(routines.listRuns()[0]!.dryRun).toBeUndefined();
     expect(service.resolve({ botId: "bot-a", threadId: "full-thread", requestId: run.requestId, behavior: "allow" }))
       .toMatchObject({ state: "already_settled", behavior: "allow" });
     expect(routines.listRuns()).toHaveLength(1);
+    const tested = await submit({ action: "run_now", routineId, test: true });
+    expect(tested).toMatchObject({ state: "applied", result: { action: "run_now" } });
+    expect(routines.listRuns().filter((one) => one.dryRun === true)).toHaveLength(1);
     expect(await submit({ action: "delete", routineId })).toMatchObject({ state: "applied" });
     expect(routines.listRoutines().find((routine) => routine.id === routineId)).toBeUndefined();
     expect(appended.every((card) => card.dismissed && card.options.length === 0)).toBe(true);

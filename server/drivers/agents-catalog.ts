@@ -621,7 +621,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "trigger_info",
     description:
-      "Read this bot's triggers (was list_triggers / list_trigger_events). list: its routines (schedules), app events and webhooks: ids, when they fire, on or paused, next run or last fire, problems, and the computer's authoritative current time and timezone; trigger_id gives one trigger with its last 10 fires, and with include_address a webhook's private address, to paste into the setup of the app that sends to it. Before reporting completion, inspect related monitors and verify enabled=false and nextRunAt=null after stopping them with trigger. events: before a when=app_event trigger, the connected apps you may use, with their accounts and events, and popular apps not connected yet.",
+      "Read this bot's triggers (was list_triggers / list_trigger_events). list: its routines (schedules), app events and webhooks: ids, when they fire, on or paused, next run or last fire, problems, and the computer's authoritative current time and timezone, then its jobs and waits: all that runs for it; trigger_id gives one trigger with its last 10 fires, and with include_address a webhook's private address, to paste into the setup of the app that sends to it. Before reporting completion, inspect related monitors and verify enabled=false and nextRunAt=null after stopping them with trigger. events: before a when=app_event trigger, the connected apps you may use, with their accounts and events, and popular apps not connected yet.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -658,6 +658,7 @@ const TOOL_DEFINITIONS = [
         engine: { type: "string", description: "limit_reset: the engine id whose limit to wait for, e.g. claude or codex. Omit for your own engine." },
         repeat: { type: "string", enum: ["once", "every_reset"], description: "limit_reset: once (default) or every_reset." },
         for_bot_id: { type: "string", description: "Only for ANOTHER bot's trigger: that bot's id, from list_bots." },
+        test: { type: "boolean", description: "run_now: a test run that sends nothing and reports what it would do." },
       },
       required: ["action"],
     },

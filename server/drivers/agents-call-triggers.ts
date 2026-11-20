@@ -13,6 +13,8 @@ import { withRepeatHint } from "./repeat-hint.ts";
 export const TRIGGER_TOOL_NAMES: ReadonlySet<string> = new Set(["trigger_info", "trigger", "delete_trigger"]);
 
 const LIST_ROUTE = "/api/internal/triggers";
+const JOB_LIST_ROUTE = "/api/internal/jobs";
+const EVERY_WAIT_ROUTE = "/api/internal/waits/all";
 const EVENTS_ROUTE = "/api/internal/trigger-events";
 const APP_ONLY = ["app", "event", "account"] as const;
 const REQUEST_ROUTE = "/api/internal/trigger-requests";
@@ -352,7 +354,7 @@ async function request(body: Json, context: ToolCallContext, done: string): Prom
 }
 
 /** Everything a trigger call may carry beyond the fields it sets. */
-const CALL_KEYS = new Set(["action", "trigger_id", "for_bot_id"]);
+const CALL_KEYS = new Set(["action", "trigger_id", "for_bot_id", "test"]);
 const CREATE_ONLY = ["when", "app", "event", "account", "engine", "repeat"] as const;
 
 export async function callTriggerTool(name: string, args: Json, context: ToolCallContext): Promise<ToolCallResult> {
@@ -376,14 +378,16 @@ export async function callTriggerTool(name: string, args: Json, context: ToolCal
   if (createOnly) return { text: `${createOnly} applies only to action=create.`, isError: true };
   const { fields, error } = triggerFields(Object.fromEntries(Object.entries(args).filter(([key]) => !CALL_KEYS.has(key))));
   if (error) return { text: error, isError: true };
-  const body: Json = { action, triggerId, ...(forBotId ? { forBotId } : {}) };
+  if (args.test === true && action !== "run_now") return { text: "test applies only to action=run_now.", isError: true };
+  const test = action === "run_now" && args.test === true;
+  const body: Json = { action, triggerId, ...(forBotId ? { forBotId } : {}), ...(test ? { test: true } : {}) };
   if (action === "update") {
     if (!Object.keys(fields).length) return { text: "The update action needs at least one supported field to change.", isError: true };
     body.changes = fields;
   } else if (Object.keys(fields).length) {
     return { text: name === "delete_trigger" ? "delete_trigger takes only trigger_id and for_bot_id." : `The ${action} action changes no fields; send them with action=update.`, isError: true };
   }
-  const done = action === "run_now" ? `Started trigger ${triggerId} once now` : `Applied ${action} to trigger ${triggerId}`;
+  const done = test ? `Started a test run of trigger ${triggerId}: it reads what it needs and puts what it would send in its report instead of sending; its report is posted in the chat when it finishes` : action === "run_now" ? `Started trigger ${triggerId} once now` : `Applied ${action} to trigger ${triggerId}`;
   return request(body, context, done);
 }
 
@@ -395,15 +399,28 @@ async function listTriggers(args: Json, forBotId: string | undefined, context: T
     query.set("includeAddress", "1");
   }
   if (forBotId) query.set("forBotId", forBotId);
-  const r = await context.client.api(`${LIST_ROUTE}?${query.toString()}`);
+  const everything = !query.has("triggerId") && !forBotId;
+  const [r, others] = await Promise.all([context.client.api(`${LIST_ROUTE}?${query.toString()}`), everything ? alsoRunning(context) : ""]);
   const now = typeof r.now === "string" ? r.now : new Date().toISOString();
   const timeZone = typeof r.timeZone === "string" && r.timeZone ? r.timeZone : "local computer timezone";
   const clock = `current time: ${now}; timezone: ${timeZone}`;
   if (typeof r.error === "string") return { text: `${r.error} (${clock})`, isError: true };
   if (r.trigger) return { text: `Trigger (${clock}):\n${JSON.stringify(r.trigger, null, 2)}` };
   const triggers = Array.isArray(r.triggers) ? r.triggers : [];
-  if (!triggers.length) return { text: `This bot has no triggers. Current time: ${now}. Timezone: ${timeZone}.` };
-  return { text: `This bot's triggers (${clock}):\n${JSON.stringify(triggers, null, 2)}` };
+  if (!triggers.length) return { text: `This bot has no triggers. Current time: ${now}. Timezone: ${timeZone}.${others}` };
+  return { text: `This bot's triggers (${clock}):\n${JSON.stringify(triggers, null, 2)}${others}` };
+}
+
+/** The rest of what runs on its own for this bot, so "what's running for me" is one call: its background jobs and its
+ * waits in every chat. A part that cannot be read here (a guest's turn, a room) is left out, never reported as none. */
+async function alsoRunning(context: ToolCallContext): Promise<string> {
+  const [jobs, waits] = await Promise.all([
+    context.client.apiResponse(JOB_LIST_ROUTE, { method: "POST", body: JSON.stringify({ action: "list" }) }).catch(() => null),
+    context.client.apiResponse(EVERY_WAIT_ROUTE).catch(() => null),
+  ]);
+  const part = (title: string, reply: { ok: boolean; body: Json } | null) =>
+    reply?.ok && typeof reply.body.text === "string" && reply.body.text.trim() ? `\n\n${title}:\n${reply.body.text.trim()}` : "";
+  return part("Background jobs (background_job)", jobs) + part("Waits, in every chat (wait_until)", waits);
 }
 
 async function listEvents(args: Json, context: ToolCallContext): Promise<ToolCallResult> {

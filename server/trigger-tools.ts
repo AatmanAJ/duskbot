@@ -174,7 +174,8 @@ const triggerRequestSchema = z.union([
   z.object({ ...source, action: z.literal("create"), kind: z.literal("webhook"), webhook: z.unknown() }).strict(),
   z.object({ ...source, action: z.literal("create"), kind: z.literal("app"), trigger: z.unknown() }).strict(),
   z.object({ ...source, action: z.literal("update"), triggerId: z.string().min(1).max(200), changes: z.record(z.string(), z.unknown()) }).strict(),
-  z.object({ ...source, action: z.enum(["pause", "resume", "run_now", "delete"]), triggerId: z.string().min(1).max(200) }).strict(),
+  z.object({ ...source, action: z.enum(["pause", "resume", "delete"]), triggerId: z.string().min(1).max(200) }).strict(),
+  z.object({ ...source, action: z.literal("run_now"), triggerId: z.string().min(1).max(200), test: z.literal(true).optional() }).strict(),
 ]);
 
 const WEBHOOK_FIELDS = new Set(["name", "instructions", "runOn", "eventTypes"]);
@@ -182,7 +183,7 @@ const APP_FIELDS = new Set(["name", "instructions", "runOn", "filter", "config"]
 
 export type ParsedTriggerRequest =
   | { ok: false; error: string }
-  | { ok: true; kind: "schedule"; forBotId: unknown; proposal: { action: string; routine?: unknown; routineId?: string; changes?: unknown } }
+  | { ok: true; kind: "schedule"; forBotId: unknown; proposal: { action: string; routine?: unknown; routineId?: string; changes?: unknown; test?: boolean } }
   | { ok: true; kind: "webhook"; forBotId: unknown; operation: { action: string; webhook?: unknown; webhookId?: string; changes?: unknown } }
   | { ok: true; kind: "app"; forBotId: unknown; operation: { action: string; trigger?: unknown; triggerId?: string; changes?: unknown } };
 
@@ -226,7 +227,8 @@ export function parseTriggerRequest(body: unknown, kindOf: (id: string) => "sche
   if (kind === "schedule") {
     if (changes && "eventTypes" in changes) return { ok: false, error: "webhook_event_types applies only to webhook triggers" };
     if (changes && ("filter" in changes || "config" in changes)) return { ok: false, error: "filter and event_config apply only to app-event triggers" };
-    return { ok: true, kind: "schedule", forBotId: request.forBotId, proposal: { action: request.action, routineId: request.triggerId, ...(changes ? { changes } : {}) } };
+    const test = request.action === "run_now" && request.test ? { test: true } : {};
+    return { ok: true, kind: "schedule", forBotId: request.forBotId, proposal: { action: request.action, routineId: request.triggerId, ...(changes ? { changes } : {}), ...test } };
   }
   const misplaced = changes && Object.keys(changes).find((key) => !WEBHOOK_FIELDS.has(key));
   if (misplaced) return { ok: false, error: `A webhook trigger has no ${misplaced}; it fires when its link is called. Change name, instructions, run_on or webhook_event_types.` };

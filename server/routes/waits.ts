@@ -11,6 +11,7 @@ import { PASS } from "./table.ts";
 
 const WAITS = "/api/internal/waits";
 const CANCEL = "/api/internal/waits/cancel";
+const EVERY_CHAT = "/api/internal/waits/all";
 
 export const WAIT_MESSAGES = {
   notYours: "This conversation is not yours.",
@@ -174,6 +175,12 @@ export function createWaitRoutes(deps: { waits: Pick<WaitManager, "create" | "li
     if (ctx.method === "GET" && ctx.path === WAITS) {
       if (ctx.sourceRefusal() === WAIT_MESSAGES.notYours) return void json(res, 403, { error: WAIT_MESSAGES.notYours });
       const mine = here();
+      return void json(res, 200, { text: mine.length ? waitList(mine) : WAIT_MESSAGES.none });
+    }
+    if (ctx.method === "GET" && ctx.path === EVERY_CHAT) {
+      // Security: a wait's label can say what the owner is watching in another chat; only the owner's own turn lists them.
+      if (ctx.sourceRefusal() !== null) return void json(res, 403, { error: WAIT_MESSAGES.notYours });
+      const mine = deps.waits.list(ctx.botId);
       return void json(res, 200, { text: mine.length ? waitList(mine) : WAIT_MESSAGES.none });
     }
     if (ctx.method !== "POST" || (ctx.path !== WAITS && ctx.path !== CANCEL)) return PASS;

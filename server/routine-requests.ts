@@ -445,6 +445,7 @@ function normalizedOperation(
     routineId: id,
     expectedUpdatedAt: current.updatedAt,
     ...(validated.forBot ? { forBot: validated.forBot } : {}),
+    ...(validated.action === "run_now" && validated.test ? { test: true as const } : {}),
   };
 }
 
@@ -1459,7 +1460,7 @@ export class RoutineRequestService {
           action: "run_now",
           fingerprintVersion: ROUTINE_REQUEST_FINGERPRINT_VERSION,
           fingerprint,
-        });
+        }, operation.test === true);
         if (!run) throw new RoutineRequestError("That routine no longer exists", 404);
         return run.id;
       }

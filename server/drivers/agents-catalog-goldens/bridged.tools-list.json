@@ -790,6 +790,10 @@
           "for_bot_id": {
             "type": "string",
             "description": "Only for ANOTHER bot's trigger: that bot's id, from list_bots."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "run_now: a test run that sends nothing and reports what it would do."
           }
         },
         "required": [
