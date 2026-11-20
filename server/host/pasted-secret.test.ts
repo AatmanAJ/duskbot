@@ -17,6 +17,16 @@ describe("a secret the person pasted in their own message", () => {
     expect(valueUnderName("use NITTER_KEY=nk_123abc and XACTIONS_TOKEN=xa_456def", "xactions token")).toBe("xa_456def");
   });
 
+  it("is found after a sentence that names it", () => {
+    const said = "Here's the token for our Telegram bot: 7712345678:AAHk3vXq9-ZpLw2mN8rT5yU1cE4dF6gH0jK. It's in our deals group.";
+    for (const label of ["Telegram bot token", "token for our Telegram bot", "TELEGRAM_BOT_TOKEN"]) {
+      expect(valueUnderName(said, label), label).toBe("7712345678:AAHk3vXq9-ZpLw2mN8rT5yU1cE4dF6gH0jK");
+    }
+    expect(valueUnderName(said, "Slack bot token")).toBeNull();
+    expect(valueUnderName("the docs are at: https://example.test/docs", "docs token")).toBeNull();
+    expect(valueUnderName("my Stripe key is ready: sk_live_123456", "Telegram bot token")).toBeNull();
+  });
+
   it("is not prose, a placeholder, or a secret with another name", () => {
     expect(valueUnderName("Hindsight token: here", "Hindsight token")).toBeNull();
     expect(valueUnderName("XACTIONS_TOKEN=<your token>", "XACTIONS_TOKEN")).toBeNull();
