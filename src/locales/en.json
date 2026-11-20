@@ -1683,6 +1683,8 @@
   "onboarding.talk.warm": "No problem, your 3pm is now at 4. Everyone got the update.",
   "onboarding.talk.native": "Moved your 3pm to 4pm. The attendees were notified.",
   "settings.language.subtitle": "The app follows your system language unless you pick one here. Only part of the interface is translated so far. Untranslated text stays in English.",
+  "settings.language.subtitleComplete": "The app follows your system language unless you pick one here.",
+  "settings.language.partialChoice": "{name} · partly translated",
   "settings.language.system": "System",
   "settings.language.aria": "App language",
   "settings.language.error": "Could not save the language.",

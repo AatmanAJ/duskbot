@@ -8,7 +8,7 @@ import { trackUpsell, watchUpsell } from "@/lib/cloud-upsell";
 import { t } from "@/lib/i18n";
 import { effectiveLanguage, setLanguageChoice, useLanguageChoice, usePageLanguage } from "@/lib/language-preference";
 import { applySkinChoice, readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
-import { localeChoices } from "@/locales";
+import { isCompleteLocale, localeChoices } from "@/locales";
 import { useStore } from "@/state/store";
 import { useConnections } from "../connection/connections";
 import { usePlaces, type Place, type PlaceStatus } from "../connection/places";
@@ -330,7 +330,7 @@ function LanguagePage() {
       <SettingsSection card>
         {[{ code: "", label: t("mobile.settings.system") }, ...localeChoices].map(({ code, label }) => (
           <button key={code} type="button" aria-pressed={language === code} onClick={() => { haptic("pick"); setLanguageChoice(code); }} className="mobile-row flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left text-[16px] font-medium text-ink">
-            <span className="min-w-0 flex-1">{label}</span>
+            <span className="min-w-0 flex-1">{code && !isCompleteLocale(code) ? t("settings.language.partialChoice", { name: label }) : label}</span>
             {language === code && <Check aria-hidden size={20} />}
           </button>
         ))}

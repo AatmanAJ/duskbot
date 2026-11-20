@@ -18,7 +18,11 @@ empty entries, locale filename casing, placeholder parity, and the English
 source hash recorded for each translated value. If English copy changes after
 its hash was recorded, the old translation fails the check instead of silently
 looking current. Missing translations remain allowed because the runtime has
-an English fallback.
+an English fallback, except in a complete language: the packs listed in
+`src/lib/complete-locales.json` must translate every English string, and the
+check names each key one of them misses. Settings shows every other language
+as partly translated, in the picker and under the Language row. Add a pack to
+that list once it is fully translated.
 
 ## Source hashes are recorded at release
 

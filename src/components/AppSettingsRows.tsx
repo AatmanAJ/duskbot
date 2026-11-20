@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, useStore, type ConfigStatus } from "@/state/store";
 import { quickUpdatesEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
-import { localeChoices } from "@/locales";
+import { isCompleteLocale, localeChoices } from "@/locales";
 import { activeLocale, t, tOptional, tPreferred } from "@/lib/i18n";
 import { SIMPLE_CARD, SettingRow, Switch } from "./SettingsPrimitives";
 import { cn } from "@/lib/cn";
@@ -138,6 +138,12 @@ export function QuickUpdatesRow() {
   );
 }
 
+function languageSubtitle(simple: boolean): string | undefined {
+  const complete = isCompleteLocale(activeLocale());
+  if (simple) return complete ? tOptional("settings.docs.language.hint") : t("settings.simple.language.partial");
+  return t(complete ? "settings.language.subtitleComplete" : "settings.language.subtitle");
+}
+
 export function LanguageRow({ simple = false }: { simple?: boolean }) {
   const { state } = useStore();
   const current = effectiveLanguage(useLanguageChoice(), state.config?.language);
@@ -146,7 +152,7 @@ export function LanguageRow({ simple = false }: { simple?: boolean }) {
     <SettingRow
       icon="globe"
       title={t("settings.language.title")}
-      subtitle={simple ? activeLocale() === "en" ? tOptional("settings.docs.language.hint") : t("settings.simple.language.partial") : t("settings.language.subtitle")}
+      subtitle={languageSubtitle(simple)}
     >
       <SettingsSelect
         value={current}
@@ -156,7 +162,7 @@ export function LanguageRow({ simple = false }: { simple?: boolean }) {
         <option value="">{t(simple ? "settings.simple.language.system" : "settings.language.system")}</option>
         {localeChoices.map(({ code, label }) => (
           <option key={code} value={code}>
-            {label}
+            {isCompleteLocale(code) ? label : t("settings.language.partialChoice", { name: label })}
           </option>
         ))}
       </SettingsSelect>

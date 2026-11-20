@@ -198,6 +198,31 @@ describe("locale catalogs on disk", () => {
     expect(() => quietly(() => checkCatalogs(directory))).not.toThrow();
   });
 
+  it("fails --check when a complete language misses a key, and allows it in a partial one", () => {
+    const directory = locales({
+      en: { first: "One", added: "Two" },
+      catalogs: { de: { first: "Eins" } },
+      hashes: { de: { first: sourceHash("One") } },
+    });
+    expect(() => quietly(() => checkCatalogs(directory, []))).not.toThrow();
+    expect(() => quietly(() => checkCatalogs(directory, ["de"]))).toThrow(
+      "de.json: added: missing; a complete language translates every English string",
+    );
+  });
+
+  it("never rounds a language with a missing key up to 100%", () => {
+    const en = Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [`k${i}`, `Text ${i}`]));
+    const de = Object.fromEntries(Object.keys(en).slice(1).map((key) => [key, "Text"]));
+    const directory = locales({ en, catalogs: { de }, hashes: {} });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      checkCatalogs(directory, []);
+      expect(log).toHaveBeenCalledWith("de.json: 99% (999/1000)");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("passes --check with hashes left behind by removed keys and languages", () => {
     const directory = locales({
       en: { first: "One" },

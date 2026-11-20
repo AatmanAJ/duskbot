@@ -110,7 +110,7 @@
 .settings-nav-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 /* a bot's sheet: Grok's ink/6 hover reads as a second selection beside its ink/8, so hover stays at half of it */
 [data-bot-sheet] .settings-nav-item:not([aria-current="page"]):hover { background: color-mix(in srgb, var(--color-ink) 4%, transparent); }
-.settings-nav-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-nav-item > span { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: break-word; }
 .settings-nav-label {
   flex-shrink: 0;
   padding: 14px 9px 4px;

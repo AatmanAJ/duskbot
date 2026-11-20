@@ -25,6 +25,7 @@ const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const LOCALES_DIR = join(dirname(SCRIPT_PATH), "..", "src", "locales");
 const SOURCE_FILE = "en.json";
 const SOURCE_HASH_FILE = "source-hashes.json";
+const COMPLETE_LOCALES_PATH = join(dirname(SCRIPT_PATH), "..", "src", "lib", "complete-locales.json");
 const LOCALE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/;
 const PLACEHOLDER = /\{(\w+)\}/g;
 const MODEL_TIMEOUT_MS = 5 * 60 * 1_000;
@@ -223,7 +224,11 @@ function catalogFiles(directory) {
     .sort();
 }
 
-export function checkCatalogs(directory = LOCALES_DIR) {
+function readCompleteLocales() {
+  return JSON.parse(readFileSync(COMPLETE_LOCALES_PATH, "utf8"));
+}
+
+export function checkCatalogs(directory = LOCALES_DIR, completeLocales = readCompleteLocales()) {
   const source = readSourceCatalog(directory);
   const state = readSourceHashes(directory);
   const errors = [];
@@ -244,11 +249,13 @@ export function checkCatalogs(directory = LOCALES_DIR) {
     errors.push(...validateTranslationHashes(source, catalog, state.locales[stem] ?? {}).map(
       (problem) => `${file}: ${problem}`,
     ));
-    const translated = isRecord(catalog)
-      ? sourceKeys.filter((key) => Object.hasOwn(catalog, key)).length
-      : 0;
-    const percent = sourceKeys.length === 0 ? 0 : Math.round((translated / sourceKeys.length) * 100);
+    const missing = isRecord(catalog) ? sourceKeys.filter((key) => !Object.hasOwn(catalog, key)) : sourceKeys;
+    const translated = sourceKeys.length - missing.length;
+    const percent = sourceKeys.length === 0 ? 0 : Math.floor((translated / sourceKeys.length) * 100);
     console.log(`${file}: ${percent}% (${translated}/${sourceKeys.length})`);
+    if (completeLocales.includes(stem)) {
+      errors.push(...missing.map((key) => `${file}: ${key}: missing; a complete language translates every English string`));
+    }
   }
 
   if (errors.length > 0) throw new Error(errors.join("\n"));
