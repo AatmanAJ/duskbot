@@ -4,7 +4,8 @@ import { hasTokenPrefix } from "../../electron/legacy-names.mjs";
 
 const APP_ORIGINS = new Set(["capacitor://localhost", "https://localhost", "http://localhost"]);
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
-const HEADERS = ["Authorization", "Content-Type", "Last-Event-ID", "X-Dusk-Background", "X-Dusk-Sha256"];
+// cache-control: phone builds up to 1.0.1 send it on the live stream, and a refused preflight left them "Reconnecting" forever
+const HEADERS = ["Accept", "Authorization", "Cache-Control", "Content-Type", "Last-Event-ID", "X-Dusk-Background", "X-Dusk-Sha256"];
 const VIEWER_SOCKET = /^\/api\/desktop-viewer\/(?:local\/(?:shared|bot-[a-f0-9]{64}|pool-\d+)|vps\/[\w-]+)\/websockify$/;
 
 export function isMobileOrigin(origin: string | string[] | undefined): origin is string {
@@ -34,6 +35,9 @@ export function answerMobilePreflight(req: IncomingMessage, res: ServerResponse,
   allowOrigin(res, origin);
   res.setHeader("access-control-allow-methods", method);
   res.setHeader("access-control-allow-headers", HEADERS.filter(header => requested.includes(header.toLowerCase())).join(", "));
+  // WebKit keeps a preflight 5 s unless told longer (600 s at most): each live stream dial from the phone otherwise
+  // costs a second trip to the place before it opens
+  res.setHeader("access-control-max-age", "600");
   res.setHeader("cache-control", "no-store");
   res.writeHead(204).end();
   return true;

@@ -13,7 +13,7 @@ function opsAllowed(header: string | undefined, token: string) {
   const wanted = Buffer.from(token);
   return given.length === wanted.length && timingSafeEqual(given, wanted);
 }
-const messages: Record<string, string> = { signed_out: "Sign in to continue.", invalid_request: "Invalid request.", not_found: "Not found.", unavailable: "Billing is unavailable.", bad_signature: "Invalid webhook signature.", checkout_open: "A checkout is already open.", csrf: "Refresh the page and try again.", cap: "Cloud limit reached.", rate_limited: "Try again later.", checkout_soon: "Paid plans open soon. Checkout is not live yet.", discount_used: "This account already used its discount.", discount_unavailable: "The discount is only for a monthly plan that renews.", plan_change_unavailable: "This plan can't switch to that size here. Write to hello@dusk.bot and we move it for you.", already_on_plan: "You're already on this plan.", price_changed: "The price changed. Check it and confirm again.", not_subscribed: "There is no active plan to change.",
+const messages: Record<string, string> = { signed_out: "Sign in to continue.", invalid_request: "Invalid request.", not_found: "Not found.", unavailable: "Billing is unavailable.", bad_signature: "Invalid webhook signature.", checkout_open: "A checkout is already open.", csrf: "Refresh the page and try again.", cap: "Cloud limit reached.", rate_limited: "Try again later.", checkout_soon: "Paid plans open soon. Checkout is not live yet.", discount_used: "This account already used its discount.", discount_unavailable: "The discount is only for a monthly plan that renews.", plan_change_unavailable: "That switch can't be made right now. Nothing changed. Try again in a minute.", change_in_progress: "Your last plan switch is still going through. Give it a few seconds.", payment_failed: "The payment didn't go through, so nothing changed. Check your card and try again.", already_on_plan: "You're already on this plan.", price_changed: "The price changed. Check it and confirm again.", not_subscribed: "There is no active plan to change.",
   seats_full: "Every seat on this team is taken. Add a seat first.", forbidden: "You can't do that.",
   invite_invalid: "This invite link is used up, cancelled or expired. Ask for a new one.", invite_other_email: "This invite was sent to another email address. Sign in with that one to join.",
   already_in_team: "That person is already in a team." };
@@ -136,8 +136,8 @@ export function createBillingRoutes(ctx: BillingContext) {
       if (subscription && method === "POST") {
         if (!service.subscriptions(account.id).some(sub => sub.id === subscription[1])) throw new BillingError(404, "not_found");
         const data = await body(req), id = subscription[1];
-        if (subscription[2] === "preview") return send(service.previewChange(account, id, cartInput(data.cart)));
-        if (subscription[2] === "change") return send({ subscription: await service.change(account, id, text(data.confirmation)) });
+        if (subscription[2] === "preview") return send(await service.previewChange(account, id, cartInput(data.cart)));
+        if (subscription[2] === "change") return send(await service.change(account, id, text(data.confirmation)));
         if (subscription[2] === "cancel") return send({ subscription: await service.cancel(account, id, data.survey === undefined ? undefined : survey(data.survey)) });
         if (subscription[2] === "retention") return send(service.retentionStep(account, id, data));
         if (subscription[2] === "discount") return send(await service.retentionDiscount(account, id, data.reason));

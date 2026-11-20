@@ -1,8 +1,9 @@
 import type { DeleteAccountOptions } from "../../../../shared/billing-api";
+import type { WebsiteHome } from "../../../../shared/account-api";
 import type { ConnectorsAnswer } from "../../../../shared/dashboard-protocol";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, FIXTURE, type AccountData } from "../lib/api";
-import type { BillingOverview, CheckoutRequest, CloudDesktop, DesktopId, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection } from "./contracts";
+import type { BillingOverview, ChangeOffer, CheckoutRequest, CloudDesktop, DesktopId, IdentityProvider, MachineSpec, NotificationPrefs, PlanCatalog, Selection } from "./contracts";
 import { fixtureCatalog } from "./fixtures";
 import type { CancelAnswer, RetentionInput } from "./wire";
 
@@ -16,6 +17,8 @@ export interface CloudData {
   pendingApps: Record<string, string[]>;
   /** whether each workspace can connect apps itself (a Composio key or Composio Connect there); false: only its own app can */
   appsAvailable: Record<string, boolean>;
+  /** per workspace, apps connected in the app itself (MCP servers, token apps, a mailbox): only that app changes them */
+  appsInApp: Record<string, string[]>;
   /** reads the connected apps again; resolves with the new answer, or null when it failed */
   reloadConnections(): Promise<ConnectorsAnswer | null>;
   error: string | null;
@@ -23,8 +26,8 @@ export interface CloudData {
   checkout(req: CheckoutRequest): Promise<boolean>;
   power(id: string, on: boolean): Promise<void>;
   resize(id: string, req: { tier: Exclude<DesktopId, "none">; size: MachineSpec | null }): Promise<void>;
-  /** what changing to `selection` charges now, in dollars; a change that charges anything is confirmed with that amount */
-  changeCharge(selection: Selection): Promise<number>;
+  /** what changing to `selection` does: today's charge, the next one and when; every change is confirmed with it */
+  changeCharge(selection: Selection): Promise<ChangeOffer>;
   changePlan(selection: Selection, approvedUsd?: number): Promise<void>;
   cancel(reason: CancelAnswer | ""): Promise<void>;
   /** records a cancel flow step; never throws */
@@ -37,7 +40,7 @@ export interface CloudData {
   revokeDevice(id: string): Promise<void>;
   signOutEverywhere(): Promise<void>;
   deleteAccount(confirm: string, options?: DeleteAccountOptions): Promise<void>;
-  finishOnboarding(): Promise<void>;
+  finishOnboarding(home?: WebsiteHome): Promise<void>;
 }
 
 const Ctx = createContext<CloudData | null>(null);
@@ -52,6 +55,10 @@ export function CloudDataProvider({ children, signedIn }: { children: ReactNode;
   const [connections, setConnections] = useState<Record<string, string[]> | null>(null);
   const [pendingApps, setPendingApps] = useState<Record<string, string[]>>({});
   const [appsAvailable, setAppsAvailable] = useState<Record<string, boolean>>({});
+  const [appsInApp, setAppsInApp] = useState<Record<string, string[]>>({});
+  const takeConnections = useCallback((answer: ConnectorsAnswer) => {
+    setConnections(answer.byWorkspace); setPendingApps(answer.pending ?? {}); setAppsAvailable(answer.available ?? {}); setAppsInApp(answer.inApp ?? {});
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [pending, setPending] = useState<Record<string, { on: boolean; until: number }>>({});
@@ -63,7 +70,7 @@ export function CloudDataProvider({ children, signedIn }: { children: ReactNode;
   if (previousSignedIn.current !== signedIn) { active.current = signedIn; previousSignedIn.current = signedIn; }
 
   const clearAccount = useCallback(() => {
-    setBilling(null); setClouds(null); setAccount(null); setConnections(null); setPendingApps({}); setAppsAvailable({}); setPending({});
+    setBilling(null); setClouds(null); setAccount(null); setConnections(null); setPendingApps({}); setAppsAvailable({}); setAppsInApp({}); setPending({});
   }, []);
   const refresh = useCallback(() => setTick((value) => value + 1), []);
 
@@ -91,11 +98,11 @@ export function CloudDataProvider({ children, signedIn }: { children: ReactNode;
         errors.push(apiError(overview.reason).message);
       }
       if (profile.status === "fulfilled") setAccount(profile.value); else { setAccount(null); errors.push(apiError(profile.reason).message); }
-      if (apps.status === "fulfilled") { setConnections(apps.value.byWorkspace); setPendingApps(apps.value.pending ?? {}); setAppsAvailable(apps.value.available ?? {}); } else { setConnections(null); errors.push(apiError(apps.reason).message); }
+      if (apps.status === "fulfilled") takeConnections(apps.value); else { setConnections(null); errors.push(apiError(apps.reason).message); }
       setError([...new Set(errors)].join(" ") || null);
     });
     return () => { alive = false; };
-  }, [signedIn, tick, clearAccount]);
+  }, [signedIn, tick, clearAccount, takeConnections]);
 
   useEffect(() => {
     if (!signedIn || !active.current) return;
@@ -140,19 +147,26 @@ export function CloudDataProvider({ children, signedIn }: { children: ReactNode;
     }
   }, [refresh]);
 
+  const opening = useRef<Promise<boolean> | null>(null);
   const checkout = useCallback(async (req: CheckoutRequest) => {
     if (FIXTURE) {
       try { await mutate(() => api.checkout(req)); return true; } catch { return false; }
     }
-    try {
-      if (!active.current) return false;
-      const answer = await api.checkout(req);
-      // straight to the payment page: no refresh first, so nothing is drawn between the click and dodo
-      window.addEventListener("pageshow", (event) => { if (event.persisted) window.location.reload(); }, { once: true });
-      window.location.assign(answer.url);
-    } catch (e) { setError(apiError(e).message); return false; }
-    // on its way to the payment page: nothing is paid yet, so whoever asked keeps waiting instead of saying so
-    return new Promise<never>(() => {});
+    // one payment page at a time: another click while one is on its way waits on that one instead of asking again
+    if (opening.current) return opening.current;
+    if (!active.current) return false;
+    const open = (async () => {
+      try {
+        const answer = await api.checkout(req);
+        // straight to the payment page: no refresh first, so nothing is drawn between the click and dodo
+        window.addEventListener("pageshow", (event) => { if (event.persisted) window.location.reload(); }, { once: true });
+        window.location.assign(answer.url);
+      } catch (e) { setError(apiError(e).message); opening.current = null; return false; }
+      // on its way to the payment page: nothing is paid yet, so whoever asked keeps waiting instead of saying so
+      return new Promise<never>(() => {});
+    })();
+    opening.current = open;
+    return open;
   }, [mutate]);
 
   const power = useCallback(async (id: string, on: boolean) => {
@@ -177,13 +191,13 @@ export function CloudDataProvider({ children, signedIn }: { children: ReactNode;
     try {
       const answer = await api.connections();
       if (!active.current || version !== generation.current) return null;
-      setConnections(answer.byWorkspace); setPendingApps(answer.pending ?? {}); setAppsAvailable(answer.available ?? {});
+      takeConnections(answer);
       return answer;
     } catch { return null; }
-  }, []);
+  }, [takeConnections]);
 
   const value = useMemo<CloudData>(() => ({
-    catalog, billing, clouds, account, connections, pendingApps, appsAvailable, reloadConnections, error, refresh, checkout, power,
+    catalog, billing, clouds, account, connections, pendingApps, appsAvailable, appsInApp, reloadConnections, error, refresh, checkout, power,
     resize: (id, req) => mutate(() => api.resize(id, req)),
     changeCharge: (selection) => api.changeCharge(selection),
     changePlan: (selection, approvedUsd) => mutate(() => api.changePlan(selection, approvedUsd)),
@@ -195,12 +209,12 @@ export function CloudDataProvider({ children, signedIn }: { children: ReactNode;
     updateProfile: (name) => mutate(() => api.updateProfile({ name })),
     unlinkIdentity: (p) => mutate(() => api.unlinkIdentity(p)),
     revokeDevice: (id) => mutate(() => api.revokeDevice(id)),
-    finishOnboarding: () => mutate(async () => {
-      await api.finishOnboarding();
+    finishOnboarding: (home?: WebsiteHome) => mutate(async () => {
+      await api.finishOnboarding(home);
       setAccount((a) => (a ? { ...a, profile: { ...a.profile, onboarded: true } } : a));
     }),
     signOutEverywhere, deleteAccount,
-  }), [catalog, billing, clouds, account, connections, pendingApps, appsAvailable, reloadConnections, error, refresh, checkout, power, mutate, signOutEverywhere, deleteAccount]);
+  }), [catalog, billing, clouds, account, connections, pendingApps, appsAvailable, appsInApp, reloadConnections, error, refresh, checkout, power, mutate, signOutEverywhere, deleteAccount]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

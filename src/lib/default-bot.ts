@@ -114,6 +114,26 @@ export function introChips(input: IntroFacts): IntroChip[] {
   ];
 }
 
+export type IntroAsk = "inbox" | "inboxNow" | "day" | "today" | "week";
+
+const MAIL = new Set(["gmail", "outlook"]), CALENDAR = new Set(["googlecalendar", "outlook"]);
+
+/** The three first jobs offered under Dusk's look around, fitted to what is connected (app slugs): a connected inbox or
+ * calendar gets a job it can do now, otherwise the job that sets it up. The week needs nothing connected. */
+export function introAsks(apps: readonly string[]): IntroAsk[] {
+  return [
+    apps.some((app) => CALENDAR.has(app)) ? "today" : "day",
+    apps.some((app) => MAIL.has(app)) ? "inboxNow" : "inbox",
+    "week",
+  ];
+}
+
+/** The first jobs show while any AI answers, OpenCode's free backup included (most new people start on it); none while
+ * the bot has no AI to send them to. */
+export function introAsksOffered(ai: "own" | "backup" | "none"): boolean {
+  return ai !== "none";
+}
+
 let welcoming: string | null = null;
 const welcomingListeners = new Set<() => void>();
 
