@@ -721,7 +721,6 @@ function cardCopy(
       `Runs on: ${destination}`,
       `Run limit: ${definition.timeoutMinutes === undefined ? "No limit" : `${definition.timeoutMinutes} minutes`}`,
       `Continuity: ${definition.continuity ? "Carries the previous run's report into the next run" : "Each run starts fresh"}`,
-      ...(definition.probe ? [`Checks first: ${probeText(definition.probe)}; the bot runs only when that changed`] : []),
       `While busy: ${definition.overlap === "queue" ? "Queue one scheduled run; skip further occurrences until it starts" : "Skip overlapping scheduled occurrences"}`,
       ...(definition.runOnStartup || (operation.action === "update" && operation.changes.runOnStartup !== undefined)
         ? [`On startup: ${definition.runOnStartup ? "Also runs once each time dusk bot starts" : "Runs only on its schedule"}`]
@@ -753,11 +752,6 @@ function inputFromDefinition(definition: RoutineRequestDefinition, botId: string
     ...(definition.runOnStartup ? { runOnStartup: true } : {}),
     ...(definition.probe ? { probe: definition.probe } : {}),
   };
-}
-
-function probeText(probe: RoutineProbe): string {
-  if (probe.kind === "script") return `the output of \`${redactSecretsInText(probe.command ?? "")}\``;
-  return `${probe.kind === "feed" ? "new items in" : probe.kind === "price" ? "the price on" : "changes to"} ${probe.url}${probe.selector ? ` (${probe.selector})` : ""}`;
 }
 
 function updateFromChanges(

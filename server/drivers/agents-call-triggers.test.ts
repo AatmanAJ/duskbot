@@ -210,6 +210,9 @@ describe("mail routes and usage in the trigger tools", () => {
     expect(calls[0]!.path).toBe("/api/internal/trigger-usage?fromBotId=scout&fromThreadId=thread-1");
     expect(result.text).toContain("approximate dollars");
     expect(result.text).toContain("Poller");
+  });
+});
+
 describe("a schedule's plain check in the trigger tool", () => {
   it("sends check as the routine's probe, with continuity on by default", async () => {
     const { calls, context: ctx } = context();
