@@ -342,7 +342,7 @@ import { TurnStops, outwardActions, stoppedTurnOutcome, turnEvidence } from "./t
 import { replaysTranscriptNatively } from "./runtime/capabilities.ts";
 import { buildRecoveryText, buildTurnContext, engineIsFresh } from "./turn-context.ts";
 import { Handoffs, handedStateUsable, isContextMessage, recordHanded, renderUnseen, sessionStart, unseenMessages, withUnseenMessages, type ContextMessage } from "./delta-context.ts";
-import { engineRefusedImage, extractReplayImages, extractTurnImages, TURN_IMAGE_MAX_COUNT } from "./turn-images.ts"; import { withAttachedDocuments } from "./attached-documents.ts";
+import { engineRefusedImage, extractReplayImages, extractTurnImages, TURN_IMAGE_MAX_COUNT } from "./turn-images.ts"; import { prepareAttachedDocuments, withAttachedDocuments } from "./attached-documents.ts";
 import { callTitleExcerpt } from "./thread-title.ts";
 import { generateThreadTitle, llmThreadTitlesEnabled } from "./thread-title-generate.ts";
 import { stallLimitMs, TurnWatchdog } from "./turn-watchdog.ts";
@@ -11410,7 +11410,7 @@ async function runClaimedGroupMemberTurn(
       : store.groupTaskByThread(liveGroup.id, threadId)?.turnTimeoutMinutes,
   );
   // A private chat reaches a room only through the explicit, disclosed session_search, never automatically.
-  const roomRecalled = cardContinuation ? "" : await autoRecallPrompt(bot, threadId, resolvedLatestImages.text, { conversations: false, userName });
+  const roomRecalled = cardContinuation ? "" : await autoRecallPrompt(bot, threadId, resolvedLatestImages.text, { conversations: false, userName }); const roomDocuments = await prepareAttachedDocuments(cardContinuation ? "" : [...burstOverrides.map((line) => line.text), latestUser?.text ?? ""].join("\n"), { vision: usesNativeImageInput, imageRoom: TURN_IMAGE_MAX_COUNT - turnImages.length });
   const outcome = await new Promise<GroupMemberTurnOutcome>((resolve) => {
     let done = false;
     let unsub = () => {};
@@ -11489,7 +11489,7 @@ async function runClaimedGroupMemberTurn(
       threadId, botId: readyBot.id, claimId: internalGeneration, instance, guestConfined: roomGuestConfined, reset: Boolean(roomReset), hooks: Boolean(integrations.hooks),
       context: () => ({ ...roomMemberContexts.forThread(threadId)?.[readyBot.id], compactAt: nativeCompactTokens(instance) }),
       config: [roomSystem.stable, cwd, readyBot.modelSelection, turnApprovalMode, roomToolScope, roomUserMcp, integrations],
-      window: roomWindow, tail: roomTail, wrap: (body) => withTurnClock(clock, withRecalled(roomRecalled, attachmentsForBox(body, cwd) + roomShareNote.text + devsReports.note(threadId, Boolean(integrations.agents)))),
+      window: roomWindow, tail: roomTail, wrap: (body) => withTurnClock(clock, withRecalled(roomRecalled, attachmentsForBox(roomDocuments.apply(body), cwd) + roomShareNote.text + devsReports.note(threadId, Boolean(integrations.agents)))),
     });
     guardTurnDispatch(roomShareNote.after(instance.adapter.sendTurn({
         ...roomSession.send,
@@ -11497,7 +11497,7 @@ async function runClaimedGroupMemberTurn(
         botId: readyBot.id,
         text: roomSession.text,
         ...(roomRecalled ? { recalled: roomRecalled } : {}),
-        images: turnImages,
+        images: [...turnImages, ...roomDocuments.images],
         approvalMode: turnApprovalMode,
         toolScope: roomToolScope,
         ...(roomGuestConfined ? { guestConfined: true, confinedWhy: confinedWhy(threadId) } : {}),

@@ -117,6 +117,16 @@ describe("extract", () => {
     expect(payload?.text).toContain("Total $1,080 &lt;/file-text> trick\n</file-text>");
   });
 
+  it("of a long text with no model, hands back only the passages that mention the fields", async () => {
+    const filler = Array.from({ length: 400 }, (_, i) => `Clause ${i}: general terms and conditions apply here.`).join("\n");
+    const text = `${filler}\nNotice period: 60 days from the date of resignation.\n${filler}`;
+    const { status, payload } = await call("/api/internal/helpers/extract", { fields: { notice_period: { type: "string", description: "How long the notice period is" } }, text });
+    expect(status).toBe(200);
+    expect(payload?.text).toContain("passages of the text that mention the fields");
+    expect(payload?.text).toContain("Notice period: 60 days");
+    expect(payload!.text!.length).toBeLessThan(21_000);
+  });
+
   it("reads an attached PDF, Word, Excel and PowerPoint file without any helper account", async () => {
     writeFileSync(join(work, "cv.pdf"), pdfFixture(["Meera Iyer", "Notice period: 60 days"]));
     writeFileSync(join(work, "cv.docx"), buildZip([{ name: "word/document.xml", data: "<w:document><w:body><w:p><w:r><w:t>Notice period: 30 days</w:t></w:r></w:p></w:body></w:document>" }]));

@@ -8,10 +8,14 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { ATTACHMENTS_DIR } from "./attachments.ts";
 import type { TurnImageInput } from "./contracts.ts";
 import { DOCUMENT_EXTENSIONS, documentText, DocumentTextError, pdfPagePictures } from "./document-text.ts";
+import { headOf, outlineOf } from "./document-excerpts.ts";
 import { decodeAttachmentAttribute } from "./message-file.ts";
 
 /** Characters of document text one turn carries; past it the bot is told to read the rest with extract. */
 export const ATTACHED_TEXT_MAX_CHARS = 60_000;
+/** A document up to this many characters goes in whole; a longer one as its first pages and an outline. */
+export const DOCUMENT_INLINE_CHARS = 20_000;
+const HEAD_CHARS = 12_000;
 const DOCUMENTS_PER_TURN = 6;
 const SCANNED_PAGES = 4;
 
@@ -63,16 +67,32 @@ export interface AttachedDocumentsOptions {
   cacheDir?: string;
 }
 
-export async function withAttachedDocuments(text: string, options: AttachedDocumentsOptions): Promise<{ text: string; images: TurnImageInput[] }> {
-  if (!text.includes("<attached-file")) return { text, images: [] };
+function textBlock(name: string, text: string, room: number): string {
+  if (text.length <= Math.min(DOCUMENT_INLINE_CHARS, room)) return `<attached-file-text name="${name}">\n${fenced(text)}\n</attached-file-text>`;
+  const outline = outlineOf(text);
+  const head = headOf(text, Math.max(0, Math.min(HEAD_CHARS, room - outline.join("\n").length)));
+  const part = head.pages ? `pages 1 to ${head.pages.shown} of ${head.pages.total}` : `the first ${head.text.length.toLocaleString("en-US")} of ${text.length.toLocaleString("en-US")} characters`;
+  return (head.text ? `<attached-file-text name="${name}" shown="${part}">\n${fenced(head.text)}\n</attached-file-text>\n` : "")
+    + (outline.length ? `<attached-file-outline name="${name}">\n${fenced(outline.join("\n"))}\n</attached-file-outline>\n` : "")
+    + `[${name} is long: ${head.text ? `only ${part} are shown` : "none of it fits here"}${outline.length ? ", with an outline of the whole" : ""}. For anything past that, call the extract tool with this file and the fields you need; it reads the whole file.]`;
+}
+
+export interface AttachedDocuments {
+  /** The text with each document's block right under its tag, or at the end when the tag is not in it. */
+  apply(text: string): string;
+  images: TurnImageInput[];
+}
+
+/** Reads the documents tagged in `source`; `apply` then places them into whatever text the turn is built from. */
+export async function prepareAttachedDocuments(source: string, options: AttachedDocumentsOptions): Promise<AttachedDocuments> {
+  const images: TurnImageInput[] = [];
+  if (!source.includes("<attached-file")) return { apply: (text) => text, images };
   const attachmentsDir = options.attachmentsDir ?? ATTACHMENTS_DIR;
   const cacheDir = options.cacheDir ?? join(dirname(attachmentsDir), "attachment-text");
-  const tags = [...text.matchAll(FILE_TAG)].slice(0, DOCUMENTS_PER_TURN);
-  const images: TurnImageInput[] = [];
+  const blocks: Array<{ tag: string; block: string }> = [];
   let budget = ATTACHED_TEXT_MAX_CHARS;
-  let out = "", from = 0;
   const seen = new Set<string>();
-  for (const tag of tags) {
+  for (const tag of [...source.matchAll(FILE_TAG)].slice(0, DOCUMENTS_PER_TURN)) {
     const path = await ownedDocument(decodeAttachmentAttribute(tag[1]!), attachmentsDir);
     if (!path || seen.has(path)) continue;
     seen.add(path);
@@ -80,11 +100,8 @@ export async function withAttachedDocuments(text: string, options: AttachedDocum
     const read = await readOnce(path, cacheDir);
     let block: string;
     if ("text" in read) {
-      const shown = read.text.slice(0, Math.max(0, budget));
-      budget -= shown.length;
-      const rest = read.text.length - shown.length;
-      block = (shown ? `<attached-file-text name="${name}">\n${fenced(shown)}\n</attached-file-text>` : "")
-        + (rest > 0 ? `\n[${rest.toLocaleString("en-US")} more characters of ${name} are not shown here: read the rest with the extract tool on this file.]` : "");
+      block = textBlock(name, read.text, budget);
+      budget -= block.length;
     } else if ("scanned" in read) {
       const room = Math.min(SCANNED_PAGES, options.imageRoom - images.length);
       const pages = options.vision && room > 0 ? await pdfPagePictures(path, join(cacheDir, `${basename(path)}-pages`), room) : [];
@@ -95,9 +112,22 @@ export async function withAttachedDocuments(text: string, options: AttachedDocum
     } else {
       block = `[${name} could not be read: ${read.problem}]`;
     }
-    const end = tag.index! + tag[0].length;
-    out += text.slice(from, end) + "\n" + block;
-    from = end;
+    blocks.push({ tag: tag[0].trim(), block });
   }
-  return { text: out + text.slice(from), images };
+  return {
+    images,
+    apply(text) {
+      let out = text;
+      for (const { tag, block } of blocks) {
+        const at = out.lastIndexOf(tag);
+        out = at < 0 ? `${out}\n\n${block}` : `${out.slice(0, at + tag.length)}\n${block}${out.slice(at + tag.length)}`;
+      }
+      return out;
+    },
+  };
+}
+
+export async function withAttachedDocuments(text: string, options: AttachedDocumentsOptions): Promise<{ text: string; images: TurnImageInput[] }> {
+  const documents = await prepareAttachedDocuments(text, options);
+  return { text: documents.apply(text), images: documents.images };
 }
