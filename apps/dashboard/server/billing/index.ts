@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DashboardState } from "../store.ts";
 import { createCloudsService } from "../clouds/service.ts";
+import { linkGrantSignerFromEnv, signLinkGrant } from "../link-grant.ts";
 import type { CloudEventKind } from "../clouds/service.ts";
 import { createFakeCloudProvider } from "../clouds/fake-provider.ts";
 import { createFakePoolDriver } from "../clouds/fake-pool-driver.ts";
@@ -58,6 +59,7 @@ export interface BillingOptions {
   /** every deletion action of a managed cloud and fleet alerts, for the record; never an email */
   alert?: (entry: { at: number; cloudId: string; action: string; actor: string; reason: string }) => void;
 }
+export const ACCOUNT_CLOSE_UNAVAILABLE = "Your plan couldn't be cancelled with the payment provider just now, so nothing was deleted and your dusk cloud is still there; try again in a few minutes.";
 /** the hosted app's Bearer resolver remains null until shared/account-api.ts supplies the accounts service */
 export function createBilling(options: BillingOptions) {
   const env = options.env ?? process.env, now = options.now ?? Date.now, url = new URL(options.publicUrl);
@@ -84,7 +86,7 @@ export function createBilling(options: BillingOptions) {
     if (mode !== "test" && mode !== "live") throw new Error("Invalid DUSK_DODO_MODE.");
     required("DUSK_DODO_PRODUCTS");
     provider = createDodoProvider({ apiKey, webhookSecret, mode, now, fetch: options.fetch });
-  } else provider = fake ?? { name: "dodo", createCheckout: unavailable, updatePaymentMethod: unavailable, verifyWebhook: unavailable, cancelAtPeriodEnd: unavailable, cancelNow: unavailable, refundPayment: unavailable, changePlan: unavailable, applyDiscount: unavailable, invoiceUrl: unavailable, invoicePdf: unavailable };
+  } else provider = fake ?? { name: "dodo", createCheckout: unavailable, updatePaymentMethod: unavailable, verifyWebhook: unavailable, cancelAtPeriodEnd: unavailable, cancelNow: unavailable, refundPayment: unavailable, previewChange: unavailable, changePlan: unavailable, cancelScheduledChange: unavailable, subscription: unavailable, applyDiscount: unavailable, invoiceUrl: unavailable, invoicePdf: unavailable };
   let products: Record<string, string>;
   try { products = dodoProducts(env); } catch { throw new Error("Invalid DUSK_DODO_PRODUCTS."); }
   if (billingProvider === "dodo" && missingDodoProducts(products).length) console.error(`billing: DUSK_DODO_PRODUCTS is missing ${missingDodoProducts(products).join(", ")}; carts that need them answer 503`);
@@ -120,7 +122,7 @@ export function createBilling(options: BillingOptions) {
     power: (origin, secret, minutes) => realHome.power!(origin, secret, minutes),
     sleep: (origin, secret, minutes) => realHome.sleep!(origin, secret, minutes),
     plan: (origin, secret, input) => realHome.plan!(origin, secret, input),
-    entitle: (origin, secret, token) => fakeOrigin(origin) ? Promise.resolve({ expiresAt: now() + 3_600_000 }) : realHome.entitle!(origin, secret, token),
+    entitle: (origin, secret, token, linkGrant) => fakeOrigin(origin) ? Promise.resolve({ expiresAt: now() + 3_600_000 }) : realHome.entitle!(origin, secret, token, linkGrant),
     healthy: (origin, secret) => (fakeOrigin(origin) ? fakeHome : realHome).healthy(origin, secret),
     pair: (origin, secret, input) => (fakeOrigin(origin) ? fakeHome : realHome).pair(origin, secret, input),
     signIns: (origin, secret, items) => (fakeOrigin(origin) ? Promise.resolve() : realHome.signIns!(origin, secret, items)),
@@ -130,7 +132,8 @@ export function createBilling(options: BillingOptions) {
   const entitlements = entitlementSignerFromEnv(env, { dataDir: options.dataDir, loopback, now, required: !loopback && (cloudProvider !== "off" || poolDriver !== "off" || managed !== null) });
   const sealer = createSealer(sealKey);
   const aiStash = createAiStash({ store: options.aiStash ?? memoryAiStashStore(now), sealer, now });
-  const clouds = createCloudsService({ aiStash, entitlements, onEvent: options.cloudEvent, onStatus: options.cloudStatus, dataDir: options.dataDir, now, providers: { pool, dedicated }, home, sealer, managed, managedHome: realHome,
+  const linkGrants = linkGrantSignerFromEnv(env, { dataDir: options.dataDir, loopback });
+  const clouds = createCloudsService({ aiStash, entitlements, linkGrant: linkGrants ? cloud => signLinkGrant(cloud.accountId, linkGrants, now()).grant : null, onEvent: options.cloudEvent, onStatus: options.cloudStatus, dataDir: options.dataDir, now, providers: { pool, dedicated }, home, sealer, managed, managedHome: realHome,
     workspaces: {
       register({ accountId, name, publicKey }) {
         const id = `ws_${randomBytes(16).toString("base64url")}`;
@@ -193,7 +196,11 @@ export function createBilling(options: BillingOptions) {
     async beforeAccountDelete(owner: AccountRef, body: Record<string, unknown>) {
       const blockers = service.deletionBlockers(owner.id);
       if (body.cancelBilling !== true && blockers.length) { const error = new BillingError(409, "billing_active"); error.blockers = blockers; throw error; }
-      await service.closeAccount(owner, { destroyDesktopsNow: body.destroyDesktopsNow === true });
+      try { await service.closeAccount(owner, { destroyDesktopsNow: body.destroyDesktopsNow === true }); }
+      catch (error) {
+        if (error instanceof BillingError && error.code === "unavailable") error.message = ACCOUNT_CLOSE_UNAVAILABLE;
+        throw error;
+      }
     },
     accountDeleted: service.accountDeleted,
     /** the account's plans, payments and cloud desktops for its owner's export: no provider ids, keys or sealed secrets */

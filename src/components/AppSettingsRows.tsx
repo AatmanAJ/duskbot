@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, useStore, type ConfigStatus } from "@/state/store";
 import { quickUpdatesEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
-import { localeChoices } from "@/locales";
+import { isCompleteLocale, localeChoices } from "@/locales";
 import { activeLocale, t, tOptional, tPreferred } from "@/lib/i18n";
 import { SIMPLE_CARD, SettingRow, Switch } from "./SettingsPrimitives";
 import { cn } from "@/lib/cn";
@@ -14,6 +14,7 @@ import { effectiveLanguage, setLanguageChoice, useLanguageChoice } from "@/lib/l
 import { SettingsSelect } from "./SettingsSelect";
 import { TALKING_STYLES, talkingStyleOf } from "../../shared/talking-style";
 import { friendlyError } from "@/lib/plain-error";
+import { parseSidebarBotOrder, setSidebarBotOrder, useSidebarBotOrder } from "@/lib/sidebar-preferences";
 
 export function NewBotEffortRow() {
   const { state, dispatch } = useStore();
@@ -46,7 +47,7 @@ export function NewBotEffortRow() {
       <SettingsSelect
         value={current}
         disabled={saving}
-        aria-label={t("settings.newBotEffort.aria")}
+        aria-label={t("settings.newBotEffort.title")}
         onChange={(event) => void save(event.target.value)}
       >
         <option value="">{t("settings.newBotEffort.default")}</option>
@@ -129,12 +130,18 @@ export function QuickUpdatesRow() {
     >
       <Switch
         checked={enabled}
-        aria-label={t("settings.quickUpdates.aria")}
+        aria-label={t("settings.quickUpdates.title")}
         disabled={saving}
         onClick={() => void save(!enabled)}
       />
     </SettingRow>
   );
+}
+
+function languageSubtitle(simple: boolean): string | undefined {
+  const complete = isCompleteLocale(activeLocale());
+  if (simple) return complete ? tOptional("settings.docs.language.hint") : t("settings.simple.language.partial");
+  return t(complete ? "settings.language.subtitleComplete" : "settings.language.subtitle");
 }
 
 export function LanguageRow({ simple = false }: { simple?: boolean }) {
@@ -145,7 +152,7 @@ export function LanguageRow({ simple = false }: { simple?: boolean }) {
     <SettingRow
       icon="globe"
       title={t("settings.language.title")}
-      subtitle={simple ? activeLocale() === "en" ? tOptional("settings.docs.language.hint") : t("settings.simple.language.partial") : t("settings.language.subtitle")}
+      subtitle={languageSubtitle(simple)}
     >
       <SettingsSelect
         value={current}
@@ -155,7 +162,7 @@ export function LanguageRow({ simple = false }: { simple?: boolean }) {
         <option value="">{t(simple ? "settings.simple.language.system" : "settings.language.system")}</option>
         {localeChoices.map(({ code, label }) => (
           <option key={code} value={code}>
-            {label}
+            {isCompleteLocale(code) ? label : t("settings.language.partialChoice", { name: label })}
           </option>
         ))}
       </SettingsSelect>
@@ -176,6 +183,19 @@ export function SendKeyRow({ simple = false }: { simple?: boolean }) {
         {SEND_KEYS.map((mode) => (
           <option key={mode} value={mode}>{sendKeyLabel(mode)}</option>
         ))}
+      </SettingsSelect>
+    </SettingRow>
+  );
+}
+
+/** Bots by their newest activity, or in the order the person dragged them into. */
+export function BotOrderRow() {
+  const order = useSidebarBotOrder();
+  return (
+    <SettingRow icon="stack" title={t("settings.botOrder.title")} subtitle={t("settings.botOrder.hint")}>
+      <SettingsSelect value={order} aria-label={t("settings.botOrder.title")} onChange={(event) => setSidebarBotOrder(parseSidebarBotOrder(event.target.value))}>
+        <option value="recent">{t("settings.botOrder.recent")}</option>
+        <option value="custom">{t("settings.botOrder.custom")}</option>
       </SettingsSelect>
     </SettingRow>
   );

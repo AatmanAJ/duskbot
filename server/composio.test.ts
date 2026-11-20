@@ -674,6 +674,9 @@ describe.sequential("Composio Sessions", () => {
       await expect(authorizeService(cfg, "slack")).resolves.toEqual({
         url: "https://connect.composio.dev/link/slack",
       });
+      const callback = `https://dusk.bot/connectors?connect=${"c".repeat(43)}`;
+      await expect(authorizeService(cfg, "slack", null, undefined, callback)).resolves.toEqual({ url: "https://connect.composio.dev/link/slack", returnsHere: true });
+      expect(calls.slice(before).filter((call) => call.path.endsWith("/link")).at(-1)?.body).toMatchObject({ toolkit: "slack", callback_url: callback });
       await expect(removeAccount(cfg, "github", "ca_github_personal")).resolves.toEqual({ removed: 1 });
       await expect(removeService(cfg, "github")).resolves.toEqual({ removed: 1 });
       const relayed = await relayMcp(cfg, { jsonrpc: "2.0", id: 1, method: "tools/list" });

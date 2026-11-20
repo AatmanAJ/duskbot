@@ -7,6 +7,8 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  batches,
+  registerExamples,
   checkCatalogs,
   main,
   recordSourceHashes,
@@ -147,6 +149,18 @@ describe("locale draft validation", () => {
     expect(readdirSync(directory)).toEqual(["catalog.json"]);
   });
 
+  it("asks for a large catalog in batches small enough for one model answer", () => {
+    expect(batches(["a", "b", "c", "d", "e"], 2)).toEqual([["a", "b"], ["c", "d"], ["e"]]);
+    expect(batches([], 2)).toEqual([]);
+  });
+
+  it("shows the model how the pack already speaks to the person, so a German pack on du stays on du", () => {
+    const source = { a: "Open your inbox", b: "Saved", c: "You can undo this" };
+    const existing = { a: "Öffne deinen Posteingang", b: "Gespeichert", c: "Du kannst das rückgängig machen" };
+    expect(registerExamples(source, existing)).toEqual({ "Open your inbox": "Öffne deinen Posteingang", "You can undo this": "Du kannst das rückgängig machen" });
+    expect(registerExamples(source, {})).toEqual({});
+  });
+
   it("never generates or accepts the English source catalog", () => {
     expect(() => main(["en", "English", "--force"])).toThrow(/English is the source catalog/i);
     expect(() => main(["en", "--accept"])).toThrow(/English is the source catalog/i);
@@ -182,6 +196,31 @@ describe("locale catalogs on disk", () => {
       hashes: { de: { first: sourceHash("One") } },
     });
     expect(() => quietly(() => checkCatalogs(directory))).not.toThrow();
+  });
+
+  it("fails --check when a complete language misses a key, and allows it in a partial one", () => {
+    const directory = locales({
+      en: { first: "One", added: "Two" },
+      catalogs: { de: { first: "Eins" } },
+      hashes: { de: { first: sourceHash("One") } },
+    });
+    expect(() => quietly(() => checkCatalogs(directory, []))).not.toThrow();
+    expect(() => quietly(() => checkCatalogs(directory, ["de"]))).toThrow(
+      "de.json: added: missing; a complete language translates every English string",
+    );
+  });
+
+  it("never rounds a language with a missing key up to 100%", () => {
+    const en = Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [`k${i}`, `Text ${i}`]));
+    const de = Object.fromEntries(Object.keys(en).slice(1).map((key) => [key, "Text"]));
+    const directory = locales({ en, catalogs: { de }, hashes: {} });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      checkCatalogs(directory, []);
+      expect(log).toHaveBeenCalledWith("de.json: 99% (999/1000)");
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("passes --check with hashes left behind by removed keys and languages", () => {

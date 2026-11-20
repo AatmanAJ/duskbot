@@ -310,11 +310,23 @@ describe("ClaudeDriver.decodeConfig", () => {
       expect(candidates.length).toBeGreaterThan(1);
       expect(new Set(candidates).size).toBe(candidates.length);
     } else {
-      expect(candidates).toHaveLength(3);
+      expect(candidates).toHaveLength(tmpdir() === "/tmp" ? 3 : 4);
       expect(candidates[1]).toMatch(/dusk-perm-[0-9a-f]{16}\.sock$/);
       expect(candidates[2]).toMatch(/dp-[0-9a-f]{8}\.sock$/);
-      expect(new Set(candidates).size).toBe(3);
+      expect(new Set(candidates).size).toBe(candidates.length);
       expect(brokerSocketCandidates("t-candidates")[2]).not.toBe(candidates[2]);
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("offers a /tmp broker path when TMPDIR is too deep for a socket", () => {
+    const saved = process.env.TMPDIR;
+    process.env.TMPDIR = `/private/tmp/${"deep-folder/".repeat(10)}`;
+    try {
+      const candidates = brokerSocketCandidates("t-deep-tmp");
+      expect(candidates.at(-1)).toMatch(/^\/tmp\/dp-[0-9a-f]{8}\.sock$/);
+      expect(Buffer.byteLength(candidates.at(-1)!)).toBeLessThan(104);
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
     }
   });
 
@@ -359,6 +371,42 @@ describe("ClaudeDriver.decodeConfig", () => {
       }
     },
   );
+
+  it("denies an ask whose listener throws, instead of taking the process down", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "dusk-broker-listener-"));
+      // Windows binds pipes, not socket files; both are connectable by the same client code.
+      const socketPath = process.platform === "win32"
+        ? `\\\\.\\pipe\\dusk-broker-listener-${process.pid}-${Date.now()}`
+        : join(dir, "broker.sock");
+      const resolved: Array<{ source?: string; behavior?: string }> = [];
+      const broker = await createPermissionBroker({
+        socketPaths: [socketPath],
+        onAsk: () => { throw new Error("listener failed"); },
+        onResolve: (ask) => resolved.push(ask),
+      });
+      try {
+        const conn = connect(socketPath);
+        await new Promise<void>((resolve, reject) => {
+          conn.on("connect", resolve);
+          conn.on("error", reject);
+        });
+        const answered = new Promise<{ behavior?: string; message?: string }>((resolve) => {
+          let buf = "";
+          conn.on("data", (c) => {
+            buf += c;
+            const nl = buf.indexOf("\n");
+            if (nl !== -1) resolve(JSON.parse(buf.slice(0, nl)));
+          });
+        });
+        conn.write(JSON.stringify({ t: "ask", id: "ask-throw", tool: "Bash", input: { command: "echo hi" } }) + "\n");
+        expect(await answered).toMatchObject({ behavior: "deny" });
+        await expect.poll(() => resolved[0]?.source).toBe("system");
+        conn.end();
+      } finally {
+        broker.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
+  });
 
   it.skipIf(process.platform === "win32")(
     "keeps a large non-ASCII ask whole across socket reads",
@@ -2071,7 +2119,7 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(await instance.snapshot()).toMatchObject({
       state: "available",
       version: "2.1.100 (Claude Code)",
-      update: { title: "Update Claude Code for context controls", command: expect.stringContaining("update") },
+      update: { title: "Update Claude Code", command: expect.stringContaining("update") },
     });
   });
 
@@ -2177,15 +2225,13 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(claudeCliUpdate("2.1.267 (Claude Code)", "claude")).toBeUndefined();
     expect(claudeCliUpdate(null, "claude")).toBeUndefined();
     const olderSnapshot = claudeCliUpdate("2.1.232 (Claude Code)", "claude");
-    expect(olderSnapshot?.message).toContain("--system-prompt-snapshot");
-    expect(olderSnapshot?.message).toContain("resumed turns cannot refresh stale system prompts");
-    expect(olderSnapshot?.message).not.toContain("coordinated");
-    expect(olderSnapshot?.message).not.toContain("no compaction window");
+    expect(olderSnapshot?.message).toBe("Claude Code 2.1.232 is older than 2.1.267, so a bot can miss changes to its instructions in an ongoing chat. Update it to fix this.");
+    expect(olderSnapshot?.message).not.toMatch(/--|Engines/);
     expect(claudeCliUpdate("2.1.121 (Claude Code)", "claude")).toMatchObject({
       command: "claude update",
-      message: expect.stringContaining("--autocompact"),
+      message: expect.stringContaining("long chats are shortened later than they should be"),
     });
-    expect(claudeCliUpdate("1.0.100 (Claude Code)", "/opt/bin/claude")?.message).toContain("this machine's own Claude Code setup");
+    expect(claudeCliUpdate("1.0.100 (Claude Code)", "/opt/bin/claude")?.message).toContain("this computer's own Claude Code setup");
     expect(claudeCliUpdate("1.0.100 (Claude Code)", "/opt/bin/claude")?.command).toBe("/opt/bin/claude update");
   });
 

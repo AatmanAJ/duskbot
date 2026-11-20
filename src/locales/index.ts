@@ -1,4 +1,5 @@
 import en from "./en.json";
+import completeLocales from "@/lib/complete-locales.json";
 
 export { en };
 export type LocaleKey = keyof typeof en;
@@ -57,6 +58,12 @@ export async function loadLocalePack(tag: string): Promise<LocalePack | undefine
   const pack: LocalePack = (await packLoaders[name]()).default;
   for (const [alias, shown] of Object.entries(localePacks)) if (shown === name) locales[alias] ??= pack;
   return pack;
+}
+
+/** Packs that translate every English string; `pnpm i18n:check` fails when one misses a key. Every other pack is shown
+ * as partly translated. */
+export function isCompleteLocale(code: string): boolean {
+  return code === "en" || (completeLocales as readonly string[]).includes(code);
 }
 
 export const localeChoices: ReadonlyArray<{ code: string; label: string }> = [
