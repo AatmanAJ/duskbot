@@ -16,6 +16,7 @@ const reduce = (on: boolean) => vi.spyOn(window, "matchMedia").mockImplementatio
 }) as unknown as MediaQueryList);
 
 const draw = (mood?: WorkingMood) => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood })));
+const drawMotion = (motion: "current" | "b", mood: WorkingMood = "thinking") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion })));
 const mascot = () => host.querySelector<HTMLElement>("[data-working-mascot]")!;
 const eyes = () => mascot().querySelectorAll("path")[1]!.getAttribute("d");
 
@@ -82,6 +83,41 @@ describe("the working mascot's face", () => {
     draw();
     expect(mascot().dataset.face).toBeUndefined();
     expect(eyes()).toBe(stillSvgPaths("kit", { scale: 1 }).eyes);
+  });
+
+  it("keeps the shipped loops by default", () => {
+    reduce(false);
+    draw("thinking");
+    expect(mascot().dataset.motion).toBeUndefined();
+    expect(mascot().querySelector(".working-mascot-bob")).not.toBeNull();
+  });
+
+  it("poses a lab motion on the shared frame loop only while it is on screen", () => {
+    reduce(false);
+    let seen: (entries: Array<{ isIntersecting: boolean }>) => void = () => {};
+    vi.stubGlobal("IntersectionObserver", class { constructor(fn: typeof seen) { seen = fn; } observe() {} disconnect() {} });
+    const raf = vi.spyOn(window, "requestAnimationFrame");
+    const caf = vi.spyOn(window, "cancelAnimationFrame");
+    drawMotion("b");
+    expect(mascot().dataset.motion).toBe("b");
+    expect(raf, "nothing until it is seen").not.toHaveBeenCalled();
+    act(() => seen([{ isIntersecting: true }]));
+    expect(raf).toHaveBeenCalledTimes(1);
+    act(() => seen([{ isIntersecting: false }]));
+    expect(caf).toHaveBeenCalledTimes(1);
+    act(() => seen([{ isIntersecting: true }]));
+    act(() => root.render(null));
+    expect(caf).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
+  it("asks for no frames at all under reduced motion", () => {
+    reduce(true);
+    const raf = vi.spyOn(window, "requestAnimationFrame");
+    drawMotion("b");
+    drawMotion("b", "writing");
+    expect(raf).not.toHaveBeenCalled();
+    expect(mascot().querySelectorAll("path")[0]!.getAttribute("d")).toMatch(/^M/);
   });
 
   it("mirrors a sideways look across its own eyes", () => {

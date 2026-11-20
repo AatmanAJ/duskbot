@@ -8,6 +8,8 @@ import { bodyShapeFor, type StoredBodyId } from "../../shared/bot-body";
 import { mascotFaceInk, type MascotFaceColor } from "../../shared/bot-avatar";
 import { bodyFit } from "./mascot-view";
 import { usePrefersReducedMotion } from "./mascot-clock";
+import { LivelyMascot } from "./LivelyMascot";
+import { MASCOT_MOTION, type MascotMotionPick } from "@/lib/mascot-motion";
 
 type WorkingBot = { id?: string; color: MausColor; mascotBody?: StoredBodyId | null; mascotFaceColor?: MascotFaceColor | null };
 
@@ -89,7 +91,18 @@ export function crispSize(wanted: number, grid: number, dpr = typeof window === 
  * Each part moves on its own HTML layer by transform alone, so the loop stays on the compositor. A `mood` (what the bot
  * is doing now) gives it the sprite's own expressions in turn (MOOD_FACES) and sets how those layers move, in whole
  * sprite pixels. */
-export function WorkingMascot({ bot, size, eyes, seed = "", mood, className }: { bot: WorkingBot; size: number; eyes?: string; seed?: string; mood?: WorkingMood; className?: string }) {
+export function WorkingMascot({ bot, size, eyes, seed = "", mood, className, motion = MASCOT_MOTION, at }: {
+  bot: WorkingBot;
+  size: number;
+  eyes?: string;
+  seed?: string;
+  mood?: WorkingMood;
+  className?: string;
+  /** "current" moves by the CSS loops; a/b/c pose it frame by frame while it has a mood */
+  motion?: MascotMotionPick;
+  /** the lab's own clock for a/b/c, in ms */
+  at?: number;
+}) {
   const dressed = useHalloweenDressed();
   const reduced = usePrefersReducedMotion() || (typeof document !== "undefined" && document.documentElement.dataset.reducedMotion === "true");
   const body = bodyShapeFor(wornBody(bot.mascotBody, bot.color, dressed));
@@ -100,16 +113,25 @@ export function WorkingMascot({ bot, size, eyes, seed = "", mood, className }: {
   const box = { width: drawn, height: drawn, left: Math.round((size - drawn) / 2 + fit.x * size), top: Math.round((size - drawn) / 2 + fit.y * size) };
   const view = `0 0 ${shape.G} ${shape.G}`;
   const key = `${bot.id ?? ""}|${seed}`;
+  const ink = MASCOT_INK[bot.color] ?? MASCOT_INK.green;
+  const eyeInk = mascotFaceInk(bot.mascotFaceColor) ?? eyes ?? "var(--color-app)";
+  if (mood && motion !== "current") {
+    return (
+      <span aria-hidden="true" data-working-mascot="" data-motion={motion} data-mood={mood} className={cn("relative inline-block shrink-0", className)} style={{ width: size, height: size }}>
+        <LivelyMascot variant={motion} body={body} mood={mood} seed={key} reduced={reduced} box={box} ink={ink} eyeInk={eyeInk} at={at} />
+      </span>
+    );
+  }
   return (
     <span aria-hidden="true" data-working-mascot="" data-mood={mood} data-face={face ? `${face.state}${face.flip ? "-flip" : ""}` : undefined} className={cn("relative inline-block shrink-0", className)} style={{ width: size, height: size }}>
       <span className="working-mascot-bob absolute" style={{ ...box, animationDelay: mood && ONCE.has(mood) ? undefined : spread(`${key}|bob`, 1400) }}>
         <svg width={drawn} height={drawn} viewBox={view} shapeRendering="crispEdges" overflow="visible" className="absolute inset-0">
-          <path d={shape.body} fill={MASCOT_INK[bot.color] ?? MASCOT_INK.green} />
+          <path d={shape.body} fill={ink} />
         </svg>
         <span className="working-mascot-glance absolute inset-0" style={{ animationDelay: spread(`${key}|glance`, 5200) }}>
           <span className="working-mascot-blink absolute inset-0" style={{ transformOrigin: `50% ${shape.eyeMiddle * 100}%`, animationDelay: spread(`${key}|blink`, 3800) }}>
             <svg width={drawn} height={drawn} viewBox={view} shapeRendering="crispEdges" overflow="visible" className="absolute inset-0">
-              <path d={shape.eyes} fill={mascotFaceInk(bot.mascotFaceColor) ?? eyes ?? "var(--color-app)"} />
+              <path d={shape.eyes} fill={eyeInk} />
             </svg>
           </span>
         </span>
