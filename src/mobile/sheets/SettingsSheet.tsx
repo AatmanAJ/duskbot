@@ -83,7 +83,7 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
     <button type="button" onClick={() => { trackUpsell("click", "app_mobile"); onOpen(); }} className="mobile-press mx-2 mt-9 flex w-[calc(100%-16px)] items-center gap-4 rounded-[20px] bg-ink/[0.045] px-4 py-4 text-left">
       <PixelArt name="server" size={44} />
       <span className="min-w-0 flex-1">
-        <span className="block text-[16px] font-semibold text-ink">{t("cloudUpsell.mobile")}</span>
+        <span className="block text-balance text-[16px] font-semibold text-ink">{t("cloudUpsell.mobile")}</span>
         <span className="mt-0.5 block text-[14px] font-medium leading-5 text-ink-secondary">{t("cloudUpsell.mobileDetail")}</span>
       </span>
     </button>
