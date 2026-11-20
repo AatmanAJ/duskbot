@@ -2570,12 +2570,12 @@ let lastSelectable: readonly SelectableInstance[] = [];
 
 /** A turn for a bot with no AI: never an empty instance in an error. A ready AI found here and not chosen yet is named, so
  * the card can offer it in one tap; otherwise the person is asked to connect one. */
-function noAiRefusal(threadId: string): Error & { status: number; code: "no_ai"; found?: { instanceId: string; name: string } } {
+function noAiRefusal(threadId: string): Error & { status: number; code: "no_ai"; found?: { instanceId: string; name: string }; connect?: true } {
   const language = conversationLanguage(threadId);
   const found = lastSelectable.find((instance) => instance.found && readyToRun(instance, selectionContext) && instance.models.default.trim());
   const name = found ? registry.get(found.instanceId)?.displayName ?? BUILT_IN_DRIVERS.find((driver) => driver.driverKind === found.driverKind)?.metadata.displayName ?? found.instanceId : "";
   return Object.assign(new Error(found ? serverLine(language, "server.noAi.found", { name }) : serverLine(language, "server.noAi.admin")),
-    { status: 409, code: "no_ai" as const, ...(found ? { found: { instanceId: found.instanceId, name } } : {}) });
+    { status: 409, code: "no_ai" as const, ...(found ? { found: { instanceId: found.instanceId, name } } : { connect: true as const }) });
 }
 
 /** The providers a bot, its backups, a conversation or a saved default runs on. */
@@ -2609,7 +2609,8 @@ async function releaseProvider(instanceId: string): Promise<void> {
 }
 
 async function defaultSelection(saved: ModelSelection | null = cfg.defaultModelSelection ?? null, instances?: readonly SelectableInstance[]) {
-  return selectDefaultModelSelection(selectableInstances(instances ?? await registry.describe()), saved ?? undefined, selectionContext);
+  const chosen = cfg.defaultModelChosen === true && saved !== null && saved === (cfg.defaultModelSelection ?? null);
+  return selectDefaultModelSelection(selectableInstances(instances ?? await registry.describe()), saved ?? undefined, { ...selectionContext, preferredChosen: chosen });
 }
 const selectionContext = {
   company: (instanceId: string) => managedDesktop.owns(instanceId),
@@ -16664,7 +16665,8 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
     const code = typeof candidateCode === "string" && ["guarded_busy", "guarded_branch", "guarded_permissions", "guarded_request_changed", "guarded_request_untracked", "outside_workspace", "no_ai", BOT_LIMIT_CODE].includes(candidateCode)
       ? candidateCode : undefined;
     const found = code === "no_ai" ? (e as { found?: unknown }).found : undefined;
-    return json(res, status, { error: e instanceof Error ? e.message : String(e), ...(code ? { code } : {}), ...(found ? { found } : {}) });
+    const connect = code === "no_ai" && (e as { connect?: unknown }).connect === true;
+    return json(res, status, { error: e instanceof Error ? e.message : String(e), ...(code ? { code } : {}), ...(found ? { found } : {}), ...(connect ? { connect: true } : {}) });
   } finally {
     releaseWorkspaceRequest?.();
   }
