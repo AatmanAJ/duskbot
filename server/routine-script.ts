@@ -1,6 +1,7 @@
 // A routine's script check (RoutineProbe kind "script"): one command line run without any AI, its output compared
 // with the last run's. Only dusk bot's base environment reaches it, never its keys; under sandbox-exec on macOS and
-// bubblewrap on Linux it writes only to a scratch folder and reads none of the person's keys. Without either it runs bare.
+// bubblewrap on Linux it writes only to a scratch folder and reads none of the person's keys. It runs bare only where
+// neither exists; a bwrap the kernel refuses fails the check instead.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -58,12 +59,13 @@ function kindOf(path: string): "dir" | "file" | null {
   try { return statSync(path).isDirectory() ? "dir" : "file"; } catch { return null; }
 }
 
-let linuxBox: string | null | undefined;
-/** bwrap when it is installed and this kernel lets it make namespaces; checked once. */
-const usableBwrap = (): string | null => {
-  if (linuxBox === undefined) { const found = whichOnPath("bwrap"); linuxBox = found && probeBwrap(found) ? found : null; }
+let linuxBox: { bwrap: string; works: boolean } | null | undefined;
+/** bwrap when it is installed, and whether this kernel lets it make namespaces; checked once. */
+const linuxFence = () => {
+  if (linuxBox === undefined) { const found = whichOnPath("bwrap"); linuxBox = found ? { bwrap: found, works: probeBwrap(found) } : null; }
   return linuxBox;
 };
+export const BWRAP_REFUSED = "bubblewrap is installed but this computer will not let it make the namespaces a script check runs in (on Ubuntu 24.04, reinstall dusk bot so it loads its AppArmor profile for bwrap).";
 
 export function runCheckScript(command: string, options: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number; sandbox?: boolean } = {}): Promise<ScriptResult> {
   const source = options.env ?? process.env;
@@ -74,7 +76,9 @@ export function runCheckScript(command: string, options: { env?: NodeJS.ProcessE
   if (!windows) env.PATH = [...new Set([...(env.PATH ?? "").split(":").filter(Boolean), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"])].join(":");
   const sandbox = options.sandbox ?? true;
   const seatbelt = sandbox && process.platform === "darwin" && existsSync(SANDBOX_EXEC);
-  const bwrap = sandbox && process.platform === "linux" ? usableBwrap() : null;
+  const fence = sandbox && process.platform === "linux" ? linuxFence() : null;
+  if (fence && !fence.works) return Promise.resolve({ ok: false, error: BWRAP_REFUSED });
+  const bwrap = fence?.bwrap ?? null;
   const boxed = seatbelt || bwrap !== null;
   let scratch: string | undefined;
   if (boxed) {
