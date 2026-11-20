@@ -345,12 +345,12 @@ function start() {
     const md = $('.chat-md', r);
     md.textContent = '';
     const p = document.createElement('p');
-    p.textContent = `In the app I'd actually do this: ${ids[key].can}. Download it to try it.`;
+    p.textContent = `in the app i'd actually do this: ${ids[key].can}. download it to try it.`;
     const a = document.createElement('a');
     a.href = '/download';
     a.dataset.dwGet = '';
     a.className = 'inline-flex min-h-9 items-center rounded-full bg-ink px-3.5 text-[14px] font-medium text-app hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus';
-    a.textContent = 'Download dusk bot';
+    a.textContent = 'download dusk bot';
     md.append(p, a);
     if (fromCard) {
       c.card = false;
