@@ -98,9 +98,9 @@ export function WorkingMascot({ bot, size, eyes, seed = "", mood, className, mot
   seed?: string;
   mood?: WorkingMood;
   className?: string;
-  /** "current" moves by the CSS loops; a/b/c pose it frame by frame while it has a mood */
+  /** "current" moves by the CSS loops; the 3D motions take over while it has a mood */
   motion?: MascotMotionPick;
-  /** the lab's own clock for a/b/c, in ms */
+  /** the lab's own clock for the 3D motions, in ms */
   at?: number;
 }) {
   const dressed = useHalloweenDressed();

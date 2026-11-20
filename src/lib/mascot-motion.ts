@@ -1,123 +1,36 @@
-import { REST_POSE, type MascotPose, type PoseExtra } from "@/pixel/pose-frame";
 import type { PixelState } from "@/pixel/engine";
 import type { WorkingMood } from "./working-mood";
 
-export type MascotMotionPick = "current" | "a" | "b" | "c";
-export type MascotVariant = Exclude<MascotMotionPick, "current">;
+export type MascotLook = "card" | "voxel";
+export type MascotPace = "calm" | "lively";
+export type MascotVariant = `${MascotLook}-${MascotPace}`;
+export type MascotMotionPick = "current" | MascotVariant;
 
-/** How the chat's working mascot moves: "current" keeps the shipped CSS loops, a/b/c are the lab's frame poses. */
+/** How the chat's working mascot moves: "current" keeps the shipped CSS loops; the others move it in 3D, drawn as a
+ * flat card or as voxels, at a calm or a lively pace. */
 export const MASCOT_MOTION: MascotMotionPick = "current";
 
-/** No two delights (a roll, a flip, a twirl, a jump) start closer than this. */
+/** No two delights (a roll, a barrel roll, a spin, a flip) start closer than this. */
 export const DELIGHT_GAP_MS = 8000;
+/** A change of step glides from wherever the mascot is to the new step's motion over this long. */
+export const BLEND_MS = 380;
 
-type Step = Partial<Omit<MascotPose, "face">> & { ms: number; face?: PixelState };
+/** Where the mascot is at one moment: y in box heights (negative is up), squash as x and y scale about its feet,
+ * rotations in degrees about its middle. */
+export type MascotMotion = { y: number; sx: number; sy: number; rx: number; ry: number; rz: number; face: PixelState; look: number; blink: boolean };
+
+type Delight = "roll" | "barrel" | "spin" | "flip";
+type Pace = { hop: number; sway: number; period: number; every: readonly [number, number]; delights: readonly Delight[] };
+
+const PACES: Record<MascotPace, Pace> = {
+  calm: { hop: 0.1, sway: 1, period: 0.68, every: [10_000, 12_000], delights: ["roll", "spin", "barrel"] },
+  lively: { hop: 0.17, sway: 1.45, period: 0.54, every: [8_000, 10_000], delights: ["roll", "barrel", "spin", "flip"] },
+};
+
+const DELIGHT_MS: Record<Delight, number> = { roll: 950, barrel: 900, spin: 820, flip: 1050 };
+export const delightMs = (kind: Delight): number => DELIGHT_MS[kind];
+
 type Faced = { face: PixelState; ms: number; once?: boolean };
-type Delight = "roll" | "flip" | "twirl" | "jump";
-
-type Plan = {
-  loops: Partial<Record<WorkingMood, readonly Step[]>>;
-  intros: Partial<Record<WorkingMood, readonly Step[]>>;
-  /** gap between delights, [min, max] ms; null never plays one */
-  delightEvery: readonly [number, number] | null;
-  delights: readonly Delight[];
-};
-
-const hop = (h: number, face?: PixelState): Step[] => {
-  const up = Array.from({ length: h }, (_, i) => ({ dy: i + 1, sq: i === 0 ? -1 : 0, ms: 50, face }));
-  return [{ sq: 1, ms: 80, face }, ...up, { dy: h, ms: 70 + h * 15, face }, ...up.slice(0, -1).reverse(), { sq: 1, ms: 90, face }];
-};
-const sparkled = (steps: Step[], from: number): Step[] => steps.map((step, i) => (i >= from && i < from + 3 ? { ...step, extra: (["spark1", "spark2", "spark3"] as const)[i - from] } : step));
-const typing = (ms: number, h: number, sway: boolean): Step[] => [
-  { dy: h, sq: -1, lean: sway ? -1 : 0, ms: ms * 0.25 }, { sq: 1, ms: ms * 0.2 }, { ms: ms * 0.55 },
-  ...(sway ? [{ dy: h, sq: -1, lean: 1, ms: ms * 0.25 }, { sq: 1, ms: ms * 0.2 }, { ms: ms * 0.55 }] : []),
-];
-const peek = (d: number, rise: boolean): Step[] => [
-  { dx: -d, lean: -1, look: -1, sq: rise ? -1 : 0, ms: 1100 }, { look: -1, ms: 300 }, { dx: d, lean: 1, look: 1, sq: rise ? -1 : 0, ms: 1100 }, { look: 1, ms: 300 },
-];
-const taps = (h: number, count: number, rest: number): Step[] => [...Array.from({ length: count }, () => [{ dy: h, ms: 110 }, { sq: 1, ms: 80 }, { ms: 70 }]).flat(), { ms: rest }];
-const droop = (shake: boolean): Step[] => [
-  ...(shake ? [{ dx: -1, ms: 60 }, { dx: 1, ms: 60 }, { dx: -1, ms: 60 }] : []),
-  { sq: 1, ms: 160 }, { sq: 2, lean: -1, ms: 220 }, { sq: 1, lean: -1, ms: 10 },
-];
-
-const PLANS: Record<MascotVariant, Plan> = {
-  a: {
-    loops: {
-      thinking: [{ lean: 1, ms: 1300 }, { lean: 1, sq: 1, ms: 450 }, { lean: 1, ms: 1050 }, { lean: -1, ms: 1300 }, { lean: -1, sq: 1, ms: 450 }, { lean: -1, ms: 1050 }],
-      searching: peek(1, false),
-      browsing: taps(1, 1, 820),
-      running: taps(1, 1, 820),
-      reading: [{ lean: -1, ms: 1400 }, { ms: 200 }, { lean: 1, ms: 1400 }, { ms: 200 }],
-      writing: typing(480, 1, false),
-      replying: typing(480, 1, false),
-      waiting: taps(1, 2, 1500),
-      error: [{ sq: 1, lean: -1, ms: 3600 }, { sq: 2, lean: -1, ms: 400 }],
-      done: [{ ms: 2400 }, { sq: 1, ms: 500 }],
-    },
-    intros: { replying: sparkled(hop(2, "happy"), 2), done: sparkled(hop(2, "happy"), 2), error: droop(false) },
-    delightEvery: null,
-    delights: [],
-  },
-  b: {
-    loops: {
-      thinking: [{ lean: 1, ms: 1100 }, { lean: 1, dy: 1, ms: 120 }, { lean: 1, ms: 1000 }, { lean: 1, sq: 1, ms: 400 }, { lean: -1, ms: 1100 }, { lean: -1, dy: 1, ms: 120 }, { lean: -1, ms: 1000 }, { lean: -1, sq: 1, ms: 400 }],
-      searching: [{ sq: 1, ms: 80 }, ...peek(2, false).slice(0, 2), { sq: 1, ms: 80 }, ...peek(2, false).slice(2)],
-      browsing: taps(1, 2, 700),
-      running: taps(1, 2, 700),
-      reading: [{ lean: -1, ms: 1200 }, { dy: 1, ms: 100 }, { lean: 1, ms: 1200 }, { dy: 1, ms: 100 }],
-      writing: typing(420, 1, true),
-      replying: typing(420, 1, true),
-      waiting: taps(1, 2, 1300),
-      error: [{ sq: 1, lean: -1, ms: 3200 }, { sq: 2, lean: -1, ms: 500 }, { sq: 1, lean: 1, ms: 300 }],
-      done: [{ ms: 1800 }, ...hop(1, "happy")],
-    },
-    intros: { replying: sparkled(hop(3, "happy"), 2), done: sparkled(hop(3, "happy"), 2), error: droop(true) },
-    delightEvery: [9000, 12000],
-    delights: ["roll", "twirl"],
-  },
-  c: {
-    loops: {
-      thinking: [{ lean: 1, ms: 600 }, { ms: 300 }, { lean: -1, ms: 600 }, { ms: 300 }, { lean: 1, dy: 1, ms: 120 }, { lean: 1, ms: 700 }, { sq: 1, ms: 300 }],
-      searching: [{ sq: 1, ms: 80 }, { dy: 1, ms: 80 }, ...peek(2, true).slice(0, 2), { sq: 1, ms: 80 }, { dy: 1, ms: 80 }, ...peek(2, true).slice(2)],
-      browsing: taps(2, 2, 420),
-      running: taps(2, 2, 420),
-      reading: [{ lean: -1, ms: 900 }, { dy: 1, ms: 100 }, { lean: 1, ms: 900 }, { dy: 1, ms: 100 }],
-      writing: [...typing(360, 1, true), ...typing(360, 2, true)],
-      replying: [...typing(360, 1, true), ...typing(360, 2, true)],
-      waiting: taps(2, 3, 1100),
-      error: [{ sq: 1, lean: -1, ms: 2600 }, { sq: 2, lean: -1, ms: 500 }, { sq: 1, lean: 1, ms: 300 }, { sq: 2, ms: 300 }],
-      done: [{ ms: 1400 }, ...hop(2, "happy")],
-    },
-    intros: { replying: sparkled([...hop(4, "happy"), ...hop(2, "happy")], 3), done: sparkled([...hop(4, "happy"), ...hop(2, "happy")], 3), error: droop(true) },
-    delightEvery: [8000, 10000],
-    delights: ["roll", "flip", "twirl", "jump"],
-  },
-};
-
-const ROLL_ANGLES = [45, 90, 135, 180, 225, 270, 315];
-const DELIGHT_STEPS: Record<Delight, readonly Step[]> = {
-  roll: [
-    { sq: 1, ms: 90 }, { sq: 2, ms: 60 },
-    ...ROLL_ANGLES.map((rot, i) => ({ rot, dy: [1, 2, 2, 2, 2, 1, 1][i]!, dx: [0, 1, 1, 2, 2, 1, 1][i]!, eyesOff: rot >= 135 && rot <= 225, ms: 65 })),
-    { sq: 1, ms: 90 }, { face: "happy", ms: 260 },
-  ],
-  flip: [
-    { sq: 2, ms: 110 }, { dy: 1, sq: -1, ms: 50 }, { dy: 2, ms: 50 },
-    ...[-45, -90, -135, -180, -225, -270, -315].map((rot, i) => ({ rot, dy: [3, 4, 4, 4, 4, 3, 2][i]!, eyesOff: rot <= -135 && rot >= -225, ms: 60 })),
-    { dy: 1, ms: 50 }, { sq: 2, ms: 100 }, { sq: 1, face: "happy", ms: 100 }, { face: "happy", ms: 220 },
-  ],
-  twirl: [
-    { sq: 1, ms: 80 }, { dy: 1, narrow: 0.6, ms: 70 }, { dy: 2, narrow: 0.25, eyesOff: true, ms: 70 }, { dy: 2, narrow: 0.6, eyesOff: true, ms: 70 },
-    { dy: 1, narrow: 0.25, eyesOff: true, ms: 70 }, { dy: 1, narrow: 0.6, ms: 70 }, { sq: 1, ms: 90 }, { face: "happy", ms: 260 },
-  ],
-  jump: sparkled([...hop(4, "happy"), { face: "happy", ms: 200 }], 3),
-};
-
-const LOOKING_MOODS = new Set<WorkingMood>(["thinking", "reading", "searching"]);
-const DELIGHT_MOODS = new Set<WorkingMood>(["thinking", "searching", "browsing", "running", "reading", "writing"]);
-
-/** The faces each mood runs through in a/b/c; each holds at least 2 s. */
 const FACES: Record<WorkingMood, readonly Faced[]> = {
   thinking: [{ face: "thinking", ms: 5600 }, { face: "confused", ms: 2200 }],
   reading: [{ face: "working", ms: 3000 }],
@@ -131,8 +44,104 @@ const FACES: Record<WorkingMood, readonly Faced[]> = {
   done: [{ face: "happy", ms: 4000 }],
 };
 
-const total = (steps: readonly { ms: number }[]) => steps.reduce((sum, step) => sum + step.ms, 0);
-export const delightMs = (kind: Delight): number => total(DELIGHT_STEPS[kind]);
+const DELIGHT_MOODS = new Set<WorkingMood>(["thinking", "searching", "browsing", "running", "reading", "writing"]);
+const LOOKING_MOODS = new Set<WorkingMood>(["thinking", "searching", "reading"]);
+const SPIN_HOP_MOODS = new Set<WorkingMood>(["replying", "done"]);
+const SPIN_HOP_MS = 1000;
+
+const TAU = Math.PI * 2;
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const span = (k: number, a: number, b: number) => clamp01((k - a) / (b - a));
+const easeInOut = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2);
+const easeInOutSine = (k: number) => (1 - Math.cos(Math.PI * k)) / 2;
+const arc = (k: number) => 4 * k * (1 - k);
+/** -1..1 that holds at each side and glides between them, one full cycle per `period` */
+const sideToSide = (t: number, period: number) => Math.max(-1, Math.min(1, Math.sin((TAU * t) / period) * 1.6));
+const wrap = (deg: number) => ((((deg + 180) % 360) + 360) % 360) - 180;
+
+const REST: MascotMotion = { y: 0, sx: 1, sy: 1, rx: 0, ry: 0, rz: 0, face: "idle", look: 0, blink: false };
+
+function breathe(m: MascotMotion, t: number, amount = 1): void {
+  const b = Math.sin((TAU * t) / 2.6) * amount;
+  m.sy += 0.025 * b;
+  m.sx -= 0.015 * b;
+}
+
+function hopCycle(m: MascotMotion, t: number, period: number, height: number): void {
+  const u = (t / period) % 1;
+  if (u < 0.6) {
+    const a = u / 0.6;
+    m.y -= height * arc(a);
+    m.sy += 0.07 * Math.sin(Math.PI * a) * (height / 0.15);
+    m.sx -= 0.04 * Math.sin(Math.PI * a) * (height / 0.15);
+  } else {
+    const s = Math.sin((Math.PI * (u - 0.6)) / 0.4) * (height / 0.15);
+    m.sy -= 0.13 * s;
+    m.sx += 0.09 * s;
+  }
+}
+
+/** A one-shot jump that turns `deg` about `axis` in the air: crouch, launch, turn, land with a squash. */
+function jumpTurn(m: MascotMotion, k: number, axis: "rx" | "ry" | "rz", deg: number, height: number): void {
+  const crouch = span(k, 0, 0.14), air = span(k, 0.14, 0.84), land = span(k, 0.84, 1);
+  if (k < 0.14) { m.sy -= 0.14 * Math.sin(Math.PI * crouch); m.sx += 0.08 * Math.sin(Math.PI * crouch); }
+  else if (k < 0.84) { m.y -= height * arc(air); m.sy += 0.08 * Math.sin(Math.PI * air); m.sx -= 0.05 * Math.sin(Math.PI * air); }
+  else { m.sy -= 0.17 * Math.sin(Math.PI * land); m.sx += 0.11 * Math.sin(Math.PI * land); }
+  m[axis] += deg * easeInOutSine(air);
+}
+
+const DELIGHT_MOVES: Record<Delight, (m: MascotMotion, k: number, p: Pace) => void> = {
+  roll: (m, k, p) => jumpTurn(m, k, "rx", -360, p.hop * 1.5),
+  barrel: (m, k, p) => jumpTurn(m, k, "rz", 360, p.hop * 1.4),
+  spin: (m, k, p) => jumpTurn(m, k, "ry", 360, p.hop * 1.1),
+  flip: (m, k, p) => jumpTurn(m, k, "rx", 360, p.hop * 2),
+};
+
+function moodMotion(mood: WorkingMood, t: number, p: Pace, m: MascotMotion): void {
+  const s = p.sway;
+  switch (mood) {
+    case "thinking":
+      breathe(m, t);
+      m.ry += 26 * s * sideToSide(t, 5.2);
+      m.rx += -12 + 3 * Math.sin((TAU * t) / 3.4);
+      break;
+    case "searching":
+      breathe(m, t, 0.6);
+      m.ry += 36 * s * sideToSide(t, 3.4);
+      m.rz += -3 * sideToSide(t, 3.4);
+      break;
+    case "reading":
+      breathe(m, t, 0.6);
+      m.ry += 14 * s * Math.sin((TAU * t) / 2.8);
+      m.rx += 8;
+      break;
+    case "browsing":
+    case "running":
+      hopCycle(m, t, p.period, p.hop);
+      m.ry += 7 * s * Math.sin((TAU * t) / (p.period * 4));
+      m.rx += 6;
+      break;
+    case "writing":
+    case "replying":
+      hopCycle(m, t, p.period * 0.78, p.hop * 0.6);
+      m.rz += 4 * s * Math.sin((TAU * t) / (p.period * 1.56));
+      break;
+    case "waiting":
+      breathe(m, t);
+      m.ry += 10 * s * Math.sin((TAU * t) / 6);
+      break;
+    case "done":
+      breathe(m, t);
+      m.ry += 8 * s * Math.sin((TAU * t) / 4.4);
+      break;
+    case "error":
+      m.sy -= 0.09 - 0.012 * Math.sin((TAU * t) / 3.8);
+      m.sx += 0.05;
+      m.rx += 10;
+      m.rz += -7 + 2.5 * Math.sin((TAU * t) / 4.6);
+      break;
+  }
+}
 
 function stepAt<T extends { ms: number }>(steps: readonly T[], t: number): T {
   let left = t;
@@ -140,11 +149,10 @@ function stepAt<T extends { ms: number }>(steps: readonly T[], t: number): T {
   return steps[steps.length - 1]!;
 }
 
-function faceAt(mood: WorkingMood, t: number): Faced {
-  const faces = FACES[mood];
-  const once = faces.filter((face) => face.once), loop = faces.filter((face) => !face.once);
-  const head = total(once);
-  return t < head ? stepAt(once, t) : stepAt(loop, (t - head) % total(loop));
+function faceAt(mood: WorkingMood, ms: number): PixelState {
+  const all = FACES[mood], once = all.filter((f) => f.once), loop = all.filter((f) => !f.once);
+  const head = once.reduce((sum, f) => sum + f.ms, 0), cycle = loop.reduce((sum, f) => sum + f.ms, 0);
+  return (ms < head ? stepAt(once, ms) : stepAt(loop, (ms - head) % cycle)).face;
 }
 
 function rngOf(seed: string): () => number {
@@ -153,79 +161,85 @@ function rngOf(seed: string): () => number {
   return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-const THINK_DOTS: readonly { extra: PoseExtra | null; ms: number }[] = [{ extra: null, ms: 500 }, { extra: "dots1", ms: 400 }, { extra: "dots2", ms: 400 }, { extra: "dots3", ms: 900 }, { extra: null, ms: 300 }];
-const REDUCED_POSE: Partial<Record<WorkingMood, Partial<MascotPose>>> = { error: { sq: 1 } };
+const REDUCED: Partial<Record<WorkingMood, Partial<MascotMotion>>> = { error: { sy: 0.92, sx: 1.04, rz: -6 }, thinking: { rx: -8 } };
 
-/** One mascot's choreography: feed it the mood as it changes and ask for the pose at each moment, times never going
- * back. Delights start at least DELIGHT_GAP_MS apart (first one no sooner than that after the start) and never the same
- * kind twice in a row; under reduced motion it holds one pose per mood. */
+/** One mascot's motion as a function of time: feed it the mood as it changes and ask where it is at each moment, times
+ * never going back. A change of mood glides over BLEND_MS from wherever it was, even mid-roll; delights start at least
+ * DELIGHT_GAP_MS apart, the first no sooner than that, never the same kind twice running and never while it waits,
+ * fails or is done. Under reduced motion it holds one still pose per mood. */
 export class MascotDirector {
   readonly variant: MascotVariant;
-  private readonly plan: Plan;
-  private readonly rng: () => number;
   readonly reducedMotion: boolean;
+  private readonly pace: Pace;
+  private readonly rng: () => number;
   private readonly blinkEvery: number;
   private mood: WorkingMood = "thinking";
-  private moodAt = 0;
+  private moodAt: number;
+  private from: { at: number; gap: Omit<MascotMotion, "face" | "look" | "blink"> } | null = null;
   private nextDelight: number;
   private delight: { kind: Delight; at: number } | null = null;
   private lastKind: Delight | null = null;
-  private look = 0;
-  /** start times of every delight played, for tests and the lab */
+  /** every delight played, for tests and the lab */
   readonly played: Array<{ kind: Delight; at: number }> = [];
 
   constructor({ variant, seed = "", reduced = false, at = 0 }: { variant: MascotVariant; seed?: string; reduced?: boolean; at?: number }) {
     this.variant = variant;
-    this.plan = PLANS[variant];
-    this.rng = rngOf(`${variant}|${seed}`);
     this.reducedMotion = reduced;
+    this.pace = PACES[variant.endsWith("lively") ? "lively" : "calm"];
+    this.rng = rngOf(`${variant}|${seed}`);
     this.blinkEvery = 3400 + Math.floor(this.rng() * 1400);
     this.moodAt = at;
     this.nextDelight = at + this.gap();
   }
 
   private gap(): number {
-    const every = this.plan.delightEvery;
-    return every ? Math.max(DELIGHT_GAP_MS, every[0] + this.rng() * (every[1] - every[0])) : Infinity;
+    const [lo, hi] = this.pace.every;
+    return Math.max(DELIGHT_GAP_MS, lo + this.rng() * (hi - lo));
   }
 
   setMood(mood: WorkingMood, at: number): void {
     if (mood === this.mood) return;
+    const was = this.reducedMotion ? null : this.motion(at);
     this.mood = mood;
     this.moodAt = at;
-    if (this.delight && !DELIGHT_MOODS.has(mood)) this.delight = null;
+    if (this.delight && (!DELIGHT_MOODS.has(mood) || SPIN_HOP_MOODS.has(mood))) this.delight = null;
+    if (!was) return;
+    const next = this.live(at);
+    this.from = { at, gap: { y: was.y - next.y, sx: was.sx - next.sx, sy: was.sy - next.sy, rx: wrap(was.rx - next.rx), ry: wrap(was.ry - next.ry), rz: wrap(was.rz - next.rz) } };
   }
 
-  private startDelight(at: number): void {
-    const pool = this.plan.delights.filter((kind) => kind !== this.lastKind);
-    const kind = pool[Math.floor(this.rng() * pool.length)]!;
-    this.delight = { kind, at };
-    this.lastKind = kind;
-    this.played.push({ kind, at });
-    this.nextDelight = at + this.gap();
-  }
-
-  pose(at: number): MascotPose {
-    const mood = this.mood, t = Math.max(0, at - this.moodAt);
-    const faced = this.reducedMotion ? FACES[mood].find((face) => !face.once)! : faceAt(mood, t);
-    const base: MascotPose = { ...REST_POSE, face: faced.face };
-    if (this.reducedMotion) return { ...base, ...REDUCED_POSE[mood] };
-    const intro = this.plan.intros[mood];
-    const introMs = intro ? total(intro) : 0;
-    let step: Step;
-    if (intro && t < introMs) step = stepAt(intro, t);
-    else {
-      if (this.delight && at - this.delight.at >= delightMs(this.delight.kind)) this.delight = null;
-      if (!this.delight && at >= this.nextDelight && DELIGHT_MOODS.has(mood)) this.startDelight(at);
-      const loop = this.plan.loops[mood] ?? [{ ms: 1000 }];
-      step = this.delight ? stepAt(DELIGHT_STEPS[this.delight.kind], at - this.delight.at) : stepAt(loop, (t - introMs) % total(loop));
+  private live(at: number): MascotMotion {
+    const mood = this.mood, ms = Math.max(0, at - this.moodAt), t = ms / 1000;
+    const m: MascotMotion = { ...REST, face: faceAt(mood, ms) };
+    if (this.delight && at - this.delight.at >= DELIGHT_MS[this.delight.kind]) this.delight = null;
+    if (!this.delight && at >= this.nextDelight && DELIGHT_MOODS.has(mood)) {
+      const pool = this.pace.delights.filter((kind) => kind !== this.lastKind);
+      const kind = pool[Math.floor(this.rng() * pool.length)]!;
+      this.delight = { kind, at };
+      this.lastKind = kind;
+      this.played.push({ kind, at });
+      this.nextDelight = at + this.gap();
     }
-    const { ms: _ms, face, ...moves } = step;
-    if (LOOKING_MOODS.has(mood) && (moves.look || moves.lean)) this.look = moves.look || Math.sign(moves.lean!);
-    const pose: MascotPose = { ...base, ...moves, face: face ?? base.face, look: LOOKING_MOODS.has(mood) && !this.delight ? this.look : 0 };
-    if (!this.delight && mood === "thinking" && pose.extra === null) pose.extra = stepAt(THINK_DOTS, t % total(THINK_DOTS)).extra;
-    const blinkMs = mood === "thinking" ? 220 : 120;
-    pose.blink = !this.delight && pose.face !== "happy" && pose.face !== "sad" && at % this.blinkEvery < blinkMs;
-    return pose;
+    moodMotion(mood, t, this.pace, m);
+    if (SPIN_HOP_MOODS.has(mood) && ms < SPIN_HOP_MS) jumpTurn(m, ms / SPIN_HOP_MS, "ry", 360, this.pace.hop * 1.6);
+    if (this.delight) {
+      DELIGHT_MOVES[this.delight.kind](m, (at - this.delight.at) / DELIGHT_MS[this.delight.kind], this.pace);
+      m.face = "happy";
+    }
+    m.look = LOOKING_MOODS.has(mood) && Math.abs(m.ry) > 8 ? Math.sign(m.ry) : 0;
+    m.blink = !this.delight && m.face !== "happy" && m.face !== "sad" && at % this.blinkEvery < (mood === "thinking" ? 200 : 120);
+    return m;
+  }
+
+  motion(at: number): MascotMotion {
+    if (this.reducedMotion) {
+      const face = FACES[this.mood].find((f) => !f.once)!.face;
+      return { ...REST, face, ...REDUCED[this.mood] };
+    }
+    const now = this.live(at);
+    const from = this.from;
+    if (!from || at - from.at >= BLEND_MS) { this.from = null; return now; }
+    const left = 1 - easeInOut(clamp01((at - from.at) / BLEND_MS)), gap = from.gap;
+    return { ...now, y: now.y + gap.y * left, sx: now.sx + gap.sx * left, sy: now.sy + gap.sy * left, rx: now.rx + gap.rx * left, ry: now.ry + gap.ry * left, rz: now.rz + gap.rz * left };
   }
 }
