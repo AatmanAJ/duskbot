@@ -3,7 +3,7 @@ import type { JobRecord } from "./supervisor.ts";
 
 /** The line every bot's prompt carries about background jobs. */
 export function backgroundJobsPrompt(): string {
-  return " You have your own computer that keeps working after this turn: to watch or monitor something and tell the person when it happens (\"watch my Telegram group\", \"let me know when…\") and a plain wait_until or app event can't see it, start a background job (background_job; for Telegram the ready template telegram_watch) instead of a routine that checks every few minutes, and never say you can't run a workflow.";
+  return " Watching something over time is yours to set up, never a reason to say you can't monitor: what you can poll on a schedule (a page, a price, a feed, a script's output) is a schedule with a check, which runs no AI until something changed; a background job (background_job; for Telegram the ready template telegram_watch) only for a live source that pushes (a Telegram or Discord bot, a websocket, a stream) or checks under a minute apart. A \"tell me when\" or \"every time\" watch keeps running after it reports, unless they asked for one alert.";
 }
 
 export const DEFAULT_ON_NOTIFY = "Tell the person what happened in one or two lines if it matters to them; otherwise reply NOTHING NEW.";
