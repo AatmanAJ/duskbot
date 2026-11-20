@@ -1,11 +1,11 @@
-// "Bring what you already use". The first run's bring step is the prompt for AIs online alone (BringPrompt): copy it,
-// paste it there, and its answer comes in when it is pasted or dropped into any chat, or saved to Downloads. Settings'
-// import page (BringIn) adds what this computer holds above it: the one app that knows this person, then the rest.
+// "Bring what you already use": what this computer holds (the one app that knows this person, then the rest), each with
+// its own Bring in, and the prompt for AIs online below it (BringPrompt): copy it, paste it there, and its answer comes in
+// when it is pasted or dropped into any chat, or saved to Downloads.
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Check, CircleAlert, Copy, ChevronDown } from "../icons";
 import { cn } from "@/lib/cn";
-import { activeLocale, t } from "@/lib/i18n";
-import { copyNotesPrompt, looksLikeNotes, notesInFiles } from "@/lib/assistant-notes";
+import { t } from "@/lib/i18n";
+import { copyNotesPrompt, looksLikeIntake, notesInFiles } from "@/lib/assistant-notes";
 import { NOTES_PROMPT } from "../../shared/assistant-notes";
 import { amountLine, bringFocus, broughtIds, knowsLine, memorySource, type BringRun, type LocalFind } from "@/lib/first-run-import";
 import { MausAvatar } from "./Avatar";
@@ -29,8 +29,6 @@ function FindMark({ find, size = 18 }: { find: LocalFind; size?: number }) {
   return <PixelIcon name="laptop" size={size} />;
 }
 
-const listFormat = (parts: string[]) => new Intl.ListFormat(activeLocale(), { style: "long", type: "conjunction" }).format(parts);
-
 type RowState = "idle" | "working" | "done";
 
 /** "18 notes about you and 12 skills. Used on 4 of the last 30 days.": what it holds and how much it is really used. */
@@ -40,13 +38,12 @@ function lineFor(find: LocalFind): string {
 }
 
 const ROW_BUTTON = "ui-button ui-button-pill min-h-9 shrink-0 gap-1.5 px-3.5 text-[13px] transition-[background-color,transform] duration-150 ease-[ease] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100";
-const PRIMARY_BUTTON = "ui-button ui-button-pill ui-button-primary min-h-10 gap-1.5 px-4 text-[14px] transition-[background-color,transform] duration-150 ease-[ease] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60 motion-reduce:transition-none motion-reduce:active:scale-100";
+const PRIMARY_BUTTON = "ui-button ui-button-pill ui-button-primary h-8 min-h-8 gap-1.5 px-3.5 py-0 text-[13px] transition-[background-color,transform] duration-150 ease-[ease] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60 motion-reduce:transition-none motion-reduce:active:scale-100";
 
 /** The one app that knows this person, said as a person would: it already knows you; bring what it's learned. Its bots,
  * skills and tools come along quietly; only the memory is offered. */
 function MemorySource({ find, state, busy, said, onImport }: { find: LocalFind; state: RowState; busy: boolean; said: string | null; onImport: () => void }) {
   const done = state === "done";
-  const days = Math.min(find.activeDays ?? 0, 30);
   return (
     <div data-bring-find={find.id} data-bring-hero="" data-bring-state={state} className="flex flex-col gap-4 rounded-[20px] bg-ink/[0.035] p-5 text-start">
       <div className="flex min-w-0 items-start gap-3.5">
@@ -58,10 +55,7 @@ function MemorySource({ find, state, busy, said, onImport }: { find: LocalFind; 
               <Check size={15} aria-hidden="true" className="mt-[3px] shrink-0" />{said ?? t("bring.imported")}
             </span>
           ) : (
-            <>
-              <span data-bring-topics="" className="text-pretty text-[14px] leading-5 text-ink-secondary">{knowsLine(find)}</span>
-              <span className="mt-1 text-[13px] leading-[18px] text-ink-tertiary">{t("bring.usedDays", { count: days })}</span>
-            </>
+            <span data-bring-topics="" className="text-pretty text-[14px] leading-5 text-ink-secondary">{knowsLine(find)}</span>
           )}
         </span>
       </div>
@@ -147,10 +141,10 @@ function How({ n, children }: { n: number; children: ReactNode }) {
   );
 }
 
-/** For AIs that live online (Grok bot, ChatGPT, Claude, Gemini): three steps around a prompt to copy. Its answer comes
+/** For AIs that live online (ChatGPT, Claude, Gemini, any other): three steps around a prompt to copy. Its answer comes
  * in when it is pasted or dropped here or into any chat, or saved to Downloads; the first bot's chat waits for it.
  * `folded`: below this computer's finds (Settings), it is one quiet line until asked for. */
-export function BringPrompt({ grokWaiting, folded = false }: { grokWaiting: readonly string[]; folded?: boolean }) {
+export function BringPrompt({ folded = false, titled = false }: { folded?: boolean; titled?: boolean }) {
   const promptId = useId();
   const notes = useNotesHere();
   const [copy, setCopy] = useState<"idle" | "copied" | "failed">("idle");
@@ -190,17 +184,11 @@ export function BringPrompt({ grokWaiting, folded = false }: { grokWaiting: read
           </pre>
         </div>
       </div>
-      {grokWaiting.length > 0 && (
-        <p data-bring-grok="" className="mb-0 mt-3 ps-9 text-pretty text-[12px] leading-4 text-ink-tertiary">
-          {t("bring.grokLine", { names: listFormat([...grokWaiting]) })}{" "}
-          <button type="button" data-bring-grok-copy="" onClick={() => void copyPrompt()} className="rounded text-ink-secondary underline decoration-ink/25 underline-offset-2 hover:text-ink hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">{t("bring.grokCopy")}</button>
-        </p>
-      )}
     </div>
   );
 
   return (
-    <section data-bring-prompt="" data-bring-drop={notes.over ? "over" : undefined} aria-labelledby={`${promptId}-label`} className={cn("w-full text-start", folded && "mt-5")}>
+    <section data-bring-prompt="" data-bring-drop={notes.over ? "over" : undefined} aria-labelledby={`${promptId}-label`} className={cn("w-full text-start", (folded || titled) && "mt-5")}>
       {folded ? (
         <h2 className="m-0">
           <button type="button" id={`${promptId}-label`} data-bring-online="" aria-expanded={unfolded} aria-controls={`${promptId}-steps`} onClick={() => setUnfolded((was) => !was)}
@@ -209,7 +197,7 @@ export function BringPrompt({ grokWaiting, folded = false }: { grokWaiting: read
             <ChevronDown size={14} aria-hidden="true" className={cn("shrink-0 transition-transform duration-200 ease-[var(--dusk-ease-out)] motion-reduce:transition-none", unfolded && "rotate-180")} />
           </button>
         </h2>
-      ) : <h2 id={`${promptId}-label`} className="sr-only">{t("bring.onlineLabel")}</h2>}
+      ) : <h2 id={`${promptId}-label`} className={titled ? "m-0 mb-2 px-1 text-[12px] font-normal leading-4 text-ink-tertiary" : "sr-only"}>{t("bring.onlineLabel")}</h2>}
       <div id={`${promptId}-steps`} inert={!shown} className={cn("grid transition-[grid-template-rows,opacity] duration-[240ms] ease-[var(--dusk-ease-out)] motion-reduce:transition-none", shown ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
         <div className={cn("min-h-0 overflow-hidden", folded && "pt-1")}>{steps}</div>
       </div>
@@ -230,7 +218,7 @@ function useNotesHere(): { said: { line: string; state: "working" | "done" | "fa
     let depth = 0;
     const paste = (event: ClipboardEvent) => {
       const pasted = event.clipboardData?.getData("text/plain") ?? "";
-      if (!looksLikeNotes(pasted)) return;
+      if (!looksLikeIntake(pasted)) return;
       event.preventDefault();
       event.stopPropagation();
       takeNotes(pasted, say, "paste");
@@ -250,7 +238,7 @@ function useNotesHere(): { said: { line: string; state: "working" | "done" | "fa
       depth = 0;
       setOver(false);
       void notesInFiles(Array.from(event.dataTransfer?.files ?? [])).then((notes) => {
-        if (notes) takeNotes(notes.text, say, "drop");
+        if (notes) takeNotes(notes.text, say, "drop", null, notes.names.join(", "));
         else say(t("composer.notes.error.notExport"), "failed");
       });
     };
@@ -263,22 +251,37 @@ function useNotesHere(): { said: { line: string; state: "working" | "done" | "fa
   return { said, over };
 }
 
-/** Settings' import page: what this computer holds, each with its own Bring in, and the prompt for AIs online below. */
-export function BringIn({ finds, choice, grokWaiting, run, onImport }: {
+const STEP_SHOWN = 3;
+
+/** Up front in the first run: the finds used lately and holding enough, else (with no app that knows the person) the
+ * first few; the rest wait behind Show more. */
+function upFront(others: readonly LocalFind[], source: LocalFind | null): LocalFind[] {
+  const strong = others.filter((find) => find.strong).slice(0, STEP_SHOWN);
+  return strong.length || source ? strong : others.slice(0, STEP_SHOWN);
+}
+
+/** What this computer holds, each with its own Bring in, and the prompt for AIs online below. `step`: the first run's
+ * bring step, where only the strongest finds show until Show more and the prompt stays open under its own label;
+ * Settings lists every find and folds the prompt to one line. */
+export function BringIn({ finds, choice, run, onImport, step = false, lead }: {
   /** null while still looking. */
   finds: readonly LocalFind[] | null;
   choice: BringChoice;
-  /** Grok bot's bots on this computer with nothing saved yet, by name: they move through the prompt, like an AI online. */
-  grokWaiting: readonly string[];
   /** The bringing in, once started (useBringRun). */
   run: BringRun;
   /** One app's own Bring in. */
   onImport?: (find: LocalFind) => void;
+  step?: boolean;
+  /** Above everything else here: the Grok Bot card (GrokMoveCard). */
+  lead?: ReactNode;
 }) {
   const brought = broughtIds(run);
   const busy = run.kind === "working";
   const rowState = (find: LocalFind): RowState => brought.includes(find.id) ? "done" : busy && run.ids.includes(find.id) ? "working" : "idle";
   const { source, others, found } = choice;
+  const [all, setAll] = useState(!step);
+  const front = all ? others : upFront(others, source);
+  const hidden = others.length - front.length;
   // the last bringing in was the source's own: it says how it went where the person is looking
   const [sourceLast, setSourceLast] = useState(false);
   const said = run.kind === "done" && sourceLast
@@ -287,6 +290,7 @@ export function BringIn({ finds, choice, grokWaiting, run, onImport }: {
 
   return (
     <div data-bring-in="" className="w-full">
+      {lead}
       {finds === null && <p role="status" data-bring-looking="" className="mb-6 text-[13px] leading-[18px] text-ink-tertiary">{t("bring.looking")}</p>}
       {source && (
         <MemorySource find={source} state={rowState(source)} busy={busy} said={said}
@@ -294,14 +298,21 @@ export function BringIn({ finds, choice, grokWaiting, run, onImport }: {
       )}
       {others.length > 0 && (
         <section aria-labelledby="bring-others" className="mt-5 w-full text-start">
-          <h2 id="bring-others" className="m-0 mb-1 px-1 text-[12px] font-normal leading-4 text-ink-tertiary">{t("bring.alsoHere")}</h2>
+          <h2 id="bring-others" className="m-0 mb-1 px-1 text-[12px] font-normal leading-4 text-ink-tertiary">{source ? t("bring.alsoHere") : t("bring.onThis")}</h2>
           <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
-            {others.map((find) => <FindRow key={find.id} find={find} state={rowState(find)} busy={busy} onImport={() => { setSourceLast(false); onImport?.(find); }} />)}
+            {front.map((find) => <FindRow key={find.id} find={find} state={rowState(find)} busy={busy} onImport={() => { setSourceLast(false); onImport?.(find); }} />)}
           </ul>
+          {hidden > 0 && (
+            <button type="button" data-bring-more="" onClick={() => setAll(true)}
+              className="ms-2 mt-1 flex min-h-9 items-center gap-1 rounded-full px-2 text-[13px] leading-[18px] text-ink-tertiary transition-colors duration-150 ease-[ease] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none">
+              <span>{t("bring.showMore", { count: hidden })}</span>
+              <ChevronDown size={14} aria-hidden="true" />
+            </button>
+          )}
           {!sourceLast && run.kind !== "idle" && <RunLine run={run} />}
         </section>
       )}
-      {finds !== null && <BringPrompt grokWaiting={grokWaiting} folded={found} />}
+      {(finds !== null || step) && <BringPrompt folded={found && !step} titled={found && step} />}
     </div>
   );
 }

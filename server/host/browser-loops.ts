@@ -26,7 +26,7 @@ const NOTE: Record<BrowserBlocker["kind"], string> = {
 
 export interface BrowserStop { threadId: string; blocker: BrowserBlocker; cause: string }
 
-interface Thread { lastKey: string | null; unchanged: number; site: string | null; final: Map<string, BrowserBlocker["kind"]> }
+interface Thread { lastKey: string | null; unchanged: number; site: string | null; final: Map<string, BrowserBlocker["kind"]>; slowed: Set<string> }
 
 type Result = { isError?: boolean; content?: Array<{ type: string; text?: string }> };
 
@@ -45,11 +45,21 @@ export function terminalKind(text: string): BrowserBlocker["kind"] | null {
   return kind === "blocked" && text.length > BLOCK_PAGE_MAX ? null : kind;
 }
 
+const RATE_LIMITED = /\brate[- ]limit(?:ed|s)?\b|\btoo many requests\b|\btry again later\b|\bover the (?:daily )?limit\b|\b(?:sending|posting) (?:messages )?too (?:fast|quickly)\b|\bslow down\b/i;
+
+/** A site saying "too fast, try later": the action result names it, or a short page does. */
+export function rateLimited(name: string, text: string): boolean {
+  return RATE_LIMITED.test(text) && (ACTIONS.has(name) || text.length <= BLOCK_PAGE_MAX);
+}
+
+const rateNote = (site: string) =>
+  `dusk bot note: ${site} says to slow down or try again later. Do not retry this right away. If you are working through a checklist, call checklist pause with the minutes the site asked for (15 if it does not say) and end your turn: dusk bot carries on with the rest after the pause. Otherwise tell the person in one line.`;
+
 export function createBrowserLoops(deps: { stop(stop: BrowserStop): void }) {
   const threads = new Map<string, Thread>();
   const thread = (id: string): Thread => {
     let current = threads.get(id);
-    if (!current) threads.set(id, current = { lastKey: null, unchanged: 0, site: null, final: new Map() });
+    if (!current) threads.set(id, current = { lastKey: null, unchanged: 0, site: null, final: new Map(), slowed: new Set() });
     if (threads.size > 500) threads.delete(threads.keys().next().value!);
     return current;
   };
@@ -86,6 +96,10 @@ export function createBrowserLoops(deps: { stop(stop: BrowserStop): void }) {
         state.unchanged = 0;
       }
       const kind = terminalKind(text);
+      if (!kind && state.site && !state.slowed.has(state.site) && rateLimited(name, text)) {
+        state.slowed.add(state.site);
+        return { ...result, content: [...(result.content ?? []), { type: "text", text: rateNote(state.site) }] };
+      }
       if (!kind || !state.site || told) return result;
       state.final.set(state.site, kind);
       return { ...result, content: [...(result.content ?? []), { type: "text", text: `dusk bot note: on ${state.site}, ${NOTE[kind]}. That is final: do not retry it, a variation of it, or this site in this turn. Tell the person what happened and what they can do.` }] };

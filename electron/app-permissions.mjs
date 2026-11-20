@@ -73,10 +73,10 @@ export function remoteClipboardWriteAllowed(permission, requestingUrlOrOrigin, a
  *   homeOrigin?: () => string | null }} context
  *   Every getter is read per request, so a sign-out or server switch withdraws access at once. `homeOrigin`: My Cloud
  *   once the person's bots moved there (home-window.mjs), whose page alone may show notifications besides this
- *   computer's and the active remote server's.
+ *   computer's and the active remote server's. `systemNotifications`: false on a Mac, where no page may post one.
  */
 export function appPermissionHandlers({ rendererOrigin, mainContents, cloudHomeOrigin, cloudHomeRestoring = () => null, activeRemoteOrigin = () => null,
-  activeRemoteMicrophone = () => false, askRemoteMicrophone = () => null, homeOrigin = () => null }) {
+  activeRemoteMicrophone = () => false, askRemoteMicrophone = () => null, homeOrigin = () => null, systemNotifications = true }) {
   // Notifications for the main window's main frame on `origin`: My Cloud as home, or the remote server the person
   // switched to (Settings → Notifications there has no browser site settings to fall back on).
   // Fullscreen too, so a chat video's own fullscreen button works there (it still needs the person's click).
@@ -93,13 +93,13 @@ export function appPermissionHandlers({ rendererOrigin, mainContents, cloudHomeO
     Boolean(contents) && contents === mainContents() &&
     (remoteClipboardWriteAllowed(permission, requesting, activeRemoteOrigin(), details) ||
       remoteClipboardWriteAllowed(permission, requesting, cloudHomeOrigin(), details));
-  const allowed = (contents, permission, requesting, details) =>
+  const allowed = (contents, permission, requesting, details) => (permission !== "notifications" || systemNotifications) && (
     appPermissionAllowed(permission, requesting, rendererOrigin(), details) ||
     (asksAsCloud(contents, permission, requesting, details) && mainFrameMicrophoneAllowed(permission, requesting, cloudHomeOrigin(), details)) ||
     (asksAsRemote(contents, permission, requesting, details) && activeRemoteMicrophone() === true) ||
     clipboardWrite(contents, permission, requesting, details) ||
     notifiesAs(homeOrigin(), contents, permission, requesting, details) ||
-    notifiesAs(activeRemoteOrigin(), contents, permission, requesting, details);
+    notifiesAs(activeRemoteOrigin(), contents, permission, requesting, details));
   return {
     // Only a request may wait (Electron answers through the callback); the rule runs again after any wait.
     request: (contents, permission, callback, details) => {
@@ -130,6 +130,21 @@ export function appPermissionHandlers({ rendererOrigin, mainContents, cloudHomeO
 // Both explicit IPC links and window.open use this one policy: a web link, or an email draft the person sends themselves.
 export function externalLinkUrl(rawUrl) {
   return typeof rawUrl === "string" && /^\s*mailto:/i.test(rawUrl) ? emailDraftUrl(rawUrl) : externalWebUrl(rawUrl);
+}
+
+/** Grok Bot 1.1's prompt link (grokbot://app/v1/prompt?id=<bot>&text=<one line>) opens that bot with the text typed in an
+ * empty message box and never sends it. Its parser drops a link that breaks its rules, so only that exact shape passes:
+ * the text as encodeURIComponent writes it, so no second parameter can ride along. */
+const GROK_PROMPT_LINK = /^grokbot:\/\/app\/v1\/prompt\?id=[A-Za-z0-9_-]{1,128}&text=[A-Za-z0-9\-_.!~*'()%]{1,1900}$/;
+
+export function grokPromptLink(rawUrl) {
+  return typeof rawUrl === "string" && rawUrl.length <= 2048 && GROK_PROMPT_LINK.test(rawUrl) && !/[#\\]/.test(rawUrl) ? rawUrl : null;
+}
+
+/** The app's own pages (the desktop:open-external bridge, owner pages only): the shared policy, plus Grok Bot's prompt
+ * link for "Move from Grok Bot". Security: never window.open, so no page in the window can drive Grok Bot. */
+export function ownExternalLinkUrl(rawUrl) {
+  return grokPromptLink(rawUrl) ?? externalLinkUrl(rawUrl);
 }
 
 export function externalWebUrl(rawUrl) {

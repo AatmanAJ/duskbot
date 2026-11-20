@@ -122,6 +122,25 @@ describe("browser stream video", () => {
     expect(codecOf(FakeSocket.all.at(-1)!)).toBeNull();
   });
 
+  it("a browser on this machine streams sharp JPEG, never the network's 1x video", async () => {
+    FakeDecoder.isConfigSupported.mockClear();
+    for (const host of ["127.0.0.1:7317", "localhost:7317"]) {
+      const local = { ...target, access: browserStreamAccess("pepper", { protocol: "http:", host }) };
+      const client = createPreviewStreamClient(local, events());
+      await flush();
+      const url = new URL(FakeSocket.all.at(-1)!.url);
+      expect(url.searchParams.get("codec")).toBeNull();
+      expect(url.searchParams.get("quality")).toBe("90");
+      client.stop();
+    }
+    expect(FakeDecoder.isConfigSupported).not.toHaveBeenCalled();
+    // a server on another machine keeps the video and the server's own JPEG quality
+    const remote = createPreviewStreamClient(target, events());
+    await flush();
+    expect(new URL(FakeSocket.all.at(-1)!.url).searchParams.get("quality")).toBeNull();
+    remote.stop();
+  });
+
   it("keeps JPEG frames from a server that answers jpeg, or that never answers (an old server)", () => {
     resetH264Support(true);
     for (const answer of [JSON.stringify({ type: "encoding", encoding: "jpeg" }), null]) {

@@ -8,6 +8,7 @@ import { openSignIn } from "@/lib/sign-in-sheet";
 
 import { nextShortcutBot, shortcutBots, shownBotIds } from "@/lib/sidebar-shortcut-order";
 import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
+import { LateCloudPlan } from "@/components/onboarding/LateCloudPlan";
 import { IslandIntroHost } from "@/components/onboarding/IslandIntroHost";
 import { CloudTimeZoneSync } from "@/components/CloudTimeZone";
 import { useWarmChatImages } from "@/components/use-warm-chat-images";
@@ -51,6 +52,7 @@ import { useTeamChats } from "@/state/team-chats";
 import { needsYouVersion, useTeamPeopleLoader } from "@/state/team-people";
 import { inboxVersion, useInboxLoader, useInboxPanel, useInboxReady } from "@/state/inbox";
 import { InboxPanel } from "@/components/inbox/InboxPanel";
+import { InboxColumn } from "@/components/inbox/InboxColumn";
 import { PlacesRail } from "@/components/PlacesRail";
 import { CloudHowTo } from "@/components/CloudHowTo";
 import { DesktopCapabilitiesProvider, useCaptionChrome, useDesktopCapabilities, windowFramed } from "@/components/DesktopCapabilities";
@@ -81,6 +83,7 @@ import { useDesktopNotificationOpens, useExternalChatLinks } from "@/hooks/use-e
 import { useReadShownChatOnFocus } from "@/hooks/use-read-shown-chat";
 import { usePresence } from "@/hooks/use-presence";
 import { useComputerPanelActivity } from "@/hooks/use-computer-panel-activity";
+import { useBrowserPanelReveal } from "@/hooks/use-browser-panel-reveal";
 import { AppEmptyMain } from "@/components/AppEmptyMain";
 import { BootCover } from "@/components/BootCover";
 import { t } from "@/lib/i18n";
@@ -89,9 +92,12 @@ import { useAiSwitchKeeper } from "@/lib/ai-switch";
 import { SESSION_ENDED_REASON, useSessionEnded } from "@/lib/session-ended";
 import { PairPage } from "./pair/PairPage";
 import { FeedbackHost } from "./components/FeedbackDialog";
+import { GrokMoveHost } from "./components/grok-move/GrokMoveDialog";
+import { useDesktopOutbox } from "./state/desktop-outbox";
 
 function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const { state, dispatch } = useStore();
+  useDesktopOutbox();
   useCloudLastSeen(state);
   useHeldSend(state, dispatch);
   useTeamChats(state.config);
@@ -167,6 +173,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const macFrom = useMacEmpty();
   const [macPrompt, dismissMacPrompt] = useMacEmptyPrompt(macFrom);
   useProductScreen(state.appSettingsOpen ? "/settings" : state.pluginsOpen ? "/apps" : group ? "/rooms/:id" : bot ? (state.activeView === "files" ? "/bots/:id/files" : "/bots/:id") : "/", group?.id ?? bot?.id);
+  useBrowserPanelReveal({ bot, active: state.activeView === "chat", panel: state.settingsOpen ? state.botSettingsSection ?? null : null, dispatch });
   useComputerPanelActivity({ bot, active: state.activeView === "chat", settingsOpen: state.settingsOpen, targetKey: `${bot?.vpsAlias}:${bot?.section}:${state.config?.vps?.sshAlias}:${state.config?.vps?.mode}:${state.config?.vps?.independentScreens}`, dispatch });
   const roomPanelOpen = useRoomPanelShown({ group, state, simple: !remoteClient });
   // The sidebar only folds when the person folds it: a side panel opening beside it never collapses it, as in Grok Bot.
@@ -294,6 +301,10 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   }, [dispatch]);
 
   const settingsOverlay = !botPanelDocks;
+  const overlayBot = state.settingsOpen && bot && !remoteClient && settingsOverlay ? bot : null;
+  const overlayBefore = useRef(false);
+  const overlaySlidesIn = !overlayBefore.current;
+  useEffect(() => { overlayBefore.current = overlayBot !== null; });
   // a reload with the panel open keeps its column from the first frame, not only once the bots arrive
   const panelLoading = state.settingsOpen && !bot && !group && state.hydrated !== true && !remoteClient && !settingsOverlay;
   const framed = windowFramed(capabilities);
@@ -302,7 +313,6 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
     <LiveConnectionStrip connected={state.connected} hydrated={state.hydrated === true} />
     <CloudSendStrip cloudHome={state.config?.cloudHome === true} />
     <HomeLine />
-    <CloudMoveOffer cloudHome={state.config?.cloudHome === true} />
     <AppNotices quiet={paletteOpen || drawerOpen} viewer={viewer} />
     <RoutineCloudUpsell quiet={paletteOpen || drawerOpen || Boolean(firstRun)} />
     <EgressFallbackNotice />
@@ -353,21 +363,23 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       ) : (
         <AppEmptyMain loading={loading} notice={state.notice} />
       )}
-      {macPrompt && macFrom && !firstRun && !noEngines && <MacEmptyMain from={macFrom} onClose={dismissMacPrompt} />}
+      <AnimatePresence>{macPrompt && macFrom && !firstRun && !noEngines && <MacEmptyMain key="mac-empty-main" from={macFrom} onClose={dismissMacPrompt} />}</AnimatePresence>
       {/* Sibling panels need distinct keys: two keyed `bot.id` collide in React's keyed reconciliation. */}
       {state.settingsOpen && bot && remoteClient && <RemoteAgentSettingsPanel bot={bot} />}
-      {state.settingsOpen && bot && !remoteClient && settingsOverlay && <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} overlay />}
+      <AnimatePresence custom={Boolean(overlayBot)}>
+        {overlayBot && <BotSettingsDialog key={`settings:${overlayBot.id}`} bot={overlayBot} overlay slideIn={overlaySlidesIn} />}
+      </AnimatePresence>
       {/* bot and room panels share one slot, so moving between a bot and a room swaps the content without the column closing */}
       <PanelSlot open={Boolean(state.settingsOpen && bot && !remoteClient && !settingsOverlay) || Boolean(roomPanelOpen && group) || panelLoading}>
         {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} />
           : panelLoading ? <PanelPlaceholder onClose={() => dispatch({ type: "toggleSettings", open: false })} /> : null}
       </PanelSlot>
-      {inboxShown && <InboxPanel />}
+      <AnimatePresence initial={false}>{inboxShown && <InboxColumn key="inbox"><InboxPanel /></InboxColumn>}</AnimatePresence>
       </div>
       </div>
       <AnimatePresence>{state.appSettingsOpen && <SettingsModal key="settings" />}</AnimatePresence>
       {cloudAddOpened.current && <CloudAddDialog />}
-      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} text={t(loading.text)} />
+      <BootCover busy={loading.busy && !bot && !group && !firstRun && !noEngines} first={loading.text === "app.loading.updating" ? t(loading.text) : undefined} />
       <CloudHowTo />
       <CloudSetup viewer={viewer} welcomeShown={welcomeOnScreen} />
       <WelcomeKeeper viewer={viewer} />
@@ -377,12 +389,16 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       <SignInSheetHost />
       <FeedbackHost />
       <CloudMoveHost />
-      {state.shortcutsOpen && (
-        <KeyboardShortcutsModal
-          open={state.shortcutsOpen}
-          onClose={() => dispatch({ type: "toggleShortcuts", open: false })}
-        />
-      )}
+      <CloudMoveOffer cloudHome={state.config?.cloudHome === true} />
+      <AnimatePresence>
+        {state.shortcutsOpen && (
+          <KeyboardShortcutsModal
+            key="shortcuts"
+            open
+            onClose={() => dispatch({ type: "toggleShortcuts", open: false })}
+          />
+        )}
+      </AnimatePresence>
       {/* After the modals: same z-50 tier, so DOM order keeps the palette on top. */}
       <CreateBotDialog />
       <CommandPalette onOpenChange={setPaletteOpen} />
@@ -413,6 +429,8 @@ function Application({ children }: { children?: ReactNode }) {
           <Shell viewer={viewer} />
         </ThreadRefsProvider>
         <WelcomeGate viewer={viewer} />
+        <GrokMoveHost />
+        <LateCloudPlan viewer={viewer} />
         <BotsElsewhere />
         <IslandIntroHost />
         <CloudTimeZoneSync viewer={viewer} />

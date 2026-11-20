@@ -3,12 +3,12 @@
 import { useSyncExternalStore } from "react";
 import { activeLocale, t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import type { Action } from "@/state/store";
+import { api, type Action, type ConfigStatus } from "@/state/store";
 import type { ActivitySource, MemoryTopics, SetupDetection, SetupSource } from "../../shared/setup-import";
 import { movable, planCounts, runBotMove, type AppMove, type BotMovePlan } from "./bot-move";
-import { GROK_FROM } from "../../shared/grok-import";
 import { aboutMeSaver } from "./assistant-notes";
 import { postImportNote } from "./import-note";
+import { BRING_NOTICE, dismissNotice } from "./notices";
 import { setupImportApi, type SetupImportClient } from "./setup-import";
 
 export interface LocalFind {
@@ -109,20 +109,17 @@ function botActivity(app: AppMove): ActivitySource | null {
 }
 
 /** What this computer holds, one find per app, best first: how much it holds weighed by how lately it was used. A tool
- * whose agents came in as bots (Claude Code's, Gemini CLI's) is one find with both. Grok bot's exports already saved in
- * Downloads are a find only with `grokExports` (Settings, which may read Downloads); otherwise they are left to its
- * prompt. */
-export function localFinds(plan: BotMovePlan | null, detection: SetupDetection | null, options: { grokExports?: boolean; now?: number } = {}): LocalFind[] {
+ * whose agents came in as bots (Claude Code's, Gemini CLI's) is one find with both. */
+export function localFinds(plan: BotMovePlan | null, detection: SetupDetection | null, options: { now?: number } = {}): LocalFind[] {
   const now = options.now ?? Date.now();
   const activity = detection?.activity ?? {};
   const usage = detection?.usage ?? {};
   const found: Array<{ find: Omit<LocalFind, "summary" | "amount" | "score" | "strong">; amount: SourceAmount }> = [];
   for (const app of plan?.apps ?? []) {
-    if (!app.preview.plans.length || (app.from.key === GROK_FROM.key && !options.grokExports)) continue;
+    if (!app.preview.plans.length) continue;
     const counts = planCounts(app);
     const source = botActivity(app);
-    // a Grok bot export was saved on purpose, just now or lately
-    const lastUsed = app.from.key === GROK_FROM.key ? now : source ? activity[source] ?? null : null;
+    const lastUsed = source ? activity[source] ?? null : null;
     found.push({ find: { id: `bots:${app.from.key}`, app: app.app, bots: app, lastUsed, activeDays: source ? usage[source] ?? 0 : null },
       amount: { notes: 0, skills: counts.skills, tools: 0, bots: counts.bots, memories: counts.memories + (counts.facts ?? 0), routines: counts.routines } });
   }
@@ -177,6 +174,17 @@ export function resetBringRunForTests() { run = { kind: "idle" }; }
 /** A finished run is forgotten (Settings opening afresh); one still going is kept. */
 export function forgetBringRun() { if (run.kind === "done") set({ kind: "idle" }); }
 
+/** Someone who brought their tools in is not offered the import again on a later launch: what an import leaves behind
+ * (notes past its limit) still shows on Settings' import page. The latest hints are read first, so none saved meanwhile is lost. */
+async function markBrought(dispatch: (action: Action) => void): Promise<void> {
+  try {
+    const current = await api<ConfigStatus>("/api/config");
+    const patch = dismissNotice(current?.onboarding, BRING_NOTICE);
+    if (!patch) return;
+    dispatch({ type: "configStatus", config: await api<ConfigStatus>("/api/config", { method: "PUT", body: JSON.stringify(patch) }) });
+  } catch {}
+}
+
 /** Brings the chosen finds in: the tools' things in one request, then each app's bots. Never throws; the line says what
  * came in. Runs once at a time; the funnel goes on meanwhile. */
 export async function bringChosen(finds: readonly LocalFind[], context: {
@@ -212,7 +220,7 @@ export async function bringChosen(finds: readonly LocalFind[], context: {
   }
   if (apps.length) {
     try {
-      const plan: BotMovePlan = { apps, grokWaiting: [] };
+      const plan: BotMovePlan = { apps };
       if (movable(plan)) {
         const saveFacts = aboutMeSaver({ aboutMe: context.aboutMe ?? "", team: Boolean(context.team), dispatch: context.dispatch });
         const reports = await runBotMove(plan, context.dispatch, undefined, context.aboutMe === undefined ? undefined : saveFacts);
@@ -243,6 +251,7 @@ export async function bringChosen(finds: readonly LocalFind[], context: {
   const line = [...said, failed ? t("bring.failed") : ""].filter(Boolean).join(" ");
   // a find that failed stays one to import again
   set({ kind: "done", line, failed, brought: failed ? [...before] : [...new Set([...before, ...ids])], known });
+  if (known || bots || skills || tools || routines) void markBrought(context.dispatch);
   if (context.firstBotId && (bots || skills || tools || notes)) {
     const from = [...new Set(finds.filter((find) => find.bots || find.source).map((find) => find.app))];
     void postImportNote(context.firstBotId, { from, bots: botNames, facts, memories: memories + notes, skills, tools, routines, instructions: kept, reconnect, failed });

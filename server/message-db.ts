@@ -174,6 +174,11 @@ export function memoryStoreDb(): DatabaseSync {
   return db();
 }
 
+/** The open database for the Grok Bot move's records (grok-bot-move-store.ts), which keeps its own tables. */
+export function moveStateDb(): DatabaseSync {
+  return db();
+}
+
 /** One prepared statement per SQL text for the life of the open database. */
 function prepared(sql: string): StatementSync {
   const database = db();
@@ -469,6 +474,15 @@ export function importThread(threadId: string, messages: Message[], activeLeafId
   });
 }
 
+/** Every row of a conversation, rewritten in the given order; its followups and state stay. */
+export function replaceThread(threadId: string, messages: Message[], activeLeafId: string | null): void {
+  transaction((database) => {
+    database.prepare("DELETE FROM messages WHERE thread_id = ?").run(threadId);
+    for (const message of messages) insertMessage(threadId, message);
+    setActiveLeaf(threadId, activeLeafId);
+  });
+}
+
 export function appendMessage(threadId: string, message: Message): void {
   transaction(() => {
     insertMessage(threadId, message);
@@ -608,6 +622,14 @@ export function requestSenders(keys: ReadonlyArray<{ threadId: string; id: strin
 
 export function setActiveLeaf(threadId: string, leafId: string | null): void {
   prepared("INSERT INTO thread_state (thread_id, active_leaf_id) VALUES (?, ?) ON CONFLICT(thread_id) DO UPDATE SET active_leaf_id = excluded.active_leaf_id").run(threadId, leafId);
+}
+
+/** The conversations, of `threadIds`, holding at least one message from the person. */
+export function threadsWithPersonMessage(threadIds: readonly string[]): Set<string> {
+  if (!threadIds.length) return new Set();
+  const rows = db().prepare(`SELECT DISTINCT thread_id AS threadId FROM messages WHERE role = 'user' AND thread_id IN (${threadIds.map(() => "?").join(",")})`)
+    .all(...threadIds) as Array<{ threadId: string }>;
+  return new Set(rows.map((row) => row.threadId));
 }
 
 /** Each conversation's newest stored row, by its row number, and how many rows it has: what Send to My Cloud compares with what it sent. */

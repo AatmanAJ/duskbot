@@ -45,6 +45,7 @@ Use only mapped, tested commands:
 
 - [The headless command line](headless-cli.md)
 - [Chat turns](chat-turns.md)
+- [Reply while working: quick replies, steers and stops mid-turn](reply-while-working.md)
 - [Conversation context compaction](context-compaction.md)
 - [Work summaries and engine hooks](digests.md)
 - [OpenAI-compatible structured tools](openai-tools.md)
@@ -56,6 +57,7 @@ Use only mapped, tested commands:
 - [Profile proposal and credential-card lifecycle](proposal-cards.md)
 - [Full Access without duplicate approvals](full-access.md)
 - [Gmail draft creation, send approval and revision](gmail-drafts.md)
+- [Purchases, email review and product cards](purchases.md)
 - [Exact command allowlist UI and saved rules](command-allowlist.md)
 - [The safety floor: a never-list no grant can allow](safety-floor.md)
 - [Peer approval denial, expiry, and cancellation](peer-approvals.md)
@@ -65,16 +67,20 @@ Use only mapped, tested commands:
 - [Taking control of a bot's computer](take-control.md)
 - [What a bot can do on its VPS desktop](vps-computer-tools.md)
 - [Native dictation retention and send-to-stop](dictation.md)
+- [Voice calls with the built-in voice](voice-calls.md)
 - [Proactive routines and the brief](proactive-routines.md)
 - [Waits: tell me when, with no AI while waiting](waits.md)
 - [Chat widgets](widgets.md)
 - [The Inbox on every plan](inbox.md)
 - [Reactions](reactions.md)
 - [Slack bots: own apps, Socket Mode, threaded replies](slack-bots.md)
+- [Task fidelity: right place, right route, draft first](task-fidelity.md)
+- [Browser bench: hard real-world pages through the real browser](browser-bench.md)
 - [Chat widgets: prompts to try with a real bot](widget-prompts.md)
 - [Phone web app installation and safe areas](phone-web-app.md)
 - [Phone sync: pairing, relay and companion routes](mobile-sync.md)
 - [Welcome flow](onboarding.md)
+- [Move from Grok Bot](grok-move.md)
 - [Channels](channels.md)
 - [In-chat team coordination](room-coordination.md)
 - [Question cards: a teammate's question, in its chat and the person's inbox](question-cards.md)
@@ -326,6 +332,9 @@ desktop routing, cancellation, and computer authority cleanup.
 The [Gemini speech fixture](gemini-speech.md) checks write-only credentials,
 voice selection and WAV synthesis against an offline provider in an isolated
 server, with manual steps for real Google access and playback.
+
+The [speed benchmark](speed.md) times server start, a reply from send to the first text on the live
+stream hop by hop, chat switches and opens, and the bookkeeping writes a chat open makes, on fake-engine fixtures.
 
 The [persistence responsiveness benchmark](persistence-performance.md) measures
 synthetic message/log bursts and history scans, with isolated chat, visibility
