@@ -42,7 +42,8 @@ try {
     status: detect.status, ms: detect.ms, bots: detect.body.bots.length, removed: detect.body.bots.length - live.length,
     withPhoto: detect.body.bots.filter((bot) => bot.look.photoUrl).length, withDescription: detect.body.bots.filter((bot) => bot.hasDescription).length,
     messages: live.reduce((sum, bot) => sum + bot.chat.messages, 0), earlier: live.filter((bot) => bot.chat.earlier).length,
-    routineNames: live.reduce((sum, bot) => sum + bot.routines, 0), apps: detect.body.apps.length, problems: detect.body.problems.map((problem) => `${problem.slice}:${problem.code}`),
+    routineNames: live.reduce((sum, bot) => sum + bot.routines, 0), appsUsed: live.reduce((sum, bot) => sum + bot.appsUsed, 0),
+    apps: detect.body.apps.length, problems: detect.body.problems.map((problem) => `${problem.slice}:${problem.code}`),
   };
   const photo = live.find((bot) => bot.look.photoUrl);
   if (photo) {
@@ -64,6 +65,7 @@ try {
     updated: progress.bots.filter((bot) => bot.update).length,
     messages: progress.bots.reduce((sum, bot) => sum + (bot.moved?.messages ?? 0), 0), pictures: progress.bots.filter((bot) => bot.moved?.picture).length,
     routineNames: progress.bots.reduce((sum, bot) => sum + (bot.moved?.routineNames ?? 0), 0),
+    appsUsed: progress.bots.reduce((sum, bot) => sum + (bot.moved?.appsUsed ?? 0), 0),
   };
   const bots = await (await fetch(`${fixture.info.url}/api/bots`, { headers })).json() as { bots: Array<{ section?: string; tasks?: Array<{ unread?: boolean }>; unread?: boolean }> };
   report.landed = {

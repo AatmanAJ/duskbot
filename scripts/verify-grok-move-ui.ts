@@ -160,6 +160,29 @@ try {
     await page.locator(`[data-grok-ask-row="${nova.rosterId}"]`).evaluate((row: HTMLElement) => row.scrollIntoView({ block: "center" }));
     await shot("5-got-it");
 
+    // the one-consent walk: dusk bot opens each remaining bot in turn and advances as each file arrives in Downloads.
+    const rest = live.filter((bot) => bot.rosterId !== nova.rosterId && bot.rosterId !== quill.rosterId);
+    for (const bot of rest) writeFileSync(join(downloads, grokExportFileName(bot.rosterId)), syntheticExport(bot.name));
+    const openedBeforeWalk = (await page.evaluate(() => (window as unknown as { grokOpened: string[] }).grokOpened)).length;
+    const walkStartedAt = performance.now();
+    await page.locator("[data-grok-walk-start]").click();
+    await page.waitForSelector("[data-grok-walk=consent]");
+    await shot("8-walk-consent");
+    await page.locator("[data-grok-walk-go]").click();
+    await page.waitForSelector("[data-grok-walk=asking]", { timeout: 20_000 });
+    await shot("9-walking");
+    // the walk ends when every bot it asked has sent its file (or been refused); its banner goes
+    for (const bot of rest) await page.waitForSelector(`[data-grok-ask-row="${bot.rosterId}"][data-grok-ask-state=arrived]`, { timeout: 60_000 });
+    await page.waitForSelector("[data-grok-walk]", { state: "detached", timeout: 60_000 });
+    const openedAfterWalk = await page.evaluate(() => (window as unknown as { grokOpened: string[] }).grokOpened);
+    report.walk = {
+      ms: Math.round(performance.now() - walkStartedAt), rest: rest.length,
+      askedInTurn: rest.every((bot) => openedAfterWalk.some((url) => url.startsWith(`grokbot://app/v1/prompt?id=${bot.rosterId}&text=`))),
+      links: openedAfterWalk.length - openedBeforeWalk,
+    };
+    assert.equal((report.walk as { askedInTurn: boolean }).askedInTurn, true, "the walk opened every remaining bot in Grok Bot");
+    assert.ok((report.walk as { links: number }).links >= rest.length, "one prefilled link per remaining bot, through the app's own bridge");
+
     await page.keyboard.press("Escape");
     await page.waitForSelector("[data-grok-move]", { state: "detached" });
     await page.keyboard.press("Meta+k");

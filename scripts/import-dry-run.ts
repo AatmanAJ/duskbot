@@ -71,6 +71,7 @@ if (grok.found) {
       add("grokBot", "placeholderLines", chat.lines.filter((line) => line.placeholder).length);
       add("grokBot", "chatsWithEarlierHistory", chat.earlier ? 1 : 0);
       add("grokBot", "routineNames", chat.routines.length);
+      add("grokBot", "appsUsed", chat.appsUsed.length);
     }
   }
 }

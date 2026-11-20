@@ -62,6 +62,7 @@ export class GrokMoveError extends Error {
 
 const CHAT_TITLE = "From Grok Bot";
 const ROUTINES_TOPIC = "grok-bot-routines.md";
+const APPS_TOPIC = "grok-bot-apps.md";
 const MEMORIES_TOPIC = "from-grok-bot.md";
 const FACTS_TOPIC = "about-you-from-grok-bot.md";
 const DEFAULT_WATCH_MS = 4_000;
@@ -142,6 +143,12 @@ function routinesTopic(name: string, routines: GrokChatWindow["routines"]): stri
     ...routines.map((routine) => `- ${routine.name} (${routine.on ? "on" : "off"} there)`), ""].join("\n");
 }
 
+function appsTopic(name: string, apps: readonly string[]): string {
+  return [`# Apps ${name} used in Grok Bot`, "",
+    "These are the connected apps this bot used in its recent chat. Connect them again on the Apps page; their sign-ins stayed in Grok Bot.", "",
+    ...apps.map((app) => `- ${app}`), ""].join("\n");
+}
+
 /** Every item as it was written: a line that runs over several lines keeps them, indented under its bullet. */
 function listTopic(title: string, intro: string, items: readonly string[]): string {
   return [`# ${title}`, "", intro, "", ...items.map((item) => `- ${item.trim().replace(/\r?\n/g, "\n  ")}`), ""].join("\n");
@@ -216,6 +223,7 @@ export class GrokMover {
         ...(bot.updatedAt ? { updatedAt: bot.updatedAt } : {}),
         chat: { messages: window?.lines.length ?? 0, earlier: window?.earlier ?? false, readable: !(chat && "problem" in chat) },
         routines: window?.routines.length ?? 0,
+        appsUsed: window?.appsUsed.length ?? 0,
         ...(here ? { here: { botId: here.id, name: here.name } } : {}),
         ...(asked ? { asked: { state: asked.state, askedAt: asked.askedAt, file: asked.file, ...(asked.applied ? { applied: asked.applied } : {}), ...(asked.problem ? { problem: asked.problem } : {}) } } : {}),
       };
@@ -363,7 +371,7 @@ export class GrokMover {
     record.moved.push(moved);
     row.botId = bot.id;
     row.update = !created;
-    const counts = { messages: 0, earlier: false, picture: false, instructions: created && wantsInstructions && Boolean(source.description.trim()), routineNames: 0 };
+    const counts = { messages: 0, earlier: false, picture: false, instructions: created && wantsInstructions && Boolean(source.description.trim()), routineNames: 0, appsUsed: 0 };
 
     this.step(row, record, "picture");
     const photo = readGrokPhoto(this.deps.machine(), profile, source);
@@ -405,6 +413,10 @@ export class GrokMover {
       this.step(row, record, "routines");
       if (created || this.deps.memory.readTopic(bot.id, ROUTINES_TOPIC) !== null) this.deps.memory.writeTopic(bot.id, ROUTINES_TOPIC, routinesTopic(bot.name, window.routines));
       counts.routineNames = window.routines.length;
+    }
+    if (window?.appsUsed.length) {
+      if (created || this.deps.memory.readTopic(bot.id, APPS_TOPIC) !== null) this.deps.memory.writeTopic(bot.id, APPS_TOPIC, appsTopic(bot.name, window.appsUsed));
+      counts.appsUsed = window.appsUsed.length;
     }
     row.moved = counts;
   }
