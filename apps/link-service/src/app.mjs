@@ -11,7 +11,7 @@ import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { verifyLinkGrant } from "./grant.mjs";
-import { createPackages } from "./packages.mjs";
+import { createFleet, createPackages } from "./packages.mjs";
 import { createPushRelay } from "./push-relay.mjs";
 import { SEALED_ADDRESS_MAX, choosePlacement, createCluster, loadOf, refusesNew, sameSecret } from "./nodes.mjs";
 import { SMALL_BURST_BYTES, SMALL_BYTES_PER_SEC, SMALL_POST_BYTES, createAccountUsage, createPathCounts, fairRate } from "./fair-use.mjs";
@@ -404,6 +404,7 @@ export function createLinkService({ base, dataDir = null, scriptPath, uninstallP
   const relay = { at: now(), tokens: Math.max(limits.globalCeilingBytesPerSec * 2, limits.burstBytes), shareAt: -Infinity, demanding: new Map(), cpu: { at: Date.now(), usage: process.cpuUsage() } };
   const ipLoad = new Map();
   const packages = createPackages(packagesDir !== undefined ? packagesDir : dataDir ? join(dataDir, "packages") : null);
+  const fleet = createFleet(now);
   const sessionWaiters = new Map();
   const queues = new Map();
   const created = new Map();
@@ -1015,6 +1016,10 @@ export function createLinkService({ base, dataDir = null, scriptPath, uninstallP
       }
       return fail(res, 405, "method not allowed");
     }
+    if (method === "GET" && path === "/ops/fleet") {
+      if (!opsAllowed()) return;
+      return send(res, 200, fleet.counts());
+    }
     if (method === "GET" && path === "/v1/stats/relay") {
       if (!opsAllowed()) return;
       const tunnels = [...store.tunnels.values()].filter((tunnel) => tunnel.relayDays && Object.keys(tunnel.relayDays).length)
@@ -1313,7 +1318,9 @@ export function createLinkService({ base, dataDir = null, scriptPath, uninstallP
         if (reads.length >= SERVER_RELEASE_READS_PER_HOUR) return fail(res, 429, "too many update checks", "rate_limited");
         reads.push(now());
         res.setHeader("cache-control", "no-store, private");
+        fleet.saw(id, req.headers["x-dusk-server-version"], req.headers["x-dusk-agent-version"]);
         if (!build) return fail(res, 404, "no build is published", "no_build");
+        if (packages.paused()) return fail(res, 404, "updates are paused", "paused");
         const policy = packages.policy();
         return send(res, 200, { v: 1, package: { sha256: build.sha256, size: build.size, version: build.version, ...(build.signature ? { signature: build.signature } : {}) }, ...(policy ? { policy } : {}) });
       }

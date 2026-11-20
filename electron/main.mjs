@@ -3717,7 +3717,7 @@ function startAppUpdates(notice) {
   }
   if (process.platform !== "darwin") {
     notice.start();
-    appUpdater = createAppUpdater({ current: app.getVersion(), arch: process.arch, dir: updateDir, installs: false, platform: process.platform, appImage: Boolean(process.env.APPIMAGE), fallback: { check: async () => null }, log: slog, onState: tellAppUpdate, onFailed, intervalMs: 6 * 60 * 60_000 });
+    appUpdater = createAppUpdater({ current: app.getVersion(), arch: process.arch, dir: updateDir, installs: false, platform: process.platform, appImage: Boolean(process.env.APPIMAGE), fallback: { check: async () => null }, log: slog, onState: tellAppUpdate, onFailed });
     appUpdater.start();
     return;
   }

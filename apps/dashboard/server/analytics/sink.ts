@@ -2,6 +2,7 @@ import { Binary, type Db } from "mongodb";
 import { DAY_MS, RAW_RETENTION_DAYS, type Props } from "./events.ts";
 import type { EventContext } from "./context.ts";
 import type { RollupDoc, RollupMeta, RollupScope, RollupStore } from "./rollup.ts";
+import { desktopFleetOf, type DesktopVersionRow } from "../admin/ops/fleet.ts";
 
 export interface StoredEvent { id: string; name: string; at: number; accountId: string | null; props: Props; ctx?: EventContext }
 export interface AuditEntry { id: string; at: number; actor: string; action: string; target: string | null; detail: Record<string, string | number | boolean | null> }
@@ -61,6 +62,8 @@ export interface AnalyticsSink {
   lastSeen(since: number): Promise<Map<string, number>>;
   /** visitors and installs with no account on their events in [since, until), newest first; `before` pages on lastAt */
   anonymous(since: number, until: number, options: { before?: number; limit: number }): Promise<{ total: number; rows: AnonymousRow[] }>;
+  /** desktop versions in [since, until): installs by the version of their newest app_open, and app_error counts */
+  fleet?(since: number, until: number): Promise<DesktopVersionRow[]>;
   /** how many raw events of these names are in [since, until) */
   count?(since: number, until: number, names: readonly string[]): Promise<number>;
   /** the time of the oldest raw event, null with none */
@@ -153,6 +156,7 @@ export function memorySink(now: () => number = Date.now): AnalyticsSink & { all:
       for (const event of all) if (event.accountId && event.at >= since && (out.get(event.accountId) ?? -1) < event.at) out.set(event.accountId, event.at);
       return out;
     },
+    async fleet(since, until) { return desktopFleetOf(all, since, until); },
     async anonymous(since, until, options) {
       const rows = anonymousOf(all, since, until);
       return { total: rows.length, rows: rows.filter(row => options.before === undefined || row.lastAt < options.before).slice(0, options.limit) };
@@ -334,6 +338,20 @@ function sinkOf(db: Db, key: string): AnalyticsSink {
       return { total: out?.total[0]?.n ?? 0, rows: (out?.rows ?? []).map(row => ({ key: row._id, kind: (row as { visitor?: string | null }).visitor ? "visitor" as const : "install" as const,
         firstAt: row.firstAt.getTime(), lastAt: row.lastAt.getTime(), events: row.events, country: row.country ?? null, city: row.city ?? null, device: row.device ?? null, os: row.os ?? null,
         browser: row.browser ?? null, platform: row.platform ?? null, appVersion: row.appVersion ?? null })) };
+    },
+    async fleet(since, until) {
+      const [out] = await events.aggregate<{ installs: Array<{ _id: string; n: number }>; errors: Array<{ _id: string; n: number }> }>([
+        { $match: { name: { $in: ["app_open", "app_error"] }, at: { $gte: new Date(since), $lt: new Date(until) }, "ctx.app.version": { $type: "string" } } },
+        { $project: { name: 1, at: 1, install: "$ctx.install", version: "$ctx.app.version" } },
+        { $facet: {
+          installs: [{ $match: { name: "app_open", install: { $type: "string" } } }, { $sort: { at: 1 } }, { $group: { _id: "$install", version: { $last: "$version" } } }, { $group: { _id: "$version", n: { $sum: 1 } } }],
+          errors: [{ $match: { name: "app_error" } }, { $group: { _id: "$version", n: { $sum: 1 } } }],
+        } },
+      ], { maxTimeMS: READ_TIMEOUT_MS, allowDiskUse: true }).toArray();
+      const installs = new Map((out?.installs ?? []).map(row => [row._id, row.n])), errors = new Map((out?.errors ?? []).map(row => [row._id, row.n]));
+      return [...new Set([...installs.keys(), ...errors.keys()])].filter(version => /^\d+\.\d+\.\d+$/.test(version))
+        .map(version => ({ version, installs: installs.get(version) ?? 0, errors: errors.get(version) ?? 0 }))
+        .sort((a, b) => { const x = a.version.split(".").map(Number), y = b.version.split(".").map(Number); return (y[0]! - x[0]!) || (y[1]! - x[1]!) || (y[2]! - x[2]!); });
     },
     async health() {
       const started = performance.now();

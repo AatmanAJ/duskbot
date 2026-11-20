@@ -41,6 +41,7 @@ import { memorySink, type AnalyticsSink } from "./analytics/sink.ts";
 import { createUsage, memoryUsageStore, type UsageStore } from "./analytics/usage.ts";
 import { createInfraCollector, memoryInfraStore, type InfraStore } from "./admin/infra.ts";
 import { opsFixture } from "./admin/ops/fixture.ts";
+import { CANARY_IDS, cloudFleetOf, serverFleet, type FleetAnswer } from "./admin/ops/fleet.ts";
 import { createOps } from "./admin/ops/index.ts";
 import { memoryOpsStore, type OpsStore } from "./admin/ops/store.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -827,6 +828,16 @@ export function createDashboardApp(options: DashboardAppOptions) {
       if (!isTestAddress(to)) fail(400, "invalid_request", "Only test addresses have a test mailbox.");
       const found = testMail.latest(to, Number(url.searchParams.get("since")) || 0);
       return found ? json(res, 200, found) : fail(404, "not_found", "No mail yet.");
+    }
+    // the release tool's view of the fleet (scripts/release-all.mjs status): counts only, to DUSK_OPS_TOKEN only
+    if (path === "/v1/ops/fleet" && method === "GET") {
+      const token = adminEnv.DUSK_OPS_TOKEN, given = String(req.headers.authorization ?? "");
+      if (!token || given.length !== token.length + 7 || !timingSafeEqual(Buffer.from(given), Buffer.from(`Bearer ${token}`))) { rate(req, "ops-fleet-denied", 20); fail(404, "not_found", "Route not found."); }
+      const days = Number(url.searchParams.get("days") ?? 14), canary = (url.searchParams.get("canary") ?? "").split(",").filter(Boolean);
+      if (!Number.isInteger(days) || days < 1 || days > 60 || canary.length > 200 || !canary.every(id => CANARY_IDS.test(id))) fail(400, "invalid_request", "Invalid fleet query.");
+      const at = now();
+      const [desktops, servers] = await Promise.all([analytics.sink.fleet?.(at - days * 86_400_000, at + 1) ?? Promise.resolve([]), serverFleet(adminEnv, options.fetch)]);
+      return json(res, 200, { at, desktops: { days, versions: desktops }, clouds: cloudFleetOf(billing.clouds.all?.() ?? [], canary), servers } satisfies FleetAnswer);
     }
     if (path === "/v1/ops/report" && method === "POST") {
       const verdict = ops.authorizeReport(typeof req.headers.authorization === "string" ? req.headers.authorization : undefined);

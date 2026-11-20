@@ -32,7 +32,7 @@ async function updating(options: { policy?: { serial: number; floor: string | nu
   /** one reconcile with the home's power read due */
   const pass = async () => { f.advance(61_000); c.nextAttemptAt = 0; await f.service.reconcile(); };
   return { f, c, commands, actions, pass, offer: (r: HomeRelease | null) => { offered = r; }, policyFile,
-    setPolicy: (p: { serial: number; floor: string | null; blocked: string[] }) => { writeFileSync(policyFile, JSON.stringify(signPolicy(p, signing))); } };
+    setPolicy: (p: { serial: number; floor: string | null; blocked: string[]; paused?: boolean }) => { writeFileSync(policyFile, JSON.stringify(signPolicy(p, signing))); } };
 }
 const version = (c: StoredCloud) => c.managed!.update?.guard.current?.version ?? null;
 
@@ -197,6 +197,23 @@ describe("staged home updates", () => {
     t.offer(release("2.0.0"));
     await t.pass();
     expect(t.commands().at(-2)).toMatch(/omb-home install \S+ [a-f0-9]{64} r1\.\S+ 1\.0\.0$/);
+  });
+
+  it("offers a canary release only to the clouds it names, and holds every install while the policy is paused", async () => {
+    const t = await updating();
+    t.offer({ ...release("1.1.0"), clouds: ["cloud_other"] });
+    await t.pass();
+    expect(t.commands().some(x => x.includes(sha("1.1.0")))).toBe(false);
+    expect(t.actions()).toEqual([]);
+    t.setPolicy({ serial: 1, floor: null, blocked: [], paused: true });
+    t.offer({ ...release("1.1.0"), clouds: ["cloud_other", t.c.id] });
+    await t.pass();
+    expect(t.commands().some(x => x.includes(sha("1.1.0")))).toBe(false);
+    expect(t.actions()).toEqual(["update_refused:paused"]);
+    t.setPolicy({ serial: 2, floor: null, blocked: [] });
+    t.offer(release("1.1.0"));
+    await t.pass();
+    expect(t.c.managed!.installed).toBe(sha("1.1.0"));
   });
 
   it("serves only a policy the pinned keys signed, and keeps the last good one", () => {
