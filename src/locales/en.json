@@ -4425,6 +4425,7 @@
   "botSettings.simple.custom": "Custom",
   "botPanel.appsRow": "Apps it can use",
   "botPanel.backups.title": "Backup AIs",
+  "botPanel.backupModel": "Backup model",
   "botPanel.backups.hint": "Used only when {name}'s AI is at its usage limit or can't start on a message. The first one here that can take over does, in that conversation only. After a usage limit resets, the conversation goes back.",
   "botPanel.backups.row": "Backup {position}: {model}",
   "botPanel.backups.remove": "Remove {model} from backups",

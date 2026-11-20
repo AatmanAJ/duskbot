@@ -5214,6 +5214,7 @@
   "secretCard.ref": "Privado. Seu bot nunca vê este conteúdo.",
   "secretCard.file": "Privado. Os comandos do seu bot podem usar este conteúdo por 24 horas.",
   "botPanel.backups.title": "IAs de reserva",
+  "botPanel.backupModel": "Modelo reserva",
   "botPanel.backups.hint": "Usadas só quando a IA de {name} atinge o limite de uso ou não consegue começar uma mensagem. A primeira daqui que puder assume, só naquela conversa. Quando o limite de uso é renovado, a conversa volta.",
   "botPanel.backups.row": "Reserva {position}: {model}",
   "botPanel.backups.remove": "Remover {model} das reservas",

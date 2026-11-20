@@ -291,3 +291,31 @@ export function BackupAis({ bot, onChange }: { bot: Bot; onChange: (fallback: Ba
     </Card>
   );
 }
+
+/** The bot's first backup, picked beside its model: the AI that takes a message over when the bot's own is at its limit,
+ * signed out or failing. The rest of the list stays on the Backup AIs page. */
+export function BackupModelRow({ bot, onChange }: { bot: Bot; onChange: (fallback: Backup[]) => void }) {
+  const { state } = useStore();
+  const chain = bot.fallback ?? [];
+  const first = chain[0] ?? null;
+  const instance = first ? state.instances.find((candidate) => candidate.instanceId === first.instanceId) : undefined;
+  const name = first ? modelName(instance, first.model) : t("botPanel.none");
+  return (
+    <div data-panel-row="backup-model" className="flex min-h-[30px] items-center gap-2 rounded-lg px-2 py-1.5">
+      <span className="min-w-0 flex-1 truncate text-[13px] leading-[18px] tracking-[0.015em] text-ink">{t("botPanel.backupModel")}</span>
+      <BackupChooser
+        bot={bot}
+        current={first}
+        exclude={new Set([modelKey(bot.modelSelection.instanceId, bot.modelSelection.model)])}
+        onPick={(picked) => onChange([picked, ...chain.slice(1).filter((entry) => modelKey(entry.instanceId, entry.model) !== modelKey(picked.instanceId, picked.model))])}
+        label={t("botPanel.backupModel")}
+        data-panel-action="backup-model"
+        className="group flex h-6 max-w-[180px] min-w-0 items-center gap-1 rounded-lg px-1.5 text-[13px] text-ink hover:bg-ink/[0.06] aria-expanded:bg-ink/[0.06]"
+      >
+        {instance && <InstanceProviderMark instance={instance} size={14} subtle />}
+        <span className={cn("min-w-0 truncate", !first && "text-ink-secondary")}>{name}</span>
+        <ChevronDown size={10} strokeWidth={2} aria-hidden="true" className="shrink-0 text-ink/[0.66]" />
+      </BackupChooser>
+    </div>
+  );
+}

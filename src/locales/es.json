@@ -4425,6 +4425,7 @@
   "botSettings.simple.custom": "Personalizado",
   "botPanel.appsRow": "Apps que puede usar",
   "botPanel.backups.title": "IA de respaldo",
+  "botPanel.backupModel": "Modelo de respaldo",
   "botPanel.backups.hint": "Solo se usan cuando la IA de {name} llega a su límite de uso o no puede empezar con un mensaje. Entonces se encarga la primera de aquí que pueda, solo en esa conversación. Cuando el límite de uso se restablece, la conversación vuelve.",
   "botPanel.backups.row": "Respaldo {position}: {model}",
   "botPanel.backups.remove": "Quitar {model} de los respaldos",

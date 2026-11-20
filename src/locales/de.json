@@ -4425,6 +4425,7 @@
   "botSettings.simple.custom": "Benutzerdefiniert",
   "botPanel.appsRow": "Apps, die er nutzen kann",
   "botPanel.backups.title": "Ersatz-KIs",
+  "botPanel.backupModel": "Ersatzmodell",
   "botPanel.backups.hint": "Nur genutzt, wenn die KI von {name} ihr Nutzungslimit erreicht hat oder mit einer Nachricht gar nicht erst beginnen kann. Dann übernimmt die erste hier, die das kann, nur in diesem Gespräch. Sobald ein Nutzungslimit zurückgesetzt ist, wechselt das Gespräch zurück.",
   "botPanel.backups.row": "Ersatz {position}: {model}",
   "botPanel.backups.remove": "{model} aus den Ersatz-KIs entfernen",
