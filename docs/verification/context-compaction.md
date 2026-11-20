@@ -42,7 +42,11 @@ A summary is a checkpoint (`server/compaction-summary.ts`):
   - one line per earlier fold naming
     `task-workspaces/<bot>/<thread>/context-archive/through-<id>.md`. That
     file holds the folded part's tool calls with their full results (secrets
-    masked). Engines with file tools only.
+    masked). Engines with file tools only. A chat working in a project
+    folder keeps read access to its own folder (`engineReadScope`: Claude
+    gets it as `--add-dir`, and Codex's profile does not hide it). In the bot
+    box only the working folder is mounted, so a boxed chat working outside
+    its own folder gets no archive.
 - **Later folds:** a later fold carries the earlier checkpoint's quotes,
   identifiers and archive lines forward.
 - **Framing:** the replay labels the summary reference only. It tells the
@@ -52,6 +56,10 @@ A summary is a checkpoint (`server/compaction-summary.ts`):
   Turns being folded reach memory through capture's usual trust rules
   without waiting for the two quiet minutes. The flush adds no extra model
   call.
+
+Room summaries (`server/host/room-earlier.ts`) use the same checkpoint. They
+quote what people in the room said, up to 2,400 bytes, and are capped at
+7,500 bytes. Rooms have no archive.
 
 `scripts/compaction-eval/` measures recall of early facts and task
 continuation across two folds of a 42-turn chat on a live model.

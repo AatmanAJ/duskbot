@@ -1676,6 +1676,24 @@ describe("ClaudeDriver turns (fake CLI)", () => {
       expect(added(seen.argv)).not.toContain(cwd);
     });
 
+    it("reads the chat's own folder, where compaction archives tool results, while it works in a project folder", async () => {
+      const dump = join(scratch, "read-scope-project.json");
+      process.env.FAKE_CLAUDE_DUMP = dump;
+      await create();
+      const { cwd: chat } = folders("b-project", "t-project");
+      mkdirSync(join(chat, "context-archive"), { recursive: true });
+      const project = mkdtempSync(join(scratch, "project-"));
+      await instance.adapter.sendTurn({ threadId: "t-project", botId: "b-project", text: "hi", cwd: project, approvalMode: "full" });
+      await recorder.until((e) => e.type === "turn.completed");
+      const seen = JSON.parse(readFileSync(dump, "utf8"));
+      expect(added(seen.argv)).toContain(chat);
+      const deny: string[] = seen.settings.permissions.deny;
+      for (const path of [chat, join(chat, "context-archive"), join(DATA_DIR, "task-workspaces"), join(DATA_DIR, "task-workspaces", "b-project")]) {
+        expect(deny).not.toContain(rule("Read", path));
+        expect(deny).not.toContain(rule("Read", path, true));
+      }
+    });
+
     it("in the bot box, adds the conversation's uploads instead of every upload", async () => {
       const dump = join(scratch, "read-scope-boxed.json");
       process.env.FAKE_CLAUDE_DUMP = dump;

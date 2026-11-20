@@ -58,12 +58,16 @@ it("archives only the calls between the last fold and this one, with the full re
     row("m4", { text: "reply two" }),
     row("x4", { kind: "activity", turnId: "turn3", tool: { name: "Bash", itemId: "call-c", ok: true, output: "after the fold" } }),
   ];
-  const pointer = archiveFoldedTools({ botId: "b1", threadId: "t1", messages, afterId: "m2", throughId: "m4", spillDir, taskDir: dir });
+  const pointer = archiveFoldedTools({ botId: "b1", threadId: "t1", messages, afterId: "m2", throughId: "m4", spillDir, taskDir: dir, boxed: false });
   const path = join(dir, "context-archive", "through-m4.md");
   expect(pointer).toBe(archivePointer({ path, count: 1 }));
   const text = readFileSync(path, "utf8");
   expect(text).toContain("FULL RESULT of b");
   expect(text).not.toContain("already archived");
   expect(text).not.toContain("after the fold");
-  expect(archiveFoldedTools({ botId: "b1", threadId: "t1", messages, throughId: "gone", spillDir, taskDir: dir })).toBeUndefined();
+  expect(archiveFoldedTools({ botId: "b1", threadId: "t1", messages, throughId: "gone", spillDir, taskDir: dir, boxed: false })).toBeUndefined();
+  // the box mounts only the working folder: a boxed chat working elsewhere gets no pointer it could not follow
+  expect(archiveFoldedTools({ botId: "b1", threadId: "t1", messages, throughId: "m4", spillDir, taskDir: dir, boxed: true, cwd: "/srv/project" })).toBeUndefined();
+  expect(archiveFoldedTools({ botId: "b1", threadId: "t1", messages, throughId: "m4", spillDir, taskDir: dir, boxed: true, cwd: dir })).toContain("context-archive");
+  expect(archiveFoldedTools({ botId: "b1", threadId: "t1", messages, throughId: "m4", spillDir, taskDir: dir, boxed: false, cwd: "/srv/project" })).toContain("context-archive");
 });

@@ -1,5 +1,7 @@
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+
+import { under } from "./bot-box/plan.ts";
 
 import { writeFileAtomic } from "./atomic.ts";
 import { redactSecretsInText } from "./redact.ts";
@@ -67,7 +69,13 @@ export function archivePointer(archive: { path: string; count: number }): string
 }
 
 /** The tool calls after the last fold through the new one, saved where the bot can read them back; a failure only loses the file. */
-export function archiveFoldedTools(input: { botId: string; threadId: string; messages: readonly Message[]; afterId?: string; throughId: string; spillDir: string; taskDir?: string }): string | undefined {
+export function archiveFoldedTools(input: {
+  botId: string; threadId: string; messages: readonly Message[]; afterId?: string; throughId: string; spillDir: string; taskDir?: string;
+  /** The chat's working folder; unset is its own folder. */
+  cwd?: string | null;
+  /** The bot box mounts the working folder, not the chat's own one, so a chat boxed in a project folder could not read the file. */
+  boxed: boolean;
+}): string | undefined {
   const { threadId, messages } = input;
   const start = input.afterId ? messages.findIndex((m) => m.id === input.afterId) + 1 : 0;
   const end = messages.findIndex((m) => m.id === input.throughId);
@@ -79,7 +87,9 @@ export function archiveFoldedTools(input: { botId: string; threadId: string; mes
     return [{ name: tool.name, ok: tool.ok, input: tool.input, result: full ?? tool.output }];
   });
   try {
-    const written = writeToolArchive(input.taskDir ?? ensureTaskWorkspace(input.botId, threadId), `through-${input.throughId.replace(/[^\w.-]/g, "_").slice(0, 80)}`, calls);
+    const taskDir = input.taskDir ?? ensureTaskWorkspace(input.botId, threadId);
+    if (input.boxed && input.cwd && !under(resolve(input.cwd), resolve(taskDir))) return undefined;
+    const written = writeToolArchive(taskDir, `through-${input.throughId.replace(/[^\w.-]/g, "_").slice(0, 80)}`, calls);
     return written ? archivePointer(written) : undefined;
   } catch (error) {
     console.warn(`compaction: could not save the folded tool results: ${(error as Error).message}`);
