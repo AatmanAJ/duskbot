@@ -134,7 +134,7 @@ export const CAPABLE_CASES: Case[] = [
     "It leads with the fix, not an apology: it checks its automations, sets (or moves) a gym reminder to 7 AM and confirms the time in one or two short lines, owning the mistake in a few words at most. Fail if it opens with or dwells on an apology, asks questions it could default, or only promises to fix it.",
     { tool: /(?:_|:)trigger(?:_info)?$/ }),
   cap("fb-script", "feedback", "write me a python script that renames every .jpeg in a folder to .jpg. give it to me as a file",
-    "It delivers the script as a .py file the person can download; if it truly cannot make files here, the whole script in one code block with one line saying so. Fail if it comes as a document, a doc card or a page, or with a long tutorial."),
+    "Chat attachments take no script files, so it delivers the whole script in one code block, with at most a line on how to run it. Fail if it comes as a document, a doc card, a page or a .txt file only, or with a long tutorial."),
   cap("cap-always-on", "monitor", "keep this running all the time, not on a schedule, and tell me whenever it prints DOWN:\nwhile true; do curl -fsS https://api.github.com/zen >/dev/null || echo DOWN; sleep 60; done",
     "It starts it as a background job that keeps running after this turn and tells the person when DOWN appears (it may adapt the line to call the notify helper), and confirms in a line. Fail if it says it cannot run things continuously or sets up a routine instead.",
     { tool: /(?:_|:)background_job$/ }),
