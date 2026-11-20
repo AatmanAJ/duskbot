@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence } from "motion/react";
 import { t } from "@/lib/i18n";
 import { waitForLocalVmReady } from "@/lib/local-vm-readiness";
 import type { LocaleKey } from "@/locales";
@@ -17,7 +18,9 @@ import { VpsComputersCard } from "./VpsComputersCard";
 import { DirectLinkRow } from "./DirectLinkRow";
 import { RouteTrafficRow } from "./RouteTrafficRow";
 import { MacControlRow } from "./MacControlRow";
+import { CloudMacCard } from "./CloudMacCard";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 type Action = "pull" | "run" | "start" | "stop" | "remove" | "recreate";
 
@@ -221,6 +224,13 @@ export function vpsComputerRemovePlan(instance: VpsComputerInventoryInstance): C
   };
 }
 
+export function vpsComputerRestartPlan(instance: VpsComputerInventoryInstance): ComputerActionPlan {
+  return {
+    confirmation: t("vm.confirm.restartVps", { name: instance.ownerName ?? "" }),
+    request: jsonPostRequest(`/api/computers/vps/${encodeURIComponent(instance.name)}/restart`, {}),
+  };
+}
+
 export function confirmComputerAction(
   plan: ComputerActionPlan,
   confirm: (message: string) => boolean,
@@ -282,7 +292,7 @@ export function LocalVmInventoryCard({
         ) : unavailableReason ? (
           <NoteRow tone="warn">{unavailableReason}</NoteRow>
         ) : instances.length === 0 ? (
-          <NoteRow>{t("vm.perBot.none")}</NoteRow>
+          <ArtState data-art-state="desktops" art="computer" title={t("empty.desktops.title")} className="py-6">{t("empty.desktops.hint")}</ArtState>
         ) : instances.map((instance) => {
           const state = localVmInventoryState(instance);
           const deleting = deletingBotId === instance.botId;
@@ -433,12 +443,12 @@ export function LocalVmIdleTimeoutSetting({
     <>
       <NavRow data-settings-open="idle-timeout" title={t("vm.idle.label")} value={`${minutes} ${t("vm.idle.minutes")}`} disabled={disabled}
         onClick={() => { setValue(String(minutes)); setError(""); setOpen(true); }} />
-      {open && (
-        <FormDialog data-panel-modal="idle-timeout" title={t("vm.idle.label")} description={t("vm.idle.detail")} busy={saving} error={error || undefined}
+      <AnimatePresence>{open && (
+        <FormDialog key="idle-timeout" data-panel-modal="idle-timeout" title={t("vm.idle.label")} description={t("vm.idle.detail")} busy={saving} error={error || undefined}
           onSave={save} onClose={() => setOpen(false)}>
           <LocalVmIdleTimeoutField value={value} disabled={saving} error={error} onChange={(next) => { setValue(next); setError(""); }} />
         </FormDialog>
-      )}
+      )}</AnimatePresence>
     </>
   );
 }
@@ -468,6 +478,7 @@ export function LocalComputerSection() {
   const [vpsError, setVpsError] = useState<string | null>(null);
   const [vpsUnavailableReason, setVpsUnavailableReason] = useState<string | null>(null);
   const [vpsRemovingName, setVpsRemovingName] = useState<string | null>(null);
+  const [vpsRestartingName, setVpsRestartingName] = useState<string | null>(null);
   const [vpsRefreshKey, setVpsRefreshKey] = useState(0);
   const [announcement, setAnnouncement] = useState("");
 
@@ -694,6 +705,24 @@ export function LocalComputerSection() {
     }
   };
 
+  const restartVpsComputer = async (instance: VpsComputerInventoryInstance) => {
+    const request = confirmComputerAction(vpsComputerRestartPlan(instance), (message) => window.confirm(message));
+    if (!request) return;
+    setVpsRestartingName(instance.name);
+    setVpsError(null);
+    try {
+      const response = await fetch(...request);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? t("vm.vpsRestartError"));
+      await refreshVpsInventory();
+      setAnnouncement(t("vm.announce.vpsRestarted", { name: instance.ownerName ?? "" }));
+    } catch (e) {
+      setVpsError(friendlyError(e));
+    } finally {
+      setVpsRestartingName(null);
+    }
+  };
+
   const removeVpsComputer = async (instance: VpsComputerInventoryInstance) => {
     const shortId = vpsComputerShortId(instance.name);
     const request = confirmComputerAction(
@@ -849,15 +878,18 @@ export function LocalComputerSection() {
           aliases={vpsAliases}
           loading={vpsLoading}
           removingName={vpsRemovingName}
+          restartingName={vpsRestartingName}
           error={vpsError}
           unavailableReason={vpsUnavailableReason}
           onRefresh={() => setVpsRefreshKey((key) => key + 1)}
           onRemove={(instance) => void removeVpsComputer(instance)}
+          onRestart={(instance) => void restartVpsComputer(instance)}
         />
       </RowsCard>
 
       {cloudHome && (
         <RowsCard label={t("settings.grok.group.yourComputer")} data-settings-block="cloud-home-connection">
+          <CloudMacCard />
           <RouteTrafficRow blockedOnly />
         </RowsCard>
       )}

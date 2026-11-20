@@ -49,6 +49,7 @@ const AUTO_RETRY_CODES = new Set([
   "credential_rotation_rate_limited",
 ]);
 
+const UNAVAILABLE_REASONS = new Set(["offline", "unsupported"]);
 const ENDPOINT_NEEDS_RECONCILE = new Set(["deleting", "deleted", "error"]);
 
 /** "ready" too: the connector verifies its route once, so after a long sleep it can report ready for a reclaimed tunnel. */
@@ -212,8 +213,9 @@ export function friendlyCompanionAccountError(error) {
   return `${message}${reference}`;
 }
 
-function publicState({ available, status, email, endpoint, message }) {
+function publicState({ available, status, email, endpoint, message, reason }) {
   const state = { available: Boolean(available), status };
+  if (!state.available && UNAVAILABLE_REASONS.has(reason)) state.reason = reason;
   const normalizedEmail = normalizeAccountEmail(email);
   if (normalizedEmail) state.email = normalizedEmail;
   const accessEndpoint = (() => {
@@ -265,6 +267,7 @@ export function createCompanionAccountService({
 } = {}) {
   const configured = Boolean(client);
   let healthy = false;
+  let offline = false;
   let lastHealthCheck = null;
   let healthProbe = null;
   let phase = null;
@@ -334,8 +337,10 @@ export function createCompanionAccountService({
       try {
         await client.health();
         healthy = true;
-      } catch {
+        offline = false;
+      } catch (error) {
         healthy = false;
+        offline = error instanceof ControlPlaneError && error.code === "network_unavailable";
       }
       lastHealthCheck = now();
       return healthy;
@@ -356,6 +361,7 @@ export function createCompanionAccountService({
       return publicState({
         available: false,
         status: "signed-out",
+        reason: "unsupported",
         message: FRIENDLY_MESSAGES.control_plane_unavailable,
       });
     }
@@ -369,6 +375,7 @@ export function createCompanionAccountService({
         status: account ? "error" : "signed-out",
         email: account?.email,
         endpoint: persistedAccess?.endpoint,
+        reason: offline ? "offline" : "unsupported",
         message: FRIENDLY_MESSAGES.control_plane_unavailable,
       });
     }

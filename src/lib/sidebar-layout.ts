@@ -103,13 +103,10 @@ export function pinnedCircleThreadListVisible(
 
 export function partitionSidebarBots<T extends SidebarBot>(
   bots: T[],
-  options?: { universalPins?: boolean; viewerEmail?: string | null; welcoming?: string | null },
+  options?: { viewerEmail?: string | null; welcoming?: string | null },
 ) {
-  const universalPins = options?.universalPins === true;
   const visible = bots.filter((bot) => !bot.hidden && !hiddenFromSidebar(bot, options?.viewerEmail) && bot.id !== options?.welcoming);
-  // The pin flag is the server's, the same on every client. Only the main Chief keeps its own top slot when pins are
-  // not universal (a device's layout choice); a pinned Chief of a group is listed with the other pinned bots.
-  const pinnedBots = visible.filter((bot) => Boolean(bot.pinned) && (universalPins || !bot.chiefOfStaff || Boolean(bot.section)));
+  const pinnedBots = visible.filter((bot) => Boolean(bot.pinned));
   const pinnedIds = new Set(pinnedBots.map((bot) => bot.id));
   const unsectionedChief = visible.find((bot) => bot.chiefOfStaff && !bot.section && !pinnedIds.has(bot.id)) ?? null;
   const sectionChiefs = visible.filter((bot) => bot.chiefOfStaff && Boolean(bot.section) && !pinnedIds.has(bot.id));
@@ -140,6 +137,27 @@ export function activeBotsFirst<T>(parts: { pinnedBots: T[]; sectionedBots: T[];
     return [...bots.filter((_, index) => flags[index]), ...bots.filter((_, index) => !flags[index])];
   };
   return { pinnedBots: first(parts.pinnedBots), sectionedBots: first(parts.sectionedBots), unsectionedBots: first(parts.unsectionedBots) };
+}
+
+type ActivityTask = { createdAt?: number; updatedAt?: number; lastThreadOrderAt?: number; routineRunId?: string; archivedAt?: number };
+
+/** When a bot last had something new in a conversation the person sees: what moves a thread to the top, else its last
+ * change, else when it began. */
+export function botActivityAt(bot: { tasks?: readonly ActivityTask[]; createdAt?: number }): number {
+  let latest = 0;
+  for (const task of bot.tasks ?? []) {
+    if (task.routineRunId || task.archivedAt !== undefined) continue;
+    latest = Math.max(latest, task.lastThreadOrderAt ?? task.updatedAt ?? task.createdAt ?? 0);
+  }
+  return latest || bot.createdAt || 0;
+}
+
+/** Bots with something for the person (unread, or waiting on them) first, then the most recently active; ties keep the
+ * order they came in. */
+export function byRecentActivity<T>(bots: readonly T[], attention: (bot: T) => boolean, at: (bot: T) => number): T[] {
+  const keyed = bots.map((bot, index) => ({ bot, index, attention: attention(bot), at: at(bot) }));
+  keyed.sort((a, b) => Number(b.attention) - Number(a.attention) || b.at - a.at || a.index - b.index);
+  return keyed.map((entry) => entry.bot);
 }
 
 export function partitionSidebarGroups<T extends SidebarGroup>(groups: T[]) {
@@ -185,17 +203,18 @@ export const SIMPLE_FIRST_SECTION_IDS: readonly SidebarSectionId[] = [PINNED_SEC
 /** After the departments, as grok puts its Unassigned. */
 export const SIMPLE_LAST_SECTION_IDS: readonly SidebarSectionId[] = [BOTS_SECTION_ID, CHANNELS_SECTION_ID, BOT_CHATS_SECTION_ID];
 
-export function simpleSidebarSections(ids: SidebarSectionId[]): SidebarSectionId[] {
-  const builtin = [...SIMPLE_FIRST_SECTION_IDS, ...SIMPLE_LAST_SECTION_IDS];
+export function simpleSidebarSections(ids: SidebarSectionId[], mainUnassigned = false): SidebarSectionId[] {
+  const first = mainUnassigned ? [...SIMPLE_FIRST_SECTION_IDS, BOTS_SECTION_ID] : SIMPLE_FIRST_SECTION_IDS;
+  const last = SIMPLE_LAST_SECTION_IDS.filter((id) => !first.includes(id));
   return [
-    ...SIMPLE_FIRST_SECTION_IDS.filter((id) => ids.includes(id)),
-    ...ids.filter((id) => !builtin.includes(id)),
-    ...SIMPLE_LAST_SECTION_IDS.filter((id) => ids.includes(id)),
+    ...first.filter((id) => ids.includes(id)),
+    ...ids.filter((id) => !first.includes(id) && !last.includes(id)),
+    ...last.filter((id) => ids.includes(id)),
   ];
 }
 
-export function simpleOrderedSections(ordered: SidebarSectionId[], simpleSaved: SidebarSectionId[]): SidebarSectionId[] {
-  return orderedSidebarSections(simpleSidebarSections(ordered), simpleSaved);
+export function simpleOrderedSections(ordered: SidebarSectionId[], simpleSaved: SidebarSectionId[], mainUnassigned = false): SidebarSectionId[] {
+  return orderedSidebarSections(simpleSidebarSections(ordered, mainUnassigned), simpleSaved);
 }
 
 export function moveSection(

@@ -87,7 +87,9 @@ export function selectionFromCart(cart: Cart, catalog: PlanCatalog): Selection {
 
 export function subscriptionFromWire(subscription: SubscriptionView, catalog: PlanCatalog): Subscription {
   const statuses = { pending: "pending", active: "active", payment_problem: "past_due", cancelled: "canceled", ended: "canceled" } as const;
-  return { id: subscription.id, bundle: subscription.bundle, selection: selectionFromCart(subscription.cart, catalog), status: statuses[subscription.status], amountUsd: subscription.totalCents / 100, currentPeriodEnd: subscription.currentPeriodEnd ?? 0, cancelAt: subscription.cancelAtPeriodEnd ? subscription.currentPeriodEnd : null };
+  return { id: subscription.id, bundle: subscription.bundle, selection: selectionFromCart(subscription.cart, catalog), status: statuses[subscription.status], amountUsd: subscription.totalCents / 100, currentPeriodEnd: subscription.currentPeriodEnd ?? 0, cancelAt: subscription.cancelAtPeriodEnd ? subscription.currentPeriodEnd : null,
+    ...(subscription.trialEndsAt ? { trialEndsAt: subscription.trialEndsAt } : {}),
+    ...(subscription.scheduledChange ? { scheduled: { bundle: subscription.scheduledChange.bundle, selection: selectionFromCart(subscription.scheduledChange.cart, catalog), amountUsd: subscription.scheduledChange.totalCents / 100, at: subscription.scheduledChange.at } } : {}) };
 }
 
 // a pending subscription has no paid period yet: it is not a plan until it turns active
