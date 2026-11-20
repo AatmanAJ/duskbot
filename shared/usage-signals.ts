@@ -473,6 +473,10 @@ function copies(note: string, sources: readonly string[]): boolean {
 }
 /** the writer saying it could not write the note (it saw no chat, or asks for one), not a note */
 const NOT_A_NOTE = /^i(?:'m| am)?\b.{0,40}\b(?:can't|cannot|can not|unable|don't have|do not have)\b|\b(?:paste|share|send) (?:the|that|your) (?:exchange|conversation|chat|transcript)\b|\b(?:conversation|chat|transcript) (?:itself )?(?:isn't|is not|wasn't|was not) (?:in|included|provided|given|shown)\b|\bno record of the work\b|\bthe summary can(?:'t|not)?\b/i;
+/** the writer repeating its own instruction back ("user wants a compact digest in at most 90 words ...") */
+const ECHOED_PROMPT = /\b(?:compact digest|in at most \d+ words|reply with the (?:prose|sentences) only|\d+ lowercase sentences|lowercase prose|anonymous product note)\b/i;
+/** a verb right after "the" whose subject was a bot's name the scrub took out */
+const SUBJECTLESS = /\bthe (?=(?:could|couldn't|can't|cannot|did|didn't|was|wasn't|kept|said|claimed|failed|would|wouldn't|had|has|is|never|tried|asked|replied|stopped|ran|opened|sent|made|got)\b)/g;
 /** an engine's note as short lowercase prose with no message text, addresses, links, handles, paths, file names,
  * long numbers, ids or names; only small counts ("3 tries") and app names stay. `sources`, when given, are the chat
  * lines the engine read: a note that copies a run of their words is dropped, and their names are taken out. null when
@@ -480,17 +484,19 @@ const NOT_A_NOTE = /^i(?:'m| am)?\b.{0,40}\b(?:can't|cannot|can not|unable|don't
 export function scrubSummary(raw: unknown, max = SUMMARY_MAX, options: { sources?: readonly string[]; avoid?: readonly string[] } = {}): string | null {
   if (typeof raw !== "string") return null;
   const original = raw.replace(/\s+/g, " ").trim().slice(0, max * 2.5);
-  if (original.length < 12 || NOT_A_NOTE.test(original)) return null;
+  if (original.length < 12 || NOT_A_NOTE.test(original) || ECHOED_PROMPT.test(original)) return null;
   const sources = options.sources ?? [];
   if (sources.length && copies(original, sources)) return null;
-  const avoid = new Set([...chatAvoidWords(sources), ...(options.avoid ?? []).flatMap(words)].filter(word => !NOTE_WORDS.has(word)));
-  let text = original.replace(EMAIL, " ").replace(URL_LIKE, " ").replace(HANDLE, " ").replace(QUOTED, " ").replace(PATH, " ").replace(FILE, " ").replace(LONG, " ")
+  const botNames = new Set((options.avoid ?? []).flatMap(words).filter(word => !NOTE_WORDS.has(word)));
+  const avoid = new Set([...chatAvoidWords(sources)].filter(word => !NOTE_WORDS.has(word) && !botNames.has(word)));
+  let text = original.replace(/[\p{L}\p{N}'-]+/gu, (word: string) => botNames.has(word.toLowerCase().replace(/'s$/, "")) ? "bot" : word).replace(EMAIL, " ").replace(URL_LIKE, " ").replace(HANDLE, " ").replace(QUOTED, " ").replace(PATH, " ").replace(FILE, " ").replace(LONG, " ")
     .replace(NUMBER_RUN, " ").replace(DIGITS, (token: string) => COUNT.test(token) ? token : " ");
   // a capitalised word that does not start a sentence is taken as a name, unless it is a known app or product
   text = text.replace(/\b\p{Lu}[\p{L}'-]*/gu, (word: string, offset: number, whole: string) => offset === 0 || /[.!?;:]\s+$/.test(whole.slice(Math.max(0, offset - 3), offset))
     || NOTE_WORDS.has(word.toLowerCase().replace(/'s$/, "")) ? word : " ");
   if (avoid.size) text = text.replace(/[\p{L}\p{N}'-]+/gu, (word: string) => avoid.has(word.toLowerCase().replace(/'s$/, "")) ? " " : word);
-  text = text.replace(/[^\p{L}\p{N}\s,.;:!?'()-]/gu, " ").replace(/\s+([,.;:!?])/g, "$1").replace(/\s+/g, " ").trim().toLowerCase();
+  text = text.replace(/[^\p{L}\p{N}\s,.;:!?'()-]/gu, " ").replace(/\s+([,.;:!?])/g, "$1").replace(/\s+/g, " ").trim().toLowerCase()
+    .replace(/\bbot(?: bot)+\b/g, "bot").replace(SUBJECTLESS, "the bot ");
   if (text.length < 12 || text.length < original.length * 0.7) return null;
   return text.length > max ? `${text.slice(0, max).replace(/\s+\S*$/, "")}.` : text;
 }
