@@ -253,6 +253,7 @@ function runForget(state) {
     remoteMicrophoneRefused: new Set(),
     // no account dashboard here: forgetting a server unlinks nothing there (e1c663e93)
     serverEnroll: null,
+    ownHome: null,
     desktopDataDir: () => "/Users/me/.duskbot",
     slog: () => {},
     session: { defaultSession: { clearStorageData: async () => {} } },
@@ -322,6 +323,15 @@ test("a purge of a missing folder still removes the entry (rm runs with force)",
   assert.deepEqual(plain(await context.forgetEnvironment("l1", true)), { ok: true });
   assert.deepEqual(calls.rm, [path.resolve(LOCAL_FIXTURE.dataDir)]);
   assert.deepEqual(plain(rmOptions), [{ recursive: true, force: true }]);
+});
+
+test("a server the bots moved to can't be forgotten while they live there: {error:home}, nothing removed", async () => {
+  const remote = { id: "r1", kind: "remote", name: "Box", origin: "https://box.example" };
+  const { calls, context } = runForget({ environments: [remote], activeId: "local" });
+  context.ownHome = { home: () => ({ id: "r1" }) };
+  assert.deepEqual(plain(await context.forgetEnvironment("r1", false, true)), { ok: false, error: "home" });
+  assert.match(calls.dialogs[0].message, /Your bots live on Box/);
+  assert.deepEqual(calls.persisted, []);
 });
 
 function switchFixture(t, { startResults = [], releaseLeaseThrows = false, stopUtilityServer = async () => true } = {}) {
