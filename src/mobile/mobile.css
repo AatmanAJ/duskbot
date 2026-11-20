@@ -43,6 +43,12 @@
   box-shadow: 0 4px 14px -2px rgb(0 0 0 / .5);
 }
 
+/* in dark, menus and grouped rows sit a step above the page and the bubbles under them */
+html[data-mobile-app][data-skin="grok-dark"] { --color-menu: #2a2a2d; }
+
+/* the phone writes in sentence case, grok's capitalised unread line included */
+.dusk-mobile [data-unread-divider] .uppercase { text-transform: none; font-size: 13px; letter-spacing: 0; }
+
 .dusk-mobile .mobile-page { box-shadow: -12px 0 32px rgb(10 10 12 / .10); }
 /* the list under an open chat is out of sight: its working dots and other loops hold still until it shows again. Named
    loops only: a rule on every element under it restyles the whole list each time a chat opens and closes */
