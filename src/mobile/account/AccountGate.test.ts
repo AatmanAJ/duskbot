@@ -20,7 +20,8 @@ const response = (value: unknown, status = 200) => new Response(JSON.stringify(v
 beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = null;
   setLocale("en"); window.history.replaceState({}, "", "/"); vi.stubEnv("VITE_DUSK_ALLOW_SIGNED_OUT", ""); vi.stubEnv("VITE_DUSK_ACCOUNT_ORIGIN", "");
-  secrets = new Map(); prefs = new Map(); listener = undefined; resume = undefined;
+  // an install launched before: a new one waits for the service before it shows a kept sign-in
+  secrets = new Map(); prefs = new Map([["dusk.mobile.installed", "1"]]); listener = undefined; resume = undefined;
   platform = { ...webPlatform(), native: true, kind: "ios", secrets: {
     get: async key => secrets.get(key) ?? null, set: async (key, value) => { secrets.set(key, value); }, remove: async key => { secrets.delete(key); },
   }, prefs: { get: async key => prefs.get(key) ?? null, set: async (key, value) => { prefs.set(key, value); }, remove: async key => { prefs.delete(key); } },
@@ -67,6 +68,33 @@ it("restores an account and provides its identity through context", async () => 
   save(); fetcher.mockResolvedValue(response({}));
   await mount(); expect(host.textContent).toBe(signedIn); expect(host.querySelector("h1")).toBeNull();
 });
+it("shows the saved sign-in before the service answers, and stays signed in when the check fails", async () => {
+  save();
+  let answer: (value: Response) => void = () => {};
+  fetcher.mockImplementation(() => new Promise<Response>((resolve) => { answer = resolve; }));
+  await mount(); expect(host.textContent).toBe(signedIn);
+  await act(async () => { answer(response({ error: "failed" }, 503)); });
+  expect(host.textContent).toBe(signedIn);
+});
+it("a new install shows a sign-in the Keychain kept only once the service says it still works", async () => {
+  prefs.clear(); save();
+  let answer: (value: Response) => void = () => {};
+  fetcher.mockImplementation(() => new Promise<Response>((resolve) => { answer = resolve; }));
+  await mount(); expect(host.textContent).not.toContain("workspace");
+  await act(async () => { answer(response({})); });
+  expect(host.textContent).toBe(signedIn);
+  expect(prefs.get("dusk.mobile.installed")).toBe("1");
+});
+it("stays signed in when the app comes back and the service is down", async () => {
+  save(); fetcher.mockResolvedValue(response({}));
+  await mount(); expect(host.textContent).toBe(signedIn);
+  fetcher.mockResolvedValue(response({ error: "failed" }, 500));
+  await act(async () => { resume?.(); });
+  expect(host.textContent).toBe(signedIn);
+  fetcher.mockResolvedValue(response({ error: "invalid_token" }, 401));
+  await act(async () => { resume?.(); });
+  expect(host.textContent).not.toBe(signedIn);
+});
 it("signs out back to signed-out", async () => {
   save(); fetcher.mockResolvedValue(response({}));
   function Child() { const value = useMobileAccount(); return value?.account ? createElement("button", { onClick: () => void value?.signOut() }, "leave") : createElement("p", null, "signed out"); }
@@ -77,8 +105,10 @@ it("signs out back to signed-out", async () => {
 });
 it("handles auth links, leaves pairing links to ConnectionGate and says why a sign-in failed", async () => {
   fetcher.mockResolvedValue(response({ v: 1, providers: [], signupOpen: true }));
-  await mount(); heading(); expect(listener?.("duskbot://pair?code=abc")).toBe(false);
+  const closeBrowser = vi.fn(); platform.closeBrowser = closeBrowser;
+  await mount(); heading(); expect(listener?.("duskbot://pair?code=abc")).toBe(false); expect(closeBrowser).not.toHaveBeenCalled();
   await act(async () => { expect(listener?.("duskbot://auth?code=abc&state=bad")).toBe(true); });
+  expect(closeBrowser).toHaveBeenCalledOnce();
   expect(host.querySelector("[role=alert]")?.textContent).toContain("This sign-in expired. Please start again.");
 });
 it("signs in with an emailed code typed into one field", async () => {
@@ -162,9 +192,10 @@ it("finishes a cold-launch auth link through StrictMode effect replay", async ()
   secrets.set("dusk.account.pending", JSON.stringify({ verifier: "v".repeat(43), state: "state", provider: "google", at: Date.now(), origin }));
   let launch: string | null = "duskbot://auth?code=abc&state=state";
   platform.onAppUrl = cb => { if (launch && cb(launch)) launch = null; return () => {}; };
+  const closeBrowser = vi.fn(); platform.closeBrowser = closeBrowser;
   fetcher.mockResolvedValue(response({ cloudContractVersion: 1, accessToken: token, expiresAt: Date.now() + 60_000, device: { id: "phone" }, account }));
   await mount(createElement(function Child() { return createElement("p", null, useMobileAccount()?.account?.email ?? "none"); }), true);
-  expect(host.textContent).toBe(account.email); expect(fetcher).toHaveBeenCalledOnce();
+  expect(host.textContent).toBe(account.email); expect(fetcher).toHaveBeenCalledOnce(); expect(closeBrowser).toHaveBeenCalled();
 });
 
 it("says every Sign in with Apple problem in its own words", async () => {

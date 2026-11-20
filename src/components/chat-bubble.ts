@@ -67,7 +67,7 @@ export function joinedCorners(side: "start" | "end", join: BubbleJoin): string {
 
 /** Which bubble group a transcript row belongs to in Simple mode: this bot's words, the person's own words, or none. */
 export function bubbleGroup(message: Message, botId: string): "bot" | "user" | null {
-  if (message.kind !== "text" || message.publishedPage || message.automation || message.helperFollowup) return null;
+  if (message.kind !== "text" || message.publishedPage || message.document || message.automation || message.helperFollowup) return null;
   if (message.role === "user") return peerLine(message) ? null : "user";
   if (message.role !== "bot" || peerRequest(message, botId)) return null;
   return isPureLeakedSystemHarnessMessage(message.text) && !message.attachments?.length ? null : "bot";

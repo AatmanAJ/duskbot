@@ -17,6 +17,8 @@ export interface AgentsConversation {
   host: { skillAuthoring: boolean; cloudHome: boolean; team: boolean; voiceNotes: boolean; x: boolean; research: boolean; slack?: boolean };
   /** The engine's driver kind: it decides whether the engine searches and reads the web on its own. */
   engine?: string;
+  /** The bot works on this Mac and macOS has not let dusk bot control its screen: request_screen_access is mounted. */
+  screenAccessMissing?: boolean;
 }
 
 /** Engines with their own free web search and fetch (Claude Code, Codex): the person never pays treg for a search there. */
@@ -56,6 +58,7 @@ export function agentsServerEnv(conversation: AgentsConversation, turn: AgentsTu
     DUSK_PAGE_READER: flag(conversation.engine !== undefined && !engineHasNativeWeb(conversation.engine)),
     ...roleToolEnv(bot),
     DUSK_COMPUTER_SELECTION: flag(!conversation.room && bot.computer !== "off" && !conversation.teamComputer),
+    DUSK_SCREEN_ACCESS: flag(!conversation.room && conversation.screenAccessMissing === true),
   };
 }
 

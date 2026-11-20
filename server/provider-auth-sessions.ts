@@ -1,4 +1,5 @@
 // An in-progress login belongs to the admin session that started it: never put its device code on global SSE.
+import { BoxFenceError } from "./bot-box/plan.ts";
 import type { ProviderAuthenticationOptions, ProviderAuthenticationStart, ProviderInstance } from "./contracts.ts";
 
 type LoginInstance = Pick<ProviderInstance, "instanceId" | "startAuthentication" | "getAuthentication" | "completeAuthentication" | "cancelAuthentication" | "signOut">;
@@ -99,6 +100,10 @@ export class ProviderAuthSessions {
     } catch (error) {
       if ((!resuming || flow.revoked) && this.flows.get(instance.instanceId) === flow) this.flows.delete(instance.instanceId);
       this.tell(instance.instanceId, null, "failed", error);
+      if (error instanceof BoxFenceError) {
+        console.warn(`provider sign-in: the bot box refused ${error.path} for ${instance.instanceId}`);
+        throw failure("This AI's sign-in could not start on this server: its bot box would not let the AI use its own folder. Update dusk bot on this server, then try again.", 500);
+      }
       throw error;
     } finally {
       flow.busy = false;
@@ -132,7 +137,11 @@ export class ProviderAuthSessions {
     flow.busy = true;
     try {
       let done: void | { location?: string };
-      try { done = await flow.instance.completeAuthentication(flowId, callbackUrl); } catch (error) { this.tell(instanceId, flowId, "failed", error); throw error; }
+      try { done = await flow.instance.completeAuthentication(flowId, callbackUrl); } catch (error) {
+        // a paste turned away before use (400) leaves the sign-in open for another
+        if ((error as { status?: number }).status !== 400) this.tell(instanceId, flowId, "failed", error);
+        throw error;
+      }
       if (this.flows.get(instanceId) === flow) this.flows.delete(instanceId);
       this.signedIn(instanceId);
       this.tell(instanceId, flowId, "succeeded");
