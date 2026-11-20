@@ -1,5 +1,5 @@
 // What server/index.ts needs from a bot's own chat-app accounts (Telegram, Discord), in one object: the owner routes,
-// the messaging_channels tool's internal route, the public webhook door, log redaction and the background work.
+// the chat_app_bots tool's internal route, the public webhook door, log redaction and the background work.
 // Security: tokens stay in this process and the encrypted store. Only the person who sends the pairing code, people
 // they let in and group chats they let in reach the bot; everyone else is turned away and listed for the owner. Turns
 // from anyone but the owner in a direct chat run as outside work. A messenger conversation never manages messengers.
@@ -388,7 +388,7 @@ export function createMessengerHost(deps: MessengerHostDeps) {
     if (ctx.path !== MESSENGER_TOOL_PATH) return PASS;
     if (ctx.method !== "POST") return ctx.json(ctx.res, 405, { error: "method not allowed" });
     const parsed = toolBody.safeParse(await ctx.readBody());
-    if (!parsed.success) return ctx.json(ctx.res, 400, { error: "Use messaging_channels with action and the fields it lists." });
+    if (!parsed.success) return ctx.json(ctx.res, 400, { error: "Use chat_app_bots with action and the fields it lists." });
     const { action, platform, token: raw, who } = parsed.data;
     if (action === "status") return ctx.json(ctx.res, 200, { text: describe(ctx.botId) });
     const refused = state.isMessengerThread(ctx.threadId)

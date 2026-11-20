@@ -1525,8 +1525,8 @@
       }
     },
     {
-      "name": "messaging_channels",
-      "description": "This bot's own Telegram and Discord bots, so people message you there and you answer as yourself. status: what is connected, who is let in, who was turned away. connect: link the bot token the person pasted in this chat (leave token out; it is read from their message). allow / remove_access: a person or group by name from the turned-away list, or by id. disconnect: stop answering there.",
+      "name": "chat_app_bots",
+      "description": "Telegram and Discord bot accounts for this bot, set up from a BotFather or Discord bot token the person pasted. status: what is connected, who may reach it, who was turned away. connect: link that token (leave token out; dusk bot takes it from what the person pasted). allow / remove_access: a person or group by name from status, or by id. disconnect: stop using that Telegram or Discord bot.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
