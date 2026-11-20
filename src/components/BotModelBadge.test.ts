@@ -37,6 +37,14 @@ describe("botModel", () => {
     expect(botModel(bot("claude", "claude-custom-7"), [claude])?.label).toBe("claude-custom-7");
   });
 
+  it("says why the model can't answer, and Free model for the free backup, never a signed-out model's name", () => {
+    const signedOut = { ...claude, snapshot: { state: "available", authenticated: false } } as InstanceInfo;
+    expect(botModel(bot("claude", "opus"), [signedOut])?.label).toBe("Sign-in required");
+    const free = { instanceId: "opencode", driverKind: "opencodeGo", displayName: "OpenCode", snapshot: { state: "available", authenticated: true, freeFallback: true },
+      models: { default: "opencode/beam-free", options: [{ id: "opencode/beam-free", label: "Zen · Beam Free" }] } } as InstanceInfo;
+    expect(botModel(bot("opencode", "opencode/beam-free"), [free])?.label).toBe("Free model");
+  });
+
   it("finds nothing for an engine that is not installed", () => {
     expect(botModel(bot("gone", "opus"), [claude])).toBeNull();
   });

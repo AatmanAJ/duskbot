@@ -6,6 +6,7 @@
 
 import { openStreamSocket } from "./direct-socket";
 import { createH264Decoder, h264Support, type H264Decoder } from "./h264-decoder";
+import { directScreenWanted } from "./screen-direct";
 
 /** The browser's host cannot run Chrome until it is set up; the close reason names the fix. */
 export const PREVIEW_STREAM_HOST_SETUP_CLOSE_CODE = 4503;
@@ -68,6 +69,8 @@ export interface PreviewStreamControl {
   readonly stale?: boolean;
   /** The person watching holds the browser, from this view or another of theirs: they may hand it back from here. */
   readonly owned?: boolean;
+  /** The tabs the person holds: the bot waits on these and keeps working in the others. */
+  readonly heldTabs?: readonly string[];
 }
 
 const isPreviewStreamDialog = (value: unknown): value is PreviewStreamControl["dialog"] =>
@@ -268,12 +271,24 @@ const KEYFRAME_MESSAGE = JSON.stringify({ type: "keyframe" });
 /** A decoder that loses its place this often within VIDEO_LOSS_WINDOW_MS gives up video: the stream reopens as JPEG. */
 const VIDEO_LOSSES = 3;
 const VIDEO_LOSS_WINDOW_MS = 10_000;
+/** JPEG quality asked of a browser on this machine: loopback has the bandwidth, so the view stays as sharp as the screen. */
+export const LOCAL_STREAM_QUALITY = 90;
+
+/** A stream served from this machine: it goes as full-size JPEG, never the 1x H.264 meant for the network. */
+export function localStream(access: PreviewStreamAccess): boolean {
+  try {
+    return !directScreenWanted(new URL(access.wsBase).hostname);
+  } catch {
+    return false;
+  }
+}
 export function createPreviewStreamClient(
   target: PreviewStreamTarget,
   events: PreviewStreamEvents,
 ): PreviewStreamClient {
   let cap = { width: target.maxWidth, height: target.maxHeight };
   let size = target.width !== undefined && target.height !== undefined ? { width: target.width, height: target.height } : null;
+  const local = localStream(target.access);
   const streamUrl = () => {
     const query = new URLSearchParams({
       maxWidth: String(Math.max(1, Math.round(cap.width))),
@@ -285,6 +300,7 @@ export function createPreviewStreamClient(
     }
     if (target.interactive === false) query.set("interactive", "false");
     if (video) query.set("codec", "h264");
+    if (local) query.set("quality", String(LOCAL_STREAM_QUALITY));
     return withAccessQuery(`${target.access.wsBase}/stream?${query.toString()}`, target.access);
   };
   let stopped = false;
@@ -305,7 +321,7 @@ export function createPreviewStreamClient(
 
   const connect = () => {
     if (stopped) return;
-    const supported = videoFailed ? false : h264Support();
+    const supported = videoFailed || local ? false : h264Support();
     if (typeof supported !== "boolean") {
       void supported.then(connect);
       return;
@@ -352,6 +368,7 @@ export function createPreviewStreamClient(
         dialog,
         stale,
         owned,
+        heldTabs,
         text,
         id,
         fileName,
@@ -457,6 +474,7 @@ export function createPreviewStreamClient(
           dialog,
           ...(stale === true ? { stale: true } : {}),
           ...(owned === true ? { owned: true } : {}),
+          ...(Array.isArray(heldTabs) && heldTabs.length ? { heldTabs: heldTabs.filter((held): held is string => typeof held === "string").slice(0, 100) } : {}),
         };
         const first = control === null;
         control = nextControl;

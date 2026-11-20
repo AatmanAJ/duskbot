@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  capToolListResult, forgetToolCountLimits, learnedToolCountLimit, learnToolCountLimit, mcpToolBudget, shareToolBudget, toolCountLimitFromError,
+  capToolListResult, forgetToolCountLimits, learnedMcpToolBudget, learnedToolCountLimit, nextMcpToolBudget, retryUnderToolLimit, learnToolCountLimit, mcpToolBudget, shareToolBudget, toolCountLimitFromError,
 } from "./tool-count-limit.ts";
 
 afterEach(() => forgetToolCountLimits());
@@ -33,9 +33,15 @@ describe("sharing a tool budget among a turn's servers", () => {
       .toEqual({ agents: 40, browser: 4, apps: 3, notes: 3 });
   });
 
+  it("serves core servers first, each up to its ceiling, then splits the rest among apps and the person's servers", () => {
+    expect(Object.fromEntries(shareToolBudget([{ name: "agents", tools: 10, core: true }, { name: "composio" }, { name: "browser", core: true },
+      { name: "data", core: true }, { name: "notes" }], 104))).toEqual({ agents: 10, browser: 32, data: 32, composio: 15, notes: 15 });
+    expect(Object.fromEntries(shareToolBudget([{ name: "composio" }, { name: "browser", core: true }], 13))).toEqual({ browser: 13, composio: 0 });
+  });
+
   it("never gives out more than the budget, whatever the counts", () => {
     for (const budget of [0, 1, 7, 104]) {
-      const shares = shareToolBudget([{ name: "agents", tools: 56 }, { name: "a" }, { name: "b" }, { name: "c", tools: 9 }], budget);
+      const shares = shareToolBudget([{ name: "agents", tools: 56, core: true }, { name: "a", core: true }, { name: "b" }, { name: "c", tools: 9 }], budget);
       expect([...shares.values()].reduce((sum, share) => sum + share, 0)).toBeLessThanOrEqual(budget);
     }
   });
@@ -68,5 +74,20 @@ describe("a learned limit", () => {
     learnToolCountLimit("a", 128);
     expect(learnedToolCountLimit("a")).toBe(128);
     expect(learnedToolCountLimit("b")).toBeUndefined();
+  });
+
+  it("halves the MCP budget each time a trimmed turn is still refused, down to none, then gives up", () => {
+    const refusal = "Invalid value for 'tools': maximum number of items is 128.";
+    const offered: Array<number | undefined> = [];
+    let budget = learnedMcpToolBudget("k", 24);
+    for (;;) {
+      offered.push(budget);
+      const retried = retryUnderToolLimit(refusal, { key: "k", engine: "test", offered: budget, engineTools: 24, retry: async () => {}, failed: () => {} });
+      if (!retried) break;
+      budget = learnedMcpToolBudget("k", 24);
+    }
+    expect(offered).toEqual([undefined, 104, 52, 26, 13, 6, 0]);
+    expect(learnedMcpToolBudget("k", 24)).toBe(0);
+    expect(nextMcpToolBudget(128, 200, 24)).toBe(104);
   });
 });

@@ -105,9 +105,9 @@ describe("sidebar top row", () => {
     expect(buttons).toBeGreaterThan(slot);
     expect(classesOf(row, "data-sidebar-top-buttons")).toEqual(expect.arrayContaining(["shrink-0", "pointer-events-auto"]));
     expect(row.slice(buttons).match(/<button/g)).toHaveLength(2);
-    expect(row).toMatch(/data-sidebar-search-toggle="true" aria-label="Search" aria-expanded="false" title="Search" class="[^"]*\bsize-\[26px\][^"]*\brounded-lg\b[^"]*\btext-ink-secondary\b/);
+    expect(row).toMatch(/data-sidebar-search-toggle="true" aria-label="Search" aria-expanded="false" title="Search" class="[^"]*\bsize-7\b[^"]*\brounded-lg\b[^"]*\btext-ink-secondary\b/);
     expect(row, "no round box round either").not.toContain("bg-composer");
-    expect(html).toMatch(/aria-label="New or share" class="[^"]*\bsize-\[26px\][^"]*\brounded-lg\b/);
+    expect(html).toMatch(/aria-label="New or share" class="[^"]*\bsize-7\b[^"]*\brounded-lg\b/);
     expect(html).not.toContain("data-sidebar-edge-toggle");
     expect(html).not.toContain('title="Active threads"');
     expect(html).not.toContain("data-sidebar-search-pill");
@@ -121,7 +121,7 @@ describe("sidebar top row", () => {
     expect(buttons).toBeGreaterThan(spacer);
   });
 
-  it("collapses Simple mode to a rail: round search and + on top (the frame's top bar holds the lights), nothing on the edge, and Apps and the account at the foot", () => {
+  it("collapses Simple mode to a narrow rail: no search and no feedback, and + above Apps and the account at the foot", () => {
     fixture.advanced = false;
     fixture.density = "icons";
     fixture.windowChrome = "mac-inset";
@@ -131,9 +131,9 @@ describe("sidebar top row", () => {
     expect(top).not.toContain("data-traffic-light-space");
     expect(top).not.toContain("data-sidebar-top-buttons");
     expect(top).not.toContain("data-workspace-switcher");
-    expect(top.indexOf('aria-label="Search bots and messages"')).toBeLessThan(top.indexOf('aria-label="New or share"'));
-    expect(top).toMatch(/data-sidebar-rail-top="true" class="flex flex-col items-center gap-2 pt-1"/);
-    expect(top).toMatch(/aria-label="New or share" class="[^"]*\bsize-9\b[^"]*\brounded-full\b/);
+    expect(top).not.toContain("data-sidebar-rail-top");
+    expect(top).not.toContain('aria-label="New or share"');
+    expect(html).not.toContain('aria-label="Search bots and messages"');
     const foot = html.slice(html.indexOf("data-sidebar-rail-footer"));
     const at = (marker: string) => {
       const index = foot.indexOf(marker);
@@ -141,13 +141,15 @@ describe("sidebar top row", () => {
       return index;
     };
     expect(html).not.toContain("data-sidebar-edge-toggle");
-    expect(foot).not.toContain('aria-label="Search bots and messages"');
+    expect(foot).not.toContain('data-sidebar-spot="feedback"');
     const positions = [
+      at('aria-label="New or share"'),
       at('data-sidebar-nav="apps"'),
       at("data-sidebar-account"),
     ];
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(foot).toMatch(/data-tour="nav-apps" data-sidebar-nav="apps"[^>]*aria-label="Connect apps"[^>]*class="[^"]*\bh-9 min-w-9\b[^"]*">(<[^>]*>)*<svg [^>]*class="[^"]*\bui-icon\b[^"]*" data-icon-name="grid-plus"/);
+    expect(foot).toMatch(/aria-label="New or share" class="(?=[^"]*\bsize-10\b)(?=[^"]*\brounded-full\b)/);
+    expect(foot).toMatch(/data-tour="nav-apps" data-sidebar-nav="apps"[^>]*aria-label="Connect apps"[^>]*class="[^"]*\bh-10\b[^"]*\bmin-w-10\b[^"]*">(<[^>]*>)*<svg [^>]*class="[^"]*\bui-icon\b[^"]*" data-icon-name="grid-plus"/);
     expect(foot).not.toContain("data-workspace-switcher");
     expect(foot).not.toContain('data-sidebar-nav="automations"');
     expect(foot).not.toContain('data-sidebar-nav="team-map"');
