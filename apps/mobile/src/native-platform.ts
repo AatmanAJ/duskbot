@@ -16,8 +16,11 @@ const keystore = SecureStorage as unknown as {
   internalGetItem(options: { prefixedKey: string; sync: boolean }): Promise<{ data: string | null }>;
   internalSetItem(options: { prefixedKey: string; data: string; sync: boolean }): Promise<void>;
   internalRemoveItem(options: { prefixedKey: string; sync: boolean }): Promise<{ success: boolean }>;
+  internalGetPrefixedKeys(options: { prefix: string; sync: boolean }): Promise<{ keys: string[] }>;
 };
 const SECRET_PREFIX = "dusk.";
+/** the prefix every Keychain/Keystore item had under the app's first name */
+const LEGACY_SECRET_PREFIX = "omb.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
 import { handleBack, type AppleCredential, type BackGestureEvent, type BarConfig, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobileChrome, type MobilePlatform, type OrientationBridge, type ScanOverlay, type SystemMenuAction, type TurnActivityBridge } from "@/mobile/platform";
 import type { ControlPlace, SystemControl } from "@/lib/system-control";
@@ -607,6 +610,15 @@ export async function nativePlatform(): Promise<MobilePlatform> {
     set: (key, value) => keystore.internalSetItem({ prefixedKey: SECRET_PREFIX + key, data: value, sync: false }),
     remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: SECRET_PREFIX + key, sync: false }); },
   };
+  const legacySecrets: MobilePlatform["legacySecrets"] = {
+    keys: async () => (await keystore.internalGetPrefixedKeys({ prefix: LEGACY_SECRET_PREFIX, sync: false })).keys
+      .filter((key) => key.startsWith(LEGACY_SECRET_PREFIX)).map((key) => key.slice(LEGACY_SECRET_PREFIX.length)),
+    get: async (key) => {
+      const { data } = await keystore.internalGetItem({ prefixedKey: LEGACY_SECRET_PREFIX + key, sync: false });
+      return typeof data === "string" ? data : null;
+    },
+    remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: LEGACY_SECRET_PREFIX + key, sync: false }); },
+  };
   const speech = Capacitor.isPluginAvailable("DuskSpeech");
   const turnActivityOn = kind === "ios" && Capacitor.isPluginAvailable("DuskTurnActivity");
   const notificationsOn = kind === "ios" && Capacitor.isPluginAvailable("DuskNotifications");
@@ -764,6 +776,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       keys: async () => (await Preferences.keys()).keys,
     },
     secrets,
+    legacySecrets,
     chrome: chrome?.native ? nativeChrome(DuskChrome) : undefined,
     controls: chrome?.native && Capacitor.isPluginAvailable("DuskControls") ? {
       place: async (id, control, place) => { try { return (await DuskControls.place({ id, ...control, ...place })).tracked === true; } catch { return false; } },

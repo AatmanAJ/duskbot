@@ -104,7 +104,7 @@ function sameInstallation(a: MobileConnectionRecord, b: MobileConnectionRecord):
   return a.transport === "https" && b.transport === "https" && ownId(a) && ownId(b);
 }
 
-const CONNECTIONS_KEY = "dusk.mobile.connections.v1";
+export const CONNECTIONS_KEY = "dusk.mobile.connections.v1";
 const ACTIVE_KEY = "dusk.mobile.active.v1";
 type ActiveConnection = { record: MobileConnectionRecord; token: string };
 type ConnectionStore = {

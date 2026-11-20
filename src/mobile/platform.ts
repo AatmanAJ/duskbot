@@ -180,6 +180,13 @@ export interface MobilePlatform {
     set(key: string, value: string): Promise<void>;
     remove(key: string): Promise<void>;
   };
+  /** Keychain/Keystore items a build from before the rename to dusk bot kept under its own prefix, by their key past it;
+   * a phone updated from such a build still holds its sign-ins and place tokens there. */
+  legacySecrets?: {
+    keys(): Promise<string[]>;
+    get(key: string): Promise<string | null>;
+    remove(key: string): Promise<void>;
+  };
   /** The system's pull-down menu (iOS) opened from a control at `anchor` (its frame in the viewport, css px). Resolves the
    * key picked, or null when the menu was closed without a pick. */
   showMenu?(anchor: { x: number; y: number; width: number; height: number }, items: SystemMenuAction[]): Promise<string | null>;
