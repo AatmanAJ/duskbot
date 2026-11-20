@@ -234,6 +234,7 @@ export const PendingApprovalPanel = memo(function PendingApprovalPanel({
           </button>
         )}
       </> : undefined} />
+      <div data-approval-body="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       <div className="px-5 py-1" aria-live="polite">
         {pending.message.card?.appAction && !outbound ? (
           <p dir="auto" className="flex items-start gap-2 break-words text-[15px] font-semibold leading-[22px] text-ink">
@@ -276,6 +277,7 @@ export const PendingApprovalPanel = memo(function PendingApprovalPanel({
           </div>
         </div>
       )}
+      </div>
       <div className={cn("flex flex-wrap items-center justify-end gap-2 px-4 pb-4", inline || heldNote || open ? "pt-0" : "pt-2.5")}>{actions}</div>
     </div>
   );

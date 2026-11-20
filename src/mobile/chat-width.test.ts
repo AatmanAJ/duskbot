@@ -132,6 +132,18 @@ describe("the composer on the phone", () => {
     expect(phone(pill, "align-items") ?? "stretch").toBe("stretch");
   });
 
+  it("stops a card waiting on the person under the top bar, its words scrolling between its title and its buttons", () => {
+    const dock = document.querySelector("[data-mobile-chat] [data-grok-inset]")!;
+    const holder = document.createElement("div");
+    holder.setAttribute("data-approval-dock", "");
+    holder.innerHTML = '<div data-ask-card="approval"><div data-approval-body class="min-h-0 flex-1 overflow-y-auto"></div></div>';
+    dock.append(holder);
+    const card = holder.querySelector("[data-ask-card]")!;
+    expect(phone(card, "max-height")).toMatch(/^calc\(100dvh/);
+    expect(phone(card, "flex-direction")).toBe("column");
+    holder.remove();
+  });
+
   it("keeps an attached file's small remove button its own size, not a 44px disc over the thumbnail", () => {
     const dock = document.querySelector("[data-mobile-chat] [data-grok-inset]")!;
     const tile = document.createElement("div");

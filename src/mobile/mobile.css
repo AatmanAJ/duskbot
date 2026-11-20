@@ -333,6 +333,12 @@ html[data-mobile-app="android"] .dusk-mobile [data-ripple] {
   transition: margin-inline var(--m-kb-dur, .35s) var(--m-kb-ease, ease) var(--m-kb-delay, 0s);
 }
 .dusk-mobile[data-keyboard="open"] [data-mobile-chat] [data-tour="composer"] { margin-inline: -10px; }
+/* a card waiting on the person above the composer stops under the top bar: its words scroll, its title and buttons stay */
+.dusk-mobile [data-mobile-chat] [data-approval-dock] [data-ask-card="approval"] {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 208px);
+}
 .dusk-mobile [data-mobile-chat] [data-tour="composer"] > div:has(> [data-composer-row]) {
   min-height: 32px;
   padding: 0;
