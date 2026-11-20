@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  BOT_PANEL_OPEN_KEY,
   LAST_BOT_SECTION_KEY,
+  readBotPanelOpen,
   readLastBotSection,
   rememberBotSection,
 } from "./last-bot-section";
@@ -47,5 +49,21 @@ describe("last bot section", () => {
     });
     expect(readLastBotSection()).toBeNull();
     expect(() => rememberBotSection("soul")).not.toThrow();
+  });
+});
+
+describe("the bot panel left open", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const width = (phone: boolean) => vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("max-width") && phone }));
+
+  it("opens again on a load where it docks beside the chat, and never over a phone's chat", () => {
+    vi.stubGlobal("localStorage", surface({ [BOT_PANEL_OPEN_KEY]: "1" }));
+    width(false);
+    expect(readBotPanelOpen()).toBe(true);
+    width(true);
+    expect(readBotPanelOpen()).toBe(false);
+    vi.stubGlobal("localStorage", surface({ [BOT_PANEL_OPEN_KEY]: "0" }));
+    width(false);
+    expect(readBotPanelOpen()).toBe(false);
   });
 });
