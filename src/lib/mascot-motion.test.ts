@@ -3,7 +3,7 @@ import { DELIGHT_GAP_MS, MASCOT_MOTION, MascotDirector, type MascotMotion, type 
 import { createTicker } from "./mascot-ticker";
 import { WORKING_MOODS, type WorkingMood } from "./working-mood";
 
-const VARIANTS: MascotVariant[] = ["card-calm", "card-lively", "voxel-calm", "voxel-lively"];
+const VARIANTS: MascotVariant[] = ["card-calm", "card-balanced", "card-lively", "voxel-calm", "voxel-balanced", "voxel-lively"];
 
 function play(director: MascotDirector, script: Array<[WorkingMood, number]>, step = 1000 / 60): MascotMotion[] {
   const frames: MascotMotion[] = [];

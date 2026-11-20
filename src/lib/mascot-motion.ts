@@ -2,12 +2,12 @@ import type { PixelState } from "@/pixel/engine";
 import type { WorkingMood } from "./working-mood";
 
 export type MascotLook = "card" | "voxel";
-export type MascotPace = "calm" | "lively";
+export type MascotPace = "calm" | "balanced" | "lively";
 export type MascotVariant = `${MascotLook}-${MascotPace}`;
 export type MascotMotionPick = "current" | MascotVariant;
 
 /** How the chat's working mascot moves: "current" keeps the shipped CSS loops; the others move it in 3D, drawn as a
- * flat card or as voxels, at a calm or a lively pace. */
+ * flat card or as voxels, at a calm, balanced or lively pace. */
 export const MASCOT_MOTION: MascotMotionPick = "current";
 
 /** No two delights (a roll, a barrel roll, a spin, a flip) start closer than this. */
@@ -24,6 +24,7 @@ type Pace = { hop: number; sway: number; period: number; every: readonly [number
 
 const PACES: Record<MascotPace, Pace> = {
   calm: { hop: 0.1, sway: 1, period: 0.68, every: [10_000, 12_000], delights: ["roll", "spin", "barrel"] },
+  balanced: { hop: 0.135, sway: 1.2, period: 0.6, every: [9_000, 11_500], delights: ["roll", "spin", "barrel"] },
   lively: { hop: 0.17, sway: 1.45, period: 0.54, every: [8_000, 10_000], delights: ["roll", "barrel", "spin", "flip"] },
 };
 
@@ -86,7 +87,7 @@ function jumpTurn(m: MascotMotion, k: number, axis: "rx" | "ry" | "rz", deg: num
   const crouch = span(k, 0, 0.14), air = span(k, 0.14, 0.84), land = span(k, 0.84, 1);
   if (k < 0.14) { m.sy -= 0.14 * Math.sin(Math.PI * crouch); m.sx += 0.08 * Math.sin(Math.PI * crouch); }
   else if (k < 0.84) { m.y -= height * arc(air); m.sy += 0.08 * Math.sin(Math.PI * air); m.sx -= 0.05 * Math.sin(Math.PI * air); }
-  else { m.sy -= 0.17 * Math.sin(Math.PI * land); m.sx += 0.11 * Math.sin(Math.PI * land); }
+  else { const give = Math.sin(TAU * land) * (1 - 0.45 * land); m.sy -= 0.17 * give; m.sx += 0.11 * give; }
   m[axis] += deg * easeInOutSine(air);
 }
 
@@ -185,7 +186,7 @@ export class MascotDirector {
   constructor({ variant, seed = "", reduced = false, at = 0 }: { variant: MascotVariant; seed?: string; reduced?: boolean; at?: number }) {
     this.variant = variant;
     this.reducedMotion = reduced;
-    this.pace = PACES[variant.endsWith("lively") ? "lively" : "calm"];
+    this.pace = PACES[variant.slice(variant.indexOf("-") + 1) as MascotPace];
     this.rng = rngOf(`${variant}|${seed}`);
     this.blinkEvery = 3400 + Math.floor(this.rng() * 1400);
     this.moodAt = at;
