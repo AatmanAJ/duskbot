@@ -9,6 +9,13 @@ const bot = (id: string, at = T + 100): Message => ({ id, role: "bot", kind: "te
 const ids = (rows: readonly Message[]) => rows.map((row) => row.id);
 
 describe("holdRows", () => {
+  it("lands a bubble whose words were already on screen (the phone's streamed reply) without a typing beat", () => {
+    const state = newTypingHold([ask], T);
+    const result = holdRows([ask, bot("streamed")], state, { botId: "b", busy: true, now: T + 100, shownAlready: (id) => id === "streamed" });
+    expect(ids(result.rows)).toEqual(["ask", "streamed"]);
+    expect(result.typing).toBe(false);
+  });
+
   it("leaves history alone: what was there when the chat opened is never held", () => {
     const old = bot("old", T - 5_000);
     const state = newTypingHold([ask, old], T);

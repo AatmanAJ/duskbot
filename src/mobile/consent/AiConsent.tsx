@@ -16,6 +16,12 @@ import { aiProviders, consentCovers, consentKey, createConsentStore, type AiCons
 type ConsentContext = { consent: AiConsent | null; covered: boolean; open(): void };
 const Context = createContext<ConsentContext | null>(null);
 export const useAiConsent = () => useContext(Context);
+const SheetSlot = createContext<ReactNode>(null);
+
+/** Where the question shows: inside the phone's root, which carries its safe areas, scheme and styles. */
+export function AiConsentSheet() {
+  return useContext(SheetSlot);
+}
 
 /** Asks once, on this phone, before a message, a photo or a call reaches an AI, naming who gets them (App Store
  * guideline 5.1.2(i)). Without a yes the app still opens every chat and setting; sending asks again. */
@@ -56,7 +62,7 @@ export function AiConsentProvider({ children }: { children: ReactNode }) {
     held?.();
   };
   const decline = async () => {
-    haptic("selection");
+    haptic("pick");
     await store.decline();
     close();
   };
@@ -64,10 +70,13 @@ export function AiConsentProvider({ children }: { children: ReactNode }) {
 
   return (
     <Context value={value}>
-      {children}
-      <Sheet open={open} onClose={() => { if (!consent) void decline(); else close(); }} title={t("mobile.consent.title")}>
-        <ConsentBody providers={providers} covered={covered} onAllow={() => void allow()} onDecline={() => void decline()} onDone={close} />
-      </Sheet>
+      <SheetSlot value={
+        <Sheet open={open} onClose={() => { if (!consent) void decline(); else close(); }} title={t("mobile.consent.title")}>
+          <ConsentBody providers={providers} covered={covered} onAllow={() => void allow()} onDecline={() => void decline()} onDone={close} />
+        </Sheet>
+      }>
+        {children}
+      </SheetSlot>
     </Context>
   );
 }
@@ -83,8 +92,8 @@ function ConsentBody({ providers, covered, onAllow, onDecline, onDone }: { provi
     t("mobile.consent.relay"),
   ];
   return (
-    <div className="px-5 pb-[calc(var(--m-safe-bottom)+16px)]" data-ai-consent>
-      <PixelArt name="key" size={52} className="mb-3" />
+    <div className="px-5 pb-4" data-ai-consent>
+      <PixelArt name="key" size={52} className="mb-3 [@media(max-height:700px)]:hidden" />
       <p className="text-[16px] leading-6 text-ink">{t("mobile.consent.lead")}</p>
       <ul className="mt-3 flex flex-col gap-2.5">
         {items.map((item) => (

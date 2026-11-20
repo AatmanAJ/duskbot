@@ -1,7 +1,7 @@
-import type { Cart, MachineSpec, Quote } from "../../../../shared/billing-api.ts";
+import type { Cart, ChangeTiming, MachineSpec, Quote } from "../../../../shared/billing-api.ts";
 import type { BillingConfig } from "./plans.ts";
 import { BILLING_CONFIG } from "./plans.ts";
-import type { ProviderCartLine } from "./types.ts";
+import type { ChangeMode, ProviderCartLine } from "./types.ts";
 
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function keys(value: Record<string, unknown>, allowed: string[]) { return Object.keys(value).every(key => allowed.includes(key)); }
@@ -105,5 +105,13 @@ export function dodoCart(cart: Cart, products: Record<string, string>, config: B
   const [base, ...addons] = keys;
   return [{ productId: products[base.key], quantity: 1, addons: addons.map(({ key, quantity }) => ({ addonId: products[key], quantity })) }];
 }
-/** what dodo charges now for a plan change in difference_immediately mode (the billing cycle restarts that day) */
-export function changeCharge(fromTotalCents: number, toTotalCents: number) { return Math.max(0, toTotalCents - fromTotalCents); }
+/** when a change from `from` to `to` takes effect and how the provider bills it. A smaller plan waits for the next
+ *  billing date (the bigger one is paid to then); a bigger one starts now, charged for the time left */
+export function changeTiming(from: Cart, to: Cart, trial: boolean, config: BillingConfig = BILLING_CONFIG): { timing: Exclude<ChangeTiming, "undo">; mode: ChangeMode } {
+  if (trial) return { timing: "trial", mode: "trial" };
+  const perMonth = (cart: Cart) => quote({ ...cart, interval: from.interval }, config).monthlyEquivalentCents;
+  // yearly to monthly on the same plan keeps the year already paid; a bigger plan still starts now, the unused year credited
+  const later = perMonth(to) < perMonth(from) || from.interval === "year" && to.interval === "month" && perMonth(to) === perMonth(from);
+  if (later) return { timing: "scheduled", mode: "scheduled" };
+  return { timing: "now", mode: from.interval === to.interval ? "keep_cycle" : "new_cycle" };
+}

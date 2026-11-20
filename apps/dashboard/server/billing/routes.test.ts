@@ -10,7 +10,7 @@ import type { BillingOverview, Cart, Catalog, CheckoutAnswer, CloudDesktopView, 
 import { createDashboardApp } from "../app.ts";
 import { memoryMailer } from "../auth/mail.ts";
 import { CSRF_HEADER } from "../../../../shared/account-api.ts";
-import { createBilling } from "./index.ts";
+import { ACCOUNT_CLOSE_UNAVAILABLE, createBilling } from "./index.ts";
 import type { BillingOptions } from "./index.ts";
 import { BILLING_CONFIG, managedRegionConfig } from "./plans.ts";
 import { quote } from "./pricing.ts";
@@ -352,8 +352,8 @@ it("keeps the account on provider failure and resumes without cancelling complet
   }
   const original = f.billing.fake!.cancelAtPeriodEnd.bind(f.billing.fake);
   const cancel = vi.spyOn(f.billing.fake!, "cancelAtPeriodEnd").mockImplementationOnce(original).mockRejectedValueOnce(new Error("provider unavailable"));
-  const response = await f.page("/v1/account/delete", { email: owner.account.email, cancelBilling: true }, owner.cookie);
-  expect(response.status).toBe(503); expect(await response.json()).toMatchObject({ code: "unavailable" });
+  const response = await f.page("/v1/account/delete", { email: owner.account.email, cancelBilling: true, destroyDesktopsNow: true }, owner.cookie);
+  expect(response.status).toBe(503); expect(await response.json()).toEqual({ code: "unavailable", error: ACCOUNT_CLOSE_UNAVAILABLE });
   expect(f.app.auth.account(owner.account.id)).not.toBeNull();
   expect((await f.page("/v1/me", undefined, owner.cookie)).status).toBe(200);
   expect(f.saved().closures![0].completedAt).toBeNull();
