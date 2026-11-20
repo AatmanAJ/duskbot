@@ -140,7 +140,7 @@ export function steerNote(reply: string): string {
 
 /** The note a continuation reads when the running turn could not take the message mid-turn. */
 export function continuationNote(reply: string): string {
-  return `[dusk bot: the person sent this while your last turn was running and you answered in the chat with ${JSON.stringify(reply)}. Take it into the task you were working on: carry on with what is left of it, and if that part is already done, adjust the result to fit.]`;
+  return `[dusk bot: the person sent this while your last turn was running, so that turn was paused or ended, and you answered in the chat with ${JSON.stringify(reply)}. Take it into the task you were working on: carry on with what is left of it, and if that part is already done, adjust the result to fit.]`;
 }
 
 /** The note the new turn reads after the person redirected the running one. */
@@ -156,4 +156,10 @@ export function taskNote(reply: string): string {
 /** The note the next turn reads with a separate ask that waited for the running turn to end. */
 export function queuedTaskNote(reply: string): string {
   return `[dusk bot: the person sent this separate task while your last turn was running, and you answered in the chat with ${JSON.stringify(reply)}. Do it now; if the earlier task is not finished, finish that too, and open each result with which ask it finishes.]`;
+}
+
+/** The note with a message sent right after the one that started the turn, before the bot said anything. */
+export function burstNote(earlier: string): string {
+  const before = earlier ? `their message before it, ${JSON.stringify(earlier.slice(0, 1_500))}` : "their message before it";
+  return `[dusk bot: the person sent this right after ${before}, before you replied. Read both as one message and answer them together, once.]`;
 }

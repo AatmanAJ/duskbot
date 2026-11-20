@@ -75,6 +75,7 @@
 //   FAKE_CLAUDE_LATE_STEER_INIT_GATE  path: that late turn's `init` also waits for it
 //   FAKE_CLAUDE_LATE_STEER_SILENT  1: the late turn prints `init` and nothing else
 //   FAKE_CLAUDE_SLOW_FINISH_GATE  path: `slow` replies once it exists; a body of "fail" ends as is_error
+//   FAKE_CLAUDE_SLOW_ACK  text `slow` says as soon as its turn starts, before it waits
 //   FAKE_CLAUDE_SLOW_TAIL_TOOL  1: `slow` makes one more tool call right before its reply
 //   FAKE_CLAUDE_QUEUED_TURN_COUNT  unset | zero (what 2.1.282 reports for stdin words) | count
 //   FAKE_CLAUDE_COST_STATE  dir of each session's running cost, restored on --resume as 2.1.282 does
@@ -1299,6 +1300,7 @@ const playTurn = (prompt: JsonValue, late = false) => {
     return;
   }
   if (mode === "slow") {
+    if (process.env.FAKE_CLAUDE_SLOW_ACK && !lateContinuation) out({ type: "assistant", message: { content: [{ type: "text", text: process.env.FAKE_CLAUDE_SLOW_ACK }] } });
     const finishSlowTurn = () => {
       if (process.env.FAKE_CLAUDE_SLOW_TAIL_TOOL) {
         const id = `tu-${process.pid}-${++toolUseCount}`;

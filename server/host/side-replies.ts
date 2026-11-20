@@ -1,15 +1,19 @@
 // Reply while working: the person's own message, sent in their one-to-one chat while the bot works, gets a quick reply
 // from a small fast model (side-reply-prompt.ts) instead of waiting for the turn. Its decision routes the message: a
 // question is answered and the turn runs on untouched; a steer is acknowledged and passed into the running turn, or
-// queued first for its continuation when the engine cannot take it now; a separate new ask (task) goes into the running
-// turn to be done beside it, or waits first in the queue the same way; a stop or redirect ends the turn through the
-// person's own Stop. When no quick reply comes, the message takes the old path (fallback): steered or queued as it was.
+// first in the queue with the running turn paused when its engine cannot take input mid-turn (queued for the continuation
+// when the turn is already ending); a separate new ask (task) goes into the running turn to be done beside it, or the
+// same way; a stop or redirect ends the turn through the person's own Stop. When no quick reply comes, the message takes the old path (fallback): steered or queued as it was.
 import type { RuntimeEvent, SteerOutcome } from "../contracts.ts";
 import type { Checklist } from "../batch-checklist.ts";
 import { derivedLabel } from "../harness/derived-status.ts";
-import { continuationNote, parseSideDecision, queuedTaskNote, redirectNote, sideReplyPrompt, steerNote, taskNote, type SideDecision, type SideLine } from "../side-reply-prompt.ts";
+import { burstNote, continuationNote, parseSideDecision, queuedTaskNote, redirectNote, sideReplyPrompt, steerNote, taskNote, type SideDecision, type SideLine } from "../side-reply-prompt.ts";
 
 export const SIDE_REPLY_TIMEOUT_MS = 12_000;
+/** What the chat says where a turn was paused to take in the person's message. */
+export const PAUSED_FOR_PERSON_LINE = "Paused to take in your message";
+/** How long a turn that has said and done nothing yet counts as just started: a message then is part of the same burst. */
+export const BURST_MS = 30_000;
 const STEP_CHARS = 90;
 const KEPT_STEPS = 12;
 const KEPT_SAID = 4;
@@ -61,7 +65,7 @@ export function repliesWhileWorking(facts: SideSendFacts): boolean {
     !facts.room && facts.oneOnOne && !facts.waitingOnPerson && facts.quickUpdates && facts.writer;
 }
 
-export type SideOutcome = "answered" | "steered" | "queued" | "added" | "added-next" | "stopped" | "redirected" | "fallback";
+export type SideOutcome = "answered" | "steered" | "queued" | "paused" | "folded" | "added" | "added-next" | "stopped" | "redirected" | "fallback";
 
 export interface SideRepliesDeps<R extends SideRequest> {
   writer(botId: string, threadId: string): SideWriter | null;
@@ -75,6 +79,9 @@ export interface SideRepliesDeps<R extends SideRequest> {
   steer(request: R, prompt: string): Promise<SteerOutcome>;
   /** Queued ahead of the thread's queue, as the person's row, so the continuation runs it first. */
   queueNext(request: R, prompt: string): void;
+  /** Queues `prompt` first and stops the running turn of an engine that cannot take input mid-turn, so it carries on with
+   * the message at once instead of after the whole task. */
+  pause?(request: R, prompt: string): Promise<void>;
   stop(request: R): Promise<void>;
   /** Queues `prompt` first and stops the running turn, so it runs next. */
   redirect(request: R, prompt: string): Promise<void>;
@@ -148,8 +155,8 @@ export function createSideReplies<R extends SideRequest>(deps: SideRepliesDeps<R
       },
       recent: recentLines(rows, request.messageId),
       message: request.text,
-      notesNow: deps.canSteer(request.threadId),
-      tasksNow: deps.busy(request.botId, request.threadId) && deps.canSteer(request.threadId),
+      notesNow: deps.canSteer(request.threadId) || Boolean(deps.pause),
+      tasksNow: deps.busy(request.botId, request.threadId) && (deps.canSteer(request.threadId) || Boolean(deps.pause)),
     });
     const timeoutMs = deps.timeoutMs ?? SIDE_REPLY_TIMEOUT_MS;
     const abort = new AbortController();
@@ -179,6 +186,9 @@ export function createSideReplies<R extends SideRequest>(deps: SideRepliesDeps<R
     if (deps.busy(request.botId, request.threadId) && deps.canSteer(request.threadId)) {
       const outcome = await deps.steer(request, `${request.prompt}\n\n${steerNote(reply)}`).catch((): SteerOutcome => "indeterminate");
       if (outcome !== "refused") return "steered";
+    } else if (deps.pause && deps.busy(request.botId, request.threadId)) {
+      await deps.pause(request, `${request.prompt}\n\n${continuationNote(reply)}`);
+      return "paused";
     }
     deps.queueNext(request, `${request.prompt}\n\n${continuationNote(reply)}`);
     return "queued";
@@ -192,13 +202,37 @@ export function createSideReplies<R extends SideRequest>(deps: SideRepliesDeps<R
         if (live) live.added = [...live.added, request.text];
         return "added";
       }
+    } else if (deps.pause && deps.busy(request.botId, request.threadId)) {
+      await deps.pause(request, `${request.prompt}\n\n${queuedTaskNote(reply)}`);
+      waiting.set(request.threadId, [...(waiting.get(request.threadId) ?? []), request.text]);
+      return "paused";
     }
     deps.queueNext(request, `${request.prompt}\n\n${queuedTaskNote(reply)}`);
     waiting.set(request.threadId, [...(waiting.get(request.threadId) ?? []), request.text]);
     return "added-next";
   };
 
+  /** A turn that started moments ago and has neither said nor done anything: the new message is the rest of its ask. */
+  const justStarted = (request: R): boolean => {
+    const live = progress.get(request.threadId);
+    return deps.busy(request.botId, request.threadId) && (!live || (!live.said.length && !live.steps.length && now() - live.startedAt < BURST_MS));
+  };
+
+  const fold = async (request: R): Promise<SideOutcome> => {
+    const prompt = `${request.prompt}\n\n${burstNote(runningAsk(deps.transcript(request.threadId), request.messageId))}`;
+    if (deps.canSteer(request.threadId)) {
+      const outcome = await deps.steer(request, prompt).catch((): SteerOutcome => "indeterminate");
+      if (outcome !== "refused") return "folded";
+    } else if (deps.pause) {
+      await deps.pause(request, prompt);
+      return "folded";
+    }
+    deps.queueNext(request, prompt);
+    return "queued";
+  };
+
   const act = async (request: R): Promise<SideOutcome> => {
+    if (justStarted(request)) return fold(request);
     const decision = await decide(request);
     if (!decision) {
       await deps.fallback(request);

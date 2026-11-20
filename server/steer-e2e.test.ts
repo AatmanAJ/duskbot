@@ -16,6 +16,7 @@ const FAKE_CODEX = join(SERVER_DIR, "testing", "fake-codex-app-server.ts");
 const PORT = workerPort(18800, 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
 const posixOnly = describe.skipIf(process.platform === "win32");
+const QUICK_ACK = "On it.";
 /** a stored picture is read only when its bytes start as one */
 const png = (text: string) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(text)]);
 
@@ -126,6 +127,12 @@ posixOnly("mid-turn steering e2e", () => {
           },
           // the side responder's one-shot answers come from FAKE_CLAUDE_TEXT_ROUTES, picked by the person's new message
           claudeQuick: {
+            driver: "claudeAgent",
+            environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: quickFinishGate, FAKE_CLAUDE_TEXT_ROUTES: quickRoutes, FAKE_CLAUDE_SLOW_ACK: QUICK_ACK },
+            config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
+          },
+          // says nothing until it finishes, so a message sent meanwhile is the rest of a burst
+          claudeSilent: {
             driver: "claudeAgent",
             environment: { FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: quickFinishGate, FAKE_CLAUDE_TEXT_ROUTES: quickRoutes },
             config: { cli: FAKE_CLAUDE, permissionMode: "bypassPermissions" },
@@ -661,6 +668,7 @@ posixOnly("mid-turn steering e2e", () => {
 
     expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "find me cheap flights to Goa" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "the turn to start");
+    await waitFor(async () => (await getBot(created.id)).messages.some((m: any) => m.text === QUICK_ACK), "the turn's ack");
     const asked = await person("POST", `/api/bots/${created.id}/messages`, { text: "are you doing this yourself?" });
     expect(asked.status).toBe(202);
     expect(asked.body.steered).toBe(true);
@@ -688,6 +696,7 @@ posixOnly("mid-turn steering e2e", () => {
     rmSync(quickFinishGate, { force: true });
     expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "and hotels too" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "the second turn to start");
+    await waitFor(async () => (await getBot(created.id)).messages.filter((m: any) => m.text === QUICK_ACK).length === 2, "the second turn's ack");
     // a line made only of stop words ("ok please stop now") is the person's Stop itself and gets no side reply; one with
     // more in it is the side writer's to read
     expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "ok please stop now, I'll book it myself" })).status).toBe(202);
@@ -706,6 +715,7 @@ posixOnly("mid-turn steering e2e", () => {
 
     expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "find me cheap flights to Goa" })).status).toBe(202);
     await waitFor(async () => (await getBot(created.id)).busy === true, "task A to start");
+    await waitFor(async () => (await getBot(created.id)).messages.some((m: any) => m.text === QUICK_ACK), "task A's ack");
     const sends = ["also find me a hotel in Panjim for those dates", "and make me a packing list for the trip", "how is it going?", "make the flights one-way"];
     for (const [index, text] of sends.entries()) {
       const sent = await person("POST", `/api/bots/${created.id}/messages`, { text });
@@ -764,9 +774,54 @@ posixOnly("mid-turn steering e2e", () => {
     // each line reached a turn exactly once: as its own turn, folded in, or queued after
     for (const text of ["find me a train to Goa", "from my phone: and the return train too"]) {
       expect(messages.filter((m: any) => m.role === "user" && m.text === text)).toHaveLength(1);
-      expect(finals.split(text).length - 1).toBe(1);
+      expect(finals).toContain(text);
     }
     expect(messages.some((m: any) => m.kind === "activity" && m.tool?.ok === false)).toBe(false);
+  }, 60_000);
+
+  it("a burst (hey, then the real ask a second later) gets one answer from one turn, with no quick reply in between", async () => {
+    rmSync(quickFinishGate, { force: true });
+    const created = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeSilent", model: "claude-fake" } });
+    const person = await asPairedPerson();
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "hey" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "the turn to start");
+    const ask = await person("POST", `/api/bots/${created.id}/messages`, { text: "are you doing this yourself?" });
+    expect(ask.status).toBe(202);
+    expect(ask.body.steered).toBe(true);
+    // the steer is in once the CLI echoes it; then the turn may finish
+    await new Promise((r) => setTimeout(r, 500));
+    writeFileSync(quickFinishGate, "finish");
+    await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to finish");
+    const messages = (await getBot(created.id)).messages;
+    expect(messages.filter((m: any) => m.sideReply)).toEqual([]);
+    // the new bot's greeting comes before the burst; after it, one turn and one result
+    const replies = messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal);
+    expect(new Set(messages.filter((m: any) => m.turnId).map((m: any) => m.turnId)).size).toBe(1);
+    expect(replies).toHaveLength(1);
+    expect(replies[0].text).toContain("reply to: ");
+    expect(replies[0].text).toContain("are you doing this yourself?");
+    expect(replies[0].text).toContain("answer them together, once");
+    expect(stderr).not.toMatch(/side reply: \w+ in /);
+  }, 60_000);
+
+  it("on an engine that cannot steer, a burst pauses the silent turn and one turn takes both lines", async () => {
+    const created = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "acp", model: "fake-model" } });
+    const person = await asPairedPerson();
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "hey there" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "the turn to start");
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "find me a hotel in Panjim" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).messages.some((m: any) => m.kind === "activity" && m.tool?.name === "Paused to take in your message"), "the pause", 15_000);
+    await waitFor(async () => {
+      const bot = await getBot(created.id);
+      return bot.busy === true && !(await api("GET", "/api/bots")).body.queued?.[created.threadId]?.length;
+    }, "the continuation to take the line", 15_000);
+    const messages = (await getBot(created.id)).messages;
+    expect(messages.filter((m: any) => m.sideReply)).toEqual([]);
+    for (const text of ["hey there", "find me a hotel in Panjim"]) expect(messages.filter((m: any) => m.role === "user" && m.text === text)).toHaveLength(1);
+    await api("POST", `/api/bots/${created.id}/interrupt`);
+    await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to settle");
   }, 60_000);
 
   it("a message waiting for a free slot still names the paired person once it runs", async () => {

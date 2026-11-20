@@ -659,7 +659,7 @@ import { createToolTimingRoute, createUsageRoutes } from "./routes/usage.ts"; im
 import { createReconnectResume } from "./host/reconnect-resume.ts"; import { mcpServerLabel } from "./remote-mcp-label.ts"; import { tokenApp as tokenAppSpec } from "../shared/app-tokens.ts";
 import { createFinishGuard } from "./host/finish-guard.ts"; import { runsCommands } from "./bot-reach.ts"; import { forwardedAsks } from "./host/forwarded-ask.ts"; import { createLimitHold, refusedStartWaits } from "./host/limit-hold.ts"; import { createBatchContinue } from "./host/batch-continue.ts"; import { checklistDir, readChecklist } from "./batch-checklist.ts"; import { createChecklistRoutes } from "./routes/checklist.ts"; import { createActionReceipts } from "./host/action-receipts.ts"; import { createDocumentRoutes } from "./routes/bot-documents.ts"; import { BotDocuments } from "./bot-documents.ts"; import { carryIntoNextTurn } from "./drivers/openai-chat-carry.ts";
 import { createBrowserLoops } from "./host/browser-loops.ts"; import { createBotMessageRoutes } from "./routes/bot-messages.ts";
-import { clearInternalTurn, isInternalTurn, markInternalTurn } from "./internal-turns.ts"; import { createFirstReplyRescue } from "./first-reply-rescue.ts"; import { createTurnBeats } from "./turn-beats.ts"; import { createSideReplies, repliesWhileWorking, type SideRequest, type SideSendFacts } from "./host/side-replies.ts";
+import { clearInternalTurn, isInternalTurn, markInternalTurn } from "./internal-turns.ts"; import { createFirstReplyRescue } from "./first-reply-rescue.ts"; import { createTurnBeats } from "./turn-beats.ts"; import { createSideReplies, PAUSED_FOR_PERSON_LINE, repliesWhileWorking, type SideRequest, type SideSendFacts } from "./host/side-replies.ts";
 import { createReactionRoutes } from "./routes/reactions.ts";
 import { createReactions, withReactionNotes, type Reactor } from "./reactions.ts"; import { createBotReactionRoutes } from "./bot-reactions.ts";
 import { createPersonReplies } from "./person-replies.ts";
@@ -8016,8 +8016,8 @@ function appsToReconnect(botId: string): Array<{ server: string; label: string }
   return [...vendor, ...tokens];
 }
 bus.subscribe((event: RuntimeEvent) => { if (event.type === "turn.started" || event.type === "turn.completed") browserLoops.settle(event.threadId); });
-const personFirst = createPersonFirst({ firstMs: Number(process.env.DUSK_PERSON_FIRST_MS) || undefined, waiting: (threadId) => watchdog.waiting(threadId) || activeRoutineRunForThread(threadId) !== null,
-  stop: async (threadId, line) => { const bot = store.botByThread(threadId); if (!bot) return; store.appendMessage(threadId, { role: "bot", kind: "activity", tool: { name: line, ok: true } }); turnStops.stopping(threadId, liveTurnByThread.get(threadId), line); await interruptDirectThread(bot.id, threadId, line); } });
+async function stopTurnForPersonsLine(threadId: string, line: string) { const bot = store.botByThread(threadId); if (!bot) return; store.appendMessage(threadId, { role: "bot", kind: "activity", tool: { name: line, ok: true } }); turnStops.stopping(threadId, liveTurnByThread.get(threadId), line); await interruptDirectThread(bot.id, threadId, line); } const personFirst = createPersonFirst({ firstMs: Number(process.env.DUSK_PERSON_FIRST_MS) || undefined, waiting: (threadId) => watchdog.waiting(threadId) || activeRoutineRunForThread(threadId) !== null,
+  stop: (threadId, line) => stopTurnForPersonsLine(threadId, line) });
 bus.subscribe((event: RuntimeEvent) => { if (!shouldIgnoreProviderEvent(event)) personFirst.onEvent(event); });
 // A first reply that never comes gets one notice with a way out (server/first-reply-rescue.ts), on listeners of their own.
 const firstReplyRescue = createFirstReplyRescue({ store, botForThread, speaker: (threadId) => groupSpeakers.get(threadId), runningEngine: (threadId) => runningTurnEngines.get(threadId)?.instanceId,
@@ -8042,8 +8042,8 @@ const sideReplies = createSideReplies<SideSend>({
   checklist: (botId, threadId) => { const dir = checklistDir(TASK_WORKSPACES_DIR, botId, threadId); return dir ? readChecklist(dir) : null; },
   busy: (botId, threadId) => threadBusy(botId, threadId),
   canSteer: canSteerThread,
-  steer: sideSteer,
-  queueNext: sideQueue,
+  steer: async (send, prompt) => { const outcome = await sideSteer(send, prompt); if (outcome !== "refused") personFirst.wait(send.threadId, { requeue: (note) => sideQueue(send, note ? `${prompt}\n\n${note}` : prompt) }); return outcome; },
+  queueNext: sideQueue, pause: async (send, prompt) => { sideQueue(send, prompt); if (threadBusy(send.botId, send.threadId)) await stopTurnForPersonsLine(send.threadId, PAUSED_FOR_PERSON_LINE); },
   stop: (send) => stopThreadForPerson(send.botId, send.threadId),
   redirect: async (send, prompt) => { sideQueue(send, prompt); await restartForPerson(send.botId, send.threadId, send.trigger); },
   post: (threadId, text) => void store.appendMessage(threadId, { role: "bot", kind: "text", text, sideReply: true }),
