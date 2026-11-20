@@ -38,7 +38,7 @@ export function forgetKey(key: string): void {
   if (rejected.size === 0) return;
   const suffix = ` ${fingerprint(key)}`;
   const before = rejected.size;
-  for (const mark of [...rejected.keys()]) if (mark.endsWith(suffix)) rejected.delete(mark);
+  for (const mark of rejected.keys()) if (mark.endsWith(suffix)) rejected.delete(mark);
   if (rejected.size !== before) changed();
 }
 
