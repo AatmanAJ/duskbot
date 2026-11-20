@@ -338,7 +338,7 @@ import { createTtsRoutes } from "./routes/tts.ts";
 import { localVoiceRoutes } from "./local-voice/host.ts";
 import { createVoiceRoutes } from "./routes/voice.ts";
 import { turnStartLogLine } from "./turn-log.ts";
-import { TurnStops, outwardActions, stoppedTurnOutcome, turnEvidence } from "./turn-outcome.ts";
+import { TurnStops, cutTurnProgress, outwardActions, stoppedTurnOutcome, turnEvidence } from "./turn-outcome.ts";
 import { replaysTranscriptNatively } from "./runtime/capabilities.ts";
 import { buildRecoveryText, buildTurnContext, engineIsFresh } from "./turn-context.ts";
 import { Handoffs, handedStateUsable, isContextMessage, recordHanded, renderUnseen, sessionStart, unseenMessages, withUnseenMessages, type ContextMessage } from "./delta-context.ts";
@@ -4345,6 +4345,7 @@ const handoffTicks = createHandoffTicks(), coordinator: Coordinator = createCoor
       }
       return outwardActions(turnRows(node));
     },
+    progress: node => cutTurnProgress(turnRows(node)),
     shareAnswer: createShareAnswer({ askedFrom: (node) => (node.parentId ? coordinator.node(node.parentId)?.threadId : undefined), audienceOf: teamHost.audienceOf, pinned: (botId, threadId) => store.taskByThread(botId, threadId)?.cwd, botFolder: (botId) => store.bot(botId)?.cwd, privateFolders: TASK_WORKSPACES_DIR }),
     joined: (node) => { store.appendMessage(node.threadId, { role: "bot", kind: "activity", tool: { name: `notice: ${serverLine(personLanguages.forLine(teamConversationPerson(node.threadId) ?? threadPersonKey(node.threadId)), "server.teammates.sameRequest")}`, ok: true } }); },
   },
