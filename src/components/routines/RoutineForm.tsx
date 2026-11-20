@@ -21,13 +21,14 @@ const labelCls = "block text-[12px] leading-4 tracking-[0.01em] text-ink-seconda
 const primaryCls = cn(buttonCls, "bg-ink text-app shadow-none enabled:hover:bg-ink/85");
 const PRESETS: readonly Exclude<WhenPreset, "keep">[] = ["daily", "weekdays", "weekly", "hourly", "once"];
 
-/** "9", "9pm", "9:30 am", "21:30", "930" -> "HH:MM", or null. */
+/** "9", "9pm", "9:30 am", "21:30", "930", "24:00" -> "HH:MM", or null. */
 export function parseTypedTime(text: string): string | null {
   const m = /^\s*(\d{1,2})(?:[:.\s]?(\d{2}))?\s*([ap])?\.?\s*m?\.?\s*$/i.exec(text);
   if (!m) return null;
   let hour = Number(m[1]);
   const minute = m[2] ? Number(m[2]) : 0;
   const half = m[3]?.toLowerCase();
+  if (hour === 24 && minute === 0 && !half) hour = 0;
   if (minute > 59 || hour > 23 || (half && (hour < 1 || hour > 12))) return null;
   if (half === "p" && hour < 12) hour += 12;
   if (half === "a" && hour === 12) hour = 0;
@@ -44,7 +45,7 @@ const shownTime = (time: string) => {
   return new Date(2026, 0, 1, h ?? 0, m ?? 0).toLocaleTimeString(activeLocale(), { hour: "numeric", minute: "2-digit", hourCycle: deviceHourCycle() });
 };
 
-function TimeField({ value, onChange }: { value: string; onChange: (time: string) => void }) {
+export function TimeField({ value, onChange }: { value: string; onChange: (time: string | null) => void }) {
   const [text, setText] = useState(() => shownTime(value));
   const [bad, setBad] = useState(false);
   const commit = () => {
@@ -64,8 +65,7 @@ function TimeField({ value, onChange }: { value: string; onChange: (time: string
       onChange={(event) => {
         setText(event.target.value);
         setBad(false);
-        const time = parseTypedTime(event.target.value);
-        if (time) onChange(time);
+        onChange(parseTypedTime(event.target.value));
       }}
       onBlur={commit}
       onKeyDown={(event) => { if (event.key === "Enter" && !imeComposing(event.nativeEvent)) { event.preventDefault(); commit(); } }}
@@ -163,7 +163,7 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
             <input type="date" aria-label={t("routines.inline.date")} value={when.date} onChange={(event) => patchWhen({ date: event.target.value })} className={cn(fieldCls, "w-auto flex-none")} />
           )}
           {when.preset !== "hourly" && when.preset !== "keep" && (
-            <TimeField value={when.time} onChange={(time) => patchWhen({ time })} />
+            <TimeField value={when.time} onChange={(time) => patchWhen({ time: time ?? "" })} />
           )}
         </div>
         {when.preset !== "hourly" && when.preset !== "keep" && (
@@ -181,9 +181,9 @@ export function RoutineForm({ bot, routine, defaultRunOn, onDone }: {
             </label>
             {when.window && (
               <>
-                <TimeField value={when.window.start} onChange={(start) => patchWhen({ window: { ...when.window!, start } })} />
+                <TimeField value={when.window.start} onChange={(start) => patchWhen({ window: { ...when.window!, start: start ?? "" } })} />
                 <span className="text-[13px] text-ink-secondary">{t("routines.hours.to")}</span>
-                <TimeField value={when.window.end} onChange={(end) => patchWhen({ window: { ...when.window!, end } })} />
+                <TimeField value={when.window.end} onChange={(end) => patchWhen({ window: { ...when.window!, end: end ?? "" } })} />
               </>
             )}
             {when.window === undefined && <span className="text-[12px] leading-4 text-ink-secondary">{t("routines.hours.learned")}</span>}
