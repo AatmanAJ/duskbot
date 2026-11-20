@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { COMPUTER_UNREACHABLE } from "../../shared/computer-unreachable.ts";
 
 import { checkInvariants } from "./invariants.ts";
 import { Runtime, type BeginRequest } from "./runtime.ts";
@@ -465,6 +466,16 @@ describe("Runtime: one tree, one lane", () => {
       expect(w.runner.runs.map(r => r.a.id)).toEqual([child.id, root.id]);
       expect(w.runner.runs[1]!.input.resumed).toBe(true);
     }
+  });
+
+  it("hands the asking bot a teammate's computer failure as one plain sentence, never the raw docker error", async () => {
+    const raw = 'Docker over SSH failed while checking the VPS: error during connect: Get "http://%2Frun%2Fopenmausbot-docker%2Fdocker.sock/v1.56/images/x/json": EOF';
+    const w = world(a => a.assignee.botId === "builder" ? { kind: "failed", outcome: "provider_error", text: raw } : undefined);
+    const root = w.runtime.begin(beginReq());
+    const child = ok(w.runtime.enqueue(toBot("builder", root.id)));
+    w.runtime.end(root.id, { ok: true, text: "I asked." });
+    w.runtime.tick(); await flush(); w.runtime.tick();
+    expect(w.store.get(child.id)?.result).toBe(COMPUTER_UNREACHABLE);
   });
 
   it("wakes the requester when any new result needs it, and it reads the marked one too", async () => {

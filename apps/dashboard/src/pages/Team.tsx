@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { TeamView } from "../../../../shared/billing-api";
+import type { ChangeOffer } from "../data/contracts";
 import { Minus, Plus } from "@/icons";
 import { useCloud } from "../data/cloud";
 import { useSession } from "../data/session";
@@ -97,7 +98,7 @@ export function TeamPage() {
       <SectionTitle id="team-cloud-title">the team's cloud</SectionTitle>
       <p className="text-14 text-ink-3">{team.cloud.joinable
         ? `everyone in ${team.name} opens it from the dusk bot app, signed in with the email they joined with. removing someone signs them out of it at once.`
-        : "it was set up before teams, so members can't open it yet. write to hello@dusk.bot and we move it over for you."}</p>
+        : "it was made before it became a team cloud, so members can't open it yet. your own access, its size and your seats are all set."}</p>
     </section>}
     <Modal open={removing !== null} onClose={() => busy === null && setRemoving(null)} title={`remove ${removing?.email ?? ""}?`} footer={<><Button disabled={busy !== null} onClick={() => setRemoving(null)}>cancel</Button><Button variant="danger" disabled={busy !== null} onClick={() => removing && void act("remove", () => teamApi.remove(removing.email), `${removing.email} removed`).then(() => setRemoving(null))}>{busy === "remove" ? "removing" : "remove"}</Button></>}>
       <p>they're signed out of the team's cloud at once, and their private chats there are deleted. their seat frees up; your plan doesn't change.</p>
@@ -110,7 +111,7 @@ function AddSeats({ team, onClose, onDone }: { team: TeamView; onClose(): void; 
   const cloud = useCloud();
   const { toast } = useSession();
   const [count, setCount] = useState(1);
-  const [charge, setCharge] = useState<number | null>(null);
+  const [offer, setOffer] = useState<ChangeOffer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const selection = cloud.billing?.subscription?.selection ?? null;
@@ -118,18 +119,18 @@ function AddSeats({ team, onClose, onDone }: { team: TeamView; onClose(): void; 
   useEffect(() => {
     if (!selection) return;
     let live = true;
-    setCharge(null); setError(null);
-    cloud.changeCharge({ ...selection, members: target }).then((usdNow) => live && setCharge(usdNow), (e: Error) => live && setError(e.message));
+    setOffer(null); setError(null);
+    cloud.changeCharge({ ...selection, members: target }).then((next) => live && setOffer(next), (e: Error) => live && setError(e.message));
     return () => { live = false; };
   }, [target, selection?.license]);
   const confirm = async () => {
-    if (!selection || charge === null) return;
+    if (!selection || offer === null) return;
     setBusy(true); setError(null);
-    try { await cloud.changePlan({ ...selection, members: target }, charge); toast(`${plural(count, "seat")} added`); onDone(); }
+    try { await cloud.changePlan({ ...selection, members: target }, offer.todayUsd); toast(`${plural(count, "seat")} added`); onDone(); }
     catch (e) { setError((e as Error).message); setBusy(false); }
   };
   const each = team.seats.extraSeatCents / 100;
-  return <Modal open onClose={() => !busy && onClose()} title="add seats" footer={<><Button disabled={busy} onClick={onClose}>cancel</Button><Button variant="primary" disabled={busy || charge === null || !selection} onClick={() => void confirm()}>{busy ? "adding" : `add ${plural(count, "seat")}`}</Button></>}>
+  return <Modal open onClose={() => !busy && onClose()} title="add seats" footer={<><Button disabled={busy} onClick={onClose}>cancel</Button><Button variant="primary" disabled={busy || offer === null || !selection} onClick={() => void confirm()}>{busy ? "adding" : `add ${plural(count, "seat")}`}</Button></>}>
     <div className="flex items-center justify-between gap-4">
       <p className="text-14 text-ink">extra seats</p>
       <div className="flex items-center gap-1" role="group" aria-label="seats to add">
@@ -139,7 +140,7 @@ function AddSeats({ team, onClose, onDone }: { team: TeamView; onClose(): void; 
       </div>
     </div>
     <p className="mt-3 text-13 text-ink-3">{team.seats.paid} seats now, {target} after. each extra seat is {usd(each)} a month{team.seats.interval === "year" ? ", billed yearly" : ""}.</p>
-    <p className="mt-2 text-14 text-ink">{error ? "" : charge === null ? "working out the price…" : charge > 0 ? `${usd(charge)} is charged now for the rest of this period.` : "nothing is charged now. it's on your next bill."}</p>
+    <p className="mt-2 text-14 text-ink">{error ? "" : offer === null ? "working out the price…" : offer.todayUsd > 0 ? `${usd(offer.todayUsd)}${offer.taxUsd > 0 ? ", tax included," : ""} is charged now for the rest of this period.` : "nothing is charged now. it's on your next bill."}</p>
     {!selection && <p className="mt-2 text-13 text-bad">your plan isn't loaded yet. close this and try again.</p>}
     {error && <p role="alert" className="mt-2 text-13 text-bad">{error}</p>}
   </Modal>;
