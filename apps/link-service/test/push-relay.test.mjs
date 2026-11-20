@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createLinkService } from "../src/app.mjs";
-import { createPushRelay, pushMessage } from "../src/push-relay.mjs";
+import { activityMessage, createPushRelay, pushCategory, pushMessage } from "../src/push-relay.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const rsa = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -79,7 +79,7 @@ describe("push relay", () => {
     expect(requests[0].origin).toBe("https://api.sandbox.push.apple.com");
     expect(requests[0].headers[":path"]).toBe("/3/device/abcdef0123456789");
     expect(requests[0].headers["apns-topic"]).toBe("com.example.omb");
-    expect(requests[0].body).toEqual({ aps: { alert: { title: "Nova", body: "New message" }, sound: "default", "thread-id": "t1" }, omb: { id: "n1", kind: "mention", botId: "b1", threadId: "t1" } });
+    expect(requests[0].body).toEqual({ aps: { alert: { title: "Nova", body: "New message" }, sound: "default", "thread-id": "t1", category: "dusk.message" }, omb: { id: "n1", kind: "mention", botId: "b1", threadId: "t1" } });
   });
 
   it("refuses bad input and limits pushes per device token", async () => {
@@ -96,5 +96,52 @@ describe("push relay", () => {
     expect(pushMessage({ ...message, botName: ` ${"N".repeat(100)}\u0007 ` })?.botName).toBe("N".repeat(80));
     expect(pushMessage({ ...message, groupId: "g1" })).toEqual({ id: "n1", kind: "mention", botId: "b1", botName: "Nova", threadId: "t1", groupId: "g1" });
     expect(pushMessage({ ...message, threadId: "a/b" })).toBeNull();
+  });
+
+  it("carries an ask's id and picks the buttons a push gets", () => {
+    expect(pushMessage({ ...message, kind: "approval", requestId: "req-1" })?.requestId).toBe("req-1");
+    expect(pushMessage({ ...message, requestId: "a b" })).toBeNull();
+    expect(pushCategory({ kind: "approval", requestId: "r" })).toBe("dusk.approval");
+    expect(pushCategory({ kind: "approval" })).toBeUndefined();
+    expect(pushCategory({ kind: "question" })).toBe("dusk.question");
+    expect(pushCategory({ kind: "done" })).toBe("dusk.message");
+    expect(pushCategory({ kind: "done", groupId: "g" })).toBeUndefined();
+    expect(pushCategory({ kind: "spend" })).toBeUndefined();
+  });
+
+  const at = 1_800_000_000;
+  const activity = { event: "update", timestamp: at, priority: 5, state: { phase: "working", step: "web", steps: 3, startedAt: at - 60 } };
+
+  it("passes only the activity fields the widget knows", () => {
+    expect(activityMessage(activity)).toEqual(activity);
+    expect(activityMessage({ ...activity, state: { ...activity.state, line: "the reply in the clear" } })).toEqual(activity);
+    expect(activityMessage({ ...activity, state: { ...activity.state, step: "Searching for my bank login" } })).toBeNull();
+    expect(activityMessage({ ...activity, state: { ...activity.state, phase: "anything" } })).toBeNull();
+    expect(activityMessage({ ...activity, state: { ...activity.state, sealed: "not sealed text" } })).toBeNull();
+    expect(activityMessage({ ...activity, priority: 1 })).toBeNull();
+    const start = { ...activity, event: "start", priority: 10, attributes: { botId: "b1", botName: "Nova", threadId: "t1", color: "blue", body: "kit", extra: "dropped" } };
+    expect(activityMessage(start)?.attributes).toEqual({ botId: "b1", botName: "Nova", threadId: "t1", color: "blue", body: "kit" });
+    expect(activityMessage({ ...start, attributes: { ...start.attributes, botName: "" } })).toBeNull();
+  });
+
+  it("sends a Live Activity push on the liveactivity topic, and refuses one for FCM", async () => {
+    const requests = [];
+    const http2Connect = () => {
+      const session = Object.assign(new EventEmitter(), { closed: false, destroyed: false, unref() {}, close() {}, destroy() {} });
+      session.request = (headers) => {
+        const stream = Object.assign(new EventEmitter(), { setEncoding() {}, close() {} });
+        stream.end = (body) => { requests.push({ headers, body: JSON.parse(body) }); queueMicrotask(() => { stream.emit("response", { ":status": 200 }); stream.emit("end"); }); };
+        return stream;
+      };
+      return session;
+    };
+    await start(createPushRelay({ env: { DUSK_APNS_KEY_FILE: "/keys/apns.p8", DUSK_APNS_KEY_ID: "key", DUSK_APNS_TEAM_ID: "team", DUSK_APNS_TOPIC: "com.example.omb" }, http2Connect, readFile }));
+    const end = { event: "end", timestamp: at, dismissAt: at + 240, priority: 10, state: { phase: "done", steps: 3, startedAt: at - 60 } };
+    expect(await (await post({ service: "apns", token: "abcdef0123456789", activity: end })).json()).toEqual({ outcome: "sent" });
+    expect(requests[0].headers["apns-topic"]).toBe("com.example.omb.push-type.liveactivity");
+    expect(requests[0].headers["apns-push-type"]).toBe("liveactivity");
+    expect(requests[0].headers["apns-priority"]).toBe("10");
+    expect(requests[0].body).toEqual({ aps: { timestamp: at, event: "end", "content-state": end.state, "dismissal-date": at + 240 } });
+    expect((await post({ service: "fcm", token: "abcdef0123456789", activity: end })).status).toBe(400);
   });
 });

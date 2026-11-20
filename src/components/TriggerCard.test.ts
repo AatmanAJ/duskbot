@@ -88,9 +88,9 @@ describe("the chat card a bot-made automation leaves", () => {
     expect(html).not.toMatch(/>Next: /);
   });
 
-  it("says Needs you with the plain reason when a run is waiting on the person", () => {
+  it("says Needs you with what a waiting run says it waits on", () => {
     fixture.state.routineRuns = [{ id: "run-3", routineId: "routine-1", botId: "bot-1", status: "waiting", attention: "Approve the reply to Ada?", scheduledFor: now, createdAt: now }];
-    expect(render(scheduleCard)).toContain("Needs you: It&#x27;s waiting for your answer.");
+    expect(render(scheduleCard)).toContain("Needs you: Approve the reply to Ada?");
   });
 
   it("pauses through its own API, applies the answer at once, and says Paused with Resume once paused", async () => {
