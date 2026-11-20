@@ -23,6 +23,7 @@ import { callReactTool, REACT_TOOL } from "./agents-react-tool.ts";
 import { callPurchaseTool, PURCHASE_TOOL_NAMES } from "./agents-purchase-tools.ts";
 import { callDocumentTool, DOCUMENT_TOOL_NAMES } from "./agents-document-tools.ts";
 import { callWaitTool, WAIT_TOOL_NAMES } from "./agents-wait-tools.ts";
+import { callJobTool, JOB_TOOL } from "./agents-job-tools.ts";
 import { callDuskTool, DUSK_TOOL_NAMES } from "./agents-dusk-tools.ts";
 import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
 import { callSlackTool, SLACK_TOOL_NAMES } from "./agents-slack-tools.ts";
@@ -258,6 +259,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (APP_SETTINGS_TOOL_NAMES.has(name)) return callAppSettingsTool(name, args, context);
   if (TRIGGER_TOOL_NAMES.has(name)) return callTriggerTool(name, args, context);
   if (WAIT_TOOL_NAMES.has(name)) return callWaitTool(name, args, context);
+  if (name === JOB_TOOL) return callJobTool(args, context);
   if (name === USAGE_LIMITS_TOOL) return callUsageLimitsTool(context);
   if (name === CHECKLIST_TOOL) return callChecklistTool(args, context);
   if (name === REACT_TOOL) return callReactTool(args, context);

@@ -222,7 +222,7 @@ export interface RoutineRun {
   dryRun?: true;
   triggerSource?: RoutineRunTrigger;
   /** "app": a connected-app event started it; "wait": a wait's follow-up did. triggerSource is then "webhook" (an outside event). */
-  eventSource?: "app" | "wait";
+  eventSource?: "app" | "wait" | "job";
   webhookId?: string;
   deliveryId?: string;
   /** Room task created for a team-goal run. */

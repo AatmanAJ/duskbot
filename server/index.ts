@@ -506,7 +506,7 @@ import { listenWebhookIngress, type WebhookIngress } from "./webhook-ingress.ts"
 import { addressFor } from "./webhook-address.ts";
 import { assertModelVariantSupported, memberTurnSelection } from "./member-turn.ts";
 import { WebhookManager } from "./webhooks.ts";
-import { tieAutomationsToBots } from "./bot-automations.ts"; import { WaitManager } from "./waits.ts"; import { cancelWaitFromCard, createWaitHost, waitRunChat } from "./wait-host.ts"; import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts"; import { createWaitRoutes, findWaitPeer, hostWaitRefusal, waitSourceRefusal, type WaitRouteContext } from "./routes/waits.ts";
+import { tieAutomationsToBots } from "./bot-automations.ts"; import { WaitManager } from "./waits.ts"; import { cancelWaitFromCard, createWaitHost, waitRunChat } from "./wait-host.ts"; import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts"; import { createWaitRoutes, findWaitPeer, hostWaitRefusal, waitSourceRefusal, type WaitRouteContext } from "./routes/waits.ts"; import { createJobsHost, JOB_NOTIFY_PATH, type JobTurn } from "./jobs/host.ts";
 import type { WebhookTrigger } from "../shared/webhooks.ts";
 import { AGENTS_NODE_FLAG, SPAWNED_PROXIES } from "./proxy-paths.ts";
 import { currentTrailId, startServerTrail, trail, trailError, withRequestTrail } from "./trail.ts"; import { traceRuntimeEvents } from "./trail-events.ts";
@@ -10065,6 +10065,7 @@ store.reconcileInterruptedGroupGoals((runId, threadId) => {
   return { status, detail, finishedAt: run.finishedAt ?? groupGoalRecoveryAt };
 });
 const botWaits = new WaitManager(createWaitHost({ store, directChat: directChatOf, threadBusy, wrote: markTaskContextExternallyUpdated, notify, enqueue: (input) => routines!.enqueueWebhook(input), cloudHome: Boolean(CLOUD_HOME) })); store.onChange((change) => { if (change.type === "bot" && store.bot(change.botId)?.busy) botWaits.noteBotBusy(change.botId); });
+const jobs = createJobsHost({ dataDir: DATA_DIR, port: PORT, wrap: (request) => botBox.wrap(request), secret: (label, botId) => { try { return savedSecrets.ready() ? savedSecrets.find(label, botId)?.value ?? null : null; } catch { return null; } }, store, directChat: directChatOf, mainThread: botMainThread, threadBusy, wrote: markTaskContextExternallyUpdated, notify, routines: () => routines!, cloudHome: Boolean(CLOUD_HOME) }); store.onChange((change) => { if (change.type === "bot.deleted") jobs.removeForBot(change.botId); });
 const recoveryOwners = routines.routineRequestReceiptOwners();
 if (recoveryOwners.length > 0) {
   const recoveryThreads = [...new Set(recoveryOwners.map((owner) => owner.threadId))];
@@ -12328,6 +12329,13 @@ function directChatOf(botId: string, threadId: string): boolean { const source =
 function waitTurnChecks(capability: InternalCapability, sender: BotRecord): Pick<WaitRouteContext, "sourceRefusal" | "hostRefusal" | "guest" | "peer" | "elsewhere"> { const { threadId } = capability, place = () => { const turn = turnPlaces.get(threadId); return turn?.botId === sender.id ? turn.place : null; };
   return { sourceRefusal: () => { const source = connectorThread(sender.id, threadId); return waitSourceRefusal({ owned: source !== null, room: Boolean(source?.group), depth: capability.depth, handedOff: Boolean(capability.roomHandoffId), routineRun: Boolean(activeRoutineRunForThread(threadId)), outsideDriven: outsideDrivenThread(threadId), personStarted: turnOrigin(capability).kind === "user", guest: cloudGuestDriven(threadId) }); }, hostRefusal: () => hostWaitRefusal({ cloudHome: Boolean(CLOUD_HOME), guest: cloudGuestDriven(threadId), place: place() }), guest: () => cloudGuestDriven(threadId), peer: (name) => findWaitPeer(reachablePeers(store.bots, sender), sender.id, name), elsewhere: placesElsewhere.explain }; }
 
+function jobTurn(capability: InternalCapability, sender: BotRecord): JobTurn {
+  const { threadId } = capability, source = connectorThread(sender.id, threadId);
+  return { owned: source !== null, room: Boolean(source?.group), guest: cloudGuestDriven(threadId), depth: capability.depth, handedOff: Boolean(capability.roomHandoffId),
+    routineRun: Boolean(activeRoutineRunForThread(threadId)), outsideDriven: outsideDrivenThread(threadId), personStarted: turnOrigin(capability).kind === "user",
+    fullAccess: fullAccessForSource(sender.id, threadId) };
+}
+
 /** Read fresh every time; a line stamped via the HTTP API does not count, so a bot cannot re-arm the ceiling it just spent. */
 function lastHumanRoomMessageAt(group: GroupRecord): number | undefined {
   const messages = store.messagesFor(group.threadId);
@@ -14168,6 +14176,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
       });
       return json(res, 201, { token });
     }
+    if (path === JOB_NOTIFY_PATH) return jobs.notifyRoute(req, res, json, () => readBody(req));
     if (path.startsWith("/api/internal/")) {
       const internalCapability = authorizedInternalCapability(req.headers.authorization);
       if (!internalCapability) {
@@ -14247,7 +14256,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         catch (error) { if ((error as { code?: string }).code === "outside_workspace") return null; throw error; }
         try { requireActiveInternalCapability(); return opened; }
         catch (error) { await opened.handle.close(); throw error; }
-      } }) !== PASS || await checklistRoutes({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await botReactions({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await purchaseRoutes({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody, browserSession: internalCapability.browserSession, active: () => internalCapabilityIsActive(internalCapability) }) !== PASS || await documentRoutes.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await waitRoutes({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody, ...waitTurnChecks(internalCapability, internalSender) }) !== PASS || await teamMessages.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await devsReports.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await appSettings.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await slackHost.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody, folders: botFolders, requireActive: requireActiveInternalCapability }) !== PASS) return; const pagesCall = new AbortController(); res.once("close", () => { if (!res.writableEnded) pagesCall.abort(); }); if (await publishedPages.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody, requireActive: requireActiveInternalCapability, signal: pagesCall.signal, folders: botFolders, post: (text, publishedPage, bundle) => { const source = connectorThread(internalSender.id, internalCapability.threadId); return !source ? null : (!source.group && bundle && publishedPages.show({ threadId: internalCapability.threadId, card: publishedPage, bundle })) || store.appendMessage(internalCapability.threadId, { role: "bot", kind: "text", text, publishedPage, ...(source.group ? { from: { botId: internalSender.id, name: internalSender.name, color: internalSender.color } } : {}) }).id; } }) !== PASS) return;
+      } }) !== PASS || await checklistRoutes({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await botReactions({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await purchaseRoutes({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody, browserSession: internalCapability.browserSession, active: () => internalCapabilityIsActive(internalCapability) }) !== PASS || await documentRoutes.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await waitRoutes({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody, ...waitTurnChecks(internalCapability, internalSender) }) !== PASS || await jobs.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody, turn: () => jobTurn(internalCapability, internalSender), folders: async () => (await botFolders()).roots }) !== PASS || await teamMessages.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await devsReports.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await appSettings.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody }) !== PASS || await slackHost.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody, folders: botFolders, requireActive: requireActiveInternalCapability }) !== PASS) return; const pagesCall = new AbortController(); res.once("close", () => { if (!res.writableEnded) pagesCall.abort(); }); if (await publishedPages.internal({ method, path, res, json, botId: internalSender.id, threadId: internalCapability.threadId, readBody: readInternalBody, requireActive: requireActiveInternalCapability, signal: pagesCall.signal, folders: botFolders, post: (text, publishedPage, bundle) => { const source = connectorThread(internalSender.id, internalCapability.threadId); return !source ? null : (!source.group && bundle && publishedPages.show({ threadId: internalCapability.threadId, card: publishedPage, bundle })) || store.appendMessage(internalCapability.threadId, { role: "bot", kind: "text", text, publishedPage, ...(source.group ? { from: { botId: internalSender.id, name: internalSender.name, color: internalSender.color } } : {}) }).id; } }) !== PASS) return;
       const delegatedThisTurn = (taskId: string) => {
         (internalCapability.delegatedThisTurn ??= new Set()).add(taskId);
       };
@@ -16744,7 +16753,7 @@ const workProbes = {
   maintenance: () => workspaceMaintenance.active || providerFleetReloading || providerAuthSessions.active || appSignIns.active() || browserEngineInstall !== null };
 const updateHolds = (): string[] => (Object.entries({ turn: workProbes.turn, run: workProbes.run, "live-call": workProbes.liveCall, computer: workProbes.computer, maintenance: workProbes.maintenance }) as Array<[string, () => boolean]>).filter(([, probe]) => probe()).map(([code]) => code);
 if (CLOUD_HOME) registerCloudPower(cloudPower = createCloudPower({ dataDir: DATA_DIR, team: CLOUD_TEAM !== null, broadcast: (payload) => broadcast(payload), log: (line) => console.warn(line), probes: {
-  ...workProbes, nextDueAt: () => { const due = [routines?.nextDueAt() ?? null, botWaits.nextWakeAt()].filter((at): at is number => at !== null); return due.length ? Math.min(...due) : null; }, upcoming: () => routines?.upcoming() ?? [],
+  ...workProbes, job: () => jobs.busy(), nextDueAt: () => { const due = [routines?.nextDueAt() ?? null, botWaits.nextWakeAt()].filter((at): at is number => at !== null); return due.length ? Math.min(...due) : null; }, upcoming: () => routines?.upcoming() ?? [],
  } })); if (!DESKTOP_MANAGED) updateState = createUpdateHost({ dataDir: DATA_DIR, version: serverVersion(), log: (line) => console.log(line), health: () => Array.isArray(store.bots), browser: async () => (builtInBrowserEnabled(cfg) ? (await chromeLauncher.binary()).path : null), connected: async () => { if (!composio.configured(cfg)) return null; const services = await composio.connectedServices(cfg); return { gmail: services.gmail?.connected === true, googlecalendar: services.googlecalendar?.connected === true }; }, relay: (payload, session, signal) => composio.relayMcp(cfg, payload as never, session, undefined, signal), runs: () => routines?.listRuns() ?? [] }); // the Mac app's server never updates itself
 
 server.listen(PORT, "127.0.0.1", async () => {
@@ -16767,7 +16776,7 @@ server.listen(PORT, "127.0.0.1", async () => {
   }
   // Only once every registry is initialized and the endpoint listens: earlier dispatch can hit uninitialized bindings.
   moveFreeze.hold(() => { routines!.start(); botWaits.start(); proactive.start(); }, () => { routines!.stop(); botWaits.stop(); proactive.stop(); });
-  limitClock.start(); limitHold.start(); slackHost.start();
+  limitClock.start(); limitHold.start(); slackHost.start(); jobs.start();
   moveFreeze.hold(() => { memoryUpkeep.start(); importDistill.start(); }, () => { memoryUpkeep.stop(); importDistill.stop(); });
   try {
     const migrated = migrateMemory(DATA_DIR, { botIds: store.bots.map((bot) => bot.id), aboutMe: CLOUD_TEAM ? null : cfg.profile?.aboutMe ?? "" });
@@ -16839,7 +16848,7 @@ const gracefulShutdown = createGracefulShutdown({
       void vpsLifecycle.close().catch(() => {}); vps.closeAllVpsDesktopTunnels();
       watchdog.stop();
       routines?.close(); void appTriggers.stop();
-      botWaits.stop();
+      botWaits.stop(); jobs.stop();
       memoryUpkeep.stop();
       importDistill.stop();
       cacheKeepWarm.dispose(); warmSummaries.dispose();

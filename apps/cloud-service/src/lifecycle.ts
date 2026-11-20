@@ -177,7 +177,7 @@ export function createLifecycle(deps: LifecycleDeps) {
   const dayOf = (at: number) => new Date(at).toISOString().slice(0, 10);
   /** awake time with a reason: work of any kind, a run or check due soon, a wake for the person's own routines (that
    *  whole stretch), staying up for a run ahead, or the person using it in the last half hour or with the app open */
-  const EXPLAINED_BUSY = new Set(["turn", "run", "live-call", "computer", "maintenance", "due-soon", "recent-work", "focus"]);
+  const EXPLAINED_BUSY = new Set(["turn", "run", "job", "live-call", "computer", "maintenance", "due-soon", "recent-work", "focus"]);
   const EXPLAINED_STAY = new Set(["run_soon_cheaper_awake", "cheaper_awake_until_run", "routine_due", "work_buffer"]);
   const explained = (b: HomeLifecycleState, power: HomePower) =>
     power.busy.some(code => EXPLAINED_BUSY.has(code)) || b.wokeFor === "routine" || EXPLAINED_STAY.has(b.stayReason ?? "")

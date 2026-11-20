@@ -64,6 +64,9 @@ const ENTRY_POINTS = [
   "bot-box/box-bridge.ts",
   "bot-box/box-probe.ts",
   "bot-box/box-check.ts",
+  // background jobs (server/jobs): the notify helper and the Telegram watcher run as programs of their own
+  "jobs/dusk-notify.ts",
+  "jobs/telegram-watch.ts",
 ];
 
 /** The values of the env names shared/native-connectors.json lists, the ones this build's environment has. */

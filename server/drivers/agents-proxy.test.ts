@@ -675,6 +675,7 @@ describe("agents-proxy MCP surface", () => {
       "wait_until",
       "list_waits",
       "cancel_wait",
+      "background_job",
       "propose_profile",
       "propose_model",
       "skills_list",

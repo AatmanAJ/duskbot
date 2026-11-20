@@ -2042,6 +2042,84 @@
       }
     },
     {
+      "name": "background_job",
+      "description": "Your program that keeps running after this turn (a chat poller, a watcher); its dusk-notify \"<text>\" wakes you. start: template telegram_watch (secret: Vault label of the bot token; optional chats, keywords) or command; secrets: ENV_NAME to Vault label. logs, stop: id.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "list",
+              "logs",
+              "stop"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "template": {
+            "type": "string",
+            "enum": [
+              "telegram_watch"
+            ]
+          },
+          "secret": {
+            "type": "string"
+          },
+          "chats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "command": {
+            "type": "string",
+            "description": "One shell line, e.g. python3 watch.py."
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "secrets": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "on_notify": {
+            "type": "string",
+            "description": "What to do when woken; that run won't see this chat."
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 16000
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
       "name": "propose_profile",
       "description": "Submit user-requested changes to your own name, title, description, standing instructions (SOUL.md), working folder (cwd), colour, reply style, voice, or your alert and voice toggles (notifications, speakReplies, voiceNotes). Keep SOUL.md short, who you are and the rules you never break; put step-by-step procedure into a skill instead. Permissions, connected apps, computer, memory on/off and sidebar sections are the person's to change in your settings: say so. A Chief of Staff may pass for_bot_id (from list_bots) for a requested change to another bot. Read the result: it applies immediately at every access level, and the person sees it with an Undo where possible. If applied, continue the work without another confirmation. Only a pending result (a Cloud conversation its owner did not drive) means ending the turn to wait for the owner. Never claim success without an applied result; report failures honestly. This does not elevate another bot's execution permissions.",
       "inputSchema": {
