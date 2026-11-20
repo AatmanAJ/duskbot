@@ -8,7 +8,7 @@ import { AudioLines, Check, ChevronDown, Loader2, Phone, PhoneOff, X } from "../
 import { openBot, useStore, visibleMessages, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { useMenuMotion } from "./MenuMotion";
-import { currentCall, deferCallCleanup, endCall, startCall, useOnCall } from "@/lib/call";
+import { currentCall, deferCallCleanup, endCall, startCall, takeCallAsk, useCallAsk, useOnCall } from "@/lib/call";
 import { CALL_MODES, callModeHint, effectiveCallMode, setCallMode, useCallMode, type CallMode } from "@/lib/call-mode";
 import { NO, YES } from "../../shared/call-consent";
 import { dismissStartPrompt, hangUpLiveCall, isLiveCallRunning, startLiveCall, useLiveMedia } from "@/lib/live-call-media";
@@ -192,6 +192,15 @@ export function CallTargetButton({
     onStart("turns");
     startCall(targetId);
   };
+
+  const callAsked = useCallAsk() === targetId;
+  const startRef = useRef(start);
+  startRef.current = start;
+  useEffect(() => {
+    if (!callAsked || !capabilitiesReady || active || liveElsewhere || !takeCallAsk(targetId)) return;
+    if (unavailable) setHelpOpen(true);
+    else startRef.current(liveMode ? "live" : "turns");
+  }, [callAsked, capabilitiesReady, active, liveElsewhere, unavailable, liveMode, targetId]);
 
   const popoverOpen = helpOpen || menuOpen || startPrompt;
   useEffect(() => {

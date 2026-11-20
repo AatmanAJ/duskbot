@@ -21,6 +21,7 @@ const SECRET_PREFIX = "dusk.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
 import { handleBack, type AppleCredential, type BackGestureEvent, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobilePlatform, type OrientationBridge, type ScanOverlay, type TurnActivityBridge } from "@/mobile/platform";
 import type { NativeAction } from "@/mobile/phone-actions";
+import { shortcutAction, type ShortcutBot, type ShortcutsBridge } from "@/mobile/shortcuts";
 import type { TurnActivityAttributes, TurnActivityState } from "../../../shared/phone-activity";
 import type { GlassBridge, GlassEvent, GlassGlyphs, GlassState } from "@/mobile/native-glass";
 import type { HomeGlassState } from "@/mobile/native-home-glass";
@@ -198,6 +199,29 @@ const DuskNotifications = registerPlugin<NotificationsPlugin>("DuskNotifications
  * registration crashes the app */
 const DuskPushSetup = registerPlugin<{ configured(): Promise<{ configured: boolean }> }>("DuskPushSetup");
 const DuskHaptics = registerPlugin<{ play(options: { kind: string }): Promise<void> }>("DuskHaptics");
+interface ShortcutsPlugin {
+  setBots(options: { place: string; placeName: string; bots: ShortcutBot[]; places: string[] }): Promise<void>;
+  forget(): Promise<void>;
+  take(): Promise<{ actions: unknown[] }>;
+  addListener(event: "arrived", listener: () => void): Promise<PluginListenerHandle>;
+}
+const DuskShortcuts = registerPlugin<ShortcutsPlugin>("DuskShortcuts");
+
+/** Each run the native inbox holds goes to `listener` once; a run made before the page loaded is waiting there. */
+function shortcutsBridge(): ShortcutsBridge {
+  return {
+    setBots: (update) => { void DuskShortcuts.setBots(update).catch(() => {}); },
+    forget: () => { void DuskShortcuts.forget().catch(() => {}); },
+    onAction(listener) {
+      const take = () => void DuskShortcuts.take().then(({ actions }) => {
+        for (const raw of actions) { const action = shortcutAction(raw); if (action) listener(action); }
+      }).catch(() => {});
+      const stop = unsubscribe([DuskShortcuts.addListener("arrived", take)]);
+      take();
+      return stop;
+    },
+  };
+}
 /** android only (android/.../InsetsPlugin.java): the window's insets edge to edge, and the keyboard's for the page */
 interface InsetsPlugin {
   setMode(options: { ride: boolean }): Promise<void>;
@@ -785,5 +809,6 @@ export async function nativePlatform(): Promise<MobilePlatform> {
       return unsubscribe(handles);
     },
     turnActivity: turnActivityOn ? turnActivityBridge() : undefined,
+    shortcuts: Capacitor.isPluginAvailable("DuskShortcuts") ? shortcutsBridge() : undefined,
   };
 }

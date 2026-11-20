@@ -1,3 +1,4 @@
+import type { ShortcutsBridge } from "./shortcuts";
 import { createContext, useContext } from "react";
 import type { MobileOpenTarget } from "../../shared/mobile-link";
 import type { TurnActivityAttributes, TurnActivityState } from "../../shared/phone-activity";
@@ -175,6 +176,8 @@ export interface MobilePlatform {
   menu?: MenuBridge;
   /** The phone may turn sideways while a remote screen is open; everywhere else the app stays upright. */
   orientation?: OrientationBridge;
+  /** Siri, Spotlight and the Shortcuts app: message, call or open a bot, where the app has them. */
+  shortcuts?: ShortcutsBridge;
   deviceName(): string;
   appVersion: string;
 }

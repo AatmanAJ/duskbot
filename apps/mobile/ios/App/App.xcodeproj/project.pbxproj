@@ -23,6 +23,8 @@
 		D05C000D2F00000100B07D05 /* GlassChromePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */; };
 		D05C000F2F00000100B07D05 /* NativeMenuPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */; };
 		D05C00F12F00000100B07D05 /* HapticsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00F22F00000100B07D05 /* HapticsPlugin.swift */; };
+		AB5100012F00000100B07D05 /* ShortcutsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100022F00000100B07D05 /* ShortcutsPlugin.swift */; };
+		AB5100032F00000100B07D05 /* BotIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100042F00000100B07D05 /* BotIntents.swift */; };
 		D05C00F32F00000100B07D05 /* PickerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C00F42F00000100B07D05 /* PickerPlugin.swift */; };
 		D05C01112F00000100B07D05 /* GlassVoiceWave.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C01122F00000100B07D05 /* GlassVoiceWave.swift */; };
 		D05C01132F00000100B07D05 /* GlassHomeBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D05C01142F00000100B07D05 /* GlassHomeBar.swift */; };
@@ -80,6 +82,8 @@
 		D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassChromePlugin.swift; sourceTree = "<group>"; };
 		D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMenuPlugin.swift; sourceTree = "<group>"; };
 		D05C00F22F00000100B07D05 /* HapticsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsPlugin.swift; sourceTree = "<group>"; };
+		AB5100022F00000100B07D05 /* ShortcutsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsPlugin.swift; sourceTree = "<group>"; };
+		AB5100042F00000100B07D05 /* BotIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotIntents.swift; sourceTree = "<group>"; };
 		D05C00F42F00000100B07D05 /* PickerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickerPlugin.swift; sourceTree = "<group>"; };
 		D05C01122F00000100B07D05 /* GlassVoiceWave.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassVoiceWave.swift; sourceTree = "<group>"; };
 		D05C01142F00000100B07D05 /* GlassHomeBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassHomeBar.swift; sourceTree = "<group>"; };
@@ -165,6 +169,8 @@
 				D05C000E2F00000100B07D05 /* GlassChromePlugin.swift */,
 				D05C00102F00000100B07D05 /* NativeMenuPlugin.swift */,
 				D05C00F22F00000100B07D05 /* HapticsPlugin.swift */,
+				AB5100022F00000100B07D05 /* ShortcutsPlugin.swift */,
+				AB5100042F00000100B07D05 /* BotIntents.swift */,
 				D05C00F42F00000100B07D05 /* PickerPlugin.swift */,
 				D05C01122F00000100B07D05 /* GlassVoiceWave.swift */,
 				D05C01142F00000100B07D05 /* GlassHomeBar.swift */,
@@ -330,6 +336,8 @@
 				D05C000D2F00000100B07D05 /* GlassChromePlugin.swift in Sources */,
 				D05C000F2F00000100B07D05 /* NativeMenuPlugin.swift in Sources */,
 				D05C00F12F00000100B07D05 /* HapticsPlugin.swift in Sources */,
+				AB5100012F00000100B07D05 /* ShortcutsPlugin.swift in Sources */,
+				AB5100032F00000100B07D05 /* BotIntents.swift in Sources */,
 				D05C00F32F00000100B07D05 /* PickerPlugin.swift in Sources */,
 				D05C01112F00000100B07D05 /* GlassVoiceWave.swift in Sources */,
 				D05C01132F00000100B07D05 /* GlassHomeBar.swift in Sources */,
