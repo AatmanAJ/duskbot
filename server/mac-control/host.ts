@@ -12,7 +12,7 @@ import { pipeline } from "node:stream/promises";
 
 import type { KeyObject } from "node:crypto";
 
-import { macApprovalReason, isCloudMacMode } from "../../electron/cloud-mac-risk.mjs";
+import { isCloudMacMode, isMacRead, macApprovalReason, OUTSIDE_REASON } from "../../electron/cloud-mac-risk.mjs";
 import type { CloudMacMode, CloudMacToolName } from "../../shared/cloud-mac.ts";
 import { isMacToolName, type MacControlStatus, type MacToolName } from "../../shared/mac-control.ts";
 import type { RequestAuth } from "../request-auth.ts";
@@ -59,6 +59,8 @@ export interface MacControlDeps {
   cloud?: {
     /** null to go ahead, else what the bot is told instead. */
     approve(bot: MacBot, turn: Turn, tool: CloudMacToolName | "mac_screen", args: Record<string, unknown>, reason: string): Promise<string | null>;
+    /** The turn has read outside content (a page, an email, a message, another bot's words) since the person's last message. */
+    tainted?(turn: Turn): boolean;
     /** This cloud's link signing key; read from dashboard-link.json when not given. */
     linkKey?(): KeyObject | null;
   };
@@ -139,6 +141,21 @@ export function createMacControl(deps: MacControlDeps) {
     return { available: available(), enabled: deps.enabled(), online: jobs.online(), name: seen.name, lastSeenAt: seen.lastSeenAt, ...(cloud ? { cloud: { folders: policy.folders, mode: policy.mode, limited: policy.limited, screen: limits().screen } } : {}) };
   }
 
+  /** The rule that needs the person's Allow first, or null: the Mac's rules, and under Auto any action but a look once
+   * this turn has read outside content. */
+  function cardReason(turn: Turn, tool: string, args: Record<string, unknown>): string | null {
+    const rule = macApprovalReason(policy.mode, tool, args, policy.home || "/Users/person");
+    if (rule !== null || policy.mode !== "auto" || isMacRead(tool, args)) return rule;
+    return cloud?.tainted?.(turn) ? OUTSIDE_REASON : null;
+  }
+
+  /** null once the person allowed it on a card, else what the bot is told. */
+  async function askFirst(bot: MacBot, turn: Turn, tool: CloudMacToolName | "mac_screen", args: Record<string, unknown>, reason: string, assertActive: () => void): Promise<string | null> {
+    const answer = await cloud!.approve(bot, turn, tool, args, reason);
+    assertActive();
+    return answer ?? allowed(deps.bot(turn.botId), turn);
+  }
+
   async function callScreen(name: string, args: Record<string, unknown>, turn: Turn, assertActive: () => void): Promise<MacToolResult> {
     if (!args || typeof args !== "object" || Array.isArray(args)) return macErrorResult("Tool arguments must be an object.");
     assertActive();
@@ -148,8 +165,16 @@ export function createMacControl(deps: MacControlDeps) {
     if (name === SCREEN_ACCESS_TOOL.name) {
       if (!policy.screenAccess && !policy.screen) return macErrorResult(SCREEN_OFF_TEXT);
       if (!jobs.online()) return macErrorResult(MAC_OFFLINE_TEXT);
+      const access = { name: "request_screen_access", arguments: {} };
+      const reason = cardReason(turn, "mac_screen", access);
+      const no = reason === null ? null : await askFirst(bot, turn, "mac_screen", access, reason, assertActive);
+      if (no) return macErrorResult(no);
       const outcome = await jobs.request({ tool: "mac_screen_access", args: {}, bot: { id: bot.id, name: bot.name }, timeoutMs: 120_000,
-        active: () => deps.active(turn) && allowed(deps.bot(turn.botId), turn) === null, offlineText: MAC_OFFLINE_TEXT });
+        active: () => deps.active(turn) && allowed(deps.bot(turn.botId), turn) === null, offlineText: MAC_OFFLINE_TEXT, ...(reason !== null ? { approved: true as const } : {}) });
+      if (outcome.ok && outcome.result.structured?.screenReady === true && !policy.screen) {
+        policy = { ...policy, screen: true, screenAccess: false };
+        void listScreen();
+      }
       assertActive();
       return outcome.ok ? { content: [{ type: "text", text: outcome.result.text }] } : macErrorResult(outcome.error);
     }
@@ -158,20 +183,30 @@ export function createMacControl(deps: MacControlDeps) {
     await listScreen();
     const driverName = screen?.driverName.get(name);
     if (!driverName) return macErrorResult(`Unknown Mac screen tool. Use one of ${screenTools().map((tool) => tool.name).join(", ") || "none: the Mac listed no screen tools"}.`);
-    const reason = macApprovalReason(policy.mode, "mac_screen", { name: driverName, arguments: args }, policy.home || "/Users/person");
+    const reason = cardReason(turn, "mac_screen", { name: driverName, arguments: args });
+    let approved = false;
     if (reason !== null) {
-      const answer = await cloud!.approve(bot, turn, "mac_screen", { name: driverName, arguments: args }, reason);
-      assertActive();
-      if (answer !== null) return macErrorResult(answer);
-      const after = allowed(deps.bot(turn.botId), turn) ?? (policy.screen ? null : SCREEN_OFF_TEXT);
-      if (after) return macErrorResult(after);
+      const no = await askFirst(bot, turn, "mac_screen", { name: driverName, arguments: args }, reason, assertActive) ?? (policy.screen ? null : SCREEN_OFF_TEXT);
+      if (no) return macErrorResult(no);
+      approved = true;
     }
+    const send = (tool: string, input: Record<string, unknown>) => jobs.request({
+      tool: "mac_screen", args: { name: tool, arguments: input }, bot: { id: bot.id, name: bot.name }, timeoutMs: SCREEN_JOB_MS,
+      active: () => deps.active(turn) && allowed(deps.bot(turn.botId), turn) === null && policy.screen, offlineText: MAC_OFFLINE_TEXT,
+      ...(approved ? { approved: true as const } : {}),
+    });
     const child: ChildCalls = {
-      call: async (tool, input) => screenResult(await jobs.request({
-        tool: "mac_screen", args: { name: tool, arguments: input }, bot: { id: bot.id, name: bot.name }, timeoutMs: SCREEN_JOB_MS,
-        active: () => deps.active(turn) && allowed(deps.bot(turn.botId), turn) === null && policy.screen, offlineText: MAC_OFFLINE_TEXT,
-        ...(reason !== null ? { approved: true as const } : {}),
-      })) as unknown as Record<string, unknown>,
+      call: async (tool, input) => {
+        let outcome = await send(tool, input);
+        // the Mac knows which app a window belongs to; when that makes the action need a card, ask once and send again
+        if (!outcome.ok && outcome.ask && !approved) {
+          const no = await askFirst(bot, turn, "mac_screen", { name: tool, arguments: input }, outcome.ask, assertActive);
+          if (no) return screenResult({ ok: false, error: no }) as unknown as Record<string, unknown>;
+          approved = true;
+          outcome = await send(tool, input);
+        }
+        return screenResult(outcome) as unknown as Record<string, unknown>;
+      },
       get driverVersion() { return screen?.driver || undefined; },
     };
     const call = { name: driverName, arguments: args };
@@ -191,7 +226,7 @@ export function createMacControl(deps: MacControlDeps) {
     const refusal = allowed(bot, turn);
     if (refusal || !bot) return macErrorResult(refusal ?? "This bot no longer exists.");
     if (!jobs.online()) return macErrorResult(MAC_OFFLINE_TEXT);
-    const reason = cloud ? macApprovalReason(policy.mode, name, args, policy.home || "/Users/person") : null;
+    const reason = cloud ? cardReason(turn, name, args) : null;
     const asks = reason !== null;
     if (cloud && asks) {
       const answer = await cloud.approve(bot, turn, name as CloudMacToolName, name === "mac_exec" && !args.cwd ? { ...args, cwd: policy.cwd } : args, reason);

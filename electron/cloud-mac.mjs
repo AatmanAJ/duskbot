@@ -13,7 +13,7 @@ import { promises as fsp } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { isCloudMacMode, macApprovalReason } from "./cloud-mac-risk.mjs";
+import { isCloudMacMode, macApprovalReason, SCREEN_INPUTS } from "./cloud-mac-risk.mjs";
 import { createMacControlHost } from "./mac-control.mjs";
 import { createMacExecutor, folderName, jobSummary, macLogFile, resolveMacPath } from "./mac-control-tools.mjs";
 import { screenOutcome } from "./cloud-screen.mjs";
@@ -166,21 +166,48 @@ export async function cloudJobRefusal(job, { folders = null, mode = "auto", home
  *   wait?(ms: number, signal: AbortSignal): Promise<void>,
  * }} deps
  */
-// the prefs file is missing until the first save: a fresh install starts from defaults
-function readPrefs(prefs) {
-  try { return prefs.read() ?? {}; } catch { return {}; }
+// the prefs file is missing until the first save: a fresh install starts from defaults. Security invariant: a file
+// that is there but cannot be read turns everything off, since the defaults are on.
+function readPrefs(prefs, log) {
+  try { return prefs.read() ?? {}; }
+  catch (error) {
+    if (error?.code === "ENOENT") return {};
+    log(`cloud mac: settings unreadable, cloud bots stay off this Mac until turned on again (${error?.message ?? error})`);
+    return { enabled: false, screen: false };
+  }
 }
 
-/** Why this Mac will not run a cloud screen job, or null. */
-export function screenJobRefusal(job, { screen, ready, mode, home }) {
-  if (!screen) return SCREEN_OFF;
-  if (job.tool === "mac_screen_access") return null;
-  if (!ready) return SCREEN_NOT_READY;
+const needsCard = (reason) => ({ error: `This ${reason}, so the person must allow it on a card first; it did not run.`, ask: reason });
+
+/** Why this Mac will not run a cloud screen job, or null; `ask` when a card from the person would let it run.
+ * `target`: the app behind an input action's window, as this Mac found it (cloud-mac-risk.mjs screenRisk). */
+export function screenJobRefusal(job, { screen, ready, mode, home, target }) {
+  if (!screen) return { error: SCREEN_OFF };
+  if (job.tool === "mac_screen_access") {
+    const reason = macApprovalReason(mode, "mac_screen", { name: "request_screen_access", arguments: {} }, home);
+    return reason && job.approved !== true ? needsCard(reason) : null;
+  }
+  if (!ready) return { error: SCREEN_NOT_READY };
   if (job.tool === "mac_screen_tools") return null;
   const a = job.arguments ?? {};
-  if (typeof a.name !== "string" || !a.arguments || typeof a.arguments !== "object" || Array.isArray(a.arguments)) return "Not a screen action this computer knows.";
-  const reason = macApprovalReason(mode, "mac_screen", a, home);
-  return reason && job.approved !== true ? `This ${reason}, so the person must allow it on a card first; it did not run.` : null;
+  if (typeof a.name !== "string" || !a.arguments || typeof a.arguments !== "object" || Array.isArray(a.arguments)) return { error: "Not a screen action this computer knows." };
+  const reason = macApprovalReason(mode, "mac_screen", { ...a, ...(target ? { target } : {}) }, home);
+  return reason && job.approved !== true ? needsCard(reason) : null;
+}
+
+const isObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+/** The app owning `pid` in a list_apps answer: its name and bundle id joined, or null. */
+export function appForPid(result, pid) {
+  let apps = isObject(result?.structuredContent) ? result.structuredContent.apps : undefined;
+  if (!Array.isArray(apps)) {
+    const text = (Array.isArray(result?.content) ? result.content : []).filter((part) => part?.type === "text").map((part) => part.text).join("\n");
+    try { const parsed = JSON.parse(text); apps = Array.isArray(parsed) ? parsed : parsed?.apps; } catch { apps = undefined; }
+  }
+  const app = Array.isArray(apps) ? apps.find((entry) => isObject(entry) && Number(entry.pid) === pid) : undefined;
+  if (!app) return null;
+  const words = [app.name, app.app_name, app.localizedName, app.bundle_id, app.bundleId, app.bundle_identifier].filter((word) => typeof word === "string" && word);
+  return words.length ? words.join(" ") : null;
 }
 
 const SCREEN_JOBS = new Set(["mac_screen", "mac_screen_tools", "mac_screen_access"]);
@@ -189,7 +216,7 @@ export function createCloudMac(deps) {
   const home = deps.home ?? homedir();
   const now = deps.now ?? Date.now;
   const log = deps.log ?? (() => {});
-  const saved = readPrefs(deps.prefs);
+  const saved = readPrefs(deps.prefs, deps.log ?? (() => {}));
   let enabled = saved.enabled !== false;
   let mode = isCloudMacMode(saved.mode) ? saved.mode : "auto";
   let limitFolders = saved.limitFolders === true;
@@ -228,15 +255,28 @@ export function createCloudMac(deps) {
   const audit = (job, refusal) => logLine(job, `refused: ${refusal}`);
   const record = (job, outcome) => logLine(job, outcome.ok && outcome.result?.isError !== true ? "ok" : `failed: ${String(outcome.ok ? outcome.result.text : outcome.error).slice(0, 300)}`, job?.approved === true);
 
+  /** For an input action under Auto: the app behind its window, so a sensitive one asks first. */
+  async function screenTarget(job) {
+    const a = job.arguments ?? {};
+    if (mode !== "auto" || job.approved === true || job.tool !== "mac_screen" || !SCREEN_INPUTS.includes(a.name) || !deps.screen?.available()) return undefined;
+    const pid = Number(a.arguments?.pid);
+    if (!Number.isSafeInteger(pid) || pid <= 0) return { app: null };
+    return { app: appForPid(await deps.screen.call("list_apps", {}), pid) };
+  }
+
   async function runScreen(job) {
-    const refusal = screenJobRefusal(job, { screen: screenOn, ready: deps.screen?.available() === true, mode, home });
-    if (refusal) { if (job.tool === "mac_screen") await audit(job, refusal); return { ok: false, error: refusal }; }
+    const refusal = screenJobRefusal(job, { screen: screenOn, ready: deps.screen?.available() === true, mode, home, target: await screenTarget(job) });
+    if (refusal) {
+      if (job.tool === "mac_screen") await audit(job, refusal.error);
+      return { ok: false, error: refusal.error, ...(refusal.ask ? { ask: refusal.ask } : {}) };
+    }
     if (job.tool === "mac_screen_access") {
-      if (deps.screen.available()) return { ok: true, result: { text: "Computer control is already on here; the screen tools are on their way." } };
+      const ready = { ok: true, result: { structured: { screenReady: true } } };
+      if (deps.screen.available()) return { ...ready, result: { ...ready.result, text: "Computer control is already on here; the screen tools are on their way." } };
       if (now() - accessAskedAt < ACCESS_ASK_MS) return { ok: true, result: { text: "Already asked on the Mac a moment ago: the person needs to allow dusk bot under Accessibility and Screen Recording there. Carry on without the screen until they have." } };
       accessAskedAt = now();
       const asked = await deps.screen.requestAccess?.().then(() => deps.screen.available(), () => false);
-      return asked ? { ok: true, result: { text: "Computer control is on now. The screen tools appear on your next turn." } }
+      return asked ? { ...ready, result: { ...ready.result, text: "Computer control is on now. The screen tools appear on your next turn." } }
         : { ok: true, result: { text: "Asked on the Mac: the person needs to allow dusk bot under Accessibility and Screen Recording in System Settings there. Tell them, then carry on without the screen until they have." } };
     }
     if (job.tool === "mac_screen_tools") {

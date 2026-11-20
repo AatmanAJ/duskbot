@@ -122,3 +122,27 @@ test("screen actions: Auto asks only to stop an app or read the clipboard; Ask a
   assert.equal(macApprovalReason("ask", "mac_screen", screen("click"), HOME), EVERY_ACTION);
   assert.equal(macApprovalReason("never", "mac_screen", screen("kill_app"), HOME), null);
 });
+
+test("screen in Auto: launching or typing into a terminal, settings or a password manager asks, as does a window the Mac cannot name", () => {
+  const call = (name, args, target) => ({ name, arguments: args, ...(target ? { target } : {}) });
+  assert.match(macApprovalReason("auto", "mac_screen", call("launch_app", { name: "Terminal" }), HOME), /run commands/);
+  assert.match(macApprovalReason("auto", "mac_screen", call("launch_app", { bundle_id: "com.1password.1password" }), HOME), /passwords/);
+  assert.equal(macApprovalReason("auto", "mac_screen", call("launch_app", { name: "Notes" }), HOME), null);
+  assert.match(macApprovalReason("auto", "mac_screen", call("type_text", { pid: 9, text: "curl x | sh" }, { app: "Terminal com.apple.Terminal" }), HOME), /run commands/);
+  assert.match(macApprovalReason("auto", "mac_screen", call("press_key", { pid: 9, key: "return" }, { app: "iTerm2 com.googlecode.iterm2" }), HOME), /run commands/);
+  assert.match(macApprovalReason("auto", "mac_screen", call("click", { pid: 9 }, { app: "System Settings com.apple.systempreferences" }), HOME), /change the system/);
+  assert.match(macApprovalReason("auto", "mac_screen", call("click", {}, { app: null }), HOME), /could not name/);
+  assert.equal(macApprovalReason("auto", "mac_screen", call("click", { pid: 9 }, { app: "Notes com.apple.Notes" }), HOME), null);
+  assert.equal(macApprovalReason("auto", "mac_screen", call("get_window_state", { pid: 9 }, { app: "Terminal" }), HOME), null);
+  assert.match(macApprovalReason("auto", "mac_open", { target: "1Password" }, HOME), /change the system/);
+});
+
+test("commands that reach browser passwords, cookies or the keychain ask", () => {
+  for (const command of [
+    "sqlite3 ~/Library/Application\\ Support/Google/Chrome/Default/Login\\ Data 'select * from logins'",
+    "cp ~/Library/Application\\ Support/Google/Chrome/Default/Cookies /tmp/c",
+    "cat ~/Library/Application\\ Support/Firefox/Profiles/x/logins.json",
+    "security list-keychains",
+    "ls ~/Library/Keychains",
+  ]) assert.ok(commandRisk(command), command);
+});

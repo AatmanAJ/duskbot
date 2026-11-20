@@ -12,6 +12,15 @@ import { macLogFile } from "./mac-control-tools.mjs";
 
 export const CLOUD_MAC_CHANNELS = Object.freeze(["state", "setEnabled", "setMode", "setLimitFolders", "addFolder", "removeFolder", "openLog", "setScreen", "stopScreen"]);
 const FOLLOW_MS = 5_000;
+const STRICTNESS = { never: 0, auto: 1, ask: 2 };
+
+/** Whether this change lets cloud bots do more without asking: a laxer When to ask, or Only these folders turned off.
+ * Security invariant: such a change from the cloud's page passes a native dialog on this Mac. */
+export function loosens(view, change, value) {
+  if (change === "setMode") return Object.hasOwn(STRICTNESS, value) && STRICTNESS[value] < STRICTNESS[view.mode];
+  if (change === "setLimitFolders") return view.limitFolders && value !== true;
+  return false;
+}
 
 /**
  * @param {{
@@ -68,6 +77,18 @@ export function installCloudMac(deps) {
     return response === 0;
   }
 
+  async function confirmLoosen(what) {
+    const options = {
+      type: "warning", buttons: ["Change it", "Cancel"], defaultId: 1, cancelId: 1, noLink: true,
+      message: what === "mode" ? "Let your cloud bots ask you less often on this Mac?" : "Let your cloud bots use any folder on this Mac?",
+      detail: what === "mode" ? "More of what bots on your dusk cloud do on this Mac will run without a card first. It all still shows in the chat and the log."
+        : "Bots on your dusk cloud will be able to read and change files anywhere on this Mac, not only in the folders you listed.",
+    };
+    const win = parent();
+    const { response } = win ? await deps.dialog.showMessageBox(win, options) : await deps.dialog.showMessageBox(options);
+    return response === 0;
+  }
+
   async function confirmScreen() {
     const options = {
       type: "warning", buttons: ["Let them use the screen", "Cancel"], defaultId: 1, cancelId: 1, noLink: true,
@@ -82,8 +103,8 @@ export function installCloudMac(deps) {
   const handlers = {
     state: () => core.view(),
     async setEnabled(on) { return on === true && !(await confirmOn()) ? core.view() : core.setEnabled(on === true); },
-    setMode: (mode) => core.setMode(String(mode)),
-    setLimitFolders: (on) => core.setLimitFolders(on === true),
+    async setMode(mode) { return loosens(core.view(), "setMode", String(mode)) && !(await confirmLoosen("mode")) ? core.view() : core.setMode(String(mode)); },
+    async setLimitFolders(on) { return loosens(core.view(), "setLimitFolders", on === true) && !(await confirmLoosen("folders")) ? core.view() : core.setLimitFolders(on === true); },
     async addFolder() {
       const win = parent();
       const options = { properties: ["openDirectory", "createDirectory"], buttonLabel: "Allow this folder" };

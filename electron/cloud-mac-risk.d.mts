@@ -6,3 +6,7 @@ export declare function macActionRisk(tool: string, args: Record<string, unknown
 export declare function macApprovalReason(mode: CloudMacMode, tool: string, args: Record<string, unknown> | null | undefined, home: string): string | null;
 export declare const EVERY_ACTION: string;
 export declare const SCREEN_READS: readonly string[];
+export declare const SCREEN_INPUTS: readonly string[];
+export declare const OUTSIDE_REASON: string;
+export declare function sensitiveApp(value: unknown): boolean;
+export declare function isMacRead(tool: string, args: Record<string, unknown> | null | undefined): boolean;

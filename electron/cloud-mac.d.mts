@@ -15,4 +15,5 @@ export declare function createCloudMac(deps: any): any;
 export declare const ON_SCREEN_MS: number;
 export declare const SCREEN_OFF: string;
 export declare const SCREEN_NOT_READY: string;
-export declare function screenJobRefusal(job: any, opts: { screen: boolean; ready: boolean; mode: string; home: string }): string | null;
+export declare function screenJobRefusal(job: any, opts: { screen: boolean; ready: boolean; mode: string; home: string; target?: { app: string | null } }): { error: string; ask?: string } | null;
+export declare function appForPid(result: unknown, pid: number): string | null;

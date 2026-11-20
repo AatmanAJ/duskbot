@@ -20,7 +20,7 @@ export const macJobOutcome = z.union([
     structured: z.record(z.string(), z.unknown()).optional(),
     isError: z.literal(true).optional(),
   }) }),
-  z.object({ ok: z.literal(false), error: z.string().max(4000) }),
+  z.object({ ok: z.literal(false), error: z.string().max(4000), ask: z.string().max(300).optional() }),
 ]);
 
 export interface MacDownload { name: string; bytes: number; open(): Readable }

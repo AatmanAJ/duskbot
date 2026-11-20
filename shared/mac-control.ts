@@ -46,4 +46,5 @@ export interface MacJob {
  * structuredContent and whether the driver answered with an error. */
 export type MacJobOutcome =
   | { ok: true; result: { text: string; image?: { data: string; mimeType: "image/png" | "image/jpeg" }; structured?: Record<string, unknown>; isError?: true } }
-  | { ok: false; error: string };
+  /** `ask`: on a dusk cloud, the Mac refused because the person must allow this on a card first, and says why. */
+  | { ok: false; error: string; ask?: string };

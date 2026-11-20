@@ -84,9 +84,19 @@ Consent, on top of everything in Settings and safety below:
   says "Cloud bot on screen" with Stop, and the Settings card shows "<bot> is using this Mac's screen" with Stop. Stop
   ends what runs, closes the driver connection and turns the screen switch off. Turning the main switch off stops it
   too.
-- **When to ask**: under Auto only `kill_app` and `clipboard_read` ask; under "Ask before every action" every screen
-  action but a look (`list_apps`, `list_windows`, `get_window_state` and the other reads) asks, with a card naming the
-  tool and its text, keys or app. "Always allow" saves `mac_screen:<tool>` for that bot.
+- **When to ask**: under Auto, `kill_app` and `clipboard_read` ask, and so does anything in an app that runs commands,
+  changes the system or holds passwords (Terminal, iTerm, Script Editor, Automator, Shortcuts, System Settings,
+  Keychain Access, Disk Utility, 1Password, Bitwarden and other password managers, PowerShell, Command Prompt):
+  launching one is caught by the cloud, and a click, typing or keys into one by the Mac, which looks up the app behind
+  the action's pid with the driver's `list_apps` and refuses with `ask` (the outcome's reason); the cloud then shows the
+  card and sends the action again, allowed. An input action whose window the Mac cannot name asks too. Under "Ask
+  before every action" every screen action but a look (`list_apps`, `list_windows`, `get_window_state` and the other
+  reads) asks, `mac_request_screen_access` included, on both sides. The card names the tool and its text, keys or app.
+  "Always allow" saves `mac_screen:<tool>` for that bot.
+- **Outside content**: under Auto, once a turn has read outside content since the person's last message (a web page or
+  fetched link, an email or connector result, a download, another bot's words, a webhook or watched chat's message;
+  the same test that keeps such words out of memory, `server/memory-trust.ts`), every command, file change, download,
+  open and screen input in the rest of that turn asks, with "it follows content from outside". Looks stay free.
 - **Log**: each screen action is one line (`mac_screen click on pid 42 window 7`); never the typed text.
 - **Only these folders** limits files and commands, not the screen: a bot on the screen can reach what the person's
   apps can.
@@ -97,7 +107,9 @@ Settings > Your computer, on the cloud's own Settings page in the app:
 
 - **"Let my cloud bots use this Mac"**: on by default for the owner's own Mac and decided on the Mac: an unset value is
   on, with no confirm; a person who turned it off stays off. Turning it back on from off shows a native confirm on the
-  Mac, so a page cannot turn it on alone. While off the app does not poll at all. Turning it off is the kill
+  Mac, so a page cannot turn it on alone. A settings file that is there but cannot be read turns both switches off.
+  Anything else the cloud's page asks that loosens the rules (a laxer When to ask, turning Only these folders off)
+  passes a native confirm too; tightening, adding a folder (its own picker) and removing one do not. While off the app does not poll at all. Turning it off is the kill
   switch: running commands are stopped and the cloud is told to forget the Mac.
 - **When to ask**:
   - **Auto (asks only for risky actions)**, the default. Ordinary work just runs; a card appears only for what
@@ -105,7 +117,8 @@ Settings > Your computer, on the cloud's own Settings page in the app:
     (csrutil, spctl, tccutil, launchctl, profiles, system `defaults` domains), disk tools, `curl | sh` and running
     downloaded scripts or installers, removing quarantine, recursive delete or delete by wildcard, emptying the
     Trash, recursive permission changes on home or system folders, killing processes, reading keys, passwords and
-    `.env` files, force-push, `reset --hard` and other history rewrites, login and schedule items, writes outside the
+    `.env` files, browser saved passwords and cookies (Login Data, Cookies, logins.json), the keychain and any
+    `security` command, force-push, `reset --hard` and other history rewrites, login and schedule items, writes outside the
     home folder or into `~/Library`, non-web links, checkout pages, payments. Plain rules, no model; a table of
     examples both ways is in `electron/cloud-mac-risk.node-test.mjs`.
   - **Ask before every action**: every command, download, file change and open asks; ordinary reads do not.
