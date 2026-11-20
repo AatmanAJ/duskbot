@@ -56,9 +56,13 @@ html[data-mobile-app][data-skin="grok-dark"] { --color-menu: #2a2a2d; }
   animation-play-state: paused !important;
 }
 
-.dusk-mobile :focus-visible {
-  outline: none;
+/* a keyboard or Switch Control focus shows a ring; text fields show their caret instead, and controls that draw their own
+   focus ring keep it */
+.dusk-mobile :focus-visible:not(input, textarea, [contenteditable], [class*="focus-visible:ring"]) {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
+.dusk-mobile :is(input, textarea, [contenteditable]):focus-visible { outline: none; }
 .dusk-mobile .mobile-row:focus-visible { outline-offset: -2px; border-radius: 16px; }
 
 
