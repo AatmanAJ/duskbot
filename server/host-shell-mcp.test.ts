@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { modelPlace } from "./agents-bridge-switch.ts";
 import { commandEnvironment, findFiles, hostShellLaunch, findInvocations, handleHostShellRpc, mountsHostShell, runCommand, type Runner } from "./host-shell-mcp.ts";
 
-const desktopTurn = { engineHasShell: false, desktopApp: true, cloudHome: false, worksOn: undefined, remoteComputer: false, thisComputerRefused: false, guest: false, testRun: false };
+const desktopTurn = { engineHasShell: false, desktopApp: true, cloudHome: false, worksOn: undefined, remoteComputer: false, thisComputerRefused: false, guest: false, testRun: false,
+  model: "hosted" as const, platform: "darwin" as const, watched: true };
 
 describe("mountsHostShell", () => {
   it("lends this computer's shell to a desktop bot whose engine has none, on Auto or This computer", () => {
@@ -18,6 +20,31 @@ describe("mountsHostShell", () => {
       { thisComputerRefused: true }, { guest: true }, { testRun: true }]) {
       expect(mountsHostShell({ ...desktopTurn, ...change })).toBe(false);
     }
+  });
+  it("lends a local model the shell only from this machine, off Windows and on a turn a person is behind", () => {
+    const local = { ...desktopTurn, model: "loopback" as const };
+    expect(mountsHostShell(local)).toBe(true);
+    for (const change of [{ model: "network" as const }, { platform: "win32" as const }, { watched: false }]) {
+      expect(mountsHostShell({ ...local, ...change })).toBe(false);
+    }
+    expect(mountsHostShell({ ...local, guest: true })).toBe(false);
+  });
+  it("keeps a hosted engine's shell on Windows and on unattended turns", () => {
+    expect(mountsHostShell({ ...desktopTurn, platform: "win32", watched: false })).toBe(true);
+  });
+});
+
+describe("modelPlace", () => {
+  const compat = (url: string) => ({ driverKind: "openai-compat", config: { url } });
+  it("calls only a server on this machine loopback, a home network one network, and anything else hosted", () => {
+    expect(modelPlace(null, compat("http://127.0.0.1:11434/v1"))).toBe("loopback");
+    expect(modelPlace(null, compat("http://localhost:1234/v1"))).toBe("loopback");
+    expect(modelPlace(null, compat("http://[::1]:8080/v1"))).toBe("loopback");
+    expect(modelPlace(null, compat("http://192.168.1.20:11434/v1"))).toBe("network");
+    expect(modelPlace(null, compat("http://studio.local:1234/v1"))).toBe("network");
+    expect(modelPlace(null, compat("https://openrouter.ai/api/v1"))).toBe("hosted");
+    expect(modelPlace(null, { driverKind: "codex" })).toBe("hosted");
+    expect(modelPlace({ modelSelection: { model: "ollama::llama3" } }, { driverKind: "codex" })).toBe("loopback");
   });
 });
 

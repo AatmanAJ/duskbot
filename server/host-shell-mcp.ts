@@ -206,9 +206,17 @@ export async function findFiles(
 export function mountsHostShell(input: {
   engineHasShell: boolean; desktopApp: boolean; cloudHome: boolean; worksOn: "off" | string | undefined;
   remoteComputer: boolean; thisComputerRefused: boolean; guest: boolean; testRun: boolean;
+  /** Where the model runs (agents-bridge-switch modelPlace). */
+  model: "hosted" | "loopback" | "network";
+  platform: NodeJS.Platform;
+  /** A person's own request or its continuation: not a routine, webhook, Bot API call or a teammate's hand-off. */
+  watched: boolean;
 }): boolean {
-  return !input.engineHasShell && input.desktopApp && !input.cloudHome && input.worksOn !== "off"
+  const lent = !input.engineHasShell && input.desktopApp && !input.cloudHome && input.worksOn !== "off"
     && !input.remoteComputer && !input.thisComputerRefused && !input.guest && !input.testRun;
+  if (input.model === "hosted") return lent;
+  // a local model gets it only from this machine, off Windows (the safety floor is inert there) and with a person behind the turn
+  return lent && input.model === "loopback" && input.platform !== "win32" && input.watched;
 }
 
 /** The server's launch line, working in `folder`, its search never listing what lies under `hidden`. */

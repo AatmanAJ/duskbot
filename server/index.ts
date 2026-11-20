@@ -510,7 +510,7 @@ import { SCRIPT_CHECK_ON_NOTE, scriptCheckGate, scriptRoutineRefusal, setsScript
 import type { WebhookTrigger } from "../shared/webhooks.ts";
 import { AGENTS_NODE_FLAG, SPAWNED_PROXIES } from "./proxy-paths.ts"; import { hostShellLaunch, mountsHostShell } from "./host-shell-mcp.ts";
 import { currentTrailId, startServerTrail, trail, trailError, withRequestTrail } from "./trail.ts"; import { traceRuntimeEvents } from "./trail-events.ts";
-import { agentsProxyLaunch, agentsToolBridgeEnv, applyAgentsBridge, bridgedToolTitle, turnEngine } from "./agents-bridge-switch.ts"; import { agentsServerEnv, COMPUTER_OFF_REFUSAL, computerPickRefusal, directTurnKind, roomSkillsRefusal, type TurnKind } from "./agents-turn.ts";
+import { agentsProxyLaunch, agentsToolBridgeEnv, applyAgentsBridge, bridgedToolTitle, modelPlace, turnEngine } from "./agents-bridge-switch.ts"; import { agentsServerEnv, COMPUTER_OFF_REFUSAL, computerPickRefusal, directTurnKind, roomSkillsRefusal, type TurnKind } from "./agents-turn.ts";
 import { harnessMcpTokenEnv } from "./harness-mcp-token.ts";
 import {
   loadBundledSkills,
@@ -8825,14 +8825,14 @@ async function beginTurn(
   const continuation = Boolean(opts?.cardContinuation || opts?.computerSelectionContinuation);
   const continued = previousRequest && !previousRequest.stopped &&
     (requestMessageId ? previousRequest.messageId === requestMessageId : opts?.cardContinuation) ? previousRequest.origin : undefined;
-  const requestOrigin = requestWorkOrigin({ trigger: opts?.automationSource, guest: guestConfined, handed: opts?.origin, continued,
+  const requestKind = directTurnKind({ ...opts, peerAsk: opts?.peerAsk ?? userMessage.peerAsk }), requestOrigin = requestWorkOrigin({ trigger: opts?.automationSource, guest: guestConfined, handed: opts?.origin, continued,
     line: !continuation && requestMessageId === userMessage.id ? userMessage : undefined });
   directRequestOwners.set(threadId, { generation: dispatchClaimId, messageId: requestMessageId,
     gmailDrafts: opts?.coordination ? gmailDrafts.forNode(opts.coordination.id) :
       continuation && previousRequest && !previousRequest.stopped && (!requestMessageId || previousRequest.messageId === requestMessageId)
         ? previousRequest.gmailDrafts ?? new Set<string>() : new Set<string>(),
     generations: requestGenerations, turnId: null, ...(opts?.automationSource ? { automation: opts.automationSource } : {}), origin: requestOrigin, ...(personLine || (continued && previousRequest?.personLine) ? { personLine: true as const } : {}),
-    kind: directTurnKind({ ...opts, peerAsk: opts?.peerAsk ?? userMessage.peerAsk }) });
+    kind: requestKind });
   const notesRefused = CLOUD_PERSONAL && ownerTurnRefusal(cloudOwnerTurn({ botId, threadId, generation: dispatchClaimId })) !== null;
   // An unknown control-plane wake must never acquire authority by guessing the latest user as its origin.
   const pendingSource = requestMessageId ?? store.activePath(threadId).findLast(message => message.role === "user")?.id;
@@ -9414,7 +9414,7 @@ async function beginTurn(
       if (liveBot && instance.adapter.capabilities.emailMcp === true) { const mail = emailIntegration(liveBot, { threadId, generation: dispatchClaimId }); if (mail) integrations.email = mail; }
       const phone = liveBot && instance.adapter.capabilities.deviceMcp === true ? phones.integration(liveBot, { threadId, generation: dispatchClaimId }) : null;
       if (phone) integrations.device = phone;
-      if (mountsHostShell({ engineHasShell: worksInWorkspace, desktopApp: DESKTOP_MANAGED && desktopComputer.granted(), cloudHome: Boolean(CLOUD_HOME), worksOn: plan.computer, remoteComputer: Boolean(teamComputer) || Boolean(vpsSshAliasForBot(cfg, bot)), thisComputerRefused: Boolean(computerPlaceRefusal("thisComputer")), guest: guestConfined || cloudGuestOpened(threadId), testRun: routineGuard.dryRun(routines?.runForThread(threadId) ?? null) })) { const shell = hostShellLaunch(messageFileRootsForThread(bot.id, threadId).find((root) => root !== ATTACHMENTS_DIR), [DATA_DIR, join(homedir(), ".ssh")]); if (shell) integrations.shell = shell; }
+      if (mountsHostShell({ engineHasShell: worksInWorkspace, desktopApp: DESKTOP_MANAGED && desktopComputer.granted(), cloudHome: Boolean(CLOUD_HOME), worksOn: plan.computer, remoteComputer: Boolean(teamComputer) || Boolean(vpsSshAliasForBot(cfg, bot)), thisComputerRefused: Boolean(computerPlaceRefusal("thisComputer")), guest: guestConfined || cloudGuestOpened(threadId), testRun: routineGuard.dryRun(routines?.runForThread(threadId) ?? null), model: modelPlace(bot, turnEngine(instance, instanceConfigs(cfg), registry.lastSnapshot(instance.instanceId), cwd)), platform: process.platform, watched: (requestKind === "person" || requestKind === "continuation") && requestOrigin.kind === "user" })) { const shell = hostShellLaunch(messageFileRootsForThread(bot.id, threadId).find((root) => root !== ATTACHMENTS_DIR), [DATA_DIR, join(homedir(), ".ssh")]); if (shell) integrations.shell = shell; }
       const mountedComputer = surfaceOfComputerKind(computerKind);
       if (
         liveBot &&
