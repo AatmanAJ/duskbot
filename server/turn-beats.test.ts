@@ -253,6 +253,14 @@ describe("what a beat may promise", () => {
     expect(plan).not.toContain("the one check that will happen before sending");
     expect(plan).toContain("Never promise a check, a test, a price lookup or anything else that is not already among the steps");
   });
+  it("knows the connected apps and never claims access to an app, chat or item it cannot see", () => {
+    for (const kind of ["ack", "plan", "milestone"] as const) {
+      const prompt = beatPrompt(kind, { ...input, ask: "watch our telegram group and tell me when a deal moves", apps: ["gmail"] });
+      expect(prompt).toContain("Connected apps Forge can use: gmail.");
+      expect(prompt).toContain("Never claim to be reading, watching, cancelling or changing something in an app, account, chat, device or existing item");
+    }
+    expect(beatPrompt("ack", input)).toContain("Connected apps Forge can use: none.");
+  });
   it("keeps product names as the person wrote them in the ack", () => {
     expect(beatPrompt("ack", input)).toContain("Write names and products exactly as the person did");
   });

@@ -41,7 +41,8 @@ export interface TurnBeatsDeps {
   enabled(): boolean;
   /** The small one-off text call of the engine running this thread, or null when it has none. */
   writer(botId: string, threadId: string): BeatWriter | null;
-  bot(botId: string): { name: string; soul?: string } | null | undefined;
+  /** `apps`: the connected apps this bot may use, by name; absent when unknown. */
+  bot(botId: string): { name: string; soul?: string; apps?: readonly string[] } | null | undefined;
   /** Whether this turn is still the one the thread runs. */
   live(threadId: string, turnId: string): boolean;
   post(beat: { botId: string; threadId: string; turnId: string; text: string; kind: BeatKind }): void;
@@ -113,18 +114,20 @@ const SHARED_RULES = (name: string) => [
   `- Write as ${name}, in the first person, in the language of the person's message.`,
   "- Plain, warm and specific. No greeting, no emoji, no exclamation marks, no questions.",
   "- Never state results, prices, numbers or facts that are not given above. Never promise a time.",
+  "- Never claim to be reading, watching, cancelling or changing something in an app, account, chat, device or existing item (an inbox, a group chat, a reminder, a file) unless it is among the apps above or the steps show it: name the goal instead (\"Looking at how to watch that group.\") or reply SKIP.",
   "- Never name tools, models, searches as a mechanism, files that hold notes, or the app.",
   "- If nothing useful and true can be said, reply exactly SKIP.",
   "Reply with the message only.",
 ].join("\n");
 
-export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string; ask: string; steps: string[]; said: string[]; minutes?: number }): string {
+export function beatPrompt(kind: BeatKind, input: { name: string; soul?: string; apps?: readonly string[]; ask: string; steps: string[]; said: string[]; minutes?: number }): string {
   const ask = input.ask.slice(0, ASK_CHARS);
   const steps = input.steps.slice(-10).map((step) => `- ${step}`).join("\n") || "- (none yet)";
   const said = input.said.map((line) => `- ${line}`).join("\n");
   const head = [
     `You write one short chat message for ${input.name}. ${input.name} is working on the person's request right now; another process does the work. You only write a short message the person sees while it runs.`,
     personaLines(input),
+    `Connected apps ${input.name} can use: ${input.apps?.length ? input.apps.join(", ") : "none"}.`,
     "",
     "The person's message:",
     "<<<",
@@ -202,7 +205,7 @@ export function createTurnBeats(deps: TurnBeatsDeps) {
     beat.phase = "writing";
     beat.abort = new AbortController();
     const steps = kind === "milestone" ? watch.steps.slice(watch.stepsAtLastWord) : watch.steps;
-    const prompt = beatPrompt(kind, { name: bot.name, soul: bot.soul, ask: watch.ask, steps, said: watch.said.slice(-4), minutes: Math.round((now() - watch.startedAt) / 60_000) });
+    const prompt = beatPrompt(kind, { name: bot.name, soul: bot.soul, apps: bot.apps, ask: watch.ask, steps, said: watch.said.slice(-4), minutes: Math.round((now() - watch.startedAt) / 60_000) });
     void writer(prompt, { signal: beat.abort.signal, timeoutMs: WRITE_TIMEOUT_MS }).then((reply) => {
       if (beat.phase !== "writing") return;
       const text = cleanBeat(kind, reply);
