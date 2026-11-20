@@ -64,6 +64,8 @@ export interface BotMessageRouteDeps {
   /** The turn running in a thread now, as its runtime events name it. */
   liveTurn(threadId: string): string | undefined;
   phoneSecretSubmissions: Pick<PhoneSecretSubmissionRegistry, "hasThread">;
+  /** A typed line while a send or purchase card waits in this thread: those cards stop waiting, so the turn reads it. */
+  typedOverHeldCards?(threadId: string): void;
   directTurnDispatchClaims: { get(threadId: string): { threadId: string } | undefined };
   groupSpeakers: ReadonlyMap<string, { botId: string }>;
   desktopManaged: boolean;
@@ -277,6 +279,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       const typedAnswer = passedBack || guarded || press || appSent || pointed ? null : await deps.typedCardAnswer?.(auth, threadId, text, target, { sendId, sender: messageSender(auth) });
       const answeredBack = passedBack ?? typedAnswer;
       if (answeredBack) return json(res, answeredBack.status, answeredBack.message ? { ok: true, threadId, message: answeredBack.message } : { error: answeredBack.error });
+      if (!guarded && !press && !appSent && !relayed) deps.typedOverHeldCards?.(threadId);
       // Only a real press or reaction, or an app's own words, marks the reply; a typed reply to the same row never does, whatever its words.
       const records = press && target ? pressRecords(bot, press.action) : null;
       const replyTo: ReplyTarget | undefined = press && target ? { ...target, widgetPress: { label: press.label, action: press.action, ...(records ? { records } : {}) } }

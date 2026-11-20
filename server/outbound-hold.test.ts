@@ -129,6 +129,17 @@ describe("createOutboundHold", () => {
     await expect(mutedPending).resolves.toEqual({ ok: true, approved: true });
   });
 
+  it("a line typed while the card waits stops the wait, so the turn reads it; the card shows it is no longer waiting", async () => {
+    const typed = setup(bot({ policy: "ask", dailyCap: 10 }));
+    const pending = typed.hold.hold({ ...typed.input, active: () => true });
+    const elsewhere = typed.outboundRequests.open({ botId: "b1", threadId: "t2", tool: "GMAIL_SEND_EMAIL", timeoutMs: 60_000 });
+    expect(typed.outboundRequests.replied("t1")).toEqual([typed.appended[0].message.card!.requestId]);
+    await expect(pending).resolves.toEqual({ ok: false, text: expect.stringMatching(/wrote in the chat instead of answering the card\. Read their message/) });
+    expect(typed.patches).toMatchObject([{ threadId: "t1", messageId: "m1", patch: { card: { answered: "unavailable", dismissed: true } } }]);
+    expect(typed.outboundRequests.pending("t2")).toEqual([elsewhere.requestId]);
+    expect(typed.outboundRequests.replied("t1")).toEqual([]);
+  });
+
   it("deny answers the decline text; timeout marks the card unavailable", async () => {
     const denied = setup(bot(undefined));
     const pending = denied.hold.hold({ ...denied.input, active: () => true });

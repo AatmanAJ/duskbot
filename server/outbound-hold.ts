@@ -130,7 +130,7 @@ export function createOutboundHold(deps: OutboundHoldDeps): OutboundHold {
       }
     }
     if (answer === "allow") return { ok: true, messageId: card.id, edits };
-    if (answer === "timeout") {
+    if (answer === "timeout" || answer === "replied") {
       const stale = store.messagesFor(threadId).find((message) => message.id === card.id);
       if (stale?.card && !stale.card.answered) {
         store.patchMessage(threadId, stale.id, { card: { ...stale.card, answered: "unavailable", dismissed: true } });
@@ -139,7 +139,9 @@ export function createOutboundHold(deps: OutboundHoldDeps): OutboundHold {
     const what = input.title === PURCHASE_TITLE ? "buy this" : "send this";
     return {
       ok: false,
-      text: answer === "timeout"
+      text: answer === "replied"
+        ? `dusk bot did not ${what}: the person wrote in the chat instead of answering the card. Read their message and do what it says; if they clearly said to go ahead, ask again on a new card.`
+        : answer === "timeout"
         ? `dusk bot did not ${what}: nobody answered the approval in time. Ask the user before trying again.`
         : `dusk bot did not ${what}: the user declined. Do not retry it; ask the user what they would like instead.`,
     };
