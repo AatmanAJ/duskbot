@@ -6,8 +6,7 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk, verificationServerEnvironment } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
-// A failed turn's ask goes back to the bot only when the turn ran no tool, so nothing it did can happen twice.
-it.each([false, true])("recovers the same conversation after an ACP internal error, handing the failed ask back only when it ran no tool (output: %s)", async (afterOutput) => {
+it.each([false, true])("recovers the same conversation after an ACP internal error without replay (output: %s)", async (afterOutput) => {
   const fixture = await launchVerificationServer();
   const { dataDir, url, logPath } = fixture.info;
   let server: ChildProcess | undefined;
@@ -101,8 +100,7 @@ it.each([false, true])("recovers the same conversation after an ACP internal err
     const prompt = promptTexts()[2]!;
     expect(prompt.split(retryText).length - 1).toBe(1);
     expect(prompt).not.toContain(firstText);
-    // listed once as still open after a failure before any tool; never again after one that ran a tool
-    expect(prompt.split(failedText).length - 1).toBe(afterOutput ? 0 : 1);
+    expect(prompt).not.toContain(failedText);
     const finalMessages = await messages();
     for (const text of [firstText, failedText, retryText]) {
       expect(finalMessages.filter((message) => message.role === "user" && message.text === text)).toHaveLength(1);

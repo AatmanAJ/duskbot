@@ -40,7 +40,7 @@ export function createOpenAsks(deps: OpenAsksDeps) {
       deps.store.patchMessage(threadId, row.id, { ask: { state: "open" } });
     },
 
-    /** A turn failed after it ran a tool: the failure it shows names what blocked every ask still open. */
+    /** A turn failed: the failure it shows names what blocked every ask still open. */
     failed(threadId: string): void {
       for (const row of open(threadId)) set(threadId, row, "blocked");
     },

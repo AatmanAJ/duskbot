@@ -128,8 +128,7 @@ export interface FinishGuardDeps {
   /** The quiet line the person sees, "Continuing: 2 of 5 steps left". */
   line(threadId: string, reason: FinishReason): void;
   /** The thread's open-item ledger: settles its open asks with what the turn did and returns the words of those still
-   * open that were never sent back for; `nudged` marks them sent back for; `failed` closes them after a turn that failed
-   * once it had run a tool. */
+   * open that were never sent back for; `nudged` marks them sent back for; `failed` closes them after a turn that failed. */
   asks?: { settle(threadId: string, turn: TurnForAsks): string[]; nudged(threadId: string): void; failed?(threadId: string): void };
   later?: (run: () => void, ms: number) => void;
 }
@@ -171,11 +170,11 @@ export function createFinishGuard(deps: FinishGuardDeps) {
         turn.toolsAfterText = 0;
       } else if (event.type === "turn.completed" || event.type === "session.exited") {
         turns.delete(threadId);
-        const stopped = event.type === "turn.completed" && (event.stopReason === "cancelled" || event.stopReason === "interrupted");
-        // security invariant: a failed turn that ran a tool may have sent, written or changed something already, so its
-        // asks are never handed back to the bot (open items, the asks carry-on) to be done a second time
-        if ((event.type === "session.exited" || !event.ok) && !stopped && turn.carriable && turn.tools > 0) deps.asks?.failed?.(threadId);
-        if (event.type !== "turn.completed" || !event.ok || stopped) return;
+        // security invariant: a turn that failed or was stopped (by the watchdog, a restart or the person) may have sent,
+        // written or changed something first, so its asks are never handed back to the bot (open items, the asks carry-on)
+        // to be done a second time
+        if ((event.type === "session.exited" || !event.ok) && turn.carriable) deps.asks?.failed?.(threadId);
+        if (event.type !== "turn.completed" || !event.ok || event.stopReason === "cancelled" || event.stopReason === "interrupted") return;
         const asks = turn.carriable ? deps.asks?.settle(threadId, { said: turn.said, scheduled: turn.scheduled, handedOff: turn.handedOff }) ?? [] : [];
         const reason = finishReason({ ...turn, asks, ...(event.stopGates ? { gated: event.stopGates } : {}) });
         const botId = reason && turn.carriable ? deps.botOf(threadId) : null;

@@ -1891,7 +1891,7 @@ describe("harness HTTP API", () => {
       );
       expect(direct.body.message).not.toHaveProperty("requestPending");
       expect(afterDirect.messages.find((message: { id: string }) => message.id === direct.body.message.id))
-        .toEqual({ ...direct.body.message, requestPending: true, ask: { state: "open" } });
+        .toEqual({ ...direct.body.message, requestPending: true });
 
       expect((await api("POST", `/api/bots/${bot.id}/interrupt`)).status).toBe(200);
       await expect.poll(async () => {
@@ -1951,7 +1951,7 @@ describe("harness HTTP API", () => {
       const duplicate = await api("POST", `/api/bots/${bot.id}/messages`, request);
       expect(duplicate.status).toBe(202);
       expect(first.body.message).not.toHaveProperty("requestPending");
-      const pendingReceipt = { ...first.body, message: { ...first.body.message, requestPending: true, ask: { state: "open" } } };
+      const pendingReceipt = { ...first.body, message: { ...first.body.message, requestPending: true } };
       expect(duplicate.body).toEqual(pendingReceipt);
 
       const conflict = await api("POST", `/api/bots/${bot.id}/messages`, {
@@ -1992,7 +1992,7 @@ describe("harness HTTP API", () => {
       const inactiveRetry = await api("POST", `/api/bots/${bot.id}/messages`, request);
       expect(inactiveRetry.status).toBe(202);
       expect(inactiveRetry.body).toEqual({
-        ...pendingReceipt, message: { ...pendingReceipt.message, requestCancelled: true, ask: { state: "dropped" } },
+        ...pendingReceipt, message: { ...pendingReceipt.message, requestCancelled: true },
       });
       const current = (await api("GET", "/api/bots?messages=0")).body.bots.find(
         (candidate: { id: string }) => candidate.id === bot.id,

@@ -4097,7 +4097,10 @@ function runRootTurn(node: HandoffView, bot: BotRecord, signal: AbortSignal, com
   if (composed.turn === "rerun" && node.goalRunId && !oneOnOneGoals.isLive(node.threadId, node.goalRunId)) {
     return Promise.resolve({ ok: false, text: "The goal run this step belonged to ended with the restart." });
   }
-  if (composed.turn === "rerun") store.appendMessage(node.threadId, { role: "bot", kind: "activity", tool: { name: "Resuming after a restart", ok: true } });
+  if (composed.turn === "rerun") {
+    openAsks.failed(node.threadId);
+    store.appendMessage(node.threadId, { role: "bot", kind: "activity", tool: { name: "Resuming after a restart", ok: true } });
+  }
   parkedSeats.delete(node.id);
   const owner = directRequestOwners.get(node.threadId);
   const ownRequest = owner && !owner.stopped && owner.generations.has(node.id) ? owner : undefined;
@@ -5314,6 +5317,7 @@ const watchdog = new TurnWatchdog({
       kind: "activity",
       tool: failedTurnRow(cause),
     });
+    openAsks.failed(turn.threadId);
     if (bot && routineRun?.target !== "bot") {
       reportIncident({ kind: "stalled", bot, threadId: turn.threadId, detail: cause });
     }
@@ -16725,6 +16729,7 @@ for (const row of chatFollowups()) {
       tool: { name: "Queued follow-up interrupted by restart or restore: it may have already run. Review the result before sending it again.", ok: false },
     });
   }
+  openAsks.failed(row.threadId);
   settleChatFollowups([row.id], null);
 }
 restoreSteeredMessages();

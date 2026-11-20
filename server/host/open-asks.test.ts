@@ -20,7 +20,7 @@ function chat() {
 }
 
 describe("open asks", () => {
-  it("closes the asks of a turn that failed after it ran a tool, so no later turn is told to do them again", () => {
+  it("closes the asks of a turn that failed, so no later turn is told to do them again", () => {
     const c = chat();
     const asks = createOpenAsks({ store: c.store, now: c.now });
     const send = c.say("user", "email the invoice to Priya");

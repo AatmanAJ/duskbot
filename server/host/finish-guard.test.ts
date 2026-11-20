@@ -196,15 +196,16 @@ describe("finish guard: open asks and done claims", () => {
     return { carried, lines, settled, turn, send, failed: () => failed };
   }
 
-  it("closes the asks of a turn that failed or crashed after a tool ran, and leaves them open after a failure before any tool or a Stop", () => {
+  it("closes the asks of a turn that failed, crashed or was stopped, before or after a tool ran", () => {
     const h = withAsks(["email the invoice to Priya"]);
     h.turn("Sending it now.", ["mcp__gmail__send_email"], undefined, { type: "turn.completed", ok: false });
     h.turn("Sending it now.", ["mcp__gmail__send_email"], undefined, { type: "session.exited" });
-    expect(h.failed()).toBe(2);
     h.turn("", [], undefined, { type: "turn.completed", ok: false });
     h.turn("Sending it now.", ["mcp__gmail__send_email"], undefined, { type: "turn.completed", ok: false, stopReason: "interrupted" });
-    expect(h.failed()).toBe(2);
+    expect(h.failed()).toBe(4);
     expect([...h.carried, ...h.settled]).toEqual([]);
+    h.turn("Sent it to Priya.", ["mcp__gmail__send_email"]);
+    expect(h.failed()).toBe(4);
   });
 
   it("sends a turn back once, with no line for the person, for an ask it left open", () => {
