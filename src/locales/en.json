@@ -7839,7 +7839,7 @@
   "placeSetup.found.body": "Your bots live there and everything is still on it. Reconnect, nothing needs installing again.",
   "placeSetup.found.reconnect": "Reconnect",
   "placeSetup.found.another": "Install on another server",
-  "vpsLink.transfer.fromServerPage": "Bring your bots back from there: Settings, then Transfer.",
+  "vpsLink.transfer.fromServerPage": "Bring your bots back from there in Settings › Transfer.",
   "vpsLink.transfer.whereTitle": "Where your bots live",
   "vpsLink.transfer.loading": "Loading…",
   "vpsLink.transfer.thisDevice": "This {device}",
