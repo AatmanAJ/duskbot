@@ -103,6 +103,7 @@ const plain = (error, fallback) => {
  *   places?(): any[],
  *   who?(place: { origin: string }): Promise<{ signedIn: boolean, own: boolean, environmentId: string | null }>,
  *   ownHomeReset(): void,
+ *   holding?<T>(work: () => Promise<T>): Promise<T>,
  *   localRequest(route: string, init?: RequestInit): Promise<Response>,
  *   backups: { save(name: string, bytes: AsyncIterable<Uint8Array> | Uint8Array): Promise<{ file: string, bytes: number }>, open(file: string): Promise<{ body: any, size: number }>, remove?(file: string): void },
  *   localCredentials: { codexAuth(): Promise<string | null>, claudeCli(): Promise<string | null>, claudeToken(cli: string, signal: AbortSignal): Promise<string> },
@@ -169,7 +170,7 @@ export function createVpsLink(deps) {
   }
   function write() { store.write(state); onChange(view()); }
   const back = createMoveBack({
-    link: () => currentLink(), away: () => ownHome.away(), home: () => ownHome.home(), moving: () => !ownHome.away() && ownHome.active?.() === true,
+    link: () => homeLink() ?? currentLink(), away: () => ownHome.away(), home: () => ownHome.home(), moving: () => !ownHome.away() && ownHome.active?.() === true,
     places: () => deps.places?.() ?? [], who: (place) => deps.who(place), serverCall, local, label: deps.label, log,
     viaLink: async (link) => { const proxy = await signedIn(link); return { freeze: (place) => proxy.control("freeze", { place }), thaw: () => proxy.control("thaw") }; },
     backupHere: () => backupNow("before-restore"), backupFrom: (from, onBytes) => backupNow("from-server", from, onBytes), restoreFile,
@@ -177,6 +178,7 @@ export function createVpsLink(deps) {
   });
 
   const currentLink = () => state.links.find((link) => link.id === state.current) ?? null;
+  const homeLink = () => { const home = ownHome.away() ? ownHome.home() : null; return home ? state.links.find((link) => link.envId === home.id) ?? null : null; };
 
   // the install's live terminal: lines each step streams while it runs. kept in memory only, never in the store
   const emptyLive = (id) => ({ id, steps: {}, feed: [], updatedAt: 0, progressAt: 0, error: null, ask: null, fallback: null });
@@ -1266,7 +1268,11 @@ export function createVpsLink(deps) {
     return view();
   }
 
-  const forget = () => forgetLink(currentLink());
+  function forget() {
+    const link = currentLink(), home = ownHome.away() ? ownHome.home() : null;
+    if (link && home && link.envId === home.id) throw new Error(`Your bots live on ${home.name}. Bring them back to this computer first, then remove it.`);
+    return forgetLink(link);
+  }
   /** Start fresh: the linked server this saved place is, forgotten as Forget does (after its data was deleted, so there is
    * no session left there to sign out of: `quiet`); false when no link is that place. */
   async function forgetServer(envId) {
@@ -1336,7 +1342,7 @@ export function createVpsLink(deps) {
     view, start, cancel, resume, accountReady, sealTrust, nudge, directSetting, setDirect, updateLink, pathAt,
     reset() { lastError = null; if (!state.pending && state.move?.step === "done") state.move = null; write(); return view(); },
     engines, signIn, signInStatus, signInCode, signInCancel,
-    preview, move, retryMove, moveBack: (placeId) => back.run(placeId), bringSources: () => back.sources(), backups, backupNow: async () => ({ id: (await backupNow("manual")).id }), restore, forget, forgetServer, where,
+    preview, move, retryMove, moveBack: (placeId) => (deps.holding ? deps.holding(() => back.run(placeId)) : back.run(placeId)), bringSources: () => back.sources(), backups, backupNow: async () => ({ id: (await backupNow("manual")).id }), restore, forget, forgetServer, where,
     open: async () => { const link = needLink(); await deps.switchTo(link.envId); },
     /** the servers linked here with the install line, by their saved place; `key` is the server's own id when it sent one */
     servers: () => state.links.filter((link) => link.envId).map((link) => ({ id: link.envId, key: link.environmentId ?? link.envId, name: link.name, uninstall: `curl -fsSL ${link.base ?? base}/uninstall | sh` })),

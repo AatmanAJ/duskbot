@@ -373,6 +373,23 @@ describe("Add your VPS", () => {
     expect(linked.view()).toMatchObject({ via: "cloudflare", server: { origin: "https://new-name.trycloudflare.com" } });
     await linked.close();
   });
+
+  it("keeps the server the bots live on: Forget is refused, and moving back runs on this computer's own copy", async () => {
+    const store = memoryStore();
+    store.write({ v: 1, current: "dddddddddd", links: [{ id: "dddddddddd", name: "garage", mode: "relay", origin: "http://vps-dddddddddd.localhost:1", envId: "env-4", keyP: "p:k", tokenP: "p:t" }] });
+    const home = { id: "env-4", origin: "http://vps-dddddddddd.localhost:1", name: "garage" };
+    const held = [];
+    const linked = createVpsLink({
+      ...linkDeps(localServer(), { start: async () => {}, view: () => null, away: () => true, home: () => home, chosen: () => null }, store),
+      holding: async (work) => { held.push("in"); try { return await work(); } finally { held.push("out"); } },
+      proxyFactory: () => ({ start: async () => home.origin, control: async () => ({}), close: async () => {} }),
+    });
+    expect(() => linked.forget()).toThrow(/Your bots live on garage/);
+    expect(store.read().links).toHaveLength(1);
+    await linked.moveBack().catch(() => {});
+    expect(held).toEqual(["in", "out"]);
+    await linked.close();
+  });
 });
 
 function linkDeps(local, ownHome, store) {

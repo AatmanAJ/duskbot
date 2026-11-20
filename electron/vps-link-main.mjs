@@ -138,7 +138,8 @@ export function installLinkDirectIpc({ ipcMain, pageOrigin, link }) {
  *   screenIce?(): Promise<Array<{ urls: string[], username?: string, credential?: string }> | null>,
  *   myCloud?(): string | null,
  *   cloudAwake?(): boolean,
- * }} deps
+ *   clean?: { holding<T>(work: () => Promise<T>): Promise<T> } | null,
+ * }} deps `clean`: this computer's clean workspace; bots brought back go into its own copy.
  */
 // the home has no tunnel node to ask for this computer's public address, so the dialer goes by the interfaces alone
 export function homeEgressEndpoint(tunnel, awake = null) {
@@ -191,6 +192,8 @@ export function installVpsLink(deps) {
     retarget(from, to) {
       const state = deps.environments();
       deps.persist({ ...state, environments: state.environments.map((entry) => (entry.origin === from ? { ...entry, origin: to } : entry)) });
+      const choice = ownHomeFiles[1], chosen = choice.read();
+      if (chosen?.origin === from) choice.write({ ...chosen, origin: to });
     },
     switchTo: deps.switchTo,
     pin(host, spki) {
@@ -200,6 +203,7 @@ export function installVpsLink(deps) {
     ownHome: deps.ownHome,
     places: () => deps.environments().environments ?? [],
     who: (place) => serverRequests(place, (...args) => session.defaultSession.fetch(...args)).who(),
+    ...(deps.clean ? { holding: (work) => deps.clean.holding(work) } : {}),
     ownHomeReset: () => { for (const file of ownHomeFiles) { try { file.write(null); } catch (error) { log(`vps link: could not reset the move record (${error?.message ?? error})`); } } },
     localRequest: deps.localRequest,
     backups: {
