@@ -59,6 +59,9 @@ function render(messages: Message[]): string {
     const run = m.role === "user" ? /^\[(?:Scheduled routine|Routine) ("(?:[^"\\]|\\.)*"), do this now:\]/u.exec(m.text ?? "") : null;
     if (run) return `[the app shows: automation ${run[1]} started a run here${(m.text ?? "").includes("this is a test run") ? " (test run)" : ""}]`;
     const who = m.role === "user" ? "PERSON" : m.role === "bot" ? "BOT" : m.role.toUpperCase();
+    // at Full access a change applies at once and its card is a receipt (Edit, Pause, Undo), not a question
+    const receipt = m.card?.dismissed === true && !(m.card.options?.length);
+    if (receipt) return `[the app shows a receipt card: ${String(m.card.title ?? "").replace(/\?$/, "")}, applied]`;
     const kind = m.kind && m.kind !== "text" ? `[${m.kind} card${m.card?.title ? `: ${m.card.title}` : ""}] ` : "";
     const cardText = m.kind !== "text" && m.card ? ` ${JSON.stringify(m.card).slice(0, 400)}` : "";
     const doc = m.document ? ` [document "${m.document.title}" (${m.document.kind})]` : "";
