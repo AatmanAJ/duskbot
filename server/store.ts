@@ -12,6 +12,7 @@ import type { TeamComputers } from "./team-computers.ts";
 import { removeBotFolder, soulFile, soulHash, writeSoulMirror } from "./bot-folder.ts";
 import type { BotProfilePatch } from "./bot-profile.ts";
 import { peerAllowKey, type PeerAction } from "./peer-approval-key.ts";
+import { rebaseStoredFolders } from "./own-folders.ts";
 import { DATA_DIR, EVENTS_DIR, NATIVE_DIR, loadBrowserProfileIdAliases } from "./config.ts";
 import * as mdb from "./message-db.ts";
 import { forgetBotMemoryJournal, journalFile, rotatedJournalFile } from "./memory-journal.ts";
@@ -78,6 +79,8 @@ export interface TaskRecord extends Omit<WireTask, TaskWireDerivedKeys> {
   surfaceSource?: "user" | "auto";
   /** Epoch ms a person last wrote here: never a teammate, routine, webhook, the bot itself or a Slack relay. */
   askedAt?: number;
+  /** The person picked this conversation's AI: the app's own moves (off the free backup) leave it. */
+  modelChosen?: true;
 }
 
 export type TaskWireDerivedKeys = "surfaceAuto" | "followsBotModel" | "backup";
@@ -86,7 +89,7 @@ type AssertSameKeys<A, B> = [keyof A] extends [keyof B] ? ([keyof B] extends [ke
 export function toWireTask(task: TaskRecord, botModel: ModelSelection): WireTask {
   const { resumeCursors: _resumeCursors, lastInstanceId: _lastInstanceId, handedMessages: _handedMessages,
     appliedCompactionId: _appliedCompactionId, contextFloor: _contextFloor, lastContextModel: _lastContextModel,
-    surfaceSource, askedAt: _askedAt, ...stored } = task;
+    surfaceSource, askedAt: _askedAt, modelChosen: _modelChosen, ...stored } = task;
   const wire: WireTask = { ...stored, modelSelection: structuredClone(task.modelSelection ?? botModel), followsBotModel: task.modelSelection === undefined };
   return surfaceSource === "auto" && wire.surface !== undefined ? { ...wire, surfaceAuto: true } : wire;
 }
@@ -96,7 +99,7 @@ const ASK_NOW = { approvalMode: "ask" as const, autoApprove: false, alwaysAllow:
 const TASK_PATCH_FIELDS = [
   "title", "projectId", "modelSelection", "approvalMode", "autoApprove", "alwaysAllow",
   "unread", "lastReadMessageId", "rewound", "archivedAt", "pinned", "pinnedMessageId", "resumeCursors", "lastInstanceId", "cwd",
-  "routineRunId", "surface", "surfaceSource", "snoozedUntil", "link", "linkAuto", "appliedCompactionId", "contextFloor", "lastContextModel", "setupRequest", "botApi", "outside",
+  "routineRunId", "surface", "surfaceSource", "snoozedUntil", "modelChosen", "link", "linkAuto", "appliedCompactionId", "contextFloor", "lastContextModel", "setupRequest", "botApi", "outside",
 ] as const satisfies readonly (keyof TaskRecord)[];
 export type TaskPatch = Partial<Pick<TaskRecord, typeof TASK_PATCH_FIELDS[number]>>;
 
@@ -148,16 +151,18 @@ export interface BotRecord extends Omit<WireBot, "avatarUrl" | "tasks"> {
   lastTeamSetupReceipt?: { requestId: string; result: TeamSetupResult };
   packageBase?: Partial<Record<AgentPart, PartPair>>;
   assignedSkills?: string[];
+  /** The person picked this bot's AI: the app's own moves (off the free backup) leave it. */
+  modelChosen?: true;
 }
 
-export type BotWirePrivateKeys = "resumeCursors" | "mainThreadChoice" | "tasks" | "avatarUrl" | "approvalGrant" | "lastProfileRequestId" | "lastTeamSetupReceipt" | "packageBase" | "assignedSkills";
+export type BotWirePrivateKeys = "resumeCursors" | "mainThreadChoice" | "tasks" | "avatarUrl" | "approvalGrant" | "lastProfileRequestId" | "lastTeamSetupReceipt" | "packageBase" | "assignedSkills" | "modelChosen";
 export type BotWireProjection = Pick<BotRecord, Exclude<keyof BotRecord, BotWirePrivateKeys>>;
 export type BotWireProjectionIsExact = AssertExact<Omit<WireBot, "avatarUrl" | "tasks">, BotWireProjection> & AssertSameKeys<Omit<WireBot, "avatarUrl" | "tasks">, BotWireProjection>;
 export const botWireProjectionIsExact: BotWireProjectionIsExact = true;
 
 const BOTS_FILE = join(DATA_DIR, "bots.json");
 /** Task fields every turn rewrites (store.saveBotsLater). */
-const TURN_MARKS = new Set(["unread", "lastContextModel"]);
+const TURN_MARKS = new Set(["unread", "lastReadMessageId", "lastContextModel"]);
 const GROUPS_FILE = join(DATA_DIR, "groups.json");
 const THREAD_MODEL_COPIES_CLEARED = join(DATA_DIR, "thread-model-copies-cleared");
 const ASKED_AT_FILLED = join(DATA_DIR, "asked-at-filled");
@@ -275,10 +280,11 @@ export class Store {
     this.groups = groupsRead.records;
     if (groupsRead.state === "loaded") this.groupsFile.loaded(groupsRead.text);
     this.rememberSections([...this.bots, ...this.groups].map((record) => record.section));
-    let botsMigrated = false;
+    const isBot = (id: string) => this.bots.some((bot) => bot.id === id);
+    let botsMigrated = rebaseStoredFolders(this.bots, DATA_DIR, isBot);
     const browserProfileAliases = loadBrowserProfileIdAliases();
     const chiefSectionsSeen = new Set<string>();
-    let groupsMigrated = false;
+    let groupsMigrated = rebaseStoredFolders(this.groups, DATA_DIR, isBot);
     for (const b of this.bots) {
       if (b.busy || (b.activity !== undefined && b.activity !== "idle")) botsMigrated = true;
       b.busy = false;
@@ -1139,6 +1145,13 @@ export class Store {
     if (Number.isFinite(newest)) this.noteThreadActivity(threadId, newest, Number.isFinite(newestOrder), newestOrder);
   }
 
+  replaceTranscript(threadId: string, messages: Message[], activeLeafId: string | null): void {
+    mdb.replaceThread(threadId, messages, activeLeafId);
+    this.threads.delete(threadId);
+    const newest = messages.reduce((max, message) => Math.max(max, message.at), Number.NEGATIVE_INFINITY);
+    if (Number.isFinite(newest)) this.noteThreadActivity(threadId, newest, false, newest);
+  }
+
   activeLeaf(threadId: string): string | null {
     threadId = this.roomThreadOf(threadId);
     return this.thread(threadId).activeLeafId;
@@ -1465,7 +1478,7 @@ export class Store {
   applyModelDefault(id: string, modelSelection: ModelSelection): BotRecord | null {
     const previous = this.bot(id);
     if (!previous) return null;
-    const next: BotRecord = { ...previous, modelSelection: structuredClone(modelSelection), tasks: this.withDefaultModel(previous, modelSelection) };
+    const next: BotRecord = { ...previous, modelSelection: structuredClone(modelSelection), modelChosen: undefined, tasks: this.withDefaultModel(previous, modelSelection) };
     this.saveBots(this.bots.map((candidate) => candidate.id === id ? next : candidate));
     this.bots = this.bots.map((candidate) => candidate.id === id ? next : candidate);
     this.emit({ type: "bot", botId: id });
@@ -1777,6 +1790,7 @@ export class Store {
         if (bot.computer === undefined && keepsCloud) patch.computer = "cloud";
         if (needsAsk(bot)) { Object.assign(patch, structuredClone(askNow)); botAsk = true; }
         patch.modelSelection = structuredClone(replacement);
+        patch.modelChosen = undefined;
       }
       if (bot.fallback?.some(retired)) {
         const kept = bot.fallback.filter(candidate => !retired(candidate));
@@ -1813,7 +1827,7 @@ export class Store {
           }
           const ask = needsAsk(before);
           if (ask) Object.assign(taskPatch, structuredClone(askNow));
-          if (task.modelSelection) taskPatch.modelSelection = structuredClone(replacement);
+          if (task.modelSelection) Object.assign(taskPatch, { modelSelection: structuredClone(replacement), modelChosen: undefined });
           const scope = botMoved && task.threadId === bot.threadId ? "bot" : "conversation";
           moves.push({ botId: bot.id, threadId: task.threadId, scope, ...cloudAfterMove(task.surface, task.surfaceSource),
             askNow: ask || (scope === "bot" && botAsk) });
@@ -1958,6 +1972,13 @@ export class Store {
     });
     this.emit({ type: "group", groupId: group.id });
     return cwd;
+  }
+
+  repinGroupCwd(groupId: string, threadId: string, cwd: string | null): void {
+    const group = this.group(groupId), task = this.groupTaskByThread(groupId, this.roomThreadOf(threadId));
+    if (!group) return;
+    this.commitGroupChange(group, "the thread's folder", () => { if (task) task.pinnedCwd = cwd; if (!task || group.threadId === task.threadId) group.pinnedCwd = cwd; });
+    this.emit({ type: "group", groupId: group.id });
   }
 
   project(botId: string, projectId: string): BotProjectRecord | undefined {
@@ -2120,11 +2141,11 @@ export class Store {
     if (!bot || !task) return null;
     const approval = resetApprovalToAsk ? structuredClone(ASK_NOW) : {};
     const own = sameModelSelection(selection, updateBotDefault ? selection : bot.modelSelection) ? undefined : structuredClone(selection);
-    const nextTask = persistedPin({ ...task, ...taskPatch, modelSelection: own, ...approval,
+    const nextTask = persistedPin({ ...task, ...taskPatch, modelSelection: own, modelChosen: own && taskPatch.modelChosen ? true as const : undefined, ...approval,
       ...(typeof taskPatch.title === "string" ? { title: taskPatch.title.trim().slice(0, 80) || UNTITLED_THREAD } : {}) });
     const others = updateBotDefault ? this.withDefaultModel(bot, selection)! : bot.tasks!;
     const nextTasks = bot.tasks!.map((candidate, index) => candidate === task ? nextTask : others[index]!);
-    const botPatch = updateBotDefault ? { modelSelection: structuredClone(selection), ...approval } : {};
+    const botPatch = updateBotDefault ? { modelSelection: structuredClone(selection), modelChosen: taskPatch.modelChosen, ...approval } : {};
     this.saveBots(this.bots.map((candidate) => candidate === bot ? { ...bot, ...botPatch, tasks: nextTasks } : candidate));
     bot.tasks!.forEach((candidate, index) => Object.assign(candidate, nextTasks[index]));
     Object.assign(bot, botPatch);
@@ -2140,6 +2161,7 @@ export class Store {
     const patches = bot.tasks.map((task): Partial<TaskRecord> | null => !listed.has(task.threadId) || task.modelSelection === undefined ? null : {
       ...reset(task.modelSelection, bot.modelSelection),
       modelSelection: undefined,
+      modelChosen: undefined,
       ...(this.switchNeedsAsk(botId, task.threadId, task.modelSelection, bot.modelSelection) ? structuredClone(ASK_NOW) : {}),
     });
     const moved = bot.tasks.filter((_, index) => patches[index]).map((task) => task.threadId);

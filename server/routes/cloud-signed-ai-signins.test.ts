@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { applyCloudAiSignIns, CLOUD_AI_SIGNINS_PATH, type CloudAiSignIn } from "../cloud-ai-signins.ts";
+import { parseAiSignInList } from "../../shared/ai-signins.ts";
+import { applyCloudAiSignIns, CLOUD_AI_SIGNINS_PATH, signedInDrivers, type CloudAiSignIn } from "../cloud-ai-signins.ts";
 import { createCloudHealth } from "../cloud-health.ts";
 import { cloudRequestSignature } from "../cloud-home.ts";
 import { DATA_DIR } from "../config.ts";
@@ -75,4 +76,36 @@ describe("applying held sign-ins", () => {
     expect(readFileSync(file, "utf8")).toBe("{\"mine\":true}");
     expect(existsSync(`${file}.${process.pid}.tmp`)).toBe(false);
   });
+
+  it("writes Grok, Gemini and Kimi logins where their CLIs read them, and keeps any login already there", () => {
+    const home = mkdtempSync(join(tmpdir(), "dusk-cli-home-"));
+    cleanup.push(home);
+    const env = { HOME: home };
+    const grok = JSON.stringify({ "https://auth.x.ai::id": { refresh_token: "grok-secret" } });
+    const gemini = JSON.stringify({ access_token: "gemini-secret", refresh_token: "r" });
+    const kimi = JSON.stringify({ access_token: "kimi-secret", refresh_token: "r" });
+    const items = [{ kind: "grok-auth" as const, auth: grok }, { kind: "gemini-oauth" as const, auth: gemini }, { kind: "kimi-auth" as const, auth: kimi, file: "kimi-code-env-ab12.json" }];
+    expect(applyCloudAiSignIns(items, env)).toEqual({ applied: ["grok-auth", "gemini-oauth", "kimi-auth"], kept: [] });
+    expect(readFileSync(join(home, ".grok", "auth.json"), "utf8")).toBe(grok);
+    expect(readFileSync(join(home, ".gemini", "oauth_creds.json"), "utf8")).toBe(gemini);
+    expect(readFileSync(join(home, ".kimi-code", "credentials", "kimi-code-env-ab12.json"), "utf8")).toBe(kimi);
+    expect(applyCloudAiSignIns([{ ...items[2]!, file: "kimi-code.json" }], env), "a Kimi login for another region is still a login").toEqual({ applied: [], kept: ["kimi-auth"] });
+    expect(signedInDrivers(["codex-auth", "grok-auth", "gemini-oauth", "kimi-auth"])).toEqual(new Set(["codex", "grokAgent", "geminiAgent", "kimiAgent"]));
+  });
 });
+
+describe("the held sign-ins' shape", () => {
+  it("takes one of each CLI login, a Kimi one with its token file's name, and nothing else", () => {
+    const one = (kind: string, extra: object = {}) => ({ kind, auth, ...extra });
+    expect(parseAiSignInList([one("codex-auth"), one("grok-auth"), one("gemini-oauth"), one("kimi-auth", { file: "kimi-code.json" })])).toHaveLength(4);
+    expect(parseAiSignInList([one("kimi-auth")]), "a Kimi login names its file").toBeNull();
+    expect(parseAiSignInList([one("kimi-auth", { file: "../../.ssh/authorized_keys" })]), "never a path").toBeNull();
+    expect(parseAiSignInList([one("grok-auth", { file: "kimi-code.json" })])).toBeNull();
+    expect(parseAiSignInList([one("grok-auth"), one("grok-auth")])).toBeNull();
+    expect(parseAiSignInList([one("claude-token")]), "a Claude sign-in is never carried").toBeNull();
+    expect(parseAiSignInList([one("cursor-auth")])).toBeNull();
+    const big = JSON.stringify({ x: "y".repeat(30_000) });
+    expect(parseAiSignInList([{ kind: "codex-auth", auth: big }, { kind: "grok-auth", auth: big }, { kind: "gemini-oauth", auth: big }]), "the whole set stays small").toBeNull();
+  });
+});
+

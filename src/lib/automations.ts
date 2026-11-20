@@ -1,6 +1,7 @@
 // Automations as a person reads them: one plain sentence, one status word, "last ran" and "next". Built from the
 // store's schedules (routines), webhooks and runs, so the Automations page, its panel and the chat card never disagree.
 import { cronScheduleLabel } from "../../shared/cron-label";
+import { plainTimeZone } from "../../shared/plain-time-zone";
 import { activeLocale, t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import { isRoutineProblemRun, type Routine, type RoutineRun, type RoutineSchedule } from "@/lib/routines";
@@ -10,6 +11,7 @@ import { appProblem, appStatusParts, appWhen, skippedToday } from "@/lib/app-aut
 import { limitResetWhen } from "@/lib/limit-resets";
 import { isLimitSkip, partlyDone } from "@/lib/routine-display";
 import type { OptionCardData } from "@/state/store";
+import { deviceHourCycle } from "@/lib/format-time";
 
 export type AutomationKind = "schedule" | "webhook" | "app";
 
@@ -96,7 +98,9 @@ const locale = () => activeLocale();
 /** 9 AM on the hour, 9:30 AM otherwise, in the person's language. */
 export function clock(at: number, dropZeroMinutes = false): string {
   const date = new Date(at);
-  return date.toLocaleTimeString(locale(), dropZeroMinutes && date.getMinutes() === 0 ? { hour: "numeric" } : { hour: "numeric", minute: "2-digit" });
+  const hourCycle = deviceHourCycle();
+  const hourAlone = dropZeroMinutes && date.getMinutes() === 0 && (hourCycle === "h12" || hourCycle === "h11");
+  return date.toLocaleTimeString(locale(), hourAlone ? { hour: "numeric", hourCycle } : { hour: "numeric", minute: "2-digit", hourCycle });
 }
 
 /** When something last happened: "today 9:02 AM", "yesterday", "Mon 9:00 AM", or "Oct 3". */
@@ -126,6 +130,35 @@ const atClock = (time: string) => {
   day.setHours(hours ?? 0, minutes ?? 0, 0, 0);
   return clock(day.getTime(), true);
 };
+export function cronAsDaily(expression: string): { time: string; weekdays: number[] } | null {
+  const [minute, hour, day, month, weekday, ...rest] = expression.trim().split(/\s+/);
+  if (rest.length || day !== "*" || month !== "*" || !/^\d{1,2}$/.test(minute ?? "") || !/^\d{1,2}$/.test(hour ?? "")) return null;
+  if (Number(minute) > 59 || Number(hour) > 23) return null;
+  const days = new Set<number>();
+  for (const part of (weekday ?? "").split(",")) {
+    const range = /^([0-7])(?:-([0-7]))?$/.exec(part);
+    if (part === "*") [0, 1, 2, 3, 4, 5, 6].forEach((d) => days.add(d));
+    else if (range) for (let d = Number(range[1]); d <= Number(range[2] ?? range[1]); d++) days.add(d % 7);
+    else return null;
+  }
+  return { time: `${hour}:${minute!.padStart(2, "0")}`, weekdays: [...days].sort((a, b) => a - b) };
+}
+
+const zoneOffset = (zone: string | undefined, at: number) => {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }).formatToParts(at);
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute")) - Math.floor(at / 60_000) * 60_000;
+};
+
+// Chromium may name the device's zone by an older alias (Asia/Calcutta for Asia/Kolkata), so offsets are compared, not names.
+export function sameZoneHere(zone: string, now = Date.now()): boolean {
+  try {
+    return [now, now + 182 * DAY_MS].every((at) => zoneOffset(zone, at) === zoneOffset(undefined, at));
+  } catch {
+    return false;
+  }
+}
+
 const dayName = (day: number, style: "long" | "short") => new Date(2026, 0, 4 + day).toLocaleDateString(locale(), { weekday: style });
 
 /** "Every weekday at 9 AM", "Every Monday at 5 PM", "Every 30 minutes", "On Monday, October 19 at 9 AM". */
@@ -138,6 +171,11 @@ export function plainWhen(schedule: RoutineSchedule): string {
     // "Every 2 minutes" is a cron step: an interval runs at most every 5 minutes, so a bot asked for less writes this.
     const minutes = /^\*\/([1-5]?\d) \* \* \* \*$/.exec(schedule.expression.trim())?.[1];
     if (minutes && Number(minutes) >= 2) return t("automations.when.everyMinutes", { count: Number(minutes) });
+    const daily = cronAsDaily(schedule.expression);
+    if (daily) {
+      const when = dailyWhen(daily.time, daily.weekdays);
+      return sameZoneHere(schedule.timeZone) ? when : `${when} ${plainTimeZone(schedule.timeZone, activeLocale())}`;
+    }
     const label = cronScheduleLabel(schedule);
     return label.startsWith("Cron ") ? t("automations.when.custom") : label;
   }
@@ -150,8 +188,11 @@ export function plainWhen(schedule: RoutineSchedule): string {
     if (schedule.window) when = t("automations.when.between", { when, start: atClock(schedule.window.start), end: atClock(schedule.window.end) });
     return when;
   }
-  const time = atClock(schedule.time);
-  const days = schedule.weekdays;
+  return dailyWhen(schedule.time, schedule.weekdays);
+}
+
+function dailyWhen(clockTime: string, days: number[]): string {
+  const time = atClock(clockTime);
   if (days.length === 7) return t("automations.when.everyDay", { time });
   if (days.join(",") === "1,2,3,4,5") return t("automations.when.everyWeekday", { time });
   const names = days.map((day) => dayName(day, days.length === 1 ? "long" : "short"));
@@ -246,6 +287,16 @@ function ownerFix(run: RoutineRun): { reason: string; fix: AutomationFix } | nul
   return null;
 }
 
+const settledRuns = (automation: Pick<Automation, "runs">) =>
+  automation.runs.filter((run) => run.status !== "cancelled" && run.status !== "queued" && !isLimitSkip(run));
+
+/** The last run, while it waits on the person: the server names what it waits on in `attention`. A wait with nothing named
+ * is the bot's own (a busy chat), never the person's. */
+export function runWaitingOnYou(automation: Pick<Automation, "runs">): RoutineRun | null {
+  const latest = settledRuns(automation)[0];
+  return latest?.status === "waiting" && latest.attention?.trim() ? latest : null;
+}
+
 /** Done when a one-time automation's time has passed, Paused when switched off. Needs you when its last run waits on the
  * person, its app needs reconnecting, failed for a reason only the person can fix, or failed twice running. A run that
  * failed and then recovered is Working. */
@@ -254,9 +305,10 @@ export function automationStatus(automation: Pick<Automation, "enabled" | "runs"
   const app = automation.appTrigger && appProblem(automation.appTrigger);
   if (app) return { state: "needs-you", ...app };
   if (automation.checkTrouble) return { state: "needs-you", reason: automation.checkTrouble, fix: SIGNED_OUT.test(automation.checkTrouble) ? "reconnect" : "run" };
-  const settled = automation.runs.filter((run) => run.status !== "cancelled" && run.status !== "queued" && !isLimitSkip(run));
+  const settled = settledRuns(automation);
   const latest = settled[0];
-  if (latest?.status === "waiting") return { state: "needs-you", reason: t("automations.reason.answer"), fix: "answer" };
+  const waiting = runWaitingOnYou(automation);
+  if (waiting) return { state: "needs-you", reason: waiting.attention!.trim(), fix: "answer" };
   if (latest && isProblem(latest)) {
     const owner = ownerFix(latest);
     if (owner) return { state: "needs-you", ...owner };
@@ -319,8 +371,12 @@ export function runLine(run: RoutineRun, now = Date.now()): { when: string; mark
   const short = (text: string) => (text.length > 110 ? `${text.slice(0, 109).trimEnd()}…` : text);
   const when = lastWhen(runTime(run), now);
   if (run.status === "completed") return { when, mark: "✓", text: run.report?.state === "quiet" ? t("automations.run.nothingNew") : short(firstLine(run.output)) || t("automations.run.done") };
-  if (run.status === "waiting") return { when, mark: "!", text: t("automations.reason.answer") };
+  if (run.status === "waiting") {
+    const attention = short(firstLine(run.attention));
+    return { when, mark: attention ? "!" : "…", text: attention || t("routines.status.waiting") };
+  }
   if (isLimitSkip(run)) return { when, mark: "–", text: t("routines.strip.skipped") };
+  if (run.status === "queued" && run.attention?.trim()) return { when, mark: "…", text: short(firstLine(run.attention)) };
   if (run.status === "running" || run.status === "queued") return { when, mark: "…", text: t("automations.runningNow") };
   if (run.status === "cancelled") {
     const reason = short(firstLine(run.error));

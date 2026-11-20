@@ -25,7 +25,7 @@ vi.mock("@/state/store", async (original) => ({
 vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
 vi.mock("@/lib/card-seal", () => ({ SealTrustError: class SealTrustError extends Error {}, sealCardSecret: vi.fn(async (_value: string, key: { keyId: string }, context: { remember: boolean }) => ({ keyId: key.keyId, encapsulatedKey: "E", ciphertext: `sealed-${context.remember ? "save" : "once"}` })) }));
 
-import { SecretRequestCard } from "./SecretRequestCard";
+import { SecretRequestCard, SecretRequestCardBody } from "./SecretRequestCard";
 
 const secretCard = (secret: Record<string, unknown>): Message => ({
   id: "secret-card",
@@ -183,7 +183,7 @@ describe("SecretRequestCard key analytics", () => {
     fixture.counting = true;
     fixture.index = 0;
     try {
-      return nodes(SecretRequestCard({ botId: "bot-1", threadId: "thread-1", message: secretCard({ target, label: "key", ...extra }) }));
+      return nodes(SecretRequestCardBody({ botId: "bot-1", threadId: "thread-1", message: secretCard({ target, label: "key", ...extra }) }));
     } finally {
       fixture.counting = false;
     }

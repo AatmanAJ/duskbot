@@ -8,6 +8,7 @@ import { setWelcomingBot, stageIntro } from "@/lib/default-bot";
 import { setLocale, t } from "@/lib/i18n";
 import type { Bot, InstanceInfo, Message } from "@/state/store";
 import type { HelperFollowupFacts } from "../../shared/helper-followup";
+import { rememberConnectorStatus } from "@/lib/connected-apps";
 
 const f = vi.hoisted(() => ({
   state: {} as Record<string, unknown>, dispatch: vi.fn(), local: false, reduced: false,
@@ -96,7 +97,7 @@ beforeEach(() => {
   f.routines = 0;
   f.improve = true;
   f.improveSaves = [];
-  f.state = { bots: [maus()], instances: [claude(true)], config: { profile: { name: "" } } };
+  f.state = { connected: true, bots: [maus()], instances: [claude(true)], config: { profile: { name: "" } } };
   stageIntro(null);
   setWelcomingBot(null);
   host = document.createElement("div");
@@ -120,6 +121,13 @@ describe("what Dusk says first", () => {
     expect(introLines({ name: "Dusk", chief: true })).toEqual(said);
     expect(introLines({ name: "Dusk", chief: true, person: "Ada" })).toEqual(said);
     expect(introLines({ name: "Dusk", chief: true, team: "Acme" })[1]).toBe(`${said[1]} On Acme, I'm here for you and look after your own bots.`);
+  });
+
+  it("on a cloud set up from the computer: the Chief greets the person by name and says what came along", () => {
+    const lines = introLines({ name: "Dusk", chief: true, person: "Ada", fromComputer: true, carried: true });
+    expect(lines[0]).toBe("Hey Ada! I'm Dusk. I'm new here.");
+    expect(lines[1]).toMatch(/I brought over what you told me about yourself on your computer\.$/);
+    expect(introLines({ name: "Dusk", chief: true, fromComputer: true })[0]).toBe("Hey! I'm Dusk. I'm new here.");
   });
 
   it("keeps a helper's lines for a Dusk that is not the Chief", () => {
@@ -158,8 +166,23 @@ describe("in the chat (Simple mode)", () => {
     expect(f.followups, "only a first run asks for a follow-up").toEqual([]);
   });
 
+  it("shows no chips or asks while the app connects or reconnects, or the transcript is still loading", async () => {
+    f.services = { gmail: { connected: false } };
+    const followup = saved({ ai: "own", apps: [], bots: 0, routines: 0 });
+    f.state = { ...f.state, connected: false };
+    await show(false, followup);
+    expect(chips()).toEqual([]);
+    expect(host.querySelector("[data-helper-setup]")).toBeNull();
+    f.state = { ...f.state, connected: true, bots: [maus({ transcriptLoaded: false })] };
+    await show(false, followup);
+    expect(host.querySelector("[data-helper-setup]")).toBeNull();
+    f.state = { ...f.state, bots: [maus()] };
+    await show(false, followup);
+    expect(chips(), "back under the message once the chat is shown").toEqual(["apps", "phone", "cloud"]);
+  });
+
   it("offers no phone while the phone app is hidden", async () => {
-    vi.stubEnv("VITE_DUSK_PHONE_APP", "");
+    vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
     f.services = { gmail: { connected: false } };
     await show(false, saved({ ai: "own", apps: [], bots: 0, routines: 0 }));
     expect(chips()).toEqual(["apps", "cloud"]);
@@ -222,6 +245,41 @@ describe("in the chat (Simple mode)", () => {
     await show();
     expect(chips()).toEqual(["apps", "import", "phone"]);
     expect(chipAction("import")).toEqual({ type: "toggleAppSettings", open: true, section: "import" });
+  });
+
+  it("offers first jobs to tap, each sent as the person's first message, and the message box takes the focus", async () => {
+    const box = document.createElement("div");
+    box.dataset.tour = "composer";
+    const field = document.createElement("textarea");
+    box.append(field);
+    document.body.append(box);
+    await show(false, saved({ ai: "own", apps: [], bots: 0, routines: 0 }));
+    const asks = [...host.querySelectorAll<HTMLElement>("[data-helper-ask]")];
+    expect(asks.map((node) => node.textContent)).toEqual(["Keep an eye on my day", "Set up a bot for my inbox", "Help me plan my week"]);
+    expect(asks[0]!.closest("[data-helper-setup]"), "in the chips' own row, before them").toBe(host.querySelector("[data-helper-setup]"));
+    await act(async () => { asks[0]!.click(); });
+    await act(async () => { await new Promise((done) => requestAnimationFrame(() => done(null))); });
+    expect(f.dispatch).toHaveBeenCalledWith({ type: "answerCard", botId: "maus", threadId: "t", messageId: "intro", answer: "Keep an eye on my day" });
+    expect(document.activeElement).toBe(field);
+    box.remove();
+  });
+
+  it("fits the first jobs to a connected inbox", async () => {
+    rememberConnectorStatus({ gmail: { connected: true } } as Parameters<typeof rememberConnectorStatus>[0], true);
+    await show(false, saved({ ai: "own", apps: ["Gmail"], bots: 0, routines: 0 }));
+    rememberConnectorStatus({}, true);
+    expect([...host.querySelectorAll<HTMLElement>("[data-helper-ask]")].map((node) => node.textContent))
+      .toEqual(["Keep an eye on my day", "What needs a reply in my inbox?", "Help me plan my week"]);
+  });
+
+  it("offers no jobs to tap before there is an AI to do them, or once the person has written", async () => {
+    f.state = { ...f.state, instances: [claude(false)] };
+    await show();
+    expect(host.querySelector("[data-helper-ask]")).toBeNull();
+    expect(chips()[0]).toBe("ai");
+    f.state = { ...f.state, instances: [claude(true)] };
+    await show(true, saved({ ai: "own", apps: [], bots: 0, routines: 0 }));
+    expect(host.querySelector("[data-helper-ask]")).toBeNull();
   });
 
   it("drops the chips once the person has written, and no longer looks for skills", async () => {
