@@ -313,7 +313,7 @@ export function createMobileLink(deps: MobileLinkDeps) {
     const relay = agentLive();
     if (!relay) return { status: 409, body: { error: "This place has no relay right now.", code: "no_relay" } };
     if (!devices.includes(device)) { devices.push(device); deps.sessions.holdForPairedDevice(device.sessionId); }
-    device.relay = { channel: device.relay?.channel ?? relayId(), verifier: body.verifier, pub: body.pub };
+    device.relay = { channel: device.relay && !failed.has(device.relay.channel) ? device.relay.channel : relayId(), verifier: body.verifier, pub: body.pub };
     persist();
     bump();
     if (!await applied_(rev, device.relay.channel)) return { status: 503, body: { error: "The relay did not take this phone yet.", code: "not_applied" } };

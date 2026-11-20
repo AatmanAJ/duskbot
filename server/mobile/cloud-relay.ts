@@ -14,6 +14,8 @@ const GRANT_FRESH_MS = 4 * 60_000;
 
 export interface CloudPhoneRelayOptions {
   dataDir: string;
+  /** this machine: a tunnel saved by another (a moved or restored home's) is never used, and a new one is made */
+  machineId: string;
   port: () => number;
   label: () => string;
   /** the in-process channel sync (server/mobile/link.ts relaySync) */
@@ -39,8 +41,13 @@ export function startCloudPhoneRelay(options: CloudPhoneRelayOptions) {
     linkGrant: async () => { const value = fresh(); grant = null; return value; },
     label: options.label,
     store: {
-      read: async () => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; } },
-      write: async (_at: string, value: unknown) => { writeFileAtomic(file, JSON.stringify(value), { mode: 0o600 }); },
+      read: async () => {
+        try {
+          const saved = JSON.parse(readFileSync(file, "utf8")) as { machineId?: unknown };
+          return saved?.machineId === options.machineId ? saved : null;
+        } catch { return null; }
+      },
+      write: async (_at: string, value: unknown) => { writeFileAtomic(file, JSON.stringify({ ...(value as object), machineId: options.machineId }), { mode: 0o600 }); },
     },
     loadHub: options.loadHub ?? (() => import("../../apps/link-service/agent.mjs")),
     port: options.port,

@@ -221,7 +221,7 @@ async function chat(label: string, transport: PhoneTransport, botId: string) {
 /** a Cloud home as its launcher starts it (server/cloud-home-start.ts), on loopback with its edge's headers left out */
 async function cloudPlace(scratch: string, cleanups: Array<() => unknown>, linkBase: string, grant: () => string, phoneBuild: ShippedPhone) {
   if (!phoneBuild.learnRoutes || !phoneBuild.relaySecrets) return;
-  const home = join(scratch, "cloud"), dataDir = join(home, ".duskbot"), machineId = `c${"3".repeat(24)}`;
+  const home = join(scratch, "cloud"), dataDir = join(home, ".duskbot");
   mkdirSync(dataDir, { recursive: true });
   // the fake engine only: never the person's own Claude sign-in, which the real CLI finds whatever HOME says
   const cli = join(home, "fixture-claude.mjs");
@@ -234,26 +234,33 @@ async function cloudPlace(scratch: string, cleanups: Array<() => unknown>, linkB
   const freePort = async () => { const probe = createServer(); const free = await listen(probe); await shut(probe); return free; };
   const port = await freePort(), webhookPort = await freePort();
   const url = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, [join(ROOT, "server", "index.ts")], {
-    cwd: ROOT, stdio: ["ignore", "pipe", "pipe"],
-    env: { PATH: process.env.PATH, HOME: home, DUSK_DATA_DIR: dataDir, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(webhookPort), DUSK_NO_TEST_BOTS: "1",
-      DUSK_CLOUD_ROLE: "home", DUSK_CLOUD_MACHINE_ID: machineId, DUSK_CLOUD_ADMIN_URL: "https://cloud.example.test", DUSK_CLOUD_BOOTSTRAP_SECRET: secret,
-      DUSK_PUBLIC_URL: `https://${CLOUD_HOST}`, DUSK_LINK_BASE: linkBase, DUSK_ENTITLEMENT_DEV_KEYS: `${dev.publicKey.kid}:${dev.publicKey.x}` },
-  });
-  let said = "";
-  for (const out of [child.stdout, child.stderr]) out?.on("data", (chunk) => { said = (said + String(chunk)).slice(-4000); });
-  cleanups.push(() => waitForExit(child, { signal: "SIGTERM" }));
-  const up = await until(() => fetch(`${url}/api/health`).then((res) => res.ok, () => false), 30_000);
-  if (!check("a dusk cloud home starts", Boolean(up), up ? undefined : said.slice(-1500))) return;
+  let said = "", child: ChildProcess | null = null;
+  /** the home on a machine: a move or a restore starts the same data folder on another one */
+  const startHome = async (machineId: string) => {
+    child = spawn(process.execPath, [join(ROOT, "server", "index.ts")], {
+      cwd: ROOT, stdio: ["ignore", "pipe", "pipe"],
+      env: { PATH: process.env.PATH, HOME: home, DUSK_DATA_DIR: dataDir, DUSK_PORT: String(port), DUSK_WEBHOOK_PORT: String(webhookPort), DUSK_NO_TEST_BOTS: "1",
+        DUSK_CLOUD_ROLE: "home", DUSK_CLOUD_MACHINE_ID: machineId, DUSK_CLOUD_ADMIN_URL: "https://cloud.example.test", DUSK_CLOUD_BOOTSTRAP_SECRET: secret,
+        DUSK_PUBLIC_URL: `https://${CLOUD_HOST}`, DUSK_LINK_BASE: linkBase, DUSK_ENTITLEMENT_DEV_KEYS: `${dev.publicKey.kid}:${dev.publicKey.x}` },
+    });
+    for (const out of [child.stdout, child.stderr]) out?.on("data", (chunk) => { said = (said + String(chunk)).slice(-4000); });
+    return Boolean(await until(() => fetch(`${url}/api/health`).then((res) => res.ok, () => false), 30_000));
+  };
+  cleanups.push(() => (child ? waitForExit(child, { signal: "SIGTERM" }) : undefined));
+  const up = await startHome(`c${"3".repeat(24)}`);
+  if (!check("a dusk cloud home starts", up, up ? undefined : said.slice(-1500))) return;
   const signed = async (path: string, body: unknown, pairing = false) => {
     const text = JSON.stringify(body), timestamp = String(Math.floor(Date.now() / 1000)), nonce = randomBytes(16).toString("base64url");
     const signature = pairing ? cloudPairingSignature(secret, timestamp, nonce, text) : cloudRequestSignature(secret, timestamp, nonce, "POST", path, text);
     const response = await fetch(`${url}${path}`, { method: "POST", body: text, headers: { "content-type": "application/json", "x-dusk-cloud-timestamp": timestamp, "x-dusk-cloud-nonce": nonce, "x-dusk-cloud-signature": `v1=${signature}` } });
     return { status: response.status, body: await response.json().catch(() => null) as any };
   };
-  const now = Date.now();
-  const entitlement = signEntitlement({ aud: ["home", "app"], cloud: machineId, acct: "a", tier: "pro", features: ["cloud"], iat: now, exp: now + 3_600_000 }, dev.signer);
-  const pushed = await signed("/api/cloud/entitlement", { v: 1, token: entitlement, linkGrant: grant() });
+  const entitle = (machineId: string) => {
+    const now = Date.now();
+    const entitlement = signEntitlement({ aud: ["home", "app"], cloud: machineId, acct: "a", tier: "pro", features: ["cloud"], iat: now, exp: now + 3_600_000 }, dev.signer);
+    return signed("/api/cloud/entitlement", { v: 1, token: entitlement, linkGrant: grant() });
+  };
+  const pushed = await entitle(`c${"3".repeat(24)}`);
   check("the account service's entitlement push carries the link grant", pushed.status === 200, `${pushed.status} ${JSON.stringify(pushed.body)}`);
   // the cloud's edge: what reaches its https address arrives at the home as the edge sends it
   const edge = createServer((req, res) => {
@@ -294,6 +301,24 @@ async function cloudPlace(scratch: string, cleanups: Array<() => unknown>, linkB
   const out = await silentAddress();
   cleanups.push(() => out.close());
   await expectCloud({ ...phone, record: { ...record, via: [{ kind: "https", url: out.url }] } }, "https address out: reaches the cloud through its relay and chats", (route) => route === "relay", botId);
+
+  // the cloud moves to another machine (or is restored there): its relay file stays with the old machine, so the new one
+  // makes its own tunnel from the next entitlement push, and the phone repairs its route on its next https connect
+  await waitForExit(child!, { signal: "SIGTERM" });
+  const moved = await startHome(`c${"4".repeat(24)}`);
+  if (!check("the cloud's home starts on another machine", moved, moved ? undefined : said.slice(-1500))) return;
+  check("the next entitlement push reaches the moved home", (await entitle(`c${"4".repeat(24)}`)).status === 200);
+  const again = await launch({ ...phone, record });
+  check("iPhone next (dusk cloud): after the move, opens on the https address", routeOf(again) === `bearer ${edgeUrl}`, routeOf(again));
+  if (typeof again === "string") return;
+  const repaired = await until(async () => {
+    let healed: PhoneRecord | null = null;
+    await phoneBuild.learnRoutes!(record, again, async (_id, via, relay) => { if (relay) healed = { ...record, via, relay }; }, ask, () => phoneBuild.relaySecrets!(platform, record.id));
+    return healed as PhoneRecord | null;
+  }, 30_000);
+  closeRoute(again);
+  check("iPhone next (dusk cloud): learns the moved home's relay key", Boolean(repaired && repaired.relay?.agentPub !== record.relay?.agentPub), JSON.stringify(repaired?.relay ?? null));
+  if (repaired) await expectCloud({ ...phone, record: { ...repaired, via: [{ kind: "https", url: out.url }] } }, "after the move, https address out: reaches the moved cloud through its new tunnel and chats", (route) => route === "relay", botId);
 }
 
 async function expectCloud(phone: Phone, label: string, want: (route: string) => boolean, botId?: string) {

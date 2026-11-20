@@ -24,7 +24,7 @@ export interface BundleManifest {
 const DATA = CLOUD_HOME.dataName;
 const RULES: Array<[RegExp, Layer]> = [
   [new RegExp(`^${esc(MARKER_FILE)}$`), "marker"],
-  [new RegExp(`^${esc(DATA)}/(?:dashboard-link\\.json|cloud-entitlement|cloud-sleep\\.json|moved\\.json|environment-id)$`), "machine"],
+  [new RegExp(`^${esc(DATA)}/(?:dashboard-link\\.json|cloud-entitlement|cloud-sleep\\.json|moved\\.json|environment-id|phone-relay\\.json)$`), "machine"],
   [new RegExp(`^${esc(DATA)}/(?:tmp|cache|\\.cache|\\.backups|tools|browser)/`), "disposable"],
   [new RegExp(`^${esc(DATA)}/(?:bots\\.json|groups\\.json|bots/|people/)`), "identity"],
   [new RegExp(`^${esc(DATA)}/(?:messages\\.db|runtime\\.db|events/|attachments/)`), "chats"],
