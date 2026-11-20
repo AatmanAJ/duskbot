@@ -73,7 +73,7 @@ export function PerBotModels({ members }: { members: Bot[] }) {
       <div className="[&_[data-tour=model]>span:first-child]:flex! [&_[data-provider-mark]]:opacity-100!">
         {members.map((member) => (
           <div key={member.id} data-room-model={member.id}>
-            <ModelSelectRow bot={member} threadId={member.threadId} title={member.name} />
+            <ModelSelectRow bot={member} threadId={member.threadId} title={member.name} withThinking />
           </div>
         ))}
       </div>

@@ -211,7 +211,7 @@
 
 /* dock: a slim column; the clip draws its rounded body, the slide brings it in from the edge */
 .amb-dock { position: absolute; top: 0; left: 0; will-change: transform; }
-.amb-dock .amb-ear { left: auto; right: var(--amb-over, 0px); }
+.amb-dock .amb-ear { left: auto; right: 0; box-sizing: content-box; border-right: var(--amb-over, 0px) solid var(--amb-panel); background-repeat: no-repeat; }
 .amb-ear-top { background: radial-gradient(circle farthest-side at 0 0, transparent 96%, var(--amb-panel) 100%); }
 .amb-ear-bottom { background: radial-gradient(circle farthest-side at 0 100%, transparent 96%, var(--amb-panel) 100%); }
 .amb-dock-body { position: absolute; inset: 0; background: var(--amb-panel); will-change: clip-path; }

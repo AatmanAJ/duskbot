@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, Group } from "@/state/store";
 import { failedComposerSends, rememberFailedComposerSend, restoreComposerDraft } from "@/lib/drafts";
 import { setCallMode } from "@/lib/call-mode";
+import { setSendKey } from "@/lib/send-key";
 
 const fixture = vi.hoisted(() => ({
   dispatch: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("./CallView", () => ({ CallButton: (props: Record<string, unknown>) => {
 } }));
 
 import { Composer } from "./Composer";
+import { composerButtons } from "@/mobile/native-glass";
 
 const bot: Bot = {
   id: "atlas", threadId: "atlas-thread", name: "Atlas", title: "", description: "",
@@ -85,31 +87,100 @@ afterEach(() => {
 vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
 
 describe("the phone composer", () => {
-  it("with live calls off, ends the pill on an inverse mic and offers no call", () => {
+  it("while the bot works there is no Stop: the mic keeps its place and every control has its native glass twin", () => {
     vi.stubEnv("VITE_DUSK_LIVE_CALL", "");
     try {
-      render({ bot });
-      expect(fixture.call).toBeNull();
-      const mic = container.querySelector<HTMLButtonElement>('button[data-voice-mic="start"]')!;
-      expect(mic.getAttribute("aria-label")).toBe("Start dictation");
-      expect(mic.className.split(" ")).toEqual(expect.arrayContaining(["bg-ink", "text-app", "size-8", "max-md:size-10"]));
+      render({ bot: { ...bot, busy: true } });
+      expect(container.querySelector("[data-composer-stop]")).toBeNull();
+      expect(container.querySelector('[data-voice-mic="start"]')).not.toBeNull();
+      expect(composerButtons(container.querySelector("[data-composer-actions]"))?.buttons.map((b) => b.kind)).not.toContain("stop");
     } finally {
       vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
     }
   });
 
-  it("shows only the + and the pill, with an inverse voice button", () => {
+  it("in the phone app, return adds a new line and only Send sends, whatever send key the desktop chose", () => {
+    setSendKey("enter");
+    document.documentElement.dataset.mobileApp = "ios";
+    try {
+      render({ bot });
+      const field = container.querySelector("textarea")!;
+      expect(field.getAttribute("enterkeyhint")).toBe("enter");
+      restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "", attachments: [] });
+      flushSync(() => {
+        const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+        setValue.call(field, "ship it");
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      flushSync(() => { field.dispatchEvent(enter); });
+      expect(enter.defaultPrevented).toBe(false);
+      expect(fixture.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "send" }));
+      click(container.querySelector("[data-composer-send]"));
+      expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "send", text: "ship it" }));
+    } finally {
+      delete document.documentElement.dataset.mobileApp;
+    }
+  });
+
+  it("in the phone app, while the bot works a typed message gets the same labelled Send, with no clock and no follow-up menu", () => {
+    document.documentElement.dataset.mobileApp = "ios";
+    try {
+      restoreComposerDraft(`bot:${bot.id}:${bot.threadId}`, { text: "and also this", attachments: [] });
+      render({ bot: { ...bot, busy: true } });
+      const send = container.querySelector<HTMLElement>("[data-composer-send]")!;
+      expect(send.dataset.composerSend).toBe("");
+      expect(send.getAttribute("aria-label")).toBeTruthy();
+      expect(container.querySelector("[data-composer-follow-up]")).toBeNull();
+      expect(container.querySelector("[data-composer-stop]")).toBeNull();
+      expect(composerButtons(container.querySelector("[data-composer-actions]"))?.buttons.map((b) => b.kind)).toEqual(["mic", "send"]);
+    } finally {
+      delete document.documentElement.dataset.mobileApp;
+    }
+  });
+
+  it("outside the phone app a send key that needs a modifier keeps return for a new line", () => {
+    setSendKey("mod-enter");
+    try {
+      render({ bot });
+      expect(container.querySelector("textarea")!.getAttribute("enterkeyhint")).toBe("enter");
+    } finally {
+      setSendKey("enter");
+    }
+  });
+
+  it("with calls off, ends the pill on an inverse mic and offers no call", () => {
+    vi.stubEnv("VITE_DUSK_LIVE_CALL", "");
+    vi.stubEnv("VITE_DUSK_VOICE_CALL", "0");
+    try {
+      render({ bot });
+      expect(fixture.call).toBeNull();
+      const mic = container.querySelector<HTMLButtonElement>('button[data-voice-mic="start"]')!;
+      expect(mic.getAttribute("aria-label")).toBe("Start dictation");
+      expect(mic.className.split(" ")).toEqual(expect.arrayContaining(["bg-ink", "text-app", "size-8"]));
+    } finally {
+      vi.stubEnv("VITE_DUSK_LIVE_CALL", "1");
+      vi.stubEnv("VITE_DUSK_VOICE_CALL", "");
+    }
+  });
+
+  it("is one pill to the reference's measure: the + at its left edge and every control 32 px inside it", () => {
     render({ bot });
-    expect(plus()).not.toBeNull();
+    const pill = container.querySelector("[data-composer-row]")!;
+    expect(pill.contains(plus())).toBe(true);
+    expect(container.querySelector("[data-composer-plus]")!.className.split(" ")).toEqual(expect.arrayContaining(["size-8", "rounded-full"]));
+    expect(pill.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["min-h-[48px]", "rounded-[24px]", "p-2"]));
+    expect(container.querySelector<HTMLButtonElement>('button[data-voice-mic="start"]')!.className.split(" ")).toContain("size-8");
     expect(fixture.call).toMatchObject({ placement: "composer", inverse: true });
     expect(fixture.call?.fill).toBeUndefined();
   });
 
-  it("offers the photo library, the camera and files from the +, each its own picker", () => {
-    render({ bot });
+  it("offers only the photo library, the camera and files from the +, each its own picker", () => {
+    render({ bot: { ...bot, tasks: [{ threadId: bot.threadId, title: "new thread", createdAt: 1, approvalMode: "full" }] } });
     openPlus();
     const keys = [...menu()!.querySelectorAll("[data-menu-key]")].map((row) => row.getAttribute("data-menu-key"));
-    expect(keys.slice(0, 3)).toEqual(["attach:photos", "attach:camera", "attach"]);
+    expect(keys).toEqual(["attach:photos", "attach:camera", "attach"]);
+    expect(menu()!.textContent).not.toMatch(/Work until done|Teach a task|acts|Call mode|Live/);
     expect(item("attach:photos")?.textContent).toContain("Photo library");
     expect(item("attach:camera")?.textContent).toContain("Take photo");
     expect(item("attach")?.textContent).toContain("Files");
