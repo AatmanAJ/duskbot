@@ -23,6 +23,8 @@ export interface PersonStopDeps {
   /** The bot waits for the person's answer here: a parked question or an open card. */
   asking(threadId: string): boolean;
   language(threadId: string): string | undefined;
+  /** Ends a turn's wait for its AI's limit to reset; true when one waited here. */
+  cancelHeld?(threadId: string): boolean;
 }
 
 export interface TypedStop {
@@ -43,6 +45,7 @@ export function createPersonStop(deps: PersonStopDeps) {
   const { store } = deps;
 
   async function stopThreadForPerson(botId: string, threadId: string, said?: string): Promise<void> {
+    if (deps.cancelHeld?.(threadId) && !deps.working(botId, threadId)) return;
     const routines = deps.routines();
     const routine = routines?.activeBotRunForBot(botId);
     if (routine?.threadId === threadId) {

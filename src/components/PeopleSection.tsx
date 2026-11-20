@@ -1,5 +1,6 @@
 // Security: the invite link is convenience, not a second door; the one-time code still goes to the address itself.
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence } from "motion/react";
 import { Link2 } from "../icons";
 import { api } from "@/state/store";
 import { t } from "@/lib/i18n";
@@ -12,6 +13,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { CopyRow, FormDialog, FormField, ItemRow, NoteRow } from "./ListRows";
 import { textFieldCls } from "./ui/GrokDialog";
 import { friendlyError } from "@/lib/plain-error";
+import { ArtState } from "./ui/Art";
 
 export type Role = "admin" | "member";
 
@@ -75,7 +77,7 @@ export function PeopleTable({ people, busy, onRole, onRemove, onLink }: {
   onRemove: (person: Person) => void;
   onLink: (person: Person) => void;
 }) {
-  if (people.length === 0) return <NoteRow>{t("people.empty")}</NoteRow>;
+  if (people.length === 0) return <ArtState data-art-state="people" art="mailbox" title={t("empty.people.title")} className="py-6">{t("empty.people.hint")}</ArtState>;
   return (
     <>
       {people.map((person) => {
@@ -200,8 +202,8 @@ export function PeopleSection() {
         onRemove={(person) => { if (lists) void save(withoutEntry(lists, person.entry)); }}
         onLink={(person) => setLink(inviteLink(base, person.entry))}
       />
-      {inviting && (
-        <FormDialog data-panel-modal="people-invite" title={t("settings.simple.people.invite")} description={t("people.inviteHint")}
+      <AnimatePresence>{inviting && (
+        <FormDialog key="people-invite" data-panel-modal="people-invite" title={t("settings.simple.people.invite")} description={t("people.inviteHint")}
           saveLabel={t("people.invite")} canSave={Boolean(draft.trim())} busy={busy} error={error ?? undefined}
           onSave={async () => { if (await invite()) setInviting(false); }} onClose={() => setInviting(false)}>
           <FormField label={t("people.inviteEmail")}>
@@ -215,7 +217,7 @@ export function PeopleSection() {
             </SettingRow>
           </div>
         </FormDialog>
-      )}
+      )}</AnimatePresence>
     </div>
   );
 }

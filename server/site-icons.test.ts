@@ -10,6 +10,7 @@ import {
   iconPng,
   iconUrlAllowed,
   isPublicAddress,
+  normalizeAppSlug,
   normalizeSiteDomain,
   rasterInfo,
   selfContainedSvg,
@@ -117,6 +118,19 @@ describe("fetching a site's icon", () => {
   });
 });
 
+describe("an app's logo", () => {
+  it("is asked of Composio's logo address only, by a plain app id, and kept once drawn", async () => {
+    const { icons, fetched } = harness({ "logos.composio.dev": ["93.184.215.20"] }, { "https://logos.composio.dev/api/gmail": { type: "image/svg+xml", body: RED } });
+    expect(await icons.app("gmail")).toEqual(RED);
+    expect(await icons.app("gmail")).toEqual(RED);
+    expect(fetched).toEqual(["https://logos.composio.dev/api/gmail @93.184.215.20"]);
+    expect(await icons.app("../etc")).toBeNull();
+    expect(fetched).toHaveLength(1);
+    expect(normalizeAppSlug("Google_Sheets")).toBe("google_sheets");
+    expect(normalizeAppSlug("a/b")).toBeNull();
+  });
+});
+
 describe("re-encoding", () => {
   it("draws a raster as a 96px PNG", () => {
     const png = iconPng("image/png", RED);
@@ -137,5 +151,9 @@ describe("re-encoding", () => {
     expect(selfContainedSvg('<svg xmlns:x="http://www.w3.org/1999/xlink"><image x:href="&#47;etc/secret.png"/></svg>')).toBeNull();
     expect(selfContainedSvg('<svg><rect style="fill:url(file.svg#a)"/></svg>')).toBeNull();
     expect(selfContainedSvg('<!DOCTYPE svg [<!ENTITY a "b">]><svg/>')).toBeNull();
+    const embedded = '<svg xmlns="http://www.w3.org/2000/svg"><image href="data:image/png;base64,iVBORw0KGgo="/></svg>';
+    expect(selfContainedSvg(embedded)).toBe(embedded);
+    expect(selfContainedSvg('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg></svg>')).toBe("\n<svg></svg>");
+    expect(selfContainedSvg('<svg><image href="data:image/svg+xml;base64,PHN2Zz4="/></svg>')).toBeNull();
   });
 });

@@ -60,6 +60,24 @@ describe("what a server reports for Send to My Cloud", () => {
     expect(cloudSendSummary(sources({ bots: () => [starter], greetingOnly: () => true, skills: () => [] })).items.some((item) => item.kind === "bot")).toBe(false);
   });
 
+  it("moves the starter once its memory holds notes, so notes brought in from other AI apps reach My Cloud", () => {
+    const starter = bot({ soul: "" });
+    const remembers = (botId: string) => botId === starter.id;
+    expect(unused(starter, 0, () => true, undefined, undefined, remembers)).toBe(false);
+    const base = { bots: () => [starter], greetingOnly: () => true, skills: () => [] };
+    expect(cloudSendSummary(sources({ ...base, remembers }), { move: true }).items.some((item) => item.kind === "bot" && item.id === starter.id)).toBe(true);
+    expect(cloudSendSummary(sources({ ...base, remembers: () => false }), { move: true }).items.some((item) => item.kind === "bot")).toBe(false);
+  });
+
+  it("marks a move's bot the person wrote to, so only those make the move ask first", () => {
+    const nova = bot({ soul: "Be brief." });
+    const talked = (one: { id: string }) => one.id === nova.id;
+    const bots = (summary: ReturnType<typeof cloudSendSummary>) => summary.items.filter((item) => item.kind === "bot");
+    expect(bots(cloudSendSummary(sources({ bots: () => [nova], talked }), { move: true }))[0]).toMatchObject({ talked: true });
+    expect(bots(cloudSendSummary(sources({ bots: () => [nova], talked: () => false }), { move: true }))[0]?.talked).toBeUndefined();
+    expect(bots(cloudSendSummary(sources({ bots: () => [nova], talked })))[0]?.talked, "a send's summary says nothing of it").toBeUndefined();
+  });
+
   it("keys a login kept to one exact host apart from another account on the same site", () => {
     const summary = cloudSendSummary(sources({ logins: () => [
       { id: "l1", site: "example.test", hosts: ["a.example.test"], exactHost: true, username: "ops", updatedAt: 1 },

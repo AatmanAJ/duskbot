@@ -1,5 +1,6 @@
 // agent_browser_batch: a list of browser steps run in one tool call, each through the same tool code a single call uses.
 import { isUnanswered } from "./cdp/errors.ts";
+import { PersonHoldAnswer } from "../browser-refusals.ts";
 import { BROWSER_CONTROL_REFUSAL } from "./control.ts";
 import type { ToolContext } from "./dispatch.ts";
 import { errorResult, type Content, type ToolResult } from "./shape.ts";
@@ -40,7 +41,7 @@ export type BatchStepOf = { do: string } & Record<string, unknown>;
 /** Steps whose answer is the page's content and so gets more room than an action's. */
 const READ_STEPS: ReadonlySet<string> = new Set(["read", "snapshot", "get_text"]);
 
-type Ending = { kind: "done" } | { kind: "failed"; step: number } | { kind: "person"; step: number } | { kind: "time"; step: number };
+type Ending = { kind: "done" } | { kind: "failed"; step: number } | { kind: "person"; step: number; answer: string } | { kind: "time"; step: number };
 
 const seconds = (ms: number) => `${(ms / 1_000).toFixed(1)} s`;
 
@@ -64,7 +65,7 @@ function headline(ending: Ending, total: number, elapsedMs: number, limitMs: num
 export function runBatch(context: ToolContext, input: ToolInput<typeof BATCH_TOOL>, deps: BatchDeps): Promise<ToolResult> {
   const limitMs = input.timeoutMs ?? MAX_BATCH_MS;
   const deadline = Math.min(context.deadline, Date.now() + limitMs);
-  const stepContext: ToolContext = { ...context, deadline };
+  const stepContext: ToolContext = { ...context, deadline, inBatch: true };
   return runSteps(input.steps, {
     deadline, limitMs,
     parse: (step) => batchStepCall(step as BatchStep),
@@ -95,7 +96,7 @@ export async function runSteps<Call>(steps: readonly BatchStepOf[], runner: Step
         result = await runner.execute(parsed.call, deadline);
       } catch (error) {
         if (isUnanswered(error)) throw error;
-        if (error instanceof Error && error.message === BROWSER_CONTROL_REFUSAL) { ending = { kind: "person", step: number }; break; }
+        if (error instanceof PersonHoldAnswer || (error instanceof Error && error.message === BROWSER_CONTROL_REFUSAL)) { ending = { kind: "person", step: number, answer: error.message }; break; }
         const failure = runner.failure(error);
         if (!failure) throw error;
         result = failure;
@@ -116,7 +117,7 @@ export async function runSteps<Call>(steps: readonly BatchStepOf[], runner: Step
   if (leftOut.length) parts.push({ type: "text", text: `The answers of ${leftOut.length} later step${leftOut.length === 1 ? "" : "s"} (${leftOut[0]} to ${leftOut.at(-1)}) were left out: the batch's answers reached ${BATCH_TEXT_CHARS} characters.` });
   const lead: Content = { type: "text", text: headline(ending, steps.length, Date.now() - started, limitMs) };
   if (ending.kind === "done") return { content: [lead, ...parts] };
-  if (ending.kind === "person") return { isError: true, content: [lead, ...parts, { type: "text", text: BROWSER_CONTROL_REFUSAL }] };
+  if (ending.kind === "person") return { isError: true, content: [lead, ...parts, { type: "text", text: ending.answer }] };
   return { isError: true, content: [lead, ...parts, ...await pageAfter(runner)] };
 }
 

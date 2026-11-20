@@ -22,6 +22,9 @@ android {
         versionCode((releaseValue('DUSK_ANDROID_VERSION_CODE') ?: '1') as int)
         versionName releaseValue('DUSK_ANDROID_VERSION_NAME') ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // the sideload apk carries phone cpus only (DUSK_ANDROID_ABIS=arm64-v8a,armeabi-v7a); the Play bundle keeps all
+        def abis = releaseValue('DUSK_ANDROID_ABIS')
+        if (abis) ndk { abiFilters(*abis.split(',')) }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61

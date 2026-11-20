@@ -1,3 +1,5 @@
+import type { IncomingMessage } from "node:http";
+import { parsedBodyOf } from "./harness/http.ts";
 import { requiredScope } from "./request-auth.ts";
 
 /** What an admin's write request changes, so the admin activity log can record it; null for reads and internal calls. */
@@ -40,4 +42,15 @@ export function adminAuditPlan(method: string, path: string): AuditPlan | null {
   const accountAdd = method === "POST" ? ACCOUNT_ADD_ENGINES.get(path) : undefined;
   if (accountAdd) plan.engineAction = { id: accountAdd, action: "account-add" };
   return plan.config || plan.botId || plan.createsBots || plan.deletesBot || plan.createsWebhook || plan.webhookId || plan.sessionId || plan.pairing || plan.engineAction || plan.roomId ? plan : null;
+}
+
+/** The bot fields a write request names, so its audit row compares only those. */
+export function requestedBotFields(req: IncomingMessage, path: string): string[] {
+  if (path.endsWith("/always-allow")) return ["alwaysAllow"];
+  if (path.endsWith("/model")) return ["modelSelection"];
+  const body = parsedBodyOf(req);
+  if (!body || typeof body !== "object" || Array.isArray(body)) return [];
+  const fields = new Set(Object.keys(body));
+  if (fields.has("autoApprove") || fields.has("approvalMode")) fields.add("autoApprove").add("approvalMode");
+  return [...fields];
 }

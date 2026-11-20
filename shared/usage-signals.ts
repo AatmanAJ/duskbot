@@ -62,25 +62,169 @@ export function toolSignals(names: readonly string[]): { tools: UsageTool[]; app
   return { tools: [...tools].sort(), apps: [...apps].sort() };
 }
 
-export const USAGE_REASONS = ["rate_limit", "quota", "auth", "timeout", "network", "context", "refused", "crashed", "tool", "unknown"] as const;
+export const USAGE_REASONS = ["rate_limit", "quota", "auth", "timeout", "network", "context", "refused", "crashed", "tool", "model_not_found", "bad_request", "provider_down",
+  "cli_missing", "cli_exit_early", "no_reply", "unknown"] as const;
 export type UsageReason = (typeof USAGE_REASONS)[number];
-const REASON_PATTERNS: ReadonlyArray<[RegExp, UsageReason]> = [
-  [/rate.?limit|too many requests|\b429\b|overloaded|\b529\b/i, "rate_limit"],
-  [/quota|usage limit|credit|billing|insufficient|out of|exceeded your|plan limit|reached (?:its|your|the) [\w -]{0,24}limit/i, "quota"],
-  [/auth|sign(?:ed)? ?in|log(?:ged)? ?in|unauthori[sz]ed|forbidden|\b401\b|\b403\b|api key|token (?:expired|invalid)|expired/i, "auth"],
-  [/time ?out|timed out|took too long|stalled|deadline/i, "timeout"],
-  [/network|econn|enotfound|socket|fetch failed|unreachable|dns|offline|\b50[234]\b/i, "network"],
-  [/context|too long|max(?:imum)? tokens|prompt is too|token limit/i, "context"],
-  [/refus|policy|safety|blocked|not allowed|denied/i, "refused"],
-  [/crash|exited|exit code|killed|segfault|panic|spawn|signal/i, "crashed"],
-  [/tool/i, "tool"],
+/** a failure's code and its short sanitized detail: an HTTP status, a provider's or engine's error code or class, an
+ * errno, a cli exit code or signal, joined by ":" (like "http_429:insufficient_quota" or "exit_1"); never message text */
+export interface UsageFailure { reason: UsageReason; detail?: string }
+export const FAILURE_DETAIL = /^[A-Za-z0-9_]{1,40}(?::[A-Za-z0-9_]{1,40}){0,3}$/;
+const DETAIL_MAX = 72;
+
+// what a code token may look like: a snake_case or camelCase identifier, a class name ending in Error, never prose
+const CODE_TOKEN = /^(?:[a-z][a-z0-9]*(?:_[a-z0-9]+){1,6}|[a-z]+(?:[A-Z][a-z0-9]+){1,6}|[A-Z][A-Za-z0-9]{1,40}Error)$/;
+// a code a driver hands over from the engine's structured error ("unauthorized", "usageLimitExceeded", "APIError")
+const DRIVER_CODE = /^(?:[a-z][a-zA-Z0-9_]{1,39}|[A-Z][A-Za-z0-9]{1,40}Error)$/;
+/** a driver's own error code, kept only when it is an identifier; anything else is dropped */
+export const failureCode = (value: unknown): string | undefined => typeof value === "string" && value.length <= 40 && DRIVER_CODE.test(value) ? value : undefined;
+/** a JSON-RPC error's numeric code as a driver code ("rpc_32603"), for an engine whose error named no code of its own */
+export const rpcCode = (value: unknown): string | undefined => Number.isInteger(value) && Math.abs(value as number) < 100_000 ? `rpc_${Math.abs(value as number)}` : undefined;
+/** a driver's code hint ("httpConnectionFailed:http_502") as its checked parts */
+const hintParts = (value: unknown): string[] => typeof value === "string" && value.length <= DETAIL_MAX
+  ? value.split(":").filter((part, index) => index === 0 ? !!failureCode(part) : /^http_\d{3}$/.test(part) || !!failureCode(part)) : [];
+
+/** a cli's exit before its turn's result as a driver code: "crashed" for a signal, "cli_missing" for 127, else
+ * "cli_exit_early"; then the exit code or signal, whether any reply or step came first, and the cli version when known
+ * ("cli_exit_early:exit_1:no_output:v0_160_1") */
+export function cliExitCode(exit: { code: number | null; signal?: string | null; output: boolean; version?: unknown }): string {
+  const signal = typeof exit.signal === "string" && /^SIG[A-Z0-9]{2,8}$/.test(exit.signal) ? exit.signal : null;
+  const reason = signal && signal !== "SIGTERM" && signal !== "SIGINT" ? "crashed" : exit.code === 127 ? "cli_missing" : "cli_exit_early";
+  const how = signal ? signal.toLowerCase() : Number.isInteger(exit.code) ? `exit_${String(exit.code).replace("-", "neg")}` : "exit_null";
+  const version = typeof exit.version === "string" ? /\d+(?:\.\d+){0,3}/.exec(exit.version)?.[0] : Array.isArray(exit.version) ? exit.version.slice(0, 4).join(".") : undefined;
+  return [reason, how, exit.output ? "after_output" : "no_output", ...(version && /^[\d.]{1,20}$/.test(version) ? [`v${version.replaceAll(".", "_")}`] : [])].join(":");
+}
+
+// the engines' structured codes: codex app-server's codexErrorInfo, OpenCode's error class names, providers' error codes
+const CODE_REASONS: ReadonlyArray<[RegExp, UsageReason]> = [
+  [/^(?:contextWindowExceeded|context_length_exceeded|ContextOverflowError|string_above_max_length|MessageOutputLengthError)$/, "context"],
+  [/^(?:usageLimitExceeded|insufficient_quota|quota_exceeded|billing_hard_limit_reached|insufficient_balance|subscription_sharing_usage_limit_exceeded|free_pool_limit)$/, "quota"],
+  [/^(?:rate_limit_exceeded|rate_limit_error|free_rate_limited)$/, "rate_limit"],
+  [/^(?:unauthorized|invalid_api_key|authentication_error|permission_error|ProviderAuthError|invalid_credentials|inactive_subscription)$/, "auth"],
+  [/^(?:model_not_found|ProviderModelNotFoundError|unknown_model|provider_not_configured)$/, "model_not_found"],
+  [/^(?:badRequest|invalid_request_error|invalid_request|rpc_32700|rpc_32600|rpc_32601|rpc_32602)$/, "bad_request"],
+  [/^(?:announced_no_action|max_steps)$/, "no_reply"],
+  [/^(?:tool_args_malformed|reused_call_id)$/, "tool"],
+  [/^(?:internalServerError|serverOverloaded|responseTooManyFailedAttempts|overloaded_error|api_error|server_error|upstream_outage|free_busy)$/, "provider_down"],
+  [/^(?:httpConnectionFailed|responseStreamConnectionFailed|responseStreamDisconnected)$/, "network"],
+  [/^(?:free_timeout)$/, "timeout"],
+  [/^(?:free_no_reply|free_empty|free_error)$/, "no_reply"],
+  [/^crashed$/, "crashed"],
+  [/^cli_missing$/, "cli_missing"],
 ];
+// a turn's stop reason, when it is a bare token and the words said nothing
+const STOP_REASONS: Readonly<Record<string, UsageReason>> = {
+  exit_before_result: "cli_exit_early", spawn_error: "cli_missing", auth_required: "auth", quota: "quota", no_reply: "no_reply", provider_safety: "refused",
+  max_tokens: "context", refusal: "refused", tool_error: "tool",
+};
+
+const STATUS = /\bHTTP (\d{3})\b|\(status (\d{3})\b|\bstatus(?: code)?[:= ]+(\d{3})\b|^API Error:? (\d{3})\b|"status(?:Code)?"\s*:\s*(\d{3})\b|\b(\d{3}) (?:Bad Request|Unauthorized|Payment Required|Forbidden|Not Found|Request Timeout|Payload Too Large|Unprocessable Entity|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)\b/i;
+const EXIT = /\bexited (?:with code )?(-?\d{1,3}|null)\b/;
+const SIGNAL = /\b(SIG(?:KILL|SEGV|BUS|ILL|ABRT|SYS|TERM|INT|HUP|PIPE))\b/;
+const ERRNO = /\b(E(?:CONNRESET|CONNREFUSED|CONNABORTED|NOTFOUND|AI_AGAIN|TIMEDOUT|PIPE|HOSTUNREACH|NETUNREACH|NOENT|ACCES|PERM)|UND_ERR_[A-Z_]{3,30}|ERR_[A-Z_]{3,30})\b/;
+// a provider's code in parentheses ("… (insufficient_quota)"), a JSON code or type field, an error class name
+const PAREN_CODE = /\(([a-z][a-z0-9]*(?:_[a-z0-9]+){1,6})\)\s*$/;
+const JSON_CODE = /"(?:code|type)"\s*:\s*"([A-Za-z][A-Za-z0-9_]{2,39})"/g;
+const ERROR_CLASS = /\b([A-Z][A-Za-z0-9]{1,40}Error)\b/;
+
+const CONTEXT_WORDS = /context[_ ](?:length|window)|maximum context|context (?:is )?too long|prompt is too long|too many (?:input )?tokens|(?:token|context) limit|reduce the length|ran out of room/i;
+const MODEL_WORDS = /\bmodel(?:[_ ]not[_ ]found| (?:is )?not (?:found|available|supported)| does not exist)|\b(?:unknown|unsupported|invalid) model\b|model ['"`]?[\w./:-]{1,80}['"`]? (?:does not exist|is not (?:found|available|supported)|not found)|no endpoints found|\bmodel not exist|not a valid model|模型不存在/i;
+const QUOTA_STRONG = /insufficient[_ ]quota|余额不足|欠费|used up its free replies|exceeded your current quota|quota (?:exceeded|exhausted)|usage limit|out of credits?|insufficient (?:account )?(?:funds|balance|credits?)|payment required|plan limit|reached (?:its|your|the) [\w -]{0,24}limit|credit balance|no credits? (?:left|remaining)/i;
+const RATE_WORDS = /rate.?limit|too many requests/i;
+const QUOTA_WORDS = /quota|credit|billing|exceeded your|\bsubscription\b/i;
+const AUTH_WORDS = /\bauth(?:enticat|oriz)|sign(?:ed)? ?in\b|log(?:ged)? ?in\b|unauthori[sz]ed|forbidden|api key|token (?:expired|invalid)|\bexpired\b|not signed in|invalid credentials/i;
+const REFUSED_WORDS = /refus|content policy|safety|flagged/i;
+const DOWN_WORDS = /overloaded|internal server error|bad gateway|service unavailable|gateway timeout|server (?:error|problem)|temporar(?:y|ily) unavailable|upstream (?:error|outage)/i;
+const TIMEOUT_WORDS = /time ?out|timed out|took too long|stalled|deadline|did not answer in time/i;
+const NETWORK_WORDS = /network|econn|enotfound|socket|fetch failed|unreachable|\bdns\b|offline|could not be reached|connection (?:error|reset|refused|closed)|stream (?:disconnected|closed|error)|disconnected|terminated|error sending request/i;
+const MISSING_WORDS = /isn't installed|not installed|isn't on this app's PATH|command not found|CLI not found/i;
+const BAD_REQUEST_WORDS = /invalid request|bad request|malformed|invalid (?:parameter|argument|value)|unsupported (?:parameter|value)|is not supported|unprocessable/i;
+const NO_REPLY_WORDS = /no (?:completion|reply|response)\b|returned no|empty (?:reply|response|completion)|stopped without saying why|didn'?t reply|no free backup model answered/i;
+// engine-errors.ts's refused tool schema or tool count: the provider turned the request down as invalid
+const TOOL_SCHEMA_WORDS = /input schema of|takes at most .{1,30} tools|invalid schema for function/i;
+const CRASH_WORDS = /crash|segfault|panic|killed|core dumped/i;
+
+function byStatus(status: number, text: string): UsageReason | null {
+  if (status === 401 || status === 403) return "auth";
+  if (status === 402) return "quota";
+  if (status === 404) return /model|endpoint/i.test(text) ? "model_not_found" : "bad_request";
+  if (status === 408) return "timeout";
+  if (status === 413) return "context";
+  if (status === 429) return QUOTA_STRONG.test(text) ? "quota" : "rate_limit";
+  if (status >= 500) return "provider_down";
+  if (status >= 400) return "bad_request";
+  return null;
+}
+
+/** the detail tokens in a failure's text: status, the provider's code, the error class, errno, exit code, signal */
+function detailOf(line: string, hints: readonly string[]): string | undefined {
+  const parts: string[] = [];
+  const push = (part: string | undefined) => { if (part && !parts.includes(part) && parts.length < 4) parts.push(part); };
+  for (const hint of hints) push(hint);
+  const status = STATUS.exec(line);
+  const code = status?.slice(1).find(Boolean);
+  if (code) {
+    // a provider's own code rides only with its status: the chat-completions drivers' "(insufficient_quota)" suffix or its JSON body
+    push(`http_${code}`);
+    push(PAREN_CODE.exec(line)?.[1]);
+    for (const match of line.matchAll(JSON_CODE)) { if (CODE_TOKEN.test(match[1]!)) { push(match[1]); break; } }
+  }
+  const errorClass = ERROR_CLASS.exec(line)?.[1];
+  if (errorClass) push(errorClass);
+  push(ERRNO.exec(line)?.[1]?.toLowerCase());
+  if (!hints.some(hint => /^(?:exit_|sig)/.test(hint))) {
+    const exit = EXIT.exec(line)?.[1];
+    if (exit) push(exit === "null" ? "exit_null" : `exit_${exit.replace("-", "neg")}`);
+    push(SIGNAL.exec(line)?.[1]?.toLowerCase());
+  }
+  let detail = parts.join(":");
+  while (detail.length > DETAIL_MAX && parts.length > 1) { parts.pop(); detail = parts.join(":"); }
+  return detail && FAILURE_DETAIL.test(detail) && detail.length <= DETAIL_MAX ? detail : undefined;
+}
+
+function reasonOf(line: string, hint: string | undefined): UsageReason {
+  if (hint) for (const [pattern, reason] of CODE_REASONS) if (pattern.test(hint)) return reason;
+  const signal = SIGNAL.exec(line)?.[1];
+  if (signal && signal !== "SIGTERM" && signal !== "SIGINT" && /exited|killed|signal/i.test(line)) return "crashed";
+  if (MISSING_WORDS.test(line) || /\bexited 127\b/.test(line) || (/\bENOENT\b/.test(line) && /spawn/i.test(line))) return "cli_missing";
+  if (CONTEXT_WORDS.test(line)) return "context";
+  if (MODEL_WORDS.test(line)) return "model_not_found";
+  if (QUOTA_STRONG.test(line)) return "quota";
+  const status = STATUS.exec(line)?.slice(1).find(Boolean);
+  if (status) { const reason = byStatus(Number(status), line); if (reason) return reason; }
+  if (RATE_WORDS.test(line)) return "rate_limit";
+  if (QUOTA_WORDS.test(line)) return "quota";
+  if (AUTH_WORDS.test(line)) return "auth";
+  if (DOWN_WORDS.test(line)) return "provider_down";
+  if (TIMEOUT_WORDS.test(line)) return "timeout";
+  if (NETWORK_WORDS.test(line)) return "network";
+  if (TOOL_SCHEMA_WORDS.test(line)) return "bad_request";
+  if (REFUSED_WORDS.test(line) || /\bpolicy\b|\bblocked\b|not allowed|denied/i.test(line)) return "refused";
+  if (BAD_REQUEST_WORDS.test(line)) return "bad_request";
+  if (NO_REPLY_WORDS.test(line)) return "no_reply";
+  if (EXIT.test(line) || /exited (?:unexpectedly|SIG)/.test(line)) return "cli_exit_early";
+  if (CRASH_WORDS.test(line) || /\bspawn\b/i.test(line)) return "crashed";
+  if (/\btool\b/i.test(line)) return "tool";
+  return "unknown";
+}
+
+/** a failure's text as a reason and a short detail, read on the workspace: the text itself is never sent. `code` is a
+ * driver's structured error code and `stopReason` the turn's stop reason; each counts only when it is a bare token */
+export function failureOf(text: unknown, hints: { code?: unknown; stopReason?: unknown } = {}): UsageFailure {
+  const line = typeof text === "string" ? text.slice(0, 2000) : "";
+  const codes = hintParts(hints.code), code = codes[0];
+  // a cli exit code's first part names its reason; the detail keeps the rest
+  const detailCodes = code && (USAGE_REASONS as readonly string[]).includes(code) ? codes.slice(1) : codes;
+  const stop = typeof hints.stopReason === "string" && /^[a-z][a-z0-9_]{1,30}$/.test(hints.stopReason) ? hints.stopReason : undefined;
+  let reason = line || code ? reasonOf(line, code) : "unknown";
+  if (reason === "unknown" && code && (USAGE_REASONS as readonly string[]).includes(code)) reason = code as UsageReason;
+  if (reason === "unknown" && stop && Object.hasOwn(STOP_REASONS, stop)) reason = STOP_REASONS[stop]!;
+  const detail = detailOf(line, detailCodes) ?? (reason !== "unknown" || !stop ? undefined : `stop_${stop}`.slice(0, 40));
+  return { reason, ...(detail ? { detail } : {}) };
+}
+
 /** an error line as a reason code, on the workspace: the line itself is never sent */
 export function failureReason(text: unknown): UsageReason {
-  if (typeof text !== "string" || !text) return "unknown";
-  const line = text.slice(0, 400);
-  for (const [pattern, reason] of REASON_PATTERNS) if (pattern.test(line)) return reason;
-  return "unknown";
+  return failureOf(text).reason;
 }
 
 /** who started the turn: the person at this workspace's own app, the person from another device (a phone, a browser,
@@ -102,6 +246,8 @@ export interface UsageTurn {
   engine: UsageEngine;
   outcome: UsageOutcome;
   reason?: UsageReason;
+  /** a failed turn's sanitized detail (`FAILURE_DETAIL`): a status, an error code or class, an exit code, never text */
+  detail?: string;
   /** the whole turn, start to end */
   ms: number;
   tools: UsageTool[];
@@ -183,16 +329,30 @@ export interface UsageSession {
 }
 export interface UsageReport { turns: UsageTurn[]; runs: UsageRun[]; frustrations?: UsageFrustration[]; sessions?: UsageSession[]; digests?: UsageDigest[]; signals?: UsageSignal[]; snapshot?: UsageSnapshot }
 
-export const USAGE_TURN_KEYS = ["id", "at", "engine", "outcome", "reason", "ms", "tools", "apps", "category", "from", "place", "room", "firstMs", "model", "failedTools", "failedApps", "actions", "bot", "chat"] as const;
+export const USAGE_TURN_KEYS = ["id", "at", "engine", "outcome", "reason", "detail", "ms", "tools", "apps", "category", "from", "place", "room", "firstMs", "model", "failedTools", "failedApps", "actions", "bot", "chat"] as const;
 export const USAGE_RUN_KEYS = ["id", "at", "trigger", "outcome", "reason", "ms", "every", "routine"] as const;
 export const USAGE_SNAPSHOT_KEYS = ["bots", "rooms", "routines", "webhooks", "appEvents", "skills"] as const;
 export const USAGE_SNAPSHOT_EXTRA_KEYS = ["chats", "archived", "memory", "botEngines"] as const;
 export const USAGE_SIGNAL_KEYS = ["id", "at", "name", "props"] as const;
 export const MAX_REPORT_SIGNALS = 300;
 const HASH = /^[A-Za-z0-9_-]{10}$/;
+// OpenCode's public provider ids (models.dev): a provider someone named in their own config never matches
+const OPENCODE_PROVIDERS = new Set(["anthropic", "openai", "google", "google-vertex", "openrouter", "github-copilot", "github-models", "groq", "deepseek", "xai", "mistral",
+  "zai", "zai-coding-plan", "zhipuai", "moonshotai", "moonshotai-cn", "fireworks-ai", "togetherai", "amazon-bedrock", "azure", "ollama", "lmstudio", "cerebras", "vercel",
+  "minimax", "alibaba", "nvidia", "huggingface", "deepinfra", "baseten", "chutes", "venice", "perplexity", "cohere", "inception", "requesty", "upstage", "zen", "opencode-go"]);
+/** the OpenCode provider an OpenCode model id ("anthropic/claude-x", "opencode/big-pickle") goes through, as
+ * "opencode/<provider>" ("opencode/zen" for OpenCode's own), or null for a provider that is not a public one */
+export function opencodeProvider(model: unknown): string | null {
+  if (typeof model !== "string") return null;
+  const id = model.toLowerCase().split("/")[0]!;
+  const provider = id === "opencode" ? "zen" : id;
+  return model.includes("/") && OPENCODE_PROVIDERS.has(provider) ? `opencode/${provider}` : null;
+}
 /** a model name's public family, or "other": a name someone typed for a custom endpoint never matches */
 export function modelFamily(model: unknown): string {
   if (typeof model !== "string") return "other";
+  const label = /^opencode\/([a-z-]{2,24})$/.exec(model);
+  if (label && OPENCODE_PROVIDERS.has(label[1]!)) return model;
   const bare = model.toLowerCase().split(/[/:]/).at(-1)!.replace(/\[.*$/, "");
   const known = /^(claude-(?:opus|sonnet|haiku)(?:-\d+(?:[.-]\d+)?)?|gpt-\d+(?:\.\d+)?(?:-(?:mini|nano|codex|pro))?|o\d(?:-mini|-pro)?|gemini-\d+(?:\.\d+)?-(?:pro|flash|flash-lite)|grok-\d+(?:\.\d+)?(?:-(?:fast|mini|code))?|kimi-k\d+(?:\.\d+)?|deepseek-(?:v\d+(?:\.\d+)?|r\d|chat|reasoner)|qwen\d*(?:\.\d+)?-(?:coder|max|plus)|glm-\d+(?:\.\d+)?|mistral-(?:large|medium|small)|llama-?\d+(?:\.\d+)?)/.exec(bare);
   return known ? known[1]! : "other";
@@ -242,11 +402,12 @@ export function cleanUsageTurn(input: unknown, now = Date.now()): UsageTurn | nu
   const tools = [...new Set(v.tools.slice(0, USAGE_TOOLS.length).filter((tool): tool is UsageTool => oneOf(USAGE_TOOLS, tool)))].sort();
   const apps = [...new Set(v.apps.slice(0, 20).filter((app): app is string => typeof app === "string" && (APP_SET.has(app) || app === "other_app")))].sort();
   const reason = v.outcome === "ok" ? undefined : oneOf(USAGE_REASONS, v.reason) ? v.reason : "unknown";
+  const detail = v.outcome === "failed" && typeof v.detail === "string" && v.detail.length <= DETAIL_MAX && FAILURE_DETAIL.test(v.detail) ? v.detail : undefined;
   const failedTools = Array.isArray(v.failedTools) ? [...new Set(v.failedTools.filter((tool): tool is UsageTool => oneOf(USAGE_TOOLS, tool)))].sort() : [];
   const failedApps = Array.isArray(v.failedApps) ? [...new Set(v.failedApps.filter((app): app is string => typeof app === "string" && (APP_SET.has(app) || app === "other_app")))].sort() : [];
   const actions = Array.isArray(v.actions) ? [...new Set(v.actions.slice(0, 20).filter((action): action is string => typeof action === "string" && ACTION.test(action) && APP_SET.has(action.split("_")[0]!)))].slice(0, 10) : [];
   const model = typeof v.model === "string" ? modelFamily(v.model) : undefined;
-  return { id: v.id, at: v.at as number, engine: v.engine, outcome: v.outcome, ...(reason ? { reason } : {}), ms: v.ms, tools, apps, category: v.category, from: v.from, place: v.place, room: v.room,
+  return { id: v.id, at: v.at as number, engine: v.engine, outcome: v.outcome, ...(reason ? { reason } : {}), ...(detail ? { detail } : {}), ms: v.ms, tools, apps, category: v.category, from: v.from, place: v.place, room: v.room,
     ...(count(v.firstMs, 7 * DAY) && v.firstMs <= v.ms ? { firstMs: v.firstMs } : {}), ...(model ? { model } : {}), ...(failedTools.length ? { failedTools } : {}), ...(failedApps.length ? { failedApps } : {}),
     ...(actions.length ? { actions } : {}), ...(typeof v.bot === "string" && HASH.test(v.bot) ? { bot: v.bot } : {}), ...(typeof v.chat === "string" && HASH.test(v.chat) ? { chat: v.chat } : {}) };
 }
@@ -284,6 +445,10 @@ const NUMBER_RUN = /\+?\d[\d().\s-]*[\s().-][\d().\s-]*\d/g, DIGITS = /\S*\d\S*/
 export const NOTE_WORDS: ReadonlySet<string> = new Set([
   ...USAGE_APPS, ...USAGE_ENGINES, "google", "calendar", "drive", "docs", "sheets", "outlook", "teams", "whatsapp", "telegram", "imessage", "chrome", "safari", "mac", "macos",
   "windows", "linux", "iphone", "android", "excel", "word", "powerpoint", "pdf", "chatgpt", "openai", "anthropic", "mcp", "api", "vps", "ai", "ok", "i", "x",
+  "linkedin", "instagram", "facebook", "youtube", "tiktok", "zoom", "meet", "canva", "spotify", "perplexity", "claude", "vscode", "messenger",
+  "dusk", "bot", "bots", "chat", "chats", "browser", "app", "apps", "assistant", "agent", "model", "computer", "screen", "terminal", "phone", "desktop",
+  "cloud", "web", "website", "site", "page", "tab", "link", "search", "routine", "routines", "memory", "skill", "skills", "task", "tasks", "email", "emails",
+  "message", "messages", "post", "posts", "reply", "draft", "file", "files", "folder", "note", "notes", "account", "settings", "room", "team",
 ]);
 const words = (text: string) => text.toLowerCase().normalize("NFKC").split(/[^\p{L}\p{N}']+/u).filter(Boolean);
 /** a word run this long shared with the chat means the note copied the person's words */
@@ -306,6 +471,8 @@ function copies(note: string, sources: readonly string[]): boolean {
   for (let i = 0; i + COPIED_RUN <= mine.length; i++) if (runs.has(mine.slice(i, i + COPIED_RUN).join(" "))) return true;
   return false;
 }
+/** the writer saying it could not write the note (it saw no chat, or asks for one), not a note */
+const NOT_A_NOTE = /^i(?:'m| am)?\b.{0,40}\b(?:can't|cannot|can not|unable|don't have|do not have)\b|\b(?:paste|share|send) (?:the|that|your) (?:exchange|conversation|chat|transcript)\b|\b(?:conversation|chat|transcript) (?:itself )?(?:isn't|is not|wasn't|was not) (?:in|included|provided|given|shown)\b|\bno record of the work\b|\bthe summary can(?:'t|not)?\b/i;
 /** an engine's note as short lowercase prose with no message text, addresses, links, handles, paths, file names,
  * long numbers, ids or names; only small counts ("3 tries") and app names stay. `sources`, when given, are the chat
  * lines the engine read: a note that copies a run of their words is dropped, and their names are taken out. null when
@@ -313,7 +480,7 @@ function copies(note: string, sources: readonly string[]): boolean {
 export function scrubSummary(raw: unknown, max = SUMMARY_MAX, options: { sources?: readonly string[]; avoid?: readonly string[] } = {}): string | null {
   if (typeof raw !== "string") return null;
   const original = raw.replace(/\s+/g, " ").trim().slice(0, max * 2.5);
-  if (original.length < 12) return null;
+  if (original.length < 12 || NOT_A_NOTE.test(original)) return null;
   const sources = options.sources ?? [];
   if (sources.length && copies(original, sources)) return null;
   const avoid = new Set([...chatAvoidWords(sources), ...(options.avoid ?? []).flatMap(words)].filter(word => !NOTE_WORDS.has(word)));
