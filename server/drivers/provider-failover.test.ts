@@ -18,6 +18,7 @@ describe("provider failures", () => {
     "unexpected status 401 Unauthorized",
     "unexpected status 400 Bad Request",
     "Internal error (session/prompt)",
+    "OpenCode refused this turn because this model takes at most 128 tools and this bot offers more, even with its tool lists trimmed, so nothing ran.",
     "the run ended without a result",
   ])("counts %s", (cause) => expect(providerFailure(cause, "exit_before_result")).toBe(true));
 
