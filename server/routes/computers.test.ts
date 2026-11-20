@@ -66,6 +66,28 @@ function fixture(bots: BotRecord[], cfg: AppConfig) {
 const cfgWith = (sshAlias: string): AppConfig => ({ vps: { sshAlias } }) as AppConfig;
 const botWith = (vpsAlias?: string): BotRecord => ({ id: "bot-1", vpsAlias }) as BotRecord;
 
+describe("POST /api/computers/vps/:name/restart", () => {
+  it("is admin-only and restarts even while bots are on the computer", async () => {
+    expect(requiredScope("POST", `/api/computers/vps/${CONTAINER}/restart`)).toBe("admin");
+    const restart = vi.fn().mockResolvedValue({ ready: true });
+    const handler = createComputerRoutes({
+      store: { bot: () => null, bots: [], sections: [] }, cfg: cfgWith("production-vps"), computerProviderConfigTransitions: new Set(),
+      managedVpsOwners: () => [{ botId: "bot-1", name: "Bot", inUse: true }], teamComputers: { list: () => [] }, routines: () => null,
+      restartManagedVpsComputer: restart,
+    } as unknown as ComputerRouteDeps);
+    const sent: Array<{ status: number; body: unknown }> = [];
+    await handler({
+      req: { headers: { "content-type": "application/json" } } as unknown as IncomingMessage, res: {} as ServerResponse,
+      url: new URL(`http://localhost/api/computers/vps/${CONTAINER}/restart`), path: `/api/computers/vps/${CONTAINER}/restart`, method: "POST",
+      auth: { kind: "loopback", scopes: ["admin"] } as RequestAuth,
+      json: ((_res: ServerResponse, status: number, body: unknown) => { sent.push({ status, body }); }) as RouteContext["json"],
+      readBody: (async () => ({})) as RouteContext["readBody"],
+    });
+    expect(sent).toEqual([{ status: 200, body: { ready: true } }]);
+    expect(restart).toHaveBeenCalledWith(CONTAINER);
+  });
+});
+
 describe("POST /api/computers/vps/:name/remove", () => {
   it("refuses an alias no bot or default uses without touching SSH", async () => {
     const { postRemove } = fixture([botWith("alpha-vps")], cfgWith("production-vps"));

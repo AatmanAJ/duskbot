@@ -3,10 +3,13 @@
 //
 //   node apps/mobile/scripts/asc.mjs status                  the app record and its latest builds
 //   node apps/mobile/scripts/asc.mjs testflight [email...]   make the internal group (all builds) and add testers
+//   node apps/mobile/scripts/asc.mjs invite <email> <first> <last> [ROLE]  join the team (this app only) so testflight can add them
 //   node apps/mobile/scripts/asc.mjs testflight-public [n]   anyone with the link (up to n testers) once Beta App Review passes
 //   node apps/mobile/scripts/asc.mjs metadata                listing, categories, age rating, review notes (store/app-store.json)
 //   node apps/mobile/scripts/asc.mjs screenshots <dir> [type] replace the en-US screenshots (default APP_IPHONE_67)
 //   node apps/mobile/scripts/asc.mjs free                    price Free (USD 0), every territory but mainland China
+//   node apps/mobile/scripts/asc.mjs new-version <x.y>       open the next App Store version (Prepare for Submission)
+//   node apps/mobile/scripts/asc.mjs widget-profile <certId> <out>  the Live Activity extension's App ID and its App Store profile
 //   node apps/mobile/scripts/asc.mjs submit [--yes]          check everything App Review needs; --yes attaches the newest
 //                                                            valid build to the version and submits it
 //
@@ -63,6 +66,16 @@ async function status() {
   const { data } = await call("GET", `/v1/builds?filter[app]=${one.id}&sort=-uploadedDate&limit=5&fields[builds]=version,processingState,uploadedDate,expired`);
   if (!data.length) console.log("no builds uploaded yet");
   for (const b of data) console.log(`build ${b.attributes.version}: ${b.attributes.processingState}${b.attributes.expired ? " (expired)" : ""}, uploaded ${b.attributes.uploadedDate}`);
+  const versions = (await call("GET", `/v1/apps/${one.id}/appStoreVersions?limit=3&fields[appStoreVersions]=versionString,appStoreState,createdDate`)).data;
+  for (const v of versions) console.log(`version ${v.attributes.versionString}: ${v.attributes.appStoreState}`);
+}
+
+// apple only takes internal testers from the team, so an invite comes first; it sees this app only
+async function invite(email, firstName, lastName, role = "MARKETING") {
+  if (!email || !firstName || !lastName) throw new Error("invite needs <email> <first> <last>");
+  const one = await app();
+  await call("POST", "/v1/userInvitations", { data: { type: "userInvitations", attributes: { email, firstName, lastName, roles: [role], allAppsVisible: false, provisioningAllowed: false }, relationships: { visibleApps: { data: [{ type: "apps", id: one.id }] } } } });
+  console.log(`invited ${email} as ${role}, seeing this app only; once they accept, run: testflight ${email}`);
 }
 
 async function testflight(emails) {
@@ -81,11 +94,14 @@ async function testflight(emails) {
   }
 }
 
-async function bundleIdRecord() {
-  const { data } = await call("GET", `/v1/bundleIds?filter[identifier]=${BUNDLE_ID}&limit=5`);
-  const one = data.find((b) => b.attributes.identifier === BUNDLE_ID);
-  if (!one) throw new Error(`no App ID ${BUNDLE_ID} in the developer account`);
-  return one;
+async function bundleIdRecord(identifier = BUNDLE_ID, register = false) {
+  const { data } = await call("GET", `/v1/bundleIds?filter[identifier]=${identifier}&limit=5`);
+  const one = data.find((b) => b.attributes.identifier === identifier);
+  if (one) return one;
+  if (!register) throw new Error(`no App ID ${identifier} in the developer account`);
+  const { data: made } = await call("POST", "/v1/bundleIds", { data: { type: "bundleIds", attributes: { identifier, name: "dusk bot Live Activity", platform: "IOS" } } });
+  console.log(`registered the App ID ${identifier}`);
+  return made;
 }
 
 /** uploads a CSR for an Apple Distribution certificate and writes the certificate (DER) */
@@ -97,8 +113,8 @@ async function distCert(csrPath, outPath) {
 }
 
 /** makes (or remakes) the App Store profile for the app with one certificate and writes it */
-async function storeProfile(certId, outPath, name = "dusk bot App Store") {
-  const bundle = await bundleIdRecord();
+async function storeProfile(certId, outPath, name = "dusk bot App Store", identifier = BUNDLE_ID) {
+  const bundle = await bundleIdRecord(identifier, identifier !== BUNDLE_ID);
   const { data: existing } = await call("GET", `/v1/profiles?filter[name]=${encodeURIComponent(name)}&limit=10`);
   for (const old of existing) await call("DELETE", `/v1/profiles/${old.id}`).then(() => console.log(`removed the old profile ${old.id}`));
   const { data } = await call("POST", "/v1/profiles", { data: { type: "profiles", attributes: { name, profileType: "IOS_APP_STORE" }, relationships: {
@@ -117,14 +133,25 @@ async function editableVersion(appId) {
   return { version, local };
 }
 
+/** opens the next App Store version; App Store Connect carries the live version's text and screenshots over to it */
+async function newVersion(versionString) {
+  if (!/^\d+(\.\d+){1,2}$/.test(versionString ?? "")) throw new Error("usage: new-version <x.y>");
+  const one = await app();
+  const open = (await call("GET", `/v1/apps/${one.id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,DEVELOPER_REJECTED,REJECTED,METADATA_REJECTED&limit=5`)).data;
+  if (open.length) { console.log(`version ${open[0].attributes.versionString} is already open (${open[0].attributes.appStoreState})`); return; }
+  const { data } = await call("POST", "/v1/appStoreVersions", { data: { type: "appStoreVersions", attributes: { platform: "IOS", versionString }, relationships: { app: { data: { type: "apps", id: one.id } } } } });
+  console.log(`opened version ${data.attributes.versionString} (${data.attributes.appStoreState})`);
+}
+
 /** applies apps/mobile/store/app-store.json: name, subtitle, privacy URL, categories, age rating, the version's text and URLs, review notes */
 async function metadata(file) {
   const want = JSON.parse(readFileSync(file, "utf8"));
   const one = await app();
   const infos = await call("GET", `/v1/apps/${one.id}/appInfos?include=appInfoLocalizations,ageRatingDeclaration`);
   const info = infos.data.find((i) => (i.attributes.state ?? i.attributes.appStoreState) !== "READY_FOR_DISTRIBUTION") ?? infos.data[0];
-  const infoLocal = infos.included.find((i) => i.type === "appInfoLocalizations" && i.attributes.locale === "en-US");
-  const rating = infos.included.find((i) => i.type === "ageRatingDeclarations");
+  const mine = (kind) => new Set([info.relationships?.[kind]?.data].flat().filter(Boolean).map((r) => r.id));
+  const infoLocal = infos.included.find((i) => i.type === "appInfoLocalizations" && i.attributes.locale === "en-US" && mine("appInfoLocalizations").has(i.id));
+  const rating = infos.included.find((i) => i.type === "ageRatingDeclarations" && mine("ageRatingDeclaration").has(i.id));
   const { name, subtitle, privacyPolicyUrl, primaryCategory, secondaryCategory } = want.appInfo;
   await call("PATCH", `/v1/appInfoLocalizations/${infoLocal.id}`, { data: { type: "appInfoLocalizations", id: infoLocal.id, attributes: { name, subtitle, privacyPolicyUrl } } });
   console.log("app info: name, subtitle, privacy policy URL");
@@ -296,14 +323,17 @@ const [verb, ...rest] = process.argv.slice(2);
 const run = {
   status: () => status(),
   testflight: () => testflight(rest),
+  invite: () => invite(rest[0], rest[1], rest[2], rest[3]),
   "testflight-public": () => publicTestflight(Number(rest[0]) || 1000),
   get: async () => console.log(JSON.stringify(await call("GET", rest[0]), null, 1)),
   "dist-cert": () => distCert(rest[0], rest[1]),
   "store-profile": () => storeProfile(rest[0], rest[1], rest[2]),
+  "widget-profile": () => storeProfile(rest[0], rest[1], rest[2] ?? "dusk bot Live Activity App Store", `${BUNDLE_ID}.activity`),
   metadata: () => metadata(rest[0] ?? new URL("../store/app-store.json", import.meta.url).pathname),
   screenshots: () => screenshots(rest[0], rest[1] ?? "APP_IPHONE_67"),
   submit: () => submit(rest.includes("--yes")),
+  "new-version": () => newVersion(rest[0]),
   free: () => free(),
 }[verb];
-if (!run) { console.error("usage: node apps/mobile/scripts/asc.mjs status | testflight [email...] | testflight-public [limit] | get <path> | dist-cert <csr> <out.cer> | store-profile <certId> <out.mobileprovision> [name] | metadata [app-store.json] | screenshots <dir> [displayType] | free | submit [--yes]"); process.exit(2); }
+if (!run) { console.error("usage: node apps/mobile/scripts/asc.mjs status | testflight [email...] | invite <email> <first> <last> [role] | testflight-public [limit] | get <path> | dist-cert <csr> <out.cer> | store-profile <certId> <out.mobileprovision> [name] | widget-profile <certId> <out.mobileprovision> [name] | metadata [app-store.json] | screenshots <dir> [displayType] | free | new-version <x.y> | submit [--yes]"); process.exit(2); }
 run().catch((error) => { console.error(`error: ${error.message}`); process.exit(1); });
