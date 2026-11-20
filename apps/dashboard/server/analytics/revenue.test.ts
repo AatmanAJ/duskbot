@@ -55,7 +55,9 @@ describe("revenue", () => {
       sub("acct_paid_cancel", 2000, { cancelAtPeriodEnd: true }),
     ];
     expect(TRIAL_CONVERSION).toBe(1);
-    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800 + 2000, expected: 21900, conversion: 1 });
+    expect(mrrForecastAt(subs, now, now)).toEqual({ paying: 2000 + 2000 + 3000, trials: 14900, full: 7000 + 14900 + 14800 + 2000, expected: 21900, conversion: 1, atRisk: 0, atRiskCount: 0 });
+    const failed = mrrForecastAt([...subs, sub("acct_failed", 2000, { status: "payment_problem", trialEndsAt: T })], now, now);
+    expect(failed, "a failed charge is at risk, not paying").toMatchObject({ paying: 2000 + 2000 + 3000, expected: 21900, atRisk: 2000, atRiskCount: 1 });
     // once the trials run out they count as paying in full; anything set to cancel is gone, paying or not
     expect(mrrForecastAt(subs.filter(row => row.status === "active"), trialEnd, trialEnd).expected).toBe(7000 + 14900);
     expect(mrrForecastAt(subs, now, now, 1).expected).toBe(7000 + 14900);

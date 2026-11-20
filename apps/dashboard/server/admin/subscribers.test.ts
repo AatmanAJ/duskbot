@@ -38,10 +38,10 @@ describe("launch strip", () => {
       { accountId: "old", providerPaymentId: "pay_old", subscriptionId: "sub_old", amountCents: 2000, status: "paid" },
     ] as never;
     const strip = launchStrip({ subscriptions, invoices, refunds: [{ id: "r1", paymentId: "pay_y", amountCents: 500, currency: "usd" }] }, accounts, NOW);
-    expect(strip).toEqual({ since: LAUNCH_AT, label: LAUNCH_LABEL, accounts: 4, mrrCents: 2000 + 2000, trial: 1, paying: 1, paymentProblem: 0, cancelling: 1, cancelled: 1, collectedCents: 24000 + 1500 });
+    expect(strip).toEqual({ since: LAUNCH_AT, label: LAUNCH_LABEL, accounts: 4, mrrCents: 2000 + 2000, atRiskCents: 0, trial: 1, paying: 1, paymentProblem: 0, cancelling: 1, cancelled: 1, collectedCents: 24000 + 1500 });
     expect(LAUNCH_LABEL).toBe("since nov 18, 7:56 pm ist");
     const failed = launchStrip({ subscriptions: [...subscriptions as Sub[], sub({ accountId: "f", status: "payment_problem", trialEndsAt: NOW - DAY })] as never, invoices, refunds: [] }, [...accounts, { id: "f", createdAt: LAUNCH_AT + DAY }], NOW);
-    expect(failed, "a failed charge is not paying, and its plan is still retried so it stays in mrr").toMatchObject({ paying: 1, paymentProblem: 1, mrrCents: 2000 + 2000 + 2000 });
+    expect(failed, "a failed charge is not paying and not mrr, only at risk").toMatchObject({ paying: 1, paymentProblem: 1, mrrCents: 2000 + 2000, atRiskCents: 2000 });
     expect(new Date(LAUNCH_AT).toISOString()).toBe("2026-11-18T14:26:00.000Z");
   });
 });

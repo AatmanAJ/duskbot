@@ -50,9 +50,9 @@ export function statusLine(sub: Sub, now: number): string {
   return trial ?? "paid";
 }
 
-export interface LaunchStrip { since: number; label: string; accounts: number; mrrCents: number; trial: number; paying: number; paymentProblem: number; cancelling: number; cancelled: number; collectedCents: number }
-/** the launch cohort's money: accounts made at or after `since`; mrr is what will bill (running plans not set to end, a failed
- *  charge included since it is retried), paying is only the paid up, collected is
+export interface LaunchStrip { since: number; label: string; accounts: number; mrrCents: number; atRiskCents: number; trial: number; paying: number; paymentProblem: number; cancelling: number; cancelled: number; collectedCents: number }
+/** the launch cohort's money: accounts made at or after `since`; mrr is what will bill (running plans not set to end, without
+ *  failed charges), at risk is the monthly value of failed charges, collected is
  *  payments taken net of refunds, in the money mode of the view it is given */
 export function launchStrip(state: Pick<BillingState, "subscriptions" | "invoices" | "refunds">, accounts: ReadonlyArray<{ id: string; createdAt: number }>, now: number, since = LAUNCH_AT): LaunchStrip {
   const cohort = new Set(accounts.filter(account => account.createdAt >= since).map(account => account.id));
@@ -62,13 +62,14 @@ export function launchStrip(state: Pick<BillingState, "subscriptions" | "invoice
   const counts = { trial: 0, paying: 0, paymentProblem: 0, cancelling: 0, cancelled: 0 };
   const countOf = { trial: "trial", paid: "paying", payment_problem: "paymentProblem", cancelling: "cancelling", cancelled: "cancelled" } as const;
   for (const list of byPerson.values()) counts[countOf[bucketOf(currentOf(list, now)!, now)]]++;
-  const mrrCents = subs.filter(sub => { const bucket = bucketOf(sub, now); return bucket === "trial" || bucket === "paid" || bucket === "payment_problem"; }).reduce((sum, sub) => sum + monthlyOf(sub), 0);
+  const mrrCents = subs.filter(sub => { const bucket = bucketOf(sub, now); return bucket === "trial" || bucket === "paid"; }).reduce((sum, sub) => sum + monthlyOf(sub), 0);
+  const atRiskCents = subs.filter(sub => bucketOf(sub, now) === "payment_problem").reduce((sum, sub) => sum + monthlyOf(sub), 0);
   const bought = new Set(subs.map(sub => sub.id));
   const payments = state.invoices.filter(invoice => cohort.has(invoice.accountId) && (invoice.subscriptionId === null || bought.has(invoice.subscriptionId)) && invoice.status !== "failed");
   const refunded = new Map<string, number>();
   for (const refund of state.refunds ?? []) refunded.set(refund.paymentId, (refunded.get(refund.paymentId) ?? 0) + refund.amountCents);
   const collectedCents = payments.reduce((sum, invoice) => sum + Math.max(0, invoice.amountCents - (refunded.get(invoice.providerPaymentId) ?? (invoice.status === "refunded" ? invoice.amountCents : 0))), 0);
-  return { since, label: LAUNCH_LABEL, accounts: cohort.size, mrrCents, ...counts, collectedCents };
+  return { since, label: LAUNCH_LABEL, accounts: cohort.size, mrrCents, atRiskCents, ...counts, collectedCents };
 }
 
 export interface TrialTotals { active: number; cancelling: number; mrrAtStake: number; ended: number; converted: number; conversion: number | null }

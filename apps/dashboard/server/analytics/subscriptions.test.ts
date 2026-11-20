@@ -118,6 +118,19 @@ describe("subscription metrics", () => {
   });
 });
 
+describe("failed charges", () => {
+  it("are left out of the headline mrr and customers and shown as at risk", () => {
+    const base = fixture();
+    const failed = sub("failed", "acct_failed", 3000, { createdAt: at(5, 1), currentPeriodStart: at(5, 1), status: "payment_problem" });
+    const paid = invoice("failed", "acct_failed", at(5, 1), 3000);
+    const withFailed = { ...base, subscriptions: [...base.subscriptions, failed], invoices: [...base.invoices, paid],
+      ledger: [...base.ledger, row({ key: "pay:failed", type: "payment.succeeded", at: at(5, 1), accountId: "acct_failed", subscriptionId: "failed", providerPaymentId: paid.providerPaymentId, amountCents: 3000 })] };
+    const before = subscriptionReport(base).headline, after = subscriptionReport(withFailed).headline;
+    expect(after).toMatchObject({ mrr: before.mrr, customers: before.customers, arpu: before.arpu, atRisk: { mrr: 3000, customers: 1 } });
+    expect(before.atRisk).toEqual({ mrr: 0, customers: 0 });
+  });
+});
+
 describe("App Review's demo plan", () => {
   it("is never revenue: neither its payments nor its plan count", () => {
     const base = fixture();

@@ -29,6 +29,8 @@ export interface RevenueFunnelStep { id: string; label: string; count: number; o
 
 export interface Headline {
   mrr: number; arr: number; netNewMrr: number; customers: number; arpu: number | null; customerChurn: number | null;
+  /** failed charges: left out of mrr and customers; absent from an older service */
+  atRisk?: { mrr: number; customers: number };
   revenueChurn: number | null; netRevenueChurn: number | null; nrr: number | null; grr: number | null; ltv: number | null; ltvRealised: number | null;
   previous: { mrr: number; netNewMrr: number; customers: number; arpu: number | null; customerChurn: number | null; ltv: number | null };
 }

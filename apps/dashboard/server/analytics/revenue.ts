@@ -57,19 +57,20 @@ const countedAt = (subs: readonly SubscriptionLike[], at: number, now: number) =
 
 /** free trials not set to cancel count in full: only cancellations come off */
 export const TRIAL_CONVERSION = 1;
-/** `full` counts every trial at its price; `expected` drops anything set to cancel, then counts `conversion` of the trials left,
- *  in whole dollars */
-export interface MrrForecast { expected: number; paying: number; trials: number; full: number; conversion: number }
+/** `full` counts every trial at its price; `expected` drops anything set to cancel or whose charge failed, then counts
+ *  `conversion` of the trials left, in whole dollars; `atRisk` is the monthly value of failed charges and `atRiskCount` how many */
+export interface MrrForecast { expected: number; paying: number; trials: number; full: number; conversion: number; atRisk: number; atRiskCount: number }
 export function mrrForecastAt(subs: readonly SubscriptionLike[], at: number, now: number, conversion = TRIAL_CONVERSION): MrrForecast {
-  let paying = 0, trials = 0, full = 0;
+  let paying = 0, trials = 0, full = 0, atRisk = 0, atRiskCount = 0;
   for (const sub of countedAt(subs, at, now)) {
     const value = monthly(sub);
     full += value;
     if (sub.cancelAtPeriodEnd || sub.status === "cancelled") continue;
+    if (sub.status === "payment_problem") { atRisk += value; atRiskCount++; continue; }
     if (sub.trialEndsAt === undefined || at >= sub.trialEndsAt) paying += value;
     else trials += value;
   }
-  return { expected: Math.round((paying + trials * conversion) / 100) * 100, paying, trials, full, conversion };
+  return { expected: Math.round((paying + trials * conversion) / 100) * 100, paying, trials, full, conversion, atRisk, atRiskCount };
 }
 
 export interface Touch { first: Visit | null; last: Visit | null }

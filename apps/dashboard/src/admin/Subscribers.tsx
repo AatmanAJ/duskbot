@@ -19,7 +19,7 @@ export interface SubscriberRow {
   messages7d: number; messages: number; turns: number; turns7d: number; failed: number; engines: string[]; apps: number; routines: number; bots: number;
   lastActive: number | null; platforms: string[]; places: string[]; cloud: string | null;
 }
-interface Launch { since: number; label: string; accounts: number; mrrCents: number; trial: number; paying: number; paymentProblem?: number; cancelling: number; cancelled: number; collectedCents: number }
+interface Launch { since: number; label: string; accounts: number; mrrCents: number; atRiskCents?: number; trial: number; paying: number; paymentProblem?: number; cancelling: number; cancelled: number; collectedCents: number }
 interface Answer { now: number; filter: Filter; counts: Record<Filter, number>; rows: SubscriberRow[]; launch: Launch; partialBefore: number | null }
 interface Count { key: string; count: number }
 interface Detail {
@@ -74,7 +74,8 @@ export function TrialsSummary() {
 
 /** the launch cohort in one line: what will bill, who is where in the trial, and what was taken */
 function LaunchStrip({ launch }: { launch: Launch }) {
-  const items: Array<[string, string]> = [["mrr", usd(launch.mrrCents, true)], ["trial", n(launch.trial)], ["paying", n(launch.paying)], ...(launch.paymentProblem ? [["payment problem", n(launch.paymentProblem)] as [string, string]] : []), ["cancelling", n(launch.cancelling)],
+  const items: Array<[string, string]> = [["mrr", usd(launch.mrrCents, true)], ...(launch.paymentProblem ? [["at risk", `${usd(launch.atRiskCents ?? 0, true)}/mo (${n(launch.paymentProblem)})`] as [string, string]] : []),
+    ["trial", n(launch.trial)], ["paying", n(launch.paying)], ["cancelling", n(launch.cancelling)],
     ["cancelled", n(launch.cancelled)], ["collected", usd(launch.collectedCents, true)]];
   return (
     <section aria-label="launch cohort" className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-[18px] bg-card px-4 py-2.5">

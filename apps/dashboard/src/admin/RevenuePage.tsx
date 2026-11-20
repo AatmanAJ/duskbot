@@ -100,11 +100,16 @@ function Small({ label, value, note, money }: { label: string; value: string; no
   );
 }
 
+/** failed charges, kept out of mrr and shown beside it */
+function AtRisk({ cents, count }: { cents: number; count: number }) {
+  return <span className="ms-2 text-12 text-ink-3" title="failed charges, retried by billing, not counted in mrr">at risk {usd(cents, true)}/mo ({n(count)})</span>;
+}
+
 function Headline({ report }: { report: SubscriptionReport }) {
   const h = report.headline, p = h.previous;
   return (
     <section className="grid grid-cols-4 gap-1.5 rounded-[24px] bg-card p-2 max-lg:grid-cols-2" aria-label="headline numbers">
-      <Metric label="mrr" value={usd(h.mrr, true)} money delta={<MoneyDelta now={h.mrr} before={p.mrr} />} />
+      <Metric label="mrr" value={usd(h.mrr, true)} money delta={<><MoneyDelta now={h.mrr} before={p.mrr} />{h.atRisk && h.atRisk.customers > 0 && <AtRisk cents={h.atRisk.mrr} count={h.atRisk.customers} />}</>} />
       <Metric label="net new this month" value={signed(h.netNewMrr)} delta={<MoneyDelta now={h.netNewMrr} before={p.netNewMrr} mode="usd" />} hint="new, expansion and comebacks, less contraction and churn, this month" />
       <Metric label="active customers" value={n(h.customers)} delta={<MoneyDelta now={h.customers} before={p.customers} />} />
       <Metric label="churn" value={rate(h.customerChurn)} delta={<MoneyDelta now={h.customerChurn} before={p.customerChurn} mode="points" invert />} hint="customers lost per month, over the last three full months" />

@@ -278,7 +278,8 @@ export function subscriptionReport(input: SubscriptionsInput) {
   const pays = paysOf(input), refunds = refundsOf(input, pays), lives = livesOf(input, pays, now);
   const months = monthsOf(lives, pays, refunds, now);
   const thisMonth = months.at(-1)!, lastMonth = months.at(-2)!;
-  const mrrNow = accountMrr(lives, now);
+  const failing = (life: Life) => life.sub.status === "payment_problem";
+  const mrrNow = accountMrr(lives.filter(life => !failing(life)), now), atRiskNow = accountMrr(lives.filter(failing), now);
   const mrr = sum(mrrNow), customers = mrrNow.size;
   const complete = months.slice(-4, -1);
   const churnedSum = complete.reduce((s, r) => s + r.churnedCustomers, 0), startSum = complete.reduce((s, r) => s + r.startCustomers, 0);
@@ -384,7 +385,7 @@ export function subscriptionReport(input: SubscriptionsInput) {
   return {
     now, currency: "USD",
     headline: {
-      mrr, arr: mrr * 12, netNewMrr: thisMonth.netNew, customers, arpu, customerChurn,
+      mrr, arr: mrr * 12, netNewMrr: thisMonth.netNew, customers, arpu, customerChurn, atRisk: { mrr: sum(atRiskNow), customers: atRiskNow.size },
       revenueChurn: ratio(lostSum, startMrr), netRevenueChurn: ratio(lostSum - expansion, startMrr),
       nrr: ratio(startMrr - lostSum + expansion, startMrr), grr: ratio(startMrr - lostSum, startMrr),
       ltv: arpu !== null && customerChurn ? Math.round(arpu / customerChurn) : null,
