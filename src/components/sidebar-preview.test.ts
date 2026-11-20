@@ -83,6 +83,13 @@ describe("sidebar previews", () => {
     expect(groupPreview({ id: "g", name: "Room", messages: [message({ from, attachments: [file("application/pdf", "a.pdf")] })] } as unknown as Group, [bot], [])).toBe("Ada: Sent 1 PDF");
   });
 
+  it("quotes the reply, not Partly done, when the reply already says what failed", () => {
+    const visible = [message({ role: "user", text: "Email Maya" }), message({ text: "I couldn't send it: Gmail isn't connected." })];
+    const owned = message({ kind: "activity", tool: { name: "error: Gmail send failed", ok: false, partial: true, owned: true } });
+    expect(botPreview(bot, [...visible, owned], [])).toBe("I couldn't send it: Gmail isn't connected.");
+    const unowned = message({ kind: "activity", tool: { name: "error: Gmail send failed", ok: false, partial: true } });
+    expect(botPreview(bot, [...visible, unowned], [])).toBe("Partly done: a step didn't work");
+  });
   it("skips screen frames in a group chat's preview too", () => {
     const group = { id: "g", name: "Room", messages: [message({ text: "Done.", from: { botId: "ada", name: "Ada", color: "green" } }), screen()] } as unknown as Group;
     expect(groupPreview(group, [bot], [])).toBe("Ada: Done.");

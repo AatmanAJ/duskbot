@@ -4,6 +4,8 @@ import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { allowsTool, parseToolScope, type ToolScope } from "../shared/tool-scope.ts";
+import { ERROR_DUMP_REFUSAL, sendsErrorDump } from "../shared/failed-turn.ts";
+import { isOutboundTool } from "../shared/outbound.ts";
 
 import { bridgedCallTarget } from "./drivers/agents-bridge.ts";
 import { resolveCliSpawn } from "./env-path.ts";
@@ -302,6 +304,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (message?.method === "tools/call" && typeof params?.name === "string") {
     const target = callTarget(params.name, params.arguments);
     if (target !== undefined && appOnly.has(target)) return rejectRequest(message.id, -32602, APP_ONLY_REFUSAL);
+    // dusk bot's own agents tools write into its own chats; every other server's send reaches someone outside.
+    if (NAME !== "agents" && target !== undefined && isOutboundTool(target) && sendsErrorDump([{ arguments: params.arguments }])) {
+      return rejectRequest(message.id, -32602, ERROR_DUMP_REFUSAL);
+    }
   }
   if (scope && message?.method === "tools/list" && !id) {
     return rejectRequest(message.id, -32600, "Tool listing needs a request ID");

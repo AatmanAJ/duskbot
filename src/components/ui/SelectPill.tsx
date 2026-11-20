@@ -21,6 +21,19 @@ const GAP = 4;
 const MENU_MIN = 200;
 const ROW = 30;
 const ROW_GAP = 2;
+const MENU_MAX = 360;
+const EDGE = 8;
+
+export interface MenuPlace { top?: number; bottom?: number; right: number; up: boolean; maxHeight: number }
+
+export function placeMenu(box: { top: number; bottom: number; right: number }, height: number, viewport: { width: number; height: number }): MenuPlace {
+  const wanted = Math.min(height, MENU_MAX);
+  const below = viewport.height - EDGE - (box.bottom + GAP);
+  const above = box.top - GAP - EDGE;
+  const up = wanted > below && above > below;
+  const maxHeight = Math.max(0, Math.min(wanted, up ? above : below));
+  return { right: viewport.width - box.right, up, maxHeight, ...(up ? { bottom: viewport.height - box.top + GAP } : { top: box.bottom + GAP }) };
+}
 
 /** Grok's ghost select in a pane row ("Liora", "1x", "Auto-detect"): a 24px hairline pill sized to its value, and the
  * white 200px listbox under its right edge, 30px rows 2px apart with an inset highlight and a check on the chosen one.
@@ -39,7 +52,7 @@ export function SelectPill<V extends string>({ value, options, onChange, disable
   const [open, setOpen] = useState(false);
   const motion = useMenuMotion(open);
   const [active, setActive] = useState(-1);
-  const [place, setPlace] = useState<{ top?: number; bottom?: number; right: number; up: boolean } | null>(null);
+  const [place, setPlace] = useState<MenuPlace | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -64,9 +77,12 @@ export function SelectPill<V extends string>({ value, options, onChange, disable
     if (!open || !trigger.current) return;
     const box = trigger.current.getBoundingClientRect();
     const height = options.length * (ROW + ROW_GAP) - ROW_GAP + 12 + options.filter((option) => option.separated).length * (9 + ROW_GAP);
-    const up = box.bottom + GAP + height > window.innerHeight - 8 && box.top - GAP - height > 8;
-    setPlace({ right: window.innerWidth - box.right, up, ...(up ? { bottom: window.innerHeight - box.top + GAP } : { top: box.bottom + GAP }) });
+    setPlace(placeMenu(box, height, { width: window.innerWidth, height: window.innerHeight }));
   }, [open, options.length]);
+
+  useEffect(() => {
+    if (open && place && active >= 0) document.getElementById(`${id}-${active}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [open, place, active, id]);
 
   // the listbox mounts once it is placed: focus it then, so its keys (and Escape) are its own
   useEffect(() => {
@@ -152,8 +168,8 @@ export function SelectPill<V extends string>({ value, options, onChange, disable
                 else if (event.key === "End") { event.preventDefault(); setActive(step(options.length, -1)); }
                 else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(active); }
               }}
-              style={{ top: place.top, bottom: place.bottom, right: place.right, minWidth: MENU_MIN, transformOrigin: place.up ? "right bottom" : "right top" }}
-              className={cn(motion.className, "fixed z-[2147482000] flex max-h-[min(360px,calc(100vh-16px))] max-w-[320px] flex-col gap-0.5 overflow-y-auto rounded-2xl bg-menu py-1.5 text-[13px] leading-[18px] tracking-[-0.08px] text-ink shadow-(--shadow-popover) outline-none [scrollbar-width:none]")}
+              style={{ top: place.top, bottom: place.bottom, right: place.right, maxHeight: place.maxHeight, minWidth: MENU_MIN, transformOrigin: place.up ? "right bottom" : "right top" }}
+              className={cn(motion.className, "fixed z-[2147482000] flex max-w-[320px] flex-col gap-0.5 overflow-y-auto rounded-2xl bg-menu py-1.5 text-[13px] leading-[18px] tracking-[-0.08px] text-ink shadow-(--shadow-popover) outline-none [scrollbar-width:none]")}
             >
               {options.map((option, index) => (
                 <Fragment key={option.value}>

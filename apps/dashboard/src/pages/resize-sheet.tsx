@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useCloud } from "../data/cloud";
-import type { CloudDesktop, DesktopTier, PlanCatalog, Selection } from "../data/contracts";
+import type { ChangeOffer, CloudDesktop, DesktopTier, PlanCatalog, Selection } from "../data/contracts";
 import { dollars, priceCart, specLine } from "../data/pricing";
 import { useSession } from "../data/session";
 import { ApiError } from "../lib/api";
-import { longDate } from "../lib/format";
+import { shortDate } from "../lib/format";
+import { offerText } from "./plan-sheet";
 import { Choice, Modal } from "../ui/controls";
 import { Button } from "../ui/kit";
 
 const UNDO_MS = 3000;
 const money = (n: number) => dollars(n, !Number.isInteger(Math.round(n * 100) / 100));
 
-type Quote = { state: "loading" } | { state: "ready"; usd: number } | { state: "error"; message: string };
+type Quote = { state: "loading" } | { state: "ready"; offer: ChangeOffer } | { state: "error"; message: string };
 
 function plainError(e: unknown): string {
   if (e instanceof ApiError && e.code === "price_changed") return "the price just changed. check the new amount and try again.";
@@ -36,7 +37,7 @@ export function ResizeDialog({ open, onClose, cloud, catalog, focus }: { open: b
     if (!selection) return;
     setQuotes((q) => ({ ...q, [id]: { state: "loading" } }));
     changeCharge(selection).then(
-      (usd) => setQuotes((q) => ({ ...q, [id]: { state: "ready", usd } })),
+      (offer) => setQuotes((q) => ({ ...q, [id]: { state: "ready", offer } })),
       (e) => setQuotes((q) => ({ ...q, [id]: { state: "error", message: plainError(e) } })),
     );
   };
@@ -57,14 +58,14 @@ export function ResizeDialog({ open, onClose, cloud, catalog, focus }: { open: b
   const q = changed ? quotes[to] : undefined;
   const shownError = error || (q?.state === "error" ? q.message : "");
 
-  const apply = async (d: DesktopTier, usd: number) => {
+  const apply = async (d: DesktopTier, offer: ChangeOffer) => {
     const selection = selectionFor(d.id);
     setPending(false);
     if (!selection) return;
     setBusy(true);
     try {
-      await changePlan(selection, usd);
-      toast(`switching ${cloud.name} to ${d.name}. it restarts once, in under a minute.`);
+      await changePlan(selection, offer.todayUsd);
+      toast(offer.timing === "scheduled" ? `${cloud.name} switches to ${d.name} on ${shortDate(offer.effectiveAt)}` : `switching ${cloud.name} to ${d.name}. it restarts once, in under a minute.`);
       onClose();
     } catch (e) {
       setError(plainError(e));
@@ -77,13 +78,13 @@ export function ResizeDialog({ open, onClose, cloud, catalog, focus }: { open: b
     if (q?.state !== "ready") { setError(""); quote(target.id); return; }
     setError("");
     setPending(true);
-    const usd = q.usd;
-    timer.current = setTimeout(() => { timer.current = null; void apply(target, usd); }, UNDO_MS);
+    const offer = q.offer;
+    timer.current = setTimeout(() => { timer.current = null; void apply(target, offer); }, UNDO_MS);
   };
   const close = () => { cancelPending(); onClose(); };
 
   const label = !target ? "" : busy ? "switching" : pending ? "undo" : shownError && q?.state !== "ready" ? "try again"
-    : q?.state === "ready" ? `switch to ${target.name} · ${q.usd > 0 ? `${money(q.usd)} today` : "nothing today"}` : `switch to ${target.name}`;
+    : q?.state === "ready" ? `switch to ${target.name} · ${q.offer.timing === "scheduled" ? `on ${shortDate(q.offer.effectiveAt)}` : q.offer.todayUsd > 0 ? `${money(q.offer.todayUsd)} today` : "nothing today"}` : `switch to ${target.name}`;
 
   return (
     <Modal open={open} onClose={close} title={`resize ${cloud.name}`} wide
@@ -99,7 +100,7 @@ export function ResizeDialog({ open, onClose, cloud, catalog, focus }: { open: b
           </Button>
         </div>
       ) : undefined}>
-      <p>it restarts once, usually in under a minute. bots, files and logins come along. a bigger size charges the difference for the rest of this period today.</p>
+      <p>it restarts once, usually in under a minute. bots, files and logins come along. a bigger size starts now and charges the difference for the rest of this period; a smaller one starts on your next billing date.</p>
       <fieldset className="mt-4 min-w-0">
         <legend className="sr-only">size</legend>
         <div className="flex flex-col gap-1">
@@ -115,7 +116,8 @@ export function ResizeDialog({ open, onClose, cloud, catalog, focus }: { open: b
           })}
         </div>
       </fieldset>
-      {sub && <p className="mt-3 text-13 text-ink-3">prices are your whole plan per month. from {longDate(sub.currentPeriodEnd ?? 0)} you pay the new one.</p>}
+      {q?.state === "ready" && target && sub ? <p role="status" className="num mt-3 text-13 text-ink-2">{offerText(q.offer, { from: catalog.desktops.find((d) => d.id === cloud.tier)?.name ?? "this size", to: target.name, fromInterval: sub.selection.interval, toInterval: sub.selection.interval })}</p>
+        : sub && <p className="mt-3 text-13 text-ink-3">prices are your whole plan per month.</p>}
     </Modal>
   );
 }

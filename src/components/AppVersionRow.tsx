@@ -12,9 +12,9 @@ function ownBridge() {
 }
 
 /**
- * Settings > Version on this app's own page (electron/app-update.mjs). A mac app that installs its own updates checks,
- * downloads and restarts here, and always says how a check went; a source checkout says it is a dev build. Anything else
- * (Windows and Linux, a server's page, the browser) keeps `fallback`, the server's check.
+ * Settings > Version on this app's own page (electron/app-update.mjs). A mac or Windows app that installs its own updates
+ * (or a Linux AppImage) checks, downloads and restarts here, and always says how a check went; a source checkout says it is a dev build.
+ * Anything else (a .deb, a server's page, the browser) keeps `fallback`, the server's check.
  */
 export function AppVersionRow({ fallback, bridge = ownBridge() }: { fallback: ReactNode; bridge?: AppUpdateBridge }) {
   const [update, setUpdate] = useState<AppUpdateState | null>(bridge ? null : { ready: null, mode: "notice" });
@@ -43,7 +43,7 @@ export function AppVersionRow({ fallback, bridge = ownBridge() }: { fallback: Re
     };
     return <NavRow data-settings-open="app-update" title={title} hint={t("appUpdate.ready", { version: ready })} value={restarting ? t("settings.updates.restartingShort") : t("appUpdate.restart")} drill={false} disabled={restarting} onClick={restart} />;
   }
-  if (update.available) {
+  if (update.available && (update.progress != null || update.checking)) {
     const percent = update.progress == null ? null : Math.round(update.progress * 100);
     const hint = percent === null ? t("appUpdate.downloading", { version: update.available }) : `${t("appUpdate.downloading", { version: update.available })} · ${t("appUpdate.percent", { percent })}`;
     return <NavRow data-settings-open="app-update" title={title} hint={hint} value={t("common.checking")} drill={false} disabled onClick={() => {}} />;
