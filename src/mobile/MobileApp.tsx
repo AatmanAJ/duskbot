@@ -1,5 +1,5 @@
 import { useProductScreen } from "@/lib/product-analytics-app";
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, startTransition } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { MotionConfig } from "motion/react";
 import { openBot, openBotThread, openRoomThread, rereadWithoutStream, StoreProvider, useStore } from "@/state/store";
 import { useTeamChats } from "@/state/team-chats";
@@ -109,13 +109,9 @@ function Shell() {
   const openChat = useCallback((id: string) => {
     const current = latest.current;
     const bot = current.bots.find((b) => b.id === id);
-    // the chat mounts as a transition: React builds it in slices between frames, so the tap never holds the page for the
-    // whole chat at once, and the slide starts with it built
-    startTransition(() => {
-      if (bot) openBot(dispatch, bot);
-      else dispatch({ type: "select", id });
-      setChatId(id);
-    });
+    if (bot) openBot(dispatch, bot);
+    else dispatch({ type: "select", id });
+    setChatId(id);
   }, [dispatch]);
   const tapChat = useCallback((id: string) => { haptic("openChat"); openChat(id); }, [openChat]);
   const backToList = useCallback(() => { haptic("back"); setChatId(null); }, []);

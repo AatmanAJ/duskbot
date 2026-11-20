@@ -181,7 +181,6 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   const popping = useRef(false);
   const popped = useCallback(() => {
     popping.current = false;
-    hadShown.current = null;
     setShownKey(null);
     lastPage.current = null;
     gone();
@@ -215,20 +214,14 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
     });
   }, [go, landed]);
 
-  // the page is shown in the same render that asks for it, so a chat opened in a transition is built there, in slices; a
-  // layout effect setting it would build the whole chat again synchronously in the commit
-  if (pageKey && page && shownKey !== pageKey) setShownKey(pageKey);
-  /** the page key this stack had shown when its page last changed, for whether a new one pushes, cuts over or turns back */
-  const hadShown = useRef<string | null>(null);
   useLayoutEffect(() => {
-    const before = hadShown.current;
     if (pageKey && page) {
-      hadShown.current = pageKey;
       // opened again while it leaves (the same chat or another): the leaving page turns around with what is asked for
-      if (popping.current) { unpop(); return; }
-      if (before === pageKey) return;
+      if (popping.current) { setShownKey(pageKey); unpop(); return; }
+      if (shownKey === pageKey) return;
       // a page swapped for another (a notification opening a different chat) cuts over; only list to page slides
-      if (before && x.get() < width / 2) return;
+      if (shownKey && x.get() < width / 2) { setShownKey(pageKey); return; }
+      setShownKey(pageKey);
       push();
     } else if (shownKey && !popping.current) {
       pop();
@@ -236,13 +229,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey, Boolean(page)]);
 
-  // a rotation re-rests a shown page; the first width is not a change, and a page shown in its first render is still to slide
-  const lastWidth = useRef(width);
-  useEffect(() => {
-    if (lastWidth.current === width) return;
-    lastWidth.current = width;
-    if (shownKey && !moving) x.set(0);
-  }, [width]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (shownKey && !moving) x.set(0); }, [width]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const takeHold = useCallback(() => {
     run.current?.stop();
