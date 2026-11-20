@@ -311,12 +311,14 @@ describe("server-owned browser MCP runtime", () => {
     expect(readFileSync(`/proc/${listed.pid}/oom_score_adj`, "utf8").trim()).toBe("1000");
   });
 
-  it("never lets agent_browser_read fetch an address itself, around the browser and its egress gate", async () => {
+  it("never lets agent_browser_read fetch an address itself, around the browser and its egress gate: the address opens in the browser first", async () => {
     const value = runtime();
     const daemon = spec();
-    const refused = await value.agentRpc("reader", daemon, "tools/call", { name: "agent_browser_read", arguments: { url: "http://127.0.0.1:8799/api/config" } }) as { isError?: boolean; content: Array<{ text?: string }> };
-    expect(refused.isError).toBe(true);
-    expect(refused.content[0]!.text).toMatch(/Open the address with agent_browser_open first/);
+    const opened = await value.agentRpc("reader", daemon, "tools/call", { name: "agent_browser_read", arguments: { url: "http://127.0.0.1:8799/api/config" } }) as { isError?: boolean; content: Array<{ text?: string }> };
+    const said = opened.content.map((part) => part.text ?? "").join("\n");
+    expect(opened.isError).not.toBe(true);
+    expect(said).toContain(JSON.stringify({ name: "agent_browser_read", arguments: {} }));
+    expect(said).not.toMatch(/"name":"agent_browser_read","arguments":\{"url"/);
     const reads = await value.agentRpc("reader", daemon, "tools/call", { name: "agent_browser_read", arguments: {} }) as { isError?: boolean };
     expect(reads.isError).not.toBe(true);
   });

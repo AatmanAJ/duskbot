@@ -18,6 +18,7 @@ import { ThreadTabs, type ClosedThreadTab } from "./browser-thread-tabs.ts";
 import { agentBrowserTypeInLines, runAgentBrowserTypeInLines } from "./line-break-typing.ts";
 import { asToolResult, firstText, lostCallToolError, recoveredResult, stillBusyToolError, stuckBrowserToolError, toolNameOf, type ToolResult } from "./browser-runtime-results.ts";
 import { BATCH_TOOL } from "./browser/tools.ts";
+import { agentBrowserArguments, pickPageSelector } from "./browser/agent-browser-args.ts";
 
 /** The hosts whose bot check cleared in each browser. */
 const clearedChecks = new WeakMap<object, Set<string>>();
@@ -504,7 +505,13 @@ export class BrowserRuntime {
 
   /** Every tool result, recovery notes included, is scrubbed of held secrets. */
   async agentRpc(session: string, spec: BrowserSpawnSpec, method: "tools/list" | "tools/call", params: unknown, beforeDispatch?: () => void, ctx?: StepContext): Promise<unknown> {
-    if (method === "tools/call" && readsAroundBrowser(params)) return { isError: true, content: [{ type: "text", text: READ_OPEN_PAGE_ONLY }] };
+    if (method === "tools/call" && readsAroundBrowser(params)) {
+      const { url, ...rest } = (params as { arguments: Record<string, unknown> }).arguments;
+      if (typeof url !== "string" || !url.trim()) return { isError: true, content: [{ type: "text", text: READ_OPEN_PAGE_ONLY }] };
+      const opened = await this.agentRpc(session, spec, "tools/call", { name: "agent_browser_open", arguments: { url } }, beforeDispatch, ctx) as { isError?: unknown } | null;
+      if (opened?.isError === true) return opened;
+      return this.agentRpc(session, spec, "tools/call", { ...params as object, arguments: rest }, beforeDispatch, ctx);
+    }
     // Counted in the same event-loop turn, so no idle close can start under a call.
     for (let closing = this.gates.get(session)?.idleClose; closing; closing = this.gates.get(session)?.idleClose) await closing;
     const gate = this.gate(session);
@@ -606,10 +613,16 @@ export class BrowserRuntime {
         const heldNote = this.holds.note(session);
         if (toolName === "agent_browser_eval" && await this.holds.refuses(session, pageUrl)) return { isError: true, content: [{ type: "text", text: heldNote ?? SECRET_ON_PAGE }] };
         // Launch and session parameters dusk bot owns never reach the engine from a call.
-        const stripped = method === "tools/call" ? stripHarnessOwnedArguments(params) : params;
+        const stripped = method === "tools/call" ? stripHarnessOwnedArguments(withAgentBrowserArguments(params)) : params;
         const labelled = toolName === "agent_browser_tab_new" && ctx
           ? { ...stripped as object, arguments: this.threadTabs.labelNewTab(ctx.threadId, ((stripped as { arguments?: Record<string, unknown> }).arguments) ?? {}) } : stripped;
-        const request = method === "tools/call" ? this.pageSizes.callArguments(session, ctx ? this.threadTabs.refs.carry(session, ctx.threadId, labelled) : labelled) : params;
+        const prepared = method === "tools/call" ? this.pageSizes.callArguments(session, ctx ? this.threadTabs.refs.carry(session, ctx.threadId, labelled) : labelled) : params;
+        const picked = method === "tools/call"
+          ? await pickPageSelector(prepared, (name, pickArgs, ms) => entry.client.rpc("tools/call", { name, arguments: pickArgs }, ms), followUpMs)
+          : { params: prepared };
+        if ("refusal" in picked) return { isError: true, content: [{ type: "text", text: picked.refusal }] };
+        beforeDispatch?.();
+        const request = picked.params;
         const args = (request as { arguments?: unknown } | null)?.arguments;
         const call: StepCall | null = this.steps && method === "tools/call" && toolName !== undefined ? {
           session, spec, tool: toolName, args: args && typeof args === "object" ? args as Record<string, unknown> : {}, ctx,
@@ -663,6 +676,9 @@ export class BrowserRuntime {
             })
             : await entry.client.rpc(method, request, engineTimeoutMs);
         phases.engineMs = performance.now() - engineStarted;
+        if ("note" in picked && picked.note && result && typeof result === "object" && Array.isArray((result as { content?: unknown }).content)) {
+          result = { ...result as object, content: [...(result as { content: unknown[] }).content, { type: "text", text: picked.note }] };
+        }
         beforeDispatch?.();
         if (method === "tools/list") {
           const tools = withDuskTools(slimBrowserToolList(result));
@@ -679,8 +695,14 @@ export class BrowserRuntime {
             result = { ...action, content: [...(Array.isArray(action.content) ? action.content : []), change] };
           }
         }
-        if (toolName === "agent_browser_open" && result && typeof result === "object" &&
-            (result as { isError?: boolean }).isError !== true) {
+        const errorStatus = toolName === "agent_browser_open" && answeredWithErrorStatus(result);
+        const navigated = (toolName === "agent_browser_open" || (toolName === "agent_browser_tab_new" && typeof (args as { url?: unknown } | undefined)?.url === "string"));
+        if (navigated && result && typeof result === "object" && ((result as { isError?: boolean }).isError !== true || errorStatus)) {
+          if (errorStatus) result = { content: [{ type: "text", text: ERROR_STATUS_NOTE }] };
+          if (toolName === "agent_browser_tab_new") {
+            const until = Date.now() + Math.min(NEW_TAB_NAVIGATION_MS, Math.max(0, followUpMs() - 1_000));
+            while (Date.now() < until && /^(?:about:blank)?$/u.test(await pageUrl())) await new Promise((resolve) => setTimeout(resolve, 100));
+          }
           beforeDispatch?.();
           if (this.gate(session).owner !== null) throw this.taken(session);
           settled = await this.settle(entry.client, gate, deadline, true);
@@ -1140,6 +1162,20 @@ export class BrowserRuntime {
   async closeAll(): Promise<void> {
     await Promise.all([...new Set([...this.clients.keys(), ...this.gates.keys(), ...this.holds.sessions()])].map((session) => this.close(session)));
   }
+}
+
+// Chrome 158 fails a navigation with net::ERR_HTTP_RESPONSE_CODE_FAILURE when the site answers 4xx/5xx yet still shows the page it sent.
+const NEW_TAB_NAVIGATION_MS = 10_000;
+const ERROR_STATUS_NOTE = "The site answered with an error status, so this may be a sign-in wall, a bot block or a missing page; read what it shows below.";
+function answeredWithErrorStatus(result: unknown): boolean {
+  return (result as { isError?: unknown } | null)?.isError === true && /net::ERR_HTTP_RESPONSE_CODE_FAILURE/u.test(firstText(result));
+}
+
+function withAgentBrowserArguments(params: unknown): unknown {
+  const record = params as { name?: unknown; arguments?: unknown } | null;
+  if (typeof record?.name !== "string") return params;
+  const args = record.arguments && typeof record.arguments === "object" && !Array.isArray(record.arguments) ? record.arguments as Record<string, unknown> : {};
+  return { ...record, arguments: agentBrowserArguments(record.name, args) };
 }
 
 function withDuskTools(result: unknown): unknown {
