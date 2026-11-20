@@ -13,6 +13,7 @@ import { harnessClientFromEnv } from "./agents-client.ts";
 import type { HarnessClient, Json } from "./agents-client.ts";
 import { memorySearchText } from "./memory-search-text.ts";
 import { boundedAgentResult } from "./agents-result.ts";
+import { attachablePath } from "./box-attach.ts";
 import { outOfBounds } from "./agents-schema.ts";
 import { callResearchTool, RESEARCH_TOOL_NAMES } from "./agents-research-tools.ts";
 import { callReadPages, READ_PAGES_TOOL } from "./agents-read-pages.ts";
@@ -242,7 +243,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (name === "attach_file") {
     const { ok, body } = await apiResponse("/api/internal/attach-file", {
       method: "POST",
-      body: JSON.stringify(args.screen === true ? { screen: true } : { path: args.path, ...(typeof args.name === "string" ? { name: args.name } : {}) }),
+      body: JSON.stringify(args.screen === true ? { screen: true } : { path: attachablePath(args.path), ...(typeof args.name === "string" ? { name: args.name } : {}) }),
     });
     if (!ok) return { text: String(body.error ?? "Could not attach that file."), isError: true };
     if (args.screen === true) return { text: "Posted a picture of your screen to the chat." };
