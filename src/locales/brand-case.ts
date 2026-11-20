@@ -85,7 +85,7 @@ const FRAGMENT_KEYS = new RegExp(`^(${[
   "room\\.(hint|responder)\\.leadFallback", "call\\.questionOptions", "inbox\\.recommendedInline", "activity\\.(approvalIn|to)", "files\\.countMore", "voice\\.provider",
   "botMove\\.memory", "teamShare\\.skip\\.\\w+", "inbox\\.(in|via)", "model\\.variant\\.(unverified|unavailable)", "vpsLink\\.device\\.\\w+",
   "automations\\.(time|source|skip)\\.\\w+", "automations\\.app\\.(from|about|labeled|mentioning|in)", "cloudSetup\\.ready\\.(today|tomorrow)",
-  "connectApps\\.account\\.fallback", "automations\\.does\\.default", "cloudBuy\\.big\\.perMonth(Trial)?",
+  "connectApps\\.account\\.fallback", "settings\\.updates\\.thisServer", "automations\\.does\\.default", "cloudBuy\\.big\\.perMonth(Trial)?",
   "server\\.(runs\\.state|incidents\\.where|reports\\.(when|why))\\.\\w+",
   "server\\.(connect\\.thisApp|rooms\\.sameName\\.chief|teammates\\.(room|handedWork)|mcp\\.card\\.(newKey|newClientSecret))",
 ].join("|")})$`);
