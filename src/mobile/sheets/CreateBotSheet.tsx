@@ -67,7 +67,7 @@ export function CreateBotSheet({ open, onClose, onOpenChat }: SheetPageProps<"cr
             </button>
           ))}
         </div>
-        <div role="radiogroup" aria-label={t("mobile.create.colour")} onKeyDown={moveRadio} className="grid grid-cols-5 justify-items-center self-center">
+        <div role="radiogroup" aria-label={t("mobile.create.colour")} onKeyDown={moveRadio} className="grid grid-cols-5 justify-items-center">
           {COLORS.map((value) => (
             <button key={value} type="button" role="radio" aria-label={t(`mobile.create.colour.${value}`)} aria-checked={value === color} tabIndex={value === color ? 0 : -1} onClick={() => { if (value !== color) { setColor(value); setRevision((count) => count + 1); haptic("pick"); } }} className="mobile-press flex size-11 items-center justify-center rounded-full">
               <span className={cn("size-[30px] rounded-full", value === color && "ring-2 ring-ink ring-offset-[3px] ring-offset-app")} style={{ background: colorSwatch(value) }} />
