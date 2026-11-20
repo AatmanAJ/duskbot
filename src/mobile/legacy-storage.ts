@@ -24,7 +24,7 @@ export async function moveLegacyStorage(platform: Pick<MobilePlatform, "prefs" |
     const value = await legacy!.get(key).catch(() => null);
     if (value === null) continue;
     const next = renamed(key);
-    if ((await platform.secrets.get(next).catch(() => null)) === null) await platform.secrets.set(next, value);
+    if ((await platform.secrets.get(next)) === null) await platform.secrets.set(next, value);
     await legacy!.remove(key);
   }
   const keys = await platform.prefs.keys?.().catch(() => null);
@@ -37,7 +37,7 @@ export async function moveLegacyStorage(platform: Pick<MobilePlatform, "prefs" |
       const moved: MobileConnectionRecord[] = [], waiting: MobileConnectionRecord[] = [];
       for (const record of records(value)) {
         if (kept.some((one) => one.id === record.id || (one.environmentId === record.environmentId && one.origin === record.origin))) continue;
-        const token = await platform.secrets.get(`token.${record.id}`).catch(() => null);
+        const token = await platform.secrets.get(`token.${record.id}`);
         (token === null && legacy ? waiting : moved).push({ ...record, sessionRef: `token.${record.id}` });
       }
       if (moved.length) await platform.prefs.set(next, JSON.stringify([...kept, ...moved]));

@@ -134,6 +134,24 @@ export interface TurnActivityBridge {
   lineKey(): Promise<string | null>;
 }
 
+/** The Keychain could not be read just now (the phone is locked): what it holds is unknown, never "nothing". */
+export class SecretsLocked extends Error {
+  constructor() {
+    super("the keychain is locked");
+    this.name = "SecretsLocked";
+  }
+}
+
+/** Calls `again` once the app comes back in front, or after a few seconds if no resume is heard; returns a stop. */
+export function waitForFront(platform: Pick<MobilePlatform, "onResume">, again: () => void, fallbackMs = 3_000): () => void {
+  let done = false;
+  const fire = () => { if (done) return; done = true; stop(); again(); };
+  const stopResume = platform.onResume?.(fire);
+  const timer = setTimeout(fire, fallbackMs);
+  const stop = () => { clearTimeout(timer); stopResume?.(); };
+  return () => { done = true; stop(); };
+}
+
 export interface MobilePlatform {
   kind: "ios" | "android" | "web";
   native: boolean;

@@ -198,7 +198,8 @@ export function createMobileAccount({ platform, origin, fetch: requestFetch = gl
     if (!response.ok) throw new AccountRequestError(response.status, object(result) ? typeof result.code === "string" ? result.code : typeof result.error === "string" ? result.error : undefined : undefined);
     return result;
   };
-  const readOthers = async () => savedOthers(parse(await platform.secrets.get(OTHERS).catch(() => null)));
+  // a Keychain that cannot be read now throws here, so nothing is written back over the accounts it holds
+  const readOthers = async () => savedOthers(parse(await platform.secrets.get(OTHERS)));
   const writeOthers = async (next: StoredGrant[]) => {
     others = next.slice(0, MAX_OTHERS);
     if (others.length) await platform.secrets.set(OTHERS, JSON.stringify(others));

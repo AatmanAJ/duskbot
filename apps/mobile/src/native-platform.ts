@@ -14,7 +14,7 @@ import { SecureStorage } from "@aparajita/capacitor-secure-storage";
  * loaded wrapper that never answers on Android with Capacitor 8.6, so the phone keeps tokens through these directly. */
 const keystore = SecureStorage as unknown as {
   internalGetItem(options: { prefixedKey: string; sync: boolean }): Promise<{ data: string | null }>;
-  internalSetItem(options: { prefixedKey: string; data: string; sync: boolean }): Promise<void>;
+  internalSetItem(options: { prefixedKey: string; data: string; sync: boolean; access?: number }): Promise<void>;
   internalRemoveItem(options: { prefixedKey: string; sync: boolean }): Promise<{ success: boolean }>;
   internalGetPrefixedKeys(options: { prefix: string; sync: boolean }): Promise<{ keys: string[] }>;
 };
@@ -22,6 +22,7 @@ const SECRET_PREFIX = "dusk.";
 /** the prefix every Keychain/Keystore item had under the app's first name */
 const LEGACY_SECRET_PREFIX = "omb.";
 import { BarcodeScanner, BarcodeFormat, GoogleBarcodeScannerModuleInstallState } from "@capacitor-mlkit/barcode-scanning";
+import { keychainSecrets } from "@/mobile/keychain";
 import { handleBack, type AppleCredential, type BackGestureEvent, type BarConfig, type CameraPermission, type CameraScanner, type DeliveredNotification, type MobileChrome, type MobilePlatform, type OrientationBridge, type ScanOverlay, type SystemMenuAction, type TurnActivityBridge } from "@/mobile/platform";
 import type { ControlPlace, SystemControl } from "@/lib/system-control";
 import type { NativeAction } from "@/mobile/phone-actions";
@@ -602,14 +603,20 @@ export async function nativePlatform(): Promise<MobilePlatform> {
   ]);
   const pushOn = kind === "ios" || Boolean(pushSetup?.configured);
   let pendingLaunchUrl = launch?.url;
-  const secrets: MobilePlatform["secrets"] = {
-    get: async (key) => {
-      const { data } = await keystore.internalGetItem({ prefixedKey: SECRET_PREFIX + key, sync: false });
-      return typeof data === "string" ? data : null;
-    },
-    set: (key, value) => keystore.internalSetItem({ prefixedKey: SECRET_PREFIX + key, data: value, sync: false }),
-    remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: SECRET_PREFIX + key, sync: false }); },
+  const prefs: MobilePlatform["prefs"] = {
+    get: async (key) => (await Preferences.get({ key })).value,
+    set: (key, value) => Preferences.set({ key, value }),
+    remove: (key) => Preferences.remove({ key }),
+    keys: async () => (await Preferences.keys()).keys,
   };
+  const secrets = keychainSecrets({
+    store: {
+      get: async (key) => { const { data } = await keystore.internalGetItem({ prefixedKey: key, sync: false }); return typeof data === "string" ? data : null; },
+      set: (key, value, access) => keystore.internalSetItem({ prefixedKey: key, data: value, sync: false, ...(access === undefined ? {} : { access }) }),
+      remove: async (key) => { await keystore.internalRemoveItem({ prefixedKey: key, sync: false }); },
+    },
+    prefix: SECRET_PREFIX, ios: kind === "ios", active: async () => (await App.getState()).isActive, prefs,
+  });
   const legacySecrets: MobilePlatform["legacySecrets"] = {
     keys: async () => (await keystore.internalGetPrefixedKeys({ prefix: LEGACY_SECRET_PREFIX, sync: false })).keys
       .filter((key) => key.startsWith(LEGACY_SECRET_PREFIX)).map((key) => key.slice(LEGACY_SECRET_PREFIX.length)),
@@ -769,12 +776,7 @@ export async function nativePlatform(): Promise<MobilePlatform> {
         if (now !== last) { last = now; listener(); }
       })]);
     },
-    prefs: {
-      get: async (key) => (await Preferences.get({ key })).value,
-      set: (key, value) => Preferences.set({ key, value }),
-      remove: (key) => Preferences.remove({ key }),
-      keys: async () => (await Preferences.keys()).keys,
-    },
+    prefs,
     secrets,
     legacySecrets,
     chrome: chrome?.native ? nativeChrome(DuskChrome) : undefined,

@@ -8893,6 +8893,8 @@
   "mobile.unreachable.trying": "Trying again...",
   "mobile.unreachable.next": "Trying again in {seconds} s",
   "mobile.unreachable.others": "Other computers",
+  "mobile.refused.body": "It answered but didn't take this phone's link. It may still be starting, so this phone keeps trying. If it keeps happening, link this phone again.",
+  "mobile.refused.linkAgain": "Link this phone again",
   "elsewhere.botsOn.title": "Your bots are on {name}",
   "elsewhere.why.moved": "You moved your bots, chats and routines to {name}, so this computer has none of its own. That's why this window looks empty.",
   "elsewhere.why.cloud": "{name} is the cloud where your bots live. This window shows this computer, which has none of its own.",
