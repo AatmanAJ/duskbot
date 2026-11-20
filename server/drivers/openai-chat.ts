@@ -1,5 +1,5 @@
-import { MAX_GENERATED_IMAGE_CHARS } from "../generated-image.ts";
 import { createHash } from "node:crypto";
+import { completionImages, MAX_STREAM_FRAME_CHARS } from "./openai-chat-images.ts";
 import type {
   DriverCreateInput,
   ModelCatalog,
@@ -63,23 +63,9 @@ export interface Completion {
   protocolReasoning: string;
   protocolReasoningDetails: Record<string, unknown>[];
   /** Every output item of a Responses API reply, encrypted reasoning included, for the next round of this turn only. */
-  responseOutput?: ResponseItem[];
-  /** Images the model drew in this reply, as data URLs or base64. */
-  images?: string[];
+  responseOutput?: ResponseItem[]; images?: string[];
 }
 
-/** An image-model reply's pictures: OpenRouter's `images` beside the text, or `image_url` parts of the content. */
-export function completionImages(part: { content?: unknown; images?: unknown } | undefined): string[] {
-  const urls: string[] = [];
-  for (const list of [part?.images, Array.isArray(part?.content) ? part.content : undefined]) {
-    if (!Array.isArray(list)) continue;
-    for (const item of list) {
-      const url = (item as { image_url?: { url?: unknown } } | null)?.image_url?.url;
-      if (typeof url === "string" && url.startsWith("data:image/")) urls.push(url);
-    }
-  }
-  return urls;
-}
 
 interface CompletionJson extends ProviderBody {
   model?: string;
@@ -100,11 +86,8 @@ interface NativeLog {
   incoming(completion: Completion): unknown;
 }
 
-// Node's fetch (undici 7.29 in Electron 43, 8.9 in Node 26) fails a request after 300 s without response headers
-// or body bytes, whatever its signal allows. A local model sends nothing until its first token.
+// Node's fetch (undici 7.29 in Electron 43, 8.9 in Node 26) fails a request after 300 s without response headers or body bytes, whatever its signal allows. A local model sends nothing until its first token.
 const FETCH_LIMIT_MS = 300_000;
-/** One stream frame may carry a few generated images whole, as base64. */
-const MAX_STREAM_FRAME_CHARS = 4 * MAX_GENERATED_IMAGE_CHARS + 1_000_000;
 const LIVENESS_MISSES = 3;
 let unlimitedAgent: Agent | undefined;
 async function fetchPastLimit(url: string, init: RequestInit): Promise<Response> {
@@ -373,8 +356,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           toolCalls: calls.finish(finishReason, false),
           finishReason,
           protocolReasoning: typeof reasoning === "string" ? reasoning : "",
-          protocolReasoningDetails: details.blocks,
-          images: completionImages(message),
+          protocolReasoningDetails: details.blocks, images: completionImages(message),
         };
       }
 
@@ -389,8 +371,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let malformedFrame = false;
       let sawChoice = false;
       const calls = new ChatToolCalls();
-      const details = new ChatReasoningDetails();
-      const images: string[] = [];
+      const details = new ChatReasoningDetails(), images: string[] = [];
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -412,8 +393,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         const delta = choice?.delta;
         if (object(delta)) sawChoice = true;
         if (delta?.function_call) throw new ChatProtocolError("legacy function_call is unsupported; use structured tool_calls");
-        calls.add(delta?.tool_calls, true);
-        images.push(...completionImages(delta));
+        calls.add(delta?.tool_calls, true); images.push(...completionImages(delta));
         details.add(delta?.reasoning_details);
         if (choice?.finish_reason) finishReason = choice.finish_reason;
         const reasoningPart = delta?.reasoning_content ?? delta?.reasoning;
@@ -441,8 +421,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
             buffer += decoder.decode();
             const line = buffer.trim();
             if (line && line !== "data: [DONE]") consumeDataLine(line, true);
-            // MiniMax's api.minimax.io/v1 closes the connection after the
-            // finish_reason chunk and never sends `[DONE]`.
+            // MiniMax's api.minimax.io/v1 closes the connection after the finish_reason chunk and never sends `[DONE]`.
             if (buffer.trim() === "data: [DONE]" || finishReason) break;
             if (!sawChoice) {
               let body: CompletionJson | undefined;
@@ -756,8 +735,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           // Reasoning on a tool-call round belongs to the protocol, not a final reply.
           const reply = completion.text.trim() ? completion.text : completion.toolCalls.length || unreadable ? "" : completion.reasoning;
           const fresh = correcting(completion) ? "" : withoutRepeats(reply, said);
-          if (fresh.trim()) { said.push(fresh); emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_text", text: safeText(fresh) }); }
-          for (const data of completion.images ?? []) emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_image", data });
+          if (fresh.trim()) { said.push(fresh); emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_text", text: safeText(fresh) }); } for (const data of completion.images ?? []) emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_image", data });
           abort.signal.throwIfAborted();
           if (unreadable) {
             askedAgain = true;
