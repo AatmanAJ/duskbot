@@ -295,8 +295,8 @@ export function CloudAccountSettings({ linkRequest = 0, cloudHome = false, teamH
           {view.kind === "paid" && view.checking && <span className="ms-2 text-[12px] font-normal text-ink-secondary">{t("cloudAccount.checking")}</span>}</p>}
         {account.status === "connected" && trialLines(account.trial)}
         {account.status === "connected" && account.payment && <div data-cloud-payment="" className="flex flex-wrap items-center gap-3">
-          <p role="status" className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink">{t("cloudAccount.paymentNotice", { name: account.payment.name, date: day(account.payment.fixBy) })}</p>
-          <button type="button" disabled={busy} className="ui-button" onClick={() => void perform(async () => { if (await continueInBrowser({ kind: "billing" }) === "failed") throw new Error("billing did not open"); return bridge!.state(); })}>{t("cloudAccount.updateCard")}</button>
+          <p role="status" className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink">{t(account.payment.trial ? "cloudAccount.trialNotice" : "cloudAccount.paymentNotice", { name: account.payment.name, date: day(account.payment.fixBy) })}</p>
+          <button type="button" disabled={busy} className="ui-button" onClick={() => void perform(async () => { if (await continueInBrowser({ kind: "billing" }) === "failed") throw new Error("billing did not open"); return bridge!.state(); })}>{t(account.payment.trial ? "cloudHome.upgrade" : "cloudAccount.updateCard")}</button>
         </div>}
         {view.kind === "free" && addCloudButton}
         <div className="flex flex-wrap gap-2">

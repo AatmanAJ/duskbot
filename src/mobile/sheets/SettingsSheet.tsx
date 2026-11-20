@@ -93,15 +93,15 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-/** a failed renewal, in one line: what keeps running and until when. Update card only where the dashboard may be linked:
+/** a failed charge, in one line: the cloud is stopped, and until when its data is kept. Update card only where the dashboard may be linked:
  * the store apps never link to where plans are paid (App Store 3.1.1, Play payments policy) */
-export function PaymentLine({ payment, onUpdate }: { payment: { name: string; fixBy: number }; onUpdate: (() => void) | null }) {
+export function PaymentLine({ payment, onUpdate }: { payment: { name: string; fixBy: number; trial?: true }; onUpdate: (() => void) | null }) {
   const date = new Intl.DateTimeFormat(activeLocale(), { dateStyle: "medium" }).format(new Date(payment.fixBy));
   return (
     <SettingsSection card>
       <div data-payment-notice="" className="flex items-center gap-3 px-4 py-3.5">
-        <p role="status" className="min-w-0 flex-1 text-[15px] leading-5 text-ink">{t("cloudAccount.paymentNotice", { name: payment.name, date })}</p>
-        {onUpdate && <button type="button" onClick={onUpdate} className="mobile-press shrink-0 rounded-full bg-ink px-3.5 py-1.5 text-[15px] font-semibold text-app">{t("cloudAccount.updateCard")}</button>}
+        <p role="status" className="min-w-0 flex-1 text-[15px] leading-5 text-ink">{t(payment.trial ? "cloudAccount.trialNotice" : "cloudAccount.paymentNotice", { name: payment.name, date })}</p>
+        {onUpdate && <button type="button" onClick={onUpdate} className="mobile-press shrink-0 rounded-full bg-ink px-3.5 py-1.5 text-[15px] font-semibold text-app">{t(payment.trial ? "cloudHome.upgrade" : "cloudAccount.updateCard")}</button>}
       </div>
     </SettingsSection>
   );

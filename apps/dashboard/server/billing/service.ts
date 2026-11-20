@@ -4,6 +4,7 @@ import type { CancelAnswer, RetentionInput, RetentionView, FunnelRow, FunnelView
 import type { CloudsService, DesktopPlan } from "../clouds/types.ts";
 import { paidCloud } from "../clouds/service.ts";
 import { BILLING_CONFIG, catalogView } from "./plans.ts";
+import { TRIAL_DATA_DAYS } from "../../../cloud-service/src/retention.ts";
 import type { BillingConfig } from "./plans.ts";
 import { changeTiming, dodoCart, dodoCartKeys, parseCart, quote, sameCart } from "./pricing.ts";
 import type { BillingMode, BillingStore, CloudAction, DunningStep, PaymentProblem, PendingChange, ScheduledChange, StoredCheckout, StoredSubscription } from "./store.ts";
@@ -34,12 +35,12 @@ export const RETENTION_DISCOUNT = { percent: 30, cycles: 3 } as const;
 export type BillingNotice =
   | { kind: "receipt"; accountId: string; invoiceId: string; amountCents: number; currency: string; description: string; paidAt: number;
       periodStart: number | null; periodEnd: number | null; renews: boolean; first: boolean; cloudId: string | null; revived: boolean }
-  | { kind: "payment_failed"; accountId: string; amountCents: number; currency: string; description: string; cloudId: string | null; fixBy: number | null }
+  | { kind: "payment_failed"; accountId: string; amountCents: number; currency: string; description: string; cloudId: string | null; fixBy: number | null; trial: boolean }
   | { kind: "payment_reminder"; step: DunningStep; accountId: string; amountCents: number; currency: string; description: string; cloudId: string | null; fixBy: number }
   | { kind: "payment_recovered"; accountId: string; description: string; cloudId: string | null }
   | { kind: "cancelled"; accountId: string; description: string; cloudId: string | null; endsAt: number | null; graceDays: number };
 const day = 86_400_000;
-/** after a failed renewal: the reminder 14 days in, and the last one this many days before the fix-by date */
+/** after a failed paid renewal: the reminder 14 days in, and the last one this many days before the data is deleted */
 export const DUNNING = { reminderDay: 14, finalDaysBefore: 3 } as const;
 /** a scheduled change's renewal may arrive this much before the date we stored */
 const SCHEDULED_EARLY_MS = 3_600_000;
@@ -306,7 +307,7 @@ export function createBillingService(options: BillingServiceOptions) {
     return copy({ id: sub.id, cart: sub.cart, bundle: quote(sub.cart, config).bundle, lines: sub.lines, totalCents: sub.totalCents, status: sub.status,
       licenseId: sub.licenseId, cloudId: sub.cloudId, currentPeriodEnd: sub.currentPeriodEnd, cancelAtPeriodEnd: sub.cancelAtPeriodEnd, createdAt: sub.createdAt,
       ...(sub.trialEndsAt !== undefined && now() < sub.trialEndsAt ? { trialEndsAt: sub.trialEndsAt } : {}),
-      ...(sub.status === "payment_problem" && sub.paymentProblem && !sub.cancelAtPeriodEnd ? { fixBy: sub.paymentProblem.fixBy } : {}),
+      ...(sub.status === "payment_problem" && sub.paymentProblem && !sub.cancelAtPeriodEnd ? { fixBy: sub.paymentProblem.fixBy, ...(sub.paymentProblem.trial ? { trialUnpaid: true as const } : {}) } : {}),
       ...(sub.scheduledChange ? { scheduledChange: { cart: sub.scheduledChange.cart, bundle: quote(sub.scheduledChange.cart, config).bundle, totalCents: sub.scheduledChange.totalCents, at: sub.scheduledChange.at } } : {}) });
   }
   /** the free days a first cloud plan of this account starts with: one trial per account, and per email across accounts
@@ -383,16 +384,14 @@ export function createBillingService(options: BillingServiceOptions) {
     if (checkout.status === "open") checkout.status = "expired";
     if (sub.cloudId && !checkout.revive) clouds.abandon(sub.cloudId);
   }
-  /** a plan that ended while its payment failed ran to its fix-by date: its cloud keeps running until then */
   function endSubscription(sub: StoredSubscription, email: string) {
     sub.status = "ended"; delete sub.scheduledChange; refreshLicense(sub, email);
     if (!sub.cloudId) return;
-    const fixBy = sub.paymentProblem?.fixBy, from = fixBy !== undefined && fixBy > now() ? fixBy : null;
     // known risk: a cloud off the managed backend has no archive or final backup, so after a failed payment it is
     // stopped and kept for the operator rather than deleted
     const unarchived = sub.paymentProblem !== undefined && !clouds.get(sub.cloudId)?.backend;
     if (unarchived) console.warn(`billing: ALERT cloud ${sub.cloudId} ended after a failed payment and has no archive; it is stopped and kept, not deleted`);
-    cloudAction({ kind: "end", cloudId: sub.cloudId, at: unarchived ? OPEN_ENDED_AT : (from ?? now()) + config.graceDays * day, ...(from !== null ? { from } : {}) });
+    cloudAction({ kind: "end", cloudId: sub.cloudId, at: unarchived ? OPEN_ENDED_AT : now() + config.graceDays * day });
   }
   function cloudAction(action: CloudAction) { (state.cloudActions ??= []).push(action); }
   function flushCloudActions() {
@@ -546,8 +545,9 @@ export function createBillingService(options: BillingServiceOptions) {
       if (event.type === "on_hold") queueProviderCancel(event.subscriptionId);
     } else if (event.type === "on_hold" || event.type === "failed") {
       if (sub.status !== "payment_problem" || !sub.paymentProblem) {
-        sub.paymentProblem = { since: now(), fixBy: now() + config.graceDays * day, sent: [] };
-        if (!sub.cancelAtPeriodEnd) notices.push({ kind: "payment_failed", accountId: sub.accountId, amountCents: sub.totalCents, currency: config.currency, description: planLabel(sub), cloudId: sub.cloudId, fixBy: sub.paymentProblem.fixBy });
+        const trial = sub.trialEndsAt !== undefined && !state.invoices.some(row => row.checkoutId === sub!.checkoutId && row.status !== "failed" && row.amountCents > 0);
+        sub.paymentProblem = { since: now(), fixBy: trial ? (sub.trialEndsAt ?? now()) + TRIAL_DATA_DAYS * day : now() + config.graceDays * day, sent: ["first"], ...(trial ? { trial: true as const } : {}) };
+        if (!sub.cancelAtPeriodEnd) notices.push(failedNotice(sub));
       }
       sub.status = "payment_problem"; refreshLicense(sub, checkout.email);
       if (sub.cloudId) cloudAction({ kind: "payment", cloudId: sub.cloudId, problem: true });
@@ -764,8 +764,8 @@ export function createBillingService(options: BillingServiceOptions) {
   try { expireLapsed(); } catch {}
   const sweepLapsed = setInterval(() => { try { expireLapsed(); } catch {} }, 10 * 60_000);
   sweepLapsed.unref();
-  /** a failed renewal's reminders (14 days in, 3 days before the fix-by date), and at the fix-by date the plan ends as a
-   *  cancelled one does: cancelled at the provider, so it never charges for a cloud that already stopped */
+  /** a failed charge's emails (the first, and for a paid plan 14 days in and 3 days before the data goes), and at the fix-by
+   *  date the plan ends as a cancelled one does: cancelled at the provider, so it never charges for a cloud already gone */
   function dunning() {
     // a plan already set to end gets no reminders: it ends at its period end, as it would have
     const lapsed = (sub: StoredSubscription) => sub.cancelAtPeriodEnd ? (sub.currentPeriodEnd ?? 0) <= now() : !!sub.paymentProblem && now() >= sub.paymentProblem.fixBy;
@@ -784,8 +784,8 @@ export function createBillingService(options: BillingServiceOptions) {
           continue;
         }
         const problem = sub.paymentProblem!, step = dunningStep(problem)!;
-        problem.sent = step === "final" ? ["day_14", "final"] : ["day_14"];
-        notices.push({ kind: "payment_reminder", step, accountId: sub.accountId, amountCents: sub.totalCents, currency: config.currency, description: planLabel(sub), cloudId: sub.cloudId, fixBy: problem.fixBy });
+        problem.sent = [...new Set([...problem.sent, ...(step === "final" ? ["day_14" as const] : []), step])];
+        notices.push(step === "first" ? failedNotice(sub) : { kind: "payment_reminder", step, accountId: sub.accountId, amountCents: sub.totalCents, currency: config.currency, description: planLabel(sub), cloudId: sub.cloudId, fixBy: problem.fixBy });
         reminded++;
       }
       store.commit();
@@ -793,12 +793,18 @@ export function createBillingService(options: BillingServiceOptions) {
     sendNotices(); flushCloudActions(); kickProviderCancels();
     return { ended, reminded };
   }
+  function failedNotice(sub: StoredSubscription): BillingNotice {
+    return { kind: "payment_failed", accountId: sub.accountId, amountCents: sub.totalCents, currency: config.currency, description: planLabel(sub), cloudId: sub.cloudId,
+      fixBy: sub.paymentProblem?.fixBy ?? null, trial: sub.paymentProblem?.trial === true };
+  }
   function dunningStep(problem: PaymentProblem): DunningStep | null {
+    if (!problem.sent.includes("first")) return "first";
+    if (problem.trial) return null;
     const step = now() >= problem.fixBy - DUNNING.finalDaysBefore * day ? "final" : now() >= problem.since + DUNNING.reminderDay * day ? "day_14" : null;
     return step && !problem.sent.includes(step) ? step : null;
   }
-  /** a payment problem from before the fix-by clock was stored: it started at its first failure on the ledger, and its
-   *  date is never earlier than the one its first email gave */
+  /** a payment problem from before the clock was stored: it started at its first failure on the ledger, its data is kept
+   *  30 days from then, and the first email of the new story goes out once (the sweep sends it) */
   function healPaymentProblems() {
     const missing = state.subscriptions.filter(sub => sub.status === "payment_problem" && !sub.paymentProblem && !neverPaid(sub) && !sub.cancelAtPeriodEnd);
     for (const sub of missing) {
@@ -806,12 +812,13 @@ export function createBillingService(options: BillingServiceOptions) {
       const recovered = Math.max(0, ...rows.filter(row => row.type === "subscription.recovered").map(row => row.at));
       const failures = rows.filter(row => (row.type === "subscription.on_hold" || row.type === "subscription.failed") && row.at >= recovered).map(row => row.at);
       const since = failures.length ? Math.min(...failures) : sub.currentPeriodEnd ?? sub.updatedAt;
-      sub.paymentProblem = { since, fixBy: Math.max(since, sub.currentPeriodEnd ?? 0) + config.graceDays * day, sent: [] };
+      sub.paymentProblem = { since, fixBy: since + config.graceDays * day, sent: [] };
     }
     if (missing.length) store.commit();
   }
   try { healPaymentProblems(); } catch (error) { console.warn(`billing: storing payment problems' fix-by dates failed (${(error as Error).message})`); }
-  try { dunning(); } catch (error) { console.warn(`billing: the payment reminders failed (${(error as Error).message})`); }
+  // the first sweep waits for the service's owner to finish wiring its notices
+  setTimeout(() => { try { dunning(); } catch (error) { console.warn(`billing: the payment reminders failed (${(error as Error).message})`); } }, 1000).unref();
   const sweepDunning = setInterval(() => { try { dunning(); } catch (error) { console.warn(`billing: the payment reminders failed (${(error as Error).message})`); } }, 10 * 60_000);
   sweepDunning.unref();
   /** `all`: an operator's grant replaces an open checkout the person never paid */

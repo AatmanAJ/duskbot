@@ -176,12 +176,12 @@ describe("the plan cards", () => {
       cancelPlan: vi.fn(async () => ({ outcome: "browser" as const })), keepPlan: vi.fn(async () => ({ outcome: "kept" as const, state })) } as unknown as CloudAccountBridge;
   }
 
-  it("this computer's Settings: a failed renewal says when the cloud keeps running until, and Update card opens billing", async () => {
+  it("this computer's Settings: a failed charge says the cloud is stopped and until when its data is kept, and Update card opens billing", async () => {
     const bridge = accountBridge({ ...paidState(), payment: { name: "Night shift", fixBy: Date.UTC(2026, 11, 21, 12) } });
     const continueInBrowser = vi.fn(async () => ({ outcome: "opened" as const }));
     vi.stubGlobal("window", Object.assign(window, { duskDesktop: { cloudAccount: { ...bridge, continueInBrowser } } }));
     await show(createElement(CloudAccountSettings));
-    expect(container.querySelector("[data-cloud-payment]")!.textContent).toMatch(/^The last payment didn't go through\. Night shift keeps running until Dec 21, 2026\.Update card$/);
+    expect(container.querySelector("[data-cloud-payment]")!.textContent).toMatch(/^Your payment didn't go through\. Update your card to get Night shift back\. Its data is kept until Dec 21, 2026\.Update card$/);
     await click(button("Update card"));
     expect(continueInBrowser).toHaveBeenCalledExactlyOnceWith({ kind: "billing" });
     await act(async () => root.unmount()); root = createRoot(container);

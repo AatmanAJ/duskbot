@@ -89,7 +89,7 @@ export function subscriptionFromWire(subscription: SubscriptionView, catalog: Pl
   const statuses = { pending: "pending", active: "active", payment_problem: "past_due", cancelled: "canceled", ended: "canceled" } as const;
   return { id: subscription.id, bundle: subscription.bundle, selection: selectionFromCart(subscription.cart, catalog), status: statuses[subscription.status], amountUsd: subscription.totalCents / 100, currentPeriodEnd: subscription.currentPeriodEnd ?? 0, cancelAt: subscription.cancelAtPeriodEnd ? subscription.currentPeriodEnd : null,
     ...(subscription.trialEndsAt ? { trialEndsAt: subscription.trialEndsAt } : {}),
-    ...(subscription.status === "payment_problem" && subscription.fixBy ? { fixBy: subscription.fixBy } : {}),
+    ...(subscription.status === "payment_problem" && subscription.fixBy ? { fixBy: subscription.fixBy, ...(subscription.trialUnpaid ? { trialUnpaid: true as const } : {}) } : {}),
     ...(subscription.scheduledChange ? { scheduled: { bundle: subscription.scheduledChange.bundle, selection: selectionFromCart(subscription.scheduledChange.cart, catalog), amountUsd: subscription.scheduledChange.totalCents / 100, at: subscription.scheduledChange.at } } : {}) };
 }
 
@@ -112,8 +112,8 @@ export const SETUP_LABELS = { reserving: "reserving your machine", storage: "pre
 
 export function cloudFromWire(cloud: CloudDesktopView): CloudDesktop | null {
   if (cloud.status === "checkout" || cloud.status === "destroying" || cloud.status === "destroyed") return null;
-  // a payment problem leaves it running until the fix-by date; the billing notice says so
-  const statuses = { checkout: "provisioning", provisioning: "provisioning", running: "running", sleeping: "sleeping", stopped: "stopped", payment_problem: "running", suspended: "error", error: "error" } as const;
+  // a failed charge stops it; the billing notice says why and how it comes back
+  const statuses = { checkout: "provisioning", provisioning: "provisioning", running: "running", sleeping: "sleeping", stopped: "stopped", payment_problem: "stopped", suspended: "error", error: "error" } as const;
   // asleep only because nobody used it (our cost saving, never the owner's pause): live to its owner, any use wakes it
   const resting = cloud.provider === "managed" && cloud.status === "sleeping" && (cloud.stoppedBy === "idle" || cloud.stoppedBy === null) && cloud.egress?.state !== "paused";
   const status = resting ? "running" : cloud.waking && cloud.status === "sleeping" ? "waking" : statuses[cloud.status];

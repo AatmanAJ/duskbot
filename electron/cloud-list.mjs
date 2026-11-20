@@ -70,7 +70,8 @@ function parseCloudEntry(input, trust) {
   // a managed one counts only with the account service's signed entitlement for this very cloud, checked offline
   const provider = managed && typeof input.provider === "string" && PROVIDER.test(input.provider)
     && verifyEntitlement(input.entitlement, { keys: trust.keys, audience: "app", cloudId: input.id, now: trust.now() }).ok ? input.provider : null;
-  return { id: input.id, name, color: Object.hasOwn(CLOUD_SWATCH_COLORS, input.color) ? input.color : null, role: input.role,
+  const payment = input.status === "payment_problem" ? paymentOf(input.payment) : null;
+  return { id: input.id, name, color: Object.hasOwn(CLOUD_SWATCH_COLORS, input.color) ? input.color : null, role: input.role, ...(payment ? { payment } : {}),
     tier: typeof input.tier === "string" && TIER.test(input.tier) ? input.tier : null, runsOn: input.runsOn, status: input.status, origin, teamId,
     primary: input.primary, managed, ...(setup ? { setup } : {}), ...(lastSeenAt ? { lastSeenAt } : {}), ...(version ? { version } : {}), ...(power ? { power } : {}),
     ...(deleteAfter ? { deleteAfter } : {}), ...(removable ? { removable: true } : {}), ...(provider ? { provider } : {}) };
@@ -156,13 +157,15 @@ export function parseCloudRenewal(clouds) {
     renewsAt: Number.isSafeInteger(own.renewsAt) && own.renewsAt > 0 ? own.renewsAt : null, endsAt, keptDays: kept, ...(team ? { team } : {}) };
 }
 
-/** My Cloud's failed renewal, as the session says (additive): it keeps running until `fixBy`, and Update card fixes it. */
+const paymentOf = value => record(value) && Number.isSafeInteger(value.fixBy) && value.fixBy > 0 ? { fixBy: value.fixBy, ...(value.trial === true ? { trial: true } : {}) } : null;
+
+/** My Cloud's failed charge, as the session says (additive): it is stopped, and its data is deleted at `fixBy` unless the
+ * card is updated (`trial`: unless the plan starts). */
 export function parseCloudPayment(clouds) {
   if (!Array.isArray(clouds)) return null;
   const own = clouds.slice(0, MAX_CLOUDS).find(entry => record(entry) && entry.primary === true && entry.role === "owner" && record(entry.payment));
-  const name = own ? cleanCloudListName(own.name) : null;
-  if (!own || !name || !Number.isSafeInteger(own.payment.fixBy) || own.payment.fixBy <= 0) return null;
-  return { name, fixBy: own.payment.fixBy };
+  const name = own ? cleanCloudListName(own.name) : null, payment = own ? paymentOf(own.payment) : null;
+  return own && name && payment ? { name, ...payment } : null;
 }
 
 /** Every Cloud of the person's own besides the primary (My Cloud): each a place of its own, as a team's Cloud is. */

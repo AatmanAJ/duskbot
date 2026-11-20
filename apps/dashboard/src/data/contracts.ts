@@ -154,8 +154,10 @@ export interface Subscription {
   trialEndsAt?: number;
   /** a smaller plan the owner chose, starting at `at` (the next billing date) */
   scheduled?: { bundle: BundleId | null; selection: Selection; amountUsd: number; at: number };
-  /** past_due: everything keeps running until then; a card updated before it keeps the plan */
+  /** past_due: its cloud is stopped and its data is deleted then, unless a payment goes through first */
   fixBy?: number;
+  /** with fixBy: the trial's first charge failed */
+  trialUnpaid?: true;
 }
 
 /** what switching to a plan does, before it is confirmed: `today` is charged now (tax included), the new price `next`

@@ -342,26 +342,33 @@ it("pauses machines no live cloud runs on and never deletes one that may hold so
   expect(f.api.machines.has(stray.id) && f.api.machines.has(duplicate.id) && f.api.machines.has(c.serverId!)).toBe(true);
 });
 
-it("a failed payment keeps the cloud paid for until its fix-by date, then retention counts from that date", async () => {
-  const fixBy = 40 * DAY_MS, problem = { since: 10 * DAY_MS, fixBy, sent: [] };
+it("a failed charge stops the cloud at once: a paid plan's data is kept 30 days from the failure, a trial's 7 from its end", async () => {
+  const problem = { since: 10 * DAY_MS, fixBy: 40 * DAY_MS, sent: ["first"] };
   const sub = { id: "sub_x", cloudId: "c1", status: "payment_problem", cancelAtPeriodEnd: false, currentPeriodEnd: 10 * DAY_MS, paymentProblem: problem } as unknown as StoredSubscription;
-  const cloud = { id: "c1", subscriptionId: "sub_x" };
-  expect(entitlementOf([sub], cloud, 39 * DAY_MS)).toMatchObject({ active: true });
-  expect(entitlementOf([sub], cloud, 41 * DAY_MS)).toMatchObject({ active: false, until: fixBy });
-  // a stored row from before the clock existed stays paid for until billing dates it
-  expect(entitlementOf([{ ...sub, paymentProblem: undefined } as StoredSubscription], cloud, 400 * DAY_MS)).toMatchObject({ active: true });
-  // billing ended the plan at the fix-by date: the retention clock starts there, not at the unpaid period's end
+  const cloud = { id: "c1", subscriptionId: "sub_x" }, verdict = (entitlement: ReturnType<typeof entitlementOf>, now: number) =>
+    deletionVerdict({ now, retentionDays: 30, entitlement, finalBackup: null, lastStopAt: null, ownerRequest: null, hold: false });
+  expect(entitlementOf([sub], cloud, 10 * DAY_MS + 1)).toEqual({ active: false, until: 10 * DAY_MS, known: true, unpaid: { trial: false } });
+  // billing ends the plan at the deletion date: the clock still runs from the failure
   const ended = { ...sub, status: "ended" } as StoredSubscription;
-  const entitlement = entitlementOf([ended], { ...cloud, ended: true, endedAt: fixBy }, 41 * DAY_MS);
-  expect(entitlement).toMatchObject({ active: false, until: fixBy });
-  expect(deletionVerdict({ now: 41 * DAY_MS, retentionDays: 30, entitlement, finalBackup: null, lastStopAt: null, ownerRequest: null, hold: false })).toMatchObject({ delete: false, reason: "retention", earliestAt: fixBy + 30 * DAY_MS });
-  // the provider cancelled inside the grace: still paid for until the fix-by date
-  expect(entitlementOf([{ ...ended, currentPeriodEnd: 10 * DAY_MS }], { ...cloud, endsAt: fixBy }, 20 * DAY_MS)).toMatchObject({ active: true });
+  const at40 = entitlementOf([ended], { ...cloud, ended: true, endedAt: 40 * DAY_MS }, 40 * DAY_MS);
+  expect(at40).toMatchObject({ until: 10 * DAY_MS, unpaid: { trial: false } });
+  expect(verdict(at40, 40 * DAY_MS)).toMatchObject({ delete: false, reason: "no_final_backup", earliestAt: 40 * DAY_MS });
+  // a trial's first charge: kept 7 days from the trial's end, with no final backup owed
+  const trial = { ...sub, trialEndsAt: 9 * DAY_MS, paymentProblem: { ...problem, fixBy: 16 * DAY_MS, trial: true } } as unknown as StoredSubscription;
+  const trialEntitlement = entitlementOf([trial], cloud, 12 * DAY_MS);
+  expect(trialEntitlement).toMatchObject({ active: false, until: 9 * DAY_MS, unpaid: { trial: true } });
+  expect(verdict(trialEntitlement, 12 * DAY_MS)).toMatchObject({ delete: false, earliestAt: 16 * DAY_MS });
+  expect(verdict(trialEntitlement, 16 * DAY_MS)).toMatchObject({ delete: true, reason: "retention_over" });
   const f = await homeFixture();
   const { c, sub: paid } = await f.paid();
-  paid.status = "payment_problem"; paid.paymentProblem = { since: f.now(), fixBy: f.now() + DAY_MS, sent: [] };
-  f.advance(2 * DAY_MS); await f.settle(c, c => c.status === "stopped");
+  paid.status = "payment_problem"; paid.paymentProblem = { since: f.now(), fixBy: f.now() + 30 * DAY_MS, sent: ["first"] };
+  await f.settle(c, c => c.status === "stopped");
   expect(c.status).toBe("stopped");
+  f.advance(25 * DAY_MS); for (let n = 0; n < 5; n++) { c.nextAttemptAt = 0; await f.service.reconcile(); }
+  expect(f.notices.filter(n => n.kind.startsWith("left_")), "billing sends this story's emails").toEqual([]);
+  paid.status = "active"; delete paid.paymentProblem; paid.currentPeriodEnd = f.now() + 30 * DAY_MS;
+  await f.settle(c, c => c.status === "running", 40);
+  expect(c.status).toBe("running");
 });
 
 it("a plan that drops the desktop ends its entitlement at the drop, and a renewal cancels a pending owner delete", async () => {

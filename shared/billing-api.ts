@@ -156,8 +156,11 @@ export interface SubscriptionView {
   trialEndsAt?: number;
   /** a confirmed downgrade waiting for the next billing date */
   scheduledChange?: ScheduledChangeView;
-  /** payment_problem only: everything keeps running until then; a card updated before it keeps the plan, after it the plan ends */
+  /** payment_problem only: a charge failed, so its cloud is stopped; its data is deleted then unless a payment goes through
+   *  first, which brings it back */
   fixBy?: number;
+  /** with fixBy: the charge that failed was the trial's first (upgrading brings the cloud back) */
+  trialUnpaid?: true;
 }
 
 export const LICENSE_STATUSES = ["active", "grace", "expired"] as const;

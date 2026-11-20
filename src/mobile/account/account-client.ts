@@ -19,7 +19,7 @@ export function mobileFace(account: unknown): Pick<MobileAccount, "avatarUrl" | 
   return { ...(photo ? { avatarUrl: photo } : {}), ...(choice ? { avatar: choice } : {}) };
 }
 /** `payment`: its renewal failed; it keeps running until `fixBy` */
-export type MobileCloud = { id: string; name: string; status: string; origin: string | null; primary: boolean; asleep: boolean; payment?: { fixBy: number } };
+export type MobileCloud = { id: string; name: string; status: string; origin: string | null; primary: boolean; asleep: boolean; payment?: { fixBy: number; trial?: true } };
 /** a team's dusk cloud this account is a member of, as the session lists it */
 export type MobileTeamCloud = { id: string; name: string; status: string; origin: string | null; asleep: boolean };
 /** one of the account's computers (a Mac, a pc or a server it linked), as the service lists it */
@@ -92,7 +92,8 @@ export function parseOwnClouds(input: unknown): MobileCloud[] {
     const name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim().slice(0, 40) : "my cloud";
     const asleep = entry.status === "ready" && object(entry.power) && (entry.power.state === "asleep" || entry.power.state === "waking");
     const fixBy = object(entry.payment) && Number.isSafeInteger(entry.payment.fixBy) && (entry.payment.fixBy as number) > 0 ? entry.payment.fixBy as number : null;
-    clouds.push({ id: entry.id, name, status: entry.status, origin: httpsOrigin(entry.origin), primary: entry.primary === true, asleep, ...(fixBy ? { payment: { fixBy } } : {}) });
+    const trial = object(entry.payment) && entry.payment.trial === true;
+    clouds.push({ id: entry.id, name, status: entry.status, origin: httpsOrigin(entry.origin), primary: entry.primary === true, asleep, ...(fixBy ? { payment: { fixBy, ...(trial ? { trial: true as const } : {}) } } : {}) });
   }
   return clouds.sort((a, b) => Number(b.primary) - Number(a.primary));
 }

@@ -118,7 +118,7 @@ test("small dedicated quote keeps its service price below the default desktop pr
 const cloud: CloudDesktopView = { id: "cloud", name: "My Cloud", color: null, kind: "shared_m", placement: "pool", status: "provisioning", setupStep: "reserving", region: "eu", machine: { vcpu: 4, ramGb: 8, diskGb: 80 }, botComputers: 5, origin: null, workspaceId: "workspace", lastReportAt: null, destroyAt: null, error: null, subscriptionId: "sub", createdAt: 123 };
 
 test("cloud statuses, progress, errors and destroyed or unpaid desktops map to the view", () => {
-  const expected = [null, "provisioning", "running", "sleeping", "stopped", "running", "error", "error", null, null];
+  const expected = [null, "provisioning", "running", "sleeping", "stopped", "stopped", "error", "error", null, null];
   CLOUD_STATUSES.forEach((status, index) => {
     const result = cloudFromWire({ ...cloud, status });
     assert.equal(result?.status ?? null, expected[index]);
@@ -127,7 +127,7 @@ test("cloud statuses, progress, errors and destroyed or unpaid desktops map to t
   const labels = ["reserving your machine", "preparing its disk", "installing dusk bot", "waking your bots"];
   SETUP_STEPS.forEach((setupStep, index) => assert.deepEqual(cloudFromWire({ ...cloud, setupStep })!.progress, { step: labels[index], value: (index + 0.5) / 4 }));
   assert.equal(cloudFromWire({ ...cloud, setupStep: null })!.progress, null);
-  assert.deepEqual([cloudFromWire({ ...cloud, status: "payment_problem" })!.status, cloudFromWire({ ...cloud, status: "payment_problem" })!.error], ["running", null], "it keeps running until the fix-by date");
+  assert.deepEqual([cloudFromWire({ ...cloud, status: "payment_problem" })!.status, cloudFromWire({ ...cloud, status: "payment_problem" })!.error], ["stopped", null], "a failed charge stops it");
   assert.equal(cloudFromWire({ ...cloud, status: "suspended" })!.error, "it is paused. write to us at hello@dusk.bot to sort it out.");
   assert.equal(cloudFromWire({ ...cloud, status: "error", error: "Setup failed" })!.error, "Setup failed");
   assert.deepEqual(cloudFromWire({ ...cloud, status: "running" }), { id: "cloud", name: "My Cloud", status: "running", tier: "shared-m", placement: "shared", region: "eu", vcpu: 4, ramGb: 8, diskGb: 80, workspaceId: "workspace", createdAt: 123, progress: null, error: null, botComputers: { used: 0, limit: 5 }, uptimeSec: null });

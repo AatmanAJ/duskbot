@@ -198,7 +198,7 @@ function Live({ cloud }: { cloud: CloudDesktop }) {
           <p className="mt-1 text-13 text-ink-3">chat, browsing and your apps use very little. a proxy, a file host or a big upload loop is what gets here. <a href="mailto:hello@dusk.bot" className="text-link">write to us</a> if that looks wrong.</p>
         </Card>
       )}
-      {asleep && cloud.egressLimit?.state !== "paused" && (
+      {asleep && cloud.egressLimit?.state !== "paused" && !sub?.fixBy && (
         <Card className="flex flex-wrap items-center gap-5">
           <Mascot color="silver" size={40} state="sleeping" />
           <div className="min-w-0 flex-1">

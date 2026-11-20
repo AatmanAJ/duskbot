@@ -311,8 +311,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
     if (notice.kind === "receipt") { if (courtesy(emailOf(notice.accountId))) sendTo(notice.accountId, "required", receiptEmail(emailCfg, { ...notice, receiptId: notice.invoiceId, cloud: notice.cloudId !== null })); }
     else if (!courtesy(emailOf(notice.accountId))) return;
     else if (notice.kind === "payment_failed") sendTo(notice.accountId, "required", paymentFailedEmail(emailCfg, { ...notice, cloudName: cloud?.name ?? null }));
-    else if (notice.kind === "payment_reminder") sendTo(notice.accountId, "required", paymentReminderEmail(emailCfg, { ...notice, cloudName: cloud?.name ?? null, final: notice.step === "final",
-      keepDays: cloud?.backend === "managed" ? retentionDays : null }));
+    else if (notice.kind === "payment_reminder") sendTo(notice.accountId, "required", paymentReminderEmail(emailCfg, { ...notice, cloudName: cloud?.name ?? null, final: notice.step === "final" }));
     else if (notice.kind === "payment_recovered") sendTo(notice.accountId, "required", paymentRecoveredEmail(emailCfg, { description: notice.description, cloudName: cloud?.name ?? null }));
     else sendTo(notice.accountId, "required", cancelledEmail(emailCfg, { description: notice.description, cloudName: cloud?.name ?? null, endsAt: notice.endsAt,
       keptPaused: cloud?.backend === "managed", keepDays: cloud?.backend === "managed" ? retentionDays : notice.graceDays }));
