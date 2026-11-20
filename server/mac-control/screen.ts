@@ -31,6 +31,22 @@ export interface ScreenCatalog {
 
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+/** cua-driver 0.28.2's screenshot_out_file writes a PNG at a path on the Mac instead of returning it: a cloud bot needs the
+ * picture back, and a screen call must not write files the Mac's file rules would ask about. */
+const MAC_FILE_OUTPUT = /_out_file$/;
+
+/** The call without its write-to-a-file-on-the-Mac arguments. */
+export function withoutMacFileOutputs(args: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(args).filter(([key]) => !MAC_FILE_OUTPUT.test(key)));
+}
+
+function withoutFileOutputSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  if (!isObject(schema.properties)) return schema;
+  const properties = withoutMacFileOutputs(schema.properties);
+  const required = Array.isArray(schema.required) ? schema.required.filter((key) => typeof key !== "string" || !MAC_FILE_OUTPUT.test(key)) : undefined;
+  return { ...schema, properties, ...(required ? { required } : {}) };
+}
+
 /** The catalog from a mac_screen_tools job's text, or null when it is not one. */
 export function screenCatalog(text: string): ScreenCatalog | null {
   let body: unknown;
@@ -43,7 +59,7 @@ export function screenCatalog(text: string): ScreenCatalog | null {
     const name = `${SCREEN_PREFIX}${entry.name}`;
     if (OWN_NAMES.has(name) || driverName.has(name) || name === SCREEN_ACCESS_TOOL.name) continue;
     const schema = isObject(entry.inputSchema) && entry.inputSchema.type === "object" && JSON.stringify(entry.inputSchema).length <= SCHEMA_MAX
-      ? entry.inputSchema : { type: "object" };
+      ? withoutFileOutputSchema(entry.inputSchema) : { type: "object" };
     const description = typeof entry.description === "string" ? entry.description.slice(0, DESCRIPTION_MAX) : "";
     tools.push({ name, description: `On the person's own computer (their screen): ${description}`.trim(), inputSchema: schema });
     driverName.set(name, entry.name);

@@ -23,7 +23,7 @@ import { macJobOutcome, MacJobs, MAC_RESULT_MAX_BYTES, type MacDownload } from "
 import { isMacSealKey, openMacOutcome, readLinkSigningKey, sealMacJob } from "./seal.ts";
 import { localComputerRelay } from "../local-computer-guidance.ts";
 import type { ChildCalls } from "../mcp-bridge.ts";
-import { maybeScreenTool, SCREEN_ACCESS_TOOL, screenCatalog, screenResult, type ScreenCatalog } from "./screen.ts";
+import { maybeScreenTool, SCREEN_ACCESS_TOOL, screenCatalog, screenResult, withoutMacFileOutputs, type ScreenCatalog } from "./screen.ts";
 import { CLOUD_MAC_TOOLS, MAC_TOOLS, macErrorResult, macJobTimeoutMs, macToolCallProblem, type MacToolResult } from "./tools.ts";
 
 type Turn = { botId: string; threadId: string; generation: string };
@@ -55,6 +55,8 @@ export interface MacControlDeps {
   openFile(turn: Turn, source: string): Promise<MacDownload>;
   /** A file in the bot's cloud computer's home. */
   computerFile(botId: string, source: string): Promise<MacDownload>;
+  /** Keeps a file the Mac sent (mac_send_file) in the bot's own files; where it went, as the bot attaches it. */
+  saveFile(turn: Turn, name: string, bytes: Buffer): Promise<string>;
   /** A dusk cloud (docs/cloud-uses-mac.md): its own catalog, sealed jobs, and the person's answer first when the Mac asks for that. */
   cloud?: {
     /** null to go ahead, "task" to go ahead and allow the rest of this task's outside-content asks, else what the bot is told. */
@@ -167,8 +169,9 @@ export function createMacControl(deps: MacControlDeps) {
     return typeof answer === "string" ? answer : allowed(deps.bot(turn.botId), turn);
   }
 
-  async function callScreen(name: string, args: Record<string, unknown>, turn: Turn, assertActive: () => void): Promise<MacToolResult> {
-    if (!args || typeof args !== "object" || Array.isArray(args)) return macErrorResult("Tool arguments must be an object.");
+  async function callScreen(name: string, given: Record<string, unknown>, turn: Turn, assertActive: () => void): Promise<MacToolResult> {
+    if (!given || typeof given !== "object" || Array.isArray(given)) return macErrorResult("Tool arguments must be an object.");
+    const args = withoutMacFileOutputs(given);
     assertActive();
     const bot = deps.bot(turn.botId);
     const refusal = allowed(bot, turn);
@@ -227,6 +230,17 @@ export function createMacControl(deps: MacControlDeps) {
     return result as unknown as MacToolResult;
   }
 
+  async function received(turn: Turn, file: { name: string; data: string } | undefined): Promise<MacToolResult> {
+    if (!file) return macErrorResult("The Mac sent no file: update dusk bot on the Mac.");
+    try {
+      const bytes = Buffer.from(file.data, "base64");
+      const saved = await deps.saveFile(turn, file.name, bytes);
+      return { content: [{ type: "text", text: `Saved ${bytes.length} bytes from the Mac to ${saved} in your files. To give it to the person, attach that file to your reply (agents_attach_file).` }] };
+    } catch (error) {
+      return macErrorResult(`Got the file from the Mac but could not keep it: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   async function call(params: unknown, turn: Turn, assertActive: () => void): Promise<MacToolResult> {
     const { name, arguments: raw } = (params && typeof params === "object" ? params : {}) as { name?: unknown; arguments?: unknown };
     const args = (raw ?? {}) as Record<string, unknown>;
@@ -260,6 +274,7 @@ export function createMacControl(deps: MacControlDeps) {
     });
     assertActive();
     if (!outcome.ok) return macErrorResult(outcome.error);
+    if (name === "mac_send_file") return received(turn, outcome.result.file);
     return { content: [{ type: "text", text: outcome.result.text }, ...(outcome.result.image ? [{ type: "image" as const, ...outcome.result.image }] : [])] };
   }
 
