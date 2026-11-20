@@ -240,12 +240,15 @@ export function createMessengerHost(deps: MessengerHostDeps) {
     if (taken) throw new MessengerError(409, `That ${MESSENGER_LABELS[platform]} bot already answers for ${deps.bot(taken.botId)?.name ?? "another bot"}. Disconnect it there first, or make a new one.`);
     const old = link(botId, platform);
     const same = old?.account.id === account.id;
-    const allowed = [...(same ? old!.allowed : []), ...(carried.allowed ?? [])].filter((one, index, all) => all.findIndex((other) => other.id === one.id) === index).slice(0, 200);
+    // one person let in where the bot came from is its owner there: they need no pairing here
+    const carriedPeople = (carried.allowed ?? []).filter((one) => one.kind === "person");
+    const soleCarried = carriedPeople.length === 1 ? carriedPeople[0] : undefined;
+    const allowed = [...(same ? old!.allowed : []), ...(carried.allowed ?? []).filter((one) => one !== soleCarried)].filter((one, index, all) => all.findIndex((other) => other.id === one.id) === index).slice(0, 200);
     stopRunner(botId, platform);
     if (old && !same) bridge.forgetBot(botId, platform);
     secrets.put({
       botId, platform, token: value, account, allowed, connectedAt: Date.now(),
-      ...(same && old!.owner ? { owner: old!.owner } : { pairCode: pairCode() }),
+      ...(same && old!.owner ? { owner: old!.owner } : soleCarried ? { owner: soleCarried } : { pairCode: pairCode() }),
       ...(same && old!.webhookSecret ? { webhookSecret: old!.webhookSecret } : {}),
     });
     setRuntime(botId, platform, { state: "connecting" });

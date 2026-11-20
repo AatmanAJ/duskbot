@@ -208,6 +208,15 @@ describe("Telegram chat channel", () => {
     expect(fake.sent("getUpdates")).toHaveLength(0);
   });
 
+  it("a bot moved in with one person let in there needs no pairing: that person is its owner", async () => {
+    const f = await fixture();
+    const status = await f.host.connect("bot-nova", "telegram", TOKEN, { allowed: [{ id: "501", kind: "person" }] });
+    expect(status).toMatchObject({ owner: { id: "501" }, allowed: [] });
+    expect(status.pairCode).toBeUndefined();
+    f.fake.message({ from: OWNER, text: "still me" });
+    expect(await until(() => f.sent[0])).toMatchObject({ text: "still me", outside: false });
+  });
+
   it("writes markdown as Telegram HTML with everything else escaped", () => {
     expect(markdownToTelegramHtml("# Plan\n- **a** <b> & `x<y`\n```\nif (a < b) {}\n```\n[site](https://x.test/?a=1&b=2)"))
       .toBe('<b>Plan</b>\n• <b>a</b> &lt;b&gt; &amp; <code>x&lt;y</code>\n<pre><code>if (a &lt; b) {}</code></pre>\n<a href="https://x.test/?a=1&amp;b=2">site</a>');

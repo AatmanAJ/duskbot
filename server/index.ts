@@ -13640,7 +13640,7 @@ ROUTES.push(createMcpServerRoutes({
   fallbackPublicUrl: FALLBACK_PUBLIC_URL,
   mcpServerResponse, savedCustomDomain, appCatalog: chatAppsMcp, config: mcpConfig }));
 ROUTES.push(createSetupImportRoutes({ local: DESKTOP_MANAGED && !CLOUD_HOME, cfg, mcpPolicyRefusal, persistMcpServers: persistAnnouncedMcpServers,
-  mcpConfigBusy: mcpConfig.busy, botExists: (id) => Boolean(store.bot(id)) }));
+  mcpConfigBusy: mcpConfig.busy, botExists: (id) => Boolean(store.bot(id)), connectChannel: (botId, platform, token, allowed) => messengerHost.connect(botId, platform, token, { allowed: allowed.map((id) => ({ id, kind: id.startsWith("-") ? "chat" as const : "person" as const })) }) }));
 ROUTES.push(createComputerRoutes({
   store, cfg, sessions, teamComputers, computerControl,
   routines: () => routines,
