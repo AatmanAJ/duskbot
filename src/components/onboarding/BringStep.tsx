@@ -1,9 +1,11 @@
-// The first run's "bring what you already use": the prompt for AIs online (BringPrompt) on its own step, with a still
-// scene above it and Continue below. Its answer comes in later, into any chat or from Downloads; Continue never waits.
+// The first run's "bring what you already use": what this computer holds from other AI apps, each with its own Bring in,
+// then the prompt for AIs online, with a still scene above and Continue below. Bringing in goes on while the run does,
+// and the prompt's answer comes in later, into any chat or from Downloads; Continue never waits.
 import { type ReactNode } from "react";
 import { t } from "@/lib/i18n";
 import { MausAvatar } from "../Avatar";
-import { BringPrompt } from "../BringIn";
+import { BringIn, useBringChoice } from "../BringIn";
+import type { BringRun, LocalFind } from "@/lib/first-run-import";
 import { ClaudeMark, CodexMark, GeminiMark, GrokMark } from "../ProviderIcons";
 import { cn } from "@/lib/cn";
 import { BRAND_LILAC, PRIMARY, StepFrame } from "./FunnelSteps";
@@ -35,28 +37,35 @@ function BringScene() {
   );
 }
 
-export function BringStep({ grokWaiting, onNext }: {
+export function BringStep({ finds, grokWaiting, run, onBring, onNext }: {
+  /** What this computer holds; null while still looking. */
+  finds: readonly LocalFind[] | null;
   /** Grok bot's bots on this computer, by name: they move through the prompt, like an AI online. */
   grokWaiting: readonly string[];
+  run: BringRun;
+  onBring: (find: LocalFind) => void;
   onNext: () => void;
 }) {
+  const choice = useBringChoice(finds);
   return (
-    <StepFrame art={<BringScene />} title={t("bring.title")} sub={t("bring.subNone")}
+    <StepFrame art={<BringScene />} title={t("bring.title")} sub={choice.found ? t("bring.sub") : t("bring.subNone")}
       footer={<button type="button" data-primary="" data-bring-next="" onClick={onNext} className={PRIMARY}>{t("funnel.next")}</button>}>
       <div className="w-full max-w-[440px]">
-        <BringPrompt grokWaiting={grokWaiting} />
+        <BringIn step finds={finds} choice={choice} grokWaiting={grokWaiting} run={run} onImport={onBring} />
       </div>
     </StepFrame>
   );
 }
 
-/** The run's one quiet line at the foot of every step: notes from another AI pasted on a step, and what came in. */
-export function BringStatus({ line }: { line: string | null }) {
-  if (!line) return null;
+/** The run's one quiet line at the foot of every step after the bring step: bringing in, then what came in, and notes
+ * from another AI pasted on a step. */
+export function BringStatus({ line, working = false }: { line: string | null; working?: boolean }) {
+  if (!line && !working) return null;
   return (
-    <p role="status" aria-live="polite" data-bring-status="done"
+    <p role="status" aria-live="polite" data-bring-status={working ? "working" : "done"}
       className="pointer-events-none fixed right-0 bottom-4 left-[var(--rail-beside,0px)] z-10 mx-auto flex w-fit max-w-[min(520px,calc(100%-32px))] items-center gap-2 rounded-[14px] bg-ink/[0.05] px-3 py-1.5 text-[12px] leading-4 text-ink-secondary">
-      <span className="text-pretty">{line}</span>
+      {working && <span aria-hidden="true" className="funnel-wait inline-block size-1.5 shrink-0 rounded-full bg-ink/60" />}
+      <span className="text-pretty">{working ? t("bring.working") : line}</span>
     </p>
   );
 }

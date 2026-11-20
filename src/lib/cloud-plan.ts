@@ -133,7 +133,7 @@ export function cloudNoticeKind(view: CloudPlanView, account: CloudAccountState 
 }
 
 
-export const CLOUD_SOURCES = ["app_card", "app_howto", "app_menu", "app_settings", "app_routines", "app_pages", "app_whats_new_pro", "app_whats_new_team", "app_onboarding", "app_computer_move", "app_sidebar", "app_invested", "app_always_on", "app_bot_panel"] as const;
+export const CLOUD_SOURCES = ["app_card", "app_howto", "app_menu", "app_settings", "app_routines", "app_pages", "app_whats_new_pro", "app_whats_new_team", "app_onboarding", "app_computer_move", "app_sidebar", "app_invested", "app_always_on", "app_bot_panel", "app_late_routine", "app_asleep"] as const;
 export type CloudSource = (typeof CLOUD_SOURCES)[number];
 
 export function offerPlanLabel(plan: CloudOfferPlan): string {
@@ -200,7 +200,7 @@ export function planPoints(plan: CloudOfferPlan): CloudPlanPoint[] {
   ];
   return points.slice(0, 5);
 }
-/** What a plan's free trial costs and then what it comes to: "Free for 3 days, then $49/month + tax". */
+/** What a plan's free trial costs and then what it comes to: "3 days free, then $49/month + tax ... Cancel any time." */
 export function trialTerms(days: number, price: string): string {
   return days === 1 ? t("cloudBuy.card.trial.one", { price }) : t("cloudBuy.card.trial.many", { days, price });
 }

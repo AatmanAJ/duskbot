@@ -280,5 +280,7 @@ export type Usage = ReturnType<typeof createUsage>;
 
 export const REASON_WORDS: Record<(typeof USAGE_REASONS)[number], string> = {
   rate_limit: "hit rate limits", quota: "ran out of plan usage", auth: "sign-in expired or was refused", timeout: "timed out", network: "network trouble",
-  context: "the chat got too long", refused: "the ai refused", crashed: "the engine crashed", tool: "a tool broke", unknown: "no clear reason",
+  context: "the chat got too long", refused: "the ai refused", crashed: "the engine crashed", tool: "a tool broke", model_not_found: "the model was not found",
+  bad_request: "the provider refused the request", provider_down: "the provider had an outage", cli_missing: "the engine is not installed",
+  cli_exit_early: "the engine quit before replying", no_reply: "the ai sent no reply", unknown: "no clear reason",
 };

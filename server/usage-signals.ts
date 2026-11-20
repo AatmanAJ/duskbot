@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 import { isToolFailureStop } from "./drivers/tool-failure.ts";
 import {
-  MAX_REPORT_FRUSTRATIONS, MAX_REPORT_RUNS, cleanUsageDigest, MAX_REPORT_SESSIONS, SESSION_NOTE_MAX, cleanUsageSession, MAX_REPORT_SIGNALS, MAX_REPORT_TURNS, categorize, cleanUsageFrustration, cleanUsageRun, cleanUsageSnapshot, cleanUsageTurn, engineFamily, failureReason,
+  MAX_REPORT_FRUSTRATIONS, MAX_REPORT_RUNS, cleanUsageDigest, MAX_REPORT_SESSIONS, SESSION_NOTE_MAX, cleanUsageSession, MAX_REPORT_SIGNALS, MAX_REPORT_TURNS, categorize, cleanUsageFrustration, cleanUsageRun, cleanUsageSnapshot, cleanUsageTurn, engineFamily, failureOf, failureReason, opencodeProvider,
   appAction, modelFamily, runTrigger, scrubSummary, toolSignals, type RunEvery, type UsageSignal,
   type FrustrationSignal, type UsageFrom, type UsageFrustration, type UsageOutcome, type UsagePlace, type UsageReport, type UsageRun, type UsageSnapshot, type UsageTurn, type UsageDigest, type UsageSession,
 } from "../shared/usage-signals.ts";
@@ -20,6 +20,8 @@ export interface TurnFacts {
   driverKind: string;
   status: "ok" | "error" | "interrupted" | "ended" | undefined;
   reason?: string;
+  /** the recorder's reading of the failure from the engine's whole error, when it made one */
+  failure?: { reason?: string; detail?: string };
   startedAt?: number;
   endedAt?: number;
   toolNames: readonly string[];
@@ -52,9 +54,14 @@ export function turnRecord(facts: TurnFacts, place: UsagePlace, now: number): Us
   const actions = [...new Set(facts.toolNames.map(appAction).filter((action): action is string => !!action))];
   const ms = Math.max(0, Math.min(7 * 86_400_000 - 1, Math.round(end - start)));
   const firstMs = facts.firstStepAt !== undefined ? Math.round(facts.firstStepAt - start) : undefined;
-  return cleanUsageTurn({ id: newId(), at: end, engine: engineFamily(facts.driverKind), outcome, ...(outcome === "ok" ? {} : { reason: outcome === "cancelled" ? "unknown" : toolStop ? "tool" : failureReason(facts.reason) }),
+  const engine = engineFamily(facts.driverKind);
+  // the recorder read the whole error; a row booked before it did keeps only its first line
+  const failure = outcome !== "failed" || toolStop ? undefined : facts.failure?.reason ? facts.failure : failureOf(facts.reason);
+  const reason = outcome === "ok" ? undefined : outcome === "cancelled" ? "unknown" : toolStop ? "tool" : failure?.reason ?? failureReason(facts.reason);
+  const model = facts.model ? (engine === "opencode" && modelFamily(facts.model) === "other" ? opencodeProvider(facts.model) ?? facts.model : facts.model) : undefined;
+  return cleanUsageTurn({ id: newId(), at: end, engine, outcome, ...(reason ? { reason } : {}), ...(failure?.detail ? { detail: failure.detail } : {}),
     ms, tools, apps, category: categorize({ tools, apps }), from, place, room: facts.room, ...(firstMs !== undefined && firstMs >= 0 && firstMs <= ms ? { firstMs } : {}),
-    ...(facts.model ? { model: modelFamily(facts.model) } : {}), failedTools: failed.tools, failedApps: failed.apps, actions, ...(facts.bot ? { bot: facts.bot } : {}), ...(facts.chat ? { chat: facts.chat } : {}) }, now);
+    ...(model ? { model: modelFamily(model) } : {}), failedTools: failed.tools, failedApps: failed.apps, actions, ...(facts.bot ? { bot: facts.bot } : {}), ...(facts.chat ? { chat: facts.chat } : {}) }, now);
 }
 
 /** records waiting for the next dashboard report: memory only, oldest dropped past the cap */

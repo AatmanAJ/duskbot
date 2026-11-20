@@ -736,6 +736,21 @@ describe("a config.json saved with a byte order mark", () => {
     }
   });
 
+  it("keeps the account name the profile copied beside the rest of the profile, so a later rename on the account follows", () => {
+    const path = join(DATA_DIR, "config.json");
+    mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(path, JSON.stringify({ profile: { name: "siddharth", email: "sidd@example.com", aboutMe: "short answers" } }));
+    try {
+      saveConfig(parseConfigPatch({ profile: { name: "Siddharth", accountName: "Siddharth" } }));
+      expect(JSON.parse(readFileSync(path, "utf8")).profile).toEqual({ name: "Siddharth", email: "sidd@example.com", aboutMe: "short answers", accountName: "Siddharth" });
+      expect(loadConfig().profile?.accountName).toBe("Siddharth");
+      saveConfig(parseConfigPatch({ profile: { name: "Sidd", email: "sidd@example.com" } }));
+      expect(loadConfig().profile).toMatchObject({ name: "Sidd", accountName: "Siddharth" });
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
   it("keeps the browser's allow-list when the owner flips its local-sites switch", () => {
     const path = join(DATA_DIR, "config.json");
     mkdirSync(DATA_DIR, { recursive: true });
@@ -872,6 +887,17 @@ describe("default fleet", () => {
     expect(map.metaOwn.environment).toEqual({ META_API_KEY: "meta-own" });
     expect(cfg.instances).not.toHaveProperty("meta");
     expect(instanceConfigs({ instances: { standalone: { driver: "fake" } } })).not.toHaveProperty("meta");
+  });
+
+  it("sends the xAI engine to the saved xAI address, the one its key is checked against", () => {
+    const cfg: AppConfig = { xai: { key: "xai-workspace", url: "http://127.0.0.1:9/v1" }, instances: {
+      xaiApi: { driver: "grok", access: "api" },
+      xaiProxy: { driver: "grok", config: { url: "https://another.example.test/v1" } },
+    } };
+    const map = instanceConfigs(cfg);
+    expect(map.xaiApi).toMatchObject({ config: { url: cfg.xai!.url }, environment: { XAI_API_KEY: "xai-workspace" } });
+    expect(map.xaiProxy).toMatchObject({ config: { url: "https://another.example.test/v1" }, environment: {} });
+    expect(instanceConfigs({ xai: { key: "xai-workspace" }, instances: { xaiApi: { driver: "grok" } } }).xaiApi.config ?? {}).not.toHaveProperty("url");
   });
 
   it("adds DeepSeek Harness to product fleets and hands its key only to that engine", () => {

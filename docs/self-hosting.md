@@ -29,13 +29,13 @@ picked. Nothing is typed back into the app: no address, no code, no password.
 Cloudflare is the recommended way and the first one the sheet offers.
 
 ```sh
-curl -fsSL https://dusk.bot/s/k3x9m2p/cloudflare | sh   # a quick Cloudflare tunnel (recommended)
-curl -fsSL https://dusk.bot/s/k3x9m2p | sh              # the relay
-curl -fsSL https://dusk.bot/s/k3x9m2p/tailscale | sh    # your tailnet
-curl -fsSL https://dusk.bot/s/k3x9m2p/ssh | sh          # over your SSH port
+curl -fsSL https://dusk.bot/s/<code>/cloudflare | sh   # a quick Cloudflare tunnel (recommended)
+curl -fsSL https://dusk.bot/s/<code> | sh              # the relay
+curl -fsSL https://dusk.bot/s/<code>/tailscale | sh    # your tailnet
+curl -fsSL https://dusk.bot/s/<code>/ssh | sh          # over your SSH port
 ```
 
-`k3x9m2p` is the setup's own code: 7 characters, good only for that setup while it waits for the server or installs,
+`<code>` is the setup's own code, which only the app's sheet shows (copying these examples gives a 404): 7 characters, good only for that setup while it waits for the server or installs,
 and gone once the server is linked, the setup is cancelled or two hours pass. Wrong codes are counted, and an address
 that keeps guessing is refused for the hour. dusk.bot (behind Cloudflare) answers with a tiny script that fetches the
 whole installer from link.dusk.bot and runs it: five tries 2 s apart, every other one over IPv4, the installer run only
@@ -66,8 +66,20 @@ through the relay. Running the install again with `--repair` and another way mov
 the server to it; the app follows. The line is single use and expires after 30
 minutes; [the link service](../apps/link-service/README.md) has the details.
 
-Already running dusk bot with `npx duskbot serve`? The sheet's last choice
-connects to it by the address and pairing code that command prints.
+The line also puts `duskbot` on the server's PATH for every login (a small
+`/usr/local/bin/duskbot` that runs the server account's own build as that
+account), so `duskbot pair --label desktop` there makes a code for another
+computer. A server installed before this has it after its next update; until
+then run `sudo -u dusk /home/dusk/.local/bin/duskbot pair --label desktop`.
+
+Already running dusk bot? The sheet's last choice takes what
+`duskbot pair --label desktop` (or `npx duskbot pair --label desktop`, for a
+server started with npx) prints on it: paste the whole output into the first
+field and the app picks the server's public pairing link out of it. With no
+public address it prints only a code; then enter the address and that code.
+A server linked only through the relay has no address to enter: a new line from
+the other computer's app moves its link there (the server keeps one link, so the
+computer it was linked to before stops reaching it).
 
 ## What works headless (and what doesn't)
 
@@ -232,9 +244,11 @@ cp .env.example .env            # set DOMAIN
 docker compose pull dusk && docker compose up -d
 ```
 
-That uses the image CI publishes on every `main` push
-(`ghcr.io/milind-soni/duskbot`, tagged `latest`, `sha-…` and `v…`).
-To build from your checkout instead: `docker compose up -d --build`.
+That uses the image published for each release
+(`ghcr.io/duskbotai/duskbot`, tagged `v…` and `latest`, for amd64 and
+arm64, with Claude Code and Codex installed). Set `DUSK_IMAGE` in `.env` to
+pin a version. To build from your checkout instead, with the engines
+`ENGINES` lists: `docker compose up -d --build`.
 
 Then sign the engine CLIs in **inside the container** (their logins live on
 the `data` volume, so they survive restarts and image upgrades) and mint a
@@ -269,8 +283,8 @@ Upgrade with `docker compose pull dusk && docker compose up -d` (or
 `git pull && docker compose up -d --build`). State (chats, routines,
 engine logins, paired sessions) is on the `data` volume; back that up.
 
-The published image installs the current Chrome for Testing whenever a new
-Stable ships. A build from source keeps the Chrome (and any `ENGINES`) it
+The published image has the Chrome for Testing that was current when its
+release was built. A build from source keeps the Chrome (and any `ENGINES`) it
 installed first, because those layers sit beneath the app and stay cached
 across code changes. To pick up the current ones, rebuild with a new tag:
 
@@ -379,6 +393,7 @@ Pair once, then use the server from any browser on any machine that can
 reach it. On the server:
 
 ```sh
+duskbot pair                             # the app's one-line install
 npx duskbot pair                         # npm install
 pnpm dusk pair                                # from a checkout
 docker compose exec dusk node dist-server/duskbot.js pair   # Docker
@@ -396,7 +411,7 @@ From the **desktop app**, use the server dropdown above Search → **Connect
 to a server…**, or **Settings → Servers**. Enter the server's
 HTTPS address or full pairing link, with an optional name. Custom domains and
 Cloudflare tunnel addresses work; Tailscale is not required. Generate a fresh
-link for each device: `npx duskbot pair --label "My desktop"` creates an
+link for each device: `duskbot pair --label "My desktop"` (with `npx` in front on an npm install) creates an
 owner link without the phone wizard; add `--client` for chat-only access.
 A code already used by your phone cannot also pair your desktop.
 

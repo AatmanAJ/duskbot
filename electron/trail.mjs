@@ -79,8 +79,22 @@ export function scrubString(value) {
   return out.length > MAX_STRING ? `${out.slice(0, MAX_STRING)}…` : out;
 }
 
+const TOOL_KEY = /^(?:tool|toolname)$/i;
+const TOOL_NAME = /^[A-Za-z_][\w:.-]{0,63}$/;
+const TOOL_FILE = /\.(?:m?[jt]sx?|cjs|json|jsonl|log|txt|md|png|jpe?g|gif|svg|webp|html?|css|sh|py|rb|zip|pdf|csv|xlsx?|docx?|ya?ml|toml)$/i;
+
+/** a tool's own name ("Bash", "browser_open", "mcp__dusk__get_url"), or undefined for anything else a tool field may
+ * hold: a shell command, a script, a file name or a sentence is never a name */
+export function toolName(value) {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (!TOOL_NAME.test(text) || TOOL_FILE.test(text)) return undefined;
+  return text;
+}
+
 function redactValue(key, value, depth) {
   if (value === null || value === undefined) return value ?? undefined;
+  if (TOOL_KEY.test(key) && typeof value === "string") return toolName(value) ?? "tool";
   if (typeof value === "number") return Number.isFinite(value) ? value : String(value);
   if (typeof value === "boolean") return value;
   if (typeof value === "bigint") return Number(value);
