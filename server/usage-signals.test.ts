@@ -117,6 +117,12 @@ describe("scrubSummary", () => {
     expect(scrubSummary("Jane Doe jane@acme.com +1 415 555 0100 Acme Corp")).toBeNull();
     expect(scrubSummary('he said "send the contract to Bob at Acme now please" twice')).toBeNull();
   });
+  it("drops the writer saying it could not write a note", () => {
+    expect(scrubSummary("i can't summarize this chat because the conversation itself isn't in what been given, only your instruction. if you paste the exchange here, write the two lowercase sentences.")).toBeNull();
+    expect(scrubSummary("the bot was given only setup rules and no record of the work this person asked for, so the summary cannot say what went wrong.")).toBeNull();
+    expect(scrubSummary("I'm unable to see the chat, please share the transcript.")).toBeNull();
+    expect(scrubSummary("the bot can't open the sheet and the user retried 3 times.")).toBe("the bot can't open the sheet and the user retried 3 times.");
+  });
   it("is stable: a scrubbed line passes the server's check unchanged", () => {
     const once = scrubSummary("The bot kept timing out while reading a long document, and the person stopped it twice.")!;
     expect(scrubSummary(once)).toBe(once);
@@ -158,6 +164,15 @@ describe("anonymous notes", () => {
       { sources, avoid: ["Quill"] })!;
     expect(note).not.toBeNull();
     expect(leaks(note)).toEqual([]);
+  });
+  it("keeps the product's own words when the chat or a bot's name uses them, and still takes out names", () => {
+    const sources = ["Hi Dusk Bot, post this in Slack and email it via Gmail for Priya", "Sure! Opening Slack in the Browser now, then the Chat with Quill."];
+    const note = scrubSummary("the user wanted the bot to post a message in slack and send an email to priya, but the bot could not open the browser or the chat with quill.",
+      SESSION_NOTE_MAX, { sources, avoid: ["dusk bot", "Quill"] })!;
+    expect(note).toContain("the user wanted the bot to post a message in slack");
+    expect(note).toContain("could not open the browser or the chat");
+    expect(leaks(note)).toEqual([]);
+    expect(scrubSummary("The bot in Dusk Bot could not reach LinkedIn from the Browser.", SESSION_NOTE_MAX)).toBe("the bot in dusk bot could not reach linkedin from the browser.");
   });
   it("is stable, so a scrubbed note passes the account service's check unchanged", () => {
     const once = scrubSummary("Connecting Gmail took 3 tries, then the session went smoothly with the browser and calendar.", SESSION_NOTE_MAX)!;
