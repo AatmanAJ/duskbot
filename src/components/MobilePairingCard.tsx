@@ -3,7 +3,7 @@ import { Apple, ChevronLeft } from "../icons";
 import { QRCodeSVG } from "qrcode.react";
 
 import { universalPairLink, universalSignInLink, type MobileDevice, type MobilePairingRequest, type MobilePairingResponse } from "../../shared/mobile-link";
-import type { CloudPlanBridge } from "../../electron/cloud-account.mjs";
+import type { CloudPhoneSignIn, CloudPlanBridge } from "../../electron/cloud-account.mjs";
 import { companionBridge } from "@/lib/companion-bridge";
 import { desktopShowsOtherServer } from "@/lib/other-server";
 import { phoneRelayBridge, relayBeforePairing } from "@/lib/phone-relay";
@@ -75,6 +75,9 @@ function cloudCodeBridge(cloudHome: boolean): (Required<Pick<CloudPlanBridge, "p
 
 type AccountBridge = Required<Pick<CloudPlanBridge, "phoneSignIn" | "signIn" | "signedIn">>;
 
+/** how long main renews a phone sign-in code without asking again (electron/cloud-plan-ipc.mjs PHONE_SIGN_IN_RENEW_MS, 75 min), less a margin */
+const SIGN_IN_QUIET_MS = 70 * 60_000;
+
 /** The desktop app's own dusk bot account, for its phone QR: the QR shows only once this computer is signed in, and
  * carries a code that logs the phone in to the same account as it pairs. A browser tab, a remote server's page and an
  * older app have none. */
@@ -124,6 +127,14 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const desktopAccount = useMemo(() => desktopAccountBridge(remote, cloudHome), [remote, cloudHome]);
   // null while asked; false shows only the sign-in card
   const [deskSignedIn, setDeskSignedIn] = useState<boolean | null>(desktopAccount ? null : true);
+  // the account's presence check is asked once a panel open: "approved" renews quietly, "declined" never asks again
+  // until the person taps Include sign-in, so nothing (a poll, a refocus, a renewal) can bring the sheet back by itself
+  const approval = useRef<"unasked" | "approved" | "declined">("unasked");
+  const approvedAt = useRef(0);
+  const firstGrant = useRef<CloudPhoneSignIn | null>(null);
+  const [signInDeclined, setSignInDeclined] = useState(false);
+  const plainQr = useRef(false);
+  const [signInAsk, setSignInAsk] = useState(false);
   const codesInCloud = cloudCodes !== null;
   // the account's email, once a code named it: kept for the linked phones row after the code is gone
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
@@ -227,8 +238,8 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
 
   // the link screen makes its code as soon as it is up, the first time included
   useEffect(() => {
-    if (flow === "link" && deskSignedIn === true && ((codesInCloud && !emailOnly) || (!cloudHome && devices)) && !offer && !busy && pairedName === null && error === null) void create();
-  }, [flow, cloudHome, codesInCloud, devices, emailOnly, deskSignedIn]);
+    if (flow === "link" && deskSignedIn === true && !signInDeclined && ((codesInCloud && !emailOnly) || (!cloudHome && devices)) && !offer && !busy && pairedName === null && error === null) void create();
+  }, [flow, cloudHome, codesInCloud, devices, emailOnly, deskSignedIn, signInDeclined]);
   const askSignedIn = useCallback(() => {
     if (!desktopAccount) return;
     void desktopAccount.signedIn().then((on) => setDeskSignedIn(on), () => setDeskSignedIn(true));
@@ -291,8 +302,17 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     baseline.current = null;
     renewals.current = 0;
     try {
-      // a cloud's code, and a signed-in desktop's QR with its account code, are checked in the desktop app itself
-      if ((!codesInCloud && !desktopAccount && !(await requireUserPresence())) || generation.current !== epoch) return;
+      // a cloud's code, and a signed-in desktop's QR with its account code, are checked in the desktop app itself: its
+      // presence check stands for the pairing too, so the person is asked once
+      if (desktopAccount && !plainQr.current) {
+        const grant: CloudPhoneSignIn = await desktopAccount.phoneSignIn(approval.current === "approved").catch(() => ({ outcome: "failed" as const }));
+        if (generation.current !== epoch) return;
+        if (grant.outcome === "canceled") { approval.current = "declined"; setSignInDeclined(true); return; }
+        if (grant.outcome === "signed-out") { setDeskSignedIn(false); return; }
+        approval.current = "approved";
+        approvedAt.current = Date.now();
+        firstGrant.current = grant;
+      } else if ((!codesInCloud && !(await requireUserPresence())) || generation.current !== epoch) return;
       const body = await mintWithRetries(epoch);
       if (!body || generation.current !== epoch) return;
       if (!codesInCloud) baseline.current = (devices ?? []).map((device) => device.id);
@@ -351,12 +371,13 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
       await relayBeforePairing();
     }
     let signIn: { code: string; email: string; serviceOrigin?: string | null; expiresAt: number } | null = null;
-    if (desktopAccount) {
-      const grant = await desktopAccount.phoneSignIn(renew);
-      if (grant.outcome === "canceled") return null;
-      if (grant.outcome === "signed-out") { setDeskSignedIn(false); return null; }
+    if (desktopAccount && !plainQr.current) {
+      // a renewal reuses this panel's approval while main still takes it, and drops the sign-in part after that
+      const quiet = renew && approval.current === "approved" && Date.now() - approvedAt.current < SIGN_IN_QUIET_MS;
+      const grant = renew ? (quiet ? await desktopAccount.phoneSignIn(true).catch(() => null) : null) : firstGrant.current;
+      firstGrant.current = null;
       // a service that makes no phone codes yet (or a failed one) still pairs; the phone then logs in on its own
-      if (grant.outcome === "code") { signIn = { code: grant.code, email: grant.email, serviceOrigin: grant.service ?? null, expiresAt: grant.expiresAt }; setAccountEmail(grant.email); }
+      if (grant?.outcome === "code") { signIn = { code: grant.code, email: grant.email, serviceOrigin: grant.service ?? null, expiresAt: grant.expiresAt }; setAccountEmail(grant.email); }
     }
     const body = await api<MobilePairingResponse>("/api/mobile/pairing", { method: "POST", body: JSON.stringify(request) });
     return { qr: universalPairLink(body.link, body.code, signIn), code: body.code, expiresAt: signIn ? Math.min(body.expiresAt, signIn.expiresAt) : body.expiresAt, ...(signIn ? { email: signIn.email } : {}) };
@@ -366,6 +387,15 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
     if (next === "android" && !ANDROID_APP_OUT) return;
     haptic("pick");
     setKind(next);
+    // signed out, the phone's card opens the app's own sign-in and goes on to its link page once that is done
+    if (desktopAccount && deskSignedIn !== true) {
+      void desktopAccount.signedIn().then(async (on) => {
+        if (!on) { setSignInAsk(true); await desktopAccount.signIn().catch(() => {}); on = await desktopAccount.signedIn().catch(() => false); setSignInAsk(false); }
+        setDeskSignedIn(on);
+        if (on) go("link");
+      }, () => go("link"));
+      return;
+    }
     go("link");
   }
 
@@ -483,6 +513,7 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const platformStep = (live: boolean) => (
     <div data-phone-choose="" className="flex flex-col items-center gap-6">
       {heading(live, t("settings.phone.whichTitle"), t(cloudHome ? "settings.phone.whichSubCloud" : "settings.phone.whichSub"))}
+      {signInAsk && <p role="status" data-phone-log-in-first="" className="m-0 text-center text-[14px] leading-5 text-ink">{t("settings.phone.logInToConnect")}</p>}
       <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">{phoneCard("ios")}{phoneCard("android")}</div>
     </div>
   );
@@ -583,6 +614,18 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   );
 
   const signInDesktop = () => void desktopAccount?.signIn().then(askSignedIn, () => {});
+  const includeSignIn = () => { approval.current = "unasked"; plainQr.current = false; setSignInDeclined(false); void create(true); };
+  const withoutSignIn = () => { plainQr.current = true; setSignInDeclined(false); void create(true); };
+  const declinedCard = (
+    <div data-phone-card="" className="flex min-h-[384px] w-full flex-col items-center rounded-[24px] bg-ink/[0.035] p-6">
+      <div data-phone-sign-in-declined="" className="flex w-full flex-1 flex-col items-center justify-center gap-3 text-center">
+        <PlaceArt name="phone" size={44} />
+        <p role="status" className="m-0 max-w-[300px] text-pretty text-[14px] leading-5 text-ink-secondary">{t("settings.phone.signInDeclined")}</p>
+        <button type="button" data-phone-plain-qr="" onClick={withoutSignIn} className="ui-button ui-button-pill min-h-11">{t("settings.phone.plainQr")}</button>
+        <button type="button" data-phone-include-sign-in="" onClick={includeSignIn} className={quietButton}>{t("settings.phone.includeSignIn")}</button>
+      </div>
+    </div>
+  );
   const signInCard = (
     <div data-phone-card="" className="flex min-h-[384px] w-full flex-col items-center rounded-[24px] bg-ink/[0.035] p-6">
       <div data-phone-sign-in-first="" className="flex w-full flex-1 flex-col items-center justify-center gap-3 text-center">
@@ -595,8 +638,8 @@ export function MobilePairingCard({ remote, cloudHome = false, email, children }
   const localLink = (live: boolean) => deskSignedIn === false
     ? column(live, { "data-phone-link": "" }, t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"), t("settings.phone.signInFirstSub"), signInCard, t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"))
     : column(live, { "data-phone-link": "" }, t(ios ? "settings.phone.linkIos" : "settings.phone.linkAndroid"),
-      signInEmail && desktopAccount ? <span data-phone-account-as="" className="break-all">{t("settings.phone.cloudAs", { email: signInEmail })}</span> : t("settings.phone.whichSub"),
-      card(offerTile(t("settings.mobile.qr")), typed, codeActions, status(t("mobile.desktop.waiting"), countdown)),
+      signInEmail && desktopAccount && !plainQr.current ? <span data-phone-account-as="" className="break-all">{t("settings.phone.cloudAs", { email: signInEmail })}</span> : t("settings.phone.whichSub"),
+      signInDeclined ? declinedCard : card(offerTile(t("settings.mobile.qr")), typed, <>{codeActions}{desktopAccount && plainQr.current && <><span aria-hidden="true" className="text-[13px] text-ink-tertiary">·</span><button type="button" data-phone-include-sign-in="" onClick={includeSignIn} className={quietButton}>{t("settings.phone.includeSignIn")}</button></>}</>, status(t("mobile.desktop.waiting"), countdown)),
       t(ios ? "settings.phone.openIos" : "settings.phone.openAndroid"));
 
   // a cloud from the desktop app: one qr and one letters-only code that log the phone in to the account, no email step

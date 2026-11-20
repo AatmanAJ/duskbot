@@ -11,13 +11,15 @@ let seq = 0;
 const ev = (name: string, at: number, accountId: string, props: StoredEvent["props"] = {}, ctx?: StoredEvent["ctx"]): StoredEvent => ({ id: `e${seq++}`, name, at, accountId, props, ...(ctx ? { ctx } : {}) });
 
 describe("subscriber status", () => {
-  it("sorts each subscription into trial, cancelling, paid or cancelled and says how far a trial is", () => {
+  it("sorts each subscription into trial, cancelling, paid, payment problem or cancelled and says how far a trial is", () => {
     expect(bucketOf(trial("a"), NOW)).toBe("trial");
     expect(statusLine(trial("a"), NOW)).toBe("trial day 2 of 3");
     expect(bucketOf(trial("b", { cancelAtPeriodEnd: true }), NOW)).toBe("cancelling");
     expect(statusLine(trial("b", { cancelAtPeriodEnd: true }), NOW)).toBe("trial day 2 of 3, cancelling");
     expect(bucketOf(sub({ accountId: "c" }), NOW)).toBe("paid");
     expect(statusLine(sub({ accountId: "c", status: "payment_problem" }), NOW)).toBe("payment problem");
+    expect(bucketOf(sub({ accountId: "c", status: "payment_problem" }), NOW), "a failed charge is never paid").toBe("payment_problem");
+    expect(bucketOf(sub({ accountId: "c", status: "payment_problem", trialEndsAt: NOW - DAY }), NOW), "a trial whose first charge failed").toBe("payment_problem");
     expect(bucketOf(sub({ accountId: "d", status: "ended" }), NOW)).toBe("cancelled");
     expect(handleOf("acct_1")).toBe(handleOf("acct_1"));
     expect(handleOf("acct_1")).not.toBe(handleOf("acct_2"));
@@ -25,19 +27,21 @@ describe("subscriber status", () => {
 });
 
 describe("launch strip", () => {
-  it("counts only accounts made at or after launch, mrr that will bill, and money taken net of refunds", () => {
+  it("counts only accounts made at or after launch, mrr that will bill, and money received before tax net of refunds", () => {
     const accounts = [{ id: "old", createdAt: LAUNCH_AT - 1 }, { id: "t", createdAt: LAUNCH_AT }, { id: "p", createdAt: LAUNCH_AT + DAY }, { id: "x", createdAt: LAUNCH_AT + DAY }, { id: "y", createdAt: LAUNCH_AT + DAY }];
     const subscriptions = [sub({ accountId: "old" }), trial("t"), sub({ accountId: "p", totalCents: 24000, cart: { interval: "year" } as Sub["cart"] }),
       trial("x", { cancelAtPeriodEnd: true }), sub({ accountId: "y", status: "ended" }), sub({ accountId: "t", id: "grant", source: "ops_grant" })] as never;
     const invoices = [
-      { accountId: "p", providerPaymentId: "pay_p", subscriptionId: "sub_p", amountCents: 24000, status: "paid" },
-      { accountId: "y", providerPaymentId: "pay_y", subscriptionId: "sub_y", amountCents: 2000, status: "paid" },
-      { accountId: "x", providerPaymentId: "pay_x", subscriptionId: "sub_x", amountCents: 2000, status: "failed" },
-      { accountId: "old", providerPaymentId: "pay_old", subscriptionId: "sub_old", amountCents: 2000, status: "paid" },
+      { accountId: "p", providerPaymentId: "pay_p", subscriptionId: "sub_p", amountCents: 24000, status: "paid", createdAt: LAUNCH_AT + DAY },
+      { accountId: "y", providerPaymentId: "pay_y", subscriptionId: "sub_y", amountCents: 2400, taxCents: 400, status: "paid", createdAt: LAUNCH_AT + DAY },
+      { accountId: "x", providerPaymentId: "pay_x", subscriptionId: "sub_x", amountCents: 2000, status: "failed", createdAt: LAUNCH_AT + DAY },
+      { accountId: "old", providerPaymentId: "pay_old", subscriptionId: "sub_old", amountCents: 2000, status: "paid", createdAt: LAUNCH_AT - DAY },
     ] as never;
-    const strip = launchStrip({ subscriptions, invoices, refunds: [{ id: "r1", paymentId: "pay_y", amountCents: 500, currency: "usd" }] }, accounts, NOW);
-    expect(strip).toEqual({ since: LAUNCH_AT, label: LAUNCH_LABEL, accounts: 4, mrrCents: 2000 + 2000, trial: 1, paying: 1, cancelling: 1, cancelled: 1, collectedCents: 24000 + 1500 });
+    const strip = launchStrip({ subscriptions, invoices, refunds: [{ id: "r1", paymentId: "pay_y", amountCents: 600, currency: "usd" }] }, accounts, NOW);
+    expect(strip).toEqual({ since: LAUNCH_AT, label: LAUNCH_LABEL, accounts: 4, mrrCents: 2000 + 2000, atRiskCents: 0, trial: 1, paying: 1, paymentProblem: 0, cancelling: 1, cancelled: 1, receivedCents: 24000 + (2000 - 500) });
     expect(LAUNCH_LABEL).toBe("since nov 18, 7:56 pm ist");
+    const failed = launchStrip({ subscriptions: [...subscriptions as Sub[], sub({ accountId: "f", status: "payment_problem", trialEndsAt: NOW - DAY })] as never, invoices, refunds: [] }, [...accounts, { id: "f", createdAt: LAUNCH_AT + DAY }], NOW);
+    expect(failed, "a failed charge is not paying and not mrr, only at risk").toMatchObject({ paying: 1, paymentProblem: 1, mrrCents: 2000 + 2000, atRiskCents: 2000 });
     expect(new Date(LAUNCH_AT).toISOString()).toBe("2026-11-18T14:26:00.000Z");
   });
 });

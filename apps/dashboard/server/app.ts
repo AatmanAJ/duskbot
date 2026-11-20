@@ -41,6 +41,7 @@ import { memorySink, type AnalyticsSink } from "./analytics/sink.ts";
 import { createUsage, memoryUsageStore, type UsageStore } from "./analytics/usage.ts";
 import { createInfraCollector, memoryInfraStore, type InfraStore } from "./admin/infra.ts";
 import { opsFixture } from "./admin/ops/fixture.ts";
+import type { WarmStore } from "./admin/web-warm.ts";
 import { CANARY_IDS, cloudFleetOf, serverFleet, type FleetAnswer } from "./admin/ops/fleet.ts";
 import { createOps } from "./admin/ops/index.ts";
 import { memoryOpsStore, type OpsStore } from "./admin/ops/store.ts";
@@ -103,7 +104,9 @@ export interface DashboardAppOptions {
   /** the owner's panel at /admin: DUSK_ADMIN_EMAILS by default */
   admin?: { emails?: string[]; growthEmails?: string[]; backupDir?: string | null; environment?: string; env?: NodeJS.ProcessEnv; opsFixture?: boolean; live?: LiveData | null;
     /** how long the admin keeps an analytics answer (main.ts: 30 s); none by default, so a fixture shows each event at once */
-    readCacheMs?: number };
+    readCacheMs?: number;
+    /** keeps the overview's default ranges computed ahead (main.ts: in MongoDB); none by default */
+    warm?: { store: WarmStore; everyMs?: number } | null };
   /** the owner's alert emails (main.ts); without it incidents are kept in memory and nothing is mailed */
   incidents?: Incidents;
   /** @devs reports from the apps: MongoDB in production (main.ts), memory otherwise; mail goes where the alert emails go */
@@ -390,7 +393,7 @@ export function createDashboardApp(options: DashboardAppOptions) {
   const bugReportStore = options.bugReports?.store ?? memoryBugReportStore();
   const admin = createAdmin({ emails: adminEmails, growthEmails: options.admin?.growthEmails ?? parseAdminEmails(process.env.DUSK_GROWTH_ADMIN_EMAILS), auth, billing, workspaces: () => state.workspaces, analytics, usage, bugReports: bugReportStore, infra: { store: infraStore },
     ops: { answer: () => ops.answer(), collect: () => ops.collect(), accounts: (relays, query) => ops.accounts(relays, query) }, wakeStats: () => slackEdge?.edge.wakeStats() ?? {},
-    waitlist: options.analytics?.waitlist ?? null, live: options.admin?.live ?? null, now, fetch: options.fetch, env: options.admin?.env, errors: errorsSeen, readBody, bodyObject, json, relayFixture: options.admin?.opsFixture, readCacheMs: options.admin?.readCacheMs ?? 0,
+    waitlist: options.analytics?.waitlist ?? null, live: options.admin?.live ?? null, now, fetch: options.fetch, env: options.admin?.env, errors: errorsSeen, readBody, bodyObject, json, relayFixture: options.admin?.opsFixture, readCacheMs: options.admin?.readCacheMs ?? 0, warm: options.admin?.warm ?? null,
     service: { version: options.version ?? null, startedAt, environment: options.admin?.environment ?? (dev ? "development" : "production"), dataDir: options.dataDir,
       backupDir: options.admin?.backupDir ?? null, database: () => stateBackend()?.health() ?? null } });
   // only production's numbers are news: preview and development share the env but never email the admins

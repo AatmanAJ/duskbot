@@ -3460,3 +3460,9 @@ button:disabled.bg-danger {
   .voice-call-pill-out, .voice-call-menu-out { animation: voice-call-unfade 160ms linear both; }
   .voice-call-press:active:not(:disabled) { transform: none; }
 }
+
+[data-sidebar] ~ main { anchor-name: --app-main; }
+.topbar-notice-frame { position-anchor: --app-main; top: anchor(top, 0px); left: anchor(left, 0px); right: anchor(right, 0px); }
+@supports not (anchor-name: --app-main) {
+  .topbar-notice-frame { top: 0; left: 0; right: 0; }
+}

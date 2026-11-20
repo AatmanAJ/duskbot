@@ -790,6 +790,9 @@ export function createLifecycle(deps: LifecycleDeps) {
       await planEnded(c, entitlement, verdict, s.state === "running");
       const final = latestVerified(b), covered = neverSetUp(c) || final !== null && (b.lastStopAt === null || final.snapshotAt >= b.lastStopAt);
       if (s.state === "running") {
+        // InstaBox (seen 2026-11-20) reads a machine as running for minutes after its pause was accepted, or refuses the
+        // pause while busy: asked again, with no new stop time that would make the final backup look older than the data
+        if (b.sleepReason === "plan" && b.sleptAt !== null && (b.wakeStartedAt ?? 0) <= b.sleptAt) { await provider.power(c.serverId, "off"); return; }
         // the copy retention relies on is read from the running home, right before it sleeps for good
         const quiet = now();
         if (!covered && (b.lastBackupTryAt ?? 0) + BACKUP_RETRY_MS <= now()) await backup(c, "plan_ended").catch(() => false);
@@ -801,9 +804,10 @@ export function createLifecycle(deps: LifecycleDeps) {
         if (covered && !b.hold && c.suspended === null && verdict.earliestAt !== null) return archiveEnded(c);
         // asleep with no final backup as new as its data: woken once to take it (a start costs nothing, only seconds)
         // each such wake that brought no backup doubles the wait to the next, up to a day: a home whose backup cannot succeed
-        // (too large, refused) is not woken every few minutes until the operator looks
-        const finalWakes = b.finalWakes ?? 0;
-        if (!covered && verdict.earliestAt !== null && (b.lastBackupTryAt ?? 0) + Math.min(BACKUP_RETRY_MS * 2 ** finalWakes, DAY_MS) <= now()) {
+        // (too large, refused) is not woken every few minutes until the operator looks. the wait also runs from the wake
+        // itself: InstaBox (seen 2026-11-20) reads a resuming machine as paused for minutes
+        const finalWakes = b.finalWakes ?? 0, lastTry = Math.max(b.lastBackupTryAt ?? 0, b.wakeStartedAt ?? 0);
+        if (!covered && verdict.earliestAt !== null && lastTry + Math.min(BACKUP_RETRY_MS * 2 ** finalWakes, DAY_MS) <= now()) {
           if (finalWakes === 3) console.warn(`managed: ALERT cloud ${c.id}: its plan ended and its final backup keeps failing (${b.backupProblem ?? "unknown"})`);
           await start(c, "wake", () => provider.power(c.serverId!, "on")); b.finalWakes = finalWakes + 1; b.wakeStartedAt = now(); log(c, "wake", "reconciler", "final_backup"); deps.save(c);
         }

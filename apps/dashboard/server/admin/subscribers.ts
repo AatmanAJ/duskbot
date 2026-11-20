@@ -6,13 +6,14 @@ import type { PersonDay, SnapshotRow } from "../analytics/usage.ts";
 import type { BillingState, StoredSubscription } from "../billing/store.ts";
 import type { StoredWorkspace } from "../store.ts";
 import { isOpsMade } from "./money-mode.ts";
+import { paysOf, receivedIn, refundsOf } from "../analytics/subscriptions.ts";
 
 const DAY = 86_400_000;
 /** the public launch: accounts made at or after this moment are the launch cohort */
 export const LAUNCH_AT = Date.parse("2026-11-18T14:26:00Z");
 export const LAUNCH_LABEL = "since nov 18, 7:56 pm ist";
 
-export const SUBSCRIBER_FILTERS = ["trial", "cancelling", "paid", "cancelled", "all"] as const;
+export const SUBSCRIBER_FILTERS = ["trial", "cancelling", "paid", "payment_problem", "cancelled", "all"] as const;
 export type SubscriberFilter = (typeof SUBSCRIBER_FILTERS)[number];
 export type SubscriberBucket = Exclude<SubscriberFilter, "all">;
 export type Place = "this computer" | "own server" | "dusk cloud";
@@ -24,10 +25,12 @@ type Sub = Pick<StoredSubscription, "id" | "accountId" | "status" | "cancelAtPer
 /** a subscription that counts: bought (no grant or review plan) and past its checkout; the view it is read through already holds one money mode */
 export const countsAsBought = (sub: Sub) => !isOpsMade(sub) && sub.status !== "pending";
 
-/** which list a subscription is in now: a trial or paid plan set to end is cancelling; an ended one is cancelled */
+/** which list a subscription is in now: a trial or paid plan set to end is cancelling; an ended one is cancelled; one whose
+ *  charge failed is a payment problem, never paid */
 export function bucketOf(sub: Sub, now: number): SubscriberBucket {
   if (sub.status === "ended" || sub.status === "cancelled") return "cancelled";
   if (sub.cancelAtPeriodEnd) return "cancelling";
+  if (sub.status === "payment_problem") return "payment_problem";
   return sub.trialEndsAt !== undefined && sub.trialEndsAt > now ? "trial" : "paid";
 }
 /** the subscription a person's row is about: the newest one still running, else the newest */
@@ -44,30 +47,29 @@ export function statusLine(sub: Sub, now: number): string {
   const trial = inTrial ? `trial day ${Math.min(Math.max(1, Math.ceil((sub.trialEndsAt! - sub.createdAt) / DAY)), Math.floor((now - sub.createdAt) / DAY) + 1)} of ${Math.max(1, Math.ceil((sub.trialEndsAt! - sub.createdAt) / DAY))}` : null;
   if (bucket === "cancelling") return trial ? `${trial}, cancelling` : "cancelling";
   if (bucket === "cancelled") return "cancelled";
-  if (sub.status === "payment_problem") return "payment problem";
+  if (bucket === "payment_problem") return "payment problem";
   return trial ?? "paid";
 }
 
-export interface LaunchStrip { since: number; label: string; accounts: number; mrrCents: number; trial: number; paying: number; cancelling: number; cancelled: number; collectedCents: number }
-/** the launch cohort's money: accounts made at or after `since`; mrr is what will bill (running plans not set to end), collected is
- *  payments taken net of refunds, in the money mode of the view it is given */
+export interface LaunchStrip { since: number; label: string; accounts: number; mrrCents: number; atRiskCents: number; trial: number; paying: number; paymentProblem: number; cancelling: number; cancelled: number; receivedCents: number }
+/** the launch cohort's money: accounts made at or after `since`; mrr is what will bill (running plans not set to end, without
+ *  failed charges), at risk is the monthly value of failed charges, received is
+ *  payments before tax less refunds (before processor fees), in the money mode of the view it is given */
 export function launchStrip(state: Pick<BillingState, "subscriptions" | "invoices" | "refunds">, accounts: ReadonlyArray<{ id: string; createdAt: number }>, now: number, since = LAUNCH_AT): LaunchStrip {
   const cohort = new Set(accounts.filter(account => account.createdAt >= since).map(account => account.id));
   const subs = state.subscriptions.filter(sub => cohort.has(sub.accountId) && countsAsBought(sub));
   const byPerson = new Map<string, Sub[]>();
   for (const sub of subs) byPerson.set(sub.accountId, [...(byPerson.get(sub.accountId) ?? []), sub]);
-  const counts = { trial: 0, paying: 0, cancelling: 0, cancelled: 0 };
-  for (const list of byPerson.values()) {
-    const bucket = bucketOf(currentOf(list, now)!, now);
-    counts[bucket === "paid" ? "paying" : bucket]++;
-  }
+  const counts = { trial: 0, paying: 0, paymentProblem: 0, cancelling: 0, cancelled: 0 };
+  const countOf = { trial: "trial", paid: "paying", payment_problem: "paymentProblem", cancelling: "cancelling", cancelled: "cancelled" } as const;
+  for (const list of byPerson.values()) counts[countOf[bucketOf(currentOf(list, now)!, now)]]++;
   const mrrCents = subs.filter(sub => { const bucket = bucketOf(sub, now); return bucket === "trial" || bucket === "paid"; }).reduce((sum, sub) => sum + monthlyOf(sub), 0);
+  const atRiskCents = subs.filter(sub => bucketOf(sub, now) === "payment_problem").reduce((sum, sub) => sum + monthlyOf(sub), 0);
   const bought = new Set(subs.map(sub => sub.id));
   const payments = state.invoices.filter(invoice => cohort.has(invoice.accountId) && (invoice.subscriptionId === null || bought.has(invoice.subscriptionId)) && invoice.status !== "failed");
-  const refunded = new Map<string, number>();
-  for (const refund of state.refunds ?? []) refunded.set(refund.paymentId, (refunded.get(refund.paymentId) ?? 0) + refund.amountCents);
-  const collectedCents = payments.reduce((sum, invoice) => sum + Math.max(0, invoice.amountCents - (refunded.get(invoice.providerPaymentId) ?? (invoice.status === "refunded" ? invoice.amountCents : 0))), 0);
-  return { since, label: LAUNCH_LABEL, accounts: cohort.size, mrrCents, ...counts, collectedCents };
+  const pays = paysOf({ invoices: payments, ledger: [] }), until = Math.max(since, now) + 1;
+  const receivedCents = receivedIn(pays, refundsOf({ refunds: state.refunds ?? [], ledger: [] }, pays), since, until, until - since).cents;
+  return { since, label: LAUNCH_LABEL, accounts: cohort.size, mrrCents, atRiskCents, ...counts, receivedCents };
 }
 
 export interface TrialTotals { active: number; cancelling: number; mrrAtStake: number; ended: number; converted: number; conversion: number | null }
@@ -167,7 +169,7 @@ export function subscriberRows(input: SubscribersInput): SubscriberRow[] {
       plan: input.planOf(sub), bucket, status: statusLine(sub, now), reason: bucket === "cancelled" || bucket === "cancelling" ? reasons.get(sub.id) ?? reasons.get(accountId) ?? null : null,
       monthlyCents: monthlyOf(sub), started: sub.createdAt,
       trialEndsAt: sub.trialEndsAt !== undefined && sub.trialEndsAt > now ? sub.trialEndsAt : null,
-      renewsAt: bucket === "paid" || bucket === "trial" ? sub.currentPeriodEnd ?? sub.trialEndsAt ?? null : null,
+      renewsAt: bucket === "paid" || bucket === "trial" || bucket === "payment_problem" ? sub.currentPeriodEnd ?? sub.trialEndsAt ?? null : null,
       messages7d: msg.week, messages: msg.all, turns: use.turns, turns7d: use.week, failed: use.failed, engines: [...snap.engines].sort(), apps: appsOf.get(accountId) ?? 0,
       routines: snap.routines, bots: snap.bots, lastActive, platforms: [...platforms(accountId)].sort(), places: [...places(accountId)].sort(), cloud: clouds.get(accountId) ?? null,
     });

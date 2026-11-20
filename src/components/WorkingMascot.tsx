@@ -98,9 +98,9 @@ export function WorkingMascot({ bot, size, eyes, seed = "", mood, className, mot
   seed?: string;
   mood?: WorkingMood;
   className?: string;
-  /** "current" moves by the CSS loops; the 3D motions take over while it has a mood */
+  /** "current" moves by the CSS loops; "flat-gentle" moves it smoothly while it has a mood */
   motion?: MascotMotionPick;
-  /** the lab's own clock for the 3D motions, in ms */
+  /** the lab's own clock for "flat-gentle", in ms */
   at?: number;
 }) {
   const dressed = useHalloweenDressed();
@@ -118,7 +118,7 @@ export function WorkingMascot({ bot, size, eyes, seed = "", mood, className, mot
   if (mood && motion !== "current") {
     return (
       <span aria-hidden="true" data-working-mascot="" data-motion={motion} data-mood={mood} className={cn("relative inline-block shrink-0", className)} style={{ width: size, height: size }}>
-        <LivelyMascot variant={motion} body={body} mood={mood} seed={key} reduced={reduced} box={box} ink={ink} eyeInk={eyeInk} at={at} />
+        <LivelyMascot body={body} mood={mood} seed={key} reduced={reduced} box={box} ink={ink} eyeInk={eyeInk} at={at} />
       </span>
     );
   }

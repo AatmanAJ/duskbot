@@ -31,6 +31,7 @@ import type { OpsAccountsAnswer, OpsAccountsRange, OpsRelayCard } from "../../sr
 import { isTestEvent, isTestInstall, testAccountIds, testBuyerIds, withoutAccounts, withoutBilling } from "./test-accounts.ts";
 import { moneyIn, moneyViewOf, withoutOps, type MoneyView } from "./money-mode.ts";
 import { ReadUnavailable, createReadCache } from "./read-cache.ts";
+import { NOW_SLACK_MS, createWebWarmer, type WarmStore } from "./web-warm.ts";
 import { SITE_VISIT_EVENTS, V2Error, overviewV2, paymentsV2, peopleV2, personV2, type V2Source } from "./v2.ts";
 import { countsAsBought, dailyMessages, launchStrip, SUBSCRIBER_FILTERS, subscriberRows, timelineOf, trialTotals, usageOf } from "./subscribers.ts";
 import type { BugReportStore } from "../bug-reports/store.ts";
@@ -74,6 +75,8 @@ export interface AdminOptions {
   ops?: { answer(): Promise<unknown>; collect(): Promise<unknown>; accounts(relays: readonly OpsRelayCard[], query?: { range?: OpsAccountsRange; limit?: number }): Promise<OpsAccountsAnswer> };
   /** how long an analytics answer is kept for the panel's refreshes (default 30 s); 0 keeps none, only joins identical reads in flight */
   readCacheMs?: number;
+  /** keeps the overview's default /web ranges computed ahead (web-warm.ts), every `everyMs` (default 10 minutes) */
+  warm?: { store: WarmStore; everyMs?: number } | null;
   /** the local fixture: made-up relay cards instead of asking the relays */
   relayFixture?: boolean;
   service: { version: string | null; startedAt: number; environment: string; dataDir: string; backupDir: string | null; database: () => { ok: boolean; detail: string } | null };
@@ -93,7 +96,7 @@ const ACTIVE_NAMES = EVENT_NAMES.filter(name => "active" in EVENTS[name]);
 const APP_NAMES = EVENT_NAMES.filter(name => EVENTS[name].source === "app" || name === "app_active");
 const REALTIME_TTL_MS = 4_000;
 /** how long past its freshness a kept read is still answered at once while a new one is computed behind it */
-const STALE_MS = 10 * 60_000;
+const STALE_MS = 12 * 60 * 60_000;
 const SUBSCRIBER_EVENTS = ["app_messages", "app_open"];
 const bundleLabel = (id: string | null | undefined) => BILLING_CONFIG.bundles.find(bundle => bundle.id === id)?.label.toLowerCase() ?? (id ? "custom" : null);
 const regionLabel = (id: string, managed: boolean) => (labelOfRegion(managed ? MANAGED_REGION.id : id) ?? id).toLowerCase();
@@ -577,15 +580,25 @@ export function createAdmin(options: AdminOptions) {
     if (/^\/(?:me|health|audit|waitlist\.csv|ops\/relays|experience\/timeline)$/.test(route) || /^\/(?:users|journeys|v2\/people|subscribers)\/[^/]+$/.test(route) || /^\/clouds\/[^/]+\/usage$/.test(route)) return null;
     return route === "/realtime" ? REALTIME_TTL_MS : options.readCacheMs ?? 30_000;
   }
+  const switchesOf = (req: IncomingMessage) => {
+    const header = (name: string) => String(req.headers[name] ?? "");
+    return { data: header("x-dusk-admin-data"), tests: header("x-dusk-admin-tests"), money: header("x-dusk-admin-money") };
+  };
   /** one question: the path, its query (a `to` within 10 minutes of now reads as now, so every "until now" view shares one answer) and the panel's switches */
-  function readKey(req: IncomingMessage, url: URL) {
+  function readKey(url: URL, switches: { data: string; tests: string; money: string }) {
     const params = [...url.searchParams].map(([key, value]) => {
       const at = Number(value);
-      return key === "to" && Number.isSafeInteger(at) && Math.abs(now() - at) < 10 * 60_000 ? [key, "now"] : [key, value];
+      return key === "to" && Number.isSafeInteger(at) && Math.abs(now() - at) < NOW_SLACK_MS ? [key, "now"] : [key, value];
     }).sort(([a], [b]) => a!.localeCompare(b!));
-    const header = (name: string) => String(req.headers[name] ?? "");
-    return `${url.pathname}?${new URLSearchParams(params as Array<[string, string]>)}|${header("x-dusk-admin-data")}|${header("x-dusk-admin-tests")}|${header("x-dusk-admin-money")}`;
+    return `${url.pathname}?${new URLSearchParams(params as Array<[string, string]>)}|${switches.data}|${switches.tests}|${switches.money}`;
   }
+  const requestWith = (switches: { data: string; tests: string; money: string }) => ({ headers: Object.fromEntries(
+    Object.entries({ "x-dusk-admin-data": switches.data, "x-dusk-admin-tests": switches.tests, "x-dusk-admin-money": switches.money }).filter(([, value]) => value)) }) as unknown as IncomingMessage;
+  const warmer = options.warm ? createWebWarmer({ store: options.warm.store, reads, now, everyMs: options.warm.everyMs ?? 10 * 60_000, keepMs: (options.readCacheMs ?? 30_000) + STALE_MS,
+    keyOf: (viewer, url) => readKey(url, viewer), answer: async (viewer, urls) => (await viewOf(requestWith(viewer))).deep.webMany(urls) }) : null;
+  void warmer?.start();
+  /** the view whose live numbers (online now) a request reads, without reloading the live service's accounts */
+  const onlineViewOf = (req: IncomingMessage) => !liveView || req.headers["x-dusk-admin-data"] === "own" ? ownViewOf(req) : showTests(req) ? liveView : liveClean!;
 
   async function handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
     const path = url.pathname, method = req.method ?? "GET";
@@ -596,17 +609,20 @@ export function createAdmin(options: AdminOptions) {
     if (role === "growth" && !growthMay(method, route)) throw new AdminError(403, "not_allowed", "This admin role can't open that.");
     if (role === "growth") url = growthUrl(route, url);
     const shape = (data: unknown) => role === "growth" ? forGrowth(route, data) : data;
-    if (mutation) reads.clear();
+    if (mutation) { reads.clear(); warmer?.forget(); }
     try {
       if (method !== "GET") return await answer(req, res, url, owner, route, method, data => { options.json(res, 200, data); return true; });
       const ttlMs = readTtl(route);
       if (ttlMs === null) return await reads.bounded(answer(req, res, url, owner, route, method, data => { options.json(res, 200, shape(data)); return true; }));
-      const data = await reads.get(readKey(req, url), ttlMs, async () => {
+      if (route === "/web") warmer?.note(url, switchesOf(req));
+      const data = await reads.get(readKey(url, switchesOf(req)), ttlMs, async () => {
         const out: { data?: unknown } = {};
         await answer(req, res, url, owner, route, method, data => { out.data = data; return true; });
         return out.data;
       }, route === "/realtime" ? 0 : STALE_MS);
-      options.json(res, 200, shape(data));
+      // a kept answer may be minutes old; who is online is always now
+      const fresh = route === "/web" && data && typeof data === "object" ? { ...data, online: await onlineViewOf(req).deep.onlineNow() } : data;
+      options.json(res, 200, shape(fresh));
       return true;
     } catch (error) {
       if (error instanceof ReadUnavailable) throw new AdminError(error.status, error.code, error.message);

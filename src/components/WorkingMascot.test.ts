@@ -17,7 +17,7 @@ const reduce = (on: boolean) => vi.spyOn(window, "matchMedia").mockImplementatio
 
 const draw = (mood?: WorkingMood, motion?: "current") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion: motion ?? "current" })));
 const drawShipped = (mood?: WorkingMood) => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood })));
-const drawMotion = (motion: "current" | "card-calm", mood: WorkingMood = "thinking") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion })));
+const drawMotion = (motion: "current" | "flat-gentle", mood: WorkingMood = "thinking") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion })));
 const mascot = () => host.querySelector<HTMLElement>("[data-working-mascot]")!;
 const eyes = () => mascot().querySelectorAll("path")[1]!.getAttribute("d");
 
@@ -86,10 +86,10 @@ describe("the working mascot's face", () => {
     expect(eyes()).toBe(stillSvgPaths("kit", { scale: 1 }).eyes);
   });
 
-  it("moves the gentle 3D mascot in the chat line, and keeps the plain loops where it has no mood", () => {
+  it("moves the gentle flat mascot in the chat line, and keeps the plain loops where it has no mood", () => {
     reduce(false);
     drawShipped("thinking");
-    expect(mascot().dataset.motion).toBe("voxel-gentle");
+    expect(mascot().dataset.motion).toBe("flat-gentle");
     drawShipped();
     expect(mascot().dataset.motion).toBeUndefined();
     expect(mascot().querySelector(".working-mascot-bob")).not.toBeNull();
@@ -101,8 +101,8 @@ describe("the working mascot's face", () => {
     vi.stubGlobal("IntersectionObserver", class { constructor(fn: typeof seen) { seen = fn; } observe() {} disconnect() {} });
     const raf = vi.spyOn(window, "requestAnimationFrame");
     const caf = vi.spyOn(window, "cancelAnimationFrame");
-    drawMotion("card-calm");
-    expect(mascot().dataset.motion).toBe("card-calm");
+    drawMotion("flat-gentle");
+    expect(mascot().dataset.motion).toBe("flat-gentle");
     expect(raf, "nothing until it is seen").not.toHaveBeenCalled();
     act(() => seen([{ isIntersecting: true }]));
     expect(raf).toHaveBeenCalledTimes(1);
@@ -117,8 +117,8 @@ describe("the working mascot's face", () => {
   it("asks for no frames at all under reduced motion", () => {
     reduce(true);
     const raf = vi.spyOn(window, "requestAnimationFrame");
-    drawMotion("card-calm");
-    drawMotion("card-calm", "writing");
+    drawMotion("flat-gentle");
+    drawMotion("flat-gentle", "writing");
     expect(raf).not.toHaveBeenCalled();
     expect(mascot().querySelectorAll("path")[0]!.getAttribute("d")).toMatch(/^M/);
   });

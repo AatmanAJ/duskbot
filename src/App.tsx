@@ -312,7 +312,6 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
     <LiveConnectionStrip connected={state.connected} hydrated={state.hydrated === true} />
     <CloudSendStrip cloudHome={state.config?.cloudHome === true} />
     <HomeLine />
-    <CloudMoveOffer cloudHome={state.config?.cloudHome === true} />
     <AppNotices quiet={paletteOpen || drawerOpen} viewer={viewer} />
     <RoutineCloudUpsell quiet={paletteOpen || drawerOpen || Boolean(firstRun)} />
     <EgressFallbackNotice />
@@ -389,6 +388,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       <SignInSheetHost />
       <FeedbackHost />
       <CloudMoveHost />
+      <CloudMoveOffer cloudHome={state.config?.cloudHome === true} />
       <AnimatePresence>
         {state.shortcutsOpen && (
           <KeyboardShortcutsModal

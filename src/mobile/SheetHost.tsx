@@ -1,3 +1,4 @@
+import { botAccentScope } from "@/lib/bot-accent";
 import { Suspense, useEffect, useRef, type ReactNode } from "react";
 import { useStore, type Action } from "@/state/store";
 import { BotSettingsDialog, RoomPanel } from "@/components/lazy-screens";
@@ -42,7 +43,7 @@ function PanelSheet({ sheet, open, onClose }: { sheet: Extract<MobileSheet, { ki
     <Sheet open={open} onClose={onClose} full flush label={bot?.name ?? group?.name ?? t("mobile.sheet.profile")} bodyClassName="mobile-panel-sheet">
       <ModelRowSlot.Provider value={PhoneModelRow}>
         <Suspense fallback={null}>
-          {bot ? <BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /> : group ? <RoomPanel key={`room:${group.id}`} group={group} initialTab={sheet.kind === "computer" ? "computer" : "details"} /> : null}
+          {bot ? <div {...botAccentScope(bot.color)} className="contents"><BotSettingsDialog key={`settings:${bot.id}`} bot={bot} /></div> : group ? <RoomPanel key={`room:${group.id}`} group={group} initialTab={sheet.kind === "computer" ? "computer" : "details"} /> : null}
         </Suspense>
       </ModelRowSlot.Provider>
     </Sheet>

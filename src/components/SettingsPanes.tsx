@@ -1,4 +1,6 @@
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import { useSettledReveal } from "./settled-reveal";
+import { cn } from "@/lib/cn";
 import { AnimatePresence } from "motion/react";
 import { openSignIn } from "@/lib/sign-in-sheet";
 import { importFirst, previousOpenAt } from "@/lib/import-first";
@@ -271,9 +273,19 @@ function ImportRow() {
 /** Phone pairing and the paired devices' access, all on the pane: the code to scan or type first, then the phones. */
 export function TextingPane({ has, remoteAccess }: { has: Has; remoteAccess: RemoteAccessCards }) {
   const { at } = useSubPage();
-  if (at === PHONE_ADVANCED_PAGE) return <div data-settings-block="companion-advanced" className="flex flex-col gap-5">{remoteAccess.companion}</div>;
-  if (!has("companion")) return null;
-  return <div data-settings-block="companion" className="flex flex-col gap-5">{remoteAccess.pairing}{remoteAccess.companion}</div>;
+  const advanced = at === PHONE_ADVANCED_PAGE;
+  if (!advanced && !has("companion")) return null;
+  // one tree for the pane and its Advanced page: going there and back keeps the code, the phones and their reads as they
+  // are, so the pane never loads (and moves) again
+  return <PhonePaneBody advanced={advanced}><div hidden={advanced} className={advanced ? undefined : "contents"}>{remoteAccess.pairing}</div>{remoteAccess.companion}</PhonePaneBody>;
+}
+
+/** The phone pane's parts (the code, the phones, the computer's own link) each load on their own: the pane shows once
+ * they have, so nothing appears and moves the rows under it on open. */
+function PhonePaneBody({ advanced, children }: { advanced: boolean; children: ReactNode }) {
+  const block = useRef<HTMLDivElement>(null);
+  const shown = useSettledReveal(block);
+  return <div ref={block} data-settings-block={advanced ? "companion-advanced" : "companion"} data-settled={shown ? "" : undefined} className={cn("flex flex-col gap-5", !shown && "invisible")}>{children}</div>;
 }
 
 export function ComputerPane({ has, remoteAccess, transfer, remoteActive = false }: { has: Has; remoteAccess: RemoteAccessCards; transfer?: ReactNode; remoteActive?: boolean }) {

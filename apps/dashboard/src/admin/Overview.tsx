@@ -285,6 +285,7 @@ export function OverviewPage() {
               { id: "active trials", value: t ? t.active : null, format: whole },
               { id: "cancelling", value: t ? t.cancelling : null, format: whole, change: t ? <span className="text-12 text-ink-4">trials set to end</span> : undefined },
               { id: "trial mrr", value: t ? t.mrrAtStake : null, format: dollars, change: t ? <span className="text-12 text-ink-4">at stake if they pay</span> : undefined },
+              { id: "received", value: r ? r.current.net : null, format: dollars, now: r?.current.net, before: r?.previous.net, hint: "payments taken less refunds in this range, before tax and processor fees" },
               { id: "visitors", value: c.visitors, format: whole, now: c.visitors, before: p.visitors, toggle: { on: show.visitors, flip: flip("visitors"), colour: SERIES.visitors } },
               { id: "signups", value: c.signups, format: whole, now: c.signups, before: p.signups, toggle: { on: show.signups, flip: flip("signups"), colour: SERIES.signups } },
             ]} />

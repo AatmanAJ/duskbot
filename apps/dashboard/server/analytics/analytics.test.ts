@@ -8,7 +8,7 @@ import { createAnalytics } from "./index.ts";
 import { memorySink, mongoSink } from "./sink.ts";
 import { deviceOf, requestContext, touchContext } from "./context.ts";
 import { cleanProps, routeOf } from "./events.ts";
-import { funnel, dayRange, perDay } from "../admin/metrics.ts";
+import { funnel, dayRange, isPaying, perDay, wasPaid } from "../admin/metrics.ts";
 import { brevoChecker, csvField } from "../admin/waitlist.ts";
 import { healthTargets } from "../admin/health.ts";
 
@@ -172,5 +172,13 @@ describe("ai crawlers", () => {
     expect(await sink.crawls(0, 2000)).toEqual([{ at: 1000, bot: "GPTBot", kind: "training", path: "/llms.txt", host: "dusk.bot" }, { at: 1000, bot: "ChatGPT-User", kind: "answers", path: "/pricing", host: "dusk.bot" }]);
     expect(sink.all).toEqual([]);
     analytics.close(); rmSync(dataDir, { recursive: true, force: true });
+  });
+});
+
+describe("paying", () => {
+  it("never counts a failed charge as paying, though it was paid for", () => {
+    expect(isPaying({ status: "payment_problem" })).toBe(false);
+    expect(isPaying({ status: "active" })).toBe(true);
+    expect(wasPaid({ status: "payment_problem", currentPeriodStart: null })).toBe(true);
   });
 });

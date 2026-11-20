@@ -14,7 +14,7 @@ import { paymentsOf, revenueReport } from "../analytics/revenue.ts";
 import { aligned, firstSeenOf, newVsReturningTally, peakHoursTally } from "../analytics/insights.ts";
 import { billingSteps, firstSourceOf, sessionsOf, spendOf, timeToPayOf, whereOf } from "../analytics/profile.ts";
 import type { StoredSubscription } from "../billing/store.ts";
-import { billingCardOf, paysOf, subscriptionReport, type SubscriptionsInput } from "../analytics/subscriptions.ts";
+import { billingCardOf, paysOf, receivedIn, refundsOf, subscriptionReport, type SubscriptionsInput } from "../analytics/subscriptions.ts";
 import { LEDGER_LABELS } from "../billing/ledger.ts";
 import { BILLING_CONFIG } from "../billing/plans.ts";
 import { quote } from "../billing/pricing.ts";
@@ -152,16 +152,54 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     return { onboarding, days, last };
   }
 
-  async function web(url: URL) {
-    const { from, to } = windowOf(url, now()), span = to - from;
-    const { surface, filters, scoped } = webFilters(url);
+  /** the visitors on the site and in an app in the last five minutes */
+  async function onlineNow() {
     const time = now();
-    const [{ identity, people: p, sessions }, recent, crawls, notes] = await Promise.all([load(Math.min(from - span, from - 60 * DAY), true), sink.scan(time - ONLINE_MS, time + 60_000),
-      sink.crawls(from, to), sink.notes(from - span, to)]);
-    const pause = pacer();
-    const all = await visitsFromPaced(sessions, SURFACES, pause), visits = all.filter(visit => surface === "all" || visit.surface === surface);
+    return online(await sink.scan(time - ONLINE_MS, time + 60_000), time, analytics.presence.list().map(entry => entry.key));
+  }
+  /** what every surface's answer for one window reads: the visits, people, crawls and notes */
+  async function webBase(from: number, to: number) {
+    const span = to - from;
+    const [{ identity, people: p, sessions }, live, crawls, notes] = await Promise.all([load(Math.min(from - span, from - 60 * DAY), true), onlineNow(), sink.crawls(from, to), sink.notes(from - span, to)]);
+    const all = await visitsFromPaced(sessions, SURFACES, pacer());
+    return { from, to, identity, people: p, live, crawls, notes, all };
+  }
+  type WebBase = Awaited<ReturnType<typeof webBase>>;
+  const tzOf = (url: URL) => {
     const tz = url.searchParams.has("tz") ? Number(url.searchParams.get("tz")) : 0;
     if (!Number.isInteger(tz) || tz < -900 || tz > 900) throw bad();
+    return tz;
+  };
+
+  async function web(url: URL) {
+    const { from, to } = windowOf(url, now());
+    webFilters(url); tzOf(url);
+    return webAnswer(await webBase(from, to), url);
+  }
+  /** the answers to these questions in order, each window's visits read once and let go before the next window's */
+  async function webMany(urls: readonly URL[]) {
+    const time = now(), windows = new Map<string, number[]>();
+    urls.forEach((url, i) => {
+      const { from, to } = windowOf(url, time);
+      webFilters(url); tzOf(url);
+      const key = `${from}:${to}`;
+      (windows.get(key) ?? windows.set(key, []).get(key)!).push(i);
+    });
+    const out: Array<Awaited<ReturnType<typeof webAnswer>>> = [];
+    for (const [key, indexes] of windows) {
+      const [from, to] = key.split(":").map(Number) as [number, number];
+      const base = await webBase(from, to);
+      for (const i of indexes) out[i] = await webAnswer(base, urls[i]!);
+    }
+    return out;
+  }
+
+  async function webAnswer(base: WebBase, url: URL) {
+    const { from, to, identity, people: p, all, live, crawls, notes } = base, span = to - from;
+    const { surface, filters, scoped } = webFilters(url);
+    const pause = pacer();
+    const visits = all.filter(visit => surface === "all" || visit.surface === surface);
+    const tz = tzOf(url);
     // every number below in one pass over the visits, a piece at a time
     const firstSeen = new Map<string, number>();
     for (let i = 0; i < visits.length; i += 20_000) { firstSeenOf(visits.slice(i, i + 20_000), firstSeen); await pause(); }
@@ -182,7 +220,6 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     const marks = (["signup", "paid"] as const).flatMap(kind => [...(kind === "signup" ? p.signups : p.paid)].filter(([id, at]) => at >= from && at < to && (!allowed || allowed.has(id)))
       .map(([id, at]) => ({ at, kind, seed: [...(identity.visitorsOf.get(id) ?? [])][0] ?? id, email: accounts.get(id)?.email ?? null, customer: p.paid.has(id) })))
       .sort((a, b) => b.at - a.at || a.seed.localeCompare(b.seed)).slice(0, 60);
-    const live = online(recent, time, analytics.presence.list().map(entry => entry.key));
     await pause();
     const money = moneyState();
     // the revenue cards credit payments to visits, so only an account's visits matter to them
@@ -455,7 +492,8 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     if (asked !== "live" && asked !== "test" && asked !== "all") throw bad();
     const { input: every, seen, identity } = await revenueData();
     const input = scoped(every, asked), state = billing.store.state;
-    return { ...subscriptionReport(input), funnel: revenueFunnel(input, seen, identity, days), mode: asked, serverMode: serverMode(),
+    const pays = paysOf(input), time = now();
+    return { ...subscriptionReport(input), funnel: revenueFunnel(input, seen, identity, days), received: receivedIn(pays, refundsOf(input, pays), time + 1 - days * DAY, time + 1), mode: asked, serverMode: serverMode(),
       modes: { live: moneyTotals(scoped(every, "live")), test: moneyTotals(scoped(every, "test")) }, sync: { available: billing.operator.provider === "dodo", last: state.lastSync ?? null },
       cancelFlow: cancelFlowSummary(state.retention ?? [], now() - 90 * DAY, now() + 1) };
   }
@@ -480,5 +518,5 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions) {
     return note;
   }
 
-  return { revenue, customers: () => subscriptionReport(scoped(subscriptionInput(new Map()), serverMode())).customers, syncRevenue: () => billing.service.syncFromProvider(), web, webDetails, funnel: funnelRoute, journeys, profile, realtime, retention: retentionRoute, app, product, saveNote, deleteNote: (id: string) => sink.deleteNote(id), isDimension: (value: string): value is Dimension => (DIMENSIONS as readonly string[]).includes(value) };
+  return { revenue, customers: () => subscriptionReport(scoped(subscriptionInput(new Map()), serverMode())).customers, syncRevenue: () => billing.service.syncFromProvider(), web, webMany, onlineNow, webDetails, funnel: funnelRoute, journeys, profile, realtime, retention: retentionRoute, app, product, saveNote, deleteNote: (id: string) => sink.deleteNote(id), isDimension: (value: string): value is Dimension => (DIMENSIONS as readonly string[]).includes(value) };
 }

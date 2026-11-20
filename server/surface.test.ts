@@ -128,7 +128,7 @@ describe("resolveSurface", () => {
     expect(plan).toMatchObject({ computer: "off", browser: false, pinned: null });
     expect(plan.note).toMatch(/"Works on" setting is Off/);
     expect(plan.note).toMatch(/no computer and no built-in browser/);
-    expect(plan.note).toContain("Take the other routes first: a connected app does sending and posting");
+    expect(plan.note).toContain("Everything else still works (reminders, automations, memory, connected apps, teammates)");
     expect(plan.note).not.toContain("tell them Works on is Off");
     expect(resolveSurface({ destination: "off", browserOn: false })).toEqual(plan);
     expect(surfacePrompt({ computer: null, browser: false }, { note: plan.note })).toBe(plan.note);

@@ -102,6 +102,8 @@ export function prefetchAdmin(path: string) {
   readShared(path).catch(() => {});
 }
 
+/** a read past the server's deadline keeps running there, and asking again joins it */
+const SLOW_RETRIES = 4;
 /** one admin read: the kept answer at once when there is one, then a fresh one; loading, its error, and a reload. an older
  *  answer never lands on a newer key */
 export function useAdmin<T>(path: string | null, refreshMs?: number) {
@@ -111,17 +113,28 @@ export function useAdmin<T>(path: string | null, refreshMs?: number) {
   const [tick, setTick] = useState(0);
   const current = useRef(path);
   current.current = path;
+  const slowTries = useRef(0);
   useEffect(() => {
     if (path === null) return;
-    let live = true;
+    let live = true, retry: ReturnType<typeof setTimeout> | undefined;
     const shown = keptAnswer<T>(path);
     if (shown !== null) setDataState(shown);
     setLoading(true);
     readShared<T>(path)
       .then((answer) => { if (live && current.current === path) { setDataState(answer); setError(null); } })
-      .catch((err: unknown) => { if (live && (err as Error).name !== "AbortError" && current.current === path) setError(err instanceof AdminApiError ? err : new AdminApiError("the request failed.", 0, null)); })
-      .finally(() => { if (live) setLoading(false); });
-    return () => { live = false; };
+      .then(() => { slowTries.current = 0; })
+      .catch((err: unknown) => {
+        if (!live || (err as Error).name === "AbortError" || current.current !== path) return;
+        if (err instanceof AdminApiError && err.code === "admin_slow" && slowTries.current < SLOW_RETRIES) {
+          slowTries.current++;
+          retry = setTimeout(() => setTick((n) => n + 1), 1_000);
+          return;
+        }
+        slowTries.current = 0;
+        setError(err instanceof AdminApiError ? err : new AdminApiError("the request failed.", 0, null));
+      })
+      .finally(() => { if (live && retry === undefined) setLoading(false); });
+    return () => { live = false; clearTimeout(retry); };
   }, [path, tick]);
   useEffect(() => {
     if (!refreshMs) return;

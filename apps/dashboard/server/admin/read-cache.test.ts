@@ -30,4 +30,20 @@ describe("admin read cache", () => {
     cache.clear(); fail = false;
     expect(await cache.get("k", 1000, work, 10_000)).toBe(2000);
   });
+  it("keeps a read that passes its deadline running, so asking again joins it and gets its answer", async () => {
+    let runs = 0, finish!: (value: string) => void;
+    const cache = createReadCache({ deadlineMs: 20 });
+    const work = () => { runs++; return new Promise<string>(resolve => { finish = resolve; }); };
+    await expect(cache.get("web", 30_000, work, 60_000)).rejects.toMatchObject({ status: 503, code: "admin_slow" });
+    const again = cache.get("web", 30_000, work, 60_000);
+    finish("answer");
+    expect(await again).toBe("answer");
+    expect(await cache.get("web", 30_000, work, 60_000)).toBe("answer");
+    expect(runs, "one computation for every caller").toBe(1);
+  });
+  it("still maps a database failure of a shared read", async () => {
+    const cache = createReadCache({ deadlineMs: 1000 });
+    const failure = Object.assign(new Error("down"), { name: "MongoServerSelectionError" });
+    await expect(cache.get("web", 30_000, () => Promise.reject(failure))).rejects.toMatchObject({ status: 503, code: "admin_data_unavailable" });
+  });
 });

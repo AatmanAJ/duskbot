@@ -69,6 +69,7 @@ interface State { v: 1; clouds: StoredCloud[] }
 /** dusk cloud machines looked after at once in one upkeep pass: enough that one slow backup does not stall the rest, few
  *  enough to stay gentle on the shared box (each backup streams through a small buffer) and on the provider's start limits */
 const UPKEEP_CONCURRENCY = 4;
+const failureOf = (error: unknown) => error instanceof Error ? `${error.name}: ${error.message}`.replace(/\s+/g, " ").slice(0, 300) : String(error).slice(0, 300);
 const sameSpec = (a: MachineSpec, b: MachineSpec) => a.vcpu === b.vcpu && a.ramGb === b.ramGb && a.diskGb === b.diskGb;
 const sameQuota = (a: SlotQuota | undefined, b: SlotQuota) => a && (Object.keys(b) as Array<keyof SlotQuota>).every(k => a[k] === b[k]);
 
@@ -173,9 +174,11 @@ export function createCloudsService(options: CloudsServiceOptions): CloudsServic
     // the backend's own timing first (a provider limit backs off and never counts against the cloud, even in setup)
     const backendAt = c.backend ? managed?.retryAt(c, error) ?? null : null;
     if (backendAt !== null) { c.nextAttemptAt = backendAt; save(c); return; }
+    const cause = failureOf(error);
+    if (!(error instanceof PoolFullError)) console.warn(`clouds: cloud ${c.id} step failed (attempt ${c.attempts + 1}): ${cause}`);
     if (c.backend && c.status !== "provisioning") {
       c.attempts++; c.nextAttemptAt = now() + Math.min(15_000 * 2 ** Math.min(c.attempts - 1, 6), 900_000);
-      if (c.attempts === 8) console.warn(`clouds: managed cloud ${c.id} keeps failing its lifecycle step`);
+      if (c.attempts === 8) console.warn(`clouds: managed cloud ${c.id} keeps failing its lifecycle step (${cause})`);
       save(c); return;
     }
     if (error instanceof PoolFullError) {

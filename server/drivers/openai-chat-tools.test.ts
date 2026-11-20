@@ -1304,6 +1304,17 @@ describe("structured tool execution boundaries", () => {
     expect(streamed).toBe("Nothing needed storing.");
   });
 
+  it("posts only the new part of a final reply that restates an earlier message of the same turn", async () => {
+    const first = "The receipt is stored and filed under today.";
+    const f = await fixture((_body, response, round) => sse(response, [round === 1
+      ? chunk({ content: first, tool_calls: [toolCall()] }, "tool_calls")
+      : chunk({ content: `${first}\n\nNothing else needed doing.` }, "stop")]));
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    const shown = f.recorder.events.flatMap((event) => event.type === "item.completed" && event.itemType === "assistant_text" ? [event.text] : []);
+    expect(shown).toEqual([first, "Nothing else needed doing."]);
+  });
+
   it("ends a turn whose model leaks raw tool tokens twice as a broken tool call, never as its reply", async () => {
     const leaked = "<|channel|>commentary to=functions.audit_write <|message|>{}<|call|>";
     const f = await fixture((_body, response) => sse(response, [chunk({ content: leaked }, "stop")]));

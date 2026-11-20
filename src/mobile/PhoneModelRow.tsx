@@ -1,3 +1,4 @@
+import { botAccentScope } from "@/lib/bot-accent";
 import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronRight } from "../icons";
@@ -29,7 +30,7 @@ export function PhoneModelRow({ bot }: { bot: Bot }) {
         asRow={{
           className: ROW,
           present: ({ open, close, content }) => presentOver(
-            <Sheet open={open} onClose={close} title={t("model.choose")} recede={false}>{content}</Sheet>,
+            <Sheet open={open} onClose={close} title={t("model.choose")} recede={false}><div {...botAccentScope(bot.color)} className="contents">{content}</div></Sheet>,
           ),
         }}
       />
@@ -67,6 +68,7 @@ export function PhoneThinkingRow({ bot }: { bot: Bot }) {
       </button>
       {presentOver(
         <Sheet open={open} onClose={() => setOpen(false)} title={t("botSettings.simple.thinking")} recede={false}>
+          <div {...botAccentScope(bot.color)} className="contents">
           <SettingsSection card hint={current ? t("model.simple.thinkingLevel", { level: effortLabel(current) }) : t("model.simple.thinkingDefault")}>
             {[undefined, ...levels].map((level) => (
               <button key={level ?? "default"} type="button" aria-pressed={level === current} data-phone-thinking-option={level ?? "default"}
@@ -76,6 +78,7 @@ export function PhoneThinkingRow({ bot }: { bot: Bot }) {
               </button>
             ))}
           </SettingsSection>
+          </div>
         </Sheet>,
       )}
     </>

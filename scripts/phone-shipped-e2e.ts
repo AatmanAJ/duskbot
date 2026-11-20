@@ -429,9 +429,10 @@ async function main() {
     check("the desktop lists both phones, each on the relay", devices.body?.devices?.filter((device: { relay: boolean }) => device.relay).length === 2, `${devices.body?.devices?.length}`);
     // the next build: Wi-Fi first where it answers, the relay raced right behind
     const nextPhone = PROD ? null : await pair("iPhone next", "ios", "qr", "relay", "next");
+    const nextTyped = PROD ? null : await pair("Android next", "android", "code", "relay", "next");
     // the Android builds after 1.2.1, which race Wi-Fi beside the relay like the next build
     const releases = PROD ? [] : [await pair("Android 1.2.3", "android", "code", "relay", "1.2.3"), await pair("Android 1.2.4", "android", "qr", "relay", "1.2.4")];
-    const later = [nextPhone, ...releases].filter((phone): phone is Phone => Boolean(phone));
+    const later = [nextPhone, nextTyped, ...releases].filter((phone): phone is Phone => Boolean(phone));
     for (const phone of later) await expectRoute(phone, "opens and chats", connected, true);
 
     if (PROD) {

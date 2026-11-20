@@ -10,6 +10,7 @@ import { memoryMailer } from "../auth/mail.ts";
 import { memorySink, type Note, type AuditEntry } from "../analytics/sink.ts";
 import { DAY, HOUR, DIMENSIONS } from "../analytics/web.ts";
 import { upsellsOf, type createAnalyticsRoutes } from "./analytics-routes.ts";
+import { memoryWarmStore, rangeFrom } from "./web-warm.ts";
 import type { EventName } from "../analytics/events.ts";
 import { CSRF_HEADER } from "../../../../shared/account-api.ts";
 
@@ -152,6 +153,11 @@ describe("admin analytics routes", () => {
     expect(revenue.customers[0]).toMatchObject({ accountId, email: OTHER, mode: "test", status: "active", channel: "ai", source: "ChatGPT", country: "DE" });
     expect((await read<Revenue>("/v1/admin/revenue?mode=all", admin)).headline.mrr).toBe(total);
     expect(revenue.feed[0]).toMatchObject({ kind: "new", accountId, amountCents: total });
+    expect(revenue.received).toMatchObject({ cents: revenue.cash.gross, payments: 1, refundsCents: 0 });
+    expect(revenue.received.cents).toBeGreaterThan(0);
+    expect(revenue.received.series).toHaveLength(90);
+    expect((await read<Revenue>("/v1/admin/revenue?days=30&mode=test", admin)).received.series).toHaveLength(30);
+    expect(live.received.cents, "test money is never received in the live view").toBe(0);
     // a paid checkout with no free trial: visited and signed up, never a trial
     expect(revenue.funnel.steps.map(step => [step.id, step.count])).toEqual([["visit", 1], ["signup", 1], ["trial", 0], ["converted", 0]]);
     expect(revenue.sync).toEqual({ available: false, last: null });
@@ -235,6 +241,25 @@ describe("admin analytics routes", () => {
     expect(asked.length).toBeGreaterThan(0);
     for (const { span, names } of asked.filter(row => row.span > HOUR + 60_000)) expect(names, String(span)).toBeDefined();
     for (const { names } of asked.filter(row => row.span > HOUR + 60_000)) for (const name of names!) expect(["identify", "billing", "checkout_paid"]).toContain(name);
+  });
+
+  it("keeps the panel's /web reads warm and answers a kept one with who is online now", async () => {
+    app.close();
+    await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
+    const store = memoryWarmStore();
+    app = createDashboardApp({ dataDir, publicUrl: ORIGIN, mailer, staticDir: null, now: () => time, admin: { emails: [ADMIN], env: {}, readCacheMs: 30_000, warm: { store } }, analytics: { sink, trackOrigins: [SITE] } });
+    server = createServer(app.handle);
+    const admin = await login(ADMIN);
+    await view(VID, "s1", time - HOUR);
+    const path = `/v1/admin/web?from=${rangeFrom(time, -330, 7)}&to=${time}&surface=all&tz=-330`;
+    const first = await read<Web>(path, admin);
+    expect(first.online).toEqual({ site: 0, app: 0 });
+    expect((await store.viewers(0)).map(row => row.viewer)).toEqual([{ tz: -330, data: "", tests: "show", money: "all" }]);
+    time += 10_000;
+    await view(ANON, "s2", time - 1000);
+    const kept = await read<Web>(path, admin);
+    expect(kept.current.visitors).toBe(first.current.visitors);
+    expect(kept.online).toEqual({ site: 1, app: 0 });
   });
 
   it("rejects reversed, empty and over-400-day ranges", async () => {

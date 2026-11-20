@@ -1,4 +1,4 @@
-export const KPI_IDS = ["trials", "trial to paid", "active trials", "cancelling", "trial mrr", "visitors", "signups"] as const;
+export const KPI_IDS = ["trials", "trial to paid", "active trials", "cancelling", "trial mrr", "received", "visitors", "signups"] as const;
 export type KpiId = (typeof KPI_IDS)[number];
 
 export const TINTS = ["none", "green", "blue", "orange", "purple", "yellow"] as const;

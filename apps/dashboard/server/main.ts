@@ -17,6 +17,7 @@ import { mongoInfraStore } from "./admin/infra.ts";
 import { mongoOpsStore } from "./admin/ops/store.ts";
 import { mongoWaitlist } from "./admin/waitlist.ts";
 import { openLiveData } from "./admin/live.ts";
+import { mongoWarmStore } from "./admin/web-warm.ts";
 import { parseAdminEmails } from "./admin/index.ts";
 import { emailConfig } from "./email/templates.ts";
 import { createIncidents } from "./incidents/index.ts";
@@ -107,7 +108,7 @@ const bugReportStore = database ? await mongoBugReportStore(database.db) : undef
 const app = createDashboardApp({ errors: { service, page }, incidents, bugReports: { store: bugReportStore, mail: { on: alertsOn && process.env.DUSK_BUG_REPORT_MAIL === "1", to: () => alertEmails, mailers: fallbackMailer ? [mailer, fallbackMailer] : [mailer] } }, version, dataDir, publicUrl, mailer, testMail, oauth: providersFromEnv(process.env), dev,
   signupOpen: process.env.DUSK_AUTH_SIGNUP_OPEN !== "0", trustProxy: process.env.DUSK_TRUST_PROXY === "1", staticDir: staticDir || null,
   pageBase: process.env.DUSK_DASHBOARD_PAGE_BASE || "", waitlistOnly: process.env.DUSK_PRELAUNCH_WAITLIST_ONLY === "1", mailPerHour: process.env.DUSK_AUTH_MAIL_PER_HOUR ? Number(process.env.DUSK_AUTH_MAIL_PER_HOUR) : undefined, mailPerDay: process.env.DUSK_AUTH_MAIL_PER_DAY ? Number(process.env.DUSK_AUTH_MAIL_PER_DAY) : undefined, siteUpstream: process.env.DUSK_SITE_UPSTREAM || null, linkUpstream: process.env.DUSK_LINK_UPSTREAM || null,
-  analytics, admin: { emails: adminEmails, environment, live, readCacheMs: 30_000, backupDir: process.env.DUSK_BACKUP_DIR || (database ? "/root/backups/mongo-dusk" : null) } });
+  analytics, admin: { emails: adminEmails, environment, live, readCacheMs: 30_000, warm: database ? { store: await mongoWarmStore(database.db) } : null, backupDir: process.env.DUSK_BACKUP_DIR || (database ? "/root/backups/mongo-dusk" : null) } });
 
 /** a client hears an answer only once what the request changed is written; when that fails it gets a dropped
  *  connection, never a success that was not kept */
