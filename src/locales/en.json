@@ -9725,5 +9725,6 @@
   "mobile.clouds.switchBody": "This phone is logged in as {current}. Switching signs that account out here first, with its dusk clouds.",
   "mobile.clouds.switchAccount": "Switch account",
   "mobile.composer.approval": "Answer above",
-  "mobile.chat.waitingForConnection": "Waiting for connection"
+  "mobile.chat.waitingForConnection": "Waiting for connection",
+  "chat.error.replyGone": "The message you replied to is gone. Remove the quote and send it again."
 }

@@ -9723,5 +9723,6 @@
   "mobile.clouds.switchBody": "Este teléfono tiene la sesión iniciada como {current}. Al cambiar, primero se cerrará aquí la sesión de esa cuenta, junto con sus dusk clouds.",
   "mobile.clouds.switchAccount": "Cambiar de cuenta",
   "mobile.composer.approval": "Responde arriba",
-  "mobile.chat.waitingForConnection": "Esperando conexión"
+  "mobile.chat.waitingForConnection": "Esperando conexión",
+  "chat.error.replyGone": "El mensaje al que respondías ya no está. Quita la cita y vuelve a enviarlo."
 }
