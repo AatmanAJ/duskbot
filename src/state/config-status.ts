@@ -52,6 +52,8 @@ export interface ConfigStatus {
   mcp?: { callTimeoutMinutes: number };
   /** Workspace defaults for new bots; absent effort = no level is sent. */
   newBots?: { effort?: EffortLevel };
+  /** The model new bots start on, when one was chosen. The provider it names can't be removed while it is. */
+  defaultModelSelection?: ModelSelection;
   /** This Cloud is on the Starter plan, as the Admin last said; absent or false otherwise. */
   cloudStarter?: boolean;
   /** The most bots this Cloud's plan makes, its Dusk aside; absent when its plan has no such limit. */
@@ -124,7 +126,7 @@ export interface ConfigStatus {
     customKeyConfigured?: boolean;
   };
   /** who's using the app, collected in onboarding, shown in the sidebar */
-  profile?: { name: string; email: string; aboutMe?: string; avatarUrl?: string };
+  profile?: { name: string; email: string; aboutMe?: string; avatarUrl?: string; accountName?: string };
   /** UI language override; "" (or absent) follows the system language. */
   language?: string;
   /** What a paired phone calls this computer; "" uses the default. */

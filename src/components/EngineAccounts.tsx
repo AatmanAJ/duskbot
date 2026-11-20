@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { Loader2, MoreHorizontal, Plus } from "../icons";
 import { api, useStore, type InstanceInfo } from "@/state/store";
 import { t } from "@/lib/i18n";
@@ -12,6 +13,7 @@ import { ChatGptPlanStatus } from "./ChatGptPlanStatus";
 import { EngineCard, engineReady, providerName, type EngineCardSummary } from "./EngineLibrary";
 import { CommandRow, EngineSetup, EngineUpdateNotice, EngineWarningNotice } from "./EngineSetup";
 import { MENU_SHEET } from "./menu-recipe";
+import { useMenuMotion } from "./MenuMotion";
 import { Card as RowsCard, FormDialog, FormField, NavRow, NoteRow, rowCls } from "./ListRows";
 import { textFieldCls } from "./ui/GrokDialog";
 import { friendlyError } from "@/lib/plain-error";
@@ -47,6 +49,17 @@ export function accountActions(group: AccountGroup, instance: InstanceInfo): { s
   };
 }
 
+/** Why the account can't be removed yet: bots run on it, or new bots start on it. Null when nothing does. */
+export function accountInUse(
+  instance: Pick<InstanceInfo, "instanceId">,
+  bots: ReadonlyArray<{ modelSelection: { instanceId: string } }>,
+  defaultModel: { instanceId: string } | undefined,
+): string | null {
+  const usedBy = bots.filter((bot) => bot.modelSelection.instanceId === instance.instanceId).length;
+  if (usedBy > 0) return t("accounts.inUse", { count: String(usedBy) });
+  return defaultModel?.instanceId === instance.instanceId ? t("accounts.newBotModel") : null;
+}
+
 /** Ready while any account can run a turn: the same rule a single provider card uses. */
 export function accountsReady(accounts: InstanceInfo[]): boolean {
   return accounts.some(engineReady);
@@ -72,11 +85,12 @@ function AccountMenu({ group, instance, onRename }: { group: AccountGroup; insta
   const { state, dispatch, refreshInstances } = useStore();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState<"signOut" | "remove" | null>(null);
+  const menu = useMenuMotion(open);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { signOut: canSignOut, remove: canRemove } = accountActions(group, instance);
-  const usedBy = state.bots.filter((bot) => bot.modelSelection.instanceId === instance.instanceId).length;
+  const inUse = accountInUse(instance, state.bots, state.config?.defaultModelSelection);
 
   useEffect(() => {
     if (!open) return;
@@ -112,8 +126,8 @@ function AccountMenu({ group, instance, onRename }: { group: AccountGroup; insta
   const item = "ui-menu-row w-full text-left disabled:cursor-not-allowed disabled:opacity-50";
   return (
     <div ref={menuRef} className="relative flex items-center gap-1">
-      {canRemove && <button type="button" disabled={busy || usedBy > 0} onClick={() => setConfirm("remove")}
-        title={usedBy > 0 ? t("accounts.inUse", { count: String(usedBy) }) : undefined}
+      {canRemove && <button type="button" disabled={busy || inUse !== null} onClick={() => setConfirm("remove")}
+        title={inUse ?? undefined}
         className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-50">
         {t("accounts.remove")}
       </button>}
@@ -122,11 +136,11 @@ function AccountMenu({ group, instance, onRename }: { group: AccountGroup; insta
         className="flex size-8 items-center justify-center rounded-lg text-ink-secondary outline-none hover:bg-control hover:text-ink focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50">
         {busy ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={16} />}
       </button>
-      {open && (
-        <div role="menu" className={cn("absolute right-0 top-full z-40 mt-1 w-[220px] overflow-hidden text-[13px]", MENU_SHEET)}>
+      {menu.shown && (
+        <div role="menu" {...menu.exitProps} className={cn("absolute right-0 top-full z-40 mt-1 w-[220px] origin-top-right overflow-hidden text-[13px]", MENU_SHEET, menu.className)}>
           <button type="button" role="menuitem" className={cn(item, "text-ink")} onClick={() => { setOpen(false); onRename(); }}>{t("accounts.rename")}</button>
           {canSignOut && <button type="button" role="menuitem" className={cn(item, "text-ink")} onClick={() => { setOpen(false); setConfirm("signOut"); }}>{t("accounts.signOut")}</button>}
-          {canRemove && usedBy > 0 && <p className="px-3 pb-1 pt-0.5 text-[11px] leading-snug text-ink-secondary">{t("accounts.inUse", { count: String(usedBy) })}</p>}
+          {canRemove && inUse && <p className="px-3 pb-1 pt-0.5 text-[11px] leading-snug text-ink-secondary">{inUse}</p>}
         </div>
       )}
       {error && <p role="alert" className="absolute right-0 top-full z-30 mt-1 w-[260px] rounded-lg bg-card p-2 text-[12px] text-danger shadow-lg">{error}</p>}
@@ -217,7 +231,7 @@ function AccountRow({ group, instance, signingIn, onSignIn, onSignInDone }: {
         )}
         <AccountMenu group={group} instance={instance} onRename={() => setRenaming(true)} />
       </div>
-      {renaming && <RenameForm instance={instance} onDone={() => setRenaming(false)} />}
+      <AnimatePresence>{renaming && <RenameForm key="rename-form" instance={instance} onDone={() => setRenaming(false)} />}</AnimatePresence>
       {signingIn && (
         <div className="ps-4">
           {group === "claude"
@@ -273,8 +287,8 @@ export function AddAccount({ label, endpoint, extra, folder: offerFolder = false
   return (
     <>
       <NavRow data-add-account-row={endpoint} icon={Plus} title={label} drill={false} onClick={() => setOpen(true)} />
-      {open && (
-        <FormDialog data-panel-modal="add-account" title={label} description={offerFolder ? t("settings.s2.accounts.folderHint") : undefined}
+      <AnimatePresence>{open && (
+        <FormDialog key="add-account" data-panel-modal="add-account" title={label} description={offerFolder ? t("settings.s2.accounts.folderHint") : undefined}
           saveLabel={t("accounts.addSubmit")} canSave={Boolean(name.trim())} busy={saving} error={error ?? undefined}
           onSave={add} onClose={() => { setOpen(false); setError(null); }}>
           <div data-add-account={endpoint} className="contents">
@@ -289,7 +303,7 @@ export function AddAccount({ label, endpoint, extra, folder: offerFolder = false
             )}
           </div>
         </FormDialog>
-      )}
+      )}</AnimatePresence>
     </>
   );
 }

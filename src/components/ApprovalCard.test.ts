@@ -749,7 +749,8 @@ describe("one approval, one card", () => {
     const [pending] = pendingApprovals([command()]);
     const panel = renderToStaticMarkup(createElement(PendingApprovalPanel, { pending: pending!, count: 1, index: 0, botName: "Dev", more: "Cancel turn" }));
     const row = visibleRow(panel);
-    expect(row).toContain("Dev wants to run a command");
+    expect(row).toContain(">Dev</span>");
+    expect(row).toContain(">Wants to run a command</p>");
     expect(row).toMatch(/font-mono[^"]*"[^>]*>git status<\/div>/);
     expect(panel).toContain('aria-label="Pending approval"');
     expect(panel).not.toContain("Command approval requested");

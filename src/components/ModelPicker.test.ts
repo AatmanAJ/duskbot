@@ -278,3 +278,35 @@ describe("ModelPicker trigger", () => {
   });
 
 });
+
+describe("the model pill names what answers", () => {
+  const sol = { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" };
+  const codex = (snapshot: InstanceInfo["snapshot"]): InstanceInfo => ({
+    instanceId: "codex", driverKind: "codex", displayName: "Codex", snapshot, models: { default: sol.id, options: [sol] },
+  });
+  const free: InstanceInfo = {
+    instanceId: "opencode", driverKind: "opencodeGo", displayName: "OpenCode", access: "subscription",
+    snapshot: { state: "available", authenticated: true, freeFallback: true },
+    models: { default: "opencode/beam-free", options: [{ id: "opencode/beam-free", label: "Zen · Beam Free" }] },
+  };
+  const pill = (instances: InstanceInfo[], modelSelection: Bot["modelSelection"]) => {
+    fixture.instances = instances;
+    const markup = renderToStaticMarkup(createElement(ModelPicker, { bot: { ...bot(), modelSelection }, threadId: "thread-atlas" }));
+    return /<span class="min-w-0 max-w-\[160px\] truncate">([^<]*)<\/span>/.exec(markup)?.[1];
+  };
+  const onSol = { instanceId: "codex", model: sol.id };
+
+  it("says Free model when the free backup answers", () => {
+    expect(pill([free], { instanceId: "opencode", model: "opencode/beam-free" })).toBe("Free model");
+  });
+
+  it("says why a ChatGPT model can't answer instead of its name", () => {
+    expect(pill([free, codex({ state: "available", authenticated: false })], onSol)).toBe("Sign-in required");
+    expect(pill([free, codex({ state: "unavailable", reason: "codex CLI not found" })], onSol)).toBe("Setup required");
+    expect(pill([free], onSol)).toBe("Unavailable");
+  });
+
+  it("names the model of a connected AI that can answer", () => {
+    expect(pill([free, codex({ state: "available", authenticated: true })], onSol)).toBe("GPT-5.6 Sol");
+  });
+});

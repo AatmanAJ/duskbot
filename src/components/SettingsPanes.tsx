@@ -1,4 +1,7 @@
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import { useSettledReveal } from "./settled-reveal";
+import { cn } from "@/lib/cn";
+import { AnimatePresence } from "motion/react";
 import { openSignIn } from "@/lib/sign-in-sheet";
 import { importFirst, previousOpenAt } from "@/lib/import-first";
 import { ChevronRight } from "../icons";
@@ -30,7 +33,7 @@ import { CloudUsageDetails, CloudUsageSummaryView, useCloudUsageSettings } from 
 import { CompanyBackupSettings } from "./CompanyBackupSettings";
 import { DiagnosticsRow } from "./DiagnosticsRow";
 import { UsageLogRow } from "./UsageLogRow";
-import { EnginesSettings } from "./EnginesSettings";
+import { EnginesSettings, enginePageOf } from "./EnginesSettings";
 import { ImportSettings } from "./ImportSettings";
 import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 import { LocalComputerSection } from "./LocalComputerSection";
@@ -42,6 +45,7 @@ import { LoginsSettings } from "./LoginsSettings";
 import { McpServersPanel } from "./McpServersPanel";
 import { NotificationRows } from "./NotificationSettingsRows";
 import { OpenAtLoginRow } from "./OpenAtLoginRow";
+import { AppMenuEntryRow } from "./AppMenuEntryRow";
 import { OrganizationSettings } from "./OrganizationSettings";
 import { PeopleSection } from "./PeopleSection";
 import { PlanUsageSummary } from "./PlanUsage";
@@ -65,7 +69,7 @@ import { ModelDirectory } from "./models/ModelDirectory";
 import { AiCards } from "./onboarding/AiCards";
 import { reportsUsage, useEngineLimits } from "@/lib/limit-resets";
 import {
-  ExperimentalFeaturesRow, FollowUpRow, LanguageRow, QuickUpdatesRow, SendKeyRow, TalkingStyleRow,
+  BotOrderRow, ExperimentalFeaturesRow, FollowUpRow, LanguageRow, QuickUpdatesRow, SendKeyRow, TalkingStyleRow,
 } from "./AppSettingsRows";
 
 export type Has = (id: AppSettingsSection) => boolean;
@@ -142,11 +146,11 @@ export function AccountRows() {
       )}
       {/* signed out: sign in continues in the browser for its context (the account context redirect), never an in-app form */}
       {!active && window.duskDesktop?.accounts && <NavRow data-settings-open="sign-in" title={t("accounts.signIn")} onClick={() => window.duskDesktop?.cloudAccount?.continueInBrowser ? openSignIn() : setAdding(true)} />}
-      {editing && (
-        <FormDialog data-panel-modal="profile" title={t("settings.w6.group.aboutYou")} width={460} onClose={() => setEditing(false)}>
+      <AnimatePresence>{editing && (
+        <FormDialog key="profile" data-panel-modal="profile" title={t("settings.w6.group.aboutYou")} width={460} onClose={() => setEditing(false)}>
           <div data-settings-look="simple" className="-mx-2 flex flex-col"><ProfileFields face={face} /></div>
         </FormDialog>
-      )}
+      )}</AnimatePresence>
       {(adding || accounts.sheet) && (
         <AccountsSheet
           adding={adding ? "" : accounts.sheet?.email ?? null}
@@ -209,6 +213,7 @@ export function GeneralPane({ has, remoteActive }: { has: Has; remoteActive: boo
           <AccentRow />
           <TalkingStyleRow />
           <LanguageRow simple />
+          <BotOrderRow />
           <AmbientRows />
         </SettingsRows>
       </SettingsGroup>
@@ -220,6 +225,7 @@ export function GeneralPane({ has, remoteActive }: { has: Has; remoteActive: boo
             <FollowUpRow simple />
             <QuickUpdatesRow />
             <OpenAtLoginRow simple />
+            <AppMenuEntryRow />
           </SettingsRows>
         </SettingsGroup>
       )}
@@ -267,9 +273,19 @@ function ImportRow() {
 /** Phone pairing and the paired devices' access, all on the pane: the code to scan or type first, then the phones. */
 export function TextingPane({ has, remoteAccess }: { has: Has; remoteAccess: RemoteAccessCards }) {
   const { at } = useSubPage();
-  if (at === PHONE_ADVANCED_PAGE) return <div data-settings-block="companion-advanced" className="flex flex-col gap-5">{remoteAccess.companion}</div>;
-  if (!has("companion")) return null;
-  return <div data-settings-block="companion" className="flex flex-col gap-5">{remoteAccess.pairing}{remoteAccess.companion}</div>;
+  const advanced = at === PHONE_ADVANCED_PAGE;
+  if (!advanced && !has("companion")) return null;
+  // one tree for the pane and its Advanced page: going there and back keeps the code, the phones and their reads as they
+  // are, so the pane never loads (and moves) again
+  return <PhonePaneBody advanced={advanced}><div hidden={advanced} className={advanced ? undefined : "contents"}>{remoteAccess.pairing}</div>{remoteAccess.companion}</PhonePaneBody>;
+}
+
+/** The phone pane's parts (the code, the phones, the computer's own link) each load on their own: the pane shows once
+ * they have, so nothing appears and moves the rows under it on open. */
+function PhonePaneBody({ advanced, children }: { advanced: boolean; children: ReactNode }) {
+  const block = useRef<HTMLDivElement>(null);
+  const shown = useSettledReveal(block);
+  return <div ref={block} data-settings-block={advanced ? "companion-advanced" : "companion"} data-settled={shown ? "" : undefined} className={cn("flex flex-col gap-5", !shown && "invisible")}>{children}</div>;
 }
 
 export function ComputerPane({ has, remoteAccess, transfer, remoteActive = false }: { has: Has; remoteAccess: RemoteAccessCards; transfer?: ReactNode; remoteActive?: boolean }) {
@@ -494,8 +510,10 @@ function DataPage({ has }: { has: Has }) {
 }
 
 /** Models' top: the same grid of popular AIs as the first run and the Connect an AI dialog; its link goes to the
- * directory just under it. */
+ * directory just under it, and a connected AI's card to its accounts. */
 function ConnectAiCards() {
+  const { state } = useStore();
+  const { open } = useSubPage();
   const toDirectory = () => {
     const search = document.querySelector<HTMLInputElement>("[data-model-directory-search]");
     search?.scrollIntoView({ block: "center" });
@@ -503,7 +521,8 @@ function ConnectAiCards() {
   };
   return (
     <RowsCard label={t("onboarding.meet.connectAi")} data-settings-block="connect-ai">
-      <div className="p-2"><AiCards tested={null} onMore={toDirectory} /></div>
+      <div className="p-2"><AiCards tested={null} onMore={toDirectory}
+        onManage={(instance) => { const { page, title } = enginePageOf(state.instances, instance); open(page, title); }} /></div>
     </RowsCard>
   );
 }
