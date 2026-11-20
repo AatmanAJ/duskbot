@@ -101,6 +101,8 @@ describe("a site that refuses sign-in in an automated browser", () => {
     expect(said(fine)).not.toMatch(/Google refuses/);
     const refused = await runtime.agentRpc("google", engine, "tools/call", { name: "agent_browser_open", arguments: { url: "https://accounts.google.com/v3/signin/rejected?continue=x" } });
     expect(said(refused)).toMatch(/Google refuses every sign-in inside this automated browser.*My Chrome/s);
+    expect(refused).toMatchObject({ signInRefused: true });
+    expect(fine).not.toHaveProperty("signInRefused");
     expect(refusedSignInNote(false)).toMatch(/connected Google app/);
     expect(refusesAutomatedSignIn("https://accounts.google.com/signin/rejected")).toBe(true);
     expect(refusesAutomatedSignIn("https://accounts.google.com/v3/signin/identifier")).toBe(false);

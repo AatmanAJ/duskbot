@@ -713,7 +713,7 @@ export class BrowserRuntime {
             ...(!observed ? { isError: true } : {}),
           };
         }
-        if (this.refusedSignIn && toolName && NAVIGATING.has(toolName) && refusesAutomatedSignIn(await pageUrl())) result = withNote(result, this.refusedSignIn(session));
+        if (this.refusedSignIn && toolName && NAVIGATING.has(toolName) && refusesAutomatedSignIn(await pageUrl())) result = { ...withNote(result, this.refusedSignIn(session)) as object, signInRefused: true };
         if (ctx && toolName !== undefined) this.threadTabs.refs.saw(session, ctx.threadId, toolName, args, result);
         const afterStarted = performance.now();
         const extra = call && stepState ? await this.steps!.after(call, result, stepState, phases.engineMs) : null;

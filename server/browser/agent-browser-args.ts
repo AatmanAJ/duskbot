@@ -346,6 +346,6 @@ export async function newTabNavigated(url: () => Promise<string>, withinMs: numb
 export function refusedSignInNote(myChrome: boolean): string {
   const lead = "Google refuses every sign-in inside this automated browser, so do not retry it here.";
   return myChrome
-    ? `${lead} Do this sign-in in the person's own Chrome: ask them in one plain line to switch this bot's browser to My Chrome, where they are already signed in, then carry on there. Use a connected Google app meanwhile if one does the job.`
+    ? `${lead} On the person's own request dusk bot moves this sign-in to their own Chrome (My Chrome), asking them first unless they gave Full access; the line after this says what happened.`
     : `${lead} Use a connected Google app (Gmail, Calendar, Drive) if one does the job; otherwise say in one plain line that Google blocks sign-in in the bot's browser and that their own Chrome (My Chrome, on their computer) can do it.`;
 }

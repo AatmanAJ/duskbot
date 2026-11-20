@@ -650,7 +650,7 @@ import { createMcpServerRoutes } from "./routes/mcp-servers.ts";
 import { teamAdminSummary } from "./cloud-team-admin.ts";
 import { createSetupImportRoutes } from "./routes/setup-import.ts";
 import { createComputerRoutes } from "./routes/computers.ts";
-import { browserNeedsAutoInstall, createStatusRoutes, startBrowserEngineInstall } from "./routes/status.ts"; import { createBrowserChat } from "./host/browser-chat.ts"; import { createBrowserPartHost } from "./host/browser-part.ts"; import { sealedFixture, throwawayWorkspace } from "./env-path.ts"; import { browserEngineKind } from "./browser/config.ts"; import { createDashboardRoutes } from "./routes/dashboard.ts"; import { createDashboardCollector } from "./dashboard-report.ts"; import { createDashboardReporter } from "./dashboard-reporter.ts"; import { createPulseSampler } from "./dashboard-pulse.ts"; import { memoryFiles } from "./cloud-send-memory.ts"; import { createFrustrationWatch, createUsageOutbox, digestPrompt, hashId, sessionPrompt, summaryPrompt, turnRecord } from "./usage-signals.ts"; import { DIGEST_MAX, SESSION_NOTE_MAX, cleanUsageDigest, engineFamily, failureReason, runEvery, runTrigger, scrubSummary } from "../shared/usage-signals.ts"; import { attachmentKind, cleanSignal, sizeBucket } from "../shared/product-signals.ts"; import { createUsageSignalsSwitch } from "./usage-signals-switch.ts"; import { createConfusionWatch, createExperienceOutbox, downloadFailReason } from "./experience.ts"; import { createDashboardCommands } from "./dashboard-commands.ts"; import { createCompanionEndpointsBridge, type CompanionEndpointsRequest } from "./companion-endpoints.ts"; import { connectedInApp, dashboardApps } from "./dashboard-apps.ts"; import { connectCallback } from "../shared/dashboard-protocol.ts"; import { createAppSignIns } from "./app-sign-ins.ts";
+import { browserNeedsAutoInstall, createStatusRoutes, startBrowserEngineInstall } from "./routes/status.ts"; import { createBrowserChat } from "./host/browser-chat.ts"; import { createBrowserPartHost } from "./host/browser-part.ts"; import { createMyChromeSwitch } from "./host/my-chrome-switch.ts"; import { sealedFixture, throwawayWorkspace } from "./env-path.ts"; import { browserEngineKind } from "./browser/config.ts"; import { createDashboardRoutes } from "./routes/dashboard.ts"; import { createDashboardCollector } from "./dashboard-report.ts"; import { createDashboardReporter } from "./dashboard-reporter.ts"; import { createPulseSampler } from "./dashboard-pulse.ts"; import { memoryFiles } from "./cloud-send-memory.ts"; import { createFrustrationWatch, createUsageOutbox, digestPrompt, hashId, sessionPrompt, summaryPrompt, turnRecord } from "./usage-signals.ts"; import { DIGEST_MAX, SESSION_NOTE_MAX, cleanUsageDigest, engineFamily, failureReason, runEvery, runTrigger, scrubSummary } from "../shared/usage-signals.ts"; import { attachmentKind, cleanSignal, sizeBucket } from "../shared/product-signals.ts"; import { createUsageSignalsSwitch } from "./usage-signals-switch.ts"; import { createConfusionWatch, createExperienceOutbox, downloadFailReason } from "./experience.ts"; import { createDashboardCommands } from "./dashboard-commands.ts"; import { createCompanionEndpointsBridge, type CompanionEndpointsRequest } from "./companion-endpoints.ts"; import { connectedInApp, dashboardApps } from "./dashboard-apps.ts"; import { connectCallback } from "../shared/dashboard-protocol.ts"; import { createAppSignIns } from "./app-sign-ins.ts";
 import { findAntigravityLeftovers, removeAntigravityLeftovers } from "./drivers/antigravity-temp.ts";
 import { createLiveRoutes } from "./routes/live.ts";
 import { createNotificationRoutes } from "./routes/notifications.ts";
@@ -1613,7 +1613,7 @@ type InternalCapability = {
   localVmTarget?: LocalVmTarget;
   teamComputerId?: string;
   screenGeneration?: string;
-  browserSession?: string;
+  browserSession?: string; /** the My Chrome profile this turn moved to when a site refused sign-in in the bot's browser */ browserProfile?: string;
   roomHandoffId?: string;
   attachedFiles?: number;
   /** attach_file may also deliver files saved outside the conversation's folders. never on a Cloud home. */
@@ -5922,7 +5922,7 @@ const COMPUTER_CALL_POLL_MS = 250;
 const browserSeats = createBrowserSeats({ resources: turnResources, claim: claimTurnResource, active: (owner) => activeInternalGenerationByThread.get(owner.threadId) === owner.generation, working: (session) => browserRuntime.working(session), holderOf: holderOfTurn, language: threadLanguage, callWaitMs: COMPUTER_CALL_WAIT_MS, actWithinMs: COMPUTER_CALL_ACT_WITHIN_MS, ...(Number(process.env.DUSK_BROWSER_IDLE_HANDOVER_MS) > 0 ? { idleHandoverMs: Number(process.env.DUSK_BROWSER_IDLE_HANDOVER_MS) } : {}),
   row: (threadId, name, threadRef) => { store.appendMessage(threadId, { role: "bot", kind: "activity", tool: { name, ok: true }, ...(threadRef ? { threadRef } : {}) }); },
   waitStarted: (threadId, resource, position, holder) => bus.publish({ ...waitEventBase(threadId), type: "turn.wait_started", resource, position, ...(holder ? { holder } : {}) }),
-  waitEnded: (threadId, resource, outcome, waitedMs, holder) => bus.publish({ ...waitEventBase(threadId), type: "turn.wait_ended", resource, outcome, waitedMs, ...(holder ? { holder } : {}) }) });
+  waitEnded: (threadId, resource, outcome, waitedMs, holder) => bus.publish({ ...waitEventBase(threadId), type: "turn.wait_ended", resource, outcome, waitedMs, ...(holder ? { holder } : {}) }) }); const myChromeSwitch = createMyChromeSwitch({ profile: () => (myChromeAvailable() ? (cfg.browserProfiles ?? []).find((profile) => profile.browser === "chrome")?.id ?? null : null), ownRequest: (turn) => (turnTriggers.get(turn.threadId)?.kind ?? "owner") === "owner" && !store.groupByThread(turn.threadId) && !cloudGuestDriven(turn.threadId) && !botApiThread(turn.threadId) && !isInternalTurn(turn.threadId), asks: (turn) => { const bot = store.bot(turn.botId); return !bot || liveApprovalMode(bot, turn.threadId, false) !== "full"; }, ask: (turn, site) => askToUseYourComputer(approvalBus, store.bot(turn.botId) ?? undefined, turn, { app: "Chrome", site }), session: async (turn, profile) => (await browserIntegration(turn.botId, profile, { threadId: turn.threadId, generation: turn.generation }, teamHost.browserAudience(turn.threadId)))?.session ?? null });
 const localVmSeen = new Set<string>();
 /** An old desktop waiting for its update is still the bot's place, so it counts as seen: Auto never takes it for absent. */
 function noteLocalVmSeen(target: LocalVmTarget, status: ContainerComputerStatus | null | undefined): void {
@@ -14385,7 +14385,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
           requireActiveInternalCapability();
           if (control.held) return json(res, 200, { result: { isError: true, content: [{ type: "text", text: controlRefusal(control) }] } });
         }
-        const browser = await browserIntegration(bot.id, bot.browserProfile, { threadId: internalCapability.threadId, generation: internalCapability.generation }, teamHost.browserAudience(internalCapability.threadId));
+        const moving = body.method === "tools/call" ? await myChromeSwitch.before(internalCapability, abort.signal) : null; if (moving) return json(res, 200, { result: { isError: true, content: [{ type: "text", text: moving }] } }); const browser = await browserIntegration(bot.id, internalCapability.browserProfile ?? bot.browserProfile, { threadId: internalCapability.threadId, generation: internalCapability.generation }, teamHost.browserAudience(internalCapability.threadId));
         if (!browser || browser.session !== internalCapability.browserSession) return json(res, 409, { error: "this browser profile changed; start a new turn" });
         if (body.method === "tools/call") {
           const refused = await browserSeats.take(internalCapability, browser.session, abort.signal); requireActiveInternalCapability();
@@ -14403,7 +14403,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
           requireActiveInternalCapability();
           const current = store.bot(bot.id);
           if (!current || current.browser === false || current.computer === "off" || !builtInBrowserEnabled(cfg) ||
-              currentBrowserSession(current.id, current.browserProfile, teamHost.browserAudience(internalCapability.threadId)) !== browser.session) {
+              currentBrowserSession(current.id, internalCapability.browserProfile ?? current.browserProfile, teamHost.browserAudience(internalCapability.threadId)) !== browser.session) {
             throw Object.assign(new Error("Browser access changed while connecting."), { status: 409 });
           }
           const remote = turnVpsTargets.get(internalCapability.threadId);
@@ -14431,7 +14431,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         // Security: notes are read for the capability's own bot only, and never into a guest's or the Bot API's turn.
         const notes = site && bot.memoryEnabled !== false && !cloudGuestDriven(internalCapability.threadId) && !botApiThread(internalCapability.threadId)
           ? siteNotes({ memoryIds: (id, threadId) => teamHost.memoryIds(id, threadId), lines: memoryLinesMentioning }, internalCapability.botId, internalCapability.threadId, site) : null;
-        const landed = withSiteNotes(result, notes);
+        const landed = withSiteNotes(body.method === "tools/call" ? await myChromeSwitch.after(internalCapability, result, "google.com", abort.signal) : result, notes);
         return json(res, 200, { result: body.method === "tools/call" && landed && typeof landed === "object" ? browserLoops.answer(internalCapability.threadId, String(params?.name ?? ""), params?.arguments, landed) : landed });
       }
       // DuckDB runs here on the bot's own database; the agent process holds only the turn's capability.
