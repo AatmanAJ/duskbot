@@ -1305,7 +1305,7 @@ a.link-pill:focus-visible {
 [data-chat-bubble="simple"].chat-text {
   line-height: 22px;
 }
-[data-chat-bubble="simple"] .chat-md > * + * {
+[data-chat-bubble="simple"] .chat-md > :where(:not(:first-child)) {
   margin-top: 10px;
 }
 /* A card under its own bot's bubble (and a bubble under its card) sits 12px below it, not the 16px between senders. */
