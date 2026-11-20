@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeF
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 
 import { homedSpawn } from "../engine-homes/layout.ts";
-import { engineInstallRoots } from "../engine-roots.ts";
+import { engineInstallRoots, vendorEngineRoots } from "../engine-roots.ts";
 import { SERVER_ROOT, resolveProxy } from "../proxy-paths.ts";
 import { bridgedCommand, type BridgeTools } from "./bridge.ts";
 import { brokerRewrite } from "./broker-env.ts";
@@ -275,7 +275,7 @@ export class BotBox {
       bridge: { socat: this.detection.tools.socat, bridgeScript: BOX_BRIDGE_SCRIPT, node: process.execPath },
       setup: {
         dataDir: options.dataDir, home: options.home, codeRoots: [...(options.codeRoots ?? defaultCodeRoots()), ...extraCodeRoots(env)],
-        engineRoots: options.engineRoots ?? engineInstallRoots(options.dataDir), bridges,
+        engineRoots: options.engineRoots ?? [...engineInstallRoots(options.dataDir), ...vendorEngineRoots(options.home)], bridges,
         ...(this.required ? { fence: requiredFence(options.home, options.dataDir) } : {}),
       },
       ...(this.required ? { engineHome: engineHomeDir(options.dataDir) } : {}),
