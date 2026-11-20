@@ -6,7 +6,8 @@ import { expect, it } from "vitest";
 import { launchVerificationServer, runControlDusk, verificationServerEnvironment } from "../scripts/control-dusk.ts";
 import { waitForExit } from "./testing/cleanup.ts";
 
-it.each([false, true])("recovers the same conversation after an ACP internal error without replay (output: %s)", async (afterOutput) => {
+// A failed turn's ask goes back to the bot only when the turn ran no tool, so nothing it did can happen twice.
+it.each([false, true])("recovers the same conversation after an ACP internal error, handing the failed ask back only when it ran no tool (output: %s)", async (afterOutput) => {
   const fixture = await launchVerificationServer();
   const { dataDir, url, logPath } = fixture.info;
   let server: ChildProcess | undefined;
@@ -31,6 +32,8 @@ it.each([false, true])("recovers the same conversation after an ACP internal err
   const calls = () => existsSync(rpcFile)
     ? readFileSync(rpcFile, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as { pid: number; method: string }) : [];
   const prompts = () => calls().filter((call) => call.method === "session/prompt");
+  const promptTexts = () => existsSync(`${dumpFile}.prompts.jsonl`)
+    ? readFileSync(`${dumpFile}.prompts.jsonl`, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.stringify((JSON.parse(line) as { prompt: unknown }).prompt)) : [];
   try {
     // Add only the repository-owned synthetic provider to the launcher's
     // temporary config while stopped. Never discover the person's CLI/home.
@@ -60,6 +63,8 @@ it.each([false, true])("recovers the same conversation after an ACP internal err
     const { bot } = await control("new-bot", "--name", "Recovery bot");
     const threadId = bot.activeTaskId;
     await api("PATCH", `/api/bots/${bot.id}/tasks/${threadId}`, { modelSelection: { instanceId: "opencodeGo", model: "fixture/recovery" } });
+    // No backup: the failure stays on this AI, so a replacement process of it answers the next message.
+    await api("PATCH", `/api/bots/${bot.id}`, { fallback: [] });
     const messages = async () => (await api("GET", `/api/threads/${threadId}/messages?limit=100`)).messages as any[];
     const task = async () => (await api("GET", "/api/bots")).bots.find((entry: any) => entry.id === bot.id)
       .tasks.find((entry: any) => entry.threadId === threadId);
@@ -90,13 +95,14 @@ it.each([false, true])("recovers the same conversation after an ACP internal err
     rmSync(failureFile);
     await send(retryText);
     expect((await wait()).status).toBe("settled");
-    expect(prompts()).toHaveLength(3);
+    expect(prompts().length).toBeGreaterThanOrEqual(3);
     expect(prompts()[2].pid).not.toBe(firstProcess);
     expect(calls().filter((call) => call.pid === prompts()[2].pid).map((call) => call.method)).toContain("session/load");
-    const prompt = JSON.stringify(JSON.parse(readFileSync(`${dumpFile}.prompt.json`, "utf8")));
+    const prompt = promptTexts()[2]!;
     expect(prompt.split(retryText).length - 1).toBe(1);
     expect(prompt).not.toContain(firstText);
-    expect(prompt).not.toContain(failedText);
+    // listed once as still open after a failure before any tool; never again after one that ran a tool
+    expect(prompt.split(failedText).length - 1).toBe(afterOutput ? 0 : 1);
     const finalMessages = await messages();
     for (const text of [firstText, failedText, retryText]) {
       expect(finalMessages.filter((message) => message.role === "user" && message.text === text)).toHaveLength(1);

@@ -20,6 +20,17 @@ function chat() {
 }
 
 describe("open asks", () => {
+  it("closes the asks of a turn that failed after it ran a tool, so no later turn is told to do them again", () => {
+    const c = chat();
+    const asks = createOpenAsks({ store: c.store, now: c.now });
+    const send = c.say("user", "email the invoice to Priya");
+    asks.opened("t1", send);
+    asks.failed("t1");
+    expect(c.rows.find((row) => row.id === send)?.ask).toEqual({ state: "blocked" });
+    expect(asks.open("t1")).toEqual([]);
+    expect(asks.note("t1")).toBe("");
+  });
+
   it("opens each ask once, settles it with what the turn did, and keeps its state on the message row across a restart", () => {
     const c = chat();
     const asks = createOpenAsks({ store: c.store, now: c.now });

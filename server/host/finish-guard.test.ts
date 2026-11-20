@@ -178,22 +178,34 @@ describe("finish guard: open asks and done claims", () => {
     const carried: string[] = [];
     const lines: FinishReason[] = [];
     let nudged = false;
+    let failed = 0;
     const settled: Array<{ said: readonly string[]; scheduled: boolean; handedOff: boolean }> = [];
     const guard = createFinishGuard({
       botOf: () => "bot-1", held: () => false, later: (run) => run(),
       carryOn: async (_botId, _threadId, note) => { carried.push(note); },
       line: (_threadId, reason) => lines.push(reason),
-      asks: { settle: (_threadId, turn) => { settled.push(turn); return nudged ? [] : open; }, nudged: () => { nudged = true; } },
+      asks: { settle: (_threadId, turn) => { settled.push(turn); return nudged ? [] : open; }, nudged: () => { nudged = true; }, failed: () => { failed += 1; } },
     });
     const send = (body: Body) => guard.onEvent({ eventId: "e", provider: "fake", threadId: "t1", createdAt: "", ...body } as RuntimeEvent);
-    const turn = (text: string, tools: string[] = [], stopGates?: string[]) => {
+    const turn = (text: string, tools: string[] = [], stopGates?: string[], end: Body = { type: "turn.completed", ok: true }) => {
       send({ type: "turn.started" });
       for (const title of tools) send({ type: "item.started", itemType: "tool", title });
       send({ type: "item.completed", itemType: "assistant_text", text });
-      send({ type: "turn.completed", ok: true, ...(stopGates ? { stopGates } : {}) });
+      send({ ...end, ...(stopGates ? { stopGates } : {}) } as Body);
     };
-    return { carried, lines, settled, turn, send };
+    return { carried, lines, settled, turn, send, failed: () => failed };
   }
+
+  it("closes the asks of a turn that failed or crashed after a tool ran, and leaves them open after a failure before any tool or a Stop", () => {
+    const h = withAsks(["email the invoice to Priya"]);
+    h.turn("Sending it now.", ["mcp__gmail__send_email"], undefined, { type: "turn.completed", ok: false });
+    h.turn("Sending it now.", ["mcp__gmail__send_email"], undefined, { type: "session.exited" });
+    expect(h.failed()).toBe(2);
+    h.turn("", [], undefined, { type: "turn.completed", ok: false });
+    h.turn("Sending it now.", ["mcp__gmail__send_email"], undefined, { type: "turn.completed", ok: false, stopReason: "interrupted" });
+    expect(h.failed()).toBe(2);
+    expect([...h.carried, ...h.settled]).toEqual([]);
+  });
 
   it("sends a turn back once, with no line for the person, for an ask it left open", () => {
     const h = withAsks(["what's the weather in mumbai in july"]);
