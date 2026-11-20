@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 
-import { archivePointer, renderToolArchive, writeToolArchive } from "./compaction-archive.ts";
+import { archiveFoldedTools, archivePointer, renderToolArchive, writeToolArchive } from "./compaction-archive.ts";
+import type { Message } from "./store.ts";
+import { spillToolResult } from "./tool-result-spill.ts";
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -38,4 +40,30 @@ it("keeps the file bounded", () => {
   const text = renderToolArchive(Array.from({ length: 80 }, (_, i) => ({ name: `call ${i}`, ok: true, result: "y".repeat(30_000) })));
   expect(text.length).toBeLessThan(1_100_000);
   expect(text).toMatch(/\[\d+ later calls did not fit in this file\]/);
+});
+
+it("archives only the calls between the last fold and this one, with the full result the harness kept", () => {
+  const dir = mkdtempSync(join(tmpdir(), "dusk-archive-"));
+  dirs.push(dir);
+  const spillDir = join(dir, "spill");
+  spillToolResult(spillDir, "t1:turn2:call-b", "FULL RESULT of b", 100_000);
+  const row = (id: string, extra: Partial<Message>) => ({ id, role: "bot", at: 0, kind: "text", ...extra }) as Message;
+  const messages = [
+    row("m1", { role: "user", text: "first" }),
+    row("x1", { kind: "activity", turnId: "turn1", tool: { name: "Bash", itemId: "call-a", ok: true, output: "already archived" } }),
+    row("m2", { text: "reply" }),
+    row("m3", { role: "user", text: "second" }),
+    row("x2", { kind: "activity", turnId: "turn2", tool: { name: "Read", itemId: "call-b", ok: true, output: "preview of b", fullResult: true } }),
+    row("x3", { kind: "activity", turnId: "turn2", tool: { name: "context compaction started", ok: true } }),
+    row("m4", { text: "reply two" }),
+    row("x4", { kind: "activity", turnId: "turn3", tool: { name: "Bash", itemId: "call-c", ok: true, output: "after the fold" } }),
+  ];
+  const pointer = archiveFoldedTools({ botId: "b1", threadId: "t1", messages, afterId: "m2", throughId: "m4", spillDir, taskDir: dir });
+  const path = join(dir, "context-archive", "through-m4.md");
+  expect(pointer).toBe(archivePointer({ path, count: 1 }));
+  const text = readFileSync(path, "utf8");
+  expect(text).toContain("FULL RESULT of b");
+  expect(text).not.toContain("already archived");
+  expect(text).not.toContain("after the fold");
+  expect(archiveFoldedTools({ botId: "b1", threadId: "t1", messages, throughId: "gone", spillDir, taskDir: dir })).toBeUndefined();
 });

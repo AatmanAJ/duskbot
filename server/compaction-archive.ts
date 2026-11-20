@@ -3,6 +3,9 @@ import { join } from "node:path";
 
 import { writeFileAtomic } from "./atomic.ts";
 import { redactSecretsInText } from "./redact.ts";
+import type { Message } from "./store.ts";
+import { readSpilledToolResult } from "./tool-result-spill.ts";
+import { ensureTaskWorkspace } from "./workspace.ts";
 
 export interface ArchivedCall {
   name: string;
@@ -61,4 +64,25 @@ export function writeToolArchive(taskDir: string, name: string, calls: readonly 
 
 export function archivePointer(archive: { path: string; count: number }): string {
   return `- ${archive.path}: ${archive.count} tool result${archive.count === 1 ? "" : "s"} from before this point, word for word. Read or search it with your file tools when an exact earlier result matters.`;
+}
+
+/** The tool calls after the last fold through the new one, saved where the bot can read them back; a failure only loses the file. */
+export function archiveFoldedTools(input: { botId: string; threadId: string; messages: readonly Message[]; afterId?: string; throughId: string; spillDir: string; taskDir?: string }): string | undefined {
+  const { threadId, messages } = input;
+  const start = input.afterId ? messages.findIndex((m) => m.id === input.afterId) + 1 : 0;
+  const end = messages.findIndex((m) => m.id === input.throughId);
+  if (end < 0) return undefined;
+  const calls: ArchivedCall[] = messages.slice(start, end + 1).flatMap((m) => {
+    const tool = m.kind === "activity" ? m.tool : undefined;
+    if (!tool?.itemId) return [];
+    const full = tool.fullResult !== undefined && m.turnId ? readSpilledToolResult(input.spillDir, `${threadId}:${m.turnId}:${tool.itemId}`) : undefined;
+    return [{ name: tool.name, ok: tool.ok, input: tool.input, result: full ?? tool.output }];
+  });
+  try {
+    const written = writeToolArchive(input.taskDir ?? ensureTaskWorkspace(input.botId, threadId), `through-${input.throughId.replace(/[^\w.-]/g, "_").slice(0, 80)}`, calls);
+    return written ? archivePointer(written) : undefined;
+  } catch (error) {
+    console.warn(`compaction: could not save the folded tool results: ${(error as Error).message}`);
+    return undefined;
+  }
 }

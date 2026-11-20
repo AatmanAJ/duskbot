@@ -17,7 +17,7 @@ import { aboutYouPrompt } from "./about-you.ts";
 import { authorizeExternalRuntime, externalRuntimeIsActive, type ExternalRuntimeGrant } from "./external-runtime.ts";
 import { z } from "zod";
 import { selectReplay, replayToolCalls, DEFAULT_REBUILD_BYTES, MAX_SUMMARY_BYTES } from "./context-rebuild.ts";
-import { draftSummary, foldPoint } from "./compaction-summary.ts";
+import { draftSummary, foldPoint } from "./compaction-summary.ts"; import { archiveFoldedTools } from "./compaction-archive.ts";
 import { compactBudget, compactionReading, contextWindowFor, shouldCompact } from "./context-budget.ts";
 import { autoCompactWindow } from "./drivers/claude.ts";
 import { RoomContextTracker, roomResetNote } from "./room-context.ts";
@@ -361,7 +361,6 @@ import {
   searchMemoryFiles,
   SESSION_SEARCH_SYSTEM_PROMPT,
   TASK_WORKSPACES_DIR,
-  ensureTaskWorkspace,
   readMemoryOnlyFromRegularFiles,
   workspaceDir,
   botSettingsFile,
@@ -435,8 +434,7 @@ import {
   teamAvailabilityPart,
 } from "./system-prompt.ts";
 import { shellTimeoutHookResult } from "./shell-timeout-hint.ts";
-import { readSpilledToolResult, spillToolResult } from "./tool-result-spill.ts";
-import { archivePointer, writeToolArchive, type ArchivedCall } from "./compaction-archive.ts";
+import { spillToolResult, threadToolResultsDir } from "./tool-result-spill.ts";
 import { gatedLocalComputer } from "./local-computer.ts";
 import { desktopComputer, missingScreenPermissions, screenGrantWanted, thisComputerNotReady } from "./desktop-computer.ts";
 import { dismissRetiredCards } from "./retired-cards.ts";
@@ -5794,9 +5792,8 @@ function ingestEngineHook(capability: InternalCapability, body: unknown): { ok: 
   if (!turnId || !row?.tool) return { ok: true, ignored: "tool not observed in this turn" };
   const key = `${threadId}:${turnId}:${toolUseId}`;
   if (!commandReceipt("hook.ingest", key)) {
-    const dir = join(TOOL_RESULTS_DIR, threadId.replace(/[^\w.-]/g, "_"));
     const redacted = redactSecretsInText(text);
-    const fullResult = spillToolResult(dir, key, redacted, TOOL_RESULT_SPILL_MAX);
+    const fullResult = spillToolResult(threadToolResultsDir(TOOL_RESULTS_DIR, threadId), key, redacted, TOOL_RESULT_SPILL_MAX);
     store.patchMessage(threadId, row.id, { tool: { ...row.tool, fullResult } }, { kind: "hook.ingest", key });
   }
   return { ok: true };
@@ -7942,12 +7939,8 @@ async function compactConversation(input: {
   const controller = new AbortController(); idle?.addEventListener("abort", () => controller.abort(), { once: true }); if (idle?.aborted) controller.abort();
   compactionControllers.set(threadId, { generation, controller });
   try {
-    // the folded turns' durable facts reach memory now, through capture's own trust rules, not after the quiet wait
-    memoryUpkeep.flushThread(threadId);
-    const previous = record && fold.folded[0]?.id === record.id ? { id: record.id, summary: record.summary } : undefined;
-    const archive = supportsWorkspaceFiles(instance.driverKind) ? archiveFoldedTools(bot.id, threadId, messages, previous && record?.foldedThroughId, foldedThroughId) : undefined;
-    const summary = await draftSummary(fold.folded, { signal: controller.signal, generateText: sideJobs.text("compaction", bot.id, { instance })?.generateText,
-      previous, archive, today: memoryDate() });
+    memoryUpkeep.flushThread(threadId); const previous = record && fold.folded[0]?.id === record.id ? { id: record.id, summary: record.summary } : undefined;
+    const summary = await draftSummary(fold.folded, { signal: controller.signal, generateText: sideJobs.text("compaction", bot.id, { instance })?.generateText, previous, today: memoryDate(), archive: supportsWorkspaceFiles(instance.driverKind) ? archiveFoldedTools({ botId: bot.id, threadId, messages, afterId: previous && record?.foldedThroughId, throughId: foldedThroughId, spillDir: threadToolResultsDir(TOOL_RESULTS_DIR, threadId) }) : undefined });
     if (!idle && !directTurnClaimIsCurrent(bot.id, generation, threadId)) throw new DirectTurnSetupCancelled("context summarization stopped");
     controller.signal.throwIfAborted();
     if (prefix !== JSON.stringify(store.activePath(threadId).slice(0, messages.length))) {
@@ -7961,27 +7954,6 @@ async function compactConversation(input: {
     }, { kind: "compaction.append", key: `${threadId}:${messages.at(-1)?.id}:${fold.firstKeptId}` });
   } finally {
     if (compactionControllers.get(threadId)?.generation === generation) compactionControllers.delete(threadId);
-  }
-}
-
-/** The tool calls after the last fold through the new one, saved where the bot can read them back; failures only lose the file. */
-function archiveFoldedTools(botId: string, threadId: string, messages: readonly Message[], afterId: string | undefined, throughId: string): string | undefined {
-  const start = afterId ? messages.findIndex((m) => m.id === afterId) + 1 : 0;
-  const end = messages.findIndex((m) => m.id === throughId);
-  if (end < 0) return undefined;
-  const spillDir = join(TOOL_RESULTS_DIR, threadId.replace(/[^\w.-]/g, "_"));
-  const calls: ArchivedCall[] = messages.slice(start, end + 1).flatMap((m) => {
-    const tool = m.kind === "activity" ? m.tool : undefined;
-    if (!tool?.itemId) return [];
-    const full = tool.fullResult !== undefined && m.turnId ? readSpilledToolResult(spillDir, `${threadId}:${m.turnId}:${tool.itemId}`) : undefined;
-    return [{ name: tool.name, ok: tool.ok, input: tool.input, result: full ?? tool.output }];
-  });
-  try {
-    const written = writeToolArchive(ensureTaskWorkspace(botId, threadId), `through-${throughId.replace(/[^\w.-]/g, "_").slice(0, 80)}`, calls);
-    return written ? archivePointer(written) : undefined;
-  } catch (error) {
-    console.warn(`compaction: could not save the folded tool results: ${(error as Error).message}`);
-    return undefined;
   }
 }
 

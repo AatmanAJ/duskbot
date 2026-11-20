@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 
 /** Writes a hook's tool result, cut at `max` characters, to a private file; true when it fit whole. */
+export function threadToolResultsDir(root: string, threadId: string): string {
+  return join(root, threadId.replace(/[^\w.-]/g, "_"));
+}
+
 function spillPath(dir: string, key: string): string {
   return join(dir, `${createHash("sha256").update(key).digest("hex")}.txt`);
 }
