@@ -47,9 +47,15 @@ describe("BoxRunner.wrap", () => {
     expect(wrapped.env).toEqual({
       PATH: "/usr/bin", HOME: "/data", ANTHROPIC_API_KEY: "k",
       HTTPS_PROXY: `http://127.0.0.1:${BOX_EGRESS_PORT}`, HTTP_PROXY: `http://127.0.0.1:${BOX_EGRESS_PORT}`, https_proxy: `http://127.0.0.1:${BOX_EGRESS_PORT}`, http_proxy: `http://127.0.0.1:${BOX_EGRESS_PORT}`,
-      NO_PROXY: "127.0.0.1,localhost,::1,[::1]", no_proxy: "127.0.0.1,localhost,::1,[::1]",
+      NO_PROXY: "127.0.0.1,localhost,::1,[::1]", no_proxy: "127.0.0.1,localhost,::1,[::1]", NODE_USE_ENV_PROXY: "1",
     });
     expect(wrapped.plan.botId).toBe("b1");
+  });
+
+  it("keeps a caller's own NODE_USE_ENV_PROXY in an isolated box", () => {
+    const runner = new BoxRunner({ bwrap: "/usr/bin/bwrap", bridge, setup, denyEnv: new Set() });
+    const wrapped = runner.wrap({ command: "/usr/bin/node", args: ["gate.js"], cwd: "/data/.duskbot/task-workspaces/b1/t1", env: { PATH: "/usr/bin", NODE_USE_ENV_PROXY: "0" } });
+    expect(wrapped.env.NODE_USE_ENV_PROXY).toBe("0");
   });
 
   it("a shared-network box gets no proxy and no bridge", () => {

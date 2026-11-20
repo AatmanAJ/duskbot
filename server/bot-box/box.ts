@@ -128,6 +128,9 @@ export class BoxRunner {
       for (const name of ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"]) env[name] = proxy;
       // Node's env proxy matches an IPv6 host only bracketed; curl and the engines take the plain forms.
       for (const name of ["NO_PROXY", "no_proxy"]) env[name] = "127.0.0.1,localhost,::1,[::1]";
+      // Node 24's fetch and http modules ignore HTTPS_PROXY unless this is set, and the box has no DNS of its own, so a
+      // bot's node script failed with EAI_AGAIN. A caller's own value (an MCP gate's "0") stands.
+      env.NODE_USE_ENV_PROXY ??= "1";
     }
     const bridges = plan.net === "isolated" ? this.options.setup.bridges : [];
     const inner = bridgedCommand(this.options.bridge, bridges, request.command, request.args);
