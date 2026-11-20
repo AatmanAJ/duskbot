@@ -203,12 +203,17 @@ export function icoRaster(bytes: Buffer): Raster | null {
 }
 
 const LOCAL_REF = /^#[\w.:-]*$/;
+// a picture carried inside the SVG itself: resvg decodes it in memory and opens nothing
+const EMBEDDED_RASTER = /^data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\s]*$/;
 
 /** A site's SVG only if everything it points at is inside itself: resvg reads local files an href or url() names. */
-export function selfContainedSvg(text: string): string | null {
+export function selfContainedSvg(source: string): string | null {
+  // a DOCTYPE that only names the SVG DTD declares nothing, so it goes; one with declarations in it is refused below
+  const text = source.replace(/<!DOCTYPE[^[>]*>/i, "");
   if (!/<svg[\s>]/i.test(text) || /<!(?:DOCTYPE|ENTITY)|@import/i.test(text)) return null;
   for (const match of text.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))/gi)) {
-    if (!LOCAL_REF.test((match[1] ?? match[2] ?? match[3] ?? "").trim())) return null;
+    const ref = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+    if (!LOCAL_REF.test(ref) && !EMBEDDED_RASTER.test(ref)) return null;
   }
   for (const match of text.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi)) {
     if (!LOCAL_REF.test((match[1] ?? match[2] ?? match[3] ?? "").trim())) return null;
@@ -250,7 +255,18 @@ export function iconPng(type: string, bytes: Buffer): Buffer | null {
   }
 }
 
-export interface SiteIcons { get(domain: unknown): Promise<Buffer | null> }
+const APP_SLUG = /^[a-z0-9][a-z0-9_-]{0,80}$/;
+/** A Composio toolkit slug, the only thing an app logo is asked for by. */
+export function normalizeAppSlug(value: unknown): string | null {
+  const slug = String(value ?? "").trim().toLowerCase();
+  return APP_SLUG.test(slug) ? slug : null;
+}
+
+export interface SiteIcons {
+  get(domain: unknown): Promise<Buffer | null>;
+  /** An app's Composio logo as the same 96px PNG: its SVG drawn here once, not in the window on every scroll. */
+  app(slug: unknown): Promise<Buffer | null>;
+}
 
 export function createSiteIcons({ dir, resolve = resolveAll, fetcher = pinnedGet, encode = iconPng, now = Date.now }: {
   dir: string;
@@ -299,15 +315,24 @@ export function createSiteIcons({ dir, resolve = resolveAll, fetcher = pinnedGet
     return { icon: null, unsure };
   }
 
-  async function load(domain: string): Promise<Buffer | null> {
-    const key = createHash("sha256").update(domain).digest("hex").slice(0, 32);
+  async function findAppLogo(slug: string): Promise<{ icon: Buffer | null; unsure: boolean }> {
+    try {
+      const got = await fetchPublic(new URL(`https://logos.composio.dev/api/${slug}`), MAX_ICON, false, AbortSignal.timeout(DEADLINE_MS));
+      return { icon: got ? encode(got.type, got.body) : null, unsure: false };
+    } catch {
+      return { icon: null, unsure: true };
+    }
+  }
+
+  async function load(name: string, find: () => Promise<{ icon: Buffer | null; unsure: boolean }>): Promise<Buffer | null> {
+    const key = createHash("sha256").update(name).digest("hex").slice(0, 32);
     const found = join(dir, `${key}.png`), missing = join(dir, `${key}.miss`);
     const kept = await stat(found).catch(() => null);
     const stale = kept ? await readFile(found).catch(() => null) : null;
     if (kept && stale && now() - kept.mtimeMs < FOUND_FOR) return stale;
     const missed = await stat(missing).catch(() => null);
     if (!stale && missed && now() - missed.mtimeMs < MISSING_FOR) return null;
-    const { icon, unsure } = await find(domain);
+    const { icon, unsure } = await find();
     try {
       mkdirSync(dir, { recursive: true });
       if (icon) {
@@ -323,16 +348,23 @@ export function createSiteIcons({ dir, resolve = resolveAll, fetcher = pinnedGet
     return icon ?? (unsure ? stale : null);
   }
 
+  const once = (name: string, find: () => Promise<{ icon: Buffer | null; unsure: boolean }>) => {
+    let pending = running.get(name);
+    if (!pending) {
+      pending = load(name, find).finally(() => running.delete(name));
+      running.set(name, pending);
+    }
+    return pending;
+  };
+
   return {
     get(value) {
       const domain = normalizeSiteDomain(value);
-      if (!domain) return Promise.resolve(null);
-      let pending = running.get(domain);
-      if (!pending) {
-        pending = load(domain).finally(() => running.delete(domain));
-        running.set(domain, pending);
-      }
-      return pending;
+      return domain ? once(domain, () => find(domain)) : Promise.resolve(null);
+    },
+    app(value) {
+      const slug = normalizeAppSlug(value);
+      return slug ? once(`app:${slug}`, () => findAppLogo(slug)) : Promise.resolve(null);
     },
   };
 }

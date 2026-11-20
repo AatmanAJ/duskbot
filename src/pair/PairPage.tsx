@@ -31,6 +31,13 @@ export function pairIntro({ mode, sent, email, cloudHome }: { mode: "email" | "c
   return "Enter the pairing code shown on the server. Codes work once and expire after five minutes.";
 }
 
+/** An iPhone tab, not the Home Screen copy: that copy keeps its own sign-in, so a code used here does not carry over. */
+export function inIphoneTab(nav: { userAgent: string; standalone?: boolean } | undefined = typeof navigator === "undefined" ? undefined : navigator as Navigator & { standalone?: boolean }): boolean {
+  return Boolean(nav && /iPhone|iPad|iPod/.test(nav.userAgent) && nav.standalone === false);
+}
+
+export const IPHONE_HOME_SCREEN_HINT = `On iPhone, the ${productName()} app from the App Store is the easy way. To use this page from your Home Screen instead, add it first (Share, then Add to Home Screen), open it from there and enter the code. The Home Screen copy keeps its own sign-in, so a code used in this tab won't carry over.`;
+
 export function pairTitle(environment: EnvironmentDescriptor | null, mode: "email" | "code" | null): string {
   if (environment?.capabilities.cloudTeam) return environment.label;
   if (environment?.capabilities.cloudHome) return "My cloud";
@@ -129,6 +136,7 @@ export function PairPage({ initialCode, initialEmail = null, reason }: { initial
           {environment && !cloudHome ? `Version ${environment.version} on ${environment.platform}. ` : ""}
           {pairIntro({ mode, sent, email, cloudHome })}
         </p>
+        {inIphoneTab() && !connected ? <p data-pair-home-screen="" className="mt-3 text-[13px] leading-relaxed text-ink-secondary">{IPHONE_HOME_SCREEN_HINT}</p> : null}
         {reasonWorthShowing(reason) && !connected ? <p className="mt-3 text-[13px] text-ink-secondary">{reasonWorthShowing(reason)}</p> : null}
         {error && cloudHome && initialCode ? <p className="mt-3 text-[13px] text-ink-secondary">This link has expired or was already used. In the {productName()} app on your computer, open Settings → dusk cloud and choose Open the cloud.</p> : null}
         </>}

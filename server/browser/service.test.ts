@@ -214,21 +214,91 @@ describe("the bots' browser tools", () => {
 });
 
 describe("a person and the bot sharing one browser", () => {
-  it("refuses every bot call while a person holds the browser, reads included, and lets the bot back on release", async () => {
-    const { service, call, target } = setup();
+  it("holds only the tab the person took: a call on it waits for the hand-back and then does not run, other tabs keep working", async () => {
+    const { service, call, text, target, backend } = setup();
     await call("agent_browser_open", { url: "https://example.com/form" });
     const viewer = await service.attachViewer(target, { owner: "local-owner", canOperate: true, maxWidth: 2560, maxHeight: 1600 }, () => {});
     await viewer.input({ type: "takeControl" });
     expect(service.heldBy("bot-a")).toBe("local-owner");
+    expect(viewer.controlState().heldTabs).toEqual(["t1"]);
+    // the bot opens its own tab beside the held one and works there; the person's view stays on t1
+    expect(text(await call("agent_browser_tabs", { action: "new", url: "https://example.com/swap" }))).toContain("Opened t2");
+    expect(text(await call("agent_browser_snapshot"))).toContain(`button "A"`);
+    expect(text(await call("agent_browser_click", { selector: "#a" }))).toContain("Clicked");
+    expect(service.profile(target).active()?.id).toBe("t1");
+    const status = JSON.parse(text(await call("agent_browser_status", { tab: "t2" }))) as { heldByPerson: boolean; heldTabs: string[] };
+    expect(status).toMatchObject({ heldByPerson: true, heldTabs: ["t1"] });
+    // a call on t1 waits, runs nothing, and says the person used it once they hand it back
+    const clicks = () => backend.chrome.sent.filter((sent) => sent.method === "Input.dispatchMouseEvent" && sent.params.type === "mousePressed").length;
+    const before = clicks();
+    let settled = false;
+    const waiting = call("agent_browser_click", { tab: "t1", selector: "#go" }).catch((error: unknown) => error).finally(() => { settled = true; });
+    await sleep(700);
+    expect(settled).toBe(false);
+    await viewer.input({ type: "releaseControl" });
+    const answer = String(await waiting);
+    expect(answer).toContain("The person used tab t1 while this call waited");
+    expect(answer).toContain("this call did not run");
+    expect(clicks()).toBe(before);
+    expect(service.heldBy("bot-a")).toBeNull();
+    // after the hand-back the bot goes on in the tab it worked in
+    expect(service.profile(target).active()?.id).toBe("t2");
+    expect((await call("agent_browser_click", { tab: "t1", selector: "#go" })).isError).toBeUndefined();
+  });
+
+  it("stops waiting on a held tab when the turn is stopped, and past the call's budget says the person still holds it", async () => {
+    const { service, call, target } = setup({ callBudgetMs: 6_500 });
+    await call("agent_browser_open", { url: "https://example.com/form" });
+    const viewer = await service.attachViewer(target, { owner: "local-owner", canOperate: true, maxWidth: 2560, maxHeight: 1600 }, () => {});
+    await viewer.input({ type: "takeControl" });
+    let stopped = false;
+    const stopping = service.agentRpc(target, "tools/call", { name: "agent_browser_snapshot", arguments: {} }, () => { if (stopped) throw new Error("The turn was stopped."); }).catch((error: unknown) => error);
+    await sleep(100);
+    stopped = true;
+    expect(JSON.stringify(await stopping)).toContain("The turn was stopped.");
+    const started = Date.now();
+    const late = String(await call("agent_browser_snapshot").catch((error: unknown) => error));
+    expect(late).toContain("The person still holds tab t1");
+    expect(late).toContain("Other tabs still work meanwhile");
+    expect(Date.now() - started).toBeLessThan(6_500);
+    expect(service.interrupted("bot-a")).toBe(false);
+    await viewer.input({ type: "releaseControl" });
+  }, 15_000);
+
+  it("refuses every bot call outright while the person answers the bot's own sign-in request", async () => {
+    let asked = true;
+    const { service, call, target } = setup({ signingIn: (session) => asked && session === "bot-a" });
+    await call("agent_browser_open", { url: "https://example.com/form" });
+    await call("agent_browser_tabs", { action: "new", url: "https://example.com/swap" });
+    const viewer = await service.attachViewer(target, { owner: "local-owner", canOperate: true, maxWidth: 2560, maxHeight: 1600 }, () => {});
+    await viewer.input({ type: "takeControl" });
     for (const name of ["agent_browser_status", "agent_browser_snapshot", "agent_browser_click", "agent_browser_eval", "agent_browser_dialog"]) {
       await expect(call(name, name === "agent_browser_click" ? { ref: "e2" } : name === "agent_browser_eval" ? { expression: "1" } : name === "agent_browser_dialog" ? { accept: true } : {})).rejects.toThrow(BROWSER_CONTROL_REFUSAL);
     }
+    asked = false;
     await viewer.input({ type: "releaseControl" });
-    expect(service.heldBy("bot-a")).toBeNull();
     expect((await call("agent_browser_status")).isError).toBeUndefined();
   });
 
-  it("waits for the bot's running action before the person's control starts, and turns that action's answer into the refusal", async () => {
+  it("makes a tab the person switches to or opens during their hold theirs too", async () => {
+    const { service, call, target } = setup();
+    await call("agent_browser_open", { url: "https://example.com/form" });
+    await call("agent_browser_tabs", { action: "new", url: "https://example.com/swap" });
+    await call("agent_browser_tabs", { action: "switch", tab: "t1" });
+    const viewer = await service.attachViewer(target, { owner: "local-owner", canOperate: true, maxWidth: 2560, maxHeight: 1600 }, () => {});
+    await viewer.input({ type: "takeControl" });
+    expect(viewer.controlState().heldTabs).toEqual(["t1"]);
+    await viewer.input({ type: "tabSelect", tabId: "t2" });
+    expect(viewer.controlState().heldTabs).toEqual(["t1", "t2"]);
+    expect(service.profile(target).active()?.id).toBe("t2");
+    await viewer.input({ type: "tabNew", url: "https://example.com/new" });
+    expect(viewer.controlState().heldTabs).toEqual(["t1", "t2", "t3"]);
+    expect(service.profile(target).active()?.id).toBe("t3");
+    await viewer.input({ type: "releaseControl" });
+    expect(viewer.controlState().heldTabs).toEqual([]);
+  });
+
+  it("waits for the bot's running action before the person's control starts, and tells the bot they took the tab", async () => {
     const { service, call, target, backend } = setup({ takeoverMs: 2_000 });
     await call("agent_browser_open", { url: "https://example.com/form" });
     backend.chrome.delay = (method) => (method === "Accessibility.getFullAXTree" ? 300 : 0);
@@ -242,7 +312,7 @@ describe("a person and the bot sharing one browser", () => {
     await taking;
     expect(viewer.controlState().controlling).toBe(true);
     expect(service.interrupted("bot-a")).toBe(false);
-    expect(String(await snapshot)).toContain(BROWSER_CONTROL_REFUSAL);
+    expect(String(await snapshot)).toContain("The person took control of tab t1 while this call ran");
   });
 
   it("grants control after the drain anyway when bot work outlasts it, and marks the browser uncertain", async () => {
@@ -269,7 +339,7 @@ describe("a person and the bot sharing one browser", () => {
     const viewer = await service.attachViewer(target, { owner: "local-owner", canOperate: true, maxWidth: 2560, maxHeight: 1600 }, () => {});
     await viewer.input({ type: "takeControl" });
     expect(service.interrupted("bot-a")).toBe(true);
-    expect(String(await waiting)).toContain(BROWSER_CONTROL_REFUSAL);
+    expect(String(await waiting)).toContain("The person took control of tab t1 while this call ran");
     await viewer.input({ type: "releaseControl" });
     const recovered = await call("agent_browser_status");
     expect(text(recovered)).toContain("The browser answers again: the earlier agent_browser_wait call");

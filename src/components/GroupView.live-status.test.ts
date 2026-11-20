@@ -43,9 +43,9 @@ describe("a room's speaker through a long turn", () => {
     expect(draw([ask, said]), "Ada spoke mid-turn: her mascot stays").toContain("turn-presence");
     engine("turn.progress");
     const writing = draw([ask, said]);
-    expect(writing, "the 1:1 status line: a friendly phrase").toContain("Writing some code");
+    expect(writing, "the 1:1 status line: a friendly phrase").toContain("Writing code");
     const line = /data-turn-status="true">(.*?)<\/span><\/span><\/span>/.exec(writing)?.[1]?.replace(/<[^>]+>/g, "");
-    expect(line, "one working bot keeps the plain 1:1 line: the phrase alone, no name, file, size, timer or lead word").toBe("Writing some code");
+    expect(line, "one working bot keeps the plain 1:1 line: the phrase alone, no name, file, size, timer or lead word").toBe("Writing code");
     expect(writing).not.toMatch(/data-turn-name="">Ada</);
     expect(writing).not.toContain("room-stop-member");
     engine("turn.completed");
