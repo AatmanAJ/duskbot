@@ -1,6 +1,6 @@
 // The tools a bot's boxed shell needs for everyday work (documents, data, charts, images, media), which it cannot
 // install itself: the box mounts /usr read-only. The cloud-home Docker image bakes them in; a dusk cloud installed
-// natively on an InstaBox machine gets them from the root supervisor, once per version of these lists, in the background
+// natively on its machine gets them from the root supervisor, once per version of these lists, in the background
 // after the home is already serving.
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
