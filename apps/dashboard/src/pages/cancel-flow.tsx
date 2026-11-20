@@ -211,7 +211,7 @@ export function CancelFlow({ open, onClose, catalog }: { open: boolean; onClose(
               <p className="mt-2 text-13 text-ink-3">we read every note. keep your plan and we'll write back when it's there.</p>
             </div>
           )}
-          <button type="button" className="text-link mt-3 h-9 text-13" onClick={() => void updateCard()}>update your card instead</button>
+          {sub.status === "past_due" && <button type="button" className="text-link mt-3 h-9 text-13" onClick={() => void updateCard()}>update your card instead</button>}
         </>
       )}
 

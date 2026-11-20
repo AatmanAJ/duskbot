@@ -86,6 +86,7 @@ test("too expensive: the one-time discount shows under the reason and can be tak
   await toReason();
   await pick("it's too expensive");
   expect(text()).toContain("30% off your next 3 months");
+  expect(button("update your card instead")).toBeNull();
   await click("take 30% off");
   expect(spies.takeDiscount).toHaveBeenCalledWith("price");
   expect(spies.cancel).not.toHaveBeenCalled();
