@@ -444,8 +444,7 @@ function normalizedOperation(
     action: validated.action,
     routineId: id,
     expectedUpdatedAt: current.updatedAt,
-    ...(validated.forBot ? { forBot: validated.forBot } : {}),
-    ...(validated.action === "run_now" && validated.test ? { test: true as const } : {}),
+    ...(validated.forBot ? { forBot: validated.forBot } : {}), ...(validated.action === "run_now" && validated.test ? { test: true as const } : {}),
   };
 }
 
