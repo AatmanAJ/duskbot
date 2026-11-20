@@ -121,6 +121,8 @@ describe("scrubSummary", () => {
     expect(scrubSummary("i can't summarize this chat because the conversation itself isn't in what been given, only your instruction. if you paste the exchange here, write the two lowercase sentences.")).toBeNull();
     expect(scrubSummary("the bot was given only setup rules and no record of the work this person asked for, so the summary cannot say what went wrong.")).toBeNull();
     expect(scrubSummary("I'm unable to see the chat, please share the transcript.")).toBeNull();
+    expect(scrubSummary("there is nothing to summarize because the conversation isn't here, only the request.")).toBeNull();
+    expect(scrubSummary("user wants a compact digest in at most 90 words of lowercase prose about what they use it for.")).toBeNull();
     expect(scrubSummary("the bot can't open the sheet and the user retried 3 times.")).toBe("the bot can't open the sheet and the user retried 3 times.");
   });
   it("is stable: a scrubbed line passes the server's check unchanged", () => {

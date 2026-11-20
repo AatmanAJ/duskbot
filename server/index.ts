@@ -7045,7 +7045,7 @@ const noteLines = (threadId: string, count: number) => store.messagesTail(thread
 const noteAvoid = () => store.bots.map((bot) => bot.name).filter((name): name is string => typeof name === "string");
 /** a note on how a chat went, written by the person's own engine here and scrubbed against the very lines it read */
 async function chatNote(botId: string, lines: ReturnType<typeof noteLines>, prompt: string, max?: number): Promise<string | null> {
-  const writer = usageSignals.enabled() ? sideJobs.text("frustration-summary", botId) : null;
+  const writer = usageSignals.enabled() && lines.length ? sideJobs.text("frustration-summary", botId) : null;
   if (!writer) return null;
   return scrubSummary(await writer.generateText(prompt, { timeoutMs: 60_000 }), max, { sources: lines.map((line) => line.text), avoid: noteAvoid() });
 }

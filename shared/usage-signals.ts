@@ -536,7 +536,7 @@ function copies(note: string, sources: readonly string[]): boolean {
   return false;
 }
 /** the writer saying it could not write the note (it saw no chat, or asks for one), not a note */
-const NOT_A_NOTE = /^i(?:'m| am)?\b.{0,40}\b(?:can't|cannot|can not|unable|don't have|do not have)\b|\b(?:paste|share|send) (?:the|that|your) (?:exchange|conversation|chat|transcript)\b|\b(?:conversation|chat|transcript) (?:itself )?(?:isn't|is not|wasn't|was not) (?:in|included|provided|given|shown)\b|\bno record of the work\b|\bthe summary can(?:'t|not)?\b/i;
+const NOT_A_NOTE = /^i(?:'m| am)?\b.{0,40}\b(?:can't|cannot|can not|unable|don't have|do not have)\b|\b(?:paste|share|send) (?:the|that|your) (?:exchange|conversation|chat|transcript)\b|\b(?:conversation|chat|transcript) (?:itself )?(?:isn't|is not|wasn't|was not) (?:here|there|available|in|included|provided|given|shown)\b|\bno record of the work\b|\bthe summary can(?:'t|not)?\b/i;
 /** the writer repeating its own instruction back ("user wants a compact digest in at most 90 words ...") */
 const ECHOED_PROMPT = /\b(?:compact digest|in at most \d+ words|reply with the (?:prose|sentences) only|\d+ lowercase sentences|lowercase prose|anonymous product note)\b/i;
 /** a verb right after "the" whose subject was a bot's name the scrub took out */
