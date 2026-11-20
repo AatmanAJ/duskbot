@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, LogOut, Mail, Mic, MonitorX, Palette, Plug, Plus, ShieldCheck, UserRound, Hand, Server, ZoomIn } from "../../icons";
+import { Bell, CalendarClock, Check, FileText, Globe, KeyRound, LayoutDashboard, LifeBuoy, Lock, LogOut, Mail, Mic, MonitorX, Palette, Plug, Plus, ShieldCheck, UserRound, Hand, Server, ZoomIn } from "../../icons";
 import { accountDashboardUrl } from "@/lib/account-dashboard";
 import { useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
@@ -256,12 +256,9 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
       <SettingsSection card title={t("mobile.settings.about")}>
         <SettingsRow icon={<LifeBuoy />} label={t("mobile.settings.help")} onClick={() => void platform.openExternal(LEGAL_LINKS.help)} />
         <SettingsRow icon={<Mail />} label={t("mobile.settings.contact")} onClick={() => void platform.openExternal(supportMail(t("mobile.settings.contactSubject")))} />
-        <SettingsRow icon={<ShieldCheck />} label={t("mobile.settings.privacy")} onClick={() => void platform.openExternal(LEGAL_LINKS.privacy)} />
+        <SettingsRow icon={<Lock />} label={t("mobile.settings.privacy")} onClick={() => void platform.openExternal(LEGAL_LINKS.privacy)} />
         <SettingsRow icon={<FileText />} label={t("mobile.settings.terms")} onClick={() => void platform.openExternal(LEGAL_LINKS.terms)} />
       </SettingsSection>
-      <button type="button" onClick={tapVersion} className="mx-auto mt-6 block min-h-11 px-4 text-center text-[13px] text-ink-tertiary">
-        {environment ? t("mobile.settings.versionOn", { version: platform.appVersion, environment }) : t("mobile.settings.version", { version: platform.appVersion })}
-      </button>
       {(serversShown || environment) && platform.native && (
         <SettingsSection card>
           <SettingsRow icon={<Server />} label={t("mobile.settings.servers")} detail={t(switching ? "mobile.settings.serversConfirm" : "mobile.settings.serversHint")}
@@ -285,6 +282,9 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
           {t("mobile.settings.deleteAccount")}
         </button>
       )}
+      <button type="button" onClick={tapVersion} className="mx-auto mt-6 block min-h-11 px-4 text-center text-[13px] text-ink-tertiary">
+        {environment ? t("mobile.settings.versionOn", { version: platform.appVersion, environment }) : t("mobile.settings.version", { version: platform.appVersion })}
+      </button>
     </div>
   );
 }
@@ -293,7 +293,7 @@ function TextSizePage() {
   const size = useSyncExternalStore(subscribeTextSize, readTextSize, () => "system" as const);
   return (
     <Sheet open onClose={() => {}} title={t("mobile.settings.textSize")}>
-      <p data-text-size-sample="" className="mx-4 mb-4 rounded-[19px] bg-ink/[0.05] px-[14px] py-2 text-[17px] font-[450] leading-[22px] text-ink">{t("mobile.settings.textSize.sample")}</p>
+      <p data-text-size-sample="" className="mx-2 mb-4 rounded-[19px] bg-ink/[0.05] px-[14px] py-2 text-[17px] font-[450] leading-[22px] text-ink">{t("mobile.settings.textSize.sample")}</p>
       <SettingsSection card>
         {TEXT_SIZES.map((choice) => (
           <button key={choice} type="button" aria-pressed={size === choice} onClick={() => { haptic("pick"); setTextSize(choice); }} className="mobile-row flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left text-[16px] font-medium text-ink">
