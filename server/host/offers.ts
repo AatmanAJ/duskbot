@@ -149,10 +149,13 @@ export function offerText(input: { find: string; url?: string; ask: string }): s
   return `${plain(input.find)}${source}\n\n${plain(input.ask)}`;
 }
 
+/** Opens every request a Do it sends, so a spot never reads it as the person's own words. */
+export const REQUEST_LEAD = "Do it: ";
+
 /** What the person's Do it sends to the bot: the work as their request, and the find as unchecked material. */
 export function offerRequest(sent: Pick<Sent, "action" | "task" | "find" | "url">, finder: string): string {
   return [
-    `${sent.action}.`,
+    `${REQUEST_LEAD}${sent.action}.`,
     "",
     sent.task,
     "",
@@ -246,7 +249,11 @@ export function createOffers(deps: OffersDeps) {
     const out: Array<DreamConversation & { botId: string }> = [];
     for (const bot of deps.store.bots) {
       if (bot.hidden || !suggests(bot)) continue;
-      for (const conversation of deps.conversations(bot.id, since)) out.push({ ...conversation, botId: bot.id });
+      for (const conversation of deps.conversations(bot.id, since)) {
+        // Security invariant: a Do it request carries web text; it is never the person's words to a spot.
+        const lines = conversation.lines.filter((line) => !(line.by === "person" && line.text.startsWith(REQUEST_LEAD)));
+        if (lines.some((line) => line.by === "person")) out.push({ ...conversation, lines, botId: bot.id });
+      }
     }
     return out.slice(0, MAX_CONVERSATIONS);
   }

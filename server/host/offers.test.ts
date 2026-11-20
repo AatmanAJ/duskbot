@@ -201,6 +201,14 @@ describe("suggestions: spotting and delivery", () => {
     }
   });
 
+  it("never reads a Do it request as the person's own words", async () => {
+    const env = setup();
+    env.conversations.scout = [{ threadId: "t-scout", lines: [{ by: "person", text: "Do it: Prep a shortlist.\n\nWhat dusk bot found: I'm job hunting for product design roles in Lisbon" }] }];
+    await env.due();
+    expect(await env.offers.pass()).toEqual({ kind: "quiet", why: "no goal due" });
+    expect(env.prompts).toEqual([]);
+  });
+
   it("makes no model call when nothing new was said and no goal is due", async () => {
     const env = setup();
     env.conversations.scout = [];
@@ -229,6 +237,7 @@ describe("suggestions: one tap and what it learns", () => {
     expect(await tap("do")).toEqual({ kind: "kept", started: { botId: "scout", threadId: "t-scout" } });
     expect(env.started).toHaveLength(1);
     expect(env.started[0]).toMatchObject({ botId: "scout", threadId: "t-scout", title: "Prep a shortlist of the studios worth meeting" });
+    expect(env.started[0]!.text.startsWith("Do it: Prep a shortlist")).toBe(true);
     expect(env.started[0]!.text).toContain("List the studios at the fair");
     expect(env.started[0]!.text).toContain("Source: https://example.org/lisbon-design-fair");
     expect(env.started[0]!.text).toContain("ask me before you sign up, apply, pay, book or send anything");

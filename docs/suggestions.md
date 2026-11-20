@@ -62,4 +62,4 @@ unchecked material.
 pnpm vitest run server/host/offers.test.ts server/host/offer-interests.test.ts
 ```
 
-`DUSK_SUGGESTIONS_FAST=1` on a fixture server shortens the timings (15 s ticks, no boot wait, 30 s idle) for a live run.
+`DUSK_SUGGESTIONS_FAST=1` on a fixture server shortens the timings (15 s ticks, a pass a minute, no boot wait, 30 s idle, offers a minute apart) for a live run.
