@@ -263,7 +263,7 @@ async function converse(srv: StressServer, frames: Frame[], job: { key: string; 
         const deadline = asked + liveWait;
         while (!notified && Date.now() < deadline) {
           await sleep(3_000);
-          const reply = telegram.sent(tgToken).filter((call) => call.at > asked).map((call) => String(call.params.text ?? "")).filter((text) => text.trim() && !/^Connected\./.test(text));
+          const reply = telegram.sent(tgToken).filter((call) => call.at > asked).map((call) => String(call.params.text ?? "")).filter((text) => text.trim() && !text.startsWith("Connected."));
           if (reply.length) notified = { text: reply.join(" | ").slice(0, 600), afterMs: Date.now() - asked };
         }
         extra.telegramSent = telegram.sent(tgToken).map((call) => String(call.params.text ?? "").slice(0, 200));
