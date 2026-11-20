@@ -17,7 +17,7 @@ working unchanged until the panel moves to these.
   | 401 | `signed_out` | no session |
   | 403 | `not_admin` | signed in, not an admin |
   | 404 | `not_found` | unknown route or person |
-  | 503 | `admin_slow` | the read passed its 25 s deadline; show the message, offer retry |
+  | 503 | `admin_slow` | the read passed its 25 s deadline and keeps running; asking again joins it and gets its answer, so retry quietly |
   | 503 | `admin_data_unavailable` | MongoDB could not be read; the panel may retry |
 
   Nothing hangs: every read has a 25 s deadline, every database query a 20 s

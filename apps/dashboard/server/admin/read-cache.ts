@@ -30,20 +30,22 @@ export function createReadCache(options: ReadCacheOptions = {}): ReadCache {
   const kept = new Map<string, { at: number; value: unknown }>();
   const running = new Map<string, Promise<unknown>>();
   let generation = 0;
+  function asUnavailable(error: unknown): never {
+    if (isDatabaseError(error)) throw new ReadUnavailable("admin_data_unavailable", "The analytics database can't be read right now. The page will try again.");
+    throw error;
+  }
+  /** bounds how long a caller waits, never the work: a read past the deadline keeps running and is kept for the next caller */
   function withDeadline<T>(work: Promise<T>): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new ReadUnavailable("admin_slow", "This view took too long to load. Try a shorter range, or again in a minute.")), deadlineMs);
+      timer = setTimeout(() => reject(new ReadUnavailable("admin_slow", "This view is still loading. It will be ready in a moment.")), deadlineMs);
       timer.unref?.();
     });
-    return Promise.race([work, late]).finally(() => clearTimeout(timer)).catch((error: unknown) => {
-      if (isDatabaseError(error)) throw new ReadUnavailable("admin_data_unavailable", "The analytics database can't be read right now. The page will try again.");
-      throw error;
-    });
+    return Promise.race([work.catch(asUnavailable), late]).finally(() => clearTimeout(timer));
   }
   function compute<T>(key: string, ttlMs: number, work: () => Promise<T>): Promise<T> {
     const started = generation;
-    const promise = withDeadline(work()).then(value => {
+    const promise = work().then(value => {
       // an answer computed before a change is not kept past it
       if (started === generation && ttlMs > 0) {
         kept.delete(key);
@@ -52,6 +54,7 @@ export function createReadCache(options: ReadCacheOptions = {}): ReadCache {
       }
       return value;
     }).finally(() => { if (running.get(key) === promise) running.delete(key); });
+    promise.catch(() => {});
     running.set(key, promise);
     return promise;
   }
@@ -63,10 +66,10 @@ export function createReadCache(options: ReadCacheOptions = {}): ReadCache {
       const inFlight = running.get(key) as Promise<T> | undefined;
       if (hit && ttlMs > 0 && now() - hit.at < ttlMs + staleMs) {
         // a failed refresh keeps the older answer; the next read tries again
-        if (!inFlight) compute(key, ttlMs, work).catch(() => {});
+        if (!inFlight) compute(key, ttlMs, work);
         return Promise.resolve(hit.value as T);
       }
-      return inFlight ?? compute(key, ttlMs, work);
+      return withDeadline((inFlight ?? compute(key, ttlMs, work)) as Promise<T>);
     },
     // a read already running started before the change, so the next caller starts a new one
     clear() { kept.clear(); running.clear(); generation++; },

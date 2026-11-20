@@ -93,7 +93,7 @@ const ACTIVE_NAMES = EVENT_NAMES.filter(name => "active" in EVENTS[name]);
 const APP_NAMES = EVENT_NAMES.filter(name => EVENTS[name].source === "app" || name === "app_active");
 const REALTIME_TTL_MS = 4_000;
 /** how long past its freshness a kept read is still answered at once while a new one is computed behind it */
-const STALE_MS = 10 * 60_000;
+const STALE_MS = 12 * 60 * 60_000;
 const SUBSCRIBER_EVENTS = ["app_messages", "app_open"];
 const bundleLabel = (id: string | null | undefined) => BILLING_CONFIG.bundles.find(bundle => bundle.id === id)?.label.toLowerCase() ?? (id ? "custom" : null);
 const regionLabel = (id: string, managed: boolean) => (labelOfRegion(managed ? MANAGED_REGION.id : id) ?? id).toLowerCase();
