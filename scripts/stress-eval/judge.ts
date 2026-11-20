@@ -46,7 +46,7 @@ function transcript(threads: ThreadLog[]): string {
 }
 
 export async function judge(gateway: Gateway, scenario: Scenario, threads: ThreadLog[], facts: {
-  tools: string[]; routines: unknown[]; waits: unknown[]; memory: string; aboutMe: string; checked: Checked;
+  tools: string[]; routines: unknown[]; waits: unknown[]; jobs: unknown[]; liveCheck?: unknown; memory: string; aboutMe: string; checked: Checked;
 }): Promise<Verdict> {
   const c = facts.checked;
   const prompt = `You grade a personal assistant bot ("dusk bot") in a realistic test. Persona: ${scenario.persona}. Shape: ${scenario.shape}.
@@ -64,6 +64,8 @@ What really happened (ground truth, not shown to the person):
 - tools it ran: ${facts.tools.join(", ") || "none"}
 - automations that exist for this bot now: ${JSON.stringify(facts.routines).slice(0, 1500) || "none"}
 - waits that exist: ${JSON.stringify(facts.waits).slice(0, 800) || "none"}
+- background jobs (programs that keep running after the turn and wake the bot with dusk-notify; a running one is a real watch): ${JSON.stringify(facts.jobs).slice(0, 2500) || "none"}${facts.liveCheck ? `
+- live check by the eval after the conversation (it changed the watched page and waited for the bot to report it unprompted): ${JSON.stringify(facts.liveCheck).slice(0, 1200)}` : ""}
 - bot memory now (tail): ${facts.memory.slice(-1000) || "(empty)"}
 - about the person (tail): ${facts.aboutMe.slice(-500) || "(empty)"}
 - files it shared and whether they open (HTTP status): ${JSON.stringify(c.files)}

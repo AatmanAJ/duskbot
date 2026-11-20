@@ -7,6 +7,7 @@
 //   node --experimental-strip-types scripts/stress-eval/run.ts --tmp <dir> --out <dir> --fixtures <dir> \
 //     [--model gpt-6.2-sol] [--judge gpt-6.2-sol] [--repeat 2] [--servers 4] [--parallel 3] [--recycle 9] [--only id,id]
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +34,10 @@ const { values } = parseArgs({ options: {
   recycle: { type: "string", default: "9" },
   only: { type: "string", default: "" },
   limit: { type: "string", default: "0" },
+  /** keep each server's data folder (jobs, job logs, native logs) beside its server.log */
+  keep: { type: "boolean", default: false },
+  /** how long the live check waits for a watch to report the changed page */
+  "live-wait": { type: "string", default: "240000" },
 } });
 if (!values.tmp || !values.out || !values.fixtures) throw new Error("--tmp, --out and --fixtures are required");
 const out = values.out;
@@ -52,9 +57,40 @@ jobs = jobs.filter((job) => !done.has(job.key));
 if (Number(values.limit) > 0) jobs = jobs.slice(0, Number(values.limit));
 log(`${jobs.length} conversations to run (${done.size} already done)`);
 
+// The page the live monitor check watches: one path per conversation, whose status the eval flips after it.
+const pages = new Map<string, { status: string; hits: number }>();
+const pageServer = createServer((req, res) => {
+  const page = pages.get((req.url ?? "").split("?")[0]!);
+  if (!page) { res.writeHead(404); res.end(); return; }
+  page.hits += 1;
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(`<!doctype html><html><head><title>Order 4471</title></head><body><h1>Order 4471</h1><p id="status">Status: ${page.status}</p></body></html>`);
+});
+await new Promise<void>((done) => pageServer.listen(0, "127.0.0.1", done));
+const pageBase = `http://127.0.0.1:${(pageServer.address() as { port: number }).port}`;
+
+type JobFact = { id: string; label: string; command: string; state: string; starts: number; crashes: number; lastExit?: string; alive: boolean; log: string };
+
+/** The bot's background jobs as the server keeps them, whether each process is alive, and the end of its log. */
+function jobsOf(dataDir: string, botId: string): JobFact[] {
+  try {
+    const raw = JSON.parse(readFileSync(join(dataDir, "jobs.json"), "utf8")) as { jobs?: Array<Record<string, unknown>> };
+    return (raw.jobs ?? []).filter((job) => job.botId === botId).map((job) => {
+      let alive = false;
+      try { if (typeof job.pid === "number") { process.kill(job.pid, 0); alive = true; } } catch { alive = false; }
+      let tail = "";
+      try { tail = readFileSync(join(dataDir, "job-logs", `${String(job.id)}.log`), "utf8").slice(-600); } catch { /* no log yet */ }
+      return { id: String(job.id), label: String(job.label), command: String(job.command).slice(0, 300), state: String(job.state), starts: Number(job.starts), crashes: Number(job.crashes),
+        ...(job.lastExit ? { lastExit: String(job.lastExit) } : {}), alive, log: tail };
+    });
+  } catch { return []; }
+}
+
+const atMs = (value: unknown) => typeof value === "number" ? value : Date.parse(String(value ?? ""));
+
 export interface TurnTiming { say: string; sentAt: number; firstVisibleMs: number | null; firstTextMs: number | null }
 type Message = {
-  id: string; role: string; kind?: string; text?: string; card?: unknown;
+  id: string; role: string; at?: number | string; kind?: string; text?: string; card?: unknown;
   attachments?: Array<{ kind: string; path: string; name?: string; mime?: string }>;
   document?: { botId: string; id: string; title: string; kind: string; bytes: number };
   /** the harness's own read of the document card's file: its status and opening text */
@@ -105,6 +141,8 @@ async function converse(srv: StressServer, frames: Frame[], job: { key: string; 
   const timings: Array<TurnTiming & { threadId: string; state?: string; totalMs?: number }> = [];
   const states: string[] = [];
   const turnTimeout = scenario.long ? 600_000 : 300_000;
+  const pagePath = `/order/${randomUUID().slice(0, 8)}`;
+  if (scenario.localPage) pages.set(pagePath, { status: "PROCESSING", hits: 0 });
   for (let i = 0; i < scenario.turns.length; i++) {
     const turn = scenario.turns[i]!;
     if (turn.newThread) {
@@ -112,7 +150,7 @@ async function converse(srv: StressServer, frames: Frame[], job: { key: string; 
       threadId = await api.newThread(bot.id);
       threads.push(threadId);
     }
-    const parts = [turn.say];
+    const parts = [turn.say.replaceAll("{{PAGE}}", `${pageBase}${pagePath}`)];
     for (const name of turn.attach ?? []) parts.push(await upload(srv.url, name));
     const sentAt = Date.now();
     await api.call("POST", `/api/bots/${bot.id}/messages`, { text: parts.join("\n\n"), threadId, sendId: randomUUID() });
@@ -140,6 +178,30 @@ async function converse(srv: StressServer, frames: Frame[], job: { key: string; 
     const visible = [text?.at, delta?.at].filter((v): v is number => typeof v === "number");
     t.firstVisibleMs = visible.length ? Math.min(...visible) - t.sentAt : null;
   }
+  // the live check: change the watched page and wait for the bot to say so by itself in its chats
+  let liveCheck: Record<string, unknown> | undefined;
+  if (scenario.localPage) {
+    const page = pages.get(pagePath)!;
+    const jobsBefore = jobsOf(srv.dataDir, bot.id);
+    const hitsBefore = page.hits;
+    await sleep(5_000);
+    const flipAt = Date.now();
+    page.status = "SHIPPED";
+    let notified: { text: string; afterMs: number } | null = null;
+    const deadline = flipAt + Number(values["live-wait"]);
+    while (!notified && Date.now() < deadline) {
+      await sleep(5_000);
+      for (const id of threads) {
+        const said = ((await api.call("GET", `/api/threads/${id}/messages?limit=50`).catch(() => ({ messages: [] }))).messages as Message[])
+          .find((m) => m.role === "bot" && m.kind === "text" && atMs(m.at) > flipAt && (m.text ?? "").trim());
+        if (said) notified = { text: (said.text ?? "").slice(0, 400), afterMs: atMs(said.at) - flipAt };
+      }
+    }
+    if (notified) await waitIdle(api, threadId, 120_000);
+    liveCheck = { pageHitsBeforeChange: hitsBefore, pageHitsAfterChange: page.hits - hitsBefore, jobsBefore: jobsBefore.map(({ log: _log, ...job }) => job),
+      jobsAfter: jobsOf(srv.dataDir, bot.id), notified: notified !== null, ...(notified ? { notifiedAfterMs: notified.afterMs, notice: notified.text } : { waitedMs: Number(values["live-wait"]) }) };
+    pages.delete(pagePath);
+  }
   const threadLogs: ThreadLog[] = [];
   for (const id of threads) threadLogs.push({ threadId: id, messages: (await api.call("GET", `/api/threads/${id}/messages?limit=300`)).messages });
   for (const message of threadLogs.flatMap((t) => t.messages)) {
@@ -164,14 +226,15 @@ async function converse(srv: StressServer, frames: Frame[], job: { key: string; 
     const list = Array.isArray(raw) ? raw : Object.values(raw?.waits ?? raw ?? {});
     waits = (list as Array<Record<string, unknown>>).filter((w) => JSON.stringify(w).includes(bot.id)).map((w) => ({ label: w.label, kind: w.kind, state: w.state ?? w.status }));
   } catch { /* no waits */ }
+  const jobFacts = jobsOf(srv.dataDir, bot.id);
   const memory = await api.call("GET", `/api/bots/${bot.id}/memory`).then((m) => String(m.text ?? "")).catch(() => "");
   const aboutMe = await api.aboutMe().catch(() => "");
   const checked: Checked = await hardChecks(srv.url, threadLogs, timings, states, runtimeErrors);
-  const verdict: Verdict = await judge(gatewayFromEnv(values.judge!), scenario, threadLogs, { tools, routines, waits, memory: memory.slice(-1500), aboutMe: aboutMe.slice(-800), checked });
+  const verdict: Verdict = await judge(gatewayFromEnv(values.judge!), scenario, threadLogs, { tools, routines, waits, jobs: jobFacts, ...(liveCheck ? { liveCheck } : {}), memory: memory.slice(-1500), aboutMe: aboutMe.slice(-800), checked });
   return {
     key: job.key, id: scenario.id, run: job.run, persona: scenario.persona, shape: scenario.shape, model: values.model, at: new Date().toISOString(),
     wallMs: Date.now() - started, states, timings: timings.map(({ say, firstVisibleMs, firstTextMs, totalMs, state }) => ({ say: say.slice(0, 120), firstVisibleMs, firstTextMs, totalMs, state })),
-    tools, runtimeErrors, routines, waits, checked, verdict, memory: memory.slice(-1500), aboutMe: aboutMe.slice(-800),
+    tools, runtimeErrors, routines, waits, jobs: jobFacts, ...(liveCheck ? { liveCheck } : {}), checked, verdict, dataDir: srv.dataDir, memory: memory.slice(-1500), aboutMe: aboutMe.slice(-800),
     transcript: threadLogs.map((t) => t.messages.filter((m) => m.kind === "text" || (m.role === "bot" && m.kind !== "activity" && m.kind !== "digest")).map((m) => ({
       role: m.role, kind: m.kind, text: (m.text ?? "").slice(0, 4_000), ...(m.document ? { document: { title: m.document.title, kind: m.document.kind, bytes: m.document.bytes, status: m.documentRead?.status } } : {}), attachments: (m.attachments ?? []).map((a) => ({ kind: a.kind, name: a.name ?? a.path.split("/").at(-1) })),
     }))),
@@ -221,9 +284,10 @@ async function worker(index: number): Promise<void> {
     await Promise.all(Array.from({ length: parallel }, lane));
     stream.close();
     serverErrors(srv, label);
-    await srv.close();
+    await srv.close(values.keep);
   }
 }
 
 await Promise.all(Array.from({ length: Number(values.servers) }, (_, i) => worker(i)));
 log("all done; results in", resultsPath, readdirSync(out).join(", "));
+pageServer.close();
