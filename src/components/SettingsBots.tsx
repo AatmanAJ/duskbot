@@ -18,6 +18,7 @@ import { DefaultBotSidebarRow } from "./DefaultBotControls";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { Card, NavRow, SheetInSettings, SwitchRow, useSubPage } from "./ListRows";
 import { effortLabel } from "./ModelPicker";
+import { effortLevelsFor } from "./model-picker-reasoning";
 import { ModelSelectRow } from "./native/ModelSelectRow";
 import { RoomAboutModal, RoomFolderModal, RoomInstructionsModal, RoomResponderModal } from "./room-panel/RoomModals";
 import { SettingRow, SettingsGroup, SettingsRows } from "./SettingsPrimitives";
@@ -166,7 +167,7 @@ function useMemoryLine(bot: Bot): string {
 function ReasoningRow({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const selection = bot.modelSelection;
-  const levels = state.instances.find((instance) => instance.instanceId === selection.instanceId)?.capabilities?.effortLevels;
+  const levels = effortLevelsFor(state.instances.find((instance) => instance.instanceId === selection.instanceId), selection.model);
   if (!levels?.length) return null;
   return (
     <SettingRow title={t("model.simple.reasoning")}>

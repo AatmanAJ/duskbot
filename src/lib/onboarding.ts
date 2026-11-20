@@ -1,5 +1,7 @@
+import { useSyncExternalStore } from "react";
 import { ONBOARDING_CLOUD_HINT, WELCOME_VERSION } from "../../electron/onboarding-record.mjs";
 import { freeFallback, rankAis, type AiTestState, type RankableAi } from "../../shared/ai-ranking";
+import { CLOUD_FIRST_RUN_DONE, CLOUD_FROM_COMPUTER, CLOUD_WELCOME_DONE, COMPUTER_AI_HINT } from "../../shared/cloud-hints";
 
 export interface OnboardingStatus {
   completedAt: string;
@@ -39,15 +41,30 @@ export function welcomeViewer(session: unknown): WelcomeViewer {
 
 export function welcomeDue(
   config: { onboarding?: OnboardingStatus } | null | undefined,
-  options: { remoteClient: boolean; legacyDone: boolean; canSave?: boolean; cloudHome?: boolean },
+  options: { remoteClient: boolean; legacyDone: boolean; canSave?: boolean; cloudHome?: boolean; fromApp?: boolean },
 ): boolean {
-  if (options.remoteClient || options.cloudHome) return false;
+  if (options.remoteClient) return false;
   if (options.canSave === false) return false;
   if (!config) return false;
+  if (options.cloudHome) return cloudFirstRunDue(config.onboarding, options.fromApp === true);
   const record = config.onboarding ?? EMPTY_ONBOARDING;
   if (record.completedAt && record.version >= WELCOME_VERSION) return false;
   if (!record.completedAt && options.legacyDone) return false;
   return true;
+}
+
+/** A cloud runs the first run only when the desktop app that set it up opened it (`fromApp`, before that app's record
+ * arrives, or CLOUD_FROM_COMPUTER once it has), and only until it ends there. A cloud already in use, or one opened in a
+ * browser, keeps its own welcome. */
+export function cloudFirstRunDue(record: OnboardingStatus | undefined, fromApp: boolean): boolean {
+  if (hintSeen(record, CLOUD_FIRST_RUN_DONE)) return false;
+  if (hintSeen(record, CLOUD_FROM_COMPUTER)) return true;
+  return fromApp && !hintSeen(record, CLOUD_WELCOME_DONE) && !hintSeen(record, "cloud-setup-hidden") && !record?.firstTurnAt;
+}
+
+/** The AIs signed in on the computer that set this cloud up, by instance id. */
+export function computerAiIds(record: OnboardingStatus | undefined): string[] {
+  return (record?.hintsSeen ?? []).filter((hint) => hint.startsWith(COMPUTER_AI_HINT)).map((hint) => hint.slice(COMPUTER_AI_HINT.length));
 }
 
 export function completionPatch(now: Date = new Date()): { onboarding: { completedAt: string; version: number } } {
@@ -62,9 +79,11 @@ export const MET_CHIEF_HINT = "met-chief-v1";
 export function firstRunPatch(
   record: OnboardingStatus | undefined,
   now: Date = new Date(),
+  { cloudHome = false }: { cloudHome?: boolean } = {},
 ): { onboarding: { completedAt: string; version: number; hintsSeen?: string[] } } {
   const have = record?.hintsSeen ?? [];
-  return { onboarding: { ...completionPatch(now).onboarding, ...(have.includes(MET_CHIEF_HINT) ? {} : { hintsSeen: [...have, MET_CHIEF_HINT] }) } };
+  const add = [MET_CHIEF_HINT, ...(cloudHome ? [CLOUD_FIRST_RUN_DONE] : [])].filter((hint) => !have.includes(hint));
+  return { onboarding: { ...completionPatch(now).onboarding, ...(add.length ? { hintsSeen: [...have, ...add] } : {}) } };
 }
 
 export function hintSeen(record: OnboardingStatus | undefined, id: string): boolean {
@@ -96,14 +115,20 @@ export function onboardingCloudOffered(record: OnboardingStatus | undefined): bo
 }
 
 let welcomeShown = 0;
+const welcomeListeners = new Set<() => void>();
+const welcomeChanged = () => welcomeListeners.forEach((listener) => listener());
 /** The welcome flow is on screen (WelcomeFlow, until it closes): a Cloud sheet over it never switches the window away. */
 export function showWelcome(): () => void {
   welcomeShown++;
+  welcomeChanged();
   let gone = false;
-  return () => { if (!gone) { gone = true; welcomeShown--; } };
+  return () => { if (!gone) { gone = true; welcomeShown--; welcomeChanged(); } };
 }
 export function welcomeOnScreen(): boolean {
   return welcomeShown > 0;
+}
+export function useWelcomeOnScreen(): boolean {
+  return useSyncExternalStore((listener) => { welcomeListeners.add(listener); return () => welcomeListeners.delete(listener); }, welcomeOnScreen, () => false);
 }
 
 const WELCOME_FINISHED_KEY = "dusk.onboarding.welcomeFinished";

@@ -77,6 +77,8 @@ UPDATER=/usr/local/lib/duskbot/install.sh
 PKGS=/var/lib/duskbot-link/packages
 SERVER_RELEASE=/var/lib/omb-link/.config/duskbot-link/server-release
 PORT=8799
+# `duskbot` for whoever is logged in: the server's own build lives in the server account's home, off root's PATH
+CLI=/usr/local/bin/duskbot
 UNITS=/etc/systemd/system
 CADDY_SITE=/etc/caddy/duskbot.caddy
 CADDY_MAIN=/etc/caddy/Caddyfile
@@ -289,6 +291,9 @@ watch_step() {
   _tw=$((COLS - TW - 16 - ${#SUBTXT} - 2))
   while [ ! -f "$TMP/rc" ]; do
     [ ! -f "$TMP/cancelled" ] || on_stop
+    if [ -f "$TMP/sub" ] && read -r _sl < "$TMP/sub" && [ -n "$_sl" ] && [ "$_sl" != "$SUBTXT" ]; then
+      SUBTXT=$_sl SUB="${DIM}${_sl}${R}  " _tw=$((COLS - TW - 16 - ${#_sl} - 2))
+    fi
     _el=$(fmt_ms $(($(now_ms) - PH_T0)))
     X=""
     if [ -f "$PROGRESS" ] && read -r _kind _a _b _c 2>/dev/null <"$PROGRESS"; then
@@ -414,6 +419,8 @@ as_user() { runuser -u "$SVC_USER" -- env HOME="$SVC_HOME" PATH="$SVC_HOME/.loca
 state_get() { [ -f "$STATE/$1" ] && cat "$STATE/$1" || true; }
 state_set() { printf '%s\n' "$2" > "$STATE/$1.tmp" && mv "$STATE/$1.tmp" "$STATE/$1"; }
 progress() { rm -f "$PROGRESS.json"; printf '%s\n' "$*" > "$PROGRESS.tmp" && mv "$PROGRESS.tmp" "$PROGRESS"; }
+# a step names the part it is on now, in place of its title on the spinner line
+sub_label() { printf '%s\n' "$*" > "$TMP/sub.tmp" && mv -f "$TMP/sub.tmp" "$TMP/sub"; }
 
 # no bearer token, link secret or api key ever leaves this script: not into a log, not to the app
 redact() {
@@ -643,7 +650,7 @@ step() { # id function
   title=$(step_title "$1")
   SUBTXT=$title SUB="${DIM}${title}${R}  "
   : > "$LOG"
-  rm -f "$PROGRESS" "$PROGRESS.json"
+  rm -f "$PROGRESS" "$PROGRESS.json" "$TMP/sub"
   STEP_ID=$1 SENT=0 CMD="" STEP_T0=$(now_ms) LAST_SIGNATURE="" LAST_POST=0
   LAST_ACTIVITY=$STEP_T0
   report "$1" running &
@@ -669,7 +676,8 @@ step() { # id function
   [ ! -f "$TMP/cancelled" ] || on_stop
   set -e
   took=$(fmt_ms $(($(now_ms) - PH_T0)))
-  why=$(tail -n 1 "$LOG" 2>/dev/null | tr -cd '\40-\176' | cut -c1-$((COLS - TW - 16)))
+  _ww=$((COLS - TW - 16)); [ "$_ww" -ge 20 ] || _ww=20
+  why=$(tail -n 1 "$LOG" 2>/dev/null | tr -cd '\40-\176' | cut -c1-"$_ww")
   case "$code" in
     0)
       report "$1" "done"; state_set "step-$1" "done"
@@ -1106,6 +1114,23 @@ note_failed() { # version
 get_package() { # file
   verified_download "$LINK_BASE/pkg/$LINK_ID/$PKG_SHA.tgz" "$1" "$PKG_SHA" "$PKG_SIZE" 1800 "dusk bot"
 }
+# the wrapper switches to the server account before it runs anything from that account's home, so root never executes
+# a file the server account can write
+put_command() {
+  if [ -e "$CLI" ] && ! grep -qs "managed by duskbot-link" "$CLI"; then echo "left $CLI as it is: it is not ours"; return 0; fi
+  _run="env HOME=$SVC_HOME PATH=$SVC_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin $SVC_HOME/.local/bin/duskbot"
+  cat > "$TMP/cli" <<EOF
+#!/bin/sh
+# managed by duskbot-link: this server's dusk bot, run as $SVC_USER
+if [ "\$(id -un)" = $SVC_USER ]; then exec $_run "\$@"; fi
+if [ "\$(id -u)" -eq 0 ]; then exec runuser -u $SVC_USER -- $_run "\$@"; fi
+exec sudo -u $SVC_USER -- $_run "\$@"
+EOF
+  if [ -f "$CLI" ] && cmp -s "$TMP/cli" "$CLI"; then return 0; fi
+  install -o root -g root -m 0755 "$TMP/cli" "$CLI"
+  echo "duskbot now runs from any login on this server"
+}
+
 do_app() {
   bin="$SVC_HOME/.local/bin/duskbot"
   if [ -n "$DUSK_PACKAGE" ]; then
@@ -1202,9 +1227,23 @@ do_engines() {
   do_free_backup
 }
 # opencode's pinned build, the free backup ai, so the first message never waits on its download. not fatal: the server
-# tries again at every start (DUSK_PREINSTALL_FREE_BACKUP in its unit)
+# tries again at every start (DUSK_PREINSTALL_FREE_BACKUP in its unit). one bounded try with no terminal: published builds
+# probe an interactive login shell for PATH, which finds the installer's terminal, stops its own process group
+# (SIGTTIN) and the command with it, forever
+FREE_BACKUP_SECS=300
 do_free_backup() {
-  retry as_user "$SVC_HOME/.local/bin/duskbot" free-backup install || echo "the free backup ai is not installed yet; the server tries again when it starts"
+  sub_label "Installing the free backup AI"
+  echo "installing the free backup ai (OpenCode), up to $((FREE_BACKUP_SECS / 60)) minutes"
+  set -- "$SVC_HOME/.local/bin/duskbot" free-backup install
+  if command -v timeout >/dev/null 2>&1; then set -- timeout -k 15 "$FREE_BACKUP_SECS" "$@"; fi
+  if command -v setsid >/dev/null 2>&1; then set -- setsid -w "$@"; fi
+  show "$@"
+  if as_user "$@"; then return 0; else _fb=$?; fi
+  case "$_fb" in
+    124|137) echo "the free backup ai took longer than $((FREE_BACKUP_SECS / 60)) minutes; skipped for now, the server installs it when it starts" ;;
+    *) echo "the free backup ai is not installed yet (exit $_fb); skipped for now, the server installs it when it starts" ;;
+  esac
+  return 0
 }
 
 # writes a file only when it changed; returns 0 when it wrote
@@ -1260,6 +1299,10 @@ Environment=DOCKER_HOST=unix://$GATE_SOCK
 Environment=DUSK_PREINSTALL_FREE_BACKUP=1
 EnvironmentFile=-$ETC/engines.env
 ExecStart=$SVC_HOME/.local/bin/duskbot serve --port $PORT --no-pair --label $NAME$public
+# the link stops when the server is stopped, but stays up through a restart (an update, an engine sign-in) and a crash,
+# so the app's tunnel and the phones' links never drop: systemd propagates restarts along PartOf= and PropagatesStopTo=
+# alike, and only a running stop job shows as "stop" in list-jobs
+ExecStopPost=+/bin/sh -c 'systemctl list-jobs --no-legend duskbot.service 2>/dev/null | grep -qw stop && systemctl stop --no-block duskbot-link.service || true'
 Restart=always
 RestartSec=5
 # when memory runs out the kernel takes a bot computer (docker --oom-score-adj 500) long before the server
@@ -1363,7 +1406,7 @@ ReadWritePaths=$LINK_HOME
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target duskbot.service
 EOF
   put_file "$UNITS/duskbot-link.service" 0644 && changed=0
   cat > "$TMP/new" <<EOF
@@ -1372,6 +1415,7 @@ EOF
 Description=Docker gate for dusk bot
 After=docker.service
 Requires=docker.service
+StartLimitIntervalSec=0
 
 [Service]
 User=$GATE_USER
@@ -1395,7 +1439,7 @@ RestrictAddressFamilies=AF_UNIX
 IPAddressDeny=any
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target docker.service
 EOF
   put_file "$UNITS/omb-docker-gate.service" 0644 && changed=0
   cat > "$TMP/new" <<EOF
@@ -1450,6 +1494,17 @@ gate_up() {
   done
   echo "the docker gate did not answer; bot computers will not start"
   journalctl -u omb-docker-gate.service -n 20 --no-pager 2>/dev/null || true
+}
+
+# a docker restart stops the gate with it (Requires=) and, before docker.service wanted the gate, nothing started it
+# again: every round of the update timer starts a gate that does not answer the server account
+heal_gate() {
+  [ -f "$UNITS/omb-docker-gate.service" ] && docker info >/dev/null 2>&1 || return 0
+  systemctl add-wants docker.service omb-docker-gate.service >/dev/null 2>&1 || true
+  as_user env DOCKER_HOST="unix://$GATE_SOCK" docker version --format '{{.Server.Version}}' >/dev/null 2>&1 && return 0
+  echo "$(date -u '+%F %T') the docker gate did not answer $SVC_USER; starting it again"
+  systemctl reset-failed omb-docker-gate.service >/dev/null 2>&1 || true
+  x systemctl restart omb-docker-gate.service || true
 }
 
 wait_health() { # url seconds
@@ -1565,6 +1620,12 @@ ts() { tailscale "$@"; }
 ts_field() { # BackendState | DNSName
   ts status --json 2>/dev/null | /usr/bin/node -e 'let t="";process.stdin.on("data",(c)=>t+=c).on("end",()=>{try{const s=JSON.parse(t);const v=process.argv[1]==="DNSName"?s.Self?.DNSName:s.BackendState;console.log(String(v??"").replace(/\.$/,""))}catch{}})' "$1" 2>/dev/null || true
 }
+# tailnet https port 443: free, ours (a proxy to this server alone) or taken. a status that cannot be read counts as free,
+# and `serve` then fails or asks the person
+ts_https_443() { # dnsname
+  ts serve status --json 2>/dev/null | /usr/bin/node -e 'let t="";process.stdin.on("data",(c)=>t+=c).on("end",()=>{try{const s=JSON.parse(t);if(!s.TCP?.["443"]){console.log("free");return}const h=s.Web?.[process.argv[1]+":443"]?.Handlers??{};console.log(Object.keys(h).join()==="/"&&h["/"].Proxy===process.argv[2]?"ours":"taken")}catch{console.log("free")}})' "$1" "http://127.0.0.1:$PORT" 2>/dev/null || echo free
+}
+TS_INSTALL_SECS=600 TS_WAIT_SECS=900
 tailscale_install() {
   command -v tailscale >/dev/null 2>&1 && return 0
   echo "installing Tailscale (its own installer, from tailscale.com)"
@@ -1572,7 +1633,10 @@ tailscale_install() {
   new_file /etc/apt/sources.list.d/tailscale.list
   new_file /usr/share/keyrings/tailscale-archive-keyring.gpg
   installed_pkgs > "$TMP/pkgs-before"
-  x sh "$TMP/tailscale.sh"
+  set -- sh "$TMP/tailscale.sh"
+  if command -v timeout >/dev/null 2>&1; then set -- timeout -k 15 "$TS_INSTALL_SECS" "$@"; fi
+  if command -v setsid >/dev/null 2>&1; then set -- setsid -w "$@"; fi
+  x "$@" || echo "Tailscale's installer did not finish in $((TS_INSTALL_SECS / 60)) minutes or failed"
   installed_pkgs | comm -13 "$TMP/pkgs-before" - | while read -r _p; do manifest_add "pkg $_p"; done
   command -v tailscale >/dev/null 2>&1
 }
@@ -1604,7 +1668,7 @@ ts_with_link() { # kind seconds pattern words... -- command...
     _url=$(grep -o "$_pat" "$TMP/ts.out" 2>/dev/null | head -n 1)
     if [ -n "$_url" ] && [ "$_url" != "$_asked" ]; then
       _asked=$_url
-      printf '%s\n  %s\n\nWaiting for you...\n' "$_words" "$_url" | ask "{\"kind\":\"$_kind\",\"url\":\"$_url\",\"state\":\"waiting\"}"
+      printf '%s\n  %s\n\nWaiting for you, up to %s minutes. After that this server uses the private relay instead.\n' "$_words" "$_url" "$(((_secs + 59) / 60))" | ask "{\"kind\":\"$_kind\",\"url\":\"$_url\",\"state\":\"waiting\"}"
     fi
     sleep 1; _t=$((_t + 1))
     if [ "$_t" -ge "$_secs" ]; then kill "$_pid" 2>/dev/null || true; wait "$_pid" 2>/dev/null || true; redact < "$TMP/ts.out"; return 1; fi
@@ -1621,18 +1685,19 @@ address_tailscale() {
       show tailscale up --auth-key=[redacted]
       ts up --auth-key="$TS_KEY" --timeout=2m 2>&1 | redact || true
     else
-      ts_with_link tailscale-login 1800 'https://login\.tailscale\.com/[A-Za-z0-9/._?=&-]*' \
-        "Sign in to Tailscale to put this server on your tailnet. Open this link on any device:" -- ts up --timeout=30m || true
+      ts_with_link tailscale-login "$TS_WAIT_SECS" 'https://login\.tailscale\.com/[A-Za-z0-9/._?=&-]*' \
+        "Sign in to Tailscale to put this server on your tailnet. Open this link on any device:" -- ts up --timeout="${TS_WAIT_SECS}s" || true
     fi
   fi
-  [ "$(ts_field BackendState)" = Running ] || { relay_address "Tailscale is not signed in; using the private relay"; return 11; }
+  [ "$(ts_field BackendState)" = Running ] || { relay_address "Tailscale is not signed in; using the private relay. To use Tailscale later, sign in with: tailscale up, then paste the line again"; return 11; }
   dns=$(ts_field DNSName)
   [ -n "$dns" ] || { relay_address "this server has no MagicDNS name; turn MagicDNS on for your tailnet. Using the private relay"; return 11; }
   echo "on the tailnet as $dns"
+  [ "$(ts_https_443 "$dns")" != taken ] || { relay_address "tailnet https port 443 already serves something else here; leaving it alone and using the private relay"; return 11; }
   # https for the tailnet: `tailscale serve` prints the one admin link that turns it on and waits for it
-  if ! ts_with_link tailscale-https 1800 'https://login\.tailscale\.com/[A-Za-z0-9/._?=&-]*' \
+  if ! ts_with_link tailscale-https "$TS_WAIT_SECS" 'https://login\.tailscale\.com/[A-Za-z0-9/._?=&-]*' \
     "Turn on HTTPS for your tailnet (one click), so this server gets an https address:" -- ts serve --bg --https=443 "http://127.0.0.1:$PORT"; then
-    relay_address "Tailscale HTTPS is not on; using the private relay"; return 11
+    relay_address "Tailscale HTTPS is not on; using the private relay. To use Tailscale later, turn HTTPS on in its admin console, then paste the line again"; return 11
   fi
   manifest_add "tailscale-serve 443"
   ask_clear
@@ -2146,6 +2211,7 @@ update_server() {
   [ "$(id -u)" -eq 0 ] || { echo "--update-server runs as root"; return 1; }
   if command -v flock >/dev/null 2>&1; then exec 9>>"$INSTALL_LOCK"; flock -n 9 || { echo "an install is running; the update waits for the next round"; return 0; }; LOCKED=1; fi
   [ -f "$STATE/linked" ] || return 0
+  heal_gate
   TMP=$(mktemp -d) LINK_ID=$(state_get id) VPS_TOKEN="" OFFLINE=0 REQUIRE_SIGNED=1
   PROGRESS="$TMP/progress"
   trap 'rm -rf "$TMP"' EXIT
@@ -2182,7 +2248,7 @@ update_server() {
     [ "$_rc" != 0 ] || state_set server-update-refused "$PKG_SHA"
     return 0
   fi
-  if [ "$_rc" = 0 ]; then refresh_updater "$_f"; refresh_gate "$_f"; fi
+  if [ "$_rc" = 0 ]; then refresh_updater "$_f"; refresh_gate "$_f"; put_command >/dev/null 2>&1 || true; fi
   restart_wait || return 0
   restart_settle
 }
@@ -2417,6 +2483,7 @@ main() {
   phase prepare; step check do_check; step basics do_basics; step docker do_docker; step user do_user; phase_end
   phase runtime; step node do_node; phase_end
   phase omb; step app do_app; step engines do_engines; step service do_service; phase_end
+  [ -n "$DEMO" ] || put_command >>"$LOGS/command.log" 2>&1 || true
   phase computer; step sandbox do_sandbox; step fence do_fence; step desktop do_desktop; phase_end
   phase link; step address do_address
   if [ "$OFFLINE" = 1 ]; then

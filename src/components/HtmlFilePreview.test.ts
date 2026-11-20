@@ -53,6 +53,14 @@ describe("file chip preview button", () => {
     expect(chip("notes.txt")).not.toMatch(/Preview (page|table):/);
   });
 
+  it("opens a Markdown or text file's preview from its name, and keeps saving on its own button", () => {
+    const md = chip("notes.md");
+    expect(md).toMatch(/aria-label="Preview file: notes.md"[^>]*>[^]*notes\.md/);
+    expect(md).toMatch(/class="table-action" aria-label="Save a copy of notes.md"/);
+    expect(chip("notes.txt")).toContain('aria-label="Preview file: notes.txt"');
+    expect(chip("notes.md", {}, false)).not.toContain("Preview file:");
+  });
+
   it("offers no preview for files outside a message or not shared privately", () => {
     expect(chip("report.html", {}, false)).not.toContain("Preview page:");
     expect(chip("report.html", { private: false })).not.toContain("Preview page:");

@@ -15,21 +15,26 @@ export function VpsComputersCard({
   aliases,
   loading,
   removingName,
+  restartingName = null,
   error,
   unavailableReason,
   onRefresh,
   onRemove,
+  onRestart,
 }: {
   instances: VpsComputerInventoryInstance[];
   configured: boolean | null;
   aliases: string[];
   loading: boolean;
   removingName: string | null;
+  restartingName?: string | null;
   error: string | null;
   unavailableReason: string | null;
   onRefresh: () => void;
   onRemove: (instance: VpsComputerInventoryInstance) => void;
+  onRestart?: (instance: VpsComputerInventoryInstance) => void;
 }) {
+  const acting = removingName !== null || restartingName !== null;
   const status = loading && instances.length === 0
     ? t("common.checking")
     : unavailableReason && instances.length === 0
@@ -43,7 +48,7 @@ export function VpsComputersCard({
   return (
     <>
       <ItemRow title={t("settings.w6a.vps.title")} hint={status}>
-        <button type="button" onClick={onRefresh} disabled={loading || removingName !== null} aria-label={t("vm.vps.refreshAria")} className="ui-button">{t("vm.refresh")}</button>
+        <button type="button" onClick={onRefresh} disabled={loading || acting} aria-label={t("vm.vps.refreshAria")} className="ui-button">{t("vm.refresh")}</button>
       </ItemRow>
 
       {error && <NoteRow tone="danger">{error}</NoteRow>}
@@ -60,7 +65,7 @@ export function VpsComputersCard({
                 : t("vm.vps.foundMany", { count: instances.length })}
       </p>
 
-      <div aria-busy={loading || removingName !== null} className="contents">
+      <div aria-busy={loading || acting} className="contents">
         {unavailableReason && <NoteRow tone="warn">{unavailableReason}</NoteRow>}
         {instances.map((instance) => {
           const kind = vpsComputerInventoryStateKind(instance);
@@ -72,10 +77,22 @@ export function VpsComputersCard({
           return (
             <ItemRow key={`${instance.vpsAlias ?? ""}:${instance.name}`} title={instance.orphaned ? t("vm.vps.orphan", { id: shortId }) : instance.ownerName} hint={hint}>
               <ComputerState label={state} kind={instance.inUse || kind === "running" ? "good" : kind === "stopped" || kind === "paused" ? "idle" : "warn"} />
+              {onRestart && !instance.orphaned && (instance.state === "running" || instance.state === "restarting") && (
+                <button
+                  type="button"
+                  onClick={() => onRestart(instance)}
+                  disabled={loading || acting}
+                  aria-busy={restartingName === instance.name || undefined}
+                  title={t("vm.vps.restartTitle")}
+                  className="ui-button"
+                >
+                  {t("vm.vps.restart")}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onRemove(instance)}
-                disabled={loading || instance.inUse || removingName !== null}
+                disabled={loading || instance.inUse || acting}
                 aria-busy={removing || undefined}
                 title={t("vm.vps.removeTitle")}
                 className="ui-button ui-button-danger"
