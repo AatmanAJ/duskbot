@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { openSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { BOT_APT_PACKAGES, BOT_PYTHON_PACKAGES, BOT_TOOLS_LOG, BOT_TOOLS_VERSION, botToolsScript, startBotTools } from "./bot-tools.ts";
+import { BOT_APT_PACKAGES, BOT_MEDIA_PACKAGES, BOT_PYTHON_PACKAGES, BOT_TOOLS_LOG, BOT_TOOLS_VERSION, botToolsScript, startBotTools } from "./bot-tools.ts";
 
 const dockerfile = readFileSync(new URL("../deploy/docker/Dockerfile", import.meta.url), "utf8");
 
@@ -49,6 +49,7 @@ describe("the bots' tools on a natively installed dusk cloud", () => {
 
   it("matches what the cloud-home Docker image bakes in", () => {
     expect(dockerfile).toContain(`ARG BOT_PYTHON_PACKAGES="${BOT_PYTHON_PACKAGES.join(" ")}"`);
+    expect(dockerfile).toContain(`ARG BOT_MEDIA_PACKAGES="${BOT_MEDIA_PACKAGES.join(" ")}"`);
     const cloudHome = dockerfile.slice(dockerfile.indexOf("FROM runtime AS cloud-home"), dockerfile.indexOf("FROM runtime AS server"));
     for (const pkg of BOT_APT_PACKAGES) expect(cloudHome, pkg).toMatch(new RegExp(`\\s${pkg}\\s`));
   });

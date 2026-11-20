@@ -17,10 +17,13 @@ export const BOT_PYTHON_PACKAGES = [
   "numpy==2.4.6", "pillow==13.0.0", "requests==2.34.2", "beautifulsoup4==4.15.0", "lxml==6.1.3", "pypdf==7.1.1",
 ] as const;
 
-const PYTHON_IMPORTS = "reportlab, docx, pptx, openpyxl, matplotlib, pandas, numpy, PIL, requests, bs4, lxml, pypdf";
-const COMMANDS = ["python", "pip3", "pdftotext", "ffmpeg", "convert", "rsvg-convert", "zip", "jq", "sqlite3", "wget", "file", "soffice"];
+/** Download a video clip and fingerprint the song in it. */
+export const BOT_MEDIA_PACKAGES = ["yt-dlp[default]==2026.10.26", "shazamio-core==2.0.0"] as const;
 
-export const BOT_TOOLS_VERSION = createHash("sha256").update(JSON.stringify([BOT_APT_PACKAGES, BOT_PYTHON_PACKAGES])).digest("hex").slice(0, 16);
+const PYTHON_IMPORTS = "reportlab, docx, pptx, openpyxl, matplotlib, pandas, numpy, PIL, requests, bs4, lxml, pypdf, yt_dlp, shazamio_core";
+const COMMANDS = ["python", "pip3", "pdftotext", "ffmpeg", "convert", "rsvg-convert", "zip", "jq", "sqlite3", "wget", "file", "soffice", "yt-dlp"];
+
+export const BOT_TOOLS_VERSION = createHash("sha256").update(JSON.stringify([BOT_APT_PACKAGES, BOT_PYTHON_PACKAGES, BOT_MEDIA_PACKAGES])).digest("hex").slice(0, 16);
 export const BOT_TOOLS_MARKER = "/var/lib/dusk-bot-tools/version";
 export const BOT_TOOLS_LOG = "/var/log/dusk-bot-tools.log";
 
@@ -40,6 +43,7 @@ if ! have && command -v apt-get >/dev/null; then
   apt-get -q -o DPkg::Lock::Timeout=600 update || true
   apt-get install $opts ${apt} || for p in ${apt}; do apt-get install $opts "$p" || echo "bot tools: $p not installed"; done
   python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed ${BOT_PYTHON_PACKAGES.join(" ")} || echo "bot tools: python packages not installed"
+  python3 -m pip install --no-cache-dir --break-system-packages ${BOT_MEDIA_PACKAGES.map((pkg) => `'${pkg}'`).join(" ")} || echo "bot tools: media packages not installed"
 fi
 [ -f /etc/pip.conf ] || printf '[global]\\nbreak-system-packages = true\\n' > /etc/pip.conf
 git config --system --get-all url.https://github.com/.insteadOf 2>/dev/null | grep -qx 'git@github.com:' || git config --system --add url.https://github.com/.insteadOf 'git@github.com:' || true
