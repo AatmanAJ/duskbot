@@ -9622,6 +9622,7 @@
   "server.cloudMac.where.append": "{path}\nañadiendo al final",
   "server.cloudMac.where.openWith": "{target}\ncon {app}",
   "server.cloudMac.title.read": "{name} quiere ver archivos privados en tu Mac",
+  "server.cloudMac.title.screen": "{name} quiere usar la pantalla de tu Mac",
   "server.cloudMac.why": "Lo pide porque {reason}.",
   "server.cloudMac.why.every": "Pediste aprobar cada acción en este Mac.",
   "documents.files": "Archivos",

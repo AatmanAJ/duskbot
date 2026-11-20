@@ -9624,6 +9624,7 @@
   "server.cloudMac.where.append": "{path}\nam Ende anfügen",
   "server.cloudMac.where.openWith": "{target}\nmit {app}",
   "server.cloudMac.title.read": "{name} möchte private Dateien auf deinem Mac ansehen",
+  "server.cloudMac.title.screen": "{name} möchte den Bildschirm deines Mac nutzen",
   "server.cloudMac.why": "Rückfrage, weil es: {reason}.",
   "server.cloudMac.why.every": "Du wolltest jede Aktion auf diesem Mac selbst freigeben.",
   "documents.files": "Dateien",

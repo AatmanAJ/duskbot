@@ -1,8 +1,9 @@
 # Cloud bots use this Mac
 
 A person's bots on their dusk cloud can work on that person's Mac while the Mac is on and the dusk bot app is open: run
-terminal commands, download files, read and write files, and open apps and links. No screen control, so no Screen
-Recording or Accessibility permission.
+terminal commands, download files, read and write files, and open apps and links. When the person also allows it, they
+see and use the Mac's screen with the same computer tools a bot on the Mac has, through the app's own computer control
+(its Accessibility and Screen Recording grants); see [Screen](#screen).
 
 ## What it reuses
 
@@ -47,6 +48,46 @@ sealed to its key).
 `mac_screenshot` and `mac_save_from_cloud` are not offered on a cloud. When the Mac is not polling, a call answers
 "The person's Mac is offline" and nothing runs.
 
+## Screen
+
+"Use my Mac to do X" from the phone or a cloud bot works on the Mac's apps, not only its terminal, when the person
+allows the screen:
+
+- **The tools** are the Mac's own computer-control driver's (cua-driver, the one a bot on the Mac uses), offered as
+  `mac_<tool>`: `mac_list_apps`, `mac_list_windows`, `mac_get_window_state`, `mac_launch_app`, `mac_click`,
+  `mac_type_text`, `mac_press_key`, `mac_hotkey`, `mac_scroll` and the rest. The catalog is the cloud's
+  (`server/mac-control/screen.ts`): the Mac lists its driver's tools in a sealed `mac_screen_tools` job once it polls
+  with the screen allowed (again when the driver's version changes), and the cloud keeps those a local bot gets beside a
+  browser of its own (`server/computer-tool-list.ts`: no driver upkeep, none of the driver's own browser). The prompt
+  steers to window-targeted background work: pid and window_id, read with `mac_get_window_state`, act by
+  element_index, the foreground only when a window will not take background input.
+- **Each call** is one sealed `mac_screen` job (`{ name, arguments }`), the same transport, sealing and poller as the
+  commands. The cloud runs the local computer proxy's relay (`localComputerRelay` in
+  `server/local-computer-guidance.ts`) over those jobs, so multi-line text is typed line by line with Shift+Return
+  between and Windows gets its paced typing and click check, exactly as on the Mac. The answer is the driver's own
+  result (text, the first image, structuredContent, isError).
+- **On the Mac** (`electron/cloud-screen.mjs`) the app speaks MCP over stdio to the driver connection it already runs
+  (`cuaConnection()` in `electron/cua.mjs`), so the person's existing grants apply and nothing new is installed. Windows
+  is the same path through its packaged driver.
+
+Consent, on top of everything in Settings and safety below:
+
+- **"Let them use this Mac's screen"** (Settings > Your computer, under the main switch): off by default, its own
+  native confirm on the Mac. Turning it on starts computer control and asks for Accessibility and Screen Recording if
+  dusk bot does not have them yet. While off the Mac does not say `screen=1`, the cloud offers no screen tools, the
+  prompt carries one line on where to allow it, a screen call is answered with that same line, and the Mac refuses any
+  screen job itself.
+- **Indicator and Stop**: while a cloud bot acts on the screen, and for 15 s after its last action, a menu bar item
+  says "Cloud bot on screen" with Stop, and the Settings card shows "<bot> is using this Mac's screen" with Stop. Stop
+  ends what runs, closes the driver connection and turns the screen switch off. Turning the main switch off stops it
+  too.
+- **When to ask**: under Auto only `kill_app` and `clipboard_read` ask; under "Ask before every action" every screen
+  action but a look (`list_apps`, `list_windows`, `get_window_state` and the other reads) asks, with a card naming the
+  tool and its text, keys or app. "Always allow" saves `mac_screen:<tool>` for that bot.
+- **Log**: each screen action is one line (`mac_screen click on pid 42 window 7`); never the typed text.
+- **Only these folders** limits files and commands, not the screen: a bot on the screen can reach what the person's
+  apps can.
+
 ## Settings and safety
 
 Settings > Your computer, on the cloud's own Settings page in the app:
@@ -88,9 +129,9 @@ Admin link; a bot that could read it could sign jobs.
 
 ## Releases
 
-- **Desktop app**: the Settings rows' bridge, the poller, sealing, rules, executor (`mac_download`, stoppable
+- **Desktop app**: the screen switch, its confirm, the driver client and the indicator; the Settings rows' bridge, the poller, sealing, rules, executor (`mac_download`, stoppable
   commands), log.
-- **Cloud image**: cloud mode of `/api/mac`, sealing, cards, the Settings rows, the poll as a background path.
+- **Cloud image**: the screen catalog and relay, cloud mode of `/api/mac`, sealing, cards, the Settings rows, the poll as a background path.
 - **Admin (dashboard)**: the pairing grant carries the cloud's link public key.
 
 All three are needed; an older piece fails closed (the app says the cloud needs an update and does not poll).

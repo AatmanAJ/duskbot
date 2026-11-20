@@ -61,6 +61,7 @@ export function withMacControl(phones: Phones, mac: MacControl, botById: (id: st
         assertActive();
         const live = botById(capability.botId);
         const phone = live && phones.mounts(live, capability) ? await phones.handle(body, capability, assertActive) as { tools: unknown[] } : { tools: [] };
+        await mac.screenReady();
         const macTools = mac.tools(capability);
         return { tools: [...phone.tools, ...macTools], instructions: [phone.tools.length ? PHONE_INSTRUCTIONS : "", macTools.length ? mac.instructions() : ""].filter(Boolean).join(" ") };
       }

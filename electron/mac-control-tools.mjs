@@ -111,6 +111,11 @@ export function jobSummary(job) {
     case "mac_save_from_cloud": return `${clip(a.source)} -> ${clip(a.to ?? "~/Downloads")}`;
     case "mac_screenshot": return "screen";
     case "mac_download": return `${clip(a.url)} -> ${clip(a.to ?? "~/Downloads/")}`;
+    case "mac_screen": {
+      const on = a.arguments ?? {};
+      const where = [on.pid !== undefined && `pid ${clip(on.pid)}`, on.window_id !== undefined && `window ${clip(on.window_id)}`, on.app && clip(on.app)].filter(Boolean).join(" ");
+      return `${clip(a.name)}${where ? ` on ${where}` : ""}`;
+    }
     default: return clip(a.path ?? "~");
   }
 }

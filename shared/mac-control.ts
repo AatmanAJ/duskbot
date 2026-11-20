@@ -6,6 +6,8 @@ export const MAC_TOOL_NAMES = [
 /** Only a dusk cloud's bots get these (shared/cloud-mac.ts). */
 export const CLOUD_ONLY_MAC_TOOL_NAMES = ["mac_download"] as const;
 export type MacToolName = (typeof MAC_TOOL_NAMES)[number] | (typeof CLOUD_ONLY_MAC_TOOL_NAMES)[number];
+/** What a job asks the Mac to do: a bot's Mac tool, or on a dusk cloud a call to the Mac's computer-control driver. */
+export type MacJobTool = MacToolName | "mac_screen" | "mac_screen_tools";
 
 export function isMacToolName(value: unknown): value is MacToolName {
   return typeof value === "string" && ([...MAC_TOOL_NAMES, ...CLOUD_ONLY_MAC_TOOL_NAMES] as readonly string[]).includes(value);
@@ -13,8 +15,9 @@ export function isMacToolName(value: unknown): value is MacToolName {
 
 /** GET and PUT /api/mac answer this. */
 export interface MacControlStatus {
-  /** On a dusk cloud, as the Mac last said: when actions ask first, and the folders it is limited to, if any. */
-  cloud?: { folders: string[]; mode: "auto" | "ask" | "never"; limited: boolean };
+  /** On a dusk cloud, as the Mac last said: when actions ask first, the folders it is limited to, if any, and whether its
+   * screen tools are offered (the person allows the screen and the Mac listed them). */
+  cloud?: { folders: string[]; mode: "auto" | "ask" | "never"; limited: boolean; screen: boolean };
   /** The owner's Mac app has served this server at least once: the switch means something here. */
   available: boolean;
   /** The Settings switch; default true. */
@@ -32,14 +35,15 @@ export interface MacJob {
   id: string;
   /** On a dusk cloud: the person allowed this one on its card (reads never ask). */
   approved?: true;
-  tool: MacToolName;
+  tool: MacJobTool;
   arguments: Record<string, unknown>;
   bot: { id: string; name: string };
   expiresAt: number;
   download?: { path: string; name: string; bytes: number };
 }
 
-/** What the Mac app posts to /api/mac/self/jobs/:id/result. */
+/** What the Mac app posts to /api/mac/self/jobs/:id/result. A mac_screen job's result also carries the driver's
+ * structuredContent and whether the driver answered with an error. */
 export type MacJobOutcome =
-  | { ok: true; result: { text: string; image?: { data: string; mimeType: "image/png" | "image/jpeg" } } }
+  | { ok: true; result: { text: string; image?: { data: string; mimeType: "image/png" | "image/jpeg" }; structured?: Record<string, unknown>; isError?: true } }
   | { ok: false; error: string };

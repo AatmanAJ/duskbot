@@ -10,7 +10,9 @@ import type { BotRecord, Store } from "../store.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import { turnWaitedOnPerson } from "../waiting-on-person.ts";
 import { EVERY_ACTION } from "../../electron/cloud-mac-risk.mjs";
-import { CLOUD_MAC_TOOL_NAMES, type CloudMacToolName } from "../../shared/cloud-mac.ts";
+import { CLOUD_MAC_SCREEN_JOB, CLOUD_MAC_TOOL_NAMES, type CloudMacToolName } from "../../shared/cloud-mac.ts";
+
+type AskTool = CloudMacToolName | typeof CLOUD_MAC_SCREEN_JOB;
 
 export interface MacAskBus {
   store: Store;
@@ -33,7 +35,7 @@ const keyed = (key: string) => (key.length <= KEY_MAX ? key : undefined);
 
 /** What the card says (in `language`), with why it asks, and the narrow grant "Always allow" saves. `reason` is the
  * rule that matched (electron/cloud-mac-risk.mjs), or EVERY_ACTION under "Ask before every action". */
-export function macAsk(tool: CloudMacToolName, args: Record<string, unknown>, name: string, reason: string, language?: string): { title: string; subtitle: string; allowKey?: string } | null {
+export function macAsk(tool: AskTool, args: Record<string, unknown>, name: string, reason: string, language?: string): { title: string; subtitle: string; allowKey?: string } | null {
   const line = (key: ServerLineKey, params: Record<string, string>) => serverLine(language, key, params);
   const why = reason === EVERY_ACTION ? line("server.cloudMac.why.every", {}) : line("server.cloudMac.why", { reason });
   const ask = what(tool, args, name, line);
@@ -42,7 +44,7 @@ export function macAsk(tool: CloudMacToolName, args: Record<string, unknown>, na
 
 
 
-function what(tool: CloudMacToolName, args: Record<string, unknown>, name: string, line: (key: ServerLineKey, params: Record<string, string>) => string): { title: string; subtitle: string; allowKey?: string } | null {
+function what(tool: AskTool, args: Record<string, unknown>, name: string, line: (key: ServerLineKey, params: Record<string, string>) => string): { title: string; subtitle: string; allowKey?: string } | null {
   switch (tool) {
     case "mac_read_file":
     case "mac_list":
@@ -67,6 +69,11 @@ function what(tool: CloudMacToolName, args: Record<string, unknown>, name: strin
       return { title: line("server.cloudMac.title.open", { name }),
         subtitle: text(args.app) ? line("server.cloudMac.where.openWith", { target: text(args.target), app: text(args.app) }) : text(args.target),
         allowKey: keyed(`mac_open:${text(args.app)}:${text(args.target)}`) };
+    case "mac_screen": {
+      const call = (args.arguments ?? {}) as Record<string, unknown>;
+      const shown = ["text", "key", "keys", "app", "url", "urls"].filter((key) => call[key] !== undefined).map((key) => `${key}: ${typeof call[key] === "string" ? call[key] : JSON.stringify(call[key])}`);
+      return { title: line("server.cloudMac.title.screen", { name }), subtitle: [text(args.name), ...shown].join("\n").slice(0, 600), allowKey: keyed(`mac_screen:${text(args.name)}`) };
+    }
     default:
       return null;
   }
@@ -95,7 +102,7 @@ export function askToUseMac(
   bus: MacAskBus,
   bot: Pick<BotRecord, "id" | "name" | "color" | "avatarUrl" | "notifications" | "alwaysAllow">,
   owner: { threadId: string; generation: string },
-  tool: CloudMacToolName,
+  tool: AskTool,
   args: Record<string, unknown>,
   reason: string,
   waitMs = MAC_ASK_WAIT_MS,
@@ -164,7 +171,7 @@ export function cancelMacAsks(threadId: string, generation?: string): void {
 
 export function dismissStaleMacCards(store: Store): number {
   let dismissed = 0;
-  for (const { threadId, messageId } of optionCardsForTools([...CLOUD_MAC_TOOL_NAMES])) {
+  for (const { threadId, messageId } of optionCardsForTools([...CLOUD_MAC_TOOL_NAMES, CLOUD_MAC_SCREEN_JOB])) {
     const card = store.messagesFor(threadId).find((message) => message.id === messageId)?.card;
     if (!card?.requestId || card.answered || card.dismissed || pending.has(card.requestId)) continue;
     if (store.patchMessage(threadId, messageId, { card: { ...card, answered: "deny", dismissed: true } })) dismissed += 1;

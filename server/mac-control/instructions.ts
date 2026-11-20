@@ -18,7 +18,25 @@ export const MAC_PROMPT =
   "Everything you do on the Mac shows in the chat. If it is offline the tool says so; tell the person to open dusk bot on the Mac.";
 
 /** What the person's Mac told its cloud: whether each action asks first, and the folders it is limited to (none: all). */
-export interface CloudMacLimits { mode: "auto" | "ask" | "never"; limited: boolean; folders: string[] }
+export interface CloudMacLimits { mode: "auto" | "ask" | "never"; limited: boolean; folders: string[]; screen?: boolean }
+
+/** What the bot may do on the Mac's screen: its driver's tools as mac_<tool>, or the one line on how to allow it. */
+function cloudMacScreen(screen: boolean | undefined): string {
+  return screen ? CLOUD_MAC_SCREEN_PROMPT : CLOUD_MAC_NO_SCREEN_PROMPT;
+}
+
+export const CLOUD_MAC_SCREEN_PROMPT =
+  "You can also see and use the apps on the Mac's screen with the same computer tools a bot on that Mac has, named mac_<tool> (mac_list_apps, mac_list_windows, " +
+  "mac_get_window_state, mac_launch_app, mac_click, mac_type_text, mac_press_key, mac_hotkey, mac_scroll and the rest). Work in the background on one app's window: " +
+  "find its pid and window_id, read it with mac_get_window_state, and act on that window by element_index; take over the foreground only when a window will not take background input. " +
+  "Use the screen only for what a command or file cannot do, and keep your own web work in your own browser.";
+
+export const CLOUD_MAC_NO_SCREEN_PROMPT =
+  "You cannot see or use the Mac's screen: when a task needs it, say in one sentence that they can allow it in the dusk bot app on the Mac, Settings > Your computer > Let them use this Mac's screen.";
+
+/** A screen tool called while the person has not let cloud bots use the Mac's screen. */
+export const SCREEN_OFF_TEXT =
+  "The person has not let you use their Mac's screen. Tell them in one sentence they can allow it in the dusk bot app on the Mac: Settings > Your computer > Let them use this Mac's screen.";
 
 function cloudMacLimits({ mode, limited, folders }: CloudMacLimits): string {
   return [
@@ -29,11 +47,12 @@ function cloudMacLimits({ mode, limited, folders }: CloudMacLimits): string {
   ].filter(Boolean).join(" ");
 }
 
-/** A dusk cloud's version: no screen tools; the person's own opt-in limits, if any. */
+/** A dusk cloud's version: the person's own opt-in limits, if any, and the Mac's screen when they allow it. */
 export function cloudMacInstructions(limits: CloudMacLimits): string {
   return ["The mac_ tools reach the person's own Mac through the dusk bot app on it, as the person: mac_exec runs a shell command (zsh), " +
     "mac_download saves a file from a link onto the Mac (into ~/Downloads by default), mac_read_file, mac_write_file and mac_list work with its files, and mac_open opens an app, a link or a file there.",
   cloudMacLimits(limits),
+  limits.screen ? "The mac_ screen tools are the computer-control tools of the Mac itself; prefer pid and window_id targets and background delivery." : "",
   "If the Mac is offline the tool says so: ask the person to open dusk bot on it. A mac_exec that timed out may still have changed things; check before repeating it."].filter(Boolean).join(" ");
 }
 
@@ -42,6 +61,7 @@ export function cloudMacPrompt(limits: CloudMacLimits): string {
     "act on it through the dusk bot app there, so never say you have no access to their Mac. Use it when the person asks for something on their Mac: run a terminal command or a CLI, " +
     "download a file into their Downloads, open an app or a link, or read and change their files.",
   cloudMacLimits(limits),
+  cloudMacScreen(limits.screen),
   "Everything you do on the Mac shows in the chat. If it is offline the tool says so; tell the person to open dusk bot on the Mac."].filter(Boolean).join(" ");
 }
 

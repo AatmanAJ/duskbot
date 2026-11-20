@@ -153,6 +153,10 @@ const __APP_VERSION__: string;
     /** On: reading, saving and downloads stay inside the listed folders. */
     setLimitFolders(on: boolean): Promise<import("../../shared/cloud-mac").CloudMacState>;
     openLog(): Promise<void>;
+    /** "Let them use this Mac's screen": turning on asks on the Mac first. Absent on an older app. */
+    setScreen?(on: boolean): Promise<import("../../shared/cloud-mac").CloudMacState>;
+    /** Stops what a cloud bot does on the screen now and turns the screen off. */
+    stopScreen?(): Promise<import("../../shared/cloud-mac").CloudMacState>;
     onChange(listener: (state: import("../../shared/cloud-mac").CloudMacState) => void): () => void;
   }
   interface DesktopRemoteClientState {

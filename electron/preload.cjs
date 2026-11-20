@@ -758,6 +758,8 @@ const bridge = {
     addFolder: () => ipcRenderer.invoke("cloud-mac:addFolder"),
     removeFolder: folder => ipcRenderer.invoke("cloud-mac:removeFolder", String(folder)),
     openLog: () => ipcRenderer.invoke("cloud-mac:openLog"),
+    setScreen: on => ipcRenderer.invoke("cloud-mac:setScreen", on === true),
+    stopScreen: () => ipcRenderer.invoke("cloud-mac:stopScreen"),
     onChange: listener => {
       const handler = (_event, view) => listener(view);
       ipcRenderer.on("cloud-mac:changed", handler);

@@ -6,6 +6,8 @@
 // that is not signed by that cloud's link key (from dusk.bot, never from the cloud's address), not sealed to this run's
 // key, expired, repeated or outside the cloud's tools never runs. Once on, cloud bots act as the person; the person's
 // limits (Auto asks for risky actions, or every action, or never; "Only these folders") are enforced here too.
+// The screen is a second opt-in: screen jobs run only while "Let them use this Mac's screen" is on, through this app's
+// own computer control, and the indicator (onScreen) and its Stop stay up while one runs.
 import { createCipheriv, createDecipheriv, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync, randomBytes, verify } from "node:crypto";
 import { promises as fsp } from "node:fs";
 import { homedir } from "node:os";
@@ -14,12 +16,17 @@ import path from "node:path";
 import { isCloudMacMode, macApprovalReason } from "./cloud-mac-risk.mjs";
 import { createMacControlHost } from "./mac-control.mjs";
 import { createMacExecutor, folderName, jobSummary, macLogFile, resolveMacPath } from "./mac-control-tools.mjs";
+import { screenOutcome } from "./cloud-screen.mjs";
 
 export const CLOUD_MAC_TOOLS = Object.freeze(["mac_exec", "mac_read_file", "mac_write_file", "mac_list", "mac_open", "mac_download"]);
 export const DEFAULT_CWD = "~/dusk bot";
 export const DEFAULT_FOLDERS = Object.freeze(["~/Downloads", DEFAULT_CWD]);
 const OPEN_SCHEMES = new Set(["https:", "http:", "mailto:"]);
 const CONNECTED_MS = 60_000;
+/** The indicator stays up this long after a screen action, so a bot's run of clicks reads as one session. */
+export const ON_SCREEN_MS = 15_000;
+export const SCREEN_OFF = "The person has not let cloud bots use this computer's screen. It did not run.";
+export const SCREEN_NOT_READY = "Computer control is not on in dusk bot on this computer (it needs Accessibility and Screen Recording), so the screen is out of reach. It did not run.";
 const KEY_RETRY_MS = 10 * 60_000;
 
 export const CLOUD_MAC_SEAL_INFO = "dusk cloud mac v1";
@@ -154,6 +161,7 @@ export async function cloudJobRefusal(job, { folders = null, mode = "auto", home
  *   reauth?(origin: string): Promise<boolean>,
  *   onChange?(view: import("../shared/cloud-mac.ts").CloudMacState): void,
  *   execute?: ReturnType<typeof createMacExecutor>,
+ *   screen?: { available(): boolean, version(): string, tools(): Promise<unknown>, call(name: string, args: unknown, signal: AbortSignal): Promise<unknown>, close(): void },
  *   wait?(ms: number, signal: AbortSignal): Promise<void>,
  * }} deps
  */
@@ -161,6 +169,19 @@ export async function cloudJobRefusal(job, { folders = null, mode = "auto", home
 function readPrefs(prefs) {
   try { return prefs.read() ?? {}; } catch { return {}; }
 }
+
+/** Why this Mac will not run a cloud screen job, or null. */
+export function screenJobRefusal(job, { screen, ready, mode, home }) {
+  if (!screen) return SCREEN_OFF;
+  if (!ready) return SCREEN_NOT_READY;
+  if (job.tool === "mac_screen_tools") return null;
+  const a = job.arguments ?? {};
+  if (typeof a.name !== "string" || !a.arguments || typeof a.arguments !== "object" || Array.isArray(a.arguments)) return "Not a screen action this computer knows.";
+  const reason = macApprovalReason(mode, "mac_screen", a, home);
+  return reason && job.approved !== true ? `This ${reason}, so the person must allow it on a card first; it did not run.` : null;
+}
+
+const SCREEN_JOBS = new Set(["mac_screen", "mac_screen_tools"]);
 
 export function createCloudMac(deps) {
   const home = deps.home ?? homedir();
@@ -170,9 +191,11 @@ export function createCloudMac(deps) {
   let enabled = saved.enabled === true;
   let mode = isCloudMacMode(saved.mode) ? saved.mode : "auto";
   let limitFolders = saved.limitFolders === true;
+  let screenOn = saved.screen === true;
   let folders =Array.isArray(saved.folders) && saved.folders.every((folder) => typeof folder === "string") ? [...saved.folders] : [...DEFAULT_FOLDERS];
   const busy = new Map();
   let seal = createCloudMacSeal({ now });
+  let lastScreen = null;
   let origin = null, linkKey = null, keyCheckedAt = -Infinity, keyOrigin = null, lastOkAt = -Infinity, refused = null;
   const limit = () => (limitFolders ? folders : null);
   const execute = deps.execute ?? createMacExecutor({ home, log, source: "cloud", defaultCwd: () => defaultCwd(limit()) });
@@ -184,21 +207,53 @@ export function createCloudMac(deps) {
       : cloud === "none" ? "You have no dusk cloud on this account yet."
         : cloud === "asleep" ? "Your dusk cloud is asleep; it reaches this Mac again once it wakes."
           : cloud === "refused" ? refused : null;
-    return { enabled, mode, limitFolders, folders: [...folders], cloud, problem, busy: [...busy.values()].map((entry) => entry.work) };
+    const screenReady = deps.screen?.available() === true;
+    const onScreen = [...busy.values()].find((entry) => entry.work.tool === "mac_screen")?.work.bot
+      ?? (enabled && screenOn && lastScreen && now() - lastScreen.at < ON_SCREEN_MS ? lastScreen.bot : null);
+    return { enabled, mode, limitFolders, folders: [...folders], cloud, problem, busy: [...busy.values()].map((entry) => entry.work),
+      screen: screenOn, screenReady, onScreen: onScreen ? { bot: onScreen } : null };
   };
   const changed = () => deps.onChange?.(view());
-  const save = () => deps.prefs.write({ enabled, mode, limitFolders, folders });
+  const save = () => deps.prefs.write({ enabled, mode, limitFolders, folders, screen: screenOn });
 
-  async function audit(job, refusal) {
-    const line = `${new Date(now()).toISOString()} cloud ${folderName(job?.bot?.name)} ${job?.tool} ${jobSummary(job ?? {})} -> refused: ${refusal}\n`;
+  async function logLine(job, ending, approved = false) {
+    const line = `${new Date(now()).toISOString()} cloud ${folderName(job?.bot?.name)} ${job?.tool} ${jobSummary(job ?? {})}${approved ? " (allowed in chat)" : ""} -> ${ending}\n`;
     try {
       await fsp.mkdir(path.dirname(macLogFile(home)), { recursive: true, mode: 0o700 });
       await fsp.appendFile(macLogFile(home), line, { mode: 0o600 });
     } catch (error) { log(`cloud mac: could not write the log (${error?.message ?? error})`); }
   }
+  const audit = (job, refusal) => logLine(job, `refused: ${refusal}`);
+  const record = (job, outcome) => logLine(job, outcome.ok && outcome.result?.isError !== true ? "ok" : `failed: ${String(outcome.ok ? outcome.result.text : outcome.error).slice(0, 300)}`, job?.approved === true);
+
+  async function runScreen(job) {
+    const refusal = screenJobRefusal(job, { screen: screenOn, ready: deps.screen?.available() === true, mode, home });
+    if (refusal) { if (job.tool === "mac_screen") await audit(job, refusal); return { ok: false, error: refusal }; }
+    if (job.tool === "mac_screen_tools") {
+      try { return { ok: true, result: { text: JSON.stringify(await deps.screen.tools()) } }; }
+      catch (error) { return { ok: false, error: String(error?.message ?? error).slice(0, 2000) }; }
+    }
+    const abort = new AbortController();
+    const bot = String(job.bot?.name ?? "A bot");
+    busy.set(job.id, { abort, work: { id: job.id, bot, tool: job.tool, summary: jobSummary(job), startedAt: now() } });
+    lastScreen = { bot, at: now() };
+    changed();
+    try {
+      const outcome = screenOutcome(await deps.screen.call(job.arguments.name, job.arguments.arguments, abort.signal));
+      await record(job, outcome);
+      return outcome;
+    } finally {
+      busy.delete(job.id);
+      lastScreen = { bot, at: now() };
+      changed();
+      const settle = setTimeout(changed, ON_SCREEN_MS + 100);
+      settle.unref?.();
+    }
+  }
 
   async function run(job, io) {
     if (!enabled) { await audit(job, "switched off"); return { ok: false, error: "The person turned off cloud bots on this Mac. It did not run." }; }
+    if (SCREEN_JOBS.has(job?.tool)) return runScreen(job);
     const refusal = await cloudJobRefusal(job, { folders: limit(), mode, home });
     if (refusal) { await audit(job, refusal); return { ok: false, error: refusal }; }
     const abort = new AbortController();
@@ -210,7 +265,8 @@ export function createCloudMac(deps) {
 
   const host = createMacControlHost({
     fetch: deps.fetch, name: deps.name, log, execute: run, ...(deps.wait ? { wait: deps.wait } : {}),
-    query: () => [["key", seal.key()], ["cwd", defaultCwd(limit())], ["mode", mode], ["home", home], ...(limit() ?? []).map((folder) => ["folder", folder])],
+    query: () => [["key", seal.key()], ["cwd", defaultCwd(limit())], ["mode", mode], ["home", home], ...(limit() ?? []).map((folder) => ["folder", folder]),
+      ["platform", process.platform], ...(screenOn && deps.screen?.available() ? [["screen", "1"], ["driver", deps.screen.version()]] : [])],
     ready: () => enabled && deps.cloud().awake && linkKey !== null,
     ...(deps.reauth ? { reauth: () => (origin ? deps.reauth(origin) : Promise.resolve(false)) } : {}),
     open: (body) => seal.open(body?.sealed, linkKey),
@@ -263,6 +319,20 @@ export function createCloudMac(deps) {
       changed();
       return view();
     },
+    /** "Let them use this Mac's screen"; off also stops what runs on the screen now. */
+    setScreen(on) {
+      screenOn = on === true;
+      if (!screenOn) {
+        for (const entry of busy.values()) if (entry.work.tool === "mac_screen") entry.abort.abort();
+        lastScreen = null;
+        deps.screen?.close();
+      }
+      save();
+      changed();
+      return view();
+    },
+    /** The indicator's Stop: what runs on the screen stops and the screen switch turns off. */
+    stopScreen() { return this.setScreen(false); },
     setMode(next) { if (isCloudMacMode(next)) { mode = next; save(); changed(); } return view(); },
     setLimitFolders(on) {
       limitFolders = on === true;
@@ -287,6 +357,6 @@ export function createCloudMac(deps) {
     },
     /** The kill switch: stops what runs now and turns the switch off. */
     stop() { return this.setEnabled(false); },
-    close() { host.close(); for (const entry of busy.values()) entry.abort.abort(); },
+    close() { host.close(); for (const entry of busy.values()) entry.abort.abort(); deps.screen?.close(); },
   };
 }

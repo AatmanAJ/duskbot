@@ -5,3 +5,4 @@ export declare function commandRisk(command: unknown): string | null;
 export declare function macActionRisk(tool: string, args: Record<string, unknown> | null | undefined, home: string): string | null;
 export declare function macApprovalReason(mode: CloudMacMode, tool: string, args: Record<string, unknown> | null | undefined, home: string): string | null;
 export declare const EVERY_ACTION: string;
+export declare const SCREEN_READS: readonly string[];

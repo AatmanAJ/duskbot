@@ -18,9 +18,12 @@ import { isMacToolName, type MacControlStatus, type MacToolName } from "../../sh
 import type { RequestAuth } from "../request-auth.ts";
 import { PASS, type RouteHandler } from "../routes/table.ts";
 import type { PromptPart } from "../system-prompt.ts";
-import { CLOUD_MAC_UNLINKED_PROMPT, cloudMacInstructions, cloudMacPrompt, MAC_INSTRUCTIONS, MAC_OFFLINE_TEXT, MAC_PROMPT } from "./instructions.ts";
+import { CLOUD_MAC_UNLINKED_PROMPT, cloudMacInstructions, cloudMacPrompt, MAC_INSTRUCTIONS, MAC_OFFLINE_TEXT, MAC_PROMPT, SCREEN_OFF_TEXT } from "./instructions.ts";
 import { macJobOutcome, MacJobs, MAC_RESULT_MAX_BYTES, type MacDownload } from "./jobs.ts";
 import { isMacSealKey, openMacOutcome, readLinkSigningKey, sealMacJob } from "./seal.ts";
+import { localComputerRelay } from "../local-computer-guidance.ts";
+import type { ChildCalls } from "../mcp-bridge.ts";
+import { maybeScreenTool, screenCatalog, screenResult, type ScreenCatalog } from "./screen.ts";
 import { CLOUD_MAC_TOOLS, MAC_TOOLS, macErrorResult, macJobTimeoutMs, macToolCallProblem, type MacToolResult } from "./tools.ts";
 
 type Turn = { botId: string; threadId: string; generation: string };
@@ -30,6 +33,9 @@ type MacBot = { id: string; name: string; macControl?: boolean };
 const FORGET_MS = 30 * 24 * 60 * 60_000;
 const SAVE_SEEN_MS = 10 * 60_000;
 const NOT_HOST = "Only the owner's own dusk bot app on their Mac can serve this server's bots.";
+const SCREEN_JOB_MS = 60_000;
+const SCREEN_LIST_MS = 15_000;
+const CLOUD = { id: "cloud", name: "dusk cloud" };
 const OFF_TEXT = "Using the person's Mac is switched off for this bot or in Settings.";
 const NOT_OWNER_TEXT = "This conversation can't use the person's Mac: only the owner's own turns can.";
 
@@ -52,7 +58,7 @@ export interface MacControlDeps {
   /** A dusk cloud (docs/cloud-uses-mac.md): its own catalog, sealed jobs, and the person's answer first when the Mac asks for that. */
   cloud?: {
     /** null to go ahead, else what the bot is told instead. */
-    approve(bot: MacBot, turn: Turn, tool: CloudMacToolName, args: Record<string, unknown>, reason: string): Promise<string | null>;
+    approve(bot: MacBot, turn: Turn, tool: CloudMacToolName | "mac_screen", args: Record<string, unknown>, reason: string): Promise<string | null>;
     /** This cloud's link signing key; read from dashboard-link.json when not given. */
     linkKey?(): KeyObject | null;
   };
@@ -97,13 +103,30 @@ export function createMacControl(deps: MacControlDeps) {
   const jobs = new MacJobs(now);
   const cloud = deps.cloud;
   const catalog = cloud ? CLOUD_MAC_TOOLS : MAC_TOOLS;
-  const prompt = () => (cloud ? cloudMacPrompt(policy) : MAC_PROMPT);
+  const limits = () => ({ ...policy, screen: screenTools().length > 0 });
+  const prompt = () => (cloud ? cloudMacPrompt(limits()) : MAC_PROMPT);
   const linkKey = cloud?.linkKey ?? (() => readLinkSigningKey(deps.dataDir));
   /** The key each sealed job in the Mac's hands was sealed with, until its outcome comes back or it expires. */
   const jobKeys = new Map<string, { key: Buffer; expiresAt: number }>();
   /** What the Mac said in its last poll: when it asks first, its home folder, the folders it is limited to and where a
    * command runs by default. Only the card follows this: the Mac checks the same rules itself before it runs a job. */
-  let policy = { mode: "auto" as CloudMacMode, home: "", limited: false, folders: [] as string[], cwd: "~" };
+  const noPolicy = () => ({ mode: "auto" as CloudMacMode, home: "", limited: false, folders: [] as string[], cwd: "~", screen: false, platform: "darwin", driver: "" });
+  let policy = noPolicy();
+  /** The Mac's driver tools, while the person lets cloud bots use its screen; asked for in a sealed job. */
+  let screen: ScreenCatalog | null = null;
+  let listing: Promise<void> | null = null;
+  const listScreen = (): Promise<void> => {
+    if (!cloud || !policy.screen || (screen && (!policy.driver || screen.driver === policy.driver))) return Promise.resolve();
+    listing ??= jobs.request({ tool: "mac_screen_tools", args: {}, bot: CLOUD, timeoutMs: SCREEN_LIST_MS, active: () => policy.screen, offlineText: MAC_OFFLINE_TEXT })
+      .then((outcome) => {
+        const next = outcome.ok ? screenCatalog(outcome.result.text) : null;
+        if (next && policy.screen) screen = next;
+        else if (!outcome.ok) log(`mac control: the Mac did not list its screen tools (${outcome.error})`);
+      })
+      .finally(() => { listing = null; });
+    return listing;
+  };
+  const screenTools = () => (cloud && policy.screen && screen ? screen.tools : []);
   const available = () => deps.offered() && seen.lastSeenAt !== null && now() - seen.lastSeenAt < FORGET_MS;
   const allowed = (bot: MacBot | null | undefined, turn: Turn): string | null => {
     if (!bot) return "This bot no longer exists.";
@@ -113,12 +136,46 @@ export function createMacControl(deps: MacControlDeps) {
   };
 
   function status(): MacControlStatus {
-    return { available: available(), enabled: deps.enabled(), online: jobs.online(), name: seen.name, lastSeenAt: seen.lastSeenAt, ...(cloud ? { cloud: { folders: policy.folders, mode: policy.mode, limited: policy.limited } } : {}) };
+    return { available: available(), enabled: deps.enabled(), online: jobs.online(), name: seen.name, lastSeenAt: seen.lastSeenAt, ...(cloud ? { cloud: { folders: policy.folders, mode: policy.mode, limited: policy.limited, screen: screenTools().length > 0 } } : {}) };
+  }
+
+  async function callScreen(name: string, args: Record<string, unknown>, turn: Turn, assertActive: () => void): Promise<MacToolResult> {
+    if (!args || typeof args !== "object" || Array.isArray(args)) return macErrorResult("Tool arguments must be an object.");
+    assertActive();
+    const bot = deps.bot(turn.botId);
+    const refusal = allowed(bot, turn);
+    if (refusal || !bot) return macErrorResult(refusal ?? "This bot no longer exists.");
+    if (!policy.screen) return macErrorResult(SCREEN_OFF_TEXT);
+    if (!jobs.online()) return macErrorResult(MAC_OFFLINE_TEXT);
+    await listScreen();
+    const driverName = screen?.driverName.get(name);
+    if (!driverName) return macErrorResult(`Unknown Mac screen tool. Use one of ${screenTools().map((tool) => tool.name).join(", ") || "none: the Mac listed no screen tools"}.`);
+    const reason = macApprovalReason(policy.mode, "mac_screen", { name: driverName, arguments: args }, policy.home || "/Users/person");
+    if (reason !== null) {
+      const answer = await cloud!.approve(bot, turn, "mac_screen", { name: driverName, arguments: args }, reason);
+      assertActive();
+      if (answer !== null) return macErrorResult(answer);
+      const after = allowed(deps.bot(turn.botId), turn) ?? (policy.screen ? null : SCREEN_OFF_TEXT);
+      if (after) return macErrorResult(after);
+    }
+    const child: ChildCalls = {
+      call: async (tool, input) => screenResult(await jobs.request({
+        tool: "mac_screen", args: { name: tool, arguments: input }, bot: { id: bot.id, name: bot.name }, timeoutMs: SCREEN_JOB_MS,
+        active: () => deps.active(turn) && allowed(deps.bot(turn.botId), turn) === null && policy.screen, offlineText: MAC_OFFLINE_TEXT,
+        ...(reason !== null ? { approved: true as const } : {}),
+      })) as unknown as Record<string, unknown>,
+      get driverVersion() { return screen?.driver || undefined; },
+    };
+    const call = { name: driverName, arguments: args };
+    const result = await (localComputerRelay(policy.platform)(call, child) ?? child.call(driverName, args));
+    assertActive();
+    return result as unknown as MacToolResult;
   }
 
   async function call(params: unknown, turn: Turn, assertActive: () => void): Promise<MacToolResult> {
     const { name, arguments: raw } = (params && typeof params === "object" ? params : {}) as { name?: unknown; arguments?: unknown };
     const args = (raw ?? {}) as Record<string, unknown>;
+    if (cloud && maybeScreenTool(name)) return callScreen(name, args, turn, assertActive);
     const problem = macToolCallProblem(name, args, catalog);
     if (problem || !isMacToolName(name)) return macErrorResult(problem ?? "Unknown Mac tool.");
     assertActive();
@@ -174,7 +231,8 @@ export function createMacControl(deps: MacControlDeps) {
     if (path === "/api/mac/self") {
       if (method !== "DELETE") return json(res, 405, { error: "method not allowed" });
       forget();
-      policy = { mode: "auto", home: "", limited: false, folders: [], cwd: "~" };
+      policy = noPolicy();
+      screen = null;
       return json(res, 200, status());
     }
     if (path === "/api/mac/self/jobs" && method === "GET") {
@@ -187,8 +245,12 @@ export function createMacControl(deps: MacControlDeps) {
         const folders = url.searchParams.getAll("folder").map((folder) => folder.trim().slice(0, 1024)).filter(Boolean).slice(0, 20);
         const mode = url.searchParams.get("mode");
         const home = (url.searchParams.get("home") ?? "").trim();
+        const platform = url.searchParams.get("platform");
         policy = { mode: isCloudMacMode(mode) ? mode : "auto", home: /^\/[^\0]{1,1023}$/.test(home) ? home.replace(/\/+$/, "") : "", limited: folders.length > 0, folders,
-          cwd: (url.searchParams.get("cwd") ?? "").trim().slice(0, 1024) || "~" };
+          cwd: (url.searchParams.get("cwd") ?? "").trim().slice(0, 1024) || "~", screen: url.searchParams.get("screen") === "1",
+          platform: platform === "win32" ? "win32" : "darwin", driver: (url.searchParams.get("driver") ?? "").trim().slice(0, 40) };
+        if (!policy.screen) screen = null;
+        void listScreen();
       }
       const gone = new AbortController();
       res.once("close", () => { if (!res.writableEnded) gone.abort(); });
@@ -244,9 +306,11 @@ export function createMacControl(deps: MacControlDeps) {
       cloud && deps.offered() && !available() && deps.enabled() && bot.macControl !== false && deps.turnOwner(turn) !== null ? CLOUD_MAC_UNLINKED_PROMPT : "" }),
     /** The bot settings preview: the Mac as the owner's own turn would see it. */
     previewPart: (bot: MacBot): PromptPart => ({ id: "mac", label: "Your Mac", text: available() && deps.enabled() && bot.macControl !== false ? prompt() : "" }),
-    tools: (turn: Turn) => (allowed(deps.bot(turn.botId), turn) === null ? [...catalog] : []),
-    instructions: () => (cloud ? cloudMacInstructions(policy) : MAC_INSTRUCTIONS),
-    handles: (name: unknown): name is MacToolName => isMacToolName(name),
+    tools: (turn: Turn) => (allowed(deps.bot(turn.botId), turn) === null ? [...catalog, ...screenTools()] : []),
+    /** The Mac's screen tools, once it has listed them (a moment after it starts polling with its screen allowed). */
+    screenReady: () => (listing ? Promise.race([listing, new Promise<void>((resolve) => setTimeout(resolve, 5_000).unref())]) : Promise.resolve()),
+    instructions: () => (cloud ? cloudMacInstructions(limits()) : MAC_INSTRUCTIONS),
+    handles: (name: unknown): name is string => isMacToolName(name) || (cloud !== undefined && maybeScreenTool(name)),
     call,
     close: () => jobs.close(),
   };

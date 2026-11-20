@@ -110,3 +110,15 @@ test("the three modes", () => {
   assert.match(macApprovalReason("ask", "mac_read_file", { path: "~/.ssh/config" }, HOME), /secrets/);
   assert.equal(macApprovalReason("never", "mac_exec", { command: "sudo rm -rf /" }, HOME), null);
 });
+
+test("screen actions: Auto asks only to stop an app or read the clipboard; Ask asks for each but a look", () => {
+  const screen = (name) => ({ name, arguments: { pid: 42, window_id: 7 } });
+  assert.equal(macApprovalReason("auto", "mac_screen", screen("click"), HOME), null);
+  assert.equal(macApprovalReason("auto", "mac_screen", screen("type_text"), HOME), null);
+  assert.match(macApprovalReason("auto", "mac_screen", screen("kill_app"), HOME), /stops other programs/);
+  assert.match(macApprovalReason("auto", "mac_screen", screen("clipboard_read"), HOME), /clipboard/);
+  assert.equal(macApprovalReason("auto", "mac_screen", screen("constructor"), HOME), null);
+  assert.equal(macApprovalReason("ask", "mac_screen", screen("get_window_state"), HOME), null);
+  assert.equal(macApprovalReason("ask", "mac_screen", screen("click"), HOME), EVERY_ACTION);
+  assert.equal(macApprovalReason("never", "mac_screen", screen("kill_app"), HOME), null);
+});

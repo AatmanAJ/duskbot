@@ -8,6 +8,10 @@
 export const CLOUD_MAC_MODES = Object.freeze(["auto", "ask", "never"]);
 export const isCloudMacMode = (value) => CLOUD_MAC_MODES.includes(value);
 const READS = new Set(["mac_read_file", "mac_list"]);
+/** The computer-control driver's tools that only look at the screen (a mac_screen job's `name`). */
+export const SCREEN_READS = Object.freeze(["list_apps", "list_windows", "get_window_state", "get_accessibility_tree", "get_desktop_state",
+  "get_screen_size", "get_cursor_position", "verify_state"]);
+const SCREEN_RISKS = { kill_app: "stops other programs", clipboard_read: "reads the clipboard, which can hold passwords" };
 /** The reason "Ask before every action" gives for an action no rule calls risky. */
 export const EVERY_ACTION = "asks before every action";
 
@@ -99,15 +103,19 @@ export function macActionRisk(tool, args, home) {
       if (/^(Terminal|iTerm|Script Editor|Automator|System (Settings|Preferences)|Keychain Access|Disk Utility)$/i.test(String(a.app ?? target))) return "opens a tool that can change the system";
       return OPENS_CODE.test(target) && /[/.]/.test(target) ? "opens an installer, app or script" : null;
     }
+    case "mac_screen":
+      return Object.hasOwn(SCREEN_RISKS, a.name) ? SCREEN_RISKS[a.name] : null;
     default:
       return "is not a known Mac action";
   }
 }
 
+const isRead = (tool, args) => READS.has(tool) || (tool === "mac_screen" && SCREEN_READS.includes(args?.name));
+
 /** Whether this action needs the person's Allow first in `mode`; null when it may run, else the reason to show. */
 export function macApprovalReason(mode, tool, args, home) {
   if (mode === "never") return null;
   const risk = macActionRisk(tool, args, home);
-  if (mode === "ask") return READS.has(tool) && !risk ? null : risk ?? EVERY_ACTION;
+  if (mode === "ask") return isRead(tool, args) && !risk ? null : risk ?? EVERY_ACTION;
   return risk;
 }

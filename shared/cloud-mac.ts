@@ -4,6 +4,12 @@
 export const CLOUD_MAC_TOOL_NAMES = ["mac_exec", "mac_read_file", "mac_write_file", "mac_list", "mac_open", "mac_download"] as const;
 export type CloudMacToolName = (typeof CLOUD_MAC_TOOL_NAMES)[number];
 
+/** One job carrying a call to the Mac's own computer-control driver (cua-driver), and the job that asks for its tool list.
+ * Only sent while the person lets cloud bots use the Mac's screen; the bot sees the driver's tools as mac_<tool>. */
+export const CLOUD_MAC_SCREEN_JOB = "mac_screen";
+export const CLOUD_MAC_SCREEN_TOOLS_JOB = "mac_screen_tools";
+export type CloudMacJobTool = CloudMacToolName | typeof CLOUD_MAC_SCREEN_JOB | typeof CLOUD_MAC_SCREEN_TOOLS_JOB;
+
 /** Ordinary reads: they never ask unless they reach keys or secrets. */
 export const CLOUD_MAC_READS: ReadonlyArray<CloudMacToolName> = ["mac_read_file", "mac_list"];
 
@@ -14,7 +20,7 @@ export type CloudMacMode = (typeof CLOUD_MAC_MODES)[number];
 export interface CloudMacWork {
   id: string;
   bot: string;
-  tool: CloudMacToolName;
+  tool: CloudMacJobTool;
   /** The command, the link or the paths: never file contents. */
   summary: string;
   startedAt: number;
@@ -37,6 +43,12 @@ export interface CloudMacState {
   /** One sentence for the person when something is in the way, else null. */
   problem: string | null;
   busy: CloudMacWork[];
+  /** "Let them use this Mac's screen": off by default, asked on this Mac like the switch above. */
+  screen: boolean;
+  /** This Mac's own computer control (Accessibility and Screen Recording given to dusk bot) is running. */
+  screenReady: boolean;
+  /** The bot using this Mac's screen right now, for the indicator; null when none is. */
+  onScreen: { bot: string } | null;
 }
 
 /** Sealed job from GET /api/mac/self/jobs on a dusk cloud: X25519 to the key the Mac sent, AES-256-GCM, and signed with
