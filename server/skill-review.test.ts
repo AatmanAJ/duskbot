@@ -102,6 +102,7 @@ describe("the review prompt", () => {
     expect(prompt).toContain("imported-tool (the person's own or imported, read-only)");
     expect(prompt).toContain("huge-skill (learned by you, too long to show: do not update)");
     expect(prompt).toContain("at most 1 change");
+    expect(prompt).toContain("even when Scout also noted it in memory");
     expect(prompt).toContain('<skill name="weekly-report">');
     expect(prompt).not.toContain('<skill name="huge-skill">');
     expect(prompt).toContain("## When to Use");

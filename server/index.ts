@@ -5727,7 +5727,8 @@ bus.subscribe((event: RuntimeEvent) => {
     if (!bot) return; rememberComputerTurn(bot.id, messages, event.turnId);
     const counts = event.ok && Boolean(reply?.text?.trim()) && !isInternalTurn(event.threadId)
       && !isUnattended(bot.id, event.threadId) && !routines?.runForThread(event.threadId)
-      && !(CLOUD_HOME && !cloudOwnerOnlyThread(event.threadId));
+      && !(CLOUD_HOME && !cloudOwnerOnlyThread(event.threadId))
+      && supportsWorkspaceFiles(registry.get(bot.modelSelection.instanceId)?.driverKind ?? "");
     if (counts) skillReview.noteTurn(bot.id, event.threadId, turnToolSteps(messages, event.turnId, bot.id, Boolean(room)));
     skillReview.botSettled(bot.id);
     if (event.ok) skillCurator.used(bot.id, skillsReadInTurn(messages, event.turnId, listSkills(bot.id).map((skill) => skill.name)));

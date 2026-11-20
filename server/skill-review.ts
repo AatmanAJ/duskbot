@@ -195,6 +195,7 @@ export function skillReviewPrompt(input: {
     LESSON_LAYER,
     "",
     "Any one of these is reason to change a skill:",
+    `- The person said how they want a kind of work done (a format, the steps, where the result goes) or that it comes up again ("every week", "always"). Save it as the skill for that kind of work, even when ${input.botName} also noted it in memory: memory recalls a fact, a skill holds the whole method.`,
     `- The person told ${input.botName} to change how the reply looked or sounded: shorter, no tables, a different tone, "just the answer", or "remember this". Write it into the skill for that kind of job, so next time starts right.`,
     "- The person changed the method or the order of steps. Add it as a step or a pitfall of that skill.",
     "- A method, workaround or way of using a tool turned up that would help next time.",
@@ -224,7 +225,7 @@ export function skillReviewPrompt(input: {
     index,
     ...(bodies ? ["", "Full text of the learned skills you may update:", bodies] : []),
     "",
-    "When the work went smoothly, with no correction and nothing new learned, change nothing and say so in the note. When any reason above applies, make the change.",
+    "When the work went smoothly and the person said nothing new about how they want it done, change nothing and say so in the note. When any reason above applies, make the change.",
     `Answer with one JSON object and nothing else, at most ${MAX_REVIEW_CHANGES} change: the single most useful one.`,
     '{"changes": [{"action": "create" | "update", "skill_name": "existing name, for update only", "skill_md": "the COMPLETE SKILL.md with YAML frontmatter", "gist": "one line: what changed and why"}], "note": "one line for the log, e.g. Nothing to save."}',
   ].join("\n");
