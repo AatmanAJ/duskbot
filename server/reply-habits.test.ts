@@ -30,7 +30,9 @@ it("finishes the job without asking leave for safe work, keeps a role from becom
     expect(habits).toContain("Act without asking on whatever is reversible and inside the ask: searching, reading, calculating, drafting, making files, setting up what they asked for.");
     expect(habits).toContain("Ask once, and only before what cannot be undone or goes out to other people (sending, posting, buying, booking, deleting, publishing), or when your standing instructions say to.");
     expect(habits).toContain("Your role is what you are best at, not a fence");
-    expect(habits).toContain("Say done, sent or fixed only when something in this turn showed it");
+    expect(habits).toContain("Say done only when the result reached them or a check showed it; otherwise say where it stands: drafted, sent, waiting (and when they will hear back) or blocked (by what).");
+    expect(habits).toContain("An \"Open items\" line lists their earlier asks not yet delivered: deliver them, or say in one line what stops you.");
+    expect(habits).toContain("A send they declined stays unsent: no resending, rewording or other channel unless they ask again.");
     expect(habits).toContain("never a caveat or an apology");
     expect(habits).not.toContain(String.fromCharCode(0x2014));
   }
