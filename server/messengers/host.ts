@@ -11,6 +11,7 @@ import { MESSENGER_TOOL_PATH } from "../drivers/agents-messenger-tool.ts";
 import type { json as sendJson } from "../harness/http.ts";
 import { HELD_SECRET_MASK } from "../redact.ts";
 import { PASS, type RouteHandler } from "../routes/table.ts";
+import type { UsageTrigger } from "../usage-ledger.ts";
 import type { SavedSecretsKey } from "../saved-secrets.ts";
 import { createMessengerBridge, personLetIn, type MessengerBridgeDeps, type MessengerTransport } from "./bridge.ts";
 import { createDiscordApi, createDiscordGateway, createDiscordTransport, discordInviteUrl, discordMe, DiscordError, DISCORD_TOKEN, readDiscordMessage, type DiscordApi } from "./discord.ts";
@@ -66,6 +67,12 @@ function platformError(platform: MessengerPlatform, error: unknown): MessengerEr
   if (code === 429) return new MessengerError(429, `${label} is busy. Try again in a minute.`);
   if (code === 400 && error instanceof Error) return new MessengerError(422, error.message);
   return new MessengerError(502, `${label} refused that. Try again in a moment.`);
+}
+
+/** How a chat-app line enters the conversation. The owner's own direct chat is the owner at the keyboard (full trust,
+ * memory, their own details); anyone else, or any group, is a relayed outsider. */
+export function messengerSendAs(outside: boolean, name: string): { trigger: UsageTrigger; personPresent: boolean } & ({ sender: { name: string }; relayed: true } | Record<never, never>) {
+  return outside ? { sender: { name }, trigger: { kind: "user", label: name }, personPresent: false, relayed: true } : { trigger: { kind: "owner" }, personPresent: true };
 }
 
 export function createMessengerHost(deps: MessengerHostDeps) {

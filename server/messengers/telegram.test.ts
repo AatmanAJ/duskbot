@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Message } from "../store.ts";
 import { startFakeTelegram, type FakeTelegram } from "../testing/fake-telegram.ts";
-import { createMessengerHost, type MessengerHost } from "./host.ts";
+import { createMessengerHost, messengerSendAs, type MessengerHost } from "./host.ts";
 import { markdownToTelegramHtml } from "./text.ts";
 
 const TOKEN = "7000001:AAH" + "x".repeat(32);
@@ -242,6 +242,11 @@ describe("Telegram chat channel", () => {
     expect(status.pairCode).toBeUndefined();
     f.fake.message({ from: OWNER, text: "still me" });
     expect(await until(() => f.sent[0])).toMatchObject({ text: "still me", outside: false });
+  });
+
+  it("sends the owner's own direct chat as the owner at the keyboard, and anyone else as a relayed outsider", () => {
+    expect(messengerSendAs(false, "Sid")).toEqual({ trigger: { kind: "owner" }, personPresent: true });
+    expect(messengerSendAs(true, "Mallory")).toEqual({ sender: { name: "Mallory" }, trigger: { kind: "user", label: "Mallory" }, personPresent: false, relayed: true });
   });
 
   it("writes markdown as Telegram HTML with everything else escaped", () => {
