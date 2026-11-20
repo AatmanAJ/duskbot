@@ -74,3 +74,15 @@ html[data-skin="grok-dark"] .dusk-mobile [data-app-face] { background-color: #ec
 
 /* a row's dropdown is a tonal pill, no hairline, as every other control on the phone */
 .dusk-mobile .mobile-panel-sheet [data-panel-select] { border-color: transparent; background-color: color-mix(in srgb, var(--color-ink) 6%, transparent); }
+
+/* inside a bot's own sheets its accent is the bot's colour (src/lib/bot-accent.ts keeps it readable): a switch that is
+   on, the chosen tab, the avatar's edit badge, checks, links and primary buttons; the rest of the app keeps ink */
+.dusk-mobile [data-bot-accent] [data-ui-toggle][aria-checked="true"] { background-color: var(--bot-accent); }
+.dusk-mobile [data-bot-accent] [data-ui-toggle] > span { background-color: #fdfdfd; }
+.dusk-mobile [data-bot-accent] [data-tab-fill],
+.dusk-mobile [data-bot-accent] [role="tab"][aria-selected="true"][class*="bg-ink"] { background-color: var(--bot-accent); }
+.dusk-mobile [data-bot-accent] [role="tab"][aria-selected="true"] { color: var(--bot-accent-ink); }
+.dusk-mobile [data-bot-accent] [data-panel-avatar] > span[aria-hidden="true"] { background-color: var(--bot-accent); color: var(--bot-accent-ink); }
+.dusk-mobile [data-bot-accent] :is([aria-pressed="true"], [aria-selected="true"], [aria-checked="true"]) svg.gi-check,
+.dusk-mobile [data-bot-accent] p a[href] { color: var(--bot-accent-text); }
+.dusk-mobile [data-bot-accent] :is(button, a).bg-ink { background-color: var(--bot-accent); color: var(--bot-accent-ink); }
