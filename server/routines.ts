@@ -1242,7 +1242,7 @@ export class RoutineManager {
   }
 
   handleRuntimeEvent(event: RuntimeEvent): RoutineRun | null {
-    const run = this.runs.find((r) => r.threadId === event.threadId && ["running", "waiting"].includes(r.status));
+    const run = this.runs.find((r) => r.threadId === event.threadId && r.status === "running") ?? this.runs.find((r) => r.threadId === event.threadId && r.status === "waiting");
     if (!run || (run.target === "bot" && run.status === "waiting" && !run.asked && this.options.routineTurn?.(event.threadId) === false)) return null;
     if (event.type === "turn.started" || event.type === "turn.completed") settleAsk(run, undefined, this.now());
     // A room goal's orchestrator owns its result (finishGoalRun); a member's completion is intermediate.

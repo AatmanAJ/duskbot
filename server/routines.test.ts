@@ -1997,6 +1997,28 @@ describe("RoutineManager", () => {
     expect(h.manager.runForThread("thread-1")).toMatchObject({ status: "completed", output: "Reviewed the teammate's result.", cost: 0.05 });
   });
 
+  it("gives a turn's events to the run working in that chat, not to an earlier one still waiting there", async () => {
+    const h = harness();
+    let pending = true;
+    h.options.hasPendingDelegations = () => pending;
+    h.options.joinConversation = () => "chat-1";
+    const make = (name: string) => h.manager.create({ name, prompt: name, botId: "maus-1", schedule: { type: "daily", time: "09:00", weekdays: [1] } });
+    const first = h.manager.runNow(make("Inbox review").id)!;
+    await h.manager.tick();
+    const base = { eventId: "e", provider: "fake", threadId: "chat-1", createdAt: new Date().toISOString() };
+    h.manager.handleRuntimeEvent({ ...base, type: "turn.completed", ok: true });
+    expect(h.manager.listRuns().find((run) => run.id === first.id)?.status).toBe("waiting");
+    pending = false;
+    const second = h.manager.runNow(make("Month-end totals").id, undefined, true)!;
+    await h.manager.tick();
+    expect(h.manager.listRuns().find((run) => run.id === second.id)?.status).toBe("running");
+    h.manager.handleRuntimeEvent({ ...base, type: "item.completed", itemType: "assistant_text", text: "Month-end preview: $478.48." });
+    h.manager.handleRuntimeEvent({ ...base, type: "turn.completed", ok: true });
+    const runs = h.manager.listRuns();
+    expect(runs.find((run) => run.id === second.id)).toMatchObject({ status: "completed", output: "Month-end preview: $478.48.", dryRun: true });
+    expect(runs.find((run) => run.id === first.id)?.output).toBeUndefined();
+  });
+
   it("catches up at most the latest interval occurrence without a backlog", async () => {
     const h = harness();
     const anchorAt = new Date(2026, 7, 17, 8, 5).getTime();
