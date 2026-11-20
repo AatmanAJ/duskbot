@@ -35,6 +35,9 @@ const UNREACHABLE = new Set(["enotfound", "eai_again", "eai_fail", "timeout", "e
 export const unreachable = (reason) => UNREACHABLE.has(String(reason));
 /** an unreachable check counts as a failure only after this many in a row (hours apart), or when the person asked */
 export const OFFLINE_CHECKS_BEFORE_FAILED = 6;
+/** Squirrel.Mac taking longer than its timeout to unpack is tried again quietly this many times before the person is told */
+export const SLOW_UNPACKS_BEFORE_FAILED = 3;
+const slowUnpack = (error) => error instanceof UpdateError && error.stage === "install" && /did not unpack in time/.test(error.message);
 /** CI's release keys (apps/cloud-service/src/release-signing.ts pins the same ones; a test keeps them equal) */
 export const RELEASE_KEYS = Object.freeze([{ kid: "rel-2026-11", x: "wtwZypDwVPBXZ25XsZOVpd0PZPBbVMhugheUj5_NLIM" }]);
 const CHECK_EVERY_MS = 30 * 60_000;
@@ -266,7 +269,7 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
     try { onFailed(why, { stage: "other", reason: why }); } catch {}
   };
 
-  let offlineChecks = 0;
+  let offlineChecks = 0, slowUnpacks = 0;
   const wait = download.wait ?? ((ms) => new Promise((resolve) => timers.setTimeout(resolve, ms)));
 
   async function textFrom(url, limit) {
@@ -383,11 +386,13 @@ export function createAppUpdater({ current, arch, dir, fetchImpl = fetch, keys =
     if (asked) again = true;
     if (checking) return checking;
     failed = false;
-    checking = run().then((result) => { offlineChecks = 0; return result; }, async (error) => {
+    checking = run().then((result) => { offlineChecks = slowUnpacks = 0; return result; }, async (error) => {
       const offline = error instanceof UpdateError && error.stage === "manifest" && unreachable(error.code);
       offlineChecks = offline ? offlineChecks + 1 : 0;
       if (offline && !asked && offlineChecks < OFFLINE_CHECKS_BEFORE_FAILED) { log(`app update: no network for the check (${error.code}); trying at the next one`); return null; }
-      offlineChecks = 0;
+      slowUnpacks = slowUnpack(error) ? slowUnpacks + 1 : 0;
+      if (slowUnpacks && !asked && slowUnpacks < SLOW_UNPACKS_BEFORE_FAILED) { log("app update: the update did not unpack in time; trying at the next check"); return null; }
+      offlineChecks = slowUnpacks = 0;
       failed = true;
       const message = error instanceof Error ? error.message : String(error);
       log(`app update: ${message}; telling the person instead`);

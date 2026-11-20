@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createAppUpdater, DESKTOP_MANIFEST_URL, DOWNLOAD_PAGE, installerIn, installerUrl, justUpdated, LOOKUP_BACKOFF_MS, MANIFEST_SOURCES, mirrorUrl, OFFLINE_CHECKS_BEFORE_FAILED, POLICY_SOURCES, quietNow, RELEASE_KEYS, storedBucket, sumsUrl, updatePlace, verifiedRelease, zipIn, zipUrl } from "./app-update.mjs";
+import { createAppUpdater, DESKTOP_MANIFEST_URL, DOWNLOAD_PAGE, installerIn, installerUrl, justUpdated, LOOKUP_BACKOFF_MS, MANIFEST_SOURCES, mirrorUrl, OFFLINE_CHECKS_BEFORE_FAILED, POLICY_SOURCES, SLOW_UNPACKS_BEFORE_FAILED, quietNow, RELEASE_KEYS, storedBucket, sumsUrl, updatePlace, verifiedRelease, zipIn, zipUrl } from "./app-update.mjs";
 import { failReason, resumableDownload, UpdateError } from "./app-update-download.mjs";
 import { updateFailStage } from "./experience-relay.mjs";
 
@@ -278,6 +278,31 @@ test("a network blip is waited out and tried again; an offline computer is not a
   await off.updater.check({ again: true });
   assert.equal(off.failures.length, 2);
   done(off);
+});
+
+test("squirrel unpacking past its timeout is tried again quietly at the next check, and told only when it keeps happening", async () => {
+  let slow = SLOW_UNPACKS_BEFORE_FAILED - 1;
+  const w = world({ prepare: async () => { if (slow-- > 0) throw new Error("the update did not unpack in time"); } });
+  for (let i = 1; i < SLOW_UNPACKS_BEFORE_FAILED; i += 1) {
+    assert.equal(await w.updater.check(), null);
+    assert.equal(w.updater.state().failed, false);
+  }
+  assert.deepEqual([w.failures.length, w.told], [0, 0]);
+  assert.equal(await w.updater.check(), "1.1.0");
+  done(w);
+
+  const stuck = world({ prepare: async () => { throw new Error("the update did not unpack in time"); } });
+  for (let i = 1; i < SLOW_UNPACKS_BEFORE_FAILED; i += 1) await stuck.updater.check();
+  assert.equal(stuck.failures.length, 0);
+  await stuck.updater.check();
+  assert.deepEqual(stuck.failures.map((f) => f.stage), ["install"]);
+  assert.equal(stuck.updater.state().failed, true);
+  done(stuck);
+
+  const asked = world({ prepare: async () => { throw new Error("the update did not unpack in time"); } });
+  await asked.updater.check({ again: true });
+  assert.equal(asked.failures.length, 1, "a check the person asked for says so at once");
+  done(asked);
 });
 
 test("a connection that goes quiet is given up after the stall time and resumed, not waited on for half an hour", async () => {
