@@ -7,10 +7,11 @@ import { automationSentence, automationsFrom, automationStatus, AUTOMATION_FIX_L
 import { appWhen } from "@/lib/app-automations";
 import { useAppTriggers } from "@/lib/app-triggers";
 import { cn } from "@/lib/cn";
+import { friendlyError } from "@/lib/plain-error";
 import { t } from "@/lib/i18n";
 import { lowerFirst, upperFirst } from "@/lib/lower-first";
 import { routineRunsOn } from "@/lib/routine-display";
-import { fetchForecast, forecastLine, lessOften, pauseLine, periodLine, useLoaded } from "@/lib/spend";
+import { fetchForecast, forecastLine, forecastWarning, lessOften, pauseLine, periodLine, useLoaded } from "@/lib/spend";
 import { formatCost } from "@/lib/usage-trace";
 import { isRoutineProblemRun, type Routine, type RoutineRunOn } from "@/lib/routines";
 import { hoursLine, liveStrip, probeLine } from "@/lib/routine-display";
@@ -204,7 +205,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
       const response = await api(`/api/routines/${routine.id}`, { method: "PATCH", body: JSON.stringify({ schedule: slower }) });
       dispatch({ type: "routinePatched", routine: response.routine });
     } catch (failure) {
-      actions.setError(failure instanceof Error ? failure.message : String(failure));
+      actions.setError(friendlyError(failure));
     } finally {
       setSlowing(false);
     }
@@ -250,20 +251,19 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
         <Fact term={t("routines.inline.worksOn")}>{upperFirst(worksOn.label)}</Fact>
         {automation.kind === "schedule" && <Fact term={t("routines.inline.resultsTo")}>{upperFirst(resultsTo)}</Fact>}
         {routine && forecast?.warnings && (
-          <Fact term={t("routines.cost.term")}>
-            <span data-routine-forecast="">{upperFirst(forecastLine(forecast))}</span>
-            {forecast.warnings.map((warning) => <span key={warning} className="block text-[12px] leading-4 text-warning">{t(warning === "frequent" ? "routines.cost.frequent" : warning === "spike" ? "routines.cost.spike" : "routines.cost.costly")}</span>)}
+          <Fact term={t("routines.usage.term")}>
+            {forecast.usage && (forecast.usage.month.runs > 0 || !forecast.warnings.length) ? (
+              <>
+                <span data-routine-usage="" className="block">{upperFirst(t("routines.usage.week", { line: periodLine(forecast.usage.week) }))}</span>
+                <span className="block text-ink-secondary">{upperFirst(t("routines.usage.month", { line: periodLine(forecast.usage.month) }))}</span>
+              </>
+            ) : <span data-routine-forecast="">{upperFirst(forecastLine(forecast))}</span>}
+            {forecastWarning(forecast) && <span data-routine-warning="" className="block text-[12px] leading-4 text-warning">{forecastWarning(forecast)}</span>}
             {slower && (
               <button type="button" data-routine-action="less-often" disabled={slowing} onClick={() => void runLessOften()} className={cn(buttonCls, "mt-1.5")}>
                 {upperFirst(t("routines.lessOften"))}
               </button>
             )}
-          </Fact>
-        )}
-        {routine && forecast?.usage && (
-          <Fact term={t("routines.usage.term")}>
-            <span data-routine-usage="" className="block">{upperFirst(t("routines.usage.week", { line: periodLine(forecast.usage.week) }))}</span>
-            <span className="block text-ink-secondary">{upperFirst(t("routines.usage.month", { line: periodLine(forecast.usage.month) }))}</span>
           </Fact>
         )}
         {routine && (

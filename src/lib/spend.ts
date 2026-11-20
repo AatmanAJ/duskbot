@@ -93,3 +93,11 @@ export function lessOften(schedule: RoutineSchedule): RoutineSchedule | null {
   const next = LESS_OFTEN_MINUTES.find((minutes) => minutes > schedule.everyMinutes);
   return next ? { ...schedule, everyMinutes: next } : null;
 }
+
+/** The one warning worth reading, with the numbers it rests on: a spike first, then a share, then a pace. */
+export function forecastWarning(forecast: RoutineForecast): string | null {
+  if (forecast.warnings.includes("spike")) return t("routines.cost.spike");
+  if (forecast.warnings.includes("costly") && forecast.shareOfWeek !== null) return t("routines.cost.costlyShare", { percent: sharePercent(forecast.shareOfWeek) });
+  if (forecast.warnings.includes("frequent")) return t("routines.cost.frequent");
+  return null;
+}

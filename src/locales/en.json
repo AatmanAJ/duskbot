@@ -5430,6 +5430,7 @@
   "routines.cost.share": "{percent} of your week",
   "routines.cost.noPrice": "Cost shows after its first run",
   "routines.cost.frequent": "Runs more than 12 times a day. A slower schedule costs less.",
+  "routines.cost.costlyShare": "At this pace it would take about {percent} of your week's use.",
   "routines.cost.costly": "This would take over a tenth of your week's use.",
   "routines.paused.cap": "Paused: it reached its weekly cap of {amount}.",
   "routines.paused.failures": "Paused after 3 runs failed the same way: {error}",
