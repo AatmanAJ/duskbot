@@ -63,6 +63,19 @@ describe("keyboard", () => {
     ]);
   });
 
+  it("types a line break as Shift+Enter, so a chat box keeps the message as one draft instead of sending each line", async () => {
+    const { session, sent } = recordingSession();
+    await new Keyboard(session, { mac: true }).type("a\nb\r\nc");
+    expect(sent.map(({ params }) => `${params.type}:${params.key}:${params.modifiers}`)).toEqual([
+      "keyDown:a:0", "keyUp:a:0",
+      "rawKeyDown:Shift:8", "keyDown:Enter:8", "keyUp:Enter:8", "keyUp:Shift:0",
+      "keyDown:b:0", "keyUp:b:0",
+      "rawKeyDown:Shift:8", "keyDown:Enter:8", "keyUp:Enter:8", "keyUp:Shift:0",
+      "keyDown:c:0", "keyUp:c:0",
+    ]);
+    expect(sent.some(({ params }) => params.key === "Enter" && params.modifiers === 0)).toBe(false);
+  });
+
   it("holds modifiers around a chord and lets go of them in reverse", async () => {
     const { session, sent } = recordingSession();
     await new Keyboard(session, { mac: true }).press("ControlOrMeta+Shift+z");
@@ -127,6 +140,8 @@ describe("selectors", () => {
     expect(parseSelector('role=button[name="Save draft"]')).toEqual({ engine: "role", role: "button", name: "Save draft", partial: false });
     expect(parseSelector("role=link[name*='docs']")).toEqual({ engine: "role", role: "link", name: "docs", partial: true });
     expect(parseSelector("role=textbox")).toEqual({ engine: "role", role: "textbox", partial: false });
+    expect(parseSelector('role=row[name^="Priya Raman"]')).toEqual({ engine: "role", role: "row", name: "Priya Raman", partial: true, edge: "start" });
+    expect(parseSelector('role=link[name$="docs"]')).toEqual({ engine: "role", role: "link", name: "docs", partial: true, edge: "end" });
     expect(parseSelector('text="Sign in"')).toEqual({ engine: "text", text: "Sign in", exact: true });
     expect(parseSelector("text=sign")).toEqual({ engine: "text", text: "sign", exact: false });
     expect(() => parseSelector("role=button[label=x]")).toThrow(/role selector/);

@@ -19,7 +19,7 @@ export const SLACK_TOOL_DEFINITIONS = [
   },
   {
     name: "slack_post",
-    description: "Post a message to a Slack channel, optionally in a thread." + IDENTITY,
+    description: "Post a message to a Slack channel, optionally in a thread: for a channel post or an update for a team. When the person named no channel and your memory and this chat do not say which, list them with slack_channels and ask which one; never send it to one member instead." + IDENTITY,
     inputSchema: { type: "object", additionalProperties: false, properties: { channel: CHANNEL, text: TEXT, thread_ts: TS }, required: ["channel", "text"] },
   },
   {
@@ -53,7 +53,7 @@ export const SLACK_TOOL_DEFINITIONS = [
   },
   {
     name: "slack_dm",
-    description: "Send a Slack direct message to a user." + IDENTITY,
+    description: "Send a Slack direct message to one person, only when the person asked you to message that person (\"DM Priya\", \"tell Marco\"); a post or an update for a channel or team goes to the channel with slack_post." + IDENTITY,
     inputSchema: { type: "object", additionalProperties: false, properties: {
       user: { type: "string", minLength: 1, maxLength: 254, description: "A Slack user id like U0123, or an email address." }, text: TEXT,
     }, required: ["user", "text"] },

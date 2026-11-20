@@ -1,3 +1,4 @@
+import { compareVersions } from "../../shared/update-guard";
 import { appVersion } from "./app-links";
 import { t } from "./i18n";
 
@@ -16,12 +17,13 @@ export type ServerUpdatePhase = "idle" | "checking" | "up-to-date" | "available"
 
 /**
  * What a finished check means for this page. A tab left open across a server update keeps running
- * the old bundle (the version About shows), so a current server alone doesn't make the page up to date.
+ * the old bundle (the version About shows), so a current server alone doesn't make the page up to date. A reload only
+ * helps a page older than its server: a server that names an older version would ask for a reload forever.
  */
 export function serverCheckPhase(check: ServerUpdateCheck, bundle = appVersion()): ServerUpdatePhase {
   if (check.available) return "available";
   if (check.install === "desktop" || check.install === "managed") return "up-to-date";
-  return bundle !== "dev" && check.current !== bundle ? "reload" : "up-to-date";
+  return bundle !== "dev" && compareVersions(check.current, bundle) > 0 ? "reload" : "up-to-date";
 }
 
 /** `otherServer`: the name of the server the desktop app's window shows when it isn't this computer's own; its update is

@@ -180,6 +180,8 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
   if (parentEnv.DUSK_BROWSER_TIMING === "1") childEnv.DUSK_BROWSER_TIMING = "1";
   // Warm summaries' minutes as seconds (server/warm-summary.ts), and the switch that turns them off.
   for (const key of ["DUSK_WARM_SUMMARY_TIME_SCALE", "DUSK_WARM_SUMMARY", "DUSK_CODEX_WARM"]) if (parentEnv[key]) childEnv[key] = parentEnv[key];
+  // The built-in voice's downloaded models, so a fixture with a throwaway home does not fetch them again.
+  if (parentEnv.DUSK_VOICE_MODELS_DIR) childEnv.DUSK_VOICE_MODELS_DIR = parentEnv.DUSK_VOICE_MODELS_DIR;
   // A loopback fake only: the key never reaches a real provider.
   const liveUrl = parentEnv.DUSK_OPENAI_LIVE_URL?.trim() ?? "";
   if (/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(liveUrl)) {
@@ -315,6 +317,8 @@ export async function launchVerificationServer(
     // A setup card's answers would be one more engine call at every new bot, taking replies a test scripts for its turns.
     features: { smartSetupChoices: false },
     instances: {
+      // the engines every server lists by default, off unless a fixture stands in below: never the real CLIs on PATH
+      ...Object.fromEntries(["codex", "cursor", "githubCopilot", "openaiCompat", "qwen", "hermes", "pi"].map((id) => [id, { driver: "not-a-real-driver" }])),
       ...(extraProviders.includes("codex") ? { codex: {
         driver: "codex", displayName: "Verification Codex", config: { cli: fileURLToPath(new URL("../server/testing/fake-codex-app-server.ts", import.meta.url)) },
       } } : {}),

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { DashApp } from "./connectors.ts";
-import { connectorRows, FIXTURE_EXTRAS, withPending } from "./connector-rows.ts";
+import { connectedInAppOn, connectorRows, FIXTURE_EXTRAS, withPending } from "./connector-rows.ts";
 
 const workspaces = [{ id: "mac", name: "My Mac" }, { id: "vps", name: "My VPS" }];
 const app = (id: string, fields: Partial<DashApp> = {}): DashApp => ({ id, label: id, kind: "composio", description: "An app", categories: ["productivity"], icon: {}, ...fields });
@@ -55,4 +55,12 @@ test("sign-in is asked only on the workspaces where it was started", () => {
   const [ready] = connectorRows([app("figma")], { mac: ["figma"] }, workspaces, {}, { vps: ["figma"] });
   assert.equal(ready!.status, "ready");
   assert.deepEqual(ready!.needsAuth, []);
+});
+
+test("connectedInAppOn finds an app connected in the app by any of its ids, on that workspace only", () => {
+  const inApp = { mac: ["linear", "Notion"] };
+  assert.equal(connectedInAppOn(inApp, "mac", ["linear", null]), true);
+  assert.equal(connectedInAppOn(inApp, "mac", ["notes", "notion"]), true);
+  assert.equal(connectedInAppOn(inApp, "vps", ["linear"]), false);
+  assert.equal(connectedInAppOn(inApp, "mac", ["github", undefined]), false);
 });

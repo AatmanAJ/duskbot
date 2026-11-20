@@ -50,6 +50,7 @@ interface ConnectorServiceState {
 interface AccountLinkRequest {
   toolkit: string;
   alias?: string;
+  callback_url?: string;
 }
 
 const sessionWireSchema = z.object({
@@ -97,7 +98,21 @@ const toolkitPageSchema = z.object({
   next_cursor: z.string().nullable().optional(),
 });
 const linkResponseSchema = z.object({ redirect_url: z.string().optional() });
-const aliasRequestSchema = z.object({ alias: z.string().nullable().optional() });
+const aliasRequestSchema = z.object({ alias: z.string().nullable().optional(), callbackUrl: z.string().max(512).optional() });
+/** Security: Composio sends the browser to a callback only on dusk bot's own website, so this broker is never an open
+ *  redirect for anyone holding an installation */
+const CALLBACK_HOST = /^(?:[a-z0-9-]+\.)*dusk\.bot$/;
+
+/** a sign-in callback on dusk bot's website (https, its apps page with one `connect` state), or undefined */
+export function brokerCallback(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    const ok = url.protocol === "https:" && CALLBACK_HOST.test(url.hostname) && !url.username && !url.password && !url.hash
+      && [...url.searchParams.keys()].join() === "connect" && /^[A-Za-z0-9_-]{32,64}$/.test(url.searchParams.get("connect") ?? "");
+    return ok ? url.toString() : undefined;
+  } catch { return undefined; }
+}
 const MAX_MCP_BODY = 2 * 1024 * 1024;
 const MULTI_ACCOUNT_CONFIG = {
   enable: true,
@@ -588,7 +603,7 @@ async function connectionStatus(url: URL, installation: InstallationRow, env: En
 
 async function authorize(
   slug: string,
-  alias: string | undefined,
+  { alias, callbackUrl }: { alias?: string; callbackUrl?: string },
   installation: InstallationRow,
   env: Env,
   ctx: ExecutionContext,
@@ -612,6 +627,7 @@ async function authorize(
   }
   const linkRequest: AccountLinkRequest = { toolkit: slug };
   if (plan.alias) linkRequest.alias = plan.alias;
+  if (callbackUrl) linkRequest.callback_url = callbackUrl;
   const response = await composioRequest(env, `/tool_router/session/${encodeURIComponent(session.sessionId)}/link`, {
     method: "POST",
     body: JSON.stringify(linkRequest),
@@ -623,7 +639,7 @@ async function authorize(
   if (redirect.protocol !== "https:" || (redirect.hostname !== "composio.dev" && !redirect.hostname.endsWith(".composio.dev"))) {
     return json({ error: "Composio returned an untrusted authorization link" }, 502);
   }
-  return json({ url: redirect.toString() });
+  return json({ url: redirect.toString(), ...(callbackUrl ? { returnsHere: true } : {}) });
 }
 
 async function disconnect(slug: string, installation: InstallationRow, env: Env, ctx: ExecutionContext) {
@@ -664,8 +680,8 @@ async function disconnectAccount(
   return json({ removed: 1 });
 }
 
-async function requestAlias(request: Request) {
-  if (!request.body) return undefined;
+async function requestAlias(request: Request): Promise<{ alias?: string; callbackUrl?: string }> {
+  if (!request.body) return {};
   const bytes = await readBoundedBody(request, 2048);
   if (!bytes) throw new Response(JSON.stringify({ error: "request body is too large" }), { status: 413, headers: JSON_HEADERS });
   let body: z.infer<typeof aliasRequestSchema>;
@@ -674,14 +690,14 @@ async function requestAlias(request: Request) {
     // Some Fetch implementations expose a zero-length POST as a non-null
     // ReadableStream. First-account authorization intentionally has no alias,
     // so accept that wire representation exactly like a missing body.
-    if (!raw.trim()) return undefined;
+    if (!raw.trim()) return {};
     body = aliasRequestSchema.parse(JSON.parse(raw));
   } catch (error) {
     if (error instanceof Response) throw error;
     throw new Response(JSON.stringify({ error: "invalid JSON body" }), { status: 400, headers: JSON_HEADERS });
   }
   try {
-    return normalizeAccountAlias(body.alias);
+    return { alias: normalizeAccountAlias(body.alias), callbackUrl: brokerCallback(body.callbackUrl) };
   } catch (error) {
     throw new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), { status: 400, headers: JSON_HEADERS });
   }

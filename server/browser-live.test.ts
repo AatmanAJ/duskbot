@@ -3,7 +3,7 @@ import type { ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserRuntime } from "./browser-runtime.ts";
 import { HOLD_LIMITS } from "./browser/hold.ts";
-import { BrowserActionFailedError, BrowserLive, browserRestartRefusal, browserStreamPort, normalizeBrowserLiveMessage, parseBrowserLiveAction } from "./browser-live.ts";
+import { BrowserActionFailedError, BrowserLive, browserStreamPort, normalizeBrowserLiveMessage, parseBrowserLiveAction } from "./browser-live.ts";
 import type { Cdp, CdpListeners } from "./browser-sites.ts";
 
 const execute = vi.hoisted(() => vi.fn());
@@ -104,15 +104,6 @@ async function open({ botId = "bot-a", session = "profile-a", owner = "admin-a",
   return { res, socket: SocketFixture.instances.at(-1)!, action: (body: unknown) => live.action({ viewerId: res.id, botId, owner, body }) };
 }
 
-describe("restarting a browser bots are using", () => {
-  it("is refused while a busy bot still works in it, and allowed when it waits on the person there or the browser no longer answers", () => {
-    expect(browserRestartRefusal(false, [])).toBeNull();
-    expect(browserRestartRefusal(false, [{ waitingOnBrowser: false }])).toBe("Stop every bot using this profile before restarting its browser.");
-    expect(browserRestartRefusal(false, [{ waitingOnBrowser: true }])).toBeNull();
-    expect(browserRestartRefusal(false, [{ waitingOnBrowser: true }, { waitingOnBrowser: false }])).not.toBeNull();
-    expect(browserRestartRefusal(true, [{ waitingOnBrowser: false }])).toBeNull();
-  });
-});
 
 describe("browser viewer protocol boundary", () => {
   it.each(["console", "command", "result", "chat", "unknown"])("drops %s messages, including their private payloads", (type) => {
@@ -859,7 +850,7 @@ describe("authenticated browser viewer relay", () => {
     // A frame, not a bot command, held the browser: the person's input stands.
     let finish!: () => void;
     const frame = runtime.previewFrame("profile-a", () => new Promise<boolean>((resolve) => { finish = () => resolve(true); }));
-    const discarded = expect(frame).rejects.toThrow("paused");
+    const discarded = expect(frame).rejects.toThrow("took control of the browser");
     const taking = a.action({ type: "take" });
     finish(); await discarded;
     expect(await taking).toEqual({ ok: true, waited: false });

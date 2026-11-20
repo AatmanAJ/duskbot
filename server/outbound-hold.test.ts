@@ -206,3 +206,82 @@ describe("Full access with no sending rule of its own", () => {
     expect(held.appended).toEqual([]);
   });
 });
+
+describe("purchases and emails on their own cards", () => {
+  const requestOf = (held: ReturnType<typeof setup>) => held.appended.at(-1)!.message.card!.requestId as string;
+
+  it("a purchase waits on Confirm purchase at Full access and under a daily allowance", async () => {
+    for (const rule of [undefined, { policy: "allow" as const, dailyCap: 25 }]) {
+      const held = setup(bot(rule));
+      const order = [{ slug: "SHOPIFY_CREATE_ORDER", arguments: { line_items: [{ title: "Mug", quantity: 2 }] } }];
+      const pending = held.hold.hold({ ...held.input, tool: "SHOPIFY_CREATE_ORDER", calls: order, fullAccess: true, active: () => true });
+      expect(held.appended[0]!.message.card).toMatchObject({ title: "Confirm purchase", options: ["Confirm purchase", "Cancel"], outboundRequest: { purchase: true } });
+      held.outboundRequests.resolve({ threadId: "t1", requestId: requestOf(held), behavior: "deny" });
+      await expect(pending).resolves.toEqual({ ok: false, text: expect.stringMatching(/did not buy this: the user declined/) });
+      expect(() => held.hold.reserve({ ...held.input, tool: "SHOPIFY_CREATE_ORDER", calls: order, fullAccess: true, approved: false })).toThrow(/Ask for approval again/);
+    }
+  });
+
+  it("an email at Full access shows its recipients, subject and text, and goes out as the person edited it", async () => {
+    const held = setup(bot(undefined));
+    const args: Record<string, unknown> = { user_id: "me", recipient_email: "ana@example.com", subject: "Friday", body: "See you at 5." };
+    const pending = held.hold.hold({ ...held.input, calls: [{ slug: "GMAIL_SEND_EMAIL", arguments: args }], fullAccess: true, active: () => true });
+    expect(held.appended[0]!.message.card).toMatchObject({
+      title: "Send this email?", options: ["Send email", "Don't send"],
+      email: { app: "Gmail", to: ["ana@example.com"], subject: "Friday", body: "See you at 5." },
+    });
+    held.outboundRequests.resolve({ threadId: "t1", requestId: requestOf(held), behavior: "allow", edits: { to: "ana@example.com, ben@example.com", body: "See you at 6." } });
+    await expect(pending).resolves.toEqual({ ok: true, approved: true });
+    expect(args).toEqual({ user_id: "me", recipient_email: "ana@example.com", extra_recipients: ["ben@example.com"], subject: "Friday", body: "See you at 6." });
+    expect(held.patches.at(-1)!.patch.card).toMatchObject({ email: { to: ["ana@example.com", "ben@example.com"], body: "See you at 6." } });
+  });
+
+  it("edits with an address that is not one send nothing", async () => {
+    const held = setup(bot(undefined));
+    const args = { recipient_email: "ana@example.com", subject: "Hi", body: "Hello" };
+    const pending = held.hold.hold({ ...held.input, calls: [{ slug: "GMAIL_SEND_EMAIL", arguments: args }], fullAccess: true, active: () => true });
+    held.outboundRequests.resolve({ threadId: "t1", requestId: requestOf(held), behavior: "allow", edits: { to: "not an address" } });
+    await expect(pending).resolves.toMatchObject({ ok: false });
+    expect(args.recipient_email).toBe("ana@example.com");
+  });
+
+  it("a saved draft sent by id shows its real text, offers no edits, and asks at Full access", async () => {
+    const held = setup(bot(undefined));
+    const draft = { app: "Gmail", to: ["sam@example.com"], subject: "Friday", body: "See you at 5." };
+    const calls = [{ slug: "GMAIL_SEND_DRAFT", arguments: { user_id: "me", draft_id: "r-1" } }];
+    const readDraft = vi.fn(async () => draft);
+    const pending = held.hold.hold({ ...held.input, tool: "GMAIL_SEND_DRAFT", calls, fullAccess: true, active: () => true, readDraft });
+    await vi.waitFor(() => expect(held.appended).toHaveLength(1));
+    expect(readDraft).toHaveBeenCalledWith("r-1");
+    expect(held.appended[0]!.message.card).toMatchObject({ title: "Send this email?", email: { ...draft, draft: true } });
+    held.outboundRequests.resolve({ threadId: "t1", requestId: requestOf(held), behavior: "allow", edits: { body: "Changed" } });
+    await expect(pending).resolves.toMatchObject({ ok: false, text: expect.stringMatching(/saved draft goes out as saved/) });
+
+    const unread = setup(bot(undefined));
+    const plain = unread.hold.hold({ ...unread.input, tool: "GMAIL_SEND_DRAFT", calls, fullAccess: true, active: () => true, readDraft: async () => null });
+    await vi.waitFor(() => expect(unread.appended).toHaveLength(1));
+    expect(unread.appended[0]!.message.card).toMatchObject({ title: "Send on your behalf?" });
+    unread.outboundRequests.resolve({ threadId: "t1", requestId: requestOf(unread), behavior: "allow" });
+    await expect(plain).resolves.toEqual({ ok: true, approved: true });
+  });
+
+  it("an email allowance the person set still sends on its own", async () => {
+    const held = setup(bot({ policy: "allow", dailyCap: 5 }));
+    const send = [{ slug: "GMAIL_SEND_EMAIL", arguments: { recipient_email: "ana@example.com", subject: "Hi", body: "Hello" } }];
+    await expect(held.hold.hold({ ...held.input, calls: send, fullAccess: true, active: () => true })).resolves.toEqual({ ok: true, approved: false });
+    expect(held.appended).toEqual([]);
+  });
+
+  it("confirm_purchase waits on its summary card; a recorded one is posted already answered", async () => {
+    const held = setup(bot(undefined));
+    const summary = { merchant: "Acme", items: [{ name: "Kettle", quantity: 1, price: "$40.00" }], total: "$45.00", shipping: "$5.00", paymentMethod: "Visa •••• 4242", address: "1 Main St" };
+    const pending = held.hold.confirmPurchase({ bot: bot(undefined), threadId: "t1", summary, recorded: false, active: () => true });
+    expect(held.appended[0]!.message.card).toMatchObject({ title: "Confirm purchase", purchase: summary, tool: "confirm_purchase" });
+    held.outboundRequests.resolve({ threadId: "t1", requestId: requestOf(held), behavior: "allow" });
+    await expect(pending).resolves.toEqual({ ok: true, approved: true });
+
+    await expect(held.hold.confirmPurchase({ bot: bot(undefined), threadId: "t1", summary, recorded: true, active: () => true })).resolves.toEqual({ ok: true, approved: true });
+    expect(held.appended[1]!.message.card).toMatchObject({ answered: "allow", purchase: { recorded: true, merchant: "Acme" } });
+    expect(held.outboundRequests.pending("t1")).toEqual([]);
+  });
+});
