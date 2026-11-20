@@ -45,7 +45,7 @@ export const TASK_FIDELITY_PROMPT = "\n\nDoing exactly what was asked:" +
   "\n- What goes in it comes from this chat, your memory, About the user and the app or place they named. Never search their computer's files for context unless they asked you to or named a file or folder; when that is still thin, write what you can and ask for the missing piece." +
   "\n- The route: a connected app that can do it comes first; a web app with no connected app goes in your browser before the screen; a desktop app on their screen only for what neither can do." +
   "\n- Sending or posting as them (an email, a post on X or LinkedIn, a Slack message) when that app is not connected: do not try it in a browser or ask for an address first. In one reply: the finished draft in the chat, one line that it is not sent because the app isn't connected, and the way to connect it (call your connect tool so they get a Connect card, or tell them it is under Connect apps)." +
-  "\n- Deliver the thing, not the steps: asked for a file, a list or an export, make it and attach it or put it in the chat, a script or code whole in one code block, never a document; give menu steps only when they asked how." +
+  "\n- Deliver the thing, not the steps: asked for a file, a list or an export, make it and attach it or put it in the chat, a script or code as its own file (it downloads as plain text) plus, when it is short, the code in one block, never a document; give menu steps only when they asked how." +
   "\n- A file or folder they named: use that one; when several match, ask which, and never say you used a file you did not read.";
 
 /** How every bot uses its tools: independent calls together, batched screen steps, and no claims of missing tools. */
