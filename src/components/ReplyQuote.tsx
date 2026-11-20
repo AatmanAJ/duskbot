@@ -24,15 +24,10 @@ export function ReplyQuote({
   compact?: boolean;
 }) {
   const name = replyAuthor(message, fallbackName);
-  const thumbnail = replyThumbnail(message);
-  const [thumbnailFailed, setThumbnailFailed] = useState<string | null>(null);
   const body = (
     <>
       <Reply size={compact ? 14 : 15} strokeWidth={1.5} aria-hidden="true" className="shrink-0 rtl:-scale-x-100" />
-      {thumbnail && thumbnailFailed !== thumbnail && (
-        <img src={thumbnail} alt="" data-reply-thumbnail="" loading="lazy" draggable={false} onError={() => setThumbnailFailed(thumbnail)}
-          className="-my-0.5 size-6 shrink-0 rounded-md bg-inset object-cover" />
-      )}
+      <ReplyThumbnail message={message} />
       <span className="sr-only">{t("chat.reply.replyingTo", { name })}: </span>
       <span aria-hidden="true" className="shrink-0 font-medium text-ink">{name}</span>
       <span dir="auto" className="min-w-0 flex-1 truncate">{replySnippet(peerLine(message)?.body ?? message.text ?? "")}</span>
@@ -76,6 +71,14 @@ export function ThreadReplyQuote({ threadId, replyToId, loaded, fallbackName, on
   );
 }
 
+function ReplyThumbnail({ message }: { message: Message }) {
+  const thumbnail = replyThumbnail(message);
+  const [failed, setFailed] = useState<string | null>(null);
+  if (!thumbnail || failed === thumbnail) return null;
+  return <img src={thumbnail} alt="" data-reply-thumbnail="" loading="lazy" draggable={false} onError={() => setFailed(thumbnail)}
+    className="-my-0.5 size-6 shrink-0 rounded-md bg-inset object-cover" />;
+}
+
 export function ComposerReplyStrip({
   message,
   fallbackName,
@@ -96,6 +99,7 @@ export function ComposerReplyStrip({
       className="mb-1 flex min-w-0 items-center gap-2 rounded-2xl bg-ink/[0.06] py-1.5 ps-3 pe-1.5 text-[13px] leading-5 text-ink-secondary"
     >
       <Reply size={15} strokeWidth={1.5} aria-hidden="true" className="shrink-0 rtl:-scale-x-100" />
+      <ReplyThumbnail message={message} />
       <span className="sr-only">{who}: </span>
       <span dir="auto" className="min-w-0 flex-1 truncate">{excerpt}</span>
       {onClear && (
