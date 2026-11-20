@@ -3,6 +3,7 @@
 // session/load replays history as ordinary session/update notifications, so nothing emits before
 // the prompt is sent and `_meta.isReplay` updates are dropped. Permissions fail closed: only an
 // `allow`-kind option approves, and option order is never a security contract.
+import { outboundSendKey } from "../../../shared/declined-sends.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { lstat, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
@@ -872,6 +873,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             requestType: isQuestion ? "question" : "permission",
             tool,
             summary,
+            ...(!isQuestion && outboundSendKey(tool, toolCall.rawInput) ? { sendKey: outboundSendKey(tool, toolCall.rawInput) } : {}),
             ...acpShellRequest(isShellCommand, isQuestion ? undefined : toolCall.rawInput, commandCwd), ...(!isQuestion && acpReadPaths(toolCall) ? { reads: acpReadPaths(toolCall) } : {}),
             requiresExplicitApproval: isShellCommand && (
               toolCall.rawInput?.dangerouslyDisableSandbox === true || toolCall.rawInput?.sandbox_permissions === "require_escalated"

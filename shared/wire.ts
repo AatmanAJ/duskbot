@@ -694,7 +694,7 @@ export function nextOpenThread<T extends OpenThreadCandidate>(tasks: readonly T[
 
 export interface OptionCardData extends WaitCardField, AccessRequestCardField, OutsideWriteCardField, PurchaseCardField, EmailCardField {
   /** calls: one per outbound call the card covers, in subtitle order. purchase: it buys, books, subscribes or moves money. */
-  /** `sent`: a hash of exactly what would go out (never the content); `declined`: the person said no, so the same content is not sent again in this chat until they ask again. */ outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }>; purchase?: true; sent?: string; declined?: true };
+  outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }>; purchase?: true }; /** A card asking to send: `key` hashes exactly what would go out (shared/declined-sends.ts), never the content; `declined`: the person said no, so the same send is refused in this chat until they ask again. */ send?: { key: string; declined?: true };
   /** @deprecated team memory is retired; only older messages carry this. */
   teamMemoryRequest?: { section: string; entryId: string; kind: string; revision?: string };
   title: string;

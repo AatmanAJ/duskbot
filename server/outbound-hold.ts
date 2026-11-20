@@ -1,4 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+
+import { DECLINED_BEFORE, declinedBefore, sendKey } from "../shared/declined-sends.ts";
 
 import { draftSent, editedEmailArguments, editedEmailReview, emailReviewOf, type EmailEdits, type EmailReview } from "../shared/email-review.ts";
 import type { ConnectorCall, OutboundPolicy } from "../shared/outbound.ts";
@@ -13,7 +15,7 @@ import { serverLine } from "./server-lines.ts";
 import type { OutboundCounts } from "./outbound-counts.ts";
 import type { OutboundRequestService } from "./outbound-requests.ts";
 import { outboundCard } from "./outbound-requests.ts";
-import type { BotRecord, GroupRecord, Message, Store } from "./store.ts";
+import type { BotRecord, GroupRecord, Store } from "./store.ts";
 import { turnWaitedOnPerson } from "./waiting-on-person.ts";
 
 /** How long a "Send on your behalf?" card waits on the person before it times out. */
@@ -76,32 +78,7 @@ function emailText(email: EmailReview): string {
   return `${head.filter(Boolean).join("\n")}\n\n${email.body}`;
 }
 
-const canonical = (value: unknown): unknown => typeof value === "string" ? value.replace(/\s+/g, " ").trim().toLowerCase()
-  : Array.isArray(value) ? value.map(canonical)
-  : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical((value as Record<string, unknown>)[key])]))
-  : value;
-
-/** What a send would put out, as a hash: the same tools with the same arguments, ignoring case and spacing. */
-export function sendKey(calls: readonly ConnectorCall[]): string {
-  return createHash("sha256").update(JSON.stringify(calls.map((call) => [call.slug, canonical(call.arguments ?? null)]))).digest("hex").slice(0, 24);
-}
-
-const ASKS_TO_SEND = /\b(?:send|post|publish|reply|forward|tweet|dm|message|email|mail|text|share|go ahead|do it)\b/i;
-const HOLDS_BACK = /\b(?:don['’]?t|do not|never|not|no|stop|cancel|wait)\b/i;
-
-/** Whether the person declined this exact send in this chat and has not asked for a send since. */
-export function declinedBefore(rows: readonly Pick<Message, "role" | "kind" | "text" | "card" | "steered" | "peerAsk" | "fromApp">[], key: string): boolean {
-  let declined = false;
-  for (const row of rows) {
-    if (row.kind === "options" && row.card?.outboundRequest?.declined && row.card.outboundRequest.sent === key) declined = true;
-    else if (declined && row.role === "user" && !row.peerAsk && !row.fromApp && ASKS_TO_SEND.test(row.text ?? "") && !HOLDS_BACK.test(row.text ?? "")) declined = false;
-  }
-  return declined;
-}
-
-export const DECLINED_BEFORE = "dusk bot did not send this: the person already said no to this exact message in this chat. Do not send it again, reword it or reach them another way; tell them it was not sent, unless they ask you to send it again.";
-
-type CardInput = Pick<OptionCardData, "title" | "subtitle" | "options" | "email" | "purchase"> & { outboundRequest: NonNullable<OptionCardData["outboundRequest"]> };
+type CardInput = Pick<OptionCardData, "title" | "subtitle" | "options" | "email" | "purchase" | "send"> & { outboundRequest: NonNullable<OptionCardData["outboundRequest"]> };
 type Asked = { ok: true; messageId: string; edits: EmailEdits | null } | { ok: false; text: string };
 
 export interface OutboundHold {
@@ -155,9 +132,9 @@ export function createOutboundHold(deps: OutboundHoldDeps): OutboundHold {
       }
     }
     if (answer === "allow") return { ok: true, messageId: card.id, edits };
-    if (answer === "deny" && input.outboundRequest.sent) {
+    if (answer === "deny" && input.send) {
       const row = store.messagesFor(threadId).find((message) => message.id === card.id);
-      if (row?.card?.outboundRequest) store.patchMessage(threadId, row.id, { card: { ...row.card, outboundRequest: { ...row.card.outboundRequest, declined: true } } });
+      if (row?.card?.send) store.patchMessage(threadId, row.id, { card: { ...row.card, send: { ...row.card.send, declined: true } } });
     }
     if (answer === "timeout" || answer === "replied") {
       const stale = store.messagesFor(threadId).find((message) => message.id === card.id);
@@ -214,7 +191,7 @@ export function createOutboundHold(deps: OutboundHoldDeps): OutboundHold {
         }
         return { ok: true, approved: false };
       }
-      const outboundRequest = { tool: outboundTool, app, calls, sent, ...(ask.kind === "purchase" ? { purchase: true as const } : {}) };
+      const outboundRequest = { tool: outboundTool, app, calls, ...(ask.kind === "purchase" ? { purchase: true as const } : {}) };
       const draft = ask.kind === "draft" ? await readDraft?.(ask.draftId).catch(() => null) ?? null : null;
       const email = ask.kind === "email" ? ask.email : draft ? { ...draft, draft: true as const } : null;
       const card: CardInput = ask.kind === "purchase"
@@ -222,7 +199,7 @@ export function createOutboundHold(deps: OutboundHoldDeps): OutboundHold {
         : email
           ? { title: EMAIL_TITLE, subtitle: emailText(email), options: EMAIL_OPTIONS, email, outboundRequest }
           : { title: SEND_TITLE, subtitle: summary, options: ["Allow", "Deny"], outboundRequest };
-      const asked = await askOnCard(currentSender, threadId, outboundTool, summary, active, card);
+      const asked = await askOnCard(currentSender, threadId, outboundTool, summary, active, { ...card, send: { key: sent } });
       if (!asked.ok) return refuseOutbound(asked.text);
       if (ask.kind === "draft" && asked.edits) return refuseOutbound("dusk bot did not send this: a saved draft goes out as saved, and the person changed it on the card. Update the draft with their changes first, then send it again.");
       if (ask.kind === "email" && asked.edits) applyEdits(threadId, asked.messageId, outboundCalls[0]!, ask.email, asked.edits);

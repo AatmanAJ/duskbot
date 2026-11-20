@@ -599,7 +599,7 @@ import {
 import { deliverSseFrame, openSseHeartbeat } from "./sse-fanout.ts";
 import { PhoneSecretBridge, PhoneSecretSubmissionRegistry } from "./phone-secret.ts";
 // Keep these two last, so loading the route table leaves module start-up order as is.
-import { gzipTunnelReplies, json, onJsonBody, parsedBodyOf, readBody } from "./harness/http.ts"; import { openEventStream, type EventStreamOut } from "./harness/sse-gzip.ts";
+import { gzipTunnelReplies, json, onJsonBody, onParsedBody, parsedBodyOf, readBody } from "./harness/http.ts"; import { DECLINED_BEFORE, declinedBefore } from "../shared/declined-sends.ts"; import { declinedInternalSend } from "./host/declined-sends.ts"; import { openEventStream, type EventStreamOut } from "./harness/sse-gzip.ts";
 import { holdBodyDeadline } from "./body-deadline.ts";
 import { createNoAiNotice } from "./host/no-ai-notice.ts"; import { PASS, ROUTES, dispatchRoutes } from "./routes/table.ts"; import { createSecretCards } from "./host/secret-cards.ts"; import { createInternalCredentialRequestRoutes, createSavedSecretRoutes, createSecretCardRoutes } from "./routes/secret-cards.ts"; import { SavedSecretStore, desktopSavedSecretsKey, fileSavedSecretsKey } from "./saved-secrets.ts"; import { applyIncludedPagesMessage } from "./pages/access.ts"; import { createPublishedPages } from "./pages/service.ts"; import { createInternalToolRoutes } from "./routes/internal-tools.ts"; import { createPurchaseRoutes } from "./routes/purchases.ts"; import { createHelperSuggestionRoutes } from "./routes/helper-suggestion.ts"; import { createWatchSuggestionRoutes } from "./routes/watch-suggestion.ts"; import { createXConnectorRoutes } from "./routes/x-connector.ts"; import { createMoveFreeze, switchAutomationsOff } from "./move-freeze.ts"; import { createMoveFreezeRoutes } from "./routes/move-freeze.ts"; import { applyPendingStartFresh, createStartFreshRoutes } from "./start-fresh.ts"; import { createMoveWaits } from "./move-waits.ts"; import { assertBotHere, createBotMoves } from "./bot-moves.ts"; import { createBotMoveRoutes } from "./routes/bot-moves.ts"; import { createTeamMoveIn, moveInRefusal } from "./team-move-in.ts";
 import { createCardSealer, loadSealIdentity } from "./card-seal.ts"; import { createSealKeyRoutes } from "./routes/seal-key.ts";
@@ -7321,7 +7321,7 @@ bus.subscribe((event: RuntimeEvent) => {
       const permission = event.requestType === "permission" && !event.questions?.length;
       // The provider's own mode already ran; only Full access, an exact saved command or an exact remembered MCP read tool answers here.
       const asker = bot ?? (speaker ? store.bot(speaker.botId) : undefined);
-      if (asker && proactive.fence.answers(event, asker, pushMessage)) break;
+      if (asker && proactive.fence.answers(event, asker, pushMessage)) break; if (permission && asker && event.requestId && event.sendKey && declinedBefore(store.activePath(event.threadId), event.sendKey)) { void answerRequest(event.threadId, event.providerInstanceId ?? asker.modelSelection.instanceId, event.requestId, "deny", DECLINED_BEFORE); break; }
       const unattended = permission && asker && event.requestId ? isUnattended(asker.id, event.threadId) : false;
       // No command the owner saved answers for a guest-driven turn.
       const guestDriven = cloudGuestDriven(event.threadId) || botApiThread(event.threadId);
@@ -7449,7 +7449,7 @@ bus.subscribe((event: RuntimeEvent) => {
           allowSession: permission && event.allowSession && !event.requiresExplicitApproval && !guestDriven ? true : undefined,
           held: approvalHeldReason(heldContext) ?? (permission && guestDriven && routineRun ? confinedWhy(event.threadId) : undefined),
           heldCode: approvalHeldNote(heldContext),
-          approvalScope: event.approvalScope,
+          approvalScope: event.approvalScope, ...(permission && event.sendKey ? { send: { key: event.sendKey } } : {}),
         },
       });
       if (event.requestId) { askMessageByRequest.set(`${event.threadId}:${event.requestId}`, message.id); if (!permission && asker) askCards.askedAgain(event.threadId, event.requestId, asker.id); }
@@ -7493,6 +7493,7 @@ bus.subscribe((event: RuntimeEvent) => {
         store.setTaskActivity(bot.id, event.threadId, "working");
       } else if (!bot && turnWaitedOnPerson(waiting)) store.setActivity(waiting.id, "working");
       const messageId = event.requestId ? askMessageByRequest.get(`${event.threadId}:${event.requestId}`) : null;
+      const declinedCard = messageId && event.behavior === "deny" && event.source === "user" ? store.messagesFor(event.threadId).find((m) => m.id === messageId)?.card : undefined; if (declinedCard?.send && !declinedCard.send.declined) store.patchMessage(event.threadId, messageId!, { card: { ...declinedCard, send: { ...declinedCard.send, declined: true } } });
       if (messageId) {
         const existing = store.messagesFor(event.threadId).find((m) => m.id === messageId);
         if (existing?.card && !existing.card.answered) {
@@ -14210,7 +14211,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
       if (claimedThread !== null && claimedThread !== internalCapability.threadId) {
         return json(res, 403, { error: "the internal capability belongs to a different conversation" });
       }
-      const readInternalBody = async () => {
+      onParsedBody(req, (body) => declinedInternalSend(path, body, () => store.activePath(internalCapability.threadId))); const readInternalBody = async () => {
         const body = await readBody(req);
         // Authorization at header time is not a lease: if the owning turn settled meanwhile, die before any side effect.
         if (!internalCapabilityIsActive(internalCapability)) {
