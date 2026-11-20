@@ -1190,8 +1190,6 @@
   "sidebar.menu.connectPhone.team": "Với {team}",
   "sidebar.menu.connectPhone.computer": "Với máy tính này",
   "sidebar.menu.connectPhone.cloud": "Với Cloud",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "Với Cloud (luôn sẵn sàng)",
-  "sidebar.menu.connectPhone.cloudNotReady": "Cloud sẽ hiển thị ở đây khi sẵn sàng.",
   "sidebar.menu.connectPhone.server": "Với các bot ở đây",
   "sidebar.menu.settings": "Cài đặt",
   "sidebar.menu.about": "Giới thiệu",

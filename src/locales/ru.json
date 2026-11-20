@@ -1575,8 +1575,6 @@
   "sidebar.menu.connectPhone.team": "К {team}",
   "sidebar.menu.connectPhone.computer": "К этому компьютеру",
   "sidebar.menu.connectPhone.cloud": "К Облаку",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "К Облаку (всегда доступно)",
-  "sidebar.menu.connectPhone.cloudNotReady": "Облако появится здесь, когда будет готово.",
   "sidebar.menu.connectPhone.server": "К ботам здесь",
   "sidebar.menu.settings": "Настройки",
   "sidebar.menu.about": "О программе",

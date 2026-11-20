@@ -1645,8 +1645,6 @@
   "sidebar.menu.connectPhone.team": "{team}에",
   "sidebar.menu.connectPhone.computer": "이 컴퓨터에",
   "sidebar.menu.connectPhone.cloud": "클라우드에",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "클라우드에(언제든 사용 가능)",
-  "sidebar.menu.connectPhone.cloudNotReady": "클라우드가 준비되면 여기에 표시돼요.",
   "sidebar.menu.connectPhone.server": "여기 있는 봇에",
   "sidebar.menu.settings": "설정",
   "sidebar.menu.about": "정보",

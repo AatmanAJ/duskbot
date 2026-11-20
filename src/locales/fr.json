@@ -673,8 +673,6 @@
   "sidebar.menu.connectPhone.team": "À {team}",
   "sidebar.menu.connectPhone.computer": "À cet ordinateur",
   "sidebar.menu.connectPhone.cloud": "Au Cloud",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "Au Cloud (toujours disponible)",
-  "sidebar.menu.connectPhone.cloudNotReady": "Le Cloud apparaîtra ici dès qu’il sera prêt.",
   "sidebar.menu.connectPhone.server": "Aux bots d'ici",
   "sidebar.menu.settings": "Paramètres",
   "sidebar.menu.about": "À propos",

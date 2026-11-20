@@ -1190,8 +1190,6 @@
   "sidebar.menu.connectPhone.team": "{team} ile",
   "sidebar.menu.connectPhone.computer": "Bu bilgisayara",
   "sidebar.menu.connectPhone.cloud": "Cloud'a",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "Cloud'a (her zaman kullanılabilir)",
-  "sidebar.menu.connectPhone.cloudNotReady": "Cloud hazır olduğunda burada görünür.",
   "sidebar.menu.connectPhone.server": "Buradaki botlara",
   "sidebar.menu.settings": "Ayarlar",
   "sidebar.menu.about": "Hakkında",

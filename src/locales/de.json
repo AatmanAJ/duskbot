@@ -2077,8 +2077,6 @@
   "sidebar.menu.connectPhone.team": "Mit {team}",
   "sidebar.menu.connectPhone.computer": "Mit diesem Computer",
   "sidebar.menu.connectPhone.cloud": "Mit der Cloud",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "Mit der Cloud (immer verfügbar)",
-  "sidebar.menu.connectPhone.cloudNotReady": "Die Cloud erscheint hier, sobald sie bereit ist.",
   "sidebar.menu.connectPhone.server": "Mit den Bots hier",
   "accounts.heading": "Angemeldet als",
   "accounts.add": "Weiteres Konto hinzufügen",

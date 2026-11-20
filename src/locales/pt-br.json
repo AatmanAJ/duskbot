@@ -1494,8 +1494,6 @@
   "sidebar.menu.connectPhone.team": "Com {team}",
   "sidebar.menu.connectPhone.computer": "A este computador",
   "sidebar.menu.connectPhone.cloud": "Ao Cloud",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "Ao Cloud (sempre disponível)",
-  "sidebar.menu.connectPhone.cloudNotReady": "O Cloud aparece aqui quando estiver pronto.",
   "sidebar.menu.connectPhone.server": "Aos bots daqui",
   "sidebar.menu.settings": "Configurações",
   "sidebar.menu.about": "Sobre",

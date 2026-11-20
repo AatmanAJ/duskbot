@@ -1513,8 +1513,6 @@
   "sidebar.menu.connectPhone.team": "A {team}",
   "sidebar.menu.connectPhone.computer": "A questo computer",
   "sidebar.menu.connectPhone.cloud": "Al Cloud",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "Al Cloud (sempre disponibile)",
-  "sidebar.menu.connectPhone.cloudNotReady": "Il Cloud compare qui quando è pronto.",
   "sidebar.menu.connectPhone.server": "Ai bot qui",
   "sidebar.menu.settings": "Impostazioni",
   "sidebar.menu.about": "Informazioni",

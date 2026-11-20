@@ -782,8 +782,6 @@
   "sidebar.menu.connectPhone.team": "До {team}",
   "sidebar.menu.connectPhone.computer": "До цього комп'ютера",
   "sidebar.menu.connectPhone.cloud": "До Cloud",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "До Cloud (завжди доступний)",
-  "sidebar.menu.connectPhone.cloudNotReady": "Cloud з’явиться тут, щойно буде готовий.",
   "sidebar.menu.connectPhone.server": "До ботів тут",
   "sidebar.menu.settings": "Налаштування",
   "sidebar.menu.about": "Про застосунок",

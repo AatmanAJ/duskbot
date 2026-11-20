@@ -1576,8 +1576,6 @@
   "sidebar.menu.connectPhone.team": "{team} へ",
   "sidebar.menu.connectPhone.computer": "このコンピュータへ",
   "sidebar.menu.connectPhone.cloud": "Cloud へ",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "Cloud へ（いつでも使える）",
-  "sidebar.menu.connectPhone.cloudNotReady": "Cloud の準備ができると、ここに表示されます。",
   "sidebar.menu.connectPhone.server": "ここのボットへ",
   "sidebar.menu.settings": "設定",
   "sidebar.menu.about": "このアプリについて",

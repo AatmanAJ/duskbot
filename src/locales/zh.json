@@ -1722,8 +1722,6 @@
   "sidebar.menu.connectPhone.team": "到 {team}",
   "sidebar.menu.connectPhone.computer": "到这台电脑",
   "sidebar.menu.connectPhone.cloud": "到 Cloud",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "到 Cloud（随时可用）",
-  "sidebar.menu.connectPhone.cloudNotReady": "Cloud 准备好后会显示在这里。",
   "sidebar.menu.connectPhone.server": "到这里的机器人",
   "sidebar.menu.settings": "设置",
   "sidebar.menu.about": "关于",

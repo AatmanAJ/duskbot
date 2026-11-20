@@ -1112,8 +1112,6 @@
   "sidebar.menu.connectPhone.team": "到 {team}",
   "sidebar.menu.connectPhone.computer": "到這台電腦",
   "sidebar.menu.connectPhone.cloud": "到 Cloud",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "到 Cloud（隨時可用）",
-  "sidebar.menu.connectPhone.cloudNotReady": "Cloud 準備好後會顯示在這裡。",
   "sidebar.menu.connectPhone.server": "到這裡的機器人",
   "sidebar.menu.settings": "設定",
   "sidebar.menu.about": "關於",

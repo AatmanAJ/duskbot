@@ -1527,8 +1527,6 @@
   "sidebar.menu.connectPhone.team": "Z zespołem {team}",
   "sidebar.menu.connectPhone.computer": "Z tym komputerem",
   "sidebar.menu.connectPhone.cloud": "Z Chmurą",
-  "sidebar.menu.connectPhone.cloudAlwaysOn": "Z Chmurą (zawsze dostępna)",
-  "sidebar.menu.connectPhone.cloudNotReady": "Chmura pojawi się tutaj, gdy będzie gotowa.",
   "sidebar.menu.connectPhone.server": "Z tutejszymi botami",
   "sidebar.menu.settings": "Ustawienia",
   "sidebar.menu.about": "O programie",
