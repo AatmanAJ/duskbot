@@ -244,7 +244,9 @@ html[data-native-menu] .dusk-mobile [data-mobile-chat] [data-message-row] [data-
   .dusk-mobile :is([data-mobile-chat] :is(.m-glass, [data-tour="composer"]), [data-home-bar] .m-glass) { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 /* android webviews drop frames compositing backdrop-filter on many phones: there every glass surface is its solid twin */
-html[data-mobile-app="android"] :is(*, ::before, ::after) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+/* named, not every element: a rule ending in a universal selector is tried on each element at every restyle */
+html[data-mobile-app="android"] :is(.glass-surface, .m-glass, [data-tour="composer"], [class*="backdrop-blur"]),
+html[data-mobile-app="android"] .glass-bar::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 html[data-mobile-app="android"] .dusk-mobile :is([data-mobile-chat] :is(.m-glass, [data-tour="composer"]), [data-home-bar] .m-glass) { background-color: var(--g-solid); }
 html[data-mobile-app="android"] .glass-surface { background: var(--color-menu); }
 html[data-mobile-app="android"] :is(.glass-card, .glass-surface .bg-card) { background: var(--color-card); }
