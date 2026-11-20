@@ -59,7 +59,8 @@ describe("the Channels card", () => {
     const row = find("channels-telegram");
     expect(row.textContent).toContain("Telegram · @nova_bot");
     expect(row.textContent).toContain("Working");
-    expect(row.querySelector('a[href="https://t.me/nova_bot?start=ABCD2345"]')).not.toBeNull();
+    expect(row.querySelector('a[href="https://t.me/nova_bot?start=ABCD2345"]')!.textContent).toBe("Open in Telegram");
+    expect(row.textContent).not.toContain("start=ABCD2345");
     const letIn = [...row.querySelectorAll("button")].find((button) => button.textContent === "Let in")!;
     flushSync(() => letIn.click());
     await settle();

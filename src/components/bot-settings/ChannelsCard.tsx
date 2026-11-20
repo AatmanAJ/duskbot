@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/cn";
+import { copyText } from "@/lib/copy-text";
 import { t } from "@/lib/i18n";
 import { friendlyError } from "@/lib/plain-error";
 import { api, type Bot } from "@/state/store";
 import { MESSENGER_LABELS, type MessengerPlatform, type MessengerStatus, type MessengersStatus } from "../../../shared/messengers";
 
-const buttonCls = "rounded-lg bg-control px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50";
+const buttonCls = "rounded-lg bg-card px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50";
 const HELP: Record<MessengerPlatform, string> = { telegram: "https://t.me/BotFather", discord: "https://discord.com/developers/applications" };
 
 /** Channels: the bot's own Telegram and Discord bots, so people message it there. */
@@ -59,7 +60,7 @@ function PlatformRow({ path, status, onChange }: { path: string; status: Messeng
 
   if (status.state === "not_connected") {
     return (
-      <div className="rounded-lg bg-inset p-3" data-testid={`channels-${status.platform}`}>
+      <div className="rounded-lg bg-control p-3" data-testid={`channels-${status.platform}`}>
         <div className="text-[14px] text-ink">{label}</div>
         <div className="mt-0.5 text-[12px] text-ink-secondary">
           {t(status.platform === "telegram" ? "channels.telegram.how" : "channels.discord.how")}{" "}
@@ -75,7 +76,7 @@ function PlatformRow({ path, status, onChange }: { path: string; status: Messeng
             value={token}
             onChange={(event) => setToken(event.target.value)}
             placeholder={t("channels.token", { app: label })}
-            className="min-w-0 flex-1 rounded-lg bg-control px-3 py-1.5 text-[13px] text-ink placeholder:text-ink-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            className="min-w-0 flex-1 rounded-lg bg-card px-3 py-1.5 text-[13px] text-ink placeholder:text-ink-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
           />
           <button type="submit" disabled={busy || !token.trim()} className={buttonCls}>{busy ? t("channels.connecting") : t("channels.connect")}</button>
         </form>
@@ -86,7 +87,7 @@ function PlatformRow({ path, status, onChange }: { path: string; status: Messeng
 
   const stateLine = status.state === "online" ? t("channels.online") : status.state === "error" ? status.error ?? t("channels.error", { app: label }) : t("channels.starting");
   return (
-    <div className="rounded-lg bg-inset p-3" data-testid={`channels-${status.platform}`}>
+    <div className="rounded-lg bg-control p-3" data-testid={`channels-${status.platform}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[14px] text-ink">{label} · {status.openUrl ? <a href={status.openUrl} target="_blank" rel="noreferrer" className="hover:underline">{status.handle}</a> : status.handle}</div>
@@ -95,7 +96,7 @@ function PlatformRow({ path, status, onChange }: { path: string; status: Messeng
         <button type="button" onClick={() => void disconnect()} disabled={busy} className={buttonCls}>{t("channels.disconnect")}</button>
       </div>
       {status.pairUrl ? (
-        <div className="mt-2 text-[12px] text-ink-secondary">{t("channels.claimLink")} <a href={status.pairUrl} target="_blank" rel="noreferrer" className="break-all text-ink hover:underline">{status.pairUrl}</a></div>
+        <ClaimLink url={status.pairUrl} />
       ) : status.pairCode ? (
         <div className="mt-2 text-[12px] text-ink-secondary">{t("channels.claimCode", { app: label })} <span className="font-mono text-ink">{status.pairCode}</span></div>
       ) : null}
@@ -124,6 +125,26 @@ function PlatformRow({ path, status, onChange }: { path: string; status: Messeng
         </div>
       )}
       {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
+    </div>
+  );
+}
+
+/** The one-tap claim link, opened or copied; the long address itself is never laid out. */
+function ClaimLink({ url }: { url: string }) {
+  const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
+  const copy = async () => {
+    setCopied((await copyText(url)) === "copied" ? "copied" : "failed");
+    window.setTimeout(() => setCopied(null), 1500);
+  };
+  return (
+    <div className="mt-2" data-testid="channels-claim">
+      <div className="text-[12px] text-ink-secondary">{t("channels.claimLink")}</div>
+      <div className="mt-2 flex flex-wrap gap-2">
+      <a href={url} target="_blank" rel="noreferrer" className={buttonCls}>{t("channels.openInTelegram")}</a>
+      <button type="button" onClick={() => void copy()} className={buttonCls}>
+        {copied === "copied" ? t("channels.copied") : copied === "failed" ? t("channels.copyFailed") : t("channels.copyLink")}
+      </button>
+      </div>
     </div>
   );
 }
