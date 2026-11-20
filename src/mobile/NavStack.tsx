@@ -112,7 +112,11 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   // the page's older rows wait while it moves: they mount once it lands, and never for a page on its way out
   const sliding = useRef(false);
   const waiting = useRef(new Set<() => void>());
+  // the list under a page is inert from the page's landing until it has fully left: toggling inert restyles the whole
+  // list, so it never happens as a back slide or a finger's drag starts, only once nothing moves
+  const [covered, setCovered] = useState(false);
   const landed = useCallback(() => {
+    setCovered(true);
     sliding.current = false;
     const steps = [...waiting.current];
     waiting.current.clear();
@@ -181,6 +185,7 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
   const popping = useRef(false);
   const popped = useCallback(() => {
     popping.current = false;
+    setCovered(false);
     setShownKey(null);
     lastPage.current = null;
     gone();
@@ -299,8 +304,8 @@ export function NavStack({ base, page, pageKey, onBack, onSettled, onSlide, onLe
         ref={baseRef}
         className="absolute inset-0"
         style={{ x: pageShown && !still ? baseX : 0, willChange: moving ? "transform" : undefined }}
-        inert={pageShown && !moving ? true : undefined}
-        aria-hidden={pageShown && !moving ? true : undefined}
+        inert={pageShown && covered ? true : undefined}
+        aria-hidden={pageShown && covered ? true : undefined}
       >
         {base}
         {pageShown && <motion.div ref={dimRef} aria-hidden className="pointer-events-none absolute inset-0 bg-[rgb(10_10_12/0.16)]" style={{ opacity: still ? pageOpacity : dim }} />}

@@ -93,6 +93,18 @@ describe("leaving a page", () => {
 });
 
 describe("going back", () => {
+  it("keeps the list inert until the page has left, so no back slide starts by restyling the whole list", async () => {
+    const list = () => host.querySelector(".mobile-nav")!.firstElementChild!;
+    await opened();
+    expect(list().hasAttribute("inert")).toBe(true);
+    frames = [];
+    render(false);
+    nextFrame();
+    expect(list().hasAttribute("inert"), "while it slides out").toBe(true);
+    land();
+    expect(list().hasAttribute("inert")).toBe(false);
+  });
+
   it("slides the page out with the list sliding back under it, and unmounts it only once it has left", async () => {
     await opened();
     frames = [];
