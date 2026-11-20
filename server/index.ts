@@ -342,7 +342,7 @@ import { TurnStops, outwardActions, stoppedTurnOutcome, turnEvidence } from "./t
 import { replaysTranscriptNatively } from "./runtime/capabilities.ts";
 import { buildRecoveryText, buildTurnContext, engineIsFresh } from "./turn-context.ts";
 import { Handoffs, handedStateUsable, isContextMessage, recordHanded, renderUnseen, sessionStart, unseenMessages, withUnseenMessages, type ContextMessage } from "./delta-context.ts";
-import { engineRefusedImage, extractReplayImages, extractTurnImages } from "./turn-images.ts";
+import { engineRefusedImage, extractReplayImages, extractTurnImages, TURN_IMAGE_MAX_COUNT } from "./turn-images.ts"; import { withAttachedDocuments } from "./attached-documents.ts";
 import { callTitleExcerpt } from "./thread-title.ts";
 import { generateThreadTitle, llmThreadTitlesEnabled } from "./thread-title-generate.ts";
 import { stallLimitMs, TurnWatchdog } from "./turn-watchdog.ts";
@@ -8939,15 +8939,15 @@ async function beginTurn(
         createHash("sha256").update(JSON.stringify([...persistentConfig, soul])).digest("hex").slice(0, 16);
       const plannedConfig = sessionConfig(bot.soul);
       const skillAuthoring = skillAuthoringEnabled(cfg) && agentsMounted;
+      const documents = await withAttachedDocuments(providerText, { vision: usesNativeImageInput, imageRoom: TURN_IMAGE_MAX_COUNT - turnImages.length }); if (!directTurnClaimIsCurrent(bot.id, dispatchClaimId, threadId)) throw new DirectTurnSetupCancelled("turn stopped during context setup");
       const skillCommandText = supportsWorkspaceFiles(instance.driverKind)
-        ? skillsHost.expandSkillCommand(bot, threadId, providerText, instance, personLine ? activeMessages.filter((line) => skipTranscript.has(line.id)) : [], (personLine && !userMessage.relayed && !startedOutside(threadId)) || ["schedule", "manual", "startup"].includes(opts?.automationSource ?? ""))
-        : providerText;
-      const setupText = agentsMounted ? expandSetupTurnText(skillCommandText) : skillCommandText;
+        ? skillsHost.expandSkillCommand(bot, threadId, documents.text, instance, personLine ? activeMessages.filter((line) => skipTranscript.has(line.id)) : [], (personLine && !userMessage.relayed && !startedOutside(threadId)) || ["schedule", "manual", "startup"].includes(opts?.automationSource ?? ""))
+        : documents.text; const setupText = agentsMounted ? expandSetupTurnText(skillCommandText) : skillCommandText;
       const { text: userTurnText, images: quotedImages } = withQuotedImages((opts?.app?.context ?? "") + (opts?.cardContinuation ? "" : routineRunNote(threadId, opts?.automationSource)) + labelledLine(personLine && !opts?.excludeMessageIds ? userMessage : {}, withReactionNotes(promptWithReply(
         skillAuthoring ? expandLearnTurnText(setupText) : setupText,
         opts?.replyTo,
         userNameFor(threadId),
-      ), personLine ? activeMessages : [], skipTranscript, userNameFor(threadId)), lineLabels(threadId)), turnImages, usesNativeImageInput && !imageRefusedThreads.has(threadId)), currentImages = [...turnImages, ...quotedImages];
+      ), personLine ? activeMessages : [], skipTranscript, userNameFor(threadId)), lineLabels(threadId)), [...turnImages, ...documents.images], usesNativeImageInput && !imageRefusedThreads.has(threadId)), currentImages = [...turnImages, ...documents.images, ...quotedImages];
       const replay = usesNativeImageInput
         ? extractReplayImages(selection.inline, currentImages, { withoutImages: imageRefusedThreads.delete(threadId) })
         : { transcript: selection.inline, images: [] };

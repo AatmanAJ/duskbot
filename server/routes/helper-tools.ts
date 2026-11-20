@@ -15,7 +15,7 @@ import type { ExtractImage, ExtractInput, FieldSchema } from "../extractor/types
 import type { json as sendJson } from "../harness/http.ts";
 import { botFileSource, PageBundleError, type BotFolders } from "../pages/bundle.ts";
 import { openMessageFile, type OpenedMessageFile } from "../message-file.ts";
-import { pdfText, PdfTextError } from "../pdf-text.ts";
+import { DOCUMENT_EXTENSIONS, documentText, DocumentTextError } from "../document-text.ts";
 import { PASS } from "./table.ts";
 
 export interface HelperToolDeps {
@@ -131,7 +131,7 @@ async function readInput(body: Record<string, unknown>, fields: FieldSchema, ctx
   }
   try {
     const extension = extname(target).toLowerCase();
-    if (extension === ".pdf") return fittedText(fields, await pdfText(await opened.handle.readFile(), signal));
+    if (DOCUMENT_EXTENSIONS.has(extension)) return fittedText(fields, await documentText(await opened.handle.readFile(), extension, signal));
     const mime = IMAGE_TYPES[extension];
     if (mime) {
       if (opened.bytes > EXTRACT_LIMITS.imageBytes) return "The image is over 1 MB. Make it smaller first.";
@@ -142,11 +142,17 @@ async function readInput(body: Record<string, unknown>, fields: FieldSchema, ctx
     if (content.includes("\u0000")) return "That file is not text or a PNG, JPEG or WebP image.";
     return fittedText(fields, content);
   } catch (error) {
-    if (error instanceof PdfTextError) return error.message;
+    if (error instanceof DocumentTextError) return error.message;
     throw error;
   } finally {
     await opened.handle.close();
   }
+}
+
+/** No extraction model answered: the text itself, which every engine can read the values from. */
+function readItYourself(content: string, cutAt: number | undefined): string {
+  return `No extraction model is set up here, so this is the text itself: read the values from it yourself.\n<file-text>\n${content.replace(/<\/?file-text\b/gi, (tag) => tag.replace("<", "&lt;"))}\n</file-text>`
+    + (cutAt === undefined ? "" : `\nOnly the first ${cutAt.toLocaleString("en-US")} characters are shown.`);
 }
 
 export function createHelperToolRoutes(deps: HelperToolDeps) {
@@ -185,6 +191,9 @@ export function createHelperToolRoutes(deps: HelperToolDeps) {
       const result = await deps.extractor.extract("botExtract", fields, input, { timeoutMs: HELPER_TOOL_TIMEOUT_MS, signal: abort.signal });
       if (abort.signal.aborted) return;
       if (!result.ok) {
+        if (result.reason !== "cancelled" && input.text?.trim() && !input.images?.length) {
+          return void ctx.json(ctx.res, 200, { text: readItYourself(input.text, cutAt) });
+        }
         const off = result.reason === "disabled" || result.reason === "no_key";
         return void ctx.json(ctx.res, off ? 409 : 502, { error: off ? HELPER_MESSAGES.extractOff : FAILURE[result.reason] ?? "The extraction model's answer could not be read. Try again." });
       }
