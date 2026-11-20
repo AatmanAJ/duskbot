@@ -1,7 +1,7 @@
 // A dusk cloud's bots on the person's Mac, both halves for real over HTTP: the cloud's /api/mac routes in cloud mode
 // (sealing with a link key) and the Mac app's core (electron/cloud-mac.mjs: poller, seal, rules, executor in a scratch home).
 import { generateKeyPairSync } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,7 @@ import { catalogServer } from "../testing/cua-driver-tools.ts";
 import { macLogFile } from "../../electron/mac-control-tools.mjs";
 import { json, readBody } from "../harness/http.ts";
 import type { RequestAuth } from "../request-auth.ts";
+import { keepFromMac } from "../host/devices.ts";
 import { createMacControl, type MacControl } from "./host.ts";
 
 const link = generateKeyPairSync("ed25519");
@@ -36,6 +37,7 @@ async function pair(mode: "auto" | "ask" | "never", answer: (reason: string) => 
     dataDir: dir, offered: () => true, enabled: () => true, setEnabled: () => {}, ownerOrAdmin: () => true, live: () => true,
     bot: () => ({ id: "nova", name: "Nova" }), turnOwner: () => "owner", active: () => true,
     openFile: async () => { throw new Error("none"); }, computerFile: async () => { throw new Error("none"); },
+    saveFile: (_turn, name, bytes) => keepFromMac(join(dir, "workspace", "from-mac"), name, bytes),
     cloud: { linkKey: () => link.privateKey, tainted: () => options.tainted?.() ?? false, readOutside: () => options.readOutside?.(), approve: async (_bot, _turn, tool, args, reason) => { asked.push({ tool, reason, args }); return answer(reason); } },
   });
   const server: Server = createServer((req, res) => {
@@ -59,7 +61,7 @@ async function pair(mode: "auto" | "ask" | "never", answer: (reason: string) => 
     const result = await mac.call({ name, arguments: args }, turn, () => {});
     return { text: result.content.map((part) => ("text" in part ? part.text : "")).join(""), error: result.isError === true };
   };
-  return { mac, app, home, asked, run, base };
+  return { mac, app, home, asked, run, base, dir };
 }
 
 describe("cloud bots use this Mac", () => {
@@ -67,7 +69,7 @@ describe("cloud bots use this Mac", () => {
     let allow = true;
     const { mac, home, asked, run } = await pair("auto", () => (allow ? null : "The person said no."));
     expect(mac.status()).toMatchObject({ available: true, online: true, name: "Sid's MacBook", cloud: { mode: "auto", limited: false } });
-    expect(mac.tools(turn).map((tool) => tool.name)).toEqual(["mac_exec", "mac_read_file", "mac_write_file", "mac_list", "mac_open", "mac_download"]);
+    expect(mac.tools(turn).map((tool) => tool.name)).toEqual(["mac_exec", "mac_read_file", "mac_write_file", "mac_list", "mac_open", "mac_download", "mac_send_file"]);
     expect(mac.promptPart({ id: "nova", name: "Nova" }, turn).text).toContain("risky actions");
 
     const made = await run("mac_exec", { command: "mkdir -p site/build && echo made in $PWD" });
@@ -91,6 +93,25 @@ describe("cloud bots use this Mac", () => {
     expect(log).toMatch(/ cloud Nova mac_exec mkdir -p site\/build .* -> ok\n/);
     expect(log).toMatch(/ cloud Nova mac_exec rm -rf site\/build \(in ~\) \(allowed in chat\) -> ok\n/);
     expect(log).not.toContain("from the cloud");
+  }, 60_000);
+
+  it("a file the person asks for comes from the Mac into the bot's own files, bytes intact, never over another; keys ask first", async () => {
+    const { home, asked, run, dir } = await pair("auto", () => "The person said no.");
+    const pdf = Buffer.concat([Buffer.from("%PDF-1.4\n"), Buffer.from([0, 255, 1, 254])]);
+    mkdirSync(join(home, "Documents"));
+    writeFileSync(join(home, "Documents/invoice.pdf"), pdf);
+    const first = await run("mac_send_file", { path: "~/Documents/invoice.pdf" });
+    const kept = join(dir, "workspace", "from-mac", "invoice.pdf");
+    expect(first).toEqual({ error: false, text: `Saved ${pdf.length} bytes from the Mac to ${kept} in your files. To give it to the person, attach that file to your reply (agents_attach_file).` });
+    expect(readFileSync(kept).equals(pdf)).toBe(true);
+    expect((await run("mac_send_file", { path: "Documents/invoice.pdf" })).text).toContain(join(dir, "workspace", "from-mac", "invoice (2).pdf"));
+    expect(await run("mac_send_file", { path: "~/Documents" })).toMatchObject({ error: true, text: expect.stringContaining("is a folder") });
+    expect(asked).toEqual([]);
+    mkdirSync(join(home, ".ssh"));
+    writeFileSync(join(home, ".ssh/id_ed25519"), "secret");
+    expect(await run("mac_send_file", { path: "~/.ssh/id_ed25519" })).toEqual({ error: true, text: "The person said no." });
+    expect(asked).toMatchObject([{ tool: "mac_send_file", reason: "reads keys or secrets" }]);
+    expect(readFileSync(macLogFile(home), "utf8")).toMatch(/ cloud Nova mac_send_file ~\/Documents\/invoice.pdf -> ok\n/);
   }, 60_000);
 
   it("Ask before every action asks for a plain command too; Never ask never does", async () => {

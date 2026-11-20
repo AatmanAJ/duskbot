@@ -4,7 +4,7 @@ export const MAC_TOOL_NAMES = [
   "mac_exec", "mac_read_file", "mac_write_file", "mac_list", "mac_open", "mac_save_from_cloud", "mac_screenshot",
 ] as const;
 /** Only a dusk cloud's bots get these (shared/cloud-mac.ts). */
-export const CLOUD_ONLY_MAC_TOOL_NAMES = ["mac_download"] as const;
+export const CLOUD_ONLY_MAC_TOOL_NAMES = ["mac_download", "mac_send_file"] as const;
 export type MacToolName = (typeof MAC_TOOL_NAMES)[number] | (typeof CLOUD_ONLY_MAC_TOOL_NAMES)[number];
 /** What a job asks the Mac to do: a bot's Mac tool, or on a dusk cloud a call to the Mac's computer-control driver. */
 export type MacJobTool = MacToolName | "mac_screen" | "mac_screen_tools" | "mac_screen_access";
@@ -44,8 +44,10 @@ export interface MacJob {
 
 /** What the Mac app posts to /api/mac/self/jobs/:id/result. A mac_screen job's result also carries the driver's
  * structuredContent, whether the driver answered with an error, and `outside` when it read outside content (a browser
- * window's page, the whole desktop, or a window the Mac could not name). */
+ * window's page, the whole desktop, or a window the Mac could not name), and a mac_send_file job's result the file. */
 export type MacJobOutcome =
-  | { ok: true; result: { text: string; image?: { data: string; mimeType: "image/png" | "image/jpeg" }; structured?: Record<string, unknown>; isError?: true; outside?: true } }
+  | { ok: true; result: { text: string; image?: { data: string; mimeType: "image/png" | "image/jpeg" }; structured?: Record<string, unknown>; isError?: true; outside?: true;
+    /** A mac_send_file job's file: its name and its bytes as base64. */
+    file?: { name: string; data: string } } }
   /** `ask`: on a dusk cloud, the Mac refused because the person must allow this on a card first, and says why. */
   | { ok: false; error: string; ask?: string };

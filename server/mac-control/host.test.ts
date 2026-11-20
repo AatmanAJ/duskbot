@@ -34,6 +34,7 @@ beforeEach(async () => {
     bot: (id) => bots[id], turnOwner: () => owner, active: () => true,
     openFile: async (_turn, source) => ({ name: source.split("/").pop()!, bytes: 5, open: () => Readable.from([Buffer.from("hello")]) }),
     computerFile: async () => { throw new Error("there is no such file on your cloud computer"); },
+    saveFile: async () => { throw new Error("not on a cloud"); },
   });
   server = createServer((req, res) => {
     const url = new URL(req.url!, "http://x");
@@ -137,7 +138,7 @@ describe("a dusk cloud whose owner's Mac never linked", () => {
   const cloudMac = (over: { enabled?: boolean; owner?: string | null } = {}) => createMacControl({
     dataDir: dir, offered: () => true, enabled: () => over.enabled ?? true, setEnabled: () => {}, ownerOrAdmin: () => true, live: () => true,
     bot: (id) => bots[id], turnOwner: () => (over.owner === undefined ? "owner" : over.owner), active: () => true,
-    openFile: async () => { throw new Error("none"); }, computerFile: async () => { throw new Error("none"); },
+    openFile: async () => { throw new Error("none"); }, computerFile: async () => { throw new Error("none"); }, saveFile: async () => { throw new Error("none"); },
     cloud: { approve: async () => null, linkKey: () => null },
   });
 

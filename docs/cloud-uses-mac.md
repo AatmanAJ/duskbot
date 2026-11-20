@@ -44,8 +44,14 @@ sealed to its key).
 | mac.download | `mac_download` (https or http link to a folder or file path, default `~/Downloads/`, 2 GB cap) |
 | mac.files | `mac_read_file`, `mac_list`, `mac_write_file` |
 | mac.open | `mac_open` (an app by name, a link, a file) |
+| mac.send | `mac_send_file` (a file from the Mac into the bot's own files, `from-mac/`, up to 8 MB; the bot attaches it to send it) |
 
-`mac_screenshot` and `mac_save_from_cloud` are not offered on a cloud. When the Mac is not polling, a call answers
+The cloud and the Mac share no folders: a file the person asks for from the Mac comes over in the sealed outcome of a
+`mac_send_file` job, and is kept under a name of its own in the bot's files. Under Auto it asks only for keys and secrets
+(as a read does), and like any action but a look it asks once the turn has read outside content.
+
+`mac_screenshot` and `mac_save_from_cloud` are not offered on a cloud. The person's own Mac is not outside content: a
+`mac_` call (a download there answers only where it saved) does not make the rest of the turn ask. When the Mac is not polling, a call answers
 "The person's Mac is offline" and nothing runs.
 
 ## Screen
@@ -55,7 +61,8 @@ allows the screen:
 
 - **The tools** are the Mac's own computer-control driver's (cua-driver, the one a bot on the Mac uses), offered as
   `mac_<tool>`: `mac_list_apps`, `mac_list_windows`, `mac_get_window_state`, `mac_launch_app`, `mac_click`,
-  `mac_type_text`, `mac_press_key`, `mac_hotkey`, `mac_scroll` and the rest. The catalog is the cloud's
+  `mac_type_text`, `mac_press_key`, `mac_hotkey`, `mac_scroll` and the rest, without the driver's `*_out_file` arguments
+  (a screenshot comes back in the answer, never as a file written on the Mac). The catalog is the cloud's
   (`server/mac-control/screen.ts`): the Mac lists its driver's tools in a sealed `mac_screen_tools` job once it polls
   with the screen allowed (again when the driver's version changes), and the cloud keeps those a local bot gets beside a
   browser of its own (`server/computer-tool-list.ts`: no driver upkeep, none of the driver's own browser). The prompt

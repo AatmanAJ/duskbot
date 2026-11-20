@@ -121,6 +121,7 @@ export function toolLabel(tool?: string): string {
     update_profile: "approval.tool.updateProfile",
     mac_exec: "approval.tool.macExec",
     mac_read_file: "approval.tool.macReadFile",
+    mac_send_file: "approval.tool.macReadFile",
     mac_write_file: "approval.tool.macWriteFile",
     mac_open: "approval.tool.macOpen",
     mac_download: "approval.tool.macDownload",

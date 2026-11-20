@@ -57,16 +57,17 @@ function cloudMacLimits({ mode, limited, folders }: CloudMacLimits): string {
 /** A dusk cloud's version: the person's own opt-in limits, if any, and the Mac's screen when they allow it. */
 export function cloudMacInstructions(limits: CloudMacLimits): string {
   return ["The mac_ tools reach the person's own Mac through the dusk bot app on it, as the person: mac_exec runs a shell command (zsh), " +
-    "mac_download saves a file from a link onto the Mac (into ~/Downloads by default), mac_read_file, mac_write_file and mac_list work with its files, and mac_open opens an app, a link or a file there.",
+    "mac_download saves a file from a link onto the Mac (into ~/Downloads by default), mac_read_file, mac_write_file and mac_list work with its files, mac_send_file brings a file from the Mac into your own files (then attach it to send it), and mac_open opens an app, a link or a file there.",
   cloudMacLimits(limits),
   limits.screen ? "The mac_ screen tools are the computer-control tools of the Mac itself; prefer pid and window_id targets and background delivery." : "",
   "If the Mac is offline the tool says so: ask the person to open dusk bot on it. A mac_exec that timed out may still have changed things; check before repeating it."].filter(Boolean).join(" ");
 }
 
 export function cloudMacPrompt(limits: CloudMacLimits): string {
-  return [" You can also work on the person's own Mac, not only in your cloud: the mac_ tools (mcp__device__mac_exec, mac_download, mac_read_file, mac_write_file, mac_list, mac_open) " +
+  return [" You can also work on the person's own Mac, not only in your cloud: the mac_ tools (mcp__device__mac_exec, mac_download, mac_read_file, mac_write_file, mac_list, mac_open, mac_send_file) " +
     "act on it through the dusk bot app there, so never say you have no access to their Mac. Use it when the person asks for something on their Mac: run a terminal command or a CLI, " +
-    "download a file into their Downloads, open an app or a link, or read and change their files.",
+    "download a file into their Downloads, open an app or a link, or read and change their files. Your cloud and the Mac are different computers that share no folders: " +
+    "to send the person a file from their Mac, bring it over with mac_send_file and attach the path it returns; to put one of your files on the Mac, write it there with mac_write_file.",
   cloudMacLimits(limits),
   cloudMacScreen(limits),
   "Everything you do on the Mac shows in the chat. If it is offline the tool says so; tell the person to open dusk bot on the Mac."].filter(Boolean).join(" ");

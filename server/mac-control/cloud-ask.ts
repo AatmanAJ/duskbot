@@ -49,6 +49,7 @@ function what(tool: AskTool, args: Record<string, unknown>, name: string, line: 
   switch (tool) {
     case "mac_read_file":
     case "mac_list":
+    case "mac_send_file":
       return { title: line("server.cloudMac.title.read", { name }), subtitle: text(args.path) || "~", allowKey: keyed(`${tool}:${text(args.path)}`) };
     case "mac_exec": {
       const command = text(args.command).replace(/\s+/g, " ");

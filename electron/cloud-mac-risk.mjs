@@ -110,6 +110,7 @@ export function macActionRisk(tool, args, home) {
       return commandRisk(a.command);
     case "mac_read_file":
     case "mac_list":
+    case "mac_send_file":
       return SECRET_PATH.test(expand(a.path ?? "~", home)) ? "reads keys or secrets" : null;
     case "mac_write_file":
       return writeRisk(expand(a.path, home), home);

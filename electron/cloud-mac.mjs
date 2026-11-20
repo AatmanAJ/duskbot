@@ -18,7 +18,7 @@ import { createMacControlHost } from "./mac-control.mjs";
 import { createMacExecutor, folderName, jobSummary, macLogFile, resolveMacPath } from "./mac-control-tools.mjs";
 import { screenOutcome } from "./cloud-screen.mjs";
 
-export const CLOUD_MAC_TOOLS = Object.freeze(["mac_exec", "mac_read_file", "mac_write_file", "mac_list", "mac_open", "mac_download"]);
+export const CLOUD_MAC_TOOLS = Object.freeze(["mac_exec", "mac_read_file", "mac_write_file", "mac_list", "mac_open", "mac_download", "mac_send_file"]);
 export const DEFAULT_CWD = "~/dusk bot";
 export const DEFAULT_FOLDERS = Object.freeze(["~/Downloads", DEFAULT_CWD]);
 const OPEN_SCHEMES = new Set(["https:", "http:", "mailto:"]);
@@ -134,6 +134,7 @@ export async function cloudJobRefusal(job, { folders = null, mode = "auto", home
     case "mac_list":
     case "mac_read_file":
     case "mac_write_file":
+    case "mac_send_file":
       return check(a.path);
     case "mac_exec":
       return check(a.cwd);

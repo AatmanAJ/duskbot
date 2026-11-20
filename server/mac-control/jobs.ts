@@ -20,6 +20,7 @@ export const macJobOutcome = z.union([
     structured: z.record(z.string(), z.unknown()).optional(),
     isError: z.literal(true).optional(),
     outside: z.literal(true).optional(),
+    file: z.object({ name: z.string().min(1).max(255), data: z.string().max(MAC_RESULT_MAX_BYTES) }).optional(),
   }) }),
   z.object({ ok: z.literal(false), error: z.string().max(4000), ask: z.string().max(300).optional() }),
 ]);
