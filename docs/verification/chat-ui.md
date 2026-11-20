@@ -38,7 +38,8 @@ session named `dusk-ui-<port>`, and prints a handle:
 `--tool-calls`, `--script` and `--mode` script the fake engine
 (`FAKE_CLAUDE_TOOL_CALLS`, `FAKE_CLAUDE_SCRIPT` and `FAKE_CLAUDE_MODE` in
 `server/testing/fake-claude-cli.ts`). `--script` plays one whole turn in order:
-`{"text": "..."}` is a bot message of its own, `{"tool": {"name", "input"}}` a
+`{"text": "..."}` is a bot message of its own, `{"ifSteered": "..."}` one said
+only once a message was steered in, `{"tool": {"name", "input"}}` a
 call answered "ok" (or its `output`), `{"waitMs": n}` a pause, so a turn can
 send an ack, set its status with `mcp__agents__set_status`, run a tool, send a
 plan, wait and reply. Pass `ui.json`

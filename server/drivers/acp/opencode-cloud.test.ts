@@ -123,7 +123,25 @@ describe("a model that takes a limited number of tools", () => {
     expect(prompts(f.scratch)).toHaveLength(4);
   });
 
-  it("retries only once, then says in plain words what to turn off", async () => {
+  it("still runs when OpenCode's own tools outnumber its estimate: a bot with 300 app tools keeps its browser first", async () => {
+    const f = await open(createOpenCodeDriver(async () => ({ default: "", options: [] })), "opencodeGo", (scratch) => ({
+      FAKE_ACP_MODELS: "opencode/beam-free", FAKE_ACP_TOOL_LIMIT: "128", FAKE_ACP_ENGINE_TOOLS: "60", FAKE_ACP_RPC_APPEND_FILE: join(scratch, "rpc.jsonl"),
+    }));
+    const browser = toolsFile(f.scratch, "browser", 20);
+    const custom = { apps: toolsFile(f.scratch, "apps", 300) };
+    const first = await f.run("t-own-tools", { model: "opencode/beam-free", integrations: { browser, custom } });
+    expect(first.done).toMatchObject({ ok: true });
+    expect(first.events.some((event) => event.type === "runtime.error")).toBe(false);
+    // 104 left the browser 20 and the apps 72, which OpenCode's 60 own tools overran; half of that fits.
+    expect(first.events.find((event) => event.type === "item.completed")).toMatchObject({ text: "tools: browser=20,apps=20" });
+    expect(prompts(f.scratch)).toEqual(["session/prompt", "session/prompt.tool-limit", "session/prompt", "session/prompt.tool-limit", "session/prompt"]);
+
+    const next = await f.run("t-own-tools-2", { model: "opencode/beam-free", integrations: { browser, custom } });
+    expect(next.done).toMatchObject({ ok: true });
+    expect(prompts(f.scratch)).toHaveLength(6);
+  });
+
+  it("trims down to no MCP tools, then says in plain words what to turn off", async () => {
     const f = await open(createOpenCodeDriver(async () => ({ default: "", options: [] })), "opencodeGo", (scratch) => ({
       FAKE_ACP_MODELS: "opencode/beam-free", FAKE_ACP_RPC_FAILURE_FILE: join(scratch, "failure.json"), FAKE_ACP_RPC_APPEND_FILE: join(scratch, "rpc.jsonl"),
     }));
@@ -132,7 +150,8 @@ describe("a model that takes a limited number of tools", () => {
     }));
     const { done, events } = await f.run("t-limit-twice", { model: "opencode/beam-free" });
     expect(done).toMatchObject({ ok: false });
-    expect(prompts(f.scratch)).toEqual(["session/prompt", "session/prompt.error", "session/prompt", "session/prompt.error"]);
+    // untrimmed, then 104, 52, 26, 13, 6 and no MCP tools at all
+    expect(prompts(f.scratch)).toEqual(Array.from({ length: 7 }, () => ["session/prompt", "session/prompt.error"]).flat());
     expect(events.filter((event) => event.type === "runtime.error")).toEqual([expect.objectContaining({
       message: expect.stringContaining("this model takes at most 128 tools and this bot offers more, even with its tool lists trimmed"),
     })]);

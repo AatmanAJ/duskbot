@@ -64,23 +64,23 @@ const enabled = process.env.DUSK_UI_E2E === "1" || Boolean(resolveAgentBrowserBi
     writeFileSync(gateFile, "complete fixture work");
     await ui("wait-settle", "--timeout", "60");
     await expect.poll(snapshot, { timeout: 15_000 }).toContain("Engineer checked the fixture CSV export");
-    // the hand-off row reads "Pepper → Engineer: brief" (sentRow); its message is still named Sent to Engineer
-    const handoff = "Pepper Pepper Engineer Check the fixture CSV export";
-    expect(await snapshot()).toContain(`button "${handoff}"`);
+    // One chat per bot: the asker's own question draws no line; the answer shows inline under "Engineer replied".
+    const final = await snapshot();
+    expect(final).not.toContain("Pepper Pepper Engineer Check the fixture CSV export");
+    expect(final).toContain("replied");
+    expect(final).toContain("CSV export checked in my separate task");
     const state = await api("/api/bots");
     const parent = state.bots.find((bot: any) => bot.id === info.botId);
     const receipt = parent.messages.find((message: any) => message.tool?.name === "Sent to Engineer");
-    expect(receipt.threadRef.botId).toBe(lead.id);
-    expect(receipt.threadRef.threadId).not.toBe(lead.threadId);
+    expect(receipt.threadRef).toMatchObject({ botId: lead.id, threadId: lead.threadId });
     const screenshot = info.logPath + ".direct-coordination.png";
     await ui("screenshot", "--out", screenshot);
-    await click(handoff);
-    await expect.poll(snapshot, { timeout: 15_000 }).toContain("CSV export checked in my separate task");
-    // The request in the teammate's thread names the bot that sent it, folded under that bot's messages.
-    await click("Show messages with Pepper");
-    await expect.poll(snapshot, { timeout: 10_000 }).toMatch(/Pepper[\s\S]{0,80}Sent a request/);
+    // In the teammate's one chat the question draws no line, and its answer reads "Responded to Pepper".
+    await click("Engineer");
+    await expect.poll(snapshot, { timeout: 15_000 }).toContain("Responded to");
+    expect(await snapshot()).not.toContain("Check the fixture CSV export");
     const selected = (await api("/api/bots")).bots.find((bot: any) => bot.id === lead.id);
-    expect(selected.threadId).toBe(receipt.threadRef.threadId);
+    expect(selected.tasks).toHaveLength(1);
     const evidence = { source: parent.messages, receipt, selectedThread: selected.threadId, final: await snapshot(), screenshot };
     writeFileSync(info.logPath + ".direct-coordination.json", JSON.stringify(evidence, null, 2));
     console.log("Direct coordination UI evidence:", info.logPath + ".direct-coordination.json");

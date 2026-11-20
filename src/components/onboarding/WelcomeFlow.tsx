@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { setEmailGateDone, track } from "@/lib/analytics";
 import { openExternalLink } from "@/lib/app-links";
-import { phoneAppEnabled } from "@/lib/feature-flags";
+import { phoneAppPrompted } from "@/lib/feature-flags";
 import { cn } from "@/lib/cn";
 import { chiefFor, chiefStepFits, createChiefPatch, myDefaultBot, stageIntro, useViewerEmail } from "@/lib/default-bot";
-import { completionPatch, DEFAULT_ADMIN_ORIGIN, firstRunPatch, markWelcomeFinished, resumeBeat, showWelcome, type BeatId } from "@/lib/onboarding";
+import { completionPatch, computerAiIds, DEFAULT_ADMIN_ORIGIN, firstRunPatch, markWelcomeFinished, resumeBeat, showWelcome, type BeatId } from "@/lib/onboarding";
 import { clearWelcomeDraft, readWelcomeDraft, saveWelcomeDraft } from "@/lib/welcome-draft";
 import { looksLikeNotes } from "@/lib/assistant-notes";
+import { greetingName } from "../../../shared/greeting-name";
 import { macPermissionsBridge, permissionsMissing, type MacPermissionStatus } from "@/lib/mac-permissions";
 import { openPlaceSetup, usePlaceSetupOpen } from "@/lib/place-setup";
-import { localSetupImport } from "@/lib/setup-import";
+import { bringChosen, localFinds, useBringRun, type LocalFind } from "@/lib/first-run-import";
+import { detectSetupWithin, localSetupImport, setupImportApi } from "@/lib/setup-import";
 import { api, useStore } from "@/state/store";
+import type { SetupDetection } from "../../../shared/setup-import";
 import { useBotMove } from "../BringBots";
 import { useNotesIntake } from "../NotesWaiting";
 import { WindowDragStrip } from "../DesktopCapabilities";
@@ -18,9 +21,11 @@ import { AccountStep } from "./AccountStep";
 import { AiStep } from "./AiStep";
 import { BringStatus, BringStep } from "./BringStep";
 import { CheckoutStep, useCloudTile } from "./CheckoutStep";
-import { funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
+import { CloudBringStep, useCloudBringOffered } from "./CloudBringStep";
+import { cloudOwned, funnelSteps, nextStep, previousStep, type FunnelPath, type FunnelStep } from "./funnel";
 import { funnelAccount, type FunnelAccountState } from "./funnel-account";
 import { FunnelBar, PhoneStep, PlaceStep, WelcomeStep } from "./FunnelSteps";
+import { cloudOpenedHere } from "./late-cloud";
 import { MakingStep } from "./MakingStep";
 import { PermissionsStep } from "./PermissionsStep";
 import { useWelcomeAi } from "./welcome-ai";
@@ -46,7 +51,7 @@ async function nameFromComputer(config: Config, done: (config: NonNullable<Confi
 
 export { cloudBought } from "./funnel";
 
-/** How long the first run looks for Grok bot's bots here before it settles on what it has: the steps before the bring
+/** How long the first run looks for other AI apps here before it settles on what it has: the steps before the bring
  * step take longer than this, so it is never waited on. */
 export const FIRST_RUN_LOOK_MS = 30_000;
 
@@ -68,8 +73,8 @@ export function trapTab(event: ReactKeyboardEvent<HTMLElement>, root: HTMLElemen
   }
 }
 
-/** The first run, one calm screen at a time: the welcome, a dusk bot account, where the bots live, an AI, bots from
- * another app (only when there are some), the phone (while the phone app is offered). It ends in Dusk's chat (Dusk made the Chief of Staff where no other
+/** The first run, one calm screen at a time: the welcome, an AI, a dusk bot account, where the bots live, what other AI
+ * apps here hold and the prompt for AIs online, the phone (while the phone app is offered). It ends in Dusk's chat (Dusk made the Chief of Staff where no other
  * bot is one), where Dusk greets and asks for whatever is still missing. On dusk cloud it is the browser (account, plan and
  * checkout there, this screen waiting beside it), the AI while the Cloud is made, then the Cloud, ending in that Cloud's chat. */
 export function WelcomeFlow({
@@ -77,11 +82,14 @@ export function WelcomeFlow({
   replay = false,
   initialBeat,
   embedded = false,
+  cloudHome: onCloud = false,
 }: {
   onDone: (botId: string | null) => void;
   replay?: boolean;
   initialBeat?: BeatId;
   embedded?: boolean;
+  /** the person's own cloud, which runs this first run when the desktop app that set it up opened it */
+  cloudHome?: boolean;
 }) {
   const { state, dispatch } = useStore();
   const maus = myDefaultBot(state.bots, useViewerEmail());
@@ -105,20 +113,32 @@ export function WelcomeFlow({
     }, () => {});
     read();
     const stop = account.onChange(read);
-    return () => { alive = false; stop(); };
+    window.addEventListener("focus", read);
+    return () => { alive = false; stop(); window.removeEventListener("focus", read); };
   }, [account]);
   const desktop = !embedded && localDesktopPage() && window.duskDesktop?.remoteClient?.active !== true;
   const draft = useMemo(() => (keepsDraft ? readWelcomeDraft() : null), [keepsDraft]);
   // where the bots live, once picked; a resumed dusk cloud run past its checkout is paid for (the AI or the Cloud being made)
   const [path, setPath] = useState<FunnelPath | null>(draft?.cloud === true ? "cloud" : null);
-  const [paid, setPaid] = useState(draft?.cloud === true && (draft.beat === "ai" || draft.beat === "making"));
+  const [paid, setPaid] = useState(draft?.cloud === true && (draft.beat === "ai" || draft.beat === "bring" || draft.beat === "making"));
   const [checkoutStart, setCheckoutStart] = useState(false);
   const cloud = path === "cloud";
 
-  // the bring step is the prompt for AIs online; Grok bot's bots on this computer are looked for from the welcome on, in
-  // the background, so the step can name them. What else this computer holds waits in Settings' import page.
+  // what other AI apps left on this computer, looked for from the welcome on in the background so the bring step is ready
+  // by the time it shows; the step's prompt for AIs online is there either way
+  const cloudHome = !embedded && onCloud;
+  const cloudBring = useCloudBringOffered(cloudHome && !replay);
   const offersMove = !replay && desktop && localSetupImport(state.config?.cloudHome === true);
   const move = useBotMove({ look: offersMove, downloads: false, ms: FIRST_RUN_LOOK_MS });
+  const [detection, setDetection] = useState<SetupDetection | null | undefined>(offersMove ? undefined : null);
+  useEffect(() => {
+    if (!offersMove) return;
+    const look = detectSetupWithin(setupImportApi, FIRST_RUN_LOOK_MS);
+    void look.found.then(setDetection);
+    return look.cancel;
+  }, [offersMove]);
+  const finds = useMemo(() => (move.plan && detection !== undefined ? localFinds(move.plan, detection) : null), [move.plan, detection]);
+  const bringRun = useBringRun();
   // the Mac's permissions: read once, so the step stays put while the person grants them; offered until that read says
   // nothing is missing, which lets a run reopened on this step (Screen Recording needs that) land back on it
   const macAccess = useMemo(() => (desktop ? macPermissionsBridge() : null), [desktop]);
@@ -134,9 +154,9 @@ export function WelcomeFlow({
   const saved = initialBeat ?? draft?.beat;
   // every first run asks for an account (sign up or sign in); skipping stays possible but quiet, except where the install
   // requires one
-  const accountStep = Boolean(account) && !firstKnown.current?.signedIn;
+  const accountStep = Boolean(account) && (!firstKnown.current?.signedIn || firstKnown.current.website === "open");
   const stepsFor = (picked: FunnelPath | null) => funnelSteps({ account: accountStep, desktop, bring: offersMove,
-    path: picked, hello: window.duskDesktop?.remoteClient?.active !== true, phone: phoneAppEnabled(), permissions });
+    path: picked, hello: window.duskDesktop?.remoteClient?.active !== true, phone: phoneAppPrompted(), permissions, cloudBring, aiAsked: cloudHome && !replay });
   const steps = stepsFor(path);
 
   const [at, setAt] = useState<FunnelStep>(() => resumeBeat(steps, saved));
@@ -187,13 +207,13 @@ export function WelcomeFlow({
       if (keepsDraft) clearWelcomeDraft();
       onDone(botId);
       try {
-        const patch = replay ? completionPatch() : firstRunPatch(record.current, new Date());
+        const patch = replay ? completionPatch() : cloudOpenedHere(firstRunPatch(record.current, new Date(), { cloudHome }), path === "cloud", record.current?.hintsSeen ?? []);
         const config = await api("/api/config", { method: "PUT", body: JSON.stringify(patch), signal: AbortSignal.timeout(10_000) });
         dispatch({ type: "configStatus", config });
       } catch {
       }
     },
-    [at, path, dispatch, onDone, replay, embedded, keepsDraft],
+    [at, path, dispatch, onDone, replay, embedded, keepsDraft, cloudHome],
   );
 
   // where it fits, Dusk becomes the Chief of Staff and greets in its chat, with no screen to ask
@@ -214,13 +234,6 @@ export function WelcomeFlow({
   const next = useCallback(() => go(nextStep(steps, at), "next"), [go, steps, at]);
   const back = previousStep(steps, at, { paid });
 
-  // signing in in the browser comes back here by itself
-  const signedOutSeen = useRef(false);
-  useEffect(() => {
-    if (at !== "account" || !known) return;
-    if (!known.signedIn) signedOutSeen.current = true;
-    else if (signedOutSeen.current) { signedOutSeen.current = false; next(); }
-  }, [at, known, next]);
 
   // dusk cloud: straight to the browser for the account, the plan and the checkout, with this screen waiting beside it.
   // Paid, the AI comes next while the Cloud is made. A window that can't buy here opens the plans page and goes on.
@@ -243,6 +256,27 @@ export function WelcomeFlow({
     setFrom("next");
     setAt("ai");
   }, []);
+
+  // an account that already has dusk cloud (bought on the website, or earlier) is never asked where the bots live: on
+  // reaching the place or the checkout it goes on as if that checkout had just completed
+  const cloudAccount = desktop && !replay ? window.duskDesktop?.cloudAccount : undefined;
+  const [owned, setOwned] = useState(false);
+  useEffect(() => {
+    if (!cloudAccount || paid) return;
+    let alive = true;
+    const seen = (next: Parameters<typeof cloudOwned>[0]) => { if (alive && cloudOwned(next)) setOwned(true); };
+    void cloudAccount.state().then(seen, () => {});
+    const stop = cloudAccount.onState(seen);
+    return () => { alive = false; stop(); };
+  }, [cloudAccount, paid]);
+  useLayoutEffect(() => {
+    if (!owned || paid || (at !== "place" && at !== "checkout")) return;
+    track("onboarding_cloud", { action: "owned" });
+    setPath("cloud");
+    setPaid(true);
+    setFrom("next");
+    setAt("ai");
+  }, [owned, paid, at]);
   // this Mac, from the place step or from the browser's waiting screen: on to the step after the place
   const toMac = () => {
     setPath("mac");
@@ -253,6 +287,36 @@ export function WelcomeFlow({
   };
   const chooseMac = () => { track("onboarding_place", { choice: "mac" }); toMac(); };
 
+  // signing in in the browser comes back here by itself. A new account first takes the website's own first steps (name,
+  // plan) and this step waits on them; then the app carries on from what was picked there: this computer goes past the
+  // place, a plan waits on its checkout here, and a paid one skips both (owned, above)
+  const signedOutSeen = useRef(false);
+  const websiteSeen = useRef(false);
+  useEffect(() => {
+    if (at !== "account" || !known) return;
+    if (!known.signedIn) { signedOutSeen.current = true; return; }
+    if (known.website === "open") { websiteSeen.current = true; return; }
+    if (!signedOutSeen.current && !websiteSeen.current) return;
+    signedOutSeen.current = false;
+    const picked = websiteSeen.current && desktop ? known.website : undefined;
+    websiteSeen.current = false;
+    if (picked === "free") { track("onboarding_place", { choice: "mac", via: "website" }); toMac(); return; }
+    if (picked === "cloud" && window.duskDesktop?.cloudAccount) {
+      track("onboarding_place", { choice: "cloud", via: "website" });
+      setPath("cloud");
+      setCheckoutStart(false);
+      setFrom("next");
+      setAt("checkout");
+      return;
+    }
+    next();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [at, known, next]);
+
+  const bring = (find: LocalFind) => {
+    track("onboarding_bring", { apps: 1 });
+    void bringChosen([find], { dispatch, firstBotId: maus?.id ?? null, aboutMe: state.config?.profile?.aboutMe ?? "", team: Boolean(state.config?.team) });
+  };
   // notes from another AI pasted on any step come in from here too (the bring step takes them itself, and says so there)
   const takeNotes = useNotesIntake();
   const onPaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
@@ -279,7 +343,7 @@ export function WelcomeFlow({
   let body: ReactNode;
   switch (at) {
     case "welcome":
-      body = <WelcomeStep onStart={next} />;
+      body = <WelcomeStep onStart={next} cloud={cloudHome ? { name: greetingName(state.config?.profile?.name), picture: state.config?.profile?.avatarUrl || undefined } : undefined} />;
       break;
     case "account":
       body = account ? <AccountStep account={account} known={known}
@@ -294,10 +358,10 @@ export function WelcomeFlow({
       body = <CheckoutStep start={checkoutStart} onPaid={cloudPaid} onMac={toMac} />;
       break;
     case "ai":
-      body = <AiStep tested={tested} cloud={cloud} auto={from === "next"} onNext={(how) => { track("onboarding_ai", { action: how }); next(); }} />;
+      body = <AiStep tested={tested} cloud={cloud} computerAis={cloudHome ? computerAiIds(state.config?.onboarding) : []} onNext={(how) => { track("onboarding_ai", { action: how }); next(); }} />;
       break;
     case "bring":
-      body = <BringStep grokWaiting={move.plan?.grokWaiting ?? []} onNext={next} />;
+      body = cloudHome ? <CloudBringStep onNext={next} /> : <BringStep finds={finds} grokWaiting={move.plan?.grokWaiting ?? []} run={bringRun} onBring={bring} onNext={next} />;
       break;
     case "phone":
       body = <PhoneStep onNext={next} />;
@@ -333,8 +397,8 @@ export function WelcomeFlow({
       <div key={at} data-from={from} className="place-step relative flex min-h-full w-full flex-col">
         {body}
       </div>
-      {/* notes pasted on a step say how they went at its foot (the bring step says so itself) */}
-      <BringStatus line={notesLine} />
+      {/* the bring step says how its own bringing in went; every later step keeps the line at its foot */}
+      <BringStatus working={at !== "bring" && bringRun.kind === "working"} line={notesLine ?? (at !== "bring" && bringRun.kind === "done" ? bringRun.line : null)} />
     </div>
   );
 }
