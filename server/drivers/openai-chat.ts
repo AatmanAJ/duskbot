@@ -27,7 +27,7 @@ import { TextCallHoldback, textToolCalls } from "./chat-text-tool-calls.ts";
 import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream, responsesRequest, routeRefusal, type ModelRoute, type ResponseItem } from "./openai-responses.ts";
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
-import { carriedSteps, carriedWorkFile, chatLimitFacts, createCarriedWork } from "./openai-chat-carry.ts";
+import { carriedSteps, carriedWorkFile, chatLimitFacts, sharedCarriedWork } from "./openai-chat-carry.ts";
 import { CORRECTIVE_ROUND, LOCAL_CORRECTIVE_ROUNDS, announcesAction, ownsFailure, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
@@ -225,7 +225,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     if (completion.responseOutput) responseOutputs.set(reply, completion.responseOutput);
     return reply;
   };
-  const delivered = new Map<string, DeliveredUserMessage[]>(), carried = createCarriedWork({ file: carriedWorkFile() });
+  const delivered = new Map<string, DeliveredUserMessage[]>(), carried = sharedCarriedWork(carriedWorkFile());
   /** Not cleared on `sessionReset`: with no cursor the harness sends it on nearly every turn. */
   const sessionGrants = new Map<string, Set<string>>();
 
@@ -310,7 +310,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         }
         return new Error(message);
       };
-      if (!response.ok) throw withRetryAfter(failure(response.status, await response.text().catch(() => "")), response.headers);
+      if (!response.ok) { const body = await response.text().catch(() => ""); throw withRetryAfter(failure(response.status, body), response.headers, Date.now(), response.status === 429 ? body : ""); }
       noteKeyAccepted(options.apiUrl, options.apiKey);
       if (route === "responses") {
         const reply = await readResponsesStream(response.body, { reasoning: Boolean(options.reasoning), onBytes: resetIdleTimer, onDelta: (text, kind) => onDelta?.(text, kind), fail: failure });
@@ -519,7 +519,8 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     const turnId = newId();
     const abort = new AbortController();
     const messages = messagesFor(turn);
-    messages.splice(-1, 0, ...carried.take(turn.threadId, turn.text));
+    const priorSteps = carried.take(turn.threadId, turn.text);
+    messages.splice(-1, 0, ...priorSteps);
     const request = messages.at(-1)!;
     const retainImages = chatImageBudget();
     for (const message of messages) retainImages(message.content);
@@ -884,7 +885,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         stopReason = abort.signal.aborted ? "interrupted" : stopReason ?? "error";
         failure = safeText(asError(inPlainWords(value)).message).slice(0, 2_000); failureCode = failureCodeOf(value);
         limitFacts = abort.signal.aborted ? null : chatLimitFacts(value);
-        if (limitFacts && seenCalls.size) carried.keep(turn.threadId, carriedSteps(messages, messages.indexOf(request)));
+        if (limitFacts) carried.keep(turn.threadId, carriedSteps(messages, Math.max(-1, messages.indexOf(request) - priorSteps.length - 1)));
       } finally {
         turnEntry.ending = true;
         approval.close();

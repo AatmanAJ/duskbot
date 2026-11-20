@@ -1,4 +1,5 @@
 import { chatLimitFacts } from "./drivers/openai-chat-carry.ts";
+import { isLimitResume, TAKEOVER_CAUSE } from "./limit-resume.ts";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -217,6 +218,33 @@ describe("quota switch", () => {
       expect(notices()).toContainEqual({ name: "notice: continuing on Codex after hitting the usage limit", ok: true });
       expect(told).toEqual([{ botId: bot.id, from: defaultSelection(), facts: { scope: "engine", backup: CODEX } }]);
       expect(moves, "so it goes back once the limit resets").toEqual([{ threadId: bot.threadId, from: defaultSelection(), to: CODEX }]);
+    });
+
+    it("carries a limited turn that already ran steps on with the backup from where it was cut off, never sending the request again to start over", async () => {
+      const carryOn = vi.fn<NonNullable<QuotaSwitchDeps["carryOn"]>>(async () => undefined);
+      deps.turnStops = { failureCause: () => cause, read: () => ({ acted: true, flags: { limit: "engine" } }) };
+      quota = createQuotaSwitch({ ...deps, carryOn });
+      const messageId = said("rename every file in the folder");
+      await limited({ messageId });
+      expect(thread().modelSelection).toEqual(CODEX);
+      expect(resend).not.toHaveBeenCalled();
+      expect(carryOn).toHaveBeenCalledTimes(1);
+      const [, threadId, note, request] = carryOn.mock.calls[0]!;
+      expect(threadId).toBe(bot.threadId);
+      expect(isLimitResume(note)).toBe(true);
+      expect(note).toContain(TAKEOVER_CAUSE);
+      expect(note).toContain('"asked"');
+      expect(request).toBe("asked");
+      expect(notices()).toContainEqual({ name: "notice: continuing on Codex after hitting the usage limit", ok: true });
+    });
+
+    it("sends the request again as it was when the limited turn had done nothing yet", async () => {
+      const carryOn = vi.fn<NonNullable<QuotaSwitchDeps["carryOn"]>>(async () => undefined);
+      deps.turnStops = { failureCause: () => cause, read: () => ({ acted: false, flags: { limit: "engine" } }) };
+      quota = createQuotaSwitch({ ...deps, carryOn });
+      await limited({ messageId: said("plan my week") });
+      expect(carryOn).not.toHaveBeenCalled();
+      expect(resend).toHaveBeenCalledTimes(1);
     });
 
     it("keeps the failure card down while a backup takes the turn, so no error shows for a reply that carries on", async () => {
@@ -480,6 +508,20 @@ describe("quota switch", () => {
         expect(thread().modelSelection.instanceId).toBe("cursor");
         expect(resend).toHaveBeenCalledTimes(1);
         expect(holds).toEqual([]);
+      });
+
+      it("set to ask: the free model on the card picks the limited turn up where it was cut off", async () => {
+        mode = "ask";
+        free = CURSOR;
+        const carryOn = vi.fn<NonNullable<QuotaSwitchDeps["carryOn"]>>(async () => undefined);
+        quota = createQuotaSwitch({ ...deps, carryOn });
+        await limited({ messageId: said("Draft the reply") });
+        expect(await answer(pending()!, "Cursor")).toBe("answered");
+        expect(thread().modelSelection.instanceId).toBe("cursor");
+        expect(resend).not.toHaveBeenCalled();
+        expect(carryOn).toHaveBeenCalledTimes(1);
+        expect(isLimitResume(carryOn.mock.calls[0]![2])).toBe(true);
+        expect(carryOn.mock.calls[0]![3]).toBe("Draft the reply");
       });
 
       it("set to ask with no free model to offer: it waits without asking", async () => {

@@ -1,7 +1,6 @@
 // A chat turn that a usage or rate limit cut off after it ran tools: the limit is reported the way every engine reports
 // one, so the turn waits for the reset (or a backup the person chose takes it) through the shared limit hold, and the
-// steps it ran ride into this conversation's next turn on this engine, so the resumed turn carries on instead of
-// starting over.
+// steps it ran ride into the turn that carries it on, on this engine or a chat-engine backup, instead of starting over.
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -22,37 +21,39 @@ export interface CarriedMessage {
 export function chatLimitFacts(error: unknown, now = Date.now()): { limit: "engine"; limitResetsAt?: number } | null {
   const reason = classifyError(error instanceof Error ? error : { text: String(error) }).reason;
   if (reason !== "rate_limited" && reason !== "quota") return null;
-  const asked = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
-  const after = typeof asked === "number" && asked > 0 ? asked : reason === "rate_limited" ? RATE_LIMIT_WAIT_MS : undefined;
-  return { limit: "engine", ...(after ? { limitResetsAt: now + after } : {}) };
+  const { retryAfterMs: asked, limitResetAt: named } = (error ?? {}) as { retryAfterMs?: unknown; limitResetAt?: unknown };
+  const at = typeof asked === "number" && asked > 0 ? now + asked : typeof named === "number" && named > now ? named
+    : reason === "rate_limited" ? now + RATE_LIMIT_WAIT_MS : undefined;
+  return { limit: "engine", ...(at ? { limitResetsAt: at } : {}) };
 }
 
 const RESULT_MAX = 2_000;
 const RATE_LIMIT_WAIT_MS = 60_000;
-const CARRY_MAX = 24_000;
+const CARRY_MAX = 48_000;
 const KEEP_MS = 8 * 24 * 60 * 60_000;
 const THREADS_MAX = 64;
 
-/** the turn's tool calls and their results after `from` (the turn's own request), whole pairs only, bounded */
+/** the tool calls and their results after `from`, whole pairs only, bounded: past the bound the newest pairs stay */
 export function carriedSteps(messages: ReadonlyArray<{ role: string; content?: unknown; tool_calls?: ChatToolCall[]; tool_call_id?: string }>, from: number): CarriedMessage[] {
-  const out: CarriedMessage[] = [];
-  let bytes = 0;
+  const pairs: CarriedMessage[][] = [];
   for (let index = from + 1; index < messages.length; index++) {
     const message = messages[index]!;
     if (message.role !== "assistant" || !message.tool_calls?.length) continue;
     const ids = new Set(message.tool_calls.map((call) => call.id));
     const results = messages.slice(index + 1).filter((entry) => entry.role === "tool" && entry.tool_call_id && ids.has(entry.tool_call_id));
     if (results.length !== ids.size) break;
-    const pair: CarriedMessage[] = [
+    pairs.push([
       { role: "assistant", content: typeof message.content === "string" ? message.content : null, tool_calls: message.tool_calls },
       ...results.map((entry): CarriedMessage => ({ role: "tool", tool_call_id: entry.tool_call_id!, content: String(entry.content ?? "").slice(0, RESULT_MAX) })),
-    ];
-    const size = Buffer.byteLength(JSON.stringify(pair));
+    ]);
+  }
+  let bytes = 0, first = pairs.length;
+  for (; first > 0; first--) {
+    const size = Buffer.byteLength(JSON.stringify(pairs[first - 1]));
     if (bytes + size > CARRY_MAX) break;
     bytes += size;
-    out.push(...pair);
   }
-  return out;
+  return pairs.slice(first).flat();
 }
 
 /** where the steps wait: next to the held turns (limit-held-turns.json), so a restart during the wait keeps them */
@@ -75,8 +76,9 @@ function load(file: string | undefined): Map<string, Kept> {
   }
 }
 
-/** Per conversation, the steps a limited turn ran. The next turn there on this engine takes them once: only the limit
- * hold's resume gets them; any other turn (the person moved on, or a backup already finished the work) clears them. */
+/** Per conversation, the steps a limited turn ran. The next chat-engine turn there takes them once: only the turn that
+ * carries the limited one on gets them; any other turn (the person moved on, or a backup already finished the work)
+ * clears them. */
 export function createCarriedWork(options: { file?: string; now?: () => number } = {}) {
   const now = options.now ?? Date.now;
   const kept = load(options.file);
@@ -104,4 +106,15 @@ export function createCarriedWork(options: { file?: string; now?: () => number }
       return isLimitResume(text) && now() - entry.at <= KEEP_MS ? entry.steps : [];
     },
   };
+}
+
+export type CarriedWork = ReturnType<typeof createCarriedWork>;
+
+const sharedWork = new Map<string, CarriedWork>();
+
+/** one store per file for every chat engine, so a backup takes the steps and no engine's save drops another's */
+export function sharedCarriedWork(file: string): CarriedWork {
+  let work = sharedWork.get(file);
+  if (!work) sharedWork.set(file, work = createCarriedWork({ file }));
+  return work;
 }

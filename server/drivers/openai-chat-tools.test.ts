@@ -22,6 +22,8 @@ import { CerebrasDriver } from "./cerebras.ts";
 import { MinimaxDriver } from "./minimax.ts";
 import { OpenAICompatDriver } from "./openai-compat.ts";
 import { MAX_PARALLEL_READS } from "./chat-tool-batches.ts";
+import { resumeNote } from "../host/limit-hold.ts";
+import { TAKEOVER_CAUSE } from "../limit-resume.ts";
 
 interface ChatRequest {
   messages: Array<{
@@ -1332,6 +1334,61 @@ describe("structured tool execution boundaries", () => {
     expect(resumed.at(-1)).toMatchObject({ role: "user" });
     expect(resumed.at(-3)).toMatchObject({ role: "assistant", tool_calls: [expect.objectContaining({ id: "call_write" })] });
     expect(resumed.at(-2)).toMatchObject({ role: "tool", tool_call_id: "call_write" });
+  });
+
+  it("keeps every step through limits in a row: a resume refused at once and one that ran more steps both carry what came before", async () => {
+    const RESUME = "[dusk bot: your previous turn here was cut off because Fixture's usage limit was reached. The limit has reset. Carry on.]";
+    const limit = (response: ServerResponse) => { response.writeHead(429, { "content-type": "application/json", "retry-after": "120" }); response.end('{"error":{"message":"Rate limit reached"}}'); };
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) sse(response, [chunk({ tool_calls: [toolCall("audit_write", '{"name":"first","value":"done"}', "call_a")] }, "tool_calls")]);
+      else if (round === 4) sse(response, [chunk({ tool_calls: [toolCall("audit_write", '{"name":"second","value":"done"}', "call_b")] }, "tool_calls")]);
+      else if (round === 6) sse(response, [chunk({ content: "Both receipts are stored." }, "stop")]);
+      else limit(response);
+    });
+    const turn = async (text?: string) => {
+      f.recorder.events.length = 0;
+      await f.start({ approvalMode: "full", ...(text ? { text } : {}) });
+      return f.completed();
+    };
+    expect(await turn()).toMatchObject({ ok: false });
+    expect(await turn(RESUME)).toMatchObject({ ok: false });
+    expect(f.recorder.events.find((event) => event.type === "runtime.error")).toMatchObject({ limit: "engine" });
+    expect(await turn(RESUME)).toMatchObject({ ok: false });
+    expect(await turn(RESUME)).toMatchObject({ ok: true });
+    expect(f.effects().map((effect) => effect.name)).toEqual(["first", "second"]);
+    const last = f.requests[5]!.messages;
+    expect(last.at(-1)).toMatchObject({ role: "user" });
+    expect(last.slice(-5, -1)).toMatchObject([
+      { role: "assistant", tool_calls: [expect.objectContaining({ id: "call_a" })] }, { role: "tool", tool_call_id: "call_a" },
+      { role: "assistant", tool_calls: [expect.objectContaining({ id: "call_b" })] }, { role: "tool", tool_call_id: "call_b" },
+    ]);
+  });
+
+  it("hands a limited turn's steps to a chat-engine backup that takes it over", async () => {
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
+      else { response.writeHead(429, { "content-type": "application/json", "retry-after": "120" }); response.end('{"error":{"message":"Rate limit reached"}}'); }
+    });
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: false });
+    const backup = await fixture((_body, response) => sse(response, [chunk({ content: "The receipt is stored." }, "stop")]), "grok");
+    await backup.start({ approvalMode: "full", threadId: f.threadId, text: resumeNote({ engineName: "Fixture", request: "Store the synthetic receipt." }, null, TAKEOVER_CAUSE) });
+    expect(await backup.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toHaveLength(1);
+    const taken = backup.requests[0]!.messages;
+    expect(taken.slice(-3, -1)).toMatchObject([{ role: "assistant", tool_calls: [expect.objectContaining({ id: "call_write" })] }, { role: "tool", tool_call_id: "call_write" }]);
+  });
+
+  it("waits for the reset an OpenRouter rate limit names in its body instead of retrying into it", async () => {
+    const resetAt = Date.now() + 3 * 60 * 60_000;
+    const f = await fixture((_body, response) => {
+      response.writeHead(429, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "Rate limit exceeded: free-models-per-day.", code: 429, metadata: { headers: { "X-RateLimit-Limit": "50", "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(resetAt) } } } }));
+    });
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: false });
+    expect(f.requests).toHaveLength(1);
+    expect(f.recorder.events.find((event) => event.type === "runtime.error")).toMatchObject({ limit: "engine", limitResetsAt: resetAt });
   });
 
   it("gives up on a provider that keeps refusing after a step ran, without repeating the step", async () => {
