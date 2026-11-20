@@ -1,6 +1,7 @@
 // The subscribers page: one row per person with a subscription, built for watching the trial flow (who is in a trial, who
 // pays, who is leaving and why), what each of them does in the app, and the launch cohort's money.
 import { createHash } from "node:crypto";
+import { cancelledFeedback, type RetentionOutcome } from "../../../../shared/billing-api.ts";
 import type { StoredEvent } from "../analytics/sink.ts";
 import type { PersonDay, SnapshotRow } from "../analytics/usage.ts";
 import type { BillingState, StoredSubscription } from "../billing/store.ts";
@@ -163,7 +164,7 @@ export function subscriberRows(input: SubscribersInput): SubscriberRow[] {
   }
   const accounts = new Map(input.accounts.map(account => [account.id, account]));
   const reasons = new Map<string, string>();
-  for (const row of [...input.billing.feedback].sort((a, b) => a.at - b.at)) reasons.set(row.subscriptionId ?? row.accountId, [row.answer, row.expected, row.improve].filter(Boolean).join(": "));
+  for (const row of input.billing.feedback.filter(cancelledFeedback).sort((a, b) => a.at - b.at)) reasons.set(row.subscriptionId ?? row.accountId, [row.answer, row.expected, row.improve].filter(Boolean).join(": "));
   const disputed = openDisputes(input.billing.ledger ?? []);
   const country = new Map(input.billing.customers.map(row => [row.accountId, row.attribution?.country ?? null]));
   const rows: SubscriberRow[] = [];
@@ -200,14 +201,14 @@ const STEP_LABEL: Record<string, (event: StoredEvent) => string | null> = {
   billing: event => typeof event.props.type === "string" ? event.props.type.replace(/[._]/g, " ") : null,
   cancel_flow: event => event.props.outcome === "cancelled" ? `cancelled (${String(event.props.reason ?? "no reason")})` : null,
 };
-export function timelineOf(events: readonly StoredEvent[], subs: readonly Sub[], feedback: ReadonlyArray<{ at: number; answer: string }>, accountCreated: number, now: number): Step[] {
+export function timelineOf(events: readonly StoredEvent[], subs: readonly Sub[], feedback: ReadonlyArray<{ at: number; answer: string; outcome?: RetentionOutcome }>, accountCreated: number, now: number): Step[] {
   const steps: Step[] = [{ at: accountCreated, kind: "account", label: "account made" }];
   for (const event of events) { const label = STEP_LABEL[event.name]?.(event); if (label) steps.push({ at: event.at, kind: event.name, label }); }
   for (const sub of subs) {
     steps.push({ at: sub.createdAt, kind: "subscription", label: sub.trialEndsAt ? `trial started (${Math.max(1, Math.ceil((sub.trialEndsAt - sub.createdAt) / DAY))} days)` : "subscription started" });
     if (sub.trialEndsAt && sub.trialEndsAt <= now && bucketOf(sub, now) !== "cancelled") steps.push({ at: sub.trialEndsAt, kind: "trial_end", label: "trial ended, first charge" });
   }
-  for (const row of feedback) steps.push({ at: row.at, kind: "cancel_survey", label: `cancel survey: ${row.answer}` });
+  for (const row of feedback) steps.push({ at: row.at, kind: "cancel_survey", label: cancelledFeedback(row) ? `cancel survey: ${row.answer}` : `stayed from the cancel flow (${row.outcome}): ${row.answer}` });
   return steps.sort((a, b) => a.at - b.at);
 }
 

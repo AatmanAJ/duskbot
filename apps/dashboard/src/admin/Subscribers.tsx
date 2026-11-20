@@ -31,7 +31,7 @@ interface Detail {
   timeline: Array<{ at: number; kind: string; label: string }>;
   usage: { features: Count[]; engines: Count[]; failures: Count[] };
   reports: Array<{ id: string; source: string; description: string; appVersion: string; platform: string; status: string; fixedIn: string | null; receivedAt: number }>;
-  cancel: Array<{ answer: string; expected: string | null; improve: string | null; at: number }>;
+  cancel: Array<{ answer: string; expected: string | null; improve: string | null; offer: string | null; outcome: string; at: number }>;
 }
 
 const FILTERS: Array<{ value: Filter; label: string }> = [
@@ -138,7 +138,7 @@ function SubscriberSheet({ id, onClose }: { id: string; onClose(): void }) {
           </div>
           <Section title="their feedback">
             {data.cancel.map((item) => (
-              <p key={item.at} className="mb-2 rounded-[14px] bg-card px-3 py-2 text-13 text-ink">cancel survey, {day(item.at)}: <b className="font-medium">{item.answer}</b>{item.expected ? ` · expected: ${item.expected}` : ""}{item.improve ? ` · improve: ${item.improve}` : ""}</p>
+              <p key={item.at} className="mb-2 rounded-[14px] bg-card px-3 py-2 text-13 text-ink">{item.outcome === "cancelled" ? "cancel survey" : `cancel flow, ${item.outcome}`}, {day(item.at)}: <b className="font-medium">{item.answer}</b>{item.offer ? ` · offered: ${item.offer}` : ""}{item.expected ? ` · expected: ${item.expected}` : ""}{item.improve ? ` · improve: ${item.improve}` : ""}</p>
             ))}
             {data.reports.map((report) => (
               <div key={report.id} className="mb-2 rounded-[14px] bg-card px-3 py-2">

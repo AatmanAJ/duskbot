@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { CANCEL_ANSWERS, RETENTION_OUTCOMES, RETENTION_STEPS } from "../../../../shared/billing-api.ts";
+import { CANCEL_ANSWERS, RETENTION_OFFERS, RETENTION_OUTCOMES, RETENTION_STEPS } from "../../../../shared/billing-api.ts";
 import type { CancelSurvey, Cart, CartLine, LicenseView, RetentionInput, SubscriptionStatus } from "../../../../shared/billing-api.ts";
 import type { DesktopPlan, OrderInput } from "../clouds/types.ts";
 import { createJsonStore } from "./json-store.ts";
@@ -147,7 +147,7 @@ const valid = shape({
   webhookEvents: array(shape({ id: str, at: int, type: str })),
   retention: optional(array(shape({ id: str, accountId: str, subscriptionId: str, reason: one(...CANCEL_ANSWERS), step: one(...RETENTION_STEPS), outcome: one(...RETENTION_OUTCOMES), at: int }))),
   retentionDiscounts: optional(array(shape({ id: str, accountId: str, subscriptionId: str, code: str, percent: int, cycles: int, at: int }))),
-  feedback: array(shape({ id: str, accountId: str, cloudId: nullable(str), subscriptionId: nullable(str), answer: one(...CANCEL_ANSWERS), expected: optional(str), improve: optional(str), at: int })),
+  feedback: array(shape({ id: str, accountId: str, cloudId: nullable(str), subscriptionId: nullable(str), answer: one(...CANCEL_ANSWERS), expected: optional(str), improve: optional(str), offer: optional(one(...RETENTION_OFFERS)), outcome: optional(one(...RETENTION_OUTCOMES)), at: int })),
 });
 function validState(value: unknown): value is BillingState {
   if (!valid(value)) return false;

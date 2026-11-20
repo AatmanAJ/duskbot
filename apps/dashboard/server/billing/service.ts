@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { CANCEL_ANSWERS, CLOUD_SWATCHES, RETENTION_OUTCOMES, RETENTION_STEPS, checkoutSource } from "../../../../shared/billing-api.ts";
+import { CANCEL_ANSWERS, CLOUD_SWATCHES, RETENTION_OFFERS, RETENTION_OUTCOMES, RETENTION_STEPS, checkoutSource } from "../../../../shared/billing-api.ts";
 import type { CancelAnswer, RetentionInput, RetentionView, FunnelRow, FunnelView, DeletionBlocker, BillingErrorCode, BillingOverview, CancelSurvey, Cart, ChangePreview, ChangeTiming, CheckoutAnswer, CheckoutItem, InvoicePage, LicenseCheck, LicenseView, SubscriptionView } from "../../../../shared/billing-api.ts";
 import type { CloudsService, DesktopPlan } from "../clouds/types.ts";
 import { paidCloud } from "../clouds/service.ts";
@@ -65,8 +65,9 @@ function guarded<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) =>
 function surveyOf(input: unknown): CancelSurvey {
   if (!input || typeof input !== "object" || Array.isArray(input)) fail(400, "invalid_request");
   const value = input as Record<string, unknown>;
-  if (!CANCEL_ANSWERS.includes(value.answer as CancelSurvey["answer"]) || Object.keys(value).some(key => !["answer", "expected", "improve"].includes(key))) fail(400, "invalid_request");
-  const survey: CancelSurvey = { answer: value.answer as CancelSurvey["answer"] };
+  if (!CANCEL_ANSWERS.includes(value.answer as CancelSurvey["answer"]) || Object.keys(value).some(key => !["answer", "expected", "improve", "offer"].includes(key))) fail(400, "invalid_request");
+  if (value.offer !== undefined && !RETENTION_OFFERS.includes(value.offer as NonNullable<CancelSurvey["offer"]>)) fail(400, "invalid_request");
+  const survey: CancelSurvey = { answer: value.answer as CancelSurvey["answer"], ...(value.offer === undefined ? {} : { offer: value.offer as NonNullable<CancelSurvey["offer"]> }) };
   for (const key of ["expected", "improve"] as const) if (value[key] !== undefined) {
     if (typeof value[key] !== "string" || value[key].trim().length > 2000) fail(400, "invalid_request");
     survey[key] = value[key].trim();
@@ -910,7 +911,7 @@ export function createBillingService(options: BillingServiceOptions) {
       let sub = editable(account.id, subscriptionId);
       if (!cancel && (sub.status !== "active" || sub.currentPeriodEnd === null || sub.currentPeriodEnd <= now())) fail(409, "not_subscribed");
       const answer = survey === undefined ? undefined : surveyOf(survey);
-      if (answer) saveFeedback(account, sub.cloudId, sub.id, answer);
+      if (answer) saveFeedback(account, sub.cloudId, sub.id, cancel ? { ...answer, outcome: "cancelled" } : answer);
       await provider.cancelAtPeriodEnd(sub.providerSubscriptionId!, cancel);
       sub = owned(account.id, subscriptionId);
       if (sub.status === "ended" || !cancel && (sub.status !== "active" || sub.currentPeriodEnd === null || sub.currentPeriodEnd <= now())) fail(409, "not_subscribed");
@@ -937,8 +938,12 @@ export function createBillingService(options: BillingServiceOptions) {
   function retentionStep(account: AccountRef, subscriptionId: string, input: unknown) {
     const sub = owned(account.id, subscriptionId), value = input as Record<string, unknown> | null;
     if (!value || typeof value !== "object" || !CANCEL_ANSWERS.includes(value.reason as CancelAnswer) || !RETENTION_STEPS.includes(value.step as RetentionInput["step"])
-      || !RETENTION_OUTCOMES.includes(value.outcome as RetentionInput["outcome"])) fail(400, "invalid_request");
-    saveRetention(account, sub.id, { reason: value.reason as CancelAnswer, step: value.step as RetentionInput["step"], outcome: value.outcome as RetentionInput["outcome"] });
+      || !RETENTION_OUTCOMES.includes(value.outcome as RetentionInput["outcome"]) || (value.offer !== undefined && !RETENTION_OFFERS.includes(value.offer as NonNullable<RetentionInput["offer"]>))
+      || (value.note !== undefined && (typeof value.note !== "string" || value.note.trim().length > 2000))) fail(400, "invalid_request");
+    const entry = { reason: value.reason as CancelAnswer, step: value.step as RetentionInput["step"], outcome: value.outcome as RetentionInput["outcome"] };
+    saveRetention(account, sub.id, entry);
+    const note = typeof value.note === "string" ? value.note.trim() : "";
+    if (entry.outcome !== "shown") saveFeedback(account, sub.cloudId, sub.id, { answer: entry.reason, ...(note ? { improve: note } : {}), ...(value.offer ? { offer: value.offer as NonNullable<RetentionInput["offer"]> } : {}), outcome: entry.outcome });
     return { ok: true as const };
   }
   const discountable = (sub: StoredSubscription) => sub.status === "active" && !sub.cancelAtPeriodEnd && !sub.pendingChange && !sub.scheduledChange && sub.cart.interval === "month" && sub.totalCents > 0
@@ -961,6 +966,7 @@ export function createBillingService(options: BillingServiceOptions) {
       state.retentionDiscounts!.push({ id: id("disc"), accountId: account.id, subscriptionId: sub.id, code, ...RETENTION_DISCOUNT, at: now() });
       store.commit();
       saveRetention(account, sub.id, { reason: reason as CancelAnswer, step: "help", outcome: "discount" });
+      saveFeedback(account, sub.cloudId, sub.id, { answer: reason as CancelAnswer, offer: "discount", outcome: "discount" });
       return { subscription: view(sub), retention: retentionView(account.id) };
     });
   }

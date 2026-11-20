@@ -488,7 +488,7 @@ export function createAdmin(options: AdminOptions) {
       account: { id, handle: row.handle, email: account.email, name: account.name ?? null, createdAt: account.createdAt }, row, daily,
       timeline: timelineOf(events, subs, feedback, account.createdAt, time), usage: usageOf(events),
       reports: reports.map(({ id: reportId, source, description, appVersion, platform, status, fixedIn, receivedAt }) => ({ id: reportId, source, description, appVersion, platform, status, fixedIn, receivedAt })),
-      cancel: feedback.map(({ answer, expected, improve, at }) => ({ answer, expected: expected ?? null, improve: improve ?? null, at })),
+      cancel: feedback.map(({ answer, expected, improve, offer, outcome, at }) => ({ answer, expected: expected ?? null, improve: improve ?? null, offer: offer ?? null, outcome: outcome ?? "cancelled", at })),
     };
   }
 
