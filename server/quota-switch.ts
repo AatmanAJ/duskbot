@@ -134,6 +134,8 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
   const answering = new Map<string, Promise<QuotaAnswer>>();
   /** Messages already sent again after a provider failure: a second one on the backup is reported, not rerun. */
   const rerun = new Set<string>();
+  /** Messages already sent once more on the same AI after it quit or failed unreadably. */
+  const retried = new Set<string>();
 
   const notice = (threadId: string, text: string, ok: boolean, setup = false): void => {
     // `notice:` makes it a status row every client shows, never a folded tool step; `setup`: signing in fixes it.
@@ -238,16 +240,20 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
     return true;
   };
 
-  /** An engine that quit before it showed or did anything gets the person's message once more, on the same AI, with no
-   * card and no line; a second crash of the same message fails as before. */
+  /** An engine that quit, or failed in words nobody could read, before it showed or did anything gets the person's
+   * message once more, on the same AI, with no card and no line; a second failure of the same message goes to the bot's
+   * backup, or fails as before. */
   const retriedCrash = async (bot: BotRecord, threadId: string, internal: boolean, request: QuotaRequest | undefined,
-    stop: { acted?: boolean } | undefined, cause: string | undefined): Promise<boolean> => {
+    stop: { acted?: boolean; flags?: { limit?: string; limitResetsAt?: number } } | undefined, cause: string | undefined, stopReason: string | null | undefined): Promise<boolean> => {
     if (!enabled() || internal || !stop || stop.acted || !request?.messageId || request.stopped || request.origin?.kind !== "user") return false;
-    if (failedReplyReason(cause ?? "", {}) !== "cli_exit" || rerun.has(request.messageId)) return false;
+    const reason = failedReplyReason(cause ?? "", stop.flags ?? {});
+    const quietly = reason === "cli_exit" || (reason === undefined && (!cause || providerFailure(cause, stopReason)));
+    if (!quietly || retried.has(request.messageId) || rerun.has(request.messageId)) return false;
     if (heldBy(bot.id, threadId, rootOf(threadId, request)) || openCard(threadId)) return false;
     const original = resendable(store, threadId, request.messageId);
     if (!original) return false;
-    rerun.add(request.messageId);
+    retried.add(request.messageId);
+    if (retried.size > 500) retried.delete(retried.values().next().value!);
     const failure = turnFailureRow(store.messagesTail(threadId, FAILURE_SCAN).messages, request.messageId);
     if (failure) store.patchMessage(threadId, failure.id, { tool: { ...failure.tool!, resolvedAt: Date.now() } });
     try {
@@ -271,7 +277,7 @@ export function createQuotaSwitch(deps: QuotaSwitchDeps): QuotaSwitch {
       const stop = deps.turnStops.read?.(threadId, event.turnId);
       const flags = stop?.flags;
       const cause = deps.turnStops.failureCause(event);
-      if (await retriedCrash(bot, threadId, internal, request, stop, cause)) return null;
+      if (await retriedCrash(bot, threadId, internal, request, stop, cause, event.stopReason)) return null;
       // A tool call's failure names the tool, never the engine's own limit, whatever its words.
       const scope: TakeoverScope | undefined = signedOutStop(event.stopReason, cause) ? "signed-out"
         : flags?.limit ?? (event.stopReason !== "tool_error" && classifyError({ text: cause ?? "" }).reason === "quota" ? "engine"

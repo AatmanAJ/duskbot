@@ -279,10 +279,39 @@ describe("quota switch", () => {
       expect(store.messagesFor(bot.threadId).find((m) => m.id === row.id)!.tool!.resolvedAt, "no failure card while it tries again").toBeTypeOf("number");
 
       resend.mockClear();
-      const again = store.appendMessage(bot.threadId, { role: "bot", kind: "activity", tool: failedTurnTool("claude exited with code 137 before it replied", { reason: "cli_exit" }) });
       await limited({ messageId }, "claude exited with code 137 before it replied");
-      expect(resend, "a second crash fails as before").not.toHaveBeenCalled();
-      expect(store.messagesFor(bot.threadId).find((m) => m.id === again.id)!.tool!.resolvedAt).toBeUndefined();
+      expect(thread().modelSelection, "a second crash goes to the bot's backup").toEqual(CODEX);
+      expect(resend).toHaveBeenCalledTimes(1);
+
+      resend.mockClear();
+      const third = store.appendMessage(bot.threadId, { role: "bot", kind: "activity", tool: failedTurnTool("codex exited with code 137 before it replied", { reason: "cli_exit" }) });
+      await limited({ messageId }, "codex exited with code 137 before it replied");
+      expect(resend, "the backup failing it too is reported, not moved again").not.toHaveBeenCalled();
+      expect(store.messagesFor(bot.threadId).find((m) => m.id === third.id)!.tool!.resolvedAt).toBeUndefined();
+    });
+
+    it("sends the message once more on the same AI when it failed in words nobody could read, then moves it to the backup", async () => {
+      deps.turnStops = { failureCause: () => cause, read: () => ({ error: cause }) };
+      quota = createQuotaSwitch(deps);
+      const messageId = said("plan my week");
+      const before = notices().length;
+      await limited({ messageId }, "Internal error (session/prompt)");
+      expect(resend).toHaveBeenCalledTimes(1);
+      expect(thread().modelSelection, "the same AI first").toEqual(defaultSelection());
+      expect(notices().length, "no line about it").toBe(before);
+
+      await limited({ messageId }, "Internal error (session/prompt)");
+      expect(resend).toHaveBeenCalledTimes(2);
+      expect(thread().modelSelection).toEqual(CODEX);
+    });
+
+    it("never sends again a refusal or a chat too long for the model", async () => {
+      deps.turnStops = { failureCause: () => cause, read: () => ({ error: cause }) };
+      quota = createQuotaSwitch(deps);
+      await limited({ messageId: said("plan my week") }, "The model refused to answer this request.");
+      await limited({ messageId: said("plan my week") }, "prompt is too long: 250000 tokens > 200000 maximum context length");
+      expect(resend).not.toHaveBeenCalled();
+      expect(thread().modelSelection).toEqual(defaultSelection());
     });
 
     it("never sends again a turn that crashed after it showed words or ran a tool", async () => {
@@ -1139,8 +1168,17 @@ describe("quota switch", () => {
     });
 
     it.each([
-      ["a refused request", "unexpected status 400 Bad Request: invalid_request"],
-      ["a sign-in problem", "unexpected status 401 Unauthorized"],
+      ["a request the provider turned down", "unexpected status 400 Bad Request: invalid_request"],
+      ["a key the provider refused", "unexpected status 401 Unauthorized"],
+      ["a model the provider does not offer", "HTTP 404: The model `deepseek-x` does not exist"],
+    ])("moves %s to the backup the person chose", async (_label, why) => {
+      const messageId = said("summarize the report");
+      await failedOn(why, { messageId });
+      expect(thread().modelSelection).toEqual(CODEX);
+      expect(resend).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
       ["a safety block", "This task was blocked by our safety systems."],
     ])("leaves %s to its own handling", async (_label, why) => {
       await failedOn(why, { messageId: said("summarize the report") });
