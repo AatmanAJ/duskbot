@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { useMobileAccount } from "../account/AccountGate";
-import { usePlatform } from "../platform";
+import { usePlatform, type MobilePlatform } from "../platform";
 import type { AccountPlaces, CloudPairGrant, CloudPairResult, ComputerPairResult, MobileCloud, MobileComputer, MobileTeamCloud } from "../account/account-client";
 import { cloudPairing } from "../account/cloud-pair";
 import { useConnections } from "./connections";
@@ -70,6 +70,7 @@ export const pairingText = (grant: CloudPairGrant) => `${grant.origin} ${grant.c
 const seen = new Map<string, AccountPlaces>();
 const OTHERS_KEY = "others:";
 const COUNT_KEY = "dusk.mobile.places.count";
+const rememberedCount = new WeakMap<MobilePlatform, number>();
 
 /** The places list for Settings: null until both the saved links and the account's answer are in, so the rows draw once
  * at their final size. The last answer per account is kept for the session, so reopening Settings draws at once, and the
@@ -77,8 +78,11 @@ const COUNT_KEY = "dusk.mobile.places.count";
 export function usePlaces(connected: boolean): { places: Place[] | null; expected: number; open(place: Place): Promise<PlaceOutcome> } {
   const { connections, activeId, loaded, switchTo } = useConnections();
   const platform = usePlatform();
-  const [remembered, setRemembered] = useState(0);
-  useEffect(() => { void platform.prefs.get(COUNT_KEY).then((value) => setRemembered(Number(value) || 0)).catch(() => {}); }, [platform]);
+  const [remembered, setRemembered] = useState(() => rememberedCount.get(platform) ?? 0);
+  useEffect(() => {
+    if (rememberedCount.has(platform)) return;
+    void platform.prefs.get(COUNT_KEY).then((value) => { rememberedCount.set(platform, Number(value) || 0); setRemembered(Number(value) || 0); }).catch(() => {});
+  }, [platform]);
   const account = useMobileAccount();
   const accountRef = useRef(account);
   accountRef.current = account;
@@ -115,7 +119,11 @@ export function usePlaces(connected: boolean): { places: Place[] | null; expecte
   }, [otherIds]);
   const places = loaded && remote !== undefined ? mergePlaces({ records: connections, activeId, connected, account: remote, others }) : null;
   const count = places?.length;
-  useEffect(() => { if (count !== undefined) void platform.prefs.set(COUNT_KEY, String(count)).catch(() => {}); }, [platform, count]);
+  useEffect(() => {
+    if (count === undefined || rememberedCount.get(platform) === count) return;
+    rememberedCount.set(platform, count);
+    void platform.prefs.set(COUNT_KEY, String(count)).catch(() => {});
+  }, [platform, count]);
   const open = useCallback(async (place: Place): Promise<PlaceOutcome> => {
     const { target } = place;
     if (target.kind === "linked") { await switchTo(target.id); return "switched"; }
