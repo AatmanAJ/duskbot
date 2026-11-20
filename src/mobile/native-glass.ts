@@ -56,6 +56,15 @@ export interface GlassState {
   ground: string;
   header: GlassHeader | null;
   composer: GlassComposer | null;
+  /** a call's bar has the composer's place: the composer fades out under it as it comes, and back in as it goes, instead
+   * of swapping at once (apps before 1.4 ignore it) */
+  call?: boolean;
+}
+
+/** A call's bar holding the composer's place (it marks itself `data-call-leaving` as it goes, for the composer to come
+ * back under it). */
+export function callHoldsComposer(chat: Element | null): boolean {
+  return Boolean(chat?.querySelector("[data-call-surface]:not([data-call-leaving])"));
 }
 
 export type GlassEvent =
@@ -375,6 +384,7 @@ function readComposer(shell: HTMLElement, baseline: number, dx: number, room: nu
 
 /** Why the page keeps its own composer instead of the native one, for the trace. */
 function handoffReason(shell: HTMLElement | null, chat: HTMLElement): string {
+  if (callHoldsComposer(chat)) return "call";
   if (!shell) return "no composer";
   if (covered(shell, chat)) return "covered";
   if (hasStrips(shell)) return "strip";
@@ -566,7 +576,8 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
       const header = chatEl && navEl && title && !covered(title, chatEl) ? readHeader(navEl, left) : null;
       const kb = parseFloat(root.style.getPropertyValue("--m-kb")) || 0;
       const baseline = window.innerHeight - Math.max(safeBottom, kb);
-      const read = chatEl && shellEl && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline, left, transcriptRoom(chatEl)) : null;
+      const calling = callHoldsComposer(chatEl);
+      const read = chatEl && shellEl && !calling && !covered(shellEl, chatEl) ? readComposer(shellEl, baseline, left, transcriptRoom(chatEl)) : null;
       handoff.want(Boolean(read));
       const nativeComposer = read && (!glass.acks || handoff.native()) ? read.composer : null;
       if (glass.acks && handoff.pending()) fresh = Math.max(fresh, 1);
@@ -582,6 +593,7 @@ export function useNativeGlass(platform: MobilePlatform, rootRef: RefObject<HTML
         header,
         composer: nativeComposer,
         handoff: Boolean(chatEl) && (!header || !nativeComposer),
+        ...(calling ? { call: true } : {}),
       };
       // the pill's picture goes before the update that shows it: a chat's header never arrives with the last chat's
       // avatar, and a new name brings its avatar along. A drawn one is checked again once a second, never mid-slide;

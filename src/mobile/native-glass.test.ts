@@ -332,6 +332,45 @@ describe("useNativeGlass", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("gives the composer's place to a call's bar: the native composer goes, stays gone through every resend, and comes back as the bar leaves", () => {
+    vi.useFakeTimers({ toFake: ["performance"] });
+    try {
+      const { glass, send, $ } = mount(true);
+      const html = document.documentElement;
+      runFrame();
+      send({ type: "composer", shown: true });
+      runFrame();
+      expect(html.dataset.nativeGlassComposer).toBe("");
+
+      const bar = document.createElement("div");
+      bar.setAttribute("data-call-surface", "");
+      $("chat").append(bar);
+      for (let i = 0; i < 15; i += 1) runFrame();
+      expect(glass.update.mock.lastCall![0]).toMatchObject({ composer: null, call: true, header: { name: "Manager" } });
+      expect(html.dataset.nativeGlassComposer).toBeUndefined();
+
+      // the once-a-second resend and the ack wait never bring the composer back while the call holds its place
+      const sent = glass.update.mock.calls.length;
+      vi.advanceTimersByTime(REASSERT_MS + 500);
+      for (let i = 0; i < 15; i += 1) runFrame();
+      expect(glass.update.mock.calls.length).toBeGreaterThan(sent);
+      expect(glass.update.mock.calls.slice(sent).every(([state]) => state.composer === null && state.call === true)).toBe(true);
+      document.dispatchEvent(new Event("visibilitychange"));
+      runFrame();
+      expect(glass.update.mock.lastCall![0]).toMatchObject({ composer: null, call: true });
+
+      // the bar starts to leave: the composer is asked back under it, no longer as a call
+      bar.setAttribute("data-call-leaving", "");
+      for (let i = 0; i < 15; i += 1) runFrame();
+      expect(glass.update.mock.lastCall![0].composer).not.toBeNull();
+      expect(glass.update.mock.lastCall![0].call).toBeUndefined();
+      send({ type: "composer", shown: true });
+      runFrame();
+      expect(html.dataset.nativeGlassComposer).toBe("");
+      bar.remove();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("drops the native chrome while a sheet covers the chat", () => {
     const { glass } = mount();
     runFrame();

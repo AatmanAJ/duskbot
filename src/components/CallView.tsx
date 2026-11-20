@@ -467,7 +467,7 @@ export function CallOverlay({ bot }: { bot: Bot }) {
   if (!active || onLiveCall) return null;
   if (builtInVoice) return <VoiceCall key={bot.threadId} bot={bot} />;
   return (
-    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-app/95 backdrop-blur-sm">
+    <div data-call-surface="" className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-app/95 backdrop-blur-sm">
       <Call key="turns" bot={bot} />
     </div>
   );

@@ -286,7 +286,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     private let composer = PassthroughView()
     private var home: GlassHomeBar!
     private let capsule = UIVisualEffectView(effect: ChatGlassChrome.interactiveGlass())
-    private let plus = DiscButton(configuration: .glass())
+    private let plus = DiscButton(configuration: .plain())
     private let text = PastingTextView()
     private let placeholder = UILabel()
     private let voice = UILabel()
@@ -318,6 +318,8 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
     /// never crossfade, or both show (or neither) for the length of the fade
     private var handoff = false
     private var instant = false
+    /// a call's bar has the composer's place on the page
+    private var inCall = false
     private var returnSends = true
     private var textSeq = 0
     private var reportedHeight: CGFloat = 0
@@ -640,9 +642,12 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         }
         if let x = (state["offset"] as? NSNumber).map({ CGFloat($0.doubleValue) }), !sliding { setOffset(x) }
         let handing = state["handoff"] as? Bool ?? false
-        // off its resting place the chrome is riding a page in or out: it comes and goes with the page, never fades
-        instant = handing || handoff || sliding || abs(offset) > 0.5
+        let calling = state["call"] as? Bool ?? false
+        // off its resting place the chrome is riding a page in or out: it comes and goes with the page, never fades. A
+        // call's bar coming into the composer's place, or leaving it, crossfades with the composer instead
+        instant = ((handing || handoff) && !calling && !inCall) || sliding || abs(offset) > 0.5
         handoff = handing
+        inCall = calling
         applyHeader(state["header"] as? [String: Any])
         let wanted = state["composer"] as? [String: Any]
         applyComposer(wanted)
@@ -823,7 +828,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
                     configure(besideKept, kind: kind, index: index)
                     return besideKept
                 }
-                let button: UIButton = index == kinds.count - 1 && Self.slotKinds.contains(kind) ? SlotButton() : DiscButton(configuration: .glass())
+                let button: UIButton = index == kinds.count - 1 && Self.slotKinds.contains(kind) ? SlotButton() : DiscButton(configuration: .plain())
                 configure(button, kind: kind, index: index)
                 capsule.contentView.addSubview(button)
                 return button
@@ -870,12 +875,12 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
         return (name, UIImage.SymbolConfiguration(pointSize: size, weight: weight))
     }
 
-    /// The round button wears the page's own fill and ink for its kind (the bot's Send, the ink-filled mic and Stop), so it
-    /// reads as the desktop's in the app's light or dark look; symbol, fill and ink change together in one animation
+    /// Only Send (and keeping what dictation heard) is a filled disc, in the bot's colours; every other control in the
+    /// slot is a plain glyph in the page's ink. Symbol, fill and ink change together in one animation
     private func paint(_ button: UIButton, kind: String, fill: String?, ink: String?) {
         guard let slot = button as? SlotButton else { return }
         let prominent = kind == "send" || kind == "micSend" || kind == "keep"
-        let fillColor = fill.flatMap(UIColor.init(cssHex:)) ?? (prominent ? accent : .clear)
+        let fillColor = prominent ? fill.flatMap(UIColor.init(cssHex:)) ?? accent : .clear
         let inkColor = ink.flatMap(UIColor.init(cssHex:)) ?? (prominent ? .white : .label)
         let symbol = Self.symbol(kind)
         slot.show(symbol: symbol.name, configuration: symbol.configuration, fill: fillColor, ink: inkColor, animated: true)
@@ -888,7 +893,7 @@ final class ChatGlassChrome: NSObject, UITextViewDelegate {
             self?.emit(["type": "button", "index": index, "kind": kind])
         }, for: .touchUpInside)
         if button is SlotButton { return }
-        var config: UIButton.Configuration = kind == "followUp" ? .plain() : .glass()
+        var config = UIButton.Configuration.plain()
         let symbol = Self.symbol(kind)
         config.cornerStyle = .capsule
         config.contentInsets = .zero

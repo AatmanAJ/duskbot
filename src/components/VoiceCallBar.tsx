@@ -160,7 +160,7 @@ function CallSurface({ bot, session, transcript, voice, speed, account, onRetry 
     <>
       {!transcript && <CallStage bot={bot} snap={snap} leaving={leaving} />}
       {/* covers the composer while the call holds the floor, so nothing under the pill shows or moves */}
-      <div className={cn("voice-call-dock pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 bg-[linear-gradient(to_top,var(--color-app)_72%,transparent)] px-3 pb-5 pt-10 sm:px-4", leaving && "voice-call-dock-out")}>
+      <div data-call-surface="" data-call-leaving={leaving ? "" : undefined} className={cn("voice-call-dock pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 bg-[linear-gradient(to_top,var(--color-app)_72%,transparent)] px-3 pb-5 pt-10 sm:px-4", leaving && "voice-call-dock-out")}>
         <HeardLine snap={snap} />
         <CallPill bot={bot} snap={snap} session={session} wave={wave} transcript={transcript} voice={voice} speed={speed} account={account} onRetry={onRetry} onHangUp={leave} leaving={leaving} />
       </div>
@@ -193,7 +193,7 @@ function mascotMood(snap: CallSnapshot): "idle" | "listening" | "thinking" {
   return "idle";
 }
 
-function RoundButton({ label, pressed, className, disabled, onClick, children, buttonRef, expanded, popup }: {
+function RoundButton({ label, pressed, filled, className, disabled, onClick, children, buttonRef, expanded, popup }: {
   label: string;
   pressed?: boolean;
   className: string;
@@ -203,6 +203,8 @@ function RoundButton({ label, pressed, className, disabled, onClick, children, b
   buttonRef?: React.Ref<HTMLButtonElement>;
   expanded?: boolean;
   popup?: "dialog";
+  /** a solid disc (hanging up, a muted mic): the phone draws every other control as a plain glyph */
+  filled?: boolean;
 }) {
   return (
     <button
@@ -213,6 +215,7 @@ function RoundButton({ label, pressed, className, disabled, onClick, children, b
       aria-pressed={pressed}
       aria-expanded={expanded}
       aria-haspopup={popup}
+      data-call-filled={filled ? "" : undefined}
       disabled={disabled}
       onPointerDown={() => haptic("tap")}
       onClick={onClick}
@@ -297,10 +300,10 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, account,
       data-turn-ms={snap.lastTurn ? `${snap.lastTurn.endpoint},${snap.lastTurn.transcribed},${snap.lastTurn.sent},${snap.lastTurn.firstAudio}` : undefined}
       className={cn("voice-call-pill pointer-events-auto relative flex h-[52px] max-w-full items-center gap-1 rounded-full py-1.5 pl-1.5 pr-1.5 text-ink sm:h-14 sm:gap-1.5 sm:py-2 sm:pl-2 sm:pr-2", TONE, leaving && "voice-call-pill-out")}
     >
-      <div ref={face} className="shrink-0 origin-bottom will-change-transform">
-        <BotAvatar bot={bot} size={narrow ? 36 : 40} state={mascotMood(snap)} animated />
+      <div ref={face} data-call-face="" className="shrink-0 origin-bottom will-change-transform">
+        <BotAvatar bot={bot} size={narrow ? 32 : 40} state={mascotMood(snap)} animated />
       </div>
-      <div className={cn("relative flex h-10 items-center justify-center px-1.5 sm:px-2", live ? "min-w-[104px] sm:min-w-[150px]" : "min-w-0")} aria-live="polite">
+      <div data-call-wave="" className={cn("relative flex h-10 items-center justify-center px-1.5 sm:px-2", live ? "min-w-[104px] sm:min-w-[150px]" : "min-w-0")} aria-live="polite">
         {live ? (
           <span key="wave" className="voice-call-swap flex items-center">
             <VoiceCallWave source={wave} bars={narrow ? 16 : 26} botColor={botColor} onFrame={onFrame} />
@@ -339,12 +342,13 @@ function CallPill({ bot, snap, session, wave, transcript, voice, speed, account,
       <RoundButton
         label={snap.muted ? t("call.live.unmute") : t("call.live.mute")}
         pressed={snap.muted}
+        filled={snap.muted}
         className={snap.muted ? "bg-ink text-app hover:opacity-90" : BUTTON_TONE}
         onClick={() => session.setMuted(!snap.muted)}
       >
         {snap.muted ? <MicOff size={18} /> : <Mic size={18} />}
       </RoundButton>
-      <RoundButton label={t("call.live.hangUp")} className="bg-danger text-white hover:brightness-110" onClick={onHangUp}>
+      <RoundButton label={t("call.live.hangUp")} filled className="bg-danger text-white hover:brightness-110" onClick={onHangUp}>
         <PhoneOff size={18} />
       </RoundButton>
       {menu !== "closed" && (
