@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { storeApp } from "@/lib/store-app";
 import { AnimatePresence } from "motion/react";
 import { ClipboardPaste, Keyboard, QrCode, UserRound } from "../../icons";
@@ -17,6 +17,7 @@ import { CloudPicker } from "../account/CloudPicker";
 import { MobileSignIn } from "../account/MobileSignIn";
 import { useMobileAccount } from "../account/AccountGate";
 import { MascotTrio } from "./SkyScene";
+import { editCode, formatCode, fullCode, typedCodeComplete } from "./code-field";
 import { BackButton, ErrorLine, FIELD, HEADLINE, LINE, PRIMARY, QUIET, Screen, StepPane, TONAL } from "./parts";
 
 export type Step = "welcome" | "signin" | "clouds" | "switch" | "confirm" | "scan" | "code" | "paste";
@@ -38,6 +39,8 @@ export function phoneCodeFailure(outcome: Exclude<PhoneCodeOutcome, "signed-in">
 }
 
 export const DOWNLOAD_URL = "https://dusk.bot/download";
+/** the account sign-in a desktop's QR carries waits this long at most, then the pairing goes on without it */
+const CARRIED_SIGN_IN_MS = 5_000;
 
 function installationName(payload: TypedPairing | null, fallback = t("mobile.pair.workspace")): string {
   if (payload?.name) return payload.name;
@@ -121,6 +124,15 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
   const [signInEmail, setSignInEmail] = useState(email ?? "");
   const locked = useRef(false);
   const fieldId = useId();
+  const codeField = useRef<HTMLInputElement>(null);
+  const caret = useRef<number | null>(null);
+  // a full code goes once by itself; typing it again after a change sends it again
+  const sentCode = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const at = caret.current, input = codeField.current;
+    caret.current = null;
+    if (at !== null && input && document.activeElement === input) input.setSelectionRange(at, at);
+  }, [value]);
 
   useEffect(() => {
     platform.setStatusBar?.(step === "scan" || document.documentElement.dataset.skin === THEME_SKINS.dark ? "light" : "dark");
@@ -148,6 +160,7 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
     setFailure(null);
     setScanFailed(false);
     let payload: TypedPairing | null = typeof text === "string" ? null : text;
+    let typedCode: string | null = null;
     try {
       if (typeof text === "string") {
         const scanned = readScanned(text);
@@ -156,14 +169,21 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
         if (scanned?.kind === "signin") { await fromQr(scanned, from); return; }
         if (scanned?.kind === "pair") carriedSignIn.current = pairSignIn(text) ?? undefined;
         if (scanned?.kind === "account") { await codeSignIn(scanned.code, null, from); return; }
-        payload = scanned?.kind === "code" ? await resolveTypedCode(scanned.code) : scanned?.kind === "pair" ? scanned.payload : null;
+        if (scanned?.kind === "pair") payload = scanned.payload;
+        else if (scanned?.kind === "code") typedCode = scanned.code;
+        else throw new PairError("invalid");
       }
-      if (!payload) throw new PairError("invalid");
       const carried = carriedSignIn.current;
       carriedSignIn.current = undefined;
-      if (carried && !(await signInWithPairing(carried, payload))) return;
-      const result = await redeemPairing(payload, platform, controller.signal);
-      if (!live()) return;
+      // the code's lookup, the sign-in the QR carries and the pairing share one deadline; its end stops their requests
+      const work = new AbortController();
+      const result = await linkDeadline((async () => {
+        if (!payload && typedCode) payload = await resolveTypedCode(typedCode);
+        if (!payload) throw new PairError("invalid");
+        if (carried && !(await signInWithPairing(carried, payload))) return null;
+        return redeemPairing(payload, platform, work.signal);
+      })(), LINK_DEADLINE_MS, controller.signal).finally(() => work.abort());
+      if (!result || !live()) return;
       await linkDeadline(Promise.resolve(onLinked(result.record, result.token, result.record.label || installationName(payload))), LINK_DEADLINE_MS + 5_000);
     } catch (error) {
       if (!live()) return;
@@ -202,7 +222,7 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
     const current = account.account?.email;
     if (current && current.toLowerCase() === signIn.email.toLowerCase()) return true;
     if (current) { setSwitchTo({ email: signIn.email, code: signIn.code, pair }); go("switch"); return false; }
-    await account.signIn.phoneCode(signIn.code).catch(() => null);
+    await linkDeadline(account.signIn.phoneCode(signIn.code), CARRIED_SIGN_IN_MS).catch(() => null);
     return true;
   };
   /** a dusk cloud's QR or link: a phone on another account asks before it switches; one on this account or none goes on */
@@ -223,8 +243,11 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
     try {
       setSwitchTo(null);
       if (qr.pair && qr.code) {
-        await account.signIn.phoneCode(qr.code).catch(() => null);
+        await linkDeadline(account.signIn.phoneCode(qr.code), CARRIED_SIGN_IN_MS).catch(() => null);
         const pair = qr.pair;
+        // the link goes on on its own screen, where it shows it is linking and how it ended
+        setConfirm(pair);
+        setStep("confirm");
         queueMicrotask(() => void redeem(pair, "confirm"));
         return;
       }
@@ -404,9 +427,18 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
                 <div className="mt-7 w-full text-left">
                   <label htmlFor={fieldId} className="mb-1.5 block px-1 text-[15px] font-medium text-ink">{t(step === "code" ? "mobile.onboarding.codeLabel" : "mobile.onboarding.pasteLabel")}</label>
                   {step === "code" ? (
-                    <input id={fieldId} autoFocus value={value} disabled={busy}
-                      onChange={(event) => { setValue(formatCode(event.target.value)); setFailure(null); }}
-                      inputMode="text" autoCapitalize="characters" autoCorrect="off" spellCheck={false} autoComplete="one-time-code" placeholder="XXXX-XXXX-XXXX" maxLength={14}
+                    <input ref={codeField} id={fieldId} autoFocus value={value} readOnly={busy}
+                      onChange={(event) => {
+                        const typed = event.target;
+                        const next = editCode(value, typed.value, typed.selectionStart ?? typed.value.length);
+                        caret.current = next.caret;
+                        setValue(next.value);
+                        if (failure) setFailure(null);
+                        const full = fullCode(next.value);
+                        if (full && sentCode.current !== full) { sentCode.current = full; void redeem(next.value, "code"); }
+                        else if (!full) sentCode.current = null;
+                      }}
+                      inputMode="text" autoCapitalize="characters" autoCorrect="off" spellCheck={false} autoComplete="one-time-code" placeholder="XXXX-XXXX-XXXX"
                       aria-invalid={Boolean(failure) || undefined}
                       className={`${FIELD} text-center font-mono text-[19px] tracking-[0.1em] placeholder:text-ink/[0.3]`} />
                   ) : (
@@ -441,16 +473,4 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
       </AnimatePresence>
     </main>
   );
-}
-
-/** a computer's 12-character code, or a dusk cloud's 8 letters */
-export function typedCodeComplete(value: string): boolean {
-  const raw = value.replace(/-/g, "");
-  return raw.length === 12 || (raw.length === 8 && /^[A-Z]+$/.test(raw));
-}
-
-/** XXXX-XXXX-XXXX as the person types: letters and digits only, uppercase, dashes added. */
-export function formatCode(input: string): string {
-  const raw = input.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
-  return raw.replace(/(.{4})(?=.)/g, "$1-");
 }

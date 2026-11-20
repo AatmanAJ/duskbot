@@ -6,9 +6,11 @@ import { setLocale } from "@/lib/i18n";
 import { AccountGate } from "../account/AccountGate";
 import { SignInOffer, SIGN_IN_OFFER_KEY } from "../account/SignInOffer";
 import { PlatformContext, webPlatform, type MobilePlatform } from "../platform";
-import { firstStep, Onboarding, typedCodeComplete } from "./Onboarding";
+import { firstStep, Onboarding } from "./Onboarding";
+import { typedCodeComplete } from "./code-field";
 import { redeemPairing } from "../connection/pair";
 import { MOBILE_LINK_VERSION, mobileLinkUrl, universalPairLink, type MobileLinkPayload } from "../../../shared/mobile-link";
+import { sealLookup } from "../../../server/mobile/lookup";
 
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => createElement("span"), BotAvatar: () => createElement("span") }));
 // steps swap without waiting on exit animations, so each choice lands on its screen at once
@@ -580,5 +582,105 @@ describe("the camera question comes up in place", () => {
     expect(host.textContent).toContain("Turn the camera on in settings");
     await press("[data-camera-settings]");
     expect(openSettings).toHaveBeenCalledOnce();
+  });
+});
+
+describe("linking always ends within its deadline", () => {
+  const payload = { v: 1, transport: "https", origin: "https://mac.example.org", credential: `omb_pair_${"a".repeat(43)}`, name: "Studio Mac" } as const;
+  const linkButton = () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Link" || button.textContent === "Try again");
+
+  it("a QR's carried sign-in that never answers and a computer that never answers end at 15 s with can't reach and Try again", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    fetcher.mockImplementation((input) => String(input).endsWith("/api/cloud/app/sign-in/phone") ? new Promise<Response>(() => {}) : Promise.resolve(response({ v: 1, providers: [], signupOpen: true })));
+    let seen: AbortSignal | undefined;
+    vi.mocked(redeemPairing).mockImplementationOnce((_payload, _platform, signal) => { seen = signal; return new Promise(() => {}) as never; });
+    const onLinked = vi.fn();
+    await mount(onboarding({ initial: payload, initialSignIn: { code: "WXYZQRST", email: "owner@example.com" }, onLinked }));
+    await act(async () => { linkButton()!.click(); });
+    expect(host.querySelector("main")?.getAttribute("aria-busy")).toBe("true");
+    await act(async () => { await vi.advanceTimersByTimeAsync(14_000); });
+    expect(host.querySelector("[role=alert]")).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_100); });
+    expect(host.querySelector("main")?.getAttribute("aria-busy")).toBe("false");
+    expect(host.querySelector("[role=alert]")?.textContent).toContain("Can't reach your computer");
+    expect(linkButton()?.disabled, "its button links again").toBe(false);
+    expect(seen?.aborted ?? true).toBe(true);
+    expect(onLinked).not.toHaveBeenCalled();
+  });
+
+  it("a typed code's lookup and its pairing share the 15 s, never 15 s each", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const linkPayload = {
+      v: MOBILE_LINK_VERSION, workspace: { name: "Studio Mac", environmentId: "env-mac", kind: "mac" },
+      grant: { id: "grant-1", secret: "s3cret", expiresAt: Date.now() + 5 * 60_000 }, via: [{ kind: "https", url: "https://mac.example.org" }],
+    } as MobileLinkPayload;
+    const { sealed } = sealLookup("ABCDEFGHJKLM", linkPayload);
+    fetcher.mockImplementation(async (input) => {
+      if (!String(input).includes("/v1/lookups/")) return response({ v: 1, providers: [], signupOpen: true });
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+      return response({ sealed });
+    });
+    vi.mocked(redeemPairing).mockImplementationOnce(() => new Promise(() => {}) as never);
+    await mount(onboarding());
+    await press("[data-entry=code]");
+    const field = host.querySelector<HTMLInputElement>("input[autocomplete=one-time-code]")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "ABCD-EFGH-JKLM");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { host.querySelector<HTMLFormElement>("form")!.requestSubmit(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_500); });
+    expect(vi.mocked(redeemPairing)).toHaveBeenCalled();
+    expect(host.querySelector("main")?.getAttribute("aria-busy")).toBe("true");
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_600); });
+    expect(host.querySelector("main")?.getAttribute("aria-busy")).toBe("false");
+    expect(host.querySelector("[role=alert]")?.textContent).toContain("Can't reach your computer");
+  });
+});
+
+describe("typing a computer's code", () => {
+  const field = () => host.querySelector<HTMLInputElement>("input[autocomplete=one-time-code]")!;
+  const key = (text: string) => act(async () => {
+    const input = field();
+    const next = input.value + text;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, next);
+    input.setSelectionRange(next.length, next.length);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const lookups = () => fetcher.mock.calls.filter(([input]) => String(input).includes("/v1/lookups/"));
+  const settle = async () => { for (let i = 0; i < 5; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); }); };
+
+  it("adds the dashes as it goes, links by itself on the last character, once, and keeps the keyboard up", async () => {
+    fetcher.mockImplementation(async (input) => String(input).includes("/v1/lookups/") ? new Promise<Response>(() => {}) : response({ v: 1, providers: [], signupOpen: true }));
+    await mount(onboarding());
+    await press("[data-entry=code]");
+    for (const letter of "abcdefghjkl") await key(letter);
+    expect(field().value).toBe("ABCD-EFGH-JKL");
+    expect(field().selectionStart).toBe(13);
+    await settle();
+    expect(lookups()).toHaveLength(0);
+    await key("m");
+    await settle();
+    expect(field().value).toBe("ABCD-EFGH-JKLM");
+    expect(lookups()).toHaveLength(1);
+    expect(field().disabled, "a disabled field drops the keyboard").toBe(false);
+    expect(field().readOnly).toBe(true);
+    await act(async () => { host.querySelector<HTMLFormElement>("form")!.requestSubmit(); });
+    await key("n");
+    await settle();
+    expect(lookups(), "never sent twice").toHaveLength(1);
+  });
+
+  it("a pasted code in any form links at once", async () => {
+    fetcher.mockImplementation(async (input) => String(input).includes("/v1/lookups/") ? new Promise<Response>(() => {}) : response({ v: 1, providers: [], signupOpen: true }));
+    await mount(onboarding());
+    await press("[data-entry=code]");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field(), "abcd efgh jklm");
+      field().dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(field().value).toBe("ABCD-EFGH-JKLM");
+    await settle();
+    expect(lookups()).toHaveLength(1);
   });
 });
