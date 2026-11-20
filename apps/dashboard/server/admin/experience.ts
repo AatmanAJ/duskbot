@@ -23,11 +23,11 @@ export function classify(name: string, p: Props): { family: Family; label: strin
     case "turn_failed": return { family: "bad", label: `turn failed: ${word(p.reason)}` };
     case "turn_stopped": return { family: "bad", label: "turn stopped by the person" };
     case "tool_failed": return { family: "bad", label: `tool failed: ${word(p.app ?? p.tool)}${p.reason ? ` (${word(p.reason)})` : ""}` };
-    case "refused": return { family: "bad", label: p.by === "policy" ? `refused by policy: ${word(p.code)}` : `request refused: ${word(p.code)} (${p.status ?? "?"})` };
+    case "refused": return { family: "bad", label: p.by === "policy" ? `refused by policy: ${word(p.code)}` : `request refused: ${word(p.code)} (${p.status ?? "?"})${p.route ? ` at ${word(p.route)}` : ""}` };
     case "engine_sign_in_failed": return { family: "bad", label: `engine sign-in failed: ${word(p.engine)} (${word(p.reason)})` };
     case "browser_download_failed": return { family: "bad", label: `browser download failed: ${word(p.reason)}` };
     case "crash": return { family: "bad", label: `crash: ${word(p.kind)} (${word(p.reason)})` };
-    case "update_failed": return { family: "bad", label: `update failed: ${word(p.stage)}` };
+    case "update_failed": return { family: "bad", label: `update failed: ${word(p.stage)}${p.reason ? ` (${word(p.reason)})` : ""}` };
     case "app_updated": return { family: "done", label: p.how === "self" ? "app updated itself" : "app updated by hand" };
     case "routine_done": return p.outcome === "ok" ? { family: "done", label: "routine finished" } : { family: "bad", label: `routine ${word(p.outcome)}${p.reason ? `: ${word(p.reason)}` : ""}` };
     case "devs_report": return { family: "confusing", label: p.outcome === "failed" ? "@devs report could not send" : "@devs report sent" };

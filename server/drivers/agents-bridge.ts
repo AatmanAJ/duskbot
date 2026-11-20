@@ -46,6 +46,7 @@ export const BRIDGE_HOT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "post_to_room",
   "request_credential",
   "request_sign_in",
+  "request_screen_access",
   "fill_login",
   "message_person",
   "send_voice_note",

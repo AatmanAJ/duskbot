@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { t } from "@/lib/i18n";
 import { friendlyError } from "@/lib/plain-error";
-import type { AppState } from "@/state/store";
+import { api, useStore, type AppState } from "@/state/store";
 import { ErrorDetailsCopy } from "./ErrorDetailsCopy";
 import { Icon } from "./Icon";
 import { NoticeGlyph } from "./ui/Notice";
@@ -16,7 +16,7 @@ export function ChatNotice({ notice }: { notice: AppState["notice"] }) {
     <div className="w-full px-5">
       <div role="status" className={`mb-2 ${NOTICE_LINE} text-ink-secondary`}>
         {notice.kind === "note"
-          ? notice.text
+          ? <>{notice.found ? <span className="min-w-0 flex-1">{notice.text}</span> : notice.text}{notice.found && <UseFoundAi found={notice.found} />}</>
           : notice.kind === "steer-images"
             ? t("composer.queued.steerImagesHeld")
             : notice.kind === "bot-gone"
@@ -24,6 +24,24 @@ export function ChatNotice({ notice }: { notice: AppState["notice"] }) {
               : notice.botName ? t("conversation.goneShowing", { name: notice.botName }) : t("conversation.gone")}
       </div>
     </div>
+  );
+}
+
+/** Turns on an AI the person's send found waiting, then clears the note; they send again. */
+function UseFoundAi({ found }: { found: { instanceId: string; name: string } }) {
+  const { dispatch, refreshInstances } = useStore();
+  const [busy, setBusy] = useState(false);
+  const use = () => {
+    setBusy(true);
+    void api(`/api/instances/${encodeURIComponent(found.instanceId)}`, { method: "PATCH", body: JSON.stringify({ chosen: true }) })
+      .then(() => refreshInstances().catch(() => {}))
+      .then(() => dispatch({ type: "notice", notice: null }), () => setBusy(false));
+  };
+  return (
+    <button type="button" data-use-found-ai={found.instanceId} disabled={busy} onClick={use}
+      className="-my-1 shrink-0 rounded-full bg-ink/[0.06] px-2.5 py-1 text-[12px] leading-4 text-ink hover:bg-ink/[0.1] disabled:opacity-50">
+      {busy ? t("engines.found.using") : t("engines.found.use")}
+    </button>
   );
 }
 
