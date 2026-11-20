@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { universalPairLink, universalSignInLink, type MobileDevice, type MobilePairingRequest, type MobilePairingResponse } from "../../shared/mobile-link";
 import type { CloudPlanBridge } from "../../electron/cloud-account.mjs";
 import { companionBridge } from "@/lib/companion-bridge";
+import { desktopShowsOtherServer } from "@/lib/other-server";
 import { phoneRelayBridge, relayBeforePairing } from "@/lib/phone-relay";
 import { copyText, type CopyFeedback } from "@/lib/copy-text";
 import { cn } from "@/lib/cn";
@@ -77,8 +78,8 @@ type AccountBridge = Required<Pick<CloudPlanBridge, "phoneSignIn" | "signIn" | "
 /** The desktop app's own dusk bot account, for its phone QR: the QR shows only once this computer is signed in, and
  * carries a code that logs the phone in to the same account as it pairs. A browser tab, a remote server's page and an
  * older app have none. */
-function desktopAccountBridge(remote: boolean, cloudHome: boolean): AccountBridge | null {
-  if (remote || cloudHome || typeof window === "undefined") return null;
+export function desktopAccountBridge(remote: boolean, cloudHome: boolean): AccountBridge | null {
+  if (remote || cloudHome || typeof window === "undefined" || desktopShowsOtherServer()) return null;
   const bridge = window.duskDesktop?.cloudPlan;
   return typeof bridge?.phoneSignIn === "function" && typeof bridge.signIn === "function" && typeof bridge.signedIn === "function"
     ? { phoneSignIn: bridge.phoneSignIn.bind(bridge), signIn: bridge.signIn.bind(bridge), signedIn: bridge.signedIn.bind(bridge) } : null;
@@ -95,7 +96,7 @@ class SignedOutHere extends Error {}
 export type NoRoute = "server" | "sign-in" | "computer";
 
 export async function noRouteFix(remote: boolean): Promise<NoRoute> {
-  if (remote || typeof window === "undefined" || !window.duskDesktop) return "server";
+  if (remote || typeof window === "undefined" || !window.duskDesktop || desktopShowsOtherServer()) return "server";
   const relay = await phoneRelayBridge()?.state().catch(() => null);
   return relay?.status === "signed-out" && typeof window.duskDesktop.cloudPlan?.signIn === "function" ? "sign-in" : "computer";
 }

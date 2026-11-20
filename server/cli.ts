@@ -21,7 +21,7 @@ import { explainTailscaleFailure, tailscaleServe, tailscaleServeOff, tailscaleSt
 import { defaultSetupIo, SetupCancelled, type SetupIo } from "./cli-prompts.ts";
 import { HEADLESS_VERB_NAMES, USAGE } from "./cli-usage.ts";
 import { normalizePhoneOrigin, phonePairingInstructions, runPhoneSetup } from "./cli-phone-setup.ts";
-import { browserSignInLines, pairingBlock } from "./cli-pairing.ts";
+import { browserSignInLines, pairingBlock, phoneAppBlock } from "./cli-pairing.ts";
 import type { AppConfig } from "./config.ts";
 import {
   cleanupTunnelOrigin,
@@ -186,10 +186,10 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 /** On a service-trust server: the secret `serve` handed the server it started, which opens its pairing route. */
 let serveOwnerToken: string | undefined;
 
-async function api(port: number, path: string, init: { method?: string; body?: string } = {}): Promise<{ status: number; body: any }> {
+async function api(port: number, path: string, init: { method?: string; body?: string; timeoutMs?: number } = {}): Promise<{ status: number; body: any }> {
   // x-dusk-cli names the tool in the activity log; on loopback it grants nothing.
   const headers: Record<string, string> = { "content-type": "application/json", "x-dusk-cli": "1", ...(serveOwnerToken ? { "x-dusk-cli-owner": serveOwnerToken } : {}) };
-  const res = await fetch(`http://127.0.0.1:${port}${path}`, { method: init.method, body: init.body, headers, signal: AbortSignal.timeout(3000) });
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, { method: init.method, body: init.body, headers, signal: AbortSignal.timeout(init.timeoutMs ?? 3000) });
   const body: unknown = await res.json().catch(() => ({}));
   return { status: res.status, body };
 }
@@ -301,6 +301,14 @@ async function mintPairing(port: number, options: { label?: string; client?: boo
   return pairingBlock({ code: body.code, url, inviteUrl: invite, localUrl, expiresAt: body.expiresAt, hint: typeof body.hint === "string" ? body.hint : null, phone: options.phone });
 }
 
+/** The phone app's pairing over the link relay, or null when this server has no relay for phones (no link agent). */
+async function phoneAppPairing(port: number, label?: string): Promise<string | null> {
+  const { status, body } = await api(port, "/api/mobile/pairing", { method: "POST", body: JSON.stringify(label ? { label } : {}), timeoutMs: 30_000 }).catch(() => ({ status: 0, body: null }));
+  if (refusedAsService(status, body)) throw new Error(SERVICE_TRUST_HELP);
+  const relayed = status === 200 && typeof body?.link === "string" && Array.isArray(body?.payload?.via) && body.payload.via.some((route: { kind?: unknown }) => route?.kind === "relay");
+  return relayed ? phoneAppBlock(body) : null;
+}
+
 export async function runPair(options: CliOptions): Promise<number> {
   if (!(await serverUp(options.port))) {
     console.error(`no dusk bot server on http://127.0.0.1:${options.port}; start one with \`duskbot serve\` or set DUSK_PORT`);
@@ -321,6 +329,12 @@ export async function runPair(options: CliOptions): Promise<number> {
       }
     }
     if (!origin || !normalizePhoneOrigin(origin)) {
+      const relayed = await phoneAppPairing(options.port);
+      if (relayed) {
+        console.log(relayed);
+        console.log("Keep this code private.");
+        return 0;
+      }
       console.log("Your workspace is running only on this computer. A phone cannot use its localhost address.");
       console.log("Stop the server, run duskbot setup and choose phone access, then start duskbot again.");
       return 1;
@@ -337,7 +351,8 @@ export async function runPair(options: CliOptions): Promise<number> {
       return 130;
     }
   }
-  console.log(await mintPairing(options.port, { label: options.label, client: options.client, publicUrl: options.publicUrl, phone: options.phone }));
+  const relayed = options.client || options.publicUrl ? null : await phoneAppPairing(options.port, options.label);
+  console.log(relayed ?? await mintPairing(options.port, { label: options.label, client: options.client, publicUrl: options.publicUrl, phone: options.phone }));
   if (options.client) console.log("(client scope: chat and approvals only; cannot change settings or pair others)");
   return 0;
 }

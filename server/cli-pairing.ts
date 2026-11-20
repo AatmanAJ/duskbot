@@ -2,6 +2,8 @@
 // owner just by being here, so it signs in once with the link printed for it.
 import qrcode from "qrcode-terminal";
 
+import { universalPairLink, type MobilePairingResponse } from "../shared/mobile-link.ts";
+
 /** `url` opens the web app (browsers, the iOS app); `inviteUrl` (duskbot://) is the only thing the Android app scans;
  * `localUrl` signs in a browser on this computer. */
 export function pairingBlock(input: {
@@ -40,6 +42,15 @@ export function pairingBlock(input: {
       lines.push(`above into the dusk bot app.`);
     }
   }
+  return lines.join("\n");
+}
+
+/** The dusk bot phone app's own pairing: a QR its camera scan opens, and the code it can type instead. It reaches this
+ * server over the link relay, so it needs no public address. */
+export function phoneAppBlock(pairing: MobilePairingResponse): string {
+  const lines = ["Scan this with your phone's camera, or in the dusk bot app:", "", qrToString(universalPairLink(pairing.link, pairing.code)), ""];
+  if (pairing.code) lines.push(`or type this code in the app:  ${pairing.code}`);
+  lines.push(`expires:       ${new Date(pairing.expiresAt).toLocaleTimeString()} (single use)`);
   return lines.join("\n");
 }
 
