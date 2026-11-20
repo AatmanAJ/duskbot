@@ -11,8 +11,8 @@ function fakeRoot(dataset: Record<string, string> = {}) {
 }
 
 describe("desktop motion", () => {
-  it("ships A until the owner picks", () => {
-    expect(DESKTOP_MOTION.pick).toBe("a");
+  it("ships the owner's pick, B", () => {
+    expect(DESKTOP_MOTION.pick).toBe("b");
   });
 
   it("leaves the root alone at A and on the phone", () => {

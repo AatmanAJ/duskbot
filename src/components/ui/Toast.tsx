@@ -6,6 +6,7 @@ import { t } from "@/lib/i18n";
 import { cssCurve, desktopMotion } from "@/lib/desktop-motion";
 import { motionReduced, playGhostExit } from "@/lib/ghost-exit";
 import { pacedMs } from "@/lib/motion-speed";
+import { PHONE_FEEL } from "@/mobile/phone-feel";
 import { Icon } from "../Icon";
 import { smallButtonCls } from "./GrokDialog";
 
@@ -65,16 +66,27 @@ export function Toast({ text, tone = "done", action, onDone, timeoutMs, classNam
   return typeof document === "undefined" || !document.body ? toast : createPortal(toast, document.body);
 }
 
-/** At a desktop pick with a toast motion, the toast leaves the way it came, from wherever it is, as it unmounts. */
+/** The toast leaves the way it came, from wherever it is, as it unmounts: on the desktop at a pick with a toast motion,
+ * on the phone as its feel has toasts leave. */
 function useToastLeave(node: RefObject<HTMLDivElement | null>) {
   const held = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => { held.current = node.current; });
   useLayoutEffect(() => () => {
-    const spec = desktopMotion().toast;
-    if (!spec || motionReduced()) return;
+    if (motionReduced()) return;
+    const exit = toastExit();
+    if (!exit) return;
     playGhostExit(held.current, document.body, (ghost) => [ghost.animate(
-      [{ opacity: 1, translate: "0 0", scale: "1" }, { opacity: 0, translate: `0 ${spec.leaveY}`, scale: String(spec.leaveScale) }],
-      { duration: pacedMs(spec.leaveMs), easing: cssCurve(null), fill: "forwards" },
+      [{ opacity: 1, translate: "0 0", scale: "1" }, { opacity: 0, translate: `0 ${exit.y}`, scale: String(exit.scale) }],
+      { duration: exit.ms, easing: cssCurve(null), fill: "forwards" },
     )]);
   }, []);
+}
+
+function toastExit(): { ms: number; y: string; scale: number } | null {
+  if (document.documentElement.dataset.mobileApp) {
+    const { from, outMs } = PHONE_FEEL.toast;
+    return { ms: outMs, y: from === "self" ? "100%" : `${from}px`, scale: 1 };
+  }
+  const spec = desktopMotion().toast;
+  return spec ? { ms: pacedMs(spec.leaveMs), y: spec.leaveY, scale: spec.leaveScale } : null;
 }

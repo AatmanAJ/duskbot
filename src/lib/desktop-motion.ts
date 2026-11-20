@@ -78,7 +78,7 @@ export const DESKTOP_MOTIONS: Record<DesktopMotionPick, DesktopMotion> = {
 };
 
 /** The desktop's motion. At A every surface keeps the motion it ships with. */
-export const DESKTOP_MOTION: DesktopMotion = DESKTOP_MOTIONS.a;
+export const DESKTOP_MOTION: DesktopMotion = DESKTOP_MOTIONS.b;
 
 const SOFT = "var(--dusk-spring-soft)";
 
