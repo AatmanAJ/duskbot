@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "@/lib/i18n";
 import { sessionCheck, sessionEnded } from "@/lib/session-ended";
 import { api } from "@/state/api";
@@ -9,6 +9,7 @@ import type { MobileConnectionRecord } from "../../../shared/mobile-link";
 import { PlatformContext, webPlatform, type MobilePlatform } from "../platform";
 import { ConnectionGate, pairedButUnreachable } from "./ConnectionGate";
 import { PairError } from "./pair";
+import { AccountGate } from "../account/AccountGate";
 
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => createElement("span") }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -144,6 +145,57 @@ it("a dusk cloud asleep at launch opens on its chats and is woken, never the can
   expect(host.textContent).toBe("home");
   const posts = fetcher.mock.calls.filter(([input, init]) => ((input instanceof Request ? input.method : init?.method) ?? "GET") === "POST");
   expect(posts.map(([input]) => String(input instanceof Request ? input.url : input))).toContain("https://mac.example.test/api/cloud/wake");
+});
+
+describe("two accounts, each with its own dusk cloud", () => {
+  const cloudOrigin = "https://d2222222222222222222b.dusk.bot";
+  const tokenOf = (who: string) => `omc_${who[0]!.repeat(43)}`;
+  const kept = (id: string) => ({ origin: "https://dusk.bot", token: tokenOf(id), expiresAt: Date.now() + 86_400_000, deviceId: "phone", account: { id, email: `${id}@example.com` } });
+  const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
+  let secrets: Map<string, string>;
+  const asked = (path: string) => fetcher.mock.calls.filter(([input]) => String(input).endsWith(path));
+  const authOf = (call: Parameters<typeof fetch>) => (call[1]?.headers as Record<string, string> | undefined)?.authorization;
+  const bobCloud = (tagged: boolean): MobileConnectionRecord => ({ ...record("bob-cloud", "Bob cloud"), origin: cloudOrigin, ...(tagged ? { account: { id: "bob", email: "bob@example.com" } } : {}) });
+  const start = async (cloud: MobileConnectionRecord) => {
+    vi.stubEnv("VITE_DUSK_ALLOW_SIGNED_OUT", ""); vi.stubEnv("VITE_DUSK_ACCOUNT_ORIGIN", "");
+    secrets = new Map([["token.bob-cloud", "cloud-token"], ["dusk.account", JSON.stringify(kept("alice"))], ["dusk.account.others", JSON.stringify([kept("bob")])]]);
+    prefs = new Map([["dusk.mobile.connections.v1", JSON.stringify([cloud])], ["dusk.mobile.active.v1", "bob-cloud"], ["dusk.mobile.installed", "1"]]);
+    platform = { ...platform, native: true, kind: "android",
+      prefs: { get: async (key) => prefs.get(key) ?? null, set: async (key, value) => { prefs.set(key, value); }, remove: async (key) => { prefs.delete(key); } },
+      secrets: { get: async (key) => secrets.get(key) ?? null, set: async (key, value) => { secrets.set(key, value); }, remove: async (key) => { secrets.delete(key); } },
+      onAppUrl: () => () => {}, onResume: () => () => {} };
+    fetcher.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith(cloudOrigin)) return json({});
+      if (url.endsWith("/api/cloud/desktop/session")) {
+        const bob = authOf([input, init]) ===`Bearer ${tokenOf("bob")}`;
+        return json({ clouds: bob ? [{ id: "cb", role: "owner", teamId: null, status: "ready", origin: cloudOrigin, name: "Bob cloud" }] : [], teams: [] });
+      }
+      return json({ error: "not_found" }, 404);
+    });
+    await act(async () => {
+      root = createRoot(host);
+      root.render(createElement(PlatformContext, { value: platform }, createElement(AccountGate, null, createElement(ConnectionGate, null, createElement("p", null, "home")))));
+    });
+    for (let i = 0; i < 30 && JSON.parse(secrets.get("dusk.account")!).account.id !== "bob"; i++) await settle();
+    await settle();
+  };
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it("opening the other account's cloud puts that account in use and keeps the first one signed in", async () => {
+    await start(bobCloud(true));
+    expect(host.textContent).toBe("home");
+    expect(JSON.parse(secrets.get("dusk.account")!).account.id).toBe("bob");
+    expect(JSON.parse(secrets.get("dusk.account.others")!).map((one: { account: { id: string } }) => one.account.id)).toEqual(["alice"]);
+    expect(asked("/v1/app/enroll-grant").map(authOf).filter((auth) => auth === `Bearer ${tokenOf("alice")}`), "never enrolled into the other account").toEqual([]);
+  });
+
+  it("a cloud linked before the phone knew whose it was is tagged with the account that lists it, which takes over", async () => {
+    await start(bobCloud(false));
+    expect(JSON.parse(secrets.get("dusk.account")!).account.id).toBe("bob");
+    expect(JSON.parse(prefs.get("dusk.mobile.connections.v1")!)[0].account).toEqual({ id: "bob", email: "bob@example.com" });
+    expect(asked("/v1/app/enroll-grant").map(authOf).filter((auth) => auth === `Bearer ${tokenOf("alice")}`)).toEqual([]);
+  });
 });
 
 it("keeps a pairing the computer accepted when the first connect fails, and drops only a refused one", () => {

@@ -79,6 +79,23 @@ describe("createCarriedWork", () => {
     expect(work.take("t", resume)).toEqual([]);
     expect(work.take("other", resume)).toEqual([]);
   });
+  it("hands them to the person's own next turn once their message ended the wait, a restart in between included", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dusk-carry-"));
+    try {
+      const file = join(dir, "limit-carried-steps.json");
+      const work = createCarriedWork({ file });
+      work.keep("t", step);
+      work.forNextTurn("t");
+      work.forNextTurn("none");
+      expect(createCarriedWork({ file }).take("t", "also rename the folder")).toEqual(step);
+      work.keep("u", step);
+      work.forNextTurn("u");
+      expect(work.take("u", "also rename the folder")).toEqual(step);
+      expect(work.take("u", resume)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   it("keeps them across a restart in its file, which holds nothing once they are used", () => {
     const dir = mkdtempSync(join(tmpdir(), "dusk-carry-"));
     try {

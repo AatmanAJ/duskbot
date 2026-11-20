@@ -24,6 +24,7 @@ import { OpenAICompatDriver } from "./openai-compat.ts";
 import { MAX_PARALLEL_READS } from "./chat-tool-batches.ts";
 import { resumeNote } from "../host/limit-hold.ts";
 import { TAKEOVER_CAUSE } from "../limit-resume.ts";
+import { carryIntoNextTurn } from "./openai-chat-carry.ts";
 
 interface ChatRequest {
   messages: Array<{
@@ -1362,6 +1363,24 @@ describe("structured tool execution boundaries", () => {
       { role: "assistant", tool_calls: [expect.objectContaining({ id: "call_a" })] }, { role: "tool", tool_call_id: "call_a" },
       { role: "assistant", tool_calls: [expect.objectContaining({ id: "call_b" })] }, { role: "tool", tool_call_id: "call_b" },
     ]);
+  });
+
+  it("carries a held turn's steps into the person's message that ended the wait, never dropping them because they typed", async () => {
+    const f = await fixture((_body, response, round) => {
+      if (round === 1) sse(response, [chunk({ tool_calls: [toolCall()] }, "tool_calls")]);
+      else if (round === 2) { response.writeHead(429, { "content-type": "application/json", "retry-after": "120" }); response.end('{"error":{"message":"Rate limit reached"}}'); }
+      else sse(response, [chunk({ content: "The receipt is stored and the folder renamed." }, "stop")]);
+    });
+    await f.start({ approvalMode: "full" });
+    expect(await f.completed()).toMatchObject({ ok: false });
+    carryIntoNextTurn(f.threadId);
+    f.recorder.events.length = 0;
+    await f.start({ approvalMode: "full", text: "Also rename the folder." });
+    expect(await f.completed()).toMatchObject({ ok: true });
+    expect(f.effects()).toHaveLength(1);
+    const next = f.requests[2]!.messages;
+    expect(next.at(-1)).toMatchObject({ role: "user" });
+    expect(next.slice(-3, -1)).toMatchObject([{ role: "assistant", tool_calls: [expect.objectContaining({ id: "call_write" })] }, { role: "tool", tool_call_id: "call_write" }]);
   });
 
   it("hands a limited turn's steps to a chat-engine backup that takes it over", async () => {

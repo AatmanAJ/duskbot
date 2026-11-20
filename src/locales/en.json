@@ -9727,5 +9727,11 @@
   "mobile.composer.approval": "Answer above",
   "mobile.chat.waitingForConnection": "Waiting for connection",
   "chat.error.replyGone": "The message you replied to is gone. Remove the quote and send it again.",
-  "call.voice.micBlockedShort": "Microphone is off"
+  "call.voice.micBlockedShort": "Microphone is off",
+  "mobile.clouds.addAccount": "Add another account",
+  "mobile.clouds.switchKeeps": "{current} stays signed in on this phone too, with its dusk clouds. Switch between accounts in settings.",
+  "mobile.settings.addAccount": "Add another account",
+  "mobile.settings.otherAccount": "Also signed in here. Tap to switch.",
+  "mobile.settings.signOutAccountTitle": "Sign out of {email}?",
+  "mobile.settings.signOutAccountBody": "Its dusk clouds leave this phone, with their notifications and the chats saved here. Your other accounts stay signed in."
 }

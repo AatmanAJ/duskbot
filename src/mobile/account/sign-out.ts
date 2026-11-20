@@ -58,17 +58,22 @@ export async function landAfterRemoval(store: Store): Promise<Landing> {
   return "first-screen";
 }
 
-/** Signing out of the dusk bot account on the phone: every dusk cloud it reached through the account leaves the phone
+/** Whose dusk clouds a sign-out takes off the phone: `account`'s, the ones it lists (`listed`: their addresses) and,
+ * when no other account stays signed in here, every one. */
+export type SignedOut = { account: string | null; othersStay: boolean; listed?: readonly string[] };
+
+/** Signing out of a dusk bot account on the phone: every dusk cloud it reached through that account leaves the phone
  * (its device on the cloud, token, push registration, unsent messages and cached chats), Live Activities end, and the
- * account's session ends on the service. Computers paired with their own QR or code stay; with none left the app opens
- * on its first screen. */
-export async function signOutPhone({ platform, signOutAccount, fetch: request = globalThis.fetch }: {
+ * account's session ends on the service. The phone's other accounts and their clouds stay, and so do computers paired
+ * with their own QR or code; with nothing left the app opens on its first screen. */
+export async function signOutPhone({ platform, signOutAccount, signedOut = { account: null, othersStay: false }, fetch: request = globalThis.fetch }: {
   platform: MobilePlatform;
-  signOutAccount(): Promise<void>;
+  signOutAccount(): Promise<unknown>;
+  signedOut?: SignedOut;
   fetch?: typeof globalThis.fetch;
 }): Promise<Landing> {
   const store = createConnectionStore(platform);
-  await forgetCloudPlaces(platform, request);
+  await forgetCloudPlaces(platform, request, signedOut);
   await endLiveActivities(platform);
   // the account client forgets its Keychain session before it asks the service to end it, so a slow network only
   // delays the server-side revoke, never the sign-out on the phone
@@ -77,10 +82,12 @@ export async function signOutPhone({ platform, signOutAccount, fetch: request = 
   return landAfterRemoval(store);
 }
 
-/** every dusk cloud saved on the phone, forgotten as signing out does */
-export async function forgetCloudPlaces(platform: MobilePlatform, request: typeof fetch = globalThis.fetch): Promise<void> {
+/** the dusk clouds saved on the phone that a sign-out takes with it, forgotten as signing out does */
+export async function forgetCloudPlaces(platform: MobilePlatform, request: typeof fetch = globalThis.fetch, signedOut: SignedOut = { account: null, othersStay: false }): Promise<void> {
   const store = createConnectionStore(platform);
-  const clouds = (await store.list()).filter((record) => placeKind(record) === "cloud");
+  const leaves = (record: MobileConnectionRecord) => !signedOut.othersStay || record.account?.id === signedOut.account
+    || (!record.account && httpOrigins(record).some((origin) => signedOut.listed?.includes(origin)));
+  const clouds = (await store.list()).filter((record) => placeKind(record) === "cloud" && leaves(record));
   await Promise.all(clouds.map((record) => forgetPlace(platform, store, record, request).catch(() => {})));
 }
 

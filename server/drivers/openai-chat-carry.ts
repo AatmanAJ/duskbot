@@ -61,7 +61,7 @@ export function carriedWorkFile(env: NodeJS.ProcessEnv = process.env): string {
   return join(dataDirFor(env.DUSK_DATA_DIR, homedir()), "limit-carried-steps.json");
 }
 
-type Kept = { at: number; steps: CarriedMessage[] };
+type Kept = { at: number; steps: CarriedMessage[]; next?: true };
 
 function load(file: string | undefined): Map<string, Kept> {
   if (!file) return new Map();
@@ -69,7 +69,7 @@ function load(file: string | undefined): Map<string, Kept> {
     const saved = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
     return new Map(Object.entries(saved).flatMap(([threadId, value]): Array<[string, Kept]> => {
       const row = value as Partial<Kept> | null;
-      return row && Number.isFinite(row.at) && Array.isArray(row.steps) ? [[threadId, { at: row.at!, steps: row.steps }]] : [];
+      return row && Number.isFinite(row.at) && Array.isArray(row.steps) ? [[threadId, { at: row.at!, steps: row.steps, ...(row.next === true ? { next: true as const } : {}) }]] : [];
     }));
   } catch {
     return new Map();
@@ -77,8 +77,8 @@ function load(file: string | undefined): Map<string, Kept> {
 }
 
 /** Per conversation, the steps a limited turn ran. The next chat-engine turn there takes them once: only the turn that
- * carries the limited one on gets them; any other turn (the person moved on, or a backup already finished the work)
- * clears them. */
+ * carries the limited one on, or the person's message that ended its wait, gets them; any other turn (a backup already
+ * finished the work) clears them. */
 export function createCarriedWork(options: { file?: string; now?: () => number } = {}) {
   const now = options.now ?? Date.now;
   const kept = load(options.file);
@@ -98,12 +98,19 @@ export function createCarriedWork(options: { file?: string; now?: () => number }
       if (kept.size > THREADS_MAX) kept.delete(kept.keys().next().value!);
       save();
     },
+    /** the person wrote while the limited turn waited: their next turn carries the steps on */
+    forNextTurn(threadId: string): void {
+      const entry = kept.get(threadId);
+      if (!entry || entry.next) return;
+      entry.next = true;
+      save();
+    },
     take(threadId: string, text: string): CarriedMessage[] {
       const entry = kept.get(threadId);
       if (!entry) return [];
       kept.delete(threadId);
       save();
-      return isLimitResume(text) && now() - entry.at <= KEEP_MS ? entry.steps : [];
+      return (entry.next || isLimitResume(text)) && now() - entry.at <= KEEP_MS ? entry.steps : [];
     },
   };
 }
@@ -117,4 +124,9 @@ export function sharedCarriedWork(file: string): CarriedWork {
   let work = sharedWork.get(file);
   if (!work) sharedWork.set(file, work = createCarriedWork({ file }));
   return work;
+}
+
+/** the person's message ended a limit wait in this conversation: the steps the held turn ran go into that message's turn */
+export function carryIntoNextTurn(threadId: string, file = carriedWorkFile()): void {
+  sharedCarriedWork(file).forNextTurn(threadId);
 }

@@ -306,7 +306,7 @@ describe("a dusk cloud's log in qr for another account than the phone's", () => 
     await settle(() => Boolean(host.querySelector("input[type=email]")));
     expect(heading()).toBe("Log in to dusk bot");
     expect(host.querySelector<HTMLInputElement>("input[type=email]")?.value).toBe("owner@example.com");
-    expect(secrets.has("dusk.account")).toBe(false);
+    expect(secrets.has("dusk.account"), "the account in use stays until the other one signs in").toBe(true);
   });
 
   it("opened from the camera, does the same", async () => {
@@ -437,7 +437,7 @@ describe("a dusk cloud's QR always ends in that cloud, on its account", () => {
     expect(paired).toEqual([]);
   });
 
-  it("a phone on another account asks first; switching signs that account and its clouds out, then opens the QR's cloud", async () => {
+  it("a phone on another account asks first; switching keeps that account and its clouds beside the new one, then opens the QR's cloud", async () => {
     route([home]);
     secrets.set("dusk.account", JSON.stringify({ origin, token, expiresAt: Date.now() + 60_000, account, deviceId: "phone" }));
     prefs.set("dusk.mobile.connections.v1", JSON.stringify([{ id: "old", environmentId: "env-old", label: "Old cloud", transport: "https", origin: "https://d1111111111111111111a.dusk.bot", sessionRef: "token.old", capabilities: {}, addedAt: 1, lastUsedAt: 1 }]));
@@ -449,14 +449,15 @@ describe("a dusk cloud's QR always ends in that cloud, on its account", () => {
     expect(host.textContent).toContain(account.email);
     await press("[data-entry=switch-account]");
     await settle(() => onLinked.mock.calls.length > 0);
-    expect(JSON.parse(prefs.get("dusk.mobile.connections.v1") ?? "[]")).toEqual([]);
-    expect(secrets.has("token.old")).toBe(false);
+    expect(JSON.parse(prefs.get("dusk.mobile.connections.v1") ?? "[]").map((one: { id: string }) => one.id)).toEqual(["old"]);
+    expect(secrets.get("token.old")).toBe("old-token");
+    expect(JSON.parse(secrets.get("dusk.account.others") ?? "[]").map((one: { account: { email: string } }) => one.account.email)).toEqual([account.email]);
     expect(paired).toEqual(["c1"]);
   });
 });
 
 describe("another account is always a tap away", () => {
-  it("Use another account on the clouds screen signs that account and its clouds out and opens an empty sign-in", async () => {
+  it("Add another account on the clouds screen opens an empty sign-in and keeps this account and its clouds", async () => {
     secrets.set("dusk.account", JSON.stringify({ origin, token, expiresAt: Date.now() + 60_000, account, deviceId: "phone" }));
     prefs.set("dusk.mobile.connections.v1", JSON.stringify([{ id: "wrong", environmentId: "env-w", label: "Wrong cloud", transport: "https", origin: "https://d2222222222222222222b.dusk.bot", sessionRef: "token.wrong", capabilities: {}, addedAt: 1, lastUsedAt: 1 }]));
     secrets.set("token.wrong", "wrong-token");
@@ -467,8 +468,9 @@ describe("another account is always a tap away", () => {
     for (let i = 0; i < 50 && !host.querySelector("input[type=email]"); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
     expect(heading()).toBe("Log in to dusk bot");
     expect(host.querySelector<HTMLInputElement>("input[type=email]")?.value).toBe("");
-    expect(secrets.has("dusk.account")).toBe(false);
-    expect(JSON.parse(prefs.get("dusk.mobile.connections.v1") ?? "[]")).toEqual([]);
+    expect(secrets.has("dusk.account")).toBe(true);
+    expect(JSON.parse(prefs.get("dusk.mobile.connections.v1") ?? "[]").map((one: { id: string }) => one.id)).toEqual(["wrong"]);
+    expect(secrets.get("token.wrong")).toBe("wrong-token");
   });
 });
 

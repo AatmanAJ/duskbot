@@ -44,10 +44,14 @@ function installationName(payload: TypedPairing | null, fallback = t("mobile.pai
   try { return new URL(payload?.origin ?? "").host; } catch { return fallback; }
 }
 
+/** `addAccount`: an empty sign-in for another account, beside the one the phone has */
+export type OnboardingStart = "welcome" | "signin" | "addAccount";
+
 /** Where a fresh start lands: a link that arrived goes to its confirmation, a signed-in phone to its clouds, a sign-in
  * asked for from Settings to the sign-in, anyone else to pairing with their computer. */
-export function firstStep({ incoming, signedIn, adding, startAt = "welcome" }: { incoming: boolean; signedIn: boolean; adding: boolean; startAt?: "welcome" | "signin" }): Step {
+export function firstStep({ incoming, signedIn, adding, startAt = "welcome" }: { incoming: boolean; signedIn: boolean; adding: boolean; startAt?: OnboardingStart }): Step {
   if (incoming) return "confirm";
+  if (startAt === "addAccount") return "signin";
   if (startAt === "signin") return signedIn ? "clouds" : "signin";
   if (signedIn && !adding) return "clouds";
   return "welcome";
@@ -80,7 +84,7 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
   /** a place this phone already links, to open instead of pairing it again */
   onOpen?(id: string): void;
   /** where a sheet opened from inside the app starts */
-  startAt?: "welcome" | "signin";
+  startAt?: OnboardingStart;
   /** a dusk cloud's qr named the account to sign in with */
   email?: string;
   /** and carried a desktop's code that logs the phone in: it is redeemed at once, on the code screen */
@@ -109,10 +113,8 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
   // a dusk cloud's QR or link logged in here: its cloud (or the account's only one) opens without a pick
   const [qrTarget, setQrTarget] = useState<{ origin: string | null } | null>(null);
   const [switchTo, setSwitchTo] = useState<CloudQr | null>(null);
-  // this screen signed an account out of the phone: the app under it may be on a place that is gone now
-  const left = useRef(false);
   const carriedSignIn = useRef(initialSignIn);
-  const leave = () => { if (left.current) window.location.reload(); else onCancel?.(); };
+  const leave = () => onCancel?.();
   const [signingOut, setSigningOut] = useState(false);
   const [withComputers, setWithComputers] = useState(false);
   const [value, setValue] = useState(() => signInCode ? formatCode(signInCode) : "");
@@ -219,8 +221,6 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
     locked.current = true;
     setBusy(true);
     try {
-      await account.leaveAccount();
-      left.current = true;
       setSwitchTo(null);
       if (qr.pair && qr.code) {
         await account.signIn.phoneCode(qr.code).catch(() => null);
@@ -269,10 +269,8 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
       {t("mobile.onboarding.deniedBody")}
     </ErrorLine>
   ) : null;
-  // the phone holds one account: another one is reached by leaving this one (its clouds with it), with the email field empty
-  const otherAccount = async () => {
-    await account?.leaveAccount();
-    left.current = true;
+  // another account signs in beside this one, which stays with its clouds
+  const otherAccount = () => {
     setQrTarget(null);
     setSignInEmail("");
     setNoClouds(false);
@@ -356,7 +354,7 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
               {noClouds && <button type="button" className={TONAL} onClick={() => void openScanner()}><QrCode size={20} />{t("mobile.entry.scan")}</button>}
               {noClouds && <button type="button" className={TONAL} onClick={() => go("code")}><Keyboard size={20} />{t("mobile.entry.code")}</button>}
               {!noClouds && <button type="button" disabled={busy} className={QUIET} onClick={() => go("welcome")}>{t("mobile.entry.otherWays")}</button>}
-              {signedIn && <button type="button" data-entry="other-account" disabled={busy || signingOut} className={QUIET} onClick={() => void otherAccount()}>{t("mobile.clouds.otherAccount")}</button>}
+              {signedIn && <button type="button" data-entry="other-account" disabled={busy || signingOut} className={QUIET} onClick={otherAccount}>{t("mobile.clouds.addAccount")}</button>}
               {signedIn && !startAtLink && <button type="button" data-entry="sign-out" disabled={busy || signingOut} className={QUIET}
                 onClick={() => { setSigningOut(true); void account?.signOutOfPhone().catch(() => setSigningOut(false)); }}>{signingOut ? <WorkingDots /> : t("accountGate.signOut")}</button>}
             </>}>
@@ -376,7 +374,7 @@ export function Onboarding({ initial = null, initialSignIn, reason = null, start
               <button type="button" disabled={busy} className={QUIET} onClick={() => { setSwitchTo(null); if (canLeave) leave(); else go(home); }}>{t("mobile.pair.cancel")}</button>
             </>}>
               <h1 className={HEADLINE}>{t("mobile.clouds.switchTitle", { email: switchTo.email })}</h1>
-              <p className={LINE}>{t("mobile.clouds.switchBody", { current: account?.account?.email ?? "" })}</p>
+              <p className={LINE}>{t("mobile.clouds.switchKeeps", { current: account?.account?.email ?? "" })}</p>
               {failure && <Failed failure={failure} />}
             </Screen>
           </StepPane>
