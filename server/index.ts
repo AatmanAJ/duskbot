@@ -10129,7 +10129,7 @@ async function deleteBotWithLifecycle(botId: string, revalidate: () => void = ()
   const deletionResponse = (status: number, body: { error?: string; ok?: boolean; notice?: string }) => ({ status, body });
       revalidate();
       const bot = store.bot(botId);
-      if (!bot) return deletionResponse( 404, { error: "no such bot" }); if (bot.defaultBot) return deletionResponse(409, { error: defaultBotRefusal(bot.name) });
+      if (!bot) return deletionResponse( 404, { error: "no such bot" }); const kept = defaultBotRefusal(bot, store.bots); if (kept) return deletionResponse(409, { error: kept });
       if (computerProviderConfigTransitions.size > 0) {
         return deletionResponse( 409, { error: "computer provider settings are being updated: wait before deleting this bot" });
       }

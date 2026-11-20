@@ -19,15 +19,21 @@ const STARTER_COLOR = "silver";
 
 export const HELPER_ASKS = ["Help me plan my week", "Watch a price for me", "Research something for me"];
 
-export function defaultBotRefusal(name: string): string {
-  return `${name} can't be deleted or archived. To take it off the sidebar, choose Hide in its menu, or turn off "Show ${name} in the sidebar" in Settings → Models, under New bots.`;
+/** Why this helper may not be deleted or archived yet, or null: it stays while it is the Chief of Staff or its
+ * place's only bot. */
+export function defaultBotRefusal(bot: Pick<BotRecord, "id" | "name" | "defaultBot" | "chiefOfStaff">, bots: readonly Pick<BotRecord, "id" | "hidden" | "movedTo">[]): string | null {
+  if (!bot.defaultBot) return null;
+  if (bot.chiefOfStaff) return `${bot.name} is your Chief of Staff. Make another bot the Chief of Staff first.`;
+  if (!bots.some((other) => other.id !== bot.id && !other.hidden && !other.movedTo)) return `${bot.name} is your only bot. Make another bot first, or choose Hide in its menu to take it off the sidebar.`;
+  return null;
 }
 
 /** Why a PATCH may not change this bot so, or null. */
-export function defaultBotPatchRefusal(bot: BotRecord | null, body: Record<string, unknown>): string | null {
+export function defaultBotPatchRefusal(bot: BotRecord | null, body: Record<string, unknown>, bots: readonly BotRecord[] = []): string | null {
   for (const key of ["sidebarHidden", "welcomed"]) if (body[key] !== undefined && typeof body[key] !== "boolean") return `${key} must be true or false`;
   if ((body.sidebarHidden !== undefined || body.welcomed !== undefined) && !bot?.defaultBot) return "Only your helper is hidden this way; archive or delete other bots.";
-  return body.hidden === true && bot?.defaultBot ? defaultBotRefusal(bot.name) : null;
+  if (body.hidden !== true || !bot?.defaultBot) return null;
+  return defaultBotRefusal(body.chiefOfStaff === false ? { ...bot, chiefOfStaff: false } : bot, bots);
 }
 
 export function ownsDefaultBot(bot: BotRecord | null | undefined, email: string | undefined): boolean {
