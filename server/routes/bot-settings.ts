@@ -150,9 +150,9 @@ export function createBotSettingsRoutes(deps: BotSettingsRouteDeps): RouteHandle
           error: "Changing providers with elevated permissions requires choosing Ask first",
         });
       }
-      const bot = store.patchBot(existing.id, { modelSelection: checked.selection });
+      const bot = store.patchBot(existing.id, { modelSelection: checked.selection, modelChosen: true });
       if (!bot) return json(res, 404, { error: "no such bot" });
-      store.patchTask(bot.id, selected.threadId, { modelSelection: undefined });
+      store.patchTask(bot.id, selected.threadId, { modelSelection: undefined, modelChosen: undefined });
       return json(res, 200, { bot: wireBot(bot) });
     }
     m = path.match(/^\/api\/bots\/([\w-]+)\/read$/);

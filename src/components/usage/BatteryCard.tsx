@@ -11,6 +11,7 @@ import { BotAvatar } from "../Avatar";
 import { Card as RowsCard, NavRow, NoteRow, rowCls } from "../ListRows";
 import { SpendCap } from "./SpendCap";
 import { LoadFailedRow } from "./LoadFailedRow";
+import { ArtState } from "../ui/Art";
 
 const SHOWN = 6;
 
@@ -59,7 +60,7 @@ export function BatteryCard({ version }: { version: number }) {
   return (
     <RowsCard label={t("usage.battery.title")} footnote={report?.basis === "tokens" && report.rows.length ? t("usage.battery.tokensNote") : undefined} data-settings-block="battery">
       {!report && failed ? <LoadFailedRow text={t("usage.battery.failed")} onRetry={retry} />
-        : !report ? <NoteRow>{t("common.checking")}</NoteRow> : !bots.length ? <NoteRow>{t("usage.battery.empty")}</NoteRow> : (
+        : !report ? <NoteRow>{t("common.checking")}</NoteRow> : !bots.length ? <ArtState data-art-state="battery" art="mug" title={t("empty.battery.title")} className="py-6">{t("empty.battery.hint")}</ArtState> : (
         <ul className="contents">
           {(all ? bots : bots.slice(0, SHOWN)).flatMap((bot) => [line(bot, false), ...routinesOf(bot.id).map((routine) => line(routine, true))])}
         </ul>

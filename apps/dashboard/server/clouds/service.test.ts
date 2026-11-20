@@ -164,7 +164,7 @@ it("enforces owner and state checks, pairs only running desktops and validates c
   f.service.activate(c.id, "sub", dedicatedPlan); await expect(f.service.power("a", c.id, "on")).rejects.toMatchObject({ status: 409 }); await f.ready(c);
   const grantWithCredential = { code: "ABCD-EFGH-JKLM", expiresAt: f.now() + 300_000, credential: "synthetic-private-credential" };
   f.home.pair.mockResolvedValueOnce(grantWithCredential);
-  expect(await f.service.pair("a", c.id)).toEqual({ origin: c.origin, code: "ABCD-EFGH-JKLM", expiresAt: f.now() + 300_000 });
+  expect(await f.service.pair("a", c.id)).toEqual({ origin: c.origin, code: "ABCD-EFGH-JKLM", expiresAt: f.now() + 300_000, linkKey: c.linkPublicKey });
   expect(f.home.pair).toHaveBeenCalledWith(c.origin, expect.any(String), { label: "dusk bot app (Cloud)", ttlSeconds: 300 });
   expect(() => f.service.hide("a", c.id)).toThrow(expect.objectContaining({ status: 409, code: "not_removable" }));
   for (const name of ["", "a".repeat(41), "<tag>", "a\nb"]) expect(() => f.service.rename("a", c.id, { name })).toThrow();

@@ -12,5 +12,10 @@
 	<array>
 		<string>applinks:dusk.bot</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)bot.dusk.mobile</string>
+		<string>$(AppIdentifierPrefix)bot.dusk.shared</string>
+	</array>
 </dict>
 </plist>

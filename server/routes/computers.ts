@@ -77,6 +77,8 @@ export interface ComputerRouteDeps {
   /** `allowPreview`: a desktop link only reads the screen, so a panel's preview in flight does not refuse it. */
   claimBotComputerLifecycle(botId: string, allowPreview?: boolean): () => void;
   claimManagedVpsMutation(containerName: string): () => void;
+  /** Allowed while bots use the computer: it is how a stuck or out-of-memory computer is recovered. */
+  restartManagedVpsComputer(containerName: string): Promise<unknown>;
 }
 
 export function createComputerRoutes(deps: ComputerRouteDeps): RouteHandler {
@@ -87,7 +89,7 @@ export function createComputerRoutes(deps: ComputerRouteDeps): RouteHandler {
     localVmTargetForBot, localVmTargetForStatus, localVmPayload, localVmInventoryPayload, existingPerBotLocalVmCount,
     teamComputersPayload, teamComputerInUse, managedVpsOwners, providerTransitionMessage, botHasActiveTurn,
     botComputerControlKey, botComputerControlSnapshot, computerPreviewBot, computerPreviewSurface,
-    claimTeamComputerLifecycle, claimBotComputerLifecycle, claimManagedVpsMutation,
+    claimTeamComputerLifecycle, claimBotComputerLifecycle, claimManagedVpsMutation, restartManagedVpsComputer,
   } = deps;
   const usage = createComputerUsageRoutes(deps);
   const frames = createComputerFramesRoutes(deps);
@@ -223,6 +225,15 @@ export function createComputerRoutes(deps: ComputerRouteDeps): RouteHandler {
         undefined,
         vpsAliasesInPlay(cfg, store.bots),
       ));
+    }
+    m = path.match(/^\/api\/computers\/vps\/([\w-]+)\/restart$/);
+    if (m && method === "POST") {
+      if (!String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
+        return json(res, 415, { error: "content-type must be application/json" });
+      }
+      await readBody(req);
+      if (computerProviderConfigTransitions.has("vps")) return json(res, 409, { error: providerTransitionMessage("vps") });
+      return json(res, 200, await restartManagedVpsComputer(m[1]!));
     }
     m = path.match(/^\/api\/computers\/vps\/([\w-]+)\/remove$/);
     if (m && method === "POST") {
