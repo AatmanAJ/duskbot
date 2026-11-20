@@ -366,7 +366,7 @@ async function joinMovedBots(notes: AssistantNotes, bots: readonly Bot[], movedN
   for (const bot of notes.bots.filter((one) => movedNames.includes(one.name))) {
     try {
       const plan = grokMovePlan(bot, { from: notes.from });
-      const here = bots.find((one) => one.installedPackage?.id === plan.packageId);
+      const here = bots.find((one) => [plan.packageId, ...plan.legacyPackageIds].includes(one.installedPackage?.id ?? ""));
       if (!here) continue;
       const memories = { from: notes.from, memories: [...bot.memories] };
       const files = Object.entries(bot.memoryFiles ?? {});
