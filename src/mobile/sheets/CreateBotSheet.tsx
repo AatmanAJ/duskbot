@@ -74,7 +74,7 @@ export function CreateBotSheet({ open, onClose, onOpenChat }: SheetPageProps<"cr
             </button>
           ))}
         </div>
-        <div className="sticky bottom-0 bg-app pb-1 pt-2">
+        <div className="sticky bottom-[calc(-1*max(var(--m-safe-bottom),16px))] -mb-[max(var(--m-safe-bottom),16px)] bg-app pb-[calc(max(var(--m-safe-bottom),16px)+4px)] pt-2">
           <button type="submit" disabled={!name.trim() || pending} aria-busy={pending} aria-describedby={!name.trim() ? `${nameId}-hint` : undefined} className="mobile-press flex h-12 w-full items-center justify-center rounded-full bg-ink text-[16px] font-semibold text-app disabled:opacity-40">
             {pending ? <><WorkingDots size={4} /><span className="sr-only">{t("mobile.create.creating")}</span></> : t("mobile.create.submit")}
           </button>
