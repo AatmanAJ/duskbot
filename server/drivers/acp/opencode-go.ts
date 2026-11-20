@@ -10,6 +10,7 @@ import { DATA_DIR, OPENCODE_PROVIDER_ENV } from "../../config.ts";
 import { decodeInjectId, hostApiKey, localHost, mergeLocalInject } from "../local-inject.ts";
 import { applyStandaloneSpawnEnv } from "../../engine-install.ts";
 import { OPENCODE_STANDALONE } from "./opencode-release.ts";
+import { openCodeCommand } from "./opencode-pick.ts";
 import { PREINSTALL_FREE_BACKUP_ENV } from "../../free-backup.ts";
 import { createAcpDriver, type AccountErrorCode, type AcpConfig, type AcpSupport } from "./core.ts";
 import { offeredModels, surveyModelVariants } from "./config-options.ts";
@@ -854,6 +855,7 @@ const support = (loadCatalog: OpenCodeCatalogLoader, ownAccess = new Map<string,
     standalone: OPENCODE_STANDALONE,
   },
   spawnArgs: () => ["acp"],
+  resolveCommand: (env, config) => openCodeCommand(config.cli, env.PATH),
   statusLog: { path: openCodeLogPath, parse: parseOpenCodeLogLine, shared: true },
   // A folder outside git files its session under OpenCode's global project, which every non-git folder of the person's
   // shares: a connection check or memory upkeep would show up in their history there.
