@@ -163,15 +163,16 @@ describe("strict initialize fixture", () => {
     expect((await ask(4, "tools/call", { name: "report", arguments: { campaignId: "c-1" } })).result.content[0].text).toBe("remote execution recorded");
   });
 
-  it("lets a long call finish through an ACP mount; only the tool directory keeps its two minutes", async () => {
+  it("stops waiting on a long call after two minutes, through an ACP mount and the tool directory alike, and says it timed out", async () => {
     fake = await startFakeHttpMcp({ tools: TOOLS, callDelayMs: 3_000 });
     const acp = startProxy(mcpStdioServer({ type: "http", url: fake.url, headers: {} }, { nodeEnv: { ELECTRON_RUN_AS_NODE: "1" } })!, FAST_CLOCK);
     await acp(1, "initialize", CODEX);
-    expect((await acp(2, "tools/call", { name: "report", arguments: {} })).result.content[0].text).toBe("remote execution recorded");
+    const timedOut = { code: -32001, message: expect.stringMatching(/^This tool did not answer within 2 minutes, so dusk bot stopped waiting for it\./) };
+    expect((await acp(2, "tools/call", { name: "report", arguments: {} })).error).toEqual(timedOut);
     const stopped = once(child!, "close"); child!.kill(); await stopped;
     const searched = startProxy(mcpStdioServer({ type: "http", url: fake.url, headers: {} }, { directory: { name: "voluum" } })!, FAST_CLOCK);
     await searched(1, "initialize", CODEX);
-    expect((await searched(2, "tools/call", { name: "report", arguments: {} })).error).toEqual({ code: -32800, message: "MCP request cancelled" });
+    expect((await searched(2, "tools/call", { name: "report", arguments: {} })).error).toEqual(timedOut);
   }, 20_000);
 
   it("reaches a plain http server through HTTP_PROXY, never directly", async () => {

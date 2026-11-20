@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  FREE_CAPABILITIES, STRICT_CAPABILITIES, Tracker, checkCreate, checkExec, checkNetworkCreate, checkUpdate, decide, parseImageRef,
-  parseJson, startGate,
+  FREE_CAPABILITIES, STRICT_CAPABILITIES, SelfCheck, Tracker, checkCreate, checkExec, checkNetworkCreate, checkUpdate, decide, parseImageRef,
+  parseJson, pingGate, startGate,
 } from "../docker-gate.mjs";
 
 const NAME = `${DOCKER_NAMES.vpsPrefix}-abc-0123456789ab`;
@@ -478,12 +478,15 @@ async function fakeDocker(path) {
           if (buffer.length) raw(buffer);
           return;
         }
-        socket.write(route(method, target));
+        const answer = route(method, target);
+        if (answer === null) return socket.destroy();
+        socket.write(answer);
       }
     });
     socket.on("error", () => {});
   });
   const route = (method, target) => {
+    if (target === "/v1.56/images/ghcr.io/duskbotai/dusk-desktop:v6/json") return null;
     if (target === "/info") return respond(200, { Runtimes: { runc: {} } });
     if (target === "/_ping" || target === "/v1.47/_ping") return `HTTP/1.1 200 OK\r\nApi-Version: 1.47\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\n${method === "HEAD" ? "" : "OK"}`;
     if (target === "/v1.47/version") return VERSION_CHUNKED;
@@ -542,6 +545,15 @@ async function client(path) {
   };
 }
 
+describe("docker gate self-check", () => {
+  it("asks systemd for a restart only after three of its own pings in a row went unanswered", () => {
+    const check = new SelfCheck();
+    expect([false, false].map((answered) => check.record(answered))).toEqual([false, false]);
+    expect(check.record(true)).toBe(false);
+    expect([false, false, false].map((answered) => check.record(answered))).toEqual([false, false, true]);
+  });
+});
+
 describe("docker gate over unix sockets", () => {
   let dir, docker, gate, logs;
 
@@ -556,6 +568,28 @@ describe("docker gate over unix sockets", () => {
     await gate.close();
     await docker.close();
     await rm(dir, { recursive: true, force: true });
+  });
+
+  it("answers 502 instead of a bare EOF when docker drops the connection, and says so in its log", async () => {
+    const http = await client(join(dir, "gate.sock"));
+    http.send("GET /v1.56/images/ghcr.io/duskbotai/dusk-desktop:v6/json HTTP/1.1\r\nHost: api.moby.localhost\r\n\r\n");
+    const answer = await http.response();
+    expect(answer.status).toBe(502);
+    expect(JSON.parse(answer.body).message).toBe("docker gate: docker closed the connection before answering; try again");
+    expect(logs.join("\n")).toContain("docker closed the connection before answering");
+    await http.ended();
+  });
+
+  it("closes a connection that sends no request for its idle time, and answers its own health ping", async () => {
+    const idle = await startGate({ listen: join(dir, "idle.sock"), upstream: join(dir, "docker.sock"), log: () => {}, idleMs: 50 });
+    try {
+      const http = await client(join(dir, "idle.sock"));
+      await http.ended();
+      expect(await pingGate(join(dir, "idle.sock"), 2_000)).toBe(true);
+    } finally {
+      await idle.close();
+    }
+    expect(await pingGate(join(dir, "idle.sock"), 500)).toBe(false);
   });
 
   it("listens on a 0660 socket", async () => {

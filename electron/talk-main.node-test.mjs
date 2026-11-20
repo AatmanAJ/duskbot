@@ -77,7 +77,9 @@ function harness({ packaged = true, appleSpeech = true, platform = "darwin", rem
 }
 
 test("every list of the app's windows leaves the talk box out", () => {
-  assert.equal(main.match(/BrowserWindow\.getAllWindows\(\)/g).length, 1);
+  // the one other use only listens for Windows session end on every window, talk box included (browser-flush.mjs)
+  assert.equal(main.match(/BrowserWindow\.getAllWindows\(\)/g).length, 2);
+  assert.match(main, /installSessionEndFlush\(\{ app, windows: \(\) => BrowserWindow\.getAllWindows\(\),/);
   assert.match(main, /function appWindows\(\) \{\s*return BrowserWindow\.getAllWindows\(\)\.filter\(\(win\) => !isTalkPanel\(win\) && !isAmbientWindow\(win\)\);/);
   // a Dock click reveals a window chosen from the app's own windows, or opens one (revealForLink, ae44ce520)
   assert.match(main, /app\.on\("activate", \(\) => revealForLink\(\)\);/);

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { peerLine } from "@/lib/peer-message";
+import { phoneApp } from "@/lib/store-app";
 import { UNREAD_DIVIDER_FADE_MS, UNREAD_DIVIDER_LINGER_MS } from "@/lib/unread-divider";
 import { useStore, type Message } from "@/state/store";
 
@@ -28,15 +29,21 @@ export function useUnreadDivider({ threadId, messages, following }: {
   useEffect(() => {
     if (!messageId || !caughtUp) return;
     const done = () => dispatch({ type: "unreadDividerDone", threadId });
+    // on the phone the line only fades and keeps its room until the chat closes: folding it mid-conversation slid
+    // every row under it up just after a reply landed
+    const inPlace = phoneApp();
     let fold: ReturnType<typeof setTimeout> | undefined;
+    let faded = false;
     const linger = setTimeout(() => {
-      if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return done();
+      if (!inPlace && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return done();
+      faded = true;
       setFadingId(messageId);
-      fold = setTimeout(done, UNREAD_DIVIDER_FADE_MS);
+      if (!inPlace) fold = setTimeout(done, UNREAD_DIVIDER_FADE_MS);
     }, UNREAD_DIVIDER_LINGER_MS);
     return () => {
       clearTimeout(linger);
       if (fold) clearTimeout(fold);
+      if (inPlace && faded) done();
     };
   }, [messageId, caughtUp, threadId, dispatch]);
 
