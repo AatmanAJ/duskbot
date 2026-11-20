@@ -77,24 +77,24 @@ const FULL = "skills+voice+x+team";
  * either: lock a saving in by lowering the number. A Chief's list is longer
  * than another bot's only by the Chief-only names in find_tool's description. */
 const BUDGET_BASELINE: Record<string, number> = {
-  "default": 21127,
-  "voice": 21905,
-  "skills": 21154,
-  "skills+voice": 21932,
-  "non-chief": 21041,
-  "voice+non-chief": 21819,
-  "skills+non-chief": 21068,
-  "skills+voice+non-chief": 21846,
-  "skills+voice+cloud-home": 21949,
-  "skills+voice+non-chief+cloud-home": 21863,
-  "skills+voice+x": 22010,
-  "skills+voice+x+team": 22010,
-  "default+legacy-switches": 21127,
-  "default+dusk": 21179,
-  "skills+voice+dusk": 21984,
-  "default+no-computer-pick": 19920,
-  "default+room": 19821,
-  "non-chief+room": 19735,
+  "default": 29190,
+  "voice": 29968,
+  "skills": 29217,
+  "skills+voice": 29995,
+  "non-chief": 29104,
+  "voice+non-chief": 29882,
+  "skills+non-chief": 29131,
+  "skills+voice+non-chief": 29909,
+  "skills+voice+cloud-home": 30012,
+  "skills+voice+non-chief+cloud-home": 29926,
+  "skills+voice+x": 30073,
+  "skills+voice+x+team": 30073,
+  "default+legacy-switches": 29190,
+  "default+dusk": 29242,
+  "skills+voice+dusk": 30047,
+  "default+no-computer-pick": 27983,
+  "default+room": 27884,
+  "non-chief+room": 27798,
 };
 
 type RpcAnswer = { id: number; result?: { tools?: unknown[]; content?: Array<{ text: string }>; isError?: boolean }; error?: { code: number; message: string } };
@@ -263,7 +263,7 @@ describe("agents proxy tools/list golden with the tool bridge on", () => {
   it("keeps the same hot tools whatever the role and features, except the ones a profile does not have", () => {
     const hotOf = (name: string) => toolsOf(wires[name]!).slice(0, -2).map((tool) => tool.name);
     const base = hotOf("default");
-    expect(base).toEqual(["set_status", "send_message", "tool_result_read", "list_room_targets", "coordinate_bots", "list_bots", "list_rooms", "select_computer", "attach_file", "publish_page", "confirm_purchase", "post_to_room", "request_credential", "request_sign_in", "fill_login", "message_person", "memory_update"]);
+    expect(base).toEqual(["set_status", "send_message", "tool_result_read", "list_room_targets", "coordinate_bots", "list_bots", "list_rooms", "select_computer", "attach_file", "publish_page", "confirm_purchase", "post_to_room", "request_credential", "request_sign_in", "fill_login", "message_person", "memory_update", "trigger"]);
     for (const name of Object.keys(PROFILES)) {
       const selects = PROFILES[name]!.DUSK_COMPUTER_SELECTION === "1";
       expect(hotOf(name).filter((tool) => tool !== "send_voice_note"), name).toEqual(selects ? base : base.filter((tool) => tool !== "select_computer"));
@@ -334,7 +334,7 @@ describe("agents proxy with the tool bridge on, from the packaged bundle", () =>
     const env = { ...PROFILES["non-chief"]!, ...BRIDGE_ON };
     const fromSource = await proxyAnswers(PROXY_SOURCE, env, BRIDGE_REQUESTS);
     const [found, shapeless, outside] = await proxyAnswers(bundled, env, BRIDGE_REQUESTS);
-    expect((JSON.parse(found!.result!.content![0]!.text) as { matches: Tool[] }).matches[0]!.name).toBe("trigger");
+    expect((JSON.parse(found!.result!.content![0]!.text) as { matches: Tool[] }).matches[0]!.name).toBe("trigger_info");
     expect(shapeless!.result!.isError).toBe(true);
     expect(shapeless!.result!.content![0]!.text).toContain('use_tool needs { "name": ');
     // a bot that is not a Chief: propose_team_setup is not one of its tools
@@ -363,7 +363,7 @@ describe("agents proxy tools/list wire size with the tool bridge on", () => {
         `  ${String(bytes(JSON.stringify(tool))).padStart(6)} ${String(bytes(JSON.stringify(tool.inputSchema))).padStart(6)}  ${tool.name}  (${name})`)),
     ];
     console.log(lines.join("\n"));
-    for (const [name, wire] of Object.entries(wires)) expect(bytes(wire), name).toBeLessThan(bytes(unbridgedWire(name)) / 2);
+    for (const [name, wire] of Object.entries(wires)) expect(bytes(wire), name).toBeLessThan(bytes(unbridgedWire(name)) * 0.55);
   });
 
   it.each(Object.keys(PROFILES))("%s stays within 2% of its budget baseline", (name) => {

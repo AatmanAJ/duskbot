@@ -88,6 +88,7 @@ describe("what a bridged turn is listed", () => {
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       FIND_TOOL,
       USE_TOOL,
     ]);
@@ -112,6 +113,7 @@ describe("what a bridged turn is listed", () => {
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       FIND_TOOL,
       USE_TOOL,
     ]);
@@ -120,12 +122,12 @@ describe("what a bridged turn is listed", () => {
   it("names every hot tool the catalog really has, so a renamed tool cannot fall out of the list unnoticed", () => {
     const everyName = new Set(everyProfile().flatMap(({ profile: turn }) => names(availableTools(turn))));
     for (const hot of BRIDGE_HOT_TOOL_NAMES) expect(everyName.has(hot), hot).toBe(true);
-    // 14 to 18 of them on any one turn, always fewer than the turn has
+    // 15 to 19 of them on any one turn, always fewer than the turn has
     for (const { name, profile: turn } of everyProfile()) {
       const tools = availableTools(turn);
       const hot = createToolBridge(tools as BridgeTool[]).listed.length - 2;
-      expect(hot, name).toBeGreaterThanOrEqual(14);
-      expect(hot, name).toBeLessThanOrEqual(18);
+      expect(hot, name).toBeGreaterThanOrEqual(15);
+      expect(hot, name).toBeLessThanOrEqual(19);
       expect(hot, name).toBeLessThan(tools.length / 2);
     }
   });
@@ -254,8 +256,6 @@ describe("what a bridged turn is listed", () => {
 
 describe("find_tool", () => {
   it.each([
-    ["schedule a recurring task every morning", "trigger"],
-    ["pause or resume one of my routines", "trigger"],
     ["what routines do I have", "trigger_info"],
     ["change my name and title", "propose_profile"],
     ["switch this bot to a different model", "propose_model"],
@@ -271,7 +271,6 @@ describe("find_tool", () => {
     ["open a separate job for each pull request", "start_thread"],
     ["read the whole message from an old conversation", "session_search"],
     ["retry the failed thread", "retry_thread"],
-    ["cron", "trigger"],
   ])("ranks the hidden tool first from how a person would ask: %s", async (query, expected) => {
     const matches = (await found(bridgeFor(FULL_CHIEF), query)).matches;
     expect(matches[0]!.name).toBe(expected);
@@ -290,7 +289,7 @@ describe("find_tool", () => {
   });
 
   it("matches on words, not meaning: a request that shares none with any tool gets the names instead", async () => {
-    // A known limit of a lexical search: trigger is what "nudge me" wants, but no word of it is in any tool.
+    // A known limit of a lexical search: no word of "nudge me" is in any tool.
     const payload = await found(bridgeFor(FULL_CHIEF), "nudge me tomorrow at 9");
     expect(payload.matches).toEqual([]);
     expect(payload.next).toContain("trigger");
@@ -316,7 +315,6 @@ describe("find_tool", () => {
 
   it("reads a tool's other name, asked for exactly, as the tool it belongs to", async () => {
     const bridge = bridgeFor(FULL_CHIEF);
-    expect((await found(bridge, "create_trigger")).matches[0]!.name).toBe("trigger");
     expect((await found(bridge, "list_trigger_events")).matches[0]!.name).toBe("trigger_info");
     expect((await found(bridge, "update_widget")).matches[0]!.name).toBe("show_widget");
   });

@@ -575,8 +575,231 @@
       }
     },
     {
+      "name": "trigger",
+      "description": "Set up or change work that happens on its own (was create_trigger / manage_trigger): when <something happens>, a bot does <instructions>. create in this turn whenever the person describes recurring or event-based work (\"every morning send me…\", \"whenever I get an email from…\", \"when another app calls…\"); never ask for confirmation first. when=schedule runs on a time rule, cron included (for relative dates, the person's message carries the current time and timezone in its \"Current time when this message was sent\" line); when=app_event runs when something happens in a connected app (trigger_info action=events first; prefer it to a schedule that keeps checking); when=webhook gives an address another app sends to: the result carries its private address, so you can paste it into that app's setup yourself (never anywhere else). when=limit_reset runs when an AI's usage limit resets (\"run this when my limit resets\", or to finish work your own limit stopped). To the person these are automations: write name and instructions as they would say them. Something to do once, now, is not a trigger. update (only the fields to change), pause, resume and run_now (an app event or webhook gets a test event) act on one of the bot's routines, app events or webhooks, by its trigger_id from trigger_info. Before reporting a task finished, inspect related automations with trigger_info; pause a temporary monitor whose goal is met, then read its state back. Keep standing automations; delete_trigger deletes one only at the person's explicit request. Each applies at once; the person sees it with Edit, Pause and Undo. for_bot_id: a trigger of ANOTHER bot in your section, which keeps that bot's engine and permissions.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "pause",
+              "resume",
+              "run_now"
+            ]
+          },
+          "trigger_id": {
+            "type": "string",
+            "description": "Not for create: the id from trigger_info."
+          },
+          "when": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "app_event",
+              "webhook",
+              "limit_reset"
+            ],
+            "description": "create: schedule = on a time rule (give schedule); app_event = something happens in a connected app (give app and event); webhook = when another app calls a link; limit_reset = when an AI engine's usage limit resets."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Short name shown on the automation's card."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Complete steps for each run, which does NOT see this conversation, in the person's plain words (\"draft a reply\"), never \"event data\", \"payload\", \"webhook\" or \"trigger\". Put judgement here, e.g. \"if it is not about an order, stop\"."
+          },
+          "schedule": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Only for when=schedule. Use {\"type\":\"cron\",\"expression\":\"0 9 1 * *\",\"timeZone\":\"Asia/Kolkata\"} for 09:00 on the first of each month, once with at for one future run, weekly with time + weekdays, daily with time, or interval with every_minutes for elapsed-time repetition.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "once",
+                  "weekly",
+                  "daily",
+                  "interval",
+                  "cron"
+                ],
+                "description": "once = a single future run; weekly = chosen weekdays; daily = every day; interval = every N elapsed minutes; cron = a calendar rule in an explicit timezone."
+              },
+              "expression": {
+                "type": "string",
+                "description": "Only for cron: five fields, minute hour day-of-month month weekday. Examples: 0 9 1 * * = monthly on day 1 at 09:00; 0 9 L * * = last day of each month; 0 9 * * MON#2 = second Monday of each month. Lists, ranges and steps are supported. No seconds, year, or @ macros. Never substitute daily AI date checks for a calendar rule."
+              },
+              "timeZone": {
+                "type": "string",
+                "maxLength": 128,
+                "description": "Required for cron: the person's IANA timezone, such as Asia/Kolkata or UTC; never a numeric offset or an abbreviation."
+              },
+              "at": {
+                "type": "string",
+                "description": "Only for type once: future RFC3339 date-time with an explicit timezone offset, for example 2026-09-01T09:00:00+05:30 or 2026-09-01T03:30:00Z."
+              },
+              "time": {
+                "type": "string",
+                "description": "For type weekly or daily: local computer time in 24-hour HH:MM format, for example 09:00."
+              },
+              "weekdays": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday"
+                  ]
+                },
+                "description": "For type weekly: required run days. For type interval: optional allowed days. Values use the computer's local timezone."
+              },
+              "every_minutes": {
+                "type": "integer",
+                "description": "Only for type interval: whole minutes between runs, from 5 to 1440."
+              },
+              "starts_at": {
+                "type": "string",
+                "description": "Optional for type interval: RFC3339 date-time with an explicit offset that anchors the cadence; omit to start one interval after the routine applies."
+              },
+              "window_start": {
+                "type": "string",
+                "description": "Optional for type interval, together with window_end: local 24-hour HH:MM when runs may begin, inclusive."
+              },
+              "window_end": {
+                "type": "string",
+                "description": "Optional for type interval, together with window_start: local 24-hour HH:MM when the allowed window ends, exclusive, later the same day."
+              },
+              "ends_at": {
+                "type": "string",
+                "description": "Optional for type interval: inclusive RFC3339 date-time cutoff with an explicit timezone offset."
+              },
+              "every_day": {
+                "type": "boolean",
+                "description": "Only for an interval update: true removes an existing weekday restriction."
+              },
+              "all_day": {
+                "type": "boolean",
+                "description": "Only for an interval update: true removes an existing time-window restriction."
+              },
+              "never_ends": {
+                "type": "boolean",
+                "description": "Only for an interval update: true removes an existing end cutoff."
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "webhook_event_types": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string"
+            },
+            "description": "Only for when=webhook: optional event names to accept (from the caller's event-type header, e.g. push). Omit to accept every call."
+          },
+          "filter": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "subject_contains": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "contains": {
+                "type": "string"
+              }
+            },
+            "description": "app_event only: plain words, all must match. Gmail filters at the source."
+          },
+          "event_config": {
+            "type": "object",
+            "description": "app_event only: settings from trigger_info action=events config_fields."
+          },
+          "run_on": {
+            "type": "string",
+            "enum": [
+              "maus",
+              "cloud"
+            ],
+            "description": "maus (default) keeps the bot's model and configured computer. cloud uses the bot's own sandboxed VPS computer with the same model; the VPS must already be connected."
+          },
+          "timeout_minutes": {
+            "type": "integer",
+            "description": "Schedules only: optional safety limit for active work, from 5 to 240 minutes. Omit for no limit."
+          },
+          "clear_timeout": {
+            "type": "boolean",
+            "description": "Only for updates: set true to remove an existing safety limit. Do not combine with timeout_minutes."
+          },
+          "continuity": {
+            "type": "boolean",
+            "description": "Schedules only: give each run the last completed run's report, for work that builds on last time (QA passes, monitoring, follow-ups). Default false; false in an update starts fresh."
+          },
+          "overlap": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "queue"
+            ],
+            "description": "Schedules only: while a run is still working, skip new occurrences (default) or queue at most one run."
+          },
+          "run_on_startup": {
+            "type": "boolean",
+            "description": "Repeating schedules only: also run once whenever dusk bot starts, for a computer often off when it is due."
+          },
+          "app": {
+            "type": "string",
+            "description": "app_event: app slug from trigger_info action=events."
+          },
+          "event": {
+            "type": "string",
+            "description": "app_event: event slug from trigger_info action=events."
+          },
+          "account": {
+            "type": "string",
+            "description": "app_event: account id or alias, only when the app has several."
+          },
+          "engine": {
+            "type": "string",
+            "description": "limit_reset: the engine id whose limit to wait for, e.g. claude or codex. Omit for your own engine."
+          },
+          "repeat": {
+            "type": "string",
+            "enum": [
+              "once",
+              "every_reset"
+            ],
+            "description": "limit_reset: once (default) or every_reset."
+          },
+          "for_bot_id": {
+            "type": "string",
+            "description": "Only for ANOTHER bot's trigger: that bot's id, from list_bots."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
       "name": "find_tool",
-      "description": "Find a dusk bot tool that is not in your tool list. Say what you want to do in a few words, or give the tool's name. Each match comes back with its description and exact input schema; run one with use_tool. Tools reached this way: assignment_status, usage_limits, checklist, react, create_document, update_document, list_documents, list_threads, close_thread, start_thread, vm_exec, show_widget, show_html, unpublish_page, show_products, create_bot, list_team_setup, list_team_library, propose_team_setup, propose_bot_deletion, manage_room, web_search_many, x_search, research_search, research_endpoint, research_call, decide, extract, report_bug, app_settings, chat_app_bots, retry_thread, memory_log, session_search, trigger_info, trigger, delete_trigger, wait_until, list_waits, cancel_wait, background_job, propose_profile, propose_model, skills_list, skill_manage, mcp_server.",
+      "description": "Find a dusk bot tool that is not in your tool list. Say what you want to do in a few words, or give the tool's name. Each match comes back with its description and exact input schema; run one with use_tool. Tools reached this way: assignment_status, usage_limits, checklist, react, create_document, update_document, list_documents, list_threads, close_thread, start_thread, vm_exec, show_widget, show_html, unpublish_page, show_products, create_bot, list_team_setup, list_team_library, propose_team_setup, propose_bot_deletion, manage_room, web_search_many, x_search, research_search, research_endpoint, research_call, decide, extract, report_bug, app_settings, chat_app_bots, retry_thread, memory_log, session_search, trigger_info, delete_trigger, wait_until, list_waits, cancel_wait, background_job, propose_profile, propose_model, skills_list, skill_manage, mcp_server.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,

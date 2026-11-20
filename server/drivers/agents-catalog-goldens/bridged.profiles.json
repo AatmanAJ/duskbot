@@ -1,7 +1,7 @@
 {
   "default": {
-    "bytes": 21142,
-    "sha256": "d2a86eb78854d6aa2c081b1738ea6f21c1819f45d2d95699a728fae3c070c3a6",
+    "bytes": 29190,
+    "sha256": "69c965f7f202413add77fff8a1645c1fb58f5052d01831058420b0cf8ceac86c",
     "tools": [
       "set_status",
       "send_message",
@@ -20,13 +20,14 @@
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "voice": {
-    "bytes": 21920,
-    "sha256": "b822f623966c3a1403c001a511654b712f5d9f34651700feed6eb99a01795321",
+    "bytes": 29968,
+    "sha256": "cfc32f197f116df39c3523f1e19ca99d298a7925a3e892aea7e0923f4768db00",
     "tools": [
       "set_status",
       "send_message",
@@ -46,13 +47,14 @@
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "skills": {
-    "bytes": 21169,
-    "sha256": "e1cef4100a2c77f30d4f512bc215b96edc1b8b30a5480a7a734e8b54c8924cbc",
+    "bytes": 29217,
+    "sha256": "4a763daa26efa8ba9d1eb0fb3958a8146a55378974a483a064c6c1504827537d",
     "tools": [
       "set_status",
       "send_message",
@@ -71,13 +73,14 @@
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "skills+voice": {
-    "bytes": 21947,
-    "sha256": "460948cfd5eec7f4e72453cc42756dbe1a7c934f67f9a5fdedc51856907439a9",
+    "bytes": 29995,
+    "sha256": "73cdbccb6a8ae41afe4276499db964d8cf2b1988588296246f3dc2a282326e4b",
     "tools": [
       "set_status",
       "send_message",
@@ -97,13 +100,14 @@
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "non-chief": {
-    "bytes": 21056,
-    "sha256": "90f07f9e5e47ef6c868d758387f83f236f10ffdf661c0e9ea8b00819399eddf8",
+    "bytes": 29104,
+    "sha256": "9c92677e5f6d8b39cde5c3172cc26db7de10490b8471d8cc10807d9806ac47ff",
     "tools": [
       "set_status",
       "send_message",
@@ -122,13 +126,14 @@
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "voice+non-chief": {
-    "bytes": 21834,
-    "sha256": "c8fb06e6beb24babf889d64680bc79f5032c31264fa43ab2ebd81433be183ab3",
+    "bytes": 29882,
+    "sha256": "e348643a376c76a5b4dd3432a7721ac098c16c28fadd10e8207308d6a32c1b65",
     "tools": [
       "set_status",
       "send_message",
@@ -148,13 +153,14 @@
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "skills+non-chief": {
-    "bytes": 21083,
-    "sha256": "25b5a0d2638e37674860236f5728c986b4d758171ad21826c560e0c2862cb83b",
+    "bytes": 29131,
+    "sha256": "c4f1297a0c7c597c266732bd378639e368800c63c4af1cb8a7f22b9ba18cc522",
     "tools": [
       "set_status",
       "send_message",
@@ -173,13 +179,14 @@
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "skills+voice+non-chief": {
-    "bytes": 21861,
-    "sha256": "a1446ac19e45d9769b31ef8520bbfcbc8d3cfde729c8b9f590a40eab1a26108d",
+    "bytes": 29909,
+    "sha256": "3974ba298b4d4270d1a8998e1326c1f1d9457851cc432a07fb47625dad6b8ab8",
     "tools": [
       "set_status",
       "send_message",
@@ -199,13 +206,14 @@
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "skills+voice+cloud-home": {
-    "bytes": 21964,
-    "sha256": "f31ecd65055a651b387f37d5a1856b2fc49227c589a4ff872ea3aacbb12ba023",
+    "bytes": 30012,
+    "sha256": "c3d49d2c38ac687c72dc6567d66d71165da3bfc3b3049512597c4ba218af31ff",
     "tools": [
       "set_status",
       "send_message",
@@ -225,13 +233,14 @@
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "skills+voice+non-chief+cloud-home": {
-    "bytes": 21878,
-    "sha256": "2f525677b361fd3c8fa3647d70812a1448a557bcfe7e24c6637fb9858bbd710e",
+    "bytes": 29926,
+    "sha256": "6c6983d3dea90447142afd5a8e4e88d3c3c0591778711bc418885966d2f0010b",
     "tools": [
       "set_status",
       "send_message",
@@ -251,13 +260,14 @@
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "skills+voice+x": {
-    "bytes": 22025,
-    "sha256": "3f178ec36887bcc7c88a1ca8ac99f1a26a105275fab568cf1e2649d30b7f71f2",
+    "bytes": 30073,
+    "sha256": "7545b469654f59ec6812adddc3f4591c351061f960d7bcabc1b454fce1fbda48",
     "tools": [
       "set_status",
       "send_message",
@@ -277,13 +287,14 @@
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "skills+voice+x+team": {
-    "bytes": 22025,
-    "sha256": "3f178ec36887bcc7c88a1ca8ac99f1a26a105275fab568cf1e2649d30b7f71f2",
+    "bytes": 30073,
+    "sha256": "7545b469654f59ec6812adddc3f4591c351061f960d7bcabc1b454fce1fbda48",
     "tools": [
       "set_status",
       "send_message",
@@ -303,13 +314,14 @@
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "default+legacy-switches": {
-    "bytes": 21142,
-    "sha256": "d2a86eb78854d6aa2c081b1738ea6f21c1819f45d2d95699a728fae3c070c3a6",
+    "bytes": 29190,
+    "sha256": "69c965f7f202413add77fff8a1645c1fb58f5052d01831058420b0cf8ceac86c",
     "tools": [
       "set_status",
       "send_message",
@@ -328,13 +340,14 @@
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "default+dusk": {
-    "bytes": 21194,
-    "sha256": "fc9ef55cca23d152067e2ee5515138b0d65e3c281652fa6a5321c25052893115",
+    "bytes": 29242,
+    "sha256": "443f25f4849ddf6121968b751d6510bed853e1971482c52bad5ee561714b91e8",
     "tools": [
       "set_status",
       "send_message",
@@ -353,13 +366,14 @@
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "skills+voice+dusk": {
-    "bytes": 21999,
-    "sha256": "25de81c904099ac07c53ba7bf25fec0076ff8295e62045c0f8efb6d7e99ba42f",
+    "bytes": 30047,
+    "sha256": "25feb16474b4b91741d217f00aed5a6bee4c900eb5454636762bc7479c3a6a28",
     "tools": [
       "set_status",
       "send_message",
@@ -379,13 +393,14 @@
       "send_voice_note",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "default+no-computer-pick": {
-    "bytes": 19935,
-    "sha256": "38f4908070e10425d95ce2cbc9477fe6b6e849960658db415468899bef2344b0",
+    "bytes": 27983,
+    "sha256": "fe23e34bc0cbae22a06b856d0ebd3e5a6e0b689a6ca4bec427f4242819b877fd",
     "tools": [
       "set_status",
       "send_message",
@@ -403,13 +418,14 @@
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "default+room": {
-    "bytes": 19836,
-    "sha256": "229523e7dc8b5904039e61f96091c487a54fa0ec156080fcf368ed7e48180279",
+    "bytes": 27884,
+    "sha256": "29fdc8915fb25379c983fc24a6e0fad0b0c7c05bd70ae9337ebaaa0333368322",
     "tools": [
       "set_status",
       "send_message",
@@ -427,13 +443,14 @@
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
   },
   "non-chief+room": {
-    "bytes": 19750,
-    "sha256": "be093f133a5ffc8a3795b7844c394bda53fbbd4c2b85f29857d3fdd2925cc5ff",
+    "bytes": 27798,
+    "sha256": "226a79dcab3a3dee6164d14a9b655c1fea6f69795a85eec9a051949dca734bdc",
     "tools": [
       "set_status",
       "send_message",
@@ -451,6 +468,7 @@
       "fill_login",
       "message_person",
       "memory_update",
+      "trigger",
       "find_tool",
       "use_tool"
     ]
