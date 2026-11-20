@@ -104,8 +104,9 @@ it("sounds like a friend, not a help desk: no stock phrases or flattery, wit onl
   }
 });
 
-it("never promises to run or test anything without a tool that runs code", () => {
-  expect(TOOL_HABITS_PROMPT).toContain("with no tool that runs code or commands (a shell, a terminal, a computer), never promise to run, test or build anything");
+it("without a tool that runs code, never claims a run and does the job another way instead of refusing", () => {
+  expect(TOOL_HABITS_PROMPT).toContain("With no tool that runs code or commands (a shell, a terminal, a computer), never claim to have run anything: do the job with what you have");
+  expect(TOOL_HABITS_PROMPT).not.toContain("running it needs a computer connected to you");
 });
 
 it("names each change a tool confirmed in the result, and none it did not", () => {

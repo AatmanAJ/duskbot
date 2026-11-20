@@ -400,8 +400,9 @@ describe("cloudHomePrompt", () => {
     expect(text).not.toMatch(/Computer panel|container runtime|configure/i);
   });
 
-  it("says the person's own computer can't be reached from here, and never names a tool for it", () => {
-    expect(cloudHomePrompt()).toContain("You cannot see or use their own computer, its screen or its files from here.");
+  it("reaches the person's own Mac only through the Mac tools, and never refuses it outright", () => {
+    expect(cloudHomePrompt()).toContain("Their own Mac is reached only through the mac_ tools, when you have them");
+    expect(cloudHomePrompt()).not.toContain("You cannot see or use their own computer");
     expect(cloudHomePrompt()).not.toMatch(/shared_computer|list_shared_computers|ask_for_computer|this Mac/);
   });
 

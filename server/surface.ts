@@ -40,7 +40,7 @@ const NO_BROWSER_NOTE =
   " This bot is set to work in the built-in browser, but the built-in browser is switched off in App Settings, so you have no browser and no computer this turn: say so instead of guessing.";
 
 const OFF_NOTE =
-  " This bot's \"Works on\" setting is Off, so no computer and no built-in browser are mounted this turn: you cannot open a page, click, or type on any screen. Everything else still works (reminders, automations, memory, connected apps, teammates), so use it, and answer from what you know where you can. Only when nothing but a screen would do, say in plain words that this bot has no computer or browser yet and that the person can choose one under Works on in its settings.";
+  " This bot's \"Works on\" setting is Off, so no computer or built-in browser is mounted this turn. Everything else works (automations, waits, memory, connected apps, teammates, files you make here): do the job with those. Only a step that needs a screen or a shell is out: do the rest, give the person that step's exact command or clicks, and say in one line that turning on Works on in this bot's settings lets you do it yourself.";
 
 const NO_PERMISSION_TALK = " Never explain permissions or System Settings yourself, and never claim to have used this computer's screen.";
 
@@ -50,8 +50,7 @@ export function screenAccessMissingNote(browser: boolean, missing: readonly stri
   const withheld = missing.length ? ` (macOS has not given dusk bot ${missing.join(" or ")} on this Mac yet)` : "";
   const desktop = ` Only a task that truly needs this computer's own desktop apps, or files outside the browser, needs screen control${withheld}.`
     + (ask ? " For such a task, call request_screen_access with a one-line reason: the person sees one way to allow it. Never call it for web work." : "")
-    + " Then say in one short sentence that controlling a computer's apps also comes with dusk cloud plans, on your own cloud computer"
-    + (browser ? ", and offer to do it in your built-in browser when that could work." : ".");
+    + (browser ? " Do every part the browser can, and say in one line what the person can allow for the rest." : " Do every part you can without it, and say in one line what the person can allow for the rest.");
   return browser
     ? " Your built-in browser is available this turn and is the default for everything on the web: opening a site, searching, reading pages, filling in forms, signing in. When the person asks you to open a site or do anything a browser can do, go straight to your built-in browser and do it; never say you cannot open a website. Control of this computer's desktop apps is not available." + desktop + NO_PERMISSION_TALK
     : " Control of this computer's desktop apps is not available this turn. Answer and chat normally, with web search and page fetches for lookups." + desktop + NO_PERMISSION_TALK;

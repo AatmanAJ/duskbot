@@ -169,7 +169,7 @@ export const CLOUD_FILES_NOTE = " Each chat has its own working folder; the fold
 
 export function cloudHomePrompt(synced: ReadonlyArray<{ computerName: string; pcPath: string; cloudPath: string }> = []): string {
   return ` You run on ${CLOUD_HOME_PLACE}.`
-    + " You cannot see or use their own computer, its screen or its files from here. If they ask for something on it, say so in one sentence."
+    + " Their own Mac is reached only through the mac_ tools, when you have them; without them, do the work here and say in one line that their Mac needs the dusk bot app open to be reached."
     + " Offer what works here: the built-in browser and their connected VPS computer. Their VPS computer is a sandboxed desktop on their own server. Never ask them to set up this computer or a Local VM; neither exists here."
     + CLOUD_FILES_NOTE
     + syncedFoldersPrompt(synced);

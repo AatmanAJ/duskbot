@@ -127,8 +127,9 @@ describe("resolveSurface", () => {
     const plan = resolveSurface({ destination: "off", browserOn: true });
     expect(plan).toMatchObject({ computer: "off", browser: false, pinned: null });
     expect(plan.note).toMatch(/"Works on" setting is Off/);
-    expect(plan.note).toMatch(/no computer and no built-in browser/);
-    expect(plan.note).toContain("Everything else still works (reminders, automations, memory, connected apps, teammates)");
+    expect(plan.note).toMatch(/no computer or built-in browser is mounted/);
+    expect(plan.note).toContain("Everything else works (automations, waits, memory, connected apps, teammates, files you make here): do the job with those.");
+    expect(plan.note).toContain("give the person that step's exact command or clicks");
     expect(plan.note).not.toContain("tell them Works on is Off");
     expect(resolveSurface({ destination: "off", browserOn: false })).toEqual(plan);
     expect(surfacePrompt({ computer: null, browser: false }, { note: plan.note })).toBe(plan.note);
