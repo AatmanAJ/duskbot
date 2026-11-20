@@ -127,9 +127,21 @@ async function runCase(c: WorkflowCase, run: number): Promise<Record<string, unk
   const tools: string[] = [];
   try {
     const bot = await api.createBot("Sage", values.model!);
+    // an automation the bot just ran (a test run) reports in the chat: let it land before the person answers
+    const runsSettled = async () => {
+      const deadline = Date.now() + 420_000;
+      while (Date.now() < deadline) {
+        const { routines, runs } = await api.call("GET", "/api/routines?since=0").catch(() => ({ routines: [], runs: [] }));
+        const ids = new Set((routines as any[]).filter((r) => r.botId === bot.id).map((r) => r.id));
+        if (!(runs as any[]).some((r) => ids.has(r.routineId) && ["queued", "running", "waiting"].includes(r.status))) return;
+        await sleep(5_000);
+      }
+    };
     const say = async (threadId: string, text: string) => {
       await api.call("POST", `/api/bots/${bot.id}/messages`, { text, threadId, sendId: randomUUID() });
-      return waitIdle(api, threadId, 900_000);
+      const state = await waitIdle(api, threadId, 900_000);
+      await runsSettled();
+      return state;
     };
     const messages = async (threadId: string): Promise<Message[]> => (await api.call("GET", `/api/threads/${threadId}/messages?limit=400`)).messages;
     const setupThread = await api.newThread(bot.id);
