@@ -66,6 +66,8 @@ async function status() {
   const { data } = await call("GET", `/v1/builds?filter[app]=${one.id}&sort=-uploadedDate&limit=5&fields[builds]=version,processingState,uploadedDate,expired`);
   if (!data.length) console.log("no builds uploaded yet");
   for (const b of data) console.log(`build ${b.attributes.version}: ${b.attributes.processingState}${b.attributes.expired ? " (expired)" : ""}, uploaded ${b.attributes.uploadedDate}`);
+  const versions = (await call("GET", `/v1/apps/${one.id}/appStoreVersions?limit=3&fields[appStoreVersions]=versionString,appStoreState,createdDate`)).data;
+  for (const v of versions) console.log(`version ${v.attributes.versionString}: ${v.attributes.appStoreState}`);
 }
 
 // apple only takes internal testers from the team, so an invite comes first; it sees this app only
