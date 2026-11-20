@@ -115,3 +115,16 @@ echo of their words); small models still skip per-pick prices and the repeat off
 act+deliver 65 to 68/84, no false done 41 to 38/48, stop 60/60, voice 6 to 26/48, helpfulness 8 to 20/36. By case:
 hello 2 to 11, thanks 4 to 6, vent 0 to 8, correction 0 to 1, gift picks 3 to 3, honest limits 5 to 9, standup
 repeat offer 0 to 8 (of 12 each).
+
+### Round 7 (lean consolidation), three runs per case
+
+One pass that merges overlapping habit rules, drops the style guides' basics the habits already give and shortens the
+no-computer note, plus three ideas from Poke's prompts (a casual hello for a bare hi, remembering without saying so,
+mistakes told from the person's side). A turn's system prompt (`prompt-size.ts`, a new bot in a fresh workspace):
+40,274 to 35,354 characters, about 10,070 to 8,840 tokens (-12%).
+
+`round7-lean-x3.json` against `round6-final-x3.json`: 212/276 to 211/276. act+deliver 68 to 69/84, help 20 to 22/36,
+stop 60/60, voice 26 to 24/48, no false done 38 to 36/48. Re-runs on the final build of the cases that dipped
+(`round7-lean2-dipped-x3.json`, `round7-lean3-hey-x3.json`): rename-folder 12/12, post-x 12/12, cancel-summary 9/12
+(back to round 6), email-landlord 7/12 (round 6: 5), thanks 7 and vent 9 (round 6: 6 and 8), hello 8/12 (round 6:
+11; the misses are gpt-oss and gemini ending a hello with an offer of help).
