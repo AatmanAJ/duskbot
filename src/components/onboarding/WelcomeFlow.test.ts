@@ -753,7 +753,7 @@ describe("the bring step: what this computer holds, then the prompt", () => {
     });
   };
   const prompt = () => [...document.body.querySelectorAll("[data-bring-prompt] ol li")].map((li) => li.textContent);
-  const STEPS = ["1Copy the prompt.", "2Paste it into Grok bot, ChatGPT, Claude, Gemini or any other AI.", "3It makes one file. Paste or drop it into any bot here and everything gets set up."];
+  const STEPS = ["1Copy the prompt.", "2Paste it into ChatGPT, Claude, Gemini or any other AI.", "3It makes one file. Paste or drop it into any bot here and everything gets set up."];
 
   it("leads with the app that knows the person and its Bring it in, keeps the rest behind Show more, and keeps the prompt under them", async () => {
     vi.stubEnv("VITE_DUSK_PHONE_APP", "0");
@@ -785,7 +785,8 @@ describe("the bring step: what this computer holds, then the prompt", () => {
     desktop({ apps: [], detection: { skills: [], tools: [] } });
     await show({ initialBeat: "bring" });
     expect(step()).toBe("bring");
-    expect(text()).toContain("Grok bot, ChatGPT, Claude and Gemini already know a lot about you. Bring it here in three steps.");
+    expect(text()).toContain("ChatGPT, Claude and Gemini already know a lot about you. Bring it here in three steps.");
+    expect(document.body.querySelector("[data-grok-entry]"), "no Grok Bot here: no card").toBeNull();
     expect(document.body.querySelector("[data-bring-find], [data-bring-hero], [data-bring-more]"), "no rows when nothing is here").toBeNull();
     expect(prompt()).toEqual(STEPS);
     expect(document.body.querySelector("[data-bring-prompt] h2")?.className, "no label over the prompt alone").toContain("sr-only");
@@ -793,6 +794,29 @@ describe("the bring step: what this computer holds, then the prompt", () => {
     expect(document.body.querySelectorAll("[data-primary]"), "Continue is the one primary action").toHaveLength(1);
     await press("Continue");
     expect(f.onDone).toHaveBeenCalledOnce();
+  });
+
+  it("leads with Grok Bot's card when it is on this Mac, and its button opens the move", async () => {
+    desktop({ apps: [], detection: { skills: [], tools: [] } });
+    const base = f.api.getMockImplementation()!;
+    const bot = (rosterId: string, name: string, here?: boolean) => ({ rosterId, name, label: name, description: "", hasDescription: false, look: { color: "blue" }, removed: false,
+      chat: { messages: 0, earlier: false, readable: true }, routines: 0, ...(here ? { here: { botId: `b-${rosterId}`, name } } : {}) });
+    f.api.mockImplementation(async (path: string, init?: { body?: string; method?: string }) => {
+      if (path === "/api/setup-import/grok/move/detect") return { available: true, found: true, bots: [bot("g1", "Nova"), bot("g2", "Quill"), bot("g3", "Rivet", true)], apps: [], problems: [], running: false, waiting: 0 };
+      if (path === "/api/setup-import/grok/move/waiting") return { bots: [], waiting: 0 };
+      if (path === "/api/setup-import/grok/move/progress") return null;
+      return base(path, init);
+    });
+    const opened = vi.fn();
+    window.addEventListener("dusk:open-grok-move", opened);
+    await show({ initialBeat: "bring" });
+    const card = document.body.querySelector("[data-grok-entry=welcome]")!;
+    expect(card.textContent).toContain("Grok Bot is on this Mac");
+    expect(card.textContent).toContain("3 bots, ready to move here. 1 already here.");
+    expect(document.body.querySelector("[data-bring-in]")!.firstElementChild, "above everything else here").toBe(card);
+    await act(async () => { card.querySelector<HTMLButtonElement>("[data-grok-entry-open]")!.click(); });
+    expect(opened).toHaveBeenCalledOnce();
+    window.removeEventListener("dusk:open-grok-move", opened);
   });
 
   it("shows the strongest finds up front when no one app knows the person", async () => {

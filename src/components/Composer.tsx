@@ -87,7 +87,7 @@ import { useSlotHandoff } from "./use-slot-handoff";
 import { VoiceFirstRunSheet } from "./VoiceFirstRunSheet";
 import { voiceShortcut, voiceShortcutLabel } from "@/lib/voice-input/shortcut";
 import { openSettings } from "@/lib/open-settings";
-import { NotesWaitingLine, useNotesIntake } from "./NotesWaiting"; import { looksLikeNotes, notesInFiles } from "@/lib/assistant-notes";
+import { NotesWaitingLine, useNotesIntake } from "./NotesWaiting"; import { looksLikeIntake, notesInFiles } from "@/lib/assistant-notes";
 import { escapeCancelsReply } from "@/lib/replies";
 import { useStopPress } from "@/lib/stop-turn";
 import { useThreadRefs } from "./ThreadRefs";
@@ -557,7 +557,7 @@ export function Composer({
     // a notes file from another AI comes in as notes, never as an attachment
     const notes = await notesInFiles(files);
     if (notes) {
-      takeNotes(notes.text, undefined, "drop", group ? null : bot?.id);
+      takeNotes(notes.text, undefined, "drop", group ? null : bot?.id, notes.names.join(", "));
       files = files.filter((file) => !notes.names.includes(file.name));
       if (!files.length) return;
     }
@@ -837,7 +837,7 @@ export function Composer({
     }
     const pasted = e.clipboardData.getData("text/plain");
     // notes another AI wrote for dusk bot come in, wherever they are pasted, instead of being sent
-    if (looksLikeNotes(pasted)) {
+    if (looksLikeIntake(pasted)) {
       e.preventDefault();
       takeNotes(pasted, undefined, "paste", group ? null : bot?.id);
       return;
@@ -956,7 +956,7 @@ export function Composer({
           onAdd={addAttachments}
           allowImages={engineSupportsImages}
           onNotice={setAttachmentNotice}
-          onNotes={(notes) => takeNotes(notes, undefined, "drop", group ? null : bot?.id)}
+          onNotes={(notes, files) => takeNotes(notes, undefined, "drop", group ? null : bot?.id, files)}
           onPendingChange={(pending) => changeDraftAttachmentPending(draftId, pending)}
           onDraggingChange={setDragOver}
           uploadImage={uploadImage}

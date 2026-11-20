@@ -5,6 +5,7 @@ import { type ReactNode } from "react";
 import { t } from "@/lib/i18n";
 import { MausAvatar } from "../Avatar";
 import { BringIn, useBringChoice } from "../BringIn";
+import { GrokMoveCard } from "../grok-move/GrokMoveEntry";
 import type { BringRun, LocalFind } from "@/lib/first-run-import";
 import { ClaudeMark, CodexMark, GeminiMark, GrokMark } from "../ProviderIcons";
 import { cn } from "@/lib/cn";
@@ -37,11 +38,11 @@ function BringScene() {
   );
 }
 
-export function BringStep({ finds, grokWaiting, run, onBring, onNext }: {
+export function BringStep({ finds, local, run, onBring, onNext }: {
   /** What this computer holds; null while still looking. */
   finds: readonly LocalFind[] | null;
-  /** Grok bot's bots on this computer, by name: they move through the prompt, like an AI online. */
-  grokWaiting: readonly string[];
+  /** The desktop app on the computer running dusk bot: Grok Bot's bots there can move straight over. */
+  local: boolean;
   run: BringRun;
   onBring: (find: LocalFind) => void;
   onNext: () => void;
@@ -51,7 +52,7 @@ export function BringStep({ finds, grokWaiting, run, onBring, onNext }: {
     <StepFrame art={<BringScene />} title={t("bring.title")} sub={choice.found ? t("bring.sub") : t("bring.subNone")}
       footer={<button type="button" data-primary="" data-bring-next="" onClick={onNext} className={PRIMARY}>{t("funnel.next")}</button>}>
       <div className="w-full max-w-[440px]">
-        <BringIn step finds={finds} choice={choice} grokWaiting={grokWaiting} run={run} onImport={onBring} />
+        <BringIn step finds={finds} choice={choice} run={run} onImport={onBring} lead={<GrokMoveCard local={local} className="mb-5" />} />
       </div>
     </StepFrame>
   );

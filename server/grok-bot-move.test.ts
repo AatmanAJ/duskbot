@@ -58,6 +58,7 @@ describe("stage A: the move", () => {
     const messages = app.store.messagesFor(nova.threadId);
     expect(messages[0]).toMatchObject({ kind: "activity", tool: { name: "notice: The last 201 messages from Grok Bot. Earlier messages stayed there." } });
     expect(messages.slice(1).map((message) => message.role)).toContain("user");
+    expect(messages.filter((message) => message.text?.startsWith("(A file was here: receipt-"))).not.toHaveLength(0);
     expect(messages.some((message) => message.text?.includes("sk-live-not-real"))).toBe(false);
     expect(nova.tasks!.every((task) => !task.unread)).toBe(true);
     expect(nova.tasks![0]!.title).toBe("From Grok Bot");
@@ -155,7 +156,7 @@ describe("stage B: the rest, from the bot's own export", () => {
     expect(app.workspace.readMemoryTopic(botId, "about-you-from-grok-bot.md")).toContain("Lives in Lisbon.");
     expect(app.skills.listSkills(botId).map((skill) => [skill.name, skill.enabled])).toEqual([["week-plan", false]]);
     expect(app.routines.listRoutines().map((routine) => [routine.name, routine.enabled, routine.schedule])).toEqual([
-      ["Nova: Monday plan", false, expect.objectContaining({ expression: "0 8 * * 1", timeZone: "Europe/Lisbon" })],
+      ["Monday plan", false, expect.objectContaining({ expression: "0 8 * * 1", timeZone: "Europe/Lisbon" })],
     ]);
     const entry = app.mover.waiting().bots[0]!;
     expect(entry).toMatchObject({ state: "arrived", applied: {
@@ -194,5 +195,23 @@ describe("stage B: the rest, from the bot's own export", () => {
     const result = app.mover.accept(syntheticExport("Rivet"), {});
     expect(result.applied).toEqual([expect.objectContaining({ rosterId: RIVET, botId: finished.bots[0]!.botId, state: "arrived" })]);
     expect(app.mover.accept(syntheticExport("Nobody"), {}).problems).toEqual([expect.objectContaining({ code: "otherBot" })]);
+  });
+});
+
+describe("the lines a moved chat holds", () => {
+  it("are written in the person's language: the opening note and each placeholder", async () => {
+    await import("./server-line-packs.ts");
+    const { chatMessages } = await import("./grok-bot-move.ts");
+    const window = { earlier: true, routines: [], lines: [
+      { role: "user" as const, text: "Invented question", at: 1 },
+      { role: "bot" as const, text: "", at: 2, placeholder: { kind: "file" as const, detail: "receipt-1.png" } },
+      { role: "bot" as const, text: "", at: 3, placeholder: { kind: "voice" as const } },
+    ] };
+    expect(chatMessages(window, 10).map((message) => message.text ?? message.tool?.name)).toEqual([
+      "notice: The last 3 messages from Grok Bot. Earlier messages stayed there.", "Invented question", "(A file was here: receipt-1.png.)", "(A voice call was here.)",
+    ]);
+    expect(chatMessages(window, 10, "de").map((message) => message.text ?? message.tool?.name)).toEqual([
+      "notice: Die letzten 3 Nachrichten aus Grok Bot. Frühere Nachrichten sind dort geblieben.", "Invented question", "(Hier war eine Datei: receipt-1.png.)", "(Hier war ein Sprachanruf.)",
+    ]);
   });
 });

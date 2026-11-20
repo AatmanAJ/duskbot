@@ -21,6 +21,8 @@ import { friendlyError } from "@/lib/plain-error";
 import { desktopMotion } from "@/lib/desktop-motion";
 import { usePaletteExits } from "./palette-exits";
 import { pacedMs } from "@/lib/motion-speed";
+import { openGrokMove } from "@/lib/grok-bot-move";
+import { localSetupImport } from "@/lib/setup-import";
 
 /** A row's 49px and the 2px gap under it. */
 const ROW_STEP = 51;
@@ -177,6 +179,10 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
     { id: "settings-usage", name: "Settings: Usage & billing", detail: "Settings", icon: "chart-bars", run: settingsPane("usage") },
     { id: "settings-advanced", name: "Settings: Advanced features", detail: "Settings", icon: "sliders", run: settingsPane("advanced") },
     ...(currentBot ? [{ id: "bot-settings", name: "Bot settings", detail: currentBot.name, icon: "settings-gear" as const, run: () => openBotSettingsPage(dispatch, currentBot.id) }] : []),
+    ...(localSetupImport(state.config?.cloudHome === true)
+      ? [{ id: "grok-move", name: t("grokBotMove.palette"), detail: t("grokBotMove.app"), also: "import bring migrate", icon: "arrow-bracket-to-down" as const, run: () => openGrokMove() }]
+      : []),
+    { id: "bring-in", name: t("settings.import.rowTitle"), detail: t("grokBotMove.paletteDetail"), also: "import bring migrate move chatgpt claude gemini", icon: "arrow-bracket-to-down", run: () => dispatch(settings("import")) },
     { id: "connect-apps", name: "Connect apps", detail: "Search across apps and skills", icon: "storefront", run: () => dispatch(settings("apps")) },
     { id: "theme-system", name: "Theme: System", detail: "Settings · Appearance", icon: "display", run: () => applySkinChoice("system") },
     { id: "theme-dark", name: "Theme: Dark", detail: "Settings · Appearance", icon: "moon", run: () => applySkinChoice(THEME_SKINS.dark) },

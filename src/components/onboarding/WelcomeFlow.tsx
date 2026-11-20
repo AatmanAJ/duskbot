@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { chiefFor, chiefStepFits, createChiefPatch, myDefaultBot, stageIntro, useViewerEmail } from "@/lib/default-bot";
 import { completionPatch, computerAiIds, DEFAULT_ADMIN_ORIGIN, firstRunPatch, markWelcomeFinished, resumeBeat, showWelcome, type BeatId } from "@/lib/onboarding";
 import { clearWelcomeDraft, readWelcomeDraft, saveWelcomeDraft } from "@/lib/welcome-draft";
-import { looksLikeNotes } from "@/lib/assistant-notes";
+import { looksLikeIntake } from "@/lib/assistant-notes";
 import { greetingName } from "../../../shared/greeting-name";
 import { macPermissionsBridge, permissionsMissing, type MacPermissionStatus } from "@/lib/mac-permissions";
 import { openPlaceSetup, usePlaceSetupOpen } from "@/lib/place-setup";
@@ -129,7 +129,7 @@ export function WelcomeFlow({
   const cloudHome = !embedded && onCloud;
   const cloudBring = useCloudBringOffered(cloudHome && !replay);
   const offersMove = !replay && desktop && localSetupImport(state.config?.cloudHome === true);
-  const move = useBotMove({ look: offersMove, downloads: false, ms: FIRST_RUN_LOOK_MS });
+  const move = useBotMove({ look: offersMove, ms: FIRST_RUN_LOOK_MS });
   const [detection, setDetection] = useState<SetupDetection | null | undefined>(offersMove ? undefined : null);
   useEffect(() => {
     if (!offersMove) return;
@@ -321,7 +321,7 @@ export function WelcomeFlow({
   const takeNotes = useNotesIntake();
   const onPaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
     const pasted = event.clipboardData.getData("text/plain");
-    if (!looksLikeNotes(pasted)) return;
+    if (!looksLikeIntake(pasted)) return;
     event.preventDefault();
     takeNotes(pasted, setNotesLine);
   };
@@ -361,7 +361,7 @@ export function WelcomeFlow({
       body = <AiStep tested={tested} cloud={cloud} computerAis={cloudHome ? computerAiIds(state.config?.onboarding) : []} onNext={(how) => { track("onboarding_ai", { action: how }); next(); }} />;
       break;
     case "bring":
-      body = cloudHome ? <CloudBringStep onNext={next} /> : <BringStep finds={finds} grokWaiting={move.plan?.grokWaiting ?? []} run={bringRun} onBring={bring} onNext={next} />;
+      body = cloudHome ? <CloudBringStep onNext={next} /> : <BringStep finds={finds} local={offersMove} run={bringRun} onBring={bring} onNext={next} />;
       break;
     case "phone":
       body = <PhoneStep onNext={next} />;
