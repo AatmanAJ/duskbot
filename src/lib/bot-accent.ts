@@ -10,8 +10,8 @@ export const SHEET_SURFACES: Record<Scheme, { page: string; row: string }> = {
   dark: { page: "#1e1e1e", row: "#2a2a2d" },
 };
 
-/** A bot's accent inside its own sheet: `fill` for a switch that is on, the chosen tab and primary buttons, `ink` for
- * words on that fill, `text` for a check or a link in the bot's colour. Words keep AA (4.5:1) on what they sit on, and
+/** A bot's accent inside its own sheet: `fill` for a switch that is on, `ink` for words on that fill, `text` for words
+ * in the bot's colour. Words keep AA (4.5:1) on what they sit on, and
  * the fill keeps 3:1 against the rows and page, so a very light colour (yellow, silver) comes out a darker shade. */
 export type BotAccent = { fill: string; ink: string; text: string };
 
