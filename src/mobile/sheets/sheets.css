@@ -71,3 +71,6 @@ html[data-mobile-app] { --m-sheet-page: color-mix(in srgb, var(--color-ink) 5%, 
 
 /* in dark, an app's logo sits on a light plate: most marks (GitHub's, Notion's) are drawn for a light ground */
 html[data-skin="grok-dark"] .dusk-mobile [data-app-face] { background-color: #ececee; color: #3a3a3e; }
+
+/* a row's dropdown is a tonal pill, no hairline, as every other control on the phone */
+.dusk-mobile .mobile-panel-sheet [data-panel-select] { border-color: transparent; background-color: color-mix(in srgb, var(--color-ink) 6%, transparent); }
