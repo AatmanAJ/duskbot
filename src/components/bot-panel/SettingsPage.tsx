@@ -10,7 +10,9 @@ import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerive
 import { useDeleteAllThreads } from "../BotMenuDelete";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
 import { SoulField } from "../SoulField";
+import { LIMIT_MODES } from "../../../shared/wire";
 import { BackupAis } from "./BackupAis";
+import { radioArrows, RadioRow } from "./rows";
 import { BotConversations } from "./Conversations";
 import { panelMemoryNotes } from "./memory-notes";
 import type { SheetPage } from "./modals/panel-modal";
@@ -108,8 +110,43 @@ export function InstructionsPage({ bot, derived }: { bot: Bot; derived: Derived 
   );
 }
 
+const LIMIT_MODE_TEXT = {
+  wait: { title: "botPanel.limitMode.wait", hint: "botPanel.limitMode.waitHint" },
+  ask: { title: "botPanel.limitMode.ask", hint: "botPanel.limitMode.askHint" },
+  free: { title: "botPanel.limitMode.free", hint: "botPanel.limitMode.freeHint" },
+} as const;
+
+/** "When the AI hits a limit": wait for the reset, ask, or the free model. */
+export function LimitModeCard({ bot, derived }: { bot: Bot; derived: Derived }) {
+  const mode = bot.limitMode ?? "wait";
+  const editable = bot.yourAccess !== "view";
+  return (
+    <Card label={t("botPanel.limitMode.title")} anchor="limit-mode" data-sheet-group="limit-mode" footnote={t("botPanel.limitMode.hint")}>
+      <div role="radiogroup" aria-label={t("botPanel.limitMode.title")} onKeyDown={radioArrows} className="contents">
+        {LIMIT_MODES.map((choice) => (
+          <RadioRow
+            key={choice}
+            data-panel-choice={`limit-${choice}`}
+            title={t(LIMIT_MODE_TEXT[choice].title)}
+            hint={t(LIMIT_MODE_TEXT[choice].hint)}
+            checked={mode === choice}
+            tabIndex={mode === choice ? 0 : -1}
+            disabled={!editable}
+            onClick={() => { if (mode !== choice) derived.patch({ limitMode: choice }); }}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export function BackupsPage({ bot, derived }: { bot: Bot; derived: Derived }) {
-  return <BackupAis bot={bot} onChange={(fallback) => derived.patch({ fallback })} />;
+  return (
+    <>
+      <BackupAis bot={bot} onChange={(fallback) => derived.patch({ fallback })} />
+      <LimitModeCard bot={bot} derived={derived} />
+    </>
+  );
 }
 
 export function ThreadsPage({ bot }: { bot: Bot }) {

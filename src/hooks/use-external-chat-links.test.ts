@@ -10,6 +10,7 @@ vi.mock("react", async (original) => ({
 }));
 
 import { useDesktopNotificationOpens, useExternalChatLinks } from "./use-external-chat-links";
+import { connectAppLinkId, connectAppsState } from "@/components/connect-apps/open";
 
 const scout: Bot = {
   id: "scout", threadId: "scout-main", name: "Scout", title: "", description: "", notifications: true,
@@ -64,6 +65,17 @@ describe("useExternalChatLinks", () => {
       { type: "select", id: "scout" },
       { type: "revealThread", threadId: "scout-main" },
     ]);
+  });
+
+  it("opens the website's connect link on that app's page in Connect Apps, and nothing else", () => {
+    vi.stubGlobal("window", {});
+    fixture.link = "duskbot://apps/GoogleCalendar";
+    const dispatch = vi.fn();
+    render(loaded, dispatch);
+    expect(connectAppsState()).toMatchObject({ open: true, page: { kind: "detail", id: "googlecalendar" } });
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(connectAppLinkId("duskbot://apps/../bot/scout")).toBeNull();
+    expect(connectAppLinkId("duskbot://bot/scout")).toBeNull();
   });
 
   it("opens a bot's link as its row would: at its main thread while threads are hidden", () => {

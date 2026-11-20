@@ -8,6 +8,8 @@ import { t } from "@/lib/i18n";
 import type { Routine } from "@/lib/routines";
 import { unlessRefused } from "@/lib/admin-scope";
 import { api } from "@/state/store";
+import { listenLiveFrames } from "@/lib/live-events";
+import type { RuntimeEvent } from "../../shared/runtime-events";
 
 export { AFTER_RESET_MS, nearLimit, NEAR_LIMIT_PERCENT, isLimitResetSchedule, type EngineLimit, type LimitResetSchedule } from "../../shared/limit-reset";
 
@@ -16,6 +18,7 @@ const names = new Map<string, string>();
 let report: EngineLimitsReport | null = null;
 let loading: Promise<void> | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
+let unlisten: (() => void) | null = null;
 const listeners = new Set<(next: EngineLimitsReport) => void>();
 
 /** "Claude", "Codex", or the engine's own name; an engine the server has not named yet reads as its id, capitalised. */
@@ -48,6 +51,14 @@ export function loadLimits(refresh = false): Promise<void> {
   return loading;
 }
 
+/** A limit refusal, or a turn that worked while an engine reads as blocked, changes what the server holds: ask again
+ * now rather than leave the at-limit banner up until the next poll. */
+export function noteTurnForLimits(event: Pick<RuntimeEvent, "type"> & { ok?: boolean; limit?: string; limitResetsAt?: number }): void {
+  const refused = event.type === "runtime.error" && (event.limit !== undefined || event.limitResetsAt !== undefined);
+  const workedWhileBlocked = event.type === "turn.completed" && event.ok === true && Boolean(report?.engines.some((limit) => limit.blocked));
+  if (refused || workedWhileBlocked) void loadLimits(true);
+}
+
 /** Every engine's limit, kept fresh while something on screen shows it. */
 export function useEngineLimits(): EngineLimit[] {
   const [engines, setEngines] = useState<EngineLimit[]>(() => report?.engines ?? []);
@@ -57,9 +68,11 @@ export function useEngineLimits(): EngineLimit[] {
     if (report) setEngines(report.engines);
     void loadLimits();
     timer ??= setInterval(() => void loadLimits(), POLL_MS);
+    unlisten ??= listenLiveFrames({ onFrame: (frame) => { if (frame.kind === "runtime") noteTurnForLimits(frame.event); } });
     return () => {
       listeners.delete(listener);
       if (!listeners.size && timer) { clearInterval(timer); timer = null; }
+      if (!listeners.size && unlisten) { unlisten(); unlisten = null; }
     };
   }, []);
   return engines;

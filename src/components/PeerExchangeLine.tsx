@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Bot } from "@/state/store";
-import type { ExchangeSummary, PeerRef } from "@/lib/peer-exchange";
+import { exchangeHidden, type ExchangeSummary, type PeerRef } from "@/lib/peer-exchange";
 import { t } from "@/lib/i18n";
 import { BotAvatar } from "./Avatar";
 import { EventChip, EventLabel, EventLine } from "./EventLine";
@@ -54,11 +54,20 @@ export function PeerExchangeLine({ summary, bots, expanded, onToggle }: {
     if (peers.length === 2) return <>{chip(peers[0]!)}<EventLabel tone="tertiary">{t("chat.event.and")}</EventLabel>{chip(peers[1]!)}</>;
     return peers[0] ? chip(peers[0]) : null;
   };
+  if (exchangeHidden(summary)) return null;
+  if (summary.kind === "single" && summary.as === "answer") {
+    return (
+      <EventLine data-peer-exchange="answer">
+        {chip(summary.peer)}
+        <EventLabel>{t("chat.event.peerReplied")}</EventLabel>
+      </EventLine>
+    );
+  }
   const label = summary.kind === "single"
-    ? t(summary.direction === "inbound" ? "chat.event.messageFrom" : "chat.event.messaged")
+    ? t(summary.as === "reply" ? "chat.event.respondedTo" : summary.direction === "inbound" ? "chat.event.messageFrom" : "chat.event.messaged")
     : summary.kind === "fanout" ? t("chat.event.messaged") : t("chat.event.messagesWith", { count: summary.count });
   return (
-    <EventLine data-peer-exchange={summary.kind}>
+    <EventLine data-peer-exchange={summary.kind === "single" && summary.as ? summary.as : summary.kind}>
       <EventLabel>{label}</EventLabel>
       {summary.kind === "single" ? chip(summary.peer) : peersPart(summary.peers)}
     </EventLine>

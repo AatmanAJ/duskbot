@@ -68,6 +68,8 @@ export function createProviderRegistry(configs: ProviderConfigs = {}, options: {
         if (id === "apple") url.searchParams.set("response_mode", "form_post");
         else { url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url")); url.searchParams.set("code_challenge_method", "S256"); }
         url.searchParams.set("nonce", nonce);
+        // google: always offer the account chooser, so someone can sign in with a different account
+        if (id === "google") url.searchParams.set("prompt", "select_account");
         return url.href;
       },
       async profile({ code, nonce, verifier, redirectUri, user }) {

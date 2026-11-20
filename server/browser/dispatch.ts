@@ -13,14 +13,22 @@ import type { PointerReporter } from "./cdp/actions.ts";
 import { navigable } from "./cdp/page.ts";
 import type { Screenshot } from "./cdp/screencast.ts";
 import { resolveElement } from "./cdp/selectors.ts";
-import { settleNote, settlePage } from "./cdp/settle.ts";
+import { checkboxPoint } from "./cdp/checkbox.ts";
+import { CONSENT_LOOK_MS, consentNote, rejectConsent } from "./cdp/consent.ts";
+import { checkStatus, settleNote, settlePage, type CheckboxPoint } from "./cdp/settle.ts";
 import { MAX_VISIBLE_TEXT_LENGTH } from "./cdp/snapshot.ts";
+import { around, newElements, newElementsNote, settleAfterAction } from "./after-action.ts";
+import { errorishLines, errorsNote, shownErrors, SUBMIT_NAME } from "./page-errors.ts";
 import { runBatch } from "./batch.ts";
-import { BROWSER_CONTROL_REFUSAL, type ProfileControl } from "./control.ts";
+import { PersonHoldAnswer } from "../browser-refusals.ts";
+import { BROWSER_CONTROL_REFUSAL, type HoldWait, type ProfileControl, type Scope } from "./control.ts";
 import { BrowserControlInterrupted } from "./session-control.ts";
 import { errorResult, pageLabel, snapshotText, textResult, withParts, type ToolResult } from "./shape.ts";
 import type { Tab, TabRegistry } from "./tabs.ts";
 import { targetOf, type ToolCall, type ToolInput } from "./tools.ts";
+
+/** The hosts whose bot check cleared in each browser. */
+const clearedChecks = new WeakMap<object, Set<string>>();
 
 export const DEFAULT_ACTION_MS = 15_000;
 /** Kept back from a call's budget for the reads after its action. */
@@ -40,6 +48,8 @@ export interface BrowserStatus {
   loading: boolean;
   tabs: Array<{ tab: string; url: string; title: string; active: boolean; openedBy?: string }>;
   heldByPerson: boolean;
+  /** The tabs a person holds: calls on them wait for the hand-back, other tabs still work. */
+  heldTabs: string[];
   dialog: { type: string; message: string; defaultPrompt?: string } | null;
   fileChooser: { multiple: boolean } | null;
   signInPrompt: { origin: string; realm: string } | null;
@@ -47,7 +57,7 @@ export interface BrowserStatus {
 }
 
 export interface ToolContext {
-  readonly control: ProfileControl;
+  readonly control: ProfileControl<Tab>;
   readonly tabs: TabRegistry;
   readonly browser: CdpBrowser;
   readonly deadline: number;
@@ -64,6 +74,10 @@ export interface ToolContext {
   secretNote?(): string | null;
   saveScreenshot(data: Buffer, pageUrl: string): string;
   downloads(): Download[];
+  /** Whether cookie banners on `tab` are answered for the bot: a tab it opened, never one a person opened or holds. */
+  answersConsent?(tab: Tab): boolean;
+  /** A step of a batch: what the page brought up is reported once, after the batch. */
+  readonly inBatch?: boolean;
   /** Throws once the call may no longer act, such as when its turn ended; a batch checks it between steps. */
   checkpoint?(): void;
 }
@@ -138,6 +152,7 @@ export function statusOf(context: Pick<ToolContext, "tabs" | "control" | "active
       ...(listed.openerTabId ? { openedBy: listed.openerTabId } : {}),
     })),
     heldByPerson: context.control.owner !== null,
+    heldTabs: context.control.heldTabs().map((held) => held.id),
     dialog: dialog ? { type: dialog.type, message: dialog.message, ...(dialog.type === "prompt" ? { defaultPrompt: dialog.defaultPrompt } : {}) } : null,
     fileChooser: chooser ? { multiple: chooser.multiple } : null,
     signInPrompt: auth ? { origin: auth.origin, realm: auth.realm } : null,
@@ -171,20 +186,104 @@ async function openedNote(context: ToolContext, tab: Tab, known: ReadonlySet<str
   return opened.map((candidate) => `The page opened a new tab ${candidate.id} at ${sanitizeUrl(candidate.page.url()) || candidate.page.url()}${candidate === front ? ", now in front" : ""}; take a snapshot to act on it.`).join(" ");
 }
 
+/** Where a tab the bot opened is: in front, or beside the one a person holds, which stays in front. */
+function frontNote(context: ToolContext): string {
+  return context.control.owner === null ? "It is in front;" : `It opened beside ${context.control.heldTabs().map((held) => held.id).join(", ")}, which the person holds and which stays in front;`;
+}
+
+/** A call waits on a held tab until its reads after would no longer fit, and stops with its turn. */
+function holdWait(context: ToolContext): HoldWait {
+  return { until: context.deadline - FOLLOW_UP_MS, ...(context.checkpoint ? { checkpoint: context.checkpoint } : {}) };
+}
+
+/** Bot work on `scope`, waiting out a person's hold on it within the call. */
+function bot<R>(context: ToolContext, scope: Scope<Tab>, run: () => Promise<R>): Promise<R> {
+  return context.control.agent(scope, run, holdWait(context));
+}
+
 /** Runs `run` as bot work on `tab` (or the whole browser), with what the page did and reported after it. */
-async function act(context: ToolContext, tab: Tab | null, run: () => Promise<ToolResult>, { observeChange = false } = {}): Promise<ToolResult> {
-  return context.control.agent(tab, async () => {
+async function act(context: ToolContext, tab: Tab | null, run: () => Promise<ToolResult>, { observeChange = false, expectsChange = false, submits = false } = {}): Promise<ToolResult> {
+  return bot(context, tab, async () => {
     const known = new Set(context.tabs.list().map((candidate) => candidate.id));
     const before = observeChange && tab ? await observe(tab) : null;
+    const errorsBefore = before && tab ? await shownErrors(tab) : [];
     const mark = before && tab ? tab.page.navigations.mark() : null;
+    const refMark = tab?.page.refs.mark ?? 0;
     const result = await run();
     if (!tab || result.isError) return result;
     // An open dialog blocks the page's scripts, so the page is read again only once it is answered.
     if (mark && !tab.page.dialogs.pending) await tab.page.navigations.follow(mark, Math.min(NAVIGATION_FOLLOW_MS, remaining(context)));
+    const reports = before !== null && !context.inBatch && !tab.page.dialogs.pending;
+    if (reports) await settleAfterAction(tab, context.deadline - FOLLOW_UP_MS, { textBefore: expectsChange && before ? before.text.length : null });
     const after = before && !tab.page.dialogs.pending ? await observe(tab) : null;
     const opened = observeChange ? await openedNote(context, tab, known) : null;
-    return withParts(result, before && after ? describePageChange(before, after) : null, opened, dialogNote(tab), context.health(tab));
+    const shown = after ? await shownErrors(tab) : [];
+    const plain = before && after && after.url === before.url ? errorishLines(before.text, after.text).filter((line) => !shown.some((text) => text.includes(line) || line.includes(text))) : [];
+    const errors = after ? errorsNote(errorsBefore, [...shown, ...plain]) : null;
+    const still = expectsChange && before !== null && after !== null && after.url === before.url && after.title === before.title && after.text === before.text && !opened;
+    const change = still ? NOTHING_CHANGED : before && after ? (reports ? await pageNews(context, tab, before, after, refMark) : describePageChange(before, after)) : null;
+    const answer = withParts(result, errors, change, opened, dialogNote(tab), context.health(tab));
+    if (!still || errors || !submits || context.inBatch) return answer;
+    const picture = await stuckPicture(context, tab);
+    return picture ? { ...answer, content: [...answer.content, ...picture] } : answer;
   });
+}
+
+/** The name a click's target goes by: its ref's accessible name, or the selector as written. */
+function targetName(tab: Tab, target: { ref: string } | { selector: string } | { x: number; y: number }): string {
+  if ("ref" in target) return tab.page.refs.locator(target.ref)?.name ?? "";
+  return "selector" in target ? target.selector : "";
+}
+
+const NOTHING_CHANGED = "Nothing changed on the page: the same address and the same text. Do not repeat the action as it was; look at what the page needs first (a screenshot shows what its text does not), or try another way.";
+
+/** Documents that already got their one picture for a submit that changed nothing. */
+const pictured = new WeakMap<Tab, string | null>();
+
+/** A small look at a page a submit left unchanged, once per document, so red text the page's tree does not carry is seen. */
+async function stuckPicture(context: ToolContext, tab: Tab): Promise<ToolResult["content"] | null> {
+  const loaderId = tab.page.lifecycle.loaderId;
+  if (pictured.get(tab) === loaderId || await context.secretOnPage(tab).catch(() => true)) return null;
+  pictured.set(tab, loaderId);
+  try {
+    const shot = await context.paused(tab, () => tab.page.screenshot());
+    return [{ type: "text", text: `A look at the page after it did not change: ${pictureNote(shot)}` }, { type: "image", data: shot.data.toString("base64"), mimeType: "image/png" }];
+  } catch {
+    return null;
+  }
+}
+
+/** What the action changed and what to act on next: a page it moved to comes with its snapshot, new controls with refs. */
+async function pageNews(context: ToolContext, tab: Tab, before: PageState, after: PageState, refMark: number): Promise<string> {
+  const change = describePageChange(before, after);
+  try {
+    if (after.url !== before.url) {
+      const snapshot = await snapshotResult(context, tab, { fresh: true });
+      const text = snapshot.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
+      return `The page is now ${sanitizeUrl(after.url) || "a new address"}. Its snapshot, with current refs to act on:\n${text}`;
+    }
+    if (change.startsWith("The visible text of the page did not change")) return change;
+    const snapshot = await tab.page.snapshot();
+    return [change, newElementsNote(newElements(snapshot.tree, refMark))].filter(Boolean).join("\n");
+  } catch {
+    return change;
+  }
+}
+
+const ACTING_STEPS: ReadonlySet<string> = new Set(["open", "navigate", "click", "fill", "type", "press", "select", "check", "hover", "scroll", "upload", "drag", "eval"]);
+
+/** The page a batch left: its snapshot when the batch moved to another page, else the controls it brought up. */
+async function batchNews(context: ToolContext, tab: Tab, moved: boolean, refMark: number): Promise<string | null> {
+  try {
+    await settleAfterAction(tab, context.deadline - FOLLOW_UP_MS);
+    if (moved) {
+      const snapshot = await snapshotResult(context, tab);
+      return `The page now, with current refs to act on:\n${snapshot.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")}`;
+    }
+    return newElementsNote(newElements((await tab.page.snapshot()).tree, refMark));
+  } catch {
+    return null;
+  }
 }
 
 /** How a picture's pixels map to the CSS pixels the point tools take, so a point read off it lands where it was seen. */
@@ -199,8 +298,40 @@ export function pictureNote(shot: Pick<Screenshot, "width" | "height" | "scale" 
 
 /** Waits out what a read would only catch half done: a bot check that clears by itself, loading placeholders. */
 async function settled(context: ToolContext, tab: Tab, fresh: boolean): Promise<string | null> {
-  const report = await settlePage({ frames: tab.page.frames, loaded: (timeoutMs) => tab.page.lifecycle.waitFor("load", { timeoutMs }) }, { deadline: context.deadline - FOLLOW_UP_MS, fresh });
-  return settleNote(report);
+  let cleared = clearedChecks.get(context.browser);
+  if (!cleared) clearedChecks.set(context.browser, cleared = new Set());
+  const report = await settlePage({ frames: tab.page.frames, loaded: (timeoutMs) => tab.page.lifecycle.waitFor("load", { timeoutMs }) }, { deadline: context.deadline - FOLLOW_UP_MS, fresh, cleared });
+  const point = checkStatus(report)?.status === "needs you" && report.checkbox ? await offeredClick(context, tab) : null;
+  const consent = context.answersConsent?.(tab) ? await answeredConsent(tab) : null;
+  return [settleNote(report, point), consent].filter(Boolean).join(" ") || null;
+}
+
+/** The sites in each browser whose checkbox click was offered: a bot gets one, and after it the person is asked. */
+const offeredClicks = new WeakMap<object, Set<string>>();
+
+async function offeredClick(context: ToolContext, tab: Tab): Promise<CheckboxPoint | null> {
+  let offered = offeredClicks.get(context.browser);
+  if (!offered) offeredClicks.set(context.browser, offered = new Set());
+  let host = "";
+  try { host = new URL(tab.page.url()).hostname; } catch {}
+  if (!host || offered.has(host)) return null;
+  const point = await checkboxPoint(tab.page.frames);
+  if (point) offered.add(host);
+  return point;
+}
+
+/** Each document's cookie banner is looked for on reads in its first seconds, and answered once. */
+const consentLooks = new WeakMap<Tab, { loaderId: string | null; since: number; done: boolean }>();
+
+async function answeredConsent(tab: Tab): Promise<string | null> {
+  const loaderId = tab.page.lifecycle.loaderId;
+  let look = consentLooks.get(tab);
+  if (!look || look.loaderId !== loaderId) consentLooks.set(tab, look = { loaderId, since: Date.now(), done: false });
+  if (look.done || Date.now() - look.since > CONSENT_LOOK_MS || tab.page.url() === "about:blank") return null;
+  const pressed = await rejectConsent(tab.page.frames);
+  if (!pressed) return null;
+  look.done = true;
+  return consentNote(pressed);
 }
 
 async function snapshotResult(context: ToolContext, tab: Tab, { includeImage = false, save = false, fresh = false }: { includeImage?: boolean; save?: boolean; fresh?: boolean } = {}): Promise<ToolResult> {
@@ -245,7 +376,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
   switch (call.name) {
     case "agent_browser_status": {
       const tab = call.input.tab ? tabOf(context, call.input.tab) : null;
-      return context.control.agent(tab, async () => {
+      return bot(context, tab, async () => {
         await context.browser.refreshTargets().catch(() => undefined);
         const status = statusOf(context, tab);
         if (call.as === "url") return textResult(status.url ?? "about:blank");
@@ -257,8 +388,8 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       const { url, tab: which } = call.input;
       const address = url !== undefined && url.trim() !== "" ? agentUrl(url) : null;
       const existing = which === "new" ? null : which ? tabOf(context, which) : context.active();
-      const tab = existing ?? await context.control.agent(null, () => context.openTab());
-      return context.control.agent(tab, async () => {
+      const tab = existing ?? await bot(context, null, () => context.openTab());
+      return bot(context, tab, async () => {
         await tab.page.bringToFront();
         const opened = address ? await tab.page.navigate(address, { readiness: "load", timeoutMs: remaining(context) }) : null;
         if (opened?.signInPrompt) return textResult(signInWait(tab, opened.url, opened.signInPrompt));
@@ -279,12 +410,14 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
           ? await tab.page.navigate(agentUrl(url), options)
           : action === "back" ? await tab.page.back(options) : action === "forward" ? await tab.page.forward(options) : await tab.page.reload(options);
         if (result.signInPrompt) return textResult(signInWait(tab, result.url, result.signInPrompt));
-        return textResult(`${tab.id} is now at ${sanitizeUrl(result.url) || result.url}${result.status && result.status >= 400 ? ` (HTTP ${result.status})` : ""}. Refs from earlier snapshots do not apply to it; take a snapshot before acting on refs.`);
+        const lead = `${tab.id} is now at ${sanitizeUrl(result.url) || result.url}${result.status && result.status >= 400 ? ` (HTTP ${result.status})` : ""}. Refs from earlier snapshots do not apply to it${context.inBatch ? "." : "; its snapshot, with current refs:"}`;
+        if (context.inBatch) return textResult(lead);
+        return withParts(textResult(lead), ...(await snapshotResult(context, tab, { fresh: true })).content.map((part) => (part.type === "text" ? part.text : null)));
       });
     }
     case "agent_browser_snapshot": {
       const tab = tabOf(context, call.input.tab);
-      return context.control.agent(tab, async () => {
+      return bot(context, tab, async () => {
         await tab.page.bringToFront();
         return withParts(await snapshotResult(context, tab, call.input), dialogNote(tab));
       });
@@ -315,7 +448,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       return act(context, tab, async () => {
         const clicked = await tab.page.click(target, { button: call.input.button ?? "left", clickCount: call.input.clickCount ?? 1, timeoutMs: remaining(context), pointer: context.pointer(tab) });
         return textResult(`Clicked ${"ref" in target ? target.ref : "selector" in target ? JSON.stringify(target.selector) : `${Math.round(clicked.x)},${Math.round(clicked.y)}`}${clicked.dialog ? "; it opened a dialog" : ""}.`);
-      }, { observeChange: true });
+      }, { observeChange: true, expectsChange: true, submits: SUBMIT_NAME.test(targetName(tab, target)) });
     }
     case "agent_browser_fill": {
       const tab = tabOf(context, call.input.tab);
@@ -324,7 +457,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
         await tab.page.fill(target, call.input.text);
         if (call.input.submit) await tab.page.press("Enter");
         return textResult(`Filled the field${call.input.submit ? " and pressed Enter" : ""}.`);
-      }, { observeChange: true });
+      }, { observeChange: true, expectsChange: call.input.submit === true, submits: call.input.submit === true });
     }
     case "agent_browser_type": {
       const tab = tabOf(context, call.input.tab);
@@ -341,7 +474,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       return act(context, tab, async () => {
         const pressed = await tab.page.press(chord);
         return textResult(`Pressed ${chord}${pressed.dialog ? "; it opened a dialog" : ""}.`);
-      }, { observeChange: true });
+      }, { observeChange: true, expectsChange: true, submits: /^(?:Enter|NumpadEnter)$/u.test(call.input.key) });
     }
     case "agent_browser_select": {
       const tab = tabOf(context, call.input.tab);
@@ -382,11 +515,21 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
       const target = call.input.ref !== undefined || call.input.selector !== undefined ? element(call.input, false) : null;
       const dx = call.input.dx ?? 0;
       const dy = call.input.dy ?? (call.input.dx === undefined ? 600 : 0);
+      const wanted = call.input.toText;
       return act(context, tab, async () => {
+        if (wanted !== undefined) {
+          const found = await tab.page.scrollUntil(target, dx, dy, wanted, context.deadline - FOLLOW_UP_MS);
+          const times = `${found.scrolls} time${found.scrolls === 1 ? "" : "s"}`;
+          const near = found.found ? around((await tab.page.snapshot()).tree, wanted) : null;
+          if (near) return textResult(`${found.scrolls ? `Scrolled ${times}; ` : ""}${JSON.stringify(wanted)} shows on the page now, scrolled into view, here with refs to act on:\n${near}`);
+          return textResult(found.found ? `${found.scrolls ? `Scrolled ${times}; ` : ""}${JSON.stringify(wanted)} shows on the page now, scrolled into view.`
+            : found.atEnd ? `Scrolled ${times} to the end; ${JSON.stringify(wanted)} is not there. Check the spelling, or look elsewhere (a search box, another tab or page).`
+            : `Scrolled ${times}; ${JSON.stringify(wanted)} has not shown yet. Call again to keep looking.`);
+        }
         await tab.page.scroll(target, dx, dy, { timeoutMs: remaining(context) });
         const position = await valueInWorld<[number, number, number]>(tab.page.frames, tab.page.frames.mainFrameId, "[Math.round(scrollX), Math.round(scrollY), Math.round(document.documentElement.scrollHeight)]").catch(() => null);
         return textResult(`Scrolled by ${dx},${dy}.${position ? ` The page is at ${position[0]},${position[1]} of ${position[2]} pixels high.` : ""}`);
-      });
+      }, { observeChange: wanted === undefined });
     }
     case "agent_browser_upload": {
       const tab = tabOf(context, call.input.tab);
@@ -419,44 +562,55 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
     }
     case "agent_browser_dialog": {
       const tab = tabOf(context, call.input.tab);
-      if (context.control.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+      await context.control.heldBack(tab, holdWait(context));
       const answered = await tab.page.answerDialog({ accept: call.input.accept, ...(call.input.promptText === undefined ? {} : { promptText: call.input.promptText }) });
       return textResult(`${call.input.accept ? "Accepted" : "Dismissed"} the ${answered.type} dialog.`);
     }
     case "agent_browser_tabs": {
       const { action, url, tab: which } = call.input;
       if (action === "list") {
-        return context.control.agent(null, async () => {
+        return bot(context, null, async () => {
           await context.browser.refreshTargets().catch(() => undefined);
           return textResult(JSON.stringify(statusOf(context).tabs));
         });
       }
       if (action === "new") {
         const address = url !== undefined && url.trim() !== "" ? agentUrl(url) : null;
-        const tab = await context.control.agent(null, () => context.openTab());
+        const tab = await bot(context, null, () => context.openTab());
         return act(context, tab, async () => {
           await tab.page.bringToFront();
           if (address) await tab.page.navigate(address, { readiness: "load", timeoutMs: remaining(context) });
-          return textResult(`Opened ${tab.id} at ${sanitizeUrl(tab.page.url()) || tab.page.url()}. It is in front; take a snapshot to act on it.`);
+          return textResult(`Opened ${tab.id} at ${sanitizeUrl(tab.page.url()) || tab.page.url()}. ${frontNote(context)} take a snapshot to act on it.`);
         });
       }
       if (!which) return errorResult(`Pass tab for ${action}.`);
       const tab = tabOf(context, which);
-      if (action === "close") return context.control.agent(null, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
-      return context.control.agent(tab, async () => {
+      if (action === "close") return bot(context, tab, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
+      return bot(context, tab, async () => {
         await tab.page.bringToFront();
-        return textResult(`${tab.id} is in front: ${pageLabel(describe(tab))}. Take a snapshot to act on it.`);
+        return withParts(textResult(`${context.control.owner === null ? `${tab.id} is in front` : `You work in ${tab.id}`}; its snapshot, with current refs:`), ...(await snapshotResult(context, tab)).content.map((part) => (part.type === "text" ? part.text : null)));
       });
     }
     case "agent_browser_close": {
       if (call.input.tab) {
         const tab = tabOf(context, call.input.tab);
-        return context.control.agent(null, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
+        return bot(context, tab, async () => { await context.closeTab(tab); return textResult(`Closed ${tab.id}.`); });
       }
-      return context.control.agent(null, async () => { await context.closeBrowser(); return textResult("Closed the browser. Saved sign-ins are kept; agent_browser_open starts it again."); });
+      return bot(context, "every", async () => { await context.closeBrowser(); return textResult("Closed the browser. Saved sign-ins are kept; agent_browser_open starts it again."); });
     }
-    case "agent_browser_batch":
-      return runBatch(context, call.input, { execute: executeTool, failure: toolFailure });
+    case "agent_browser_batch": {
+      const tab = context.active();
+      const start = tab ? { url: tab.page.url(), refMark: tab.page.refs.mark, errors: await bot(context, tab, () => shownErrors(tab)) } : null;
+      const result = await runBatch(context, call.input, { execute: executeTool, failure: toolFailure });
+      const front = context.active();
+      const last = call.input.steps.at(-1)?.do ?? "";
+      if (result.isError || !front || !start || ["snapshot", "read", "screenshot"].includes(last) || !call.input.steps.some((step) => ACTING_STEPS.has(step.do))) return result;
+      const moved = front !== tab || front.page.url() !== start.url;
+      return withParts(result, ...await bot(context, front, async () => {
+        const news = await batchNews(context, front, moved, start.refMark);
+        return [moved ? null : errorsNote(start.errors, await shownErrors(front)), news];
+      }));
+    }
     case "restart_browser":
       return errorResult("restart_browser is handled before a call reaches its tab.");
   }
@@ -465,7 +619,7 @@ export async function executeTool(context: ToolContext, call: ToolCall): Promise
 /** A tool's failure as the bot reads it; null for one the service must handle itself. */
 export function toolFailure(error: unknown): ToolResult | null {
   if (isUnanswered(error)) return null;
-  if (error instanceof Error && error.message === BROWSER_CONTROL_REFUSAL) return null;
+  if (error instanceof PersonHoldAnswer || (error instanceof Error && error.message === BROWSER_CONTROL_REFUSAL)) return null;
   if (error instanceof DriverError) return errorResult(error.message);
   if (error instanceof BrowserControlInterrupted) return errorResult(error.message);
   return errorResult(error instanceof Error ? error.message : String(error));

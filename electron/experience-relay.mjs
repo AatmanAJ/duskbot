@@ -1,3 +1,6 @@
+import { serviceWord } from "./process-exit.mjs";
+import { ownUtility } from "./utility-names.mjs";
+
 export const EVERY_MS = 30_000;
 const NAME = /^[a-z][a-z0-9_]{0,39}$/;
 
@@ -37,11 +40,20 @@ export function createExperienceRelay({ localRequest, events, setTimer = setTime
 }
 
 const CRASHES = new Set(["crashed", "oom", "launch-failed", "integrity-failure", "abnormal-exit", "killed"]);
-/** the crash signal's props for an Electron process-gone event, or null for an ordinary exit */
-export function crashProps(type, reason) {
-  if (!CRASHES.has(reason)) return null;
+/** the crash signal's props for an Electron process-gone event, or null for an ordinary exit, one of our own utility
+ * processes (its owner reports it) or any exit while the app quits or the computer's session ends */
+export function crashProps(type, reason, { name, ending = false, exitCode } = {}) {
+  if (ending || !CRASHES.has(reason) || ownUtility({ type, name })) return null;
   const kind = type === "page" ? "page" : type === "GPU" ? "gpu" : type === "Utility" ? "utility" : type === "server" ? "server" : "other";
-  return { kind, reason: reason.replace(/-/g, "_") };
+  const service = kind === "utility" || kind === "other" ? serviceWord(name) : null;
+  const exit = exitWord(exitCode);
+  return { kind, reason: reason.replace(/-/g, "_"), ...(service ? { service } : {}), ...(exit ? { exit } : {}) };
+}
+
+/** an exit code as one analytics word: a negative (a Windows status, sign-extended) as its unsigned hex */
+export function exitWord(code) {
+  if (!Number.isInteger(code)) return null;
+  return code < 0 ? `x${(code >>> 0).toString(16)}` : String(code);
 }
 
 /** the stage an app update failed at, from its error message */
@@ -52,6 +64,6 @@ export function updateFailStage(message) {
   if (/ answered \d{3}$|download/i.test(text)) return "download";
   if (/manifest|signed|release .* has no zip/i.test(text)) return "manifest";
   if (/checksum|SHA256|sha-?256/i.test(text)) return "checksum";
-  if (/fetch|network|HTTP|ENOTFOUND|ECONN|ETIMEDOUT|abort|socket/i.test(text)) return "download";
+  if (/fetch|network|HTTP|ENOTFOUND|ECONN|ETIMEDOUT|abort|socket|terminated|stalled/i.test(text)) return "download";
   return "other";
 }
