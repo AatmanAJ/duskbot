@@ -44,6 +44,10 @@ export interface CloudAccountState {
   adding?: { cloudId: string | null; name: string; color: import("./cloud-list.mjs").CloudSwatch | null; tier: string | null; startedAt: number; link?: true; done?: true };
   /** A payment dusk cloud received and is still linking to this account. */
   purchase?: import("./cloud-home.mjs").CloudPurchase;
+  /** Connected: "open" while the website takes this new account through its first steps (name, plan), which the app's
+   * first run waits on; then where those steps put the bots, "free" (this computer) or "cloud" (a plan picked). Absent
+   * for an account whose first steps ended before, and from an Admin older than it. */
+  websiteSetup?: "open" | "free" | "cloud";
   /** Connected: the free trial on this account's Cloud, when the Admin says (display only). */
   trial?: import("./cloud-home.mjs").CloudTrial;
   /** Connected: what this account may buy now (the session's `offer`), for wording only. */
@@ -183,6 +187,8 @@ export interface CloudAccountBridge {
   keepPlan?(): Promise<CloudRenewalResult>;
   /** The first run on dusk cloud: this computer's AI sign-ins, held for the account's own Cloud until it runs. */
   holdSignIns?(): Promise<CloudHeldSignIns>;
+  /** The first run on dusk cloud: the AIs signed in here (instance ids) whose sign-in goes along to the account's own Cloud. Absent on an older app. */
+  carriedAis?(): Promise<{ instanceIds: string[] }>;
   onState(callback: (state: CloudAccountState) => void): () => void;
   files?: import("./cloud-sync.mjs").CloudFilesBridge;
 }
@@ -222,7 +228,10 @@ export interface AccountsBridge {
   onOpenSheet(callback: () => void): () => void;
 }
 /** Any place's own page, from the person's click: the accounts sheet opens on the rail's page, and this page learns nothing of them. */
-export interface AccountSheetBridge { offered(): Promise<boolean>; open(): Promise<void> }
+/** The account in use as a Cloud of the person's own shows it. `email` is absent from an older app. */
+export type AccountFace = Omit<AccountRow, "email" | "signIn"> & { email?: string };
+/** `face`: null on any page but a Cloud of the person's own, or while nobody is signed in. Absent on an older app. */
+export interface AccountSheetBridge { offered(): Promise<boolean>; open(): Promise<void>; face?(): Promise<AccountFace | null> }
 /** On the person's own Cloud, open in this app's window: the plan, read
  * only, Manage in the browser, and Sign in again. No account, credential or address. */
 /** `signin`: this computer's sign-in ended; `tier` names the plan last verified, if any. */
@@ -246,6 +255,11 @@ export interface CloudPlanSnapshot {
   /** Verified: who runs My Cloud's machine, when the session's list says ("managed"). */
   provider?: string;
 }
+export type CloudPhoneSignIn = { outcome: "code"; code: string; expiresAt: number; email: string;
+  /** the account service that made the code, which the phone must redeem it at; absent from an older app */
+  service?: string }
+  /** "unsupported": the account service makes no phone codes, so the phone logs in with its email instead */
+  | { outcome: "signed-out" | "limited" | "unsupported" | "failed" | "canceled" };
 export interface CloudPlanBridge {
   state(): Promise<CloudPlanSnapshot>;
   manage(): Promise<void>;
@@ -253,6 +267,11 @@ export interface CloudPlanBridge {
   openPage?(page: Exclude<CloudHandoffPage, "plans">, workspaceId?: string): Promise<CloudWebHandoffResult>;
   /** This device's dusk cloud sign-in, again, once it has ended: only from the person's click. */
   signIn?(): Promise<void>;
+  /** A code (and its QR) that logs a phone in to this account, after main's presence check; `renew` swaps the one on
+   * screen without asking again for about an hour. Absent on an older app. */
+  phoneSignIn?(renew?: boolean): Promise<CloudPhoneSignIn>;
+  /** Whether this computer is signed in to a dusk bot account. Absent on an older app. */
+  signedIn?(): Promise<boolean>;
   /** The trial's popup due now was shown: main shows it no more today. Absent on an older app. */
   noticeSeen?(): Promise<void>;
   /** The usage meter's Upgrade: the preview, then the change (only from the person's click). Absent on an older app. */
@@ -308,12 +327,11 @@ export interface CloudAccountClient {
   enrollGrant(): Promise<{ enrollToken: string; dashboardUrl: string } | null>;
   /** Takes a workspace this account owns off its dashboard; true once gone, null when signed out or unanswered. */
   unlinkWorkspace(workspaceId: string): Promise<true | null>;
-  freshClouds(): Array<{ id: string; name: string }>;
-  cancelCloudPlan(cloudId: string): Promise<void>;
-  deleteAccountNow(email: string): Promise<void>;
   setAvatar(choice: string | null): Promise<true | null>;
   /** A five-minute signed grant for the link service (apps/link-service/src/grant.mjs); null when signed out. */
   linkGrant(): Promise<string | null>;
+  /** a ten-minute, single-use code that logs a phone in to this account (ACCOUNT_ROUTES.phoneSignIn) */
+  phoneSignIn(): Promise<Exclude<CloudPhoneSignIn, { outcome: "canceled" }>>;
   /** Short-lived Cloudflare TURN servers for the direct screen path; null when signed out or TURN is off. */
   screenIce(): Promise<Array<{ urls: string[]; username?: string; credential?: string }> | null>;
   /** Only when the sign-in has ended: forget it and start a new one. */
@@ -354,7 +372,7 @@ export interface CloudAccountClient {
   cancelPlan(survey: unknown): Promise<CloudRenewalResult>;
   /** POST /api/cloud/desktop/clouds/<the session's own Cloud>/keep. */
   keepPlan(): Promise<CloudRenewalResult>;
-  holdSignIns(items: Array<{ kind: "codex-auth"; auth: string }>): Promise<CloudHeldSignIns>;
+  holdSignIns(items: Array<import("../shared/ai-signins.ts").AiSignIn>): Promise<CloudHeldSignIns>;
   /** POST /api/cloud/desktop/room: Not now on the room card for the session's own Cloud; false when it couldn't be said. */
   roomNotNow(id: string): Promise<boolean>;
   /** POST /api/cloud/desktop/resize-now: the bigger size after an upgrade goes at once. */

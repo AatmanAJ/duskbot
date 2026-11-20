@@ -1,6 +1,6 @@
 export declare const HIDDEN_ARG: string;
 export declare function autostartEntry(exec: string, options?: { lending?: boolean }): string;
-type LoginItem = { follow(on: boolean): void; startedHidden(): boolean; available(): boolean; chosen(): boolean; choose(on: boolean): void };
+type LoginItem = { follow(on: boolean): void; startedHidden(): boolean; available(): boolean; chosen(): boolean; choose(on: boolean): void; settle(): boolean };
 export declare function createOpenAtLogin(options: {
   app: {
     isPackaged: boolean;

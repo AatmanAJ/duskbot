@@ -27,11 +27,12 @@ const WORD = /^[a-z0-9_]{1,40}$/u;
 export const offerKey = (cloud) => `${cloud.account} ${cloud.origin}`;
 
 /** What this computer's move summary (GET /api/cloud-send?move=1) would carry: its bots (a fresh install's untouched
- * starter is never in it) and whether there is anything of the person's own at all. */
+ * starter is never in it), whether there is anything of the person's own at all, and whether the person talked with any
+ * of those bots (`talked`): only then is the move asked about; otherwise what the first run brought in goes by itself. */
 export function movable(summary) {
   const items = record(summary) && Array.isArray(summary.items) ? summary.items.filter(record) : [];
-  const bots = items.filter((item) => item.kind === "bot").length;
-  return { bots, something: items.some((item) => WORK.has(item.kind)) };
+  const bots = items.filter((item) => item.kind === "bot");
+  return { bots: bots.length, something: items.some((item) => WORK.has(item.kind)), talked: bots.some((item) => item.talked === true) };
 }
 
 /** The saved choices, read back for `key` only: another Cloud's are none. */
@@ -57,7 +58,7 @@ export function offerStage({ cloud, journal, keep = false, own = false, local, s
   const moving = parseJournal(journal);
   // A move under way or done says so on its own line; one that came home may be offered again.
   if (moving && moving.phase !== "back") return "none";
-  if (!local?.something) return "none";
+  if (!local?.something || !local.talked) return "none";
   if (keep) return "settings";
   if (saved?.accepted) return "none";
   if (!saved?.prompt) return "prompt";
@@ -103,8 +104,8 @@ export function createCloudMoveOffer({ store, cloud, journal, keep, own = () => 
     try { onChange(); } catch {}
   };
 
-  /** This computer has nothing the move would carry, by its own summary: the move needs no yes. */
-  const empty = () => local !== null && !local.something;
+  /** No bot here the person talked with, by this computer's own summary: the move needs no yes. */
+  const empty = () => local !== null && !local.talked;
 
   /** Reads this computer's summary again when the offer could show and the last look is old (or `force`). */
   async function refresh({ force = false } = {}) {

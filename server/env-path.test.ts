@@ -9,6 +9,7 @@ import {
   findCliCandidates,
   harnessHome,
   registerFallbackPathDir,
+  readLoginShellPath,
   registerPathDir,
   resetPathCache,
   resetPathCacheForTests,
@@ -25,6 +26,35 @@ describe("augmentedPath", () => {
   afterEach(() => {
     delete process.env.DUSK_EXTRA_PATH;
     resetPathCacheForTests();
+  });
+
+  describe("readLoginShellPath", () => {
+    let dir: string;
+    beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "omb-login-shell-")); });
+    afterEach(() => removeTempDir(dir));
+    const fakeShell = (body: string) => {
+      const path = join(dir, "shell");
+      writeFileSync(path, `#!/bin/sh\n${body}\n`);
+      chmodSync(path, 0o755);
+      return path;
+    };
+
+    posixIt("reads the PATH the shell prints, from a shell in its own session with no terminal", async () => {
+      // its own session: an interactive bash that sees a terminal stops its whole group (the caller too) on SIGTTIN
+      const shell = fakeShell(`[ "$(ps -o pgid= -p $$ | tr -d ' ')" = "$$" ] || exit 3\nif (exec 3</dev/tty) 2>/dev/null; then exit 4; fi\nprintf 'rc noise\\n__DUSK_PATH__/a:/b'`);
+      expect(await readLoginShellPath(shell)).toBe("/a:/b");
+    });
+
+    posixIt("kills a shell that ignores SIGTERM at the deadline", async () => {
+      const shell = fakeShell("trap '' TERM\nwhile :; do sleep 1; done");
+      const started = Date.now();
+      expect(await readLoginShellPath(shell, 300)).toBeNull();
+      expect(Date.now() - started).toBeLessThan(3000);
+    });
+
+    it("gives null for a shell that cannot start", async () => {
+      expect(await readLoginShellPath(join(dir, "missing"))).toBeNull();
+    });
   });
 
   it("keeps the existing PATH entries first", () => {
