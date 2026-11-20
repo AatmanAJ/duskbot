@@ -1,5 +1,5 @@
 import { memo, useState, type ReactNode } from "react";
-import { lowerFirst } from "../lib/lower-first";
+import { lowerFirst, upperFirst } from "../lib/lower-first";
 import { ChevronDown, Send, ShieldCheck, TriangleAlert } from "../icons";
 import { useStore, type Bot, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
@@ -116,6 +116,16 @@ function label(pending: Pending): string {
 
 const COMMAND_TOOLS = new Set(["Bash", "shell"]);
 
+/** The card's question without the asker's name, which its titlebar already shows: "Wants to send an email". */
+export function questionUnderName(line: string, name: string | undefined): string {
+  return name && line.startsWith(`${name} `) ? upperFirst(line.slice(name.length + 1)) : line;
+}
+
+/** A command or structured input reads in mono; a message, an email or a note reads as prose. */
+function readsAsCode(tool: string, text: string): boolean {
+  return COMMAND_TOOLS.has(tool) || /^\s*[[{]/.test(text);
+}
+
 function isDurable(pending: Pending): boolean {
   const card = pending.message.card;
   return isSkillApproval(pending) || isProfileApproval(pending) ||
@@ -192,7 +202,8 @@ export const PendingApprovalPanel = memo(function PendingApprovalPanel({
   const heldNote = buys ? undefined : outbound?.opaque && pending.heldCode === "approval.held.outbound"
     ? t("approval.opaqueCode")
     : tFromServer(pending.heldCode, pending.held);
-  const { line, summary, inline, detail } = approvalWords(pending, botName ?? asker?.name);
+  const { line: asked, summary, inline, detail } = approvalWords(pending, botName ?? asker?.name);
+  const line = questionUnderName(asked, botName ?? asker?.name);
   const detailsId = `approval-details-${pending.requestId}`;
   const hidden = detail && detail !== inline ? detail : "";
   const skill = pending.message.card?.skillRequest;
@@ -253,7 +264,7 @@ export const PendingApprovalPanel = memo(function PendingApprovalPanel({
       )}
       {(inline || heldNote || open) && (
         <div className="space-y-2 p-4">
-          {inline && <AskDetail text={inline} mono label={t("approval.aria.reviewDetails")} />}
+          {inline && <AskDetail text={inline} mono={readsAsCode(pending.tool, inline)} label={t("approval.aria.reviewDetails")} />}
           {heldNote && (outbound ? (
             <p className="flex items-center gap-1.5 text-[13px] leading-[18px] text-warning">
               <Send size={13} aria-hidden="true" className="shrink-0" />
