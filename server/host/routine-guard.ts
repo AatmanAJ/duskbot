@@ -9,7 +9,7 @@ import { writeFileAtomic } from "../atomic.ts";
 import { outcomesNewestFirst } from "../routine-outcomes.ts";
 import type { Routine, RoutineRun } from "../routines.ts";
 import { serverLine } from "../server-lines.ts";
-import type { CapHit } from "../spend.ts";
+import type { CapHit, SpikeHit } from "../spend.ts";
 import { hostTimeZone } from "../turn-clock.ts";
 
 export const FATIGUE_RUNS = 3;
@@ -112,6 +112,16 @@ export function createRoutineGuard(deps: RoutineGuardDeps) {
         return;
       }
       deps.tell(hit.botId, undefined, serverLine(deps.language(undefined), "server.spend.botCap", { bot: hit.name }));
+    },
+
+    /** A routine suddenly took most of the day's use: one notice in its results chat, naming the fix. A routine's
+     *  address books under its own id, so its spike names the routine it runs. */
+    spike(hit: SpikeHit): void {
+      const routine = deps.routine(hit.routineId);
+      if (!routine) return;
+      const thread = resultsThread(routine);
+      const key = routine.schedule.type === "interval" ? "server.spend.routineSpikeInterval" : "server.spend.routineSpike";
+      deps.tell(routine.botId, thread, serverLine(deps.language(thread), key, { routine: routine.name, runs: String(hit.runs), percent: String(Math.round(hit.share * 100)) }));
     },
 
     /** After a run failed: the third identical failure in a row pauses its routine, with one alert. */

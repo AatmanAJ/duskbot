@@ -121,6 +121,10 @@ export function agentAppTrigger(trigger: AppTrigger, latestRun?: RoutineRun) {
   };
 }
 
+function withAddress<T extends ReturnType<typeof agentRoutine>>(shown: T, linked: ReadonlyMap<string, string>, routineId: string): T {
+  return [...linked.values()].includes(routineId) ? { ...shown, hasAddress: true } : shown;
+}
+
 type AgentTrigger = ReturnType<typeof agentRoutine> | ReturnType<typeof agentWebhook> | ReturnType<typeof agentAppTrigger>;
 export interface TriggerListing {
   now: string;
@@ -141,12 +145,15 @@ export function listTriggers(input: {
   timeZone: string;
   now: number;
 }): TriggerListing {
+  const routines = input.routines.filter((routine) => routine.botId === input.botId);
+  const linked = new Map(input.webhooks.filter((webhook) => webhook.routineId && routines.some((routine) => routine.id === webhook.routineId)).map((webhook) => [webhook.id, webhook.routineId!]));
+  // a routine's own address runs that routine: its fires are the routine's
+  const ownerOf = (run: RoutineRun) => linked.get(run.routineId) ?? run.routineId;
   const latest = new Map<string, RoutineRun>();
   for (const run of input.runs) {
-    if (run.botId === input.botId && !latest.has(run.routineId)) latest.set(run.routineId, run);
+    if (run.botId === input.botId && !latest.has(ownerOf(run))) latest.set(ownerOf(run), run);
   }
-  const routines = input.routines.filter((routine) => routine.botId === input.botId);
-  const webhooks = input.webhooks.filter((webhook) => webhook.botId === input.botId);
+  const webhooks = input.webhooks.filter((webhook) => webhook.botId === input.botId && !linked.has(webhook.id));
   const apps = (input.appTriggers ?? []).filter((trigger) => trigger.botId === input.botId);
   const header = { now: new Date(input.now).toISOString(), timeZone: input.timeZone };
   if (input.triggerId) {
@@ -154,14 +161,14 @@ export function listTriggers(input: {
     const webhook = webhooks.find((candidate) => candidate.id === input.triggerId);
     const app = apps.find((candidate) => candidate.id === input.triggerId);
     if (!routine && !webhook && !app) return { ...header, error: "No trigger with that id belongs to this bot. Call trigger_info without trigger_id to see its ids." };
-    const fires = input.runs.filter((run) => run.routineId === input.triggerId).slice(0, FIRES_SHOWN).map(agentRun);
-    const shown = routine ? agentRoutine(routine, latest.get(routine.id)) : webhook ? agentWebhook(webhook, latest.get(webhook.id)) : agentAppTrigger(app!, latest.get(app!.id));
+    const fires = input.runs.filter((run) => ownerOf(run) === input.triggerId).slice(0, FIRES_SHOWN).map(agentRun);
+    const shown = routine ? withAddress(agentRoutine(routine, latest.get(routine.id)), linked, routine.id) : webhook ? agentWebhook(webhook, latest.get(webhook.id)) : agentAppTrigger(app!, latest.get(app!.id));
     return { ...header, trigger: { ...shown, recentFires: fires } };
   }
   return {
     ...header,
     triggers: [
-      ...routines.map((routine) => agentRoutine(routine, latest.get(routine.id))),
+      ...routines.map((routine) => withAddress(agentRoutine(routine, latest.get(routine.id)), linked, routine.id)),
       ...webhooks.map((webhook) => agentWebhook(webhook, latest.get(webhook.id))),
       ...apps.map((trigger) => agentAppTrigger(trigger, latest.get(trigger.id))),
     ].slice(0, 100),

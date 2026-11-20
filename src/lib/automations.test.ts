@@ -242,3 +242,13 @@ describe("order and the grey line", () => {
     expect(runLine(run("completed", at(0, 9, 2), { output: "Checked 14 emails.\nNOTHING NEW", report: { state: "quiet" } }), NOW)).toEqual({ when: "today 9:02 AM", mark: "✓", text: "Nothing new" });
   });
 });
+
+describe("a routine's own address", () => {
+  it("is not listed as an automation of its own, and its runs are the routine's", () => {
+    const hookRun = run("completed", at(-1, 10), { routineId: "hook", triggerSource: "webhook", webhookId: "hook" });
+    const own = run("completed", at(-2, 9));
+    const list = automationsFrom({ routines: [routine()], webhooks: [webhook({ routineId: "brief", prompt: "" })], runs: [own, hookRun] });
+    expect(list.map((one) => [one.kind, one.id, one.addressId])).toEqual([["schedule", "brief", "hook"]]);
+    expect(list[0]!.runs.map((one) => one.id)).toEqual([hookRun.id, own.id]);
+  });
+});

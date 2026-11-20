@@ -34,6 +34,8 @@ export interface Automation {
   checkTrouble?: string;
   /** Its runs read and draft only. */
   readsAndDrafts?: boolean;
+  /** kind "schedule": the webhook that runs it from outside (its address); its runs are this routine's. */
+  addressId?: string;
 }
 
 const runTime = (run: RoutineRun) => run.startedAt ?? run.scheduledFor ?? run.createdAt;
@@ -41,16 +43,18 @@ const newestFirst = (left: RoutineRun, right: RoutineRun) => runTime(right) - ru
 
 /** With `bots`, an automation whose bot no longer exists is left out: it can never run, so it is never shown. */
 export function automationsFrom(sources: { routines: readonly Routine[]; webhooks: readonly WebhookTrigger[]; appTriggers?: readonly AppTrigger[]; runs: readonly RoutineRun[]; bots?: readonly { id: string }[] }): Automation[] {
-  const runsOf = (id: string) => sources.runs.filter((run) => run.routineId === id).sort(newestFirst);
+  const runsOf = (id: string, also?: string) => sources.runs.filter((run) => run.routineId === id || (also !== undefined && run.routineId === also)).sort(newestFirst);
   const botIds = sources.bots && new Set(sources.bots.map((bot) => bot.id));
+  const addressOf = new Map(sources.webhooks.filter((webhook) => webhook.routineId).map((webhook) => [webhook.routineId!, webhook.id]));
   return [
     ...sources.routines.map((routine): Automation => ({
       kind: "schedule", id: routine.id, name: routine.name, botId: routine.botId, instructions: routine.prompt, enabled: routine.enabled,
-      schedule: routine.schedule, nextRunAt: routine.enabled ? routine.nextRunAt : null, runs: runsOf(routine.id),
+      schedule: routine.schedule, nextRunAt: routine.enabled ? routine.nextRunAt : null, runs: runsOf(routine.id, addressOf.get(routine.id)),
+      ...(addressOf.has(routine.id) ? { addressId: addressOf.get(routine.id)! } : {}),
       ...(routine.checkedAt !== undefined ? { checkedAt: routine.checkedAt } : {}), ...(routine.checkTrouble ? { checkTrouble: routine.checkTrouble } : {}),
       ...(routine.access === "read-and-draft" ? { readsAndDrafts: true } : {}),
     })),
-    ...sources.webhooks.map((webhook): Automation => ({
+    ...sources.webhooks.filter((webhook) => !webhook.routineId).map((webhook): Automation => ({
       kind: "webhook", id: webhook.id, name: webhook.name, botId: webhook.botId, instructions: webhook.prompt, enabled: webhook.enabled,
       eventTypes: webhook.eventTypes, nextRunAt: null, runs: runsOf(webhook.id),
     })),

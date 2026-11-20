@@ -16,6 +16,8 @@ const LIST_ROUTE = "/api/internal/triggers";
 const JOB_LIST_ROUTE = "/api/internal/jobs";
 const EVERY_WAIT_ROUTE = "/api/internal/waits/all";
 const EVENTS_ROUTE = "/api/internal/trigger-events";
+const USAGE_ROUTE = "/api/internal/trigger-usage";
+const MAIL_ROUTE = "/api/internal/bot-mail";
 const APP_ONLY = ["app", "event", "account"] as const;
 const REQUEST_ROUTE = "/api/internal/trigger-requests";
 const SCHEDULE_ONLY = ["schedule", "timeout_minutes", "timeoutMinutes", "clear_timeout", "continuity", "overlap", "run_on_startup", "runOnStartup"] as const;
@@ -361,9 +363,11 @@ export async function callTriggerTool(name: string, args: Json, context: ToolCal
   const forBotId = typeof args.for_bot_id === "string" && args.for_bot_id.trim() ? args.for_bot_id.trim() : undefined;
   if (name === "trigger_info") {
     if (args.action === "events") return listEvents(args, context);
-    if (args.action !== undefined && args.action !== null && args.action !== "list") return { text: "trigger_info action is list or events.", isError: true };
+    if (args.action === "usage") return listUsage(context);
+    if (args.action !== undefined && args.action !== null && args.action !== "list") return { text: "trigger_info action is list, events or usage.", isError: true };
     return listTriggers(args, forBotId, context);
   }
+  if (name === "trigger" && args.action === "email") return emailRoute(args, context);
   if (name === "trigger" && args.action === "create") {
     if (args.trigger_id !== undefined && args.trigger_id !== null) return { text: "trigger_id is for a trigger that exists; leave it out to create one.", isError: true };
     return createTrigger(args, forBotId, context);
@@ -421,6 +425,26 @@ async function alsoRunning(context: ToolCallContext): Promise<string> {
   const part = (title: string, reply: { ok: boolean; body: Json } | null) =>
     reply?.ok && typeof reply.body.text === "string" && reply.body.text.trim() ? `\n\n${title}:\n${reply.body.text.trim()}` : "";
   return part("Background jobs (background_job)", jobs) + part("Waits, in every chat (wait_until)", waits);
+}
+
+async function emailRoute(args: Json, context: ToolCallContext): Promise<ToolCallResult> {
+  const triggerId = typeof args.trigger_id === "string" ? args.trigger_id.trim() : "";
+  if (!triggerId && args.email_from !== undefined && args.email_from !== null) return { text: "email_from needs trigger_id: the routine or webhook automation the mail runs.", isError: true };
+  if (triggerId && !Array.isArray(args.email_from)) return { text: "trigger action=email with trigger_id needs email_from: the senders it takes mail from (an empty list removes the route).", isError: true };
+  const query = new URLSearchParams({ fromBotId: context.botId, fromThreadId: context.threadId });
+  const { ok, body: r } = triggerId
+    ? await context.client.apiResponse(`${MAIL_ROUTE}?${query.toString()}`, { method: "POST", body: JSON.stringify({ triggerId, alias: typeof args.email_alias === "string" ? args.email_alias : "", from: args.email_from }) })
+    : await context.client.apiResponse(`${MAIL_ROUTE}?${query.toString()}`, { method: "GET" });
+  if (!ok) return { text: `The mail setting did not apply: ${typeof r.error === "string" ? r.error : "unknown error"}. Do not claim it did.`, isError: true };
+  const problem = typeof r.problem === "string" ? `\n\nNot receiving yet: ${r.problem}` : "";
+  return { text: `Your mail address and its routes:\n${JSON.stringify({ address: r.address, routes: r.routes, received: r.received }, null, 2)}${problem}\n\nThe address is not a secret: give the route's address to the person or paste it where mail should come from. Mail from anyone not listed in a route is dropped without a reply.` };
+}
+
+async function listUsage(context: ToolCallContext): Promise<ToolCallResult> {
+  const query = new URLSearchParams({ fromBotId: context.botId, fromThreadId: context.threadId });
+  const { ok, body: r } = await context.client.apiResponse(`${USAGE_ROUTE}?${query.toString()}`, { method: "GET" });
+  if (!ok || typeof r.error === "string") return { text: typeof r.error === "string" ? r.error : "The usage could not be read.", isError: true };
+  return { text: `What your automations used, runs and ${r.basis === "usd" ? "approximate dollars" : "tokens"} over the last 7 and 30 days:\n${JSON.stringify(r.automations, null, 2)}\n\n${String(r.note ?? "")}` };
 }
 
 async function listEvents(args: Json, context: ToolCallContext): Promise<ToolCallResult> {

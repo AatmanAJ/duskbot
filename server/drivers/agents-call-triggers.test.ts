@@ -102,7 +102,7 @@ describe("the trigger tool's actions", () => {
     const deletes = async (args: Record<string, unknown>) => (await callTool("delete_trigger", args, refused.context)).text;
     expect(await deletes({})).toBe("delete_trigger needs the trigger_id from trigger_info.");
     expect(await deletes({ trigger_id: "t-1", schedule: { type: "daily", time: "09:00" } })).toBe("delete_trigger takes only trigger_id and for_bot_id.");
-    expect((await callTool("trigger_info", { action: "delete" }, refused.context)).text).toBe("trigger_info action is list or events.");
+    expect((await callTool("trigger_info", { action: "delete" }, refused.context)).text).toBe("trigger_info action is list, events or usage.");
     expect(refused.calls).toEqual([]);
   });
 
@@ -176,5 +176,39 @@ describe("a test run", () => {
     expect(calls[0]!.body).toEqual({ fromBotId: "scout", fromThreadId: "thread-1", action: "run_now", triggerId: "r-1", test: true });
     expect(started.text).toContain("Started a test run of trigger r-1");
     expect((await callTool("trigger", { action: "pause", trigger_id: "r-1", test: true }, ctx)).text).toBe("test applies only to action=run_now.");
+  });
+});
+
+describe("mail routes and usage in the trigger tools", () => {
+  const recorder = (body: Record<string, unknown>) => {
+    const calls: Array<{ path: string; method?: string; body?: unknown }> = [];
+    const client = {
+      api: async () => ({}),
+      apiResponse: async (path: string, init: RequestInit) => {
+        calls.push({ path, method: init.method, ...(init.body ? { body: JSON.parse(String(init.body)) } : {}) });
+        return { ok: true, status: 200, body };
+      },
+    };
+    return { calls, ctx: { botId: "scout", threadId: "thread-1", depth: 0, externalRuntime: false, client } as unknown as ToolCallContext };
+  };
+
+  it("routes mail to an automation, shows the address without a trigger, and refuses senders without one", async () => {
+    const { calls, ctx } = recorder({ address: "scout-1@in.dusk.bot", routes: [{ alias: "receipts", targetId: "r1", from: ["@shop.example"] }], received: 0 });
+    const routed = await callTool("trigger", { action: "email", trigger_id: "r1", email_alias: "receipts", email_from: ["@shop.example"] }, ctx);
+    expect(routed.text).toContain("scout-1@in.dusk.bot");
+    expect(calls[0]).toEqual({ path: "/api/internal/bot-mail?fromBotId=scout&fromThreadId=thread-1", method: "POST", body: { triggerId: "r1", alias: "receipts", from: ["@shop.example"] } });
+    await callTool("trigger", { action: "email" }, ctx);
+    expect(calls[1]).toMatchObject({ method: "GET" });
+    expect((await callTool("trigger", { action: "email", email_from: ["a@b.c"] }, ctx)).isError).toBe(true);
+    expect((await callTool("trigger", { action: "email", trigger_id: "r1" }, ctx)).isError).toBe(true);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("reads what the automations used", async () => {
+    const { calls, ctx } = recorder({ basis: "usd", automations: [{ name: "Poller", last7Days: { runs: 90, usd: 3 } }], note: "Most used first." });
+    const result = await callTool("trigger_info", { action: "usage" }, ctx);
+    expect(calls[0]!.path).toBe("/api/internal/trigger-usage?fromBotId=scout&fromThreadId=thread-1");
+    expect(result.text).toContain("approximate dollars");
+    expect(result.text).toContain("Poller");
   });
 });

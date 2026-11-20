@@ -97,6 +97,7 @@
     "broker:test": "vitest run --config apps/cloudflare/composio-broker/vitest.config.ts",
     "broker:deploy": "wrangler deploy --config apps/cloudflare/composio-broker/wrangler.jsonc",
     "relay:test": "vitest run --config apps/cloudflare/link-relay/vitest.config.ts",
+    "mail-edge:test": "vitest run --config apps/cloudflare/inbound-mail/vitest.config.ts",
     "relay:e2e": "RELAY_E2E=1 vitest run --config apps/cloudflare/link-relay/vitest.config.ts test/e2e.test.js"
   },
   "dependencies": {

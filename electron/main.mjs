@@ -1,4 +1,5 @@
 import { carryLegacySafeStorageKey, DATA_DIR_NAMES, dataDirFor, devAppName, fromLegacyLink, LEGACY } from "./legacy-names.mjs";
+import { syncHookOrigin } from "./hook-origin.mjs";
 import { createCloudGone } from "./cloud-gone.mjs";
 import { app, autoUpdater, BrowserWindow, Tray, WebContentsView, clipboard, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification as ElectronNotification, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, systemPreferences, utilityProcess, nativeTheme } from "electron";
 import { createRequire } from "node:module";
@@ -435,7 +436,7 @@ const serverSupervisor = createServerSupervisor({
     serverReady = true;
     setLocalOrigin(confirmedRendererOrigin());
     slog(`server ready pid=${proc.pid} port=${SERVER_PORT}`);
-    syncUsageSignals();
+    syncUsageSignals(); syncHookOrigin({ status: managedCompanionConnector?.getStatus(), wanted: companionDesiredThisLaunch, request: localServerRequest });
     syncManagedComposioCredentials(); includedX.serverStarted(); includedPages.serverStarted(); railChanged(); ambientSurfaces.refresh();
     reportOwnListeners(proc);
     orgLibrary?.runtimeReady();
@@ -707,7 +708,7 @@ function ensureManagedCompanionConnector() {
     runtimeExecutable: process.execPath,
     runtimeRoot: path.join(app.getPath("userData"), "managed-companion-tunnel"),
     onChange: (status) => {
-      slog(`managed companion connection ${status.status}`);
+      slog(`managed companion connection ${status.status}`); if (serverReady) syncHookOrigin({ status: managedCompanionConnector?.getStatus(), wanted: companionDesiredThisLaunch, request: localServerRequest });
       if (!companionDesiredThisLaunch) return;
       void reconcileCompanionAdvertisement(status.ready ? status.endpoint : null);
     },
@@ -774,7 +775,7 @@ async function startDesktopCompanion({ waitForHosted = true, remember = true } =
 }
 
 async function stopDesktopCompanion({ remember = true } = {}) {
-  companionDesiredThisLaunch = false;
+  companionDesiredThisLaunch = false; if (serverReady) syncHookOrigin({ status: managedCompanionConnector?.getStatus(), wanted: companionDesiredThisLaunch, request: localServerRequest });
   companionLaunchGeneration += 1;
   if (remember) rememberCompanionEnabled(false);
   syncCompanionKeepAwake(false, false);
