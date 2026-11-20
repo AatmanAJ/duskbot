@@ -1576,6 +1576,7 @@ describe("OpenCode free model that never answers, or answers nothing", () => {
     expect(events.some((event) => event.type === "runtime.notice" && /another free model/.test(event.message))).toBe(false);
     expect(events.filter((event) => event.type === "runtime.error")).toEqual([expect.objectContaining({
       message: "The free backup model has used up its free replies for now, so this message got no reply. Connect your own AI, like Claude or ChatGPT, to keep going, or send it again later.",
+      errorCode: "free_pool_limit", limit: "engine",
     })]);
   }, 20_000);
 

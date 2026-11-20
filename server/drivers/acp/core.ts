@@ -1622,7 +1622,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             const freeError = e instanceof Error ? e.message : String(e);
             // a free model's request refused outright (busy, rate limited, unavailable) before anything reached the person
             const freeRefused = ladder && state.promptSent && !state.text && !state.producedItem && !current.runningTools.size && !asks.size
-              && ["pool_limit", "rate_limited", "busy", "timeout"].includes(freeFailure(freeError));
+              && ["pool_limit", "rate_limited", "busy", "timeout", "unavailable"].includes(freeFailure(freeError));
             if (!state.settled && !state.cancelling && ((e as any)?.acpFirstReplyStall === true || freeRefused) && ladder && !state.stopped) {
               // nothing reached the person and no tool ran, so the same message goes to the next free model in this turn
               state.settled = true; session.current = null; active.delete(threadId); current.stopQuietWatch?.();
@@ -1652,7 +1652,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
                 }
               }
               emit({ ...base(threadId, turnId), type: "runtime.error", message: serverLine(language, limited ? "server.freeModel.limit" : "server.freeModel.noReply"),
-                errorCode: limited ? "free_pool_limit" : `free_${failure}` });
+                errorCode: limited ? "free_pool_limit" : `free_${failure}`, ...(limited ? { limit: "engine" as const } : {}) });
               emit({ ...base(threadId, turnId), type: "turn.completed", ok: false, stopReason: "no_reply", cost: null });
               return;
             }

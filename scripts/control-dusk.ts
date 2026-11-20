@@ -145,6 +145,7 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
   const fixtureTemp = join(dataDir, "tmp");
   const home = verificationHome(parentEnv, dataDir);
   Object.assign(childEnv, {
+    DUSK_ZEN_LIVE_MODELS: "0",
     HOME: home,
     USERPROFILE: home,
     APPDATA: join(home, "AppData", "Roaming"),
