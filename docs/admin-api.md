@@ -21,7 +21,10 @@ working unchanged until the panel moves to these.
   | 503 | `admin_data_unavailable` | MongoDB could not be read; the panel may retry |
 
   Nothing hangs: every read has a 25 s deadline, every database query a 20 s
-  `maxTimeMS`.
+  `maxTimeMS`. `/web` for the panel's own ranges (today, 7, 30, 90 days up to now, no
+  filters, any surface) is computed ahead every 10 minutes for each reader the panel has
+  seen (`admin_web_warm`), so it answers at once even after a restart; its `online`
+  count is always read at the moment of the request.
 - **Request headers (the panel's switches), same as v1:**
   - `x-dusk-admin-data: own`: on preview, read preview's own data. Without it,
     preview's admin reads dusk.bot's (`dusk_prod`, read only) and every answer says

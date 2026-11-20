@@ -18,6 +18,12 @@ export interface ReadCache {
   /** the answer for `key`: a kept one younger than `ttlMs`, the one already being computed, or a new computation. with
    *  `staleMs`, a kept one up to that much older is answered at once while a fresh one is computed behind it */
   get<T>(key: string, ttlMs: number, work: () => Promise<T>, staleMs?: number): Promise<T>;
+  /** keeps an answer computed elsewhere, as of `at`; an answer from before the last clear() is not kept */
+  put(key: string, value: unknown, at: number, generation: number): void;
+  /** when the kept answer for `key` was computed, null without one */
+  keptAt(key: string): number | null;
+  /** bumped by clear(): an answer started under an older generation is out of date */
+  readonly generation: number;
   /** forgets every kept answer (after a change the panel made) */
   clear(): void;
   /** the deadline and database error mapping alone, for reads that are never kept */
@@ -43,15 +49,16 @@ export function createReadCache(options: ReadCacheOptions = {}): ReadCache {
     });
     return Promise.race([work.catch(asUnavailable), late]).finally(() => clearTimeout(timer));
   }
+  function keep(key: string, at: number, value: unknown) {
+    kept.delete(key);
+    kept.set(key, { at, value });
+    while (kept.size > maxEntries) kept.delete(kept.keys().next().value!);
+  }
   function compute<T>(key: string, ttlMs: number, work: () => Promise<T>): Promise<T> {
     const started = generation;
     const promise = work().then(value => {
       // an answer computed before a change is not kept past it
-      if (started === generation && ttlMs > 0) {
-        kept.delete(key);
-        kept.set(key, { at: now(), value });
-        while (kept.size > maxEntries) kept.delete(kept.keys().next().value!);
-      }
+      if (started === generation && ttlMs > 0) keep(key, now(), value);
       return value;
     }).finally(() => { if (running.get(key) === promise) running.delete(key); });
     promise.catch(() => {});
@@ -60,6 +67,9 @@ export function createReadCache(options: ReadCacheOptions = {}): ReadCache {
   }
   return {
     get size() { return kept.size; },
+    get generation() { return generation; },
+    put(key, value, at, from) { if (from === generation && (kept.get(key)?.at ?? -Infinity) < at) keep(key, at, value); },
+    keptAt: key => kept.get(key)?.at ?? null,
     get<T>(key: string, ttlMs: number, work: () => Promise<T>, staleMs = 0): Promise<T> {
       const hit = kept.get(key);
       if (hit && now() - hit.at < ttlMs) return Promise.resolve(hit.value as T);
