@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DESKTOP_IMAGE_STATUS, homeControlScript, homeSetupScript, HOME_CONTROL, HOME_SCREEN_DIRECT_PORTS } from "./home.ts";
-import type { HomeRelease } from "./home-update.ts";
+import { createReleaseFile, type HomeRelease } from "./home-update.ts";
 import { signRelease, type ReleaseKey } from "./release-signing.ts";
 import { createPolicySource, signPolicy, verifyPolicy } from "./update-policy.ts";
 import { homeFixture, cleanup } from "./test-fixture.ts";
@@ -65,6 +65,34 @@ describe("staged home updates", () => {
     expect(t.c.managed!.update!.guard.trial).toBeNull();
     expect(t.c.managed!.update!.guard.last).toMatchObject({ kind: "updated", version: "1.1.0" });
     expect(t.actions()).toEqual(["update_applied:idle", "update_settled:trial_passed"]);
+  });
+
+  it("a release that lists cloud ids installs on those clouds only; the rest stay on the package the service started with", async () => {
+    const other = await updating();
+    other.offer({ ...release("1.1.0"), clouds: ["some-other-cloud"] });
+    other.f.power.busy = ["recent-activity"];
+    await other.pass();
+    expect(other.commands().filter(x => x.includes("omb-home install") && x.includes(sha("1.1.0")))).toHaveLength(0);
+    expect(other.c.managed!.installed).toBe(sha("1.0.0"));
+    expect(other.actions()).toEqual([]);
+
+    const canary = await updating();
+    canary.offer({ ...release("1.1.0"), clouds: [canary.c.id] });
+    canary.f.power.busy = ["recent-activity"];
+    await canary.pass();
+    expect(canary.commands().filter(x => x.includes("omb-home install")).at(-1)).toContain(sha("1.1.0"));
+    expect(canary.c.managed!.installed).toBe(sha("1.1.0"));
+    expect(canary.actions()).toEqual(["update_applied:idle"]);
+  });
+
+  it("reads a release file's cloud list, and treats an empty list as every cloud", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dusk-release-file-")); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    const file = join(dir, "release.json");
+    writeFileSync(file, JSON.stringify({ sha256: sha("1.1.0"), url: "https://packages.example.test/1.1.0.tgz", clouds: ["c1", 7, "c2"] }));
+    expect(createReleaseFile(file)()).toMatchObject({ sha256: sha("1.1.0"), clouds: ["c1", "c2"] });
+    const later = join(dir, "all.json");
+    writeFileSync(later, JSON.stringify({ sha256: sha("1.1.0"), url: "https://packages.example.test/1.1.0.tgz", clouds: [] }));
+    expect(createReleaseFile(later)()).not.toHaveProperty("clouds");
   });
 
   it("the operator can end a trial early once its self-test passed, so the next release installs at the next idle moment", async () => {
