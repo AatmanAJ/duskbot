@@ -64,3 +64,21 @@ export function applyMotionSpeed(root: HTMLElement, speed: MotionSpeed = MOTION)
   if (speed.pick === "a") return;
   for (const [name, value] of Object.entries(motionCssVars(speed))) root.style.setProperty(name, value);
 }
+
+export interface SpringTiming { duration: number; easing: string }
+
+/** A spring from rest at 0 to rest at 1 (mass 1) as a WAAPI duration and linear() easing, so it runs off the main thread
+ * and a glide cut short can be read back from the computed transform. */
+export function springTiming(stiffness: number, damping: number): SpringTiming {
+  const w = Math.sqrt(stiffness);
+  const z = Math.min(1, damping / (2 * w));
+  const wd = w * Math.sqrt(1 - z * z);
+  const at = (t: number) => z >= 1 ? 1 - (1 + w * t) * Math.exp(-w * t)
+    : 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t));
+  const envelope = (t: number) => z >= 1 ? (1 + w * t) * Math.exp(-w * t) : Math.exp(-z * w * t) / Math.sqrt(1 - z * z);
+  let end = 0.05;
+  while (envelope(end) > 0.001 && end < 2) end += 0.005;
+  const steps = 48;
+  const points = Array.from({ length: steps + 1 }, (_, i) => i === steps ? "1" : String(Math.round(at((end * i) / steps) * 10000) / 10000));
+  return { duration: Math.round(end * 1000), easing: `linear(${points.join(", ")})` };
+}

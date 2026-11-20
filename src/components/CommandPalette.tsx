@@ -18,6 +18,11 @@ import { botPreview, groupPreview } from "./sidebar-preview";
 import { openBotSettingsPage } from "./bot-panel/panel-link";
 import { switchPlaceCommand } from "./SidebarPlaceButton";
 import { friendlyError } from "@/lib/plain-error";
+import { desktopMotion } from "@/lib/desktop-motion";
+import { pacedMs } from "@/lib/motion-speed";
+
+/** A row's 49px and the 2px gap under it. */
+const ROW_STEP = 51;
 
 /** What a row does once picked: what it opens, or what it changes. */
 type Command = { id: string; name: string; detail?: string; also?: string; icon: IconName; run: () => void };
@@ -148,6 +153,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   }, [cursor, messageHits]);
 
   if (!open) return null;
+  const glideMs = desktopMotion().palette.glideMs;
 
   const settings = (section: AppSettingsSection): Action => ({ type: "toggleAppSettings", open: true, section });
   // Settings stays its own lazy chunk: its pane map is read once the command is picked.
@@ -252,8 +258,9 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
       onMouseMove={() => setCursor(index)}
       className={cn(
         "m-0 flex h-[49px] w-full shrink-0 cursor-pointer appearance-none items-center gap-2.5 rounded-[10px] border-0 py-1.5 pl-2 pr-2.5 text-left text-[13px] leading-[18px] tracking-[0.195px] text-ink outline-none",
-        index === selected ? "bg-ink/8" : "bg-transparent",
+        index === selected && !glideMs ? "bg-ink/8" : "bg-transparent",
       )}
+      data-palette-row=""
     >
       <span className="flex size-6 shrink-0 items-center justify-center">{leading}</span>
       <span className="flex min-w-0 flex-1 flex-col justify-center gap-px tracking-[-0.08px]">
@@ -312,7 +319,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
             aria-label="Results"
             className="min-h-0 flex-1 overflow-y-auto [mask-image:linear-gradient(transparent_0px,black_0px,black_calc(100%-24px),transparent_100%)]"
           >
-            <div className="flex flex-col gap-0.5 p-2">
+            <div className={cn("flex flex-col gap-0.5 p-2", glideMs > 0 && "relative isolate")}>
               {entries.map((entry, index) => {
                 if (entry.kind === "bot") {
                   const { bot } = entry;
@@ -350,6 +357,8 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
                 const { command } = entry;
                 return row(`cmd:${command.id}`, index, entry, tile(command.icon), command.name, command.detail, "Action");
               })}
+              {glideMs > 0 && <span aria-hidden data-palette-glide="" className="pointer-events-none absolute inset-x-2 top-2 -z-10 h-[49px] rounded-[10px] bg-ink/8"
+                style={{ transform: `translateY(${selected * ROW_STEP}px)`, transition: `transform ${pacedMs(glideMs)}ms var(--motion-ease-out, ease-out)` }} />}
             </div>
           </div>
         )}

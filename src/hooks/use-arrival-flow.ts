@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { probeMotion } from "@/lib/motion-probe";
-import { cssBezier, pacedMs, pacedOut } from "@/lib/motion-speed";
+import { cssBezier, pacedMs, pacedOut, springTiming, type SpringTiming } from "@/lib/motion-speed";
 import { contentTop, readingInset, landingReply, replyHoldTop } from "@/lib/reply-hold";
 
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
@@ -18,23 +18,7 @@ export const ROW_ENTER_EASE = `cubic-bezier(${ROW_ENTER_CURVE.join(", ")})`;
  * column still follows it, but it does not rise as well. */
 export const OWN_ENTRANCE = "data-arrival-own";
 
-export interface SpringTiming { duration: number; easing: string }
-
-/** A spring from rest at 0 to rest at 1 (mass 1) as a WAAPI duration and linear() easing, so it runs off the main thread
- * and a glide cut short can be read back from the computed transform. */
-export function springTiming(stiffness: number, damping: number): SpringTiming {
-  const w = Math.sqrt(stiffness);
-  const z = Math.min(1, damping / (2 * w));
-  const wd = w * Math.sqrt(1 - z * z);
-  const at = (t: number) => z >= 1 ? 1 - (1 + w * t) * Math.exp(-w * t)
-    : 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t));
-  const envelope = (t: number) => z >= 1 ? (1 + w * t) * Math.exp(-w * t) : Math.exp(-z * w * t) / Math.sqrt(1 - z * z);
-  let end = 0.05;
-  while (envelope(end) > 0.001 && end < 2) end += 0.005;
-  const steps = 48;
-  const points = Array.from({ length: steps + 1 }, (_, i) => i === steps ? "1" : String(Math.round(at((end * i) / steps) * 10000) / 10000));
-  return { duration: Math.round(end * 1000), easing: `linear(${points.join(", ")})` };
-}
+export { springTiming, type SpringTiming } from "@/lib/motion-speed";
 
 /** motion's { type: "spring", bounce, visualDuration } in stiffness and damping */
 export function visualSpring(visualDuration: number, bounce = 0): SpringTiming {

@@ -66,6 +66,7 @@ import { useLandedReply } from "@/hooks/use-landed-reply";
 import { useNotesWork } from "@/lib/notes-arrival";
 import { useTypingHold } from "@/hooks/use-typing-hold";
 import { OWN_ENTRANCE } from "@/hooks/use-arrival-flow";
+import { useChatSwitchMotion } from "@/hooks/use-chat-switch-motion";
 import { usePrefersReducedMotion } from "@/components/mascot-clock";
 import { enterFromComposer, growFromMascot, hasSendLaunch } from "./bubble-entrance";
 import { STATUS_MOUNT_MS, useReached } from "@/hooks/use-reached";
@@ -1133,6 +1134,7 @@ export function ChatView({ bot: profile }: { bot: Bot }) {
   // the reply is written whole; while the engine types it the mark only looks like it is answering
   const streamingReply = useLiveReplyActive(bot.threadId);
   const chatKey = `${bot.id}:${bot.threadId ?? ""}`;
+  useChatSwitchMotion(scrollRef, chatKey);
   const [busyMark, setBusyMark] = useState<{ chat: string; at: number } | null>(null);
   useEffect(() => {
     setBusyMark(turnBusy ? { chat: chatKey, at: turnStartedAt ?? Date.now() } : null);

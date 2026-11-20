@@ -17,6 +17,7 @@ import { loadPageLanguage } from "./lib/language-preference";
 import { applySkinChoice, readSkinChoice } from "./lib/skins";
 import { applyChatWidth, readChatWidth } from "./lib/chat-width";
 import { applyMotionSpeed } from "./lib/motion-speed";
+import { applyDesktopMotion } from "./lib/desktop-motion";
 import { applyFont, readFont } from "./lib/fonts";
 import { startSyncedPrefs } from "./lib/synced-prefs";
 import { watchFocusNav } from "./lib/focus-nav";
@@ -33,6 +34,7 @@ import "./font-faces.css";
 import "./styles.css";
 import "./styles/overlays.css";
 import "./styles/motion.css";
+import "./styles/desktop-motion.css";
 
 watchStaleChunks();
 // a deleted dusk cloud: loading the page again gets the edge's 410, which the desktop window answers with its own screen
@@ -44,6 +46,7 @@ applySkinChoice(readSkinChoice());
 applyFont(readFont());
 applyChatWidth(readChatWidth());
 applyMotionSpeed(document.documentElement);
+applyDesktopMotion(document.documentElement);
 startSyncedPrefs();
 watchFocusNav();
 watchComposerFocus();
