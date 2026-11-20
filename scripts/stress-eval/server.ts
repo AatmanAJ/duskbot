@@ -33,13 +33,14 @@ export interface StressServer {
   close(keep?: boolean): Promise<void>;
 }
 
-export async function launchServer(repo: string, tmp: string, gateway: Gateway, models: string[], extraConfig: Record<string, unknown> = {}): Promise<StressServer> {
+/** `reuseRoot`: start again on the data folder of a server closed with keep, as after a restart. */
+export async function launchServer(repo: string, tmp: string, gateway: Gateway, models: string[], extraConfig: Record<string, unknown> = {}, reuseRoot?: string): Promise<StressServer> {
   const port = await freePair();
   mkdirSync(tmp, { recursive: true });
-  const root = mkdtempSync(join(tmp, "srv-"));
+  const root = reuseRoot ?? mkdtempSync(join(tmp, "srv-"));
   const dataDir = join(root, "data");
   mkdirSync(join(dataDir, "tmp"), { recursive: true });
-  writeFileSync(join(dataDir, "config.json"), JSON.stringify({
+  if (!reuseRoot) writeFileSync(join(dataDir, "config.json"), JSON.stringify({
     features: { smartSetupChoices: false },
     instances: { gw: { driver: "openai-compat", displayName: "Eval gateway", config: { url: gateway.url, key: gateway.key, model: models[0] } } },
     ...extraConfig,
