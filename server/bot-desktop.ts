@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { CUA_DRIVER_VERSION, DRIVER_LABEL, dockerSecurityIsHardened, type DockerHardeningConfig } from "./container-computer.ts";
 import { PIDS_LIMIT } from "./container-limits.ts";
 import { desktopLimitArgs, desktopLimits, type VpsDesktopLimits } from "./vps-capacity.ts";
+import { isGateSocket } from "./vps-docker-transport.ts";
 
 export { BOT_DESKTOP_IMAGE, BOT_DESKTOP_LABEL, BOT_DESKTOP_NETWORK, BOT_DESKTOP_VERSION };
 
@@ -296,7 +297,7 @@ async function waitForHostBuild(run: DockerRun, statusFile: string): Promise<voi
  * probes, which run with NET_ADMIN on the host's network.
  */
 export function dockerHostBuilds(env: NodeJS.ProcessEnv = process.env): boolean {
-  return !(env.DOCKER_HOST?.trim() ?? "").endsWith("/duskbot-docker/docker.sock");
+  return !isGateSocket(env.DOCKER_HOST);
 }
 
 /** Pulls BOT_DESKTOP_IMAGE, else builds it on the docker host from the kit this server ships; refuses plainly when neither works. */

@@ -2,7 +2,7 @@ import { basename, join } from "node:path";
 
 import type { WireBot, WireGroup } from "../../shared/wire.ts";
 import {
-  ATTACHMENTS_DIR, attachmentStorageUsage, clearAttachments, deleteAttachment, extensionForMime, FILE_MAX_BYTES, IMAGE_MAX_BYTES,
+  ATTACHMENTS_DIR, attachmentStorageUsage, clearAttachments, deleteAttachment, extensionForMime, FILE_MAX_BYTES, IMAGE_MAX_BYTES, imageMimeOf,
   parseAudioRange, readAttachment, saveFile, saveImageUpload, validateAttachmentUploadId, type SavedAttachment,
 } from "../attachments.ts";
 import { deliveredCopy } from "../bot-attachment.ts";
@@ -27,6 +27,7 @@ import { PASS, type RouteContext, type RouteHandler } from "./table.ts";
 /** How many of each conversation's newest messages GET /api/transcripts sends when not asked for a number. */
 export const RECENT_PAGE = 50;
 const UPLOADED_NAME = /^[A-Za-z0-9-]+\.[A-Za-z0-9]{1,10}$/;
+export const DAMAGED_IMAGE = "The picture arrived damaged or isn't a PNG, JPEG, GIF or WebP. Send it again.";
 
 const ATTACHMENT_MAX_AGE_S = 365 * 24 * 60 * 60;
 
@@ -398,7 +399,11 @@ export function createThreadRoutes(deps: ThreadRouteDeps): RouteHandler {
           if (settled) return;
           settled = true;
           try {
-            resolve(await saveImageUpload(Buffer.concat(chunks), mime, uploadId));
+            const bytes = Buffer.concat(chunks);
+            // an engine refuses bytes that are not a picture again on every later turn of the chat that holds them
+            const real = bytes.byteLength ? imageMimeOf(bytes) : mime;
+            if (!real) throw Object.assign(new Error(DAMAGED_IMAGE), { status: 400 });
+            resolve(await saveImageUpload(bytes, real, uploadId));
           } catch (e) {
             reject(e instanceof Error ? e : new Error(String(e)));
           }

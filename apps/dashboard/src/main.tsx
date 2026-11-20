@@ -15,6 +15,7 @@ import { MotionRoot } from "./ui/motion";
 import { SkyEmpty } from "./ui/Sky";
 import { CrashBoundary } from "./ui/Crash";
 import { LoadingPage } from "./pages/common";
+import { PlansPageSkeleton, PlansSkeleton } from "./ui/plans-skeleton";
 import { ClaimPage, hasClaim, stashClaim } from "./pages/Connect";
 import { deletePageId, deleteSignInNote, deleteToken, stashDeleteToken } from "./data/delete-data";
 import { HomePage } from "./pages/Home";
@@ -134,12 +135,12 @@ function SignedIn() {
   const blank = <div className="min-h-[100dvh] bg-bg" aria-busy="true" />;
   if (admin) return <Suspense fallback={blank}><AdminApp /></Suspense>;
   // home or onboarding is decided once the profile is in, so a new account never sees home first
-  if (!welcome && !exempt && account === null && !error) return blank;
+  if (!welcome && !exempt && account === null && !error) return path === "/billing" ? <PlansPageSkeleton /> : blank;
   if (welcome && intent && account === null && !error) return blank;
   if (welcome) return <Suspense fallback={blank}><Onboarding /></Suspense>;
   // the desktop app's sign-in: its own clean page, not the dashboard around it
   if (path === "/cloud/desktop") return <main className="min-h-[100dvh] bg-bg px-6 py-10"><Suspense fallback={<LoadingPage />}>{route(path)}</Suspense></main>;
-  return <Shell><Suspense fallback={<LoadingPage />}>{route(path)}</Suspense></Shell>;
+  return <Shell><Suspense fallback={path === "/billing" ? <PlansSkeleton /> : <LoadingPage />}>{route(path)}</Suspense></Shell>;
 }
 
 function App() {
@@ -159,11 +160,12 @@ function App() {
   useEffect(() => { if (away) location.replace("/"); }, [away]);
   const blank = <div className="min-h-[100dvh] bg-bg" aria-busy="true" />;
   if (away) return blank;
-  if (path === HANDOFF_PATH) return <Suspense fallback={blank}><HandoffPage /></Suspense>;
+  // the app's links open the plans most of all, so the wait looks like them
+  if (path === HANDOFF_PATH) return <Suspense fallback={<PlansPageSkeleton />}><HandoffPage /></Suspense>;
   if (path === APP_LANDING_PATH) return <Suspense fallback={blank}><AppSignedInPage /></Suspense>;
   if (accountError) return <main className="flex min-h-[100dvh] items-center justify-center bg-bg px-6"><SkyEmpty art="cat" title="can't reach your account right now." action={<Button variant="primary" onClick={retryAccount}>try again</Button>} className="w-full max-w-[520px]">check your connection. your bots are fine, they live on your own computers.</SkyEmpty></main>;
-  if (account === undefined) return <div className="min-h-[100dvh] bg-bg" aria-busy="true" />;
-  if (account === null) return <AuthScreen mode={path === "/signup" ? "signup" : "signin"} forApp={path === "/cloud/desktop"} note={path === TEAM_JOIN_PATH ? "sign in with the email your invite was sent to, and you join the team." : path === "/claim" ? "this link connects a dusk bot workspace to your account, so its machine stats, bots and usage show here. chats and files stay on it. sign in to go on." : path === "/cloud/desktop" ? "sign in to finish signing in the desktop app." : deleteSignInNote(path)} />;
+  if (account === undefined) return path === "/billing" ? <PlansPageSkeleton /> : <div className="min-h-[100dvh] bg-bg" aria-busy="true" />;
+  if (account === null) return <AuthScreen mode={path === "/signup" ? "signup" : "signin"} forApp={path === "/cloud/desktop"} note={path === TEAM_JOIN_PATH ? "sign in with the email your invite was sent to, and you join the team." : path === "/claim" ? "this link connects a dusk bot workspace to your account, so its machine stats, bots and usage show here. chats and files stay on it. sign in to go on." : deleteSignInNote(path)} />;
   return <SignedIn />;
 }
 

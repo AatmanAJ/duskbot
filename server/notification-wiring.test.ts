@@ -152,16 +152,13 @@ posixOnly("routine failure notification wiring", () => {
           botId: bot.id,
           resultsThreadId: frame.notification.threadId,
         });
-        expect(receipt.threadId).not.toBe(frame.notification.threadId);
+        // the run worked in the chat it reports to, so its failure is that chat's failed turn: no line or task of its own
+        expect(receipt.threadId).toBe(frame.notification.threadId);
         const report = await api("GET", `/api/threads/${frame.notification.threadId}/messages?limit=20`);
         expect(report.status).toBe(200);
-        expect(report.body.messages.find((message: any) => message.automation?.runId === receipt.id)).toMatchObject({
-          kind: "text", text: expect.stringMatching(/^This run didn't finish: /), automation: { failed: true, executionThreadId: receipt.threadId },
-        });
+        expect(report.body.messages.some((message: any) => message.automation?.runId === receipt.id)).toBe(false);
         const currentBot = (await api("GET", "/api/bots")).body.bots.find((candidate: any) => candidate.id === bot.id);
-        expect(currentBot.tasks.find((task: any) => task.threadId === receipt.resultsThreadId).routineRunId).toBeUndefined();
-        expect(currentBot.tasks.find((task: any) => task.threadId === receipt.threadId))
-          .toMatchObject({ routineRunId: receipt.id, unread: false });
+        expect(currentBot.tasks.map((task: any) => [task.threadId, task.routineRunId])).toEqual([[receipt.threadId, undefined]]);
 
         expect((await api("PATCH", `/api/bots/${bot.id}`, { name: "Failure observed" })).status).toBe(200);
         await stream.until(

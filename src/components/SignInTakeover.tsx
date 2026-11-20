@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useLiveDesktop } from "./live-desktop-module";
 import { viewerTargetId } from "../../shared/desktop-viewer";
 import { parseComputerHelp } from "@/lib/computer-control";
 import { trailHeaders } from "@/lib/trail";
@@ -8,8 +9,6 @@ import { api, useStore } from "@/state/store";
 import { SCREEN_GROW_MS } from "./ComputerFullscreen";
 import { useComputerTakeover } from "./computer-takeover";
 
-const loadLiveDesktop = () => import("./LiveDesktop").then((module) => ({ default: module.LiveDesktop }));
-const LiveDesktop = lazy(loadLiveDesktop);
 
 /** A computer can sleep while its card waits for the person (idle sleep): it is woken before its screen is asked for. */
 const WAKE_TIMEOUT_MS = 180_000;
@@ -56,7 +55,6 @@ export function useSignInTakeover({ botId, threadId, name, place, poster, onDone
   const wanted = useRef(false);
   const resolving = useRef<AbortController | null>(null);
   useEffect(() => () => resolving.current?.abort(), []);
-  useEffect(() => { void loadLiveDesktop(); }, []);
 
   const request = useCallback(async (action: "take" | "release", controlLeaseId?: string, cid?: string) => {
     const snap = await api(`/api/bots/${encodeURIComponent(botId)}/computer/control`, {
@@ -127,24 +125,29 @@ export function useSignInTakeover({ botId, threadId, name, place, poster, onDone
     }
   };
 
+  const viewerCode = useLiveDesktop(true);
+  const LiveDesktop = viewerCode.kind === "ready" ? viewerCode.LiveDesktop : null;
+  const unreachable = () => {
+    setReady(false);
+    wanted.current = false;
+    if (takeover.here) takeover.leave();
+    // back to the card's own picture (never a dead box), with what went wrong under it; a retry wakes it again
+    setShown(false);
+    setTarget(null);
+    setError(friendlyError(new Error(t("computer.err.openDesktop"))));
+  };
+  const viewerFailed = viewerCode.kind === "failed" && shown && Boolean(target);
+  useEffect(() => { if (viewerFailed) unreachable(); }, [viewerFailed]); // eslint-disable-line react-hooks/exhaustive-deps
   const media: ReactNode = shown && target ? (
     <div data-sign-in-live="" data-in-control={takeover.here ? "true" : undefined} className="relative aspect-[16/10] w-full overflow-hidden bg-[#000]">
-      <Suspense fallback={null}>
+      {LiveDesktop && (
         <LiveDesktop key={target} target={target} threadId={threadId} botId={botId} name={name} poster={poster}
           viewOnly={!takeover.here} taking={taking} asked originalViewer
           expanded={takeover.expanded} onExpandedChange={takeover.setExpanded} onOpenPreview={() => void open()}
           onTakeControl={() => void open()} onHandBack={() => void done()} handingBack={finishing || takeover.handingBack}
           onReadyChange={setReady}
-          onUnreachable={() => {
-            setReady(false);
-            wanted.current = false;
-            if (takeover.here) takeover.leave();
-            // back to the card's own picture (never a dead box), with what went wrong under it; a retry wakes it again
-            setShown(false);
-            setTarget(null);
-            setError(friendlyError(new Error(t("computer.err.openDesktop"))));
-          }} />
-      </Suspense>
+          onUnreachable={unreachable} />
+      )}
     </div>
   ) : null;
 

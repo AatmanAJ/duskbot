@@ -165,16 +165,18 @@ export function createAdminRoutes(ctx: BillingContext) {
         text(data.source);
         const sub = subscription(account), cart = bundleCart(data.plan, sub.cart.interval);
         if (route === "upgrade/preview") {
-          const preview = service.previewChange(account, sub.id, cart);
+          const preview = await service.previewChange(account, sub.id, cart);
+          // the app sells upgrades; a smaller plan is switched on the plans page, where its date is shown
+          if (preview.timing === "scheduled" || preview.timing === "undo") throw new BillingError(409, "plan_change_unavailable");
           for (const [key, value] of confirmations) if (value.expiresAt <= now() || value.accountId === account.id) confirmations.delete(key);
           confirmations.set(preview.confirmation, { accountId: account.id, plan: data.plan, subscriptionId: sub.id, expiresAt: preview.expiresAt });
-          return send({ tier: data.plan, from: sub.bundle ?? "custom", price: preview.quote.totalCents, chargeNow: preview.chargeNowCents, tax: 0, currency: "USD", trial: false,
-            confirmation: preview.confirmation, expiresAt: preview.expiresAt, nextBillingAt: sub.currentPeriodEnd });
+          return send({ tier: data.plan, from: sub.bundle ?? "custom", price: preview.quote.totalCents, chargeNow: preview.chargeNowCents, tax: preview.taxCents, currency: "USD", trial: preview.timing === "trial",
+            confirmation: preview.confirmation, expiresAt: preview.expiresAt, nextBillingAt: preview.nextChargeAt });
         }
         const token = text(data.confirmation), confirmation = confirmations.get(token);
         if (!confirmation || confirmation.accountId !== account.id || confirmation.subscriptionId !== sub.id || confirmation.plan !== data.plan || confirmation.expiresAt <= now()) throw new BillingError(409, "confirmation_required");
         confirmations.delete(token);
-        const changed = await service.change(account, sub.id, token);
+        const changed = (await service.change(account, sub.id, token)).subscription;
         return send({ status: changed.bundle === data.plan ? "upgraded" : "pending", tier: changed.bundle ?? "custom" });
       }
       if (route === "pairing") {
