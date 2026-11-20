@@ -139,7 +139,7 @@ describe("buildSystemPrompt", () => {
     // memory is held for the conversation, so it rides in the cached half
     expect(built.stable).toBe(`You are Kiwi. Search past sessions. Your memory: likes tea.${TAIL}`);
     // A German person once read "Now the edits." between a bot's German lines: every line they see is in their language.
-    expect(REPLY_HABITS_PROMPT).toContain("in the language they use with you, including a short note between steps and a message you pass on for them");
+    expect(REPLY_HABITS_PROMPT).toContain("in the language of their latest message, never the app's language or your own earlier lines, including a short note between steps and a message you pass on for them");
     expect(built.volatile).not.toContain("likes tea");
     expect(built.volatile).toContain("@Fig");
     expect(built.volatile).toContain("today 20:48");
