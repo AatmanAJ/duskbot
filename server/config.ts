@@ -216,7 +216,8 @@ const browserProfilesSchema = z.array(browserProfileSchema).max(20).superRefine(
 const featureConfigSchema = z.object({
   /** Bots may draft skills for your review. On unless false. */
   skillAuthoring: z.boolean().optional(),
-  /** The bot's engine reviews long conversations and updates its learned skills. Off unless true; needs skillAuthoring. */
+  /** After substantial work the bot's quick model reviews the conversation and saves at most one skill change, three a day per bot,
+   * only to skills it wrote itself. On unless false; needs skillAuthoring. */
   skillReview: z.boolean().optional(),
   /** Tool steps in one conversation between automatic reviews. */
   skillReviewSteps: z.number().int().min(3).max(100).optional(),
@@ -622,7 +623,7 @@ export const MIN_SKILL_REVIEW_STEPS = 3;
 export const MAX_SKILL_REVIEW_STEPS = 100;
 
 export function skillReviewEnabled(cfg: AppConfig): boolean {
-  return skillAuthoringEnabled(cfg) && cfg.features?.skillReview === true;
+  return skillAuthoringEnabled(cfg) && cfg.features?.skillReview !== false;
 }
 
 export function skillReviewSteps(cfg: AppConfig): number {

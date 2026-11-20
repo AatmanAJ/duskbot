@@ -267,6 +267,7 @@ export function appliedEvent(card: OptionCardData): AppliedEvent | undefined {
     };
   }
   const skill = card.skillRequest;
+  if (skill?.learnedBy === "review") return { label: t(skill.action === "create" ? "chat.event.skillLearned" : "chat.event.skillImproved"), chip: { icon: "skills", name: skill.name } };
   if (skill) return { label: t(skill.action === "create" ? "chat.event.skillAdded" : "chat.event.skillUpdated"), chip: { icon: "skills", name: skill.name } };
   const profile = card.profileRequest;
   if (profile) {
@@ -350,6 +351,7 @@ function AppliedChangeLine({
 }) {
   const [error, setError] = useState<string>();
   const [sharing, setSharing] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   // Kept until the card's own patch arrives, so the Share button cannot come back in between.
   const [sharedNow, setSharedNow] = useState<{ requestId: string; shared: SkillShareRecord }>();
   const store = useContext(StoreContext);
@@ -371,6 +373,15 @@ function AppliedChangeLine({
       })
       .finally(() => setSharing(false));
   };
+  const canUndo = Boolean(skill?.learnedBy === "review" && !undone && threadId && card.requestId && appliedChange(card, "")?.canUndo);
+  const undo = () => {
+    if (!threadId || !card.requestId || undoing) return;
+    setUndoing(true);
+    setError(undefined);
+    api(`/api/threads/${threadId}/undo`, { method: "POST", body: JSON.stringify({ requestId: card.requestId }) })
+      .catch((failure: unknown) => setError(friendlyError(failure)))
+      .finally(() => setUndoing(false));
+  };
   const sharedNames = shared?.assigned.filter((bot) => bot.botId !== skill?.botId).map((bot) => bot.name) ?? [];
   const skippedNames = shared?.skipped.map((bot) => bot.name) ?? [];
   const setup = card.teamSetupRequest?.result && !card.teamSetupRequest.deletion ? setupEvents(card.teamSetupRequest.result) : null;
@@ -386,6 +397,11 @@ function AppliedChangeLine({
             <EventLabel tone="tertiary">· {sharedNames.length ? t("approval.applied.sharedSkill", { names: sharedNames.join(", ") }) : t("approval.applied.sharedSkillNobody")}</EventLabel>
           )}
           {undone && !card.waitRequest && <EventLabel tone="tertiary">· {t("approval.applied.undone")}</EventLabel>}
+          {canUndo && (
+            <EventChip onClick={undo} disabled={undoing} className="disabled:opacity-60">
+              {undoing ? t("automations.card.undoing") : t("automations.card.undo")}
+            </EventChip>
+          )}
           {canShare && (
             <EventChip onClick={share} disabled={sharing} className="disabled:opacity-60">
               {sharing ? t("approval.applied.sharingSkill") : t("approval.applied.shareSkill")}

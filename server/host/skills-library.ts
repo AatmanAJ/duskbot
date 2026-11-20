@@ -315,14 +315,6 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
 
     editable,
 
-    applyReviewUpdate(bot: BotRecord, threadId: string, change: { name: string; skillMd: string; gist: string; baseSha256?: string }, direct: DirectApply):
-      { ok: true } | { ok: false; error: string } {
-      const updated = applySharedUpdate(bot, threadId, {
-        name: change.name, skillMd: change.skillMd, gist: change.gist || undefined, expectSha256: change.baseSha256,
-      }, direct);
-      return "error" in updated ? { ok: false, error: updated.error } : { ok: true };
-    },
-
     harnessUpdate(from: BotRecord, threadId: string, name: string, skillMd: string, gist: unknown, baseRevision: unknown, direct: DirectApply | null):
       [status: number, body: Record<string, unknown>] {
       if (!direct) return [422, { state: "failed", error: "this conversation cannot update a shared team skill" }];

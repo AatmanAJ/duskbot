@@ -202,7 +202,7 @@ export function createSideJobs(deps: SideJobsDeps): SideJobs {
       const call = ownCall(job, own);
       if (call) {
         if (job === "compaction") return { via: "engine", generateText: call };
-        if (job === "setup-suggestions" || job === "room-routing" || job === "turn-beat" || job === "frustration-summary" || job === "side-reply") {
+        if (job === "setup-suggestions" || job === "skill-review" || job === "room-routing" || job === "turn-beat" || job === "frustration-summary" || job === "side-reply") {
           const quick = quickModel(bot, own);
           const write = booked(job, bot, own, call, { kind: "bot", botId: bot.id }, () => ({ fallback: ownFallback(bot, own), ...quick }));
           return { via: "engine", generateText: quick.model ? rememberRefusal(write, own, quick.model) : write };

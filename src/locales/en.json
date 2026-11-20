@@ -2282,6 +2282,8 @@
   "chat.event.waitCancelled": "Cancelled waiting for",
   "chat.event.skillAdded": "Added skill",
   "chat.event.skillUpdated": "Updated skill",
+  "chat.event.skillLearned": "Saved how I did this as a skill:",
+  "chat.event.skillImproved": "Updated how I do this in a skill:",
   "chat.event.settingsUpdated": "Updated settings",
   "chat.event.modelChanged": "Changed model to",
   "chat.event.botDeleted": "Deleted",
