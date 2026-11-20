@@ -151,11 +151,34 @@ describe("Companion account service", () => {
     await expect(service.restore()).resolves.toMatchObject({
       available: false,
       status: "signed-out",
+      reason: "unsupported",
     });
     await expect(service.requestCode("ada@example.com")).rejects.toThrow(
       "Secure access is not available right now",
     );
     expect(client.requestOTP).not.toHaveBeenCalled();
+  });
+
+  it("says the service was unreachable, not unoffered, when the network fails", async () => {
+    const client = readyClient({
+      health: vi.fn(async () => {
+        throw new ControlPlaneError("network_unavailable");
+      }),
+    });
+    const { service } = serviceFixture({ client });
+
+    await expect(service.state()).resolves.toMatchObject({ available: false, reason: "offline" });
+  });
+
+  it("says secure access is not offered when the origin answers health with something else", async () => {
+    const client = readyClient({
+      health: vi.fn(async () => {
+        throw new ControlPlaneError("invalid_response", 200);
+      }),
+    });
+    const { service } = serviceFixture({ client });
+
+    await expect(service.state()).resolves.toMatchObject({ available: false, reason: "unsupported" });
   });
 
   it("keeps an existing account recoverable while the control plane is unhealthy", async () => {

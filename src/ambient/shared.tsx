@@ -83,28 +83,42 @@ export function useChangeMoment(key: string, ms = CHANGE_MOTION_MS): boolean {
  * The window lets clicks through except over the surface's shape: the page still hears the pointer move (main forwards
  * it), tests it against `hit`, and tells main when it crosses the edge. `onEnter`/`onLeave` fire on that crossing.
  * With `stage`, the point is measured from that element (scaled to its drawn size), for a surface shown inside a page.
+ * With `solid`, only that (the shape as drawn) takes clicks: `hit` may reach past it so heading back never counts as
+ * leaving, but a click on the empty grace around the shape still lands in the app underneath. A press held on the shape
+ * keeps it solid until it is let go, so a drag never loses the pointer half way.
  */
-export function usePointerRegion(bridge: AmbientBridge, hit: (x: number, y: number) => boolean, onEnter: () => void, onLeave: () => void, stage?: { ref: { current: HTMLElement | null }; width: number }) {
+export function usePointerRegion(bridge: AmbientBridge, hit: (x: number, y: number) => boolean, onEnter: () => void, onLeave: () => void, stage?: { ref: { current: HTMLElement | null }; width: number }, solid?: (x: number, y: number) => boolean) {
   const inside = useRef(false);
-  const latest = useRef({ hit, onEnter, onLeave, stage });
-  latest.current = { hit, onEnter, onLeave, stage };
+  const latest = useRef({ hit, onEnter, onLeave, stage, solid });
+  latest.current = { hit, onEnter, onLeave, stage, solid };
   useEffect(() => {
-    const cross = (next: boolean) => {
+    let solidNow = false;
+    const take = (next: boolean) => {
+      if (next === solidNow) return;
+      solidNow = next;
+      bridge.pointer(next);
+    };
+    const cross = (next: boolean, firm: boolean) => {
+      take(next && firm);
       if (next === inside.current) return;
       inside.current = next;
       bridge.trace?.(next ? "pointer-enter" : "pointer-leave");
-      bridge.pointer(next);
       if (next) latest.current.onEnter(); else latest.current.onLeave();
     };
-    const move = (event: MouseEvent) => {
-      const { stage: own, hit: test } = latest.current;
-      if (!own) return cross(test(event.clientX, event.clientY));
-      const rect = own.ref.current?.getBoundingClientRect();
-      if (!rect?.width) return cross(false);
-      const k = own.width / rect.width;
-      cross(test((event.clientX - rect.left) * k, (event.clientY - rect.top) * k));
+    const at = (x: number, y: number, buttons: number) => {
+      const { hit: test, solid: shape } = latest.current;
+      const on = test(x, y);
+      cross(on, on && (!shape || shape(x, y) || (solidNow && buttons !== 0)));
     };
-    const leave = () => cross(false);
+    const move = (event: MouseEvent) => {
+      const { stage: own } = latest.current;
+      if (!own) return at(event.clientX, event.clientY, event.buttons);
+      const rect = own.ref.current?.getBoundingClientRect();
+      if (!rect?.width) return cross(false, false);
+      const k = own.width / rect.width;
+      at((event.clientX - rect.left) * k, (event.clientY - rect.top) * k, event.buttons);
+    };
+    const leave = () => cross(false, false);
     document.addEventListener("mousemove", move, { passive: true });
     document.documentElement.addEventListener("mouseleave", leave);
     return () => {

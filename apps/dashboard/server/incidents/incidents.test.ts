@@ -99,7 +99,7 @@ describe("alert throttling", () => {
     expect(mailer.outbox).toHaveLength(2);
   });
 
-  it("sends at most 10 alert emails a day and 3 for client errors; the rest go in one daily email, skipped when there is nothing", async () => {
+  it("sends at most 10 alert emails a day; the rest go in one daily email, skipped when there is nothing", async () => {
     const { time, mailer, incidents } = setup();
     for (let n = 0; n < RULES.mailsPerDay + 5; n++) { incidents.report({ source: "server", name: `Err${n}`, message: "boom", key: `k${n}` }); await incidents.flushNew(); }
     expect(mailer.outbox).toHaveLength(RULES.mailsPerDay);
@@ -116,14 +116,19 @@ describe("alert throttling", () => {
       client.incidents.report({ source: "web", name: "TypeError", message: "boom", stack: `TypeError: boom\n    at f${n} (https://dusk.bot/assets/a.js:1:1)` });
       await client.incidents.flushNew();
     }
-    expect(client.mailer.outbox).toHaveLength(RULES.clientMailsPerDay);
+    // page and app errors stay in the admin panel: only the server failing emails, and new problem groups never do
+    expect(client.mailer.outbox).toHaveLength(0);
+    client.incidents.report({ source: "server", name: "NewProblemGroup", message: "a new kind of frustration", key: "problem-x" });
+    await client.incidents.flushNew();
+    client.time.now = Date.parse("2026-11-13T08:01:00Z"); await client.incidents.tick();
+    expect(client.mailer.outbox).toHaveLength(0);
   });
 
   it("folds a client flood into one incident", async () => {
     const { mailer, incidents } = setup();
     for (let n = 0; n < RULES.newClientPerHour + 50; n++) incidents.report({ source: "web", name: "TypeError", message: "boom", stack: `TypeError: boom\n    at f${n} (https://dusk.bot/assets/a.js:1:1)` });
     await incidents.flushNew();
-    expect(mailer.outbox).toHaveLength(1);
+    expect(mailer.outbox).toHaveLength(0);
     const listed = await incidents.list({ limit: 200 });
     expect(listed).toHaveLength(RULES.newClientPerHour + 1);
     expect(listed.find(item => item.name === "TooManyClientErrors")!.count).toBe(50);

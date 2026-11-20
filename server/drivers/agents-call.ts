@@ -1,5 +1,6 @@
 // Runs one agents tool: check arguments, call the harness, render the model's text. Stateless;
 // per-turn limits are the harness's, since one proxy can serve many turns of a warm engine.
+import { RUNS_NOTHING_NOTE } from "../bot-reach.ts";
 import { agentsCallMember, resolveAgentsCall } from "../../shared/agents-tool-names.ts";
 import { CREDENTIAL_TARGETS, isCredentialTargetId, LOGIN_CREDENTIAL } from "../../shared/credential-request.ts";
 import { EMAIL_CREDENTIAL } from "../../shared/email.ts";
@@ -17,6 +18,10 @@ import { callResearchTool, RESEARCH_TOOL_NAMES } from "./agents-research-tools.t
 import { callReadPages, READ_PAGES_TOOL } from "./agents-read-pages.ts";
 import { callHelperTool, HELPER_TOOL_NAMES } from "./agents-helper-tools.ts";
 import { callUsageLimitsTool, USAGE_LIMITS_TOOL } from "./agents-usage-tool.ts";
+import { callChecklistTool, CHECKLIST_TOOL } from "./agents-checklist-tool.ts";
+import { callReactTool, REACT_TOOL } from "./agents-react-tool.ts";
+import { callPurchaseTool, PURCHASE_TOOL_NAMES } from "./agents-purchase-tools.ts";
+import { callDocumentTool, DOCUMENT_TOOL_NAMES } from "./agents-document-tools.ts";
 import { callWaitTool, WAIT_TOOL_NAMES } from "./agents-wait-tools.ts";
 import { callDuskTool, DUSK_TOOL_NAMES } from "./agents-dusk-tools.ts";
 import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
@@ -254,6 +259,10 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (TRIGGER_TOOL_NAMES.has(name)) return callTriggerTool(name, args, context);
   if (WAIT_TOOL_NAMES.has(name)) return callWaitTool(name, args, context);
   if (name === USAGE_LIMITS_TOOL) return callUsageLimitsTool(context);
+  if (name === CHECKLIST_TOOL) return callChecklistTool(args, context);
+  if (name === REACT_TOOL) return callReactTool(args, context);
+  if (PURCHASE_TOOL_NAMES.has(name)) return callPurchaseTool(name, args, context);
+  if (DOCUMENT_TOOL_NAMES.has(name)) return callDocumentTool(name, args, context);
   if (name === STATUS_TOOL) return callStatusTool();
   if (name === SEND_MESSAGE_TOOL) return callSendMessageTool();
   if (name === "tool_result_read") {
@@ -340,7 +349,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       const state = typeof b.statusText === "string"
         ? (b.status === "available" ? "" : b.statusText)
         : (b.busy ? "busy" : "");
-      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${b.chiefOfStaff === true ? ", Chief of Staff" : ""}${state ? `, ${state}` : ""}]`;
+      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${b.chiefOfStaff === true ? ", Chief of Staff" : ""}${b.runsCommands === false ? ", cannot run code or commands (no computer)" : ""}${state ? `, ${state}` : ""}]`;
     });
     return {
       text: `Bots you can reach (you can contact any of them):\n${lines.join("\n")}\n\nUse coordinate_bots for concrete work or, with consult: true, for advice, then end your turn. Busy teammates queue and results resume you automatically.`,
@@ -513,6 +522,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       text: [
         `Created @${r.name ?? shown} in ${r.section ?? "General"} [id: ${r.id}]${r.color ? `, colour ${String(r.color)}` : ""}.${r.modelSelection ? ` Model: ${JSON.stringify(r.modelSelection)}.` : ""}`,
         r.greeted === true ? `It is saying hello in its own chat now; do not introduce it for it.` : "",
+        r.runsCommands === false ? RUNS_NOTHING_NOTE : "",
         routines.length ? `Its template suggests these automations, not set up: ${routines.join("; ")}. Offer them, and create the ones the person wants with trigger for_bot_id ${String(r.id)}.` : "",
         apps.length ? `It works best with these apps: ${apps.join(", ")}. If one is not connected, offer to connect it.` : "",
         "Tell the person in one line what you made. Hand it work with coordinate_bots.",
@@ -623,6 +633,13 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
     return {
       text: `The person was asked to sign in to ${host} on ${where}. Your turn ends now. The card already says what to do, so do not repeat it: write nothing more, or at most one short line, then stop. dusk bot resumes you when they finish or decline. Never ask for the password or a code in chat.`,
     };
+  }
+  if (name === "request_screen_access") {
+    const reason = typeof args.reason === "string" ? args.reason.trim().slice(0, 200) : "";
+    if (!reason) return { text: "request_screen_access needs reason: one short line on what you need the screen for.", isError: true };
+    const r = await api("/api/internal/request-screen-access", { method: "POST", body: JSON.stringify({ fromBotId: BOT_ID, fromThreadId: THREAD_ID, reason }) });
+    if (r.shown !== true) return { text: "dusk bot can already control this Mac's screen, or this conversation does not work on it: carry on with the tools you have." };
+    return { text: "The person now sees a notice to let dusk bot control this Mac. Do not explain permissions or settings. Carry on with what you can do without it, such as your built-in browser, or say in one short line that you will go on once it is allowed, then stop." };
   }
   if (name === "fill_login") {
     const username = typeof args.username === "string" ? args.username.trim().slice(0, 512) : "";
@@ -941,7 +958,7 @@ async function requestLoginCard(args: Json, context: ToolCallContext): Promise<T
 async function requestCustomSecret(args: Json, context: ToolCallContext): Promise<ToolCallResult> {
   const r = await context.client.apiResponse("/api/internal/request-credential", {
     method: "POST",
-    body: JSON.stringify({ fromBotId: context.botId, fromThreadId: context.threadId, label: args.label, reason: args.reason, placeholder: args.placeholder, delivery: args.delivery, failed: args.failed }),
+    body: JSON.stringify({ fromBotId: context.botId, fromThreadId: context.threadId, label: args.label, reason: args.reason, placeholder: args.placeholder, delivery: args.delivery, failed: args.failed, pastedAs: args.pasted_as }),
   });
   const label = typeof r.body.label === "string" ? r.body.label : "the secret";
   if (!r.ok) return { text: String(r.body.error ?? `request_credential failed (HTTP ${r.status}).`), isError: true };
@@ -952,6 +969,6 @@ async function requestCustomSecret(args: Json, context: ToolCallContext): Promis
   const vault = r.body.vault === "removed" ? ` The service said the saved ${label} is wrong, so dusk bot removed it from the Vault; the card tells the person and asks for a new one, so do not repeat that.`
     : r.body.vault === "flagged" ? ` The saved ${label} may be wrong, so dusk bot marked it for the person to check; the card asks them for a new one, so do not repeat that.` : "";
   return {
-    text: `A secure card for ${label} is now in this conversation, in the app and on a QR-paired phone, and the person was notified. If they can't find it, tell them it is in this conversation, and the notification opens it.${asked}${vault} End this turn now and say in one line that you are waiting for it; dusk bot resumes you when the person saves or declines, and tells you how to use it. Never ask for it in chat.`,
+    text: `A secure card for ${label} is now in this conversation, in the app and on a QR-paired phone, and the person was notified. If they can't find it, tell them it is in this conversation, and the notification opens it.${asked}${vault} End this turn now with one short line in Sentence case, such as "Add your ${label} in the card above.", and nothing more; dusk bot resumes you when the person saves or declines, and tells you how to use it. Never ask for it in chat.`,
   };
 }

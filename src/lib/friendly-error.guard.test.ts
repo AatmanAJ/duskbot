@@ -24,6 +24,7 @@ const ALLOWED: Array<{ file: string; line: RegExp; why: string }> = [
   { file: join("components", "connect-apps", "use-connectors.ts"), line: /plainConnectError\(|const message = cause instanceof Error/, why: "raw words only tell failures apart; plainConnectError gives the line a person reads" },
   { file: join("components", "connect-apps", "ComposioKeyStep.tsx"), line: /const message = cause instanceof Error/, why: "raw words only pick a locale key" },
   { file: join("components", "PageBoundary.tsx"), line: /new Error\(String\(error\)\)/, why: "wraps a thrown non-Error; the page shows plain words, never its message" },
+  { file: join("components", "bot-panel", "TabBoundary.tsx"), line: /new Error\(String\(error\)\)/, why: "wraps a thrown non-Error; the tab shows plain words, never its message" },
   { file: join("components", "ComputerPanel.tsx"), line: /setError\(cause instanceof Error \? cause : String\(cause\)\)/, why: "keeps the failure itself; panelErrorText (src/lib/computer-messages.ts) words it through friendlyError" },
   { file: join("mobile", "transport") + sep, line: /./, why: "connection logs, never shown" },
 ];
