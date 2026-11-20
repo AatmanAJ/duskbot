@@ -67,3 +67,9 @@ export function setsScript(value: unknown): boolean {
   const record = value as { probe?: { kind?: unknown } | null; routine?: unknown; changes?: unknown };
   return record.probe?.kind === "script" || setsScript(record.routine) || setsScript(record.changes);
 }
+
+/** Why a person's own request may not set this routine's script check: only this computer's owner, never on dusk cloud. */
+export function scriptRoutineRefusal(body: unknown, cloudHome: boolean, owner: boolean): string | null {
+  if (!setsScript(body)) return null;
+  return cloudHome ? SCRIPT_REFUSALS.cloud : owner ? null : SCRIPT_REFUSALS.owner;
+}

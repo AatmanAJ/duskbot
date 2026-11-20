@@ -33,7 +33,7 @@ import { attachmentPathsOf, attachmentsMalformed, cloneAttachments } from "./rou
 import { loadInstalledPackage, loadRequestReceipts, loadRoutine, loadRun } from "./routine-load.ts";
 import { applyHolds, holdCauses, type AppliedHolds } from "./routine-holds.ts";
 import { sanitizeInput } from "./routine-input.ts";
-import { checkHold, CHECK_BOOT_HOLD_MS, type CheckHold } from "./routine-check-pacing.ts";
+import { checkHold, CHECK_BOOT_HOLD_MS, type CheckHold, type RoutineCheckContext } from "./routine-check-pacing.ts";
 import { cloneRun, ranApart, resolveRoutineResultsThread, routineRunDefinition, type ResultsThreadAllocation } from "./routine-run-definition.ts";
 
 export type { RoutineContextAttachment, RoutineIntervalWindow, RoutineRunStatus, RoutineRunTrigger };
@@ -208,9 +208,6 @@ function routineRequestOwnerKey(owner: RoutineRequestOwner): string {
 /** What a routine's checks found: items for one AI run, a sentence while an app cannot be read, and the next time they
  * have something to do on time. */
 export interface RoutineCheckResult { run?: { prompt: string; key: string }; trouble?: string; wakeAt?: number; /** It read nothing: a run holds its last change, or none may start now. */ held?: true }
-
-/** `scheduled`: the routine's own time came; otherwise a wake its checks asked for (`wakeAt`) or a person's run. */
-export interface RoutineCheckContext { manual: boolean; hold?: CheckHold; scheduled?: boolean }
 
 export interface RoutineChecks {
   /** Runs a routine's checks. With `hold` they may do only what needs no AI, and their items wait. */

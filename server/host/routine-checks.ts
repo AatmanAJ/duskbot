@@ -8,7 +8,8 @@ import { z } from "zod";
 
 import { writeFileAtomic } from "../atomic.ts";
 import { SourceError, type CalendarEvent, type ConnectedReads, type EmailHeader, type ReadApp, type ReadSession } from "../connected-reads.ts";
-import type { Routine, RoutineCheckContext, RoutineCheckResult, RoutineChecks, RoutineRun } from "../routines.ts";
+import type { RoutineCheckContext } from "../routine-check-pacing.ts";
+import type { Routine, RoutineCheckResult, RoutineChecks, RoutineRun } from "../routines.ts";
 import {
   clashes, emailSince, fingerprint, keepNewest, LOOKAHEAD_MS, mergeMeetings, nextMeetingDue, planMail, planMeetings, pruneMeetings, type MeetingRecord,
 } from "./check-plan.ts";

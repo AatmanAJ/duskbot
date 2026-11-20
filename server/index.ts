@@ -506,7 +506,7 @@ import { listenWebhookIngress, type WebhookIngress } from "./webhook-ingress.ts"
 import { addressFor } from "./webhook-address.ts"; import { createRoutineMailHost } from "./host/routine-mail-host.ts";
 import { assertModelVariantSupported, memberTurnSelection } from "./member-turn.ts";
 import { WebhookManager } from "./webhooks.ts";
-import { scriptCheckRefusal, setsScript, SCRIPT_REFUSALS } from "./routine-script.ts"; import { tieAutomationsToBots } from "./bot-automations.ts"; import { WaitManager } from "./waits.ts"; import { cancelWaitFromCard, createWaitHost, waitRunChat } from "./wait-host.ts"; import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts"; import { createWaitRoutes, findWaitPeer, hostWaitRefusal, waitSourceRefusal, type WaitRouteContext } from "./routes/waits.ts"; import { createJobsHost, JOB_NOTIFY_PATH, type JobTurn } from "./jobs/host.ts";
+import { scriptCheckRefusal, scriptRoutineRefusal, setsScript } from "./routine-script.ts"; import { tieAutomationsToBots } from "./bot-automations.ts"; import { WaitManager } from "./waits.ts"; import { cancelWaitFromCard, createWaitHost, waitRunChat } from "./wait-host.ts"; import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts"; import { createWaitRoutes, findWaitPeer, hostWaitRefusal, waitSourceRefusal, type WaitRouteContext } from "./routes/waits.ts"; import { createJobsHost, JOB_NOTIFY_PATH, type JobTurn } from "./jobs/host.ts";
 import type { WebhookTrigger } from "../shared/webhooks.ts";
 import { AGENTS_NODE_FLAG, SPAWNED_PROXIES } from "./proxy-paths.ts";
 import { currentTrailId, startServerTrail, trail, trailError, withRequestTrail } from "./trail.ts"; import { traceRuntimeEvents } from "./trail-events.ts";
@@ -14649,7 +14649,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         if (!request.ok) return json(res, 400, { error: request.error });
         const target = triggerTarget(from, request.forBotId, (id) => store.bot(id), store.bots);
         if ("error" in target) return json(res, target.status, { error: target.error });
-        const forBot = target.forBot;
+        const forBot = target.forBot, scriptRefused = "proposal" in request && setsScript(request.proposal) ? scriptCheckRefusal(jobTurn(internalCapability, from), Boolean(CLOUD_HOME)) : null; if (scriptRefused) return json(res, 403, { error: scriptRefused });
         const persistence = proposalPersistence(from.id, fromThreadId, false);
         if (!persistence.ok) {
           return json(res, persistence.status, { error: persistence.error });
@@ -14669,10 +14669,6 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
             tool: applied.action === "create" ? "create_trigger" : "manage_trigger", summary: applied.summary, decision: "auto-approved", source: "routine" });
           const hookOwner = store.bot(forBot?.botId ?? from.id);
           return json(res, 201, { ...applied, ...(applied.action === "create" && hookOwner ? addressFor({ from, owner: hookOwner, guestDriven: false, outsideDriven: outsideDrivenThread(fromThreadId) }, webhooks, applied.resultId, webhookIngressStatus().baseUrl) : {}) });
-        }
-        if (setsScript(request.proposal)) {
-          const refused = scriptCheckRefusal(jobTurn(internalCapability, from), Boolean(CLOUD_HOME));
-          if (refused) return json(res, 403, { error: refused });
         }
         const proposedInput = { ...request.proposal, forBot };
         if (proposedInput.action !== "create" && (proposedInput.action === "update" ? outsideWorkStaysHere(fromThreadId) : cloudGuestDriven(fromThreadId)) && !outsideLineage.routineRunsConfined(String(proposedInput.routineId))) return json(res, 403, { error: OUTSIDE_STAYS_HERE });
@@ -16009,12 +16005,11 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         runs: routineRunsFor((from, to) => routines!.listRuns(from, to), url.searchParams).filter((run) => routineRunVisible(run, visible)),
       });
     }
-    const routineResultsRefusal = (body: unknown): string | null =>
-      body && typeof body === "object" && typeof (body as { resultsThreadId?: unknown }).resultsThreadId === "string"
-        ? cloudThreadRefusal(auth, (body as { resultsThreadId: string }).resultsThreadId) : null;
+    const routineResultsRefusal = (body: unknown): string | null => scriptRoutineRefusal(body, Boolean(CLOUD_HOME), ownerOrAdmin(auth)) ??
+      (body && typeof body === "object" && typeof (body as { resultsThreadId?: unknown }).resultsThreadId === "string"
+        ? cloudThreadRefusal(auth, (body as { resultsThreadId: string }).resultsThreadId) : null);
     if (path === "/api/routines" && method === "POST") {
       const body = await readBody(req);
-      if (setsScript(body) && (CLOUD_HOME || !ownerOrAdmin(auth))) return json(res, 403, { error: CLOUD_HOME ? SCRIPT_REFUSALS.cloud : SCRIPT_REFUSALS.owner });
       const hidden = hiddenRoutineTarget(body, visible);
       if (hidden) return json(res, 404, { error: hidden });
       const notYours = routineResultsRefusal(body);
@@ -16038,7 +16033,6 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
     routineMatch = path.match(/^\/api\/routines\/([\w-]+)$/);
     if (routineMatch && method === "PATCH") {
       const body = await readBody(req);
-      if (setsScript(body) && (CLOUD_HOME || !ownerOrAdmin(auth))) return json(res, 403, { error: CLOUD_HOME ? SCRIPT_REFUSALS.cloud : SCRIPT_REFUSALS.owner });
       const hidden = hiddenRoutineTarget(body, visible);
       if (hidden) return json(res, 404, { error: hidden });
       const notYours = routineResultsRefusal(body);
