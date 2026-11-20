@@ -44,10 +44,10 @@ const finished = (bots: GrokMoveProgress["bots"], state: GrokMoveProgress["state
   result: { moved: bots.filter((one) => one.state === "done").length, failed: bots.filter((one) => one.state === "failed").length, apps: ["Calendar", "Notebook"], earlierChats: 1, restInGrokBot: true },
 });
 
-function fakeClient(over: Partial<GrokMoveClient> = {}) {
+function fakeClient() {
   const state: { detection: GrokDetection; progress: GrokMoveProgress | null; waiting: GrokWaitingList } = { detection: FOUND, progress: null, waiting: { bots: [], waiting: 0 } };
   const client = {
-    detect: vi.fn(async () => state.detection),
+    detect: vi.fn(async (): Promise<GrokDetection> => state.detection),
     progress: vi.fn(async () => state.progress),
     waiting: vi.fn(async () => state.waiting),
     start: vi.fn(async (bots: Array<{ rosterId: string }>) => {
@@ -60,7 +60,6 @@ function fakeClient(over: Partial<GrokMoveClient> = {}) {
     undo: vi.fn(async () => ({ removedBots: 2, removedConversations: 2, kept: [] })),
     request: vi.fn(async (rosterId: string) => ({ rosterId, url: `grokbot://app/v1/prompt?id=${rosterId}&text=Hi`, text: `Hi ${rosterId}`, file: "grok-bot-export-r1.md" })),
     accept: vi.fn(async () => ({ applied: [{ rosterId: "r1", botId: "bot-r1", name: "Nova", state: "arrived" as const, askedAt: 1, file: "x" }], problems: [] })),
-    ...over,
   };
   return { client, state };
 }
@@ -189,6 +188,7 @@ describe("screen 2: the move on its way", () => {
     expect($("[data-grok-move]")?.getAttribute("data-grok-move")).toBe("result");
     expect(document.activeElement, "the new screen's title takes focus").toBe($("#grok-move-title"));
     expect($("[data-grok-left]")?.textContent).toContain("You stopped the move, so 1 bots didn't come.");
+    expect(client.detect, "what is here is looked at again once the move is over").toHaveBeenCalledTimes(2);
   });
 
   it("a move still running when it is opened shows its progress, not a second preview", async () => {

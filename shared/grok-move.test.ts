@@ -43,8 +43,14 @@ describe("the request a Grok Bot is asked for the rest", () => {
 
   it("knows the file by its short id, also numbered by a browser", () => {
     const pattern = grokExportFilePattern(ID);
-    expect(grokExportFileName(ID)).toBe("grok-bot-export-0f3c2a9e.md");
-    for (const name of ["grok-bot-export-0f3c2a9e.md", "grok-bot-export-0f3c2a9e (1).md", "GROK-BOT-EXPORT-0F3C2A9E.json"]) expect(pattern.test(name), name).toBe(true);
-    for (const name of ["grok-bot-export-0f3c2a9e.md.exe", "grok-bot-export-0f3c2a9f.md", "x-grok-bot-export-0f3c2a9e.md"]) expect(pattern.test(name), name).toBe(false);
+    expect(grokExportFileName(ID)).toBe("grok-bot-export-dd46eeb7.md");
+    for (const name of ["grok-bot-export-dd46eeb7.md", "grok-bot-export-dd46eeb7 (1).md", "GROK-BOT-EXPORT-DD46EEB7.json"]) expect(pattern.test(name), name).toBe(true);
+    for (const name of ["grok-bot-export-dd46eeb7.md.exe", "grok-bot-export-dd46eeb8.md", "x-grok-bot-export-dd46eeb7.md"]) expect(pattern.test(name), name).toBe(false);
+  });
+
+  it("asks two bots whose ids share a start for two different files", () => {
+    const ids = Array.from({ length: 50 }, (_, n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`);
+    expect(new Set(ids.map(grokExportFileName)).size).toBe(ids.length);
+    for (const [index, id] of ids.entries()) expect(grokExportFilePattern(id).test(grokExportFileName(ids[(index + 1) % ids.length]!))).toBe(false);
   });
 });
