@@ -28,7 +28,7 @@ import { createModelRoutes, ModelRouteRefused, noRouteLeft, readResponsesStream,
 import { appendNative } from "./native.ts";
 import { classifyError, interruptibleDelay, RETRY_MAX_ATTEMPTS } from "./retry.ts";
 import { carriedSteps, carriedWorkFile, chatLimitFacts, sharedCarriedWork } from "./openai-chat-carry.ts";
-import { CORRECTIVE_ROUND, LOCAL_CORRECTIVE_ROUNDS, announcesAction, ownsFailure, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { CORRECTIVE_ROUND, LOCAL_CORRECTIVE_ROUNDS, announcesAction, ownsFailure, withoutRepeats, claimsUnmadeChange, effectfulCall, leakedReasoning, leakedToolSyntax, LeakHoldback, NUDGE_ANNOUNCED_ACTION, REASONING_AGAIN, NUDGE_CLAIMED_CHANGE, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 import { plainFailureMessage } from "./engine-errors.ts"; import { toolFailureMessage } from "./tool-failure.ts"; import { chosenEffort, withModelEfforts, type ModelEffort } from "./api-effort.ts";
 import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } from "./chat-size-limit.ts";
 import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
@@ -597,6 +597,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       const denials: string[] = [], failedCalls: string[] = [];
       const seenCalls = new Set<string>();
       let nudges = 0, effectful = 0, claimNudged = false, lastReply = "";
+      const said: string[] = [];
       let unread: string[] = [];
       let callsAtNudge = -1;
       const repeats = options.localModel ? new ChatRepeatGuard() : undefined;
@@ -733,7 +734,8 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           }
           // Reasoning on a tool-call round belongs to the protocol, not a final reply.
           const reply = completion.text.trim() ? completion.text : completion.toolCalls.length || unreadable ? "" : completion.reasoning;
-          if (reply.trim() && !correcting(completion)) emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_text", text: safeText(reply) });
+          const fresh = correcting(completion) ? "" : withoutRepeats(reply, said);
+          if (fresh.trim()) { said.push(fresh); emit({ ...base(turn.threadId, turnId), type: "item.completed", itemType: "assistant_text", text: safeText(fresh) }); }
           abort.signal.throwIfAborted();
           if (unreadable) {
             askedAgain = true;

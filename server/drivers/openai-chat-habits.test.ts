@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { announcesAction, claimsUnmadeChange, effectfulCall, ownsFailure, leakedReasoning, leakedToolSyntax, LeakHoldback, MAX_RETRY_WAIT_MS, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
+import { withoutRepeats, announcesAction, claimsUnmadeChange, effectfulCall, ownsFailure, leakedReasoning, leakedToolSyntax, LeakHoldback, MAX_RETRY_WAIT_MS, retryDelay, withRetryAfter } from "./openai-chat-habits.ts";
 
 describe("announcesAction before anything ran", () => {
   it.each([
@@ -154,6 +154,19 @@ describe("ownsFailure", () => {
     expect(ownsFailure("Nothing was sent; the page did not load.")).toBe(true);
     expect(ownsFailure("Done.")).toBe(false);
     expect(ownsFailure("I've posted it, though the preview failed to load.")).toBe(false);
+  });
+});
+
+describe("withoutRepeats", () => {
+  const earlier = ["Reminder set for 6pm today to call mom. It will appear here in chat."];
+  it("takes out a message the reply repeats from earlier in the turn, keeping the new part", () => {
+    expect(withoutRepeats("Reminder set for 6pm today to call mom.  It will appear here in chat.\n\nGift ideas:\n- a book\n- a plant", earlier)).toBe("Gift ideas:\n- a book\n- a plant");
+    expect(withoutRepeats("Reminder set for 6pm today to call mom. It will appear here in chat.", earlier)).toBe("");
+  });
+  it("leaves a reply that repeats nothing, or only a short phrase, exactly as it was", () => {
+    const reply = "Gift ideas:\n\n- a book\n- a plant";
+    expect(withoutRepeats(reply, earlier)).toBe(reply);
+    expect(withoutRepeats("Done. Also done.", ["Done."])).toBe("Done. Also done.");
   });
 });
 

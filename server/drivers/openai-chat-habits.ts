@@ -168,3 +168,19 @@ export function ownsFailure(reply: string): boolean {
   return FAILURE_WORDS.test(reply) && !claimsUnmadeChange(reply, 0);
 }
 
+const REPEAT_MIN = 20;
+const escape = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A reply without the messages it repeats from earlier in the same turn: small models restate what they already sent
+ * ("Reminder set for 6pm." again above the gift ideas). Each earlier message of some length is taken out where it
+ * appears whole, whatever its spacing; the rest keeps its own lines, or is nothing when the reply only repeated. */
+export function withoutRepeats(reply: string, earlier: readonly string[]): string {
+  let rest = reply;
+  for (const said of earlier) {
+    const words = said.trim().split(/\s+/);
+    if (said.trim().length < REPEAT_MIN) continue;
+    rest = rest.replace(new RegExp(words.map(escape).join("\\s+"), "g"), "");
+  }
+  if (rest === reply) return reply;
+  return rest.replace(/^\s*---\s*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+}
