@@ -97,7 +97,8 @@ export async function launchServer(repo: string, tmp: string, gateway: Gateway, 
         await new Promise((r) => { child.once("exit", r); setTimeout(r, 8_000); });
       }
       taken.delete(port);
-      if (!keep) rmSync(dataDir, { recursive: true, force: true });
+      // an engine's own child (OpenCode) can still be writing for a moment after the server exits
+      if (!keep) try { rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }); } catch { /* left for the next tmp clean */ }
     },
   };
 }
