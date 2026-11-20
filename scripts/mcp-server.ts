@@ -449,7 +449,7 @@ export const TOOLS: McpToolDefinition[] = [
   },
   {
     name: "list_available_models",
-    description: "List configured model instances and capabilities without exposing local executable paths.",
+    description: "List configured model instances and capabilities without exposing local executable paths. A snapshot's `authenticated: false` means the engine runs but needs a sign-in or a working key.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -1154,7 +1154,7 @@ export async function handleToolCall(
           instanceId: instance.instanceId,
           driverKind: instance.driverKind,
           displayName: instance.displayName,
-          snapshot: { state: instance.snapshot?.state },
+          snapshot: { state: instance.snapshot?.state, ...(typeof instance.snapshot?.authenticated === "boolean" ? { authenticated: instance.snapshot.authenticated } : {}) },
           models: instance.models,
           capabilities: instance.capabilities,
           access: instance.access,

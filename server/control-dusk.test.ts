@@ -115,6 +115,26 @@ describe("control-dusk command mapping", () => {
     });
   });
 
+  it("counts a signed-out engine as needing a sign-in, never as available", async () => {
+    const callTool = vi.fn(async (name: string) => name === "get_system_health"
+      ? { status: "connected", app: "duskbot" }
+      : {
+          instances: [
+            { instanceId: "chatgpt", snapshot: { state: "available", authenticated: false } },
+            { instanceId: "local", access: "custom", snapshot: { state: "available", authenticated: false } },
+          ],
+        });
+    const ready = await runControlDusk(["doctor", "--url", "http://127.0.0.1:19999"], { callTool: callTool as any }) as any;
+    expect(ready).toMatchObject({ ok: true, availableEngines: ["local"], needsSignIn: ["chatgpt"] });
+
+    const signedOut = vi.fn(async (name: string) => name === "get_system_health"
+      ? { status: "connected", app: "duskbot" }
+      : { instances: [{ instanceId: "chatgpt", snapshot: { state: "available", authenticated: false } }] });
+    const result = await runControlDusk(["doctor", "--url", "http://127.0.0.1:19999"], { callTool: signedOut as any }) as any;
+    expect(result).toMatchObject({ ok: false, availableEngines: [], needsSignIn: ["chatgpt"] });
+    expect(result.problems).toContain("no engine is signed in: chatgpt needs a sign-in or a working key");
+  });
+
   it("rejects an available engine when the endpoint is not dusk bot", async () => {
     const callTool = vi.fn(async (name: string) => name === "get_system_health"
       ? { status: "connected", app: "another-app" }

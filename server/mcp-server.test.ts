@@ -522,6 +522,15 @@ describe("MCP tool execution", () => {
     expect(result.instances[0]).not.toHaveProperty("install");
     expect(result.instances[0].snapshot).toEqual({ state: "available" });
   });
+
+  it("says whether an engine is signed in, and nothing more of its status", async () => {
+    const fetcher = vi.fn(async () => ({ instances: [{
+      instanceId: "chatgpt", displayName: "ChatGPT", models: {}, capabilities: {},
+      snapshot: { state: "available", authenticated: false, reason: "Sign in again", account: { email: "ada@example.test" } },
+    }] }));
+    const result: any = await handleToolCall("list_available_models", {}, fetcher);
+    expect(result.instances[0].snapshot).toEqual({ state: "available", authenticated: false });
+  });
 });
 
 describe("waiting on a conversation's job", () => {

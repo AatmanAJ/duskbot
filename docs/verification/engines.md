@@ -19,7 +19,10 @@ pnpm control:dusk models --url http://127.0.0.1:PORT
 ```
 
 `doctor.ok` is true only when the endpoint is dusk bot and at least one
-engine is available. The isolated fixture should expose `claude`.
+engine is available and signed in. An engine that runs but reports
+`authenticated: false` (signed out, or its key rejected) is listed under
+`needsSignIn`, not `availableEngines`. The isolated fixture should expose
+`claude`.
 
 ## Startup engine discovery
 

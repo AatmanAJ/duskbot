@@ -22,7 +22,10 @@ async function doctorOnce(ctx: VerbContext): Promise<VerbOutcome> {
   const [rawHealth, models] = await Promise.all([client.tool("get_system_health", {}), client.tool("list_available_models", {})]);
   const health = { ...rawHealth, endpoint: client.baseUrl };
   const instances: Rec[] = Array.isArray(models?.instances) ? models.instances : [];
-  const availableEngines = instances.filter((instance) => instance.snapshot?.state === "available").map((instance) => instance.instanceId);
+  const running = instances.filter((instance) => instance.snapshot?.state === "available");
+  const signedIn = (instance: Rec) => instance.access === "custom" || instance.snapshot?.authenticated !== false;
+  const availableEngines = running.filter(signedIn).map((instance) => instance.instanceId);
+  const needsSignIn = running.filter((instance) => !signedIn(instance)).map((instance) => instance.instanceId);
   const quietly = <T>(read: Promise<T>) => read.catch(() => null);
   const [server, session, config] = await Promise.all([
     quietly(client.json<Rec>("/.well-known/duskbot/environment")),
@@ -35,7 +38,11 @@ async function doctorOnce(ctx: VerbContext): Promise<VerbOutcome> {
   if (!isDusk) problems.push(`${client.baseUrl} answered, but it is not dusk bot`);
   const tooOld = Boolean(server) && server!.capabilities?.jobs !== true;
   if (tooOld) problems.push(`dusk bot ${server!.version ?? "(unknown version)"} is too old for the headless commands: it cannot report a conversation's job`);
-  if (isDusk && !availableEngines.length) problems.push("no engine is available: set one up with `duskbot engine set KIND --key-env VAR`");
+  if (isDusk && !availableEngines.length) {
+    problems.push(needsSignIn.length
+      ? `no engine is signed in: ${needsSignIn.join(", ")} ${needsSignIn.length === 1 ? "needs" : "need"} a sign-in or a working key`
+      : "no engine is available: set one up with `duskbot engine set KIND --key-env VAR`");
+  }
   if (session?.kind === "session" && typeof session.expiresAt === "number" && session.expiresAt - Date.now() < 14 * DAY) {
     warnings.push(`this session expires in ${Math.max(0, Math.floor((session.expiresAt - Date.now()) / DAY))} days: get a new one with duskbot connect`);
   }
@@ -47,7 +54,7 @@ async function doctorOnce(ctx: VerbContext): Promise<VerbOutcome> {
     : `session "${session.label || "unnamed"}" with ${Array.isArray(session.scopes) && session.scopes.includes("admin") ? "full access" : "chat access"}${typeof session.expiresAt === "number" ? `, until ${new Date(session.expiresAt).toISOString().slice(0, 10)}` : ""}`;
   return {
     result: {
-      ok, health, availableEngines, instances,
+      ok, health, availableEngines, needsSignIn, instances,
       server: server ? { version: server.version, label: server.label, environmentId: server.environmentId, capabilities: server.capabilities } : null,
       session: session ? { kind: session.kind, ...(session.label !== undefined ? { label: session.label } : {}), scopes: session.scopes,
         ...(session.expiresAt !== undefined ? { expiresAt: session.expiresAt } : {}), ...(session.trust ? { trust: session.trust } : {}) } : null,
@@ -58,6 +65,7 @@ async function doctorOnce(ctx: VerbContext): Promise<VerbOutcome> {
       `${server ? `dusk bot ${server.version} ("${server.label}")` : "dusk bot"} at ${client.baseUrl}: ${ok ? "ready" : "not ready"}`,
       `You are: ${who}`,
       `Engines available: ${availableEngines.length ? availableEngines.join(", ") : "none"}`,
+      ...(needsSignIn.length ? [`Engines that need a sign-in: ${needsSignIn.join(", ")}`] : []),
       ...(browser ? [`Bots' browser: ${browser.kind === "engine" ? `installed${browser.version ? ` (${browser.version})` : ""}` : "not available"}`] : []),
       ...problems.map((line) => `problem: ${line}`),
       ...warnings.map((line) => `warning: ${line}`),
