@@ -765,12 +765,13 @@ export function createHomeWindow(deps) {
       if (moved || after.kind !== before.kind || after.origin !== before.origin || after.clean !== before.clean || screen || status) await show();
     },
     /** The signed-in account is about to change: nothing under way for the one leaving goes on, and the next show() takes
-     * the window off whatever it shows of that account. */
-    accountLeaving() {
+     * the window off whatever it shows of that account. `keep`: the window shows a place that is no account's (the
+     * person's own server their bots live on), which it stays on. */
+    accountLeaving({ keep = false } = {}) {
       opens++; here = false;
       clearRetry(); clearRenewal();
       asked = null; naming = null; connecting = null; shown = null; opening = null; screen = null; status = null; wakeIntent = null; held = null;
-      away = away || !shows(localOrigin());
+      away = away || (!keep && !shows(localOrigin()));
       void lastSeen?.forget?.()?.catch?.(() => {});
     },
     /** A response the window got (Electron's webRequest): a 401 from the place's API means its session ended. */

@@ -968,6 +968,10 @@ test("an account leaving: nothing under way for it goes on, and the next show ta
   here.home.accountLeaving();
   await here.home.show();
   assert.deepEqual(here.local, [false], "already on this computer's page: nothing moves");
+  const own = world({ journal: null, state: { status: "signed-out" }, url: "https://garage.example.test/" });
+  own.home.accountLeaving({ keep: true });
+  await own.home.show();
+  assert.deepEqual(own.local, [false], "the person's own server their bots live on is no account's: the window stays on it");
 });
 
 const B_CLOUD = "https://dusk-b.fly.dev";
