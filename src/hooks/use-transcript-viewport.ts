@@ -362,6 +362,8 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
         distanceFromBottom: el.scrollHeight - scrollTop - el.clientHeight,
       });
       previousScrollTop.current = scrollTop;
+      // a jump up by more than a screen with no finger or wheel on the list: iOS's tap on the status bar, VoiceOver
+      if (followRef.current && scrollTop < previousTop && el.scrollHeight - scrollTop - el.clientHeight > el.clientHeight) setBottomFollow(false);
       if (resume) {
         setBottomFollow(true);
       } else if (!followRef.current && scrollTop <= AUTO_EXPAND_TOP_THRESHOLD) {

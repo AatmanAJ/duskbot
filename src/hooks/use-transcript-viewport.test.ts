@@ -252,6 +252,18 @@ describe("transcript viewport", () => {
     expect(view.current.following).toBe(false);
   });
 
+  it("leaves the bottom and pages back when the list is sent to its top with no finger on it, as a tap on the iPhone's status bar does", () => {
+    const view = mount({ messages: rows(2_000) });
+    expect(view.current.following).toBe(true);
+    const before = view.current.hiddenCount;
+    view.act(() => {
+      scroller.scrollTop = 0;
+      view.current.scrollHandlers.onScroll();
+    });
+    expect(view.current.following).toBe(false);
+    expect(view.current.hiddenCount).toBeLessThan(before);
+  });
+
   it("mounts only the last window of a long thread and re-tails it when another thread opens", () => {
     const view = mount({ messages: rows(300) });
     expect(view.current.windowedMessages).toHaveLength(120);
