@@ -717,9 +717,13 @@ export function useFirstPaintRows(key: string, rows: Message[], hold: boolean, s
   const total = rows.length;
   // Sixteen messages can fold into a few rows (a turn's tool steps are one): a first paint shorter than the viewport sits at
   // the top, then the chat jumps down as the older rows land. Such a paint grows before the browser shows it.
+  // once a paint fills the view, a bigger one does too: the check reads the transcript's height, which forces its whole
+  // style and layout, so it stops there instead of running again at each step the rows grow by
+  const filled = useRef<string | null>(null);
   useLayoutEffect(() => {
     const el = scrollRef?.current;
-    if (!el || count >= total || el.scrollHeight > el.clientHeight + 1) return;
+    if (!el || count >= total || filled.current === key) return;
+    if (el.scrollHeight > el.clientHeight + 1) { filled.current = key; return; }
     setShown({ key, count: count + first >= total ? Infinity : count + first });
   }, [key, count, total, scrollRef, first]);
   // older rows mount above the ones on screen: a chat held at its newest row stays there in the same frame, rather than
