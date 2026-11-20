@@ -13,7 +13,7 @@ import { promises as fsp } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { isCloudMacMode, macApprovalReason, SCREEN_INPUTS } from "./cloud-mac-risk.mjs";
+import { isCloudMacMode, macApprovalReason, SCREEN_INPUTS, SCREEN_PAGE_READS, screenReadOutside } from "./cloud-mac-risk.mjs";
 import { createMacControlHost } from "./mac-control.mjs";
 import { createMacExecutor, folderName, jobSummary, macLogFile, resolveMacPath } from "./mac-control-tools.mjs";
 import { screenOutcome } from "./cloud-screen.mjs";
@@ -197,6 +197,13 @@ export function screenJobRefusal(job, { screen, ready, mode, home, target }) {
 
 const isObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+/** cua-driver 0.28.2's text form of list_apps: "- Finder (pid 685) [com.apple.finder]" per running app. */
+function textApp(result, pid) {
+  const text = (Array.isArray(result?.content) ? result.content : []).filter((part) => part?.type === "text").map((part) => part.text).join("\n");
+  for (const [, name, found, bundle] of text.matchAll(/^- (.+) \(pid (\d+)\) \[([^\]]+)\]$/gm)) if (Number(found) === pid) return { name, bundle_id: bundle };
+  return undefined;
+}
+
 /** The app owning `pid` in a list_apps answer: its name and bundle id joined, or null. */
 export function appForPid(result, pid) {
   let apps = isObject(result?.structuredContent) ? result.structuredContent.apps : undefined;
@@ -204,7 +211,8 @@ export function appForPid(result, pid) {
     const text = (Array.isArray(result?.content) ? result.content : []).filter((part) => part?.type === "text").map((part) => part.text).join("\n");
     try { const parsed = JSON.parse(text); apps = Array.isArray(parsed) ? parsed : parsed?.apps; } catch { apps = undefined; }
   }
-  const app = Array.isArray(apps) ? apps.find((entry) => isObject(entry) && Number(entry.pid) === pid) : undefined;
+  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+  const app = Array.isArray(apps) ? apps.find((entry) => isObject(entry) && entry.running !== false && Number(entry.pid) === pid) : textApp(result, pid);
   if (!app) return null;
   const words = [app.name, app.app_name, app.localizedName, app.bundle_id, app.bundleId, app.bundle_identifier].filter((word) => typeof word === "string" && word);
   return words.length ? words.join(" ") : null;
@@ -258,14 +266,17 @@ export function createCloudMac(deps) {
   /** For an input action under Auto: the app behind its window, so a sensitive one asks first. */
   async function screenTarget(job) {
     const a = job.arguments ?? {};
-    if (mode !== "auto" || job.approved === true || job.tool !== "mac_screen" || !SCREEN_INPUTS.includes(a.name) || !deps.screen?.available()) return undefined;
+    if (mode !== "auto" || job.tool !== "mac_screen" || !deps.screen?.available()) return undefined;
+    const reads = SCREEN_PAGE_READS.includes(a.name);
+    if (!reads && (job.approved === true || !SCREEN_INPUTS.includes(a.name))) return undefined;
     const pid = Number(a.arguments?.pid);
     if (!Number.isSafeInteger(pid) || pid <= 0) return { app: null };
     return { app: appForPid(await deps.screen.call("list_apps", {}), pid) };
   }
 
   async function runScreen(job) {
-    const refusal = screenJobRefusal(job, { screen: screenOn, ready: deps.screen?.available() === true, mode, home, target: await screenTarget(job) });
+    const target = await screenTarget(job);
+    const refusal = screenJobRefusal(job, { screen: screenOn, ready: deps.screen?.available() === true, mode, home, target });
     if (refusal) {
       if (job.tool === "mac_screen") await audit(job, refusal.error);
       return { ok: false, error: refusal.error, ...(refusal.ask ? { ask: refusal.ask } : {}) };
@@ -290,6 +301,7 @@ export function createCloudMac(deps) {
     changed();
     try {
       const outcome = screenOutcome(await deps.screen.call(job.arguments.name, job.arguments.arguments, abort.signal));
+      if (mode === "auto" && screenReadOutside(job.arguments.name, target)) outcome.result.outside = true;
       await record(job, outcome);
       return outcome;
     } finally {

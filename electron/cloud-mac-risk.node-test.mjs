@@ -146,3 +146,16 @@ test("commands that reach browser passwords, cookies or the keychain ask", () =>
     "ls ~/Library/Keychains",
   ]) assert.ok(commandRisk(command), command);
 });
+
+test("reading a browser's window, or the whole desktop, counts as outside content; other apps' windows do not", async () => {
+  const { screenReadOutside } = await import("./cloud-mac-risk.mjs");
+  for (const app of ["Safari com.apple.Safari", "Google Chrome com.google.Chrome", "Arc company.thebrowser.Browser", "Firefox org.mozilla.firefox",
+    "Microsoft Edge com.microsoft.edgemac", "Brave Browser com.brave.Browser", "Chromium", "Dusk Bot bot.dusk.app"]) {
+    assert.equal(screenReadOutside("get_window_state", { app }), true, app);
+  }
+  assert.equal(screenReadOutside("get_window_state", { app: "Notes com.apple.Notes" }), false);
+  assert.equal(screenReadOutside("get_window_state", { app: null }), true);
+  assert.equal(screenReadOutside("get_desktop_state", undefined), true);
+  assert.equal(screenReadOutside("list_apps", { app: "Safari" }), false);
+  assert.match(macApprovalReason("auto", "mac_screen", { name: "type_text", arguments: { pid: 1 }, target: { app: "Ghostty com.mitchellh.ghostty" } }, HOME), /run commands/);
+});

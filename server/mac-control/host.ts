@@ -61,6 +61,8 @@ export interface MacControlDeps {
     approve(bot: MacBot, turn: Turn, tool: CloudMacToolName | "mac_screen", args: Record<string, unknown>, reason: string): Promise<string | null>;
     /** The turn has read outside content (a page, an email, a message, another bot's words) since the person's last message. */
     tainted?(turn: Turn): boolean;
+    /** The turn just read outside content on the Mac's screen; the rest of it counts as tainted. */
+    readOutside?(turn: Turn): void;
     /** This cloud's link signing key; read from dashboard-link.json when not given. */
     linkKey?(): KeyObject | null;
   };
@@ -205,6 +207,7 @@ export function createMacControl(deps: MacControlDeps) {
           approved = true;
           outcome = await send(tool, input);
         }
+        if (outcome.ok && outcome.result.outside) cloud?.readOutside?.(turn);
         return screenResult(outcome) as unknown as Record<string, unknown>;
       },
       get driverVersion() { return screen?.driver || undefined; },

@@ -19,6 +19,7 @@ export const macJobOutcome = z.union([
     image: z.object({ data: z.string().max(MAC_RESULT_MAX_BYTES), mimeType: z.enum(["image/png", "image/jpeg"]) }).optional(),
     structured: z.record(z.string(), z.unknown()).optional(),
     isError: z.literal(true).optional(),
+    outside: z.literal(true).optional(),
   }) }),
   z.object({ ok: z.literal(false), error: z.string().max(4000), ask: z.string().max(300).optional() }),
 ]);

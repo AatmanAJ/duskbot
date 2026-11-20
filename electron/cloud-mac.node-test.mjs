@@ -35,3 +35,20 @@ test("a screen job the Mac will not run without a card says so, so the cloud can
   assert.equal(screenJobRefusal({ tool: "mac_screen_access", arguments: {} }, { screen: true, ready: false, mode: "ask", home: "/Users/sid" })?.ask, "asks before every action");
   assert.equal(screenJobRefusal({ tool: "mac_screen_access", arguments: {} }, { screen: true, ready: false, mode: "auto", home: "/Users/sid" }), null);
 });
+
+test("list_apps as cua-driver 0.28.2 answers it: structured apps (installed ones with pid 0) and the same list as text", () => {
+  // the shape of a real 0.28.2 answer (keys and text form as the binary returned them), with stand-in apps
+  const real = {
+    content: [{ type: "text", text: "✅ Found 3 app(s): 2 running, 1 installed-not-running.\n- Finder (pid 685) [com.apple.finder]\n- Arc (pid 1752) [company.thebrowser.Browser]" }],
+    structuredContent: { apps: [
+      { active: false, bundle_id: "com.apple.finder", kind: "desktop", last_used: null, launch_path: null, name: "Finder", pid: 685, running: true, windows: [] },
+      { active: true, bundle_id: "company.thebrowser.Browser", kind: "desktop", last_used: null, launch_path: "/Applications/Arc.app", name: "Arc", pid: 1752, running: true, windows: [] },
+      { active: false, bundle_id: "com.apple.Terminal", kind: "desktop", last_used: null, launch_path: "/System/Applications/Utilities/Terminal.app", name: "Terminal", pid: 0, running: false, windows: [] },
+    ] },
+  };
+  assert.equal(appForPid(real, 1752), "Arc company.thebrowser.Browser");
+  assert.equal(appForPid(real, 685), "Finder com.apple.finder");
+  assert.equal(appForPid(real, 999), null);
+  assert.equal(appForPid(real, 0), null);
+  assert.equal(appForPid({ content: real.content }, 1752), "Arc company.thebrowser.Browser");
+});

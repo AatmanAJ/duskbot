@@ -85,7 +85,7 @@ Consent, on top of everything in Settings and safety below:
   ends what runs, closes the driver connection and turns the screen switch off. Turning the main switch off stops it
   too.
 - **When to ask**: under Auto, `kill_app` and `clipboard_read` ask, and so does anything in an app that runs commands,
-  changes the system or holds passwords (Terminal, iTerm, Script Editor, Automator, Shortcuts, System Settings,
+  changes the system or holds passwords (Terminal, iTerm, Ghostty, Warp and other terminals, Script Editor, Automator, Shortcuts, System Settings,
   Keychain Access, Disk Utility, 1Password, Bitwarden and other password managers, PowerShell, Command Prompt):
   launching one is caught by the cloud, and a click, typing or keys into one by the Mac, which looks up the app behind
   the action's pid with the driver's `list_apps` and refuses with `ask` (the outcome's reason); the cloud then shows the
@@ -96,7 +96,14 @@ Consent, on top of everything in Settings and safety below:
 - **Outside content**: under Auto, once a turn has read outside content since the person's last message (a web page or
   fetched link, an email or connector result, a download, another bot's words, a webhook or watched chat's message;
   the same test that keeps such words out of memory, `server/memory-trust.ts`), every command, file change, download,
-  open and screen input in the rest of that turn asks, with "it follows content from outside". Looks stay free.
+  open and screen input in the rest of that turn asks, with "it follows content from outside". Looks stay free, but
+  reading a browser's window (`get_window_state`, `get_accessibility_tree`, `verify_state` on Safari, Chrome, Chromium,
+  Arc, Firefox, Edge, Brave and others, or dusk bot's own window), the whole desktop (`get_desktop_state`) or a window the
+  Mac cannot name counts as outside content itself: the Mac marks that result `outside` and the cloud counts the rest of
+  the turn as tainted. Other apps' windows stay free.
+- **Naming the app**: the Mac names the app behind a pid from the driver's `list_apps`, its `structuredContent.apps`
+  (`pid`, `name`, `bundle_id`, `running`; installed apps that are not running have pid 0) or, failing that, its text
+  lines (`- Finder (pid 685) [com.apple.finder]`), the shape cua-driver 0.28.2 answers with.
 - **Log**: each screen action is one line (`mac_screen click on pid 42 window 7`); never the typed text.
 - **Only these folders** limits files and commands, not the screen: a bot on the screen can reach what the person's
   apps can.

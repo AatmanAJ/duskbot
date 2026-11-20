@@ -9,4 +9,7 @@ export declare const SCREEN_READS: readonly string[];
 export declare const SCREEN_INPUTS: readonly string[];
 export declare const OUTSIDE_REASON: string;
 export declare function sensitiveApp(value: unknown): boolean;
+export declare function browserApp(value: unknown): boolean;
+export declare const SCREEN_PAGE_READS: readonly string[];
+export declare function screenReadOutside(name: string, target: { app: string | null } | undefined): boolean;
 export declare function isMacRead(tool: string, args: Record<string, unknown> | null | undefined): boolean;

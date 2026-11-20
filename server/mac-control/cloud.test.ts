@@ -28,7 +28,7 @@ afterEach(async () => {
 });
 
 async function pair(mode: "auto" | "ask" | "never", answer: (reason: string) => string | null = () => null,
-  options: { prefs?: Record<string, unknown>; screen?: Parameters<typeof createCloudMac>[0]["screen"]; tainted?: () => boolean } = {}) {
+  options: { prefs?: Record<string, unknown>; screen?: Parameters<typeof createCloudMac>[0]["screen"]; tainted?: () => boolean; readOutside?: () => void } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "dusk-cloud-mac-srv-"));
   const home = realpathSync(mkdtempSync(join(tmpdir(), "dusk-cloud-mac-home-")));
   const asked: Array<{ tool: string; reason: string; args: Record<string, unknown> }> = [];
@@ -36,7 +36,7 @@ async function pair(mode: "auto" | "ask" | "never", answer: (reason: string) => 
     dataDir: dir, offered: () => true, enabled: () => true, setEnabled: () => {}, ownerOrAdmin: () => true, live: () => true,
     bot: () => ({ id: "nova", name: "Nova" }), turnOwner: () => "owner", active: () => true,
     openFile: async () => { throw new Error("none"); }, computerFile: async () => { throw new Error("none"); },
-    cloud: { linkKey: () => link.privateKey, tainted: () => options.tainted?.() ?? false, approve: async (_bot, _turn, tool, args, reason) => { asked.push({ tool, reason, args }); return answer(reason); } },
+    cloud: { linkKey: () => link.privateKey, tainted: () => options.tainted?.() ?? false, readOutside: () => options.readOutside?.(), approve: async (_bot, _turn, tool, args, reason) => { asked.push({ tool, reason, args }); return answer(reason); } },
   });
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url!, "http://x");
@@ -154,7 +154,8 @@ describe("on by default", () => {
 });
 
 describe("Auto stays careful", () => {
-  const apps = { structuredContent: { apps: [{ pid: 42, name: "Notes", bundle_id: "com.apple.Notes" }, { pid: 66, name: "Terminal", bundle_id: "com.apple.Terminal" }] }, content: [] };
+  const apps = { structuredContent: { apps: [{ pid: 42, name: "Notes", bundle_id: "com.apple.Notes" }, { pid: 66, name: "Terminal", bundle_id: "com.apple.Terminal" },
+    { pid: 77, name: "Safari", bundle_id: "com.apple.Safari" }] }, content: [] };
   const fakeScreen = (calls: string) => {
     const driver = catalogServer(["list_apps", "get_window_state", "launch_app", "click", "type_text", "press_key"]);
     cleanups.push(() => rmSync(driver.dir, { recursive: true, force: true }));
@@ -198,6 +199,22 @@ describe("Auto stays careful", () => {
     expect((await run("mac_get_window_state", { pid: 42, window_id: 1 })).error).toBe(false);
     expect(asked).toHaveLength(3);
     expect(ran(calls).filter((name) => name !== "list_apps")).toEqual(["get_window_state"]);
+  }, 60_000);
+
+  it("reading a browser's window taints the rest of the turn; reading another app's does not", async () => {
+    const calls = join(mkdtempSync(join(tmpdir(), "dusk-screen-calls-")), "calls.jsonl");
+    let tainted = false;
+    const { mac, asked, run } = await pair("auto", () => "The person said no.", { prefs: { enabled: true, mode: "auto" }, screen: fakeScreen(calls),
+      tainted: () => tainted, readOutside: () => { tainted = true; } });
+    await expect.poll(() => mac.tools(turn).map((tool) => tool.name), { timeout: 10_000 }).toContain("mac_click");
+    expect((await run("mac_get_window_state", { pid: 42, window_id: 1 })).error).toBe(false);
+    expect(tainted).toBe(false);
+    expect((await run("mac_click", { pid: 42, window_id: 1, element_index: 2 })).error).toBe(false);
+    expect((await run("mac_get_window_state", { pid: 77, window_id: 5 })).error).toBe(false);
+    expect(tainted).toBe(true);
+    expect(await run("mac_click", { pid: 42, window_id: 1, element_index: 2 })).toEqual({ error: true, text: "The person said no." });
+    expect(asked.map((ask) => ask.reason)).toEqual(["follows content from outside (a web page, an email or a message) read in this turn"]);
+    expect(ran(calls).filter((name) => name !== "list_apps")).toEqual(["get_window_state", "click", "get_window_state"]);
   }, 60_000);
 
   it("under Ask before every action, asking for the screen grants asks the person first too", async () => {

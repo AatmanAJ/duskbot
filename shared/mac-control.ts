@@ -43,8 +43,9 @@ export interface MacJob {
 }
 
 /** What the Mac app posts to /api/mac/self/jobs/:id/result. A mac_screen job's result also carries the driver's
- * structuredContent and whether the driver answered with an error. */
+ * structuredContent, whether the driver answered with an error, and `outside` when it read outside content (a browser
+ * window's page, the whole desktop, or a window the Mac could not name). */
 export type MacJobOutcome =
-  | { ok: true; result: { text: string; image?: { data: string; mimeType: "image/png" | "image/jpeg" }; structured?: Record<string, unknown>; isError?: true } }
+  | { ok: true; result: { text: string; image?: { data: string; mimeType: "image/png" | "image/jpeg" }; structured?: Record<string, unknown>; isError?: true; outside?: true } }
   /** `ask`: on a dusk cloud, the Mac refused because the person must allow this on a card first, and says why. */
   | { ok: false; error: string; ask?: string };

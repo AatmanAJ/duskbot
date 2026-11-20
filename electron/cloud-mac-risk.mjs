@@ -15,8 +15,21 @@ const SCREEN_RISKS = { kill_app: "stops other programs", clipboard_read: "reads 
 /** Screen actions that click, type or press keys in a window: in a sensitive app they ask first. */
 export const SCREEN_INPUTS = Object.freeze(["click", "double_click", "right_click", "drag", "type_text", "press_key", "hotkey", "set_value", "invoke_menu"]);
 /** Apps that run commands, change the system or hold passwords, by name or bundle id. */
-const SENSITIVE_APP = /\b(terminal|iterm2?|script ?editor\d?|scripteditor2?|automator|shortcuts|system ?(settings|preferences)|systempreferences|keychain ?access|keychainaccess|disk ?utility|diskutility|1password|bitwarden|lastpass|dashlane|keepassxc?|enpass|keeper|passwords|powershell|pwsh|cmd(\.exe)?|command prompt|windows ?terminal|windowsterminal|regedit)\b/i;
+const SENSITIVE_APP = /\b(terminal|iterm2?|ghostty|warp|alacritty|kitty|wezterm|hyper|tabby|script ?editor\d?|scripteditor2?|automator|shortcuts|system ?(settings|preferences)|systempreferences|keychain ?access|keychainaccess|disk ?utility|diskutility|1password|bitwarden|lastpass|dashlane|keepassxc?|enpass|keeper|passwords|powershell|pwsh|cmd(\.exe)?|command prompt|windows ?terminal|windowsterminal|regedit)\b/i;
 export const sensitiveApp = (value) => typeof value === "string" && SENSITIVE_APP.test(value);
+/** Web browsers, dusk bot's own (its window and its Chromium) included, by name or bundle id: what they show is the web. */
+const BROWSER_APP = /\b(safari|google chrome|chrome|chromium|arc|firefox|microsoft edge|edge|brave( browser)?|opera|vivaldi|orion|zen|dusk bot|com\.apple\.safari|com\.google\.chrome|company\.thebrowser|org\.mozilla\.firefox|com\.microsoft\.edgemac|com\.brave\.browser|bot\.dusk\.app)\b/i;
+export const browserApp = (value) => typeof value === "string" && BROWSER_APP.test(value);
+/** Screen reads that return what a window shows. */
+export const SCREEN_PAGE_READS = Object.freeze(["get_window_state", "get_accessibility_tree", "get_desktop_state", "verify_state"]);
+
+/** Whether this screen read brought in outside content: a browser window's page, the whole desktop, or a window the Mac
+ * could not name. `target` as in screenRisk. */
+export function screenReadOutside(name, target) {
+  if (!SCREEN_PAGE_READS.includes(name)) return false;
+  if (name === "get_desktop_state") return true;
+  return !target || target.app === null || browserApp(target.app);
+}
 const SENSITIVE_REASON = "works in an app that can run commands, change the system or hold passwords";
 /** Outside content read earlier in the turn (a page, an email, a message): its instructions may be steering the bot. */
 export const OUTSIDE_REASON = "follows content from outside (a web page, an email or a message) read in this turn";

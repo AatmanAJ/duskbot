@@ -156,7 +156,8 @@ it("a dusk cloud's bot uses the person's screen through the Mac's computer contr
     prefs: { read: () => prefs, write: (value: unknown) => { prefs = value; } },
     cloud: () => ({ origin: base, awake: true }), linkKey: async () => link.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
     screen: createScreenDriver({ connection: () => ({ mode: "embedded", mcpCommand: driver.server.command, mcpArgs: driver.server.args, mcpEnv: { ...driver.server.env, CATALOG_CALLS: driverCalls,
-      CATALOG_RESULTS: JSON.stringify({ list_apps: { structuredContent: { apps: [{ pid: 42, name: "Notes", bundle_id: "com.apple.Notes" }] }, content: [] } }) } }) }),
+      CATALOG_RESULTS: JSON.stringify({ list_apps: { structuredContent: { apps: [{ pid: 42, name: "Notes", bundle_id: "com.apple.Notes", running: true },
+        { pid: 77, name: "Safari", bundle_id: "com.apple.Safari", running: true }] }, content: [] } }) } }) }),
   });
   try {
     await screenApp.sync();
@@ -203,13 +204,26 @@ it("a dusk cloud's bot uses the person's screen through the Mac's computer contr
     expect(logged).toMatch(/ cloud Vega mac_screen click on pid 42 window 7 -> ok\n/);
     expect(logged).not.toContain("line one");
 
+    // a browser window's page is outside content: what the bot does next in that turn waits for the person
+    writeFileSync(calls, JSON.stringify([
+      { server: "device", name: "mac_get_window_state", input: { pid: 77, window_id: 5 } },
+      { server: "device", name: "mac_click", input: { pid: 42, window_id: 7, element_index: 9 } },
+    ]));
+    expect((await api("POST", `/api/bots/${vega.id}/messages`, { threadId: vega.threadId, text: "Look at the page in Safari, then click Save in Notes", sendId: `cloud-screen-e2e-${String(++sends).padStart(4, "0")}` })).status).toBe(202);
+    let pageCard: any;
+    await until(async () => { pageCard = (await messages()).find((message) => message.card?.tool === "mac_screen" && !message.card.answered); return Boolean(pageCard); }, "the card after reading a page");
+    expect(pageCard.card.subtitle).toContain("follows content from outside");
+    expect((await api("POST", `/api/threads/${vega.threadId}/respond`, { requestId: pageCard.card.requestId, behavior: "deny" })).status).toBe(200);
+    await idle();
+    expect(acted().map((call) => call.name)).toEqual(["click", "type_text", "press_key", "type_text", "get_window_state"]);
+
     // Stop: the screen turns off on the Mac at once, before the cloud hears of it
     screenApp.stopScreen();
     expect(screenApp.view()).toMatchObject({ screen: false, onScreen: null });
     await say("Click it again", [{ server: "device", name: "mac_click", input: { pid: 42, window_id: 7, element_index: 3 } }]);
     const after = JSON.stringify(await messages());
     expect(after.includes(SCREEN_OFF) || after.includes(JSON.stringify(SCREEN_OFF_TEXT).slice(1, -1))).toBe(true);
-    expect(acted()).toHaveLength(4);
+    expect(acted()).toHaveLength(5);
   } finally {
     removeTempDir(driver.dir);
   }
