@@ -408,6 +408,10 @@ jobs:
           node scripts/check-module-scopes.mjs "$res"
           [ -f "$res/ui/index.html" ] || { echo "::error::missing ui/index.html"; exit 1; }
           [ -f "$res/cloudflared/cloudflared.exe" ] || { echo "::error::missing cloudflared.exe"; exit 1; }
+          for cua in cua-driver.exe cua-driver-background.exe cua-sdk/cua-sdk.mjs cua-sdk/native/cua_driver_sdk.dll cua-sdk/native/cua_driver_node_runtime.node; do
+            [ -f "$res/$cua" ] || { echo "::error::missing $cua: bots could not use this computer"; exit 1; }
+          done
+          "$res/cua-driver.exe" --version | grep -Fq "cua-driver 0.28.2" || { echo "::error::cua-driver.exe has the wrong version"; exit 1; }
           [ -f "$res/licenses/cloudflared-LICENSE.txt" ] || { echo "::error::missing cloudflared license"; exit 1; }
           [ -f "$res/licenses/cloudflared-README.md" ] || { echo "::error::missing cloudflared provenance"; exit 1; }
           expected=$(node --input-type=module -e "import { CLOUDFLARED_ASSETS } from './scripts/prepare-cloudflared.mjs'; console.log(Object.values(CLOUDFLARED_ASSETS).find((asset) => asset.name === 'cloudflared-windows-amd64.exe').binarySha256)")
