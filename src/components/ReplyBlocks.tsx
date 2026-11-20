@@ -22,7 +22,7 @@ export function ReplyBlocks({ blocks, join, tray, render, chips }: {
     <div data-reply-blocks className="flex w-full flex-col items-start gap-1">
       {blocks.map((block, index) => {
         const body = block.kind === "table"
-          ? <div key={index} data-reply-table className={cn("my-2 w-full first:mt-0 last:mb-0", SIMPLE_BUBBLE_MAX)}>{render(block.text)}</div>
+          ? <div key={index} data-reply-table className={cn("my-2 w-full first:mt-0 last:mb-0", SIMPLE_BUBBLE_MAX, "max-md:max-w-none")}>{render(block.text)}</div>
           : (
             <div key={index} data-chat-bubble="simple" data-reacted={index === chipsAt ? "" : undefined} className={cn("w-fit", SIMPLE_BUBBLE_MAX, SIMPLE_BOT_BUBBLE, index === chipsAt && index > 0 && "mt-[26px]",
               joinedCorners("start", { above: index === 0 && Boolean(join?.above), below: index === last && Boolean(join?.below) }))}>
