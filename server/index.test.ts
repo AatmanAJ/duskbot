@@ -1891,7 +1891,7 @@ describe("harness HTTP API", () => {
       );
       expect(direct.body.message).not.toHaveProperty("requestPending");
       expect(afterDirect.messages.find((message: { id: string }) => message.id === direct.body.message.id))
-        .toEqual({ ...direct.body.message, requestPending: true });
+        .toEqual({ ...direct.body.message, requestPending: true, ask: { state: "open" } });
 
       expect((await api("POST", `/api/bots/${bot.id}/interrupt`)).status).toBe(200);
       await expect.poll(async () => {
@@ -1951,7 +1951,7 @@ describe("harness HTTP API", () => {
       const duplicate = await api("POST", `/api/bots/${bot.id}/messages`, request);
       expect(duplicate.status).toBe(202);
       expect(first.body.message).not.toHaveProperty("requestPending");
-      const pendingReceipt = { ...first.body, message: { ...first.body.message, requestPending: true } };
+      const pendingReceipt = { ...first.body, message: { ...first.body.message, requestPending: true, ask: { state: "open" } } };
       expect(duplicate.body).toEqual(pendingReceipt);
 
       const conflict = await api("POST", `/api/bots/${bot.id}/messages`, {
@@ -1992,7 +1992,7 @@ describe("harness HTTP API", () => {
       const inactiveRetry = await api("POST", `/api/bots/${bot.id}/messages`, request);
       expect(inactiveRetry.status).toBe(202);
       expect(inactiveRetry.body).toEqual({
-        ...pendingReceipt, message: { ...pendingReceipt.message, requestCancelled: true },
+        ...pendingReceipt, message: { ...pendingReceipt.message, requestCancelled: true, ask: { state: "dropped" } },
       });
       const current = (await api("GET", "/api/bots?messages=0")).body.bots.find(
         (candidate: { id: string }) => candidate.id === bot.id,
@@ -8340,7 +8340,7 @@ describe("harness HTTP API", () => {
       expect(ids).not.toContain("browser");
       const text = await previewText();
       expect(text).toContain("\"Works on\" setting is Off");
-      expect(text).toContain("no computer and no built-in browser");
+      expect(text).toContain("no computer or built-in browser is mounted this turn");
 
       rmSync(fakeClaudeDump, { force: true });
       expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "open a browser and check my calendar" })).status).toBe(202);
@@ -10200,7 +10200,9 @@ describe("harness HTTP API", () => {
         expect(chatLines.filter((message) => message.automation?.runId === queued.body.run.id && message.automation?.failed)).toHaveLength(1);
         const failedRun = (await api("GET", "/api/routines")).body.runs.find((run: { id: string }) => run.id === queued.body.run.id);
         expect(failedRun).toMatchObject({ routineId, routineName: "Weekday brief", status: "failed" });
-        expect(failedRun.threadId).toBe(bot.threadId);
+        // the run itself works in this chat only while every session is the owner's (earlier tests pair members), but its
+        // report always comes back here
+        expect(failedRun).toMatchObject({ resultsThreadId: bot.threadId, report: { threadId: bot.threadId } });
 
         expect((await api("POST", `/api/bots/${bot.id}/read`, { threadId: bot.threadId })).status).toBe(200);
         expect((await api("POST", `/api/routine-runs/${queued.body.run.id}/seen`)).status).toBe(200);
