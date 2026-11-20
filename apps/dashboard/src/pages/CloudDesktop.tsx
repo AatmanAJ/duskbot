@@ -17,6 +17,7 @@ import { useWorkspaceLoad } from "../data/detail";
 import { NumbersPending } from "./numbers-pending";
 import { CloudPitch, CloudStatus, PowerButton, prewarm, Provisioning, regionName, tierName } from "./cloud-bits";
 import { DeleteDataAction, DeletionBanner } from "./DeleteData";
+import { PaymentNotice } from "./payment-notice";
 import { canDeleteData, deletion } from "../data/delete-data";
 import { MachineView } from "./Machine";
 import { ResizeDialog } from "./resize-sheet";
@@ -177,6 +178,7 @@ function Live({ cloud }: { cloud: CloudDesktop }) {
   return (
     <div className="flex flex-col gap-4">
       <DeletionBanner cloud={cloud} />
+      <PaymentNotice />
       <MoveGuide cloud={cloud} rows={bots} cloudBots={detail?.report?.bots ?? null} />
       {cloud.revivedAt && now - cloud.revivedAt < 3 * 86_400_000 && (
         <Card className="!py-4" aria-live="polite">

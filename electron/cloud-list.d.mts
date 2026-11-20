@@ -45,6 +45,9 @@ export declare function cloudState(cloud: Pick<CloudListEntry, "status"> | null 
  */
 export interface CloudRenewal { trial: boolean; cancelled: boolean; renewsAt: number | null; endsAt: number | null; keptDays: number | null; team?: string }
 export declare function parseCloudRenewal(clouds: unknown): (CloudRenewal & { cloudId: string }) | null;
+/** My Cloud's renewal failed: it keeps running until `fixBy`. */
+export interface CloudPayment { name: string; fixBy: number }
+export declare function parseCloudPayment(clouds: unknown): CloudPayment | null;
 /** Why an organization can't be added to the Team plan now. */
 export type OrganizationBlock = "no_team_plan" | "limit" | "rate" | "off";
 /** The session's `organizations`: the Team plan this account pays for, whether ＋ may add an organization to it now (else

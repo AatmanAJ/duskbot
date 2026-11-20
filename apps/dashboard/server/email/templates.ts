@@ -38,6 +38,7 @@ const SAY = {
   receipt: { say: "paid. thank you!", accent: "lime" },
   revived: { say: "welcome back!", accent: "lime" },
   payment: { say: "uh oh, card trouble", accent: "pink" },
+  fixed: { say: "all fixed. thank you!", accent: "lime" },
   napping: { say: "no hard feelings", accent: "lav" },
   headsUp: { say: "heads up!", accent: "lemon" },
   lastDay: { say: "last call!", accent: "pink" },
@@ -187,19 +188,57 @@ export function receiptEmail(cfg: EmailConfig, input: ReceiptInput): Rendered {
 }
 
 export interface PaymentFailedInput { amountCents: number | null; currency: string; description: string; cloudName: string | null; fixBy: number | null }
+/** a renewal that didn't go through: the first email of the few that follow it */
 export function paymentFailedEmail(cfg: EmailConfig, input: PaymentFailedInput): Rendered {
   const amount = input.amountCents === null ? null : formatMoney(input.amountCents, input.currency);
   return render(cfg, {
-    subject: "your payment didn't go through", preheader: `a new card keeps ${input.cloudName ?? "your plan"} running.`, tag: "billing", ...SAY.payment,
+    subject: "your payment didn't go through", preheader: input.fixBy !== null ? `${input.cloudName ?? "your plan"} keeps running until ${formatDate(input.fixBy)}.` : `a new card keeps ${input.cloudName ?? "your plan"} running.`, tag: "billing", ...SAY.payment,
     blocks: [
       { t: "h1", text: "your card needs a look" },
       { t: "p", text: `we couldn't charge ${amount ? `**${amount}** ` : ""}for **${input.description}**. usually it's an expired card, a new card number or the bank saying no.` },
-      ...(input.fixBy !== null ? [{ t: "note", tone: "alert", text: input.cloudName
-        ? `**${input.cloudName}** keeps running for now. fix the card by **${formatDate(input.fixBy)}** so it doesn't stop.`
-        : `fix the card by **${formatDate(input.fixBy)}** to keep your plan.` } as Block] : []),
+      ...(input.fixBy !== null ? [keepsRunning(input.cloudName, input.fixBy, "warn")] : []),
       billingLink(cfg, "the card on file lives on your"),
       input.cloudName ? { t: "button", label: "open dusk cloud", href: `${cfg.app}/cloud` } : { t: "button", label: "open the app", href: `${cfg.site}/download` },
       { t: "p", small: true, text: "already fixed it? then you're good, there's nothing else to do." },
+    ],
+    reason: ACCOUNT_REASON,
+  });
+}
+const keepsRunning = (cloudName: string | null, fixBy: number, tone: "warn" | "alert"): Block => ({ t: "note", tone, text: cloudName
+  ? `**${cloudName}** keeps running until **${formatDate(fixBy)}**. fix the card by then and nothing changes.`
+  : `your plan keeps working until **${formatDate(fixBy)}**. fix the card by then and nothing changes.` });
+
+/** `final`: 3 days before the fix-by date; otherwise the reminder 14 days in. `keepDays`: a managed cloud is paused and kept
+ *  this long after the plan ends */
+export interface PaymentReminderInput extends PaymentFailedInput { fixBy: number; final: boolean; keepDays: number | null }
+export function paymentReminderEmail(cfg: EmailConfig, input: PaymentReminderInput): Rendered {
+  const amount = input.amountCents === null ? null : formatMoney(input.amountCents, input.currency), date = formatDate(input.fixBy);
+  const what = input.cloudName ? `**${input.cloudName}**` : "your plan";
+  return render(cfg, {
+    subject: input.final ? "3 days left to fix your card" : "a reminder about your card", preheader: `${input.cloudName ?? "your plan"} keeps running until ${date}.`, tag: "billing", ...(input.final ? SAY.lastDay : SAY.payment),
+    blocks: [
+      { t: "h1", text: input.final ? "3 days left to fix your card" : "your card still needs a look" },
+      { t: "p", text: `we still couldn't charge ${amount ? `**${amount}** ` : ""}for **${input.description}**.` },
+      keepsRunning(input.cloudName, input.fixBy, input.final ? "alert" : "warn"),
+      ...(input.final ? [{ t: "p", text: input.cloudName && input.keepDays !== null
+        ? `after ${date} the plan ends and ${what} takes a nap. nothing is deleted then: its bots, chats, files and sign-ins stay put for ${input.keepDays} days, and starting a plan again brings it all back.`
+        : `after ${date} the plan ends. starting it again later is one step.` } as Block] : []),
+      billingLink(cfg, "the card on file lives on your"),
+      input.cloudName ? { t: "button", label: "open dusk cloud", href: `${cfg.app}/cloud` } : { t: "button", label: "open the app", href: `${cfg.site}/download` },
+      { t: "p", small: true, text: "already fixed it? then you're good, there's nothing else to do." },
+    ],
+    reason: ACCOUNT_REASON,
+  });
+}
+
+/** a payment that went through after one that failed */
+export function paymentRecoveredEmail(cfg: EmailConfig, input: { description: string; cloudName: string | null }): Rendered {
+  return render(cfg, {
+    subject: "you're all set, thanks", preheader: "your payment went through, so nothing changes.", tag: "billing", ...SAY.fixed,
+    blocks: [
+      { t: "h1", text: "you're all set, thanks" },
+      { t: "p", text: `the payment for **${input.description}** went through${input.cloudName ? `, and **${input.cloudName}** keeps running as before` : ""}. thanks for sorting it out.` },
+      input.cloudName ? { t: "button", label: "open dusk cloud", href: `${cfg.app}/cloud` } : { t: "button", label: "open the app", href: `${cfg.site}/download` },
     ],
     reason: ACCOUNT_REASON,
   });

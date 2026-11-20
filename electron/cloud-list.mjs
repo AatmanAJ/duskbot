@@ -156,6 +156,15 @@ export function parseCloudRenewal(clouds) {
     renewsAt: Number.isSafeInteger(own.renewsAt) && own.renewsAt > 0 ? own.renewsAt : null, endsAt, keptDays: kept, ...(team ? { team } : {}) };
 }
 
+/** My Cloud's failed renewal, as the session says (additive): it keeps running until `fixBy`, and Update card fixes it. */
+export function parseCloudPayment(clouds) {
+  if (!Array.isArray(clouds)) return null;
+  const own = clouds.slice(0, MAX_CLOUDS).find(entry => record(entry) && entry.primary === true && entry.role === "owner" && record(entry.payment));
+  const name = own ? cleanCloudListName(own.name) : null;
+  if (!own || !name || !Number.isSafeInteger(own.payment.fixBy) || own.payment.fixBy <= 0) return null;
+  return { name, fixBy: own.payment.fixBy };
+}
+
 /** Every Cloud of the person's own besides the primary (My Cloud): each a place of its own, as a team's Cloud is. */
 export function otherOwnClouds(clouds) {
   return Array.isArray(clouds) ? clouds.filter(cloud => ownCloud(cloud) && !cloud.primary) : [];

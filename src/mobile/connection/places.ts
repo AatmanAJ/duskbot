@@ -75,7 +75,7 @@ const rememberedCount = new WeakMap<MobilePlatform, number>();
 /** The places list for Settings: null until both the saved links and the account's answer are in, so the rows draw once
  * at their final size. The last answer per account is kept for the session, so reopening Settings draws at once, and the
  * last row count is kept on the phone, so the skeleton holds the same height. */
-export function usePlaces(connected: boolean): { places: Place[] | null; expected: number; open(place: Place): Promise<PlaceOutcome> } {
+export function usePlaces(connected: boolean): { places: Place[] | null; expected: number; open(place: Place): Promise<PlaceOutcome>; payment: { name: string; fixBy: number } | null } {
   const { connections, activeId, loaded, switchTo } = useConnections();
   const platform = usePlatform();
   const [remembered, setRemembered] = useState(() => rememberedCount.get(platform) ?? 0);
@@ -141,5 +141,6 @@ export function usePlaces(connected: boolean): { places: Place[] | null; expecte
     if (result.outcome === "paired") window.dispatchEvent(new CustomEvent("dusk:pair-link", { detail: pairingText(result.grant) }));
     return result.outcome;
   }, [switchTo]);
-  return { places, expected: remembered || connections.length, open };
+  const owing = remote?.clouds.find((cloud) => cloud.payment);
+  return { places, expected: remembered || connections.length, open, payment: owing?.payment ? { name: owing.name, fixBy: owing.payment.fixBy } : null };
 }

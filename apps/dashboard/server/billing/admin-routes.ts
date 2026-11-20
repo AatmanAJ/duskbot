@@ -76,6 +76,7 @@ export function createAdminRoutes(ctx: BillingContext) {
       ...(["stopped", "ended"].includes(status) && c.destroyAt !== null ? { deleteAfter: c.destroyAt } : {}),
       removable: status === "ended" || status === "checkout",
       ...(isPrimary && runs ? { renewal: { trial: sub.trialEndsAt !== undefined, endsAt: sub.cancelAtPeriodEnd ? sub.currentPeriodEnd : null, keptDays: config.graceDays } } : {}),
+      ...(sub?.status === "payment_problem" && sub.fixBy ? { payment: { fixBy: sub.fixBy } } : {}),
       cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false, renewsAt: sub?.currentPeriodEnd ?? null };
   }
   /** `moves`: the app may move this computer's (or a server's) bots into this ready Cloud by itself; only its owner's */

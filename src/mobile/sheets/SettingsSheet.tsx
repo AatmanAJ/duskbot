@@ -5,7 +5,7 @@ import { accountDashboardUrl } from "@/lib/account-dashboard";
 import { useGroupYou } from "@/components/GroupAvatar";
 import { UserFace } from "@/components/UserAvatar";
 import { trackUpsell, watchUpsell } from "@/lib/cloud-upsell";
-import { t } from "@/lib/i18n";
+import { activeLocale, t } from "@/lib/i18n";
 import { effectiveLanguage, setLanguageChoice, useLanguageChoice, usePageLanguage } from "@/lib/language-preference";
 import { applySkinChoice, readSkinChoice, subscribeSkin, THEME_SKINS } from "@/lib/skins";
 import { localeChoices } from "@/locales";
@@ -93,6 +93,20 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+/** a failed renewal, in one line: what keeps running and until when. Update card only where the dashboard may be linked:
+ * the store apps never link to where plans are paid (App Store 3.1.1, Play payments policy) */
+export function PaymentLine({ payment, onUpdate }: { payment: { name: string; fixBy: number }; onUpdate: (() => void) | null }) {
+  const date = new Intl.DateTimeFormat(activeLocale(), { dateStyle: "medium" }).format(new Date(payment.fixBy));
+  return (
+    <SettingsSection card>
+      <div data-payment-notice="" className="flex items-center gap-3 px-4 py-3.5">
+        <p role="status" className="min-w-0 flex-1 text-[15px] leading-5 text-ink">{t("cloudAccount.paymentNotice", { name: payment.name, date })}</p>
+        {onUpdate && <button type="button" onClick={onUpdate} className="mobile-press shrink-0 rounded-full bg-ink px-3.5 py-1.5 text-[15px] font-semibold text-app">{t("cloudAccount.updateCard")}</button>}
+      </div>
+    </SettingsSection>
+  );
+}
+
 type SettingsPage = "language" | "textSize" | "voice" | "notifications" | "routines" | "connectors" | "vault" | "delete" | "signOut" | "removeComputer";
 
 /** the computer on screen when it was paired with its own QR or code, which the account's sign-out never removes */
@@ -157,7 +171,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
   const skin = useSyncExternalStore(subscribeSkin, readSkinChoice, () => "system");
   const language = effectiveLanguage(useLanguageChoice(), state.config?.language);
   usePageLanguage(language);
-  const { places, expected, open: openPlace } = usePlaces(state.connected === true);
+  const { places, expected, open: openPlace, payment } = usePlaces(state.connected === true);
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const appearanceId = useId();
@@ -238,6 +252,8 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
         ))}
         {account?.account && account.offered && <SettingsRow icon={<UserPlus />} label={t("mobile.settings.addAccount")} onClick={() => { haptic("pick"); onClose(); window.dispatchEvent(new Event("dusk:add-account")); }} />}
       </SettingsSection>
+
+      {payment && <PaymentLine payment={payment} onUpdate={rows.dashboard ? () => void accountDashboardUrl().then((url) => platform.openExternal(url)) : null} />}
 
       <SettingsSection card title={t("mobile.settings.workspaces")} hint={error ? <span role="alert" className="text-danger">{error}</span> : email ? t("mobile.settings.workspacesHint") : undefined}>
         {(places === null || places.length > 0) && <PlacesList places={places} expected={expected} opening={opening} onChoose={(place) => { void choosePlace(place); }} />}

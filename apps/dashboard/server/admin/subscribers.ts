@@ -89,12 +89,14 @@ export interface SubscriberRow {
   started: number; trialEndsAt: number | null; renewsAt: number | null;
   messages7d: number; messages: number; turns: number; turns7d: number; failed: number; engines: string[]; apps: number; routines: number; bots: number;
   lastActive: number | null; platforms: string[]; places: Place[]; cloud: "running" | "asleep" | "starting" | "stopped" | null;
+  /** a payment of theirs is disputed and the dispute is still open: only the operator sees this, nothing changes for them */
+  atRisk: "dispute" | null;
 }
 export interface SubscribersInput {
   now: number;
   accounts: ReadonlyArray<{ id: string; email: string; name?: string | null; createdAt: number }>;
   sessions: ReadonlyArray<{ accountId: string; kind: string; platform?: string | null; lastSeenAt: number }>;
-  billing: Pick<BillingState, "subscriptions" | "invoices" | "feedback" | "customers">;
+  billing: Pick<BillingState, "subscriptions" | "invoices" | "feedback" | "customers"> & { ledger?: BillingState["ledger"] };
   /** analytics events of the people's apps over the window read: app_messages and app_open */
   events: readonly StoredEvent[];
   people: readonly PersonDay[];
@@ -106,6 +108,11 @@ export interface SubscribersInput {
 const CLOUD_STATE: Record<string, SubscriberRow["cloud"]> = { running: "running", sleeping: "asleep", stopped: "stopped", provisioning: "starting", checkout: "starting" };
 const PLATFORM: Record<string, string> = { darwin: "mac", mac: "mac", macos: "mac", win32: "windows", windows: "windows", linux: "linux", ios: "iphone", android: "android" };
 
+/** the accounts with a dispute opened and not yet won, lost, accepted, cancelled or expired */
+export function openDisputes(ledger: NonNullable<BillingState["ledger"]>): Set<string> {
+  const closed = new Set(ledger.filter(row => /^dispute\.(won|lost|accepted|cancelled|expired)$/.test(row.type)).map(row => row.providerRef));
+  return new Set(ledger.filter(row => row.type === "dispute.opened" && row.accountId && !closed.has(row.providerRef)).map(row => row.accountId!));
+}
 export function subscriberRows(input: SubscribersInput): SubscriberRow[] {
   const { now } = input, week = now - 7 * DAY, weekDay = new Date(week).toISOString().slice(0, 10);
   const subs = new Map<string, Sub[]>();
@@ -157,6 +164,7 @@ export function subscriberRows(input: SubscribersInput): SubscriberRow[] {
   const accounts = new Map(input.accounts.map(account => [account.id, account]));
   const reasons = new Map<string, string>();
   for (const row of [...input.billing.feedback].sort((a, b) => a.at - b.at)) reasons.set(row.subscriptionId ?? row.accountId, [row.answer, row.expected, row.improve].filter(Boolean).join(": "));
+  const disputed = openDisputes(input.billing.ledger ?? []);
   const country = new Map(input.billing.customers.map(row => [row.accountId, row.attribution?.country ?? null]));
   const rows: SubscriberRow[] = [];
   for (const [accountId, list] of subs) {
@@ -172,6 +180,7 @@ export function subscriberRows(input: SubscribersInput): SubscriberRow[] {
       renewsAt: bucket === "paid" || bucket === "trial" || bucket === "payment_problem" ? sub.currentPeriodEnd ?? sub.trialEndsAt ?? null : null,
       messages7d: msg.week, messages: msg.all, turns: use.turns, turns7d: use.week, failed: use.failed, engines: [...snap.engines].sort(), apps: appsOf.get(accountId) ?? 0,
       routines: snap.routines, bots: snap.bots, lastActive, platforms: [...platforms(accountId)].sort(), places: [...places(accountId)].sort(), cloud: clouds.get(accountId) ?? null,
+      atRisk: disputed.has(accountId) ? "dispute" : null,
     });
   }
   return rows.sort((a, b) => b.started - a.started);

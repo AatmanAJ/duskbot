@@ -37,6 +37,9 @@ export interface StoredCheckout {
   trialDays?: number;
   createdAt: number; openUntil: number; subscriptionId: string | null; amountCents: number; lines: CartLine[];
 }
+export const DUNNING_STEPS = ["day_14", "final"] as const;
+export type DunningStep = (typeof DUNNING_STEPS)[number];
+export interface PaymentProblem { since: number; fixBy: number; sent: DunningStep[] }
 export interface StoredSubscription {
   id: string; accountId: string; providerSubscriptionId: string | null; checkoutId: string; cart: Cart; totalCents: number; lines: CartLine[];
   status: SubscriptionStatus; licenseId: string | null; cloudId: string | null; currentPeriodStart: number | null; currentPeriodEnd: number | null;
@@ -49,6 +52,9 @@ export interface StoredSubscription {
   trialEndsAt?: number;
   /** App Review's demo plan (POST /v1/billing/ops/review): never counted as revenue */
   review?: true;
+  /** its renewal failed: since the first failure, the date it keeps everything until (its cloud runs to then), and the
+   *  reminders sent; dropped when a payment goes through, kept once the plan ended so retention counts from `fixBy` */
+  paymentProblem?: PaymentProblem;
   /** the payment provider's mode when it was made (dodo test or live; the fake provider is test); absent on older rows */
   mode?: BillingMode;
   cancelAtPeriodEnd: boolean; createdAt: number; updatedAt: number; version: number;
@@ -135,7 +141,7 @@ const valid = shape({
   ledger: optional(array(validLedgerEntry)),
   lastSync: optional(nullable(shape({ at: int, added: int, scanned: int }))),
   checkouts: array(shape({ id: str, accountId: str, email: str, kind: one("cart", "credits"), cart: nullable(cart), cloudId: nullable(str), providerSubscriptionId: optional(str), revive: optional(bool), providerSessionId: nullable(str), url: nullable(str), status: one("open", "completed", "expired"), source: nullable(str), createdAt: int, openUntil: int, subscriptionId: nullable(str), amountCents: int, lines: array(line) })),
-  subscriptions: array(shape({ id: str, accountId: str, providerSubscriptionId: nullable(str), checkoutId: str, cart, totalCents: int, lines: array(line), status: one("pending", "active", "payment_problem", "cancelled", "ended"), mode: optional(one("test", "live")), lastEventAt: optional(int), source: optional(nullable(str)), pendingChange: optional(change), scheduledChange: optional(value => change(value) && int((value as { at: unknown }).at)), licenseId: nullable(str), cloudId: nullable(str), currentPeriodStart: nullable(int), currentPeriodEnd: nullable(int), cancelAtPeriodEnd: bool, createdAt: int, updatedAt: int, version: int })),
+  subscriptions: array(shape({ id: str, accountId: str, providerSubscriptionId: nullable(str), checkoutId: str, cart, totalCents: int, lines: array(line), status: one("pending", "active", "payment_problem", "cancelled", "ended"), mode: optional(one("test", "live")), lastEventAt: optional(int), paymentProblem: optional(shape({ since: int, fixBy: int, sent: array(one(...DUNNING_STEPS)) })), source: optional(nullable(str)), pendingChange: optional(change), scheduledChange: optional(value => change(value) && int((value as { at: unknown }).at)), licenseId: nullable(str), cloudId: nullable(str), currentPeriodStart: nullable(int), currentPeriodEnd: nullable(int), cancelAtPeriodEnd: bool, createdAt: int, updatedAt: int, version: int })),
   licenses: array(shape({ id: str, ownerAccountId: str, kind: one("solo", "team"), seats: int, members: array(shape({ email: str, accountId: nullable(str), role: one("owner", "member"), addedAt: int })), priority: bool, subscriptionId: nullable(str), status: one("active", "grace", "expired"), validUntil: nullable(int) })),
   invoices: array(shape({ id: str, accountId: str, providerPaymentId: str, subscriptionId: nullable(str), checkoutId: nullable(str), amountCents: int, taxCents: optional(int), currency: str, status: one("paid", "failed", "refunded"), mode: optional(one("test", "live")), description: str, createdAt: int })),
   webhookEvents: array(shape({ id: str, at: int, type: str })),

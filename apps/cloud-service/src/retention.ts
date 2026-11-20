@@ -17,8 +17,8 @@ export type NoticeKind = "ended" | "left_30" | "left_7" | "left_1" | "deleted" |
 export interface Entitlement { active: boolean; until: number | null; known?: boolean }
 
 /**
- * From the billing store: active while a subscription that paid for this cloud is active, has a payment problem, or is
- * cancelled but paid to a later time. Paid to: the cloud's own end when billing ended it (`endsAt`, or `ended` at
+ * From the billing store: active while a subscription that paid for this cloud is active, has a payment problem before its
+ * fix-by date (that date counts as paid to, also once the plan ended), or is cancelled but paid to a later time. Paid to: the cloud's own end when billing ended it (`endsAt`, or `ended` at
  * `endedAt`: a desktop taken off the plan, an account closed with "stop my desktops now"), else the latest period end. A
  * subscription that will not renew counts only to its period end, whatever its status says later (an account closed
  * before then gets no more webhooks). Event times never count: a late or replayed event cannot move the date.
@@ -32,7 +32,7 @@ export function entitlementOf(subscriptions: readonly StoredSubscription[], clou
   // a plan whose period end passed before its end was recorded (a late expiry) ended at that period end
   if (cloud.ended) {
     const ended = cloud.endedAt ?? cloud.endsAt ?? null;
-    const lapsed = mine.map(s => s.currentPeriodEnd ?? 0).filter(end => end > 0 && end <= now);
+    const lapsed = mine.map(s => s.cancelAtPeriodEnd ? s.currentPeriodEnd ?? 0 : Math.max(s.currentPeriodEnd ?? 0, s.paymentProblem?.fixBy ?? 0)).filter(end => end > 0 && end <= now);
     const periodEnd = lapsed.length ? Math.max(...lapsed) : null;
     return { active: false, until: ended === null ? periodEnd : periodEnd === null ? ended : Math.min(ended, periodEnd), known: true };
   }
@@ -41,9 +41,11 @@ export function entitlementOf(subscriptions: readonly StoredSubscription[], clou
   for (const s of mine) {
     const periodEnd = s.currentPeriodEnd ?? 0;
     if (s.cancelAtPeriodEnd && periodEnd > 0 && periodEnd <= now) { until = Math.max(until, periodEnd); continue; }
-    if (s.status === "active" || s.status === "payment_problem" || (s.status === "cancelled" && periodEnd > now)) return { active: true, until: null, known: true };
+    const fixBy = s.paymentProblem?.fixBy ?? 0;
+    if (s.status === "active" || (s.status === "payment_problem" && (!s.paymentProblem || fixBy > now)) || (s.status === "cancelled" && periodEnd > now)) return { active: true, until: null, known: true };
     if (s.status === "pending") continue;
-    until = Math.max(until, periodEnd);
+    if (fixBy > now) return { active: true, until: null, known: true };
+    until = Math.max(until, periodEnd, fixBy);
   }
   return { active: false, until: until > 0 ? until : null, known: true };
 }

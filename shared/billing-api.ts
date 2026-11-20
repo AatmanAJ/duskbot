@@ -156,6 +156,8 @@ export interface SubscriptionView {
   trialEndsAt?: number;
   /** a confirmed downgrade waiting for the next billing date */
   scheduledChange?: ScheduledChangeView;
+  /** payment_problem only: everything keeps running until then; a card updated before it keeps the plan, after it the plan ends */
+  fixBy?: number;
 }
 
 export const LICENSE_STATUSES = ["active", "grace", "expired"] as const;

@@ -1216,6 +1216,8 @@
   "cloudAccount.upgrade": "Add a cloud",
   "cloudAccount.manage": "Manage cloud subscription",
   "cloudAccount.updatePayment": "Update payment in your browser",
+  "cloudAccount.paymentNotice": "The last payment didn't go through. {name} keeps running until {date}.",
+  "cloudAccount.updateCard": "Update card",
   "cloudAccount.dashboard": "Open your plan page",
   "cloudAccount.signInAgain": "Sign in again",
   "cloudAccount.manageInBrowser": "Manage in your browser",
