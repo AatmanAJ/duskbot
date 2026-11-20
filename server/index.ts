@@ -2609,8 +2609,7 @@ async function releaseProvider(instanceId: string): Promise<void> {
 }
 
 async function defaultSelection(saved: ModelSelection | null = cfg.defaultModelSelection ?? null, instances?: readonly SelectableInstance[]) {
-  const chosen = cfg.defaultModelChosen === true && saved !== null && saved === (cfg.defaultModelSelection ?? null);
-  return selectDefaultModelSelection(selectableInstances(instances ?? await registry.describe()), saved ?? undefined, { ...selectionContext, preferredChosen: chosen });
+  return selectDefaultModelSelection(selectableInstances(instances ?? await registry.describe()), saved ?? undefined, { ...selectionContext, preferredChosen: cfg.defaultModelChosen === true && saved !== null && saved === (cfg.defaultModelSelection ?? null) });
 }
 const selectionContext = {
   company: (instanceId: string) => managedDesktop.owns(instanceId),
@@ -16664,8 +16663,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
     const candidateCode = (e as { code?: unknown })?.code;
     const code = typeof candidateCode === "string" && ["guarded_busy", "guarded_branch", "guarded_permissions", "guarded_request_changed", "guarded_request_untracked", "outside_workspace", "no_ai", BOT_LIMIT_CODE].includes(candidateCode)
       ? candidateCode : undefined;
-    const found = code === "no_ai" ? (e as { found?: unknown }).found : undefined;
-    const connect = code === "no_ai" && (e as { connect?: unknown }).connect === true;
+    const found = code === "no_ai" ? (e as { found?: unknown }).found : undefined, connect = code === "no_ai" && (e as { connect?: unknown }).connect === true;
     return json(res, status, { error: e instanceof Error ? e.message : String(e), ...(code ? { code } : {}), ...(found ? { found } : {}), ...(connect ? { connect: true } : {}) });
   } finally {
     releaseWorkspaceRequest?.();

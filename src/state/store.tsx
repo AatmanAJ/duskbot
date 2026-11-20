@@ -581,10 +581,8 @@ export interface AppState {
   loadWaking?: true;
   error: string | null;
   notice: { kind: "thread-gone" | "bot-gone" | "steer-images" | "note"; botName: string | null; text?: string;
-    /** an AI found on this computer the note offers to turn on */
-    found?: { instanceId: string; name: string };
-    /** no AI is connected: the note opens the connect flow in one tap */
-    connect?: true } | null;
+    /** an AI found on this computer the note offers to turn on; `connect`: none, so the note opens the connect flow */
+    found?: { instanceId: string; name: string }; connect?: true } | null;
   revealThread: { threadId: string; nonce: number } | null;
   mascotMotion: {
     botId: string;
