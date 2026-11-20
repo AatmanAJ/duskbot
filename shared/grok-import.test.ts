@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { GROK_EXPORT_FORMAT, GROK_EXPORT_PROMPT, GROK_NOTES_FILE, GrokImportError, grokMovePlan, mergeGrokBots, parseGrokExport, type GrokBot } from "./grok-import.ts";
+import { GROK_EXPORT_FORMAT, GROK_EXPORT_PROMPT, GROK_NOTES_FILE, GrokImportError, grokMovePlan, keyLikeHost, mergeGrokBots, parseGrokExport, type GrokBot } from "./grok-import.ts";
 import { parsePackageDocument } from "./package-format.ts";
 
 const TOKEN = "sk-abcdefghijklmnopqrstuvwx";
@@ -257,5 +257,53 @@ describe("what comes over", () => {
   it("merges the same Bot across files by name, whatever the case", () => {
     const bot = (name: string, memories: string[]): GrokBot => ({ name, title: "", description: "", instructions: "", memories, userFacts: [], skills: [], routines: [], apps: [] });
     expect(mergeGrokBots([bot("Desk", ["a"]), bot("desk", ["a", "b"]), bot("Other", [])]).map((item) => [item.name, item.memories])).toEqual([["Desk", ["a", "b"]], ["Other", []]]);
+  });
+});
+
+describe("one Grok Bot, one bot here, whatever path it takes (MIG-06)", () => {
+  it("keeps its id when its instructions change, and still knows the id an earlier version gave it", () => {
+    const one = plan({ name: "Desk", instructions: "Answer the door." });
+    const two = plan({ name: "desk", instructions: "Answer the door, then tidy." });
+    expect(two.packageId).toBe(one.packageId);
+    expect(one.legacyPackageIds).toHaveLength(1);
+    expect(one.legacyPackageIds[0]).not.toBe(two.legacyPackageIds[0]);
+    const notes = grokMovePlan(parseGrokExport(JSON.stringify({ format: GROK_EXPORT_FORMAT, bots: [{ name: "Desk", memories: ["x"] }] }))[0]!, { from: { name: "Grok Bot", key: "grok-bot" } });
+    expect(notes.packageId).toBe(one.packageId);
+  });
+});
+
+describe("routines that cannot land as they were are named (MIG-09)", () => {
+  const routines = [
+    { name: "Lisbon", instruction: "a", schedule_cron: "0 9 * * *", timezone: "Europe/Lisbon", paused: true },
+    { name: "Mars", instruction: "b", schedule_cron: "0 9 1 * *", timezone: "Mars/Olympus" },
+    { name: "Words", instruction: "c", schedule_text: "Sundays at 6pm" },
+    { name: "Ping", instruction: "d", trigger: "slack" },
+    { name: "Zoneless", instruction: "e", schedule_cron: "0 7 * * *" },
+  ];
+  it("says which zone a routine moved to, and keeps whether it was on there", () => {
+    const moved = plan({ name: "Desk", routines });
+    expect(moved.pausedRoutines).toEqual([{ name: "Lisbon", wasOn: false }, { name: "Mars", wasOn: true }, { name: "Zoneless", wasOn: true }]);
+    expect(moved.routineNotes).toEqual([
+      { name: "Mars", reason: "zone", wasOn: true, scheduledIn: "Europe/Berlin" },
+      { name: "Words", reason: "words", wasOn: true },
+      { name: "Ping", reason: "event", wasOn: true },
+    ]);
+  });
+  it("with exact zones, schedules only in the zone it gave and leaves the rest for the person", () => {
+    const moved = grokMovePlan(parseGrokExport(JSON.stringify({ format: GROK_EXPORT_FORMAT, bots: [{ name: "Desk", routines }] }))[0]!, { timeZone: "Europe/Berlin", exactZones: true });
+    expect(moved.document.package.routines?.map((routine) => routine.schedule)).toEqual([expect.objectContaining({ timeZone: "Europe/Lisbon" })]);
+    expect(moved.routineNotes.map((note) => [note.name, note.reason])).toEqual([["Mars", "zone"], ["Words", "words"], ["Ping", "event"], ["Zoneless", "zone"]]);
+  });
+});
+
+describe("a capability host is treated as a key (MIG-22)", () => {
+  it("does not carry an address whose host is a long random label", () => {
+    expect(keyLikeHost("prod-3f9a1c7e5b2d4a60.relay.example")).toBe(true);
+    expect(keyLikeHost("mcp.linear.app")).toBe(false);
+    expect(keyLikeHost("mcp-server-v2.example.com")).toBe(false);
+    const moved = plan({ name: "Desk", apps: [{ name: "Relay", mcp_url: "https://prod-3f9a1c7e5b2d4a60.relay.example/mcp" }, { name: "Linear", mcp_url: "https://mcp.linear.app/mcp" }] });
+    expect(moved.document.package.connections?.map((connection) => connection.mcp.url)).toEqual(["https://mcp.linear.app/mcp"]);
+    expect(plan({ name: "Desk", apps: [{ name: "Linear", mcp_url: "https://mcp.linear.app/mcp" }] }).apps).toBe(1);
+    expect(grokMovePlan(parseGrokExport(JSON.stringify({ format: GROK_EXPORT_FORMAT, bots: [{ name: "Desk", apps: [{ name: "Linear", mcp_url: "https://mcp.linear.app/mcp" }] }] }))[0]!, { appNamesOnly: true }).document.package.connections).toBeUndefined();
   });
 });
