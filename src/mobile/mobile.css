@@ -381,6 +381,8 @@ html[data-mobile-app="android"] .dusk-mobile [data-mobile-chat] .voice-call-pill
 @media (prefers-reduced-transparency: reduce) {
   .dusk-mobile [data-mobile-chat] .voice-call-pill { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+/* while a card waits above the composer nothing is working, so the working line's empty slot gives its room back */
+.dusk-mobile [data-mobile-chat]:has([data-approval-dock]) .turn-status-slot:empty { display: none; }
 /* a card waiting on the person above the composer stops under the top bar: its words scroll, its title and buttons stay */
 .dusk-mobile [data-mobile-chat] [data-approval-dock] [data-ask-card="approval"] {
   display: flex;
