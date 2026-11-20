@@ -96,3 +96,28 @@ test("cloud Retry requests the catalog again after a network failure", async () 
   expect(cloud.error).toBeNull();
   expect(cloud.catalog).toEqual(fixtureCatalog);
 });
+
+test("a second buy click while the first checkout is on its way asks for no second page, and a failure lets the next click try again", async () => {
+  vi.spyOn(api, "catalog").mockResolvedValue(fixtureCatalog);
+  vi.spyOn(api, "overview").mockResolvedValue({ billing: fixtureBilling("mac"), clouds: [] });
+  vi.spyOn(api, "account").mockResolvedValue(fixtureAccount("mac"));
+  vi.spyOn(api, "connections").mockResolvedValue({ byWorkspace: {}, pending: {}, available: {}, at: {} });
+  let answer = (_value: unknown) => {}, refuse = (_error: unknown) => {};
+  vi.spyOn(api, "checkout").mockImplementation(() => new Promise((resolve, reject) => { answer = resolve as typeof answer; refuse = reject; }));
+  const assign = vi.fn();
+  vi.stubGlobal("location", { ...window.location, assign, reload: vi.fn() });
+  await render(createElement(CloudDataProvider, { signedIn: true, children: createElement(CloudProbe) }));
+  const req = { kind: "plan" as const, source: "dash_license" as const, selection: { license: "starter" as const, members: 1, desktop: "none" as const, size: null, region: "eu-central", interval: "month" as const }, bundle: null };
+  let first: boolean | undefined, second: boolean | undefined;
+  void cloud.checkout(req).then((ok) => { first = ok; }); void cloud.checkout(req).then((ok) => { second = ok; });
+  expect(api.checkout).toHaveBeenCalledTimes(1);
+  await act(async () => refuse(new ApiError("Try again later.", 429, "rate_limited")));
+  expect([first, second]).toEqual([false, false]);
+  expect(cloud.error).toBe("Try again later.");
+  void cloud.checkout(req);
+  expect(api.checkout).toHaveBeenCalledTimes(2);
+  await act(async () => answer({ url: "https://test.checkout.dodopayments.com/session/one", id: "chk_1" }));
+  expect(assign).toHaveBeenCalledExactlyOnceWith("https://test.checkout.dodopayments.com/session/one");
+  void cloud.checkout(req);
+  expect(api.checkout).toHaveBeenCalledTimes(2);
+});

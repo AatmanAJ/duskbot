@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import type { StartFreshStep, StartFreshView } from "../../../electron/start-fresh.mjs";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { openExternalLink } from "@/lib/app-links";
+import { DEFAULT_ADMIN_ORIGIN } from "@/lib/onboarding";
 import { friendlyError } from "@/lib/plain-error";
 import { Icon } from "../Icon";
 import { Loader2 } from "../../icons";
@@ -10,7 +12,7 @@ import { ModalLayer } from "../ui/ModalLayer";
 import { confirmCancelCls, formBodyCls, formFooterCls, formHeaderCls, formSheetCls, formTitleCls, mdDangerCls, mdPrimaryCls, rowHintCls, textFieldCls, useDialogKeys } from "../ui/GrokDialog";
 
 /** the words the person types; main checks them again (electron/start-fresh.mjs CONFIRM_PHRASE) */
-export const START_FRESH_PHRASE = "delete everything";
+export const START_FRESH_PHRASE = "start fresh";
 export const startFreshTyped = (typed: string) => typed.trim().toLowerCase() === START_FRESH_PHRASE;
 
 type Bridge = NonNullable<NonNullable<Window["duskDesktop"]>["startFresh"]>;
@@ -33,19 +35,22 @@ export function StartFreshHost() {
 }
 
 function stepTitle(step: StartFreshStep) {
-  if (step.kind === "server") return t("startFresh.step.server", { name: step.label });
-  if (step.kind === "plan") return t("startFresh.step.plan", { name: step.label });
-  if (step.kind === "account") return (step.clouds ?? 0) > 0 ? t("startFresh.step.accountClouds") : t("startFresh.step.account");
+  if (step.kind === "signout") return t("startFresh.step.signOut", { email: step.label });
   if (step.kind === "ai") return t("startFresh.step.ai");
   return t("startFresh.step.local");
 }
 
 function stepHint(step: StartFreshStep) {
-  if (step.status === "failed") return step.code === "plan_first" ? t("startFresh.error.planFirst") : step.code === "too_old" ? t("startFresh.error.tooOld") : step.error ?? t("startFresh.status.failed");
-  if (step.note === "unlinked") return t("startFresh.note.unlinked");
+  if (step.status === "failed") return step.error ?? t("startFresh.status.failed");
   if (step.kind === "local") return t("startFresh.step.localHint");
-  if (step.kind === "account") return step.label;
   return null;
+}
+
+/** Deleting the account is its own action on the website's account page, which says it cancels the plan first. */
+export function openAccountDeletion(): void {
+  const account = typeof window === "undefined" ? undefined : window.duskDesktop?.cloudAccount;
+  if (account?.openPage) { void account.openPage("account").catch(() => {}); return; }
+  void openExternalLink(`${DEFAULT_ADMIN_ORIGIN}/account`).catch(() => {});
 }
 
 function StepMark({ status }: { status: StartFreshStep["status"] }) {
@@ -67,12 +72,6 @@ function Steps({ steps }: { steps: StartFreshStep[] }) {
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-[13px] leading-[18px] text-ink">{stepTitle(step)}</span>
               {hint && <span className={cn("text-[12px] leading-4", step.status === "failed" ? "text-danger" : "text-ink/56")}>{hint}</span>}
-              {step.kind === "server" && step.uninstall && (step.status === "done" || step.status === "failed") && step.note !== "unlinked" && (
-                <span className="mt-1 flex flex-col gap-1 text-[12px] leading-4 text-ink/56">
-                  {t("startFresh.uninstall", { name: step.label })}
-                  <code className="select-all break-all rounded-[6px] bg-ink/6 px-1.5 py-1 font-mono text-[11px] text-ink">{step.uninstall}</code>
-                </span>
-              )}
             </span>
           </li>
         );
@@ -108,8 +107,6 @@ export function StartFreshDialog({ bridge, onClose }: { bridge: Bridge; onClose:
     finally { setAsking(false); }
   };
   const ready = startFreshTyped(typed);
-  const failed = view?.steps.filter((step) => step.status === "failed") ?? [];
-  const accountKept = failed.some((step) => step.kind === "account");
 
   const title = phase === "idle" ? t("startFresh.title")
     : phase === "running" ? t("startFresh.progressTitle")
@@ -141,12 +138,15 @@ export function StartFreshDialog({ bridge, onClose }: { bridge: Bridge; onClose:
                   <p className={cn(rowHintCls, "m-0 mb-1.5")}>{t("startFresh.lead")}</p>
                   <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-[13px] leading-[18px] text-ink marker:text-ink/40">
                     <li>{t("startFresh.list.bots")}</li>
-                    <li>{t("startFresh.list.cloud")}</li>
-                    <li>{t("startFresh.list.servers")}</li>
-                    <li>{t("startFresh.list.account")}</li>
                     <li>{t("startFresh.list.local")}</li>
+                    <li>{t("startFresh.list.signOut")}</li>
                   </ul>
                 </div>
+                <p data-start-fresh-keeps="" className={cn(rowHintCls, "m-0")}>
+                  {t("startFresh.keeps")}{" "}{t("startFresh.deleteAccountLead")}{" "}
+                  <button type="button" data-start-fresh-delete-account="" onClick={openAccountDeletion}
+                    className="cursor-pointer rounded-[4px] font-medium text-ink underline underline-offset-2 hover:text-ink/80 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus">{t("startFresh.deleteAccount")}</button>
+                </p>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[13px] leading-[18px] text-ink/68">{t("startFresh.typeLabel", { phrase: START_FRESH_PHRASE })}</span>
                   <input data-autofocus data-start-fresh-input value={typed} onChange={(event) => setTyped(event.target.value)} autoComplete="off" spellCheck={false}
@@ -157,7 +157,7 @@ export function StartFreshDialog({ bridge, onClose }: { bridge: Bridge; onClose:
               </>
             ) : (
               <>
-                {phase === "partial" && <p id="start-fresh-warning" className={cn(rowHintCls, "m-0")}>{t("startFresh.partialBody")}{accountKept && ` ${t("startFresh.partialAccount")}`}</p>}
+                {phase === "partial" && <p id="start-fresh-warning" className={cn(rowHintCls, "m-0")}>{t("startFresh.partialBody")}</p>}
                 {(phase === "done" || phase === "restarting") && <p id="start-fresh-warning" className={cn(rowHintCls, "m-0")}>{t("startFresh.doneBody")}</p>}
                 {view && <Steps steps={view.steps} />}
               </>

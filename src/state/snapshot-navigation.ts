@@ -56,6 +56,11 @@ export function keepBotNavigation(previous: Bot | undefined, incoming: Bot, pres
   };
 }
 
+export function openElsewhere(previous: Bot | undefined, incoming: Pick<Bot, "threadId" | "tasks">): previous is Bot {
+  return previous !== undefined && previous.transcriptLoaded !== false && previous.threadId !== incoming.threadId
+    && Boolean(incoming.tasks?.some((task) => task.threadId === previous.threadId));
+}
+
 export function keepGroupNavigation(previous: Group | undefined, incoming: Group, preserve: boolean, taskIdsAtStart?: ReadonlySet<string>): Group {
   if (!preserve || !previous) return incoming;
   return {
@@ -109,4 +114,12 @@ const NO_MESSAGES: Message[] = [];
  * is a few chosen lines, not the transcript. */
 export function shownTranscript<T extends { messages: Message[]; transcriptLoaded?: boolean }>(owner: T): T {
   return owner.transcriptLoaded === false ? { ...owner, messages: NO_MESSAGES } : owner;
+}
+
+export function firstLivePage(
+  held: Pick<Bot, "threadId" | "messages" | "transcriptLoaded" | "activeLeafId">,
+  incoming: Pick<Bot, "threadId"> & Partial<Pick<Bot, "messages" | "hasMore" | "activeLeafId">>,
+): Partial<Pick<Bot, "messages" | "hasMore" | "activeLeafId">> {
+  if (incoming.threadId !== held.threadId || held.messages.length > 0 || held.transcriptLoaded === false || !incoming.messages?.length) return {};
+  return { messages: incoming.messages, hasMore: incoming.hasMore, activeLeafId: incoming.activeLeafId ?? held.activeLeafId };
 }

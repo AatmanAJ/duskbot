@@ -35,12 +35,14 @@ dusk_env_load APPLE_TEAM_ID APPLE_API_KEY_ID APPLE_API_ISSUER APPLE_API_KEY_PATH
 key_file="${APPLE_DISTRIBUTION_KEY_PATH:-$apple/apple-distribution.key}"
 cer_file="${APPLE_DISTRIBUTION_CERT_PATH:-$apple/apple-distribution.cer}"
 profile_file="${APPLE_APPSTORE_PROFILE_PATH:-$apple/dusk-bot-app-store.mobileprovision}"
+widget_profile_file="${APPLE_WIDGET_PROFILE_PATH:-$apple/dusk-bot-activity-app-store.mobileprovision}"
 
 problems=()
 [ -n "${APPLE_TEAM_ID:-}" ] || problems+=("APPLE_TEAM_ID is not set (developer.apple.com, Account, Membership details, Team ID)")
 [ -f "$key_file" ] || problems+=("no distribution private key at $key_file (openssl genrsa, then asc.mjs dist-cert with its CSR)")
 [ -f "$cer_file" ] || problems+=("no Apple Distribution certificate at $cer_file (node apps/mobile/scripts/asc.mjs dist-cert <csr> <out.cer>)")
 [ -f "$profile_file" ] || problems+=("no App Store profile at $profile_file (node apps/mobile/scripts/asc.mjs store-profile <certId> <out>)")
+[ -f "$widget_profile_file" ] || problems+=("no Live Activity profile at $widget_profile_file (node apps/mobile/scripts/asc.mjs widget-profile <certId> <out>)")
 api_key=no
 if [ -n "${APPLE_API_KEY_ID:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ] && [ -n "${APPLE_API_KEY_PATH:-}" ] && [ -f "${APPLE_API_KEY_PATH:-}" ]; then api_key=yes; fi
 [ "$mode" = upload ] && [ "$api_key" = no ] && problems+=("--upload needs APPLE_API_KEY_ID, APPLE_API_ISSUER and APPLE_API_KEY_PATH")
@@ -49,6 +51,7 @@ echo "team id:              $([ -n "${APPLE_TEAM_ID:-}" ] && echo present || ech
 echo "distribution key:     $([ -f "$key_file" ] && echo present || echo missing)"
 echo "distribution cert:    $([ -f "$cer_file" ] && echo present || echo missing)"
 echo "app store profile:    $([ -f "$profile_file" ] && echo present || echo missing)"
+echo "live activity profile: $([ -f "$widget_profile_file" ] && echo present || echo missing)"
 echo "api key (upload):     $api_key"
 if [ "$mode" = check ]; then
   if [ ${#problems[@]} -eq 0 ]; then echo "ready to archive"; exit 0; fi
@@ -119,16 +122,23 @@ security find-identity -v -p codesigning "$keychain" | grep -q '"Apple Distribut
   || { echo "error: the throwaway keychain has no valid Apple Distribution identity (certificate and key do not match?)" >&2; exit 1; }
 
 # the profile goes where Xcode looks (both the current and the older location), named by its UUID
-security cms -D -i "$profile_file" > "$work/profile.plist"
-profile_uuid=$(plutil -extract UUID raw "$work/profile.plist")
-profile_name=$(plutil -extract Name raw "$work/profile.plist")
-for dir in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" "$HOME/Library/MobileDevice/Provisioning Profiles"; do
-  mkdir -p "$dir" && cp "$profile_file" "$dir/$profile_uuid.mobileprovision"
-done
+install_profile() {
+  security cms -D -i "$1" > "$work/profile.plist"
+  local uuid
+  uuid=$(plutil -extract UUID raw "$work/profile.plist")
+  for dir in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" "$HOME/Library/MobileDevice/Provisioning Profiles"; do
+    mkdir -p "$dir" && cp "$1" "$dir/$uuid.mobileprovision"
+  done
+  plutil -extract Name raw "$work/profile.plist"
+}
+profile_name=$(install_profile "$profile_file")
+widget_profile_name=$(install_profile "$widget_profile_file")
 
+# each target names its own profile (DUSK_APP_PROFILE, DUSK_WIDGET_PROFILE): one PROVISIONING_PROFILE_SPECIFIER here would
+# put the app's profile on the Live Activity extension too
 xcodebuild -quiet -project "$project" -scheme App -configuration Release -destination 'generic/platform=iOS' \
   -archivePath "$archive" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual \
-  CODE_SIGN_IDENTITY="Apple Distribution" PROVISIONING_PROFILE_SPECIFIER="$profile_name" \
+  CODE_SIGN_IDENTITY="Apple Distribution" DUSK_APP_PROFILE="$profile_name" DUSK_WIDGET_PROFILE="$widget_profile_name" \
   OTHER_CODE_SIGN_FLAGS="--keychain $keychain" CURRENT_PROJECT_VERSION="$build_number" archive
 
 options="$out/ExportOptions.plist"
@@ -143,7 +153,7 @@ cat > "$options" <<PLIST
   <key>teamID</key><string>$APPLE_TEAM_ID</string>
   <key>signingStyle</key><string>manual</string>
   <key>signingCertificate</key><string>Apple Distribution</string>
-  <key>provisioningProfiles</key><dict><key>bot.dusk.mobile</key><string>$profile_name</string></dict>
+  <key>provisioningProfiles</key><dict><key>bot.dusk.mobile</key><string>$profile_name</string><key>bot.dusk.mobile.activity</key><string>$widget_profile_name</string></dict>
   <key>destination</key><string>$destination</string>
   <key>uploadSymbols</key><true/>
   <key>manageAppVersionAndBuildNumber</key><false/>
