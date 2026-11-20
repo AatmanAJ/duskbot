@@ -21,7 +21,7 @@ import { explainTailscaleFailure, tailscaleServe, tailscaleServeOff, tailscaleSt
 import { defaultSetupIo, SetupCancelled, type SetupIo } from "./cli-prompts.ts";
 import { HEADLESS_VERB_NAMES, USAGE } from "./cli-usage.ts";
 import { normalizePhoneOrigin, phonePairingInstructions, runPhoneSetup } from "./cli-phone-setup.ts";
-import { browserSignInLines, pairingBlock, phoneAppBlock } from "./cli-pairing.ts";
+import { browserSignInLines, pairingBlock, phoneAppPairing } from "./cli-pairing.ts";
 import type { AppConfig } from "./config.ts";
 import {
   cleanupTunnelOrigin,
@@ -301,14 +301,6 @@ async function mintPairing(port: number, options: { label?: string; client?: boo
   return pairingBlock({ code: body.code, url, inviteUrl: invite, localUrl, expiresAt: body.expiresAt, hint: typeof body.hint === "string" ? body.hint : null, phone: options.phone });
 }
 
-/** The phone app's pairing over the link relay, or null when this server has no relay for phones (no link agent). */
-async function phoneAppPairing(port: number, label?: string): Promise<string | null> {
-  const { status, body } = await api(port, "/api/mobile/pairing", { method: "POST", body: JSON.stringify(label ? { label } : {}), timeoutMs: 30_000 }).catch(() => ({ status: 0, body: null }));
-  if (refusedAsService(status, body)) throw new Error(SERVICE_TRUST_HELP);
-  const relayed = status === 200 && typeof body?.link === "string" && Array.isArray(body?.payload?.via) && body.payload.via.some((route: { kind?: unknown }) => route?.kind === "relay");
-  return relayed ? phoneAppBlock(body) : null;
-}
-
 export async function runPair(options: CliOptions): Promise<number> {
   if (!(await serverUp(options.port))) {
     console.error(`no dusk bot server on http://127.0.0.1:${options.port}; start one with \`duskbot serve\` or set DUSK_PORT`);
@@ -329,14 +321,9 @@ export async function runPair(options: CliOptions): Promise<number> {
       }
     }
     if (!origin || !normalizePhoneOrigin(origin)) {
-      const relayed = await phoneAppPairing(options.port);
-      if (relayed) {
-        console.log(relayed);
-        console.log("Keep this code private.");
-        return 0;
-      }
-      console.log("Your workspace is running only on this computer. A phone cannot use its localhost address.");
-      console.log("Stop the server, run duskbot setup and choose phone access, then start duskbot again.");
+      const relayed = await phoneAppPairing((path, init) => api(options.port, path, init));
+      if (relayed) { console.log(relayed); return 0; }
+      console.log("Your workspace is running only on this computer. A phone cannot use its localhost address.\nStop the server, run duskbot setup and choose phone access, then start duskbot again.");
       return 1;
     }
     const ui = defaultSetupIo();
@@ -351,8 +338,7 @@ export async function runPair(options: CliOptions): Promise<number> {
       return 130;
     }
   }
-  const relayed = options.client || options.publicUrl ? null : await phoneAppPairing(options.port, options.label);
-  console.log(relayed ?? await mintPairing(options.port, { label: options.label, client: options.client, publicUrl: options.publicUrl, phone: options.phone }));
+  console.log((options.client || options.publicUrl ? null : await phoneAppPairing((path, init) => api(options.port, path, init), options.label)) ?? await mintPairing(options.port, { label: options.label, client: options.client, publicUrl: options.publicUrl, phone: options.phone }));
   if (options.client) console.log("(client scope: chat and approvals only; cannot change settings or pair others)");
   return 0;
 }
