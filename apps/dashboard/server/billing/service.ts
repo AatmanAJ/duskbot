@@ -545,7 +545,7 @@ export function createBillingService(options: BillingServiceOptions) {
       if (event.type === "on_hold") queueProviderCancel(event.subscriptionId);
     } else if (event.type === "on_hold" || event.type === "failed") {
       if (sub.status !== "payment_problem" || !sub.paymentProblem) {
-        const trial = sub.trialEndsAt !== undefined && !state.invoices.some(row => row.checkoutId === sub!.checkoutId && row.status !== "failed" && row.amountCents > 0);
+        const trial = unpaidTrial(sub);
         sub.paymentProblem = { since: now(), fixBy: trial ? (sub.trialEndsAt ?? now()) + TRIAL_DATA_DAYS * day : now() + config.graceDays * day, sent: ["first"], ...(trial ? { trial: true as const } : {}) };
         if (!sub.cancelAtPeriodEnd) notices.push(failedNotice(sub));
       }
@@ -803,8 +803,15 @@ export function createBillingService(options: BillingServiceOptions) {
     const step = now() >= problem.fixBy - DUNNING.finalDaysBefore * day ? "final" : now() >= problem.since + DUNNING.reminderDay * day ? "day_14" : null;
     return step && !problem.sent.includes(step) ? step : null;
   }
-  /** a payment problem from before the clock was stored: it started at its first failure on the ledger, its data is kept
-   *  30 days from then, and the first email of the new story goes out once (the sweep sends it) */
+  /** 7 days after the trial ended, or 7 days from now when that date already passed */
+  const trialDeletion = (trialEnd: number) => trialEnd + TRIAL_DATA_DAYS * day > now() ? trialEnd + TRIAL_DATA_DAYS * day : now() + TRIAL_DATA_DAYS * day;
+  /** a trial whose first charge failed: no payment of it ever went through */
+  function unpaidTrial(sub: StoredSubscription) {
+    return sub.trialEndsAt !== undefined && !state.invoices.some(row => row.checkoutId === sub.checkoutId && row.status !== "failed" && row.amountCents > 0);
+  }
+  /** a payment problem from before the clock was stored: it started at its first failure on the ledger; a paid plan's data
+   *  is kept 30 days from then, a trial's 7 days from its end (7 days from now when that passed, so nobody loses data
+   *  without a warning); the first email of the new story goes out once (the sweep sends it) */
   function healPaymentProblems() {
     const missing = state.subscriptions.filter(sub => sub.status === "payment_problem" && !sub.paymentProblem && !neverPaid(sub) && !sub.cancelAtPeriodEnd);
     for (const sub of missing) {
@@ -812,7 +819,9 @@ export function createBillingService(options: BillingServiceOptions) {
       const recovered = Math.max(0, ...rows.filter(row => row.type === "subscription.recovered").map(row => row.at));
       const failures = rows.filter(row => (row.type === "subscription.on_hold" || row.type === "subscription.failed") && row.at >= recovered).map(row => row.at);
       const since = failures.length ? Math.min(...failures) : sub.currentPeriodEnd ?? sub.updatedAt;
-      sub.paymentProblem = { since, fixBy: since + config.graceDays * day, sent: [] };
+      sub.paymentProblem = unpaidTrial(sub)
+        ? { since, fixBy: trialDeletion(sub.trialEndsAt ?? since), sent: [], trial: true }
+        : { since, fixBy: since + config.graceDays * day, sent: [] };
     }
     if (missing.length) store.commit();
   }

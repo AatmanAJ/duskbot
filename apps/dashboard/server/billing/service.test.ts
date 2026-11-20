@@ -1175,6 +1175,22 @@ describe("payment problems", () => {
     time = sub.trialEndsAt! + 7 * day; service.dunning(); expect(sub.status).toBe("ended"); expect(notices).toHaveLength(1);
   });
 
+  it("a trial stored before the clock existed takes the trial path: one email, data kept 7 days from its end or from now", async () => {
+    config.trial = { days: 3 }; withNotices();
+    const answer = await service.checkout(owner, { kind: "cart", cart: desktopOnly() });
+    deliver(provider.complete(store.state.checkouts.find(row => row.id === answer.checkoutId)!.providerSessionId!));
+    const sub = store.state.subscriptions[0]!;
+    time = sub.trialEndsAt! + 60_000; deliver(provider.fail(sub.providerSubscriptionId!));
+    for (const later of [day, 10 * day]) {
+      delete sub.paymentProblem; sub.status = "payment_problem"; store.commit(); service.close(); time = sub.trialEndsAt! + 60_000 + later;
+      const notices: Array<{ kind: string; trial?: boolean }> = [];
+      service = createBillingService({ store, provider, clouds, config, publicUrl: "https://dashboard.test", now: () => time, notify: notice => notices.push(notice) });
+      expect(sub.paymentProblem).toMatchObject({ trial: true, fixBy: later === day ? sub.trialEndsAt! + 7 * day : time + 7 * day });
+      service.dunning(); service.dunning(); time += 8 * 86_400_000 - day; service.dunning();
+      expect(notices.filter(notice => notice.kind !== "receipt").map(notice => [notice.kind, notice.trial])).toEqual([["payment_failed", true]]);
+    }
+  });
+
   it("a plan already set to end gets no reminders and ends at its period end", async () => {
     const { sub } = await buy(); const notices = withNotices();
     await service.cancel(owner, sub.id, { answer: "price" }); notices.length = 0;

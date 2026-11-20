@@ -359,6 +359,9 @@ it("a failed charge stops the cloud at once: a paid plan's data is kept 30 days 
   expect(trialEntitlement).toMatchObject({ active: false, until: 9 * DAY_MS, unpaid: { trial: true } });
   expect(verdict(trialEntitlement, 12 * DAY_MS)).toMatchObject({ delete: false, earliestAt: 16 * DAY_MS });
   expect(verdict(trialEntitlement, 16 * DAY_MS)).toMatchObject({ delete: true, reason: "retention_over" });
+  // a trial billing gave a later date (it ended long before this policy): kept to that date
+  const late = entitlementOf([{ ...trial, paymentProblem: { ...problem, fixBy: 30 * DAY_MS, trial: true } } as unknown as StoredSubscription], cloud, 12 * DAY_MS);
+  expect(verdict(late, 29 * DAY_MS)).toMatchObject({ delete: false, earliestAt: 30 * DAY_MS });
   const f = await homeFixture();
   const { c, sub: paid } = await f.paid();
   paid.status = "payment_problem"; paid.paymentProblem = { since: f.now(), fixBy: f.now() + 30 * DAY_MS, sent: ["first"] };

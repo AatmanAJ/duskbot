@@ -21,8 +21,9 @@ export const TRIAL_DATA_DAYS = 7;
  *  whose data is kept TRIAL_DATA_DAYS with no final backup */
 export interface Entitlement { active: boolean; until: number | null; known?: boolean; unpaid?: { trial: boolean } }
 
-/** when a failed charge stopped this subscription's cloud: a trial's end, else the first failure */
-const unpaidFrom = (s: StoredSubscription) => s.paymentProblem ? (s.paymentProblem.trial ? s.trialEndsAt ?? s.paymentProblem.since : s.paymentProblem.since) : s.currentPeriodEnd ?? s.updatedAt;
+/** when a failed charge stopped this subscription's cloud: a trial's data is kept TRIAL_DATA_DAYS to billing's date (the
+ *  trial's end, or later when billing gave more warning), a paid plan's counts from the first failure */
+const unpaidFrom = (s: StoredSubscription) => s.paymentProblem ? (s.paymentProblem.trial ? s.paymentProblem.fixBy - TRIAL_DATA_DAYS * DAY_MS : s.paymentProblem.since) : s.currentPeriodEnd ?? s.updatedAt;
 const unpaidOf = (subs: readonly StoredSubscription[]) => {
   const owing = subs.find(s => !s.cancelAtPeriodEnd && (s.status === "payment_problem" || s.status === "ended" && s.paymentProblem));
   return owing ? { unpaid: { trial: owing.paymentProblem?.trial === true } } : {};
