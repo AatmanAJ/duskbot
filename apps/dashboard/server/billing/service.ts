@@ -803,15 +803,15 @@ export function createBillingService(options: BillingServiceOptions) {
     const step = now() >= problem.fixBy - DUNNING.finalDaysBefore * day ? "final" : now() >= problem.since + DUNNING.reminderDay * day ? "day_14" : null;
     return step && !problem.sent.includes(step) ? step : null;
   }
-  /** 7 days after the trial ended, or 7 days from now when that date already passed */
-  const trialDeletion = (trialEnd: number) => trialEnd + TRIAL_DATA_DAYS * day > now() ? trialEnd + TRIAL_DATA_DAYS * day : now() + TRIAL_DATA_DAYS * day;
+  /** 7 days after the trial ended, and never less than 3 days after its email goes out */
+  const trialDeletion = (trialEnd: number) => Math.max(trialEnd + TRIAL_DATA_DAYS * day, now() + 3 * day);
   /** a trial whose first charge failed: no payment of it ever went through */
   function unpaidTrial(sub: StoredSubscription) {
     return sub.trialEndsAt !== undefined && !state.invoices.some(row => row.checkoutId === sub.checkoutId && row.status !== "failed" && row.amountCents > 0);
   }
   /** a payment problem from before the clock was stored: it started at its first failure on the ledger; a paid plan's data
-   *  is kept 30 days from then, a trial's 7 days from its end (7 days from now when that passed, so nobody loses data
-   *  without a warning); the first email of the new story goes out once (the sweep sends it) */
+   *  is kept 30 days from then, a trial's 7 days from its end but at least 3 days from now, so nobody loses data
+   *  without a warning; the first email of the new story goes out once (the sweep sends it) */
   function healPaymentProblems() {
     const missing = state.subscriptions.filter(sub => sub.status === "payment_problem" && !sub.paymentProblem && !neverPaid(sub) && !sub.cancelAtPeriodEnd);
     for (const sub of missing) {
