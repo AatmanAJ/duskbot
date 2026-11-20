@@ -45,7 +45,7 @@ async function chat(messages: ChatMessage[], tools?: unknown[]): Promise<{ conte
 }
 
 async function pool<T, R>(items: readonly T[], width: number, work: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
+  const out: R[] = Array.from({ length: items.length });
   let next = 0;
   await Promise.all(Array.from({ length: width }, async () => { while (next < items.length) { const i = next++; out[i] = await work(items[i]!); } }));
   return out;
