@@ -194,6 +194,8 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
   let opened = null;
   /** Another Cloud this app is buying (POST clouds): its id, name, colour and plan, and its checkout page, kept like `opened`'s. */
   let adding = null;
+  /** When the website's first steps were last opened or first seen open: followed every 3 s for CHECKOUT_WATCH_MS from then. */
+  let setupSince = null;
   // the website's handoff page, from the last session read (handoffPage)
   let handoffAt = null;
   /** An email code on its way: the attempt the Admin answered, kept in main only. */
@@ -333,7 +335,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
   function forget({ quiet = false } = {}) {
     if (clearing) return clearing;
     const previous = grant ?? issued ?? cleanup, stamp = reset();
-    grant = null; issued = null; cleanup = previous; cleanupNeeded = true; plan = null; savedHint = null; opened = null; adding = null; renewalCloud = null;
+    grant = null; issued = null; cleanup = previous; cleanupNeeded = true; plan = null; savedHint = null; opened = null; adding = null; setupSince = null; renewalCloud = null;
     if (!quiet) publish({ status: "signed-out" });
     const operation = (async () => {
       const [persisted, revoked] = await Promise.allSettled([Promise.resolve().then(() => store.write(null)), previous ? revoke(previous) : Promise.resolve()]);
@@ -365,6 +367,8 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
       const trial = parseCloudTrial(result.cloud?.trial), offer = parseCloudOffer(result.offer);
       const usage = access.status === "active" ? parseCloudUsage(result.cloud?.usage) : null, room = usage ? parseCloudRoom(result.cloud?.room) : null;
       const websiteSetup = WEBSITE_SETUPS.includes(result.websiteSetup) ? result.websiteSetup : null;
+      if (websiteSetup !== "open") setupSince = null;
+      else setupSince ??= now();
       const clouds = parseCloudList(result.clouds), more = clouds ? addOffer(result) : null, latest = clouds ? releaseVersion(result.latestVersion) : null;
       const organizations = clouds ? parseOrganizations(result.organizations) : null;
       const { cloudId: renewingCloud = null, ...renewal } = parseCloudRenewal(result.clouds) ?? {};
@@ -401,7 +405,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
       const settingUp = planCloud?.status === "provisioning" || (access.status === "active" && !planCloud) || Boolean(purchase) || otherOwnClouds(clouds).some(cloud => cloud.status === "setting_up");
       const added = adding ? clouds?.find(cloud => cloud.id === adding.cloudId) ?? null : null;
       const paying = watchingAdd() && Boolean(adding.url) && (!added || added.status === "checkout");
-      const delay = (watching() && planCloud?.status !== "ready") || paying || websiteSetup === "open" ? WATCH_REFRESH_MS : settingUp ? SETUP_REFRESH_MS : awaitingWake() ? ASLEEP_REFRESH_MS : REFRESH_MS;
+      const delay = (watching() && planCloud?.status !== "ready") || paying || (setupSince !== null && now() - setupSince < CHECKOUT_WATCH_MS) ? WATCH_REFRESH_MS : settingUp ? SETUP_REFRESH_MS : awaitingWake() ? ASLEEP_REFRESH_MS : REFRESH_MS;
       schedule(refresh, Math.min(delay, verifiedUntil - serverNow()));
     } catch (error) {
       if (!current(stamp)) return state();
@@ -787,6 +791,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
         const opened = await webHandoff({ page, ...(page === "plans" && intent.plan ? { plan: intent.plan } : {}), ...(page === "plans" && source ? { source } : {}) });
         if (!opened?.signedOut) {
           if (intent.kind === "upgrade") schedule(refresh, WATCH_REFRESH_MS);
+          else if (setupSince !== null) { setupSince = now(); schedule(refresh, WATCH_REFRESH_MS); }
           return { outcome: "opened", state: state() };
         }
       }
@@ -1234,7 +1239,7 @@ export function createCloudAccountClient({ store, openBrowser, platform, deviceN
     reload() {
       quiet = false;
       reset();
-      grant = null; issued = null; cleanup = null; cleanupNeeded = false; plan = null; savedHint = null; opened = null; adding = null; renewalCloud = null; offerCache = null; waking = false;
+      grant = null; issued = null; cleanup = null; cleanupNeeded = false; plan = null; savedHint = null; opened = null; adding = null; setupSince = null; renewalCloud = null; offerCache = null; waking = false;
       confirmations.clear();
       value = { status: "signed-out", message: "restoring" };
       return start();
