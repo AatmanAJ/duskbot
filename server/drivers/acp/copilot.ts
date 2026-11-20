@@ -284,6 +284,12 @@ const SUPPORT: AcpSupport = {
   buildPromptText: (turn) => (turn.system ? `${turn.system}\n\n${turn.text}` : turn.text),
 };
 
+/** Copilot sends an OpenAI model each MCP server's tools under a namespace named after the server, and OpenAI refuses
+ * the request when that name is one of its own: "Function 'browser.browser-agent_browser_back' is not allowed in
+ * reserved namespace 'browser'" (Copilot CLI 1.0, 2026-11). */
+const OPENAI_RESERVED_NAMESPACES = new Set(["browser"]);
+export const copilotMcpName = (name: string) => OPENAI_RESERVED_NAMESPACES.has(name) ? `duskbot_${name}` : name;
+
 export const CopilotAgentDriver = {
   ...createAcpDriver(SUPPORT),
   /** Creates an instance with thread-isolated launcher config files, removed when the instance is disposed. */
@@ -296,7 +302,7 @@ export const CopilotAgentDriver = {
         ...SUPPORT,
         applyTurnEnv(env, { threadId, mcpServers }) {
           const path = join(directory, `${createHash("sha256").update(threadId).digest("hex")}.json`);
-          const servers = Object.fromEntries(mcpServers.map((server) => [server.name, "command" in server
+          const servers = Object.fromEntries(mcpServers.map((server) => [copilotMcpName(server.name), "command" in server
             ? { type: "local", command: server.command, args: server.args,
               env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])), tools: ["*"] }
             : { type: server.type, url: server.url,

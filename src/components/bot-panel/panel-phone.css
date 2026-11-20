@@ -38,6 +38,8 @@
   .side-panel [data-panel-card-surface] > :is(button, a, div, label):not(.contents, [hidden]):last-child { border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
   .side-panel [data-panel-card-surface] > :is(button, a):active { background-color: color-mix(in srgb, var(--color-ink) 4%, var(--color-menu)); }
   .side-panel [data-panel-card-surface] :is(.text-\[13px\]) { font-size: 15px; line-height: 20px; }
+  /* a routine's row already sits in its segment's 16px: its own inset would put it 8px in from every other row */
+  .side-panel [data-panel-routine] > div:first-child { padding-inline: 0; }
 }
 
 @media (max-width: 767.98px) {

@@ -223,7 +223,7 @@ describe("what the person is told, in their language", () => {
     fx.busy.add("scout-main");
     fx.reports.note("scout-main", true);
     const answer = await fx.call("scout", "scout-main", { went_wrong: "Bilder laden nicht" });
-    const line = "An das Dusk-Team gesendet (Bericht report-1). Milind und Omkar bekommen ihn per E-Mail und antworten dir an ada@example.com.";
+    const line = "An das Dusk-Team gesendet (Bericht report-1). Das dusk-Team bekommt ihn per E-Mail und antwortet dir an ada@example.com.";
     expect(answer.body.text).toBe(`Sent. Tell the person this line in your reply, word for word: "${line}"`);
     fx.bot("scout-main", "Ich schaue mir das an.", { turnId: "t1", turnSucceeded: true });
     fx.busy.delete("scout-main");
@@ -246,7 +246,7 @@ describe("what the person is told, in their language", () => {
     expect(fx.notices("scout-main")).toEqual([]);
     fx.advance(RETRY_MS[0]);
     await fx.settle();
-    expect(fx.notices("scout-main")).toEqual(["notice: An das Dusk-Team gesendet (Bericht report-2), nachdem ein früherer Versuch nicht geklappt hat. Milind und Omkar bekommen ihn per E-Mail."]);
+    expect(fx.notices("scout-main")).toEqual(["notice: An das Dusk-Team gesendet (Bericht report-2), nachdem ein früherer Versuch nicht geklappt hat. Das dusk-Team bekommt ihn per E-Mail."]);
     fx.stop();
   });
 });
@@ -272,7 +272,7 @@ describe("a report that cannot go yet", () => {
     await fx.settle();
     expect(fx.sent).toHaveLength(3);
     expect(fx.sent[2]).toEqual(fx.sent[0]);
-    expect(fx.notices("scout-main").at(-1)).toBe("notice: Sent to the dusk team (report report-3) after an earlier try did not go through. Milind and Omkar get it by email.");
+    expect(fx.notices("scout-main").at(-1)).toBe("notice: Sent to the dusk team (report report-3) after an earlier try did not go through. The dusk team gets it by email.");
     expect(JSON.parse(readFileSync(join(fx.dataDir, DEVS_REPORTS_FILE), "utf8")).outbox).toEqual([]);
     fx.stop();
   });

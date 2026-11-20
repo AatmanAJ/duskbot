@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { listTriggers, parseTriggerRequest, triggerTarget } from "./trigger-tools.ts";
+import { listTriggers, parseTriggerRequest, timelessName, triggerTarget } from "./trigger-tools.ts";
 import type { Routine, RoutineRun } from "./routines.ts";
 import type { WebhookTrigger } from "./webhooks.ts";
 
@@ -96,3 +96,21 @@ describe("triggerTarget", () => {
     expect(triggerTarget(bots.a, "Nobody", lookup, Object.values(bots))).toMatchObject({ status: 404 });
   });
 });
+
+describe("automation names", () => {
+  it("drop a day said relative to now, so the name stays true", () => {
+    expect(timelessName("Calculus midterm tomorrow")).toBe("Calculus midterm");
+    expect(timelessName("Call the dentist tomorrow morning")).toBe("Call the dentist");
+    expect(timelessName("Rent reminder (next week)")).toBe("Rent reminder");
+    expect(timelessName("History essay due December 2")).toBe("History essay due December 2");
+    expect(timelessName("Weekly review")).toBe("Weekly review");
+    expect(timelessName("Tomorrow")).toBe("Tomorrow");
+  });
+  it("are cleaned when an automation is made or renamed", () => {
+    const made = parseTriggerRequest({ fromBotId: "b", fromThreadId: "t", action: "create", kind: "schedule", routine: { name: "Calculus midterm tomorrow", instructions: "x" } }, () => "schedule");
+    expect(made).toMatchObject({ ok: true, proposal: { routine: { name: "Calculus midterm" } } });
+    const renamed = parseTriggerRequest({ fromBotId: "b", fromThreadId: "t", action: "update", triggerId: "r1", changes: { name: "Standup today" } }, () => "schedule");
+    expect(renamed).toMatchObject({ ok: true, proposal: { changes: { name: "Standup" } } });
+  });
+});
+

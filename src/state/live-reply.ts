@@ -161,3 +161,17 @@ export function resetLiveReplies(): void {
   replies.clear();
   streamed.clear();
 }
+
+const liveText = (threadId: string | null | undefined) => {
+  const reply = liveReply(threadId);
+  return reply && !reply.cut ? reply.text : "";
+};
+
+/** The thread's streaming reply text, re-rendering on each delta: for the one row that draws it. */
+export function useLiveReplyText(threadId: string | null | undefined): string {
+  return useSyncExternalStore(
+    (listener) => subscribe(threadId, listener),
+    () => liveText(threadId),
+    () => liveText(threadId),
+  );
+}

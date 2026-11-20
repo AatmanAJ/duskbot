@@ -83,3 +83,35 @@ fi`;
     expect(await idle.read("gate-from")).toBe("bbb");
   });
 });
+
+describe("root's server update brings a dead docker gate back (install.sh heal_gate)", () => {
+  /** heal_gate with docker `up` or not, and the gate answering the server account or not */
+  async function heal({ up = true, answers = false, unit = true } = {}) {
+    const dir = await mkdtemp(join(tmpdir(), "omb-gate-heal-")); dirs.push(dir);
+    await mkdir(join(dir, "units"), { recursive: true });
+    if (unit) await writeFile(join(dir, "units", "omb-docker-gate.service"), "[Unit]\n");
+    return inInstaller(dir, `UNITS=${join(dir, "units")}
+docker() { printf 'docker %s\\n' "$*" >> "$log"; ${up ? "return 0" : "return 1"}; }
+as_user() { printf 'as_user %s\\n' "$*" >> "$log"; ${answers ? "return 0" : "return 1"}; }
+heal_gate`);
+  }
+
+  it("starts a gate that does not answer the server account again, and has docker want it from then on", async () => {
+    const r = await heal();
+    expect(r.log).toContain("systemctl add-wants docker.service omb-docker-gate.service");
+    expect(r.log).toContain("x systemctl restart omb-docker-gate.service");
+    expect(r.out).toContain("the docker gate did not answer");
+  });
+
+  it("leaves an answering gate alone, and does nothing while docker is down or on a server without the gate", async () => {
+    expect((await heal({ answers: true })).log.filter((line) => line.startsWith("x "))).toEqual([]);
+    expect((await heal({ up: false })).log.filter((line) => line.startsWith("x ") || line.startsWith("as_user"))).toEqual([]);
+    expect((await heal({ unit: false })).log.filter((line) => line.startsWith("x ") || line.startsWith("as_user"))).toEqual([]);
+  });
+
+  it("runs at the start of every update round, and the gate unit restarts with docker without ever giving up", () => {
+    expect(script).toMatch(/\[ -f "\$STATE\/linked" \] \|\| return 0\n  heal_gate\n/);
+    expect(script).toContain("Requires=docker.service\nStartLimitIntervalSec=0\n");
+    expect(script).toContain("WantedBy=multi-user.target docker.service\nEOF\n  put_file \"$UNITS/omb-docker-gate.service\"");
+  });
+});

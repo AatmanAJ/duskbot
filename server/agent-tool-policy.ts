@@ -13,6 +13,7 @@ export const READ_ONLY_AGENT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "skills_list",
   "list_unread_notifications",
   "usage_limits",
+  "list_documents",
   "list_room_targets",
   "list_team_library",
   "set_status",

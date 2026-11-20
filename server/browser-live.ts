@@ -168,12 +168,6 @@ export function browserStreamPort(value: unknown): number {
   return data.port;
 }
 
-/** A restart closes the tabs of every bot on the profile, so a busy one blocks it, unless the browser no longer answers it anyway
- * or the bot is waiting on the person in this browser (an open sign-in card). */
-export function browserRestartRefusal(interrupted: boolean, busyBots: ReadonlyArray<{ waitingOnBrowser: boolean }>): string | null {
-  return !interrupted && busyBots.some((bot) => !bot.waitingOnBrowser) ? "Stop every bot using this profile before restarting its browser." : null;
-}
-
 type Action = { type: "take" | "release" | "restart" } | { type: "ack"; seq: number }
   | { type: "command"; args: string[] } | { type: "input"; message: ObjectValue } | { type: "inputs"; messages: ObjectValue[] }
   | { type: "dialog"; accept: boolean; promptText?: string }
@@ -915,7 +909,7 @@ export class BrowserLive {
     }
     const action = parseBrowserLiveAction(body);
     if (action.type === "restart") {
-      if (viewer.restarting) throw new BrowserLiveError("The browser is already restarting.", 409);
+      if (viewer.restarting) return { ok: true };
       viewer.restarting = true;
       try {
         const restarting = this.runtime.restart(viewer.session, viewer.person, async () => {
@@ -927,7 +921,7 @@ export class BrowserLive {
         await restarting;
         this.closeForSession(viewer.session);
         return { ok: true };
-      } catch { throw new BrowserLiveError("The browser could not restart. Wait for active work to finish and try again.", 409); }
+      } catch { throw new BrowserLiveError("The browser could not restart. Try again.", 503); }
       finally { viewer.restarting = false; if (viewer.closed) this.runtime.release(viewer.session, viewer.person); this.control(viewer.session); }
     }
     if (action.type === "ack") {

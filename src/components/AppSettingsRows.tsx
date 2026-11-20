@@ -14,6 +14,7 @@ import { effectiveLanguage, setLanguageChoice, useLanguageChoice } from "@/lib/l
 import { SettingsSelect } from "./SettingsSelect";
 import { TALKING_STYLES, talkingStyleOf } from "../../shared/talking-style";
 import { friendlyError } from "@/lib/plain-error";
+import { parseSidebarBotOrder, setSidebarBotOrder, useSidebarBotOrder } from "@/lib/sidebar-preferences";
 
 export function NewBotEffortRow() {
   const { state, dispatch } = useStore();
@@ -46,7 +47,7 @@ export function NewBotEffortRow() {
       <SettingsSelect
         value={current}
         disabled={saving}
-        aria-label={t("settings.newBotEffort.aria")}
+        aria-label={t("settings.newBotEffort.title")}
         onChange={(event) => void save(event.target.value)}
       >
         <option value="">{t("settings.newBotEffort.default")}</option>
@@ -129,7 +130,7 @@ export function QuickUpdatesRow() {
     >
       <Switch
         checked={enabled}
-        aria-label={t("settings.quickUpdates.aria")}
+        aria-label={t("settings.quickUpdates.title")}
         disabled={saving}
         onClick={() => void save(!enabled)}
       />
@@ -176,6 +177,19 @@ export function SendKeyRow({ simple = false }: { simple?: boolean }) {
         {SEND_KEYS.map((mode) => (
           <option key={mode} value={mode}>{sendKeyLabel(mode)}</option>
         ))}
+      </SettingsSelect>
+    </SettingRow>
+  );
+}
+
+/** Bots by their newest activity, or in the order the person dragged them into. */
+export function BotOrderRow() {
+  const order = useSidebarBotOrder();
+  return (
+    <SettingRow icon="stack" title={t("settings.botOrder.title")} subtitle={t("settings.botOrder.hint")}>
+      <SettingsSelect value={order} aria-label={t("settings.botOrder.title")} onChange={(event) => setSidebarBotOrder(parseSidebarBotOrder(event.target.value))}>
+        <option value="recent">{t("settings.botOrder.recent")}</option>
+        <option value="custom">{t("settings.botOrder.custom")}</option>
       </SettingsSelect>
     </SettingRow>
   );
