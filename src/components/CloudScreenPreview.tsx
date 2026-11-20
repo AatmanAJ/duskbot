@@ -3,13 +3,15 @@ import { Loader2, Maximize2, Monitor } from "../icons";
 
 import { t } from "@/lib/i18n";
 
-export function CloudScreenPreview({ src, name, error, starting, opening, disabled, refreshing = false, retry = 0, onOpen, onRetry }: {
+export function CloudScreenPreview({ src, name, error, starting, opening, disabled, canOpen = true, refreshing = false, retry = 0, onOpen, onRetry }: {
   src: string | null;
   name: string;
   error: string | null;
   starting: boolean;
   opening: boolean;
   disabled: boolean;
+  /** False while the live desktop can't open: the picture is shown without its Open action. */
+  canOpen?: boolean;
   refreshing?: boolean;
   retry?: number;
   onOpen: () => void;
@@ -21,9 +23,20 @@ export function CloudScreenPreview({ src, name, error, starting, opening, disabl
   const visible = Boolean(src && loaded === src && failed !== src);
   const problem = error ?? (src && failed === src ? t("computer.preview.imageFailed") : null);
 
+  const picture = src && (
+    <img
+      key={retry}
+      src={src}
+      alt={t("computer.screenOf", { name })}
+      onLoad={() => { setLoaded(src); setFailed(null); }}
+      onError={() => setFailed(src)}
+      className={`h-full w-full object-contain transition ${canOpen ? "group-hover:brightness-75" : ""} ${visible ? "" : "invisible"}`}
+    />
+  );
+
   return (
     <div className="relative h-full w-full" aria-busy={!problem && (!visible || opening || refreshing)}>
-      {src && (
+      {src && canOpen && (
         <button
           type="button"
           onClick={onOpen}
@@ -32,14 +45,7 @@ export function CloudScreenPreview({ src, name, error, starting, opening, disabl
           aria-label={t("computer.openLiveDesktopAria", { name })}
           title={t("computer.openLiveDesktop")}
         >
-          <img
-            key={retry}
-            src={src}
-            alt={t("computer.screenOf", { name })}
-            onLoad={() => { setLoaded(src); setFailed(null); }}
-            onError={() => setFailed(src)}
-            className={`h-full w-full object-contain transition group-hover:brightness-75 ${visible ? "" : "invisible"}`}
-          />
+          {picture}
           {visible && (
             <span className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 text-[11px] font-medium text-white">
               {opening ? <Loader2 size={12} className="animate-spin" /> : <Maximize2 size={12} />}
@@ -48,6 +54,7 @@ export function CloudScreenPreview({ src, name, error, starting, opening, disabl
           )}
         </button>
       )}
+      {src && !canOpen && <div className="absolute inset-0 flex h-full w-full items-center justify-center">{picture}</div>}
       {!visible && !problem && (
         <div role="status" className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-[12px] text-ink-secondary">
           <Loader2 size={18} className="animate-spin" />
