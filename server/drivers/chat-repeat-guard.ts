@@ -40,6 +40,7 @@ export class ChatRepeatGuard {
   private readonly seen = new Map<string, Seen>();
   private readonly history: string[] = [];
   private readonly firstCall = new Map<string, string>();
+  private readonly sent = new Map<string, string>();
   private readonly stops: boolean;
   private refusals = 0;
   private stuck: string | null = null;
@@ -102,6 +103,20 @@ export class ChatRepeatGuard {
     const first = this.firstCall.get(key);
     if (!first) this.firstCall.set(key, callId);
     return first;
+  }
+
+  /** The words to send back for a call's result: a pointer to the earlier call when that call's result, as `sent`
+   * recorded it, is still in `messages` word for word, else `text`. */
+  shown(call: { id: string; name: string; args: string }, result: { ok: boolean; text: string; images?: readonly unknown[] }, text: string, messages: ReadonlyArray<{ tool_call_id?: string; content: unknown }>): string {
+    const earlier = this.sameAnswerAs(call.name, call.args, result, call.id);
+    const kept = earlier !== undefined && messages.some((message) => message.tool_call_id === earlier && message.content === this.sent.get(earlier));
+    return kept ? `[dusk bot: the same result, word for word, as your earlier call ${earlier} in this turn; read it there.]` : text;
+  }
+
+  /** The content a call's result went to the model as. */
+  record(callId: string, content: string): string {
+    this.sent.set(callId, content);
+    return content;
   }
 
   private remember(entry: string): void {

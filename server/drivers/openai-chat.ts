@@ -35,8 +35,7 @@ import { refusesRequestSize, RequestTooLargeError, sizeChange, smallerResend } f
 import { requestTooLargeMessage } from "../../shared/request-too-large.ts"; import { failureCodeOf, inPlainWords, noReplyError, nudgeOnce, unfinishedReply } from "./openai-chat-final.ts";
 import { toolSchemaProfileFor } from "../tool-schema-profile.ts";
 import { classifyContinuable, writeTurnHandoff } from "../turn-continuation.ts";
-import { repairToolArguments } from "../tool-argument-repair.ts";
-import { bareAck, ranTool, schedulesWork, stopGateFor, type StopGate } from "../turn-stop-gates.ts";
+import { repairToolArguments } from "../tool-argument-repair.ts"; import { TurnGates } from "../turn-stop-gates.ts";
 import { KEY_REJECTED_REASON, keyRejected, noteKeyAccepted, noteKeyRejected, rejectsKey } from "../key-rejections.ts";
 import type { Agent } from "undici";
 
@@ -600,11 +599,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       let nudges = 0, effectful = 0, toolsRan = 0, toolFailedEver = false, claimNudged = false, lastReply = "";
       const said: string[] = [];
       let unread: string[] = [];
-      let callsAtNudge = -1;
-      const gates = new Set<StopGate>();
-      let scheduled = false, unconfirmed: string | null = null, canSchedule = false, lookupFor = (_tool: string) => false;
-      const repeats = new ChatRepeatGuard({ stops: Boolean(options.localModel) });
-      const toolContent = new Map<string, string>();
+      let callsAtNudge = -1; const gates = new TurnGates(), repeats = new ChatRepeatGuard({ stops: Boolean(options.localModel) });
       let unreadable: false | "call" | "reasoning" = false, askedAgain = false, nudged = false;
       try {
         const parsed = parseToolScope(turn.toolScope);
@@ -612,7 +607,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         const scope = parsed.scope;
         tools = await mountChatTools(options.tools === false ? undefined : turn.integrations, abort.signal, options.computerUse, scope, turn.mcpCallTimeoutMs,
           toolSchemaProfileFor({ url: options.apiUrl, model }), turn.cwd ?? turn.toolResultFolder, safeText);
-        noteToolBudget(turn.botId, tools.budget);
+        noteToolBudget(turn.botId, tools.budget); gates.mount(tools.definitions.map((definition) => definition.function.name), turn.automationRun);
         for (const message of chatToolNotices(tools)) emit({ ...base(turn.threadId, turnId), type: "runtime.notice", message: safeText(message) });
         const questionAllowed = options.tools !== false && allowsTool(scope, { kind: "native", name: ASK_USER_TOOL });
         let optionalQuestionOnly = questionAllowed && tools.definitions.length === 0;
@@ -620,10 +615,6 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         if (questionAllowed && !tools.definitions.some((definition) => definition.function.name === ASK_USER_TOOL)) {
           tools.definitions.push(ASK_USER_TOOL_DEFINITION);
         }
-        const mounted = tools.definitions.map((definition) => definition.function.name);
-        const bridged = mounted.some((name) => /(?:^|_)use_tool$/.test(name));
-        canSchedule = !turn.automationRun && (bridged || mounted.some(schedulesWork));
-        lookupFor = (tool) => bridged || mounted.some((name) => name !== tool && name.split("_")[0] === tool.split("_")[0] && !effectfulCall(name, "{}"));
         for (let round = 0; round < MAX_CHAT_ROUNDS; round++) {
           abort.signal.throwIfAborted();
             // Between rounds, never inside a tool batch.
@@ -782,14 +773,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
               claimNudged ||= !turnEntry.asides.length;
               continue;
             }
-            const gate = options.nudgeAnnouncedAction === false || turnEntry.ending ? null
-              : stopGateFor({ reply, applied: gates, canSchedule, scheduled, effectful, unconfirmed });
-            if (gate) {
-              gates.add(gate.gate);
-              native("in", { stopGate: gate.gate });
-              messages.push(assistantReply(model, completion, reply), { role: "user", content: gate.note });
-              continue;
-            }
+            const gateNote = options.nudgeAnnouncedAction === false || turnEntry.ending ? null : gates.gate(reply); if (gateNote) { messages.push(assistantReply(model, completion, reply), { role: "user", content: gateNote }); continue; }
             ok = true;
             break;
           }
@@ -886,19 +870,9 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
           for await (const results of chatToolBatches(completion.toolCalls, { session, signal: abort.signal,
             full: () => (turn.approvalModeNow?.() ?? turn.approvalMode) === "full", covered: approval.covered, execute: executeCall })) {
             for (const { call, result, text, title, skipRepeatCount } of results) {
-              const repeatNote = skipRepeatCount ? undefined : repeats.noteAfter(call.function.name, call.function.arguments, result);
-              const earlier = skipRepeatCount ? undefined : repeats.sameAnswerAs(call.function.name, call.function.arguments, result, call.id);
-              const shown = earlier && messages.some((message) => message.tool_call_id === earlier && message.content === toolContent.get(earlier))
-                ? `[dusk bot: the same result, word for word, as your earlier call ${earlier} in this turn; read it there.]` : text;
-              toolsRan += 1; if (!result.ok) { toolFailed = true; toolFailedEver = true; failedCalls.push(title); } else if (effectfulCall(call.function.name, call.function.arguments)) {
-                effectful += 1;
-                const ran = ranTool(call.function.name, call.function.arguments);
-                if (schedulesWork(ran)) scheduled = true;
-                else unconfirmed = bareAck(text) && lookupFor(ran) ? title : null;
-              } else unconfirmed = null;
-              const content = JSON.stringify({ ok: result.ok, result: repeatNote ? `${shown}\n\n${repeatNote}` : shown });
-              toolContent.set(call.id, content);
-              messages.push({ role: "tool", tool_call_id: call.id, content });
+              const repeatNote = skipRepeatCount ? undefined : repeats.noteAfter(call.function.name, call.function.arguments, result), shown = skipRepeatCount ? text : repeats.shown({ id: call.id, name: call.function.name, args: call.function.arguments }, result, text, messages);
+              toolsRan += 1; if (!result.ok) { toolFailed = true; toolFailedEver = true; failedCalls.push(title); } else if (effectfulCall(call.function.name, call.function.arguments)) effectful += 1; gates.ran(call.function.name, call.function.arguments, result.ok, text, title);
+              messages.push({ role: "tool", tool_call_id: call.id, content: repeats.record(call.id, JSON.stringify({ ok: result.ok, result: repeatNote ? `${shown}\n\n${repeatNote}` : shown })) });
               screenshotParts.push(...chatToolImages(call.id, result.images));
             }
             abort.signal.throwIfAborted();
@@ -952,7 +926,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
         active.delete(turn.threadId);
         emit({ ...base(turn.threadId, turnId), type: "turn.completed", ok, stopReason, cost: null,
           ...(hasUsage && (options.includeUsageInCompleted || seenCalls.size) ? { usage } : {}),
-          ...(denials.length ? { denials } : {}), ...(gates.size ? { stopGates: [...gates] } : {}),
+          ...(denials.length ? { denials } : {}), ...(gates.applied.size ? { stopGates: [...gates.applied] } : {}),
         });
         resolveDone();
       }

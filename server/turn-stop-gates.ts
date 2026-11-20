@@ -3,6 +3,8 @@
 // a change it made whose tool answered only "ok". The chat loop sends one hidden note and carries on inside the turn;
 // the finish guard starts one carry-on turn for engines that own their loop.
 
+import { effectfulCall } from "./drivers/openai-chat-habits.ts";
+
 export type StopGate = "follow_up" | "checklist" | "unconfirmed_write";
 
 /** Gates one turn may take in all; each kind at most once. */
@@ -91,4 +93,37 @@ export function stopGateFor(turn: TurnSoFar): { gate: StopGate; note: string } |
     return { gate: "unconfirmed_write", note: stopGateNote("unconfirmed_write", { tool: turn.unconfirmed }) };
   }
   return null;
+}
+
+/** What a chat loop knows of its turn for the gates: the tools it mounted and how each call it ran ended. */
+export class TurnGates {
+  readonly applied = new Set<StopGate>();
+  private canSchedule = false;
+  private scheduled = false;
+  private effectful = 0;
+  private unconfirmed: string | null = null;
+  private lookupFor = (_tool: string) => false;
+
+  /** `automationRun`: a routine's own run, whose promises of later work are its routine's. */
+  mount(names: readonly string[], automationRun = false): void {
+    const bridged = names.some((name) => /(?:^|_)use_tool$/.test(name));
+    this.canSchedule = !automationRun && (bridged || names.some(schedulesWork));
+    this.lookupFor = (tool) => bridged || names.some((name) => name !== tool && name.split("_")[0] === tool.split("_")[0] && !effectfulCall(name, "{}"));
+  }
+
+  ran(name: string, rawArgs: string, ok: boolean, text: string, title = name): void {
+    if (!ok) return;
+    if (!effectfulCall(name, rawArgs)) { this.unconfirmed = null; return; }
+    this.effectful += 1;
+    const tool = ranTool(name, rawArgs);
+    if (schedulesWork(tool)) this.scheduled = true;
+    else this.unconfirmed = bareAck(text) && this.lookupFor(tool) ? title : null;
+  }
+
+  /** The note to send back for a reply that would end the turn, or null; a note given counts as applied. */
+  gate(reply: string): string | null {
+    const found = stopGateFor({ reply, applied: this.applied, canSchedule: this.canSchedule, scheduled: this.scheduled, effectful: this.effectful, unconfirmed: this.unconfirmed });
+    if (found) this.applied.add(found.gate);
+    return found?.note ?? null;
+  }
 }

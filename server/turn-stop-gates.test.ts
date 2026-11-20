@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bareAck, MAX_STOP_GATES, openChecklist, promisesFollowUp, ranTool, schedulesWork, stopGateFor, type StopGate, type TurnSoFar } from "./turn-stop-gates.ts";
+import { bareAck, MAX_STOP_GATES, TurnGates, openChecklist, promisesFollowUp, ranTool, schedulesWork, stopGateFor, type StopGate, type TurnSoFar } from "./turn-stop-gates.ts";
 
 const turn = (over: Partial<TurnSoFar>): TurnSoFar => ({ reply: "", applied: new Set(), canSchedule: true, scheduled: false, effectful: 0, unconfirmed: null, ...over });
 
@@ -84,5 +84,28 @@ describe("stopGateFor", () => {
     }
     expect([...applied]).toEqual(["follow_up", "checklist"]);
     expect(stopGateFor(turn({ ...all, applied }))).toBeNull();
+  });
+});
+
+describe("TurnGates", () => {
+  it("tracks the turn's calls: a bare ok after a change needs a look, a lookup after it clears that, a wait makes a promise good", () => {
+    const gates = new TurnGates();
+    gates.mount(["cal_update", "cal_get", "wait_until"]);
+    gates.ran("cal_update", "{}", true, "ok");
+    gates.ran("cal_get", "{}", true, '{"title":"Lunch"}');
+    expect(gates.gate("Moved lunch to 1pm.")).toBeNull();
+    gates.ran("cal_update", "{}", true, "ok");
+    expect(gates.gate("Moved lunch to 1pm.")).toContain("cal_update");
+    expect(gates.gate("Moved lunch to 1pm.")).toBeNull();
+    gates.ran("wait_until", "{}", true, "Wait set");
+    expect(gates.gate("I'll let you know when it moves.")).toBeNull();
+    expect([...gates.applied]).toEqual(["unconfirmed_write"]);
+  });
+
+  it("never asks for a look when no lookup on the same server is mounted, and a routine's run never promises", () => {
+    const gates = new TurnGates();
+    gates.mount(["mail_send", "wait_until"], true);
+    gates.ran("mail_send", "{}", true, "ok");
+    expect(gates.gate("Sent. I'll let you know when they reply.")).toBeNull();
   });
 });

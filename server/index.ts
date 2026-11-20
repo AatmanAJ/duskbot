@@ -4344,8 +4344,7 @@ const handoffTicks = createHandoffTicks(), coordinator: Coordinator = createCoor
         return [followup === "pending" ? "queued follow-up waiting" : "queued follow-up dispatched"];
       }
       return outwardActions(turnRows(node));
-    },
-    progress: node => cutTurnProgress(turnRows(node)),
+    }, progress: node => cutTurnProgress(turnRows(node)),
     shareAnswer: createShareAnswer({ askedFrom: (node) => (node.parentId ? coordinator.node(node.parentId)?.threadId : undefined), audienceOf: teamHost.audienceOf, pinned: (botId, threadId) => store.taskByThread(botId, threadId)?.cwd, botFolder: (botId) => store.bot(botId)?.cwd, privateFolders: TASK_WORKSPACES_DIR }),
     joined: (node) => { store.appendMessage(node.threadId, { role: "bot", kind: "activity", tool: { name: `notice: ${serverLine(personLanguages.forLine(teamConversationPerson(node.threadId) ?? threadPersonKey(node.threadId)), "server.teammates.sameRequest")}`, ok: true } }); },
   },
