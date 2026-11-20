@@ -15,8 +15,11 @@ One tool, `background_job` (`server/drivers/agents-job-tools.ts`):
 | `logs` | The end of a job's output (secrets shown as `[secret]`). |
 | `stop` | Stops a job for good. |
 
-Only the person's own turn in a one-to-one chat may start a job, at Full access; a room, a Cloud guest, another bot's
-hand-off, a routine run or an outside event cannot (`jobTurnRefusal`). A routine run may stop one. The prompt line is
+Only the person's own turn in a one-to-one chat may start a job; a room, a Cloud guest, another bot's hand-off, a
+routine run or an outside event cannot (`jobTurnRefusal`), and none of them may read a job's list or log. At every
+approval level but Ask for approval the job starts at once; at Ask the start shows one card, "Keep running <label> in the background" (Allow, Deny): Allow
+starts it and the chat says so; the bot is told to end its turn and not ask again. The card's request lives in memory,
+so one a restart left open closes at start. A routine run may stop a job. The prompt line is
 `backgroundJobsPrompt()` in `server/jobs/prompt.ts`.
 
 Inside a job:

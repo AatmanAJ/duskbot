@@ -11,7 +11,7 @@ import type { BoxRequest } from "../bot-box/plan.ts";
 import type { WrappedSpawn } from "../bot-box/box.ts";
 import { createJobsHost, JOB_NOTIFY_PATH, JOBS_PATH, type JobTurn } from "./host.ts";
 
-export const PERSON_TURN: JobTurn = { owned: true, room: false, guest: false, depth: 0, handedOff: false, routineRun: false, outsideDriven: false, personStarted: true, fullAccess: true };
+export const PERSON_TURN: JobTurn = { owned: true, room: false, guest: false, depth: 0, handedOff: false, routineRun: false, outsideDriven: false, personStarted: true, asksFirst: false };
 
 export async function jobsFixture(options: { root?: string; dataDir?: string; wrap?: (request: BoxRequest) => WrappedSpawn | null; secrets?: Record<string, string>; cloudHome?: boolean; port?: number } = {}) {
   const root = options.root ?? mkdtempSync(join(tmpdir(), "dusk-jobs-host-"));
@@ -20,6 +20,7 @@ export async function jobsFixture(options: { root?: string; dataDir?: string; wr
   mkdirSync(workspace, { recursive: true });
   const runs: Array<{ webhookId: string; webhookName: string; prompt: string; botId: string; eventSource?: string; resultsThreadId?: string; deliveryId: string }> = [];
   const lines: Array<{ threadId: string; text: string }> = [];
+  const cards: Array<{ threadId: string; id: string; card: Record<string, unknown> }> = [];
   let host: ReturnType<typeof createJobsHost> | null = null;
   const server = createServer((req, res) => {
     const path = new URL(req.url ?? "/", "http://x").pathname;
@@ -34,8 +35,14 @@ export async function jobsFixture(options: { root?: string; dataDir?: string; wr
     secret: (label) => options.secrets?.[label] ?? null,
     store: {
       bot: (id: string) => (id === "bot-a" ? { id, name: "Scout", notifications: false } : null) as never,
-      appendMessage: ((threadId: string, message: { text?: string }) => { lines.push({ threadId, text: message.text ?? "" }); return { id: "m" }; }) as never,
+      appendMessage: ((threadId: string, message: { text?: string; card?: Record<string, unknown> }) => {
+        if (message.card) { const id = `card-${cards.length + 1}`; cards.push({ threadId, id, card: message.card }); return { id }; }
+        lines.push({ threadId, text: message.text ?? "" });
+        return { id: "m" };
+      }) as never,
       patchTask: (() => {}) as never,
+      messagesFor: ((threadId: string) => cards.filter((line) => line.threadId === threadId)) as never,
+      patchMessage: ((_threadId: string, id: string, patch: { card: Record<string, unknown> }) => { const line = cards.find((one) => one.id === id); if (line) line.card = patch.card; return line; }) as never,
     },
     directChat: (_botId, threadId) => threadId === "t-1",
     mainThread: () => "t-main",
@@ -63,5 +70,5 @@ export async function jobsFixture(options: { root?: string; dataDir?: string; wr
     await new Promise<void>((done) => server.close(() => done()));
     if (!options.root) rmSync(root, { recursive: true, force: true });
   };
-  return { root, dataDir, workspace, port, host: host!, runs, lines, call, close };
+  return { root, dataDir, workspace, port, host: host!, runs, lines, cards, call, close };
 }

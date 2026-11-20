@@ -35,7 +35,6 @@ describe("background jobs host", () => {
     const fixture = await jobsFixture();
     fixtures.push(fixture);
     expect(await fixture.call({ action: "start", label: "x", command: "true" }, { ...PERSON_TURN, outsideDriven: true })).toEqual({ status: 403, body: { error: JOB_MESSAGES.notPerson } });
-    expect(await fixture.call({ action: "start", label: "x", command: "true" }, { ...PERSON_TURN, fullAccess: false })).toEqual({ status: 403, body: { error: JOB_MESSAGES.level } });
     expect((await fixture.call({ action: "start", label: "x", command: "true", secrets: { T: "Missing" } })).body.error).toContain("not in the person's Vault");
     expect((await fixture.call({ action: "start", label: "x", command: "true", cwd: "/etc" })).body.error).toContain("cwd must be inside");
     expect((await fixture.call({ action: "start", label: "x", command: "true", env: { DUSK_JOB_TOKEN: "x" } })).body.error).toContain("set by dusk bot");
@@ -48,6 +47,27 @@ describe("background jobs host", () => {
     expect((await fixture.call({ action: "list" }, { ...PERSON_TURN, room: true })).status).toBe(403);
     expect(envNameRefusal("PATH")).toContain("set by dusk bot");
     expect(envNameRefusal("TELEGRAM_BOT_TOKEN")).toBeNull();
+  });
+
+  it("at Ask before every action a start waits on one card: Allow starts it, Deny doesn't", async () => {
+    const fixture = await jobsFixture();
+    fixtures.push(fixture);
+    const asked = await fixture.call({ action: "start", label: "Deal watch", command: "sleep 30" }, { ...PERSON_TURN, asksFirst: true });
+    expect(asked.status).toBe(202);
+    expect(asked.body.text).toContain(JOB_MESSAGES.asked);
+    expect(fixture.host.supervisor.list()).toEqual([]);
+    expect(fixture.cards).toMatchObject([{ threadId: "t-1", card: { title: "Keep running Deal watch in the background", options: ["Allow", "Deny"], tool: "background_job", requestId: asked.body.requestId } }]);
+    expect(fixture.host.ownCards("someone-else", "allow")).toBe(false);
+    expect(fixture.host.ownCards(String(asked.body.requestId), "allow")).toBe(true);
+    expect(fixture.host.supervisor.list()).toMatchObject([{ label: "Deal watch", state: "running" }]);
+    expect(fixture.cards[0]!.card.answered).toBe("allow");
+    expect(fixture.lines.at(-1)!.text).toContain("Started Deal watch");
+    expect(fixture.host.ownCards(String(asked.body.requestId), "allow")).toBe(false);
+
+    const denied = await fixture.call({ action: "start", label: "Other", command: "sleep 30" }, { ...PERSON_TURN, asksFirst: true });
+    expect(fixture.host.ownCards(String(denied.body.requestId), "deny")).toBe(true);
+    expect(fixture.host.supervisor.list().map((job) => job.label)).toEqual(["Deal watch"]);
+    expect(fixture.cards[1]!.card.answered).toBe("deny");
   });
 
   it("reads ps times", () => {

@@ -636,6 +636,7 @@ describe("agents-proxy MCP surface", () => {
       "list_bots",
       "usage_limits",
       "checklist",
+      "react",
       "create_document",
       "update_document",
       "list_documents",
@@ -650,6 +651,8 @@ describe("agents-proxy MCP surface", () => {
       "show_html",
       "publish_page",
       "unpublish_page",
+      "confirm_purchase",
+      "show_products",
       "post_to_room",
       "create_bot",
       "list_team_setup",
@@ -665,6 +668,7 @@ describe("agents-proxy MCP surface", () => {
       "message_person",
       "report_bug",
       "app_settings",
+      "messaging_channels",
       "memory_update",
       "retry_thread",
       "memory_log",
@@ -2408,7 +2412,7 @@ describe("tool bridge", () => {
   /** The main child's switches: a Chief with skills. */
   const CHIEF = { DUSK_SKILL_AUTHORING_ENABLED: "1", DUSK_CHIEF_OF_STAFF: "1", DUSK_COMPUTER_SELECTION: "1" };
   const CHIEF_ONLY = ["list_team_setup", "propose_team_setup", "propose_bot_deletion", "manage_room", "retry_thread"];
-  const HOT = ["set_status", "send_message", "tool_result_read", "list_room_targets", "coordinate_bots", "list_bots", "list_rooms", "select_computer", "attach_file", "publish_page", "post_to_room", "request_credential", "request_sign_in", "fill_login", "message_person", "memory_update"];
+  const HOT = ["set_status", "send_message", "tool_result_read", "list_room_targets", "coordinate_bots", "list_bots", "list_rooms", "select_computer", "attach_file", "publish_page", "confirm_purchase", "post_to_room", "request_credential", "request_sign_in", "fill_login", "message_person", "memory_update"];
   let chief: Rpc;
   let plain: Rpc;
   let off: Rpc;

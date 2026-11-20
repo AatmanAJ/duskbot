@@ -13,10 +13,12 @@ import type { json as sendJson } from "../harness/http.ts";
 import { buildNotification } from "../notify.ts";
 import type { RoutineManager } from "../routines.ts";
 import { PASS } from "../routes/table.ts";
+import { JOB_TOOL } from "../drivers/agents-job-tools.ts";
 import type { BotRecord, Store } from "../store.ts";
 import { createJobLauncher, envNameRefusal, JOB_NOTIFY_PATH, nodeScriptCommand, TELEGRAM_WATCH_SCRIPT, type LaunchDeps } from "./launch.ts";
 import { DEFAULT_ON_NOTIFY, jobBlock, jobRunPrompt, TELEGRAM_NOTE } from "./prompt.ts";
-import { JOB_TOKEN_PREFIX, JobRefusal, JobSupervisor, type JobLimits, type JobNote, type JobRecord, type JobUsage } from "./supervisor.ts";
+import { JOB_TOKEN_PREFIX, JobRefusal, JobSupervisor, type JobLimits, type JobNote, type JobRecord, type JobSpec, type JobUsage } from "./supervisor.ts";
+import { newId } from "../contracts.ts";
 
 export const JOBS_PATH = "/api/internal/jobs";
 export { JOB_NOTIFY_PATH };
@@ -26,13 +28,15 @@ export const JOB_MESSAGES = {
   room: "Background jobs are started from a one-to-one chat with the person, not a room.",
   notPerson: "Only the person can have you start or stop a background job, in their own chat with you; work from a routine, an outside event or another bot cannot.",
   guest: "Background jobs run on the owner's computer, so only the owner can have you start one.",
-  level: "Starting a background job runs your code on its own, which needs Full access. Ask the person to set you to Full access, or to run it themselves.",
+  asked: "A card now asks the person to keep it running in the background; it starts the moment they allow it, and they see that in this chat. Tell them in one sentence what it will watch, then end your turn. Do not start it again.",
   none: "You have no background jobs.",
   noJob: "None of your background jobs has that id. Use action list.",
 } as const;
 
 export interface JobTurn {
-  owned: boolean; room: boolean; guest: boolean; depth: number; handedOff: boolean; routineRun: boolean; outsideDriven: boolean; personStarted: boolean; fullAccess: boolean;
+  owned: boolean; room: boolean; guest: boolean; depth: number; handedOff: boolean; routineRun: boolean; outsideDriven: boolean; personStarted: boolean;
+  /** The level is Ask before every action: a start waits on one card. Every other level starts at once. */
+  asksFirst: boolean;
 }
 
 /** Why this turn may not start (or with `stop`, stop) a job; null when it may. */
@@ -43,7 +47,6 @@ export function jobTurnRefusal(turn: JobTurn, action: "start" | "stop" | "read")
   if (turn.room) return JOB_MESSAGES.room;
   if (action === "read") return null;
   if (turn.depth > 0 || turn.handedOff || turn.outsideDriven || (!turn.personStarted && !(action === "stop" && turn.routineRun))) return JOB_MESSAGES.notPerson;
-  if (action === "start" && !turn.fullAccess) return JOB_MESSAGES.level;
   return null;
 }
 
@@ -68,7 +71,9 @@ const requestSchema = z.discriminatedUnion("action", [startSchema, stopSchema, l
 
 export interface JobsHostDeps extends Omit<LaunchDeps, "secret"> {
   file?: string;
-  store: Pick<Store, "bot" | "appendMessage" | "patchTask">;
+  store: Pick<Store, "bot" | "appendMessage" | "patchTask" | "messagesFor" | "patchMessage">;
+  /** Option cards a previous run left with this tool (message-db's index); none in tests. */
+  openCards?(tool: string): Array<{ threadId: string; messageId: string }>;
   secret(label: string, botId: string): string | null;
   /** A one-to-one chat this bot owns. */
   directChat(botId: string, threadId: string): boolean;
@@ -162,12 +167,13 @@ export function createJobsHost(deps: JobsHostDeps) {
       if (now() < pending.until) pendingTells.push(pending);
     }
   };
+  const tell = (job: JobRecord, text: string) => { if (!post(job, text)) pendingTells.push({ job, text, until: now() + 30 * 60_000 }); };
   const tellTimer = setInterval(flushTells, 5_000);
   tellTimer.unref?.();
 
   const deliver = (job: JobRecord, note: JobNote) => {
     if (note.tell) {
-      if (!post(job, note.text)) pendingTells.push({ job, text: note.text, until: now() + 30 * 60_000 });
+      tell(job, note.text);
       return;
     }
     const delivery = { id: randomUUID(), at: now(), text: note.text };
@@ -189,7 +195,7 @@ export function createJobsHost(deps: JobsHostDeps) {
     deliver,
     crashing: (job) => {
       const text = `${job.label} keeps stopping (${job.lastExit ?? "an error"}). I'll keep restarting it; ask me to look at it and I'll read its log and fix it.`;
-      if (!post(job, text)) pendingTells.push({ job, text, until: now() + 30 * 60_000 });
+      tell(job, text);
     },
     usage: psUsage,
     stamp: processStamp,
@@ -198,7 +204,54 @@ export function createJobsHost(deps: JobsHostDeps) {
     log,
   });
 
-  async function start(ctx: JobRouteContext, body: z.infer<typeof startSchema>): Promise<{ status: number; body: Record<string, unknown> }> {
+  /** At Ask before every action a start waits on one card in the person's chat; its spec stays in memory until they answer. */
+  const asking = new Map<string, { spec: JobSpec; messageId: string }>();
+  function askToRun(spec: JobSpec, what: string): string {
+    const requestId = newId();
+    const message = deps.store.appendMessage(spec.threadId, {
+      role: "bot", kind: "options",
+      card: { title: `Keep running ${spec.label} in the background`, subtitle: what.slice(0, 300), options: ["Allow", "Deny"], requestId, requestType: "permission", tool: JOB_TOOL, fixedOptions: true },
+    });
+    asking.set(requestId, { spec, messageId: message.id });
+    const bot = deps.store.bot(spec.botId);
+    if (bot) deps.notify(buildNotification("approval", bot, spec.threadId, `Keep running ${spec.label} in the background`, { avatarUrl: bot.avatarUrl }));
+    return requestId;
+  }
+
+  const settleCard = (threadId: string, messageId: string, answered: string, dismissed: boolean) => {
+    const card = deps.store.messagesFor(threadId).find((line) => line.id === messageId)?.card;
+    if (card && !card.answered) deps.store.patchMessage(threadId, messageId, { card: { ...card, answered, dismissed } });
+  };
+
+  /** The person's answer to a start card: true when the card was one of these. */
+  function ownCards(requestId: string, behavior: "allow" | "deny" | "answer"): boolean {
+    const pending = asking.get(requestId);
+    if (!pending) return false;
+    asking.delete(requestId);
+    const { spec, messageId } = pending;
+    const allowed = behavior === "allow";
+    settleCard(spec.threadId, messageId, allowed ? "allow" : "deny", false);
+    if (!allowed) return true;
+    const job = { ...spec, id: "pending" } as JobRecord;
+    try {
+      supervisor.start(spec);
+      tell(job, `Started ${spec.label}. It keeps running in the background, and I'll tell you when something comes up.`);
+    } catch (error) {
+      tell(job, `${spec.label} couldn't start. ${error instanceof JobRefusal ? error.message : "Ask me to try again."}`);
+      if (!(error instanceof JobRefusal)) log(`jobs: an allowed start failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return true;
+  }
+
+  /** Asks live in memory only: a card a previous run left open can never be answered, so it closes at start. */
+  function closeStaleCards(): void {
+    for (const { threadId, messageId } of deps.openCards?.(JOB_TOOL) ?? []) {
+      const card = deps.store.messagesFor(threadId).find((line) => line.id === messageId)?.card;
+      if (card?.requestId && !card.answered && !card.dismissed && !asking.has(card.requestId)) settleCard(threadId, messageId, "deny", true);
+    }
+  }
+
+  async function start(ctx: JobRouteContext, body: z.infer<typeof startSchema>, startsNow: boolean): Promise<{ status: number; body: Record<string, unknown> }> {
     const fail = (error: string, status = 400) => ({ status, body: { error } });
     if (!body.command === !body.template) return fail("Give either command (your own program) or template (telegram_watch), not both.");
     const env: Record<string, string> = { ...body.env };
@@ -226,12 +279,14 @@ export function createJobsHost(deps: JobsHostDeps) {
     const folders = await ctx.folders();
     const cwd = body.cwd ? resolve(body.cwd) : folders[0];
     if (!cwd || !folders.some((root) => inside(cwd, root))) return fail(`cwd must be inside a folder you work in: ${folders.join(", ")}.`);
+    const spec: JobSpec = { botId: ctx.botId, threadId: ctx.threadId, label: body.label, command, cwd, env, secrets, onNotify: body.on_notify || DEFAULT_ON_NOTIFY };
+    const telegram = body.template === "telegram_watch" || /telegram/i.test(`${command} ${Object.keys(secrets).join(" ")} ${Object.keys(env).join(" ")}`);
+    if (!startsNow) {
+      const asked = askToRun(spec, body.template ? `Telegram watcher${body.chats?.length ? ` for ${body.chats.join(", ")}` : ""}` : command);
+      return { status: 202, body: { text: [JOB_MESSAGES.asked, ...(telegram ? [TELEGRAM_NOTE] : [])].join(" "), requestId: asked } };
+    }
     try {
-      const { job, replaced } = supervisor.start({
-        botId: ctx.botId, threadId: ctx.threadId, label: body.label, command, cwd, env, secrets,
-        onNotify: body.on_notify || DEFAULT_ON_NOTIFY,
-      });
-      const telegram = body.template === "telegram_watch" || /telegram/i.test(`${command} ${Object.keys(secrets).join(" ")} ${Object.keys(env).join(" ")}`);
+      const { job, replaced } = supervisor.start(spec);
       const where = deps.cloudHome ? " On this cloud its runs report in a chat of their own named after it." : "";
       const text = [
         `${replaced ? "Replaced and started" : "Started"} background job ${job.label} (id ${job.id}). It keeps running after this turn and starts again by itself if it stops with an error or this computer restarts.`,
@@ -258,7 +313,7 @@ export function createJobsHost(deps: JobsHostDeps) {
     const refusal = jobTurnRefusal(ctx.turn(), body.action === "start" ? "start" : body.action === "stop" ? "stop" : "read");
     if (refusal) return void json(res, 403, { error: refusal });
     if (body.action === "start") {
-      const answer = await start(ctx, body);
+      const answer = await start(ctx, body, !ctx.turn().asksFirst);
       return void json(res, answer.status, answer.body);
     }
     if (body.action === "list") {
@@ -296,7 +351,8 @@ export function createJobsHost(deps: JobsHostDeps) {
     supervisor,
     internal,
     notifyRoute,
-    start: () => supervisor.restore(),
+    ownCards,
+    start: () => { closeStaleCards(); supervisor.restore(); },
     /** A Cloud stays awake while a job should be running. */
     busy: () => supervisor.running() > 0,
     removeForBot: (botId: string) => supervisor.removeForBot(botId),
