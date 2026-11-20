@@ -229,7 +229,7 @@ function SettingsList({ onClose, push }: { onClose: () => void; push: (page: Set
           <div className="flex flex-1 rounded-full bg-ink/[0.06] p-1">
             {([{ choice: "system", label: t("mobile.settings.system") }, { choice: THEME_SKINS.light, label: t("mobile.settings.light") }, { choice: THEME_SKINS.dark, label: t("mobile.settings.dark") }] as const).map(({ choice, label }) => (
               <button key={choice} type="button" aria-pressed={skin === choice} onClick={() => { haptic("segment"); applySkinChoice(choice); }} className="mobile-press relative flex min-h-10 flex-1 items-center justify-center rounded-full px-2 text-[15px] font-semibold">
-                {skin === choice && <motion.span aria-hidden layoutId={`${appearanceId}-selection`} className="absolute inset-0 rounded-full bg-app shadow-sm" transition={spring.settle} />}
+                {skin === choice && <motion.span aria-hidden layoutId={`${appearanceId}-selection`} className="absolute inset-0 rounded-full bg-app shadow-sm [:root[data-skin=grok-dark]_&]:bg-ink/[0.16]" transition={spring.settle} />}
                 <span className={skin === choice ? "relative text-ink" : "relative text-ink-secondary"}>{label}</span>
               </button>
             ))}
