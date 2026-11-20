@@ -159,7 +159,7 @@ export function createWarmSummaryHost(deps: WarmSummaryHostDeps) {
     },
     run: async (target, plan, control) => {
       if (plan.way === "native") return native(target, control);
-      return await deps.fold(target, control.signal) ? { ok: true } : { ok: false, reason: "the conversation does not need a summary yet" };
+      return await deps.fold(target, control.signal) ? { ok: true } : { ok: false, reason: "the conversation does not need a summary yet", skip: true };
     },
     log: deps.log,
   });

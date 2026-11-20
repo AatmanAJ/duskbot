@@ -283,14 +283,14 @@ export class LiveV1 {
       return { ok: true };
     }
     if (action.type === "restart") {
-      if (viewer.restarting) throw new BrowserLiveError("The browser is already restarting.", 409);
+      if (viewer.restarting) return { ok: true };
       viewer.restarting = true;
       try {
         await this.#service.restart(viewer.session, viewer.person);
         this.closeForSession(viewer.session);
         return { ok: true };
       } catch {
-        throw new BrowserLiveError("The browser could not restart. Wait for active work to finish and try again.", 409);
+        throw new BrowserLiveError("The browser could not restart. Try again.", 503);
       } finally {
         viewer.restarting = false;
       }

@@ -53,7 +53,7 @@ function mount() {
 const row = (id: string) => container.querySelector<HTMLElement>(`[data-panel-routine="${id}"]`)!;
 const open = (id: string) => flushSync(() => row(id).querySelector<HTMLButtonElement>("button[aria-haspopup=dialog]")!.click());
 /** a routine's details and actions open in a small sheet over the panel, never inside the list */
-const sheet = () => document.querySelector<HTMLElement>('[data-panel-modal="routine"]')!;
+const sheet = () => [...document.querySelectorAll<HTMLElement>('[data-panel-modal="routine"]')].find((el) => !el.closest("[data-leaving]"))!;
 const action = (_id: string, name: string) => sheet().querySelector<HTMLButtonElement>(`[data-routine-action="${name}"]`)!;
 const writes = () => fixture.api.mock.calls.filter(([, init]) => (init as { method?: string } | undefined)?.method).map(([path, init]) => {
   const { method, body } = init as { method: string; body?: string };
@@ -75,7 +75,7 @@ beforeEach(() => {
     if (next.type === "routineDeleted") fixture.state.routines = routines.filter((item) => item.id !== next.routineId);
     if (next.type === "routinePatched" || next.type === "routineDeleted") render();
   });
-  fixture.state = { hydrated: true, bots: [scout], groups: [], routines: [routine], webhooks: [], routineRuns: [], routinesFocus: { nonce: 0 }, config: {} };
+  fixture.state = { hydrated: true, bots: [scout], groups: [], routines: [routine], webhooks: [], routineRuns: [], routinesLoadState: "ready", routinesFocus: { nonce: 0 }, config: {} };
   applyAppTriggerSnapshot({ triggers: [], attempts: [], service: { available: true, plan: "desktop", eventsPerDay: 500, eventsToday: 0 } });
 });
 afterEach(() => { root?.unmount(); root = null; document.body.innerHTML = ""; copied.texts = []; });
@@ -93,6 +93,35 @@ describe("a bot's routines in its panel", () => {
     for (const part of ["When", "Every day at 9 AM", "Next:", "What to do", "Send me a summary of my inbox.", "Works on", "This computer", "Results go to", "Inbox digests", "Uses", "New mail", "Recent runs", "Three new emails, none urgent."]) expect(text).toContain(part);
     flushSync(() => sheet().querySelector<HTMLButtonElement>("[data-routine-run]")!.click());
     expect(fixture.dispatch).toHaveBeenCalled();
+  });
+
+  it("says what a waiting run waits on; Answer opens its chat, and says so when nothing there waits on the person", () => {
+    const waiting = { id: "run-w", routineId: "routine-1", routineName: "Morning summary", target: "bot", botId: "bot-a", runOn: "maus", scheduledFor: now - 60_000, startedAt: now - 60_000,
+      status: "waiting", manual: false, attention: "Which inbox should I read?", threadId: "thread-r", createdAt: now - 60_000 };
+    fixture.state.routineRuns = [waiting];
+    mount();
+    open("routine-1");
+    expect(sheet().textContent).toContain("Which inbox should I read?");
+    expect(sheet().textContent).not.toContain("It's waiting for your answer.");
+    flushSync(() => action("routine-1", "fix").click());
+    expect(fixture.dispatch.mock.calls.map(([next]) => next)).toEqual([
+      { type: "switchTask", botId: "bot-a", threadId: "thread-r" },
+      { type: "notice", notice: { kind: "note", botName: "Scout", text: "Nothing in its chat is waiting for your answer now." } },
+    ]);
+    fixture.dispatch.mockClear();
+    fixture.state.bots = [{ ...scout, tasks: [{ threadId: "thread-r", title: "Inbox digests", activity: "waiting-on-you" }] }];
+    render();
+    flushSync(() => action("routine-1", "fix").click());
+    expect(fixture.dispatch.mock.calls.map(([next]) => next)).toEqual([{ type: "switchTask", botId: "bot-a", threadId: "thread-r" }]);
+  });
+
+  it("is not Needs you while a run waits on nothing it names", () => {
+    fixture.state.routineRuns = [{ id: "run-w", routineId: "routine-1", routineName: "Morning summary", target: "bot", botId: "bot-a", runOn: "maus", scheduledFor: now - 60_000,
+      startedAt: now - 60_000, status: "waiting", manual: false, threadId: "thread-r", createdAt: now - 60_000 }];
+    mount();
+    open("routine-1");
+    expect(action("routine-1", "fix")).toBeNull();
+    expect(sheet().textContent).not.toContain("It's waiting for your answer.");
   });
 
   it("edits name, when and what in its sheet, and keeps a schedule no preset can say", async () => {
@@ -197,5 +226,43 @@ describe("a bot's routines in its panel", () => {
     mount();
     expect(container.textContent).toContain("Ask it in chat to set one up");
     expect(container.querySelector("[data-panel-action=new-routine]")).toBeNull();
+  });
+});
+
+describe("a bot's routines that have not loaded", () => {
+  const panelText = () => container.textContent ?? "";
+  const empty = "Ask it in chat to set one up";
+
+  it("says it has none only once the list has loaded", () => {
+    fixture.state.routines = [];
+    fixture.state.routinesLoadState = "loading";
+    mount();
+    expect(panelText()).not.toContain(empty);
+    expect(panelText()).toContain("Loading routines");
+    fixture.state.routinesLoadState = "ready";
+    render();
+    expect(panelText()).toContain(empty);
+  });
+
+  it("says the list failed, not that there are none, and Try again reloads it", async () => {
+    fixture.state.routines = [];
+    fixture.state.routinesLoadState = "error";
+    fixture.api.mockResolvedValue({ routines: [routine], runs: [] });
+    mount();
+    expect(panelText()).not.toContain(empty);
+    expect(container.querySelector("[role=alert]")!.textContent).toContain("Couldn't load routines");
+    const retry = [...container.querySelectorAll("button")].find((button) => button.textContent === "Try again")!;
+    flushSync(() => retry.click());
+    await vi.waitFor(() => expect(fixture.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "routinesHydrated", routines: [routine], runs: [] })));
+    expect(String(fixture.api.mock.calls[0]![0])).toMatch(/^\/api\/routines\?since=\d+$/);
+  });
+
+  it("still says so above the bot's webhooks when its routines failed", () => {
+    fixture.state.routines = [];
+    fixture.state.webhooks = [webhook];
+    fixture.state.routinesLoadState = "error";
+    mount();
+    expect(row("hook-1")).not.toBeNull();
+    expect(container.querySelector("[role=alert]")!.textContent).toContain("Couldn't load routines");
   });
 });

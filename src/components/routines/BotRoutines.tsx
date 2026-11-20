@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { createPortal } from "react-dom";
 import { Check, Copy } from "../../icons";
 
@@ -11,10 +12,11 @@ import { lowerFirst, upperFirst } from "@/lib/lower-first";
 import { routineRunsOn } from "@/lib/routine-display";
 import { fetchForecast, forecastLine, pauseLine, useLoaded } from "@/lib/spend";
 import { formatCost } from "@/lib/usage-trace";
-import { isRoutineProblemRun, type Routine, type RoutineRunOn } from "@/lib/routines";
+import { isRoutineProblemRun, type Routine, type RoutineRun, type RoutineRunOn } from "@/lib/routines";
 import { hoursLine, liveStrip, probeLine } from "@/lib/routine-display";
 import { saveWebhookCredential, webhookCredentialStore } from "@/lib/webhook-credentials";
-import { useStore, type Bot } from "@/state/store";
+import { api, useStore, type Bot } from "@/state/store";
+import { ROUTINE_RUNS_WINDOW_MS } from "@/state/routine-runs";
 import { useAllAutomationActions } from "../automations/app-actions";
 import { AppEventEditor } from "../automations/AppEventEditor";
 import { WebhookEditor } from "../WebhookTrigger";
@@ -71,13 +73,16 @@ export function BotRoutines({ bot, defaultRunOn, label = true }: { bot: Bot; def
     ? <RoutineForm bot={bot} defaultRunOn={defaultRunOn} onDone={(saved) => { setEditing(null); if (saved) setOpenId(saved.id); }} />
     : null;
 
+  const loadFailed = state.routinesLoadState === "error";
   if (automations.length === 0 && editing !== "new") {
-    return (
-      <PanelEmpty data-panel-empty="routines">{t("botPanel.routines.empty")}</PanelEmpty>
-    );
+    if (loadFailed) return <RoutinesLoadFailed />;
+    return state.routinesLoadState === "ready"
+      ? <PanelEmpty data-panel-empty="routines">{t("botPanel.routines.empty")}</PanelEmpty>
+      : <PanelEmpty data-panel-empty="routines-loading">{t("botPanel.routines.loading")}</PanelEmpty>;
   }
   return (
     <Card label={label ? t("botPanel.ui.botSettingsSimpleRoutines") : undefined} anchor="routines">
+      {loadFailed && <RoutinesLoadFailed />}
       {automations.map((automation) => (
         <AutomationRow
           key={automation.id}
@@ -93,6 +98,24 @@ export function BotRoutines({ bot, defaultRunOn, label = true }: { bot: Bot; def
       ))}
       {add}
     </Card>
+  );
+}
+
+function RoutinesLoadFailed() {
+  const { dispatch } = useStore();
+  const [trying, setTrying] = useState(false);
+  const retry = () => {
+    const since = Date.now() - ROUTINE_RUNS_WINDOW_MS;
+    setTrying(true);
+    void api<{ routines: Routine[]; runs: RoutineRun[] }>(`/api/routines?since=${since}`)
+      .then(({ routines, runs }) => dispatch({ type: "routinesHydrated", routines, runs, since }), () => {})
+      .finally(() => setTrying(false));
+  };
+  return (
+    <div role="alert" data-panel-empty="routines-error" className="flex flex-col items-center gap-2.5 px-4 py-4">
+      <p className="text-pretty text-center text-[13px] leading-[18px] tracking-[0.015em] text-ink/[0.56]">{t("botPanel.routines.loadError")}</p>
+      <button type="button" className={buttonCls} disabled={trying} onClick={retry}>{t("botPanel.routines.retry")}</button>
+    </div>
   );
 }
 
@@ -149,13 +172,13 @@ function AutomationRow({ bot, automation, routine, open, editing, onOpen, onClos
         )}
       </div>
       {!open && actions.error && <p role="alert" className="m-0 px-2 pb-1.5 text-[12px] leading-4 text-danger">{actions.error}</p>}
-      {open && !(editing && automation.kind !== "schedule") && (
-        <GrokDialog data-panel-modal="routine" title={name} onClose={onClose}>
+      <AnimatePresence>{open && !(editing && automation.kind !== "schedule") && (
+        <GrokDialog key="routine" data-panel-modal="routine" title={name} onClose={onClose}>
           {editing && routine
             ? <RoutineForm bot={bot} routine={routine} onDone={() => onEdit(false)} />
             : <AutomationDetail id={detailId} bot={bot} automation={automation} routine={routine} actions={actions} onEdit={() => onEdit(true)} />}
         </GrokDialog>
-      )}
+      )}</AnimatePresence>
       {editing && automation.kind !== "schedule" && <ForeignEditor automation={automation} onClose={() => onEdit(false)} />}
     </div>
   );
@@ -186,7 +209,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   const [capSaved, setCapSaved] = useState(0);
   const forecast = useLoaded(() => (routine ? fetchForecast(routine.id) : Promise.resolve(null)), `${routine?.id}:${routine?.updatedAt}:${capSaved}:${automation.runs[0]?.status}`);
   const status = automationStatus(automation);
-  const runs = automation.runs.filter((run) => run.status !== "queued").slice(0, RECENT_RUNS);
+  const runs = automation.runs.filter((run) => run.status !== "queued" || Boolean(run.attention?.trim())).slice(0, RECENT_RUNS);
   const roomGoal = routine?.target === "room-goal";
   const worksOn = routineRunsOn({ roomGoal, runOn: routine?.runOn ?? automation.appTrigger?.runOn, computer: bot.computer, cloudHome: state.config?.cloudHome === true });
   const resultsTo = roomGoal
@@ -207,6 +230,7 @@ function AutomationDetail({ id, bot, automation, routine, actions, onEdit }: {
   const fix = (kind: AutomationFix) => {
     if (kind === "usage") dispatch({ type: "toggleAppSettings", open: true, section: "usage" });
     else if (kind === "reconnect") dispatch({ type: "togglePlugins", open: true, surface: "apps" });
+    else if (kind === "answer") actions.answerRun(automation);
     else actions.openRun(automation, automation.runs.find((run) => run.status !== "queued"));
   };
 
