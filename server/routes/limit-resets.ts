@@ -22,6 +22,8 @@ export interface LimitResetRouteDeps {
   engineName(engine: string): string;
   /** The automation the button made, for whoever's it is (a Cloud home's authors). */
   created?(routineId: string, auth: RequestAuth): void;
+  /** The conversation continues through that automation, so the turn's own wait for the reset ends. */
+  continuing?(threadId: string): void;
 }
 
 const MAX_TITLE = 60;
@@ -66,7 +68,7 @@ export function createLimitResetRoutes(deps: LimitResetRouteDeps): RouteHandler 
         } } });
         const routineId = submitted.result?.resultId;
         const routine = routineId ? deps.routines.listRoutines().find((candidate) => candidate.id === routineId) : undefined;
-        if (routine) deps.created?.(routine.id, auth);
+        if (routine) { deps.created?.(routine.id, auth); deps.continuing?.(threadId); }
         return json(res, 201, { routine, messageId: submitted.messageId });
       } catch (error) {
         const status = (error as { status?: unknown }).status;

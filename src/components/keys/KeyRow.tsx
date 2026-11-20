@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
 import { Check, CircleAlert, ExternalLink, Eye, EyeOff, Loader2, TriangleAlert } from "../../icons";
 import { api, useStore } from "@/state/store";
 import { installsHere } from "@/state/engine-install";
@@ -507,8 +508,8 @@ export function KeyRow({
         </>}
       >
         {rowMessages && <div className="flex flex-col gap-1.5 ps-[30px] pt-1">{rowMessages}</div>}
-        {dialog && (
-          <FormDialog
+        <AnimatePresence>{dialog && (
+          <FormDialog key="key"
             data-panel-modal="key"
             title={label}
             description={t(row.purposeKey)}
@@ -556,7 +557,7 @@ export function KeyRow({
               {children}
             </div>
           </FormDialog>
-        )}
+        )}</AnimatePresence>
       </KeyPlainRow>
     );
   }

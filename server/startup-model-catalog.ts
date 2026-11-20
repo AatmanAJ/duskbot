@@ -3,14 +3,14 @@ import { dirname, join } from "node:path";
 
 import { writeFileAtomic } from "./atomic.ts";
 import { DATA_DIR } from "./config.ts";
-import type { ModelCatalog } from "./contracts.ts";
+import type { ModelCatalog, ProviderInstance } from "./contracts.ts";
 import { buildStamp } from "./environment.ts";
 import { afterFirstEngineRead } from "./first-engine-read.ts";
 
 const SAFE_INSTANCE_ID = /^[\w.-]+$/;
 /** A list this server's build read this recently is used as it is at start; an older one, or one an earlier build read,
  * is read again in the background. A sleeping Cloud wakes many times an hour, and each read can start the engine's CLI. */
-export const STARTUP_MODEL_CACHE_FRESH_MS = 6 * 60 * 60_000;
+export const STARTUP_MODEL_CACHE_FRESH_MS = 60 * 60_000;
 /** Engines opened since this server started: opening one again means its key or settings just changed. */
 const openedThisRun = new Set<string>();
 
@@ -150,4 +150,20 @@ export function openStartupModelCatalog(input: {
   // A saved list stands in while the refresh waits; with none the engine would offer no model at all until it runs.
   const startAfter = cached ? afterFirstEngineRead() : Promise.resolve();
   return { pending: startAfter.then(() => input.refresh()).then(persist, () => undefined) };
+}
+
+/** Reads again, one engine at a time, each list last read over STARTUP_MODEL_CACHE_FRESH_MS ago: a server that runs for
+ * days (dusk cloud) otherwise keeps the list it started with. */
+export async function refreshStaleModelLists(
+  instances: ReadonlyArray<Pick<ProviderInstance, "instanceId" | "refreshModels">>,
+  now = Date.now(),
+): Promise<void> {
+  for (const instance of instances) {
+    if (!instance.refreshModels) continue;
+    const checkedAt = readStartupModelCacheEntry(instance.instanceId)?.checkedAt ?? null;
+    if (checkedAt !== null && now - checkedAt >= 0 && now - checkedAt < STARTUP_MODEL_CACHE_FRESH_MS) continue;
+    try {
+      await instance.refreshModels();
+    } catch {}
+  }
 }

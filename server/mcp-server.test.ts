@@ -522,6 +522,16 @@ describe("MCP tool execution", () => {
     expect(result.instances[0]).not.toHaveProperty("install");
     expect(result.instances[0].snapshot).toEqual({ state: "available" });
   });
+
+  it("says why an engine is unusable and whether it is signed in, with no local path", async () => {
+    const fetcher = vi.fn(async () => ({ instances: [
+      { instanceId: "claude", snapshot: { state: "unavailable", reason: "`/secret/bin/claude` CLI not found" } },
+      { instanceId: "codex", snapshot: { state: "available", authenticated: false, account: { email: "a@example.test" } } },
+    ] }));
+    const result: any = await handleToolCall("list_available_models", {}, fetcher);
+    expect(result.instances[0].snapshot).toEqual({ state: "unavailable", reason: "`claude` CLI not found" });
+    expect(result.instances[1].snapshot).toEqual({ state: "available", authenticated: false });
+  });
 });
 
 describe("waiting on a conversation's job", () => {

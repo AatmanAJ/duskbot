@@ -8,6 +8,7 @@ import { plainWhen } from "../plain-time.ts";
 import type { ToolCallContext, ToolCallResult } from "./agents-call.ts";
 import { WEEKDAYS } from "./agents-catalog.ts";
 import type { Json } from "./agents-client.ts";
+import { withRepeatHint } from "./repeat-hint.ts";
 
 export const TRIGGER_TOOL_NAMES: ReadonlySet<string> = new Set(["trigger_info", "trigger", "delete_trigger"]);
 
@@ -464,7 +465,7 @@ async function createTrigger(args: Json, forBotId: string | undefined, context: 
     if (!fields.schedule) return { text: "A schedule trigger needs schedule.", isError: true };
     if (fields.eventTypes) return { text: "webhook_event_types applies only to when=webhook.", isError: true };
     const { eventTypes: _unused, ...routine } = fields;
-    return request({ action: "create", kind: "schedule", routine, ...(forBotId ? { forBotId } : {}) }, context, `Created ${label}`);
+    return withRepeatHint(await request({ action: "create", kind: "schedule", routine, ...(forBotId ? { forBotId } : {}) }, context, `Created ${label}`), fields);
   }
   const misplaced = SCHEDULE_ONLY.find((key) => args[key] !== undefined && args[key] !== null);
   if (misplaced) return { text: `A webhook trigger fires when its link is called, so it takes no ${misplaced}.`, isError: true };

@@ -1292,7 +1292,7 @@ Its sheet asks "Before you go: what's the main reason?" with one-tap chips
 (Missing a feature, Too expensive, Hard to set up, Didn't work as I expected,
 Not using it right now, Something else; tap again to let one go), two optional
 boxes ("What did you expect dusk bot to do?", "What could we have done
-better?"), "Rather talk it through? Book 30 minutes with Milind", and **Keep my
+better?"), and **Keep my
 plan** and **Cancel my trial** / **Cancel my plan**. Cancelling never needs an
 answer. The page sends only the survey's words: `cloudAccount.cancelPlan` on
 this computer's page, `cloudPlan.cancel` on the Cloud's page (only from the
@@ -1667,8 +1667,8 @@ tests.
 ## Published image
 
 Every push to `main` and every release tag publishes the home machine image as
-`ghcr.io/milind-soni/duskbot-cloud-home`, tagged `latest` (main only), `sha-<commit>` and the release tag.
+`ghcr.io/duskbotai/duskbot-cloud-home`, tagged `latest` (main only), `sha-<commit>` and the release tag.
 It is the `Dockerfile`'s `cloud-home` target for the same commit, with Grok and the current Claude Code and
 Codex installed. The Docker workflow's summary prints the digest. Set it in the Admin as
-`DUSK_CLOUD_HOME_IMAGE=ghcr.io/milind-soni/duskbot-cloud-home@sha256:…`; changing it rolls the new image
+`DUSK_CLOUD_HOME_IMAGE=ghcr.io/duskbotai/duskbot-cloud-home@sha256:…`; changing it rolls the new image
 out to existing machines one at a time, reverting automatically on a failed health check.

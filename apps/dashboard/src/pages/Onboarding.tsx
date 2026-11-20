@@ -16,16 +16,19 @@ import { Button, cx, Skeleton } from "../ui/kit";
 import { Mascot, type MascotHandle } from "../ui/Mascot";
 import type { SceneHandle, SceneMood } from "../ui/Scene";
 import { points } from "./Billing";
-import { CHECKOUT_SOON } from "./cloud-offer";
+import { CHECKOUT_SOON, trialAction } from "./cloud-offer";
 import { track, trackOnboardingStep } from "../lib/analytics";
 import { per, planSelection, type PaidPlan } from "./plan-sheet";
 import { fromApp } from "../lib/from-app";
+import { APP_LANDING_PATH, type WebsiteHome } from "../../../../shared/account-api";
 
 const STEPS = ["name", "plan", "app"] as const;
 type Step = (typeof STEPS)[number];
 type Home = "cloud" | "free";
 
 const SAVED = "dusk-onboarding-step";
+/** the end of the first steps for someone the desktop app sent: the way back to it */
+const APP_DONE = `${APP_LANDING_PATH}?set=1`;
 const isStep = (v: string | null): v is Step => (STEPS as readonly string[]).includes(v ?? "");
 const LABELS = ["your name", "pick a home", "get the app"];
 
@@ -95,7 +98,7 @@ function PlanStep({ catalog, home, setHome, plan, setPlan }: { catalog: PlanCata
               return (
                 <button key={id} type="button" role="radio" aria-checked={on} data-stretch-key={id} onClick={() => setPlan(id)}
                   className={cx("relative inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-13", on ? "font-medium text-ink" : "font-normal text-ink-2 hover-link")}>
-                  {b.name.toLowerCase()} <span className="num font-normal text-ink-3">{per(b.monthly, "month", catalog).amount}/mo</span>
+                  {b.name.toLowerCase()} <span className="num">{per(b.monthly, "month", catalog).amount}/mo</span>
                 </button>
               );
             })}
@@ -163,9 +166,9 @@ export function Onboarding() {
 
   const go = (to: Step) => navigate(address(to));
   /** done: the account is marked and the dashboard opens like any other visit; the app picks things up by itself */
-  const finish = async (to: string) => {
+  const finish = async (to: string, home: WebsiteHome) => {
     setBusy("done"); setError(null);
-    try { await finishOnboarding(); }
+    try { await finishOnboarding(home); }
     catch { setError("that didn't save. try again."); setBusy(null); return; }
     sessionStorage.removeItem(SAVED);
     leaving.current = true;
@@ -175,16 +178,17 @@ export function Onboarding() {
   useEffect(() => {
     if (!inApp || step !== "app" || ended.current) return;
     ended.current = true;
-    void finish(bought ? "/billing" : "/");
+    void finish(bought ? "/billing" : APP_DONE, bought ? "cloud" : "free");
   }, [inApp, step]);
   const choose = async (where: "cloud" | "free") => {
-    if (where === "free") { if (inApp) await finish("/"); else go("app"); return; }
+    // from the app: it carries on with this computer, so the browser's part ends here
+    if (where === "free") { if (inApp) await finish(APP_DONE, "free"); else go("app"); return; }
     if (!catalog) return;
     track({ name: "plan_chosen", props: { plan, period: interval } });
     if (catalog.checkoutOpen === false) { setError(CHECKOUT_SOON); return; }
     setBusy("cloud"); setError(null);
     // checkout comes back to the plans page, so the first run is over once the payment page opens
-    try { await finishOnboarding(); } catch { /* the plans page still works; the next visit asks again */ }
+    try { await finishOnboarding("cloud"); } catch { /* the plans page still works; the next visit asks again */ }
     sessionStorage.removeItem(SAVED);
     const ok = await checkout({ source: "dash_onboarding", kind: "plan", selection: planSelection(catalog, plan, { interval, work: false }), bundle: null });
     if (!ok) { setError("checkout didn't open. try again."); setBusy(null); return; }
@@ -206,7 +210,7 @@ export function Onboarding() {
     catch (e) { setError((e as Error).message); setBusy(null); return; }
     if (direct && catalog) { await choose("cloud"); return; }
     setBusy(null);
-    if (bought && inApp) { await finish("/billing"); return; }
+    if (bought && inApp) { await finish("/billing", "cloud"); return; }
     go(bought ? "app" : "plan");
   };
 
@@ -242,7 +246,7 @@ export function Onboarding() {
             </div>
           )}
           {error && <p id="onb-error" role="alert" className="mt-2.5 text-14 text-bad">{error}</p>}
-          <Button type="submit" variant="primary" className={cx("mt-3", big)} disabled={busy !== null || (direct && !catalog)}>{busy ? <Busy>{direct ? "opening checkout" : "saving"}</Busy> : direct ? "continue to checkout" : "continue"}</Button>
+          <Button type="submit" variant="primary" className={cx("mt-3", big)} disabled={busy !== null || (direct && !catalog)}>{busy ? <Busy>{direct ? "opening checkout" : "saving"}</Busy> : direct ? trialAction(catalog) ?? "continue to checkout" : "continue"}</Button>
         </form>
       ) : step === "plan" ? (
         <div key="plan" className="step-in">
@@ -250,7 +254,7 @@ export function Onboarding() {
           <p className="mb-6 mt-3 text-16 text-ink-2">on dusk cloud they keep working, even when your computer is off.</p>
           {catalog ? <PlanStep catalog={catalog} home={home} setHome={(h) => { setHome(h); setError(null); }} plan={plan} setPlan={(p) => { setPlan(p); setError(null); }} /> : <div className="flex flex-col gap-2" aria-busy="true"><Skeleton className="h-[300px] !rounded-[22px]" /><Skeleton className="h-[72px] !rounded-[18px]" /></div>}
           {error && <p role="alert" className="mt-3 text-14 text-bad">{error}</p>}
-          <Button variant="primary" className={cx("mt-5", big)} onClick={() => void choose(home)} disabled={busy !== null || !catalog}>{busy === "cloud" ? <Busy>opening checkout</Busy> : busy === "done" ? <Busy>opening</Busy> : home === "free" ? "continue with free" : price ? `continue to checkout, ${price.amount}${price.unit}` : "continue to checkout"}</Button>
+          <Button variant="primary" className={cx("mt-5", big)} onClick={() => void choose(home)} disabled={busy !== null || !catalog}>{busy === "cloud" ? <Busy>opening checkout</Busy> : busy === "done" ? <Busy>opening</Busy> : home === "free" ? "continue with free" : trialAction(catalog) ?? (price ? `continue to checkout, ${price.amount}${price.unit}` : "continue to checkout")}</Button>
           <div className="mt-2 flex items-center justify-between">{back("name")}{home === "cloud" && <span className="text-14 text-ink-3">cancel any time</span>}</div>
         </div>
       ) : inApp ? (
@@ -262,7 +266,7 @@ export function Onboarding() {
           <p className="mt-3 text-16 text-ink-2">sign in with this account and make your first bot.</p>
           <div className="mt-6"><Downloads /></div>
           {error && <p role="alert" className="mt-3 text-14 text-bad">{error}</p>}
-          <Button variant="primary" className={cx("mt-5", big)} onClick={() => void finish(bought ? "/billing" : "/")} disabled={busy !== null}>{busy ? <Busy>opening</Busy> : "go to the dashboard"}</Button>
+          <Button variant="primary" className={cx("mt-5", big)} onClick={() => void finish(bought ? "/billing" : "/", bought ? "cloud" : "free")} disabled={busy !== null}>{busy ? <Busy>opening</Busy> : "go to the dashboard"}</Button>
           {!bought && <div className="mt-1">{back("plan")}</div>}
         </div>
       )}
