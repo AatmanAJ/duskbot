@@ -87,7 +87,7 @@ import { useBrowserPanelReveal } from "@/hooks/use-browser-panel-reveal";
 import { AppEmptyMain } from "@/components/AppEmptyMain";
 import { BootCover } from "@/components/BootCover";
 import { t } from "@/lib/i18n";
-import { loadingLine } from "@/lib/app-loading";
+import { loadingLine, useLoadGaveUp } from "@/lib/app-loading";
 import { useAiSwitchKeeper } from "@/lib/ai-switch";
 import { SESSION_ENDED_REASON, useSessionEnded } from "@/lib/session-ended";
 import { PairPage } from "./pair/PairPage";
@@ -166,7 +166,8 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const cloudAddOpened = useRef(false);
   cloudAddOpened.current ||= Boolean(state.cloudAdd);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const loading = loadingLine({ connected: state.connected, hydrated: state.hydrated === true, developer: import.meta.env.DEV });
+  const unreachable = useLoadGaveUp(state.loadFailed === true);
+  const loading = loadingLine({ connected: state.connected, hydrated: state.hydrated === true, developer: import.meta.env.DEV, unreachable });
   const group = state.groups.find((g) => g.id === state.selectedId);
   const bot = group ? undefined : (state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0]);
   const macFrom = useMacEmpty();
