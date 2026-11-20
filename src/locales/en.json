@@ -1909,6 +1909,8 @@
   "sidebar.newChannel.create": "Create group chat",
   "sidebar.newChannel.createOne": "Create group chat · 1 bot",
   "sidebar.newChannel.createMany": "Create group chat · {count} bots",
+  "sidebar.newChannel.pickTwo": "Pick at least two bots.",
+  "sidebar.newChannel.more": "{count} more",
   "sidebar.bot.pin": "Pin",
   "sidebar.bot.unpin": "Unpin",
   "sidebar.bot.makeChief": "Make chief of staff",
