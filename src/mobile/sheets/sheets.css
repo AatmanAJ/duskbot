@@ -24,9 +24,16 @@
 }
 .dusk-mobile .mobile-panel-sheet [data-panel-avatar] > span:first-child { filter: none; }
 
+/* the bot's name is the sheet's title, a clear step above the 17px rows under it */
+.dusk-mobile .mobile-panel-sheet :is([data-panel-rename], [data-panel-rename-input]) { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; }
+
 /* tabs read as tabs at phone size: 15px at a medium weight, the unselected ones a darker grey */
 .dusk-mobile .mobile-panel-sheet [data-panel-tabs] [role="tab"] { min-height: 40px; font-size: 15px; font-weight: 500; }
 .dusk-mobile .mobile-panel-sheet [data-panel-tabs] [role="tab"][aria-selected="false"] { color: color-mix(in srgb, var(--color-ink) 62%, transparent); }
+
+/* a row's title and hint at the settings rows' sizes, so a routine reads like the model row under it */
+.dusk-mobile .mobile-panel-sheet [data-panel-card-surface] [data-row-title] { font-size: 16px; line-height: 22px; font-weight: 500; }
+.dusk-mobile .mobile-panel-sheet [data-panel-card-surface] [data-row-hint] { font-size: 14px; line-height: 20px; }
 
 /* a card's empty slot (a usage meter with nothing to report) takes no room */
 .dusk-mobile .mobile-panel-sheet [data-panel-card-surface] > :empty { display: none; }
