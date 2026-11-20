@@ -10,13 +10,18 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 
+import type { KeyObject } from "node:crypto";
+
+import { macApprovalReason, isCloudMacMode } from "../../electron/cloud-mac-risk.mjs";
+import type { CloudMacMode, CloudMacToolName } from "../../shared/cloud-mac.ts";
 import { isMacToolName, type MacControlStatus, type MacToolName } from "../../shared/mac-control.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { PASS, type RouteHandler } from "../routes/table.ts";
 import type { PromptPart } from "../system-prompt.ts";
-import { MAC_OFFLINE_TEXT, MAC_PROMPT } from "./instructions.ts";
+import { cloudMacInstructions, cloudMacPrompt, MAC_INSTRUCTIONS, MAC_OFFLINE_TEXT, MAC_PROMPT } from "./instructions.ts";
 import { macJobOutcome, MacJobs, MAC_RESULT_MAX_BYTES, type MacDownload } from "./jobs.ts";
-import { MAC_TOOLS, macErrorResult, macJobTimeoutMs, macToolCallProblem, type MacToolResult } from "./tools.ts";
+import { isMacSealKey, openMacOutcome, readLinkSigningKey, sealMacJob } from "./seal.ts";
+import { CLOUD_MAC_TOOLS, MAC_TOOLS, macErrorResult, macJobTimeoutMs, macToolCallProblem, type MacToolResult } from "./tools.ts";
 
 type Turn = { botId: string; threadId: string; generation: string };
 type MacBot = { id: string; name: string; macControl?: boolean };
@@ -44,6 +49,13 @@ export interface MacControlDeps {
   openFile(turn: Turn, source: string): Promise<MacDownload>;
   /** A file in the bot's cloud computer's home. */
   computerFile(botId: string, source: string): Promise<MacDownload>;
+  /** A dusk cloud (docs/cloud-uses-mac.md): its own catalog, sealed jobs, and the person's answer first when the Mac asks for that. */
+  cloud?: {
+    /** null to go ahead, else what the bot is told instead. */
+    approve(bot: MacBot, turn: Turn, tool: CloudMacToolName, args: Record<string, unknown>, reason: string): Promise<string | null>;
+    /** This cloud's link signing key; read from dashboard-link.json when not given. */
+    linkKey?(): KeyObject | null;
+  };
   now?(): number;
   log?(line: string): void;
 }
@@ -76,7 +88,22 @@ export function createMacControl(deps: MacControlDeps) {
     try { writeFileSync(file, JSON.stringify(seen), { mode: 0o600 }); }
     catch (error) { log(`mac control: could not record the Mac (${error instanceof Error ? error.message : String(error)})`); }
   };
+  const forget = () => {
+    seen = { name: seen.name, lastSeenAt: null };
+    savedAt = -Infinity;
+    try { writeFileSync(file, JSON.stringify(seen), { mode: 0o600 }); }
+    catch (error) { log(`mac control: could not record the Mac (${error instanceof Error ? error.message : String(error)})`); }
+  };
   const jobs = new MacJobs(now);
+  const cloud = deps.cloud;
+  const catalog = cloud ? CLOUD_MAC_TOOLS : MAC_TOOLS;
+  const prompt = () => (cloud ? cloudMacPrompt(policy) : MAC_PROMPT);
+  const linkKey = cloud?.linkKey ?? (() => readLinkSigningKey(deps.dataDir));
+  /** The key each sealed job in the Mac's hands was sealed with, until its outcome comes back or it expires. */
+  const jobKeys = new Map<string, { key: Buffer; expiresAt: number }>();
+  /** What the Mac said in its last poll: when it asks first, its home folder, the folders it is limited to and where a
+   * command runs by default. Only the card follows this: the Mac checks the same rules itself before it runs a job. */
+  let policy = { mode: "auto" as CloudMacMode, home: "", limited: false, folders: [] as string[], cwd: "~" };
   const available = () => deps.offered() && seen.lastSeenAt !== null && now() - seen.lastSeenAt < FORGET_MS;
   const allowed = (bot: MacBot | null | undefined, turn: Turn): string | null => {
     if (!bot) return "This bot no longer exists.";
@@ -86,19 +113,28 @@ export function createMacControl(deps: MacControlDeps) {
   };
 
   function status(): MacControlStatus {
-    return { available: available(), enabled: deps.enabled(), online: jobs.online(), name: seen.name, lastSeenAt: seen.lastSeenAt };
+    return { available: available(), enabled: deps.enabled(), online: jobs.online(), name: seen.name, lastSeenAt: seen.lastSeenAt, ...(cloud ? { cloud: { folders: policy.folders, mode: policy.mode, limited: policy.limited } } : {}) };
   }
 
   async function call(params: unknown, turn: Turn, assertActive: () => void): Promise<MacToolResult> {
     const { name, arguments: raw } = (params && typeof params === "object" ? params : {}) as { name?: unknown; arguments?: unknown };
     const args = (raw ?? {}) as Record<string, unknown>;
-    const problem = macToolCallProblem(name, args);
+    const problem = macToolCallProblem(name, args, catalog);
     if (problem || !isMacToolName(name)) return macErrorResult(problem ?? "Unknown Mac tool.");
     assertActive();
     const bot = deps.bot(turn.botId);
     const refusal = allowed(bot, turn);
     if (refusal || !bot) return macErrorResult(refusal ?? "This bot no longer exists.");
     if (!jobs.online()) return macErrorResult(MAC_OFFLINE_TEXT);
+    const reason = cloud ? macApprovalReason(policy.mode, name, args, policy.home || "/Users/person") : null;
+    const asks = reason !== null;
+    if (cloud && asks) {
+      const answer = await cloud.approve(bot, turn, name as CloudMacToolName, name === "mac_exec" && !args.cwd ? { ...args, cwd: policy.cwd } : args, reason);
+      assertActive();
+      if (answer !== null) return macErrorResult(answer);
+      const after = allowed(deps.bot(turn.botId), turn);
+      if (after) return macErrorResult(after);
+    }
     let download: MacDownload | undefined;
     if (name === "mac_save_from_cloud") {
       try {
@@ -111,6 +147,7 @@ export function createMacControl(deps: MacControlDeps) {
     const outcome = await jobs.request({
       tool: name as MacToolName, args, bot: { id: bot.id, name: bot.name }, timeoutMs: macJobTimeoutMs(name, args),
       active: () => deps.active(turn) && allowed(deps.bot(turn.botId), turn) === null, offlineText: MAC_OFFLINE_TEXT, ...(download ? { file: download } : {}),
+      ...(asks ? { approved: true as const } : {}),
     });
     assertActive();
     if (!outcome.ok) return macErrorResult(outcome.error);
@@ -131,24 +168,62 @@ export function createMacControl(deps: MacControlDeps) {
       }
       return json(res, 405, { error: "method not allowed" });
     }
-    if (!path.startsWith("/api/mac/self/")) return json(res, 404, { error: "not found" });
+    if (path !== "/api/mac/self" && !path.startsWith("/api/mac/self/")) return json(res, 404, { error: "not found" });
     if (!deps.offered() || !macHostSession(auth)) return json(res, 403, { error: NOT_HOST });
     if (!deps.live(auth)) return json(res, 401, { error: "Session expired" });
+    if (path === "/api/mac/self") {
+      if (method !== "DELETE") return json(res, 405, { error: "method not allowed" });
+      forget();
+      policy = { mode: "auto", home: "", limited: false, folders: [], cwd: "~" };
+      return json(res, 200, status());
+    }
     if (path === "/api/mac/self/jobs" && method === "GET") {
+      const macKey = url.searchParams.get("key");
+      if (cloud && !isMacSealKey(macKey)) return json(res, 400, { error: "Send this Mac's sealing key: update dusk bot on the Mac." });
+      const signer = cloud ? linkKey() : null;
+      if (cloud && !signer) return json(res, 503, { error: "This cloud has no link key yet, so it cannot reach your Mac safely." });
       remember(cleanName(url.searchParams.get("name")));
+      if (cloud) {
+        const folders = url.searchParams.getAll("folder").map((folder) => folder.trim().slice(0, 1024)).filter(Boolean).slice(0, 20);
+        const mode = url.searchParams.get("mode");
+        const home = (url.searchParams.get("home") ?? "").trim();
+        policy = { mode: isCloudMacMode(mode) ? mode : "auto", home: /^\/[^\0]{1,1023}$/.test(home) ? home.replace(/\/+$/, "") : "", limited: folders.length > 0, folders,
+          cwd: (url.searchParams.get("cwd") ?? "").trim().slice(0, 1024) || "~" };
+      }
       const gone = new AbortController();
       res.once("close", () => { if (!res.writableEnded) gone.abort(); });
       const job = await jobs.poll(gone.signal);
-      if (!deps.live(auth)) return json(res, 401, { error: "Session expired" });
-      return json(res, 200, { job, enabled: deps.enabled() });
+      if (!deps.live(auth)) {
+        if (job) jobs.complete(job.id, { ok: false, error: "The Mac's session expired before it took this. It did not run." });
+        return json(res, 401, { error: "Session expired" });
+      }
+      if (!cloud || !job) return json(res, 200, { job, ...(cloud ? { sealed: null } : {}), enabled: deps.enabled() });
+      for (const [id, entry] of jobKeys) if (entry.expiresAt < now()) jobKeys.delete(id);
+      try {
+        const { envelope, key } = sealMacJob(job, macKey!, signer!);
+        jobKeys.set(job.id, { key, expiresAt: job.expiresAt });
+        return json(res, 200, { job: null, sealed: envelope, enabled: deps.enabled() });
+      } catch (error) {
+        jobs.complete(job.id, { ok: false, error: "This cloud could not seal the job for the Mac. It did not run." });
+        log(`mac control: could not seal a job (${error instanceof Error ? error.message : String(error)})`);
+        return json(res, 200, { job: null, sealed: null, enabled: deps.enabled() });
+      }
     }
     const one = /^\/api\/mac\/self\/jobs\/([\w-]{1,64})\/(result|file)$/.exec(path);
     if (one?.[2] === "result" && method === "POST") {
-      const outcome = macJobOutcome.safeParse(await readBody(req, MAC_RESULT_MAX_BYTES + 65_536));
+      let body = await readBody(req, MAC_RESULT_MAX_BYTES * 2 + 65_536) as unknown;
+      if (cloud) {
+        const sealed = jobKeys.get(one[1]!);
+        if (!sealed) return json(res, 409, { error: "This job expired; it will not be replayed." });
+        try { body = openMacOutcome((body as { sealed?: unknown } | null)?.sealed, sealed.key, one[1]!); }
+        catch { return json(res, 400, { error: "The outcome did not open with this job's key." }); }
+        jobKeys.delete(one[1]!);
+      }
+      const outcome = macJobOutcome.safeParse(body);
       if (!outcome.success) return json(res, 400, { error: "Send { ok: true, result: { text } } or { ok: false, error }." });
       return jobs.complete(one[1]!, outcome.data) ? json(res, 200, { ok: true }) : json(res, 409, { error: "This job expired; it will not be replayed." });
     }
-    if (one?.[2] === "file" && method === "GET") {
+    if (one?.[2] === "file" && method === "GET" && !cloud) {
       const download = jobs.file(one[1]!);
       if (!download) return json(res, 404, { error: "no such file" });
       res.writeHead(200, { "content-type": "application/octet-stream", "content-length": String(download.bytes) });
@@ -163,10 +238,11 @@ export function createMacControl(deps: MacControlDeps) {
     routes,
     /** The device server mounts for this turn because of the Mac (it may also mount for the phone). */
     mounts: (bot: MacBot, turn: Turn) => allowed(bot, turn) === null,
-    promptPart: (bot: MacBot, turn: Turn): PromptPart => ({ id: "mac", label: "Your Mac", text: allowed(bot, turn) === null ? MAC_PROMPT : "" }),
+    promptPart: (bot: MacBot, turn: Turn): PromptPart => ({ id: "mac", label: "Your Mac", text: allowed(bot, turn) === null ? prompt() : "" }),
     /** The bot settings preview: the Mac as the owner's own turn would see it. */
-    previewPart: (bot: MacBot): PromptPart => ({ id: "mac", label: "Your Mac", text: available() && deps.enabled() && bot.macControl !== false ? MAC_PROMPT : "" }),
-    tools: (turn: Turn) => (allowed(deps.bot(turn.botId), turn) === null ? [...MAC_TOOLS] : []),
+    previewPart: (bot: MacBot): PromptPart => ({ id: "mac", label: "Your Mac", text: available() && deps.enabled() && bot.macControl !== false ? prompt() : "" }),
+    tools: (turn: Turn) => (allowed(deps.bot(turn.botId), turn) === null ? [...catalog] : []),
+    instructions: () => (cloud ? cloudMacInstructions(policy) : MAC_INSTRUCTIONS),
     handles: (name: unknown): name is MacToolName => isMacToolName(name),
     call,
     close: () => jobs.close(),

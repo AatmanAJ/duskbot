@@ -4,12 +4,14 @@ import { api, useStore, type Action } from "@/state/store";
 import type { LocaleKey } from "@/locales";
 import { t } from "@/lib/i18n";
 import { connectorDescription } from "@/lib/app-catalog";
+import { closeExternalPage } from "@/lib/app-links";
 import { listLogins } from "@/lib/logins";
 import { connectorStatusMemory, preloadConnectedApps } from "@/lib/connected-apps";
 import { useMcpServers } from "@/lib/mcp-servers";
 import { HOSTED_MCP_APPS, type HostedConnections, type HostedMcpAppId } from "@/lib/hosted-mcp-apps";
 import { managedConnectorUnavailableReason } from "../../../shared/connector-availability";
 import { hasActiveConnection } from "@/lib/connector-status";
+import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import type { SkillsLibrarySkillWire } from "../../../shared/wire";
 import { Icon } from "../Icon";
 import { DuskMark } from "../mascot-view";
@@ -226,8 +228,8 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   useEffect(() => {
     let alive = true;
     listLogins().then((answer) => { if (alive) setOnePassword(answer.onePassword ?? { connected: false }); }).catch(() => { if (alive) setOnePassword(null); });
-    fetch("/api/skills-library")
-      .then(async (response) => (response.ok ? ((await response.json()) as { skills?: SkillsLibrarySkillWire[] }).skills ?? [] : []))
+    (skillsLibraryEnabled(state.config) ? fetch("/api/skills-library") : Promise.resolve(null))
+      .then(async (response) => (response?.ok ? ((await response.json()) as { skills?: SkillsLibrarySkillWire[] }).skills ?? [] : []))
       .then((list) => { if (alive) setSkills(list); })
       .catch(() => { if (alive) setSkills([]); });
     return () => { alive = false; };
@@ -316,7 +318,9 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
       if (now === "connected" && known.current.get(entry.id) === "disconnected") added ??= entry;
       if (now !== "unknown") known.current.set(entry.id, now);
     }
-    if (added) setToast({ kind: "success", text: t("connectApps.added", { name: added.label }) });
+    if (!added) return;
+    closeExternalPage();
+    setToast({ kind: "success", text: t("connectApps.added", { name: added.label }) });
   }, [entries, connection, connectors.phase]);
   useEffect(() => {
     if (!connectors.error) return;
@@ -568,6 +572,14 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
   const nativeSetters = useMemo(() => Object.fromEntries(NATIVE_IDS.map((id) => [id, setNative(id)])) as Record<NativeId, (value: boolean | null) => void>, [setNative]);
 
   const detailEntry = detailId ? byId.get(detailId) : undefined;
+  // a page asked for by an id this catalog does not have (a link from the website) searches for it instead
+  const missingId = page.kind === "detail" && ready && !detailEntry && page.id !== MCP_PAGE && page.id !== CUSTOM_MCP ? page.id : null;
+  useEffect(() => {
+    if (!missingId) return;
+    setQuery(missingId);
+    go({ kind: "home" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingId]);
   // our own card leads only when it is one click; otherwise Composio's sign-in does, and ours waits under the other ways
   // gmail's app password card stays on its page even when Composio's listing is the row
   const hasOwnCard = (entry: AppEntry) => OWN_KINDS.has(entry.kind) || entry.id === GMAIL;
@@ -756,15 +768,22 @@ export function ConnectAppsWindow({ page: requested, nonce, onClose, onTemplates
                   <div className="ca-home">
                     <div className="ca-head">
                       <h2 className="ca-title" id="ca-title">{t("connectApps.title")}</h2>
-                      <button type="button" className="ca-installed" aria-label={t("connectApps.yours")} onClick={() => go({ kind: "yours" })}>
-                        {connected.length > 0 && (
-                          <span className="ca-stack" aria-hidden="true">
-                            {connected.slice(0, 4).map((entry) => <span key={entry.id}><AppTile entry={entry} size={18} /></span>)}
-                          </span>
-                        )}
-                        <span>{t("apps.connectedCount", { count: connected.length })}</span>
-                        <span data-chevron="" aria-hidden="true" className="inline-flex"><Icon name="chevron-right" size={12} /></span>
-                      </button>
+                      {connectors.stale && connected.length === 0 ? (
+                        <div className="ca-unchecked" role="alert">
+                          <span>{t("connectApps.unchecked")}</span>
+                          <button type="button" className="ca-pill" onClick={connectors.reload}>{t("connectApps.retry")}</button>
+                        </div>
+                      ) : (
+                        <button type="button" className="ca-installed" aria-label={t("connectApps.yours")} onClick={() => go({ kind: "yours" })}>
+                          {connected.length > 0 && (
+                            <span className="ca-stack" aria-hidden="true">
+                              {connected.slice(0, 4).map((entry) => <span key={entry.id}><AppTile entry={entry} size={18} /></span>)}
+                            </span>
+                          )}
+                          <span>{t("apps.connectedCount", { count: connected.length })}</span>
+                          <span data-chevron="" aria-hidden="true" className="inline-flex"><Icon name="chevron-right" size={12} /></span>
+                        </button>
+                      )}
                     </div>
                     <div className="ca-controls">
                       <div className="ca-search-row">

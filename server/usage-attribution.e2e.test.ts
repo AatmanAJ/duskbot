@@ -121,6 +121,8 @@ posixOnly("usage attribution e2e", () => {
       if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}. stderr:\n${stderr}`);
       await new Promise((r) => setTimeout(r, 150));
     }
+    // a person's message sent while a turn works is steered or queued here, not answered on the side with a call of its own
+    expect((await api("PATCH", "/api/config", { features: { quickUpdates: false } })).status).toBe(200);
   }, 30_000);
 
   afterAll(async () => {

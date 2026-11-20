@@ -67,6 +67,7 @@
 //   FAKE_ACP_IGNORE_CANCEL=1  session/cancel is ignored: a hanging prompt keeps running
 //   FAKE_ACP_TOOL_LIMIT  session/prompt lists the session's MCP tools and refuses, as OpenCode Zen does, past this many;
 //     under it the reply is "tools: <server>=<count>,…"
+//   FAKE_ACP_ENGINE_TOOLS  with FAKE_ACP_TOOL_LIMIT, the engine's own tools counted against the limit (default 0)
 //   FAKE_ACP_CANCEL_STOP_REASON  the stopReason a cancelled hanging prompt answers (default cancelled; OpenCode answers end_turn)
 //   FAKE_ACP_HANG_ONCE_FILE  with FAKE_ACP_HANG_ON, only the first matching prompt hangs; it writes this file
 //   FAKE_ACP_HOLD_FILE  while this file exists, a session/prompt waits before it is answered
@@ -939,7 +940,7 @@ function handle(msg: any) {
         const limit = Number(process.env.FAKE_ACP_TOOL_LIMIT);
         const handshake = process.env.FAKE_ACP_MCP_HANDSHAKE ? JSON.parse(process.env.FAKE_ACP_MCP_HANDSHAKE) : GROK_MCP_HANDSHAKE;
         void Promise.all(sessionMcp.map((entry) => listMcpTools(entry, handshake).then((tools) => `${entry.name}=${tools.length}`))).then((counts) => {
-          const total = counts.reduce((sum, entry) => sum + Number(entry.split("=")[1]), 0);
+          const total = counts.reduce((sum, entry) => sum + Number(entry.split("=")[1]), Number(process.env.FAKE_ACP_ENGINE_TOOLS ?? 0));
           if (total > limit) {
             recordMethod("session/prompt.tool-limit");
             out({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: `Internal error: Invalid value for 'tools': maximum number of items is ${limit}.`,

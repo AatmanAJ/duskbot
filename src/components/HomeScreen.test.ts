@@ -58,3 +58,8 @@ it("a Cloud that isn't running says what it is in plain words with its one actio
     for (const words of Object.values(homeScreenText({ screen, name: "Client B", deleteAt: day }, now))) expect(String(words)).not.toMatch(/—|\bVM\b|engine|ctx|server/i);
   }
 });
+
+it("a deleted Cloud is said plainly, with nothing to look again for", () => {
+  expect(homeScreenText({ screen: "gone", name: "Acme" })).toMatchObject({ title: "Acme was deleted.", action: null, busy: false });
+  expect(homeScreenText({ screen: "gone" }).title).toBe("This cloud was deleted.");
+});
