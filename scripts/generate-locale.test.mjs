@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   batches,
+  registerExamples,
   checkCatalogs,
   main,
   recordSourceHashes,
@@ -151,6 +152,13 @@ describe("locale draft validation", () => {
   it("asks for a large catalog in batches small enough for one model answer", () => {
     expect(batches(["a", "b", "c", "d", "e"], 2)).toEqual([["a", "b"], ["c", "d"], ["e"]]);
     expect(batches([], 2)).toEqual([]);
+  });
+
+  it("shows the model how the pack already speaks to the person, so a German pack on du stays on du", () => {
+    const source = { a: "Open your inbox", b: "Saved", c: "You can undo this" };
+    const existing = { a: "Öffne deinen Posteingang", b: "Gespeichert", c: "Du kannst das rückgängig machen" };
+    expect(registerExamples(source, existing)).toEqual({ "Open your inbox": "Öffne deinen Posteingang", "You can undo this": "Du kannst das rückgängig machen" });
+    expect(registerExamples(source, {})).toEqual({});
   });
 
   it("never generates or accepts the English source catalog", () => {
