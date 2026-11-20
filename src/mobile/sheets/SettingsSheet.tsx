@@ -323,7 +323,7 @@ function LanguagePage() {
   );
 }
 
-const DOT: Record<PlaceStatus, string> = { online: "bg-success", asleep: "bg-ink/[0.22]", offline: "bg-ink/[0.22]" };
+const DOT: Record<PlaceStatus, string> = { online: "bg-success", asleep: "bg-ink/[0.32]", offline: "border-[1.5px] border-ink/[0.4] bg-transparent" };
 const ROW = "flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left";
 
 /** Every place on the account, each a status dot and its name. Until the list is in, skeleton rows of the same height
@@ -354,8 +354,7 @@ function PlaceRow({ place, working, disabled, onChoose }: { place: Place; workin
   const content = <>
     <span aria-hidden data-place-status={place.status} className={`size-2.5 shrink-0 rounded-full transition-colors duration-200 ${DOT[place.status]}`} />
     <span className={`min-w-0 flex-1 truncate text-[16px] text-ink ${place.active ? "font-semibold" : "font-medium"}`}>{place.name}</span>
-    <span className="sr-only">{t(STATUS_LABEL[place.status])}</span>
-    {working && <WorkingDots size={3} />}
+    {working ? <WorkingDots size={3} /> : <span className="shrink-0 text-[15px] text-ink-secondary">{t(STATUS_LABEL[place.status])}</span>}
   </>;
   if (place.active) return <div data-testid="mobile-place" aria-current="true" className={ROW}>{content}</div>;
   return <button type="button" data-testid="mobile-place" disabled={disabled} aria-busy={working || undefined} onClick={onChoose} className={`mobile-row ${ROW} disabled:opacity-100`}>{content}</button>;
