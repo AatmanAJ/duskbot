@@ -148,7 +148,7 @@ it("a Keychain it cannot read at launch (a locked phone) never shows pairing: it
   expect(host.textContent).not.toBe("home");
   expect(prefs.get("dusk.mobile.active.v1")).toBe("mac");
   locked = false;
-  await act(async () => { for (const listener of [...resumed]) listener(); });
+  await act(async () => { for (const listener of resumed) listener(); });
   await settle(); await settle();
   expect(host.textContent).toBe("home");
 });
