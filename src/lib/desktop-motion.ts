@@ -13,8 +13,9 @@ type Swap = { ms: number; y: number; blur: number; from: number };
 
 export type DesktopMotion = {
   pick: DesktopMotionPick;
-  /** the ⌘K palette: null opens at once; `glideMs` 0 moves the highlight at once; `rowsMs` 0 shows a filtered-in row at once */
-  palette: { enter: Enter | null; glideMs: number; rowsMs: number; staggerMs: number };
+  /** the ⌘K palette: `enter` and `leave` null open and close it at once; `glideMs` 0 moves the highlight at once; `rowsMs`
+   * 0 swaps filtered rows at once, otherwise rows fade in and out over it */
+  palette: { enter: Enter | null; leave: Leave | null; glideMs: number; rowsMs: number; staggerMs: number };
   /** menus, listboxes and popovers, growing out of their trigger */
   menu: { enter: Enter; leave: Leave };
   /** centred dialogs and Settings; `scrimMs` before the global speed */
@@ -27,8 +28,8 @@ export type DesktopMotion = {
   sidebar: { ms: number; curve: Curve | "soft" };
   /** another chat opened: the transcript comes in this way; null shows it at once */
   chatSwitch: Swap | null;
-  /** a passing toast rising in; null puts it there at once */
-  toast: { ms: number; curve: Curve | "ease"; y: string; scale: number } | null;
+  /** a passing toast rising in and leaving the way it came, faster; null puts it there and takes it away at once */
+  toast: { ms: number; curve: Curve | "ease"; y: string; scale: number; leaveMs: number; leaveY: string; leaveScale: number } | null;
   /** a press: down to `scale`, back over `upMs` on `up` */
   press: { scale: number; soft: number; downMs: number; upMs: number; up: Curve | "release" };
 };
@@ -40,7 +41,7 @@ const EMIL_OUT = [0.23, 1, 0.32, 1] as const;
 export const DESKTOP_MOTIONS: Record<DesktopMotionPick, DesktopMotion> = {
   a: {
     pick: "a",
-    palette: { enter: null, glideMs: 0, rowsMs: 0, staggerMs: 0 },
+    palette: { enter: null, leave: null, glideMs: 0, rowsMs: 0, staggerMs: 0 },
     menu: { enter: { ms: 120, curve: OUT, scale: 0.97, y: -4, blur: 0 }, leave: { ms: 80, scale: 0.98, y: -2 } },
     dialog: { enter: { ms: 200, curve: OUT, scale: 0.96, y: 0, blur: 0 }, leave: { ms: 120, scale: 0.98, y: 0 }, scrimMs: 160 },
     swap: { ms: 220, y: 6, blur: 0, from: 0 },
@@ -52,32 +53,32 @@ export const DESKTOP_MOTIONS: Record<DesktopMotionPick, DesktopMotion> = {
   },
   b: {
     pick: "b",
-    palette: { enter: { ms: 100, curve: OUT, scale: 0.98, y: 0, blur: 2 }, glideMs: 0, rowsMs: 0, staggerMs: 0 },
+    palette: { enter: { ms: 100, curve: OUT, scale: 0.98, y: 0, blur: 2 }, leave: { ms: 90, scale: 0.98, y: 0 }, glideMs: 0, rowsMs: 0, staggerMs: 0 },
     menu: { enter: { ms: 110, curve: OUT, scale: 0.96, y: 0, blur: 0 }, leave: { ms: 70, scale: 0.97, y: 0 } },
     dialog: { enter: { ms: 200, curve: OUT, scale: 0.97, y: 0, blur: 3 }, leave: { ms: 100, scale: 0.985, y: 0 }, scrimMs: 160 },
     swap: { ms: 120, y: 0, blur: 2, from: 0 },
     panel: { ms: 340, curve: DRAWER },
     sidebar: { ms: 300, curve: DRAWER },
     chatSwitch: { ms: 100, y: 0, blur: 2, from: 0.5 },
-    toast: { ms: 286, curve: "ease", y: "100%", scale: 1 },
+    toast: { ms: 286, curve: "ease", y: "100%", scale: 1, leaveMs: 200, leaveY: "100%", leaveScale: 1 },
     press: { scale: 0.97, soft: 0.99, downMs: 100, upMs: 160, up: EMIL_OUT },
   },
   c: {
     pick: "c",
-    palette: { enter: { ms: 150, curve: { stiffness: 520, damping: 34 }, scale: 0.96, y: -8, blur: 4 }, glideMs: 110, rowsMs: 90, staggerMs: 16 },
+    palette: { enter: { ms: 150, curve: { stiffness: 520, damping: 34 }, scale: 0.96, y: -8, blur: 4 }, leave: { ms: 100, scale: 0.97, y: -4 }, glideMs: 110, rowsMs: 90, staggerMs: 16 },
     menu: { enter: { ms: 180, curve: { stiffness: 560, damping: 34 }, scale: 0.94, y: -6, blur: 3 }, leave: { ms: 90, scale: 0.96, y: -3 } },
     dialog: { enter: { ms: 260, curve: { stiffness: 380, damping: 28 }, scale: 0.94, y: 8, blur: 6 }, leave: { ms: 105, scale: 0.97, y: 4 }, scrimMs: 200 },
     swap: { ms: 200, y: 8, blur: 4, from: 0 },
     panel: { ms: 476, curve: "soft" },
     sidebar: { ms: 420, curve: "soft" },
     chatSwitch: { ms: 180, y: 6, blur: 4, from: 0 },
-    toast: { ms: 320, curve: { stiffness: 420, damping: 26 }, y: "16px", scale: 0.96 },
+    toast: { ms: 320, curve: { stiffness: 420, damping: 26 }, y: "16px", scale: 0.96, leaveMs: 160, leaveY: "8px", leaveScale: 0.97 },
     press: { scale: 0.95, soft: 0.98, downMs: 120, upMs: 380, up: { stiffness: 600, damping: 24 } },
   },
 };
 
 /** The desktop's motion. At A every surface keeps the motion it ships with. */
-export const DESKTOP_MOTION: DesktopMotion = DESKTOP_MOTIONS.a;
+export const DESKTOP_MOTION: DesktopMotion = DESKTOP_MOTIONS.b;
 
 const SOFT = "var(--dusk-spring-soft)";
 

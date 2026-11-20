@@ -2,6 +2,7 @@ import { RelayGoneError, type RelayChannel } from "./relay";
 import { noteRefusedRequest } from "@/lib/session-ended";
 import { asleepAnswer, BACKGROUND_HEADERS, forgetCloudGone, goneAnswer, markCloudAsleep, markCloudGone } from "@/lib/cloud-power";
 import { setUploadRoute } from "@/lib/upload-request";
+import { forgetLocalVoiceCall } from "@/lib/voice-call/availability";
 import { limitSendAttempts } from "@/state/optimistic-send";
 import { forgetWorkspaceAnswers, noteWorkspaceAnswer, placeAnswered } from "../connection/reachability";
 
@@ -385,6 +386,7 @@ export function installTransport(transport: PhoneTransport, onGone?: () => void)
   window.fetch = patchedFetch;
   window.EventSource = PatchedEventSource;
   window.WebSocket = PatchedWebSocket;
+  forgetLocalVoiceCall();
   // the relay sends a body from the page in chunks, so it can count them; bearer requests go out through native http
   const stopUploads = transport.kind === "relay" ? setUploadRoute((input, init, onProgress) => {
     const url = rewriteApiUrl(input, window.location.origin, origin);

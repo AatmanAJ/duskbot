@@ -19,6 +19,7 @@ import { openBotSettingsPage } from "./bot-panel/panel-link";
 import { switchPlaceCommand } from "./SidebarPlaceButton";
 import { friendlyError } from "@/lib/plain-error";
 import { desktopMotion } from "@/lib/desktop-motion";
+import { usePaletteExits } from "./palette-exits";
 import { pacedMs } from "@/lib/motion-speed";
 
 /** A row's 49px and the 2px gap under it. */
@@ -82,6 +83,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   const selectedRef = useRef<HTMLButtonElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const listId = useId();
+  const exits = usePaletteExits(open);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -153,7 +155,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   }, [cursor, messageHits]);
 
   if (!open) return null;
-  const glideMs = desktopMotion().palette.glideMs;
+  const { glideMs, rowsMs } = desktopMotion().palette;
 
   const settings = (section: AppSettingsSection): Action => ({ type: "toggleAppSettings", open: true, section });
   // Settings stays its own lazy chunk: its pane map is read once the command is picked.
@@ -260,7 +262,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
         "m-0 flex h-[49px] w-full shrink-0 cursor-pointer appearance-none items-center gap-2.5 rounded-[10px] border-0 py-1.5 pl-2 pr-2.5 text-left text-[13px] leading-[18px] tracking-[0.195px] text-ink outline-none",
         index === selected && !glideMs ? "bg-ink/8" : "bg-transparent",
       )}
-      data-palette-row=""
+      data-palette-row={key}
     >
       <span className="flex size-6 shrink-0 items-center justify-center">{leading}</span>
       <span className="flex min-w-0 flex-1 flex-col justify-center gap-px tracking-[-0.08px]">
@@ -276,7 +278,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   );
 
   return (
-    <div className="fixed inset-0 z-50" onKeyDown={onKeyDown}>
+    <div ref={exits.wrap} className="fixed inset-0 z-50" onKeyDown={onKeyDown}>
       <div aria-hidden className="palette-scrim absolute inset-0 bg-black/50" onMouseDown={() => setOpen(false)} />
       {/* opened often, so it opens and closes raw, as grok's does */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -319,7 +321,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
             aria-label="Results"
             className="min-h-0 flex-1 overflow-y-auto [mask-image:linear-gradient(transparent_0px,black_0px,black_calc(100%-24px),transparent_100%)]"
           >
-            <div className={cn("flex flex-col gap-0.5 p-2", glideMs > 0 && "relative isolate")}>
+            <div ref={exits.list} className={cn("flex flex-col gap-0.5 p-2", (glideMs > 0 || rowsMs > 0) && "relative isolate")}>
               {entries.map((entry, index) => {
                 if (entry.kind === "bot") {
                   const { bot } = entry;

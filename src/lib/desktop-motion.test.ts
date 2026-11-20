@@ -11,8 +11,8 @@ function fakeRoot(dataset: Record<string, string> = {}) {
 }
 
 describe("desktop motion", () => {
-  it("ships A until the owner picks", () => {
-    expect(DESKTOP_MOTION.pick).toBe("a");
+  it("ships the owner's pick, B", () => {
+    expect(DESKTOP_MOTION.pick).toBe("b");
   });
 
   it("leaves the root alone at A and on the phone", () => {
@@ -76,5 +76,14 @@ describe("desktop motion", () => {
       expect(pick.dialog.leave.ms).toBeLessThan(pick.dialog.enter.ms);
     }
     expect(MOTION.scale).toBeGreaterThan(0);
+  });
+
+  it("takes away whatever came in with motion, faster than it came, and nothing at A", () => {
+    expect(DESKTOP_MOTIONS.a.palette.leave).toBeNull();
+    expect(DESKTOP_MOTIONS.a.toast).toBeNull();
+    for (const pick of [DESKTOP_MOTIONS.b, DESKTOP_MOTIONS.c]) {
+      expect(pick.palette.leave!.ms).toBeLessThan(pick.palette.enter!.ms);
+      expect(pick.toast!.leaveMs).toBeLessThan(pick.toast!.ms);
+    }
   });
 });

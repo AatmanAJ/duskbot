@@ -1,34 +1,34 @@
 import { describe, expect, it, vi } from "vitest";
-import { poseArt, poseKey } from "@/pixel/pose-frame";
-import { DELIGHT_GAP_MS, MASCOT_MOTION, MascotDirector, type MascotVariant } from "./mascot-motion";
+import { DELIGHT_GAP_MS, MASCOT_MOTION, MascotDirector, type MascotMotion, type MascotVariant } from "./mascot-motion";
 import { createTicker } from "./mascot-ticker";
 import { WORKING_MOODS, type WorkingMood } from "./working-mood";
 
-const FRAME = 1000 / 60;
+const VARIANTS: MascotVariant[] = ["card-calm", "card-balanced", "card-lively", "voxel-calm", "voxel-balanced", "voxel-lively"];
 
-function play(director: MascotDirector, script: Array<[WorkingMood, number]>) {
-  const keys: string[] = [];
+function play(director: MascotDirector, script: Array<[WorkingMood, number]>, step = 1000 / 60): MascotMotion[] {
+  const frames: MascotMotion[] = [];
   let at = 0;
   for (const [mood, ms] of script) {
     director.setMood(mood, at);
-    for (const end = at + ms; at < end; at += FRAME) keys.push(poseKey(director.pose(at)));
+    for (const end = at + ms; at < end; at += step) frames.push(director.motion(at));
   }
-  return keys;
+  return frames;
 }
 
 const LONG_TURN: Array<[WorkingMood, number]> = [["thinking", 14_000], ["searching", 9_000], ["browsing", 12_000], ["writing", 30_000], ["thinking", 3_000], ["running", 20_000], ["replying", 15_000], ["done", 4_000]];
+const turnDiff = (a: number, b: number) => Math.abs(((((b - a + 180) % 360) + 360) % 360) - 180);
 
-describe("the working mascot's choreography", () => {
-  it("ships the current loops until a variant is picked", () => {
+describe("the working mascot's 3D motion", () => {
+  it("ships the current loops until one is picked", () => {
     expect(MASCOT_MOTION).toBe("current");
   });
 
-  it.each(["b", "c"] as MascotVariant[])("never starts two delights within 8 s, nor the same one twice running (%s)", (variant) => {
+  it.each(VARIANTS)("never starts two delights within 8 s, nor the same one twice running (%s)", (variant) => {
     for (const seed of ["nova", "quill", "rivet", "x", ""]) {
       const director = new MascotDirector({ variant, seed });
       play(director, LONG_TURN);
       const played = director.played;
-      expect(played.length, "a long turn has a few").toBeGreaterThanOrEqual(5);
+      expect(played.length, "a long turn has a few").toBeGreaterThanOrEqual(4);
       expect(played[0]!.at).toBeGreaterThanOrEqual(DELIGHT_GAP_MS);
       for (let i = 1; i < played.length; i++) {
         expect(played[i]!.at - played[i - 1]!.at).toBeGreaterThanOrEqual(DELIGHT_GAP_MS);
@@ -37,61 +37,45 @@ describe("the working mascot's choreography", () => {
     }
   });
 
-  it("keeps the gap across quick mood changes", () => {
-    const director = new MascotDirector({ variant: "c", seed: "s" });
-    const flicker = Array.from({ length: 60 }, (_, i): [WorkingMood, number] => [i % 3 ? "writing" : "error", 700 + (i % 5) * 300]);
-    play(director, flicker);
-    const starts = director.played.map((d) => d.at);
-    for (let i = 1; i < starts.length; i++) expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(DELIGHT_GAP_MS);
+  it("plays no delight while it fails, waits or is done", () => {
+    const director = new MascotDirector({ variant: "voxel-lively", seed: "s" });
+    play(director, [["error", 30_000], ["waiting", 30_000], ["done", 30_000]]);
+    expect(director.played).toEqual([]);
   });
 
-  it("plays no delight in the subtle variant, nor while it fails, waits or is done", () => {
-    const subtle = new MascotDirector({ variant: "a", seed: "s" });
-    play(subtle, LONG_TURN);
-    expect(subtle.played).toEqual([]);
-    const lively = new MascotDirector({ variant: "c", seed: "s" });
-    play(lively, [["error", 30_000], ["waiting", 30_000], ["done", 30_000]]);
-    expect(lively.played).toEqual([]);
+  it.each(VARIANTS)("moves without a jump at 120 fps, even when the step changes mid-roll (%s)", (variant) => {
+    const director = new MascotDirector({ variant, seed: "s" });
+    const flicker = Array.from({ length: 90 }, (_, i): [WorkingMood, number] => [(["writing", "searching", "error", "thinking", "replying", "browsing"] as const)[i % 6], 300 + (i % 7) * 410]);
+    const frames = play(director, [["thinking", 12_000], ...flicker, ...LONG_TURN], 1000 / 120);
+    for (let i = 1; i < frames.length; i++) {
+      const a = frames[i - 1]!, b = frames[i]!;
+      expect(Math.abs(b.y - a.y), `y at ${i}`).toBeLessThan(0.05);
+      expect(Math.abs(b.sy - a.sy), `sy at ${i}`).toBeLessThan(0.08);
+      for (const k of ["rx", "ry", "rz"] as const) expect(turnDiff(a[k], b[k]), `${k} at ${i}`).toBeLessThan(14);
+    }
   });
 
   it("holds one still pose per mood under reduced motion", () => {
-    for (const variant of ["a", "b", "c"] as MascotVariant[]) {
+    for (const variant of VARIANTS) {
       const director = new MascotDirector({ variant, seed: "s", reduced: true });
       for (const mood of WORKING_MOODS) {
-        const keys = new Set(play(director, [[mood, 20_000]]));
+        const keys = new Set(play(director, [[mood, 20_000]], 50).map((m) => JSON.stringify(m)));
         expect(keys.size, `${variant} ${mood}`).toBe(1);
-        const pose = director.pose(20_000);
-        expect([pose.dx, pose.dy, pose.rot, pose.lean, pose.extra, pose.blink]).toEqual([0, 0, 0, 0, null, false]);
       }
       expect(director.played).toEqual([]);
     }
   });
 
-  it("lands a reply with a happy hop and a sparkle, and droops on a failure", () => {
-    const director = new MascotDirector({ variant: "b", seed: "s" });
-    const at = (ms: number) => director.pose(ms);
+  it("spins and hops happily as the reply lands, and slumps on a failure", () => {
+    const director = new MascotDirector({ variant: "card-calm", seed: "s" });
     director.setMood("replying", 0);
-    const hop = Array.from({ length: 40 }, (_, i) => at(i * 20));
-    expect(hop.every((pose) => pose.face === "happy")).toBe(true);
-    expect(Math.max(...hop.map((pose) => pose.dy))).toBeGreaterThanOrEqual(2);
-    expect(hop.some((pose) => pose.extra?.startsWith("spark"))).toBe(true);
-    director.setMood("error", 1000);
-    const late = at(3000);
-    expect([late.face, late.sq > 0]).toEqual(["sad", true]);
-  });
-
-  it("moves only in whole sprite pixels, so every frame is a crisp grid", () => {
-    const director = new MascotDirector({ variant: "c", seed: "s" });
-    let at = 0;
-    for (const [mood, ms] of LONG_TURN) {
-      director.setMood(mood, at);
-      for (const end = at + ms; at < end; at += 50) {
-        const pose = director.pose(at);
-        for (const v of [pose.dx, pose.dy, pose.sq, pose.lean]) expect(Number.isInteger(v)).toBe(true);
-        expect(Math.abs(pose.rot % 45)).toBe(0);
-        expect(poseArt("kit", pose).body).toMatch(/^(M-?\d+ -?\d+h\d+v1h-\d+z)+$/);
-      }
-    }
+    const hop = Array.from({ length: 50 }, (_, i) => director.motion(400 + i * 20));
+    expect(hop.every((m) => m.face === "happy")).toBe(true);
+    expect(Math.min(...hop.map((m) => m.y))).toBeLessThan(-0.1);
+    expect(Math.max(...hop.map((m) => turnDiff(0, m.ry)))).toBeGreaterThan(120);
+    director.setMood("error", 2000);
+    const slump = director.motion(5000);
+    expect([slump.face, slump.sy < 0.95, slump.rz < 0]).toEqual(["sad", true, true]);
   });
 });
 

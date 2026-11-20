@@ -7,8 +7,8 @@ import { join, resolve } from "node:path";
 export const DESKTOP_NOTES = {
   palette: ["The ⌘K palette: open, three rows down, typing \"setti\", Escape", [
     ["Opens and closes raw; the highlight jumps; filtered rows swap at once.", "Emil: a keyboard-opened palette used 100+ times a day gets no animation (Raycast)."],
-    ["140 ms fade from .98 with 2 px of blur clearing, centred; closes at once; highlight still jumps.", "Emil: never from scale 0, modals stay centred, exit faster than enter; list navigation stays near-imperceptible."],
-    ["210 ms spring-shaped from .96, 8 px drop, 4 px blur; the highlight glides 154 ms; rows fade in 126 ms on a shrinking 22 ms stagger, five rows at most.", "Impeccable: one authored moment; it knowingly breaks Emil's no-stagger-on-palettes rule, so it is the expressive pick."],
+    ["140 ms fade from .98 with 2 px of blur clearing, centred; closes in 126 ms back toward .98; highlight still jumps; rows swap at once both ways.", "Emil: never from scale 0, modals stay centred, exit faster than enter; list navigation stays near-imperceptible."],
+    ["210 ms spring-shaped from .96, 8 px drop, 4 px blur; closes in 140 ms toward .97, lifting 4 px; the highlight glides 154 ms; rows fade in 126 ms on a shrinking 22 ms stagger, five rows at most, and a row the query drops fades out in 126 ms where it stood.", "Impeccable: one authored moment; it knowingly breaks Emil's no-stagger-on-palettes rule, so it is the expressive pick."],
   ]],
   settings: ["Settings: open, two sections, close", [
     ["280 ms from .96 on the softer out curve, scrim 224 ms; a section rises 4 px in 180 ms; leaves as a 168 ms fade.", "As shipped."],
@@ -35,10 +35,10 @@ export const DESKTOP_NOTES = {
     ["420 ms on the drawer curve; the new transcript comes up from 50 % in 140 ms with 2 px blur.", "Emil: prevent a jarring change, but a tens-a-day action stays barely there; blur hides the seam."],
     ["588 ms on the soft spring; the transcript fades from 0, rises 6 px through 4 px blur over 252 ms.", "Impeccable: continuity through navigation, the new view arriving as one move."],
   ]],
-  toasts: ["Two toasts, each gone at once", [
+  toasts: ["Two toasts, each in and out", [
     ["There at once, gone at once.", "As shipped (Grok's toast)."],
-    ["Rises its own height on plain ease over 400 ms, as a transition so a second toast turns back mid-way.", "Emil: Sonner's 400 ms ease from translateY(100%); transitions, not keyframes, for anything re-triggered."],
-    ["Spring 420/26 from 16 px low at .96 over 448 ms, a hair of overshoot.", "Emil: a little bounce is allowed for a light acknowledgement."],
+    ["Rises its own height on plain ease over 400 ms, as a transition so a second toast turns back mid-way; drops back the way it came in 280 ms.", "Emil: Sonner's 400 ms ease from translateY(100%); transitions, not keyframes, for anything re-triggered."],
+    ["Spring 420/26 from 16 px low at .96 over 448 ms, a hair of overshoot; leaves 8 px down toward .97 in 224 ms.", "Emil: a little bounce is allowed for a light acknowledgement."],
   ]],
   press: ["A sidebar row hovered and pressed, then the send button pressed twice", [
     ["Buttons give to .96 in 160 ms and come back with a hair of overshoot in 200 ms; rows .985.", "As shipped (bencho's press)."],

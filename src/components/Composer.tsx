@@ -457,13 +457,6 @@ export function Composer({
       inputRef.current?.setSelectionRange(next.caret, next.caret);
     });
   };
-  const teachTask = () => {
-    const learn = "/learn ";
-    editText(learn + text.replace(/^\/learn\s*/, "").trimStart());
-    setCaret(learn.length);
-    setChannelMode("chat");
-    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(learn.length, learn.length); });
-  };
 
   const pendingCount = (state.pendingQueued[threadId] ?? []).length;
   const queuedMessages = state.pendingQueued[threadId] ?? [];
@@ -1000,10 +993,10 @@ export function Composer({
         <div data-composer-row data-glyph-swap={glyphs.swapped ? "" : undefined} data-glyph-from-held={glyphs.swapped && glyphs.fromHeld ? "" : undefined} style={simpleDock ? slot.vars : undefined} className={cn("flex items-end", simpleDock ? cn("gap-2", stacked && "gap-y-2") : "gap-1", !singleRow && !simpleDock && "@max-[30rem]/composer:flex-wrap", stacked && "flex-wrap")}>
           {pickers.inputs}
           {/* the phone's + is the pill's first control, at its left edge, the size of the others */}
-          {singleRow && !locked && <PhonePlus onAttach={pickers.files} attachChoices={pickers.choices} goal={goal} teach={canLearn ? teachTask : undefined} approval={approvalChoice && modeBot && { name: modeBot.name, choice: approvalChoice }} callBotId={live && bot && !group ? bot.id : undefined} />}
+          {singleRow && !locked && <PhonePlus onAttach={pickers.files} attachChoices={pickers.choices} />}
           {!locked && !singleRow && (
             <div className={cn("flex items-center gap-1", simpleDock ? "shrink-0" : "flex-wrap")}>
-              {simpleDock && <ComposerPlusMenu onAttach={pickers.files} attachChoices={pickers.choices} goal={goal} teach={canLearn ? teachTask : undefined} />}
+              {simpleDock && <ComposerPlusMenu onAttach={pickers.files} attachChoices={pickers.choices} />}
               {/* a mode's chip shows only while it is on, so a choice made in the + menu or the bot panel stays in view */}
               {goal?.on && <GoalToggle {...goal} compact={simpleDock} />}
               {simpleDock && approvalChoice && profile && bot && approvalModeFor(bot) !== approvalModeFor(profile) && <ApprovalChip choice={approvalChoice} />}

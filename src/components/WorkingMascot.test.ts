@@ -16,7 +16,7 @@ const reduce = (on: boolean) => vi.spyOn(window, "matchMedia").mockImplementatio
 }) as unknown as MediaQueryList);
 
 const draw = (mood?: WorkingMood) => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood })));
-const drawMotion = (motion: "current" | "b", mood: WorkingMood = "thinking") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion })));
+const drawMotion = (motion: "current" | "card-calm", mood: WorkingMood = "thinking") => act(() => root.render(createElement(WorkingMascot, { bot, size: 26, seed: "s", mood, motion })));
 const mascot = () => host.querySelector<HTMLElement>("[data-working-mascot]")!;
 const eyes = () => mascot().querySelectorAll("path")[1]!.getAttribute("d");
 
@@ -98,8 +98,8 @@ describe("the working mascot's face", () => {
     vi.stubGlobal("IntersectionObserver", class { constructor(fn: typeof seen) { seen = fn; } observe() {} disconnect() {} });
     const raf = vi.spyOn(window, "requestAnimationFrame");
     const caf = vi.spyOn(window, "cancelAnimationFrame");
-    drawMotion("b");
-    expect(mascot().dataset.motion).toBe("b");
+    drawMotion("card-calm");
+    expect(mascot().dataset.motion).toBe("card-calm");
     expect(raf, "nothing until it is seen").not.toHaveBeenCalled();
     act(() => seen([{ isIntersecting: true }]));
     expect(raf).toHaveBeenCalledTimes(1);
@@ -114,8 +114,8 @@ describe("the working mascot's face", () => {
   it("asks for no frames at all under reduced motion", () => {
     reduce(true);
     const raf = vi.spyOn(window, "requestAnimationFrame");
-    drawMotion("b");
-    drawMotion("b", "writing");
+    drawMotion("card-calm");
+    drawMotion("card-calm", "writing");
     expect(raf).not.toHaveBeenCalled();
     expect(mascot().querySelectorAll("path")[0]!.getAttribute("d")).toMatch(/^M/);
   });
