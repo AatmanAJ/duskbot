@@ -43,6 +43,9 @@ export function GrokMoveDialog({ client, open, onClose }: { client: GrokMoveClie
   const [asks, setAsks] = useState<Record<string, AskState>>({});
   const requests = useRef(new Map<string, GrokRequestText>());
   const [undo, setUndo] = useState<{ preview: GrokUndoPreview | null; result: GrokUndoResult | null }>({ preview: null, result: null });
+  /** The one-consent walk through every moved bot: open each prefilled, wait for its file, then open the next. */
+  const [walk, setWalk] = useState<{ order: string[]; index: number } | null>(null);
+  const walkAsked = useRef(-1);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<{ line: string; failed: boolean } | null>(null);
   const [round, setRound] = useState(0);
@@ -156,6 +159,31 @@ export function GrokMoveDialog({ client, open, onClose }: { client: GrokMoveClie
       fail(error);
     }
   };
+
+  // The walk opens each bot in turn (ask once per index, via the ref so the effect need not depend on `ask`), waits for
+  // its file to arrive or be refused, then advances. The person's only action is pressing Enter in each Grok Bot window.
+  const askRef = useRef(ask);
+  askRef.current = ask;
+  const startWalk = (order: string[]) => {
+    if (!order.length) return;
+    setSaid(null);
+    walkAsked.current = -1;
+    setWalk({ order, index: 0 });
+  };
+  const stopWalk = () => { walkAsked.current = -1; setWalk(null); };
+  useEffect(() => { if (view !== "result") { walkAsked.current = -1; setWalk(null); } }, [view]);
+  useEffect(() => {
+    if (!walk) return;
+    const current = walk.order[walk.index];
+    if (!current) { setWalk(null); return; }
+    if (walkAsked.current !== walk.index) {
+      walkAsked.current = walk.index;
+      void askRef.current(current);
+      return;
+    }
+    const entry = waiting.bots.find((one) => one.rosterId === current);
+    if (entry && (entry.state === "arrived" || entry.state === "problem")) setWalk({ order: walk.order, index: walk.index + 1 });
+  }, [walk, waiting]);
 
   const openUndo = async () => {
     if (!progress) return;
@@ -273,6 +301,7 @@ export function GrokMoveDialog({ client, open, onClose }: { client: GrokMoveClie
     case "result":
       if (progress) {
         body = <GrokMoveResultView progress={progress} found={found} waiting={waiting.bots} asks={asks} actions={{ ask: (id) => void ask(id), copy: (id) => void copy(id) }}
+          walk={walk} onWalkStart={startWalk} onWalkStop={stopWalk}
           onRetry={again} onRest={again} onApps={() => { onClose(); dispatch({ type: "toggleAppSettings", open: true, section: "apps" }); }} onUndo={() => void openUndo()} />;
       }
       footer = (

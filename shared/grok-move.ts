@@ -78,6 +78,8 @@ export interface GrokFoundBot {
   };
   /** Routines whose names appear in its chat (names only; their bodies are in Grok Bot's cloud). */
   routines: number;
+  /** Connected apps this bot used in its recent chat (names only; their sign-ins stay in Grok Bot). */
+  appsUsed: number;
   /** Moved before: the bot here. The preview unchecks it and offers "Update". */
   here?: { botId: string; name: string };
   /** Its export request was sent and is waiting, or arrived. */
@@ -123,6 +125,8 @@ export interface GrokMovedCounts {
   picture: boolean;
   instructions: boolean;
   routineNames: number;
+  /** Names of connected apps this bot used in its recent chat, noted for reconnecting here. */
+  appsUsed: number;
 }
 
 export interface GrokMoveBotProgress {

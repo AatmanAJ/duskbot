@@ -184,6 +184,7 @@ describe("the synthetic Grok Bot profile, read slice by slice", () => {
     expect(chat.lines.filter((line) => line.placeholder).map((line) => line.placeholder!.kind)).toContain("voice");
     expect(chat.lines.some((line) => line.text.includes("sk-live-not-real"))).toBe(false);
     expect(chat.routines).toEqual([{ name: "Monday plan", on: true }, { name: "Friday wrap", on: false }]);
+    expect(chat.appsUsed, "connected apps the bot used in its recent chat, each once, from the mcp-app lines").toEqual(["Calendar"]);
     expect(readGrokChat(machine, profile, SYNTHETIC_BOTS[6]!.id)).toMatchObject({ problem: { slice: "chat", code: "newerFormat" } });
     const photo = readGrokPhoto(machine, profile, nova);
     expect(photo && "mime" in photo ? photo.mime : null).toBe("image/png");

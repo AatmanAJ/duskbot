@@ -172,6 +172,9 @@ export interface GrokChatWindow {
   earlier: boolean;
   /** Routines named in its chat, by their id there; deleted ones left out. */
   routines: Array<{ name: string; on: boolean }>;
+  /** Connected apps this bot used in its recent chat, each once: names only, to connect again here. A lower bound on
+   * what it is connected to (older use is not in the window), and higher-fidelity than the account-wide app list. */
+  appsUsed: string[];
 }
 
 export interface GrokProfile {
@@ -302,6 +305,12 @@ function routinesOf(entries: Array<Record<string, unknown>>): GrokChatWindow["ro
   return [...byId.values()].filter((routine) => routine.name && !routine.gone).map(({ name, on }) => ({ name, on }));
 }
 
+/** The connected apps this bot used in its recent chat, each name once: from the `mcp-app` lines Grok Bot keeps. */
+function appsUsedIn(entries: Array<Record<string, unknown>>): string[] {
+  const names = entries.flatMap((entry) => (str(entry.kind) === "mcp-app" ? [oneLine(str(entry.serverName), 80)] : [])).filter(Boolean);
+  return [...new Map(names.map((name) => [name.toLowerCase(), name])).values()].slice(0, 50);
+}
+
 /** One bot's recent chat, normalised: user and bot text, one placeholder line for anything else shown there. */
 export function readGrokChat(machine: SetupMachine, profile: GrokProfile, rosterId: string): GrokChatWindow | { problem: GrokSliceProblem } | null {
   const file = profile.chatFiles.get(rosterId);
@@ -312,7 +321,7 @@ export function readGrokChat(machine: SetupMachine, profile: GrokProfile, roster
   const lines = entries.map(chatLine).filter((line): line is GrokChatLine => line !== null).sort((a, b) => a.at - b.at);
   const firstSeq = num(entries[0]?.seq);
   const earlier = num(read.value.precedingTimestampMs) !== undefined || (firstSeq !== undefined && firstSeq > 1);
-  return { lines, earlier, routines: routinesOf(entries) };
+  return { lines, earlier, routines: routinesOf(entries), appsUsed: appsUsedIn(entries) };
 }
 
 const PHOTO_TYPES: Array<{ mime: "image/png" | "image/jpeg" | "image/webp"; test: (bytes: Buffer) => boolean }> = [

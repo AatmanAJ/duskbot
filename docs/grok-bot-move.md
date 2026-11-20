@@ -88,3 +88,5 @@ name is reduced to plain ASCII and shortened. A unit test checks these limits wi
 - Readers: `server/grok-local.ts`. The move and stage B: `server/grok-bot-move.ts`. Records: `server/grok-bot-move-store.ts`
   (the local database beside the messages). Routes: `server/routes/grok-move.ts`.
 - Verification: [docs/verification/grok-move.md](verification/grok-move.md).
+- What else the local cache holds, how faithful each item is, the one-consent walk through stage B, and the fidelity
+  score: [docs/grok-bot-promptless.md](grok-bot-promptless.md).
