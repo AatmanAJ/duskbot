@@ -14,6 +14,8 @@ export interface MovedBotRecord {
   created: boolean;
   /** The conversation this move made for its recent chat. */
   threadId?: string;
+  /** The last message this move wrote into its recent chat: anything after it was said here. */
+  chatEnd?: string;
 }
 
 export interface MoveRecord {
@@ -66,6 +68,16 @@ export function loadMove(moveId: string): MoveRecord | null {
 export function lastMove(): MoveRecord | null {
   const row = db().prepare("SELECT json FROM grok_moves ORDER BY started_at DESC, rowid DESC LIMIT 1").get() as { json: string } | undefined;
   return row ? JSON.parse(row.json) as MoveRecord : null;
+}
+
+/** The last message the newest move wrote into this bot's recent chat. */
+export function chatEndOf(botId: string): string | null {
+  const rows = db().prepare("SELECT json FROM grok_moves ORDER BY started_at DESC, rowid DESC").all() as Array<{ json: string }>;
+  for (const row of rows) {
+    const end = (JSON.parse(row.json) as MoveRecord).moved.find((moved) => moved.botId === botId && moved.chatEnd)?.chatEnd;
+    if (end) return end;
+  }
+  return null;
 }
 
 export function unfinishedMoves(): MoveRecord[] {
