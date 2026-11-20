@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { cpuTimeMs, JOB_MESSAGES, jobTurnRefusal } from "./host.ts";
 import { envNameRefusal } from "./launch.ts";
-import { messagesOf, noteFor, wanted } from "./telegram-watch.ts";
+import { apiBase, messagesOf, noteFor, wanted } from "./telegram-watch.ts";
 import { jobsFixture, PERSON_TURN } from "./testing.ts";
 
 const fixtures: Array<{ close(): Promise<void> }> = [];
@@ -102,5 +102,10 @@ describe("telegram_watch", () => {
     expect(messages.filter((m) => wanted(m, ["-11"], []))).toHaveLength(1);
     expect(noteFor(messages)).toMatch(/^New Telegram messages \(3\):\n\[Brand deals\] Ana \(2023-11-14 22:13 UTC\): Acme signed the LOI/);
     expect(noteFor(messages, 120)).toContain("[more messages were left out]");
+  });
+  it("talks to a test Bot API only on loopback, Telegram otherwise", () => {
+    expect(apiBase({ DUSK_TELEGRAM_API_URL: "http://127.0.0.1:9123" })).toBe("http://127.0.0.1:9123");
+    expect(apiBase({ DUSK_TELEGRAM_API_URL: "http://evil.example:80" })).toBe("https://api.telegram.org");
+    expect(apiBase({})).toBe("https://api.telegram.org");
   });
 });
