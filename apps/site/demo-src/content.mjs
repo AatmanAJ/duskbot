@@ -32,7 +32,7 @@ export const BOTS = [
     },
   },
   {
-    key: 'researcher', can: "search the web, compare what i find and send you a short table", name: 'Researcher', color: 'purple', body: 'hoot', model: 'gpt',
+    key: 'researcher', can: "search the web, compare what I find and send you a short table", name: 'Researcher', color: 'purple', body: 'hoot', model: 'gpt',
     routines: [{ name: 'Competitor watch', time: '09:00', weekdays: [1], enabled: true }],
     history: [
       { u: 'Find me a CRM for a team of 5. Under $30 a seat, and it has to work with Gmail.' },
