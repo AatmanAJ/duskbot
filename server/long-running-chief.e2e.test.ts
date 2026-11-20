@@ -425,7 +425,7 @@ it("tells the Chief a teammate's turn stalled, in the watchdog's words", () => c
     ["done", expect.stringContaining("STALL-FINAL")]]);
 }), hostTimeout(90_000));
 
-it("lets a card hold only its own job: other jobs run beside it, or say once whose card they wait behind", () => chiefJob(async (f) => {
+it("holds other jobs behind a card in the teammate's one chat, and says once whose card they wait behind", () => chiefJob(async (f) => {
   f.script(f.clive.id,
     { key: "G0", match: ["PHASE-G-JOB"], steps: [{ arguments: { bot_ids: [f.mira.id], message: "SHIP-CHECK: run the test suite and say whether the export can ship." } }], reply: "G0: Mira is checking." },
     { key: "G1", match: [SETTLED, "PHASE-G-JOB"], reply: "G-FINAL: the export can ship." },
@@ -443,17 +443,13 @@ it("lets a card hold only its own job: other jobs run beside it, or say once who
   const cardThread = f.child(jobG, f.mira.id, "SHIP-CHECK").threadId;
   const card = await f.openCard(cardThread);
 
-  const jobH = await f.newJob("Release notes");
-  await f.say(jobH, "PHASE-H-JOB: have Mira draft the release notes.");
-  await f.final(jobH, "H-FINAL");
-  expect(f.child(jobH, f.mira.id, "RELEASE-NOTES")).toMatchObject({ status: "completed", result: "NOTES-RESULT: drafted." });
   expect((await f.cards(cardThread)).map((message: any) => message.card.answered ?? null)).toEqual([null]);
 
-  expect((await f.api("PATCH", "/api/config", { threads: { maxConcurrentPerBot: 1 } })).status).toBe(200);
   const jobK = await f.newJob("Changelog");
   await f.say(jobK, "PHASE-K-JOB: have Mira update the changelog.");
   await expect.poll(() => f.child(jobK, f.mira.id, "CHANGELOG")?.status, { timeout: 20_000 }).toBe("queued");
-  const behind = 'Queued for @Mira behind your approval in “@Clive · work”';
+  const cardTitle = (await f.tasks(f.mira.id)).find((task: any) => task.threadId === cardThread).title;
+  const behind = `Queued for @Mira behind your approval in “${cardTitle}”`;
   await expect.poll(async () => (await f.rows(jobK)).filter((name: string) => name === behind).length, { timeout: 20_000 }).toBe(1);
   const notice = (await f.messages(jobK)).find((message: any) => message.tool?.name === behind);
   expect(notice.tool.ok).toBe(true);
@@ -466,9 +462,9 @@ it("lets a card hold only its own job: other jobs run beside it, or say once who
   await f.final(jobK, "K-FINAL");
   expect(f.child(jobK, f.mira.id, "CHANGELOG")).toMatchObject({ status: "completed", result: "CHANGELOG-RESULT: updated." });
   expect((await f.rows(jobG)).filter((name: string) => name.includes("@Mira"))).toEqual(["@Mira got your approval"]);
-  for (const threadId of [jobG, jobH]) expect((await f.rows(threadId)).filter((name: string) => name.startsWith("Queued for"))).toEqual([]);
+  expect((await f.rows(jobG)).filter((name: string) => name.startsWith("Queued for"))).toEqual([]);
   expect((await f.rows(jobK)).filter((name: string) => name.startsWith("Queued for"))).toEqual([behind]);
-  expect(f.turns(f.clive.id).map((record: any) => record.planKey).sort()).toEqual(["G0", "G1", "H0", "H1", "K0", "K1"]);
+  expect(f.turns(f.clive.id).map((record: any) => record.planKey).sort()).toEqual(["G0", "G1", "K0", "K1"]);
 }), hostTimeout(90_000));
 
 it("tells a teammate the person's job is its task, and a routine's handoff is not the person's request", () => chiefJob(async (f) => {
@@ -502,7 +498,7 @@ it("tells a teammate the person's job is its task, and a routine's handoff is no
   expect(nightly).toContain(CONSENT_RULE);
   expect(nightly).toContain("@Clive is resumed with your reply when your turn ends");
   expect(nightly).not.toMatch(/the user asked|sent on the user's behalf|PHASE-TRUST-JOB/);
-  expect((await f.tasks(f.mira.id)).some((task: any) => task.title === "SENDWORK-ROUTINE: run the nightly QA checks and report back.")).toBe(true);
+  expect((await f.tasks(f.mira.id)).filter((task: any) => task.openedBy)).toEqual([]);
   const resumed = f.prompt(f.turn("T2"));
   expect(resumed).toMatch(/\[From @Mira \(bot\) · report on assignment [^:]*: done · information only\]/);
   expect(resumed).toContain("NIGHTLY-QA-DONE");

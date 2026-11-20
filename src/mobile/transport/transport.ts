@@ -1,7 +1,10 @@
 import { RelayGoneError, type RelayChannel } from "./relay";
 import { noteRefusedRequest } from "@/lib/session-ended";
-import { asleepAnswer, BACKGROUND_HEADERS, markCloudAsleep } from "@/lib/cloud-power";
+import { asleepAnswer, BACKGROUND_HEADERS, forgetCloudGone, goneAnswer, markCloudAsleep, markCloudGone } from "@/lib/cloud-power";
 import { setUploadRoute } from "@/lib/upload-request";
+import { forgetLocalVoiceCall } from "@/lib/voice-call/availability";
+import { limitSendAttempts } from "@/state/optimistic-send";
+import { forgetWorkspaceAnswers, noteWorkspaceAnswer, placeAnswered } from "../connection/reachability";
 
 export type PhoneTransport =
   | { kind: "same-origin" | "bearer"; origin: string; token?: string }
@@ -128,13 +131,15 @@ export class BearerEventSource extends EventTarget {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       const response = await context.fetch(context.url, {
-        headers: { Authorization: `Bearer ${context.token}`, Accept: "text/event-stream", "Cache-Control": "no-cache" },
+        // only safelisted headers next to Authorization: a workspace's CORS preflight refuses any other one
+        headers: { Authorization: `Bearer ${context.token}`, Accept: "text/event-stream" }, cache: "no-store",
         credentials: "omit", mode: "cors", redirect: "error", signal: this.controller.signal,
       });
       if (this.controller.signal.aborted) return;
       // a stream refused for its credential is the one request a quiet phone makes: it asks whether the session still stands
       if (response.status === 401) noteRefusedRequest();
       if (asleepAnswer(response)) markCloudAsleep();
+      else if (goneAnswer(response)) markCloudGone();
       else if (!response.ok) context.failed?.();
       if (!response.ok || !response.body) { this.fail(); return; }
       reader = response.body.getReader();
@@ -186,6 +191,12 @@ function srcsetPaths(value: string): Array<{ start: number; end: number; path: s
   return paths;
 }
 
+const FAILED = "data-dusk-media-failed";
+
+function awaitingBlob(element: Element): boolean {
+  return (element.getAttribute("src") ?? "").startsWith("/api/") || srcsetPaths(element.getAttribute("srcset") ?? "").length > 0;
+}
+
 function installMedia(): () => void {
   const selector = "img,audio,video,source,image,link[rel~='icon']";
   const attributes = ["src", "srcset", "poster", "href"];
@@ -218,6 +229,7 @@ function installMedia(): () => void {
   const replace = async (element: Element, attribute: string) => {
     const value = element.getAttribute(attribute);
     if (!value || processed.get(element)?.get(attribute) === value) return;
+    if (attribute === "src" && value.startsWith("/api/")) element.removeAttribute(FAILED);
     let next = value;
     if (attribute === "srcset") {
       const replacements = await Promise.all(srcsetPaths(value).map(async (candidate) => ({ ...candidate, url: await blobUrl(candidate.path) })));
@@ -226,7 +238,15 @@ function installMedia(): () => void {
         next = next.slice(0, start) + url + next.slice(end);
       }
     } else if (value.startsWith("/api/")) {
-      next = await blobUrl(value) ?? value;
+      const url = await blobUrl(value);
+      if (!url) {
+        if (!stopped && attribute === "src" && element.getAttribute(attribute) === value) {
+          element.setAttribute(FAILED, "");
+          element.dispatchEvent(new Event("error"));
+        }
+        return;
+      }
+      next = url;
     }
     if (stopped || next === value || element.getAttribute(attribute) !== value) return;
     let marks = processed.get(element);
@@ -249,10 +269,18 @@ function installMedia(): () => void {
       for (const node of mutation.addedNodes) scan(node);
     }
   });
+  // the app's own origin serves no /api, so a workspace path's first load fails before its blob is swapped in; that
+  // error is held back (it would show a broken image), and the real one is sent if the blob cannot be had
+  const early = (event: Event) => {
+    const element = event.target;
+    if (element instanceof Element && element.matches(selector) && !element.hasAttribute(FAILED) && awaitingBlob(element)) event.stopImmediatePropagation();
+  };
+  document.addEventListener("error", early, true);
   observer.observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: attributes });
   scan(document);
   return () => {
     stopped = true;
+    document.removeEventListener("error", early, true);
     observer.disconnect();
     controller.abort();
     for (const url of cache.values()) URL.revokeObjectURL(url);
@@ -261,6 +289,8 @@ function installMedia(): () => void {
 }
 
 export const ASLEEP_PROBE_GAP_MS = 10_000;
+/** how long one send to a place over the network waits for its answer before asking again on a new request */
+export const PHONE_SEND_ATTEMPT_MS = 20_000;
 
 /** The live stream goes through the WebView's own fetch, and a sleeping Cloud's edge answer carries no CORS headers, so
  * a failed stream cannot tell asleep from unreachable; one background read through native http can. */
@@ -270,9 +300,17 @@ export function asleepProbe(send: typeof fetch, origin: string, token: string, n
     if (now() - last < ASLEEP_PROBE_GAP_MS) return;
     last = now();
     void send(`${origin}/api/health`, { headers: { Authorization: `Bearer ${token}`, ...BACKGROUND_HEADERS }, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(10_000) })
-      .then((response) => { if (asleepAnswer(response)) markCloudAsleep(); void response.body?.cancel().catch(() => {}); })
+      .then((response) => { if (asleepAnswer(response)) markCloudAsleep(); else if (goneAnswer(response)) markCloudGone(); void response.body?.cancel().catch(() => {}); })
       .catch(() => {});
   };
+}
+
+/** CapacitorHttp 8 (`convertBody` in native-bridge.js) sends a Uint8Array or stream body through `TextDecoder`, which turns
+ * every byte above 0x7F into U+FFFD, and a plain Blob as JSON; only a `File` crosses to native http byte for byte, as base64. */
+export async function nativeBody(body: BodyInit | null | undefined, contentType: string | null): Promise<BodyInit | null | undefined> {
+  if (body == null || typeof body === "string" || body instanceof URLSearchParams || body instanceof FormData || body instanceof File) return body;
+  const type = contentType || (body instanceof Blob ? body.type : "") || "application/octet-stream";
+  return new File([await new Response(body).arrayBuffer()], "body", { type });
 }
 
 /** `onGone`: the relay no longer has this phone's channel, so only pairing again brings the workspace back. */
@@ -289,19 +327,30 @@ export function installTransport(transport: PhoneTransport, onGone?: () => void)
     if (error instanceof RelayGoneError) onGone?.();
     throw error;
   });
-  const fetchWorkspace = transport.kind === "relay" ? overRelay(relayFetch(transport.channel, transport.token)) : originalFetch.bind(window);
+  const sendWorkspace = transport.kind === "relay" ? overRelay(relayFetch(transport.channel, transport.token)) : originalFetch.bind(window);
+  // every answer from the place proves it is reachable, whatever the live stream is doing
+  const fetchWorkspace: typeof fetch = (input, init) => sendWorkspace(input, init).then((response) => {
+    if (placeAnswered(response)) noteWorkspaceAnswer();
+    else if (goneAnswer(response)) markCloudGone();
+    return response;
+  });
+  forgetWorkspaceAnswers();
+  forgetCloudGone();
   const context = { transport, streamFetch: inPage(transport) ? fetchWorkspace : streamFetch.bind(window) };
   const probeAsleep = transport.kind === "bearer" ? asleepProbe(fetchWorkspace, origin, transport.token ?? "") : undefined;
   installed = context;
-  const patchedFetch: typeof fetch = (input, init) => {
+  const patchedFetch: typeof fetch = async (input, init) => {
     const url = rewriteApiUrl(input instanceof Request ? input.url : String(input), window.location.origin, origin);
     if (!url) return originalFetch.call(window, input, init);
     const request = input instanceof Request ? new Request(input, init) : null;
     const headers = new Headers(request?.headers ?? init?.headers);
     if (!headers.has("Authorization")) headers.set("Authorization", `Bearer ${transport.token ?? ""}`);
+    const body = transport.kind !== "bearer" ? undefined
+      : await nativeBody(request ? request.body && await request.clone().arrayBuffer() : init?.body, headers.get("Content-Type"));
     // redirects must not carry the workspace credential to a different origin, including through native http.
-    const options: RequestInit = { ...(request ? {} : init), headers, credentials: "omit", mode: "cors", redirect: "error" };
-    return fetchWorkspace(request ? new Request(new Request(url, request), options) : url, request ? undefined : options);
+    const options: RequestInit = { ...(request ? {} : init), headers, credentials: "omit", mode: "cors", redirect: "error", ...(body != null && !request ? { body } : {}) };
+    if (request) return fetchWorkspace(new Request(new Request(url, request), options), body != null ? { body } : undefined);
+    return fetchWorkspace(url, options);
   };
   const sources = new Set<BearerEventSource>();
   const PatchedEventSource = new Proxy(OriginalEventSource, {
@@ -337,6 +386,7 @@ export function installTransport(transport: PhoneTransport, onGone?: () => void)
   window.fetch = patchedFetch;
   window.EventSource = PatchedEventSource;
   window.WebSocket = PatchedWebSocket;
+  forgetLocalVoiceCall();
   // the relay sends a body from the page in chunks, so it can count them; bearer requests go out through native http
   const stopUploads = transport.kind === "relay" ? setUploadRoute((input, init, onProgress) => {
     const url = rewriteApiUrl(input, window.location.origin, origin);
@@ -344,12 +394,14 @@ export function installTransport(transport: PhoneTransport, onGone?: () => void)
     return overRelay(relayFetch(transport.channel, transport.token, onProgress))(url, { method: init.method, headers: init.headers, body: init.body as BodyInit, signal: init.signal, credentials: "omit", redirect: "error" });
   }) : () => {};
   const stopMedia = installMedia();
+  const stopSendLimit = limitSendAttempts(PHONE_SEND_ATTEMPT_MS);
   let stopped = false;
   return () => {
     if (stopped) return;
     stopped = true;
     stopUploads();
     stopMedia();
+    stopSendLimit();
     if (transport.kind === "relay") transport.channel.close();
     for (const source of sources) source.close();
     for (const socket of sockets) socket.close();

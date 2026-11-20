@@ -241,7 +241,7 @@ describe("optional Company cloud backup settings", () => {
   it("does not present unfinished uploads as restorable backups", async () => {
     vi.mocked(bridge.list).mockResolvedValueOnce({ backups: [{ ...readyEntry, status: "uploading" }], usedBytes: 4096, limits: { ownerQuotaBytes: 1024 ** 3, retainedSnapshots: 5 } });
     await ready();
-    expect(render().html).toContain("No completed cloud backups yet");
+    expect(render().html).toContain('data-art-state="backups"');
     expect(button("Restore this backup")).toBeUndefined();
     expect(button("Delete cloud backup")).toBeUndefined();
     expect(bridge.prepareRestore).not.toHaveBeenCalled();

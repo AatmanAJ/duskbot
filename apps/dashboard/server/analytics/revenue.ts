@@ -4,7 +4,7 @@ import { refundBeforeTax, taxIn } from "./subscriptions.ts";
 import { DIMENSIONS, bucketsOf, matches, valuesOf, type Dimension, type Filters, type Identity, type Visit } from "./web.ts";
 
 export interface InvoiceLike { id: string; accountId: string; providerPaymentId: string; subscriptionId: string | null; amountCents: number; taxCents?: number; currency: string; status: "paid" | "failed" | "refunded"; createdAt: number }
-export interface SubscriptionLike { accountId: string; status: string; totalCents: number; createdAt: number; currentPeriodStart: number | null; cart: { interval: string } }
+export interface SubscriptionLike { accountId: string; status: string; totalCents: number; createdAt: number; currentPeriodStart: number | null; cart: { interval: string }; trialEndsAt?: number; cancelAtPeriodEnd?: boolean; updatedAt?: number }
 export interface BillingLike {
   invoices: readonly InvoiceLike[];
   subscriptions: readonly SubscriptionLike[];
@@ -50,10 +50,27 @@ export function paymentsOf(state: BillingLike): Payment[] {
 const monthly = (sub: SubscriptionLike) => sub.cart.interval === "year" ? Math.round(sub.totalCents / 12) : sub.totalCents;
 const PAYING = new Set(["active", "payment_problem", "cancelled"]);
 /** monthly recurring revenue: today it is every paying subscription; at an earlier moment, those already paid by then
- * that are still paying or ended later (an approximation: the records keep no status history) */
-export function mrrAt(subs: readonly SubscriptionLike[], at: number, now: number) {
-  return subs.filter(sub => sub.currentPeriodStart !== null || PAYING.has(sub.status)).filter(sub => sub.createdAt < at && (at >= now ? PAYING.has(sub.status) : PAYING.has(sub.status) || sub.status === "ended"))
-    .reduce((sum, sub) => sum + monthly(sub), 0);
+ * that are still paying or ended after it (an ended row's last update is its end; the records keep no other status history) */
+const countedAt = (subs: readonly SubscriptionLike[], at: number, now: number) =>
+  subs.filter(sub => sub.currentPeriodStart !== null || PAYING.has(sub.status)).filter(sub => sub.createdAt < at
+    && (PAYING.has(sub.status) || (at < now && sub.status === "ended" && (sub.updatedAt === undefined || sub.updatedAt > at))));
+
+/** free trials not set to cancel count in full: only cancellations come off */
+export const TRIAL_CONVERSION = 1;
+/** `full` counts every trial at its price; `expected` drops anything set to cancel or whose charge failed, then counts
+ *  `conversion` of the trials left, in whole dollars; `atRisk` is the monthly value of failed charges and `atRiskCount` how many */
+export interface MrrForecast { expected: number; paying: number; trials: number; full: number; conversion: number; atRisk: number; atRiskCount: number }
+export function mrrForecastAt(subs: readonly SubscriptionLike[], at: number, now: number, conversion = TRIAL_CONVERSION): MrrForecast {
+  let paying = 0, trials = 0, full = 0, atRisk = 0, atRiskCount = 0;
+  for (const sub of countedAt(subs, at, now)) {
+    const value = monthly(sub);
+    full += value;
+    if (sub.cancelAtPeriodEnd || sub.status === "cancelled") continue;
+    if (sub.status === "payment_problem") { atRisk += value; atRiskCount++; continue; }
+    if (sub.trialEndsAt === undefined || at >= sub.trialEndsAt) paying += value;
+    else trials += value;
+  }
+  return { expected: Math.round((paying + trials * conversion) / 100) * 100, paying, trials, full, conversion, atRisk, atRiskCount };
 }
 
 export interface Touch { first: Visit | null; last: Visit | null }
@@ -65,7 +82,7 @@ export function touchOf(visits: readonly Visit[], at: number): Touch {
   return { first, last };
 }
 
-export interface RevenueKpis { net: number; gross: number; refunds: number; payments: number; customers: number; newCustomers: number; renewals: number; mrr: number }
+export interface RevenueKpis { net: number; gross: number; refunds: number; payments: number; customers: number; newCustomers: number; renewals: number; mrr: number; mrrForecast: MrrForecast | null }
 export interface RecentPayment {
   id: string; at: number; amountCents: number; currency: string; kind: PaymentKind; accountId: string; seed: string; email: string | null;
   source: string; channel: string; firstSource: string | null; campaign: string | null; country: string | null; city: string | null; device: string | null;
@@ -110,16 +127,18 @@ export function revenueReport(input: RevenueInput) {
   const kpis = (a: number, b: number, mrrTime: number): RevenueKpis => {
     const list = within(a, b), positive = list.filter(payment => payment.amountCents > 0);
     const customers = new Set(positive.map(payment => payment.accountId));
+    const forecast = filtered ? null : mrrForecastAt(input.subscriptions, mrrTime, input.now);
     return {
       net: list.reduce((sum, payment) => sum + payment.amountCents, 0), gross: positive.reduce((sum, payment) => sum + payment.amountCents, 0),
       refunds: -list.filter(payment => payment.kind === "refund").reduce((sum, payment) => sum + payment.amountCents, 0),
       payments: positive.length, customers: customers.size, newCustomers: [...customers].filter(id => { const at = firstPaid.get(id)!; return at >= a && at < b; }).length,
-      renewals: positive.filter(payment => payment.kind === "renewal").length, mrr: filtered ? 0 : mrrAt(input.subscriptions, mrrTime, input.now),
+      renewals: positive.filter(payment => payment.kind === "renewal").length, mrr: forecast?.expected ?? 0, mrrForecast: forecast,
     };
   };
 
   const { size, starts } = bucketsOf(from, to);
-  const series = { new: starts.map(() => 0), renewal: starts.map(() => 0), refund: starts.map(() => 0) };
+  const mrr = filtered ? null : starts.map(start => mrrForecastAt(input.subscriptions, Math.min(start + size, to, input.now), input.now).expected);
+  const series = { new: starts.map(() => 0), renewal: starts.map(() => 0), refund: starts.map(() => 0), mrr };
   const byChannel: Record<string, number[]> = {};
   for (const payment of within(from, to)) {
     const i = Math.floor((payment.at - from) / size);
@@ -160,5 +179,51 @@ export function revenueReport(input: RevenueInput) {
   const ltv = [...bySource].map(([source, row]) => ({ source, customers: row.customers, cents: row.cents, perCustomer: Math.round(row.cents / row.customers) }))
     .sort((a, b) => Number(a.source === NO_VISIT) - Number(b.source === NO_VISIT) || b.perCustomer - a.perCustomer).slice(0, 12);
 
-  return { current: kpis(from, to, Math.min(to, input.now)), previous: kpis(from - span, from, from), series, byChannel, ltv, cards, recent, live: payments.length > 0, first: payments.find(payment => payment.amountCents > 0)?.at ?? null };
+  return { current: kpis(from, to, Math.min(to, input.now)), previous: kpis(from - span, from, from), series, byChannel, ltv, cards, recent, live: payments.length > 0, first: payments.find(payment => payment.amountCents > 0)?.at ?? null,
+    trials: trialReport(input, visitsOf) };
+}
+
+export interface TrialKpis {
+  /** trials that began in the window */
+  started: number;
+  /** of those, the ones whose trial is over, and of those the ones that went on to pay */
+  ended: number; converted: number; conversion: number | null;
+}
+export interface TrialReport {
+  current: TrialKpis; previous: TrialKpis;
+  /** right now, whatever the window: trials running, those set to end, and the monthly value of the running ones not set to end */
+  active: number; cancelling: number; mrrAtStake: number;
+  /** trials begun per chart bucket */
+  series: number[];
+  /** trials begun per chart bucket, per channel that brought them */
+  byChannel: Record<string, number[]>;
+  /** trials begun per card row, credited like revenue: the last non-direct visit before the trial began, else the first */
+  cards: Record<Dimension, Record<string, number>>;
+}
+const isTrial = (sub: SubscriptionLike) => sub.trialEndsAt !== undefined && sub.status !== "pending";
+/** a trial that is over went on to pay when its plan still runs (or ran past the trial's end) */
+const convertedTrial = (sub: SubscriptionLike, now: number) => sub.trialEndsAt! <= now && ((PAYING.has(sub.status) && sub.status !== "cancelled") || (sub.status === "ended" && (sub.updatedAt ?? 0) > sub.trialEndsAt! + 3_600_000));
+/** the free trials of the window: how many began, how many of the finished ones paid, what is running now, and where they came from */
+export function trialReport(input: RevenueInput, visitsOf: ReadonlyMap<string, Visit[]>): TrialReport {
+  const { from, to, now, filters } = input, span = to - from, filtered = Object.keys(filters).length > 0;
+  const trials = input.subscriptions.filter(isTrial);
+  const credited = (sub: SubscriptionLike) => { const t = touchOf(visitsOf.get(sub.accountId) ?? [], sub.createdAt); return t.last ?? t.first; };
+  const counts = (sub: SubscriptionLike) => !filtered || (() => { const visit = credited(sub); return !!visit && matches(visit, filters); })();
+  const within = (a: number, b: number) => trials.filter(sub => sub.createdAt >= a && sub.createdAt < b && counts(sub));
+  const kpis = (a: number, b: number): TrialKpis => {
+    const list = within(a, b), ended = list.filter(sub => sub.trialEndsAt! <= now), converted = ended.filter(sub => convertedTrial(sub, now)).length;
+    return { started: list.length, ended: ended.length, converted, conversion: ended.length ? converted / ended.length : null };
+  };
+  const running = trials.filter(sub => sub.trialEndsAt! > now && (sub.status === "active" || sub.status === "payment_problem") && counts(sub));
+  const { size, starts } = bucketsOf(from, to);
+  const series = starts.map(() => 0);
+  const cards = Object.fromEntries(DIMENSIONS.map(dim => [dim, {} as Record<string, number>])) as Record<Dimension, Record<string, number>>;
+  const byChannel: Record<string, number[]> = {};
+  for (const sub of within(from, to)) {
+    const i = Math.floor((sub.createdAt - from) / size), visit = credited(sub);
+    if (i >= 0 && i < series.length) { series[i]!++; (byChannel[visit?.channel ?? NO_VISIT] ??= starts.map(() => 0))[i]!++; }
+    for (const dim of DIMENSIONS) for (const value of visit ? valuesOf(visit, dim) : [NO_VISIT]) cards[dim][value] = (cards[dim][value] ?? 0) + 1;
+  }
+  return { current: kpis(from, to), previous: kpis(from - span, from), active: running.length, cancelling: running.filter(sub => sub.cancelAtPeriodEnd).length,
+    mrrAtStake: running.filter(sub => !sub.cancelAtPeriodEnd).reduce((sum, sub) => sum + monthly(sub), 0), series, byChannel, cards };
 }

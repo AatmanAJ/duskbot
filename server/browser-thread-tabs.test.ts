@@ -61,6 +61,25 @@ describe("a conversation's own tabs", () => {
     expect(browser.calls.filter(([name]) => name === "agent_browser_tab_new")).toHaveLength(2);
   });
 
+  it("never switches to a tab already in front, which would clear the engine's refs, and goes back to its own after someone moved the front", async () => {
+    const browser = engine([blank()]);
+    const tabs = new ThreadTabs();
+    await tabs.front("s", { threadId: "a", generation: "g1" }, "agent_browser_open", browser.rpc);
+    tabs.refs.saw("s", "a", "agent_browser_snapshot", {}, { content: [{ type: "text", text: '- textbox "Message" [ref=e5]' }] });
+    await tabs.front("s", { threadId: "a", generation: "g2" }, "agent_browser_type", browser.rpc);
+    expect(browser.calls.filter(([name]) => name === "agent_browser_tab_switch")).toEqual([]);
+
+    await browser.rpc("agent_browser_tab_new", { label: threadTabLabel("a", "x1") });
+    await tabs.front("s", { threadId: "a", generation: "g2" }, "agent_browser_click", browser.rpc);
+    expect(browser.calls.filter(([name]) => name === "agent_browser_tab_switch")).toEqual([]);
+    await browser.rpc("agent_browser_tab_switch", { tab: "T1" });
+    browser.calls.length = 0;
+    await tabs.front("s", { threadId: "a", generation: "g2" }, "agent_browser_type", browser.rpc);
+    expect(browser.calls.map(([name, args]) => [name, args.tab ?? null])).toEqual([
+      ["agent_browser_tab_list", null], ["agent_browser_tab_switch", "T3"], ["agent_browser_snapshot", null],
+    ]);
+  });
+
   it("leaves a read with no tab of its own on the page in front, and tab tools alone", async () => {
     const browser = engine([blank()]);
     const tabs = new ThreadTabs();
