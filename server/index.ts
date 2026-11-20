@@ -406,9 +406,8 @@ import { createSkillsLibraryHost } from "./host/skills-library.ts";
 import { skillExport } from "./skill-export.ts";
 import { pickBotName } from "./names.ts";
 import { botSkillTemplateSchema, newBotDefaultsSchema } from "./new-bot-defaults.ts";
-import { expandLearnTurnText, learnSource, REVIEW_SKILL_SOURCE } from "./skill-learn.ts";
-import { skillCurator, skillsReadInTurn } from "./skill-curator.ts";
-import { appendSkillJournal } from "./skill-journal.ts";
+import { expandLearnTurnText, learnSource } from "./skill-learn.ts";
+import { skillCurator, skillsReadInTurn } from "./skill-curator.ts"; import { createSkillLearning } from "./host/skill-learning.ts";
 import { connectedAppsForSetup, expandSetupTurnText, setupModeActive, setupSystemPrompt, type SetupConnectedApps } from "./setup-mode.ts"; import { forgetSetupPresser, setupPresser, setupTurnText, takeSetupRequest } from "./setup-request.ts"; import { setupSuggestionsFor } from "./setup-suggestions.ts"; import { createSetupRequestRoutes } from "./routes/setup-request.ts";
 import type { SkillRequestCardData } from "../shared/skill-request.ts";
 import { checkSoulDrift, readSoulDrift, soulFile, writeSoulMirror } from "./bot-folder.ts";
@@ -5646,6 +5645,8 @@ bus.subscribe((event: RuntimeEvent) => {
   }
 });
 
+const skillLearning = createSkillLearning({ enabled: () => skillReviewEnabled(cfg), botIds: () => store.bots.map((bot) => bot.id),
+  withLibrary: (botId, own) => skillsHost.reviewSkills(botId, own) });
 const skillReview = createSkillReview({
   enabled: () => skillReviewEnabled(cfg),
   threshold: () => skillReviewSteps(cfg),
@@ -5657,64 +5658,21 @@ const skillReview = createSkillReview({
     if (!owned || cloudGuestDriven(threadId)) return null;
     return { messages: store.activePath(threadId), room: Boolean(owned.group) };
   },
-  // Only skills a review wrote and nobody changed since are the review's to update: never the person's own or a team skill.
-  skills: (botId) => {
-    const own = listSkills(botId).map((skill) => {
-      const editable = skill.editable && skill.enabled && skill.source === REVIEW_SKILL_SOURCE;
-      return { name: skill.name, description: skill.description, editable, enabled: skill.enabled, sha256: skill.sha256,
-        ...(editable ? { body: readSkillFile(botId, skill.name) } : {}) };
-    });
-    const ownNames = new Set(own.map((skill) => skill.name));
-    return skillsHost.reviewSkills(botId, own).map((skill) => (ownNames.has(skill.name) ? skill : { ...skill, editable: false, body: null }));
-  },
+  skills: (botId) => skillLearning.reviewSkills(botId),
   currentSha: (botId, name) => listSkills(botId).find((skill) => skill.name === name)?.sha256 ?? skillsHost.sharedSha(botId, name),
   apply: (botId, threadId, change) => {
-    const bot = store.bot(botId);
-    if (!bot) return { ok: false, error: "unknown bot" };
-    const direct = appliesDirectly(botId, threadId);
-    if (!direct) return { ok: false, error: "this conversation cannot apply skill changes without review" };
-    const before = change.action === "update" ? readSkillFile(botId, change.name) : null;
-    if (change.action === "update" && listSkills(botId).find((skill) => skill.name === change.name)?.source !== REVIEW_SKILL_SOURCE) {
-      return { ok: false, error: "only a skill the review wrote itself can be updated by it" };
-    }
-    const staged = stageSkillWrite(botId, {
-      action: change.action,
-      targetName: change.action === "update" ? change.name : undefined,
-      files: [{ path: "SKILL.md", content: change.skillMd }],
-      gist: change.gist || undefined,
-      source: REVIEW_SKILL_SOURCE,
-    });
+    const bot = store.bot(botId), direct = bot && appliesDirectly(botId, threadId);
+    if (!bot || !direct) return { ok: false, error: bot ? "this conversation cannot apply skill changes without review" : "unknown bot" };
+    const staged = skillLearning.stage(botId, change);
     if ("error" in staged) return { ok: false, error: staged.error };
     const applied = applyOwnStagedSkill(bot, threadId, staged, direct, "review");
     if ("error" in applied) return { ok: false, error: applied.error };
-    skillCurator.written(botId, change.name);
-    appendSkillJournal({ botId, name: change.name, kind: change.action === "create" ? "created" : "updated", actor: "review", threadId,
-      before, after: change.skillMd });
+    skillLearning.applied(botId, threadId, change, staged.before);
     return { ok: true };
   },
   statePath: join(DATA_DIR, "skill-review.json"),
   log: (line) => console.log(line),
-});
-
-function curateLearnedSkills(): void {
-  if (!skillReviewEnabled(cfg)) return;
-  for (const bot of store.bots) {
-    try {
-      const plan = skillCurator.curate(bot.id, listSkills(bot.id));
-      for (const name of plan.archive) {
-        const text = readSkillFile(bot.id, name);
-        const result = setSkillEnabled(bot.id, name, false);
-        if ("error" in result) console.warn(`skill curator: could not archive "${name}" for ${bot.id}: ${result.error}`);
-        else appendSkillJournal({ botId: bot.id, name, kind: "archived", actor: "curator", before: text, after: text });
-      }
-      for (const name of plan.restored) appendSkillJournal({ botId: bot.id, name, kind: "restored", actor: "person", before: null, after: null });
-    } catch (error) {
-      console.warn(`skill curator: ${bot.id}: ${(error as Error).message}`);
-    }
-  }
-}
-setTimeout(curateLearnedSkills, 60_000).unref();
-setInterval(curateLearnedSkills, 6 * 60 * 60_000).unref();
+}); skillLearning.start();
 
 bus.subscribe((event: RuntimeEvent) => {
   if (shouldIgnoreProviderEvent(event)) return;
@@ -5725,10 +5683,8 @@ bus.subscribe((event: RuntimeEvent) => {
     const room = store.groupByThread(event.threadId);
     const bot = room ? (reply?.from ? store.bot(reply.from.botId) : undefined) : store.botByThread(event.threadId);
     if (!bot) return; rememberComputerTurn(bot.id, messages, event.turnId);
-    const counts = event.ok && Boolean(reply?.text?.trim()) && !isInternalTurn(event.threadId)
-      && !isUnattended(bot.id, event.threadId) && !routines?.runForThread(event.threadId)
-      && !(CLOUD_HOME && !cloudOwnerOnlyThread(event.threadId))
-      && supportsWorkspaceFiles(registry.get(bot.modelSelection.instanceId)?.driverKind ?? "");
+    const counts = event.ok && Boolean(reply?.text?.trim()) && !isInternalTurn(event.threadId) && !isUnattended(bot.id, event.threadId) && !routines?.runForThread(event.threadId)
+      && !(CLOUD_HOME && !cloudOwnerOnlyThread(event.threadId)) && supportsWorkspaceFiles(registry.get(bot.modelSelection.instanceId)?.driverKind ?? "");
     if (counts) skillReview.noteTurn(bot.id, event.threadId, turnToolSteps(messages, event.turnId, bot.id, Boolean(room)));
     skillReview.botSettled(bot.id);
     if (event.ok) skillCurator.used(bot.id, skillsReadInTurn(messages, event.turnId, listSkills(bot.id).map((skill) => skill.name)));
@@ -10571,10 +10527,7 @@ function undoSkillCard(botId: string, threadId: string, messageId: string): Undo
   });
   if ("stale" in undone) return { claimed: true, state: "invalid", error: UNDO_STALE, status: 409, stale: true };
   if ("error" in undone) return { claimed: true, state: "invalid", error: undone.error, status: 409 };
-  if (request.learnedBy === "review") {
-    appendSkillJournal({ botId, name: request.name, kind: "undone", actor: "person", threadId,
-      before: request.preview ?? null, after: request.action === "update" ? request.previous?.preview ?? null : null });
-  }
+  if (request.learnedBy === "review") skillLearning.undone(botId, threadId, request);
   store.patchMessage(threadId, message.id, { card: { ...card, undone: true } });
   return { claimed: true, state: "undone" };
 }
