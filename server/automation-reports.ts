@@ -81,7 +81,7 @@ export function newestAutomationLines(messages: readonly Pick<Message, "id" | "a
 
 type Waiting =
   | { kind: "reply"; run: RoutineRun; messageId?: string }
-  | { kind: "failure"; run: RoutineRun; detail: string }
+  | { kind: "failure"; run: RoutineRun; detail: string; inOwnChat?: true }
   | { kind: "card"; run: RoutineRun; threadId: string; messageId: string };
 
 export interface AutomationReportDeps {
@@ -108,6 +108,17 @@ export function createAutomationReports(deps: AutomationReportDeps) {
     const bot = run.resultsThreadId && run.resultsThreadId !== run.threadId ? store.bot(run.botId) : undefined;
     const task = bot && !bot.hidden ? store.taskByThread(bot.id, run.resultsThreadId!) : undefined;
     return bot && task && !task.routineRunId ? { bot, threadId: task.threadId } : null;
+  };
+
+  /** A run in the bot's own chat that failed before that chat showed any failure of it: the line goes there. */
+  const ownChat = (run: RoutineRun): { bot: BotRecord; threadId: string } | null => {
+    if (!run.threadId || (run.resultsThreadId && run.resultsThreadId !== run.threadId)) return null;
+    const bot = store.bot(run.botId);
+    const task = bot && !bot.hidden ? store.taskByThread(bot.id, run.threadId) : undefined;
+    if (!bot || !task || task.routineRunId) return null;
+    const since = run.startedAt ?? run.scheduledFor;
+    const shown = store.messagesFor(run.threadId).some((message) => message.at >= since && message.kind === "activity" && message.tool?.ok === false);
+    return shown ? null : { bot, threadId: task.threadId };
   };
 
   const lineOf = (run: RoutineRun, extra: Pick<AutomationLine, "needsYou" | "failed" | "partial" | "recovered" | "copyOf">): AutomationLine => ({
@@ -153,7 +164,7 @@ export function createAutomationReports(deps: AutomationReportDeps) {
   /** False while the chat it goes to is busy. */
   const write = (line: Waiting): boolean => {
     const { run } = line;
-    const target = destination(run);
+    const target = line.kind === "failure" && line.inOwnChat ? ownChat(run) : destination(run);
     if (!target) {
       if (line.kind !== "card") deps.routines()?.noteReport(run.id, undefined);
       return true;
@@ -254,7 +265,9 @@ export function createAutomationReports(deps: AutomationReportDeps) {
     },
     /** A run failed in a way the person is told about: one line says so where its reports go. */
     runFailed(run: RoutineRun, detail: string): void {
-      if (run.target === "bot" && run.status === "failed" && run.deliver !== "brief" && run.threadId && destination(run)) hold(run.id, { kind: "failure", run, detail });
+      if (run.target !== "bot" || run.status !== "failed" || run.deliver === "brief" || !run.threadId) return;
+      if (destination(run)) hold(run.id, { kind: "failure", run, detail });
+      else if (ownChat(run)) hold(run.id, { kind: "failure", run, detail, inOwnChat: true });
     },
     /** This run's result, questions and failure come to its bot's chat as lines of their own, or through the brief.
      * A missed run, or one that failed before it had a conversation, has no line to say so, and keeps its card,

@@ -312,6 +312,7 @@ describe("bot desktop provisioning", () => {
 
   it("never tries to build behind the docker gate, which forwards no build", async () => {
     expect(dockerHostBuilds({ DOCKER_HOST: "unix:///run/duskbot-docker/docker.sock" })).toBe(false);
+    expect(dockerHostBuilds({ DOCKER_HOST: "unix:///run/openmausbot-docker/docker.sock" })).toBe(false);
     expect(dockerHostBuilds({ DOCKER_HOST: "unix:///var/run/docker.sock" })).toBe(true);
     expect(dockerHostBuilds({})).toBe(true);
     vi.stubEnv("DOCKER_HOST", "unix:///run/duskbot-docker/docker.sock");

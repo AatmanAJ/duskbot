@@ -78,6 +78,11 @@ function codexHoldGone(row: PlanProviderRow, limit: EngineLimit, held: number | 
 
 const PRODUCT_NAMES: Record<string, string> = { claudeAgent: "Claude", codex: "Codex", grokAgent: "Grok" };
 
+/** The AI's own name ("Claude", "Codex"), never the name an install gave its sign-in; the given name for any other AI. */
+export function aiProductName(instance: { displayName?: string; driverKind: string } | undefined, engine: string): string {
+  return (instance && PRODUCT_NAMES[instance.driverKind]) || instance?.displayName?.trim() || engine;
+}
+
 /** "Claude", "Codex", or the name the person gave that engine. */
 export function engineLabel(engine: string, instance?: { displayName?: string; driverKind: string }): string {
   return instance?.displayName?.trim() || (instance ? PRODUCT_NAMES[instance.driverKind] ?? instance.driverKind : engine);

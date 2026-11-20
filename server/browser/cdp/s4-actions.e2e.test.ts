@@ -89,7 +89,7 @@ suite("S4 snapshot, refs and actions on real Chrome", () => {
 
   it("rejects ambiguous CSS controls without clicking any row (t3)", async () => {
     await open(repeatedRows);
-    await expect(page.click({ selector: 'button[data-testid="delete-row"]' }, { timeoutMs: 1_000 })).rejects.toThrow(/strict mode violation/);
+    await expect(page.click({ selector: 'button[data-testid="delete-row"]' }, { timeoutMs: 1_000 })).rejects.toThrow(/matches 5 elements, so nothing was done\. They: (e\d+ <button> "delete"(; )?){5}\. Pass the ref of the one you mean\./);
     expect(await read(`document.querySelectorAll("li").length`)).toBe(5);
   });
 
@@ -197,7 +197,7 @@ suite("S4 snapshot, refs and actions on real Chrome", () => {
   it("waits for a covered element, names what covers it, and clicks once it is free", async () => {
     await open(`<button id="b" onclick="this.textContent='clicked'" style="position:absolute;left:20px;top:20px;width:100px;height:40px">go</button>
       <div id="veil" style="position:fixed;inset:0;background:rgba(0,0,0,.2)">loading</div>`);
-    await expect(page.click({ selector: "#b" }, { timeoutMs: 400 })).rejects.toThrow(/covered by <div#veil> "loading"/);
+    await expect(page.click({ selector: "#b" }, { timeoutMs: 400 })).rejects.toThrow(/<div#veil> "loading"/);
     await inPageWorld(() => page.evaluate(`setTimeout(() => document.getElementById("veil").remove(), 300)`, { world: "page" }));
     await page.click({ selector: "#b" }, { timeoutMs: 3_000 });
     expect(await read(`document.getElementById("b").textContent`)).toBe("clicked");
@@ -256,9 +256,8 @@ suite("S4 snapshot, refs and actions on real Chrome", () => {
 
   it("refuses to type into what is not an enabled text field (t3)", async () => {
     await open(`<button id="b">b</button><input id="d" disabled><input id="r" readonly value="x"><input id="c" type="checkbox">`);
-    for (const selector of ["#b", "#d", "#r", "#c"]) {
-      await expect(page.fill({ selector }, "x")).rejects.toThrow("The target is not an enabled text field, so no text was typed.");
-    }
+    const why: Record<string, RegExp> = { "#b": /is a <button>, not a text field, so no text was typed/, "#d": /disabled, so no text was typed/, "#r": /read-only, so no text was typed/, "#c": /checkbox or radio button, so no text was typed: use agent_browser_check/ };
+    for (const [selector, message] of Object.entries(why)) await expect(page.fill({ selector }, "x")).rejects.toMatchObject({ code: "not-editable", message: expect.stringMatching(message) });
     await inPageWorld(() => page.evaluate("document.activeElement.blur()", { world: "page" }));
     await expect(page.type(null, "x")).rejects.toMatchObject({ code: "not-editable" });
   });

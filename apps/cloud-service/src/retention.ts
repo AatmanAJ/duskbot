@@ -83,6 +83,34 @@ export function deletionVerdict(input: VerdictInput): Verdict {
   return { delete: true, reason: "retention_over", earliestAt };
 }
 
+export interface Generation { file: string; snapshotAt: number; verifiedAt: number | null }
+/** the oldest generation is kept until it is this much older than the newest, so one copy is days old */
+export const BACKUP_LONG_HOLD_MS = 14 * DAY_MS;
+
+/**
+ * The generations a cloud no longer needs. Kept: the newest verified one of each of the latest `keep` UTC days that have one,
+ * so a home backed up several times a day keeps a day's worth of copies rather than hours of them; the oldest verified one
+ * while it is under BACKUP_LONG_HOLD_MS older than the newest, so a home that wiped its own data cannot push every good copy
+ * out within a few days; and any file in `protect` (a restore under way). A generation that failed its check is dropped
+ * once a newer one passed.
+ */
+export function prunableBackups<G extends Generation>(generations: readonly G[], options: { keep: number; protect?: readonly string[] }): G[] {
+  const verified = generations.filter(g => g.verifiedAt !== null).sort((a, b) => b.snapshotAt - a.snapshotAt);
+  const newest = verified[0];
+  if (!newest) return [];
+  const kept = new Set<G>(), days = new Set<number>();
+  for (const g of verified) {
+    const day = Math.floor(g.snapshotAt / DAY_MS);
+    if (days.has(day)) continue;
+    if (days.size >= Math.max(1, options.keep)) break;
+    days.add(day); kept.add(g);
+  }
+  const oldest = verified.at(-1)!;
+  if (newest.snapshotAt - oldest.snapshotAt < BACKUP_LONG_HOLD_MS) kept.add(oldest);
+  const protect = new Set(options.protect ?? []);
+  return generations.filter(g => !kept.has(g) && !protect.has(g.file) && (g.verifiedAt !== null || g.snapshotAt < newest.snapshotAt));
+}
+
 /** the notice due now for a cloud whose plan ended, if any not yet sent */
 export function dueNotice(input: { now: number; earliestAt: number; sent: readonly NoticeKind[] }): NoticeKind | null {
   if (!input.sent.includes("ended")) return "ended";

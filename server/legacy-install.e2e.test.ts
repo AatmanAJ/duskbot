@@ -1,7 +1,7 @@
 // A real server on an install made before the rename: its data folder under the old name, its settings in old env
-// names. It must come up with the same bots, in the new folder, and still answer old clients.
+// names. It starts clean in its own folder, leaves the old one as it was, and still reads old env names and answers old clients.
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,7 +48,7 @@ function oldNames(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return out;
 }
 
-it("keeps an old install's bots: its data folder moves to the new name and its old env names still count", async () => {
+it("starts clean beside an old install: its data folder is left as it was and its old env names still count", async () => {
   const home = mkdtempSync(join(tmpdir(), "omb-legacy-install-"));
   homes.push(home);
   const oldData = join(home, LEGACY.dataDirName);
@@ -69,14 +69,12 @@ it("keeps an old install's bots: its data folder moves to the new name and its o
   mkdirSync(join(home, "tmp"), { recursive: true });
   const after = await boot(env, port);
   const bots = (await after.get("/api/bots?messages=0")).bots as { id: string; name: string }[];
-  expect(bots.map((bot) => bot.id).sort()).toEqual(was);
-  expect(bots.find((bot) => bot.id === made.id)?.name).toBe("Kept helper");
+  expect(bots.some((bot) => was.includes(bot.id))).toBe(false);
+  expect(bots.find((bot) => bot.id === made.id)).toBeUndefined();
 
-  const moved = join(home, ".duskbot");
-  expect(lstatSync(moved).isDirectory()).toBe(true);
-  expect(existsSync(join(moved, "config.json"))).toBe(true);
-  expect(lstatSync(oldData).isSymbolicLink()).toBe(true);
-  expect(readlinkSync(oldData)).toBe(moved);
+  expect(lstatSync(join(home, ".duskbot")).isDirectory()).toBe(true);
+  expect(lstatSync(oldData).isSymbolicLink()).toBe(false);
+  expect(existsSync(join(oldData, "config.json"))).toBe(true);
 
   // a client from before the rename: the old discovery path and header names
   const described = await after.get(`${LEGACY.wellKnown}/environment`);

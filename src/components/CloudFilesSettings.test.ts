@@ -54,7 +54,7 @@ describe("shared with the cloud", () => {
     await mount();
     expect(page()).toContain("Shared with the cloud");
     expect(page()).toContain("Cloud bots can use these folders, even when this computer is off. They change files here only in folders you let them edit.");
-    expect(page()).toContain("Nothing shared yet.");
+    expect(page()).toContain("Nothing shared yet");
     expect(button("Add a folder")).toBeTruthy();
     expect(page()).not.toMatch(/sync/i);
   });
@@ -92,7 +92,7 @@ describe("shared with the cloud", () => {
     await click("Stop sharing", row("missing"));
     await click("Stop sharing", dialog()!);
     expect(bridge.stopSharing).toHaveBeenCalledExactlyOnceWith("f-missing");
-    expect(page()).toContain("Nothing shared yet.");
+    expect(page()).toContain("Nothing shared yet");
   });
 
   it("the ⋯ menu opens the folder here or stops sharing it", async () => {

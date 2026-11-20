@@ -757,7 +757,7 @@ describe("ChatMarkdown attachments", () => {
       text: "[macOS](file:///Users/milind/report.md) [Windows](C:/Users/Maus/report.md)",
       message: { threadId: "thread-1", messageId: "message-1" },
     }));
-    expect(html).toContain('title="Save a copy"');
+    expect(html).toContain('title="Preview file: report.md"');
     expect(html).not.toContain("/Users/milind/report.md");
     expect(html).not.toContain("C:/Users/Maus/report.md");
   });
@@ -782,7 +782,7 @@ describe("ChatMarkdown attachments", () => {
       }));
       expect(html).toContain('data-github-ref="pull"');
       expect(html).toContain("<span>#7</span>");
-      expect(html).toContain('title="Save a copy"');
+      expect(html, "a file link saves through its preview's own button, named for the file").toContain('title="Save a copy of report.pdf"');
       expect(save).toHaveBeenCalledWith("/store/delivered-report.pdf", "report.pdf", message);
       expect(html).not.toContain("/store/delivered-report.pdf");
       expect(html).not.toContain("/work/report.pdf");
@@ -799,7 +799,7 @@ describe("ChatMarkdown attachments", () => {
         text: "[Report](C:\\Users\\Maus\\.duskbot\\report.md)\n\n![Chart](C:\\Users\\Maus\\.duskbot\\chart.png)",
         message: { threadId: "thread-1", messageId: "message-1" },
       }));
-      expect(html).toContain('title="Save a copy"');
+      expect(html).toContain('title="Preview file: report.md"');
       expect(html).not.toContain('href=""');
       expect(html).not.toContain("Image unavailable");
       expect(save.mock.calls[0]?.[0]).toBe("C:\\Users\\Maus\\.duskbot\\report.md");
@@ -932,7 +932,7 @@ describe("ChatMarkdown attachments", () => {
       text: "[Download the report](/workspace/final-report.pdf)",
       message: { threadId: "thread-1", messageId: "message-1" },
     }));
-    expect(html).toContain('title="Save a copy"');
+    expect(html, "a file link saves through its preview's own button, named for the file").toContain('title="Save a copy of final-report.pdf"');
     expect(html).not.toContain("/workspace/final-report.pdf");
     expect(html).toContain("type=\"button\"");
   });

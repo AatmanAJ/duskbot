@@ -11,6 +11,7 @@ import type { useBotSettingsDerived } from "../../bot-settings/useBotSettingsDer
 import { Card, NoteRow, rowCls, SheetPane } from "../../ListRows";
 import { RowIconButton } from "../../ui/GrokDialog";
 import { BackupChooser, MAX_BACKUPS, modelKey, type Backup } from "../BackupAis";
+import { LimitModeCard } from "../SettingsPage";
 
 const chooserRowCls = cn(rowCls, "min-w-0 flex-1 cursor-pointer text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-default");
 const textCls = "text-[13px] leading-[18px] tracking-[0.015em]";
@@ -128,6 +129,8 @@ export function BackupsModal({ bot, derived }: {
           </BackupChooser>
         )}
       </Card>
+
+      <LimitModeCard bot={bot} derived={derived} />
     </SheetPane>
   );
 }

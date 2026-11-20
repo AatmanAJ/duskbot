@@ -26,6 +26,8 @@ export interface CatalogProfile {
   /** A direct chat whose bot may pick where it works (Works on is not Off and no team computer is its own): select_computer
    * is mounted, and the harness refuses a pick on any turn but a person's own message. */
   computerSelection?: boolean;
+  /** The bot works on this Mac while macOS keeps dusk bot off its screen: request_screen_access is mounted. */
+  screenAccess?: boolean;
   /** A room's thread: the widget and page tools, which rooms refuse, and the wait tools, since a room holds no wait,
    * are not mounted. */
   room?: boolean;
@@ -51,6 +53,7 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
     team: env.DUSK_TEAM_PEOPLE === "1",
     dusk: env.DUSK_DEFAULT_BOT === "1",
     computerSelection: env.DUSK_COMPUTER_SELECTION === "1",
+    screenAccess: env.DUSK_SCREEN_ACCESS === "1",
     room: env.DUSK_ROOM === "1",
     nativeWeb: env.DUSK_NATIVE_WEB === "1",
     pageReader: env.DUSK_PAGE_READER === "1",

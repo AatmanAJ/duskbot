@@ -7,7 +7,9 @@ import { createOneHome } from "./one-home.mjs";
 
 const ORIGIN = "https://dusk-m-1.fly.dev";
 const READY = { origin: ORIGIN, account: "acct-1", ready: true, moves: true, ended: false };
-const WORK = { items: [{ kind: "bot", label: "Nova" }, { kind: "bot", label: "Quill" }, { kind: "setting", label: "profile" }] };
+const WORK = { items: [{ kind: "bot", label: "Nova", talked: true }, { kind: "bot", label: "Quill" }, { kind: "setting", label: "profile" }] };
+// a fresh Mac: only what its first run brought in (the starter Dusk with imported notes, an imported skill), never talked with
+const IMPORTED = { items: [{ kind: "bot", label: "Dusk" }, { kind: "imported-skill", label: "review" }, { kind: "setting", label: "profile" }] };
 const NOTHING = { items: [{ kind: "setting", label: "profile" }, { kind: "setting", label: "language" }] };
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
 const memory = (value = null) => {
@@ -16,10 +18,24 @@ const memory = (value = null) => {
 };
 
 test("what the move would carry: bots and the person's own automations count, settings alone are nothing", () => {
-  assert.deepEqual(movable(WORK), { bots: 2, something: true });
-  assert.deepEqual(movable(NOTHING), { bots: 0, something: false });
-  assert.deepEqual(movable({ items: [{ kind: "routine", label: "brief" }] }), { bots: 0, something: true });
-  assert.deepEqual(movable(null), { bots: 0, something: false });
+  assert.deepEqual(movable(WORK), { bots: 2, something: true, talked: true });
+  assert.deepEqual(movable(NOTHING), { bots: 0, something: false, talked: false });
+  assert.deepEqual(movable({ items: [{ kind: "routine", label: "brief" }] }), { bots: 0, something: true, talked: false });
+  assert.deepEqual(movable(null), { bots: 0, something: false, talked: false });
+});
+
+test("the move is asked about only when the person talked with a bot here; a fresh Mac's imports go by themselves", async () => {
+  const saved = parseOffer(null, "acct-1 " + ORIGIN);
+  assert.equal(offerStage({ cloud: READY, journal: null, local: movable(WORK), saved }), "prompt", "a bot they talked with: asked");
+  assert.equal(offerStage({ cloud: READY, journal: null, local: movable(IMPORTED), saved }), "none", "only imports: never asked");
+  for (const [summary, asks] of [[WORK, false], [IMPORTED, true]]) {
+    let kicks = 0;
+    const offer = createCloudMoveOffer({ store: memory(), cloud: () => READY, journal: () => null, keep: { on: () => false, set: async () => {} },
+      summary: async () => summary, kick: () => { kicks++; } });
+    await offer.refresh({ force: true });
+    assert.equal(offer.consent(), asks, asks ? "imports move without a yes" : "talked-with bots wait for the yes");
+    assert.equal(kicks, asks ? 1 : 0);
+  }
 });
 
 test("the ask goes sheet, then line, then Settings only, and never while there is no ready Cloud, a move, or nothing to carry", () => {

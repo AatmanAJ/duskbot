@@ -124,15 +124,15 @@ describe("the MCP servers of a turn whose model takes a limited number of tools"
     ("headers" in server ? server.headers : []).find((entry) => entry.name === name)?.value;
   const agentsTools = agentsToolList(turn().integrations!.agents!.env).listed.length;
 
-  it("keeps the agents server's whole list and shares the rest evenly, each over the way that server reads it", () => {
+  it("keeps the agents server's whole list, then dusk bot's own before the person's, each over the way that server reads it", () => {
     const servers = acpMcpServers(turn(), { http: true, toolBudget: agentsTools + 10 });
     expect(servers.map((server) => server.name)).toEqual(["agents", "browser", "data", "notes"]);
     const agents = JSON.parse(Buffer.from(header(servers[0]!, AGENTS_ENV_HEADER)!, "base64url").toString("utf8"));
     expect(agents[TOOL_LIMIT_ENV]).toBe(String(agentsTools));
-    expect([header(servers[1]!, TOOL_LIMIT_HEADER), header(servers[2]!, TOOL_LIMIT_HEADER)]).toEqual(["4", "3"]);
+    expect([header(servers[1]!, TOOL_LIMIT_HEADER), header(servers[2]!, TOOL_LIMIT_HEADER)]).toEqual(["5", "5"]);
     const notes = servers[3] as { args: string[] };
     expect(notes.args).toEqual([SPAWNED_PROXIES.mcpGate]);
-    expect(env(servers[3]!)[TOOL_LIMIT_ENV]).toBe("3");
+    expect(env(servers[3]!)[TOOL_LIMIT_ENV]).toBe("0");
     expect(JSON.parse(env(servers[3]!).DUSK_GATE_UPSTREAM!)).toEqual({ command: "npx", args: ["-y", "notes-mcp"], env: { NOTES_KEY: "k" } });
   });
 
