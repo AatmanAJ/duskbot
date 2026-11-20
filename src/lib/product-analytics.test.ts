@@ -454,6 +454,24 @@ describe("product analytics", () => {
   });
 
 
+  it("says which API route a refused request went to, with every id folded and the server keeping it", async () => {
+    client.configure(config);
+    client.requestRefused(409, { error: "This bot is busy." }, "http://127.0.0.1:8799/api/bots/26b45283-a96f-49c7-81d0-be937b384e29/messages?x=private");
+    client.requestRefused(403, { error: "forbidden" }, "https://relay.example/w/ws_abcdefgh123/api/presence/active");
+    client.requestRefused(409, {}, "");
+    client.requestRefused(404, {}, "http://127.0.0.1/api/bots");
+    await client.flush();
+    const refused = events().map(event => event.props);
+    expect(refused).toEqual([
+      { kind: "desktop", platform: "darwin", appVersion: "1.2.3" },
+      { name: "refused", by: "request", status: 409, code: "none", route: "bots_id_messages" },
+      { name: "refused", by: "request", status: 403, code: "forbidden", route: "presence_active" },
+      { name: "refused", by: "request", status: 409, code: "none" },
+    ]);
+    for (const event of events()) expect(cleanProps(event.name as Parameters<typeof cleanProps>[0], event.props)).toEqual(event.props);
+    expect(JSON.stringify(bodies())).not.toMatch(/26b45283|private|ws_abc/);
+  });
+
   it("keeps the feature catalog and event properties compatible with the server", async () => {
     expect(client.APP_FEATURES).toEqual(SERVER_FEATURES);
     client.configure(config);

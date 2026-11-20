@@ -73,8 +73,6 @@ export interface StreamRequest {
   head: Buffer;
   /** False once this view no longer shows the bot's current browser to a live sign-in. */
   isCurrent(): boolean;
-  /** Why a person may not restart this browser now, or null. */
-  restartRefusal(): string | null;
 }
 
 const intParam = (params: URLSearchParams, name: string, fallback: number, max: number) => {
@@ -255,17 +253,12 @@ class StreamSession {
   }
 
   async #restart(service: BrowserService): Promise<void> {
-    const refused = this.request.restartRefusal();
-    if (refused) {
-      this.notice(refused);
-      return;
-    }
     if (this.#restarting || !this.viewer || this.closing) return;
     this.#restarting = true;
     try {
       await service.restart(this.request.target.session, this.viewer.options.person);
     } catch {
-      this.notice("The browser could not restart. Wait for active work to finish and try again.");
+      this.notice("The browser could not restart. Try again.");
     } finally {
       this.#restarting = false;
     }

@@ -289,7 +289,8 @@ describe("GitHub Copilot ACP driver", () => {
       expect(text).toContain("agents:");
       expect(text).toContain("trigger");
       expect(text).toContain("trigger_info");
-      expect(text).toContain("browser: agent_browser_open");
+      expect(text).toContain("duskbot_browser: agent_browser_open");
+      expect(text).not.toMatch(/(^|\n)browser:/);
     } finally { await browser.close(); }
   });
 

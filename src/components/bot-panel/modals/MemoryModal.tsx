@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AnimatePresence } from "motion/react";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -9,6 +10,7 @@ import { RowIconButton, textAreaCls } from "../../ui/GrokDialog";
 import { DELETE_UNDO_MS } from "../../ui/Toast";
 import { UndoToast } from "../../bot-access/ShareBotButton";
 import { useMemoryEditor } from "./use-memory-editor";
+import { ArtState } from "../../ui/Art";
 
 /** "Note forgotten · Undo" after a Forget, held while the pointer or focus is on it. */
 export function ForgetUndoToast({ editor }: { editor: Pick<ReturnType<typeof useMemoryEditor>, "forgotten" | "settleForgotten"> }) {
@@ -48,7 +50,7 @@ function MemoryRows({ bot, derived }: { bot: Bot; derived: ReturnType<typeof use
         <Card data-sheet-group="notes">
           {readError ? <NoteRow tone="warn">{t("botPanel.library.memoryError")}</NoteRow>
             : notes === null ? <NoteRow>{t("botPanel.ui.commonChecking")}</NoteRow>
-              : notes.length === 0 ? <NoteRow>{t("botPanel.sheet.noNotes")}</NoteRow>
+              : notes.length === 0 ? <ArtState data-art-state="memory" art="notebook" title={t("empty.memory.title")} className="py-6">{t("empty.memory.hint", { name: bot.name })}</ArtState>
                 : notes.map((note) => (
                   <div key={`${note.path}:${note.line}:${note.text}`} data-memory-note={note.line ?? note.path} className={cn(rowCls, "group/row py-0.5 pr-0.5")}>
                     <span className="min-w-0 flex-1 py-1 text-[13px] leading-[18px] tracking-[0.015em] text-pretty text-ink">{note.text}</span>
@@ -62,7 +64,7 @@ function MemoryRows({ bot, derived }: { bot: Bot; derived: ReturnType<typeof use
             <NavRow data-sheet-row="add-note" disabled={index === null} title={t("botPanel.ui.sheetRowsAddNote")} onClick={() => setAdding(true)} />
           </Card>
         )}
-        {adding && <AddNoteDialog bot={bot} editor={editor} onClose={() => setAdding(false)} />}
+        <AnimatePresence>{adding && <AddNoteDialog key="add-note-dialog" bot={bot} editor={editor} onClose={() => setAdding(false)} />}</AnimatePresence>
         <ForgetUndoToast editor={editor} />
       </>
     );
@@ -82,7 +84,7 @@ function MemoryRows({ bot, derived }: { bot: Bot; derived: ReturnType<typeof use
         {memoryOn && editable && <NavRow data-sheet-row="add-note" disabled={index === null} title={t("botPanel.ui.sheetRowsAddNote")} onClick={() => setAdding(true)} />}
       </Card>
       {error && <Card><NoteRow tone="warn">{error}</NoteRow></Card>}
-      {adding && <AddNoteDialog bot={bot} editor={editor} onClose={() => setAdding(false)} />}
+      <AnimatePresence>{adding && <AddNoteDialog key="add-note-dialog" bot={bot} editor={editor} onClose={() => setAdding(false)} />}</AnimatePresence>
     </>
   );
 }

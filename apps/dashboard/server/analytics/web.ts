@@ -8,7 +8,9 @@ export const HOUR = 3_600_000, DAY = 86_400_000;
 export const ONLINE_MS = 5 * 60_000;
 export const SURFACES = ["site", "account", "desktop", "phone"] as const;
 export type Surface = (typeof SURFACES)[number];
-const ACTIVE = new Set(Object.entries(EVENTS).filter(([, spec]) => "active" in spec).map(([name]) => name));
+/** the events that count an account as active that day */
+export const ACTIVE_EVENTS: readonly string[] = Object.entries(EVENTS).filter(([, spec]) => "active" in spec).map(([name]) => name);
+const ACTIVE = new Set(ACTIVE_EVENTS);
 
 export interface Visit {
   session: string; visitor: string; surface: Surface; start: number; end: number; host: string | null; keyword: string | null;
@@ -21,62 +23,125 @@ export interface Visit {
   country: string | null; region: string | null; city: string | null; lat: number | null; lon: number | null;
   device: string | null; os: string | null; browser: string | null;
 }
-const SITE = new Set(["site_view", "site_goal", "site_leave"]);
-const APP = new Set(["app_open", "app_screen", "app_feature", "app_close"]);
+export const SITE_EVENTS = ["site_view", "site_goal", "site_leave"] as const;
+const APP_VISIT_EVENTS = ["app_open", "app_screen", "app_feature", "app_close"] as const;
+/** every event visitsOf reads: a scan for visits needs no others */
+export const VISIT_EVENTS: readonly string[] = [...SITE_EVENTS, ...APP_VISIT_EVENTS, "page_view"];
+const SITE = new Set<string>(SITE_EVENTS);
+const APP = new Set<string>(APP_VISIT_EVENTS);
 
 export function visitsOf(events: readonly StoredEvent[], surfaces: readonly Surface[] = ["site"]): Visit[] {
-  const by = new Map<string, Visit>();
-  const opens = new Map<Visit, number>(), closed = new Map<Visit, number>();
-  for (const event of [...events].sort((a, b) => a.at - b.at)) {
-    const app = APP.has(event.name), account = event.name === "page_view";
-    if (!SITE.has(event.name) && !app && !account) continue;
-    const ctx = event.ctx ?? {};
-    const session = ctx.session ?? (app && ctx.install ? `${ctx.install}:${Math.floor(event.at / DAY)}` : null);
-    const visitor = app ? event.accountId ?? (ctx.install ? `install:${ctx.install}` : null) : ctx.visitor ?? (account ? event.accountId : null);
-    if (!session || !visitor) continue;
-    const surface = app ? ctx.app?.platform === "ios" || ctx.app?.platform === "android" || (event.name === "app_open" && event.props.kind === "mobile") ? "phone" : "desktop" : account ? "account" : "site";
-    const key = `${app ? "app" : surface}:${session}`;
-    let visit = by.get(key);
-    if (!visit) {
-      visit = { session, visitor, surface, start: event.at, end: event.at, host: ctx.host ?? null, keyword: null, pages: [], goals: [], leaves: new Map(), entry: "", exit: "", engagedMs: 0, bounced: true,
-        source: "direct", channel: "direct", referrer: null, campaign: null, ref: null, country: null, region: null, city: null, lat: null, lon: null, device: null, os: null, browser: null };
-      by.set(key, visit);
-      if (app) attribute(visit, ctx);
-    }
-    visit.start = Math.min(visit.start, event.at); visit.end = Math.max(visit.end, event.at);
+  const sessions: Sessions = new Map();
+  for (const event of [...events].sort((a, b) => a.at - b.at)) addToSessions(sessions, event);
+  return visitsFrom(sessions, surfaces);
+}
+
+/** a visit while its events are still coming in: what the finished visit needs beyond its fields */
+export interface Session extends Visit {
+  /** the first app_open, the newest longest app_close, and whether an event with an account named the visitor */
+  opened: number | null; closedMs: number | null; named: boolean;
+}
+/** visits being built, by `${surface or app}:${session}`, in the order their first event came */
+export type Sessions = Map<string, Session>;
+
+/** adds one event (in time order) to the visits being built */
+export function addToSessions(by: Sessions, event: StoredEvent) {
+  const app = APP.has(event.name), account = event.name === "page_view";
+  if (!SITE.has(event.name) && !app && !account) return;
+  const ctx = event.ctx ?? {};
+  const session = ctx.session ?? (app && ctx.install ? `${ctx.install}:${Math.floor(event.at / DAY)}` : null);
+  const visitor = app ? event.accountId ?? (ctx.install ? `install:${ctx.install}` : null) : ctx.visitor ?? (account ? event.accountId : null);
+  if (!session || !visitor) return;
+  const surface = app ? ctx.app?.platform === "ios" || ctx.app?.platform === "android" || (event.name === "app_open" && event.props.kind === "mobile") ? "phone" : "desktop" : account ? "account" : "site";
+  const key = `${app ? "app" : surface}:${session}`;
+  let visit = by.get(key);
+  if (!visit) {
+    visit = { session, visitor, surface, start: event.at, end: event.at, host: ctx.host ?? null, keyword: null, pages: [], goals: [], leaves: new Map(), entry: "", exit: "", engagedMs: 0, bounced: true,
+      source: "direct", channel: "direct", referrer: null, campaign: null, ref: null, country: null, region: null, city: null, lat: null, lon: null, device: null, os: null, browser: null,
+      opened: null, closedMs: null, named: false };
+    by.set(key, visit);
+    if (app) attribute(visit, ctx);
+  }
+  visit.start = Math.min(visit.start, event.at); visit.end = Math.max(visit.end, event.at);
+  if (app) {
+    if (surface === "phone") visit.surface = surface;
+    if (event.accountId) { visit.visitor = event.accountId; visit.named = true; }
+    fill(visit, ctx);
+    if (event.name === "app_open" && visit.opened === null) visit.opened = event.at;
+    if (event.name === "app_screen") visit.pages.push({ path: String(event.props.screen ?? "/"), at: event.at, pv: null });
+    if (event.name === "app_close" && typeof event.props.ms === "number") visit.closedMs = Math.max(visit.closedMs ?? 0, event.props.ms);
+  } else if (event.name === "site_view" || account) {
+    const first = visit.pages.length === 0;
+    const path = String(event.props.path ?? ctx.page ?? "/");
+    // the account page lives under /dashboard on the site's origin; its own paths start at its root
+    visit.pages.push({ path: account ? `/dashboard${path === "/" ? "" : path}` : path, at: event.at, pv: ctx.pv ?? null });
+    if (first) attribute(visit, ctx);
+    else fill(visit, ctx);
+  } else if (event.name === "site_goal") visit.goals.push({ goal: String(event.props.goal), at: event.at, to: typeof event.props.to === "string" ? event.props.to : null });
+  else if (event.name === "site_leave" && ctx.pv) {
+    const prev = visit.leaves.get(ctx.pv);
+    visit.leaves.set(ctx.pv, { path: String(event.props.path ?? ctx.page ?? "/"), scroll: Math.max(prev?.scroll ?? 0, Number(event.props.scroll) || 0), ms: Math.max(prev?.ms ?? 0, Number(event.props.ms) || 0) });
+  }
+}
+
+const ATTRIBUTED = ["source", "channel", "referrer", "campaign", "ref", "keyword"] as const;
+const FILLED = ["country", "region", "city", "lat", "lon", "device", "os", "browser"] as const;
+/** folds `later` (the same visits' events from a later time) into `into`, as if every event had been added to `into` in order */
+export function mergeSessions(into: Sessions, later: Sessions) {
+  for (const [key, next] of later) {
+    const visit = into.get(key);
+    if (!visit) { into.set(key, next); continue; }
+    const app = key.startsWith("app:");
     if (app) {
-      if (surface === "phone") visit.surface = surface;
-      if (event.accountId) visit.visitor = event.accountId;
-      fill(visit, ctx);
-      if (event.name === "app_open" && !opens.has(visit)) opens.set(visit, event.at);
-      if (event.name === "app_screen") visit.pages.push({ path: String(event.props.screen ?? "/"), at: event.at, pv: null });
-      if (event.name === "app_close" && typeof event.props.ms === "number") closed.set(visit, Math.max(closed.get(visit) ?? 0, event.props.ms));
-    } else if (event.name === "site_view" || account) {
-      const first = visit.pages.length === 0;
-      const path = String(event.props.path ?? ctx.page ?? "/");
-      // the account page lives under /dashboard on the site's origin; its own paths start at its root
-      visit.pages.push({ path: account ? `/dashboard${path === "/" ? "" : path}` : path, at: event.at, pv: ctx.pv ?? null });
-      if (first) attribute(visit, ctx);
-      else fill(visit, ctx);
-    } else if (event.name === "site_goal") visit.goals.push({ goal: String(event.props.goal), at: event.at, to: typeof event.props.to === "string" ? event.props.to : null });
-    else if (event.name === "site_leave" && ctx.pv) {
-      const prev = visit.leaves.get(ctx.pv);
-      visit.leaves.set(ctx.pv, { path: String(event.props.path ?? ctx.page ?? "/"), scroll: Math.max(prev?.scroll ?? 0, Number(event.props.scroll) || 0), ms: Math.max(prev?.ms ?? 0, Number(event.props.ms) || 0) });
+      if (next.named) { visit.visitor = next.visitor; visit.named = true; }
+      if (next.surface === "phone") visit.surface = "phone";
+    } else if (!visit.pages.length && next.pages.length) {
+      // a site or account visit takes its source from its first page view
+      for (const field of ATTRIBUTED) (visit as unknown as Record<string, unknown>)[field] = next[field];
     }
+    for (const field of FILLED) (visit as unknown as Record<string, unknown>)[field] ??= next[field];
+    visit.start = Math.min(visit.start, next.start); visit.end = Math.max(visit.end, next.end);
+    visit.pages.push(...next.pages); visit.goals.push(...next.goals);
+    for (const [pv, leave] of next.leaves) {
+      const prev = visit.leaves.get(pv);
+      visit.leaves.set(pv, { path: leave.path, scroll: Math.max(prev?.scroll ?? 0, leave.scroll), ms: Math.max(prev?.ms ?? 0, leave.ms) });
+    }
+    visit.opened ??= next.opened;
+    if (next.closedMs !== null) visit.closedMs = Math.max(visit.closedMs ?? 0, next.closedMs);
   }
+}
+
+/** the finished visits on these surfaces, oldest first; they share the sessions' lists, so sessions are finished once */
+export function visitsFrom(by: Sessions, surfaces: readonly Surface[]): Visit[] {
   const out: Visit[] = [];
-  for (const visit of by.values()) {
-    if (!surfaces.includes(visit.surface)) continue;
-    if (!visit.pages.length && opens.has(visit)) visit.pages.push({ path: "/", at: opens.get(visit)!, pv: null });
-    if (!visit.pages.length) continue;
-    visit.pages.sort((a, b) => a.at - b.at);
-    visit.entry = visit.pages[0]!.path; visit.exit = visit.pages.at(-1)!.path;
-    const engaged = [...visit.leaves.values()].reduce((sum, leave) => sum + leave.ms, 0);
-    visit.engagedMs = closed.get(visit) ?? Math.max(engaged, visit.end - visit.start);
-    visit.bounced = visit.pages.length === 1 && visit.goals.length === 0;
-    out.push(visit);
-  }
+  for (const state of by.values()) { const visit = finished(state, surfaces); if (visit) out.push(visit); }
   return out.sort((a, b) => a.start - b.start);
+}
+/** visitsFrom in pieces, letting `pause` hand the event loop back between them */
+export async function visitsFromPaced(by: Sessions, surfaces: readonly Surface[], pause: () => Promise<void>): Promise<Visit[]> {
+  const out: Visit[] = [];
+  let i = 0;
+  for (const state of by.values()) {
+    const visit = finished(state, surfaces);
+    if (visit) out.push(visit);
+    if ((++i & 4095) === 0) await pause();
+  }
+  // visits come in the order of their first event, which is their start: sorting is only ever a check
+  for (let k = 1; k < out.length; k++) if (out[k]!.start < out[k - 1]!.start) return out.sort((a, b) => a.start - b.start);
+  return out;
+}
+function finished(state: Session, surfaces: readonly Surface[]): Visit | null {
+  if (!surfaces.includes(state.surface)) return null;
+  const pages = state.pages;
+  if (!pages.length && state.opened !== null) pages.push({ path: "/", at: state.opened, pv: null });
+  if (!pages.length) return null;
+  pages.sort((a, b) => a.at - b.at);
+  let engaged = 0;
+  for (const leave of state.leaves.values()) engaged += leave.ms;
+  return { session: state.session, visitor: state.visitor, surface: state.surface, start: state.start, end: state.end, host: state.host, keyword: state.keyword, pages, goals: state.goals,
+    leaves: state.leaves, entry: pages[0]!.path, exit: pages.at(-1)!.path, engagedMs: state.closedMs ?? Math.max(engaged, state.end - state.start),
+    bounced: pages.length === 1 && state.goals.length === 0, source: state.source, channel: state.channel, referrer: state.referrer, campaign: state.campaign, ref: state.ref,
+    country: state.country, region: state.region, city: state.city, lat: state.lat, lon: state.lon, device: state.device, os: state.os, browser: state.browser };
 }
 function attribute(visit: Visit, ctx: EventContext) {
   visit.source = ctx.source ?? "direct"; visit.channel = ctx.channel ?? "direct"; visit.referrer = ctx.referrer ?? null;
@@ -114,6 +179,8 @@ export function valuesOf(visit: Visit, dim: Dimension): string[] {
     case "goal": return [...new Set(visit.goals.map(goal => goal.goal))];
     case "entry": return [visit.entry];
     case "exit": return [visit.exit];
+    // no referring host: the named source a link carried (?ref, utm_source), else the visit came in direct
+    case "referrer": return [visit.referrer || (visit.source && visit.source !== "direct" && visit.source !== "unknown" ? visit.source : "direct")];
     default: {
       const value = visit[dim];
       return [value === null || value === undefined || value === "" ? "unknown" : String(value)];
@@ -131,25 +198,37 @@ export interface People {
 
 const pct = (part: number, whole: number) => whole > 0 ? part / whole : null;
 const accountOf = (identity: Identity, person: string) => person.startsWith("acct_") ? person : identity.accountOf.get(person);
-const median = (values: number[]) => {
+const median = (values: ArrayLike<number>) => {
   if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b), mid = sorted.length >> 1;
+  const sorted = Float64Array.from(values).sort(), mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid]! : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
 };
+
+/** a view's numbers built one visit at a time, so a long list of visits can be fed in pieces */
+export interface Tally<T> { add(visit: Visit): void; result(): T }
+const fed = <T,>(tally: Tally<T>, visits: readonly Visit[]) => { for (const visit of visits) tally.add(visit); return tally.result(); };
 
 export interface Kpis { visitors: number; visits: number; pageviews: number; signups: number; paid: number; waitlist: number; conversion: number | null; bounce: number | null; visitMs: number | null }
 /** the KPI strip for one window; with filters, signups and payments count only people whose visits match */
 export function kpis(visits: readonly Visit[], identity: Identity, people: People, from: number, to: number, filters: Filters = {}): Kpis {
-  const inRange = visits.filter(visit => visit.start >= from && visit.start < to && matches(visit, filters));
-  const visitors = new Set(inRange.map(visit => visit.visitor));
-  const filtered = Object.keys(filters).length > 0;
-  const allowed = filtered ? new Set([...visitors].map(visitor => accountOf(identity, visitor)).filter((id): id is string => !!id)) : null;
-  const count = (map: ReadonlyMap<string, number>) => [...map].filter(([id, at]) => at >= from && at < to && (!allowed || allowed.has(id))).length;
-  const signups = count(people.signups);
+  return fed(kpisTally(identity, people, from, to, filters), visits);
+}
+export function kpisTally(identity: Identity, people: People, from: number, to: number, filters: Filters = {}): Tally<Kpis> {
+  const visitors = new Set<string>(), joined = new Set<string>(), engaged: number[] = [];
+  let count = 0, pageviews = 0, bounced = 0;
   return {
-    visitors: visitors.size, visits: inRange.length, pageviews: inRange.reduce((sum, visit) => sum + visit.pages.length, 0),
-    signups, paid: count(people.paid), waitlist: new Set(inRange.filter(visit => visit.goals.some(goal => goal.goal === "waitlist_join")).map(visit => visit.visitor)).size,
-    conversion: pct(signups, visitors.size), bounce: pct(inRange.filter(visit => visit.bounced).length, inRange.length), visitMs: median(inRange.map(visit => visit.engagedMs)),
+    add(visit) {
+      if (visit.start < from || visit.start >= to || !matches(visit, filters)) return;
+      visitors.add(visit.visitor); count++; pageviews += visit.pages.length; engaged.push(visit.engagedMs);
+      if (visit.bounced) bounced++;
+      if (visit.goals.some(goal => goal.goal === "waitlist_join")) joined.add(visit.visitor);
+    },
+    result() {
+      const allowed = Object.keys(filters).length > 0 ? new Set([...visitors].map(visitor => accountOf(identity, visitor)).filter((id): id is string => !!id)) : null;
+      const counted = (map: ReadonlyMap<string, number>) => [...map].filter(([id, at]) => at >= from && at < to && (!allowed || allowed.has(id))).length;
+      const signups = counted(people.signups);
+      return { visitors: visitors.size, visits: count, pageviews, signups, paid: counted(people.paid), waitlist: joined.size, conversion: pct(signups, visitors.size), bounce: pct(bounced, count), visitMs: median(engaged) };
+    },
   };
 }
 
@@ -160,39 +239,63 @@ export function bucketsOf(from: number, to: number): { size: number; starts: num
   for (let at = from; at < to; at += size) starts.push(at);
   return { size, starts };
 }
-export function series(visits: readonly Visit[], people: People, from: number, to: number, filters: Filters = {}, identity?: Identity) {
+export interface Series { size: number; starts: number[]; visitors: number[]; signups: number[]; paid: number[]; waitlist: number[] }
+export function series(visits: readonly Visit[], people: People, from: number, to: number, filters: Filters = {}, identity?: Identity): Series {
+  return fed(seriesTally(people, from, to, filters, identity), visits);
+}
+export function seriesTally(people: People, from: number, to: number, filters: Filters = {}, identity?: Identity): Tally<Series> {
   const { size, starts } = bucketsOf(from, to);
   const index = (at: number) => Math.floor((at - starts[0]!) / size);
-  const visitors = starts.map(() => new Set<string>()), joined = starts.map(() => new Set<string>()), signups = starts.map(() => 0), paid = starts.map(() => 0);
+  const visitors = starts.map(() => new Set<string>()), joined = starts.map(() => new Set<string>());
   const allowed = Object.keys(filters).length && identity ? new Set<string>() : null;
-  for (const visit of visits) {
-    if (visit.start < from || visit.start >= to || !matches(visit, filters)) continue;
-    visitors[index(visit.start)]?.add(visit.visitor);
-    if (visit.goals.some(goal => goal.goal === "waitlist_join")) joined[index(visit.start)]?.add(visit.visitor);
-    const account = identity ? accountOf(identity, visit.visitor) : undefined;
-    if (allowed && account) allowed.add(account);
-  }
-  for (const [id, at] of people.signups) if (at >= from && at < to && (!allowed || allowed.has(id))) signups[index(at)]! += 1;
-  for (const [id, at] of people.paid) if (at >= from && at < to && (!allowed || allowed.has(id))) paid[index(at)]! += 1;
-  return { size, starts, visitors: visitors.map(set => set.size), signups, paid, waitlist: joined.map(set => set.size) };
+  return {
+    add(visit) {
+      if (visit.start < from || visit.start >= to || !matches(visit, filters)) return;
+      visitors[index(visit.start)]?.add(visit.visitor);
+      if (visit.goals.some(goal => goal.goal === "waitlist_join")) joined[index(visit.start)]?.add(visit.visitor);
+      const account = identity ? accountOf(identity, visit.visitor) : undefined;
+      if (allowed && account) allowed.add(account);
+    },
+    result() {
+      const signups = starts.map(() => 0), paid = starts.map(() => 0);
+      for (const [id, at] of people.signups) if (at >= from && at < to && (!allowed || allowed.has(id))) signups[index(at)]! += 1;
+      for (const [id, at] of people.paid) if (at >= from && at < to && (!allowed || allowed.has(id))) paid[index(at)]! += 1;
+      return { size, starts, visitors: visitors.map(set => set.size), signups, paid, waitlist: joined.map(set => set.size) };
+    },
+  };
 }
 
 export interface BreakdownRow { key: string; visitors: number; signups: number; paid: number }
 /** a ranked card: visitors per value, with the signups and payments of the people those visitors became */
 export function breakdown(visits: readonly Visit[], identity: Identity, people: People, dim: Dimension, from: number, to: number, filters: Filters = {}, limit = 50): BreakdownRow[] {
+  return fed(breakdownTally(identity, people, dim, from, to, filters, limit), visits);
+}
+export function breakdownTally(identity: Identity, people: People, dim: Dimension, from: number, to: number, filters: Filters = {}, limit = 50): Tally<BreakdownRow[]> {
   const rows = new Map<string, { visitors: Set<string>; accounts: Set<string> }>();
-  for (const visit of visits) {
-    if (visit.start < from || visit.start >= to || !matches(visit, filters)) continue;
-    for (const value of valuesOf(visit, dim)) {
-      const row = rows.get(value) ?? rows.set(value, { visitors: new Set(), accounts: new Set() }).get(value)!;
-      row.visitors.add(visit.visitor);
+  return {
+    add(visit) {
+      if (visit.start < from || visit.start >= to || !matches(visit, filters)) return;
       const account = accountOf(identity, visit.visitor);
-      if (account) row.accounts.add(account);
-    }
+      for (const value of valuesOf(visit, dim)) {
+        const row = rows.get(value) ?? rows.set(value, { visitors: new Set(), accounts: new Set() }).get(value)!;
+        row.visitors.add(visit.visitor);
+        if (account) row.accounts.add(account);
+      }
+    },
+    result() {
+      const within = (map: ReadonlyMap<string, number>, ids: Set<string>) => [...ids].filter(id => { const at = map.get(id); return at !== undefined && at >= from && at < to; }).length;
+      return [...rows].map(([key, row]) => ({ key, visitors: row.visitors.size, signups: within(people.signups, row.accounts), paid: within(people.paid, row.accounts) }))
+        .sort((a, b) => b.visitors - a.visitors || b.signups - a.signups || a.key.localeCompare(b.key)).slice(0, limit);
+    },
+  };
+}
+/** feeds visits to tallies, handing the event loop back between pieces */
+export async function feed(visits: readonly Visit[], tallies: ReadonlyArray<Tally<unknown>>, pause: () => Promise<void>) {
+  for (let i = 0; i < visits.length; i++) {
+    const visit = visits[i]!;
+    for (const tally of tallies) tally.add(visit);
+    if ((i & 1023) === 1023) await pause();
   }
-  const within = (map: ReadonlyMap<string, number>, ids: Set<string>) => [...ids].filter(id => { const at = map.get(id); return at !== undefined && at >= from && at < to; }).length;
-  return [...rows].map(([key, row]) => ({ key, visitors: row.visitors.size, signups: within(people.signups, row.accounts), paid: within(people.paid, row.accounts) }))
-    .sort((a, b) => b.visitors - a.visitors || b.signups - a.signups || a.key.localeCompare(b.key)).slice(0, limit);
 }
 
 /** how many people were on the site (the account pages included) in the last five minutes, and in an app; `present` are
@@ -254,7 +357,9 @@ export interface FunnelInput {
   mode: "visitors" | "signups";
   visits: readonly Visit[];
   identity: Identity;
-  events: readonly StoredEvent[];
+  /** the window's events, or `facts` already taken from them */
+  events?: readonly StoredEvent[];
+  facts?: FunnelFacts;
   people: People;
   /** first time each account chose a cloud (a cart checkout with a desktop) */
   cloudChosen: ReadonlyMap<string, number>;
@@ -264,6 +369,26 @@ export interface FunnelInput {
   replied: ReadonlyMap<string, number>;
 }
 const ONBOARDING = ["name", "plan", "app"] as const;
+
+/** what the funnel reads from events, per account: the first time of each onboarding step ("done" when finished), its active
+ *  days, and its newest event (the page it was on) */
+export interface FunnelFacts {
+  onboarding: Map<string, Map<string, number>>;
+  days: Map<string, Set<number>>;
+  last: Map<string, { name: string; page: string | null }>;
+}
+export function funnelFacts(events: readonly StoredEvent[]): FunnelFacts {
+  const onboarding = new Map<string, Map<string, number>>(), last = new Map<string, { name: string; page: string | null }>();
+  for (const event of events) {
+    if (!event.accountId) continue;
+    last.set(event.accountId, { name: event.name, page: event.name === "page_view" ? String(event.props.path) : event.ctx?.page ?? null });
+    const step = event.name === "onboarding_step" ? String(event.props.step) : event.name === "onboarding_done" ? "done" : null;
+    if (!step) continue;
+    const per = onboarding.get(event.accountId) ?? onboarding.set(event.accountId, new Map()).get(event.accountId)!;
+    if (!per.has(step) || per.get(step)! > event.at) per.set(step, event.at);
+  }
+  return { onboarding, days: activeDays(events), last };
+}
 
 /**
  * The Dusk funnel per person: a step counts someone who reached it and every step above it, whenever they did (someone
@@ -276,34 +401,31 @@ export function funnel(input: FunnelInput) {
   const { identity } = input;
   const firstVisit = new Map<string, Visit>();
   for (const visit of input.visits) if (!firstVisit.has(visit.visitor) || firstVisit.get(visit.visitor)!.start > visit.start) firstVisit.set(visit.visitor, visit);
-  const onboarding = new Map<string, Map<string, number>>();
-  for (const event of input.events) {
-    if (!event.accountId) continue;
-    const step = event.name === "onboarding_step" ? String(event.props.step) : event.name === "onboarding_done" ? "done" : null;
-    if (!step) continue;
-    const per = onboarding.get(event.accountId) ?? onboarding.set(event.accountId, new Map()).get(event.accountId)!;
-    if (!per.has(step) || per.get(step)! > event.at) per.set(step, event.at);
-  }
-  const days = activeDays(input.events);
+  const { onboarding, days, last: lastEventOf } = input.facts ?? funnelFacts(input.events ?? []);
   type Person = { key: string; source: string; channel: string; account: string | null; times: Array<number | null>; last: { page: string | null; scroll: number | null; event: string | null } };
   const people: Person[] = [];
   const accountSteps = (account: string | null): Array<number | null> => {
     const signup = account ? input.people.signups.get(account) ?? null : null;
     const onb = account ? onboarding.get(account) : undefined;
-    const steps: Array<number | null> = [...ONBOARDING.map(step => onb?.get(step) ?? null), onb?.get("done") ?? null,
+    // an account made in the desktop app opens the web welcome once and then sets up in the app: pairing it counts as onboarded
+    const inApp = account && !onb?.has("done") ? input.paired.get(account) ?? null : null;
+    const steps: Array<number | null> = [...ONBOARDING.map(step => onb?.get(step) ?? inApp), onb?.get("done") ?? inApp,
       account ? input.cloudChosen.get(account) ?? null : null, account ? input.people.paid.get(account) ?? null : null,
       account ? input.paired.get(account) ?? null : null, account ? input.replied.get(account) ?? null : null];
     const back = (window: readonly [number, number]) => signup !== null && returned(signup, days.get(account!), window) ? signup + window[0] * DAY : null;
     return [...steps, back(RETURN_WINDOWS.d1), back(RETURN_WINDOWS.d7), back(RETURN_WINDOWS.d30)];
   };
   if (input.mode === "visitors") {
+    const byVisitor = new Map<string, Visit[]>();
+    for (const visit of input.visits) (byVisitor.get(visit.visitor) ?? byVisitor.set(visit.visitor, []).get(visit.visitor)!).push(visit);
     for (const [visitor, visit] of firstVisit) {
       if (visit.start < input.from || visit.start >= input.to) continue;
       const account = identity.accountOf.get(visitor) ?? null;
-      const joined = input.visits.filter(item => item.visitor === visitor).flatMap(item => item.goals.filter(goal => goal.goal === "waitlist_join").map(goal => goal.at));
+      const mine = byVisitor.get(visitor)!;
+      const joined = mine.flatMap(item => item.goals.filter(goal => goal.goal === "waitlist_join").map(goal => goal.at));
       const signup = account ? input.people.signups.get(account) ?? null : null;
       const second = [signup, ...joined].filter((at): at is number => at !== null).sort((a, b) => a - b)[0] ?? null;
-      const lastVisit = input.visits.filter(item => item.visitor === visitor).at(-1)!;
+      const lastVisit = mine.at(-1)!;
       const lastLeave = [...lastVisit.leaves.values()].at(-1);
       people.push({ key: visitor, source: visit.source, channel: visit.channel, account, times: [visit.start, second, ...accountSteps(account)],
         last: { page: lastVisit.exit, scroll: lastLeave?.scroll ?? null, event: lastVisit.goals.at(-1)?.goal ?? null } });
@@ -313,9 +435,9 @@ export function funnel(input: FunnelInput) {
       if (at < input.from || at >= input.to) continue;
       const visitor = [...(identity.visitorsOf.get(account) ?? [])][0];
       const visit = visitor ? firstVisit.get(visitor) : undefined;
-      const lastEvent = input.events.filter(event => event.accountId === account).at(-1);
+      const lastEvent = lastEventOf.get(account);
       people.push({ key: account, source: visit?.source ?? "unknown", channel: visit?.channel ?? "unknown", account, times: [visit?.start ?? null, at, ...accountSteps(account)],
-        last: { page: lastEvent?.name === "page_view" ? String(lastEvent.props.path) : lastEvent?.ctx?.page ?? null, scroll: null, event: lastEvent?.name ?? null } });
+        last: { page: lastEvent?.page ?? null, scroll: null, event: lastEvent?.name ?? null } });
     }
   }
   const labels: Array<[string, string]> = [["visit", "visited the site"], ["signup", input.mode === "visitors" ? "joined the waitlist or signed up" : "signed up"],
@@ -351,7 +473,12 @@ export function funnel(input: FunnelInput) {
   const drop = Object.fromEntries([...dropped].map(([id, list]) => [id, { count: list.length, lastPages: top(list.map(person => person.last.page)), lastEvents: top(list.map(person => person.last.event)), scroll: scrollBuckets(list) }]));
   const sources = new Map<string, Person[]>();
   for (const person of people) (sources.get(person.channel) ?? sources.set(person.channel, []).get(person.channel)!).push(person);
-  const bySource = [...sources].map(([channel, list]) => ({ channel, counts: labels.slice(startAt).map((_, k) => list.filter(person => person.times.slice(startAt, startAt + k + 1).every(at => at !== null && at !== undefined)).length) }))
-    .sort((a, b) => b.counts[0]! - a.counts[0]!);
+  // how many steps in a row from the first each person reached: they count toward every step up to there
+  const depth = (person: Person) => { let k = startAt; while (k < labels.length && person.times[k] !== null && person.times[k] !== undefined) k++; return k - startAt; };
+  const bySource = [...sources].map(([channel, list]) => {
+    const counts = labels.slice(startAt).map(() => 0);
+    for (const person of list) for (let k = depth(person) - 1; k >= 0; k--) counts[k]! += 1;
+    return { channel, counts };
+  }).sort((a, b) => b.counts[0]! - a.counts[0]!);
   return { mode: input.mode, steps, dropoff: drop, bySource };
 }

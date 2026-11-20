@@ -66,7 +66,7 @@ const DOT = 12, GAP = 6, WIDE = 24;
 
 /** The progress drawn over the dots: the steps behind fill in, and the current one is an ink pill that stretches to its
  * new dot, the edge facing the move quick and the other catching up. Logical offsets, so it runs the right way in RTL. */
-function ProgressInk({ at }: { at: number }) {
+export function ProgressInk({ at }: { at: number }) {
   const reduced = useReducedMotion() === true;
   const start = at * (DOT + GAP);
   const from = useMotionValue(start), to = useMotionValue(start + WIDE), done = useMotionValue(Math.max(0, start - GAP));
@@ -140,14 +140,18 @@ export function ImproveSwitch() {
   );
 }
 
-export function WelcomeStep({ onStart }: { onStart: () => void }) {
+/** The hello. On a cloud the desktop app set up it greets the person by the name and picture that computer knows. */
+export function WelcomeStep({ onStart, cloud }: { onStart: () => void; cloud?: { name: string; picture?: string } }) {
   const reduced = usePrefersReducedMotion();
+  const art = cloud?.picture
+    ? <img src={cloud.picture} alt="" data-welcome-picture="" className="size-[72px] rounded-full object-cover" />
+    : <MausAvatar color="purple" gradient={BRAND_LILAC} size={72} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />;
   return (
     <div className="flex min-h-full w-full flex-col">
       <StepFrame
-        art={<MausAvatar color="purple" gradient={BRAND_LILAC} size={72} state="excited" animated={!reduced} label={DEFAULT_BOT_NAME} />}
-        title={t("funnel.welcome.title")}
-        sub={t("funnel.welcome.sub")}
+        art={art}
+        title={cloud ? (cloud.name ? t("funnel.welcome.cloudNamed", { name: cloud.name }) : t("funnel.welcome.cloud")) : t("funnel.welcome.title")}
+        sub={cloud ? t("funnel.welcome.cloudSub") : t("funnel.welcome.sub")}
         footer={<button type="button" data-primary="" data-funnel-start="" autoFocus onClick={onStart} className={PRIMARY}>{t("funnel.welcome.start")}</button>}
       />
     </div>
