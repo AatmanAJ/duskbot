@@ -85,5 +85,7 @@ describe("a dialog the page opened", () => {
     expect(listed.tools.map((tool) => tool.name)).toContain("agent_browser_dialog");
     expect(withDialogTool('A JavaScript confirm dialog is blocking the page: "Sure?". Resolve it with `dialog accept` or `dialog dismiss`, then retry `press`.'))
       .toBe('A JavaScript confirm dialog is blocking the page: "Sure?". Answer it with agent_browser_dialog (accept true or false), then call agent_browser_press again.');
+    expect(withDialogTool('A JavaScript prompt dialog is blocking the page: "Name?" — use `dialog accept` or `dialog dismiss` to resolve it'))
+      .toBe('A JavaScript prompt dialog is blocking the page: "Name?" — answer it with agent_browser_dialog (accept true or false)');
   });
 });

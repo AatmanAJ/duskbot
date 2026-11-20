@@ -35,11 +35,15 @@ export const RELAYED_TOOL_SPECS = [
   },
 ];
 
-const DIALOG_HINT = /Resolve it with `dialog accept` or `dialog dismiss`, then retry `([\w-]+)`\./gu;
+const RETRY_HINT = /Resolve it with `dialog accept` or `dialog dismiss`, then retry `([\w-]+)`\./gu;
+const OTHER_HINTS = /[Uu]se `dialog accept(?: \[text\])?` or `dialog dismiss` to resolve it|resolve it with `dialog accept`\/`dialog dismiss`/gu;
 
-/** agent-browser's own advice on an open dialog names its CLI command; the bot answers one with agent_browser_dialog. */
+/** agent-browser 0.37.0's advice on an open dialog names its CLI command; the bot answers one with agent_browser_dialog. */
 export function withDialogTool(text: string): string {
-  return text.replace(DIALOG_HINT, (_all, call: string) => `Answer it with ${BROWSER_DIALOG_TOOL} (accept true or false), then call ${call.startsWith("agent_browser_") ? call : `agent_browser_${call}`} again.`);
+  return text
+    .replace(RETRY_HINT, (_all, call: string) => `Answer it with ${BROWSER_DIALOG_TOOL} (accept true or false), then call ${call.startsWith("agent_browser_") ? call : `agent_browser_${call}`} again.`)
+    .replace(OTHER_HINTS, `answer it with ${BROWSER_DIALOG_TOOL} (accept true or false)`);
 }
+
 export type RelayedToolSpec = (typeof RELAYED_TOOL_SPECS)[number];
 export const RELAYED_TOOLS: ReadonlyMap<string, RelayedToolSpec> = new Map(RELAYED_TOOL_SPECS.map((spec) => [spec.name, spec]));
