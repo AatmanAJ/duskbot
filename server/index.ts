@@ -436,7 +436,7 @@ import {
 import { shellTimeoutHookResult } from "./shell-timeout-hint.ts";
 import { spillToolResult } from "./tool-result-spill.ts";
 import { gatedLocalComputer } from "./local-computer.ts";
-import { desktopComputer, missingScreenPermissions, thisComputerNotReady } from "./desktop-computer.ts";
+import { desktopComputer, missingScreenPermissions, screenGrantWanted, thisComputerNotReady } from "./desktop-computer.ts";
 import { dismissRetiredCards } from "./retired-cards.ts";
 import { askToUseYourComputer, cancelYourComputerAsks, claimWithYourComputerConsent, dismissStaleYourComputerCards, yourComputerCallFrom, yourComputerWaiting } from "./your-computer-consent.ts"; import { askToUseMac, cancelMacAsks, dismissStaleMacCards, MAC_ASK_ENDED_TEXT, MAC_DENIED_TEXT } from "./mac-control/cloud-ask.ts";
 import { discoverExistingPerBotLocalVms, localVmInventoryEntry } from "./local-vm-inventory.ts";
@@ -1831,7 +1831,7 @@ function agentsIntegration(
   // Only advertises the tools; the routes behind them refuse regardless.
   const host = { skillAuthoring: skillAuthoringEnabled(cfg), cloudHome: Boolean(CLOUD_HOME), team: Boolean(CLOUD_TEAM),
     voiceNotes: tts.voiceReady(cfg, speaking?.voice) && speaking?.voiceNotes !== false, x: Boolean(researchCredential(cfg.treg?.key)), research: researchAvailability.available(), slack: slackHost.linked(botId) };
-  const screenAccessMissing = Boolean(bot) && missingScreenPermissions().length > 0 && turnSurfacePlan(bot!, undefined, threadId).computer === "local";
+  const screenAccessMissing = Boolean(bot) && screenWaitsOnGrant(bot!, threadId);
   return { ...agentsProxyLaunch(), env: agentsServerEnv({ threadId, bot: bot ?? { id: botId }, room: Boolean(store.groupByThread(threadId)), teamComputer: Boolean(bot && inheritedTeamComputer(bot)?.scope !== "workspace" && inheritedTeamComputer(bot)), host, engine, screenAccessMissing },
     { generation, depth, skillAuthoring, roomHandoffId, ...(hostFiles && !CLOUD_HOME ? { deliversSavedFiles: true } : {}) },
     (turn) => mintInternalCapability({ botId, threadId, kind: "agents", createdBots: 0, openedThreads: 0, ...turn }), `http://127.0.0.1:${PORT}`) };
@@ -6632,7 +6632,7 @@ function providerOperationConflict(_provider: RemoteComputerProvider): string | 
   }
   return null;
 }
-
+const screenWaitsOnGrant = (bot: BotRecord, threadId: string) => screenGrantWanted(turnSurfacePlan(bot, undefined, threadId, true).computer, () => !CLOUD_HOME && !inheritedTeamComputer(bot) && !vpsSshAliasForBot(cfg, bot) && !computerPlaceRefusal("thisComputer") && shouldMountLocalComputer({ requested: undefined, hostPlatform: process.platform, providerSupportsLocal: registry.get(bot.modelSelection.instanceId)?.adapter.capabilities.localComputerMcp === true }));
 /** `chosen`: the place the person set, so the browser's tools are handed the same way on every turn. */
 function turnSurfacePlan(bot: BotRecord, runOn?: RoutineRunOn, threadId?: string, chosen = false) {
   const shared = inheritedTeamComputer(bot);
@@ -9347,7 +9347,7 @@ async function beginTurn(
           });
           integrations.localComputer = gatedLocalComputer(cua, controlIntegration(bot.id, threadId, dispatchClaimId, "this computer"));
           computerKind = "local";
-        }
+        } else if (!computerKind && screenWaitsOnGrant(bot, threadId)) hostScreenMissing = true;
       }
       let vpsUnavailableNote = ownVpsAsleep ? computerKind === "vps" ? WAKES_ON_CALL_VPS_NOTE : LAZY_VPS_NOTE : deferredSharedComputer
         ? " A VPS computer is available on demand. Keep ordinary conversation computer-free. When the task needs browsing, files on that computer, or desktop actions, call select_computer with surface=cloud yourself; it prepares or wakes the shared computer and continues this request. Do not ask the person to configure a per-bot computer."
@@ -15675,7 +15675,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const body = await readInternalBody();
         const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 200) : "";
         const missing = missingScreenPermissions();
-        const onThisMac = !store.groupByThread(internalCapability.threadId) && turnSurfacePlan(internalSender, undefined, internalCapability.threadId).computer === "local";
+        const onThisMac = !store.groupByThread(internalCapability.threadId) && screenWaitsOnGrant(internalSender, internalCapability.threadId);
         requireActiveInternalCapability();
         if (!missing.length || !onThisMac) return json(res, 200, { shown: false });
         broadcast({ kind: "screen-access", botId: internalSender.id, threadId: internalCapability.threadId, missing, ...(reason ? { reason } : {}) }, { adminOnly: true });
