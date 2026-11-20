@@ -47,11 +47,12 @@ beforeEach(() => {
   });
 });
 
-describe("the sidebar dusk cloud card", () => {
-  it("says Keep your bots working, the bot panel's pitch made small, with no nap in it", async () => {
+describe("the dusk cloud offer in the sidebar's spot", () => {
+  it("is the website sidebar's card: dusk cloud keeps your bots working, and Keep them working, with no nap in it", async () => {
     const html = await launch();
-    expect(html).toContain("Keep your bots working");
-    expect(html).toContain("On dusk cloud, they keep replying even when this Mac is asleep or off.");
+    expect(html).toContain('data-spot-card=""');
+    expect(html).toContain("dusk cloud keeps your bots working, even when your Mac is off.");
+    expect(html).toContain(">Keep them working<");
     expect(html).not.toMatch(/\bnap/i);
     expect(track).toHaveBeenCalledWith("upsell_shown", { source: "app_sidebar" });
   });
@@ -59,7 +60,7 @@ describe("the sidebar dusk cloud card", () => {
   it("switches to their own numbers once someone is invested, counted as app_invested, once per account", async () => {
     f.state.bots = bots(3);
     const html = await launch();
-    expect(html).toContain("data-invested");
+    expect(html).toContain('data-spot-cta="cloud-invested"');
     expect(html).toContain("good crew of bots");
     expect(html).toContain("dusk cloud keeps them working, even when your Mac is off.");
     expect(track).toHaveBeenCalledWith("upsell_shown", { source: "app_invested" });
@@ -67,7 +68,7 @@ describe("the sidebar dusk cloud card", () => {
     expect(f.state.config.onboarding.hintsSeen).toContain("cloud-invested-v1");
     expect(await settle(), "holds for the rest of the launch").toContain("good crew of bots");
     today(1);
-    expect(await launch(), "the next launch is back to the plain card").not.toContain("data-invested");
+    expect(await launch(), "the next launch is back to the plain card").toContain('data-spot-cta="cloud"');
   });
 
   it("quotes messages and routines too", async () => {
@@ -85,7 +86,7 @@ describe("the sidebar dusk cloud card", () => {
     const buttons: any[] = [];
     const walk = (node: any) => { if (!node || typeof node !== "object") return; if (node.type === "button") buttons.push(node); [node.props?.children].flat().forEach(walk); };
     walk(element.type(element.props));
-    buttons.find(button => button.props["data-sidebar-cloud-start"] === "").props.onClick();
+    buttons.find(button => button.props["data-spot-cta-start"] === "").props.onClick();
     expect(f.dispatch).toHaveBeenCalledWith({ type: "openCloudAdd", source: "app_invested", signIn: true });
     expect(track).toHaveBeenCalledWith("upsell_click", { source: "app_invested", ms: expect.any(Number) });
     expect(await settle(), "clicked: this showing is over").toBe("");
@@ -104,15 +105,15 @@ describe("the sidebar dusk cloud card", () => {
     expect(storage.has("dusk-cloud-sidebar-card-until")).toBe(false);
   });
 
-  it("only on a day the app is used, and never again within three hours", async () => {
+  it("twice a day at most while the app is in use, never again within three hours", async () => {
     today(0);
-    expect(await launch(), "opened, nothing sent yet").toBe("");
-    today(30, { shown: 1, lastShownAt: Date.now() - 3600_000 });
+    expect(await launch(), "the app in use today").toContain("data-spot-cta");
+    today(0, { shown: 1, lastShownAt: Date.now() - 3600_000 });
     expect(await launch()).toBe("");
-    today(30, { shown: 1, lastShownAt: Date.now() - 3 * 3600_000 - 1 });
-    expect(await launch(), "a busy day earns another, three hours on").toContain("data-sidebar-cloud-card");
-    today(30, { shown: 3, lastShownAt: Date.now() - 5 * 3600_000 });
-    expect(await launch(), "three at most").toBe("");
+    today(0, { shown: 1, lastShownAt: Date.now() - 3 * 3600_000 - 1 });
+    expect(await launch(), "the second, three hours on").toContain("data-spot-cta");
+    today(30, { shown: 2, lastShownAt: Date.now() - 5 * 3600_000 });
+    expect(await launch(), "two at most, however busy the day").toBe("");
   });
 
   it("never in a store build, nor before the first reply", async () => {
@@ -135,6 +136,6 @@ describe("the sidebar dusk cloud card", () => {
 
   it("waits below every threshold", async () => {
     f.state.bots = [...bots(1, 25), ...bots(1, 24)];
-    expect(await launch()).not.toContain("data-invested");
+    expect(await launch()).not.toContain("cloud-invested");
   });
 });

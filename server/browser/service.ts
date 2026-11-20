@@ -1,5 +1,5 @@
 // The bots' browsers on the CDP driver: one Chrome per profile, started on a bot's first call and closed when idle,
-// tools and people's viewers on top. A person holding the browser holds all of it; one bot call runs at a time.
+// tools and people's viewers on top. A person holds only the tabs they use; one bot call runs at a time.
 //
 // The tab lifecycle, popups, downloads and the per-server limits follow pingdotgg/t3code@00cdceb1
 // apps/server/src/preview/ServerBrowser.ts (dropTab, adoptPopup, saveDownload, closeIdleAgentTabs), MIT License,
@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { scrubHeldSecrets } from "../../shared/redact.ts";
 import { BrowserLanes } from "../browser-lane.ts";
+import { trail } from "../trail.ts";
 import { BROWSER_CALL_DEFAULTS, PERSON_ACTED, PERSON_TYPED_ON_PAGE, type BrowserTiming } from "../browser-runtime.ts";
 import { SecretHolds, type SecretHold } from "../browser-secret-hold.ts";
 import { scrubBrowserResult } from "../browser-tool-shape.ts";
@@ -61,6 +62,8 @@ export interface BrowserServiceOptions {
   capacityWaitMs?: number;
   /** How long a person's hold lasts without a hand-back; the standard limits when unset. */
   holdLimits?: HoldLimits;
+  /** A bot of this session asked the person to sign in or pass a check: while they hold its browser, its calls are refused. */
+  signingIn?: (session: string) => boolean;
   log?: (line: string) => void;
   /** Told of each screenshot a bot saved, a scratch file of the session's turn. */
   onScratch?: (session: string, path: string) => void;
@@ -97,13 +100,16 @@ export class ProfileState {
   reopened: Reopened = null;
   /** The person clicked or typed beside the bot since its last call: its next answer says so. */
   personActed = false;
+  /** Tabs a person opened from a view: their cookie banners are theirs to answer. */
+  readonly personTabs = new WeakSet<Tab>();
   /** The next start opens one blank tab rather than the last session's. */
   fresh = false;
 
-  constructor(target: BrowserTarget, dataDir: string, hub: (profile: ProfileState) => ViewerHub, takeoverMs: number) {
+  constructor(target: BrowserTarget, dataDir: string, hub: (profile: ProfileState) => ViewerHub, takeoverMs: number, signingIn: (session: string) => boolean = () => false) {
     this.key = target.key;
     this.session = target.session;
-    this.control = new ProfileControl<Tab>(() => this.tabs.list(), { takeoverMs });
+    this.control = new ProfileControl<Tab>(() => this.tabs.list(), { takeoverMs, signingIn: () => signingIn(this.session) });
+    this.control.onChange(() => this.pinHeld());
     this.downloadDir = join(browserRoot(dataDir), "downloads", profileHash(workspaceId(dataDir), target.key));
     this.hub = hub(this);
   }
@@ -116,6 +122,40 @@ export class ProfileState {
     const page = this.run?.browser.activePage;
     return (page && this.tabs.byPage(page)) ?? this.tabs.list().at(-1) ?? null;
   }
+
+  /** The bot opened `tab` (its browser's last session counts as its own), or a page in such a tab did: never one a person opened or holds. */
+  botOpened(tab: Tab): boolean {
+    if (this.personTabs.has(tab) || this.control.holds(tab)) return false;
+    if (tab.origin === "agent" || tab.origin === "restored") return true;
+    const opener = tab.origin === "page" && tab.openerTabId ? this.tabs.get(tab.openerTabId) : undefined;
+    return opener !== undefined && opener !== tab && this.botOpened(opener);
+  }
+
+  /** The bot's tab: the one in front, or while a person holds that one, the tab the bot last used if it is free. */
+  agentTab(): Tab | null {
+    const front = this.active();
+    if (!front || !this.control.holds(front)) return front;
+    const own = this.control.lastTab;
+    return own && this.tabs.get(own.id) === own && !this.control.holds(own) ? own : front;
+  }
+
+  /** A held tab stays in front of the bot's work, so the person's view never leaves it. */
+  pinHeld(): void {
+    const browser = this.run?.browser;
+    if (!browser) return;
+    const held = this.control.heldTabs();
+    const front = this.active();
+    browser.pin(front && held.includes(front) ? front.page : held.at(-1)?.page ?? null);
+    const pinned = held.length > 0;
+    // after the hand-back, the tab the bot worked in meanwhile comes to the front: its next call goes on there
+    const own = this.control.lastTab;
+    if (this.#pinned && !pinned && own && own !== front && this.tabs.get(own.id) === own) this.refronting = own.page.bringToFront().then(() => this.hub.tabsChanged(), () => undefined);
+    this.#pinned = pinned;
+  }
+
+  #pinned = false;
+  /** The bot's tab coming back to the front after a hand-back; its next call waits for it. */
+  refronting: Promise<void> = Promise.resolve();
 }
 
 function toolNameOf(params: unknown): string | undefined {
@@ -146,11 +186,11 @@ function reopenedNote(reopened: NonNullable<Reopened>, temporary: boolean): stri
 export class BrowserService {
   readonly #options: Required<Pick<BrowserServiceOptions, "callBudgetMs" | "laneWaitMs" | "takeoverMs" | "capacityWaitMs">> & BrowserServiceOptions;
   readonly #profiles = new Map<string, ProfileState>();
-  readonly #lanes = new BrowserLanes();
+  readonly #lanes = new BrowserLanes(({ call, waitedMs, holder }) => trail("browser.lane.busy", { call, waitedMs, holder: holder?.call ?? null, heldMs: holder ? Date.now() - holder.since : null }));
   readonly #holds = new SecretHolds((session, clear) => {
     const profile = this.#bySession(session);
     if (!profile) return Promise.resolve(false);
-    return this.#lanes.run(profile.key, () => profile.control.agent(null, clear), this.#options.laneWaitMs).then((ran) => ran !== null);
+    return this.#lanes.run(profile.key, () => profile.control.agent("every", clear), this.#options.laneWaitMs).then((ran) => ran !== null);
   });
   readonly #scrub: (text: string) => string;
 
@@ -162,7 +202,7 @@ export class BrowserService {
   profile(target: BrowserTarget): ProfileState {
     let profile = this.#profiles.get(target.key);
     if (!profile) {
-      profile = new ProfileState(target, this.#options.dataDir, (state) => new ViewerHub(this.#hubHost(state)), this.#options.takeoverMs);
+      profile = new ProfileState(target, this.#options.dataDir, (state) => new ViewerHub(this.#hubHost(state)), this.#options.takeoverMs, this.#options.signingIn);
       this.#profiles.set(target.key, profile);
     }
     return profile;
@@ -221,7 +261,7 @@ export class BrowserService {
       const known = profile.tabs.byPage(page);
       const tab = known ?? profile.tabs.add(page, opener ? "page" : origin, opener?.id ?? null);
       if (known) return;
-      profile.control.adopt(tab);
+      profile.control.adopt(tab, { opener: opener ?? null });
       page.auth.answerable = () => profile.hub.answersAuth();
       run.offs.push(page.auth.onChange(() => profile.hub.offerAuthPrompt()));
       run.offs.push(page.dialogs.onOpen(() => profile.hub.broadcastControl()), page.dialogs.onClose(() => profile.hub.broadcastControl()));
@@ -233,8 +273,9 @@ export class BrowserService {
       run.offs.push(page.session.on("Page.frameStartedLoading", (params) => { if (params.frameId === page.frames.mainFrameId) profile.hub.loading(tab, true); }));
       run.offs.push(page.session.on("Page.frameStoppedLoading", (params) => { if (params.frameId === page.frames.mainFrameId) profile.hub.loading(tab, false); }));
       run.offs.push(page.fileChoosers.onChange(() => void profile.hub.offerFileChooser()));
-      if (opener && profile.control.owner !== null) {
+      if (opener && profile.control.holds(opener)) {
         profile.hub.popup(tab);
+        browser.pin(page);
         void browser.bringToFront(page).then(() => profile.hub.tabsChanged(), () => undefined);
       }
       profile.hub.tabsChanged();
@@ -257,6 +298,7 @@ export class BrowserService {
       throw error;
     }
     profile.run = run;
+    profile.pinHeld();
     profile.lastUsed = Date.now();
     void opened.exited.then(() => this.#exited(profile, run));
     if (profile.reopened?.kind === "idle" || profile.reopened?.kind === "crash") {
@@ -287,7 +329,7 @@ export class BrowserService {
   }
 
   /** Graceful: Chrome's own quit, so its next start reopens the tabs and keeps session cookies. */
-  async #stop(profile: ProfileState, reopened: Reopened, { erase = false }: { erase?: boolean } = {}): Promise<void> {
+  async #stop(profile: ProfileState, reopened: Reopened, { erase = false, pictures = true }: { erase?: boolean; pictures?: boolean } = {}): Promise<void> {
     if (profile.stopping) return profile.stopping;
     profile.epoch++;
     const run = profile.run;
@@ -297,7 +339,7 @@ export class BrowserService {
       profile.control.changed();
       try {
         if (run) {
-          if (this.#options.onClosing && reopened?.kind !== "restart" && !erase) this.#options.onClosing(profile.session, await this.#closingTabs(profile));
+          if (this.#options.onClosing && reopened?.kind !== "restart" && !erase) this.#options.onClosing(profile.session, await this.#closingTabs(profile, pictures));
           run.closing = true;
           for (const off of run.offs) off();
           profile.hub.stopped(reopened?.kind === "idle" ? "asleep" : "closed");
@@ -317,12 +359,12 @@ export class BrowserService {
     return stopping;
   }
 
-  async #closingTabs(profile: ProfileState): Promise<ClosingTab[]> {
+  async #closingTabs(profile: ProfileState, pictures: boolean): Promise<ClosingTab[]> {
     const active = profile.active();
     const tabs = profile.tabs.list().filter((tab) => !tab.page.closed && tab.page.url() !== "about:blank").slice(0, RECENT_TABS_LIMIT);
     return Promise.all(tabs.map(async (tab) => ({
       title: tab.page.title(), url: tab.page.url(), active: tab === active,
-      image: (await within(tab.page.screenshot({ format: "jpeg", quality: 70 }), 3_000))?.data ?? null,
+      image: pictures ? (await within(tab.page.screenshot({ format: "jpeg", quality: 70 }), 3_000))?.data ?? null : null,
     })));
   }
 
@@ -401,8 +443,9 @@ export class BrowserService {
     }
   }
 
-  async closeAll(): Promise<void> {
-    await Promise.all(this.profiles().map((profile) => this.#stop(profile, null)));
+  /** `pictures: false` when the computer is going down: Chrome's own quit, which writes its cookies, comes first. */
+  async closeAll({ pictures = true }: { pictures?: boolean } = {}): Promise<void> {
+    await Promise.all(this.profiles().map((profile) => this.#stop(profile, null, { pictures })));
   }
 
   // Bot calls.
@@ -419,7 +462,7 @@ export class BrowserService {
     let result: ToolResult | null;
     try {
       const work = () => this.#call(profile, params, deadline, beforeDispatch);
-      const call = name === RESTART_TOOL || profile.control.uncertain ? work() : this.#lanes.run(profile.key, work, this.#options.laneWaitMs);
+      const call = name === RESTART_TOOL || profile.control.uncertain ? work() : this.#lanes.run(profile.key, work, this.#options.laneWaitMs, name);
       result = await this.#withinBudget(profile, name, call, deadline);
     } finally {
       profile.calls--;
@@ -459,7 +502,7 @@ export class BrowserService {
       return textResult("Browser restarted. Open pages were closed back to one blank tab; sign-ins are kept. Open the page you need again and check whether the interrupted action already happened before repeating it.");
     }
     if (control.uncertain) {
-      if (control.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+      if (control.signingIn) throw new Error(BROWSER_CONTROL_REFUSAL);
       const lost = control.lostCall;
       if (lost === null) return errorResult(BROWSER_STUCK);
       beforeDispatch?.();
@@ -475,7 +518,8 @@ export class BrowserService {
       return errorResult(`The browser could not start: ${error instanceof Error ? error.message : String(error)}`);
     }
     beforeDispatch?.();
-    if (control.owner !== null) throw new Error(BROWSER_CONTROL_REFUSAL);
+    if (control.signingIn) throw new Error(BROWSER_CONTROL_REFUSAL);
+    await profile.refronting;
     control.call = parsed.call.name;
     try {
       const result = await executeTool(this.#context(profile, run, deadline, beforeDispatch), parsed.call);
@@ -502,7 +546,7 @@ export class BrowserService {
       tabs: profile.tabs,
       browser: run.browser,
       deadline,
-      active: () => profile.active(),
+      active: () => profile.agentTab(),
       openTab: () => this.#openTab(profile, "agent"),
       closeTab: (tab) => this.#closeTab(profile, tab),
       closeBrowser: () => this.#stop(profile, null),
@@ -513,6 +557,7 @@ export class BrowserService {
       secretNote: () => this.#holds.note(profile.session),
       saveScreenshot: (data, pageUrl) => this.#saveScreenshot(profile, data, pageUrl),
       downloads: () => run.browser.downloads?.list() ?? [],
+      answersConsent: (tab) => profile.botOpened(tab),
     };
   }
 
@@ -604,8 +649,8 @@ export class BrowserService {
     const profile = this.profile(target);
     const outcome = await this.#lanes.run(profile.key, async () => {
       await this.running(profile);
-      return profile.control.agent(null, async () => {
-        const tab = profile.active();
+      const tab = profile.agentTab();
+      return profile.control.agent(tab, async () => {
         const filled = await fn();
         if (filled.held) this.#holds.hold(profile.session, { ...filled.held, ...(tab ? { tab: tab.page.targetId } : {}) });
         return filled;
@@ -619,13 +664,13 @@ export class BrowserService {
   loginDeps(target: BrowserTarget): Pick<FillLoginDeps, "engine" | "insertText" | "press" | "click"> {
     const profile = this.profile(target);
     const tab = () => {
-      const active = profile.run ? profile.active() : null;
+      const active = profile.run ? profile.agentTab() : null;
       if (!active) throw new Error("The browser has no page open.");
       return active;
     };
     return {
       engine: async (args) => {
-        const active = profile.run ? profile.active() : null;
+        const active = profile.run ? profile.agentTab() : null;
         if (!active) return null;
         if (args[0] === "get" && args[1] === "url") return { url: active.page.url() };
         if (args[0] === "eval" && typeof args[1] === "string") return { result: await active.page.evaluate(args[1]) };
@@ -712,13 +757,21 @@ export class BrowserService {
       pageLimit: () => (profile.run && !profile.run.closing ? profile.run.opened.pageLimit ?? null : null),
       take: async (owner: string): Promise<TakeResult> => {
         await this.running(profile);
-        const taken = await profile.control.take(owner);
-        for (const tab of profile.tabs.list()) await tab.page.releaseInput().catch(() => undefined);
+        const taken = await profile.control.take(owner, profile.active());
+        for (const tab of profile.control.heldTabs()) await tab.page.releaseInput().catch(() => undefined);
         return taken;
       },
       release: (owner: string, releaseInput: (tab: Tab) => Promise<boolean>) => profile.control.release(owner, releaseInput),
       openTab: async (url: string | null, owner: string) => {
         const tab = await this.#openTab(profile, "person");
+        profile.personTabs.add(tab);
+        if (profile.control.owner === owner) {
+          profile.control.adopt(tab, { person: true });
+          profile.run?.browser.pin(tab.page);
+          await tab.page.bringToFront();
+          profile.hub.tabsChanged();
+          profile.hub.broadcastControl();
+        }
         const address = url ? personUrl(url) : null;
         const go = () => tab.page.navigate(address!, { readiness: "none" });
         if (address) await (profile.control.owner === null ? profile.control.shared(go) : profile.control.human(owner, tab, go));
@@ -726,9 +779,11 @@ export class BrowserService {
       },
       closeTab: (tab: Tab) => this.#closeTab(profile, tab),
       showTab: async (tab: Tab) => {
+        if (profile.control.holds(tab)) profile.run?.browser.pin(tab.page);
         await tab.page.bringToFront();
         await profile.hub.fit();
         profile.hub.tabsChanged();
+        profile.hub.broadcastControl();
       },
       personActed: () => { profile.personActed = true; },
       personTyped: (tab: Tab) => { this.#holds.personTyped(profile.session, tab.page.url(), PERSON_TYPED_ON_PAGE, tab.page.targetId); },

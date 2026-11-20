@@ -7,7 +7,7 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { normalizeImageGenerationUrl, type ImageGenerationConfig } from "../shared/image-generation.ts";
 import { botAvatarUrlSchema } from "../shared/bot-avatar.ts"; import { TALKING_STYLES, type TalkingStyle } from "../shared/talking-style.ts";
-import { writeFileAtomic } from "./atomic.ts"; import { setAsideUnreadable } from "./registry-file.ts";
+import { writeFileAtomic } from "./atomic.ts"; import { configFile } from "./config-file.ts";
 import { defaultBotThreads, MAX_CONCURRENT_BOT_THREADS } from "./bot-thread-limits.ts";
 import { anthropicKeyEnv } from "./anthropic-key-env.ts";
 import { THIS_SERVER_VPS, vpsIsThisServer } from "./vps-local.ts";
@@ -26,7 +26,7 @@ import { PROVIDER_ICON_PRESETS, providerIconError } from "../shared/provider-ico
 import { helperStoredShape, type HelperConfig } from "./side-jobs.ts";
 import { loopGuardConfigSchema, type LoopGuardConfig } from "./host/loop-guard.ts";
 import { migrateLegacyFeatureFlags } from "./legacy-feature-flags.ts";
-import { settledFileCache, settledFileStamp } from "./settled-file.ts";
+import { settledFileStamp } from "./settled-file.ts";
 import { isRemoteMcpServer, mcpServerServes, parseStoredMcpServer } from "./mcp-registry.ts";
 import { parseJson, schemaIssue, type JsonObject, type JsonValue } from "./schema.ts";
 import { deciderConfigSchema, type DeciderConfig } from "./decider/config.ts";
@@ -260,7 +260,7 @@ const instanceConfigSchema = z.object({
       .refine((icon) => providerIconError(icon) === null, { message: "Invalid provider icon" }),
   ]).optional(),
   environment: z.record(z.string(), z.string()).optional(),
-  enabled: z.boolean().optional(), hidden: z.boolean().optional(),
+  enabled: z.boolean().optional(), hidden: z.boolean().optional(), chosen: z.boolean().optional(),
   access: z.enum(["subscription", "custom", "api"]).optional(),
   config: z.json().optional(),
 });
@@ -379,8 +379,9 @@ const appConfigSchema = z.object({
       "Use a model ID without control characters",
     ).optional(),
   }).optional(),
-  /** Non-secret profile details; aboutMe is shared with every bot. */
-  profile: z.object({ name: optionalText, email: optionalText, aboutMe: z.string().max(24_000).optional(), avatarUrl: z.union([z.literal(""), botAvatarUrlSchema]).optional() }).optional(),
+  /** Non-secret profile details; aboutMe is shared with every bot. `accountName`: the dusk cloud account's name this
+   * computer last copied into `name`; while `name` is still that copy, a new name on the account replaces it. */
+  profile: z.object({ name: optionalText, email: optionalText, aboutMe: z.string().max(24_000).optional(), avatarUrl: z.union([z.literal(""), botAvatarUrlSchema]).optional(), accountName: optionalText }).optional(),
   /** UI language override (BCP-47, lowercase), absent follows the system; what a paired phone calls this computer, "" for the default. */
   language: optionalText, computerName: z.string().trim().max(63).optional(), talkingStyle: z.enum(TALKING_STYLES).optional(),
   rooms: roomConfigSchema.optional(),
@@ -468,7 +469,7 @@ export interface AppConfig extends HelperConfig {
   decider?: DeciderConfig;
   imageGen?: ImageGenerationConfig;
   live?: LiveConfig;
-  profile?: { name?: string; email?: string; aboutMe?: string; avatarUrl?: string };
+  profile?: { name?: string; email?: string; aboutMe?: string; avatarUrl?: string; accountName?: string };
   rooms?: { turnTimeoutMinutes: number };
   mcp?: { callTimeoutMinutes?: number };
   threads?: { maxConcurrentPerBot: number; eventLogMaxBytes?: number; eventLogRetentionDays?: number };
@@ -722,26 +723,12 @@ export function dropRetiredDesktopToken(dataDir: string): void {
   }
 }
 
-let lastIgnoredConfigWarning = "";
-const storedConfig = settledFileCache(() => join(DATA_DIR, "config.json"), () => parseStoredConfig(parseJson(readFileSync(join(DATA_DIR, "config.json"), "utf8"))));
+const storedConfig = configFile(() => join(DATA_DIR, "config.json"), parseStoredConfig);
+
+export const configFileProblem = storedConfig.problem;
 
 export function loadConfig(): AppConfig {
-  let cfg: AppConfig = {};
-  try {
-    cfg = structuredClone(storedConfig.read());
-    lastIgnoredConfigWarning = "";
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
-      // JSON.parse errors can quote the input; a credential must never reach the log.
-      const reason = error instanceof SyntaxError ? "invalid JSON"
-        : error instanceof Error ? error.message : "unable to read configuration";
-      const warning = `config: ignoring ${join(DATA_DIR, "config.json")} and using defaults: ${reason}`;
-      if (warning !== lastIgnoredConfigWarning) console.warn(warning);
-      lastIgnoredConfigWarning = warning;
-    } else {
-      lastIgnoredConfigWarning = "";
-    }
-  }
+  const cfg: AppConfig = structuredClone(storedConfig.read() ?? {});
   // Env wins over the file for every credential: the desktop shell injects them as env at spawn.
   for (const [name, env] of [["mistral", "MISTRAL_API_KEY"], ["cerebras", "CEREBRAS_API_KEY"], ["groq", "DUSK_GROQ_API_KEY"], ["meta", "DUSK_META_API_KEY"],
     ["deepseek", "DUSK_DEEPSEEK_API_KEY"], ["greenference", "DUSK_GREENFERENCE_API_KEY"], ["xai", "XAI_API_KEY"]] as const) {
@@ -797,7 +784,7 @@ export function cacheUntilConfigChanges<T>(derive: (config: AppConfig) => T): ()
     const stamp = settledFileStamp(join(DATA_DIR, "config.json"));
     if (stamp !== null && cached?.stamp === stamp) return cached.value;
     const value = derive(loadConfig());
-    cached = stamp === null || lastIgnoredConfigWarning !== "" ? null : { stamp, value };
+    cached = stamp === null || storedConfig.problem() !== null ? null : { stamp, value };
     return value;
   };
 }
@@ -914,16 +901,7 @@ export function saveConfig(
   },
   options: { replaceInstances?: boolean } = {},
 ): void {
-  const p = join(DATA_DIR, "config.json");
-  let disk: JsonObject = {};
-  try {
-    const parsed = jsonObjectSchema.safeParse(parseJson(readFileSync(p, "utf8")));
-    if (parsed.success) disk = parsed.data;
-    else setAsideUnreadable(p);
-  } catch (error) {
-    // the save below rebuilds config.json from defaults: keep what could not be read (accounts, keys) beside it
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") setAsideUnreadable(p);
-  }
+  const { file: p, disk } = storedConfig.saveTarget();
   const checkedPatch = appConfigSchema.partial().extend({ threads: threadsPatchSchema.optional(), newBots: newBotsPatchSchema.optional() }).parse(patch);
   const before = configSaveListeners.size ? structuredClone(disk) : disk;
   const storedProfiles = storedBrowserProfilesSchema.safeParse(disk.browserProfiles);

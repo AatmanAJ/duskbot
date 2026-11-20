@@ -10,6 +10,9 @@ export type NestedKeyName = "ttsKey" | "fishAudioKey" | "geminiTtsKey" | "deepgr
 
 /** GET /api/config, configured flags only; secrets are never echoed. */
 export interface ConfigStatus {
+  /** config.json could not be read: `lastGood` says its last good copy is in use, otherwise the defaults are. Absent or
+   * null while it reads fine. */
+  configFile?: { file: string; reason: string; lastGood: boolean } | null;
   /** The workspace's banner picture (GET /api/workspace/banner), by a version that changes with it; null without one. */
   workspaceBanner?: import("@/lib/place-banner").BannerSummary | null;
   xai?: SavedKey;
@@ -124,7 +127,7 @@ export interface ConfigStatus {
     customKeyConfigured?: boolean;
   };
   /** who's using the app, collected in onboarding, shown in the sidebar */
-  profile?: { name: string; email: string; aboutMe?: string; avatarUrl?: string };
+  profile?: { name: string; email: string; aboutMe?: string; avatarUrl?: string; accountName?: string };
   /** UI language override; "" (or absent) follows the system language. */
   language?: string;
   /** What a paired phone calls this computer; "" uses the default. */

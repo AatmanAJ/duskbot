@@ -58,6 +58,8 @@ const ENTRY_POINTS = [
   "drivers/agents-proxy.ts",
   "drivers/dweb-proxy.ts",
   "drivers/phone-proxy.ts",
+  // the built-in voice's ONNX Runtime, apart from the harness
+  "local-voice/voice-worker.ts",
   // the bot box (server/bot-box): the in-box bridge, the probe the self-check runs inside a box, and the check by hand
   "bot-box/box-bridge.ts",
   "bot-box/box-probe.ts",
