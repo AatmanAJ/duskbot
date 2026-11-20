@@ -315,6 +315,7 @@
   "server.routine.probeFailed": "“{routine}”: {reason} I'll keep trying at its usual times.",
   "server.routine.fatigue": "Paused “{routine}” after {count} runs failed the same way: {error}. Turn it back on once that is fixed.",
   "server.routine.recheck": "Not there yet. Checking again at {time}.",
+  "server.routine.scriptCheck": "Before each run it runs this on your computer, and wakes the bot only when what it prints changes: {command}",
   "server.notify.workingFor": "{who}, working for {other}",
   "server.notify.approval": "{who} needs approval",
   "server.notify.question": "{who} has a question",

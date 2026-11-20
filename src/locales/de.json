@@ -315,6 +315,7 @@
   "server.routine.probeFailed": "“{routine}”: {reason} Ich versuche es weiter zu den üblichen Zeiten.",
   "server.routine.fatigue": "„{routine}“ pausiert, nachdem {count} Ausführungen auf dieselbe Weise fehlgeschlagen sind: {error}. Schalte die Routine wieder ein, sobald das behoben ist.",
   "server.routine.recheck": "Noch nicht so weit. Nächste Prüfung um {time}.",
+  "server.routine.scriptCheck": "Vor jedem Lauf führt es das auf deinem Computer aus und weckt den Bot nur, wenn sich die Ausgabe ändert: {command}",
   "server.notify.workingFor": "{who}, arbeitet für {other}",
   "server.notify.approval": "{who} braucht eine Freigabe",
   "server.notify.question": "{who} hat eine Frage",

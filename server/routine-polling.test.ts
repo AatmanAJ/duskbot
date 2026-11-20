@@ -7,7 +7,7 @@ import { CHECK_BOOT_HOLD_MS } from "./routine-check-pacing.ts";
 import { continuityCarry } from "./routine-execution.ts";
 import { createRoutineProbes, NO_SCRIPTS, sectionOf, withProbes } from "./routine-probe.ts";
 import { cleanProbe } from "./routine-quiet.ts";
-import { runCheckScript, scriptCheckRefusal, setsScript, wakeAsked } from "./routine-script.ts";
+import { runCheckScript, sandboxProfile, scriptCheckGate, setsScript, wakeAsked } from "./routine-script.ts";
 import { RoutineManager, type RoutineRun } from "./routines.ts";
 import type { PublicPage } from "./wait-probes.ts";
 
@@ -121,20 +121,42 @@ describe("check parts", () => {
   });
 
   it.skipIf(process.platform === "win32")("runs a script with only the base environment", async () => {
-    const result = await runCheckScript("echo \"$DUSK_SECRET_TEST:$HOME\"", { env: { DUSK_SECRET_TEST: "leak", HOME: "/tmp", PATH: process.env.PATH } });
+    const result = await runCheckScript("echo \"$DUSK_SECRET_TEST:$HOME\"", { env: { DUSK_SECRET_TEST: "leak", HOME: "/tmp", PATH: process.env.PATH }, sandbox: false });
     expect(result).toEqual({ ok: true, output: ":/tmp\n" });
-    expect(await runCheckScript("exit 3", { env: { PATH: process.env.PATH, HOME: "/tmp" } })).toMatchObject({ ok: false, error: expect.stringMatching(/exit code 3/) });
+    expect(await runCheckScript("exit 3", { env: { PATH: process.env.PATH, HOME: "/tmp" }, sandbox: false })).toMatchObject({ ok: false, error: expect.stringMatching(/exit code 3/) });
   });
 
-  it("lets only the owner's own unasked-level request set a script check", () => {
+  it("lets only the owner's own request set a script check, through a card after outside content or at an ask-first level", () => {
     const turn = { owned: true, room: false, guest: false, depth: 0, handedOff: false, outsideDriven: false, routineRun: false, personStarted: true, asksFirst: false };
-    expect(scriptCheckRefusal(turn, false)).toBeNull();
-    expect(scriptCheckRefusal(turn, true)).toMatch(/dusk cloud/);
-    expect(scriptCheckRefusal({ ...turn, routineRun: true }, false)).toMatch(/Only the person/);
-    expect(scriptCheckRefusal({ ...turn, outsideDriven: true }, false)).toMatch(/Only the person/);
-    expect(scriptCheckRefusal({ ...turn, asksFirst: true }, false)).toMatch(/asks before/);
+    const clean = { readOutside: false, fullAccess: false };
+    expect(scriptCheckGate(turn, false, clean)).toEqual({ apply: true });
+    expect(scriptCheckGate(turn, true, clean)).toEqual({ refused: expect.stringMatching(/dusk cloud/) });
+    expect(scriptCheckGate({ ...turn, routineRun: true }, false, clean)).toEqual({ refused: expect.stringMatching(/Only the person/) });
+    expect(scriptCheckGate({ ...turn, outsideDriven: true }, false, clean)).toEqual({ refused: expect.stringMatching(/Only the person/) });
+    expect(scriptCheckGate(turn, false, { readOutside: true, fullAccess: false })).toEqual({ card: true });
+    expect(scriptCheckGate(turn, false, { readOutside: true, fullAccess: true })).toEqual({ apply: true });
+    expect(scriptCheckGate({ ...turn, asksFirst: true }, false, clean)).toEqual({ card: true });
     expect(setsScript({ action: "create", routine: { probe: { kind: "script" } } })).toBe(true);
     expect(setsScript({ action: "update", changes: { probe: { kind: "page" } } })).toBe(false);
+  });
+});
+
+describe("the script sandbox on macOS", () => {
+  it("allows writes only to its scratch folder and no reads of the person's keys", () => {
+    const profile = sandboxProfile("/private/tmp/scratch", "/Users/a");
+    expect(profile).toContain("(deny file-write*)");
+    expect(profile).toContain('(allow file-write* (subpath "/private/tmp/scratch")');
+    expect(profile).toContain('(subpath "/Users/a/.ssh")');
+    expect(profile).not.toContain("network");
+  });
+
+  it.runIf(process.platform === "darwin")("blocks a write to the home folder and a read of ~/.ssh, and lets the scratch folder and the network be used", async () => {
+    const home = mkdtempSync(join(tmpdir(), "dusk-sbx-home-"));
+    dirs.push(home);
+    const env = { HOME: home, PATH: process.env.PATH };
+    expect(await runCheckScript("echo ok > \"$TMPDIR/x\" && cat \"$TMPDIR/x\"", { env })).toEqual({ ok: true, output: "ok\n" });
+    expect(await runCheckScript("echo no > \"$HOME/written\"", { env })).toMatchObject({ ok: false, error: expect.stringMatching(/not permitted/) });
+    expect(await runCheckScript("mkdir -p \"$HOME/.ssh\"", { env })).toMatchObject({ ok: false });
   });
 });
 

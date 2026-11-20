@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"; import { shapeNewRoutine } from "./routine-shape.ts"; import { cleanProbe } from "./routine-quiet.ts";
+import { createHash } from "node:crypto"; import { shapeNewRoutine } from "./routine-shape.ts"; import { cleanProbe } from "./routine-quiet.ts"; import { serverLine } from "./server-lines.ts";
 import { isDeepStrictEqual } from "node:util";
 
 import { cronScheduleLabel } from "../shared/cron-label.ts";
@@ -709,7 +709,7 @@ function cardCopy(
         : []),
       `Runs on: ${destination}`,
       `Run limit: ${definition.timeoutMinutes === undefined ? "No limit" : `${definition.timeoutMinutes} minutes`}`,
-      `Continuity: ${definition.continuity ? "Carries the previous run's report into the next run" : "Each run starts fresh"}`,
+      `Continuity: ${definition.continuity ? "Carries the previous run's report into the next run" : "Each run starts fresh"}`, ...(definition.probe?.kind === "script" ? [serverLine(undefined, "server.routine.scriptCheck", { command: redactSecretsInText(definition.probe.command ?? "") })] : []),
       `While busy: ${definition.overlap === "queue" ? "Queue one scheduled run; skip further occurrences until it starts" : "Skip overlapping scheduled occurrences"}`,
       ...(definition.runOnStartup || (operation.action === "update" && operation.changes.runOnStartup !== undefined)
         ? [`On startup: ${definition.runOnStartup ? "Also runs once each time dusk bot starts" : "Runs only on its schedule"}`]

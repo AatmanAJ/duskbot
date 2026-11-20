@@ -506,7 +506,7 @@ import { listenWebhookIngress, type WebhookIngress } from "./webhook-ingress.ts"
 import { addressFor } from "./webhook-address.ts"; import { createRoutineMailHost } from "./host/routine-mail-host.ts";
 import { assertModelVariantSupported, memberTurnSelection } from "./member-turn.ts";
 import { WebhookManager } from "./webhooks.ts";
-import { scriptCheckRefusal, scriptRoutineRefusal, setsScript } from "./routine-script.ts"; import { tieAutomationsToBots } from "./bot-automations.ts"; import { WaitManager } from "./waits.ts"; import { cancelWaitFromCard, createWaitHost, waitRunChat } from "./wait-host.ts"; import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts"; import { createWaitRoutes, findWaitPeer, hostWaitRefusal, waitSourceRefusal, type WaitRouteContext } from "./routes/waits.ts"; import { createJobsHost, JOB_NOTIFY_PATH, type JobTurn } from "./jobs/host.ts";
+import { scriptCheckGate, scriptRoutineRefusal, setsScript } from "./routine-script.ts"; import { tieAutomationsToBots } from "./bot-automations.ts"; import { WaitManager } from "./waits.ts"; import { cancelWaitFromCard, createWaitHost, waitRunChat } from "./wait-host.ts"; import { ranApart, runAnswersInItsChat } from "./routine-run-definition.ts"; import { createWaitRoutes, findWaitPeer, hostWaitRefusal, waitSourceRefusal, type WaitRouteContext } from "./routes/waits.ts"; import { createJobsHost, JOB_NOTIFY_PATH, type JobTurn } from "./jobs/host.ts";
 import type { WebhookTrigger } from "../shared/webhooks.ts";
 import { AGENTS_NODE_FLAG, SPAWNED_PROXIES } from "./proxy-paths.ts";
 import { currentTrailId, startServerTrail, trail, trailError, withRequestTrail } from "./trail.ts"; import { traceRuntimeEvents } from "./trail-events.ts";
@@ -10436,7 +10436,7 @@ function sendRoutineResolution(
 function resolveAndSendRoutine(res: ServerResponse, args: { botId: string; botName?: string; threadId: string; requestId: string; behavior: string }): boolean {
   const message = store.messagesFor(args.threadId).find((candidate) => candidate.card?.requestId === args.requestId && candidate.card.routineRequest);
   if (!message?.card) return false;
-  if (message.card.answered) return sendRoutineResolution(res, { claimed: true, state: "already_settled", behavior: message.card.answered });
+  if (message.card.answered) return sendRoutineResolution(res, { claimed: true, state: "already_settled", behavior: message.card.answered }); if (setsScript(message.card.routineRequest!.operation)) { const result = routineRequests.resolve(args); if (result.claimed && (result.state === "applied" || result.state === "denied")) appendDecision(DATA_DIR, { threadId: args.threadId, requestId: args.requestId, botId: args.botId, botName: args.botName, tool: message.card.tool, summary: message.card.subtitle, decision: result.state === "applied" ? "user-approved" : "user-denied", source: "user" }); return sendRoutineResolution(res, result); }
   store.patchMessage(args.threadId, message.id, { card: { ...message.card, expired: true, options: [] } });
   json(res, 410, { error: "This routine request is from before triggers applied on their own. Ask the bot again and it will set it up directly." });
   return true;
@@ -14649,7 +14649,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         if (!request.ok) return json(res, 400, { error: request.error });
         const target = triggerTarget(from, request.forBotId, (id) => store.bot(id), store.bots);
         if ("error" in target) return json(res, target.status, { error: target.error });
-        const forBot = target.forBot, scriptRefused = "proposal" in request && setsScript(request.proposal) ? scriptCheckRefusal(jobTurn(internalCapability, from), Boolean(CLOUD_HOME)) : null; if (scriptRefused) return json(res, 403, { error: scriptRefused });
+        const forBot = target.forBot, scriptGate = "proposal" in request && setsScript(request.proposal) ? scriptCheckGate(jobTurn(internalCapability, from), Boolean(CLOUD_HOME), { readOutside: memoryWriteTrust(from.id, fromThreadId).from === "outside", fullAccess: fullAccessForSource(from.id, fromThreadId) }) : null; if (scriptGate && "refused" in scriptGate) return json(res, 403, { error: scriptGate.refused });
         const persistence = proposalPersistence(from.id, fromThreadId, false);
         if (!persistence.ok) {
           return json(res, persistence.status, { error: persistence.error });
@@ -14678,7 +14678,7 @@ const handleRequestInner = async (req: IncomingMessage, res: ServerResponse) => 
         const ownersTurn = !outside && (cloudOwnerOnlyThread(fromThreadId) || cloudRoutineRunIsOwners(run, from.id, fromThreadId));
         const ownersLevel = !outside && CLOUD_HOME && !cloudGuestDriven(fromThreadId) && (proposedInput.action === "create" ||
           cloudRoutineAuthors?.writer(String(proposedInput.routineId)) === CLOUD_OWNER_KEY) && (run?.threadId === fromThreadId || ownerSpokeOnly(store.messagesFor(fromThreadId), cloudThreadStarters(fromThreadId), cloudProvenOwnerPerson, cloudCardAnswerer));
-        const proposed = await routineRequests.submit({
+        if (scriptGate && "card" in scriptGate) return json(res, 201, { ...(await routineRequests.propose({ botId: from.id, threadId: fromThreadId, proposal: proposedInput, from: sender, canCommit: () => internalCapabilityIsActive(internalCapability) })), state: "pending" }); const proposed = await routineRequests.submit({
           botId: from.id,
           threadId: fromThreadId,
           proposal: proposedInput,

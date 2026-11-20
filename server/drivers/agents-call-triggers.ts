@@ -374,6 +374,7 @@ async function request(body: Json, context: ToolCallContext, done: string): Prom
     const error = typeof r.error === "string" ? r.error : `HTTP ${status}`;
     return { text: `The trigger change did not apply: ${error}\n\nDo not claim it was applied. Fix what the error says, or tell the person plainly what is missing.`, isError: true };
   }
+  if (r.state === "pending") return { text: "Not applied yet: this check runs a command with no AI, so a card in this chat now asks the person to allow it, showing the exact command. It applies once they confirm. Tell them in one sentence and end your turn; do not set it up again." };
   return appliedText(r, done, String(body.action ?? ""));
 }
 
