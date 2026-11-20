@@ -4,14 +4,14 @@ import { ChevronRight } from "../../icons";
 import { cn } from "@/lib/cn";
 import { dur, spring } from "../motion";
 
-/** A group of rows. As a `card` it is iOS Settings' inset group: a quiet label over one tonal card, a hint under it;
- * otherwise a quiet label over plain rows, as a list's day headings. */
+/** A group of rows, iOS Settings' inset group: a quiet label over white rows, a hint under it. A `card` stands on the
+ * sheet's own edge; without it the group sits in a list that already insets its content (search, notifications). */
 export function SettingsSection({ title, hint, card = false, children }: { title?: string; hint?: ReactNode; card?: boolean; children: ReactNode }) {
   const id = useId();
   return (
-    <section aria-labelledby={title ? id : undefined} className={cn(card ? "mt-7 px-2" : "mt-6", "first:mt-0")}>
+    <section aria-labelledby={title ? id : undefined} className={cn(card ? "mt-7 px-4" : "mt-6 px-2", "first:mt-0")}>
       {title && <h2 id={id} className="px-4 pb-1 text-[14px] font-medium text-ink-secondary">{title}</h2>}
-      {card ? <div data-settings-card="" className="overflow-hidden rounded-[20px] bg-ink/[0.045] [&_.mobile-row]:rounded-none">{children}</div> : children}
+      <div data-settings-card="" className="flex flex-col gap-[2px] overflow-hidden rounded-[16px] [&_.mobile-row]:rounded-none">{children}</div>
       {hint && <p className="px-4 pt-2 text-[13px] leading-[18px] text-ink-secondary">{hint}</p>}
     </section>
   );

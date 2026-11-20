@@ -80,7 +80,7 @@ function CloudCard({ onOpen }: { onOpen: () => void }) {
   useEffect(() => { if (!shown.current) { shown.current = true; trackUpsell("shown", "app_mobile"); } }, []);
   useEffect(() => watchUpsell("app_mobile"), []);
   return (
-    <button type="button" onClick={() => { trackUpsell("click", "app_mobile"); onOpen(); }} className="mobile-press mx-2 mt-9 flex w-[calc(100%-16px)] items-center gap-4 rounded-[20px] bg-ink/[0.045] px-4 py-4 text-left">
+    <button type="button" onClick={() => { trackUpsell("click", "app_mobile"); onOpen(); }} className="mobile-press mx-4 mt-9 flex w-[calc(100%-32px)] items-center gap-4 rounded-[16px] bg-menu px-4 py-4 text-left">
       <PixelArt name="server" size={44} />
       <span className="min-w-0 flex-1">
         <span className="block text-balance text-[16px] font-semibold text-ink">{t("cloudUpsell.mobile")}</span>
@@ -293,7 +293,7 @@ function TextSizePage() {
   const size = useSyncExternalStore(subscribeTextSize, readTextSize, () => "system" as const);
   return (
     <Sheet open onClose={() => {}} title={t("mobile.settings.textSize")}>
-      <p data-text-size-sample="" className="mx-2 mb-4 rounded-[19px] bg-ink/[0.05] px-[14px] py-2 text-[17px] font-[450] leading-[22px] text-ink">{t("mobile.settings.textSize.sample")}</p>
+      <p data-text-size-sample="" className="mx-4 mb-4 rounded-[19px] bg-ink/[0.05] px-[14px] py-2 text-[17px] font-[450] leading-[22px] text-ink">{t("mobile.settings.textSize.sample")}</p>
       <SettingsSection card>
         {TEXT_SIZES.map((choice) => (
           <button key={choice} type="button" aria-pressed={size === choice} onClick={() => { haptic("pick"); setTextSize(choice); }} className="mobile-row flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left text-[16px] font-medium text-ink">
