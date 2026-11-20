@@ -9666,7 +9666,12 @@
       "mobile.composer.approval": "5716094a512a3193c464d8b5aa2279211ba59a61fd5aaacab64e840df93f846e",
       "mobile.chat.waitingForConnection": "f12044f6625575358fcdd91549dd719ebddacff7c682271c7b6a42faeb3f0bf3",
       "chat.error.replyGone": "db61000e335eda4b97ee5a00bdad1c53ffce303afec255d317c63e134000ee17",
-      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095"
+      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095",
+      "botPanel.skills.loadFailed": "bf96d2da0123ea3394d6f96c57e3155b2216cdc7ba63b6fefa9dc7e0e1465eca",
+      "botPanel.skills.notLoaded": "2c1cff23cb892d92e1f94842e8069867182fb5e13089d3f0d9361f0fb256fb78",
+      "botPanel.skills.retry": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f",
+      "connectApps.unchecked": "7c1875f94f8935a85968d59b145c20733cbc5c17a542729d9a72fbd546890357",
+      "connectApps.retry": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f"
     },
     "es": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
@@ -19344,7 +19349,12 @@
       "mobile.clouds.switchBody": "9350eebb466eb0a23305d603208219c50aede4b8c8a3746216106323d87083c7",
       "mobile.clouds.switchAccount": "fedce010cffcb86ed1d6e0e23fb16aab90072e07fd72561e54ad67ed0ea87f89",
       "composer.dictation.language": "fe82a337098a12a3e2f3b17ffef1a23d10afa2adf3502cd81ce233e6396c76d6",
-      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095"
+      "localBrowser.explain": "ba40a6f296b5753fc1fade00d9b03f8580694fd3ad6a5139c564b5bb1ab0c095",
+      "botPanel.skills.loadFailed": "bf96d2da0123ea3394d6f96c57e3155b2216cdc7ba63b6fefa9dc7e0e1465eca",
+      "botPanel.skills.notLoaded": "2c1cff23cb892d92e1f94842e8069867182fb5e13089d3f0d9361f0fb256fb78",
+      "botPanel.skills.retry": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f",
+      "connectApps.unchecked": "7c1875f94f8935a85968d59b145c20733cbc5c17a542729d9a72fbd546890357",
+      "connectApps.retry": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f"
     },
     "fr": {
       "settings.talkingStyle.title": "b1f52e3d447b7f2c73e754991ee9eeb710a8a24af163d861ebdf33e22b87fe50",
