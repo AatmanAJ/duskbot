@@ -108,6 +108,12 @@ export function skillCalls(text: string, typed: string, ownStart = false): strin
 
 /** What the engine reads for a message that ran skills with `/name`: which SKILL.md to read and follow, then the
  * request. `files` maps each skill the bot has to its SKILL.md; any other `/word` stays plain text. */
+/** How a turn's engine opens a skill: its own file tools, or dusk bot's read_skill tool for an engine with no files. */
+export type SkillReading = "files" | "tool";
+
+export const skillReadingHow = (reading: SkillReading) =>
+  reading === "tool" ? "load it with read_skill (its name) first" : "read its exact SKILL.md path above with your file tools first";
+
 /** `viaTool`: the engine has no file tools, so the skill is loaded with read_skill by name. */
 export function skillCommandTurnText(text: string, files: ReadonlyMap<string, string>, typed = "", ownStart = false, viaTool = false): string {
   const names = skillCalls(text, typed, ownStart).filter((name) => files.has(name));

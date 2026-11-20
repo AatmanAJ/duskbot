@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
-import { skillCalls, skillCommandTurnText } from "../../shared/skill-command.ts";
+import { skillCalls, skillCommandTurnText, type SkillReading } from "../../shared/skill-command.ts";
 import type { SkillRequestCardData, SkillShareRecord } from "../../shared/skill-request.ts";
 import { narrowestAudience, intersectAudience } from "../bot-visibility.ts";
 import { DATA_DIR, type AppConfig } from "../config.ts";
@@ -25,7 +25,7 @@ import {
   updateSharedLearnedSkill,
   type ShareBot,
 } from "../skill-share.ts";
-import { enabledSkillFiles, listSkills, readSkillFile, readSkillReferences, resolveBotSkills, skillsSystemPrompt, type SkillListing, type SkillReading } from "../skills.ts";
+import { enabledSkillFiles, listSkills, readSkillFile, readSkillReferences, resolveBotSkills, skillsSystemPrompt, type SkillListing } from "../skills.ts";
 import type { BotRecord, Message, Store } from "../store.ts";
 import { claudeUserSkillsEnabled } from "../turn-settings.ts";
 import { typedWords } from "../typed-sends.ts";

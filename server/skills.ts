@@ -24,7 +24,7 @@ import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { DATA_DIR } from "./config.ts";
 import { redactSecretsInText } from "./redact.ts";
-import { skillCurator } from "./skill-curator.ts";
+import { skillCurator } from "./skill-curator.ts"; import { skillReadingHow, type SkillReading } from "../shared/skill-command.ts";
 import { LEARN_SOURCE_PREFIX } from "./skill-learn.ts";
 import { libraryDescriptionsAt, librarySkillFilePath, listLibrarySkills, type LibrarySkillListing } from "./skill-library.ts";
 import { readManagedLinks, writeManagedLinks } from "./skill-link-registry.ts";
@@ -1257,12 +1257,6 @@ export function undoSkillWrite(
   }
   return { undone: true };
 }
-
-/** How a turn's engine opens a skill: its own file tools, or dusk bot's read_skill tool for an engine with no files. */
-export type SkillReading = "files" | "tool";
-
-export const skillReadingHow = (reading: SkillReading) =>
-  reading === "tool" ? "load it with read_skill (its name) first" : "read its exact SKILL.md path above with your file tools first";
 
 export function skillsSystemPrompt(botId: string, assignedLibrary?: readonly string[], startedAt?: number, reading: SkillReading = "files"): string {
   syncSkillLinks(botId);
