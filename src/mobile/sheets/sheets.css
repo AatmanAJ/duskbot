@@ -68,3 +68,6 @@ html[data-mobile-app] { --m-sheet-page: color-mix(in srgb, var(--color-ink) 5%, 
 .dusk-mobile [data-settings-card] > :not(ul, [role="status"]),
 .dusk-mobile [data-settings-card] > :is(ul, [role="status"]) > * { background-color: var(--color-menu); }
 .dusk-mobile [data-settings-card] > :is(ul, [role="status"]) { display: flex; flex-direction: column; gap: 2px; }
+
+/* in dark, an app's logo sits on a light plate: most marks (GitHub's, Notion's) are drawn for a light ground */
+html[data-skin="grok-dark"] .dusk-mobile [data-app-face] { background-color: #ececee; color: #3a3a3e; }

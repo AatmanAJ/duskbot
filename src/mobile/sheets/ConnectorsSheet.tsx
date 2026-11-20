@@ -93,7 +93,7 @@ async function readApps(): Promise<AppsSnapshot> {
 export function AppFace({ entry }: { entry: Pick<AppEntry, "label" | "icon"> }) {
   const { glyph, glyphPaint: _glyphPaint, ...art } = entry.icon;
   return (
-    <span aria-hidden className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[11px] bg-ink/[0.06] text-ink-secondary">
+    <span aria-hidden data-app-face="" className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[11px] bg-ink/[0.06] text-ink-secondary">
       {glyph ? <Icon name={glyph} size={21} /> : <ServiceTile card={{ label: entry.label, ...art }} size={40} className="absolute inset-0" />}
     </span>
   );
