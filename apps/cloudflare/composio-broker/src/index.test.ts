@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import worker, {
   authorize,
+  brokerCallback,
   catalog,
   connectedServices,
   connectionStatus,
@@ -62,11 +63,11 @@ describe("connected-apps broker boundaries", () => {
     await expect(requestAlias(new Request("https://broker.test/v1/connectors/gmail/authorize", {
       method: "POST",
       body: "",
-    }))).resolves.toBeUndefined();
+    }))).resolves.toEqual({});
     await expect(requestAlias(new Request("https://broker.test/v1/connectors/gmail/authorize", {
       method: "POST",
       body: "  \n",
-    }))).resolves.toBeUndefined();
+    }))).resolves.toEqual({});
   });
 
   it("stops reading a streamed authorize body once it passes 2 KiB", async () => {
@@ -281,16 +282,32 @@ describe("connected-apps broker boundaries", () => {
       .resolves.toEqual({ removed: 0 });
     expect(fetchCalls.filter((call) => call.init?.method === "DELETE")).toHaveLength(1);
 
-    const missingAlias = await authorize("gmail", undefined, installation, env as never, ctx as never);
+    const missingAlias = await authorize("gmail", {}, installation, env as never, ctx as never);
     expect(missingAlias.status).toBe(400);
     await expect(missingAlias.json()).resolves.toEqual({
       error: "Add an account alias so the existing connection is not replaced",
     });
-    const authorized = await authorize("gmail", "second", installation, env as never, ctx as never);
+    const authorized = await authorize("gmail", { alias: "second" }, installation, env as never, ctx as never);
     expect(authorized.status).toBe(200);
     await expect(authorized.json()).resolves.toEqual({ url: "https://connect.composio.dev/link/gmail" });
     const linkCall = fetchCalls.find((call) => call.url.endsWith("/tool_router/session/trs_multi/link"));
     expect(JSON.parse(String(linkCall?.init?.body))).toEqual({ toolkit: "gmail", alias: "second" });
+
+    const state = "s".repeat(40);
+    const returning = await authorize("gmail", { alias: "third", callbackUrl: `https://dusk.bot/connectors?connect=${state}` }, installation, env as never, ctx as never);
+    await expect(returning.json()).resolves.toEqual({ url: "https://connect.composio.dev/link/gmail", returnsHere: true });
+    expect(JSON.parse(String(fetchCalls.filter((call) => call.url.endsWith("/tool_router/session/trs_multi/link")).at(-1)?.init?.body)))
+      .toEqual({ toolkit: "gmail", alias: "third", callback_url: `https://dusk.bot/connectors?connect=${state}` });
+  });
+
+  it("sends a sign-in back only to dusk bot's own apps page", () => {
+    const state = "a".repeat(40);
+    expect(brokerCallback(`https://dusk.bot/connectors?connect=${state}`)).toBe(`https://dusk.bot/connectors?connect=${state}`);
+    expect(brokerCallback(`https://preview.dusk.bot/account/connectors?connect=${state}`)).toBe(`https://preview.dusk.bot/account/connectors?connect=${state}`);
+    for (const other of [`https://evil.example/connectors?connect=${state}`, `https://dusk.bot.evil.example/connectors?connect=${state}`,
+      `http://dusk.bot/connectors?connect=${state}`, `https://dusk.bot/connectors?connect=${state}&next=https://evil.example`, `https://dusk.bot/connectors?connect=short`, undefined]) {
+      expect(brokerCallback(other)).toBeUndefined();
+    }
   });
 
   function accountFixture(installationUser: string) {
@@ -300,7 +317,7 @@ describe("connected-apps broker boundaries", () => {
     const fixture = {
       accounts: [] as Array<{ id: string; status?: string; alias?: string; toolkit: { slug: string } }>,
       deleteStatus: 200,
-      authorize: (alias?: string) => authorize("gmail", alias, installation, env as never, ctx as never),
+      authorize: (alias?: string) => authorize("gmail", { alias }, installation, env as never, ctx as never),
       links: () => fetchCalls.filter((call) => call.url.endsWith("/link"))
         .map((call) => JSON.parse(String(call.init?.body)) as { toolkit: string; alias?: string }),
       deletes: () => fetchCalls.filter((call) => call.init?.method === "DELETE").map((call) => call.url),

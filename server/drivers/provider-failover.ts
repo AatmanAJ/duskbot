@@ -7,11 +7,12 @@ export const PROVIDER_FAILURE_HOLD_MS = 10 * 60_000;
 const PROVIDER_REASONS: ReadonlySet<string> = new Set(["rate_limited", "overloaded", "server_error", "connection_reset", "timeout"]);
 
 /** The turn failed on the provider's side (an outage, overload, rate limit, dropped connection or timeout) after the
- * engine's own retries: never a usage limit, a sign-in, a refused request or a safety block. */
+ * engine's own retries, or the provider does not offer the model: never a usage limit, a sign-in, a refused request or
+ * a safety block. */
 export function providerFailure(cause: string | undefined, stopReason?: string | null): boolean {
   if (!cause || stopReason === "tool_error" || stopReason === "provider_safety") return false;
   const verdict = classifyError({ text: cause });
-  return verdict.transient && PROVIDER_REASONS.has(verdict.reason);
+  return (verdict.transient && PROVIDER_REASONS.has(verdict.reason)) || verdict.reason === "unknown_model";
 }
 
 /** Something the person could see or that may have changed something: words of the reply, a tool, an ask. */

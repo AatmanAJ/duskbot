@@ -14,13 +14,15 @@ import { useCaptionChrome } from "../DesktopCapabilities";
 import { Icon } from "../Icon";
 import { ManageMembersPanel } from "../ManageMembersPanel";
 import { TAB_LABEL, type PanelTab } from "../bot-panel/page-registry";
-import { panelTabs, screenViewAllowed } from "@/lib/store-app";
+import { panelTabs, phoneApp, screenViewAllowed } from "@/lib/store-app";
 import { pageSurfaceCls } from "../bot-panel/pages";
 import { roundButtonCls } from "../bot-panel/rows";
+import { PanelResizeEdge } from "../bot-panel/PanelResizeEdge";
 import { sidePanelCls } from "../bot-panel/side-panel";
 import { SegmentedTabs } from "../ui/SegmentedTabs";
 import { RoomAdvancedTab } from "./RoomAdvancedTab";
 import { RoomComputerTab } from "./RoomComputerTab";
+import { TabBoundary } from "../bot-panel/TabBoundary";
 import { PerBotModels, RoomDetailsTab, type RoomPage, type RoomTarget } from "./RoomDetailsTab";
 import type { RoomDialog } from "./RoomModals";
 import { RoomSheet } from "./RoomSheet";
@@ -46,7 +48,7 @@ function RoomHero({ group, members }: { group: Group; members: Bot[] }) {
   );
 }
 
-export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: boolean }) {
+export function RoomPanel({ group, overlay = false, initialTab = "details" }: { group: Group; overlay?: boolean; initialTab?: PanelTab }) {
   const { state, dispatch } = useStore();
   const { dragProps } = useCaptionChrome();
   // the side panel stays shut for every chat until the person opens it again, as the bot panel does
@@ -54,7 +56,7 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
     closeRoomPanel({ refocus: true });
     dispatch({ type: "toggleSettings", open: false });
   };
-  const [tab, setTab] = useState<PanelTab>("details");
+  const [tab, setTab] = useState<PanelTab>(initialTab);
   const [page, setPage] = useState<RoomPage | null>(null);
   const [membersOpen, setMembersOpen] = useState(false);
   const dialogRef = useRef<HTMLElement>(null);
@@ -147,7 +149,7 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
         animate={SWAP.animate}
       >
         {tab === "details" && <RoomDetailsTab {...rowProps} />}
-        {tab === "computer" && screenViewAllowed() && <RoomComputerTab members={members} />}
+        {tab === "computer" && screenViewAllowed() && <TabBoundary name={group.name}><RoomComputerTab members={members} /></TabBoundary>}
         {tab === "advanced" && <RoomAdvancedTab {...rowProps} />}
       </MotionDiv>
     </>
@@ -185,16 +187,16 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
     <>
       <aside
         ref={dialogRef}
-        role="dialog"
-        aria-labelledby="room-panel-title"
+        role={phoneApp() ? undefined : "dialog"}
+        aria-labelledby={phoneApp() ? undefined : "room-panel-title"}
         tabIndex={-1}
         data-room-panel
         onKeyDown={onKeyDown}
         className={sidePanelCls(overlay)}
       >
         <span id="room-panel-title" className="sr-only">{group.name}</span>
-        <span aria-hidden="true" data-panel-edge className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[0.5px] bg-edge max-md:hidden" />
-        <div {...dragProps} className="relative flex h-[60px] shrink-0 items-center gap-2 p-3">
+        <PanelResizeEdge />
+        <div {...dragProps} className="relative ms-2 flex h-[60px] shrink-0 items-center gap-2 p-3 ps-1">
           {page === null ? (
             <span className="ms-auto" />
           ) : (
@@ -215,7 +217,7 @@ export function RoomPanel({ group, overlay = false }: { group: Group; overlay?: 
               <span className="ms-auto" />
             </>
           )}
-          <button type="button" onClick={close} aria-label={t("botPanel.close")} title={t("botPanel.close")} className={roundButtonCls}>
+          <button type="button" onClick={close} aria-label={t("botPanel.closePanel")} title={t("botPanel.closePanel")} className={roundButtonCls}>
             <Icon name="close" size={16} />
           </button>
         </div>

@@ -8,6 +8,12 @@ export function isNoAiRefusal(error: unknown): error is ApiError {
   return error instanceof ApiError && error.body?.code === "no_ai";
 }
 
+/** The AI a no-AI refusal names: found on this computer, ready, and waiting for the person's Use it. */
+export function refusalFoundAi(error: ApiError): { instanceId: string; name: string } | undefined {
+  const found = error.body?.found as { instanceId?: unknown; name?: unknown } | undefined;
+  return typeof found?.instanceId === "string" && typeof found.name === "string" ? { instanceId: found.instanceId, name: found.name } : undefined;
+}
+
 export function useChatErrorClear(error: string | null, clear: () => void): void {
   useEffect(() => {
     if (!error) return;

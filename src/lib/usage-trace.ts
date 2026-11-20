@@ -2,7 +2,7 @@ import { api } from "@/state/store";
 import { t } from "@/lib/i18n";
 import { toolStepLabel } from "@/lib/tool-step-label";
 import { formatUsd, hasFiniteCost } from "@/lib/usage";
-import type { TraceDetail, TraceGroup, TraceList, TraceNode, TraceTool, TraceTurn } from "../../shared/usage-trace.ts";
+import type { TraceDetail, TraceGroup, TraceList, TraceNode, TraceRootSummary, TraceTool, TraceTurn } from "../../shared/usage-trace.ts";
 
 export type UsagePeriod = "today" | "week" | "month" | "lastMonth" | "days30";
 export const USAGE_PERIODS: readonly UsagePeriod[] = ["today", "week", "month", "lastMonth", "days30"];
@@ -39,6 +39,16 @@ export function fetchTrace(id: string, at?: number): Promise<TraceDetail> {
 }
 
 /** "450ms", "6.9s", "51s", "1m 40s", "2h 5m": rounded before the unit is picked. */
+const JOB_TITLES = { memory: "trace.job.memory", "skill-review": "trace.job.skillReview", compaction: "trace.job.compaction" } as const;
+
+/** A run's title: what was asked, else the background job it was, else where it came from. */
+export function traceRootTitle(root: Pick<TraceRootSummary, "title" | "source" | "job" | "bots">): string {
+  if (root.title) return root.title;
+  const bot = root.bots[0]?.name ?? "";
+  const job = root.job && Object.hasOwn(JOB_TITLES, root.job) ? JOB_TITLES[root.job as keyof typeof JOB_TITLES] : null;
+  return job ? t(job, { bot }) : t(`trace.source.${root.source}`, { bot });
+}
+
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "";
   if (ms < 1_000) return `${Math.round(ms)}ms`;

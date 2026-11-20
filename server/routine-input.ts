@@ -6,7 +6,18 @@ import { cleanProbe, cleanTiming } from "./routine-quiet.ts";
 import { cleanSchedule } from "./routine-schedules.ts";
 import type { Routine, RoutineInput } from "./routines.ts";
 
-export function sanitizeInput(input: RoutineInput, after: number): Omit<Routine, "id" | "createdAt" | "updatedAt" | "nextRunAt"> {
+type CleanRoutine = Omit<Routine, "id" | "createdAt" | "updatedAt" | "nextRunAt">;
+
+/** What was asked is at fault when it can't be cleaned: the request answers 400 with the reason, never 500. */
+export function sanitizeInput(input: RoutineInput, after: number): CleanRoutine {
+  try {
+    return cleanInput(input && typeof input === "object" ? input : {} as RoutineInput, after);
+  } catch (error) {
+    throw error instanceof Error && !("status" in error) ? Object.assign(error, { status: 400 }) : error;
+  }
+}
+
+function cleanInput(input: RoutineInput, after: number): CleanRoutine {
   const name = String(input.name ?? "").trim().slice(0, 80);
   const prompt = String(input.prompt ?? "").trim().slice(0, 20_000);
   const botId = String(input.botId ?? "").trim();

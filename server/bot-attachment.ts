@@ -94,7 +94,7 @@ export async function saveBotAttachment(input: SaveBotAttachmentInput): Promise<
     const saved = await saveFile(file.handle.createReadStream({ start: 0, autoClose: false }), name || basename(file.name), mime, {
       expectedBytes: file.bytes,
     });
-    return { attachment: { kind: "file", path: saved.path, mime: saved.mime, name: saved.name }, bytes: saved.bytes };
+    return { attachment: { kind: "file", path: saved.path, mime: saved.mime, name: saved.name, bytes: saved.bytes }, bytes: saved.bytes };
   } finally {
     await file.handle.close().catch(() => undefined);
   }

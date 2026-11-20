@@ -12,6 +12,8 @@ const app = (at: number, name: string, props: Record<string, string | number | b
 describe("experience admin view", () => {
   it("groups events into bad, confusing and done with plain labels", () => {
     expect(classify("turn_failed", { reason: "rate_limit" })).toEqual({ family: "bad", label: "turn failed: rate limit" });
+    expect(classify("refused", { by: "request", code: "none", status: 409, route: "bots_id_messages" })).toEqual({ family: "bad", label: "request refused: none (409) at bots id messages" });
+    expect(classify("refused", { by: "request", code: "none", status: 403 })?.label).toBe("request refused: none (403)");
     expect(classify("confused", { kind: "what_mean", after: "reply" })).toEqual({ family: "confusing", label: "asked what the bot meant" });
     expect(classify("routine_done", { outcome: "ok" })?.family).toBe("done");
     expect(classify("routine_done", { outcome: "failed", reason: "timeout" })).toEqual({ family: "bad", label: "routine failed: timeout" });

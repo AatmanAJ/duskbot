@@ -48,7 +48,7 @@ for row in "${SITES[@]}"; do
   node "$HERE/check-links.mjs"
   dir="$stage/$name"
   mkdir -p "$dir/public"
-  cp "$HERE/server.js" "$HERE/waitlist-store.js" "$HERE/waitlist-mongo.js" "$HERE/unsubscribe.js" "$HERE/package.json" "$HERE/package-lock.json" "$dir/"
+  cp "$HERE/server.js" "$HERE/release-mirror.js" "$HERE/waitlist-store.js" "$HERE/waitlist-mongo.js" "$HERE/unsubscribe.js" "$HERE/package.json" "$HERE/package-lock.json" "$dir/"
   cp -R "$HERE/public/landing" "$dir/public/landing"
   cp "$INSTALLER" "$dir/public/landing/install.sh"
   cp "$HERE/install-mac.sh" "$dir/public/landing/install-mac.sh"

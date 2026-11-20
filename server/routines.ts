@@ -6,6 +6,7 @@ import { DATA_DIR } from "./config.ts";
 import type { RuntimeEvent } from "./contracts.ts";
 import { OwnedFile } from "./atomic.ts"; import { saveSoon } from "./save-batch.ts";
 import { redactSecretsInText } from "./redact.ts";
+import { withoutEchoedPrompt } from "../shared/failed-turn.ts";
 import { activeRunsOf, nextDueOf, schedulerDueOf, upcomingOf, wakeHoldOf } from "./routine-due.ts"; import { dropQuietFields, nextTicks, quietPatch, stripOf } from "./routine-quiet.ts";
 import { startDueTimer, type DueTimer } from "./due-timer.ts";
 import type { GroupGoalRunStatus } from "../shared/group-goal-run.ts";
@@ -109,6 +110,8 @@ export interface RoutineRun {
   /** A queued run starts no earlier than this. */
   retryAt?: number;
   retried?: RoutineRetryCause;
+  /** Starts it waited for its AI's usage limit to reset, apart from its one retry. */
+  limitWaits?: number;
   /** When its current wait began; read only while the run is waiting. */
   waitingSince?: number;
   asked?: RoutineRunAsk;
@@ -274,9 +277,7 @@ export interface RoutineManagerOptions {
   heldAfterWake?: () => boolean; held?: (run: RoutineRun) => string | null; decorate?: (routine: Routine) => Partial<Routine>; /** How much earlier than its time a run may start (a Cloud home folding an "around" run into its wake). */ earlyMs?: (routine: Routine) => number;
 }
 
-const CATCH_UP_MS = 12 * 60 * 60_000;
-const WAKE_HORIZON_MS = 60 * 60_000;
-
+const CATCH_UP_MS = 12 * 60 * 60_000, WAKE_HORIZON_MS = 60 * 60_000;
 export const ROUTINE_RESTARTED = "dusk bot restarted while this routine was running";
 const MAX_RUNS = 2_000;
 function cloneRoutine(routine: Routine): Routine {
@@ -1269,7 +1270,7 @@ export class RoutineManager {
     } else if (event.type === "item.completed" && event.itemType === "assistant_text") {
       run.output = redactSecretsInText(event.text).trim().slice(0, 2_000);
     } else if (event.type === "runtime.error") {
-      run.error = redactSecretsInText(event.message).slice(0, 500);
+      run.error = redactSecretsInText(withoutEchoedPrompt(event.message)).slice(0, 500);
       this.failureFacts.set(run.id, engineFacts(event));
     } else if (event.type === "turn.completed") {
       if (this.closing && (!event.ok || event.stopReason === "cancelled" || event.stopReason === "interrupted")) return null;

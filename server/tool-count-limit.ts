@@ -30,23 +30,35 @@ export function capToolListResult(result: unknown, limit: number | undefined, lo
   return { ...rest, tools: capToolList(tools, limit) };
 }
 
+/** The most tools a core server (dusk bot's browser, memory and data, email, phone, computer) asks for before connected
+ * apps and the person's own servers share what is left. */
+export const CORE_SERVER_SHARE = 32;
+
 /**
- * Each server's share of `budget` tools. A server whose count is known keeps that many while the budget lasts, in turn
- * order; the rest split what is left evenly, the earlier ones taking the remainder. Deterministic for the same servers.
+ * Each server's share of `budget` tools. Core servers go first: one whose count is known keeps that many while the budget
+ * lasts, the rest split what is left, each taking at most CORE_SERVER_SHARE. Then the other servers the same way, in turn
+ * order, without a ceiling. Deterministic for the same servers.
  */
-export function shareToolBudget(servers: ReadonlyArray<{ name: string; tools?: number }>, budget: number): Map<string, number> {
+export function shareToolBudget(servers: ReadonlyArray<{ name: string; tools?: number; core?: boolean }>, budget: number): Map<string, number> {
   const shares = new Map<string, number>();
   let left = Math.max(0, Math.floor(budget));
-  for (const server of servers) {
-    if (server.tools === undefined) continue;
-    const share = Math.min(Math.max(0, server.tools), left);
-    shares.set(server.name, share);
-    left -= share;
-  }
-  const unknown = servers.filter((server) => server.tools === undefined);
-  unknown.forEach((server, index) => {
-    shares.set(server.name, Math.floor(left / unknown.length) + (index < left % unknown.length ? 1 : 0));
-  });
+  const share = (group: ReadonlyArray<{ name: string; tools?: number }>, ceiling: number) => {
+    for (const server of group) {
+      if (server.tools === undefined) continue;
+      const taken = Math.min(Math.max(0, server.tools), left);
+      shares.set(server.name, taken);
+      left -= taken;
+    }
+    const unknown = group.filter((server) => server.tools === undefined);
+    const pool = left;
+    unknown.forEach((server, index) => {
+      const taken = Math.min(ceiling, Math.floor(pool / unknown.length) + (index < pool % unknown.length ? 1 : 0));
+      shares.set(server.name, taken);
+      left -= taken;
+    });
+  };
+  share(servers.filter((server) => server.core), CORE_SERVER_SHARE);
+  share(servers.filter((server) => !server.core), Number.POSITIVE_INFINITY);
   return shares;
 }
 
@@ -78,41 +90,72 @@ export function toolCountLimitFromError(error: unknown): number | undefined {
 }
 
 const LEARNED_MAX = 500;
-const learned = new Map<string, number>();
+const learned = new Map<string, { limit: number; budget?: number }>();
 
-/** Remembers a model's limit until the server restarts; the oldest entry goes first past LEARNED_MAX. */
-export function learnToolCountLimit(key: string, limit: number): void {
+function remember(key: string, entry: { limit: number; budget?: number }): void {
   learned.delete(key);
-  learned.set(key, limit);
+  learned.set(key, entry);
   if (learned.size > LEARNED_MAX) learned.delete(learned.keys().next().value!);
 }
 
+/** Remembers a model's limit until the server restarts; the oldest entry goes first past LEARNED_MAX. */
+export function learnToolCountLimit(key: string, limit: number): void {
+  remember(key, { limit });
+}
+
 export function learnedToolCountLimit(key: string): number | undefined {
-  return learned.get(key);
+  return learned.get(key)?.limit;
 }
 
 export function forgetToolCountLimits(): void {
   learned.clear();
 }
 
-/** A turn the provider refused for carrying too many tools, before the model ran: learns the limit and starts `retry` once,
- * which lists the turn's tools within it; `failed` reports a retry that could not start. True when it retried. */
+/** What a limit leaves the MCP servers once the engine's own tools are counted. */
+export function mcpToolBudget(limit: number | undefined, engineTools: number): number | undefined {
+  return limit === undefined ? undefined : Math.max(0, limit - engineTools);
+}
+
+/** The MCP tools a turn of this model may list: none known (undefined) until a refusal names its limit, then what the
+ * limit leaves past `engineTools`, or less once a trimmed turn was still refused. */
+export function learnedMcpToolBudget(key: string, engineTools: number): number | undefined {
+  const entry = learned.get(key);
+  return entry && (entry.budget ?? mcpToolBudget(entry.limit, engineTools));
+}
+
+/** The budget after a refusal of a turn that listed `offered` MCP tools (undefined: untrimmed). The engine's own tools
+ * are only estimated (an engine adds its config's MCP servers, plugins and tools), so a trimmed turn still refused halves
+ * the budget, down to no MCP tools at all; null once nothing is left to take away. */
+export function nextMcpToolBudget(limit: number, offered: number | undefined, engineTools: number): number | null {
+  const fit = mcpToolBudget(limit, engineTools)!;
+  if (offered === undefined || offered > fit) return fit;
+  if (offered === 0) return null;
+  return offered > 8 ? Math.floor(offered / 2) : 0;
+}
+
+/** A turn the provider refused for carrying too many tools, before the model ran: learns the limit and a smaller MCP
+ * budget, and starts `retry`, which lists the turn's tools within it; `failed` reports a retry that could not start. True
+ * when it retried; false for another error, or when the turn already listed no MCP tools. */
 export function retryUnderToolLimit(error: unknown, turn: {
   key: string;
   model?: string;
   engine: string;
+  /** the MCP tools the refused turn listed at most; undefined when it was not trimmed */
+  offered: number | undefined;
+  engineTools: number;
   retry: () => Promise<unknown>;
   failed: (error: unknown) => void;
 }): boolean {
   const limit = toolCountLimitFromError(error);
   if (limit === undefined) return false;
-  learnToolCountLimit(turn.key, limit);
-  console.warn(`[${turn.engine}] ${turn.model ?? "this model"} takes at most ${limit} tools; retrying the turn once with its MCP tool lists trimmed to fit`);
+  const budget = nextMcpToolBudget(limit, turn.offered, turn.engineTools);
+  if (budget === null) {
+    remember(turn.key, { limit, budget: 0 });
+    console.warn(`[${turn.engine}] ${turn.model ?? "this model"} takes at most ${limit} tools and was refused with no MCP tools listed: the engine's own exceed it`);
+    return false;
+  }
+  remember(turn.key, { limit, budget });
+  console.warn(`[${turn.engine}] ${turn.model ?? "this model"} takes at most ${limit} tools; retrying the turn with its MCP tools trimmed to ${budget}`);
   turn.retry().catch(turn.failed);
   return true;
-}
-
-/** What a limit leaves the MCP servers once the engine's own tools are counted. */
-export function mcpToolBudget(limit: number | undefined, engineTools: number): number | undefined {
-  return limit === undefined ? undefined : Math.max(0, limit - engineTools);
 }

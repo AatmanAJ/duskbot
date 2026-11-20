@@ -197,7 +197,7 @@ describe("the setup card's answers", () => {
     await jobs.text("setup-suggestions", "api")!.generateText("p");
     await jobs.text("setup-suggestions", "pi")!.generateText("p");
     expect(booked.map((entry) => entry.row.threadId)).toEqual([expect.stringMatching(/^setup-suggestions-/), expect.stringMatching(/^setup-suggestions-/)]);
-    expect(booked.map((entry) => entry.row.trigger)).toEqual([{ kind: "bot", botId: "api" }, { kind: "helper", botId: "pi", job: "setup-suggestions" }]);
+    expect(booked.map((entry) => entry.row.trigger)).toEqual([{ kind: "upkeep", botId: "api", job: "setup-suggestions" }, { kind: "helper", botId: "pi", job: "setup-suggestions" }]);
   });
 });
 
@@ -367,16 +367,16 @@ describe("what a helper call is booked as", () => {
     expect(state.booked[0]).toMatchObject({ row: { input: 0, output: 0, costUsd: null }, tokensReported: false });
   });
 
-  it("leaves the bot's own background calls booked as they were, and its own summary unbooked", async () => {
+  it("books the bot's own background calls as its upkeep, with the job named, and leaves its own summary unbooked", async () => {
     const { jobs, state } = setup();
     await jobs.text("memory", "claude")!.generateText("p");
     await jobs.text("skill-review", "claude")!.generateText("p");
     await jobs.text("compaction", "claude")!.generateText("p");
     await jobs.text("memory", "codex")!.generateText("p");
     expect(state.booked.map((entry) => entry.row)).toEqual([
-      expect.objectContaining({ botId: "claude", instanceId: "claude", driverKind: "claudeAgent", threadId: expect.stringMatching(/^memory-/), trigger: { kind: "bot", botId: "claude" } }),
-      expect.objectContaining({ botId: "claude", instanceId: "claude", threadId: expect.stringMatching(/^skill-review-/), trigger: { kind: "bot", botId: "claude" } }),
-      expect.objectContaining({ botId: "codex", instanceId: "codex", driverKind: "codex", model: "codex-own", threadId: expect.stringMatching(/^memory-/), trigger: { kind: "bot", botId: "codex" } }),
+      expect.objectContaining({ botId: "claude", instanceId: "claude", driverKind: "claudeAgent", threadId: expect.stringMatching(/^memory-/), trigger: { kind: "upkeep", botId: "claude", job: "memory" } }),
+      expect.objectContaining({ botId: "claude", instanceId: "claude", threadId: expect.stringMatching(/^skill-review-/), trigger: { kind: "upkeep", botId: "claude", job: "skill-review" } }),
+      expect.objectContaining({ botId: "codex", instanceId: "codex", driverKind: "codex", model: "codex-own", threadId: expect.stringMatching(/^memory-/), trigger: { kind: "upkeep", botId: "codex", job: "memory" } }),
     ]);
   });
 });
@@ -602,5 +602,58 @@ describe("memory upkeep through the resolver", () => {
     expect(await upkeep(failing.jobs).capture({ botId: BOT.id, threadId: "t1", turns })).toMatchObject({ added: 0, note: "The capture call did not answer in time." });
     expect(memory()).toBe(before);
 
+  });
+});
+
+describe("the quick reply while a bot works", () => {
+  function quickSetup(options: { helper?: { instanceId: string } | null; free?: boolean; helperModel?: boolean } = {}) {
+    const fast = textEngine("api", "openai-compat", () => "api wrote this", { default: "big-model", options: [{ id: "big-model", label: "Big" }, { id: "big-model-mini", label: "Big mini" }] });
+    const codex = backgroundEngine("codex", "codex");
+    const free = backgroundEngine("opencode", "opencode");
+    const helper = textEngine("claude", "claudeAgent");
+    const instances = new Map<string, SideJobInstance>([["api", fast.instance], ["codex", codex.instance], ["pi", turnsOnly("pi", "piAgent")], ["claude", helper.instance]]);
+    const bots = new Map<string, SideJobBot>(["api", "codex", "pi"].map((id) => [id, { ...bot(id, id), ...(options.helperModel === false ? { helperModel: false } : {}) }]));
+    const booked: Booked[] = [];
+    const jobs = createSideJobs({
+      bot: (id) => bots.get(id), instance: (id) => instances.get(id) ?? null, refusal: () => undefined,
+      helper: () => options.helper ?? null, smallModels: { refused: () => new Set(), remember: () => {} },
+      book: (row, tokensReported) => booked.push({ row, tokensReported }),
+      ...(options.free === false ? {} : { freeBackup: () => free.instance }),
+    });
+    return { jobs, fast, codex, free, helper, booked };
+  }
+
+  it("runs on the bot's own engine, on its fastest model, as a separate call", async () => {
+    const { jobs, fast } = quickSetup();
+    const writer = jobs.text("side-reply", "api");
+    expect(writer?.via).toBe("engine");
+    await writer!.generateText("hi");
+    expect(fast.calls[0]?.options?.model).toBe("big-model-mini");
+  });
+
+  it("runs a CLI engine's own one-shot process when it has no quicker call", async () => {
+    const { jobs, codex, free } = quickSetup();
+    expect(await jobs.text("side-reply", "codex")!.generateText("hi")).toBe("codex's own engine wrote this");
+    expect(codex.calls).toHaveLength(1);
+    expect(free.calls).toHaveLength(0);
+  });
+
+  it("falls back to the helper, then to OpenCode's free backup, for an engine with no one-off call", async () => {
+    const withHelper = quickSetup({ helper: { instanceId: "claude" } });
+    expect(await withHelper.jobs.text("side-reply", "pi")!.generateText("hi")).toBe("claude wrote this");
+    expect(withHelper.free.calls).toHaveLength(0);
+
+    const freeOnly = quickSetup();
+    const writer = freeOnly.jobs.text("side-reply", "pi");
+    expect(writer?.via).toBe("helper");
+    await writer!.generateText("hi");
+    expect(freeOnly.free.calls).toHaveLength(1);
+    expect(freeOnly.booked[0]?.row.trigger).toEqual({ kind: "helper", botId: "pi", job: "side-reply" });
+  });
+
+  it("never sends a bot switched off the helper to the free backup, and other jobs never use it", () => {
+    expect(quickSetup({ helperModel: false }).jobs.text("side-reply", "pi")).toBeNull();
+    expect(quickSetup({ free: false }).jobs.text("side-reply", "pi")).toBeNull();
+    expect(quickSetup().jobs.text("turn-beat", "pi")).toBeNull();
   });
 });
