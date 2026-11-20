@@ -19,11 +19,11 @@ Nothing changes in Grok Bot. Sign-ins and keys never move.
 | Routines | cloud; the chat names them in its events | their names, as a memory topic | paused, with their schedule and time zone exactly; an unknown zone, a schedule in words or an event trigger is listed for the person to set, never guessed |
 | Connected apps | cloud; the cache has their names | names, to connect again on the Apps page | names only, never a server address |
 | Files | cloud | no | no |
-| Sign-ins, keys, tokens | Grok Bot's own files | never | refused |
+| Sign-ins, keys, tokens | Grok Bot's login files | never | refused |
 
 There is no dusk bot equivalent for Grok Bot's app settings that a person would want carried, so none move.
 
-Grok Bot's cloud has an API that would give everything, but it needs the account's session from Grok Bot's own login
+Grok Bot's cloud has an API that would give everything, but it needs the account's session from Grok Bot's login
 store. dusk bot never reads that store and never calls that API: using another app's session outside it is not ours
 to do.
 

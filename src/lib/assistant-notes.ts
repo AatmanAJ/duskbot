@@ -19,7 +19,7 @@ import { looksLikeGrokExport } from "./grok-bot-move";
 
 export { isNotesPrompt, looksLikeNotes };
 
-/** What the chat and the bring screens take in instead of sending: notes from another AI, or a Grok Bot's own export. */
+/** What the chat and the bring screens take in instead of sending: notes from another AI, or an export a Grok Bot wrote of itself. */
 export const looksLikeIntake = (text: string) => looksLikeNotes(text) || looksLikeGrokExport(text);
 
 const KEY = "dusk.notesWaiting";

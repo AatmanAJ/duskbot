@@ -272,7 +272,7 @@ export function BringIn({ finds, choice, run, onImport, step = false, lead }: {
   /** One app's own Bring in. */
   onImport?: (find: LocalFind) => void;
   step?: boolean;
-  /** Above everything else here: Grok Bot's own card (GrokMoveCard). */
+  /** Above everything else here: the Grok Bot card (GrokMoveCard). */
   lead?: ReactNode;
 }) {
   const brought = broughtIds(run);

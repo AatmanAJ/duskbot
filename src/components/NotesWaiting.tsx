@@ -17,7 +17,7 @@ import { useStore } from "@/state/store";
 
 export type NotesSay = (line: string, state: "working" | "done" | "failed") => void;
 
-/** A Grok Bot's own export goes to the bot it is for (the move's accept-export), never into a chat or the notes import. */
+/** An export a Grok Bot wrote of itself goes to the bot it is for (the move's accept-export), never into a chat or the notes import. */
 function takeGrokExport(text: string, say: NotesSay | undefined, via: NotesVia, here: string | null, file?: string) {
   if (isGrokRequest(text)) {
     if (say) say(t("grokBotMove.problem.request"), "failed");
