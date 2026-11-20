@@ -341,3 +341,62 @@ describe("a Vault secret the service refused", () => {
     expect(lines).toHaveLength(2);
   });
 });
+
+describe("a secret the person already gave", () => {
+  const NITTER = "nk_fake0123456789abcdef";
+  function cardsWith(history: Message[], vaulted?: { label: string; value: string }) {
+    const dataDir = mkdtempSync(join(tmpdir(), "dusk-secret-cards-"));
+    const keyHome = mkdtempSync(join(tmpdir(), "dusk-secret-key-"));
+    dirs.push(dataDir, keyHome);
+    const savedSecrets = new SavedSecretStore({ dataDir, key: fileSavedSecretsKey(dataDir, join(keyHome, "saved.key")) });
+    const lines: Message[] = [...history];
+    let ids = 0;
+    const store = {
+      activePath: () => lines,
+      messagesFor: () => lines,
+      appendMessage: (_threadId: string, message: Omit<Message, "id" | "at">) => { const full = { id: `c${++ids}`, at: Date.now(), ...message } as Message; lines.push(full); return full; },
+      patchMessage: (_threadId: string, id: string, patch: Partial<Message>) => { const line = lines.find((one) => one.id === id)!; Object.assign(line, patch); return line; },
+      botByThread: () => null, groupByThread: () => undefined, onChange: () => () => {},
+    };
+    const bot = { id: "ledger", name: "Ledger" } as BotRecord;
+    const cards = createSecretCards({
+      store: store as never, cfg: {} as never, botLogins: { credentialConfig: (config) => ({ ...config, onePassword: { connected: false } }) },
+      phoneSecrets: { provide: async () => {}, open: () => {} } as never, phoneSecretSubmissions: {} as never,
+      connectorThread: () => ({ bot, group: undefined }), answerCardNode: () => true, followCard: () => {}, dataDir,
+      layerFolder: () => dataDir, turnVm: () => undefined, savedSecrets,
+    });
+    if (vaulted) savedSecrets.save({ ...vaulted, botId: bot.id });
+    const ask = (label: string) => cards.requestCredential(bot, "t1", { label, reason: "To verify access.", delivery: "ref" });
+    return { lines, savedSecrets, ask };
+  }
+  const chat = (count: number): Message[] => Array.from({ length: count }, (_, index) => ({
+    id: `h${index}`, at: index, kind: "text", role: index % 2 ? "bot" : "user", text: index % 2 ? "Done." : `Step ${index}, carry on.`,
+  }) as Message);
+  const secretCards = (lines: Message[]) => lines.filter((line) => line.kind === "secret");
+
+  it("takes NITTER_KEY pasted 20+ messages back for a card labelled Nitter access key, with no card", () => {
+    const pasted = { id: "p", at: 0, kind: "text", role: "user", text: `here are my keys\nNITTER_URL=https://nitter.example.test\nNITTER_KEY=${NITTER}` } as Message;
+    const { lines, savedSecrets, ask } = cardsWith([pasted, ...chat(44)]);
+    const answer = ask("Nitter access key");
+    expect(answer).toMatchObject({ status: 200, body: { fromMessage: true, vault: "saved" } });
+    expect(String(answer.body.text)).not.toContain(NITTER);
+    expect(secretCards(lines)).toEqual([]);
+    expect(savedSecrets.find("Nitter access key", "ledger")?.value).toBe(NITTER);
+  });
+
+  it("uses a Vault secret saved under another wording of the same name, with no card", () => {
+    const { lines, ask } = cardsWith(chat(4), { label: "NITTER_KEY", value: NITTER });
+    expect(ask("Nitter access key")).toMatchObject({ status: 200, body: { fromVault: true } });
+    expect(secretCards(lines)).toEqual([]);
+  });
+
+  it("still asks on a card when nothing like it was given, and never takes a bot's text or a placeholder", () => {
+    const misleading = [
+      { id: "b", at: 0, kind: "text", role: "bot", text: `Set NITTER_KEY=${NITTER} like this` },
+      { id: "u", at: 1, kind: "text", role: "user", text: "NITTER_URL=https://nitter.example.test\nNITTER_KEY=<your key>" },
+    ] as Message[];
+    const { lines, ask } = cardsWith(misleading);
+    expect(ask("Nitter access key").status).toBe(201);
+    expect(secretCards(lines)).toHaveLength(1);
+  });
+});

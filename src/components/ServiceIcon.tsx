@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
-import { siteIconUrl } from "@/lib/site-icon";
+import { appLogoUrl, siteIconUrl } from "@/lib/site-icon";
 
 /** One connectable app as the Apps catalog lists it. */
 export interface ToolkitCard {
@@ -56,7 +56,7 @@ const INITIAL_TINTS = ["#c2ecfc", "#d0cefb", "#ffc4dd", "#fff3a0", "#c9f63f"];
 const initialTint = (label: string) => INITIAL_TINTS[[...label].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % INITIAL_TINTS.length];
 
 export function ServiceTile({ card, size = 40, className }: { card: TileArt; size?: number; className?: string }) {
-  const sources = [card.image, card.logo, siteIconUrl(card.domain)]
+  const sources = [...new Set([card.image, card.logo && appLogoUrl(card.logo), card.logo, siteIconUrl(card.domain)])]
     .filter((source): source is string => Boolean(source));
   // failures count against this list of sources only: an app whose art arrives later starts over from its best source
   const sourcesKey = sources.join("\n");

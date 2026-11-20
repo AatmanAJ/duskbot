@@ -3,12 +3,13 @@
 import { useSyncExternalStore } from "react";
 import { activeLocale, t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import type { Action } from "@/state/store";
+import { api, type Action, type ConfigStatus } from "@/state/store";
 import type { ActivitySource, MemoryTopics, SetupDetection, SetupSource } from "../../shared/setup-import";
 import { movable, planCounts, runBotMove, type AppMove, type BotMovePlan } from "./bot-move";
 import { GROK_FROM } from "../../shared/grok-import";
 import { aboutMeSaver } from "./assistant-notes";
 import { postImportNote } from "./import-note";
+import { BRING_NOTICE, dismissNotice } from "./notices";
 import { setupImportApi, type SetupImportClient } from "./setup-import";
 
 export interface LocalFind {
@@ -177,6 +178,17 @@ export function resetBringRunForTests() { run = { kind: "idle" }; }
 /** A finished run is forgotten (Settings opening afresh); one still going is kept. */
 export function forgetBringRun() { if (run.kind === "done") set({ kind: "idle" }); }
 
+/** Someone who brought their tools in is not offered the import again on a later launch: what an import leaves behind
+ * (notes past its limit) still shows on Settings' import page. The latest hints are read first, so none saved meanwhile is lost. */
+async function markBrought(dispatch: (action: Action) => void): Promise<void> {
+  try {
+    const current = await api<ConfigStatus>("/api/config");
+    const patch = dismissNotice(current?.onboarding, BRING_NOTICE);
+    if (!patch) return;
+    dispatch({ type: "configStatus", config: await api<ConfigStatus>("/api/config", { method: "PUT", body: JSON.stringify(patch) }) });
+  } catch {}
+}
+
 /** Brings the chosen finds in: the tools' things in one request, then each app's bots. Never throws; the line says what
  * came in. Runs once at a time; the funnel goes on meanwhile. */
 export async function bringChosen(finds: readonly LocalFind[], context: {
@@ -243,6 +255,7 @@ export async function bringChosen(finds: readonly LocalFind[], context: {
   const line = [...said, failed ? t("bring.failed") : ""].filter(Boolean).join(" ");
   // a find that failed stays one to import again
   set({ kind: "done", line, failed, brought: failed ? [...before] : [...new Set([...before, ...ids])], known });
+  if (known || bots || skills || tools || routines) void markBrought(context.dispatch);
   if (context.firstBotId && (bots || skills || tools || notes)) {
     const from = [...new Set(finds.filter((find) => find.bots || find.source).map((find) => find.app))];
     void postImportNote(context.firstBotId, { from, bots: botNames, facts, memories: memories + notes, skills, tools, routines, instructions: kept, reconnect, failed });

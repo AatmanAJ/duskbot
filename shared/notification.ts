@@ -50,6 +50,9 @@ export interface Notification {
    * already works off `threadId` alone; this is what lets a client say which
    * room, and stack a room's banners together instead of under the bot. */
   groupId?: string;
+  /** An approval's or question's ask (`POST /api/threads/:threadId/respond` takes it), so a phone notification's
+   * Approve, Deny and Answer act on that one ask. */
+  requestId?: string;
   /** On a Team Cloud, the one person this is for (their person key): a teammate tagged by name, or the person a bot
    * passed a message to. It reaches nobody else, an admin included. */
   forPerson?: string;

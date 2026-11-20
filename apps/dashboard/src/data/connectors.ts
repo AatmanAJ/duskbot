@@ -15,7 +15,7 @@ import { useSession } from "./session";
 export { CATEGORIES, presentCategories, inCategory, searchApps, recommended } from "@/components/connect-apps/catalog";
 export { idsOf } from "@/components/connect-apps/merge";
 export type { Category } from "@/components/connect-apps/catalog";
-export { CATEGORY_NAMES, connectorRows, FIXTURE_EXTRAS } from "./connector-rows";
+export { CATEGORY_NAMES, connectedInAppOn, connectorRows, FIXTURE_EXTRAS } from "./connector-rows";
 export type { ConnectorExtras, ConnectorRow, ConnectorStatus, ConnectorType } from "./connector-rows";
 
 export interface DashApp extends AppEntry {}

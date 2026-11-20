@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AnimatePresence } from "motion/react";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -9,6 +10,7 @@ import { Card, FormDialog, FormField, NavRow, NoteRow, rowCls, RowText, SheetPan
 import { RowIconButton, textFieldCls } from "../../ui/GrokDialog";
 import { Toggle } from "../../ui/Toggle";
 import { useSkillActions } from "./use-skill-actions";
+import { ArtState } from "../../ui/Art";
 
 /** The bot's skills: how many are on, opening the list of them (each switchable and removable), a small form to add one
  * from a link, and the ways to find more. */
@@ -45,7 +47,7 @@ function SkillRows({ bot }: { bot: Bot }) {
       <>
         <Card data-sheet-group="installed">
           {skills.loading ? <NoteRow>{t("botPanel.ui.skillsLoading")}</NoteRow>
-            : skills.skills.length === 0 ? <NoteRow>{t("botPanel.sheet.noSkills")}</NoteRow>
+            : skills.skills.length === 0 ? <ArtState data-art-state="skills" art="cap" title={t("empty.skills.title")} className="py-6">{t("empty.skillsSheet.hint", { name: bot.name })}</ArtState>
               : skills.skills.map((skill) => (
                 <div key={skill.name} data-panel-row={`skill:${skill.name}`} className={cn(rowCls, "group/row")}>
                   <RowText title={skill.name} hint={skill.description || skill.source} />
@@ -89,7 +91,7 @@ function SkillRows({ bot }: { bot: Bot }) {
         <NavRow data-panel-link="connect-apps" title={t("botPanel.ui.sheetRowsConnectApps")} onClick={() => dispatch({ type: "togglePlugins", open: true, surface: "apps" })} />
       </Card>
       {errorRow}
-      {adding && <AddSkillDialog actions={actions} onClose={() => setAdding(false)} />}
+      <AnimatePresence>{adding && <AddSkillDialog key="add-skill-dialog" actions={actions} onClose={() => setAdding(false)} />}</AnimatePresence>
       {review}
     </>
   );
