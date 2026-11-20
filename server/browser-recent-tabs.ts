@@ -1,4 +1,4 @@
-// The tabs a bot's browser had open when it closed (idle close, or its bot stopped), kept in memory for 30 minutes so
+// The tabs a bot's browser had open when it closed (idle close, its bot stopped, or the person closed it), kept in memory for an hour so
 // the Computer tab can say what it worked on: title, address and the last screen of each. Never written to disk; a
 // restart of the server forgets them, as does a browser that opens again.
 
@@ -21,7 +21,7 @@ export interface ClosedBrowser {
   tabs: ClosedTab[];
 }
 
-export const RECENT_TABS_MS = 30 * 60_000;
+export const RECENT_TABS_MS = 60 * 60_000;
 /** At most this many tabs are pictured and kept: the most a profile opens on the new browser. */
 export const RECENT_TABS_LIMIT = 8;
 /** A larger last screen is dropped rather than kept in memory. */

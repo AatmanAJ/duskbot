@@ -9,6 +9,7 @@ import { PROVIDER_CREDENTIAL_ENV, stripWorkspaceCredentialEnv } from "../config.
 import { openStartupModelCatalog, unconfirmedModelCatalog, writeStartupModelCache } from "../startup-model-catalog.ts";
 import { augmentedPath } from "../env-path.ts";
 import { describeSpawnFailure, execCli, killCliTree, spawnCli } from "../procs.ts";
+import { earlyExitReport } from "./acp/exit-report.ts";
 import {
   deletePromptSplitReceipt,
   promptHalves,
@@ -799,16 +800,10 @@ export const PiDriver: ProviderDriver<PiConfig> = {
           onEvent(frame as unknown as PiEvent);
         } catch {}
       }));
-      child.on("error", (err) => {
-        const fail = describeSpawnFailure(err as NodeJS.ErrnoException, config.cli, turn.cwd);
-        rejectWaiters(new Error(fail.message));
-        emit({ ...base(threadId, turnId), type: "runtime.error", message: fail.message, setup: fail.setup });
-        settle(false);
-      });
-      child.on("close", () => {
-        rejectWaiters(new Error("pi process exited before replying"));
-        settle(false);
-      });
+      const failTurn = (message: string, setup?: boolean) => { rejectWaiters(new Error(message)); emit({ ...base(threadId, turnId), type: "runtime.error", message, setup }); settle(false); };
+      child.on("error", (err) => { const fail = describeSpawnFailure(err as NodeJS.ErrnoException, config.cli, turn.cwd); failTurn(fail.message, fail.setup); });
+      const exitMessage = earlyExitReport("pi", child.stderr);
+      child.on("close", (code, signal) => { if (!settled) failTurn(exitMessage(code, signal)); else if (!completion) void settle(false); });
 
       emit({ ...base(threadId, turnId), type: "turn.started" });
 

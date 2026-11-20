@@ -53,12 +53,12 @@ test("a plan change that charges now is applied only at the amount the person wa
   const overview = { subscriptions: [{ id: "sub1", status: "active", createdAt: 1, bundle: null, totalCents: 1000, currentPeriodEnd: 2, cancelAtPeriodEnd: false, cart: { interval: "month", license: { kind: "team", members: 3 }, desktop: { kind: "none" } } }], clouds: [], invoices: { invoices: [] } };
   let chargeNowCents = 1250;
   const fetch = vi.fn(async (path: string, _init?: RequestInit) => Response.json(
-    path.endsWith("catalog") ? catalog : path.endsWith("overview") ? overview : path.endsWith("/preview") ? { v: 1, quote: {}, chargeNowCents, confirmation: "confirm-1", expiresAt: 3 } : {}));
+    path.endsWith("catalog") ? catalog : path.endsWith("overview") ? overview : path.endsWith("/preview") ? { v: 1, quote: {}, timing: "now", chargeNowCents, taxCents: 150, effectiveAt: 1, nextChargeCents: 1000, nextChargeAt: 2, confirmation: "confirm-1", expiresAt: 3 } : {}));
   vi.stubGlobal("fetch", fetch);
   const { api } = await import("./api");
   await api.billing();
   const selection = { license: "team", members: 3, desktop: "none", size: null, region: "eu", interval: "month" } as const;
-  expect(await api.changeCharge(selection)).toBe(12.5);
+  expect(await api.changeCharge(selection)).toEqual({ timing: "now", todayUsd: 12.5, taxUsd: 1.5, effectiveAt: 1, nextUsd: 10, nextAt: 2 });
   expect(fetch.mock.calls.some(([path]) => path.endsWith("/change"))).toBe(false);
   await expect(api.changePlan(selection)).rejects.toMatchObject({ code: "price_changed" });
   await expect(api.changePlan(selection, 10)).rejects.toMatchObject({ code: "price_changed" });
@@ -102,4 +102,23 @@ test("an empty server failure uses a calm fallback", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 500 })));
   const { api } = await import("./api");
   await expect(api.me()).rejects.toMatchObject({ status: 500, message: "something went wrong on our side. try again." });
+});
+
+test("a 2xx answer with no json rejects instead of resolving null, so pages never read fields off null", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>gateway</html>", { status: 200, headers: { "content-type": "text/html" } })));
+  const { api, ApiError } = await import("./api");
+  const workspaces = api.workspaces();
+  await expect(workspaces).rejects.toBeInstanceOf(ApiError);
+  await expect(workspaces).rejects.toMatchObject({ status: 502, code: "bad_response" });
+  await expect(api.workspace("ws1")).rejects.toBeInstanceOf(ApiError);
+});
+
+test("a body read cut off by an abort rejects as an abort, not as an empty answer", async () => {
+  const ctl = new AbortController();
+  const body = new ReadableStream({ start(stream) { stream.enqueue(new TextEncoder().encode('{"workspaces":[')); } });
+  const response = new Response(body, { status: 200 });
+  vi.spyOn(response, "json").mockImplementation(() => { ctl.abort(); return Promise.reject(new DOMException("aborted", "AbortError")); });
+  vi.stubGlobal("fetch", vi.fn(async () => response));
+  const { api } = await import("./api");
+  await expect(api.workspaces(ctl.signal)).rejects.toMatchObject({ name: "AbortError" });
 });

@@ -55,8 +55,8 @@ export type Controller = "agent" | "you" | "another-viewer" | "unclaimed";
 export type ViewerOutput =
   | { type: "frame"; data: Buffer; metadata: FrameMetadata; still: boolean; ack: () => void }
   | { type: "viewport"; width: number; height: number; setting: ViewportSetting; zoom: number }
-  | { type: "control"; canOperate: boolean; controller: Controller; held: boolean; owned: boolean; controlling: boolean; stale: boolean; generation: number; dialog: { type: string; message: string; defaultValue: string } | null }
-  | { type: "tabs"; tabs: Array<{ tabId: string; title: string; url: string; active: boolean }> }
+  | { type: "control"; canOperate: boolean; controller: Controller; held: boolean; owned: boolean; controlling: boolean; stale: boolean; generation: number; heldTabs: string[]; dialog: { type: string; message: string; defaultValue: string } | null }
+  | { type: "tabs"; tabs: Array<{ tabId: string; title: string; url: string; active: boolean; held?: true }> }
   | { type: "url"; url: string }
   | { type: "nav"; tabId: string; url: string; loading: boolean; canGoBack: boolean; canGoForward: boolean }
   | { type: "status"; connected: boolean; screencasting: boolean; viewportWidth: number; viewportHeight: number }
@@ -593,6 +593,7 @@ export class ViewerHub {
       controlling,
       stale: control.stale,
       generation: this.host.active()?.control.generation ?? 0,
+      heldTabs: owner !== null && !this.#hold.hides(viewer) ? control.heldTabs().map((tab) => tab.id) : [],
       dialog: dialog ? { type: dialog.type, message: dialog.message, defaultValue: dialog.defaultPrompt } : null,
     };
   }
@@ -659,7 +660,8 @@ export class ViewerHub {
 
   tabsMessage(): ViewerOutput {
     const active = this.host.active();
-    return { type: "tabs", tabs: this.host.tabs().slice(0, 100).map((tab) => ({ tabId: tab.id, title: tab.page.title().slice(0, 512), url: tab.page.url(), active: tab === active })) };
+    const held = this.host.control.heldTabs();
+    return { type: "tabs", tabs: this.host.tabs().slice(0, 100).map((tab) => ({ tabId: tab.id, title: tab.page.title().slice(0, 512), url: tab.page.url(), active: tab === active, ...(held.includes(tab) ? { held: true as const } : {}) })) };
   }
 
   pushTabs(viewer: Viewer): void {

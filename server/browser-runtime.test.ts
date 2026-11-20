@@ -6,6 +6,7 @@ import { addHeldSecretScrubber, HELD_SECRET_MASK } from "../shared/redact.ts";
 import { BROWSER_VIEWPORT } from "./browser-page-size.ts";
 import { BROWSER_CALL_DEFAULTS, BROWSER_HOVER_TOOL, BROWSER_RESTART_TOOL, BROWSER_UPLOAD_TOOL, BrowserRuntime, PERSON_ACTED, PERSON_TYPED_ON_PAGE, TransportError, browserRuntimeEnv, formatBrowserTiming, type BrowserSpawnSpec, type BrowserTiming } from "./browser-runtime.ts";
 import { launchSettingsKey } from "./browser-launch-key.ts";
+import { browserIdleMs } from "./browser-lifecycle-cleanup.ts";
 import { HARNESS_CALL_BUDGET_MS, HARNESS_PROXY_TIMEOUT_MS } from "./harness-budget.ts";
 import { RelayPorts } from "./browser-relay.ts";
 import { BrowserSteps, type StepCall, type StepContext } from "./browser-steps.ts";
@@ -23,13 +24,58 @@ function deferred<T = void>() {
   return { promise, resolve };
 }
 afterEach(async () => { await Promise.all(runtimes.splice(0).map((value) => value.closeAll())); });
+/** A refusal the bot reads as its call's result, never a thrown error the route turns into a 500. */
+const refusedWith = (pattern: RegExp) => ({ isError: true, content: [{ type: "text", text: expect.stringMatching(pattern) }] });
+
+describe("a browser refusal", () => {
+  it("is the call's result for a refusal by design, and stays an error for a fault", async () => {
+    const { browserRefusal, BROWSER_CONTROL_REFUSAL } = await import("./browser-runtime.ts");
+    expect(browserRefusal(new Error(BROWSER_CONTROL_REFUSAL))).toBe(BROWSER_CONTROL_REFUSAL);
+    expect(browserRefusal(new Error("The browser is closing. Try again shortly."))).toMatch(/closing/);
+    expect(browserRefusal(new Error("This browser cannot upload here."))).toMatch(/cannot upload/);
+    expect(browserRefusal(new TypeError("Cannot read properties of undefined"))).toBeNull();
+    expect(browserRefusal(Object.assign(new Error("Browser access changed while connecting."), { status: 409 }))).toBeNull();
+    expect(browserRefusal(new TransportError("The browser did not answer in time."))).toBeNull();
+  });
+
+  it("answers a call made while a person answers the bot's sign-in request at once, as an isError result", async () => {
+    const value = runtime({ signingIn: (session) => session === "held" });
+    await value.take("held", "person");
+    await expect(value.agentRpc("held", { command: "node", args: [], env: {} }, "tools/call", { name: "agent_browser_get_url", arguments: {} }))
+      .resolves.toMatchObject(refusedWith(/paused while a person controls this browser/));
+  });
+
+  it("holds a call made while a person controls the browser until the hand-back, then answers that it did not run", async () => {
+    const value = runtime();
+    await value.take("held", "person");
+    let settled = false;
+    const call = value.agentRpc("held", { command: "node", args: [], env: {} }, "tools/call", { name: "agent_browser_get_url", arguments: {} })
+      .finally(() => { settled = true; });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(settled).toBe(false);
+    value.release("held", "person");
+    await expect(call).resolves.toMatchObject(refusedWith(/The person used the browser while this call waited.*this call did not run/));
+  });
+
+  it("stops holding a call when its turn stops, and past its budget says the person still holds the browser", async () => {
+    const value = runtime({ callBudgetMs: 16_500, followUpReserveMs: 15_000 });
+    await value.take("held", "person");
+    let stopped = false;
+    const stopping = value.agentRpc("held", { command: "node", args: [], env: {} }, "tools/call", { name: "agent_browser_get_url", arguments: {} }, () => { if (stopped) throw new Error("The turn was stopped."); });
+    stopped = true;
+    await expect(stopping).rejects.toThrow("The turn was stopped.");
+    await expect(value.agentRpc("held", { command: "node", args: [], env: {} }, "tools/call", { name: "agent_browser_get_url", arguments: {} }))
+      .resolves.toMatchObject(refusedWith(/The person still holds the browser after \d+ s, so this call did not run/));
+    expect(value.interrupted("held")).toBe(false);
+  });
+});
 
 describe("browser takeover gate", () => {
   it("immediately blocks shared-session reads and writes, while unrelated sessions work", async () => {
     const value = runtime();
     const action = deferred<string>();
     const pending = value.withAgentAction("shared-profile", () => action.promise);
-    const observed = expect(pending).rejects.toThrow(/paused/);
+    const observed = expect(pending).rejects.toThrow(/took control of the browser/);
     const taking = value.take("shared-profile", "person");
     expect(value.heldBy("shared-profile")).toBe("person");
     expect(value.canControl("shared-profile", "person")).toBe(false);
@@ -48,7 +94,7 @@ describe("browser takeover gate", () => {
     const value = runtime({ takeoverTimeoutMs: 20 });
     const action = deferred();
     const pending = value.withAgentAction("s", () => action.promise);
-    const observed = expect(pending).rejects.toThrow(/paused/);
+    const observed = expect(pending).rejects.toThrow(/took control of the browser/);
     await expect(value.take("s", "owner")).rejects.toThrow(/still finishing/);
     expect(value.heldBy("s")).toBe("owner");
     action.resolve();
@@ -84,7 +130,7 @@ describe("browser takeover gate", () => {
     // A preview frame holds the gate but sends no command that moves the page.
     const frame = deferred();
     const pending = value.previewFrame("s", () => frame.promise);
-    const observed = expect(pending).rejects.toThrow(/paused/);
+    const observed = expect(pending).rejects.toThrow(/took control of the browser/);
     const taking = value.take("s", "owner");
     frame.resolve(); await observed;
     await expect(taking).resolves.toBe(false);
@@ -182,14 +228,17 @@ describe("browser takeover gate", () => {
     await expect(value.previewFrame("s", capture)).resolves.toBe("frame");
   });
 
-  it("will not restart active actions or another person's held browser", async () => {
+  it("restarts for a person ahead of a bot's action, which then answers paused, but never another person's held browser", async () => {
     const value = runtime();
     const nativeClose = vi.fn(async () => {});
     const busy = deferred();
     const agent = value.withAgentAction("s", () => busy.promise);
-    await expect(value.restart("s", "recovery", nativeClose)).rejects.toThrow(/busy/);
+    const restarting = value.restart("s", "recovery", nativeClose);
     busy.resolve();
-    await agent;
+    await expect(agent).rejects.toThrow(/took control of the browser/);
+    await restarting;
+    expect(nativeClose).toHaveBeenCalledOnce();
+    nativeClose.mockClear();
     await value.take("s", "other");
     await expect(value.restart("s", "recovery", nativeClose)).rejects.toThrow(/Another person/);
     expect(nativeClose).not.toHaveBeenCalled();
@@ -290,13 +339,13 @@ describe("server-owned browser MCP runtime", () => {
   });
 
   it("captures nothing of the page while a person holds it to sign in: no screenshot, snapshot or preview frame", async () => {
-    const value = runtime();
+    const value = runtime({ signingIn: (session) => session === "signin" });
     const daemon = daemonSpec();
     try {
       await value.agentRpc("signin", daemon.spec, "tools/call", { name: "agent_browser_get_url", arguments: {} });
       await value.take("signin", "person");
       for (const name of ["agent_browser_screenshot", "agent_browser_snapshot", "agent_browser_get_text"]) {
-        await expect(value.agentRpc("signin", daemon.spec, "tools/call", { name, arguments: {} })).rejects.toThrow(/paused while a person controls this browser/);
+        await expect(value.agentRpc("signin", daemon.spec, "tools/call", { name, arguments: {} })).resolves.toMatchObject(refusedWith(/paused while a person controls this browser/));
       }
       const capture = vi.fn(async () => "frame");
       await expect(value.previewFrame("signin", capture)).rejects.toThrow(/paused/);
@@ -410,14 +459,14 @@ describe("server-owned browser MCP runtime", () => {
       let taking: Promise<boolean> | undefined;
       const refused = value.agentRpc("s", daemon.spec, "tools/call", { name: "agent_browser_fill", arguments: { selector: "@e3", text: "ada" } },
         () => { taking ??= value.take("s", "owner"); });
-      await expect(refused).rejects.toThrow(/paused/);
+      await expect(refused).resolves.toMatchObject(refusedWith(/took control of the browser/));
       await expect(taking).resolves.toBe(false);
       expect(daemon.calls()).toEqual([]);
       value.release("s", "owner");
       // Received: the engine is still running the command when the take lands.
       writeFileSync(daemon.busy, "busy");
       const running = value.agentRpc("s", daemon.spec, "tools/call", { name: "agent_browser_get_url" });
-      const discarded = expect(running).rejects.toThrow(/paused/);
+      const discarded = expect(running).resolves.toMatchObject({ isError: true, content: expect.arrayContaining([expect.objectContaining({ text: expect.stringMatching(/took control of the browser/) })]) });
       await vi.waitFor(() => expect(daemon.calls()).toEqual(["agent_browser_get_url"]));
       const waited = value.take("s", "owner");
       rmSync(daemon.busy);
@@ -532,8 +581,10 @@ describe("server-owned browser MCP runtime", () => {
     const other = await value.agentRpc("two", spec(), "tools/list", {}) as { pid: number };
     expect(other.pid).not.toBe(list.pid);
     await value.take("one", "owner");
-    await expect(value.agentRpc("one", spec(), "tools/call", { name: "echo" })).rejects.toThrow(/paused/);
+    const waiting = value.agentRpc("one", spec(), "tools/call", { name: "echo" });
     await expect(value.agentRpc("one", spec(), "tools/list", {})).resolves.toMatchObject({ tools: [{ name: "echo" }, { name: BROWSER_UPLOAD_TOOL }, { name: BROWSER_HOVER_TOOL }, { name: "agent_browser_batch" }, { name: "restart_browser" }] });
+    value.release("one", "owner");
+    await expect(waiting).resolves.toMatchObject(refusedWith(/The person used the browser/));
   });
 
   it("runs upload and hover through the daemon's relay, with only their own fields", async () => {
@@ -565,12 +616,16 @@ describe("server-owned browser MCP runtime", () => {
     expect(silent.interrupted("t")).toBe(true);
   });
 
-  it("refuses upload and hover while a person controls the browser", async () => {
+  it("never runs upload or hover while a person controls the browser", async () => {
     const relayCommand = vi.fn(async () => ({ success: true, data: {} }));
     const value = runtime({ relayCommand });
     await value.agentRpc("s", spec(), "tools/list", {});
     await value.take("s", "owner");
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: BROWSER_HOVER_TOOL, arguments: { selector: "#menu" } })).rejects.toThrow(/paused/);
+    const waiting = value.agentRpc("s", spec(), "tools/call", { name: BROWSER_HOVER_TOOL, arguments: { selector: "#menu" } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(relayCommand).not.toHaveBeenCalled();
+    value.release("s", "owner");
+    await expect(waiting).resolves.toMatchObject(refusedWith(/The person used the browser/));
     expect(relayCommand).not.toHaveBeenCalled();
   });
 
@@ -606,7 +661,7 @@ describe("server-owned browser MCP runtime", () => {
     const value = runtime({ closeBrowser: async () => false });
     await value.agentRpc("s", spec(), "tools/list", {});
     await expect(value.agentRpc("s", spec(), "tools/call", { name: "crash" })).resolves.toMatchObject({ isError: true });
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" })).rejects.toThrow(/could not be closed/);
+    await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" })).resolves.toMatchObject(refusedWith(/could not be closed/));
     await expect(value.agentRpc("s", spec(), "tools/call", { name: "echo" })).resolves.toMatchObject({
       isError: true,
       content: [{ text: expect.stringMatching(/Restart/) }],
@@ -629,6 +684,27 @@ describe("server-owned browser MCP runtime", () => {
     expect(next.content[1].text).toContain("again");
     const after = await value.agentRpc("s", spec(), "tools/call", { name: "echo", arguments: { text: "third" } }) as { content: Array<{ text: string }> };
     expect(after.content.map((part) => part.text).join("\n")).not.toMatch(/sat unused/);
+  });
+
+  it("on this computer, keeps a browser open through 39 unused minutes and closes it, tabs and all, at 40", async () => {
+    const closeBrowser = vi.fn(async () => true);
+    const value = runtime({ closeBrowser });
+    const closing = vi.fn();
+    value.onIdleClose(closing);
+    await value.agentRpc("s", spec(), "tools/call", { name: "echo", arguments: { text: "first" } });
+    const start = Date.now();
+    const clock = vi.spyOn(Date, "now");
+    try {
+      clock.mockReturnValue(start + 39 * 60_000);
+      expect(await value.closeIfIdle("s", browserIdleMs({}))).toBe(false);
+      expect(closing).not.toHaveBeenCalled();
+      clock.mockReturnValue(start + 40 * 60_000 + 1);
+      expect(await value.closeIfIdle("s", browserIdleMs({}))).toBe(true);
+      expect(closing).toHaveBeenCalledWith("s");
+      expect(closeBrowser).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("tells a bot whose temporary browser closed while idle that its sign-ins went with it", async () => {
@@ -745,7 +821,7 @@ describe("server-owned browser MCP runtime", () => {
     const value = runtime({ closeBrowser });
     await value.agentRpc("s", spec(), "tools/list", {});
     await value.take("s", "person");
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" })).rejects.toThrow(/paused/);
+    await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" })).resolves.toMatchObject(refusedWith(/paused/));
     value.release("s", "person");
     const revoked = () => { throw new Error("capability revoked"); };
     await expect(value.agentRpc("s", spec(), "tools/call", { name: "restart_browser" }, revoked)).rejects.toThrow(/revoked/);
@@ -929,7 +1005,28 @@ describe("server-owned browser MCP runtime", () => {
     }
   });
 
-  it("lets a person restart while a bot only waits to learn whether its lost call ended, never while one acts", async () => {
+  it("ends a bot's call that hangs when a person restarts, with a result that says so, not a busy refusal", async () => {
+    const value = runtime({ requestTimeoutMs: 30_000, callBudgetMs: 60_000 });
+    const daemon = daemonSpec();
+    try {
+      await value.agentRpc("s", daemon.spec, "tools/list", {});
+      const hanging = value.agentRpc("s", daemon.spec, "tools/call", { name: "hang" }) as Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
+      await vi.waitFor(() => expect(daemon.calls()).toContain("hang"));
+      const closeBrowser = vi.fn(async () => { rmSync(daemon.busy, { force: true }); });
+      await value.restart("s", "person", closeBrowser);
+      const stopped = await hanging;
+      expect(stopped.isError).toBe(true);
+      expect(stopped.content.map((part) => part.text).join(" ")).toContain("restarted your browser from the Browser panel while this call ran");
+      expect(value.interrupted("s")).toBe(false);
+      const after = await value.agentRpc("s", daemon.spec, "tools/call", { name: "echo", arguments: { text: "after" } }) as { content: Array<{ text: string }> };
+      expect(after.content.at(-1)?.text).toContain("after");
+    } finally {
+      await value.closeAll();
+      daemon.cleanup();
+    }
+  });
+
+  it("lets a person restart while a bot only waits to learn whether its lost call ended, and while one acts", async () => {
     const value = runtime({ requestTimeoutMs: 250, recoveryCheckMs: 5_000 });
     const daemon = daemonSpec();
     try {
@@ -944,9 +1041,10 @@ describe("server-owned browser MCP runtime", () => {
       expect(daemon.calls()).not.toContain("echo");
       const acting = deferred();
       const action = value.withAgentAction("s", () => acting.promise);
-      await expect(value.restart("s", "person", async () => {})).rejects.toThrow(/busy/);
+      const restarting = value.restart("s", "person", async () => {});
       acting.resolve();
-      await action;
+      await expect(action).rejects.toThrow(/took control of the browser/);
+      await restarting;
     } finally {
       await value.closeAll();
       daemon.cleanup();
@@ -1195,7 +1293,7 @@ describe("around each bot call (browser-steps.ts)", () => {
       void taking.catch(() => {});
     });
     value = runtime({ steps, applyViewport });
-    await expect(value.agentRpc("s", spec(), "tools/call", { name: "echo" }, undefined, ctx)).rejects.toThrow(/paused/);
+    await expect(value.agentRpc("s", spec(), "tools/call", { name: "echo" }, undefined, ctx)).resolves.toMatchObject(refusedWith(/took control of the browser/));
     expect(applyViewport).toHaveBeenCalledTimes(2);
     expect(seen).toEqual([false, true]);
     seen = [];
@@ -1260,7 +1358,7 @@ describe("around each bot call (browser-steps.ts)", () => {
     const taking = value.take("s", "person");
     expect(steps.personTook).toHaveBeenCalledWith("s");
     action.resolve();
-    await expect(pending).rejects.toThrow(/paused/);
+    await expect(pending).rejects.toThrow(/took control of the browser/);
     await taking;
   });
 

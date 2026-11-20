@@ -1,6 +1,7 @@
 // The Mac tools the device server lists beside the phone's: small flat inputs validated against their advertised schema.
 import type { ValidateFunction } from "ajv";
 
+import { CLOUD_MAC_TOOL_NAMES } from "../../shared/cloud-mac.ts";
 import { MAC_TOOL_NAMES, type MacToolName } from "../../shared/mac-control.ts";
 import { compileToolSchema, schemaProblems } from "../mcp-schema-validator.ts";
 
@@ -50,17 +51,24 @@ const tools: MacTool[] = [
     to: PATH("Where on the Mac: a folder (ending in /) or a file path. Default ~/Downloads/<your name>/."),
   }, ["source"]),
   tool("mac_screenshot", "Take a screenshot of the Mac's main screen.", {}),
+  tool("mac_download", "Download a file from a link straight onto the Mac. Saves into ~/Downloads unless to is given; never replaces a file.", {
+    url: { type: "string", minLength: 8, maxLength: 4096, pattern: "^https?://", description: "The https (or http) link." },
+    to: PATH("Where on the Mac: a folder (ending in /) or a file path; ~ starts at the home folder. Default ~/Downloads/."),
+  }, ["url"]),
 ];
+
 
 /** Catalog in MAC_TOOL_NAMES order. */
 export const MAC_TOOLS: ReadonlyArray<MacTool> = MAC_TOOL_NAMES.map((name) => tools.find((entry) => entry.name === name)!);
+/** A dusk cloud's catalog, in CLOUD_MAC_TOOL_NAMES order. */
+export const CLOUD_MAC_TOOLS: ReadonlyArray<MacTool> = CLOUD_MAC_TOOL_NAMES.map((name) => tools.find((entry) => entry.name === name)!);
 
 let validators: Map<string, ValidateFunction> | undefined;
 
-export function macToolCallProblem(name: unknown, args: unknown): string | null {
-  validators ??= new Map(MAC_TOOLS.map((entry) => [entry.name, compileToolSchema(entry.inputSchema as Record<string, unknown>, { allErrors: true })]));
-  const validate = typeof name === "string" ? validators.get(name) : undefined;
-  if (!validate) return `Unknown Mac tool. Use one of ${MAC_TOOL_NAMES.join(", ")}.`;
+export function macToolCallProblem(name: unknown, args: unknown, offered: ReadonlyArray<MacTool> = MAC_TOOLS): string | null {
+  validators ??= new Map(tools.map((entry) => [entry.name, compileToolSchema(entry.inputSchema as Record<string, unknown>, { allErrors: true })]));
+  const validate = typeof name === "string" && offered.some((entry) => entry.name === name) ? validators.get(name) : undefined;
+  if (!validate) return `Unknown Mac tool. Use one of ${offered.map((entry) => entry.name).join(", ")}.`;
   if (!args || typeof args !== "object" || Array.isArray(args) || !validate(args)) {
     return `Tool arguments do not match the advertised input schema: ${schemaProblems(validate.errors).join("; ") || "use its required fields and types"}.`;
   }
@@ -73,7 +81,7 @@ export function macJobTimeoutMs(name: MacToolName, args: Record<string, unknown>
     const seconds = typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : MAC_EXEC_DEFAULT_SECONDS;
     return (seconds + 30) * 1000;
   }
-  return name === "mac_save_from_cloud" ? 10 * 60_000 : 60_000;
+  return name === "mac_save_from_cloud" || name === "mac_download" ? 10 * 60_000 : 60_000;
 }
 
 export interface MacToolResult {

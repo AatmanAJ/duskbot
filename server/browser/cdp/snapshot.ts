@@ -3,12 +3,12 @@ import { messageOf } from "./errors.ts";
 import { valueInWorld } from "./evaluate.ts";
 import type { FrameRecord, FrameTree } from "./frames.ts";
 import type { RefTable } from "./refs.ts";
+import { cleanText as clean, locateRefs, NAME_CHARS, type Named } from "./relocate.ts";
 import { isSensitiveInput } from "./sensitive.ts";
 
 export const MAX_VISIBLE_TEXT_LENGTH = 20_000;
 const MAX_LINES = 5_000;
 const MAX_STYLE_CHECKS_PER_FRAME = 300;
-const NAME_CHARS = 200;
 const TEXT_CHARS = 300;
 const VALUE_CHARS = 100;
 export const MASKED_VALUE = "••••";
@@ -66,10 +66,6 @@ const SKIPPED = new Set(["InlineTextBox", "LineBreak", "ListMarker"]);
 const STYLE_CANDIDATES = new Set(["generic", "none", "presentation", "GenericContainer", "Section", "LabelText", "img", "image", "listitem", "cell", "gridcell", "row", "paragraph", "StaticText", "heading", "figure", "article", "group"]);
 
 const text = (value: AXValue | undefined) => (value?.value === undefined || value.value === null ? "" : String(value.value));
-const clean = (value: string, max: number) => {
-  const collapsed = value.replace(/\s+/g, " ").trim();
-  return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
-};
 
 function outputRole(role: string): string {
   if (role === "StaticText") return "text";
@@ -208,6 +204,7 @@ function states(item: Item): string {
   if (pressed === "true" || pressed === true) parts.push("[pressed]");
   else if (pressed === "mixed") parts.push("[pressed=mixed]");
   if (item.properties.get("selected") === true) parts.push("[selected]");
+  if (item.properties.get("modal") === true) parts.push("[modal]");
   return parts.join(" ");
 }
 
@@ -222,12 +219,12 @@ function onlyText(item: Item): string | null {
   return clean(item.children.map((child) => child.name).join(" "), TEXT_CHARS);
 }
 
-function render(item: Item, depth: number, refs: RefTable, options: SnapshotOptions, lines: string[]): void {
+function render(item: Item, depth: number, refs: RefTable, options: SnapshotOptions, lines: string[], named: Named[]): void {
   if (lines.length >= MAX_LINES) return;
   const role = outputRole(item.role);
   const interactive = INTERACTIVE.has(role) || item.pointer;
   if (FLATTENED.has(item.role) && !item.name && !interactive) {
-    for (const child of item.children) render(child, depth, refs, options, lines);
+    for (const child of item.children) render(child, depth, refs, options, lines, named);
     return;
   }
   const indent = "  ".repeat(depth);
@@ -237,6 +234,7 @@ function render(item: Item, depth: number, refs: RefTable, options: SnapshotOpti
     return;
   }
   const ref = interactive && item.backendNodeId !== null ? refs.refFor({ frameId: item.frameId, session: item.session, backendNodeId: item.backendNodeId }) : null;
+  if (ref) named.push({ ref, frameId: item.frameId, role: item.role, name: item.name });
   const parts = [`${indent}- ${role}`];
   if (item.name) parts.push(JSON.stringify(item.name));
   const stateText = states(item);
@@ -266,7 +264,7 @@ function render(item: Item, depth: number, refs: RefTable, options: SnapshotOpti
   if (typeof url === "string" && url) lines.push(`${indent}  - /url: ${clean(url, NAME_CHARS)}`);
   for (const child of item.children) {
     if (child.role === "StaticText" && clean(child.name, TEXT_CHARS) === item.name) continue;
-    render(child, depth + 1, refs, options, lines);
+    render(child, depth + 1, refs, options, lines, named);
   }
   if (lines.length > at + 1) lines[at] = `${header}:`;
 }
@@ -282,7 +280,9 @@ export async function takeSnapshot(frames: FrameTree, refs: RefTable, options: S
   const items = buildItems(mainFrame, main, owners, trees, budget);
   await readStyles(frames, items);
   const lines: string[] = [];
-  for (const item of items) render(item, 0, refs, options, lines);
+  const named: Named[] = [];
+  for (const item of items) render(item, 0, refs, options, lines, named);
+  locateRefs(refs, named);
   const truncated = lines.length >= MAX_LINES || budget.left <= 0;
   if (truncated) lines.push(`- … (the snapshot stops at ${MAX_LINES} lines)`);
   return { tree: lines.join("\n"), refs: refs.size, frames: records.length, truncated };

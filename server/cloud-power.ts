@@ -88,7 +88,9 @@ const BACKGROUND = [/^\/api\/events$/, /^\/api\/health$/, /^\/api\/sync(\/|$)/, 
   // the phone's 25-second "the app is open" beat: a focus hint (server/mobile/link.ts), never use, or an open phone never sleeps its home
   /^\/api\/mobile\/presence$/,
   // the app lending its connection (server/home-egress-link.ts) links up whenever the home is awake: never someone using it
-  /^\/api\/computer\/egress\/link$/];
+  /^\/api\/computer\/egress\/link$/,
+  // the Mac app's long poll for its cloud bots' work (server/mac-control/host.ts) waits whenever the home is awake: never someone using it
+  /^\/api\/mac\/self\/jobs$/];
 export const CLOUD_POWER_PATH = "/api/cloud/power";
 export const CLOUD_POWER_SLEEP_PATH = "/api/cloud/power/sleep";
 export const CLOUD_BACKGROUND_HEADER = "x-dusk-background";
@@ -96,7 +98,7 @@ export const CLOUD_POWER_HEADER = "x-dusk-cloud-power";
 const MARKER = "cloud-sleep.json";
 /** Long-polls and streams that stay open by design: never "in flight" work. An open screen is not either: its input is
  * someone using the home and the screen itself a hint (server/routes/desktop-viewer.ts `presence`). */
-const HELD = [/^\/api\/events$/, /^\/api\/sync\/changes$/, /^\/api\/desktop-viewer\/.+\/(?:websockify|direct)$/, /^\/api\/computer\/egress\/link$/];
+const HELD = [/^\/api\/events$/, /^\/api\/sync\/changes$/, /^\/api\/desktop-viewer\/.+\/(?:websockify|direct)$/, /^\/api\/computer\/egress\/link$/, /^\/api\/mac\/self\/jobs$/];
 
 /** The answer a held poll (Files sync) gets once the home agreed to sleep: the desktop pauses until it wakes. */
 export function answerAsleep(res: ServerResponse, json: (res: ServerResponse, status: number, body: unknown) => void) {
