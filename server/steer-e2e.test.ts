@@ -91,6 +91,11 @@ posixOnly("mid-turn steering e2e", () => {
       "<<<\nok please stop now, I'll book it myself": JSON.stringify({ kind: "stop", reply: "Okay, I've stopped." }),
       "<<<\nonly direct flights please": JSON.stringify({ kind: "steer", reply: "Got it, direct flights only." }),
       "<<<\nare you doing this yourself?": JSON.stringify({ kind: "answer", reply: "Yes, I'm doing this myself, comparing fares now." }),
+      "<<<\nalso find me a hotel in Panjim for those dates": JSON.stringify({ kind: "task", reply: "Sure, I'll find a hotel in Panjim too while the flights search runs." }),
+      "<<<\nand make me a packing list for the trip": JSON.stringify({ kind: "task", reply: "I'll put a packing list together alongside the rest." }),
+      "<<<\nhow is it going?": JSON.stringify({ kind: "answer", reply: "Flights, the hotel and the packing list are all still running." }),
+      "<<<\nmake the flights one-way": JSON.stringify({ kind: "steer", reply: "Got it, one-way flights." }),
+      "<<<\nfrom my phone: and the return train too": JSON.stringify({ kind: "task", reply: "Sure, I'll look at the return train as well." }),
     }));
     writeFileSync(
       join(home, ".duskbot", "config.json"),
@@ -689,6 +694,79 @@ posixOnly("mid-turn steering e2e", () => {
     await waitFor(async () => (await getBot(created.id)).busy === false, "the stop", 15_000);
     expect((await sideReplies()).at(-1).text).toBe("Okay, I've stopped.");
     writeFileSync(quickFinishGate, "finish");
+  }, 60_000);
+
+  it("several things at once in one chat: new asks join the running task, a question is answered at once, a correction redirects it, nothing is lost", async () => {
+    rmSync(quickFinishGate, { force: true });
+    const created = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeQuick", model: "claude-fake" } });
+    const person = await asPairedPerson();
+    const sideReplies = async () => (await getBot(created.id)).messages.filter((m: any) => m.sideReply).map((m: any) => m.text);
+    const turnIds = async () => new Set((await getBot(created.id)).messages.filter((m: any) => m.turnId).map((m: any) => m.turnId));
+
+    expect((await person("POST", `/api/bots/${created.id}/messages`, { text: "find me cheap flights to Goa" })).status).toBe(202);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "task A to start");
+    const sends = ["also find me a hotel in Panjim for those dates", "and make me a packing list for the trip", "how is it going?", "make the flights one-way"];
+    for (const [index, text] of sends.entries()) {
+      const sent = await person("POST", `/api/bots/${created.id}/messages`, { text });
+      expect(sent.status).toBe(202);
+      expect(sent.body.steered).toBe(true);
+      await waitFor(async () => (await sideReplies()).length === index + 1, `the quick reply to "${text}"`, 15_000);
+      expect((await getBot(created.id)).busy).toBe(true);
+    }
+    expect(await sideReplies()).toEqual([
+      "Sure, I'll find a hotel in Panjim too while the flights search runs.",
+      "I'll put a packing list together alongside the rest.",
+      "Flights, the hotel and the packing list are all still running.",
+      "Got it, one-way flights.",
+    ]);
+    expect(await turnIds()).toHaveProperty("size", 1);
+
+    writeFileSync(quickFinishGate, "finish");
+    await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to finish");
+    const bot = await getBot(created.id);
+    const finals = bot.messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal);
+    // one turn did all of it: task A was never stopped, B and C reached it as separate tasks, the correction as a steer
+    expect(finals).toHaveLength(1);
+    const result = finals[0].text as string;
+    expect(result).toContain("reply to: ");
+    expect(result).toContain("find me cheap flights to Goa");
+    expect(result).toContain("also find me a hotel in Panjim for those dates");
+    expect(result).toContain("and make me a packing list for the trip");
+    expect(result.match(/separate new task/g)).toHaveLength(2);
+    expect(result).toContain("make the flights one-way");
+    expect(result).toContain("do not reply to it on its own");
+    expect(result).not.toContain("how is it going");
+    expect(bot.messages.some((m: any) => m.kind === "activity" && /stopped/i.test(m.tool?.name ?? ""))).toBe(false);
+    for (const text of ["find me cheap flights to Goa", ...sends]) expect(bot.messages.filter((m: any) => m.role === "user" && m.text === text)).toHaveLength(1);
+  }, 90_000);
+
+  it("the phone and the desktop sending at the same moment: one turn runs, both lines are kept, nothing is refused", async () => {
+    rmSync(quickFinishGate, { force: true });
+    const created = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${created.id}`, { modelSelection: { instanceId: "claudeQuick", model: "claude-fake" } });
+    const phone = await asPairedPerson();
+    const desktop = await asPairedPerson();
+    const [first, second] = await Promise.all([
+      desktop("POST", `/api/bots/${created.id}/messages`, { text: "find me a train to Goa" }),
+      phone("POST", `/api/bots/${created.id}/messages`, { text: "from my phone: and the return train too" }),
+    ]);
+    expect([first.status, second.status]).toEqual([202, 202]);
+    await waitFor(async () => (await getBot(created.id)).busy === true, "a turn to start");
+    await waitFor(async () => {
+      const messages = (await getBot(created.id)).messages;
+      return ["find me a train to Goa", "from my phone: and the return train too"].every((text) => messages.some((m: any) => m.role === "user" && m.text === text));
+    }, "both lines in the chat", 15_000);
+    writeFileSync(quickFinishGate, "finish");
+    await waitFor(async () => (await getBot(created.id)).busy === false && !(await api("GET", "/api/bots")).body.queued?.[created.threadId]?.length, "everything to finish", 30_000);
+    const messages = (await getBot(created.id)).messages;
+    const finals = messages.filter((m: any) => m.role === "bot" && m.kind === "text" && m.turnTerminal).map((m: any) => m.text).join("\n");
+    // each line reached a turn exactly once: as its own turn, folded in, or queued after
+    for (const text of ["find me a train to Goa", "from my phone: and the return train too"]) {
+      expect(messages.filter((m: any) => m.role === "user" && m.text === text)).toHaveLength(1);
+      expect(finals.split(text).length - 1).toBe(1);
+    }
+    expect(messages.some((m: any) => m.kind === "activity" && m.tool?.ok === false)).toBe(false);
   }, 60_000);
 
   it("a message waiting for a free slot still names the paired person once it runs", async () => {

@@ -1,12 +1,13 @@
 // Reply while working: the person's own message, sent in their one-to-one chat while the bot works, gets a quick reply
 // from a small fast model (side-reply-prompt.ts) instead of waiting for the turn. Its decision routes the message: a
 // question is answered and the turn runs on untouched; a steer is acknowledged and passed into the running turn, or
-// queued first for its continuation when the engine cannot take it now; a stop or redirect ends the turn through the
+// queued first for its continuation when the engine cannot take it now; a separate new ask (task) goes into the running
+// turn to be done beside it, or waits first in the queue the same way; a stop or redirect ends the turn through the
 // person's own Stop. When no quick reply comes, the message takes the old path (fallback): steered or queued as it was.
 import type { RuntimeEvent, SteerOutcome } from "../contracts.ts";
 import type { Checklist } from "../batch-checklist.ts";
 import { derivedLabel } from "../harness/derived-status.ts";
-import { continuationNote, parseSideDecision, redirectNote, sideReplyPrompt, steerNote, type SideDecision, type SideLine } from "../side-reply-prompt.ts";
+import { continuationNote, parseSideDecision, queuedTaskNote, redirectNote, sideReplyPrompt, steerNote, taskNote, type SideDecision, type SideLine } from "../side-reply-prompt.ts";
 
 export const SIDE_REPLY_TIMEOUT_MS = 12_000;
 const STEP_CHARS = 90;
@@ -60,7 +61,7 @@ export function repliesWhileWorking(facts: SideSendFacts): boolean {
     !facts.room && facts.oneOnOne && !facts.waitingOnPerson && facts.quickUpdates && facts.writer;
 }
 
-export type SideOutcome ="answered" | "steered" | "queued" | "stopped" | "redirected" | "fallback";
+export type SideOutcome = "answered" | "steered" | "queued" | "added" | "added-next" | "stopped" | "redirected" | "fallback";
 
 export interface SideRepliesDeps<R extends SideRequest> {
   writer(botId: string, threadId: string): SideWriter | null;
@@ -92,6 +93,7 @@ interface Progress {
   status?: string;
   steps: string[];
   said: string[];
+  added: string[];
 }
 
 const textOf = (row: SideRow) => (row.kind === "text" && typeof row.text === "string" ? row.text.trim() : "");
@@ -122,6 +124,8 @@ function checklistState(list: Checklist | null): { title?: string; done: number;
 export function createSideReplies<R extends SideRequest>(deps: SideRepliesDeps<R>) {
   const now = deps.now ?? Date.now;
   const progress = new Map<string, Progress>();
+  /** Separate asks queued for a thread's next turn, so a later message's responder knows they are coming. */
+  const waiting = new Map<string, string[]>();
   const chains = new Map<string, Promise<unknown>>();
 
   const decide = async (request: R): Promise<SideDecision | null> => {
@@ -140,10 +144,12 @@ export function createSideReplies<R extends SideRequest>(deps: SideRepliesDeps<R
         steps: live?.steps ?? [],
         checklist: checklistState(deps.checklist(request.botId, request.threadId)),
         said: live?.said ?? [],
+        added: [...(live?.added ?? []), ...(waiting.get(request.threadId) ?? [])],
       },
       recent: recentLines(rows, request.messageId),
       message: request.text,
       notesNow: deps.canSteer(request.threadId),
+      tasksNow: deps.busy(request.botId, request.threadId) && deps.canSteer(request.threadId),
     });
     const timeoutMs = deps.timeoutMs ?? SIDE_REPLY_TIMEOUT_MS;
     const abort = new AbortController();
@@ -178,6 +184,20 @@ export function createSideReplies<R extends SideRequest>(deps: SideRepliesDeps<R
     return "queued";
   };
 
+  const addTask = async (request: R, reply: string): Promise<SideOutcome> => {
+    if (deps.busy(request.botId, request.threadId) && deps.canSteer(request.threadId)) {
+      const outcome = await deps.steer(request, `${request.prompt}\n\n${taskNote(reply)}`).catch((): SteerOutcome => "indeterminate");
+      if (outcome !== "refused") {
+        const live = progress.get(request.threadId);
+        if (live) live.added = [...live.added, request.text];
+        return "added";
+      }
+    }
+    deps.queueNext(request, `${request.prompt}\n\n${queuedTaskNote(reply)}`);
+    waiting.set(request.threadId, [...(waiting.get(request.threadId) ?? []), request.text]);
+    return "added-next";
+  };
+
   const act = async (request: R): Promise<SideOutcome> => {
     const decision = await decide(request);
     if (!decision) {
@@ -191,6 +211,11 @@ export function createSideReplies<R extends SideRequest>(deps: SideRepliesDeps<R
         return "answered";
       case "steer": {
         const outcome = await steerOrQueue(request, decision.reply);
+        deps.post(threadId, decision.reply);
+        return outcome;
+      }
+      case "task": {
+        const outcome = await addTask(request, decision.reply);
         deps.post(threadId, decision.reply);
         return outcome;
       }
@@ -227,7 +252,8 @@ export function createSideReplies<R extends SideRequest>(deps: SideRepliesDeps<R
     onEvent(event: RuntimeEvent): void {
       const { threadId } = event;
       if (event.type === "turn.started") {
-        progress.set(threadId, { turnId: event.turnId, startedAt: now(), steps: [], said: [] });
+        progress.set(threadId, { turnId: event.turnId, startedAt: now(), steps: [], said: [], added: waiting.get(threadId) ?? [] });
+        waiting.delete(threadId);
         return;
       }
       if (event.type === "turn.completed" || event.type === "session.exited") {

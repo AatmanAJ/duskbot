@@ -171,6 +171,46 @@ describe("side reply routing", () => {
     expect(turn.stopped).toBe(0);
   });
 
+  it("takes a separate new ask on beside the running task, which keeps going", async () => {
+    const { turn, posts, send } = setup({ reply: decision("task", "Sure, I'll find a hotel in Panjim too while the flights search runs.") });
+    expect(await send("also find me a hotel in Panjim for those dates")).toBe("added");
+    expect(turn).toMatchObject({ running: true, stopped: 0, redirected: [], queued: [] });
+    expect(turn.steered).toHaveLength(1);
+    expect(turn.steered[0]).toContain("Person: also find me a hotel in Panjim for those dates");
+    expect(turn.steered[0]).toContain("separate new task");
+    expect(turn.steered[0]).toContain("which ask it finishes");
+    expect(posts).toEqual(["Sure, I'll find a hotel in Panjim too while the flights search runs."]);
+  });
+
+  it("queues a separate ask first for the next turn when the engine cannot take it now, saying it starts after", async () => {
+    const { turn, send, prompts } = setup({ steers: false, reply: decision("task", "Sure, I'll make the deck as soon as the flights are done.") });
+    expect(await send("and make me a 3 slide deck about our pet food brand")).toBe("added-next");
+    expect(turn.steered).toEqual([]);
+    expect(turn.queued).toHaveLength(1);
+    expect(turn.queued[0]).toContain("separate task");
+    expect(turn.running).toBe(true);
+    expect(prompts[0]).toContain("It starts as soon as the task in progress is done");
+  });
+
+  it("tells the next responder which separate asks the task has taken on, so a third ask or a question sees both", async () => {
+    let calls = 0;
+    const { replies, send, prompts, turn } = setup({ reply: async () => (++calls === 1 ? decision("task", "Sure, hotels too.") : decision("answer", "Both are still running.")) });
+    replies.onEvent(event({ type: "turn.started" }));
+    expect(await send("also find me a hotel in Panjim")).toBe("added");
+    expect(await send("how is it going?")).toBe("answered");
+    expect(prompts[1]).toContain("Also asked during this task, being done alongside it:\n- also find me a hotel in Panjim");
+    expect(prompts[0]).not.toContain("Also asked during this task");
+    expect(prompts[0]).toContain("You do it alongside the task in progress");
+    expect(turn.running).toBe(true);
+  });
+
+  it("never lets a new request read as a question, nor as a redirect unless the task is dropped", () => {
+    const prompt = sideReplyPrompt({ name: "Pepper", task: { ask: "x", minutes: 2, steps: [], said: [] }, recent: [], message: "what's the weather in Goa?", notesNow: true });
+    expect(prompt).toContain("Never pick answer for a request to find, make, check or do something, or for a question about something outside this task that needs looking up");
+    expect(prompt).toContain("A new request that does not drop the task is task, not redirect.");
+    expect(parseSideDecision('{"kind":"task","reply":"Sure, on it alongside."}')).toEqual({ kind: "task", reply: "Sure, on it alongside." });
+  });
+
   it("redirects: queues the new ask first and stops the running turn", async () => {
     const { turn, posts, send } = setup({ reply: decision("redirect", "Sure, switching to trains instead.") });
     expect(await send("drop the flights, look at trains instead")).toBe("redirected");
