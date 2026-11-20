@@ -21,6 +21,7 @@ export interface GrokMoveHostDeps {
   defaultSelection(): Promise<ModelSelection>;
   deleteBot(botId: string): Promise<{ status: number; body: { error?: string } }>;
   timeZone(): string;
+  language(): string | undefined;
 }
 
 /** "Move from Grok Bot"'s routes, with the mover made the first time one is asked. */
@@ -47,6 +48,7 @@ export function grokMoveRoutes(deps: GrokMoveHostDeps): RouteHandler {
       deleteBot: deps.deleteBot,
       recordSoulChange: (botId, before, after) => recordProfileChange(botId, "import", "grok-bot", { soul: before }, { soul: after }),
       timeZone: deps.timeZone,
+      language: deps.language,
     }),
   });
 }

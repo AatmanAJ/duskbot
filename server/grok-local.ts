@@ -155,12 +155,15 @@ export interface GrokRosterBot {
   updatedAt?: number;
 }
 
+/** What a line that is not text stood for in Grok Bot; `detail` is a file's name or an app and its tool. */
+export interface GrokPlaceholder { kind: "question" | "email" | "card" | "file" | "app" | "voice"; detail?: string }
+
 export interface GrokChatLine {
   role: "user" | "bot";
-  /** Redacted. A placeholder line stands for an attachment, a card, a tool call or a voice call. */
+  /** Redacted; empty for a placeholder, whose words the move writes in the person's language. */
   text: string;
   at: number;
-  placeholder?: true;
+  placeholder?: GrokPlaceholder;
 }
 
 export interface GrokChatWindow {
@@ -249,12 +252,13 @@ function sendLine(entry: Record<string, unknown>, at: number): GrokChatLine | nu
     const text = str(message.content).trim();
     return text ? { role: "bot", text: clipLine(redactSecretsInText(text)), at } : null;
   }
-  const words: Record<string, string> = {
-    widget: "(A question with choices was here.)",
-    "email-draft": "(An email draft was here.)",
-    attachment: `(A file was here${str(message.file_name).trim() ? `: ${oneLine(str(message.file_name), 120)}` : ""}.)`,
-  };
-  return { role: "bot", text: words[type] ?? "(A card was here.)", at, placeholder: true };
+  if (type === "attachment") return { role: "bot", text: "", at, placeholder: fileHolder(message.file_name) };
+  return { role: "bot", text: "", at, placeholder: { kind: type === "widget" ? "question" : type === "email-draft" ? "email" : "card" } };
+}
+
+function fileHolder(name: unknown): GrokPlaceholder {
+  const detail = oneLine(str(name), 120);
+  return { kind: "file", ...(detail ? { detail } : {}) };
 }
 
 function chatLine(entry: Record<string, unknown>): GrokChatLine | null {
@@ -268,13 +272,13 @@ function chatLine(entry: Record<string, unknown>): GrokChatLine | null {
     case "send-message":
       return sendLine(entry, at);
     case "user-attachment":
-      return { role: "user", text: `(A file was here${str(entry.file_name).trim() ? `: ${oneLine(str(entry.file_name), 120)}` : ""}.)`, at, placeholder: true };
+      return { role: "user", text: "", at, placeholder: fileHolder(entry.file_name) };
     case "mcp-app": {
       const used = [oneLine(str(entry.serverName), 60), oneLine(str(entry.toolName), 60)].filter(Boolean).join(" · ");
-      return { role: "bot", text: `(Used an app${used ? `: ${used}` : ""}.)`, at, placeholder: true };
+      return { role: "bot", text: "", at, placeholder: { kind: "app", ...(used ? { detail: used } : {}) } };
     }
     case "voice-call":
-      return { role: "bot", text: "(A voice call was here.)", at, placeholder: true };
+      return { role: "bot", text: "", at, placeholder: { kind: "voice" } };
     default:
       return null;
   }

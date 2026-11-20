@@ -181,7 +181,7 @@ describe("the synthetic Grok Bot profile, read slice by slice", () => {
     if (!chat || "problem" in chat) throw new Error("no chat");
     expect(chat.earlier).toBe(true);
     expect(chat.lines.length).toBe(201);
-    expect(chat.lines.filter((line) => line.placeholder).map((line) => line.text)).toContain("(A voice call was here.)");
+    expect(chat.lines.filter((line) => line.placeholder).map((line) => line.placeholder!.kind)).toContain("voice");
     expect(chat.lines.some((line) => line.text.includes("sk-live-not-real"))).toBe(false);
     expect(chat.routines).toEqual([{ name: "Monday plan", on: true }, { name: "Friday wrap", on: false }]);
     expect(readGrokChat(machine, profile, SYNTHETIC_BOTS[6]!.id)).toMatchObject({ problem: { slice: "chat", code: "newerFormat" } });

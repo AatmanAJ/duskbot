@@ -16,8 +16,9 @@ import type { PackageDocument } from "../shared/package-format.ts";
 import { MAUS_COLOR_NAMES, type MausColor } from "../shared/wire.ts";
 import {
   downloadsListing, parseExportText, readDownloadsFile, readGrokChat, readGrokPhoto, readGrokProfile,
-  type GrokChatWindow, type GrokProfile, type GrokRosterBot,
+  type GrokChatWindow, type GrokPlaceholder, type GrokProfile, type GrokRosterBot,
 } from "./grok-local.ts";
+import { serverLine } from "./server-lines.ts";
 import * as records from "./grok-bot-move-store.ts";
 import type { MoveRecord, MovedBotRecord, WaitingRecord } from "./grok-bot-move-store.ts";
 import type { SetupMachine } from "./setup-import.ts";
@@ -42,6 +43,8 @@ export interface GrokMoveDeps {
   deleteBot(botId: string): Promise<{ status: number; body: { error?: string } }>;
   recordSoulChange(botId: string, before: string, after: string): void;
   timeZone(): string;
+  /** The person's language, for the lines the move writes into a chat. */
+  language?: () => string | undefined;
   now?: () => number;
   log?: (line: string) => void;
   /** How often Downloads is looked at while a bot's export is awaited. */
@@ -100,10 +103,22 @@ const descriptionLine = (text: string) => {
   return flat.length <= 200 ? flat : `${flat.slice(0, 199).trimEnd()}…`;
 };
 
+const PLACEHOLDER_LINES = {
+  question: "server.grokMove.held.question", email: "server.grokMove.held.email", card: "server.grokMove.held.card",
+  file: "server.grokMove.held.file", app: "server.grokMove.held.app", voice: "server.grokMove.held.voice",
+} as const;
+
+function placeholderLine(language: string | undefined, held: GrokPlaceholder): string {
+  if (held.detail && held.kind === "file") return serverLine(language, "server.grokMove.held.fileNamed", { detail: held.detail });
+  if (held.detail && held.kind === "app") return serverLine(language, "server.grokMove.held.appNamed", { detail: held.detail });
+  return serverLine(language, PLACEHOLDER_LINES[held.kind]);
+}
+
 /** The conversation a recent chat becomes: one quiet note, then each line in order. */
-export function chatMessages(window: GrokChatWindow, now: number): Message[] {
+export function chatMessages(window: GrokChatWindow, now: number, language?: string): Message[] {
   const count = window.lines.length;
-  const note = `notice: The last ${count} ${count === 1 ? "message" : "messages"} from Grok Bot.${window.earlier ? " Earlier messages stayed there." : ""}`;
+  const key = count === 1 ? (window.earlier ? "server.grokMove.recentOneEarlier" : "server.grokMove.recentOne") : window.earlier ? "server.grokMove.recentEarlier" : "server.grokMove.recent";
+  const note = `notice: ${serverLine(language, key, { count })}`;
   const firstAt = window.lines.find((line) => line.at > 0)?.at ?? now;
   const out: Message[] = [];
   let at = firstAt - 1;
@@ -116,7 +131,7 @@ export function chatMessages(window: GrokChatWindow, now: number): Message[] {
   push({ role: "bot", kind: "activity", tool: { name: note, ok: true } });
   for (const line of window.lines) {
     at = Math.max(at + 1, line.at);
-    push({ role: line.role, kind: "text", text: line.text });
+    push({ role: line.role, kind: "text", text: line.placeholder ? placeholderLine(language, line.placeholder) : line.text });
   }
   return out;
 }
@@ -359,7 +374,7 @@ export class GrokMover {
     const window = chat && !("problem" in chat) ? chat : null;
     if (choice.chat !== false && window?.lines.length) {
       this.step(row, record, "chat");
-      const messages = chatMessages(window, this.now());
+      const messages = chatMessages(window, this.now(), this.deps.language?.());
       const earlierThread = created ? null : records.chatThreadOf(bot.id);
       const reuse = earlierThread && bot.tasks?.some((task) => task.threadId === earlierThread) ? earlierThread : null;
       let threadId: string;

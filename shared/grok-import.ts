@@ -524,7 +524,7 @@ export function grokMovePlan(bot: GrokBot, options: GrokMovePlanOptions = {}): G
     if (read.zone === "unknown") note("zone", timeZone);
     if (routines.length >= MAX_ROUTINES) continue;
     const label = oneLine(routine.name) || "routine";
-    const base = clip(`${name}: ${label}`, 74);
+    const base = clip(label, 74);
     let jobName = base;
     for (let n = 2; routineNames.has(jobName); n += 1) jobName = `${base} (${n})`;
     routineNames.add(jobName);

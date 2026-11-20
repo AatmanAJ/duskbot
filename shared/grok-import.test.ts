@@ -88,7 +88,7 @@ describe("reading what a Bot wrote", () => {
     expect(bot).toMatchObject({ name: "Old", instructions: "Be old.", memories: ["a"] });
     const moved = grokMovePlan(bot!, { timeZone: "UTC" });
     expect(moved.skills.map((skill) => skill.folder)).toEqual(["s"]);
-    expect(moved.document.package.routines!.map((routine) => routine.name)).toEqual(["Old: r"]);
+    expect(moved.document.package.routines!.map((routine) => routine.name)).toEqual(["r"]);
     expect(moved.apps).toBe(1);
   });
 
@@ -174,22 +174,22 @@ describe("what comes over", () => {
     expect(moved.skills.map((skill) => [skill.name, skill.on])).toEqual([["Fine", true], ["Risky", false]]);
   });
 
-  it("creates scheduled routines paused, named <Bot>: <routine>, keeping schedule, zone and skills", () => {
+  it("creates scheduled routines paused, named as they were, keeping schedule, zone and skills", () => {
     const moved = plan();
     const [watch, monday] = moved.document.package.routines!;
-    expect(watch).toMatchObject({ name: "Account Health: Morning watch list", enabledAfterInstall: false, schedule: { type: "cron", expression: "0 8 * * 1-5", timeZone: "America/New_York" } });
+    expect(watch).toMatchObject({ name: "Morning watch list", enabledAfterInstall: false, schedule: { type: "cron", expression: "0 8 * * 1-5", timeZone: "America/New_York" } });
     expect(watch!.prompt).toContain("Use these skills: weekly-account-health.");
-    expect(monday).toMatchObject({ name: "Account Health: Monday check", enabledAfterInstall: false, schedule: { timeZone: "America/Los_Angeles" } });
+    expect(monday).toMatchObject({ name: "Monday check", enabledAfterInstall: false, schedule: { timeZone: "America/Los_Angeles" } });
   });
 
   it("keeps two different routines sharing a name apart", () => {
     const routines = [{ name: "Reminder", instruction: "One.", schedule_cron: "0 9 * * *" }, { name: "Reminder", instruction: "Two.", schedule_cron: "0 9 * * *" }];
-    expect(plan({ name: "Desk", routines }).document.package.routines!.map((routine) => routine.name)).toEqual(["Desk: Reminder", "Desk: Reminder (2)"]);
+    expect(plan({ name: "Desk", routines }).document.package.routines!.map((routine) => routine.name)).toEqual(["Reminder", "Reminder (2)"]);
   });
 
   it("creates nothing for any event, webhooks included: each is saved in a notes file with its trigger and instruction", () => {
     const moved = plan();
-    expect(moved.document.package.routines!.map((routine) => routine.name)).toEqual(["Account Health: Morning watch list", "Account Health: Monday check"]);
+    expect(moved.document.package.routines!.map((routine) => routine.name)).toEqual(["Morning watch list", "Monday check"]);
     const notes = moved.document.package.agents[0]!.seed!.memory[GROK_NOTES_FILE]!;
     expect(notes).toContain("## Escalations");
     expect(notes).toContain("- Trigger: slack");
@@ -212,7 +212,7 @@ describe("what comes over", () => {
       { name: "Nothing", trigger: "schedule", schedule_cron: "0 9 * * *" },
     ] });
     const routines = moved.document.package.routines!;
-    expect(routines.map((routine) => routine.name)).toEqual(["T: Bad zone", "T: Words"]);
+    expect(routines.map((routine) => routine.name)).toEqual(["Bad zone", "Words"]);
     expect(routines[0]).toMatchObject({ schedule: { timeZone: "Europe/Berlin" } });
     expect(moved.notes).toBe(1);
     expect(moved.document.package.agents[0]!.seed!.memory[GROK_NOTES_FILE]).toContain("## Vague");
@@ -236,7 +236,7 @@ describe("what comes over", () => {
   it("a malformed item costs only itself", () => {
     const moved = plan({ name: "M", skills: ["just a name", { name: "Good", instructions: "x" }, 7], routines: [null, { name: "Good r", instruction: "y", schedule_cron: "0 9 * * *" }], apps: [3, { name: "Gmail" }], memories: [{}, "kept"] });
     expect(moved.skills.map((skill) => skill.folder)).toEqual(["good"]);
-    expect(moved.document.package.routines!.map((routine) => routine.name)).toEqual(["M: Good r"]);
+    expect(moved.document.package.routines!.map((routine) => routine.name)).toEqual(["Good r"]);
     expect(moved).toMatchObject({ memories: 1, apps: 1 });
   });
 
