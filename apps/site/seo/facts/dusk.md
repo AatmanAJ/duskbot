@@ -110,6 +110,6 @@ make that claim. Never invent features, numbers, integrations, users, ratings or
 - Ratings, reviews, user counts, customer logos, testimonials, "trusted by", awards.
 - Measured time savings, benchmarks or success rates (none have been measured yet).
 - That Dusk Bot is open source.
-- That a store phone app is out (it is on its way).
+- That the Android store app is out (it is on its way to Google Play; the iPhone app is in the App Store).
 - That any routine is importable as a file, or that Dusk has a template marketplace (routines are made by sending a message).
 - Anything about a competitor without a dated source from seo/facts or omb-ref/seo-research/facts-*.json.
